@@ -2,7 +2,7 @@ use anyhow::{bail, Context, Result};
 use canon_llm::{config::LlmEndpoint, tab_management::TabManagerHandle, ws_server::WsBridge};
 use std::path::{Path, PathBuf};
 
-use crate::constants::{INVARIANTS_FILE, OBJECTIVES_FILE, SPEC_FILE};
+use crate::constants::{INVARIANTS_FILE, MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE};
 use crate::prompts::{
     single_role_diagnostics_prompt, single_role_executor_prompt, single_role_planner_prompt,
     single_role_verifier_prompt, AgentPromptKind,
@@ -36,7 +36,6 @@ pub struct PlannerInputs {
     pub summary_text: String,
     pub executor_diff_text: String,
     pub cargo_test_failures: String,
-    pub lane_plan_list: String,
     pub objectives_text: String,
     pub invariants_text: String,
     pub violations_text: String,
@@ -52,7 +51,6 @@ pub struct ExecutorDiffInputs {
 pub struct SingleRoleInputs {
     pub role: String,
     pub prompt_kind: AgentPromptKind,
-    pub primary_input_name: String,
     pub primary_input: String,
 }
 
@@ -62,7 +60,6 @@ pub struct SingleRoleContext<'a> {
     pub master_plan_path: &'a Path,
     pub violations_path: &'a Path,
     pub diagnostics_path: &'a Path,
-    pub lanes: &'a [LaneConfig],
 }
 
 pub fn read_text_or_empty(path: impl AsRef<Path>) -> String {
@@ -81,13 +78,6 @@ pub fn lane_summary_text(lanes: &[LaneConfig], verifier_summary: &[String]) -> S
         .join("\n")
 }
 
-pub fn lane_plan_list(lanes: &[LaneConfig]) -> String {
-    lanes
-        .iter()
-        .map(|lane| lane.plan_file.as_str())
-        .collect::<Vec<_>>()
-        .join(", ")
-}
 
 pub fn read_lane_plan_with_legacy(workspace: &Path, lane: &LaneConfig) -> String {
     let mut plan_text = read_text_or_empty(workspace.join(&lane.plan_file));
@@ -156,7 +146,6 @@ pub fn load_planner_inputs(
 ) -> PlannerInputs {
     let summary_text = lane_summary_text(lanes, verifier_summary);
     let executor_diff_text = load_executor_diff_inputs(workspace, last_executor_diff, 400).diff_text;
-    let lane_plan_list = lane_plan_list(lanes);
     let objectives_text = read_text_or_empty(workspace.join(OBJECTIVES_FILE));
     let invariants_text = read_text_or_empty(workspace.join(INVARIANTS_FILE));
     let violations_text = read_text_or_empty(violations_path);
@@ -167,7 +156,6 @@ pub fn load_planner_inputs(
         summary_text,
         executor_diff_text,
         cargo_test_failures,
-        lane_plan_list,
         objectives_text,
         invariants_text,
         violations_text,
@@ -203,9 +191,7 @@ impl SingleRoleContext<'_> {
         executor_diff(self.workspace, max_lines)
     }
 
-    pub fn lane_plan_list(&self) -> String {
-        lane_plan_list(self.lanes)
-    }
+    // removed lane_plan_list method (lane plans deleted)
 }
 
 pub fn load_single_role_inputs(
@@ -227,12 +213,12 @@ pub fn load_single_role_inputs(
     let primary_input_path = if is_verifier || is_planner {
         ctx.spec_path
     } else {
-        &ctx.workspace.join(&ctx.lanes[0].plan_file)
+        ctx.master_plan_path
     };
     let primary_input_name = if is_verifier || is_planner {
         SPEC_FILE.to_string()
     } else {
-        ctx.lanes[0].plan_file.clone()
+        MASTER_PLAN_FILE.to_string()
     };
     let primary_input = read_required_text(primary_input_path, &primary_input_name)?;
     if primary_input.trim().is_empty() {
@@ -242,7 +228,6 @@ pub fn load_single_role_inputs(
     Ok(SingleRoleInputs {
         role: role.to_string(),
         prompt_kind,
-        primary_input_name,
         primary_input,
     })
 }
@@ -275,7 +260,6 @@ pub fn build_single_role_prompt(
             let diagnostics = ctx.read(SingleRoleRead::Diagnostics)?;
             let objectives = ctx.read(SingleRoleRead::Objectives)?;
             let invariants = ctx.read(SingleRoleRead::Invariants)?;
-            let lane_plan_list = ctx.lane_plan_list();
             single_role_planner_prompt(
                 &inputs.primary_input,
                 &objectives,
@@ -283,7 +267,6 @@ pub fn build_single_role_prompt(
                 &violations,
                 &diagnostics,
                 cargo_test_failures,
-                &lane_plan_list,
             )
         }
         AgentPromptKind::Executor => {
@@ -298,8 +281,6 @@ pub fn build_single_role_prompt(
                 &violations,
                 &diagnostics,
                 &invariants,
-                &inputs.primary_input_name,
-                &inputs.primary_input,
             )
         }
     };

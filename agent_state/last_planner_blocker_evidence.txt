@@ -1,1 +1,1 @@
-message schema invalid: unknown variant `task`, expected one of `handoff`, `result`, `verification`, `failure`, `blocker`, `plan`, `diagnostics`
+error[E0433]: cannot find module or crate `canon_storage_eventlog` at binary.rs:761 during cargo test
