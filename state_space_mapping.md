@@ -1,3 +1,12 @@
+Functional core, imperative shell — the most accurate term. Pure functions in state_space.rs (the "functional core") take explicit inputs and return explicit outputs with no side effects. app.rs is the "imperative shell" — it reads
+Filesystem state, drives async I/O, then calls the pure functions to make decisions. Gary Bernhardt formalized this pattern.
+
+Explicit state machine — each phase is a named state, transitions are pure functions. Closely related to a Mealy machine (output depends on current state + input).
+
+State reducer — the Redux pattern: (state, input) → (next_state, output). decide_wake_flags, decide_active_blocker etc. are reducers.
+
+Model-based testing — the harness exhaustively enumerates the input space and verifies outputs. The STATE_SPACE_REPORT env var makes it auditable.
+
 # State Space Mapping for Complexity Reduction
 
 ## Goal
