@@ -30,13 +30,25 @@ use crate::invalid_action::{
     auto_fill_message_fields, build_invalid_action_feedback, corrective_invalid_action_prompt,
     default_message_route, expected_message_format,
 };
-use crate::state_space::{decide_bootstrap_phase, decide_resume_phase, CargoTestGate};
+use crate::state_space::{
+    allow_diagnostics_run, allow_verifier_run, check_completion_endpoint, check_completion_tab,
+    decide_active_blocker, decide_bootstrap_phase, decide_phase_gates, decide_post_diagnostics,
+    decide_resume_phase, executor_step_limit_exceeded, executor_submit_timed_out, decide_wake_flags,
+    is_verifier_specific_blocker, scheduled_phase_resume_done, should_force_blocker,
+    verifier_blocker_phase_override, CargoTestGate, CompletionEndpointCheck, CompletionTabCheck,
+    WakeFlagInput,
+};
 use crate::constants::{
     DEFAULT_RESPONSE_TIMEOUT_SECS, DIAGNOSTICS_FILE_PATH, ENDPOINT_SPECS, INVARIANTS_FILE, MASTER_PLAN_FILE, MAX_SNIPPET,
     EXECUTOR_STEP_LIMIT, MAX_STEPS, OBJECTIVES_FILE, ROLE_TIMEOUT_SECS, SPEC_FILE, VIOLATIONS_FILE, WORKSPACE, WS_PORT_CANDIDATES,
 };
 use crate::md_convert::ensure_objectives_and_invariants_json;
 use std::process::Command;
+
+/// Extract a string field from a JSON object, returning `""` on missing/non-string.
+fn jstr<'a>(v: &'a Value, key: &str) -> &'a str {
+    v.get(key).and_then(|v| v.as_str()).unwrap_or("")
+}
 
 fn ws_port_arg(args: &[String]) -> Option<&str> {
     args.windows(2)
@@ -473,7 +485,7 @@ fn apply_error_result(
     *error_streak = error_streak.saturating_add(1);
     *last_error = Some(err_text.to_string());
     *last_result = Some(default_result);
-    if *error_streak >= 3 {
+    if should_force_blocker(*error_streak) {
         *last_result = Some(blocker_escalation_prompt(
             role,
             last_error.as_deref().unwrap_or(err_text),
@@ -498,51 +510,32 @@ fn parse_action_from_raw(
     allow_auto_fill_message: bool,
     trace_context: Option<(&str, u32)>,
 ) -> Result<Value, InvalidActionFeedback> {
+    let log = |event: &str, data: Value| {
+        log_message_event(role, endpoint, prompt_kind, step, exchange_id, event, data);
+    };
+    let trace = |status: &str| {
+        if let Some((lane_label, tab_id)) = trace_context {
+            append_orchestration_trace(
+                "executor_tool_result_forwarded",
+                json!({ "lane_name": lane_label, "tab_id": tab_id, "turn_id": exchange_id, "status": status }),
+            );
+        }
+    };
+
     let actions = match parse_actions(raw) {
         Ok(a) => a,
         Err(e) => {
             if allow_guardrail {
                 if let Some(guard_action) = guardrail_action_from_raw(raw, role) {
-                    log_message_event(
-                        role,
-                        endpoint,
-                        prompt_kind,
-                        step,
-                        exchange_id,
-                        "llm_guardrail_action",
-                        json!({
-                            "error": e.to_string(),
-                            "raw": truncate(raw, MAX_SNIPPET),
-                            "action": guard_action,
-                        }),
-                    );
+                    log("llm_guardrail_action", json!({
+                        "error": e.to_string(), "raw": truncate(raw, MAX_SNIPPET), "action": guard_action,
+                    }));
                     return Ok(guard_action);
                 }
             }
             eprintln!("[{role}] step={} parse_error: {e}", step);
-            log_message_event(
-                role,
-                endpoint,
-                prompt_kind,
-                step,
-                exchange_id,
-                "llm_parse_error",
-                json!({
-                    "error": e.to_string(),
-                    "raw": truncate(raw, MAX_SNIPPET),
-                }),
-            );
-            if let Some((lane_label, tab_id)) = trace_context {
-                append_orchestration_trace(
-                    "executor_tool_result_forwarded",
-                    json!({
-                        "lane_name": lane_label,
-                        "tab_id": tab_id,
-                        "turn_id": exchange_id,
-                        "status": "parse_error",
-                    }),
-                );
-            }
+            log("llm_parse_error", json!({ "error": e.to_string(), "raw": truncate(raw, MAX_SNIPPET) }));
+            trace("parse_error");
             return Err(InvalidActionFeedback {
                 err_text: e.to_string(),
                 feedback: build_invalid_action_feedback(None, &e.to_string()),
@@ -553,30 +546,8 @@ fn parse_action_from_raw(
     if actions.len() != 1 {
         let msg = format!("Got {} actions — emit exactly one action per turn.", actions.len());
         eprintln!("[{role}] step={} {msg}", step);
-        log_message_event(
-            role,
-            endpoint,
-            prompt_kind,
-            step,
-            exchange_id,
-            "llm_invalid_action_count",
-            json!({
-                "action_count": actions.len(),
-                "raw": truncate(raw, MAX_SNIPPET),
-            }),
-        );
-        if let Some((lane_label, tab_id)) = trace_context {
-            append_orchestration_trace(
-                "executor_tool_result_forwarded",
-                json!({
-                    "lane_name": lane_label,
-                    "tab_id": tab_id,
-                    "turn_id": exchange_id,
-                    "status": "invalid_action_count",
-                    "action_count": actions.len(),
-                }),
-            );
-        }
+        log("llm_invalid_action_count", json!({ "action_count": actions.len(), "raw": truncate(raw, MAX_SNIPPET) }));
+        trace("invalid_action_count");
         return Err(InvalidActionFeedback {
             err_text: msg.clone(),
             feedback: build_invalid_action_feedback(None, &msg),
@@ -586,19 +557,9 @@ fn parse_action_from_raw(
     let mut action = actions[0].clone();
     let raw_action = action.clone();
     if let Err(e) = normalize_action(&mut action) {
-        log_message_event(
-            role,
-            endpoint,
-            prompt_kind,
-            step,
-            exchange_id,
-            "llm_invalid_action",
-            json!({
-                "stage": "normalize_action",
-                "error": e.to_string(),
-                "raw": truncate(raw, MAX_SNIPPET),
-            }),
-        );
+        log("llm_invalid_action", json!({
+            "stage": "normalize_action", "error": e.to_string(), "raw": truncate(raw, MAX_SNIPPET),
+        }));
         return Err(InvalidActionFeedback {
             err_text: e.to_string(),
             feedback: build_invalid_action_feedback(Some(&raw_action), &e.to_string()),
@@ -610,29 +571,15 @@ fn parse_action_from_raw(
     }
 
     if let Err(e) = validate_action(&action) {
-        log_message_event(
-            role,
-            endpoint,
-            prompt_kind,
-            step,
-            exchange_id,
-            "llm_invalid_action",
-            json!({
-                "stage": "validate_action",
-                "error": e.to_string(),
-                "raw": truncate(raw, MAX_SNIPPET),
-                "action": action.clone(),
-            }),
-        );
+        log("llm_invalid_action", json!({
+            "stage": "validate_action", "error": e.to_string(),
+            "raw": truncate(raw, MAX_SNIPPET), "action": action.clone(),
+        }));
         let err_text = e.to_string();
         if let Some(prompt) = corrective_invalid_action_prompt(&action, &err_text, role) {
             return Err(InvalidActionFeedback {
                 err_text: err_text.clone(),
-                feedback: format!(
-                    "{}\n\n{}",
-                    build_invalid_action_feedback(Some(&action), &err_text),
-                    prompt
-                ),
+                feedback: format!("{}\n\n{}", build_invalid_action_feedback(Some(&action), &err_text), prompt),
             });
         }
         if err_text.contains("cargo_test missing 'crate'") {
@@ -704,7 +651,7 @@ fn enforce_executor_step_limit(
     error_streak: &mut usize,
     last_result: &mut Option<String>,
 ) -> bool {
-    if role == "executor" && total_steps >= EXECUTOR_STEP_LIMIT {
+    if role == "executor" && executor_step_limit_exceeded(total_steps, EXECUTOR_STEP_LIMIT) {
         *error_streak = error_streak.saturating_add(1);
         *last_result = Some(format!(
             "Executor exceeded {EXECUTOR_STEP_LIMIT} actions without handoff. You must send a `message` action to planner (handoff or blocker) now."
@@ -758,6 +705,18 @@ fn take_inbound_message(role: &str) -> Option<String> {
     Some(trimmed)
 }
 
+fn append_inbound_to_prompt(prompt: &mut String, inbound: &str) {
+    prompt.push_str("\n\nInbound handoff message (raw JSON):\n");
+    prompt.push_str(inbound);
+    prompt.push('\n');
+}
+
+fn inject_inbound_message(prompt: &mut String, role: &str) {
+    if let Some(inbound) = take_inbound_message(role) {
+        append_inbound_to_prompt(prompt, &inbound);
+    }
+}
+
 fn extract_message_action(raw: &str) -> Option<String> {
     let marker = "message_action:";
     let idx = raw.find(marker)?;
@@ -795,83 +754,68 @@ fn apply_wake_flags(
     dispatch_state: &mut DispatchState,
     scheduled_phase: &mut Option<String>,
 ) {
-    let active_blocker_to_verifier = agent_state_dir.join("active_blocker_to_verifier.json");
-    let planner_wake = agent_state_dir.join("wakeup_planner.flag");
-    let verifier_wake = agent_state_dir.join("wakeup_verifier.flag");
-    let diagnostics_wake = agent_state_dir.join("wakeup_diagnostics.flag");
-    let executor_wake = agent_state_dir.join("wakeup_executor.flag");
+    let active_blocker = agent_state_dir.join("active_blocker_to_verifier.json").exists();
 
-    let mut newest_wake: Option<(&str, std::path::PathBuf, std::time::SystemTime)> = None;
-    for (role, path) in [
-        ("planner", planner_wake),
-        ("verifier", verifier_wake),
-        ("diagnostics", diagnostics_wake),
-        ("executor", executor_wake),
-    ] {
+    let flag_paths = [
+        ("planner",     agent_state_dir.join("wakeup_planner.flag")),
+        ("verifier",    agent_state_dir.join("wakeup_verifier.flag")),
+        ("diagnostics", agent_state_dir.join("wakeup_diagnostics.flag")),
+        ("executor",    agent_state_dir.join("wakeup_executor.flag")),
+    ];
+
+    let mut inputs: Vec<WakeFlagInput> = Vec::new();
+    let mut path_map: std::collections::HashMap<&str, std::path::PathBuf> =
+        std::collections::HashMap::new();
+    for (role, path) in &flag_paths {
         if !path.exists() {
             continue;
         }
-        if role == "planner" && active_blocker_to_verifier.exists() {
-            continue;
-        }
-        let modified = path
+        let modified_ms = path
             .metadata()
             .and_then(|m| m.modified())
-            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-        let replace = match newest_wake {
-            None => true,
-            Some((_, _, prev_modified)) => modified > prev_modified,
-        };
-        if replace {
-            newest_wake = Some((role, path, modified));
-        }
+            .map(|t| t.duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as u64)
+            .unwrap_or(0);
+        inputs.push(WakeFlagInput { role, modified_ms });
+        path_map.insert(role, path.clone());
     }
 
-    if let Some((role, path, _)) = newest_wake {
-        *scheduled_phase = Some(role.to_string());
+    let decision = decide_wake_flags(active_blocker, &inputs);
+    let Some(role) = decision.scheduled_phase.as_deref() else {
+        return;
+    };
+
+    *scheduled_phase = Some(role.to_string());
+    if let Some(path) = path_map.get(role) {
         eprintln!(
             "[orchestrate] wake_flag_triggered: role={} path={}",
             role,
             path.display()
         );
-        match role {
-            "planner" => {
-                dispatch_state.planner_pending = true;
-            }
-            "diagnostics" => {
-                dispatch_state.diagnostics_pending = true;
-            }
-            "executor" => {
-                for lane in dispatch_state.lanes.values_mut() {
-                    lane.pending = true;
-                    lane.in_progress_by = None;
-                }
-            }
-            _ => {}
-        }
         let _ = std::fs::remove_file(path);
     }
-}
-
-fn is_verifier_specific_blocker(payload: &Value) -> bool {
-    let blocker = payload.get("blocker").and_then(|v| v.as_str()).unwrap_or("");
-    let required = payload
-        .get("required_action")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let combined = format!("{} {}", blocker.to_lowercase(), required.to_lowercase());
-    combined.contains("verifier")
+    if decision.planner_pending {
+        dispatch_state.planner_pending = true;
+    }
+    if decision.diagnostics_pending {
+        dispatch_state.diagnostics_pending = true;
+    }
+    if decision.executor_wake {
+        for lane in dispatch_state.lanes.values_mut() {
+            lane.pending = true;
+            lane.in_progress_by = None;
+        }
+    }
 }
 
 fn try_parse_blocker(raw: &str) -> Option<(String, String, Value)> {
     let value: Value = serde_json::from_str(raw).ok()?;
-    let msg_type = value.get("type").and_then(|v| v.as_str()).unwrap_or("");
-    let status = value.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    let msg_type = jstr(&value, "type");
+    let status = jstr(&value, "status");
     if msg_type != "blocker" || status != "blocked" {
         return None;
     }
-    let from = value.get("from").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let to = value.get("to").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let from = jstr(&value, "from").to_string();
+    let to = jstr(&value, "to").to_string();
     let payload = value.get("payload").cloned().unwrap_or_else(|| Value::Null);
     Some((from, to, payload))
 }
@@ -1036,7 +980,7 @@ impl<'a> LlmResponseContext<'a> {
                 "raw": truncate(raw, MAX_SNIPPET),
             }),
         );
-        if *reaction_only_streak < 3 {
+        if !should_force_blocker(*reaction_only_streak) {
             *error_streak = error_streak.saturating_add(1);
             *last_error = Some("reaction_only_response".to_string());
             eprintln!(
@@ -1194,7 +1138,7 @@ async fn run_agent(
             step
         };
 
-        if role == "executor" && total_steps >= EXECUTOR_STEP_LIMIT {
+        if role == "executor" && executor_step_limit_exceeded(total_steps, EXECUTOR_STEP_LIMIT) {
             last_result = Some(format!(
                 "Step limit reached: executor must send a message to planner after {EXECUTOR_STEP_LIMIT} actions. Use a message action with evidence or blocker details."
             ));
@@ -1288,7 +1232,7 @@ async fn run_agent(
             &mut error_streak,
             &mut last_error,
         ) {
-            if reaction_only_streak < 3 {
+            if !should_force_blocker(reaction_only_streak) {
                 continue;
             }
             reaction_only_streak = 0;
@@ -1338,7 +1282,7 @@ async fn run_agent(
             let cmd = action.get("cmd").and_then(|v| v.as_str());
             cargo_test_gate.note_action(&kind, cmd);
         }
-        if action.get("action").and_then(|v| v.as_str()) != Some("message")
+        if kind != "message"
             && enforce_executor_step_limit(role, total_steps, &mut error_streak, &mut last_result)
         {
             step += 1;
@@ -1514,6 +1458,18 @@ fn new_dispatch_state(lanes: &[LaneConfig]) -> DispatchState {
     }
 }
 
+impl DispatchState {
+    fn lane_in_flight(&self, lane_id: usize) -> bool {
+        *self.lane_prompt_in_flight.get(&lane_id).unwrap_or(&false)
+    }
+    fn lane_submit_active(&self, lane_id: usize) -> bool {
+        *self.lane_submit_in_flight.get(&lane_id).unwrap_or(&false)
+    }
+    fn lane_next_submit_ms(&self, lane_id: usize) -> u64 {
+        *self.lane_next_submit_at_ms.get(&lane_id).unwrap_or(&0)
+    }
+}
+
 #[derive(Clone)]
 struct SubmittedExecutorTurn {
     tab_id: u32,
@@ -1575,20 +1531,20 @@ fn append_executor_completion_log(
         .map(|action| {
             let kind = action.get("action").and_then(|v| v.as_str()).unwrap_or("unknown");
             match kind {
-                "run_command" => action.get("cmd").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                "run_command" => jstr(action, "cmd").to_string(),
                 "python" => "python".to_string(),
                 "read_file" => {
-                    let path = action.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                    let path = jstr(action, "path");
                     let line = action.get("line").and_then(|v| v.as_u64());
                     match line {
                         Some(n) => format!("read_file {}:{}", path, n),
                         None => format!("read_file {}", path),
                     }
                 }
-                "list_dir" => format!("list_dir {}", action.get("path").and_then(|v| v.as_str()).unwrap_or("")),
+                "list_dir" => format!("list_dir {}", jstr(action, "path")),
                 "apply_patch" => "apply_patch".to_string(),
                 "message" => {
-                    let status = action.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                    let status = jstr(action, "status");
                     let summary = action
                         .get("payload")
                         .and_then(|v| v.get("summary"))
@@ -1636,14 +1592,6 @@ fn parse_completed_turn(value: &Value) -> Option<(u32, u64, String, Option<Strin
     Some((tab_id, turn_id, text, endpoint_id))
 }
 
-fn completed_turn_is_complete(text: &str) -> bool {
-    parse_actions(text)
-        .ok()
-        .and_then(|actions| actions.into_iter().next())
-        .and_then(|action| action.get("action").and_then(|v| v.as_str()).map(str::to_string))
-        .as_deref()
-        == Some("message")
-}
 
 fn handle_executor_completion(
     mut submitted: SubmittedExecutorTurn,
@@ -1663,11 +1611,7 @@ fn handle_executor_completion(
         .insert(submitted.lane, submitted.steps_used);
     let lane_cfg = &lanes[submitted.lane];
     let lane_name = lane_cfg.label.as_str();
-    if *dispatch_state
-        .lane_prompt_in_flight
-        .get(&submitted.lane)
-        .unwrap_or(&false)
-    {
+    if dispatch_state.lane_in_flight(submitted.lane) {
         dispatch_state
             .deferred_completions
             .entry(submitted.lane)
@@ -1700,20 +1644,11 @@ fn handle_executor_completion(
     if let Err(e) = append_executor_completion_log(&submitted, 1, turn_id, tab_id, &exec_result) {
         eprintln!("[orchestrate] executor_completion_log_error: {e}");
     }
-    if completed_turn_is_complete(&exec_result) {
-        dispatch_state.lane_steps_used.insert(submitted.lane, 0);
-        if let Ok(mut actions) = parse_actions(&exec_result) {
+    if let Ok(mut actions) = parse_actions(&exec_result) {
+        if actions.first().and_then(|a| a.get("action")).and_then(|v| v.as_str()) == Some("message") {
+            dispatch_state.lane_steps_used.insert(submitted.lane, 0);
             if let Some(action) = actions.pop() {
-                log_action_result(
-                    &submitted.actor,
-                    &lane_cfg.endpoint,
-                    "executor",
-                    1,
-                    &submitted.command_id,
-                    &action,
-                    true,
-                    &exec_result,
-                );
+                log_action_result(&submitted.actor, &lane_cfg.endpoint, "executor", 1, &submitted.command_id, &action, true, &exec_result);
             }
         }
     }
@@ -1825,11 +1760,7 @@ async fn submit_executor_turn(
         lane_plan_text.as_str(),
         &job.latest_verify_result,
     );
-    if let Some(inbound) = take_inbound_message("executor") {
-        exec_prompt.push_str("\n\nInbound handoff message (raw JSON):\n");
-        exec_prompt.push_str(&inbound);
-        exec_prompt.push('\n');
-    }
+    inject_inbound_message(&mut exec_prompt, "executor");
     let executor_system = system_instructions(AgentPromptKind::Executor);
     let role_schema = if send_system_prompt {
         executor_system
@@ -2021,22 +1952,13 @@ pub async fn run() -> Result<()> {
         }
         let legacy_json = workspace.join(format!("PLANS/executor-{}.json", lane.endpoint.id));
         let legacy_md = workspace.join(format!("PLANS/executor-{}.md", lane.endpoint.id));
-        if let Ok(contents) = std::fs::read_to_string(&legacy_json) {
-            if let Some(parent) = plan_path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            let _ = std::fs::write(&plan_path, contents);
-        } else if let Ok(contents) = std::fs::read_to_string(&legacy_md) {
-            if let Some(parent) = plan_path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            let _ = std::fs::write(&plan_path, contents);
-        } else {
-            if let Some(parent) = plan_path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            let _ = std::fs::write(&plan_path, "");
+        let contents = std::fs::read_to_string(&legacy_json)
+            .or_else(|_| std::fs::read_to_string(&legacy_md))
+            .unwrap_or_default();
+        if let Some(parent) = plan_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
         }
+        let _ = std::fs::write(&plan_path, contents);
     }
 
     let ws_addr: std::net::SocketAddr = format!("127.0.0.1:{ws_port}").parse()?;
@@ -2193,23 +2115,29 @@ pub async fn run() -> Result<()> {
 
             let agent_state_dir =
                 std::path::Path::new("/workspace/ai_sandbox/canon-mini-agent/agent_state");
-            let active_blocker_to_verifier = agent_state_dir.join("active_blocker_to_verifier.json");
-            if active_blocker_to_verifier.exists()
-                && (dispatch_state.planner_pending
-                    || matches!(scheduled_phase.as_deref(), Some("planner")))
+            let active_blocker = agent_state_dir.join("active_blocker_to_verifier.json").exists();
+            let blocker_decision = decide_active_blocker(
+                active_blocker,
+                dispatch_state.planner_pending,
+                scheduled_phase.as_deref(),
+            );
+            if active_blocker
+                && (dispatch_state.planner_pending || scheduled_phase.as_deref() == Some("planner"))
             {
-                dispatch_state.planner_pending = false;
-                if scheduled_phase.as_deref() == Some("planner") {
-                    scheduled_phase = None;
-                }
-                eprintln!(
-                    "[orchestrate] planner paused: active blocker to verifier"
-                );
+                eprintln!("[orchestrate] planner paused: active blocker to verifier");
             }
+            dispatch_state.planner_pending = blocker_decision.planner_pending;
+            scheduled_phase = blocker_decision.scheduled_phase;
 
-            if dispatch_state.planner_pending
-                && !matches!(scheduled_phase.as_deref(), Some(phase) if phase != "planner")
-            {
+            let phase_gates = decide_phase_gates(
+                dispatch_state.planner_pending,
+                dispatch_state.diagnostics_pending,
+                !verifier_pending_results.is_empty(),
+                !verifier_joinset.is_empty(),
+                scheduled_phase.as_deref(),
+            );
+
+            if phase_gates.planner {
                 current_phase = "planner".to_string();
                 current_phase_lane = None;
                 let summary_text = lanes
@@ -2249,11 +2177,7 @@ pub async fn run() -> Result<()> {
                     &executor_diff_text,
                     &cargo_test_failures,
                 );
-                if let Some(inbound) = take_inbound_message("planner") {
-                    planner_prompt.push_str("\n\nInbound handoff message (raw JSON):\n");
-                    planner_prompt.push_str(&inbound);
-                    planner_prompt.push('\n');
-                }
+                inject_inbound_message(&mut planner_prompt, "planner");
                 append_orchestration_trace(
                     "llm_message_forwarded",
                     json!({
@@ -2325,18 +2249,12 @@ pub async fn run() -> Result<()> {
                 planner_bootstrapped = true;
             }
 
-            if scheduled_phase.as_deref() == Some("planner") && !dispatch_state.planner_pending {
-                scheduled_phase = None;
-            }
-
             apply_wake_flags(agent_state_dir, &mut dispatch_state, &mut scheduled_phase);
             let now = now_ms();
-            let resume_gate = scheduled_phase.as_deref();
-            let block_executors = matches!(resume_gate, Some("planner") | Some("verifier") | Some("diagnostics"));
             if !dispatch_state.executor_submit_inflight.is_empty() {
                 let mut timed_out = Vec::new();
                 for (lane_id, pending) in dispatch_state.executor_submit_inflight.iter() {
-                    if now.saturating_sub(pending.started_ms) >= PENDING_SUBMIT_TIMEOUT_MS {
+                    if executor_submit_timed_out(pending.started_ms, now, PENDING_SUBMIT_TIMEOUT_MS) {
                         timed_out.push(*lane_id);
                     }
                 }
@@ -2361,17 +2279,10 @@ pub async fn run() -> Result<()> {
                     lane.pending = true;
                 }
             }
-            if !block_executors {
+            if phase_gates.executor {
                 for lane in &lanes {
-                    let in_flight = *dispatch_state
-                        .lane_submit_in_flight
-                        .get(&lane.index)
-                        .unwrap_or(&false);
-                    let next_at = *dispatch_state
-                        .lane_next_submit_at_ms
-                        .get(&lane.index)
-                        .unwrap_or(&0);
-                    if in_flight || next_at > now {
+                    if dispatch_state.lane_submit_active(lane.index)
+                        || dispatch_state.lane_next_submit_ms(lane.index) > now {
                         continue;
                     }
                     if let Some(job) = claim_executor_submit(&mut dispatch_state, lane) {
@@ -2426,7 +2337,7 @@ pub async fn run() -> Result<()> {
                                         );
                                         continue;
                                     };
-                                    if now_ms().saturating_sub(pending.started_ms) >= PENDING_SUBMIT_TIMEOUT_MS {
+                                    if executor_submit_timed_out(pending.started_ms, now_ms(), PENDING_SUBMIT_TIMEOUT_MS) {
                                         eprintln!(
                                             "[orchestrate] submit ack arrived after timeout: lane={} tab_id={} turn_id={}",
                                             lanes[lane_id].label,
@@ -2506,19 +2417,19 @@ pub async fn run() -> Result<()> {
                 let submitted = if let Some(submitted) =
                     dispatch_state.submitted_turns.remove(&(tab_id, turn_id))
                 {
-                    if let Some(endpoint_id) = completed_endpoint_id.as_deref() {
-                        if endpoint_id != submitted.endpoint_id {
-                            append_orchestration_trace(
-                                "executor_completion_endpoint_mismatch",
-                                json!({
-                                    "tab_id": tab_id,
-                                    "turn_id": turn_id,
-                                    "expected_endpoint_id": submitted.endpoint_id,
-                                    "completed_endpoint_id": endpoint_id,
-                                }),
-                            );
-                            continue;
-                        }
+                    if check_completion_endpoint(&submitted.endpoint_id, completed_endpoint_id.as_deref())
+                        == CompletionEndpointCheck::Mismatch
+                    {
+                        append_orchestration_trace(
+                            "executor_completion_endpoint_mismatch",
+                            json!({
+                                "tab_id": tab_id,
+                                "turn_id": turn_id,
+                                "expected_endpoint_id": submitted.endpoint_id,
+                                "completed_endpoint_id": completed_endpoint_id,
+                            }),
+                        );
+                        continue;
                     }
                     submitted
                 } else {
@@ -2534,36 +2445,41 @@ pub async fn run() -> Result<()> {
                         );
                         continue;
                     };
-                    if let Some(endpoint_id) = completed_endpoint_id.as_deref() {
-                        if endpoint_id != lanes[lane_id].endpoint.id {
-                            append_orchestration_trace(
-                                "executor_completion_endpoint_mismatch",
-                                json!({
-                                    "lane_name": lanes[lane_id].label,
-                                    "tab_id": tab_id,
-                                    "turn_id": turn_id,
-                                    "expected_endpoint_id": lanes[lane_id].endpoint.id,
-                                    "completed_endpoint_id": endpoint_id,
-                                }),
-                            );
-                            continue;
-                        }
+                    if check_completion_endpoint(&lanes[lane_id].endpoint.id, completed_endpoint_id.as_deref())
+                        == CompletionEndpointCheck::Mismatch
+                    {
+                        append_orchestration_trace(
+                            "executor_completion_endpoint_mismatch",
+                            json!({
+                                "lane_name": lanes[lane_id].label,
+                                "tab_id": tab_id,
+                                "turn_id": turn_id,
+                                "expected_endpoint_id": lanes[lane_id].endpoint.id,
+                                "completed_endpoint_id": completed_endpoint_id,
+                            }),
+                        );
+                        continue;
                     }
-                    if let Some(active_tab) = dispatch_state.lane_active_tab.get(&lane_id) {
-                        if *active_tab != tab_id {
+                    match check_completion_tab(
+                        dispatch_state.lane_active_tab.get(&lane_id).copied(),
+                        tab_id,
+                    ) {
+                        CompletionTabCheck::Mismatch => {
                             append_orchestration_trace(
                                 "executor_completion_tab_mismatch",
                                 json!({
                                     "lane_name": lanes[lane_id].label,
-                                    "active_tab": active_tab,
+                                    "active_tab": dispatch_state.lane_active_tab.get(&lane_id),
                                     "tab_id": tab_id,
                                     "turn_id": turn_id,
                                 }),
                             );
                             continue;
                         }
-                    } else {
-                        dispatch_state.lane_active_tab.insert(lane_id, tab_id);
+                        CompletionTabCheck::NoneSet => {
+                            dispatch_state.lane_active_tab.insert(lane_id, tab_id);
+                        }
+                        CompletionTabCheck::Ok => {}
                     }
                     let Some(pending) = dispatch_state.executor_submit_inflight.remove(&lane_id) else {
                         append_orchestration_trace(
@@ -2638,11 +2554,7 @@ pub async fn run() -> Result<()> {
             }
 
             for lane_id in 0..lanes.len() {
-                let in_flight = *dispatch_state
-                    .lane_prompt_in_flight
-                    .get(&lane_id)
-                    .unwrap_or(&false);
-                if in_flight {
+                if dispatch_state.lane_in_flight(lane_id) {
                     continue;
                 }
                 while let Some(deferred) = dispatch_state
@@ -2664,18 +2576,14 @@ pub async fn run() -> Result<()> {
                     ) {
                         cycle_progress = true;
                     }
-                    let now_in_flight = *dispatch_state
-                        .lane_prompt_in_flight
-                        .get(&lane_id)
-                        .unwrap_or(&false);
-                    if now_in_flight {
+                    if dispatch_state.lane_in_flight(lane_id) {
                         break;
                     }
                 }
             }
 
             while let Some((submitted, turn_id, final_exec_result)) = verifier_pending_results.pop_front() {
-                if matches!(scheduled_phase.as_deref(), Some(phase) if phase != "verifier") {
+                if !allow_verifier_run(scheduled_phase.as_deref()) {
                     verifier_pending_results.push_front((submitted, turn_id, final_exec_result));
                     break;
                 }
@@ -2695,8 +2603,13 @@ pub async fn run() -> Result<()> {
                 );
                 if let Some(inbound) = take_inbound_message("verifier") {
                     if let Some((_, to, payload)) = try_parse_blocker(&inbound) {
+                        let blocker_text = jstr(&payload, "blocker");
+                        let required_action = jstr(&payload, "required_action");
+                        let blocker_display = if blocker_text.is_empty() { "upstream blocker" } else { blocker_text };
+                        let severity = { let s = jstr(&payload, "severity"); if s.is_empty() { "error" } else { s } };
+                        let verifier_specific = is_verifier_specific_blocker(blocker_text, required_action);
                         if to.eq_ignore_ascii_case("verifier")
-                            && !is_verifier_specific_blocker(&payload)
+                            && verifier_blocker_phase_override(verifier_specific).is_some()
                         {
                             let ack = json!({
                                 "action": "message",
@@ -2708,25 +2621,22 @@ pub async fn run() -> Result<()> {
                                 "rationale": "Blocker is not verifier-specific; pausing verification avoids unnecessary work.",
                                 "payload": {
                                     "summary": "Verifier paused due to upstream blocker.",
-                                    "blocker": payload.get("blocker").and_then(|v| v.as_str()).unwrap_or("upstream blocker"),
-                                    "evidence": payload.get("evidence").and_then(|v| v.as_str()).unwrap_or(""),
-                                    "required_action": payload.get("required_action").and_then(|v| v.as_str()).unwrap_or(""),
-                                    "severity": payload.get("severity").and_then(|v| v.as_str()).unwrap_or("error")
+                                    "blocker": blocker_display,
+                                    "evidence": jstr(&payload, "evidence"),
+                                    "required_action": required_action,
+                                    "severity": severity
                                 }
                             });
                             persist_planner_message(&ack);
                             verifier_pending_results.push_front((submitted, turn_id, final_exec_result));
-                            scheduled_phase = Some("planner".to_string());
+                            let override_phase = verifier_blocker_phase_override(verifier_specific).unwrap();
+                            scheduled_phase = Some(override_phase.to_string());
                             continue;
                         }
                     }
-                    verifier_prompt.push_str("\n\nInbound handoff message (raw JSON):\n");
-                    verifier_prompt.push_str(&inbound);
-                    verifier_prompt.push('\n');
+                    append_inbound_to_prompt(&mut verifier_prompt, &inbound);
                 } else if let Some(inbound) = extract_message_action(&final_exec_result) {
-                    verifier_prompt.push_str("\n\nInbound handoff message (raw JSON):\n");
-                    verifier_prompt.push_str(&inbound);
-                    verifier_prompt.push('\n');
+                    append_inbound_to_prompt(&mut verifier_prompt, &inbound);
                 }
                 append_orchestration_trace(
                     "llm_message_forwarded",
@@ -2802,12 +2712,8 @@ pub async fn run() -> Result<()> {
                 dispatch_state.diagnostics_pending = true;
             }
 
-            if scheduled_phase.as_deref() == Some("verifier") && verifier_pending_results.is_empty() {
-                scheduled_phase = None;
-            }
-
             if dispatch_state.diagnostics_pending
-                && !matches!(scheduled_phase.as_deref(), Some(phase) if phase != "diagnostics")
+                && allow_diagnostics_run(scheduled_phase.as_deref(), !verifier_joinset.is_empty())
             {
                 current_phase = "diagnostics".to_string();
                 current_phase_lane = None;
@@ -2818,11 +2724,7 @@ pub async fn run() -> Result<()> {
                     .join("\n");
                 let cargo_test_failures = load_cargo_test_failures(&workspace);
                 let mut prompt = diagnostics_cycle_prompt(&summary_text, &cargo_test_failures);
-                if let Some(inbound) = take_inbound_message("diagnostics") {
-                    prompt.push_str("\n\nInbound handoff message (raw JSON):\n");
-                    prompt.push_str(&inbound);
-                    prompt.push('\n');
-                }
+                inject_inbound_message(&mut prompt, "diagnostics");
                 append_orchestration_trace(
                     "llm_message_forwarded",
                     json!({
@@ -2855,7 +2757,7 @@ pub async fn run() -> Result<()> {
                         let diagnostics_changed = dispatch_state.diagnostics_text != new_diagnostics_text;
                         dispatch_state.diagnostics_text = new_diagnostics_text;
                         dispatch_state.diagnostics_pending = false;
-                        dispatch_state.planner_pending = diagnostics_changed || verifier_changed;
+                        dispatch_state.planner_pending = decide_post_diagnostics(diagnostics_changed, verifier_changed);
                         cycle_progress = true;
                     }
                     Err(err) => {
@@ -2870,20 +2772,19 @@ pub async fn run() -> Result<()> {
             }
 
             if let Some(phase) = scheduled_phase.as_deref() {
-                let resume_done = match phase {
-                    "planner" => !dispatch_state.planner_pending,
-                    "verifier" => verifier_pending_results.is_empty() && verifier_joinset.is_empty(),
-                    "diagnostics" => !dispatch_state.diagnostics_pending,
-                    "executor" => {
-                        let lane_ok = current_phase_lane
-                            .and_then(|lane_id| dispatch_state.lanes.get(&lane_id))
-                            .map(|lane| !lane.pending && lane.in_progress_by.is_none())
-                            .unwrap_or(true);
-                        lane_ok
-                    }
-                    _ => true,
-                };
-                if resume_done {
+                let (executor_lane_pending, executor_in_progress) = current_phase_lane
+                    .and_then(|lane_id| dispatch_state.lanes.get(&lane_id))
+                    .map(|lane| (lane.pending, lane.in_progress_by.is_some()))
+                    .unwrap_or((false, false));
+                if scheduled_phase_resume_done(
+                    phase,
+                    dispatch_state.planner_pending,
+                    dispatch_state.diagnostics_pending,
+                    verifier_pending_results.len(),
+                    verifier_joinset.is_empty(),
+                    executor_lane_pending,
+                    executor_in_progress,
+                ) {
                     scheduled_phase = None;
                 }
             }
@@ -2967,7 +2868,7 @@ pub async fn run() -> Result<()> {
         let submit_only = role == "executor";
         let reason = run_agent(
             role,
-            if is_verifier { "verifier" } else if is_diagnostics { "diagnostics" } else if is_planner { "planner" } else { "executor" },
+            canonical_role_label(role),
             &instructions,
             initial_prompt,
             if role == "executor" { &lanes[0].endpoint } else { &endpoint },

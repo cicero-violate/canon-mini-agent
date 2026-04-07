@@ -175,6 +175,85 @@ pub fn allow_verifier_run(scheduled_phase: Option<&str>) -> bool {
     !matches!(scheduled_phase, Some(phase) if phase != "verifier")
 }
 
+/// Returns true when planner is allowed to run this cycle.
+/// Planner is blocked if another phase (not planner) owns the schedule.
+pub fn allow_planner_run(scheduled_phase: Option<&str>) -> bool {
+    !matches!(scheduled_phase, Some(phase) if phase != "planner")
+}
+
+/// Returns true when executor dispatch should be frozen because a resume phase
+/// that requires serialized execution (planner, verifier, diagnostics) is active.
+pub fn block_executor_dispatch(scheduled_phase: Option<&str>) -> bool {
+    matches!(scheduled_phase, Some("planner") | Some("verifier") | Some("diagnostics"))
+}
+
+/// Returns true when diagnostics is allowed to run.
+/// Diagnostics must not start while verifier tasks are in flight (would race),
+/// and must not run if another phase has exclusive use of the schedule.
+pub fn allow_diagnostics_run(scheduled_phase: Option<&str>, verifier_in_flight: bool) -> bool {
+    !verifier_in_flight
+        && !matches!(scheduled_phase, Some(phase) if phase != "diagnostics")
+}
+
+/// The full set of phase eligibility decisions for one orchestrator cycle.
+/// Each field answers "can this phase run right now?"
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PhaseGates {
+    pub planner: bool,
+    pub executor: bool,
+    pub verifier: bool,
+    pub diagnostics: bool,
+}
+
+/// Compute all phase gates at once from the current orchestrator state.
+/// Use this as the single source of truth for what can run in a given cycle.
+pub fn decide_phase_gates(
+    planner_pending: bool,
+    diagnostics_pending: bool,
+    verifier_queued: bool,
+    verifier_in_flight: bool,
+    scheduled_phase: Option<&str>,
+) -> PhaseGates {
+    PhaseGates {
+        planner: planner_pending && allow_planner_run(scheduled_phase),
+        executor: !block_executor_dispatch(scheduled_phase),
+        verifier: verifier_queued && allow_verifier_run(scheduled_phase),
+        diagnostics: diagnostics_pending && allow_diagnostics_run(scheduled_phase, verifier_in_flight),
+    }
+}
+
+/// Returns true when consecutive errors have crossed the threshold that warrants
+/// forcing a blocker escalation message rather than retrying.
+pub fn should_force_blocker(streak: usize) -> bool {
+    streak >= 3
+}
+
+/// Returns true when a blocker message is directed specifically at the verifier
+/// (i.e. verifier is the root cause, not just a bystander). Verifier should yield
+/// to planner for blockers that are NOT verifier-specific.
+pub fn is_verifier_specific_blocker(blocker_text: &str, required_action: &str) -> bool {
+    let combined = format!("{} {}", blocker_text.to_lowercase(), required_action.to_lowercase());
+    combined.contains("verifier")
+}
+
+/// When verifier receives an inbound blocker that is not verifier-specific, it must
+/// yield the schedule to the phase that owns the blocker. Returns `Some("planner")`
+/// to hand off, or `None` if the blocker is verifier-specific (verifier keeps running).
+pub fn verifier_blocker_phase_override(is_verifier_specific: bool) -> Option<&'static str> {
+    if is_verifier_specific {
+        None
+    } else {
+        Some("planner")
+    }
+}
+
+/// After diagnostics completes, returns whether planner should be re-triggered.
+/// Planner is needed whenever the diagnostics text changed or verifier results changed,
+/// because either event may require the planner to revise the plan.
+pub fn decide_post_diagnostics(diagnostics_changed: bool, verifier_changed: bool) -> bool {
+    diagnostics_changed || verifier_changed
+}
+
 impl CargoTestGate {
     pub fn new() -> Self {
         Self {
