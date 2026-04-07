@@ -1,0 +1,23 @@
+[package]
+name = "canon-mini-agent"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "canon-mini-agent"
+path = "src/main.rs"
+test = false
+
+[[bin]]
+name = "canon-mini-supervisor"
+path = "src/bin/canon-mini-supervisor.rs"
+test = false
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+canon-tools-patch = { path = "../canon/canon-utils/canon-tools-patch" }
+canon_llm = { package = "canon-llm-runtime", path = "../canon/canon-utils/canon-llm-runtime" }
+ctrlc = "3"

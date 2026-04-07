@@ -1,0 +1,143 @@
+# === Rust / Cargo ===
+target/
+/target/
+**/target/
+**/.fingerprint/
+**/.cargo-lock/
+
+# Cargo.lock
+# Keep for binaries, remove for libraries if desired
+Cargo.lock
+
+# === Rustfmt / Clippy ===
+.rustfmt.toml.bk
+.clippy.toml.bk
+
+# === IDE / Editor ===
+.idea/
+.vscode/
+*.code-workspace
+
+# === OS Files ===
+.DS_Store
+Thumbs.db
+
+# === Logs ===
+*.log
+agent_logs/capability/
+
+# === Temporary / Backup ===
+*~
+*.swp
+*.swo
+*.tmp
+
+# === Coverage / Profiling ===
+*.profraw
+*.profdata
+*.gcda
+*.gcno
+
+# === Rust Analyzer ===
+.ra_ap_syntax_cache/
+.ra_ap_project_model_cache/
+rust-analyzer/
+
+# === Build Artifacts (custom) ===
+build/
+dist/
+reconstructed_output/
+
+# === Binaries ===
+*.exe
+*.out
+*.app
+*.dll
+*.dylib
+*.so
+*.a
+
+# === Environment ===
+.env
+.env.*
+
+# === Node (if using WASM / frontend) ===
+node_modules/
+
+# === Python (if using tooling) ===
+__pycache__/
+*.pyc
+
+# === Debug Dumps ===
+*.ll
+*.mir
+*.bc
+*.s
+*.rlib
+*.rmeta
+
+# === Test Output ===
+/test-output/
+/tests/output/
+
+# === Vendored Sources ===
+other_projects/rust-source
+other_projects/rust-source.local/
+other_projects/
+other_sources/
+
+# === Misc. Backups ===
+*.old
+*.bk
+*.orig
+*.rej
+
+# === Snapshot Outputs ===
+graph_snapshot/
+graph_snapshot_conversation_v2/
+
+*.json
+_old/
+docs/
+*.patch
+tests/
+*.tarcanonical.tar
+
+*.tlog
+
+*.o
+
+test_projects/
+test_projects/chatgpt_rustsandbox/
+**/target/
+*.tar.gz
+*.zip
+*.bin
+*.log
+*.tmp
+
+chrome-dev-profile/algorithms/src/optimization/_example_bin
+
+canon-agent/frames/
+chrome-dev-profile/
+*chrome*
+
+*.csv
+**/analysis/*.csv
+**/analysis/*.bin
+**/analysis/*.json
+**/analysis/*.jsonl
+**/analysis/*.lock
+**/analysis/*.txt
+*.jsonl
+
+state/kernel_logs/
+state/reports_out/
+
+state/event_runtime.lock
+
+**.time
+**.idx
+
+.claude/*
+test_projects/*
