@@ -159,12 +159,18 @@ fn main() -> Result<()> {
     let mut args: Vec<String> = std::env::args().collect();
     let exe = args.remove(0);
     let mut prefer_release = false;
+    let mut no_watch = false;
     let mut filtered_args = Vec::new();
     let mut i = 0usize;
     while i < args.len() {
         let arg = &args[i];
         if arg == "--release" {
             prefer_release = true;
+            i += 1;
+            continue;
+        }
+        if arg == "--no-watch" {
+            no_watch = true;
             i += 1;
             continue;
         }
@@ -224,15 +230,17 @@ fn main() -> Result<()> {
                 eprintln!("[canon-mini-supervisor] restarting...");
                 break;
             }
-            if let Some(updated) = has_updated(&root, &current)? {
-                eprintln!(
-                    "[canon-mini-supervisor] binary updated; restarting from {}",
-                    updated.path.display()
-                );
-                send_sigint(&child);
-                wait_for_exit(child, Duration::from_secs(10));
-                eprintln!("[canon-mini-supervisor] restarting...");
-                break;
+            if !no_watch {
+                if let Some(updated) = has_updated(&root, &current)? {
+                    eprintln!(
+                        "[canon-mini-supervisor] binary updated; restarting from {}",
+                        updated.path.display()
+                    );
+                    send_sigint(&child);
+                    wait_for_exit(child, Duration::from_secs(10));
+                    eprintln!("[canon-mini-supervisor] restarting...");
+                    break;
+                }
             }
         }
         thread::sleep(Duration::from_millis(1000));

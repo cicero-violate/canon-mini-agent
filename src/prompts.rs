@@ -312,13 +312,12 @@ fn rules_section(rules: &[&str], blocker_target: Option<&str>) -> String {
     out
 }
 
-const VERIFIER_PROCESS: &str = "━━━ VERIFICATION PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nFor each executor claim:\n1. Use the executor result summary plus `SPEC.md` to derive the candidate obligations.\n2. Read the relevant source files to confirm the described change exists.\n3. Run cargo check or cargo test if the task involves code correctness.\n4. Judge whether the code satisfies the spec.\n5. If violations are found, write `VIOLATIONS.json` with a clear, actionable list using the enums in canon-mini-agent/src/reports.rs.\n6. Update task `status` fields in `PLAN.json` to reflect verified results (ready/in_progress/done/blocked) and update any related `next_on_success` / `next_on_failure` as needed.\n7. Report a verification breakdown in `message.payload` (verified, unverified, false) with explicit items.\n8. For any routing/control-flow claim, verify whether decisions are derived from semantic state rather than queue-local heuristics.";
+const VERIFIER_PROCESS: &str = "━━━ VERIFICATION PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nFor each executor claim:\n1. Use the executor result summary plus `SPEC.md` to derive the candidate obligations.\n2. Read the relevant source files to confirm the described change exists.\n3. Run cargo check or cargo test if the task involves code correctness.\n4. Judge whether the code satisfies the spec.\n5. If violations are found, write `VIOLATIONS.json` with a clear, actionable list using the enums in canon-mini-agent/src/reports.rs.\n6. Update task `status` fields in `PLAN.json` to reflect verified results (ready/in_progress/done/blocked) and update any related `next_on_success` / `next_on_failure` as needed.\n7. Report a verification breakdown in `message.payload` (verified, unverified, false) with explicit items.\n8. For any control-flow or state-management claim, verify that the described behavior matches the source code and is consistent with INVARIANTS.json.";
 
-const PLANNER_PROCESS: &str = "━━━ PLANNING PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nOn every planning cycle:\n1. Read `SPEC.md`, `VIOLATIONS.json`, `DIAGNOSTICS.json`, relevant source files, and recent workspace state to understand what changed.\n2. Update `PLAN.json` as the master plan and derive the ready-work window for each executor.\n3. Maintain a READY NOW window containing at most 1-10 executable tasks for each executor.\n4. Move blocked work behind its dependencies instead of leaving it in the ready window.\n5. Rewrite priorities whenever new evidence changes the critical path.\n6. If queue-truth and semantic-state authority conflict, prioritize semantic-state authority and move queue-truth cleanup behind it as follow-on work.\n7. Write detailed, imperative tasks that include file paths and concrete actions (read/patch/test).\n8. Send handoff messages to executors reflecting the updated ready window.";
+const PLANNER_PROCESS: &str = "━━━ PLANNING PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nOn every planning cycle:\n1. Read `SPEC.md`, `VIOLATIONS.json`, `DIAGNOSTICS.json`, relevant source files, and recent workspace state to understand what changed.\n2. Update `PLAN.json` as the master plan and derive the ready-work window for each executor.\n3. Maintain a READY NOW window containing at most 1-10 executable tasks for each executor.\n4. Move blocked work behind its dependencies instead of leaving it in the ready window.\n5. Rewrite priorities whenever new evidence changes the critical path.\n6. If canonical-law authority (INVARIANTS.json, CANONICAL_LAW.md) conflicts with local heuristics in the plan, prioritize canonical-law authority and move heuristic cleanup behind it as follow-on work.\n7. Write detailed, imperative tasks that include file paths and concrete actions (read/patch/test).\n8. Send handoff messages to executors reflecting the updated ready window.";
 
 fn diagnostics_process() -> String {
-    let ws = crate::constants::workspace();
-    format!("━━━ DIAGNOSTICS PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nGather evidence from the event logs, `VIOLATIONS.json`, and the current codebase, then write DIAGNOSTICS.json using the enums in canon-mini-agent/src/reports.rs.\nRules:\n- Always inspect {ws}/state/event_log/event.tlog.d on every invocation.\n- Use the `python` action for structured analysis of event logs and project state.\n- Only modify DIAGNOSTICS.json.\n- Rank issues by impact on correctness, convergence, and repairability.\n- Explicitly check whether routing/control-flow still depends on `scheduler_len`, `planned_pending`, or other local queue mirrors instead of `SemanticStateSummary`.\n- Prioritize diagnostics that identify state-authority drift, synthetic dispatch bypasses, and queue-driven control decisions.\n- Before trusting a trace file like /tmp/runtime.trace, confirm it was updated in the current cycle (mtime, size change, or fresh producer command).\n- Treat empty `rg` / `grep` results on traces as ambiguous: no match, stale file, or incomplete write are all possible.\n- Prefer latest event-log segments under state/event_log/event.tlog.d over ad-hoc temp traces when they disagree.")
+    format!("━━━ DIAGNOSTICS PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nGather evidence from the workspace, `VIOLATIONS.json`, and the current codebase, then write DIAGNOSTICS.json using the enums in canon-mini-agent/src/reports.rs.\nRules:\n- Use the `python` action for structured analysis of project state and any available logs.\n- Only modify DIAGNOSTICS.json.\n- Rank issues by impact on correctness, convergence, and repairability.\n- Check whether control-flow decisions are consistent with the canonical law in CANONICAL_LAW.md and the invariants in INVARIANTS.json.\n- Before trusting any trace or log file, confirm it was updated in the current cycle (mtime, size change, or fresh producer command).\n- Treat empty `rg` / `grep` results as ambiguous: no match, stale file, or incomplete write are all possible.\n- Prefer the most recently written evidence sources over ad-hoc temp traces when they disagree.")
 }
 
 const EXECUTOR_HANDOFF_BULLETS: &[&str] = &[
@@ -336,7 +335,7 @@ const EXECUTION_DISCIPLINE_BULLETS: &[&str] = &[
     "Hard cap: after 5 actions you MUST hand off to the planner via `message` (handoff or blocker). The router enforces this.",
     "If an apply_patch fails, read the exact file or line range before retrying.",
     "Do not repeat the same patch attempt without new evidence from read_file, run_command, or python.",
-    "When touching routing, policy, observe, act, dispatch, or control-flow code, favor semantic-state authority over queue-truth heuristics.",
+    "When touching routing, policy, or control-flow code, favor the authority described in CANONICAL_LAW.md and INVARIANTS.json over local heuristics.",
     "Use MIR and HIR analysis to derive call graph, CFG, reachability, and dataflow when diagnosing bugs or proving fixes.",
     "If a task conflicts with the canonical law above, execute the canonical law and report the conflict in `message.payload` so planner/verifier can update plan truth.",
 ];
@@ -365,7 +364,7 @@ const VERIFIER_RULES: &[&str] = &[
     "- You must run `run_command` (and `cargo_test` when relevant) to validate executor claims; do not accept evidence without running checks yourself.",
     "- Run `cargo build --workspace` before completing the cycle; fix failures before `message` with status=complete.",
     "- Only modify `PLAN.json` and `VIOLATIONS.json` — never edit `SPEC.md` or source files.",
-    "- Reject any claimed completion that still leaves `scheduler_len` or local queue mirrors acting as routing authority when `SemanticStateSummary` is available.",
+    "- Reject any claimed completion that violates the canonical law in CANONICAL_LAW.md or the invariants in INVARIANTS.json.",
     "- When using `message`, set:",
     "  - `from`: \"Verifier\"",
     "  - `to`: \"Planner\"",
@@ -387,17 +386,14 @@ const PLANNER_RULES: &[&str] = &[
 ];
 
 fn diagnostics_rules() -> Vec<String> {
-    let ws = crate::constants::workspace();
     vec![
-        format!("- Always inspect {ws}/state/event_log/event.tlog.d on every invocation."),
-        "- Use the `python` action for structured analysis of event logs and project state.".to_string(),
+        "- Use the `python` action for structured analysis of project state and any available logs.".to_string(),
         "- Only modify DIAGNOSTICS.json.".to_string(),
         "- Rank issues by impact on correctness, convergence, and repairability.".to_string(),
-        "- Explicitly check whether routing/control-flow still depends on `scheduler_len`, `planned_pending`, or other local queue mirrors instead of `SemanticStateSummary`.".to_string(),
-        "- Prioritize diagnostics that identify state-authority drift, synthetic dispatch bypasses, and queue-driven control decisions.".to_string(),
-        "- Before trusting a trace file like /tmp/runtime.trace, confirm it was updated in the current cycle (mtime, size change, or fresh producer command).".to_string(),
-        "- Treat empty `rg` / `grep` results on traces as ambiguous: no match, stale file, or incomplete write are all possible.".to_string(),
-        "- Prefer latest event-log segments under state/event_log/event.tlog.d over ad-hoc temp traces when they disagree.".to_string(),
+        "- Check control-flow and state-management decisions against CANONICAL_LAW.md and INVARIANTS.json.".to_string(),
+        "- Before trusting any trace or log file, confirm it was updated in the current cycle (mtime, size change, or fresh producer command).".to_string(),
+        "- Treat empty `rg` / `grep` results as ambiguous: no match, stale file, or incomplete write are all possible.".to_string(),
+        "- Prefer the most recently written evidence sources over ad-hoc temp traces when they disagree.".to_string(),
     ]
 }
 
@@ -547,8 +543,9 @@ pub(crate) fn single_role_diagnostics_prompt(
 ) -> String {
     let workspace = workspace();
     let diagnostics_path = diagnostics_file();
+    let canonical_law = prompt_canonical_law(AgentPromptKind::Diagnostics);
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nAlways inspect state/event_log/event.tlog.d and the relevant canon system files.\nRead files and search the source code for the bugs (use read_file + run_command/ripgrep).\nRun 5+ python analysis actions over event logs and code evidence.\nInfer the root cause from the evidence and cite detailed sources of errors (file paths, functions, and log evidence).\nPrioritize canon-route, canon-loop, canon-runtime, canon-semantic-state, and canon-mini-agent when control flow or prompt contracts are implicated.\nLatest verifier summary:\n(none yet)\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nVerify whether objectives in {OBJECTIVES_FILE} are being met and note gaps.\nUse {SPEC_FILE}, {OBJECTIVES_FILE}, and {INVARIANTS_FILE} as the contract, not lane plans.\nInfer failures from code, logs, runtime state, and verifier findings.\nCanonical law:\n- SemanticStateSummary is the single source of truth for routing.\n- scheduler_len / planned_pending are not routing authority.\nFocus on route/control-flow correctness, event successor discharge, duplicate fanout, state-authority drift, queue-driven routing, synthetic dispatch bypasses, and prompt-shell mismatches.\n\nWrite a ranked diagnostics report to {diagnostics_path}. Emit exactly one action to begin."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nRead files and search the source code for bugs and inconsistencies (use read_file + run_command/ripgrep).\nRun python analysis actions over available logs and code evidence.\nInfer the root cause from the evidence and cite detailed sources of errors (file paths, functions, log evidence).\n\nLatest verifier summary:\n(none yet)\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nVerify whether objectives in {OBJECTIVES_FILE} are being met and note gaps.\nUse {SPEC_FILE}, {OBJECTIVES_FILE}, and {INVARIANTS_FILE} as the contract, not lane plans.\nInfer failures from code, logs, runtime state, and verifier findings.\n\nCanonical law:\n{canonical_law}\n\nWrite a ranked diagnostics report to {diagnostics_path}. Emit exactly one action to begin."
     )
 }
 
@@ -562,8 +559,9 @@ pub(crate) fn single_role_planner_prompt(
 ) -> String {
     let workspace = workspace();
     let diagnostics_path = diagnostics_file();
+    let canonical_law = prompt_canonical_law(AgentPromptKind::Planner);
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{primary_input}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nCanonical law:\n- SemanticStateSummary is the single source of truth for routing.\n- scheduler_len / planned_pending are not routing authority.\n- Prioritize migration to state-authority before edge patches.\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nEmit exactly one action to begin."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{primary_input}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nCanonical law:\n{canonical_law}\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nEmit exactly one action to begin."
     )
 }
 
