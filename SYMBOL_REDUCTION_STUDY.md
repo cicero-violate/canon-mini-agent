@@ -1,3 +1,23 @@
+• Here are 5 easy, high‑leverage improvements that reduce complexity/symbols, keep behavior, and make agents smarter. I can implement any of these quickly.
+
+  1. Role‑aware invalid‑action examples everywhere
+      - Use the actual message envelope (from/to/type/status) to generate examples for all roles.
+      - Result: clearer corrections, fewer loops, less repeated logic in prompts.
+  2. Single helper for “lane state read”
+      - Add DispatchState::lane_state(lane_id) -> LaneSnapshot (pending, in_progress, active_tab, steps).
+      - Replace scattered .get(&lane_id) calls.
+      - Result: fewer symbols and more readable dispatch logic.
+  3. Centralize “plan/diagnostics/invariants file read”
+      - Introduce read_text_cached(path, &mut cache) for the handful of high‑traffic reads.
+      - Result: cleaner planner cycle code and fewer repeated read patterns.
+  4. Data‑driven action schema validation
+      - Convert invalid_action_expected_fields + per‑action checks into a static ACTION_SCHEMA: &[ActionSpec].
+      - Result: less branching, easier to add new tools, more consistent errors.
+  5. Unified “agent prompt envelope” builder
+      - One helper that builds the fixed header (TAB_ID, TURN_ID, AGENT_TYPE, step limit) and the action result body.
+      - Result: fewer duplicated strings and more consistent prompts across roles.
+
+
 # Symbol Reduction Study
 
 Reducer = controlled symbol reduction that preserves meaning. The goal is fewer names and fewer repeated representations without losing intent or information.
