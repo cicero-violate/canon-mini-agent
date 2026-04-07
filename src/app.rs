@@ -1,3 +1,4 @@
+//
 use anyhow::{anyhow, bail, Context, Result};
 use canon_llm::{
     config::LlmEndpoint,
@@ -303,7 +304,6 @@ async fn run_planner_phase(
     );
     let mut planner_prompt = planner_cycle_prompt(
         &inputs.summary_text,
-        &inputs.lane_plan_list,
         &inputs.objectives_text,
         &inputs.invariants_text,
         &inputs.violations_text,
@@ -434,7 +434,6 @@ async fn run_verifier_phase(
         );
         let mut verifier_prompt = verifier_cycle_prompt(
             submitted.lane_label.as_str(),
-            lane_plan_file.as_str(),
             &final_exec_result,
             &prompt_inputs.executor_diff_text,
             &prompt_inputs.cargo_test_failures,
@@ -1249,7 +1248,7 @@ fn build_agent_prompt(
             initial_prompt.to_string(),
         )
     } else {
-        let mut result = last_result.unwrap_or("").to_string();
+        let result = last_result.unwrap_or("").to_string();
         let agent_type = role_key(role).to_uppercase();
         (
             String::new(),
@@ -2394,12 +2393,10 @@ async fn submit_executor_turn(
     command_id: &str,
     response_timeout_secs: u64,
 ) -> Result<String> {
-    let lane_plan_text = std::fs::read_to_string(Path::new(WORKSPACE).join(&job.lane_plan_file)).unwrap_or_default();
+    let _lane_plan_text = std::fs::read_to_string(Path::new(WORKSPACE).join(&job.lane_plan_file)).unwrap_or_default();
     let mut exec_prompt = executor_cycle_prompt(
         job.executor_display.as_str(),
         job.label.as_str(),
-        job.lane_plan_file.as_str(),
-        lane_plan_text.as_str(),
         &job.latest_verify_result,
     );
     inject_inbound_message(&mut exec_prompt, "executor");
@@ -2929,7 +2926,6 @@ pub async fn run() -> Result<()> {
             master_plan_path: &master_plan_path,
             violations_path: &violations_path,
             diagnostics_path: &diagnostics_path,
-            lanes: &lanes,
         };
         let (inputs, endpoint) =
             load_single_role_setup(&single_role_ctx, &endpoints, is_verifier, is_diagnostics, is_planner)?;
