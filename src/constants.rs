@@ -12,7 +12,7 @@ pub const CANONICAL_LAW_FILE: &str = "CANONICAL_LAW.md";
 pub const WS_PORT_CANDIDATES: &[u16] = &[9103, 9104, 9105, 9106, 9107, 9108];
 pub const MAX_STEPS: usize = 2000;
 pub const EXECUTOR_STEP_LIMIT: usize = 20;
-pub const MAX_FULL_READ_LINES: usize = 300;
+pub const MAX_FULL_READ_LINES: usize = 1000;
 pub const MAX_SNIPPET: usize = 20_000;
 pub const DEFAULT_RESPONSE_TIMEOUT_SECS: u64 = 150;
 pub const ROLE_TIMEOUT_SECS: &[(&str, u64)] = &[
@@ -127,8 +127,8 @@ pub const ENDPOINT_SPECS: &[EndpointSpec] = &[
         role: "executor",
         role_markdown: "builtin:planner",
         urls: &[
-            "https://chatgpt.com/",
-            // "https://chatgpt.com/gg/69d126d34dc4819d8de9cba1b209d14c",
+            // "https://chatgpt.com/",
+            "https://chatgpt.com/gg/69d126d34dc4819d8de9cba1b209d14c",
             // "https://chatgpt.com/gg/69ab7b06a5a88196bf33966df6feee02",
             // "https://chatgpt.com/gg/69ca500acd888199a32b90339c82fa31",
         ],
