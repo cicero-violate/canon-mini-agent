@@ -647,8 +647,8 @@ fn run_executor_phase(
                                 dispatch_state.lane_prompt_in_flight.insert(lane_id, false);
                                 continue;
                             }
-                            if let Some(active_tab) = dispatch_state.lane_active_tab.get(&lane_id) {
-                                if *active_tab != tab_id {
+                            if let Some(active_tab) = dispatch_state.lane_active_tab(lane_id) {
+                                if active_tab != tab_id {
                                     eprintln!(
                                         "[orchestrate] submit ack tab mismatch: lane={} active_tab={} ack_tab={} (overwriting active tab)",
                                         ctx.lanes[lane_id].label,
@@ -672,10 +672,7 @@ fn run_executor_phase(
                                     actor: job.executor_role.clone(),
                                     endpoint_id: pending.endpoint_id.clone(),
                                     tabs: pending.tabs.clone(),
-                                    steps_used: *dispatch_state
-                                        .lane_steps_used
-                                        .get(&job.lane_index)
-                                        .unwrap_or(&0),
+                                    steps_used: dispatch_state.lane_steps_used(job.lane_index),
                                 },
                             );
                             dispatch_state.lane_next_submit_at_ms.insert(lane_id, now_ms());
@@ -769,7 +766,7 @@ async fn process_completed_turns(
                 continue;
             }
             match check_completion_tab(
-                dispatch_state.lane_active_tab.get(&lane_id).copied(),
+                dispatch_state.lane_active_tab(lane_id),
                 tab_id,
             ) {
                 CompletionTabCheck::Mismatch => {
@@ -777,7 +774,7 @@ async fn process_completed_turns(
                         "executor_completion_tab_mismatch",
                         json!({
                             "lane_name": ctx.lanes[lane_id].label,
-                            "active_tab": dispatch_state.lane_active_tab.get(&lane_id),
+                            "active_tab": dispatch_state.lane_active_tab(lane_id),
                             "tab_id": tab_id,
                             "turn_id": turn_id,
                         }),
@@ -810,10 +807,7 @@ async fn process_completed_turns(
                 actor: pending.job.executor_role,
                 endpoint_id: pending.endpoint_id,
                 tabs: pending.tabs,
-                steps_used: *dispatch_state
-                    .lane_steps_used
-                    .get(&lane_id)
-                    .unwrap_or(&0),
+                steps_used: dispatch_state.lane_steps_used(lane_id),
             }
         };
         dispatch_state.lane_prompt_in_flight.insert(submitted.lane, false);
@@ -1256,10 +1250,6 @@ fn build_agent_prompt(
         )
     } else {
         let mut result = last_result.unwrap_or("").to_string();
-        if role == "executor" {
-            let remaining = EXECUTOR_STEP_LIMIT.saturating_sub(total_steps);
-            result = format!("step_limit_remaining: {remaining}\n{result}");
-        }
         let agent_type = role_key(role).to_uppercase();
         (
             String::new(),
@@ -1269,8 +1259,8 @@ fn build_agent_prompt(
                 agent_type.as_str(),
                 &result,
                 last_action,
-                if role == "executor" {
-                    Some(EXECUTOR_STEP_LIMIT.saturating_sub(total_steps))
+                if role.starts_with("executor") {
+                    Some(total_steps)
                 } else {
                     None
                 },
@@ -1285,7 +1275,8 @@ fn enforce_executor_step_limit(
     error_streak: &mut usize,
     last_result: &mut Option<String>,
 ) -> bool {
-    if role == "executor" && executor_step_limit_exceeded(total_steps, EXECUTOR_STEP_LIMIT) {
+    if role.starts_with("executor") && executor_step_limit_exceeded(total_steps, EXECUTOR_STEP_LIMIT)
+    {
         *error_streak = error_streak.saturating_add(1);
         *last_result = Some(format!(
             "Executor exceeded {EXECUTOR_STEP_LIMIT} actions without handoff. You must send a `message` action to planner (handoff or blocker) now."
@@ -1647,7 +1638,7 @@ async fn continue_executor_completion(
                 agent_type.as_str(),
                 &invalid.feedback,
                 Some("invalid_action"),
-                Some(EXECUTOR_STEP_LIMIT.saturating_sub(submitted.steps_used)),
+                Some(submitted.steps_used),
             );
             return run_agent(
                 role,
@@ -1704,7 +1695,7 @@ async fn continue_executor_completion(
             agent_type.as_str(),
             &out,
             action.get("action").and_then(|v| v.as_str()),
-            Some(EXECUTOR_STEP_LIMIT.saturating_sub(submitted.steps_used)),
+            Some(submitted.steps_used),
         ),
         endpoint,
         bridge,
@@ -1775,13 +1766,15 @@ async fn run_agent(
             bail!("[{role}] exhausted {MAX_STEPS} steps without completing");
         }
 
-        let total_steps = if role == "executor" {
+        let total_steps = if role.starts_with("executor") {
             initial_steps_used.saturating_add(step)
         } else {
             step
         };
 
-        if role == "executor" && executor_step_limit_exceeded(total_steps, EXECUTOR_STEP_LIMIT) {
+        if role.starts_with("executor")
+            && executor_step_limit_exceeded(total_steps, EXECUTOR_STEP_LIMIT)
+        {
             last_result = Some(format!(
                 "Step limit reached: executor must send a message to planner after {EXECUTOR_STEP_LIMIT} actions. Use a message action with evidence or blocker details."
             ));
@@ -2110,6 +2103,12 @@ impl DispatchState {
     }
     fn lane_next_submit_ms(&self, lane_id: usize) -> u64 {
         *self.lane_next_submit_at_ms.get(&lane_id).unwrap_or(&0)
+    }
+    fn lane_steps_used(&self, lane_id: usize) -> usize {
+        *self.lane_steps_used.get(&lane_id).unwrap_or(&0)
+    }
+    fn lane_active_tab(&self, lane_id: usize) -> Option<u32> {
+        self.lane_active_tab.get(&lane_id).copied()
     }
 }
 

@@ -2,8 +2,8 @@ use anyhow::{anyhow, bail, Context, Result};
 use serde_json::Value;
 
 use crate::constants::{
-    diagnostics_file, INVARIANTS_FILE, MASTER_PLAN_FILE, MAX_SNIPPET, OBJECTIVES_FILE, SPEC_FILE,
-    VIOLATIONS_FILE, WORKSPACE,
+    diagnostics_file, EXECUTOR_STEP_LIMIT, INVARIANTS_FILE, MASTER_PLAN_FILE, MAX_SNIPPET,
+    OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE, WORKSPACE,
 };
 use crate::protocol::{MessagePayload, MessageStatus, MessageType, ProtocolMessage, Role};
 
@@ -901,7 +901,7 @@ pub(crate) fn action_result_prompt(
     agent_type: &str,
     result: &str,
     last_action: Option<&str>,
-    step_limit_remaining: Option<usize>,
+    steps_used: Option<usize>,
 ) -> String {
     let tab_label = tab_id
         .map(|v| v.to_string())
@@ -910,10 +910,8 @@ pub(crate) fn action_result_prompt(
         .map(|v| v.to_string())
         .unwrap_or_else(|| "unknown".to_string());
     let limit_line = if agent_type.starts_with("EXECUTOR") {
-        match step_limit_remaining {
-            Some(v) => format!("Step limit remaining: {v}\n"),
-            None => "Step limit remaining: N/A\n".to_string(),
-        }
+        let remaining = EXECUTOR_STEP_LIMIT.saturating_sub(steps_used.unwrap_or(0));
+        format!("Step limit remaining: {remaining}\n")
     } else {
         String::new()
     };
