@@ -1,1 +1,1 @@
-error[E0433]: cannot find module or crate `canon_storage_eventlog` at binary.rs:761 during cargo test
+Both cases show cargo_project=false, path_exists=false, repo_initialized=false, rust_file_count=0, resulting in approved_route=Plan vs Plan.
