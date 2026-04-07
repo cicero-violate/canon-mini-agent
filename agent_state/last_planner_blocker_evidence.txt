@@ -1,1 +1,1 @@
-Counts show tick=2539, route_tick=0, decision_trace=0, route_selected=0 while loop_observed appears only sparsely
+Repeated inbound messages indicate prior 'handoff' errors with no corrected actionable instructions.

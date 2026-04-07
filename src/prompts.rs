@@ -115,88 +115,103 @@ fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
     }
 }
 
-fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
+const READ_FILE_FOOTER: &str = "   With \"line\":N the output starts at line N and shows up to 300 lines.\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.\n   ⚠ read_file output is prefixed with line numbers (\"42: code here\"). Strip the \"N: \" prefix when\n     writing patch lines — patch lines must contain ONLY the raw source text, never \"42: code here\".\n     WRONG:  -42: fn old() {}   RIGHT:  -fn old() {}";
+
+const READ_FILE_EXECUTOR_FOOTER: &str = "   With \"line\":N the output starts at line N and shows up to 300 lines.\n   ⚠ Always read a file before patching it. Never patch from memory.\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.\n   ⚠ read_file output is prefixed with line numbers (\"42: code here\"). Strip the \"N: \" prefix when\n     writing patch lines — patch lines must contain ONLY the raw source text, never \"42: code here\".\n     WRONG:  -42: fn old() {}   RIGHT:  -fn old() {}";
+
+const RUN_COMMAND_FOOTER: &str =
+    "   ⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE.";
+const PYTHON_FOOTER: &str = "   ⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE.";
+
+fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
     match (kind, tool) {
         (AgentPromptKind::Executor, ToolPromptKind::ListDir) => {
-            "   {\"action\":\"list_dir\",\"path\":\"canon-utils\",\"rationale\":\"Inspect the workspace before making assumptions.\"}"
+            "   {\"action\":\"list_dir\",\"path\":\"canon-utils\",\"rationale\":\"Inspect the workspace before making assumptions.\"}".to_string()
         }
         (AgentPromptKind::Planner, ToolPromptKind::ListDir) => {
-            "   {\"action\":\"list_dir\",\"path\":\"canon-utils\",\"rationale\":\"Inspect the relevant code area before expanding tasks.\"}"
+            "   {\"action\":\"list_dir\",\"path\":\"canon-utils\",\"rationale\":\"Inspect the relevant code area before expanding tasks.\"}".to_string()
         }
         (AgentPromptKind::Verifier, ToolPromptKind::ListDir) => {
-            "   {\"action\":\"list_dir\",\"path\":\"canon-utils\",\"rationale\":\"Inspect the relevant area before verifying claims about it.\"}"
+            "   {\"action\":\"list_dir\",\"path\":\"canon-utils\",\"rationale\":\"Inspect the relevant area before verifying claims about it.\"}".to_string()
         }
         (AgentPromptKind::Diagnostics, ToolPromptKind::ListDir) => {
-            "   {\"action\":\"list_dir\",\"path\":\"state/event_log/event.tlog.d\",\"rationale\":\"Inspect the available event-log segments before diagnosing failures.\"}\n   {\"action\":\"list_dir\",\"path\":\"canon-utils\",\"rationale\":\"Inspect the project layout before targeting diagnostics.\"}"
+            "   {\"action\":\"list_dir\",\"path\":\"state/event_log/event.tlog.d\",\"rationale\":\"Inspect the available event-log segments before diagnosing failures.\"}\n   {\"action\":\"list_dir\",\"path\":\"canon-utils\",\"rationale\":\"Inspect the project layout before targeting diagnostics.\"}".to_string()
         }
 
         (AgentPromptKind::Executor, ToolPromptKind::ReadFile) => {
-            r#"   {"action":"read_file","path":"canon-utils/some-crate/src/lib.rs","rationale":"Read the file before editing it."}
-   {"action":"read_file","path":"canon-utils/some-crate/src/lib.rs","line":120,"rationale":"Read the relevant section before editing it."}
-   With "line":N the output starts at line N and shows up to 300 lines.
-   ⚠ Always read a file before patching it. Never patch from memory.
-   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.
-   ⚠ read_file output is prefixed with line numbers ("42: code here"). Strip the "N: " prefix when
-     writing patch lines — patch lines must contain ONLY the raw source text, never "42: code here".
-     WRONG:  -42: fn old() {}   RIGHT:  -fn old() {}"#
+            format!(
+                "   {{\"action\":\"read_file\",\"path\":\"canon-utils/some-crate/src/lib.rs\",\"rationale\":\"Read the file before editing it.\"}}\n   {{\"action\":\"read_file\",\"path\":\"canon-utils/some-crate/src/lib.rs\",\"line\":120,\"rationale\":\"Read the relevant section before editing it.\"}}\n{READ_FILE_EXECUTOR_FOOTER}"
+            )
         }
         (AgentPromptKind::Planner, ToolPromptKind::ReadFile) => {
-            "   {\"action\":\"read_file\",\"path\":\"canon-utils/some-crate/src/lib.rs\",\"rationale\":\"Read the source before deriving actionable plan steps.\"}\n   {\"action\":\"read_file\",\"path\":\"canon-utils/some-crate/src/lib.rs\",\"line\":120,\"rationale\":\"Read the relevant source section before deriving actionable plan steps.\"}\n   With \"line\":N the output starts at line N and shows up to 300 lines.\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.\n   ⚠ read_file output is prefixed with line numbers (\"42: code here\"). Strip the \"N: \" prefix when\n     writing patch lines — patch lines must contain ONLY the raw source text, never \"42: code here\".\n     WRONG:  -42: fn old() {}   RIGHT:  -fn old() {}"
+            format!(
+                "   {{\"action\":\"read_file\",\"path\":\"canon-utils/some-crate/src/lib.rs\",\"rationale\":\"Read the source before deriving actionable plan steps.\"}}\n   {{\"action\":\"read_file\",\"path\":\"canon-utils/some-crate/src/lib.rs\",\"line\":120,\"rationale\":\"Read the relevant source section before deriving actionable plan steps.\"}}\n{READ_FILE_FOOTER}"
+            )
         }
         (AgentPromptKind::Verifier, ToolPromptKind::ReadFile) => {
-            "   {\"action\":\"read_file\",\"path\":\"canon-utils/some-crate/src/lib.rs\",\"rationale\":\"Read the source to verify whether the claimed change exists.\"}\n   {\"action\":\"read_file\",\"path\":\"canon-utils/some-crate/src/lib.rs\",\"line\":120,\"rationale\":\"Jump to the relevant section to verify the claimed change.\"}\n   With \"line\":N the output starts at line N and shows up to 300 lines.\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.\n   ⚠ read_file output is prefixed with line numbers (\"42: code here\"). Strip the \"N: \" prefix when\n     writing patch lines — patch lines must contain ONLY the raw source text, never \"42: code here\".\n     WRONG:  -42: fn old() {}   RIGHT:  -fn old() {}"
+            format!(
+                "   {{\"action\":\"read_file\",\"path\":\"canon-utils/some-crate/src/lib.rs\",\"rationale\":\"Read the source to verify whether the claimed change exists.\"}}\n   {{\"action\":\"read_file\",\"path\":\"canon-utils/some-crate/src/lib.rs\",\"line\":120,\"rationale\":\"Jump to the relevant section to verify the claimed change.\"}}\n{READ_FILE_FOOTER}"
+            )
         }
         (AgentPromptKind::Diagnostics, ToolPromptKind::ReadFile) => {
-            "   {\"action\":\"read_file\",\"path\":\"canon-utils/canon-route/src/policy.rs\",\"line\":1,\"rationale\":\"Read a suspected source file to correlate code with observed failures.\"}\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE."
+            "   {\"action\":\"read_file\",\"path\":\"canon-utils/canon-route/src/policy.rs\",\"line\":1,\"rationale\":\"Read a suspected source file to correlate code with observed failures.\"}\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.".to_string()
         }
 
         (AgentPromptKind::Executor, ToolPromptKind::ApplyPatch) => {
-            "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: path/to/new.rs\\n+line one\\n+line two\\n*** End Patch\",\"rationale\":\"Apply the concrete code change after reading the target context.\"}\n\n   To UPDATE an existing file, each @@ hunk needs 3 unchanged context lines around the change:\n   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Update File: src/lib.rs\\n@@\\n fn before_before() {}\\n fn before() {}\\n fn target() {\\n-    old_body();\\n+    new_body();\\n }\\n fn after() {}\\n*** End Patch\",\"rationale\":\"Update the file using exact surrounding context from the read.\"}\n\n   To REPLACE most or all of a file use Delete + Add, never a giant @@ block:\n   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Delete File: PLANS/executor-b.json\\n*** Add File: PLANS/executor-b.json\\n+# new content\\n+line two\\n*** End Patch\",\"rationale\":\"Full-file replacement is safer than a giant hunk with many - lines.\"}\n\n   WRONG — removing many lines with @@ causes anchor-miss failures:\n   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Update File: PLANS/executor-b.json\\n@@\\n-line one\\n-line two\\n-line three\\n+replacement\\n*** End Patch\",\"rationale\":\"Bad: too many - lines from memory, anchor will miss if file differs by even one char.\"}\n\n   Rules:\n   - Every @@ hunk must have AT LEAST 3 unchanged context lines (space-prefixed) around the edit.\n   - Never use @@ with only 1 context line — the patcher will fail to locate the anchor.\n   - ALL - lines must be copied CHARACTER-FOR-CHARACTER from read_file output (minus the \\\"N: \\\" prefix). Never write - lines from memory.\n   - If replacing more than ~10 lines, use *** Delete File + *** Add File instead of a large @@ hunk.\n   - *** Add File for new files, *** Update File for existing files.\n   - NEVER use absolute paths inside the patch string."
+            "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: path/to/new.rs\\n+line one\\n+line two\\n*** End Patch\",\"rationale\":\"Apply the concrete code change after reading the target context.\"}\n\n   To UPDATE an existing file, each @@ hunk needs 3 unchanged context lines around the change:\n   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Update File: src/lib.rs\\n@@\\n fn before_before() {}\\n fn before() {}\\n fn target() {\\n-    old_body();\\n+    new_body();\\n }\\n fn after() {}\\n*** End Patch\",\"rationale\":\"Update the file using exact surrounding context from the read.\"}\n\n   To REPLACE most or all of a file use Delete + Add, never a giant @@ block:\n   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Delete File: PLANS/executor-b.json\\n*** Add File: PLANS/executor-b.json\\n+# new content\\n+line two\\n*** End Patch\",\"rationale\":\"Full-file replacement is safer than a giant hunk with many - lines.\"}\n\n   WRONG — removing many lines with @@ causes anchor-miss failures:\n   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Update File: PLANS/executor-b.json\\n@@\\n-line one\\n-line two\\n-line three\\n+replacement\\n*** End Patch\",\"rationale\":\"Bad: too many - lines from memory, anchor will miss if file differs by even one char.\"}\n\n   Rules:\n   - Every @@ hunk must have AT LEAST 3 unchanged context lines (space-prefixed) around the edit.\n   - Never use @@ with only 1 context line — the patcher will fail to locate the anchor.\n   - ALL - lines must be copied CHARACTER-FOR-CHARACTER from read_file output (minus the \\\"N: \\\" prefix). Never write - lines from memory.\n   - If replacing more than ~10 lines, use *** Delete File + *** Add File instead of a large @@ hunk.\n   - *** Add File for new files, *** Update File for existing files.\n   - NEVER use absolute paths inside the patch string.".to_string()
         }
         (AgentPromptKind::Planner, ToolPromptKind::ApplyPatch) => {
-            "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Update File: PLAN.json\\n@@\\n line_before_before\\n line_before\\n - [ ] task to expand\\n+  1. sub-step one\\n+  2. sub-step two\\n line_after\\n line_after_after\\n*** End Patch\",\"rationale\":\"Refresh the master plan so priorities and dependencies are explicit.\"}\n\n   Rules:\n   - Every @@ hunk needs AT LEAST 3 unchanged context lines (space-prefixed) around the change.\n   - NEVER chain multiple @@ blocks with only 1 context line each — every anchor needs 3 lines.\n   - WRONG: @@\\n - [ ] task\\n+  1. sub-step\\n@@\\n - [ ] task2\\n+  1. sub-step\n   - RIGHT: @@\\n prev_line\\n prev_line2\\n - [ ] task\\n+  1. sub-step\\n next_line\\n next_line2"
+            "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Update File: PLAN.json\\n@@\\n line_before_before\\n line_before\\n - [ ] task to expand\\n+  1. sub-step one\\n+  2. sub-step two\\n line_after\\n line_after_after\\n*** End Patch\",\"rationale\":\"Refresh the master plan so priorities and dependencies are explicit.\"}\n\n   Rules:\n   - Every @@ hunk needs AT LEAST 3 unchanged context lines (space-prefixed) around the change.\n   - NEVER chain multiple @@ blocks with only 1 context line each — every anchor needs 3 lines.\n   - WRONG: @@\\n - [ ] task\\n+  1. sub-step\\n@@\\n - [ ] task2\\n+  1. sub-step\n   - RIGHT: @@\\n prev_line\\n prev_line2\\n - [ ] task\\n+  1. sub-step\\n next_line\\n next_line2".to_string()
         }
         (AgentPromptKind::Verifier, ToolPromptKind::ApplyPatch) => {
-            "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: VIOLATIONS.json\\n+{\\n+  \\\"status\\\": \\\"failed\\\",\\n+  \\\"summary\\\": \\\"Short summary\\\",\\n+  \\\"violations\\\": [\\n+    {\\n+      \\\"id\\\": \\\"V1\\\",\\n+      \\\"title\\\": \\\"Control flow gated by executor-local state\\\",\\n+      \\\"severity\\\": \\\"critical\\\",\\n+      \\\"evidence\\\": [\\\"executor.rs:56-61 dispatch_in_progress gate\\\"],\\n+      \\\"issue\\\": \\\"Route dispatch suppressed before semantic evaluation\\\",\\n+      \\\"impact\\\": \\\"RouteTick does not guarantee dispatch\\\",\\n+      \\\"required_fix\\\": [\\\"Remove dispatch_in_progress gating\\\"],\\n+      \\\"files\\\": [\\\"canon-utils/canon-route/src/executor.rs\\\"]\\n+    }\\n+  ]\\n+}\\n*** End Patch\",\"rationale\":\"Record spec violations discovered during verification.\"}"
+            "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: VIOLATIONS.json\\n+{\\n+  \\\"status\\\": \\\"failed\\\",\\n+  \\\"summary\\\": \\\"Short summary\\\",\\n+  \\\"violations\\\": [\\n+    {\\n+      \\\"id\\\": \\\"V1\\\",\\n+      \\\"title\\\": \\\"Control flow gated by executor-local state\\\",\\n+      \\\"severity\\\": \\\"critical\\\",\\n+      \\\"evidence\\\": [\\\"executor.rs:56-61 dispatch_in_progress gate\\\"],\\n+      \\\"issue\\\": \\\"Route dispatch suppressed before semantic evaluation\\\",\\n+      \\\"impact\\\": \\\"RouteTick does not guarantee dispatch\\\",\\n+      \\\"required_fix\\\": [\\\"Remove dispatch_in_progress gating\\\"],\\n+      \\\"files\\\": [\\\"canon-utils/canon-route/src/executor.rs\\\"]\\n+    }\\n+  ]\\n+}\\n*** End Patch\",\"rationale\":\"Record spec violations discovered during verification.\"}".to_string()
         }
         (AgentPromptKind::Diagnostics, ToolPromptKind::ApplyPatch) => {
-            "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: DIAGNOSTICS.json\\n+{\\n+  \\\"status\\\": \\\"critical_failure\\\",\\n+  \\\"inputs_scanned\\\": [\\\"state/event_log/event.tlog.d\\\", \\\"VIOLATIONS.json\\\"],\\n+  \\\"ranked_failures\\\": [\\n+    {\\n+      \\\"id\\\": \\\"D1\\\",\\n+      \\\"impact\\\": \\\"critical\\\",\\n+      \\\"signal\\\": \\\"No control events in canonical log\\\",\\n+      \\\"evidence\\\": [\\\"Tick=0, RouteTick=0 in 20 segments\\\"],\\n+      \\\"root_cause\\\": \\\"emit_tick not executed or not persisted\\\",\\n+      \\\"repair_targets\\\": [\\\"canon-runtime/src/lib.rs::emit_tick\\\"]\\n+    }\\n+  ],\\n+  \\\"planner_handoff\\\": [\\\"Restore emit_tick loop execution\\\"]\\n+}\\n*** End Patch\",\"rationale\":\"Write the ranked diagnostics report after collecting evidence from logs and code.\"}"
+            "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: DIAGNOSTICS.json\\n+{\\n+  \\\"status\\\": \\\"critical_failure\\\",\\n+  \\\"inputs_scanned\\\": [\\\"state/event_log/event.tlog.d\\\", \\\"VIOLATIONS.json\\\"],\\n+  \\\"ranked_failures\\\": [\\n+    {\\n+      \\\"id\\\": \\\"D1\\\",\\n+      \\\"impact\\\": \\\"critical\\\",\\n+      \\\"signal\\\": \\\"No control events in canonical log\\\",\\n+      \\\"evidence\\\": [\\\"Tick=0, RouteTick=0 in 20 segments\\\"],\\n+      \\\"root_cause\\\": \\\"emit_tick not executed or not persisted\\\",\\n+      \\\"repair_targets\\\": [\\\"canon-runtime/src/lib.rs::emit_tick\\\"]\\n+    }\\n+  ],\\n+  \\\"planner_handoff\\\": [\\\"Restore emit_tick loop execution\\\"]\\n+}\\n*** End Patch\",\"rationale\":\"Write the ranked diagnostics report after collecting evidence from logs and code.\"}".to_string()
         }
 
         (AgentPromptKind::Executor, ToolPromptKind::RunCommand) => {
-            "   {\"action\":\"run_command\",\"cmd\":\"cargo check -p some-crate\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Validate the target crate after a change.\"}\n   {\"action\":\"run_command\",\"cmd\":\"rg -n 'fn foo' canon-utils/some-crate/src/\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Search the codebase for the relevant symbol before editing.\"}\n   ⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE."
+            format!("   {{\"action\":\"run_command\",\"cmd\":\"cargo check -p some-crate\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Validate the target crate after a change.\"}}\n   {{\"action\":\"run_command\",\"cmd\":\"rg -n 'fn foo' canon-utils/some-crate/src/\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Search the codebase for the relevant symbol before editing.\"}}\n{RUN_COMMAND_FOOTER}")
         }
         (AgentPromptKind::Planner, ToolPromptKind::RunCommand) => {
-            "   {\"action\":\"run_command\",\"cmd\":\"rg -n 'fn foo'\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Search for implementation details needed to expand the plan accurately.\"}\n   ⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE."
+            format!("   {{\"action\":\"run_command\",\"cmd\":\"rg -n 'fn foo'\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Search for implementation details needed to expand the plan accurately.\"}}\n{RUN_COMMAND_FOOTER}")
         }
         (AgentPromptKind::Verifier, ToolPromptKind::RunCommand) => {
-            "   {\"action\":\"run_command\",\"cmd\":\"cargo check -p some-crate\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Validate the crate implicated by the completed task.\"}\n   {\"action\":\"run_command\",\"cmd\":\"cargo test -q --workspace\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Verify the claimed completion does not break workspace tests.\"}\n   {\"action\":\"run_command\",\"cmd\":\"rg -n 'fn foo'\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Find the implementation or call sites mentioned by the completed task.\"}\n   ⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE."
+            format!("   {{\"action\":\"run_command\",\"cmd\":\"cargo check -p some-crate\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Validate the crate implicated by the completed task.\"}}\n   {{\"action\":\"run_command\",\"cmd\":\"cargo test -q --workspace\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Verify the claimed completion does not break workspace tests.\"}}\n   {{\"action\":\"run_command\",\"cmd\":\"rg -n 'fn foo'\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Find the implementation or call sites mentioned by the completed task.\"}}\n{RUN_COMMAND_FOOTER}")
         }
         (AgentPromptKind::Diagnostics, ToolPromptKind::RunCommand) => {
-            "   {\"action\":\"run_command\",\"cmd\":\"rg -n \\\"invariant|panic|TODO|unreachable!|assert!\\\" canon-utils state\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Search the codebase and state for likely failure markers.\"}\n   {\"action\":\"run_command\",\"cmd\":\"cargo check --workspace\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Detect compiler-visible inconsistencies that belong in diagnostics.\"}\n   ⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE."
+            format!("   {{\"action\":\"run_command\",\"cmd\":\"rg -n \\\"invariant|panic|TODO|unreachable!|assert!\\\" canon-utils state\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Search the codebase and state for likely failure markers.\"}}\n   {{\"action\":\"run_command\",\"cmd\":\"cargo check --workspace\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Detect compiler-visible inconsistencies that belong in diagnostics.\"}}\n{RUN_COMMAND_FOOTER}")
         }
 
         (AgentPromptKind::Executor, ToolPromptKind::Python) => {
-            "   {\"action\":\"python\",\"code\":\"from pathlib import Path\\nprint(len(list(Path('canon-utils').glob('**/*.rs'))))\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Use Python for structured workspace analysis.\"}\n   ⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE."
+            format!(
+                "   {{\"action\":\"python\",\"code\":\"from pathlib import Path\\nprint(len(list(Path('canon-utils').glob('**/*.rs'))))\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Use Python for structured workspace analysis.\"}}\n{PYTHON_FOOTER}"
+            )
         }
         (AgentPromptKind::Planner, ToolPromptKind::Python) => {
-            "   {\"action\":\"python\",\"code\":\"from pathlib import Path\\nprint(sum(1 for _ in Path('canon-utils').glob('**/*.rs')))\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Use Python to gather structured planning context from the workspace.\"}\n   ⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE."
+            format!(
+                "   {{\"action\":\"python\",\"code\":\"from pathlib import Path\\nprint(sum(1 for _ in Path('canon-utils').glob('**/*.rs')))\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Use Python to gather structured planning context from the workspace.\"}}\n{PYTHON_FOOTER}"
+            )
         }
         (AgentPromptKind::Verifier, ToolPromptKind::Python) => {
-            "   {\"action\":\"python\",\"code\":\"from pathlib import Path\\nprint(Path('SPEC.md').exists())\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Use Python when structured verification logic is easier than shell commands.\"}\n   ⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE."
+            format!(
+                "   {{\"action\":\"python\",\"code\":\"from pathlib import Path\\nprint(Path('SPEC.md').exists())\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Use Python when structured verification logic is easier than shell commands.\"}}\n{PYTHON_FOOTER}"
+            )
         }
         (AgentPromptKind::Diagnostics, ToolPromptKind::Python) => {
-            "   {\"action\":\"python\",\"code\":\"from pathlib import Path\\nroot = Path('/workspace/ai_sandbox/canon/state/event_log/event.tlog.d')\\nfor path in sorted(root.glob('*.log')):\\n    print(path.name, path.stat().st_size)\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Analyze the event-source logs to find failure signals and inconsistencies.\"}\n   ⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE."
+            format!(
+                "   {{\"action\":\"python\",\"code\":\"from pathlib import Path\\nroot = Path('/workspace/ai_sandbox/canon/state/event_log/event.tlog.d')\\nfor path in sorted(root.glob('*.log')):\\n    print(path.name, path.stat().st_size)\",\"cwd\":\"/workspace/ai_sandbox/canon\",\"rationale\":\"Analyze the event-source logs to find failure signals and inconsistencies.\"}}\n{PYTHON_FOOTER}"
+            )
         }
         (AgentPromptKind::Executor, ToolPromptKind::CargoTest)
         | (AgentPromptKind::Planner, ToolPromptKind::CargoTest)
         | (AgentPromptKind::Verifier, ToolPromptKind::CargoTest)
         | (AgentPromptKind::Diagnostics, ToolPromptKind::CargoTest) => {
-            "   {\"action\":\"cargo_test\",\"crate\":\"canon-runtime\",\"test\":\"some_test_name\",\"rationale\":\"Run the exact failing test using the harness-style command.\"}"
+            "   {\"action\":\"cargo_test\",\"crate\":\"canon-runtime\",\"test\":\"some_test_name\",\"rationale\":\"Run the exact failing test using the harness-style command.\"}".to_string()
         }
 
         (_, ToolPromptKind::Message) => {
-            "   {\"action\":\"message\",\"from\":\"executor\",\"to\":\"verifier\",\"type\":\"handoff\",\"status\":\"complete\",\"payload\":{\"summary\":\"brief evidence summary\",\"artifacts\":[\"path/to/file.rs\"]},\"rationale\":\"Execution work is complete and the verifier now has enough evidence to judge it.\"}\n   {\"action\":\"message\",\"from\":\"executor\",\"to\":\"planner\",\"type\":\"blocker\",\"status\":\"blocked\",\"observation\":\"Describe the blocker.\",\"rationale\":\"Explain why progress is impossible.\",\"payload\":{\"summary\":\"Short blocker summary\",\"blocker\":\"Root cause\",\"evidence\":\"Concrete error text\",\"required_action\":\"What must be done to unblock\",\"severity\":\"error\"}}\n   Allowed roles: executor|planner|verifier|diagnostics. Allowed types: handoff|result|verification|failure|blocker|plan|diagnostics. Allowed status: complete|in_progress|failed|verified|ready|blocked.\n   ⚠ message with status=complete is REJECTED if build or tests fail — fix all errors first."
+            "   {\"action\":\"message\",\"from\":\"executor\",\"to\":\"verifier\",\"type\":\"handoff\",\"status\":\"complete\",\"payload\":{\"summary\":\"brief evidence summary\",\"artifacts\":[\"path/to/file.rs\"]},\"rationale\":\"Execution work is complete and the verifier now has enough evidence to judge it.\"}\n   {\"action\":\"message\",\"from\":\"executor\",\"to\":\"planner\",\"type\":\"blocker\",\"status\":\"blocked\",\"observation\":\"Describe the blocker.\",\"rationale\":\"Explain why progress is impossible.\",\"payload\":{\"summary\":\"Short blocker summary\",\"blocker\":\"Root cause\",\"evidence\":\"Concrete error text\",\"required_action\":\"What must be done to unblock\",\"severity\":\"error\"}}\n   Allowed roles: executor|planner|verifier|diagnostics. Allowed types: handoff|result|verification|failure|blocker|plan|diagnostics. Allowed status: complete|in_progress|failed|verified|ready|blocked.\n   ⚠ message with status=complete is REJECTED if build or tests fail — fix all errors first.".to_string()
         }
     }
 }
@@ -299,90 +314,115 @@ const PLANNER_PROCESS: &str = "━━━ PLANNING PROCESS ━━━━━━━�
 
 const DIAGNOSTICS_PROCESS: &str = "━━━ DIAGNOSTICS PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nGather evidence from the event logs, `VIOLATIONS.json`, and the current codebase, then write DIAGNOSTICS.json using the enums in canon-mini-agent/src/reports.rs.\nRules:\n- Always inspect /workspace/ai_sandbox/canon/state/event_log/event.tlog.d on every invocation.\n- Use the `python` action for structured analysis of event logs and project state.\n- Only modify DIAGNOSTICS.json.\n- Rank issues by impact on correctness, convergence, and repairability.\n- Explicitly check whether routing/control-flow still depends on `scheduler_len`, `planned_pending`, or other local queue mirrors instead of `SemanticStateSummary`.\n- Prioritize diagnostics that identify state-authority drift, synthetic dispatch bypasses, and queue-driven control decisions.\n- Before trusting a trace file like /tmp/runtime.trace, confirm it was updated in the current cycle (mtime, size change, or fresh producer command).\n- Treat empty `rg` / `grep` results on traces as ambiguous: no match, stale file, or incomplete write are all possible.\n- Prefer latest event-log segments under state/event_log/event.tlog.d over ad-hoc temp traces when they disagree.";
 
+const EXECUTOR_HANDOFF_BULLETS: &[&str] = &[
+    "files changed",
+    "commands run",
+    "outcomes / failing checks",
+    "remaining uncertainty or blockers",
+];
+
+const EXECUTOR_PREFIX: &str = "━━━ EVIDENCE HANDOFF ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nAfter completing each task or sub-task from your lane plan, do NOT update `SPEC.md`, `PLAN.json`, or any lane plan yourself.\nInstead, use a `message` action and report verifier-facing evidence in `message.payload`:";
+
+const EXECUTION_DISCIPLINE_BULLETS: &[&str] = &[
+    "Prefer tasks explicitly marked ready / highest priority by the planner.",
+    "Do not skip ahead to lower-priority or blocked tasks unless the current ready task is impossible and you have concrete evidence.",
+    "Hard cap: after 5 actions you MUST hand off to the planner via `message` (handoff or blocker). The router enforces this.",
+    "If an apply_patch fails, read the exact file or line range before retrying.",
+    "Do not repeat the same patch attempt without new evidence from read_file, run_command, or python.",
+    "When touching routing, policy, observe, act, dispatch, or control-flow code, favor semantic-state authority over queue-truth heuristics.",
+    "Use MIR and HIR analysis to derive call graph, CFG, reachability, and dataflow when diagnosing bugs or proving fixes.",
+    "If a task conflicts with the canonical law above, execute the canonical law and report the conflict in `message.payload` so planner/verifier can update plan truth.",
+];
+
+fn format_bullets(header: &str, bullets: &[&str], suffix: Option<&str>) -> String {
+    let mut out = String::from(header);
+    for bullet in bullets {
+        out.push_str("- ");
+        out.push_str(bullet);
+        out.push('\n');
+    }
+    if let Some(tail) = suffix {
+        out.push('\n');
+        out.push_str(tail);
+    }
+    out.trim_end().to_string()
+}
+
+fn execution_discipline() -> String {
+    format_bullets("Execution discipline:\n", EXECUTION_DISCIPLINE_BULLETS, None)
+}
+
+const VERIFIER_RULES: &[&str] = &[
+    "- Be critical and thorough — verify evidence, not just the claim.",
+    "- Do not mark anything verified unless you have read the actual code and run verification commands.",
+    "- You must run `run_command` (and `cargo_test` when relevant) to validate executor claims; do not accept evidence without running checks yourself.",
+    "- Run `cargo build --workspace` before completing the cycle; fix failures before `message` with status=complete.",
+    "- Only modify `PLAN.json` and `VIOLATIONS.json` — never edit `SPEC.md`, lane plans, or source files.",
+    "- Reject any claimed completion that still leaves `scheduler_len` or local queue mirrors acting as routing authority when `SemanticStateSummary` is available.",
+    "- When using `message`, set:",
+    "  - `from`: \"Verifier\"",
+    "  - `to`: \"Planner\"",
+    "  - `type`: \"verification\" or \"failure\"",
+    "  - `status`: \"verified\" or \"failed\"",
+    "  - `payload.summary`: string",
+    "  - `payload.verified_items` / `payload.unverified_items` / `payload.false_items` as needed",
+];
+
+const PLANNER_RULES: &[&str] = &[
+    "- Prefer `python` to update `PLAN.json` and lane plans; it is more reliable and efficient than `apply_patch` for structured JSON edits.",
+    "- `PLAN.json` and lane plans MUST be valid JSON following the PLAN/TASK protocol in `SPEC.md`.",
+    "- Only modify `PLAN.json` and lane plans under `PLANS/executor-<id>.json` — never edit source files or `SPEC.md`.",
+    "- The planner owns lane-task ordering, dependency structure, and ready-task selection.",
+    "- Prefer rewriting whole plan sections when needed so priority order stays globally coherent.",
+    "- Keep each executor's ready window small: 1-10 tasks maximum.",
+    "- Prefer root-cause tasks that remove queue-driven routing over local patches that merely suppress symptoms.",
+];
+
+const DIAGNOSTICS_RULES: &[&str] = &[
+    "- Always inspect /workspace/ai_sandbox/canon/state/event_log/event.tlog.d on every invocation.",
+    "- Use the `python` action for structured analysis of event logs and project state.",
+    "- Only modify DIAGNOSTICS.json.",
+    "- Rank issues by impact on correctness, convergence, and repairability.",
+    "- Explicitly check whether routing/control-flow still depends on `scheduler_len`, `planned_pending`, or other local queue mirrors instead of `SemanticStateSummary`.",
+    "- Prioritize diagnostics that identify state-authority drift, synthetic dispatch bypasses, and queue-driven control decisions.",
+    "- Before trusting a trace file like /tmp/runtime.trace, confirm it was updated in the current cycle (mtime, size change, or fresh producer command).",
+    "- Treat empty `rg` / `grep` results on traces as ambiguous: no match, stale file, or incomplete write are all possible.",
+    "- Prefer latest event-log segments under state/event_log/event.tlog.d over ad-hoc temp traces when they disagree.",
+];
+
+const EXECUTOR_RULES: &[&str] = &[
+    "- Always read a file before patching it.",
+    "- Use list_dir and read_file freely before assuming project state.",
+    "- Use run_command for cargo builds, tests, and shell discovery.",
+    "- If test output is truncated, re-run tests with `cargo test -- --nocapture 2>&1 | tail -n 200` and report the tail in `message.payload`.",
+    "- Run the runtime to confirm it works before completing the cycle. Use this exact command:",
+    "  `tmpdir=$(mktemp -d) && mkdir -p \"$tmpdir/event.tlog.d\" && CANON_EVENT_RUNTIME_LOG=\"$tmpdir/event_runtime.log\" timeout 12s target/debug/canon-runtime --tlog \"$tmpdir/event.tlog.d\" --once > /tmp/canon_runtime_check.out 2> /tmp/canon_runtime_check.err; status=$?; echo TMPDIR=\"$tmpdir\"; echo STATUS=\"$status\"; echo \"--- STDOUT ---\"; tail -n 50 /tmp/canon_runtime_check.out; echo \"--- STDERR ---\"; tail -n 100 /tmp/canon_runtime_check.err; echo \"--- FILES ---\"; find \"$tmpdir\" -maxdepth 2 -type f | sort`",
+    "  Report the command and outcome in `message.payload`.",
+    "- Use python for structured analysis when shell pipelines are awkward.",
+    "- Never operate outside /workspace/ai_sandbox/canon.",
+    "- Never modify `SPEC.md`, `PLAN.json`, any lane plan, `VIOLATIONS.json`, or `DIAGNOSTICS.json`.",
+    "- Never emit destructive commands (rm -rf, git reset --hard, git clean -f, etc.).",
+];
+
+fn executor_handoff() -> String {
+    format_bullets(
+        &format!("{EXECUTOR_PREFIX}\n"),
+        EXECUTOR_HANDOFF_BULLETS,
+        Some("Read `SPEC.md`, `PLAN.json`, and your assigned lane plan when needed for execution context, but leave planning-file mutation to planner."),
+    )
+}
+
 fn prompt_tail(kind: AgentPromptKind) -> String {
     match kind {
-        AgentPromptKind::Executor => format!(r#"━━━ EVIDENCE HANDOFF ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-After completing each task or sub-task from your lane plan, do NOT update `SPEC.md`, `PLAN.json`, or any lane plan yourself.
-Instead, use a `message` action and report verifier-facing evidence in `message.payload`:
-- files changed
-- commands run
-- outcomes / failing checks
-- remaining uncertainty or blockers
-
-Read `SPEC.md`, `PLAN.json`, and your assigned lane plan when needed for execution context, but leave planning-file mutation to planner.
-
-Execution discipline:
-- Prefer tasks explicitly marked ready / highest priority by the planner.
-- Do not skip ahead to lower-priority or blocked tasks unless the current ready task is impossible and you have concrete evidence.
-- Hard cap: after 5 actions you MUST hand off to the planner via `message` (handoff or blocker). The router enforces this.
-- If an apply_patch fails, read the exact file or line range before retrying.
-- Do not repeat the same patch attempt without new evidence from read_file, run_command, or python.
-- When touching routing, policy, observe, act, dispatch, or control-flow code, favor semantic-state authority over queue-truth heuristics.
-- Use MIR and HIR analysis to derive call graph, CFG, reachability, and dataflow when diagnosing bugs or proving fixes.
-- If a task conflicts with the canonical law above, execute the canonical law and report the conflict in `message.payload` so planner/verifier can update plan truth.
-- If blocked, emit a `message` with `type=blocker` and `status=blocked` to the Planner.
-
-━━━ RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-- Always read a file before patching it.
-- Use list_dir and read_file freely before assuming project state.
-- Use run_command for cargo builds, tests, and shell discovery.
-- If test output is truncated, re-run tests with `cargo test -- --nocapture 2>&1 | tail -n 200` and report the tail in `message.payload`.
-- Run the runtime to confirm it works before completing the cycle. Use this exact command:
-  `tmpdir=$(mktemp -d) && mkdir -p "$tmpdir/event.tlog.d" && CANON_EVENT_RUNTIME_LOG="$tmpdir/event_runtime.log" timeout 12s target/debug/canon-runtime --tlog "$tmpdir/event.tlog.d" --once > /tmp/canon_runtime_check.out 2> /tmp/canon_runtime_check.err; status=$?; echo TMPDIR="$tmpdir"; echo STATUS="$status"; echo "--- STDOUT ---"; tail -n 50 /tmp/canon_runtime_check.out; echo "--- STDERR ---"; tail -n 100 /tmp/canon_runtime_check.err; echo "--- FILES ---"; find "$tmpdir" -maxdepth 2 -type f | sort`
-  Report the command and outcome in `message.payload`.
-- Use python for structured analysis when shell pipelines are awkward.
-- Never operate outside /workspace/ai_sandbox/canon.
-- Never modify `SPEC.md`, `PLAN.json`, any lane plan, `VIOLATIONS.json`, or `DIAGNOSTICS.json`.
-- Never emit destructive commands (rm -rf, git reset --hard, git clean -f, etc.).
-{common}"#,
-            common=rules_common_footer(),
+        AgentPromptKind::Executor => format!(
+            "{}\n\n{}\n\n{}",
+            executor_handoff(),
+            execution_discipline(),
+            rules_section(EXECUTOR_RULES, Some("Planner"))
         ),
-        AgentPromptKind::Verifier => {
-            let rules = [
-                "- Be critical and thorough — verify evidence, not just the claim.",
-                "- Do not mark anything verified unless you have read the actual code and run verification commands.",
-                "- You must run `run_command` (and `cargo_test` when relevant) to validate executor claims; do not accept evidence without running checks yourself.",
-                "- Run `cargo build --workspace` before completing the cycle; fix failures before `message` with status=complete.",
-                "- Only modify `PLAN.json` and `VIOLATIONS.json` — never edit `SPEC.md`, lane plans, or source files.",
-                "- Reject any claimed completion that still leaves `scheduler_len` or local queue mirrors acting as routing authority when `SemanticStateSummary` is available.",
-                "- When using `message`, set:",
-                "  - `from`: \"Verifier\"",
-                "  - `to`: \"Planner\"",
-                "  - `type`: \"verification\" or \"failure\"",
-                "  - `status`: \"verified\" or \"failed\"",
-                "  - `payload.summary`: string",
-                "  - `payload.verified_items` / `payload.unverified_items` / `payload.false_items` as needed",
-            ];
-            format!("{}\n\n{}", VERIFIER_PROCESS, rules_section(&rules, Some("Planner")))
-        }
-        AgentPromptKind::Planner => {
-            let rules = [
-                "- Prefer `python` to update `PLAN.json` and lane plans; it is more reliable and efficient than `apply_patch` for structured JSON edits.",
-                "- `PLAN.json` and lane plans MUST be valid JSON following the PLAN/TASK protocol in `SPEC.md`.",
-                "- Only modify `PLAN.json` and lane plans under `PLANS/executor-<id>.json` — never edit source files or `SPEC.md`.",
-                "- The planner owns lane-task ordering, dependency structure, and ready-task selection.",
-                "- Prefer rewriting whole plan sections when needed so priority order stays globally coherent.",
-                "- Keep each executor's ready window small: 1-10 tasks maximum.",
-                "- Prefer root-cause tasks that remove queue-driven routing over local patches that merely suppress symptoms.",
-            ];
-            format!("{}\n\n{}", PLANNER_PROCESS, rules_section(&rules, Some("Diagnostics")))
-        }
-        AgentPromptKind::Diagnostics => {
-            let rules = [
-                "- Always inspect /workspace/ai_sandbox/canon/state/event_log/event.tlog.d on every invocation.",
-                "- Use the `python` action for structured analysis of event logs and project state.",
-                "- Only modify DIAGNOSTICS.json.",
-                "- Rank issues by impact on correctness, convergence, and repairability.",
-                "- Explicitly check whether routing/control-flow still depends on `scheduler_len`, `planned_pending`, or other local queue mirrors instead of `SemanticStateSummary`.",
-                "- Prioritize diagnostics that identify state-authority drift, synthetic dispatch bypasses, and queue-driven control decisions.",
-                "- Before trusting a trace file like /tmp/runtime.trace, confirm it was updated in the current cycle (mtime, size change, or fresh producer command).",
-                "- Treat empty `rg` / `grep` results on traces as ambiguous: no match, stale file, or incomplete write are all possible.",
-                "- Prefer latest event-log segments under state/event_log/event.tlog.d over ad-hoc temp traces when they disagree.",
-            ];
-            format!("{}\n\n{}", DIAGNOSTICS_PROCESS, rules_section(&rules, Some("Planner")))
-        }
+        AgentPromptKind::Verifier => format!("{}\n\n{}", VERIFIER_PROCESS, rules_section(VERIFIER_RULES, Some("Planner"))),
+        AgentPromptKind::Planner => format!("{}\n\n{}", PLANNER_PROCESS, rules_section(PLANNER_RULES, Some("Diagnostics"))),
+        AgentPromptKind::Diagnostics => format!("{}\n\n{}", DIAGNOSTICS_PROCESS, rules_section(DIAGNOSTICS_RULES, Some("Planner"))),
     }
 }
 
@@ -572,6 +612,63 @@ fn default_rationale(kind: &str) -> &'static str {
     }
 }
 
+enum MessageValidationMode {
+    Basic,
+    Strict,
+}
+
+fn validate_message_action(action: &Value, mode: MessageValidationMode) -> Result<()> {
+    let obj = action
+        .as_object()
+        .ok_or_else(|| anyhow!("action payload must be a JSON object"))?;
+    for field in ["from", "to", "type", "status"] {
+        obj.get(field)
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| anyhow!("message missing non-empty '{field}'"))?;
+    }
+    obj.get("payload")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| anyhow!("message missing object payload"))?;
+    if matches!(mode, MessageValidationMode::Basic) {
+        return Ok(());
+    }
+    let msg: ProtocolMessage = serde_json::from_value(action.clone())
+        .map_err(|e| anyhow!("message schema invalid: {e}"))?;
+    if matches!(msg.msg_type, MessageType::Blocker) || matches!(msg.status, MessageStatus::Blocked)
+    {
+        match msg.payload {
+            MessagePayload::Blocker(payload) => {
+                if payload.blocker.trim().is_empty()
+                    || payload.evidence.trim().is_empty()
+                    || payload.required_action.trim().is_empty()
+                {
+                    bail!("blocker payload fields must be non-empty strings");
+                }
+            }
+            _ => bail!("blocker messages must include payload fields: blocker, evidence, required_action"),
+        }
+    }
+    if let Some(severity) = obj.get("severity").and_then(|v| v.as_str()) {
+        let _ = serde_json::from_value::<crate::protocol::Severity>(Value::String(
+            severity.to_string(),
+        ))
+        .map_err(|_| anyhow!("message severity must be one of: info|warn|error|critical"))?;
+    }
+    if let Some(from_role) = obj.get("from_role") {
+        let _ = serde_json::from_value::<Role>(from_role.clone()).map_err(|_| {
+            anyhow!("from_role must be one of: executor|planner|verifier|diagnostics")
+        })?;
+    }
+    if let Some(to_role) = obj.get("to_role") {
+        let _ = serde_json::from_value::<Role>(to_role.clone()).map_err(|_| {
+            anyhow!("to_role must be one of: executor|planner|verifier|diagnostics")
+        })?;
+    }
+    Ok(())
+}
+
 pub(crate) fn normalize_action(action: &mut Value) -> Result<()> {
     let obj = action
         .as_object_mut()
@@ -613,16 +710,7 @@ pub(crate) fn normalize_action(action: &mut Value) -> Result<()> {
                 obj.insert(field.to_string(), Value::String(val.to_lowercase()));
             }
         }
-        for field in ["from", "to", "type", "status"] {
-            obj.get(field)
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .ok_or_else(|| anyhow!("message missing non-empty '{field}'"))?;
-        }
-        obj.get("payload")
-            .and_then(|v| v.as_object())
-            .ok_or_else(|| anyhow!("message missing object payload"))?;
+        validate_message_action(action, MessageValidationMode::Basic)?;
     }
     Ok(())
 }
@@ -652,50 +740,7 @@ pub(crate) fn validate_action(action: &Value) -> Result<()> {
         .ok_or_else(|| anyhow!("action missing non-empty 'rationale'"))?;
     let _ = (observation, rationale);
     if kind == "message" {
-        for field in ["from", "to", "type", "status"] {
-            obj.get(field)
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .ok_or_else(|| anyhow!("message missing non-empty '{field}'"))?;
-        }
-        obj.get("payload")
-            .and_then(|v| v.as_object())
-            .ok_or_else(|| anyhow!("message missing object payload"))?;
-        let msg: ProtocolMessage = serde_json::from_value(action.clone())
-            .map_err(|e| anyhow!("message schema invalid: {e}"))?;
-        let _ = msg;
-        if matches!(msg.msg_type, MessageType::Blocker)
-            || matches!(msg.status, MessageStatus::Blocked)
-        {
-            match msg.payload {
-                MessagePayload::Blocker(payload) => {
-                    if payload.blocker.trim().is_empty()
-                        || payload.evidence.trim().is_empty()
-                        || payload.required_action.trim().is_empty()
-                    {
-                        bail!("blocker payload fields must be non-empty strings");
-                    }
-                }
-                _ => bail!("blocker messages must include payload fields: blocker, evidence, required_action"),
-            }
-        }
-        if let Some(severity) = obj.get("severity").and_then(|v| v.as_str()) {
-            let _ = serde_json::from_value::<crate::protocol::Severity>(Value::String(
-                severity.to_string(),
-            ))
-            .map_err(|_| anyhow!("message severity must be one of: info|warn|error|critical"))?;
-        }
-        if let Some(from_role) = obj.get("from_role") {
-            let _ = serde_json::from_value::<Role>(from_role.clone()).map_err(|_| {
-                anyhow!("from_role must be one of: executor|planner|verifier|diagnostics")
-            })?;
-        }
-        if let Some(to_role) = obj.get("to_role") {
-            let _ = serde_json::from_value::<Role>(to_role.clone()).map_err(|_| {
-                anyhow!("to_role must be one of: executor|planner|verifier|diagnostics")
-            })?;
-        }
+        validate_message_action(action, MessageValidationMode::Strict)?;
     }
     Ok(())
 }
@@ -715,11 +760,16 @@ pub(crate) fn is_explicit_idle_action(action: &Value) -> bool {
 enum NextActionHint {
     TailOutputLog { path: String },
     GraphFollowups,
+    UseApplyPatch,
     ReuseRecent { action: String },
     ChooseAction { last_action: Option<String> },
 }
 
 fn derive_next_action_hint(result: &str, last_action: Option<&str>) -> NextActionHint {
+    let lowered = result.to_lowercase();
+    if lowered.contains("python write denied") || lowered.contains("permission denied") || lowered.contains("errno 13") {
+        return NextActionHint::UseApplyPatch;
+    }
     if result.contains("graph_probe ok") {
         return NextActionHint::GraphFollowups;
     }
@@ -744,6 +794,9 @@ fn next_action_hint_text(result: &str, last_action: Option<&str>) -> String {
         }
         NextActionHint::GraphFollowups => {
             "next_action_hint: run graph_call, graph_cfg, graph_reachability".to_string()
+        }
+        NextActionHint::UseApplyPatch => {
+            "next_action_hint: use apply_patch to update workspace files (PLAN.json / lane plans) if python cannot write.".to_string()
         }
         NextActionHint::ReuseRecent { action } => {
             format!("next_action_hint: reuse recent action `{action}` or choose one of: {all_actions}.")

@@ -357,6 +357,28 @@ pub(crate) fn append_message_log(
     append_action_log_record(&record)
 }
 
+pub(crate) fn log_message_event(
+    role: &str,
+    endpoint: &LlmEndpoint,
+    prompt_kind: &str,
+    step: usize,
+    command_id: &str,
+    event: &str,
+    payload: Value,
+) {
+    if let Err(err) = append_message_log(
+        role,
+        endpoint,
+        prompt_kind,
+        step,
+        command_id,
+        event,
+        payload,
+    ) {
+        eprintln!("[{role}] step={} action_log_error: {err}", step);
+    }
+}
+
 pub(crate) fn append_action_log(role: &str, endpoint: &LlmEndpoint, _prompt_kind: &str, step: usize, command_id: &str, action: &Value) -> Result<()> {
     let observation = action_observation(action).unwrap_or("");
     let rationale = action_rationale(action).unwrap_or("");
@@ -387,6 +409,19 @@ pub(crate) fn append_action_log(role: &str, endpoint: &LlmEndpoint, _prompt_kind
     append_secondary_action_log(role, action)
 }
 
+pub(crate) fn log_action_event(
+    role: &str,
+    endpoint: &LlmEndpoint,
+    prompt_kind: &str,
+    step: usize,
+    command_id: &str,
+    action: &Value,
+) {
+    if let Err(e) = append_action_log(role, endpoint, prompt_kind, step, command_id, action) {
+        eprintln!("[{role}] step={} action_log_error: {e}", step);
+    }
+}
+
 pub(crate) fn append_action_result_log(
     role: &str,
     endpoint: &LlmEndpoint,
@@ -415,6 +450,30 @@ pub(crate) fn append_action_result_log(
     );
     inject_action_fields(&mut record, action);
     append_action_log_record(&record)
+}
+
+pub(crate) fn log_action_result(
+    role: &str,
+    endpoint: &LlmEndpoint,
+    prompt_kind: &str,
+    step: usize,
+    command_id: &str,
+    action: &Value,
+    success: bool,
+    output: &str,
+) {
+    if let Err(e) = append_action_result_log(
+        role,
+        endpoint,
+        prompt_kind,
+        step,
+        command_id,
+        action,
+        success,
+        output,
+    ) {
+        eprintln!("[{role}] step={} action_result_log_error: {e}", step);
+    }
 }
 
 pub(crate) fn append_llm_completion_log(

@@ -30,6 +30,7 @@ use crate::invalid_action::{
     auto_fill_message_fields, build_invalid_action_feedback, corrective_invalid_action_prompt,
     default_message_route, expected_message_format,
 };
+use crate::state_space::{decide_bootstrap_phase, decide_resume_phase, CargoTestGate};
 use crate::constants::{
     DEFAULT_RESPONSE_TIMEOUT_SECS, DIAGNOSTICS_FILE_PATH, ENDPOINT_SPECS, INVARIANTS_FILE, MASTER_PLAN_FILE, MAX_SNIPPET,
     EXECUTOR_STEP_LIMIT, MAX_STEPS, OBJECTIVES_FILE, ROLE_TIMEOUT_SECS, SPEC_FILE, VIOLATIONS_FILE, WORKSPACE, WS_PORT_CANDIDATES,
@@ -114,27 +115,6 @@ fn load_cargo_test_failures(workspace: &Path) -> String {
     summarize_cargo_test_failures(&raw)
 }
 
-fn extract_progress_path_from_result(result: &str) -> Option<String> {
-    for line in result.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("progress_path:") {
-            let path = rest.trim();
-            if !path.is_empty() {
-                return Some(path.to_string());
-            }
-        }
-        if let Some(idx) = trimmed.find("output_log=") {
-            let mut path = trimmed[idx + "output_log=".len()..].trim();
-            if let Some(end) = path.find(' ') {
-                path = &path[..end];
-            }
-            if !path.is_empty() {
-                return Some(path.to_string());
-            }
-        }
-    }
-    None
-}
 
 fn plan_diff(old_text: &str, new_text: &str, max_lines: usize) -> String {
     if old_text.is_empty() {
@@ -1186,7 +1166,7 @@ async fn run_agent(
     #[allow(unused_assignments)]
     let mut last_error: Option<String> = None;
     let mut reaction_only_streak: usize = 0;
-    let mut require_tail_path: Option<String> = None;
+    let mut cargo_test_gate = CargoTestGate::new();
     let task_context = initial_prompt.clone();
     let mut diagnostics_eventlog_python_done = false;
     let mut idle_streak = 0usize;
@@ -1355,13 +1335,8 @@ async fn run_agent(
         let kind = action.get("action").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
 
         if kind == "run_command" {
-            if let Some(path) = require_tail_path.as_ref() {
-                if let Some(cmd) = action.get("cmd").and_then(|v| v.as_str()) {
-                    if cmd.contains(path) && cmd.contains("tail") {
-                        require_tail_path = None;
-                    }
-                }
-            }
+            let cmd = action.get("cmd").and_then(|v| v.as_str());
+            cargo_test_gate.note_action(&kind, cmd);
         }
         if action.get("action").and_then(|v| v.as_str()) != Some("message")
             && enforce_executor_step_limit(role, total_steps, &mut error_streak, &mut last_result)
@@ -1369,18 +1344,11 @@ async fn run_agent(
             step += 1;
             continue;
         }
-        if kind == "message" {
-            if let Some(path) = require_tail_path.as_ref() {
-                let msg = format!(
-                    "Detached cargo test output must be inspected before sending a message. Run:\n```json\n{{\n  \"action\": \"run_command\",\n  \"cmd\": \"tail -n 200 {}\",\n  \"cwd\": \"{}\",\n  \"observation\": \"Inspect live cargo test output.\",\n  \"rationale\": \"Detached cargo test output is in the log file; tail it for progress and failures.\"\n}}\n```\nReturn exactly one action.",
-                    path,
-                    WORKSPACE
-                );
-                error_streak = error_streak.saturating_add(1);
-                last_result = Some(msg);
-                step += 1;
-                continue;
-            }
+        if let Some(msg) = cargo_test_gate.message_blocker_if_needed(&kind, WORKSPACE) {
+            error_streak = error_streak.saturating_add(1);
+            last_result = Some(msg);
+            step += 1;
+            continue;
         }
 
         reaction_only_streak = 0;
@@ -1439,9 +1407,7 @@ async fn run_agent(
                 return Ok(reason);
             }
             (false, out) => {
-                if kind == "cargo_test" && out.contains("note: cargo test detached") {
-                    require_tail_path = extract_progress_path_from_result(&out);
-                }
+                cargo_test_gate.note_result(&kind, &out);
                 last_result = Some(out);
             }
         }
@@ -2127,18 +2093,15 @@ pub async fn run() -> Result<()> {
             resume_verifier_items = checkpoint.verifier_pending_results;
             current_phase = checkpoint.phase;
             current_phase_lane = checkpoint.phase_lane;
-            scheduled_phase = Some(current_phase.clone());
-            if current_phase == "planner" {
-                dispatch_state.planner_pending = true;
-            }
-            if current_phase == "diagnostics" {
-                dispatch_state.diagnostics_pending = true;
-            }
-            if current_phase == "verifier" && resume_verifier_items.is_empty() {
-                // No verifier work to resume; route through planner to avoid executor-only resume.
-                dispatch_state.planner_pending = true;
-                scheduled_phase = Some("planner".to_string());
-            }
+            let resume_decision = decide_resume_phase(
+                &current_phase,
+                !resume_verifier_items.is_empty(),
+                dispatch_state.planner_pending,
+                dispatch_state.diagnostics_pending,
+            );
+            scheduled_phase = resume_decision.scheduled_phase;
+            dispatch_state.planner_pending = resume_decision.planner_pending;
+            dispatch_state.diagnostics_pending = resume_decision.diagnostics_pending;
             // Drop in-flight submit state on resume: tabs/acks are stale when URLs rotate.
             dispatch_state.submitted_turns.clear();
             dispatch_state.executor_submit_inflight.clear();
@@ -2213,16 +2176,18 @@ pub async fn run() -> Result<()> {
             apply_wake_flags(agent_state_dir, &mut dispatch_state, &mut scheduled_phase);
 
             if scheduled_phase.is_none() && current_phase == "bootstrap" {
-                current_phase = start_role.to_string();
-                eprintln!(
-                    "[orchestrate] bootstrap_start_role: role={} scheduled_phase=None",
-                    current_phase
-                );
-                if current_phase == "planner" {
-                    dispatch_state.planner_pending = true;
-                }
-                if current_phase == "diagnostics" {
-                    dispatch_state.diagnostics_pending = true;
+                if let Some(phase) = decide_bootstrap_phase(start_role) {
+                    current_phase = phase;
+                    eprintln!(
+                        "[orchestrate] bootstrap_start_role: role={} scheduled_phase=None",
+                        current_phase
+                    );
+                    if current_phase == "planner" {
+                        dispatch_state.planner_pending = true;
+                    }
+                    if current_phase == "diagnostics" {
+                        dispatch_state.diagnostics_pending = true;
+                    }
                 }
             }
 

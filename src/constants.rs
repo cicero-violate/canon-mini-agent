@@ -14,7 +14,13 @@ pub const EXECUTOR_STEP_LIMIT: usize = 5;
 pub const MAX_FULL_READ_LINES: usize = 300;
 pub const MAX_SNIPPET: usize = 20_000;
 pub const DEFAULT_RESPONSE_TIMEOUT_SECS: u64 = 150;
-pub const ROLE_TIMEOUT_SECS: &[(&str, u64)] = &[("planner", 600), ("mini_planner", 600), ("verifier", 120), ("diagnostics", 120), ("executor", 30)];
+pub const ROLE_TIMEOUT_SECS: &[(&str, u64)] = &[
+    ("planner", 600),
+    ("mini_planner", 600),
+    ("verifier", 120),
+    ("diagnostics", 120),
+    ("executor", 30),
+];
 
 #[derive(Clone, Copy)]
 pub struct EndpointSpec {
@@ -46,8 +52,8 @@ pub const ENDPOINT_SPECS: &[EndpointSpec] = &[
         role_markdown: "builtin:planner",
         urls: &[
             "https://chatgpt.com/gg/69d12735ff8081a3ad8aab20b4c4e10a",
-            "https://chatgpt.com/gg/69ca70d1a4208199a3d1c4c77e87c147",
-            "https://chatgpt.com/gg/69c265cd2274819690fc291ef716524e",
+            // "https://chatgpt.com/gg/69ca70d1a4208199a3d1c4c77e87c147",
+            // "https://chatgpt.com/gg/69c265cd2274819690fc291ef716524e",
         ],
         stateful: true,
         max_tabs: 1,
@@ -59,7 +65,7 @@ pub const ENDPOINT_SPECS: &[EndpointSpec] = &[
         urls: &[
             // "https://chatgpt.com/gg/69d1266e0a288198bb7b2f150a669dd7",
             "https://chatgpt.com/gg/69caa6e708108198b02c2d2eaea30118",
-            "https://chatgpt.com/gg/69c265cd2274819690fc291ef716524e",
+            // "https://chatgpt.com/gg/69c265cd2274819690fc291ef716524e",
         ],
         stateful: true,
         max_tabs: 1,
@@ -68,7 +74,11 @@ pub const ENDPOINT_SPECS: &[EndpointSpec] = &[
         id: "executor_pool",
         role: "executor",
         role_markdown: "builtin:planner",
-        urls: &["https://chatgpt.com/gg/69d126d34dc4819d8de9cba1b209d14c", "https://chatgpt.com/gg/69ab7b06a5a88196bf33966df6feee02", "https://chatgpt.com/gg/69ca500acd888199a32b90339c82fa31"],
+        urls: &[
+            "https://chatgpt.com/gg/69d126d34dc4819d8de9cba1b209d14c",
+            "https://chatgpt.com/gg/69ab7b06a5a88196bf33966df6feee02",
+            "https://chatgpt.com/gg/69ca500acd888199a32b90339c82fa31",
+        ],
         stateful: true,
         max_tabs: 2,
     },

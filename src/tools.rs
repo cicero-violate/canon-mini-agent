@@ -15,7 +15,7 @@ use crate::constants::{
     diagnostics_file, MASTER_PLAN_FILE, MAX_FULL_READ_LINES, MAX_SNIPPET, SPEC_FILE,
     VIOLATIONS_FILE, WORKSPACE,
 };
-use crate::logging::{append_action_log, append_action_result_log};
+use crate::logging::{log_action_event, log_action_result};
 use crate::prompts::truncate;
 
 /// Extract the first file path touched by the patch (*** Update File: / *** Add File:).
@@ -145,7 +145,7 @@ fn ensure_graph_artifact(
 }
 
 fn read_first_lines(path: &Path, max_lines: usize, max_bytes: usize) -> Result<String> {
-    let content = fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
+    let content = ctx_read(path)?;
     let mut out = String::new();
     for (idx, line) in content.lines().enumerate() {
         if idx >= max_lines || out.len() >= max_bytes {
@@ -158,7 +158,7 @@ fn read_first_lines(path: &Path, max_lines: usize, max_bytes: usize) -> Result<S
 }
 
 fn read_json_report(path: &Path, max_bytes: usize) -> Result<String> {
-    let content = fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
+    let content = ctx_read(path)?;
     let trimmed = truncate(&content, max_bytes);
     Ok(trimmed.to_string())
 }
@@ -264,24 +264,8 @@ fn parse_cargo_test_failures(out: &str) -> Value {
     Value::Object(payload)
 }
 
-fn failure_block_from_json(failures_json: &Value) -> String {
-    let Some(block) = failures_json.get("failure_block").and_then(|v| v.as_array()) else {
-        return "no failure lines captured".to_string();
-    };
-    let lines: Vec<String> = block
-        .iter()
-        .filter_map(|v| v.as_str())
-        .map(|s| s.to_string())
-        .collect();
-    if lines.is_empty() {
-        "no failure lines captured".to_string()
-    } else {
-        lines.join("\n")
-    }
-}
-
 fn load_graph_symbols(graph_json: &Path) -> Result<std::collections::HashMap<u32, (String, String)>> {
-    let content = fs::read_to_string(graph_json).with_context(|| format!("failed to read {}", graph_json.display()))?;
+    let content = ctx_read(graph_json)?;
     let value: Value = serde_json::from_str(&content)?;
     let mut out = std::collections::HashMap::new();
     let nodes = value.get("nodes").and_then(|v| v.as_array()).cloned().unwrap_or_default();
@@ -298,7 +282,7 @@ fn load_graph_symbols(graph_json: &Path) -> Result<std::collections::HashMap<u32
 }
 
 fn load_nodes_symbols(nodes_csv: &Path) -> Result<std::collections::HashMap<u32, (String, String)>> {
-    let content = fs::read_to_string(nodes_csv).with_context(|| format!("failed to read {}", nodes_csv.display()))?;
+    let content = ctx_read(nodes_csv)?;
     let mut out = std::collections::HashMap::new();
     for (idx, line) in content.lines().enumerate() {
         if idx == 0 {
@@ -603,6 +587,549 @@ fn exec_read_file(
     }
 }
 
+fn handle_message_action(role: &str, step: usize, action: &Value) -> Result<(bool, String)> {
+    let status = action.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    let payload = action.get("payload").cloned().unwrap_or_else(|| Value::Null);
+    let summary = payload
+        .get("summary")
+        .and_then(|v| v.as_str())
+        .unwrap_or("message accepted");
+    let full_message = serde_json::to_string_pretty(action).unwrap_or_else(|_| "{}".to_string());
+    let msg_type = action.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    let to_role = action.get("to").and_then(|v| v.as_str()).unwrap_or("");
+    let agent_state_dir = std::path::Path::new("/workspace/ai_sandbox/canon-mini-agent/agent_state");
+    let _ = std::fs::create_dir_all(agent_state_dir);
+
+    if role == "planner" && msg_type == "blocker" {
+        let evidence = payload
+            .get("evidence")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if !evidence.is_empty() {
+            let evidence_path = agent_state_dir.join("last_planner_blocker_evidence.txt");
+            if let Ok(prev) = std::fs::read_to_string(&evidence_path) {
+                if prev.trim() == evidence {
+                    return Ok((
+                        true,
+                        "planner blocker suppressed: evidence unchanged".to_string(),
+                    ));
+                }
+            }
+            let _ = std::fs::write(evidence_path, evidence);
+        }
+    }
+
+    if to_role.eq_ignore_ascii_case("verifier") {
+        let active_path = agent_state_dir.join("active_blocker_to_verifier.json");
+        if msg_type == "blocker" && status == "blocked" {
+            let blocker_state = json!({
+                "from": role,
+                "summary": summary,
+                "evidence": payload.get("evidence").and_then(|v| v.as_str()).unwrap_or(""),
+                "required_action": payload.get("required_action").and_then(|v| v.as_str()).unwrap_or(""),
+                "severity": payload.get("severity").and_then(|v| v.as_str()).unwrap_or(""),
+            });
+            let _ = std::fs::write(
+                &active_path,
+                serde_json::to_string_pretty(&blocker_state).unwrap_or_default(),
+            );
+        } else if active_path.exists() {
+            let _ = std::fs::remove_file(active_path);
+        }
+    }
+    persist_inbound_message(role, step, action, &full_message);
+    Ok((
+        true,
+        format!("{summary}\n\nmessage_action:\n{full_message}"),
+    ))
+}
+
+fn handle_list_dir_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+    let path = action
+        .get("path")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("list_dir missing 'path'"))?;
+    let out = exec_list_dir(workspace, path)?;
+    Ok((false, format!("list_dir {path}:\n{out}")))
+}
+
+fn handle_read_file_action(
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
+    let path = action
+        .get("path")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("read_file missing 'path'"))?;
+    let line = action
+        .get("line")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize);
+    let line_start = action
+        .get("line_start")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize);
+    let line_end = action
+        .get("line_end")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize);
+    let start = line_start.or(line);
+    let out = exec_read_file(workspace, path, start, line_end)?;
+    eprintln!("[{role}] step={} read_file path={path} bytes={}", step, out.len());
+    Ok((false, format!("read_file {path}:\n{out}")))
+}
+
+fn handle_apply_patch_action(
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
+    let patch = action
+        .get("patch")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("apply_patch missing 'patch'"))?;
+    if let Some(msg) = patch_scope_error(role, patch) {
+        return Ok((false, msg));
+    }
+    match apply_patch(patch, workspace) {
+        Ok(_) => {
+            eprintln!("[{role}] step={} apply_patch ok", step);
+            let check_result = patch_first_file(patch)
+                .and_then(|f| infer_crate_for_patch(workspace, f))
+                .map(|krate| {
+                    eprintln!("[{role}] step={} cargo check -p {krate}", step);
+                    exec_run_command(workspace, &format!("cargo check -p {krate}"), WORKSPACE)
+                        .unwrap_or_else(|e| (false, e.to_string()))
+                });
+            match check_result {
+                Some((ok, out)) => {
+                    let label = if ok {
+                        "cargo check ok"
+                    } else {
+                        "cargo check failed"
+                    };
+                    eprintln!("[{role}] step={} {label}", step);
+                    Ok((
+                        false,
+                        format!(
+                            "apply_patch ok\n\n{label}:\n{}",
+                            truncate(&out, MAX_SNIPPET)
+                        ),
+                    ))
+                }
+                None => Ok((false, "apply_patch ok".to_string())),
+            }
+        }
+        Err(e) => {
+            let err_str = e.to_string();
+            eprintln!("[{role}] step={} apply_patch failed: {err_str}", step);
+            let read_path =
+                extract_anchor_fail_path(&err_str).or_else(|| patch_first_file(patch).map(|s| s.to_string()));
+            let guidance = patch_failure_guidance(read_path.as_deref(), &err_str);
+            let mut msg = format!("apply_patch failed: {err_str}\n\n{guidance}");
+            if let Some(fp) = read_path {
+                if let Ok(content) = auto_read_for_patch_anchor(workspace, &fp, &err_str) {
+                    eprintln!("[{role}] step={} auto_read path={fp}", step);
+                    msg = format!("apply_patch failed: {err_str}\n\n{guidance}\n\n{content}");
+                }
+            }
+            Ok((false, msg))
+        }
+    }
+}
+
+fn handle_run_command_action(
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
+    let cmd = action
+        .get("cmd")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("run_command missing 'cmd'"))?;
+    let cwd = action.get("cwd").and_then(|v| v.as_str()).unwrap_or(WORKSPACE);
+    eprintln!("[{role}] step={} run_command cmd={cmd}", step);
+    let (success, out) = exec_run_command(workspace, cmd, cwd)?;
+    let label = if success {
+        "run_command ok"
+    } else {
+        "run_command failed"
+    };
+    eprintln!("[{role}] step={} {label} output_bytes={}", step, out.len());
+    Ok((false, format!("{label}:\n{}", truncate(&out, MAX_SNIPPET))))
+}
+
+fn handle_python_action(
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
+    let code = action
+        .get("code")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("python missing 'code'"))?;
+    let cwd = action.get("cwd").and_then(|v| v.as_str()).unwrap_or(WORKSPACE);
+    eprintln!("[{role}] step={} python bytes={}", step, code.len());
+    let (success, mut out) = exec_python(workspace, code, cwd)?;
+    if !success {
+        let lowered = out.to_lowercase();
+        let mut context = String::new();
+        if !PathBuf::from(cwd).starts_with(workspace) && !cwd.starts_with("/tmp") {
+            context.push_str("python cwd escapes workspace; set cwd to /workspace/ai_sandbox/canon or /tmp.\n");
+        }
+        if !context.is_empty() {
+            out.push('\n');
+            out.push_str(context.trim_end());
+        }
+        if lowered.contains("permission denied") || lowered.contains("errno 13") {
+            out.push_str(
+                "\npython write denied: verify the target path is under /workspace/ai_sandbox/canon and set cwd=/workspace/ai_sandbox/canon; if still blocked, use apply_patch for PLAN.json / lane plan edits.",
+            );
+        }
+    }
+    let label = if success { "python ok" } else { "python failed" };
+    eprintln!("[{role}] step={} {label} output_bytes={}", step, out.len());
+    Ok((false, format!("{label}:\n{}", truncate(&out, MAX_SNIPPET))))
+}
+
+fn handle_rustc_action(
+    role: &str,
+    step: usize,
+    action_kind: &str,
+    workspace: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
+    let crate_name = action
+        .get("crate")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("{action_kind} missing 'crate'"))?;
+    let mode = action
+        .get("mode")
+        .and_then(|v| v.as_str())
+        .unwrap_or(if action_kind == "rustc_hir" { "hir-tree" } else { "mir" });
+    let extra = action.get("extra").and_then(|v| v.as_str()).unwrap_or("");
+    let cmd = if extra.trim().is_empty() {
+        format!("cargo rustc -p {crate_name} -- -Zunpretty={mode}")
+    } else {
+        format!("cargo rustc -p {crate_name} -- -Zunpretty={mode} {extra}")
+    };
+    eprintln!("[{role}] step={} {action_kind} cmd={cmd}", step);
+    let (success, out) = exec_run_command(workspace, &cmd, WORKSPACE)?;
+    let label = if success {
+        format!("{action_kind} ok")
+    } else {
+        format!("{action_kind} failed")
+    };
+    eprintln!("[{role}] step={} {label} output_bytes={}", step, out.len());
+    Ok((false, format!("{label}:\n{}", truncate(&out, MAX_SNIPPET))))
+}
+
+fn handle_graph_call_cfg_action(
+    role: &str,
+    step: usize,
+    action_kind: &str,
+    workspace: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
+    let crate_name = action
+        .get("crate")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("{action_kind} missing 'crate'"))?;
+    let out_dir = action
+        .get("out_dir")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| default_graph_out_dir(workspace, crate_name));
+    let out_dir_str = out_dir.to_string_lossy();
+    let artifact_crate = ensure_graph_artifact(workspace, crate_name, role, step)?;
+    let bin_cmd = format!(
+        "cargo run -p canon-tools-analysis --bin graph_bin -- --workspace {} --crate {} --out {}",
+        WORKSPACE, artifact_crate, out_dir_str
+    );
+    eprintln!("[{role}] step={} graph_bin cmd={bin_cmd}", step);
+    let (bin_ok, bin_out) = exec_graph_command(workspace, &bin_cmd)?;
+    let bin_label = if bin_ok { "graph_bin ok" } else { "graph_bin failed" };
+    eprintln!("[{role}] step={} {bin_label} output_bytes={}", step, bin_out.len());
+    let label = if bin_ok {
+        format!("{action_kind} ok")
+    } else {
+        format!("{action_kind} failed")
+    };
+    let target_path = if action_kind == "graph_call" {
+        out_dir.join("graphs").join("callgraph.csv")
+    } else {
+        out_dir.join("graphs").join("cfg.csv")
+    };
+    let preview = if target_path.exists() {
+        read_first_lines(&target_path, 50, MAX_SNIPPET)?
+    } else {
+        String::new()
+    };
+    let mut symbol_preview = String::new();
+    let mut symbol_path = None;
+    if target_path.exists() {
+        let mut out_lines = Vec::new();
+        let content = fs::read_to_string(&target_path)?;
+        let mut lines = content.lines();
+        let header = lines.next().unwrap_or("");
+        let header_cols: Vec<&str> = header.split(',').collect();
+        let has_symbol_cols =
+            header_cols.iter().any(|c| *c == "caller_symbol" || *c == "callee_symbol");
+        let map = if !has_symbol_cols {
+            let graph_json = out_dir.join("graph").join("graph.json");
+            if graph_json.exists() {
+                Some(load_graph_symbols(&graph_json)?)
+            } else {
+                let nodes_csv = out_dir.join("graph").join("nodes.csv");
+                if nodes_csv.exists() {
+                    Some(load_nodes_symbols(&nodes_csv)?)
+                } else {
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let mut count = 0usize;
+        for line in lines {
+            if count >= 200 {
+                break;
+            }
+            let cols: Vec<&str> = line.split(',').collect();
+            if has_symbol_cols {
+                let caller_idx = header_cols.iter().position(|c| *c == "caller_symbol");
+                let callee_idx = header_cols.iter().position(|c| *c == "callee_symbol");
+                let caller = caller_idx
+                    .and_then(|i| cols.get(i))
+                    .map(|s| s.trim())
+                    .unwrap_or("");
+                let callee = callee_idx
+                    .and_then(|i| cols.get(i))
+                    .map(|s| s.trim())
+                    .unwrap_or("");
+                if !caller.is_empty() || !callee.is_empty() {
+                    out_lines.push(format!("{caller} -> {callee}"));
+                    count += 1;
+                    continue;
+                }
+            }
+            if cols.len() < 2 {
+                continue;
+            }
+            let src = cols[0].trim();
+            let dst = cols[1].trim();
+            if let Some(map) = map.as_ref() {
+                out_lines.push(format!("{} -> {}", symbol_label(map, src), symbol_label(map, dst)));
+            } else {
+                out_lines.push(format!("{src} -> {dst}"));
+            }
+            count += 1;
+        }
+        if !out_lines.is_empty() {
+            symbol_preview = out_lines.join("\n");
+            let fname = if action_kind == "graph_call" {
+                "callgraph.symbol.txt"
+            } else {
+                "cfg.symbol.txt"
+            };
+            let out_path = out_dir.join("graphs").join(fname);
+            if let Some(parent) = out_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::write(&out_path, format!("{}\n", symbol_preview))?;
+            symbol_path = Some(out_path);
+        }
+    }
+    let mut summary = format!(
+        "{label}\noutput_dir: {}\n{}",
+        out_dir_str,
+        target_path.display()
+    );
+    if !preview.is_empty() {
+        summary.push_str("\npreview:\n");
+        summary.push_str(&preview);
+    }
+    if let Some(path) = symbol_path {
+        summary.push_str(&format!("\nsymbol_edges: {}", path.display()));
+        if !symbol_preview.is_empty() {
+            summary.push_str("\nsymbol_preview:\n");
+            summary.push_str(&symbol_preview);
+        }
+    }
+    let mut full_out = String::new();
+    full_out.push_str(&format!("{bin_label}:\n{}\n", truncate(&bin_out, MAX_SNIPPET)));
+    Ok((false, format!("{summary}\n\nfull_output:\n{full_out}")))
+}
+
+fn handle_graph_reports_action(
+    role: &str,
+    step: usize,
+    action_kind: &str,
+    workspace: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
+    let crate_name = action
+        .get("crate")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("{action_kind} missing 'crate'"))?;
+    let tlog = action.get("tlog").and_then(|v| v.as_str());
+    let out_dir = action
+        .get("out_dir")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| default_graph_out_dir(workspace, crate_name));
+    let artifact_crate = ensure_graph_artifact(workspace, crate_name, role, step)?;
+    let out_dir_str = out_dir.to_string_lossy();
+    let crate_dir = report_crate_dir(&out_dir, crate_name);
+    let mut cmd = format!(
+        "cargo run -p canon-tools-analysis --bin graph_reports -- --workspace {} --crate {} --out {} --artifact",
+        WORKSPACE, artifact_crate, out_dir_str
+    );
+    if let Some(path) = tlog {
+        cmd.push_str(&format!(" --tlog {path}"));
+    }
+    eprintln!("[{role}] step={} {action_kind} cmd={cmd}", step);
+    let (success, out) = exec_graph_command(workspace, &cmd)?;
+    let label = if success {
+        format!("{action_kind} ok")
+    } else {
+        format!("{action_kind} failed")
+    };
+    let (report_path, report_label) = if action_kind == "graph_dataflow" {
+        (
+            crate_dir.join("metrics").join("dataflow_fanout_report.json"),
+            "dataflow_fanout_report.json",
+        )
+    } else {
+        let runtime_path = crate_dir.join("analysis").join("runtime_reachability_report.json");
+        if runtime_path.exists() {
+            (runtime_path, "runtime_reachability_report.json")
+        } else {
+            (
+                crate_dir.join("metrics").join("reachability_report.json"),
+                "reachability_report.json",
+            )
+        }
+    };
+    let report_preview = if report_path.exists() {
+        read_json_report(&report_path, MAX_SNIPPET)?
+    } else {
+        String::new()
+    };
+    let mut summary = format!(
+        "{label}\noutput_dir: {}\nreport: {}",
+        out_dir_str,
+        report_path.display()
+    );
+    if !report_preview.is_empty() {
+        summary.push_str("\nreport_preview:\n");
+        summary.push_str(&report_preview);
+    } else {
+        summary.push_str(&format!("\nreport_note: {} not found", report_label));
+    }
+    Ok((false, format!("{summary}\n\nfull_output:\n{}", truncate(&out, MAX_SNIPPET))))
+}
+
+fn handle_cargo_test_action(
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
+    let crate_name = action
+        .get("crate")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("cargo_test missing 'crate'"))?;
+    let test_name = action.get("test").and_then(|v| v.as_str());
+    let cmd = if let Some(test_name) = test_name {
+        format!(
+            "cargo test -p {} {} -- --exact --nocapture",
+            crate_name, test_name
+        )
+    } else {
+        format!("cargo test -p {} -- --nocapture", crate_name)
+    };
+    eprintln!("[{role}] step={} cargo_test cmd={}", step, cmd);
+    let (success, out) = exec_run_command(workspace, &cmd, WORKSPACE)?;
+    let label = if success { "cargo_test ok" } else { "cargo_test failed" };
+    eprintln!("[{role}] step={} {label} output_bytes={}", step, out.len());
+    let failures_json = parse_cargo_test_failures(&out);
+    let mut summary = format!("{label}");
+    let mut progress_path: Option<String> = None;
+    if let Some(line) = out.lines().find(|line| line.contains("output_log=")) {
+        if let Some(idx) = line.find("output_log=") {
+            let mut path = line[idx + "output_log=".len()..].trim();
+            if let Some(end) = path.find(' ') {
+                path = &path[..end];
+            }
+            if !path.is_empty() {
+                progress_path = Some(path.to_string());
+            }
+        }
+    }
+    if out.contains("detached cargo test") {
+        summary.push_str("\nnote: cargo test detached; see output_log for live results");
+    }
+    if let Some(arr) = failures_json.get("failed_tests").and_then(|v| v.as_array()) {
+        if !arr.is_empty() {
+            summary.push_str("\nfailed_tests:");
+            for name in arr {
+                if let Some(name) = name.as_str() {
+                    summary.push_str(&format!("\n- {}", name));
+                }
+            }
+        }
+    }
+    if let Some(arr) = failures_json.get("error_locations").and_then(|v| v.as_array()) {
+        if !arr.is_empty() {
+            summary.push_str("\nerror_locations:");
+            for loc in arr {
+                if let Some(loc) = loc.as_str() {
+                    summary.push_str(&format!("\n- {}", loc));
+                }
+            }
+        }
+    }
+    if let Some(hint) = failures_json.get("rerun_hint").and_then(|v| v.as_str()) {
+        if !hint.is_empty() {
+            summary.push_str(&format!("\nrerun_hint: {}", hint));
+        }
+    }
+    if let Some(arr) = failures_json.get("failure_block").and_then(|v| v.as_array()) {
+        if !arr.is_empty() {
+            summary.push_str("\nfailure_block:");
+            for line in arr {
+                if let Some(line) = line.as_str() {
+                    summary.push_str("\n");
+                    summary.push_str(line);
+                }
+            }
+        }
+    }
+    if let Some(path) = progress_path.as_ref() {
+        summary.push_str(&format!("\nprogress_path: {}", path));
+        let hint = format!(
+            "{{ \"action\": \"run_command\", \"cmd\": \"tail -n 200 {}\", \"cwd\": \"{}\", \"observation\": \"Inspect live cargo test output.\", \"rationale\": \"Detached cargo test output is in the log file; tail it for progress and failures.\" }}",
+            path,
+            WORKSPACE
+        );
+        summary.push_str("\nnext_action_hint:\n");
+        summary.push_str(&hint);
+    }
+    Ok((false, format!("{summary}\n\nfull_output:\n{}", truncate(&out, MAX_SNIPPET))))
+}
+
 fn shell_tokens(cmd: &str) -> Vec<&str> {
     cmd.split(|c: char| c.is_whitespace() || matches!(c, '|' | '&' | ';' | '(' | ')' | '<' | '>'))
         .filter(|part| !part.is_empty())
@@ -651,7 +1178,7 @@ fn spawn_detached_with_log(cmd: &str, cwd_path: &Path) -> Result<(u32, PathBuf)>
         .stdout(Stdio::from(stdout_file))
         .stderr(Stdio::from(stderr_file))
         .spawn()
-        .with_context(|| format!("failed to spawn: {cmd}"))?;
+        .with_context(|| ctx_spawn(cmd))?;
     Ok((child.id(), log_path))
 }
 
@@ -698,11 +1225,16 @@ fn exec_run_command(workspace: &Path, cmd: &str, cwd: &str) -> Result<(bool, Str
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .spawn()
-            .with_context(|| format!("failed to spawn: {cmd}"))?;
+            .with_context(|| ctx_spawn(cmd))?;
 
         Ok((true, format!("spawned pid={}", child.id())))
     } else {
-        let output = Command::new("/bin/bash").arg("-c").arg(cmd).current_dir(&cwd_path).output().with_context(|| format!("failed to spawn: {cmd}"))?;
+        let output = Command::new("/bin/bash")
+            .arg("-c")
+            .arg(cmd)
+            .current_dir(&cwd_path)
+            .output()
+            .with_context(|| ctx_spawn(cmd))?;
 
         let mut combined = String::from_utf8_lossy(&output.stdout).into_owned();
         if !output.stderr.is_empty() {
@@ -755,7 +1287,7 @@ fn exec_run_command_blocking_with_timeout(
         .arg(&wrapped_cmd)
         .current_dir(&cwd_path)
         .output()
-        .with_context(|| format!("failed to spawn: {wrapped_cmd}"))?;
+        .with_context(|| ctx_spawn(&wrapped_cmd))?;
     let mut combined = String::from_utf8_lossy(&output.stdout).into_owned();
     if !output.stderr.is_empty() {
         if !combined.is_empty() {
@@ -764,6 +1296,14 @@ fn exec_run_command_blocking_with_timeout(
         combined.push_str(&String::from_utf8_lossy(&output.stderr));
     }
     Ok((output.status.success(), combined))
+}
+
+fn ctx_read(path: &Path) -> Result<String> {
+    fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))
+}
+
+fn ctx_spawn(cmd: &str) -> String {
+    format!("failed to spawn: {cmd}")
 }
 
 fn exec_graph_command(workspace: &Path, cmd: &str) -> Result<(bool, String)> {
@@ -845,477 +1385,18 @@ fn execute_action(
         .unwrap_or("unknown")
         .to_string();
     tokio::task::block_in_place(|| match kind.as_str() {
-        "message" => {
-            let status = action.get("status").and_then(|v| v.as_str()).unwrap_or("");
-            let payload = action.get("payload").cloned().unwrap_or_else(|| Value::Null);
-            let summary = payload
-                .get("summary")
-                .and_then(|v| v.as_str())
-                .unwrap_or("message accepted");
-            let full_message = serde_json::to_string_pretty(action).unwrap_or_else(|_| "{}".to_string());
-            let msg_type = action.get("type").and_then(|v| v.as_str()).unwrap_or("");
-            let to_role = action.get("to").and_then(|v| v.as_str()).unwrap_or("");
-            let agent_state_dir = std::path::Path::new("/workspace/ai_sandbox/canon-mini-agent/agent_state");
-            let _ = std::fs::create_dir_all(agent_state_dir);
-
-            if role == "planner" && msg_type == "blocker" {
-                let evidence = payload
-                    .get("evidence")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .trim()
-                    .to_string();
-                if !evidence.is_empty() {
-                    let evidence_path = agent_state_dir.join("last_planner_blocker_evidence.txt");
-                    if let Ok(prev) = std::fs::read_to_string(&evidence_path) {
-                        if prev.trim() == evidence {
-                            return Ok((
-                                true,
-                                "planner blocker suppressed: evidence unchanged".to_string(),
-                            ));
-                        }
-                    }
-                    let _ = std::fs::write(evidence_path, evidence);
-                }
-            }
-
-            if to_role.eq_ignore_ascii_case("verifier") {
-                let active_path = agent_state_dir.join("active_blocker_to_verifier.json");
-                if msg_type == "blocker" && status == "blocked" {
-                    let blocker_state = json!({
-                        "from": role,
-                        "summary": summary,
-                        "evidence": payload.get("evidence").and_then(|v| v.as_str()).unwrap_or(""),
-                        "required_action": payload.get("required_action").and_then(|v| v.as_str()).unwrap_or(""),
-                        "severity": payload.get("severity").and_then(|v| v.as_str()).unwrap_or(""),
-                    });
-                    let _ = std::fs::write(
-                        &active_path,
-                        serde_json::to_string_pretty(&blocker_state).unwrap_or_default(),
-                    );
-                } else if active_path.exists() {
-                    let _ = std::fs::remove_file(active_path);
-                }
-            }
-            persist_inbound_message(role, step, action, &full_message);
-            Ok((
-                true,
-                format!("{summary}\n\nmessage_action:\n{full_message}"),
-            ))
-        }
-        "list_dir" => {
-            let path = action
-                .get("path")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("list_dir missing 'path'"))?;
-            let out = exec_list_dir(workspace, path)?;
-            Ok((false, format!("list_dir {path}:\n{out}")))
-        }
-        "read_file" => {
-            let path = action
-                .get("path")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("read_file missing 'path'"))?;
-            let line = action
-                .get("line")
-                .and_then(|v| v.as_u64())
-                .map(|n| n as usize);
-            let line_start = action
-                .get("line_start")
-                .and_then(|v| v.as_u64())
-                .map(|n| n as usize);
-            let line_end = action
-                .get("line_end")
-                .and_then(|v| v.as_u64())
-                .map(|n| n as usize);
-            let start = line_start.or(line);
-            let out = exec_read_file(workspace, path, start, line_end)?;
-            eprintln!("[{role}] step={} read_file path={path} bytes={}", step, out.len());
-            Ok((false, format!("read_file {path}:\n{out}")))
-        }
-        "apply_patch" => {
-            let patch = action
-                .get("patch")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("apply_patch missing 'patch'"))?;
-            if let Some(msg) = patch_scope_error(role, patch) {
-                Ok((false, msg))
-            } else {
-                match apply_patch(patch, workspace) {
-                    Ok(_) => {
-                        eprintln!("[{role}] step={} apply_patch ok", step);
-                        let check_result = patch_first_file(patch)
-                            .and_then(|f| infer_crate_for_patch(workspace, f))
-                            .map(|krate| {
-                                eprintln!("[{role}] step={} cargo check -p {krate}", step);
-                                exec_run_command(
-                                    workspace,
-                                    &format!("cargo check -p {krate}"),
-                                    WORKSPACE,
-                                )
-                                .unwrap_or_else(|e| (false, e.to_string()))
-                            });
-                        match check_result {
-                            Some((ok, out)) => {
-                                let label = if ok {
-                                    "cargo check ok"
-                                } else {
-                                    "cargo check failed"
-                                };
-                                eprintln!("[{role}] step={} {label}", step);
-                                Ok((
-                                    false,
-                                    format!(
-                                        "apply_patch ok\n\n{label}:\n{}",
-                                        truncate(&out, MAX_SNIPPET)
-                                    ),
-                                ))
-                            }
-                            None => Ok((false, "apply_patch ok".to_string())),
-                        }
-                    }
-                    Err(e) => {
-                        let err_str = e.to_string();
-                        eprintln!("[{role}] step={} apply_patch failed: {err_str}", step);
-                        let read_path = extract_anchor_fail_path(&err_str)
-                            .or_else(|| patch_first_file(patch).map(|s| s.to_string()));
-                        let guidance = patch_failure_guidance(read_path.as_deref(), &err_str);
-                        let mut msg = format!("apply_patch failed: {err_str}\n\n{guidance}");
-                        if let Some(fp) = read_path {
-                            if let Ok(content) = auto_read_for_patch_anchor(workspace, &fp, &err_str) {
-                                eprintln!("[{role}] step={} auto_read path={fp}", step);
-                                msg =
-                                    format!("apply_patch failed: {err_str}\n\n{guidance}\n\n{content}");
-                            }
-                        }
-                        Ok((false, msg))
-                    }
-                }
-            }
-        }
-        "run_command" => {
-            let cmd = action
-                .get("cmd")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("run_command missing 'cmd'"))?;
-            let cwd = action
-                .get("cwd")
-                .and_then(|v| v.as_str())
-                .unwrap_or(WORKSPACE);
-            eprintln!("[{role}] step={} run_command cmd={cmd}", step);
-            let (success, out) = exec_run_command(workspace, cmd, cwd)?;
-            let label = if success {
-                "run_command ok"
-            } else {
-                "run_command failed"
-            };
-            eprintln!("[{role}] step={} {label} output_bytes={}", step, out.len());
-            Ok((false, format!("{label}:\n{}", truncate(&out, MAX_SNIPPET))))
-        }
-        "python" => {
-            let code = action
-                .get("code")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("python missing 'code'"))?;
-            let cwd = action
-                .get("cwd")
-                .and_then(|v| v.as_str())
-                .unwrap_or(WORKSPACE);
-            eprintln!("[{role}] step={} python bytes={}", step, code.len());
-            let (success, out) = exec_python(workspace, code, cwd)?;
-            let label = if success { "python ok" } else { "python failed" };
-            eprintln!("[{role}] step={} {label} output_bytes={}", step, out.len());
-            Ok((false, format!("{label}:\n{}", truncate(&out, MAX_SNIPPET))))
-        }
-        k @ ("rustc_hir" | "rustc_mir") => {
-            let action_kind = k;
-            let crate_name = action
-                .get("crate")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("{kind} missing 'crate'", kind = action_kind))?;
-            let mode = action
-                .get("mode")
-                .and_then(|v| v.as_str())
-                .unwrap_or(if action_kind == "rustc_hir" { "hir-tree" } else { "mir" });
-            let extra = action
-                .get("extra")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let cmd = if extra.trim().is_empty() {
-                format!("cargo rustc -p {crate_name} -- -Zunpretty={mode}")
-            } else {
-                format!("cargo rustc -p {crate_name} -- -Zunpretty={mode} {extra}")
-            };
-            eprintln!("[{role}] step={} {action_kind} cmd={cmd}", step);
-            let (success, out) = exec_run_command(workspace, &cmd, WORKSPACE)?;
-            let label = if success {
-                format!("{action_kind} ok")
-            } else {
-                format!("{action_kind} failed")
-            };
-            eprintln!("[{role}] step={} {label} output_bytes={}", step, out.len());
-            Ok((false, format!("{label}:\n{}", truncate(&out, MAX_SNIPPET))))
-        }
-        k @ ("graph_call" | "graph_cfg") => {
-            let action_kind = k;
-            let crate_name = action
-                .get("crate")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("{kind} missing 'crate'", kind = action_kind))?;
-            let out_dir = action
-                .get("out_dir")
-                .and_then(|v| v.as_str())
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .map(PathBuf::from)
-                .unwrap_or_else(|| default_graph_out_dir(workspace, crate_name));
-            let out_dir_str = out_dir.to_string_lossy();
-            let artifact_crate = ensure_graph_artifact(workspace, crate_name, role, step)?;
-            let bin_cmd = format!(
-                "cargo run -p canon-tools-analysis --bin graph_bin -- --workspace {} --crate {} --out {}",
-                WORKSPACE, artifact_crate, out_dir_str
-            );
-            eprintln!("[{role}] step={} graph_bin cmd={bin_cmd}", step);
-            let (bin_ok, bin_out) = exec_graph_command(workspace, &bin_cmd)?;
-            let bin_label = if bin_ok { "graph_bin ok" } else { "graph_bin failed" };
-            eprintln!("[{role}] step={} {bin_label} output_bytes={}", step, bin_out.len());
-            let label = if bin_ok {
-                format!("{action_kind} ok")
-            } else {
-                format!("{action_kind} failed")
-            };
-            let target_path = if action_kind == "graph_call" {
-                out_dir.join("graphs").join("callgraph.csv")
-            } else {
-                out_dir.join("graphs").join("cfg.csv")
-            };
-            let preview = if target_path.exists() { read_first_lines(&target_path, 50, MAX_SNIPPET)? } else { String::new() };
-            let mut symbol_preview = String::new();
-            let mut symbol_path = None;
-            if target_path.exists() {
-                let mut out_lines = Vec::new();
-                let content = fs::read_to_string(&target_path)?;
-                let mut lines = content.lines();
-                let header = lines.next().unwrap_or("");
-                let header_cols: Vec<&str> = header.split(',').collect();
-                let has_symbol_cols = header_cols.iter().any(|c| *c == "caller_symbol" || *c == "callee_symbol");
-                let map = if !has_symbol_cols {
-                    let graph_json = out_dir.join("graph").join("graph.json");
-                    if graph_json.exists() {
-                        Some(load_graph_symbols(&graph_json)?)
-                    } else {
-                        let nodes_csv = out_dir.join("graph").join("nodes.csv");
-                        if nodes_csv.exists() {
-                            Some(load_nodes_symbols(&nodes_csv)?)
-                        } else {
-                            None
-                        }
-                    }
-                } else {
-                    None
-                };
-                let mut count = 0usize;
-                for line in lines {
-                    if count >= 200 {
-                        break;
-                    }
-                    let cols: Vec<&str> = line.split(',').collect();
-                    if has_symbol_cols {
-                        let caller_idx = header_cols.iter().position(|c| *c == "caller_symbol");
-                        let callee_idx = header_cols.iter().position(|c| *c == "callee_symbol");
-                        let caller = caller_idx.and_then(|i| cols.get(i)).map(|s| s.trim()).unwrap_or("");
-                        let callee = callee_idx.and_then(|i| cols.get(i)).map(|s| s.trim()).unwrap_or("");
-                        if !caller.is_empty() || !callee.is_empty() {
-                            out_lines.push(format!("{caller} -> {callee}"));
-                            count += 1;
-                            continue;
-                        }
-                    }
-                    if cols.len() < 2 {
-                        continue;
-                    }
-                    let src = cols[0].trim();
-                    let dst = cols[1].trim();
-                    if let Some(map) = map.as_ref() {
-                        out_lines.push(format!("{} -> {}", symbol_label(map, src), symbol_label(map, dst)));
-                    } else {
-                        out_lines.push(format!("{src} -> {dst}"));
-                    }
-                    count += 1;
-                }
-                if !out_lines.is_empty() {
-                    symbol_preview = out_lines.join("\n");
-                    let fname = if action_kind == "graph_call" { "callgraph.symbol.txt" } else { "cfg.symbol.txt" };
-                    let out_path = out_dir.join("graphs").join(fname);
-                    if let Some(parent) = out_path.parent() {
-                        fs::create_dir_all(parent)?;
-                    }
-                    fs::write(&out_path, format!("{}\n", symbol_preview))?;
-                    symbol_path = Some(out_path);
-                }
-            }
-            let mut summary = format!(
-                "{label}\noutput_dir: {}\n{}",
-                out_dir_str,
-                target_path.display()
-            );
-            if !preview.is_empty() {
-                summary.push_str("\npreview:\n");
-                summary.push_str(&preview);
-            }
-            if let Some(path) = symbol_path {
-                summary.push_str(&format!("\nsymbol_edges: {}", path.display()));
-                if !symbol_preview.is_empty() {
-                    summary.push_str("\nsymbol_preview:\n");
-                    summary.push_str(&symbol_preview);
-                }
-            }
-            let mut full_out = String::new();
-            full_out.push_str(&format!("{bin_label}:\n{}\n", truncate(&bin_out, MAX_SNIPPET)));
-            Ok((false, format!("{summary}\n\nfull_output:\n{full_out}")))
-        }
+        "message" => handle_message_action(role, step, action),
+        "list_dir" => handle_list_dir_action(workspace, action),
+        "read_file" => handle_read_file_action(role, step, workspace, action),
+        "apply_patch" => handle_apply_patch_action(role, step, workspace, action),
+        "run_command" => handle_run_command_action(role, step, workspace, action),
+        "python" => handle_python_action(role, step, workspace, action),
+        k @ ("rustc_hir" | "rustc_mir") => handle_rustc_action(role, step, k, workspace, action),
+        k @ ("graph_call" | "graph_cfg") => handle_graph_call_cfg_action(role, step, k, workspace, action),
         k @ ("graph_dataflow" | "graph_reachability") => {
-            let action_kind = k;
-            let crate_name = action
-                .get("crate")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("{kind} missing 'crate'", kind = action_kind))?;
-            let tlog = action.get("tlog").and_then(|v| v.as_str());
-            let out_dir = action
-                .get("out_dir")
-                .and_then(|v| v.as_str())
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .map(PathBuf::from)
-                .unwrap_or_else(|| default_graph_out_dir(workspace, crate_name));
-            let artifact_crate = ensure_graph_artifact(workspace, crate_name, role, step)?;
-            let out_dir_str = out_dir.to_string_lossy();
-            let crate_dir = report_crate_dir(&out_dir, crate_name);
-            let mut cmd = format!(
-                "cargo run -p canon-tools-analysis --bin graph_reports -- --workspace {} --crate {} --out {} --artifact",
-                WORKSPACE, artifact_crate, out_dir_str
-            );
-            if let Some(path) = tlog {
-                cmd.push_str(&format!(" --tlog {path}"));
-            }
-            eprintln!("[{role}] step={} {action_kind} cmd={cmd}", step);
-            let (success, out) = exec_graph_command(workspace, &cmd)?;
-            let label = if success {
-                format!("{action_kind} ok")
-            } else {
-                format!("{action_kind} failed")
-            };
-            let (report_path, report_label) = if action_kind == "graph_dataflow" {
-                (crate_dir.join("metrics").join("dataflow_fanout_report.json"), "dataflow_fanout_report.json")
-            } else {
-                let runtime_path = crate_dir.join("analysis").join("runtime_reachability_report.json");
-                if runtime_path.exists() {
-                    (runtime_path, "runtime_reachability_report.json")
-                } else {
-                    (crate_dir.join("metrics").join("reachability_report.json"), "reachability_report.json")
-                }
-            };
-            let report_preview = if report_path.exists() {
-                read_json_report(&report_path, MAX_SNIPPET)?
-            } else {
-                String::new()
-            };
-            let mut summary = format!(
-                "{label}\noutput_dir: {}\nreport: {}",
-                out_dir_str,
-                report_path.display()
-            );
-            if !report_preview.is_empty() {
-                summary.push_str("\nreport_preview:\n");
-                summary.push_str(&report_preview);
-            } else {
-                summary.push_str(&format!("\nreport_note: {} not found", report_label));
-            }
-            Ok((false, format!("{summary}\n\nfull_output:\n{}", truncate(&out, MAX_SNIPPET))))
+            handle_graph_reports_action(role, step, k, workspace, action)
         }
-        "cargo_test" => {
-            let crate_name = action
-                .get("crate")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("cargo_test missing 'crate'"))?;
-            let test_name = action.get("test").and_then(|v| v.as_str());
-            let cmd = if let Some(test_name) = test_name {
-                format!(
-                    "cargo test -p {} {} -- --exact --nocapture",
-                    crate_name, test_name
-                )
-            } else {
-                format!("cargo test -p {} -- --nocapture", crate_name)
-            };
-            eprintln!("[{role}] step={} cargo_test cmd={}", step, cmd);
-            let (success, out) = exec_run_command(workspace, &cmd, WORKSPACE)?;
-            let label = if success { "cargo_test ok" } else { "cargo_test failed" };
-            eprintln!("[{role}] step={} {label} output_bytes={}", step, out.len());
-            let failures_json = parse_cargo_test_failures(&out);
-            let mut summary = format!("{label}");
-            let mut progress_path: Option<String> = None;
-            if let Some(line) = out.lines().find(|line| line.contains("output_log=")) {
-                if let Some(idx) = line.find("output_log=") {
-                    let mut path = line[idx + "output_log=".len()..].trim();
-                    if let Some(end) = path.find(' ') {
-                        path = &path[..end];
-                    }
-                    if !path.is_empty() {
-                        progress_path = Some(path.to_string());
-                    }
-                }
-            }
-            if out.contains("detached cargo test") {
-                summary.push_str("\nnote: cargo test detached; see output_log for live results");
-            }
-            if let Some(arr) = failures_json.get("failed_tests").and_then(|v| v.as_array()) {
-                if !arr.is_empty() {
-                    summary.push_str("\nfailed_tests:");
-                    for name in arr {
-                        if let Some(name) = name.as_str() {
-                            summary.push_str(&format!("\n- {}", name));
-                        }
-                    }
-                }
-            }
-            if let Some(arr) = failures_json.get("error_locations").and_then(|v| v.as_array()) {
-                if !arr.is_empty() {
-                    summary.push_str("\nerror_locations:");
-                    for loc in arr {
-                        if let Some(loc) = loc.as_str() {
-                            summary.push_str(&format!("\n- {}", loc));
-                        }
-                    }
-                }
-            }
-            if let Some(hint) = failures_json.get("rerun_hint").and_then(|v| v.as_str()) {
-                if !hint.is_empty() {
-                    summary.push_str(&format!("\nrerun_hint: {}", hint));
-                }
-            }
-            if let Some(arr) = failures_json.get("failure_block").and_then(|v| v.as_array()) {
-                if !arr.is_empty() {
-                    summary.push_str("\nfailure_block:");
-                    for line in arr {
-                        if let Some(line) = line.as_str() {
-                            summary.push_str("\n");
-                            summary.push_str(line);
-                        }
-                    }
-                }
-            }
-            if let Some(path) = progress_path.as_ref() {
-                summary.push_str(&format!("\nprogress_path: {}", path));
-                let hint = format!(
-                    "{{ \"action\": \"run_command\", \"cmd\": \"tail -n 200 {}\", \"cwd\": \"{}\", \"observation\": \"Inspect live cargo test output.\", \"rationale\": \"Detached cargo test output is in the log file; tail it for progress and failures.\" }}",
-                    path,
-                    WORKSPACE
-                );
-                summary.push_str("\nnext_action_hint:\n");
-                summary.push_str(&hint);
-            }
-            Ok((false, format!("{summary}\n\nfull_output:\n{}", truncate(&out, MAX_SNIPPET))))
-        }
+        "cargo_test" => handle_cargo_test_action(role, step, workspace, action),
         other => Ok((
             false,
             format!(
@@ -1359,28 +1440,15 @@ pub(crate) fn execute_logged_action(
     action: &Value,
     check_on_done: bool,
 ) -> Result<(bool, String)> {
-    if let Err(e) = append_action_log(role, endpoint, prompt_kind, step, command_id, action) {
-        eprintln!("[{role}] step={} action_log_error: {e}", step);
-    }
+    log_action_event(role, endpoint, prompt_kind, step, command_id, action);
     match execute_action(role, step, action, workspace, check_on_done) {
         Ok((done, out)) => {
-            if let Err(e) = append_action_result_log(
-                role,
-                endpoint,
-                prompt_kind,
-                step,
-                command_id,
-                action,
-                true,
-                &out,
-            ) {
-                eprintln!("[{role}] step={} action_result_log_error: {e}", step);
-            }
+            log_action_result(role, endpoint, prompt_kind, step, command_id, action, true, &out);
             Ok((done, out))
         }
         Err(e) => {
             let err_text = format!("Error executing action: {e}");
-            if let Err(log_err) = append_action_result_log(
+            log_action_result(
                 role,
                 endpoint,
                 prompt_kind,
@@ -1389,9 +1457,7 @@ pub(crate) fn execute_logged_action(
                 action,
                 false,
                 &err_text,
-            ) {
-                eprintln!("[{role}] step={} action_result_log_error: {log_err}", step);
-            }
+            );
             eprintln!("[{role}] step={} error: {e}", step);
             Ok((false, err_text))
         }
