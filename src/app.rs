@@ -17,14 +17,18 @@ use tokio::sync::Notify;
 
 use crate::engine::process_action_and_execute;
 use crate::logging::{
-    append_action_log_record, append_action_result_log, append_message_log, append_orchestration_trace,
-    compact_log_record, make_command_id, now_ms, init_log_paths,
+    append_action_log_record, append_orchestration_trace, compact_log_record, init_log_paths,
+    log_action_result, log_message_event, make_command_id, now_ms,
 };
 use crate::prompts::{
     action_observation, action_rationale, action_result_prompt, diagnostics_cycle_prompt,
     diagnostics_python_reads_event_logs, executor_cycle_prompt, is_explicit_idle_action,
     normalize_action, parse_actions, planner_cycle_prompt, system_instructions,
     truncate, validate_action, verifier_cycle_prompt, AgentPromptKind,
+};
+use crate::invalid_action::{
+    auto_fill_message_fields, build_invalid_action_feedback, corrective_invalid_action_prompt,
+    default_message_route, expected_message_format,
 };
 use crate::constants::{
     DEFAULT_RESPONSE_TIMEOUT_SECS, DIAGNOSTICS_FILE_PATH, ENDPOINT_SPECS, INVARIANTS_FILE, MASTER_PLAN_FILE, MAX_SNIPPET,
@@ -102,6 +106,12 @@ fn summarize_cargo_test_failures(raw: &str) -> String {
         }
     }
     Value::Object(out).to_string()
+}
+
+fn load_cargo_test_failures(workspace: &Path) -> String {
+    let path = workspace.join("cargo_test_failures.json");
+    let raw = std::fs::read_to_string(path).unwrap_or_default();
+    summarize_cargo_test_failures(&raw)
 }
 
 fn extract_progress_path_from_result(result: &str) -> Option<String> {
@@ -190,26 +200,6 @@ fn plan_diff(old_text: &str, new_text: &str, max_lines: usize) -> String {
     out
 }
 
-fn default_message_route(role: &str) -> (&'static str, &'static str, &'static str, &'static str) {
-    if role.starts_with("executor") {
-        ("executor", "verifier", "handoff", "complete")
-    } else if role == "verifier" {
-        ("verifier", "planner", "verification", "verified")
-    } else if role == "diagnostics" {
-        ("diagnostics", "planner", "diagnostics", "complete")
-    } else if role == "planner" || role == "mini_planner" {
-        ("planner", "executor", "plan", "complete")
-    } else {
-        ("executor", "verifier", "handoff", "complete")
-    }
-}
-
-fn expected_message_format(from: &str, to: &str, msg_type: &str, status: &str) -> String {
-    format!(
-        "{{ \"action\": \"message\", \"from\": \"{from}\", \"to\": \"{to}\", \"type\": \"{msg_type}\", \"status\": \"{status}\", \"payload\": {{ \"summary\": \"...\" }} }}"
-    )
-}
-
 fn canonical_role_label(role: &str) -> &'static str {
     if role.starts_with("executor") {
         "executor"
@@ -240,6 +230,10 @@ fn blocker_escalation_prompt(role: &str, last_error: &str, task_context: &str) -
         evidence = truncate(last_error, MAX_SNIPPET),
         context = truncate(task_context, MAX_SNIPPET),
     )
+}
+
+fn executor_diff_unavailable(reason: &str) -> String {
+    format!("(executor diff unavailable: {reason})")
 }
 
 #[derive(Clone)]
@@ -433,266 +427,14 @@ fn guardrail_action_from_raw(raw: &str, role: &str) -> Option<Value> {
     None
 }
 
-fn unsupported_action_templates() -> [&'static str; 13] {
-    [
-        "```json\n{\n  \"action\": \"list_dir\",\n  \"path\": \".\",\n  \"observation\": \"List workspace root to locate targets.\",\n  \"rationale\": \"Confirm files before acting.\"\n}\n```",
-        "```json\n{\n  \"action\": \"read_file\",\n  \"path\": \"canon-utils/canon-loop/src/executor.rs\",\n  \"observation\": \"Read file to understand current logic.\",\n  \"rationale\": \"Need context before patching.\"\n}\n```",
-        "```json\n{\n  \"action\": \"apply_patch\",\n  \"patch\": \"*** Begin Patch\\n*** Update File: path/to/file.rs\\n@@\\n- old\\n+ new\\n*** End Patch\",\n  \"observation\": \"Apply the required edit.\",\n  \"rationale\": \"Implement the change directly.\"\n}\n```",
-        "```json\n{\n  \"action\": \"run_command\",\n  \"cmd\": \"rg -n \\\"trigger_observe\\\" canon-utils/canon-loop/src/executor.rs\",\n  \"observation\": \"Search for observe triggers.\",\n  \"rationale\": \"Locate all callsites before patching.\"\n}\n```",
-        "```json\n{\n  \"action\": \"python\",\n  \"code\": \"import json; print('analyze')\",\n  \"observation\": \"Run structured analysis.\",\n  \"rationale\": \"Use Python for parsing tasks.\"\n}\n```",
-        "```json\n{\n  \"action\": \"cargo_test\",\n  \"crate\": \"canon-runtime\",\n  \"test\": \"optional_test_name\",\n  \"observation\": \"Run tests for the target crate.\",\n  \"rationale\": \"Verify changes.\"\n}\n```",
-        "```json\n{\n  \"action\": \"rustc_hir\",\n  \"crate\": \"canon-runtime\",\n  \"mode\": \"hir-tree\",\n  \"extra\": \"\",\n  \"observation\": \"Inspect HIR output.\",\n  \"rationale\": \"Diagnose compiler-level behavior.\"\n}\n```",
-        "```json\n{\n  \"action\": \"rustc_mir\",\n  \"crate\": \"canon-runtime\",\n  \"mode\": \"mir\",\n  \"extra\": \"\",\n  \"observation\": \"Inspect MIR output.\",\n  \"rationale\": \"Diagnose compiler-level behavior.\"\n}\n```",
-        "```json\n{\n  \"action\": \"graph_call\",\n  \"crate\": \"canon-runtime\",\n  \"out_dir\": \"\",\n  \"observation\": \"Generate call graph.\",\n  \"rationale\": \"Inspect call graph output.\"\n}\n```",
-        "```json\n{\n  \"action\": \"graph_cfg\",\n  \"crate\": \"canon-runtime\",\n  \"out_dir\": \"\",\n  \"observation\": \"Generate CFG graph.\",\n  \"rationale\": \"Inspect CFG output.\"\n}\n```",
-        "```json\n{\n  \"action\": \"graph_dataflow\",\n  \"crate\": \"canon-runtime\",\n  \"tlog\": \"\",\n  \"out_dir\": \"\",\n  \"observation\": \"Generate dataflow report.\",\n  \"rationale\": \"Inspect dataflow metrics.\"\n}\n```",
-        "```json\n{\n  \"action\": \"graph_reachability\",\n  \"crate\": \"canon-runtime\",\n  \"tlog\": \"\",\n  \"out_dir\": \"\",\n  \"observation\": \"Generate reachability report.\",\n  \"rationale\": \"Inspect reachability metrics.\"\n}\n```",
-        "```json\n{\n  \"action\": \"message\",\n  \"from\": \"executor\",\n  \"to\": \"verifier\",\n  \"type\": \"result\",\n  \"status\": \"complete\",\n  \"payload\": {\"summary\": \"...\"},\n  \"observation\": \"Send structured status update.\",\n  \"rationale\": \"Report the outcome to the next role.\"\n}\n```\n```json\n{\n  \"action\": \"message\",\n  \"from\": \"executor\",\n  \"to\": \"planner\",\n  \"type\": \"blocker\",\n  \"status\": \"blocked\",\n  \"observation\": \"Describe the blocked state.\",\n  \"rationale\": \"Explain why progress is impossible without external action.\",\n  \"payload\": {\n    \"summary\": \"Short blocker summary\",\n    \"blocker\": \"Root cause\",\n    \"evidence\": \"Concrete error text or failing command\",\n    \"required_action\": \"What must be done to unblock\",\n    \"severity\": \"error\"\n  }\n}\n```",
-    ]
-}
-
-fn unsupported_action_correction(kind: &str) -> String {
-    let mut msg = String::new();
-    msg.push_str(&format!(
-        "Invalid action: unsupported action '{kind}'.\nCorrective action required: use a supported tool action. Templates:\n"
-    ));
-    for template in unsupported_action_templates() {
-        msg.push_str(template);
-        msg.push('\n');
-    }
-    msg.push_str("Return exactly one action.");
-    msg
-}
-
-fn message_schema_correction(missing_field: &str, role: &str) -> String {
-    let (from, to, msg_type, status) = default_message_route(role);
-    let mut msg = String::new();
-    msg.push_str(&format!(
-        "Invalid action: message missing non-empty '{missing_field}'.\nCorrective action required: use a full message schema with required fields. Do not use `content`; use `payload`.\nTemplate:\n"
-    ));
-    msg.push_str(&format!(
-        "```json\n{{\n  \"action\": \"message\",\n  \"from\": \"{from}\",\n  \"to\": \"{to}\",\n  \"type\": \"{msg_type}\",\n  \"status\": \"{status}\",\n  \"observation\": \"Summarize what you are sending.\",\n  \"rationale\": \"Explain why this message is being sent.\",\n  \"payload\": {{\n    \"summary\": \"One-line summary for the next role.\",\n    \"details\": \"Optional extra context.\",\n    \"expected_format\": \"{format}\"\n  }}\n}}\n```\nReturn exactly one action.",
-        format = expected_message_format(from, to, msg_type, status),
-    ));
-    msg
-}
-
-fn corrective_invalid_action_prompt(action: &Value, err_text: &str, role: &str) -> Option<String> {
-    if err_text.contains("unsupported action") {
-        let kind = action.get("action").and_then(|v| v.as_str()).unwrap_or("unknown");
-        return Some(unsupported_action_correction(kind));
-    }
-    if let Some(field) = err_text.strip_prefix("message missing non-empty '").and_then(|rest| rest.strip_suffix("'")) {
-        return Some(message_schema_correction(field, role));
-    }
-    if err_text.contains("message missing object payload") {
-        return Some(message_schema_correction("payload", role));
-    }
-    None
-}
-
-fn invalid_action_expected_fields(kind: &str) -> Vec<&'static str> {
-    match kind {
-        "run_command" => vec!["action", "cmd", "observation", "rationale"],
-        "read_file" => vec!["action", "path", "observation", "rationale"],
-        "apply_patch" => vec!["action", "patch", "observation", "rationale"],
-        "cargo_test" => vec!["action", "crate", "observation", "rationale"],
-        "list_dir" => vec!["action", "path", "observation", "rationale"],
-        "python" => vec!["action", "code", "observation", "rationale"],
-        "message" => vec![
-            "action",
-            "from",
-            "to",
-            "type",
-            "status",
-            "payload",
-            "observation",
-            "rationale",
-        ],
-        _ => vec!["action", "observation", "rationale"],
-    }
-}
-
-fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str) -> String {
-    let mut schema_diff: Vec<String> = Vec::new();
-    let mut expected_fields: Vec<&'static str> = Vec::new();
-    if let Some(action) = raw_action {
-        let obj = action.as_object();
-        let kind = obj
-            .and_then(|o| o.get("action"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
-        expected_fields = invalid_action_expected_fields(kind);
-        if let Some(obj) = obj {
-            if obj
-                .get("observation")
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .is_none()
-            {
-                schema_diff.push("missing field: observation".to_string());
-            }
-            if obj
-                .get("rationale")
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .is_none()
-            {
-                schema_diff.push("missing field: rationale".to_string());
-            }
-            match kind {
-                "run_command" => {
-                    if obj.get("cmd").and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).is_none() {
-                        schema_diff.push("missing field: cmd".to_string());
-                    }
-                }
-                "read_file" | "list_dir" => {
-                    if obj.get("path").and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).is_none() {
-                        schema_diff.push("missing field: path".to_string());
-                    }
-                }
-                "apply_patch" => {
-                    if obj.get("patch").and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).is_none() {
-                        schema_diff.push("missing field: patch".to_string());
-                    }
-                }
-                "python" => {
-                    if obj.get("code").and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).is_none() {
-                        schema_diff.push("missing field: code".to_string());
-                    }
-                }
-                "cargo_test" => {
-                    if obj.get("crate").and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).is_none() {
-                        schema_diff.push("missing field: crate".to_string());
-                    }
-                }
-                "message" => {
-                    for field in ["from", "to", "type", "status"] {
-                        if let Some(val) = obj.get(field).and_then(|v| v.as_str()) {
-                            if val != val.to_lowercase() {
-                                schema_diff.push(format!("role casing invalid: {field}={val}"));
-                            }
-                        }
-                        if obj
-                            .get(field)
-                            .and_then(|v| v.as_str())
-                            .map(str::trim)
-                            .filter(|s| !s.is_empty())
-                            .is_none()
-                        {
-                            schema_diff.push(format!("missing field: {field}"));
-                        }
-                    }
-                    if obj.get("payload").and_then(|v| v.as_object()).is_none() {
-                        schema_diff.push("missing field: payload".to_string());
-                    }
-                    if obj.contains_key("blocker")
-                        || obj.contains_key("evidence")
-                        || obj.contains_key("required_action")
-                    {
-                        schema_diff.push(
-                            "blocker fields must be inside payload: blocker/evidence/required_action".to_string(),
-                        );
-                    }
-                    let is_blocker = obj
-                        .get("type")
-                        .and_then(|v| v.as_str())
-                        .map(|v| v.eq_ignore_ascii_case("blocker"))
-                        .unwrap_or(false)
-                        || obj
-                            .get("status")
-                            .and_then(|v| v.as_str())
-                            .map(|v| v.eq_ignore_ascii_case("blocked"))
-                            .unwrap_or(false);
-                    if is_blocker {
-                        let payload = obj.get("payload").and_then(|v| v.as_object());
-                        for field in ["blocker", "evidence", "required_action"] {
-                            if payload
-                                .and_then(|p| p.get(field))
-                                .and_then(|v| v.as_str())
-                                .map(str::trim)
-                                .filter(|s| !s.is_empty())
-                                .is_none()
-                            {
-                                schema_diff.push(format!("payload.{field} missing"));
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    let feedback = json!({
-        "error_type": "invalid_action",
-        "reason": err_text,
-        "expected_fields": expected_fields,
-        "schema_diff": schema_diff,
-    });
-    format!(
-        "Invalid action rejected.\naction_result:\n{}\nReturn exactly one action as a single JSON object in a ```json code block. No prose outside it.",
-        feedback.to_string()
-    )
-}
-
-fn auto_fill_message_fields(action: &mut Value, role: &str) -> bool {
-    let obj = match action.as_object_mut() {
-        Some(obj) => obj,
-        None => return false,
-    };
-    if obj.get("action").and_then(|v| v.as_str()) != Some("message") {
-        return false;
-    }
-    let (default_from, default_to, default_type, default_status) = default_message_route(role);
-    let mut changed = false;
-    if obj.get("from").and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).is_none() {
-        obj.insert("from".to_string(), Value::String(default_from.to_string()));
-        changed = true;
-    }
-    if obj.get("to").and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).is_none() {
-        obj.insert("to".to_string(), Value::String(default_to.to_string()));
-        changed = true;
-    }
-    if obj.get("type").and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).is_none() {
-        obj.insert("type".to_string(), Value::String(default_type.to_string()));
-        changed = true;
-    }
-    if obj.get("status").and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).is_none() {
-        obj.insert("status".to_string(), Value::String(default_status.to_string()));
-        changed = true;
-    }
-    if obj.get("payload").and_then(|v| v.as_object()).is_none() {
-        obj.insert("payload".to_string(), json!({ "summary": "auto-filled message fields" }));
-        changed = true;
-    }
-    if changed {
-        let from_val = obj.get("from").and_then(|v| v.as_str()).unwrap_or(default_from).to_string();
-        let to_val = obj.get("to").and_then(|v| v.as_str()).unwrap_or(default_to).to_string();
-        let type_val = obj.get("type").and_then(|v| v.as_str()).unwrap_or(default_type).to_string();
-        let status_val = obj.get("status").and_then(|v| v.as_str()).unwrap_or(default_status).to_string();
-        if let Some(payload) = obj.get_mut("payload").and_then(|v| v.as_object_mut()) {
-            payload.entry("expected_format").or_insert(Value::String(
-                expected_message_format(&from_val, &to_val, &type_val, &status_val),
-            ));
-        }
-        obj.entry("observation".to_string())
-            .or_insert(Value::String("Auto-filled missing message fields.".to_string()));
-        obj.entry("rationale".to_string())
-            .or_insert(Value::String("Repair invalid message schema to continue execution.".to_string()));
-    }
-    changed
-}
-
 fn executor_diff(workspace: &Path, max_lines: usize) -> String {
     let mut cmd = Command::new("git");
     cmd.current_dir(workspace).args(["diff", "--name-only"]);
     let Ok(output) = cmd.output() else {
-        return "(executor diff unavailable: failed to run git diff --name-only)".to_string();
+        return executor_diff_unavailable("failed to run git diff --name-only");
     };
     if !output.status.success() {
-        return "(executor diff unavailable: git diff --name-only failed)".to_string();
+        return executor_diff_unavailable("git diff --name-only failed");
     }
     let text = String::from_utf8_lossy(&output.stdout);
     let files: Vec<&str> = text
@@ -718,10 +460,10 @@ fn executor_diff(workspace: &Path, max_lines: usize) -> String {
         .arg("--")
         .args(&files);
     let Ok(diff_out) = diff_cmd.output() else {
-        return "(executor diff unavailable: failed to run git diff)".to_string();
+        return executor_diff_unavailable("failed to run git diff");
     };
     if !diff_out.status.success() {
-        return "(executor diff unavailable: git diff failed)".to_string();
+        return executor_diff_unavailable("git diff failed");
     }
     let diff_text = String::from_utf8_lossy(&diff_out.stdout);
     if diff_text.trim().is_empty() {
@@ -738,6 +480,289 @@ fn executor_diff(workspace: &Path, max_lines: usize) -> String {
     }
     out
 }
+
+fn apply_error_result(
+    role: &str,
+    task_context: &str,
+    error_streak: &mut usize,
+    last_error: &mut Option<String>,
+    last_result: &mut Option<String>,
+    err_text: &str,
+    default_result: String,
+) {
+    *error_streak = error_streak.saturating_add(1);
+    *last_error = Some(err_text.to_string());
+    *last_result = Some(default_result);
+    if *error_streak >= 3 {
+        *last_result = Some(blocker_escalation_prompt(
+            role,
+            last_error.as_deref().unwrap_or(err_text),
+            task_context,
+        ));
+    }
+}
+
+struct InvalidActionFeedback {
+    err_text: String,
+    feedback: String,
+}
+
+fn parse_action_from_raw(
+    role: &str,
+    endpoint: &LlmEndpoint,
+    prompt_kind: &str,
+    step: usize,
+    exchange_id: &str,
+    raw: &str,
+    allow_guardrail: bool,
+    allow_auto_fill_message: bool,
+    trace_context: Option<(&str, u32)>,
+) -> Result<Value, InvalidActionFeedback> {
+    let actions = match parse_actions(raw) {
+        Ok(a) => a,
+        Err(e) => {
+            if allow_guardrail {
+                if let Some(guard_action) = guardrail_action_from_raw(raw, role) {
+                    log_message_event(
+                        role,
+                        endpoint,
+                        prompt_kind,
+                        step,
+                        exchange_id,
+                        "llm_guardrail_action",
+                        json!({
+                            "error": e.to_string(),
+                            "raw": truncate(raw, MAX_SNIPPET),
+                            "action": guard_action,
+                        }),
+                    );
+                    return Ok(guard_action);
+                }
+            }
+            eprintln!("[{role}] step={} parse_error: {e}", step);
+            log_message_event(
+                role,
+                endpoint,
+                prompt_kind,
+                step,
+                exchange_id,
+                "llm_parse_error",
+                json!({
+                    "error": e.to_string(),
+                    "raw": truncate(raw, MAX_SNIPPET),
+                }),
+            );
+            if let Some((lane_label, tab_id)) = trace_context {
+                append_orchestration_trace(
+                    "executor_tool_result_forwarded",
+                    json!({
+                        "lane_name": lane_label,
+                        "tab_id": tab_id,
+                        "turn_id": exchange_id,
+                        "status": "parse_error",
+                    }),
+                );
+            }
+            return Err(InvalidActionFeedback {
+                err_text: e.to_string(),
+                feedback: build_invalid_action_feedback(None, &e.to_string()),
+            });
+        }
+    };
+
+    if actions.len() != 1 {
+        let msg = format!("Got {} actions — emit exactly one action per turn.", actions.len());
+        eprintln!("[{role}] step={} {msg}", step);
+        log_message_event(
+            role,
+            endpoint,
+            prompt_kind,
+            step,
+            exchange_id,
+            "llm_invalid_action_count",
+            json!({
+                "action_count": actions.len(),
+                "raw": truncate(raw, MAX_SNIPPET),
+            }),
+        );
+        if let Some((lane_label, tab_id)) = trace_context {
+            append_orchestration_trace(
+                "executor_tool_result_forwarded",
+                json!({
+                    "lane_name": lane_label,
+                    "tab_id": tab_id,
+                    "turn_id": exchange_id,
+                    "status": "invalid_action_count",
+                    "action_count": actions.len(),
+                }),
+            );
+        }
+        return Err(InvalidActionFeedback {
+            err_text: msg.clone(),
+            feedback: build_invalid_action_feedback(None, &msg),
+        });
+    }
+
+    let mut action = actions[0].clone();
+    let raw_action = action.clone();
+    if let Err(e) = normalize_action(&mut action) {
+        log_message_event(
+            role,
+            endpoint,
+            prompt_kind,
+            step,
+            exchange_id,
+            "llm_invalid_action",
+            json!({
+                "stage": "normalize_action",
+                "error": e.to_string(),
+                "raw": truncate(raw, MAX_SNIPPET),
+            }),
+        );
+        return Err(InvalidActionFeedback {
+            err_text: e.to_string(),
+            feedback: build_invalid_action_feedback(Some(&raw_action), &e.to_string()),
+        });
+    }
+
+    if allow_auto_fill_message {
+        auto_fill_message_fields(&mut action, role);
+    }
+
+    if let Err(e) = validate_action(&action) {
+        log_message_event(
+            role,
+            endpoint,
+            prompt_kind,
+            step,
+            exchange_id,
+            "llm_invalid_action",
+            json!({
+                "stage": "validate_action",
+                "error": e.to_string(),
+                "raw": truncate(raw, MAX_SNIPPET),
+                "action": action.clone(),
+            }),
+        );
+        let err_text = e.to_string();
+        if let Some(prompt) = corrective_invalid_action_prompt(&action, &err_text, role) {
+            return Err(InvalidActionFeedback {
+                err_text: err_text.clone(),
+                feedback: format!(
+                    "{}\n\n{}",
+                    build_invalid_action_feedback(Some(&action), &err_text),
+                    prompt
+                ),
+            });
+        }
+        if err_text.contains("cargo_test missing 'crate'") {
+            return Err(InvalidActionFeedback {
+                err_text: err_text.clone(),
+                feedback: format!(
+                    "Invalid action: {e}\nCorrective action required: `cargo_test` must include a `crate` field.\nUse this exact format and fill in the crate name:\n```json\n{{\n  \"action\": \"cargo_test\",\n  \"crate\": \"canon-runtime\",\n  \"observation\": \"Running canon-runtime test suite after latest changes.\",\n  \"rationale\": \"Validate that canon-runtime tests pass for the updated parser logic.\"\n}}\n```\nReturn exactly one action."
+                ),
+            });
+        }
+        return Err(InvalidActionFeedback {
+            err_text: err_text.clone(),
+            feedback: build_invalid_action_feedback(Some(&action), &err_text),
+        });
+    }
+
+    Ok(action)
+}
+
+fn build_agent_prompt(
+    role: &str,
+    send_system_prompt: bool,
+    step: usize,
+    initial_prompt: &str,
+    system_instructions: &str,
+    last_result: Option<&str>,
+    last_tab_id: Option<u32>,
+    last_turn_id: Option<u64>,
+    last_action: Option<&str>,
+    total_steps: usize,
+) -> (String, String) {
+    if step == 0 {
+        (
+            if send_system_prompt {
+                system_instructions.to_string()
+            } else {
+                String::new()
+            },
+            initial_prompt.to_string(),
+        )
+    } else {
+        let mut result = last_result.unwrap_or("").to_string();
+        if role == "executor" {
+            let remaining = EXECUTOR_STEP_LIMIT.saturating_sub(total_steps);
+            result = format!("step_limit_remaining: {remaining}\n{result}");
+        }
+        let agent_type = role_key(role).to_uppercase();
+        (
+            String::new(),
+            action_result_prompt(
+                last_tab_id,
+                last_turn_id,
+                agent_type.as_str(),
+                &result,
+                last_action,
+                if role == "executor" {
+                    Some(EXECUTOR_STEP_LIMIT.saturating_sub(total_steps))
+                } else {
+                    None
+                },
+            ),
+        )
+    }
+}
+
+fn enforce_executor_step_limit(
+    role: &str,
+    total_steps: usize,
+    error_streak: &mut usize,
+    last_result: &mut Option<String>,
+) -> bool {
+    if role == "executor" && total_steps >= EXECUTOR_STEP_LIMIT {
+        *error_streak = error_streak.saturating_add(1);
+        *last_result = Some(format!(
+            "Executor exceeded {EXECUTOR_STEP_LIMIT} actions without handoff. You must send a `message` action to planner (handoff or blocker) now."
+        ));
+        return true;
+    }
+    false
+}
+
+fn enforce_diagnostics_python(
+    role: &str,
+    step: usize,
+    kind: &str,
+    action: &Value,
+    diagnostics_eventlog_python_done: &mut bool,
+) -> Option<String> {
+    if role != "diagnostics" || *diagnostics_eventlog_python_done {
+        return None;
+    }
+    if diagnostics_python_reads_event_logs(action) {
+        *diagnostics_eventlog_python_done = true;
+        return None;
+    }
+    if step == 0 {
+        return Some(
+            "Diagnostics must begin with a `python` action that analyzes /workspace/ai_sandbox/canon/state/event_log/event.tlog.d to diagnose problems, detect inconsistencies, and extract concrete failure signals."
+                .to_string(),
+        );
+    }
+    if matches!(kind, "apply_patch" | "message") {
+        return Some(
+            "Before writing diagnostics or finishing, run a `python` action that analyzes /workspace/ai_sandbox/canon/state/event_log/event.tlog.d to find errors, inconsistencies, invariant violations, repeated failure patterns, and concrete repair targets. Diagnostics is for finding what is broken."
+                .to_string(),
+        );
+    }
+    None
+}
+
 
 fn take_inbound_message(role: &str) -> Option<String> {
     let role_key = role.trim().to_lowercase().replace(|c: char| !c.is_ascii_alphanumeric(), "_");
@@ -892,6 +917,159 @@ struct LaneConfig {
     tabs: TabManagerHandle,
 }
 
+struct LlmResponseContext<'a> {
+    role: &'a str,
+    endpoint: &'a LlmEndpoint,
+    prompt_kind: &'a str,
+    submit_only: bool,
+}
+
+impl<'a> LlmResponseContext<'a> {
+    fn log_request(&self, step: usize, exchange_id: &str, prompt: &str, role_schema: &str) {
+        log_message_event(
+            self.role,
+            self.endpoint,
+            self.prompt_kind,
+            step,
+            exchange_id,
+            "llm_request",
+            json!({
+                "submit_only": self.submit_only,
+                "prompt_bytes": prompt.len(),
+                "role_schema_bytes": role_schema.len(),
+                "prompt": truncate(prompt, MAX_SNIPPET),
+            }),
+        );
+        append_orchestration_trace(
+            "llm_message_forwarded",
+            json!({
+                "role": self.role,
+                "prompt_kind": self.prompt_kind,
+                "step": step,
+                "endpoint_id": self.endpoint.id,
+                "submit_only": self.submit_only,
+                "prompt_bytes": prompt.len(),
+            }),
+        );
+    }
+
+    fn log_response(&self, step: usize, exchange_id: &str, raw: &str) {
+        append_orchestration_trace(
+            "llm_message_received",
+            json!({
+                "role": self.role,
+                "prompt_kind": self.prompt_kind,
+                "step": step,
+                "endpoint_id": self.endpoint.id,
+                "submit_only": self.submit_only,
+                "response_bytes": raw.len(),
+            }),
+        );
+        log_message_event(
+            self.role,
+            self.endpoint,
+            self.prompt_kind,
+            step,
+            exchange_id,
+            "llm_response",
+            json!({
+                "submit_only": self.submit_only,
+                "response_bytes": raw.len(),
+                "raw": truncate(raw, MAX_SNIPPET),
+            }),
+        );
+    }
+
+    fn handle_submit_ack(
+        &self,
+        step: usize,
+        exchange_id: &str,
+        raw: &str,
+    ) -> Option<String> {
+        if !self.submit_only {
+            return None;
+        }
+        if let Ok(mut ack) = serde_json::from_str::<Value>(raw) {
+            if ack.get("submit_ack").and_then(|v| v.as_bool()) == Some(true) {
+                ack["command_id"] = Value::String(exchange_id.to_string());
+                eprintln!("[{}] step={} submit_ack={}", self.role, step, raw);
+                log_message_event(
+                    self.role,
+                    self.endpoint,
+                    self.prompt_kind,
+                    step,
+                    exchange_id,
+                    "llm_submit_ack",
+                    ack.clone(),
+                );
+                append_orchestration_trace(
+                    "llm_message_processed",
+                    json!({
+                        "role": self.role,
+                        "prompt_kind": self.prompt_kind,
+                        "step": step,
+                        "endpoint_id": self.endpoint.id,
+                        "submit_ack": ack,
+                    }),
+                );
+                return Some(ack.to_string());
+            }
+        }
+        None
+    }
+
+    fn log_error(&self, step: usize, exchange_id: &str, error: &str) {
+        log_message_event(
+            self.role,
+            self.endpoint,
+            self.prompt_kind,
+            step,
+            exchange_id,
+            "llm_error",
+            json!({
+                "error": error,
+            }),
+        );
+    }
+
+    fn handle_reaction_only(
+        &self,
+        step: usize,
+        exchange_id: &str,
+        raw: &str,
+        reaction_only_streak: &mut usize,
+        error_streak: &mut usize,
+        last_error: &mut Option<String>,
+    ) -> bool {
+        if !is_reaction_only_response(raw) {
+            return false;
+        }
+        *reaction_only_streak = reaction_only_streak.saturating_add(1);
+        log_message_event(
+            self.role,
+            self.endpoint,
+            self.prompt_kind,
+            step,
+            exchange_id,
+            "llm_reaction_only",
+            json!({
+                "raw": truncate(raw, MAX_SNIPPET),
+            }),
+        );
+        if *reaction_only_streak < 3 {
+            *error_streak = error_streak.saturating_add(1);
+            *last_error = Some("reaction_only_response".to_string());
+            eprintln!(
+                "[{}] step={} reaction_only_response retry {}",
+                self.role,
+                step,
+                *reaction_only_streak
+            );
+        }
+        true
+    }
+}
+
 async fn continue_executor_completion(
     submitted: &SubmittedExecutorTurn,
     completion_text: &str,
@@ -906,152 +1084,22 @@ async fn continue_executor_completion(
     let step = 1usize;
     let command_id = submitted.command_id.as_str();
 
-    let actions = match parse_actions(completion_text) {
-        Ok(actions) => actions,
-        Err(e) => {
-            if let Some(guard_action) = guardrail_action_from_raw(completion_text, role) {
-                if let Err(log_err) = append_message_log(
-                    role,
-                    endpoint,
-                    prompt_kind,
-                    step,
-                    command_id,
-                    "llm_guardrail_action",
-                    json!({
-                        "error": e.to_string(),
-                        "raw": truncate(completion_text, MAX_SNIPPET),
-                        "action": guard_action,
-                    }),
-                ) {
-                    eprintln!("[{role}] step={} action_log_error: {log_err}", step);
-                }
-                vec![guard_action]
-            } else {
-                if let Err(log_err) = append_message_log(
-                    role,
-                    endpoint,
-                    prompt_kind,
-                    step,
-                    command_id,
-                    "llm_parse_error",
-                    json!({
-                        "error": e.to_string(),
-                        "raw": truncate(completion_text, MAX_SNIPPET),
-                    }),
-                ) {
-                    eprintln!("[{role}] step={} action_log_error: {log_err}", step);
-                }
-                append_orchestration_trace(
-                    "executor_tool_result_forwarded",
-                    json!({
-                        "lane_name": submitted.lane_label,
-                        "tab_id": submitted.tab_id,
-                        "turn_id": command_id,
-                        "status": "parse_error",
-                    }),
-                );
-                return Err(anyhow!("executor parse_error: {e}"));
-            }
+    let action = match parse_action_from_raw(
+        role,
+        endpoint,
+        prompt_kind,
+        step,
+        command_id,
+        completion_text,
+        true,
+        true,
+        Some((submitted.lane_label.as_str(), submitted.tab_id)),
+    ) {
+        Ok(action) => action,
+        Err(invalid) => {
+            return Err(anyhow!("executor invalid_action: {}", invalid.feedback));
         }
     };
-
-    if actions.len() != 1 {
-        let msg = format!("Got {} actions — emit exactly one action per turn.", actions.len());
-        if let Err(log_err) = append_message_log(
-            role,
-            endpoint,
-            prompt_kind,
-            step,
-            command_id,
-            "llm_invalid_action_count",
-            json!({
-                "action_count": actions.len(),
-                "raw": truncate(completion_text, MAX_SNIPPET),
-            }),
-        ) {
-            eprintln!("[{role}] step={} action_log_error: {log_err}", step);
-        }
-        append_orchestration_trace(
-            "executor_tool_result_forwarded",
-            json!({
-                "lane_name": submitted.lane_label,
-                "tab_id": submitted.tab_id,
-                "turn_id": command_id,
-                "status": "invalid_action_count",
-                "action_count": actions.len(),
-            }),
-        );
-        return Err(anyhow!("executor invalid_action_count: {msg}"));
-    }
-
-    let mut action = actions[0].clone();
-    if let Err(e) = normalize_action(&mut action) {
-        let msg = format!(
-            "Invalid action: {e}\nReturn exactly one action with a non-empty `observation`, a non-empty `rationale`, and any required fields."
-        );
-        if let Err(log_err) = append_message_log(
-            role,
-            endpoint,
-            prompt_kind,
-            step,
-            command_id,
-            "llm_invalid_action",
-            json!({
-                "stage": "normalize_action",
-                "error": e.to_string(),
-                "raw": truncate(completion_text, MAX_SNIPPET),
-            }),
-        ) {
-            eprintln!("[{role}] step={} action_log_error: {log_err}", step);
-        }
-        return Err(anyhow!("executor invalid_action: {msg}"));
-    }
-
-    auto_fill_message_fields(&mut action, role);
-    if let Err(e) = validate_action(&action) {
-        if let Some(prompt) = corrective_invalid_action_prompt(&action, &e.to_string(), role) {
-            let msg = format!(
-                "{prompt}\nReturn exactly one action with a non-empty `observation`, a non-empty `rationale`, and any required fields."
-            );
-            if let Err(log_err) = append_message_log(
-                role,
-                endpoint,
-                prompt_kind,
-                step,
-                command_id,
-                "llm_invalid_action",
-                json!({
-                    "stage": "validate_action",
-                    "error": e.to_string(),
-                    "raw": truncate(completion_text, MAX_SNIPPET),
-                    "action": action.clone(),
-                }),
-            ) {
-                eprintln!("[{role}] step={} action_log_error: {log_err}", step);
-            }
-            return Err(anyhow!("executor invalid_action: {msg}"));
-        }
-        let msg = format!(
-            "Invalid action: {e}\nReturn exactly one action with a non-empty `observation`, a non-empty `rationale`, and any required fields."
-        );
-        if let Err(log_err) = append_message_log(
-            role,
-            endpoint,
-            prompt_kind,
-            step,
-            command_id,
-            "llm_invalid_action",
-            json!({
-                "stage": "validate_action",
-                "error": e.to_string(),
-                "raw": truncate(completion_text, MAX_SNIPPET),
-                "action": action.clone(),
-            }),
-        ) {
-            eprintln!("[{role}] step={} action_log_error: {log_err}", step);
-        }
-        return Err(anyhow!("executor invalid_action: {msg}"));
-    }
 
     let (done, out) = process_action_and_execute(
         role,
@@ -1143,6 +1191,12 @@ async fn run_agent(
     let mut diagnostics_eventlog_python_done = false;
     let mut idle_streak = 0usize;
     let shutdown = shutdown_signal();
+    let ctx = LlmResponseContext {
+        role,
+        endpoint,
+        prompt_kind,
+        submit_only,
+    };
 
     loop {
         if let Some(sig) = shutdown.as_ref() {
@@ -1166,68 +1220,22 @@ async fn run_agent(
             ));
         }
 
-        let (role_schema, prompt) = if step == 0 {
-            (
-                if send_system_prompt {
-                    system_instructions.to_string()
-                } else {
-                    String::new()
-                },
-                initial_prompt.clone(),
-            )
-        } else {
-            let mut result = last_result.as_deref().unwrap_or("").to_string();
-            if role == "executor" {
-                let remaining = EXECUTOR_STEP_LIMIT.saturating_sub(total_steps);
-                result = format!("step_limit_remaining: {remaining}\n{result}");
-            }
-            let agent_type = role_key(role).to_uppercase();
-            (
-                String::new(),
-                action_result_prompt(
-                    last_tab_id,
-                    last_turn_id,
-                    agent_type.as_str(),
-                    &result,
-                    last_action.as_deref(),
-                    if role == "executor" {
-                        Some(EXECUTOR_STEP_LIMIT.saturating_sub(total_steps))
-                    } else {
-                        None
-                    },
-                ),
-            )
-        };
+        let (role_schema, prompt) = build_agent_prompt(
+            role,
+            send_system_prompt,
+            step,
+            &initial_prompt,
+            system_instructions,
+            last_result.as_deref(),
+            last_tab_id,
+            last_turn_id,
+            last_action.as_deref(),
+            total_steps,
+        );
         let exchange_id = make_command_id(role, prompt_kind, step + 1);
 
         eprintln!("[{role}] step={} prompt_bytes={}", step + 1, prompt.len());
-        if let Err(e) = append_message_log(
-            role,
-            endpoint,
-            prompt_kind,
-            step + 1,
-            &exchange_id,
-            "llm_request",
-            json!({
-                "submit_only": submit_only,
-                "prompt_bytes": prompt.len(),
-                "role_schema_bytes": role_schema.len(),
-                "prompt": truncate(&prompt, MAX_SNIPPET),
-            }),
-        ) {
-            eprintln!("[{role}] step={} action_log_error: {e}", step + 1);
-        }
-        append_orchestration_trace(
-            "llm_message_forwarded",
-            json!({
-                "role": role,
-                "prompt_kind": prompt_kind,
-                "step": step + 1,
-                "endpoint_id": endpoint.id,
-                "submit_only": submit_only,
-                "prompt_bytes": prompt.len(),
-            }),
-        );
+        ctx.log_request(step + 1, &exchange_id, &prompt, &role_schema);
 
         let response_timeout_secs = response_timeout_for_role(role);
         let request_future = llm_worker_send_request_with_req_id_timeout(
@@ -1262,32 +1270,19 @@ async fn run_agent(
             Ok(r) => r,
             Err(e) => {
                 eprintln!("[{role}] step={} llm_error: {e}", step + 1);
-                error_streak = error_streak.saturating_add(1);
-                last_error = Some(e.to_string());
-                if let Err(log_err) = append_message_log(
+                ctx.log_error(step + 1, &exchange_id, &e.to_string());
+                apply_error_result(
                     role,
-                    endpoint,
-                    prompt_kind,
-                    step + 1,
-                    &exchange_id,
-                    "llm_error",
-                    json!({
-                        "error": e.to_string(),
-                    }),
-                ) {
-                    eprintln!("[{role}] step={} action_log_error: {log_err}", step + 1);
-                }
-                last_result = Some(format!(
-                    "LLM error: {e}\nReturn exactly one action as a single JSON object in a ```json code block.\n\nTask context:\n{}",
-                    truncate(&task_context, MAX_SNIPPET)
-                ));
-                if error_streak >= 3 {
-                    last_result = Some(blocker_escalation_prompt(
-                        role,
-                        last_error.as_deref().unwrap_or("LLM error"),
-                        &task_context,
-                    ));
-                }
+                    &task_context,
+                    &mut error_streak,
+                    &mut last_error,
+                    &mut last_result,
+                    &e.to_string(),
+                    format!(
+                        "LLM error: {e}\nReturn exactly one action as a single JSON object in a ```json code block.\n\nTask context:\n{}",
+                        truncate(&task_context, MAX_SNIPPET)
+                    ),
+                );
                 step += 1;
                 continue;
             }
@@ -1297,256 +1292,65 @@ async fn run_agent(
         last_turn_id = resp.turn_id;
         let raw = resp.raw;
 
-        append_orchestration_trace(
-            "llm_message_received",
-            json!({
-                "role": role,
-                "prompt_kind": prompt_kind,
-                "step": step + 1,
-                "endpoint_id": endpoint.id,
-                "submit_only": submit_only,
-                "response_bytes": raw.len(),
-            }),
-        );
-        if let Err(e) = append_message_log(
+        ctx.log_response(step + 1, &exchange_id, &raw);
+
+        if let Some(ack) = ctx.handle_submit_ack(step + 1, &exchange_id, &raw) {
+            return Ok(ack);
+        }
+
+        eprintln!("[{role}] step={} response_bytes={}", step + 1, raw.len());
+
+        if ctx.handle_reaction_only(
+            step + 1,
+            &exchange_id,
+            &raw,
+            &mut reaction_only_streak,
+            &mut error_streak,
+            &mut last_error,
+        ) {
+            if reaction_only_streak < 3 {
+                continue;
+            }
+            reaction_only_streak = 0;
+            apply_error_result(
+                role,
+                &task_context,
+                &mut error_streak,
+                &mut last_error,
+                &mut last_result,
+                "reaction_only_response",
+                build_invalid_action_feedback(None, "reaction-only response"),
+            );
+            step += 1;
+            continue;
+        }
+
+        let mut action = match parse_action_from_raw(
             role,
             endpoint,
             prompt_kind,
             step + 1,
             &exchange_id,
-            "llm_response",
-            json!({
-                "submit_only": submit_only,
-                "response_bytes": raw.len(),
-                "raw": truncate(&raw, MAX_SNIPPET),
-            }),
+            &raw,
+            false,
+            false,
+            None,
         ) {
-            eprintln!("[{role}] step={} action_log_error: {e}", step + 1);
-        }
-
-        if submit_only {
-            if let Ok(mut ack) = serde_json::from_str::<Value>(&raw) {
-                if ack.get("submit_ack").and_then(|v| v.as_bool()) == Some(true) {
-                    ack["command_id"] = Value::String(exchange_id.clone());
-                    eprintln!("[{role}] step={} submit_ack={}", step + 1, raw);
-                    if let Err(e) = append_message_log(
-                        role,
-                        endpoint,
-                        prompt_kind,
-                        step + 1,
-                        &exchange_id,
-                        "llm_submit_ack",
-                        ack.clone(),
-                    ) {
-                        eprintln!("[{role}] step={} action_log_error: {e}", step + 1);
-                    }
-                    append_orchestration_trace(
-                        "llm_message_processed",
-                        json!({
-                            "role": role,
-                            "prompt_kind": prompt_kind,
-                            "step": step + 1,
-                            "endpoint_id": endpoint.id,
-                            "submit_ack": ack,
-                        }),
-                    );
-                    return Ok(ack.to_string());
-                }
-            }
-        }
-
-        eprintln!("[{role}] step={} response_bytes={}", step + 1, raw.len());
-
-        if is_reaction_only_response(&raw) {
-            reaction_only_streak = reaction_only_streak.saturating_add(1);
-            error_streak = error_streak.saturating_add(1);
-            last_error = Some("reaction_only_response".to_string());
-            if let Err(log_err) = append_message_log(
-                role,
-                endpoint,
-                prompt_kind,
-                step + 1,
-                &exchange_id,
-                "llm_reaction_only",
-                json!({
-                    "raw": truncate(&raw, MAX_SNIPPET),
-                }),
-            ) {
-                eprintln!("[{role}] step={} action_log_error: {log_err}", step + 1);
-            }
-            if reaction_only_streak < 3 {
-                eprintln!(
-                    "[{role}] step={} reaction_only_response retry {}",
-                    step + 1,
-                    reaction_only_streak
-                );
-                continue;
-            }
-            reaction_only_streak = 0;
-            last_result = Some(build_invalid_action_feedback(
-                None,
-                "reaction-only response",
-            ));
-            if error_streak >= 3 {
-                last_result = Some(blocker_escalation_prompt(
+            Ok(action) => action,
+            Err(invalid) => {
+                apply_error_result(
                     role,
-                    last_error.as_deref().unwrap_or("reaction_only"),
                     &task_context,
-                ));
-            }
-            step += 1;
-            continue;
-        }
-
-        let actions = match parse_actions(&raw) {
-            Ok(a) => a,
-            Err(e) => {
-                eprintln!("[{role}] step={} parse_error: {e}", step + 1);
-                error_streak = error_streak.saturating_add(1);
-                last_error = Some(e.to_string());
-                reaction_only_streak = 0;
-                if let Err(log_err) = append_message_log(
-                    role,
-                    endpoint,
-                    prompt_kind,
-                    step + 1,
-                    &exchange_id,
-                    "llm_parse_error",
-                    json!({
-                        "error": e.to_string(),
-                        "raw": truncate(&raw, MAX_SNIPPET),
-                    }),
-                ) {
-                    eprintln!("[{role}] step={} action_log_error: {log_err}", step + 1);
-                }
-                last_result = Some(build_invalid_action_feedback(None, &e.to_string()));
-                if error_streak >= 3 {
-                    last_result = Some(blocker_escalation_prompt(
-                        role,
-                        last_error.as_deref().unwrap_or("parse_error"),
-                        &task_context,
-                    ));
-                }
+                    &mut error_streak,
+                    &mut last_error,
+                    &mut last_result,
+                    &invalid.err_text,
+                    invalid.feedback,
+                );
                 step += 1;
                 continue;
             }
         };
-
-        if actions.len() != 1 {
-            let msg = format!("Got {} actions — emit exactly one action per turn.", actions.len());
-            eprintln!("[{role}] step={} {msg}", step + 1);
-            error_streak = error_streak.saturating_add(1);
-            last_error = Some(msg.clone());
-            if let Err(log_err) = append_message_log(
-                role,
-                endpoint,
-                prompt_kind,
-                step + 1,
-                &exchange_id,
-                "llm_invalid_action_count",
-                json!({
-                    "action_count": actions.len(),
-                    "raw": truncate(&raw, MAX_SNIPPET),
-                }),
-            ) {
-                eprintln!("[{role}] step={} action_log_error: {log_err}", step + 1);
-            }
-            last_result = Some(build_invalid_action_feedback(None, &msg));
-            if error_streak >= 3 {
-                last_result = Some(blocker_escalation_prompt(
-                    role,
-                    last_error.as_deref().unwrap_or("invalid_action_count"),
-                    &task_context,
-                ));
-            }
-            step += 1;
-            continue;
-        }
-
-        let mut action = actions[0].clone();
-        let raw_action = action.clone();
-        if let Err(e) = normalize_action(&mut action) {
-            error_streak = error_streak.saturating_add(1);
-            last_error = Some(e.to_string());
-            if let Err(log_err) = append_message_log(
-                role,
-                endpoint,
-                prompt_kind,
-                step + 1,
-                &exchange_id,
-                "llm_invalid_action",
-                json!({
-                    "stage": "normalize_action",
-                    "error": e.to_string(),
-                    "raw": truncate(&raw, MAX_SNIPPET),
-                }),
-            ) {
-                eprintln!("[{role}] step={} action_log_error: {log_err}", step + 1);
-            }
-            last_result = Some(build_invalid_action_feedback(Some(&raw_action), &e.to_string()));
-            if error_streak >= 3 {
-                last_result = Some(blocker_escalation_prompt(
-                    role,
-                    last_error.as_deref().unwrap_or("invalid_action"),
-                    &task_context,
-                ));
-            }
-            step += 1;
-            continue;
-        }
-        if let Err(e) = validate_action(&action) {
-            error_streak = error_streak.saturating_add(1);
-            last_error = Some(e.to_string());
-            if let Err(log_err) = append_message_log(
-                role,
-                endpoint,
-                prompt_kind,
-                step + 1,
-                &exchange_id,
-                "llm_invalid_action",
-                json!({
-                    "stage": "validate_action",
-                    "error": e.to_string(),
-                    "raw": truncate(&raw, MAX_SNIPPET),
-                    "action": action.clone(),
-                }),
-            ) {
-                eprintln!("[{role}] step={} action_log_error: {log_err}", step + 1);
-            }
-            let err_text = e.to_string();
-            if let Some(prompt) = corrective_invalid_action_prompt(&action, &err_text, role) {
-                last_result = Some(format!(
-                    "{}\n\n{}",
-                    build_invalid_action_feedback(Some(&action), &err_text),
-                    prompt
-                ));
-                if error_streak >= 3 {
-                    last_result = Some(blocker_escalation_prompt(
-                        role,
-                        last_error.as_deref().unwrap_or("invalid_action"),
-                        &task_context,
-                    ));
-                }
-                step += 1;
-                continue;
-            }
-            if err_text.contains("cargo_test missing 'crate'") {
-                last_result = Some(format!(
-                    "Invalid action: {e}\nCorrective action required: `cargo_test` must include a `crate` field.\nUse this exact format and fill in the crate name:\n```json\n{{\n  \"action\": \"cargo_test\",\n  \"crate\": \"canon-runtime\",\n  \"observation\": \"Running canon-runtime test suite after latest changes.\",\n  \"rationale\": \"Validate that canon-runtime tests pass for the updated parser logic.\"\n}}\n```\nReturn exactly one action."
-                ));
-            } else {
-                last_result = Some(build_invalid_action_feedback(Some(&action), &err_text));
-            }
-            if error_streak >= 3 {
-                last_result = Some(blocker_escalation_prompt(
-                    role,
-                    last_error.as_deref().unwrap_or("invalid_action"),
-                    &task_context,
-                ));
-            }
-            step += 1;
-            continue;
-        }
 
         let kind = action.get("action").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
 
@@ -1559,15 +1363,11 @@ async fn run_agent(
                 }
             }
         }
-        if role == "executor" && total_steps >= EXECUTOR_STEP_LIMIT {
-            if action.get("action").and_then(|v| v.as_str()) != Some("message") {
-                error_streak = error_streak.saturating_add(1);
-                last_result = Some(format!(
-                    "Executor exceeded {EXECUTOR_STEP_LIMIT} actions without handoff. You must send a `message` action to planner (handoff or blocker) now."
-                ));
-                step += 1;
-                continue;
-            }
+        if action.get("action").and_then(|v| v.as_str()) != Some("message")
+            && enforce_executor_step_limit(role, total_steps, &mut error_streak, &mut last_result)
+        {
+            step += 1;
+            continue;
         }
         if kind == "message" {
             if let Some(path) = require_tail_path.as_ref() {
@@ -1601,24 +1401,16 @@ async fn run_agent(
         let command_id = exchange_id.clone();
         action["command_id"] = Value::String(command_id.clone());
 
-        if role == "diagnostics" && !diagnostics_eventlog_python_done {
-            if diagnostics_python_reads_event_logs(&action) {
-                diagnostics_eventlog_python_done = true;
-            } else if step == 0 {
-                last_result = Some(
-                    "Diagnostics must begin with a `python` action that analyzes /workspace/ai_sandbox/canon/state/event_log/event.tlog.d to diagnose problems, detect inconsistencies, and extract concrete failure signals."
-                        .to_string(),
-                );
-                step += 1;
-                continue;
-            } else if matches!(kind.as_str(), "apply_patch" | "message") {
-                last_result = Some(
-                    "Before writing diagnostics or finishing, run a `python` action that analyzes /workspace/ai_sandbox/canon/state/event_log/event.tlog.d to find errors, inconsistencies, invariant violations, repeated failure patterns, and concrete repair targets. Diagnostics is for finding what is broken."
-                        .to_string(),
-                );
-                step += 1;
-                continue;
-            }
+        if let Some(msg) = enforce_diagnostics_python(
+            role,
+            step,
+            kind.as_str(),
+            &action,
+            &mut diagnostics_eventlog_python_done,
+        ) {
+            last_result = Some(msg);
+            step += 1;
+            continue;
         }
 
         if is_explicit_idle_action(&action) {
@@ -1946,7 +1738,7 @@ fn handle_executor_completion(
         dispatch_state.lane_steps_used.insert(submitted.lane, 0);
         if let Ok(mut actions) = parse_actions(&exec_result) {
             if let Some(action) = actions.pop() {
-                if let Err(e) = append_action_result_log(
+                log_action_result(
                     &submitted.actor,
                     &lane_cfg.endpoint,
                     "executor",
@@ -1955,9 +1747,7 @@ fn handle_executor_completion(
                     &action,
                     true,
                     &exec_result,
-                ) {
-                    eprintln!("[orchestrate] executor_message_result_log_error: {e}");
-                }
+                );
             }
         }
     }
@@ -2086,7 +1876,7 @@ async fn submit_executor_turn(
         job.executor_role,
         prompt.len()
     );
-    if let Err(e) = append_message_log(
+    log_message_event(
         &job.executor_role,
         endpoint,
         "executor",
@@ -2099,9 +1889,7 @@ async fn submit_executor_turn(
             "role_schema_bytes": role_schema.len(),
             "prompt": truncate(&prompt, MAX_SNIPPET),
         }),
-    ) {
-        eprintln!("[{}] step=1 action_log_error: {e}", job.executor_role);
-    }
+    );
     append_orchestration_trace(
         "llm_message_forwarded",
         json!({
@@ -2142,7 +1930,7 @@ async fn submit_executor_turn(
             "response_bytes": raw.len(),
         }),
     );
-    if let Err(e) = append_message_log(
+    log_message_event(
         &job.executor_role,
         endpoint,
         "executor",
@@ -2154,14 +1942,12 @@ async fn submit_executor_turn(
             "response_bytes": raw.len(),
             "raw": truncate(&raw, MAX_SNIPPET),
         }),
-    ) {
-        eprintln!("[{}] step=1 action_log_error: {e}", job.executor_role);
-    }
+    );
     if let Ok(mut ack) = serde_json::from_str::<Value>(&raw) {
         if ack.get("submit_ack").and_then(|v| v.as_bool()) == Some(true) {
             ack["command_id"] = Value::String(command_id.to_string());
             eprintln!("[{}] step=1 submit_ack={}", job.executor_role, raw);
-            if let Err(e) = append_message_log(
+            log_message_event(
                 &job.executor_role,
                 endpoint,
                 "executor",
@@ -2169,9 +1955,7 @@ async fn submit_executor_turn(
                 command_id,
                 "llm_submit_ack",
                 ack.clone(),
-            ) {
-                eprintln!("[{}] step=1 action_log_error: {e}", job.executor_role);
-            }
+            );
             append_orchestration_trace(
                 "llm_message_processed",
                 json!({
@@ -2481,10 +2265,7 @@ pub async fn run() -> Result<()> {
                     std::fs::read_to_string(&violations_path).unwrap_or_default();
                 let diagnostics_text =
                     std::fs::read_to_string(&diagnostics_path).unwrap_or_default();
-                let cargo_test_failures = summarize_cargo_test_failures(
-                    &std::fs::read_to_string(workspace.join("cargo_test_failures.json"))
-                        .unwrap_or_default(),
-                );
+                let cargo_test_failures = load_cargo_test_failures(&workspace);
                 let plan_text =
                     std::fs::read_to_string(&master_plan_path).unwrap_or_default();
                 let plan_diff_text = plan_diff(&dispatch_state.last_plan_text, &plan_text, 400);
@@ -2945,10 +2726,7 @@ pub async fn run() -> Result<()> {
                     lane_plan_file.as_str(),
                     &final_exec_result,
                     &executor_diff_text,
-                    &summarize_cargo_test_failures(
-                        &std::fs::read_to_string(workspace.join("cargo_test_failures.json"))
-                            .unwrap_or_default(),
-                    ),
+                    &load_cargo_test_failures(&workspace),
                 );
                 if let Some(inbound) = take_inbound_message("verifier") {
                     if let Some((_, to, payload)) = try_parse_blocker(&inbound) {
@@ -3073,10 +2851,7 @@ pub async fn run() -> Result<()> {
                     .map(|lane| format!("{}={}", lane.label, verifier_summary[lane.index]))
                     .collect::<Vec<_>>()
                     .join("\n");
-                let cargo_test_failures = summarize_cargo_test_failures(
-                    &std::fs::read_to_string(workspace.join("cargo_test_failures.json"))
-                        .unwrap_or_default(),
-                );
+                let cargo_test_failures = load_cargo_test_failures(&workspace);
                 let mut prompt = diagnostics_cycle_prompt(&summary_text, &cargo_test_failures);
                 if let Some(inbound) = take_inbound_message("diagnostics") {
                     prompt.push_str("\n\nInbound handoff message (raw JSON):\n");
@@ -3188,20 +2963,14 @@ pub async fn run() -> Result<()> {
             let invariants = std::fs::read_to_string(workspace.join(INVARIANTS_FILE)).unwrap_or_default();
             let objectives = std::fs::read_to_string(workspace.join(OBJECTIVES_FILE)).unwrap_or_default();
             let executor_diff_text = executor_diff(&workspace, 400);
-            let cargo_test_failures = summarize_cargo_test_failures(
-                &std::fs::read_to_string(workspace.join("cargo_test_failures.json"))
-                    .unwrap_or_default(),
-            );
+            let cargo_test_failures = load_cargo_test_failures(&workspace);
             format!(
                 "WORKSPACE: {WORKSPACE}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{primary_input}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff_text}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nVerify that objectives in {OBJECTIVES_FILE} are completed properly.\nUpdate task status fields in {MASTER_PLAN_FILE} to reflect verified results.\nWrite violations to {VIOLATIONS_FILE} if any are found.\nWhen complete, report verified/unverified/false items in `message.payload`.\nEmit exactly one action to begin."
             )
         } else if is_diagnostics {
             let violations = std::fs::read_to_string(&violations_path).unwrap_or_default();
             let objectives = std::fs::read_to_string(workspace.join(OBJECTIVES_FILE)).unwrap_or_default();
-            let cargo_test_failures = summarize_cargo_test_failures(
-                &std::fs::read_to_string(workspace.join("cargo_test_failures.json"))
-                    .unwrap_or_default(),
-            );
+            let cargo_test_failures = load_cargo_test_failures(&workspace);
             format!(
                 "WORKSPACE: {WORKSPACE}\nAll relative paths resolve against WORKSPACE.\n\nAlways inspect state/event_log/event.tlog.d and the relevant canon system files.\nRead files and search the source code for the bugs (use read_file + run_command/ripgrep).\nRun 5+ python analysis actions over event logs and code evidence.\nInfer the root cause from the evidence and cite detailed sources of errors (file paths, functions, and log evidence).\nPrioritize canon-route, canon-loop, canon-runtime, canon-semantic-state, and canon-mini-agent when control flow or prompt contracts are implicated.\nLatest verifier summary:\n(none yet)\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nVerify whether objectives in {OBJECTIVES_FILE} are being met and note gaps.\nUse {SPEC_FILE}, {OBJECTIVES_FILE}, and {INVARIANTS_FILE} as the contract, not lane plans.\nInfer failures from code, logs, runtime state, and verifier findings.\nCanonical law:\n- SemanticStateSummary is the single source of truth for routing.\n- scheduler_len / planned_pending are not routing authority.\nFocus on route/control-flow correctness, event successor discharge, duplicate fanout, state-authority drift, queue-driven routing, synthetic dispatch bypasses, and prompt-shell mismatches.\n\nWrite a ranked diagnostics report to {diagnostics_rel}. Emit exactly one action to begin."
             )
@@ -3210,10 +2979,7 @@ pub async fn run() -> Result<()> {
             let diagnostics = std::fs::read_to_string(&diagnostics_path).unwrap_or_default();
             let objectives = std::fs::read_to_string(workspace.join(OBJECTIVES_FILE)).unwrap_or_default();
             let invariants = std::fs::read_to_string(workspace.join(INVARIANTS_FILE)).unwrap_or_default();
-            let cargo_test_failures = summarize_cargo_test_failures(
-                &std::fs::read_to_string(workspace.join("cargo_test_failures.json"))
-                    .unwrap_or_default(),
-            );
+            let cargo_test_failures = load_cargo_test_failures(&workspace);
             let lane_plan_list = lanes
                 .iter()
                 .map(|lane| lane.plan_file.as_str())
