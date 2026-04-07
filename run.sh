@@ -1,3 +1,9 @@
+cargo run -p canon-mini-agent --bin canon-mini-supervisor \
+    --orchestrate \
+    --workspace /workspace/ai_sandbox/canon-mini-agent \
+    --instance agent_0 \
+    --port 9103
+
 cargo run -p canon-mini-agent --bin canon-mini-supervisor -- \
   --orchestrate --instance agent_0 --port 9103
 
