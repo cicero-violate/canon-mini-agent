@@ -201,7 +201,7 @@ fn parse_objectives_md(text: &str) -> ObjectivesReport {
                 }
                 continue;
             }
-            if title.contains("Objective") {
+            if title.contains("Objective") || title.starts_with("OBJ-") {
                 if let Some(obj) = current.take() {
                     objectives.push(obj.finish());
                 }

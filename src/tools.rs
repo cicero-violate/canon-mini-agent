@@ -12,8 +12,8 @@ use std::fs;
 use std::fs::File;
 
 use crate::constants::{
-    diagnostics_file, MASTER_PLAN_FILE, MAX_FULL_READ_LINES, MAX_SNIPPET, SPEC_FILE,
-    VIOLATIONS_FILE,
+    diagnostics_file, is_self_modification_mode, MASTER_PLAN_FILE, MAX_FULL_READ_LINES,
+    MAX_SNIPPET, SPEC_FILE, VIOLATIONS_FILE,
 };
 use crate::logging::{log_action_event, log_action_result};
 use crate::prompts::truncate;
@@ -340,9 +340,11 @@ fn patch_scope_error(role: &str, patch: &str) -> Option<String> {
 
     match role {
         role if role.starts_with("executor") => {
-            if touches_spec || touches_master_plan || touches_lane || touches_violations || touches_diagnostics {
+            // In self-modification mode the executor is allowed to patch SPEC.md and src/ files.
+            let spec_blocked = touches_spec && !is_self_modification_mode();
+            if spec_blocked || touches_master_plan || touches_lane || touches_violations || touches_diagnostics {
                 Some(
-                    "Executor may not patch spec, plan files, violations, or diagnostics. Execute code/tests only and report evidence in `message.payload`."
+                    "Executor may not patch plan files, violations, or diagnostics. Execute code/tests only and report evidence in `message.payload`."
                         .to_string(),
                 )
             } else {

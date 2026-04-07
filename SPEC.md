@@ -8,7 +8,8 @@ The system is a deterministic event-driven loop with explicit roles.
 
 ### 1.1 Global State
 - `Workspace`: absolute root path of the target project being operated on. Set via `--workspace <path>` CLI argument; defaults to `/workspace/ai_sandbox/canon`. Must be absolute. All relative paths in actions resolve against this value.
-- `AgentStateDir`: operational state for canon-mini-agent itself. Fixed at `/workspace/ai_sandbox/canon-mini-agent/agent_state`. Never equals `Workspace`.
+- `AgentStateDir`: operational state for canon-mini-agent itself. Defaults to `/workspace/ai_sandbox/canon-mini-agent/agent_state`; overridable via `--state-dir`. When `Workspace` equals the canon-mini-agent source root, the system is in **self-modification mode** (see §9).
+- `SelfModificationMode`: true when `Workspace` is the parent directory of `AgentStateDir`. Detected at runtime via `is_self_modification_mode()` in `src/constants.rs`. Relaxes executor scope guards (see §4.1 and §9).
 - `Role`: one of `{Planner, Executor, Verifier, Diagnostics}`.
 - `Lane`: executor lane id (e.g., `executor_pool`), bound to a role of type Executor.
 - `PromptKind`: `{planner, executor, verifier, diagnostics}`.
@@ -169,11 +170,18 @@ Outputs: JSON reports under metrics/analysis directories.
 ## 4. Invariants (Must Always Hold)
 
 ### 4.1 Scope Invariants
-- **Executor** may not edit `SPEC.md`, `PLANS/OBJECTIVES.md`, `INVARIANT.md`, `PLAN.json`, any lane plan, `VIOLATIONS.json`, or diagnostics reports.
-- **Verifier** may edit **only** `PLAN.json` and `VIOLATIONS.json`.
-- **Diagnostics** may edit **only** the diagnostics report file.
-- **Planner** may edit **only** `PLAN.json` and lane plans.
-- No role may modify `/workspace/ai_sandbox/canon-mini-agent` (the orchestrator itself) unless explicitly authorized by the operator.
+
+**Normal mode** (workspace ≠ orchestrator source):
+- **Executor** may not patch `SPEC.md`, `PLAN.json`, `INVARIANTS.json`, `VIOLATIONS.json`, `OBJECTIVES.json`, any lane plan, or diagnostics files. May read and patch `src/` freely.
+- **Verifier** may patch **only** `PLAN.json` and `VIOLATIONS.json`.
+- **Diagnostics** may patch **only** the active diagnostics report file.
+- **Planner** may patch **only** `PLAN.json` and lane plans.
+
+**Self-modification mode** (workspace == orchestrator source, see §9):
+- **Executor** may additionally patch `SPEC.md` and `src/` files. All other restrictions still apply.
+- All other role restrictions are unchanged.
+
+Enforcement: `src/tools.rs::patch_scope_error()`. Changes to that function require verifier sign-off (I13).
 
 ### 4.2 Action Validity Invariants
 - Each action must satisfy its typed schema (Section 3).
@@ -337,3 +345,38 @@ Executor emits message{to=Planner}
 - No GUI or interactive I/O from agents.
 - No mutation outside `Workspace` (except to `/tmp` for scratch files).
 - Workspace path is not determined by agents — it is set by the operator at launch.
+
+## 9. Self-Modification Mode
+
+Self-modification mode is active when `Workspace` equals the canon-mini-agent source root (i.e., the parent of `AgentStateDir`). Detection: `is_self_modification_mode()` in `src/constants.rs`.
+
+### 9.1 Purpose
+Allows canon-mini-agent to act as its own target workspace — reading source files, patching `SPEC.md`, and improving `src/` code under the direction of the planner and verification of the verifier.
+
+### 9.2 Relaxed Executor Scope
+In self-modification mode only:
+- Executor **may** patch `SPEC.md` directly.
+- Executor **may** patch files under `src/`.
+- All other scope restrictions remain in force (no patching `PLAN.json`, `INVARIANTS.json`, `VIOLATIONS.json`, lane plans, or diagnostics).
+
+### 9.3 Safety Requirements (Invariants I11–I14)
+
+**I11 — Build gate always-on:** After any `src/` or `SPEC.md` patch, executor must run `cargo build --workspace` before emitting a `message` handoff. A broken build is a blocker; the executor must fix or revert the patch in the same turn. This applies regardless of `check_on_done` setting.
+
+**I12 — SPEC.md evidence requirement:** Every SPEC.md edit must cite the source file and approximate line range that implements the claim. Executor must read the relevant `src/` file before writing any SPEC.md claim about it. Verifier must independently verify every cited location.
+
+**I13 — No permission escalation:** Executor must not patch `src/tools.rs::patch_scope_error` or any other scope-guard logic in a way that expands role permissions beyond SPEC.md §4. Any such patch requires verifier sign-off with explicit SPEC.md §4 justification.
+
+**I14 — Checkpoint compatibility:** Changes to `OrchestratorCheckpoint` fields must use `#[serde(default)]` for additions. Removing or renaming fields requires a version bump or checkpoint discard on load. The `workspace` field must always be populated on save and validated on load.
+
+### 9.4 Safety Properties (Why It's Safe)
+- **No mid-run corruption:** The running orchestrator binary is already loaded into memory. Patching `src/` files does not affect the current process — changes take effect only on the next `cargo build` + process restart.
+- **Build gate prevents bad state:** A broken `cargo build` after a patch means the executor must fix or revert before handoff, so the repository never rests in a non-building state.
+- **Scope guards protect the plan layer:** Even in self-modification mode, the executor cannot touch `PLAN.json`, `INVARIANTS.json`, or `VIOLATIONS.json`, preserving planner authority.
+- **Verifier provides independent evidence check:** The verifier reads cited source independently before accepting any SPEC.md change, preventing hallucinated claims from becoming spec.
+
+### 9.5 Prohibited Even in Self-Modification Mode
+- Patching `PLAN.json`, `INVARIANTS.json`, `VIOLATIONS.json`, `OBJECTIVES.json`, lane plans, or diagnostics files.
+- Removing or weakening scope guards without verifier sign-off (I13).
+- Emitting `message{status=complete}` when `cargo build --workspace` fails (I11).
+- Writing SPEC.md claims without reading and citing the corresponding source (I12).

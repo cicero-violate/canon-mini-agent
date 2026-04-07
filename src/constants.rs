@@ -8,6 +8,7 @@ pub const MASTER_PLAN_FILE: &str = "PLAN.json";
 pub const VIOLATIONS_FILE: &str = "VIOLATIONS.json";
 pub const INVARIANTS_FILE: &str = "INVARIANTS.json";
 pub const INVARIANTS_MD_FILE: &str = "INVARIANT.md";
+pub const CANONICAL_LAW_FILE: &str = "CANONICAL_LAW.md";
 pub const WS_PORT_CANDIDATES: &[u16] = &[9103, 9104, 9105, 9106, 9107, 9108];
 pub const MAX_STEPS: usize = 2000;
 pub const EXECUTOR_STEP_LIMIT: usize = 20;
@@ -60,6 +61,17 @@ pub fn agent_state_dir() -> &'static str {
         .get()
         .map(String::as_str)
         .unwrap_or(DEFAULT_AGENT_STATE_DIR)
+}
+
+/// Returns true when the active workspace is the canon-mini-agent source tree itself.
+/// In this mode the executor is allowed to patch SPEC.md and src/ files directly.
+pub fn is_self_modification_mode() -> bool {
+    let ws = workspace();
+    let state_dir = std::path::Path::new(agent_state_dir());
+    match state_dir.parent() {
+        Some(parent) => ws == parent.to_string_lossy().as_ref(),
+        None => false,
+    }
 }
 
 #[derive(Clone, Copy)]

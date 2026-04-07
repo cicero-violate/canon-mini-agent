@@ -2,8 +2,8 @@ use anyhow::{anyhow, bail, Context, Result};
 use serde_json::Value;
 
 use crate::constants::{
-    diagnostics_file, workspace, EXECUTOR_STEP_LIMIT, INVARIANTS_FILE, MASTER_PLAN_FILE,
-    MAX_SNIPPET, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
+    diagnostics_file, workspace, CANONICAL_LAW_FILE, EXECUTOR_STEP_LIMIT, INVARIANTS_FILE,
+    MASTER_PLAN_FILE, MAX_SNIPPET, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
 };
 use crate::protocol::{MessagePayload, MessageStatus, MessageType, ProtocolMessage, Role};
 
@@ -235,13 +235,10 @@ fn prompt_mission(kind: AgentPromptKind) -> &'static str {
     }
 }
 
-fn prompt_canonical_law(kind: AgentPromptKind) -> &'static str {
-    match kind {
-        AgentPromptKind::Executor => "- `SemanticStateSummary` is the single source of truth for routing and control-flow correctness.\n- `scheduler_len`, `planned_pending`, and other queue-like counters are derived telemetry unless the code proves otherwise.\n- Do not preserve or introduce routing logic that depends on local mirrors when semantic-state facts are available.\n- Prefer changes that make code follow:\n  state -> decision -> transition",
-        AgentPromptKind::Verifier => "- `SemanticStateSummary` is the single source of truth for routing and control-flow correctness.\n- `scheduler_len`, `planned_pending`, and other queue-like counters are not authoritative when semantic-state facts exist.\n- A task is NOT verified if it leaves queue-driven routing in place where semantic-state routing was the intended fix.",
-        AgentPromptKind::Planner => "- `SemanticStateSummary` is the single source of truth for routing and control-flow correctness.\n- `scheduler_len`, `planned_pending`, and similar counters are not root truth for routing.\n- Prioritize work that migrates decision logic to semantic-state authority before local edge patches that preserve queue-truth.",
-        AgentPromptKind::Diagnostics => "- `SemanticStateSummary` is the single source of truth for routing and control-flow correctness.\n- `scheduler_len`, `planned_pending`, and similar counters are not authoritative routing truth unless explicitly proven as derived mirrors.\n- A high-impact failure exists whenever queue-local state still drives routing in places that should derive from semantic state.",
-    }
+fn prompt_canonical_law(_kind: AgentPromptKind) -> String {
+    let path = std::path::Path::new(workspace()).join(CANONICAL_LAW_FILE);
+    std::fs::read_to_string(path)
+        .unwrap_or_else(|_| "- Follow the invariants in INVARIANTS.json as the authoritative source of correctness for all decisions.".to_string())
 }
 
 fn prompt_workspace(kind: AgentPromptKind) -> String {
@@ -286,9 +283,14 @@ fn tools_section(kind: AgentPromptKind) -> String {
 }
 
 fn rules_common_footer() -> String {
+    let agent_source = crate::constants::agent_state_dir().trim_end_matches("/agent_state");
+    let protect_rule = if crate::constants::workspace() != agent_source {
+        format!("- Never modify the canon-mini-agent source tree ({agent_source}).\n")
+    } else {
+        String::new()
+    };
     format!(
-        "- Never modify the canon-mini-agent source tree ({}).\n- Emit exactly one action per turn.\n- If you cannot proceed (missing files/permissions, repeated tool errors, or irreconcilable evidence), emit a `message` with `type=blocker`, `status=blocked`, and payload fields `blocker`, `evidence`, `required_action`.\n- Output format: exactly one JSON object in a ```json code block. No prose outside it.",
-        crate::constants::agent_state_dir().trim_end_matches("/agent_state")
+        "{protect_rule}- Emit exactly one action per turn.\n- If you cannot proceed (missing files/permissions, repeated tool errors, or irreconcilable evidence), emit a `message` with `type=blocker`, `status=blocked`, and payload fields `blocker`, `evidence`, `required_action`.\n- Output format: exactly one JSON object in a ```json code block. No prose outside it."
     )
 }
 
@@ -452,7 +454,7 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
     out.push_str("\n\n");
     out.push_str(prompt_mission(kind));
     out.push_str("\n\nCanonical law:\n");
-    out.push_str(prompt_canonical_law(kind));
+    out.push_str(&prompt_canonical_law(kind));
     out.push_str("\n\n");
     out.push_str(&prompt_workspace(kind));
     out.push_str("\n\n");

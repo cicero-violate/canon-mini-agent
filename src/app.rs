@@ -977,6 +977,8 @@ struct ResumeVerifierItem {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct OrchestratorCheckpoint {
+    #[serde(default)]
+    workspace: String,
     created_ms: u64,
     phase: String,
     phase_lane: Option<usize>,
@@ -1029,6 +1031,7 @@ fn save_checkpoint(
         });
     }
     let checkpoint = OrchestratorCheckpoint {
+        workspace: workspace.to_string_lossy().into_owned(),
         created_ms: now_ms(),
         phase: phase.to_string(),
         phase_lane,
@@ -1054,7 +1057,16 @@ fn save_checkpoint(
 fn load_checkpoint(workspace: &Path) -> Option<OrchestratorCheckpoint> {
     let path = checkpoint_path(workspace);
     let raw = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str(&raw).ok()
+    let cp: OrchestratorCheckpoint = serde_json::from_str(&raw).ok()?;
+    if cp.workspace.is_empty() || cp.workspace != workspace.to_string_lossy().as_ref() {
+        eprintln!(
+            "[orchestrate] checkpoint workspace mismatch (stored={} current={}) — discarding",
+            cp.workspace,
+            workspace.display()
+        );
+        return None;
+    }
+    Some(cp)
 }
 
 fn looks_like_diff(raw: &str) -> bool {
