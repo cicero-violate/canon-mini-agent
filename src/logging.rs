@@ -15,7 +15,7 @@ struct LogPaths {
 static LOG_PATHS: OnceLock<LogPaths> = OnceLock::new();
 
 pub fn init_log_paths(prefix: &str) {
-    let base = std::path::Path::new("/workspace/ai_sandbox/canon-mini-agent/agent_state").join(prefix);
+    let base = std::path::Path::new(crate::constants::agent_state_dir()).join(prefix);
     let _ = std::fs::create_dir_all(&base);
     let _ = LOG_PATHS.set(LogPaths {
         action_log: base.join("actions.jsonl"),

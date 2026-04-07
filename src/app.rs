@@ -40,8 +40,10 @@ use crate::state_space::{
     CompletionTabCheck, WakeFlagInput,
 };
 use crate::constants::{
-    DEFAULT_RESPONSE_TIMEOUT_SECS, DIAGNOSTICS_FILE_PATH, ENDPOINT_SPECS, MASTER_PLAN_FILE, MAX_SNIPPET,
-    EXECUTOR_STEP_LIMIT, MAX_STEPS, ROLE_TIMEOUT_SECS, SPEC_FILE, VIOLATIONS_FILE, WORKSPACE, WS_PORT_CANDIDATES,
+    DEFAULT_AGENT_STATE_DIR, DEFAULT_RESPONSE_TIMEOUT_SECS, DEFAULT_WORKSPACE,
+    DIAGNOSTICS_FILE_PATH, ENDPOINT_SPECS, EXECUTOR_STEP_LIMIT, MASTER_PLAN_FILE, MAX_SNIPPET,
+    MAX_STEPS, ROLE_TIMEOUT_SECS, SPEC_FILE, VIOLATIONS_FILE, WS_PORT_CANDIDATES,
+    set_agent_state_dir, set_workspace, workspace,
 };
 use crate::md_convert::ensure_objectives_and_invariants_json;
 use crate::prompt_inputs::{
@@ -989,7 +991,7 @@ struct OrchestratorCheckpoint {
 }
 
 fn checkpoint_path(_workspace: &Path) -> PathBuf {
-    PathBuf::from("/workspace/ai_sandbox/canon-mini-agent/agent_state/mini_agent_checkpoint.json")
+    PathBuf::from(crate::constants::agent_state_dir()).join("mini_agent_checkpoint.json")
 }
 
 fn save_checkpoint(
@@ -1300,16 +1302,16 @@ fn enforce_diagnostics_python(
         return None;
     }
     if step == 0 {
-        return Some(
-            "Diagnostics must begin with a `python` action that analyzes /workspace/ai_sandbox/canon/state/event_log/event.tlog.d to diagnose problems, detect inconsistencies, and extract concrete failure signals."
-                .to_string(),
-        );
+        return Some(format!(
+            "Diagnostics must begin with a `python` action that analyzes {}/state/event_log/event.tlog.d to diagnose problems, detect inconsistencies, and extract concrete failure signals.",
+            workspace()
+        ));
     }
     if matches!(kind, "apply_patch" | "message") {
-        return Some(
-            "Before writing diagnostics or finishing, run a `python` action that analyzes /workspace/ai_sandbox/canon/state/event_log/event.tlog.d to find errors, inconsistencies, invariant violations, repeated failure patterns, and concrete repair targets. Diagnostics is for finding what is broken."
-                .to_string(),
-        );
+        return Some(format!(
+            "Before writing diagnostics or finishing, run a `python` action that analyzes {}/state/event_log/event.tlog.d to find errors, inconsistencies, invariant violations, repeated failure patterns, and concrete repair targets. Diagnostics is for finding what is broken.",
+            workspace()
+        ));
     }
     None
 }
@@ -1317,7 +1319,7 @@ fn enforce_diagnostics_python(
 
 fn take_inbound_message(role: &str) -> Option<String> {
     let role_key = role.trim().to_lowercase().replace(|c: char| !c.is_ascii_alphanumeric(), "_");
-    let agent_state_dir = std::path::Path::new("/workspace/ai_sandbox/canon-mini-agent/agent_state");
+    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let path = agent_state_dir.join(format!("last_message_to_{role_key}.json"));
     let raw = std::fs::read_to_string(&path).ok()?;
     let trimmed = raw.trim().to_string();
@@ -1446,7 +1448,7 @@ fn try_parse_blocker(raw: &str) -> Option<(String, String, Value)> {
 
 fn persist_planner_message(action: &Value) {
     let agent_state_dir =
-        std::path::Path::new("/workspace/ai_sandbox/canon-mini-agent/agent_state");
+        std::path::Path::new(crate::constants::agent_state_dir());
     let _ = std::fs::create_dir_all(agent_state_dir);
     let planner_path = agent_state_dir.join("last_message_to_planner.json");
     let _ = std::fs::write(
@@ -1923,7 +1925,7 @@ async fn run_agent(
             step += 1;
             continue;
         }
-        if let Some(msg) = cargo_test_gate.message_blocker_if_needed(&kind, WORKSPACE) {
+        if let Some(msg) = cargo_test_gate.message_blocker_if_needed(&kind, crate::constants::workspace()) {
             error_streak = error_streak.saturating_add(1);
             last_result = Some(msg);
             step += 1;
@@ -2296,7 +2298,7 @@ fn handle_executor_completion(
                     dispatch_state.planner_pending = true;
                 } else {
                     // Generic wakeup for other targets (verifier, diagnostics, etc.)
-                    let agent_state_dir = std::path::Path::new("/workspace/ai_sandbox/canon-mini-agent/agent_state");
+                    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
                     let _ = std::fs::create_dir_all(agent_state_dir);
                     let to_key = to_role.to_lowercase().replace(|c: char| !c.is_ascii_alphanumeric(), "_");
                     let msg_path = agent_state_dir.join(format!("last_message_to_{to_key}.json"));
@@ -2406,7 +2408,7 @@ async fn submit_executor_turn(
     command_id: &str,
     response_timeout_secs: u64,
 ) -> Result<String> {
-    let _lane_plan_text = std::fs::read_to_string(Path::new(WORKSPACE).join(&job.lane_plan_file)).unwrap_or_default();
+    let _lane_plan_text = std::fs::read_to_string(Path::new(workspace()).join(&job.lane_plan_file)).unwrap_or_default();
     let mut exec_prompt = executor_cycle_prompt(
         job.executor_display.as_str(),
         job.label.as_str(),
@@ -2518,6 +2520,33 @@ async fn submit_executor_turn(
 
 pub async fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
+
+    // Resolve target workspace early so all subsystems see the same value.
+    let workspace_override = args.windows(2).find(|w| w[0] == "--workspace").map(|w| w[1].clone());
+    if let Some(ref path) = workspace_override {
+        let p = std::path::Path::new(path);
+        if !p.is_absolute() {
+            bail!("--workspace must be an absolute path, got: {path}");
+        }
+        set_workspace(path.clone());
+        eprintln!("[canon-mini-agent] workspace={path} (--workspace)");
+    } else {
+        eprintln!("[canon-mini-agent] workspace={} (default)", DEFAULT_WORKSPACE);
+    }
+
+    // Resolve agent state directory (canon-mini-agent's own runtime state).
+    let state_dir_override = args.windows(2).find(|w| w[0] == "--state-dir").map(|w| w[1].clone());
+    if let Some(ref path) = state_dir_override {
+        let p = std::path::Path::new(path);
+        if !p.is_absolute() {
+            bail!("--state-dir must be an absolute path, got: {path}");
+        }
+        set_agent_state_dir(path.clone());
+        eprintln!("[canon-mini-agent] state_dir={path} (--state-dir)");
+    } else {
+        eprintln!("[canon-mini-agent] state_dir={} (default)", DEFAULT_AGENT_STATE_DIR);
+    }
+
     let orchestrate = args.iter().any(|a| a == "--orchestrate");
     let start_role = args.windows(2).find(|w| w[0] == "--start").map(|w| w[1].as_str()).unwrap_or("executor");
     if !matches!(start_role, "executor" | "verifier" | "planner" | "diagnostics") {
@@ -2537,7 +2566,7 @@ pub async fn run() -> Result<()> {
         );
     }
 
-    let workspace = PathBuf::from(WORKSPACE);
+    let workspace = PathBuf::from(workspace());
     let spec_path = workspace.join(SPEC_FILE);
     let master_plan_path = workspace.join(MASTER_PLAN_FILE);
     let violations_path = workspace.join(VIOLATIONS_FILE);
@@ -2740,7 +2769,7 @@ pub async fn run() -> Result<()> {
             }
 
             let agent_state_dir =
-                std::path::Path::new("/workspace/ai_sandbox/canon-mini-agent/agent_state");
+                std::path::Path::new(crate::constants::agent_state_dir());
             apply_wake_flags(agent_state_dir, &mut dispatch_state, &mut scheduled_phase);
 
             if scheduled_phase.is_none() && current_phase == "bootstrap" {
@@ -2760,7 +2789,7 @@ pub async fn run() -> Result<()> {
             }
 
             let agent_state_dir =
-                std::path::Path::new("/workspace/ai_sandbox/canon-mini-agent/agent_state");
+                std::path::Path::new(crate::constants::agent_state_dir());
             let active_blocker = agent_state_dir.join("active_blocker_to_verifier.json").exists();
             let blocker_decision = decide_active_blocker(
                 active_blocker,

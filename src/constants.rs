@@ -39,6 +39,29 @@ pub fn workspace() -> &'static str {
         .unwrap_or(DEFAULT_WORKSPACE)
 }
 
+// ── Agent state directory (canon-mini-agent's own operational state) ──────────
+
+/// Default path for canon-mini-agent's own runtime state (checkpoints, wakeup flags).
+/// Override with --state-dir <path>.
+pub const DEFAULT_AGENT_STATE_DIR: &str = "/workspace/ai_sandbox/canon-mini-agent/agent_state";
+
+static AGENT_STATE_DIR_PATH: OnceLock<String> = OnceLock::new();
+
+/// Set the agent state directory from the --state-dir CLI argument.
+pub fn set_agent_state_dir(path: String) {
+    let _ = AGENT_STATE_DIR_PATH.set(path);
+}
+
+/// Returns the active agent state directory path.
+/// This is where canon-mini-agent stores its own runtime state (checkpoints, wakeup flags, inbound messages).
+/// Falls back to DEFAULT_AGENT_STATE_DIR if --state-dir was not provided.
+pub fn agent_state_dir() -> &'static str {
+    AGENT_STATE_DIR_PATH
+        .get()
+        .map(String::as_str)
+        .unwrap_or(DEFAULT_AGENT_STATE_DIR)
+}
+
 #[derive(Clone, Copy)]
 pub struct EndpointSpec {
     pub id: &'static str,

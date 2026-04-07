@@ -1,1 +1,1 @@
-Both cases show cargo_project=false, path_exists=false, repo_initialized=false, rust_file_count=0, resulting in approved_route=Plan vs Plan.
+Invalid action rejected: field type mismatch payload.evidence (expected string).

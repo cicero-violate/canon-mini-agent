@@ -15,7 +15,7 @@ fn cargo_test_gate_requires_tail_then_clears() {
     gate.note_result("cargo_test", "note: cargo test detached\nprogress_path: /tmp/run.log");
     assert_eq!(gate.pending_tail_path(), Some("/tmp/run.log"));
     let msg = gate
-        .message_blocker_if_needed("message", "/workspace/ai_sandbox/canon")
+        .message_blocker_if_needed("message", "/workspace")
         .expect("expected blocker message");
     assert!(msg.contains("tail -n 200 /tmp/run.log"));
     gate.note_action("run_command", Some("tail -n 200 /tmp/run.log"));

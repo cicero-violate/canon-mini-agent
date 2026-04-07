@@ -13,7 +13,7 @@ use std::fs::File;
 
 use crate::constants::{
     diagnostics_file, MASTER_PLAN_FILE, MAX_FULL_READ_LINES, MAX_SNIPPET, SPEC_FILE,
-    VIOLATIONS_FILE, WORKSPACE,
+    VIOLATIONS_FILE,
 };
 use crate::logging::{log_action_event, log_action_result};
 use crate::prompts::truncate;
@@ -127,7 +127,7 @@ fn ensure_graph_artifact(
     // Try rustc wrapper build to refresh artifacts.
     let build_cmd = format!("cargo build -p {crate_name}");
     eprintln!("[{role}] step={} graph_artifact build cmd={build_cmd}", step);
-    let (build_ok, build_out) = exec_run_command(workspace, &build_cmd, WORKSPACE)?;
+    let (build_ok, build_out) = exec_run_command(workspace, &build_cmd, crate::constants::workspace())?;
     eprintln!(
         "[{role}] step={} graph_artifact build {} output_bytes={}",
         step,
@@ -597,7 +597,7 @@ fn handle_message_action(role: &str, step: usize, action: &Value) -> Result<(boo
     let full_message = serde_json::to_string_pretty(action).unwrap_or_else(|_| "{}".to_string());
     let msg_type = action.get("type").and_then(|v| v.as_str()).unwrap_or("");
     let to_role = action.get("to").and_then(|v| v.as_str()).unwrap_or("");
-    let agent_state_dir = std::path::Path::new("/workspace/ai_sandbox/canon-mini-agent/agent_state");
+    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let _ = std::fs::create_dir_all(agent_state_dir);
 
     if role == "planner" && msg_type == "blocker" {
@@ -703,7 +703,7 @@ fn handle_apply_patch_action(
                 .and_then(|f| infer_crate_for_patch(workspace, f))
                 .map(|krate| {
                     eprintln!("[{role}] step={} cargo check -p {krate}", step);
-                    exec_run_command(workspace, &format!("cargo check -p {krate}"), WORKSPACE)
+                    exec_run_command(workspace, &format!("cargo check -p {krate}"), crate::constants::workspace())
                         .unwrap_or_else(|e| (false, e.to_string()))
                 });
             match check_result {
@@ -753,7 +753,7 @@ fn handle_run_command_action(
         .get("cmd")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("run_command missing 'cmd'"))?;
-    let cwd = action.get("cwd").and_then(|v| v.as_str()).unwrap_or(WORKSPACE);
+    let cwd = action.get("cwd").and_then(|v| v.as_str()).unwrap_or(crate::constants::workspace());
     eprintln!("[{role}] step={} run_command cmd={cmd}", step);
     let (success, out) = exec_run_command(workspace, cmd, cwd)?;
     let label = if success {
@@ -775,14 +775,14 @@ fn handle_python_action(
         .get("code")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("python missing 'code'"))?;
-    let cwd = action.get("cwd").and_then(|v| v.as_str()).unwrap_or(WORKSPACE);
+    let cwd = action.get("cwd").and_then(|v| v.as_str()).unwrap_or(crate::constants::workspace());
     eprintln!("[{role}] step={} python bytes={}", step, code.len());
     let (success, mut out) = exec_python(workspace, code, cwd)?;
     if !success {
         let lowered = out.to_lowercase();
         let mut context = String::new();
         if !PathBuf::from(cwd).starts_with(workspace) && !cwd.starts_with("/tmp") {
-            context.push_str("python cwd escapes workspace; set cwd to /workspace/ai_sandbox/canon or /tmp.\n");
+            context.push_str(&format!("python cwd escapes workspace; set cwd to {} or /tmp.\n", crate::constants::workspace()));
         }
         if !context.is_empty() {
             out.push('\n');
@@ -790,7 +790,7 @@ fn handle_python_action(
         }
         if lowered.contains("permission denied") || lowered.contains("errno 13") {
             out.push_str(
-                "\npython write denied: verify the target path is under /workspace/ai_sandbox/canon and set cwd=/workspace/ai_sandbox/canon; if still blocked, use apply_patch for PLAN.json / lane plan edits.",
+                &format!("\npython write denied: verify the target path is under {ws} and set cwd={ws}; if still blocked, use apply_patch for PLAN.json / lane plan edits.", ws = crate::constants::workspace()),
             );
         }
     }
@@ -821,7 +821,7 @@ fn handle_rustc_action(
         format!("cargo rustc -p {crate_name} -- -Zunpretty={mode} {extra}")
     };
     eprintln!("[{role}] step={} {action_kind} cmd={cmd}", step);
-    let (success, out) = exec_run_command(workspace, &cmd, WORKSPACE)?;
+    let (success, out) = exec_run_command(workspace, &cmd, crate::constants::workspace())?;
     let label = if success {
         format!("{action_kind} ok")
     } else {
@@ -853,7 +853,7 @@ fn handle_graph_call_cfg_action(
     let artifact_crate = ensure_graph_artifact(workspace, crate_name, role, step)?;
     let bin_cmd = format!(
         "cargo run -p canon-tools-analysis --bin graph_bin -- --workspace {} --crate {} --out {}",
-        WORKSPACE, artifact_crate, out_dir_str
+        crate::constants::workspace(), artifact_crate, out_dir_str
     );
     eprintln!("[{role}] step={} graph_bin cmd={bin_cmd}", step);
     let (bin_ok, bin_out) = exec_graph_command(workspace, &bin_cmd)?;
@@ -994,7 +994,7 @@ fn handle_graph_reports_action(
     let crate_dir = report_crate_dir(&out_dir, crate_name);
     let mut cmd = format!(
         "cargo run -p canon-tools-analysis --bin graph_reports -- --workspace {} --crate {} --out {} --artifact",
-        WORKSPACE, artifact_crate, out_dir_str
+        crate::constants::workspace(), artifact_crate, out_dir_str
     );
     if let Some(path) = tlog {
         cmd.push_str(&format!(" --tlog {path}"));
@@ -1061,7 +1061,7 @@ fn handle_cargo_test_action(
         format!("cargo test -p {} -- --nocapture", crate_name)
     };
     eprintln!("[{role}] step={} cargo_test cmd={}", step, cmd);
-    let (success, out) = exec_run_command(workspace, &cmd, WORKSPACE)?;
+    let (success, out) = exec_run_command(workspace, &cmd, crate::constants::workspace())?;
     let label = if success { "cargo_test ok" } else { "cargo_test failed" };
     eprintln!("[{role}] step={} {label} output_bytes={}", step, out.len());
     let failures_json = parse_cargo_test_failures(&out);
@@ -1122,7 +1122,7 @@ fn handle_cargo_test_action(
         let hint = format!(
             "{{ \"action\": \"run_command\", \"cmd\": \"tail -n 200 {}\", \"cwd\": \"{}\", \"observation\": \"Inspect live cargo test output.\", \"rationale\": \"Detached cargo test output is in the log file; tail it for progress and failures.\" }}",
             path,
-            WORKSPACE
+            crate::constants::workspace()
         );
         summary.push_str("\nnext_action_hint:\n");
         summary.push_str(&hint);
@@ -1311,7 +1311,7 @@ fn exec_graph_command(workspace: &Path, cmd: &str) -> Result<(bool, String)> {
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
         .unwrap_or(5 * 60);
-    exec_run_command_blocking_with_timeout(workspace, cmd, WORKSPACE, timeout_secs)
+    exec_run_command_blocking_with_timeout(workspace, cmd, crate::constants::workspace(), timeout_secs)
 }
 
 fn exec_python(workspace: &Path, code: &str, cwd: &str) -> Result<(bool, String)> {
@@ -1417,7 +1417,7 @@ fn persist_inbound_message(role: &str, step: usize, action: &Value, full_message
         .trim()
         .to_lowercase()
         .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
-    let agent_state_dir = std::path::Path::new("/workspace/ai_sandbox/canon-mini-agent/agent_state");
+    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let _ = std::fs::create_dir_all(agent_state_dir);
     let path = agent_state_dir.join(format!("last_message_to_{to}.json"));
     if let Err(err) = std::fs::write(&path, full_message) {
