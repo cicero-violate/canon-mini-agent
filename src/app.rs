@@ -1,4 +1,3 @@
-//
 use anyhow::{anyhow, bail, Context, Result};
 use canon_llm::{
     config::LlmEndpoint,
