@@ -48,7 +48,7 @@ fn build_invalid_action_feedback_includes_missing_fields() {
         "rationale": "",
         "cmd": ""
     });
-    let feedback = build_invalid_action_feedback(Some(&action), "bad action");
+    let feedback = build_invalid_action_feedback(Some(&action), "bad action", "executor");
     assert!(feedback.contains("missing field: observation"));
     assert!(feedback.contains("missing field: rationale"));
     assert!(feedback.contains("missing field: cmd"));

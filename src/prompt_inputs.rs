@@ -1,0 +1,458 @@
+use anyhow::{bail, Context, Result};
+use canon_llm::{config::LlmEndpoint, tab_management::TabManagerHandle, ws_server::WsBridge};
+use std::path::{Path, PathBuf};
+
+use crate::constants::{INVARIANTS_FILE, OBJECTIVES_FILE, SPEC_FILE};
+use crate::prompts::{
+    single_role_diagnostics_prompt, single_role_executor_prompt, single_role_planner_prompt,
+    single_role_verifier_prompt, AgentPromptKind,
+};
+
+#[derive(Clone)]
+pub struct LaneConfig {
+    pub index: usize,
+    pub endpoint: LlmEndpoint,
+    pub plan_file: String,
+    pub label: String,
+    pub tabs: TabManagerHandle,
+}
+
+pub struct OrchestratorContext<'a> {
+    pub lanes: &'a [LaneConfig],
+    pub workspace: &'a PathBuf,
+    pub bridge: &'a WsBridge,
+    pub tabs_planner: &'a TabManagerHandle,
+    pub tabs_diagnostics: &'a TabManagerHandle,
+    pub tabs_verify: &'a TabManagerHandle,
+    pub planner_ep: &'a LlmEndpoint,
+    pub diagnostics_ep: &'a LlmEndpoint,
+    pub verifier_ep: &'a LlmEndpoint,
+    pub master_plan_path: &'a Path,
+    pub violations_path: &'a Path,
+    pub diagnostics_path: &'a Path,
+}
+
+pub struct PlannerInputs {
+    pub summary_text: String,
+    pub executor_diff_text: String,
+    pub cargo_test_failures: String,
+    pub lane_plan_list: String,
+    pub objectives_text: String,
+    pub invariants_text: String,
+    pub violations_text: String,
+    pub diagnostics_text: String,
+    pub plan_text: String,
+    pub plan_diff_text: String,
+}
+
+pub struct ExecutorDiffInputs {
+    pub diff_text: String,
+}
+
+pub struct SingleRoleInputs {
+    pub role: String,
+    pub prompt_kind: AgentPromptKind,
+    pub primary_input_name: String,
+    pub primary_input: String,
+}
+
+pub struct SingleRoleContext<'a> {
+    pub workspace: &'a Path,
+    pub spec_path: &'a Path,
+    pub master_plan_path: &'a Path,
+    pub violations_path: &'a Path,
+    pub diagnostics_path: &'a Path,
+    pub lanes: &'a [LaneConfig],
+}
+
+pub fn read_text_or_empty(path: impl AsRef<Path>) -> String {
+    std::fs::read_to_string(path).unwrap_or_default()
+}
+
+pub fn read_required_text(path: impl AsRef<Path>, name: &str) -> Result<String> {
+    std::fs::read_to_string(path.as_ref()).with_context(|| format!("failed to read {name}"))
+}
+
+pub fn lane_summary_text(lanes: &[LaneConfig], verifier_summary: &[String]) -> String {
+    lanes
+        .iter()
+        .map(|lane| format!("{}={}", lane.label, verifier_summary[lane.index]))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+pub fn lane_plan_list(lanes: &[LaneConfig]) -> String {
+    lanes
+        .iter()
+        .map(|lane| lane.plan_file.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+pub fn read_lane_plan_with_legacy(workspace: &Path, lane: &LaneConfig) -> String {
+    let mut plan_text = read_text_or_empty(workspace.join(&lane.plan_file));
+    if plan_text.trim().is_empty() {
+        let legacy_paths = match lane.index {
+            0 => vec!["PLANS/executor-a.json", "PLANS/executor-a.md"],
+            1 => vec!["PLANS/executor-b.json", "PLANS/executor-b.md"],
+            _ => Vec::new(),
+        };
+        for legacy in legacy_paths {
+            let legacy_text = read_text_or_empty(workspace.join(legacy));
+            if !legacy_text.trim().is_empty() {
+                eprintln!(
+                    "[orchestrate] legacy lane plan fallback: {} -> {}",
+                    legacy, lane.plan_file
+                );
+                plan_text = legacy_text;
+                break;
+            }
+        }
+    }
+    plan_text
+}
+
+pub fn load_executor_diff_inputs(
+    workspace: &Path,
+    last_executor_diff: &mut String,
+    max_lines: usize,
+) -> ExecutorDiffInputs {
+    let current_executor_diff = executor_diff(workspace, max_lines);
+    let diff_text = diff_since_last_cycle(&current_executor_diff, last_executor_diff);
+    *last_executor_diff = current_executor_diff;
+    ExecutorDiffInputs { diff_text }
+}
+
+pub struct VerifierPromptInputs {
+    pub executor_diff_text: String,
+    pub cargo_test_failures: String,
+}
+
+pub fn load_verifier_prompt_inputs(
+    lanes: &[LaneConfig],
+    workspace: &Path,
+    verifier_summary: &[String],
+    last_executor_diff: &mut String,
+    cargo_test_failures: String,
+) -> VerifierPromptInputs {
+    let _summary_text = lane_summary_text(lanes, verifier_summary);
+    let executor_diff_text = load_executor_diff_inputs(workspace, last_executor_diff, 400).diff_text;
+    VerifierPromptInputs {
+        executor_diff_text,
+        cargo_test_failures,
+    }
+}
+
+pub fn load_planner_inputs(
+    lanes: &[LaneConfig],
+    workspace: &Path,
+    verifier_summary: &[String],
+    last_plan_text: &str,
+    last_executor_diff: &mut String,
+    cargo_test_failures: String,
+    violations_path: &Path,
+    diagnostics_path: &Path,
+    master_plan_path: &Path,
+) -> PlannerInputs {
+    let summary_text = lane_summary_text(lanes, verifier_summary);
+    let executor_diff_text = load_executor_diff_inputs(workspace, last_executor_diff, 400).diff_text;
+    let lane_plan_list = lane_plan_list(lanes);
+    let objectives_text = read_text_or_empty(workspace.join(OBJECTIVES_FILE));
+    let invariants_text = read_text_or_empty(workspace.join(INVARIANTS_FILE));
+    let violations_text = read_text_or_empty(violations_path);
+    let diagnostics_text = read_text_or_empty(diagnostics_path);
+    let plan_text = read_text_or_empty(master_plan_path);
+    let plan_diff_text = plan_diff(last_plan_text, &plan_text, 400);
+    PlannerInputs {
+        summary_text,
+        executor_diff_text,
+        cargo_test_failures,
+        lane_plan_list,
+        objectives_text,
+        invariants_text,
+        violations_text,
+        diagnostics_text,
+        plan_text,
+        plan_diff_text,
+    }
+}
+
+pub enum SingleRoleRead {
+    Objectives,
+    Invariants,
+    Violations,
+    Diagnostics,
+    MasterPlan,
+    Spec,
+}
+
+impl SingleRoleContext<'_> {
+    pub fn read(&self, kind: SingleRoleRead) -> Result<String> {
+        let text = match kind {
+            SingleRoleRead::Objectives => read_text_or_empty(self.workspace.join(OBJECTIVES_FILE)),
+            SingleRoleRead::Invariants => read_text_or_empty(self.workspace.join(INVARIANTS_FILE)),
+            SingleRoleRead::Violations => read_text_or_empty(self.violations_path),
+            SingleRoleRead::Diagnostics => read_text_or_empty(self.diagnostics_path),
+            SingleRoleRead::MasterPlan => read_text_or_empty(self.master_plan_path),
+            SingleRoleRead::Spec => read_required_text(self.spec_path, SPEC_FILE)?,
+        };
+        Ok(text)
+    }
+
+    pub fn read_executor_diff(&self, max_lines: usize) -> String {
+        executor_diff(self.workspace, max_lines)
+    }
+
+    pub fn lane_plan_list(&self) -> String {
+        lane_plan_list(self.lanes)
+    }
+}
+
+pub fn load_single_role_inputs(
+    ctx: &SingleRoleContext<'_>,
+    is_verifier: bool,
+    is_diagnostics: bool,
+    is_planner: bool,
+) -> Result<SingleRoleInputs> {
+    let (role, prompt_kind) = if is_verifier {
+        ("verifier", AgentPromptKind::Verifier)
+    } else if is_diagnostics {
+        ("diagnostics", AgentPromptKind::Diagnostics)
+    } else if is_planner {
+        ("mini_planner", AgentPromptKind::Planner)
+    } else {
+        ("executor", AgentPromptKind::Executor)
+    };
+
+    let primary_input_path = if is_verifier || is_planner {
+        ctx.spec_path
+    } else {
+        &ctx.workspace.join(&ctx.lanes[0].plan_file)
+    };
+    let primary_input_name = if is_verifier || is_planner {
+        SPEC_FILE.to_string()
+    } else {
+        ctx.lanes[0].plan_file.clone()
+    };
+    let primary_input = read_required_text(primary_input_path, &primary_input_name)?;
+    if primary_input.trim().is_empty() {
+        bail!("input file is empty — write content into {primary_input_name} before running");
+    }
+
+    Ok(SingleRoleInputs {
+        role: role.to_string(),
+        prompt_kind,
+        primary_input_name,
+        primary_input,
+    })
+}
+
+pub fn build_single_role_prompt(
+    ctx: &SingleRoleContext<'_>,
+    inputs: &SingleRoleInputs,
+    cargo_test_failures: &str,
+) -> Result<String> {
+    let prompt = match inputs.prompt_kind {
+        AgentPromptKind::Verifier => {
+            let invariants = ctx.read(SingleRoleRead::Invariants)?;
+            let objectives = ctx.read(SingleRoleRead::Objectives)?;
+            let executor_diff_text = ctx.read_executor_diff(400);
+            single_role_verifier_prompt(
+                &inputs.primary_input,
+                &objectives,
+                &invariants,
+                &executor_diff_text,
+                cargo_test_failures,
+            )
+        }
+        AgentPromptKind::Diagnostics => {
+            let violations = ctx.read(SingleRoleRead::Violations)?;
+            let objectives = ctx.read(SingleRoleRead::Objectives)?;
+            single_role_diagnostics_prompt(&violations, &objectives, cargo_test_failures)
+        }
+        AgentPromptKind::Planner => {
+            let violations = ctx.read(SingleRoleRead::Violations)?;
+            let diagnostics = ctx.read(SingleRoleRead::Diagnostics)?;
+            let objectives = ctx.read(SingleRoleRead::Objectives)?;
+            let invariants = ctx.read(SingleRoleRead::Invariants)?;
+            let lane_plan_list = ctx.lane_plan_list();
+            single_role_planner_prompt(
+                &inputs.primary_input,
+                &objectives,
+                &invariants,
+                &violations,
+                &diagnostics,
+                cargo_test_failures,
+                &lane_plan_list,
+            )
+        }
+        AgentPromptKind::Executor => {
+            let spec = ctx.read(SingleRoleRead::Spec)?;
+            let master_plan = ctx.read(SingleRoleRead::MasterPlan)?;
+            let violations = ctx.read(SingleRoleRead::Violations)?;
+            let diagnostics = ctx.read(SingleRoleRead::Diagnostics)?;
+            let invariants = ctx.read(SingleRoleRead::Invariants)?;
+            single_role_executor_prompt(
+                &spec,
+                &master_plan,
+                &violations,
+                &diagnostics,
+                &invariants,
+                &inputs.primary_input_name,
+                &inputs.primary_input,
+            )
+        }
+    };
+    Ok(prompt)
+}
+
+fn executor_diff_unavailable(reason: &str) -> String {
+    format!("(executor diff unavailable: {reason})")
+}
+
+fn plan_diff(old_text: &str, new_text: &str, max_lines: usize) -> String {
+    if old_text.is_empty() {
+        let mut out = String::from("+++ PLAN.json (initial)\n");
+        for (idx, line) in new_text.lines().enumerate() {
+            if idx >= max_lines {
+                out.push_str("... (truncated)\n");
+                break;
+            }
+            out.push_str("+ ");
+            out.push_str(line);
+            out.push('\n');
+        }
+        return out;
+    }
+    if old_text == new_text {
+        return "(no changes)".to_string();
+    }
+    let mut out = String::new();
+    let old_lines: Vec<&str> = old_text.lines().collect();
+    let new_lines: Vec<&str> = new_text.lines().collect();
+    let mut i = 0usize;
+    let mut j = 0usize;
+    let mut emitted = 0usize;
+    while i < old_lines.len() || j < new_lines.len() {
+        if emitted >= max_lines {
+            out.push_str("... (truncated)\n");
+            break;
+        }
+        match (old_lines.get(i), new_lines.get(j)) {
+            (Some(ol), Some(nl)) if ol == nl => {
+                i += 1;
+                j += 1;
+            }
+            (Some(ol), Some(nl)) => {
+                out.push_str("- ");
+                out.push_str(ol);
+                out.push('\n');
+                out.push_str("+ ");
+                out.push_str(nl);
+                out.push('\n');
+                i += 1;
+                j += 1;
+                emitted += 2;
+            }
+            (Some(ol), None) => {
+                out.push_str("- ");
+                out.push_str(ol);
+                out.push('\n');
+                i += 1;
+                emitted += 1;
+            }
+            (None, Some(nl)) => {
+                out.push_str("+ ");
+                out.push_str(nl);
+                out.push('\n');
+                j += 1;
+                emitted += 1;
+            }
+            (None, None) => break,
+        }
+    }
+    out
+}
+
+fn diff_since_last_cycle(current: &str, last: &str) -> String {
+    if current.trim().is_empty() {
+        return "(no changes)".to_string();
+    }
+    if current == last {
+        return "(no changes)".to_string();
+    }
+    if last.trim().is_empty() {
+        return current.to_string();
+    }
+    if current.starts_with("(") {
+        return current.to_string();
+    }
+    let last_lines: std::collections::HashSet<&str> = last.lines().collect();
+    let mut out_lines = Vec::new();
+    for line in current.lines() {
+        if !last_lines.contains(line) {
+            out_lines.push(line);
+        }
+    }
+    if out_lines.is_empty() {
+        "(no changes)".to_string()
+    } else {
+        let mut out = out_lines.join("\n");
+        out.push('\n');
+        out
+    }
+}
+
+fn executor_diff(workspace: &Path, max_lines: usize) -> String {
+    let mut cmd = std::process::Command::new("git");
+    cmd.current_dir(workspace).args(["diff", "--name-only"]);
+    let Ok(output) = cmd.output() else {
+        return executor_diff_unavailable("failed to run git diff --name-only");
+    };
+    if !output.status.success() {
+        return executor_diff_unavailable("git diff --name-only failed");
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let files: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .filter(|line| {
+            !line.starts_with("PLAN.json")
+                && !line.starts_with("PLAN.md")
+                && !line.starts_with("PLANS/")
+                && *line != "VIOLATIONS.json"
+                && *line != "DIAGNOSTICS.json"
+        })
+        .collect();
+    if files.is_empty() {
+        return "(no executor diff)".to_string();
+    }
+    let mut diff_cmd = std::process::Command::new("git");
+    diff_cmd
+        .current_dir(workspace)
+        .arg("diff")
+        .arg("--unified=3")
+        .arg("--")
+        .args(&files);
+    let Ok(diff_out) = diff_cmd.output() else {
+        return executor_diff_unavailable("failed to run git diff");
+    };
+    if !diff_out.status.success() {
+        return executor_diff_unavailable("git diff failed");
+    }
+    let diff_text = String::from_utf8_lossy(&diff_out.stdout);
+    if diff_text.trim().is_empty() {
+        return "(no executor diff)".to_string();
+    }
+    let mut out = String::new();
+    for (idx, line) in diff_text.lines().enumerate() {
+        if idx >= max_lines {
+            out.push_str("... (truncated)\n");
+            break;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}

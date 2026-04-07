@@ -9,6 +9,7 @@ mod protocol;
 mod md_convert;
 mod invalid_action;
 mod state_space;
+mod prompt_inputs;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

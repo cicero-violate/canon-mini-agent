@@ -505,6 +505,59 @@ pub(crate) fn diagnostics_cycle_prompt(summary_text: &str, cargo_test_failures: 
     )
 }
 
+pub(crate) fn single_role_verifier_prompt(
+    primary_input: &str,
+    objectives: &str,
+    invariants: &str,
+    executor_diff_text: &str,
+    cargo_test_failures: &str,
+) -> String {
+    format!(
+        "WORKSPACE: {WORKSPACE}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{primary_input}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff_text}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nVerify that objectives in {OBJECTIVES_FILE} are completed properly.\nUpdate task status fields in {MASTER_PLAN_FILE} to reflect verified results.\nWrite violations to {VIOLATIONS_FILE} if any are found.\nWhen complete, report verified/unverified/false items in `message.payload`.\nEmit exactly one action to begin."
+    )
+}
+
+pub(crate) fn single_role_diagnostics_prompt(
+    violations: &str,
+    objectives: &str,
+    cargo_test_failures: &str,
+) -> String {
+    let diagnostics_path = diagnostics_file();
+    format!(
+        "WORKSPACE: {WORKSPACE}\nAll relative paths resolve against WORKSPACE.\n\nAlways inspect state/event_log/event.tlog.d and the relevant canon system files.\nRead files and search the source code for the bugs (use read_file + run_command/ripgrep).\nRun 5+ python analysis actions over event logs and code evidence.\nInfer the root cause from the evidence and cite detailed sources of errors (file paths, functions, and log evidence).\nPrioritize canon-route, canon-loop, canon-runtime, canon-semantic-state, and canon-mini-agent when control flow or prompt contracts are implicated.\nLatest verifier summary:\n(none yet)\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nVerify whether objectives in {OBJECTIVES_FILE} are being met and note gaps.\nUse {SPEC_FILE}, {OBJECTIVES_FILE}, and {INVARIANTS_FILE} as the contract, not lane plans.\nInfer failures from code, logs, runtime state, and verifier findings.\nCanonical law:\n- SemanticStateSummary is the single source of truth for routing.\n- scheduler_len / planned_pending are not routing authority.\nFocus on route/control-flow correctness, event successor discharge, duplicate fanout, state-authority drift, queue-driven routing, synthetic dispatch bypasses, and prompt-shell mismatches.\n\nWrite a ranked diagnostics report to {diagnostics_path}. Emit exactly one action to begin."
+    )
+}
+
+pub(crate) fn single_role_planner_prompt(
+    primary_input: &str,
+    objectives: &str,
+    invariants: &str,
+    violations: &str,
+    diagnostics: &str,
+    cargo_test_failures: &str,
+    lane_plan_list: &str,
+) -> String {
+    let diagnostics_path = diagnostics_file();
+    format!(
+        "WORKSPACE: {WORKSPACE}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{primary_input}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nCanonical law:\n- SemanticStateSummary is the single source of truth for routing.\n- scheduler_len / planned_pending are not routing authority.\n- Prioritize migration to state-authority before edge patches.\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE} and derive lane plans: {lane_plan_list}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nEmit exactly one action to begin."
+    )
+}
+
+pub(crate) fn single_role_executor_prompt(
+    spec: &str,
+    master_plan: &str,
+    violations: &str,
+    diagnostics: &str,
+    invariants: &str,
+    primary_input_name: &str,
+    primary_input: &str,
+) -> String {
+    let diagnostics_path = diagnostics_file();
+    format!(
+        "WORKSPACE: {WORKSPACE}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{spec}\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics (from {diagnostics_path}):\n{diagnostics}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nAssigned lane plan (from {primary_input_name}):\n{primary_input}\n\nDo not modify spec, plan, lane plans, violations, or diagnostics. Use `message.payload` to report evidence for verifier review. Emit exactly one action to begin."
+    )
+}
+
 // ── Action parsing ─────────────────────────────────────────────────────────────
 
 pub(crate) fn parse_actions(raw: &str) -> Result<Vec<Value>> {

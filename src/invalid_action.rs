@@ -162,9 +162,140 @@ pub(crate) fn invalid_action_expected_fields(kind: &str) -> Vec<&'static str> {
     }
 }
 
-pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str) -> String {
+fn is_supported_action(kind: &str) -> bool {
+    matches!(
+        kind,
+        "run_command"
+            | "read_file"
+            | "list_dir"
+            | "apply_patch"
+            | "python"
+            | "cargo_test"
+            | "message"
+    )
+}
+
+fn example_action_for(kind: &str, role: &str, raw_action: Option<&Value>) -> Value {
+    match kind {
+        "run_command" => json!({
+            "action": "run_command",
+            "cmd": "rg -n \"pattern\" src/",
+            "observation": "Search for the relevant code.",
+            "rationale": "Locate the target before patching."
+        }),
+        "read_file" => json!({
+            "action": "read_file",
+            "path": "src/lib.rs",
+            "observation": "Read the file for context.",
+            "rationale": "Need context before editing."
+        }),
+        "list_dir" => json!({
+            "action": "list_dir",
+            "path": ".",
+            "observation": "List workspace files.",
+            "rationale": "Locate the target before acting."
+        }),
+        "apply_patch" => json!({
+            "action": "apply_patch",
+            "patch": "*** Begin Patch\n*** Update File: path/to/file.rs\n@@\n- old\n+ new\n*** End Patch",
+            "observation": "Apply the requested change.",
+            "rationale": "Implement the edit directly."
+        }),
+        "python" => json!({
+            "action": "python",
+            "code": "print('analysis')",
+            "observation": "Run structured analysis.",
+            "rationale": "Use Python for parsing tasks."
+        }),
+        "cargo_test" => json!({
+            "action": "cargo_test",
+            "crate": "canon-mini-agent",
+            "test": "optional_test_name",
+            "observation": "Run the targeted test.",
+            "rationale": "Verify the change."
+        }),
+        "message" => {
+            let (from, to, msg_type, status) = raw_action
+                .and_then(|action| action.as_object())
+                .and_then(|obj| {
+                    let from = obj.get("from").and_then(|v| v.as_str());
+                    let to = obj.get("to").and_then(|v| v.as_str());
+                    let msg_type = obj.get("type").and_then(|v| v.as_str());
+                    let status = obj.get("status").and_then(|v| v.as_str());
+                    match (from, to, msg_type, status) {
+                        (Some(from), Some(to), Some(msg_type), Some(status)) => Some((
+                            from.to_lowercase(),
+                            to.to_lowercase(),
+                            msg_type.to_lowercase(),
+                            status.to_lowercase(),
+                        )),
+                        _ => None,
+                    }
+                })
+                .map(|(from, to, msg_type, status)| (from, to, msg_type, status))
+                .map(|(from, to, msg_type, status)| {
+                    (from, to, msg_type, status)
+                })
+                .unwrap_or_else(|| {
+                    let (from, to, msg_type, status) = default_message_route(role);
+                    (
+                        from.to_string(),
+                        to.to_string(),
+                        msg_type.to_string(),
+                        status.to_string(),
+                    )
+                });
+            json!({
+                "action": "message",
+                "from": from,
+                "to": to,
+                "type": msg_type,
+                "status": status,
+                "observation": "Summarize what happened.",
+                "rationale": "Explain why this is the next step.",
+                "payload": {
+                    "summary": "Short summary"
+                }
+            })
+        }
+        _ => json!({
+            "action": "message",
+            "from": "executor",
+            "to": "verifier",
+            "type": "handoff",
+            "status": "complete",
+            "observation": "Summarize what happened.",
+            "rationale": "Explain why this is the next step.",
+            "payload": {
+                "summary": "Short summary"
+            }
+        }),
+    }
+}
+
+fn push_type_mismatch(
+    schema_diff: &mut Vec<String>,
+    obj: &serde_json::Map<String, Value>,
+    field: &str,
+    expected: &str,
+) {
+    if let Some(val) = obj.get(field) {
+        let type_ok = match expected {
+            "string" => val.is_string(),
+            "object" => val.is_object(),
+            _ => true,
+        };
+        if !type_ok {
+            schema_diff.push(format!("field type mismatch: {field} (expected {expected})"));
+        }
+    }
+}
+
+pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str, role: &str) -> String {
     let mut schema_diff: Vec<String> = Vec::new();
     let mut expected_fields: Vec<&'static str> = Vec::new();
+    let mut expected_format: Option<String> = None;
+    let mut example_action: Option<Value> = None;
     if let Some(action) = raw_action {
         let obj = action.as_object();
         let kind = obj
@@ -172,7 +303,12 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str)
             .and_then(|v| v.as_str())
             .unwrap_or("unknown");
         expected_fields = invalid_action_expected_fields(kind);
+        example_action = Some(example_action_for(kind, role, Some(action)));
         if let Some(obj) = obj {
+            if !obj.contains_key("action") {
+                schema_diff.push("missing field: action".to_string());
+            }
+            push_type_mismatch(&mut schema_diff, obj, "action", "string");
             if obj
                 .get("observation")
                 .and_then(|v| v.as_str())
@@ -182,6 +318,7 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str)
             {
                 schema_diff.push("missing field: observation".to_string());
             }
+            push_type_mismatch(&mut schema_diff, obj, "observation", "string");
             if obj
                 .get("rationale")
                 .and_then(|v| v.as_str())
@@ -191,8 +328,15 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str)
             {
                 schema_diff.push("missing field: rationale".to_string());
             }
+            push_type_mismatch(&mut schema_diff, obj, "rationale", "string");
+            if obj.get("action").is_none() || kind == "unknown" {
+                schema_diff.push("unsupported action: missing or unknown action".to_string());
+            } else if !is_supported_action(kind) {
+                schema_diff.push(format!("unsupported action: {kind}"));
+            }
             match kind {
                 "run_command" => {
+                    push_type_mismatch(&mut schema_diff, obj, "cmd", "string");
                     if obj
                         .get("cmd")
                         .and_then(|v| v.as_str())
@@ -204,6 +348,7 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str)
                     }
                 }
                 "read_file" | "list_dir" => {
+                    push_type_mismatch(&mut schema_diff, obj, "path", "string");
                     if obj
                         .get("path")
                         .and_then(|v| v.as_str())
@@ -215,6 +360,7 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str)
                     }
                 }
                 "apply_patch" => {
+                    push_type_mismatch(&mut schema_diff, obj, "patch", "string");
                     if obj
                         .get("patch")
                         .and_then(|v| v.as_str())
@@ -226,6 +372,7 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str)
                     }
                 }
                 "python" => {
+                    push_type_mismatch(&mut schema_diff, obj, "code", "string");
                     if obj
                         .get("code")
                         .and_then(|v| v.as_str())
@@ -237,6 +384,7 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str)
                     }
                 }
                 "cargo_test" => {
+                    push_type_mismatch(&mut schema_diff, obj, "crate", "string");
                     if obj
                         .get("crate")
                         .and_then(|v| v.as_str())
@@ -251,6 +399,7 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str)
                     let mut msg_type: Option<String> = None;
                     let mut msg_status: Option<String> = None;
                     for field in ["from", "to", "type", "status"] {
+                        push_type_mismatch(&mut schema_diff, obj, field, "string");
                         if let Some(val) = obj.get(field).and_then(|v| v.as_str()) {
                             if val != val.to_lowercase() {
                                 schema_diff.push(format!("role casing invalid: {field}={val}"));
@@ -279,9 +428,30 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str)
                                 "type/status mismatch: type={msg_type} status={msg_status}"
                             ));
                         }
+                        let expected = expected_message_format(
+                            obj.get("from").and_then(|v| v.as_str()).unwrap_or("executor"),
+                            obj.get("to").and_then(|v| v.as_str()).unwrap_or("verifier"),
+                            &msg_type,
+                            &msg_status,
+                        );
+                        expected_format = Some(expected);
                     }
                     if obj.get("payload").and_then(|v| v.as_object()).is_none() {
                         schema_diff.push("missing field: payload".to_string());
+                        if obj.get("payload").is_some() {
+                            schema_diff.push("payload must be object".to_string());
+                        }
+                    }
+                    push_type_mismatch(&mut schema_diff, obj, "payload", "object");
+                    let payload = obj.get("payload").and_then(|v| v.as_object());
+                    if payload
+                        .and_then(|p| p.get("summary"))
+                        .and_then(|v| v.as_str())
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .is_none()
+                    {
+                        schema_diff.push("payload.summary missing".to_string());
                     }
                     if obj.contains_key("blocker")
                         || obj.contains_key("evidence")
@@ -303,10 +473,17 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str)
                             .map(|v| v.eq_ignore_ascii_case("blocked"))
                             .unwrap_or(false);
                     if is_blocker {
-                        let payload = obj.get("payload").and_then(|v| v.as_object());
                         for field in ["blocker", "evidence", "required_action"] {
-                            if payload
-                                .and_then(|p| p.get(field))
+                            let value = payload.and_then(|p| p.get(field));
+                            if let Some(val) = value {
+                                if !val.is_string() {
+                                    schema_diff.push(format!(
+                                        "field type mismatch: payload.{field} (expected string)"
+                                    ));
+                                    continue;
+                                }
+                            }
+                            if value
                                 .and_then(|v| v.as_str())
                                 .map(str::trim)
                                 .filter(|s| !s.is_empty())
@@ -326,6 +503,8 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str)
         "reason": err_text,
         "expected_fields": expected_fields,
         "schema_diff": schema_diff,
+        "expected_format": expected_format,
+        "example_action": example_action,
     });
     format!(
         "Invalid action rejected.\naction_result:\n{}\nReturn exactly one action as a single JSON object in a ```json code block. No prose outside it.",

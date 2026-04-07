@@ -1,1 +1,1 @@
-control_counts=0 for all control events; canonical tlog contains only rustc events; failing test inspect_missing_workspace_reports_bootstrap_precondition; verifier reports missing canonical observability
+message schema invalid: unknown variant `task`, expected one of `handoff`, `result`, `verification`, `failure`, `blocker`, `plan`, `diagnostics`

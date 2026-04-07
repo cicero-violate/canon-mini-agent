@@ -31,19 +31,23 @@ use crate::invalid_action::{
     default_message_route, expected_message_format,
 };
 use crate::state_space::{
-    allow_diagnostics_run, allow_verifier_run, check_completion_endpoint, check_completion_tab,
-    decide_active_blocker, decide_bootstrap_phase, decide_phase_gates, decide_post_diagnostics,
-    decide_resume_phase, executor_step_limit_exceeded, executor_submit_timed_out, decide_wake_flags,
-    is_verifier_specific_blocker, scheduled_phase_resume_done, should_force_blocker,
-    verifier_blocker_phase_override, CargoTestGate, CompletionEndpointCheck, CompletionTabCheck,
-    WakeFlagInput,
+    allow_diagnostics_run, allow_verifier_run, block_executor_dispatch, check_completion_endpoint,
+    check_completion_tab, decide_active_blocker, decide_bootstrap_phase, decide_phase_gates,
+    decide_post_diagnostics, decide_resume_phase, decide_wake_flags, executor_step_limit_exceeded,
+    executor_submit_timed_out, is_verifier_specific_blocker, scheduled_phase_resume_done,
+    should_force_blocker, verifier_blocker_phase_override, CargoTestGate, CompletionEndpointCheck,
+    CompletionTabCheck, WakeFlagInput,
 };
 use crate::constants::{
-    DEFAULT_RESPONSE_TIMEOUT_SECS, DIAGNOSTICS_FILE_PATH, ENDPOINT_SPECS, INVARIANTS_FILE, MASTER_PLAN_FILE, MAX_SNIPPET,
-    EXECUTOR_STEP_LIMIT, MAX_STEPS, OBJECTIVES_FILE, ROLE_TIMEOUT_SECS, SPEC_FILE, VIOLATIONS_FILE, WORKSPACE, WS_PORT_CANDIDATES,
+    DEFAULT_RESPONSE_TIMEOUT_SECS, DIAGNOSTICS_FILE_PATH, ENDPOINT_SPECS, MASTER_PLAN_FILE, MAX_SNIPPET,
+    EXECUTOR_STEP_LIMIT, MAX_STEPS, ROLE_TIMEOUT_SECS, SPEC_FILE, VIOLATIONS_FILE, WORKSPACE, WS_PORT_CANDIDATES,
 };
 use crate::md_convert::ensure_objectives_and_invariants_json;
-use std::process::Command;
+use crate::prompt_inputs::{
+    build_single_role_prompt, lane_summary_text, load_planner_inputs, load_single_role_inputs,
+    load_verifier_prompt_inputs, read_lane_plan_with_legacy, read_text_or_empty, LaneConfig,
+    OrchestratorContext, PlannerInputs, SingleRoleContext, SingleRoleInputs, VerifierPromptInputs,
+};
 
 /// Extract a string field from a JSON object, returning `""` on missing/non-string.
 fn jstr<'a>(v: &'a Value, key: &str) -> &'a str {
@@ -127,69 +131,782 @@ fn load_cargo_test_failures(workspace: &Path) -> String {
     summarize_cargo_test_failures(&raw)
 }
 
+fn load_single_role_setup(
+    ctx: &SingleRoleContext<'_>,
+    endpoints: &[LlmEndpoint],
+    is_verifier: bool,
+    is_diagnostics: bool,
+    is_planner: bool,
+) -> Result<(SingleRoleInputs, LlmEndpoint)> {
+    let inputs = load_single_role_inputs(ctx, is_verifier, is_diagnostics, is_planner)?;
+    let endpoint = find_endpoint(endpoints, inputs.role.as_str())?.clone();
+    Ok((inputs, endpoint))
+}
 
-fn plan_diff(old_text: &str, new_text: &str, max_lines: usize) -> String {
-    if old_text.is_empty() {
-        let mut out = String::from("+++ PLAN.json (initial)\n");
-        for (idx, line) in new_text.lines().enumerate() {
-            if idx >= max_lines {
-                out.push_str("... (truncated)\n");
-                break;
+fn trace_message_forwarded(
+    role: &str,
+    prompt_kind: &str,
+    step: usize,
+    endpoint_id: &str,
+    submit_only: bool,
+    prompt_bytes: usize,
+) {
+    append_orchestration_trace(
+        "llm_message_forwarded",
+        json!({
+            "role": role,
+            "prompt_kind": prompt_kind,
+            "step": step,
+            "endpoint_id": endpoint_id,
+            "submit_only": submit_only,
+            "prompt_bytes": prompt_bytes,
+        }),
+    );
+}
+
+fn trace_message_received(
+    role: &str,
+    prompt_kind: &str,
+    step: usize,
+    endpoint_id: &str,
+    submit_only: bool,
+    response_bytes: usize,
+) {
+    append_orchestration_trace(
+        "llm_message_received",
+        json!({
+            "role": role,
+            "prompt_kind": prompt_kind,
+            "step": step,
+            "endpoint_id": endpoint_id,
+            "submit_only": submit_only,
+            "response_bytes": response_bytes,
+        }),
+    );
+}
+
+fn trace_orchestrator_forwarded(
+    from: &str,
+    to: &str,
+    phase: &str,
+    lane_name: Option<&str>,
+    lane_plan_file: Option<&str>,
+    tab_id: Option<u32>,
+    turn_id: Option<u64>,
+) {
+    let mut payload = serde_json::Map::new();
+    payload.insert("from".to_string(), Value::String(from.to_string()));
+    payload.insert("to".to_string(), Value::String(to.to_string()));
+    payload.insert("phase".to_string(), Value::String(phase.to_string()));
+    if let Some(lane_name) = lane_name {
+        payload.insert("lane_name".to_string(), Value::String(lane_name.to_string()));
+    }
+    if let Some(lane_plan_file) = lane_plan_file {
+        payload.insert(
+            "lane_plan_file".to_string(),
+            Value::String(lane_plan_file.to_string()),
+        );
+    }
+    if let Some(tab_id) = tab_id {
+        payload.insert("tab_id".to_string(), Value::Number(tab_id.into()));
+    }
+    if let Some(turn_id) = turn_id {
+        payload.insert("turn_id".to_string(), Value::Number(turn_id.into()));
+    }
+    append_orchestration_trace("llm_message_forwarded", Value::Object(payload));
+}
+
+struct BlockerFields {
+    blocker_text: String,
+    required_action: String,
+    evidence: String,
+    blocker_display: String,
+    severity: String,
+}
+
+fn normalize_blocker_fields(payload: &Value) -> BlockerFields {
+    let blocker_text = jstr(payload, "blocker").to_string();
+    let required_action = jstr(payload, "required_action").to_string();
+    let evidence = jstr(payload, "evidence").to_string();
+    let severity_raw = jstr(payload, "severity");
+    let severity = if severity_raw.is_empty() {
+        "error".to_string()
+    } else {
+        severity_raw.to_string()
+    };
+    let blocker_display = if blocker_text.is_empty() {
+        "upstream blocker".to_string()
+    } else {
+        blocker_text.clone()
+    };
+    BlockerFields {
+        blocker_text,
+        required_action,
+        evidence,
+        blocker_display,
+        severity,
+    }
+}
+
+fn build_blocker_payload(
+    summary: &str,
+    blocker: &str,
+    evidence: &str,
+    required_action: &str,
+    severity: &str,
+) -> Value {
+    json!({
+        "summary": summary,
+        "blocker": blocker,
+        "evidence": evidence,
+        "required_action": required_action,
+        "severity": severity,
+    })
+}
+
+fn build_verifier_blocker_ack(fields: &BlockerFields) -> Value {
+    json!({
+        "action": "message",
+        "from": "verifier",
+        "to": "planner",
+        "type": "blocker",
+        "status": "blocked",
+        "observation": "Inbound blocker received; verifier yielding without further work until resolved.",
+        "rationale": "Blocker is not verifier-specific; pausing verification avoids unnecessary work.",
+        "payload": build_blocker_payload(
+            "Verifier paused due to upstream blocker.",
+            &fields.blocker_display,
+            &fields.evidence,
+            &fields.required_action,
+            &fields.severity,
+        )
+    })
+}
+
+async fn run_planner_phase(
+    ctx: &OrchestratorContext<'_>,
+    dispatch_state: &mut DispatchState,
+    verifier_summary: &[String],
+    planner_bootstrapped: &mut bool,
+    cargo_test_failures: &str,
+) -> bool {
+    let inputs: PlannerInputs = load_planner_inputs(
+        ctx.lanes,
+        ctx.workspace,
+        verifier_summary,
+        &dispatch_state.last_plan_text,
+        &mut dispatch_state.last_executor_diff,
+        cargo_test_failures.to_string(),
+        ctx.violations_path,
+        ctx.diagnostics_path,
+        ctx.master_plan_path,
+    );
+    let mut planner_prompt = planner_cycle_prompt(
+        &inputs.summary_text,
+        &inputs.lane_plan_list,
+        &inputs.objectives_text,
+        &inputs.invariants_text,
+        &inputs.violations_text,
+        &inputs.diagnostics_text,
+        &inputs.plan_diff_text,
+        &inputs.executor_diff_text,
+        &inputs.cargo_test_failures,
+    );
+    inject_inbound_message(&mut planner_prompt, "planner");
+    trace_orchestrator_forwarded("orchestrator", "planner", "planner", None, None, None, None);
+    let planner_system = system_instructions(AgentPromptKind::Planner);
+    let result = run_agent(
+        "planner",
+        "planner",
+        &planner_system,
+        planner_prompt,
+        ctx.planner_ep,
+        ctx.bridge,
+        ctx.workspace,
+        ctx.tabs_planner,
+        false,
+        false,
+        !*planner_bootstrapped,
+        0,
+    )
+    .await;
+    *planner_bootstrapped = true;
+    match result {
+        Ok(result) => {
+            eprintln!("[orchestrate] planner ok bytes={}", result.len());
+            dispatch_state.last_plan_text = inputs.plan_text;
+            for lane in ctx.lanes {
+                let plan_text = read_lane_plan_with_legacy(ctx.workspace, lane);
+                let lane_state = dispatch_lane_mut(dispatch_state, lane.index);
+                let changed = lane_state.plan_text != plan_text;
+                lane_state.plan_text = plan_text;
+                if lane_state.in_progress_by.is_none()
+                    && (changed || !verifier_confirmed(&lane_state.latest_verifier_result))
+                {
+                    lane_state.pending = !lane_state.plan_text.trim().is_empty();
+                }
             }
-            out.push_str("+ ");
-            out.push_str(line);
-            out.push('\n');
+            dispatch_state.planner_pending = false;
+            true
         }
-        return out;
+        Err(err) => {
+            eprintln!("[orchestrate] planner error: {err:#}");
+            false
+        }
     }
-    if old_text == new_text {
-        return "(no changes)".to_string();
+}
+
+async fn run_diagnostics_phase(
+    ctx: &OrchestratorContext<'_>,
+    dispatch_state: &mut DispatchState,
+    verifier_summary: &[String],
+    diagnostics_bootstrapped: &mut bool,
+    verifier_changed: bool,
+    cargo_test_failures: &str,
+) -> bool {
+    let summary_text = lane_summary_text(ctx.lanes, verifier_summary);
+    let mut prompt = diagnostics_cycle_prompt(&summary_text, cargo_test_failures);
+    inject_inbound_message(&mut prompt, "diagnostics");
+    trace_orchestrator_forwarded("verifier", "diagnostics", "diagnostics", None, None, None, None);
+    let diagnostics_system = system_instructions(AgentPromptKind::Diagnostics);
+    let result = run_agent(
+        "diagnostics",
+        "diagnostics",
+        &diagnostics_system,
+        prompt,
+        ctx.diagnostics_ep,
+        ctx.bridge,
+        ctx.workspace,
+        ctx.tabs_diagnostics,
+        false,
+        false,
+        !*diagnostics_bootstrapped,
+        0,
+    )
+    .await;
+    *diagnostics_bootstrapped = true;
+    match result {
+        Ok(result) => {
+            eprintln!("[orchestrate] diagnostics ok bytes={}", result.len());
+            let new_diagnostics_text = read_text_or_empty(ctx.diagnostics_path);
+            let diagnostics_changed = dispatch_state.diagnostics_text != new_diagnostics_text;
+            dispatch_state.diagnostics_text = new_diagnostics_text;
+            dispatch_state.diagnostics_pending = false;
+            dispatch_state.planner_pending =
+                decide_post_diagnostics(diagnostics_changed, verifier_changed);
+            true
+        }
+        Err(err) => {
+            eprintln!("[orchestrate] diagnostics error: {err:#}");
+            false
+        }
     }
-    let mut out = String::new();
-    let old_lines: Vec<&str> = old_text.lines().collect();
-    let new_lines: Vec<&str> = new_text.lines().collect();
-    let mut i = 0usize;
-    let mut j = 0usize;
-    let mut emitted = 0usize;
-    while i < old_lines.len() || j < new_lines.len() {
-        if emitted >= max_lines {
-            out.push_str("... (truncated)\n");
+}
+
+async fn run_verifier_phase(
+    ctx: &OrchestratorContext<'_>,
+    dispatch_state: &mut DispatchState,
+    verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
+    verifier_summary: &mut [String],
+    verifier_joinset: &mut tokio::task::JoinSet<(usize, String)>,
+    verifier_bootstrapped: &mut bool,
+    scheduled_phase: &mut Option<String>,
+    current_phase: &mut String,
+    current_phase_lane: &mut Option<usize>,
+    cargo_test_failures: &str,
+) -> (bool, bool) {
+    let mut cycle_progress = false;
+    let mut verifier_changed = false;
+    while let Some((submitted, turn_id, final_exec_result)) = verifier_pending_results.pop_front() {
+        if !allow_verifier_run(scheduled_phase.as_deref()) {
+            verifier_pending_results.push_front((submitted, turn_id, final_exec_result));
             break;
         }
-        match (old_lines.get(i), new_lines.get(j)) {
-            (Some(ol), Some(nl)) if ol == nl => {
-                i += 1;
-                j += 1;
+        *current_phase = "verifier".to_string();
+        *current_phase_lane = Some(submitted.lane);
+        let lane_plan_file = ctx.lanes[submitted.lane].plan_file.clone();
+        let prompt_inputs: VerifierPromptInputs = load_verifier_prompt_inputs(
+            ctx.lanes,
+            ctx.workspace,
+            verifier_summary,
+            &mut dispatch_state.last_executor_diff,
+            cargo_test_failures.to_string(),
+        );
+        let mut verifier_prompt = verifier_cycle_prompt(
+            submitted.lane_label.as_str(),
+            lane_plan_file.as_str(),
+            &final_exec_result,
+            &prompt_inputs.executor_diff_text,
+            &prompt_inputs.cargo_test_failures,
+        );
+        if let Some(inbound) = take_inbound_message("verifier") {
+            if let Some((_, to, payload)) = try_parse_blocker(&inbound) {
+                let fields = normalize_blocker_fields(&payload);
+                let verifier_specific =
+                    is_verifier_specific_blocker(&fields.blocker_text, &fields.required_action);
+                if to.eq_ignore_ascii_case("verifier")
+                    && verifier_blocker_phase_override(verifier_specific).is_some()
+                {
+                    let ack = build_verifier_blocker_ack(&fields);
+                    persist_planner_message(&ack);
+                    verifier_pending_results.push_front((submitted, turn_id, final_exec_result));
+                    let override_phase = verifier_blocker_phase_override(verifier_specific).unwrap();
+                    *scheduled_phase = Some(override_phase.to_string());
+                    continue;
+                }
             }
-            (Some(ol), Some(nl)) => {
-                out.push_str("- ");
-                out.push_str(ol);
-                out.push('\n');
-                out.push_str("+ ");
-                out.push_str(nl);
-                out.push('\n');
-                i += 1;
-                j += 1;
-                emitted += 2;
+            append_inbound_to_prompt(&mut verifier_prompt, &inbound);
+        } else if let Some(inbound) = extract_message_action(&final_exec_result) {
+            append_inbound_to_prompt(&mut verifier_prompt, &inbound);
+        }
+        trace_orchestrator_forwarded(
+            &format!("executor:{}", submitted.lane_label),
+            "verifier",
+            "verifier",
+            Some(submitted.lane_label.as_str()),
+            Some(lane_plan_file.as_str()),
+            Some(submitted.tab_id),
+            Some(turn_id),
+        );
+        let verifier_system = system_instructions(AgentPromptKind::Verifier);
+        let verifier_ep = ctx.verifier_ep.clone();
+        let bridge = ctx.bridge.clone();
+        let workspace = ctx.workspace.to_path_buf();
+        let send_system = !*verifier_bootstrapped;
+        *verifier_bootstrapped = true;
+        let tabs_verify = ctx.tabs_verify.clone();
+        verifier_joinset.spawn(async move {
+            let verify_result = match run_agent(
+                "verifier",
+                "verifier",
+                &verifier_system,
+                verifier_prompt,
+                &verifier_ep,
+                &bridge,
+                &workspace,
+                &tabs_verify,
+                false,
+                false,
+                send_system,
+                0,
+            )
+            .await
+            {
+                Ok(result) => result,
+                Err(err) => format!(
+                    "{{\"verified\":false,\"summary\":\"verifier error: {}\"}}",
+                    err.to_string().replace('"', "'")
+                ),
+            };
+            (submitted.lane, verify_result)
+        });
+        cycle_progress = true;
+    }
+
+    while let Some(joined) = verifier_joinset.try_join_next() {
+        match joined {
+            Ok((lane_id, verify_result)) => {
+                if verify_result.trim().eq_ignore_ascii_case("shutdown requested") {
+                    eprintln!(
+                        "[orchestrate] verifier shutdown marker received; preserving previous verifier result"
+                    );
+                    cycle_progress = true;
+                    continue;
+                }
+                let lane = dispatch_lane_mut(dispatch_state, lane_id);
+                let changed = lane.latest_verifier_result != verify_result;
+                lane.latest_verifier_result = verify_result.clone();
+                lane.in_progress_by = None;
+                lane.pending = !verifier_confirmed(&verify_result);
+                if changed {
+                    verifier_summary[lane_id] = verify_result;
+                    verifier_changed = true;
+                }
+                cycle_progress = true;
             }
-            (Some(ol), None) => {
-                out.push_str("- ");
-                out.push_str(ol);
-                out.push('\n');
-                i += 1;
-                emitted += 1;
+            Err(err) => {
+                eprintln!("[orchestrate] verifier join error: {err:#}");
             }
-            (None, Some(nl)) => {
-                out.push_str("+ ");
-                out.push_str(nl);
-                out.push('\n');
-                j += 1;
-                emitted += 1;
-            }
-            (None, None) => break,
         }
     }
-    out
+
+    (cycle_progress, verifier_changed)
+}
+
+fn run_executor_phase(
+    ctx: &OrchestratorContext<'_>,
+    dispatch_state: &mut DispatchState,
+    now: u64,
+    pending_submit_timeout_ms: u64,
+    submit_joinset: &mut tokio::task::JoinSet<(usize, PendingExecutorSubmit, Result<String>)>,
+    scheduled_phase: Option<&str>,
+    current_phase: &mut String,
+    current_phase_lane: &mut Option<usize>,
+) -> bool {
+    let mut cycle_progress = false;
+    if !dispatch_state.executor_submit_inflight.is_empty() {
+        let mut timed_out = Vec::new();
+        for (lane_id, pending) in dispatch_state.executor_submit_inflight.iter() {
+            if executor_submit_timed_out(pending.started_ms, now, pending_submit_timeout_ms) {
+                timed_out.push(*lane_id);
+            }
+        }
+        for lane_id in timed_out {
+            if let Some(pending) = dispatch_state.executor_submit_inflight.remove(&lane_id) {
+                eprintln!(
+                    "[orchestrate] pending submit timeout: lane={} command_id={}",
+                    ctx.lanes[lane_id].label,
+                    pending.command_id
+                );
+                append_orchestration_trace(
+                    "executor_submit_timeout",
+                    json!({
+                        "lane_name": ctx.lanes[lane_id].label,
+                        "command_id": pending.command_id,
+                    }),
+                );
+            }
+            dispatch_state.lane_submit_in_flight.insert(lane_id, false);
+            let lane = dispatch_lane_mut(dispatch_state, lane_id);
+            lane.in_progress_by = None;
+            lane.pending = true;
+        }
+    }
+
+    if !block_executor_dispatch(scheduled_phase) {
+        for lane in ctx.lanes {
+            if dispatch_state.lane_submit_active(lane.index)
+                || dispatch_state.lane_next_submit_ms(lane.index) > now
+            {
+                continue;
+            }
+            if let Some(job) = claim_executor_submit(dispatch_state, lane) {
+                *current_phase = "executor".to_string();
+                *current_phase_lane = Some(lane.index);
+                let lane_index = lane.index;
+                let endpoint = lane.endpoint.clone();
+                let bridge = ctx.bridge.clone();
+                let tabs = lane.tabs.clone();
+                let command_id = make_command_id(&job.executor_role, "executor", 1);
+                let response_timeout_secs = response_timeout_for_role(&job.executor_role);
+                dispatch_state.executor_submit_inflight.insert(
+                    lane_index,
+                    PendingSubmitState {
+                        job: job.clone(),
+                        started_ms: now_ms(),
+                        command_id: command_id.clone(),
+                        endpoint_id: endpoint.id.clone(),
+                        tabs: tabs.clone(),
+                    },
+                );
+                dispatch_state.lane_submit_in_flight.insert(lane_index, true);
+                submit_joinset.spawn(async move {
+                    let result = submit_executor_turn(
+                        &job,
+                        &endpoint,
+                        &bridge,
+                        &tabs,
+                        true,
+                        &command_id,
+                        response_timeout_secs,
+                    )
+                    .await;
+                    (lane_index, job, result)
+                });
+            }
+        }
+    }
+
+    while let Some(joined) = submit_joinset.try_join_next() {
+        match joined {
+            Ok((lane_id, job, result)) => {
+                match result {
+                    Ok(exec_result) => {
+                        if let Some((tab_id, turn_id, command_id)) = parse_submit_ack(&exec_result) {
+                            let Some(pending) = dispatch_state.executor_submit_inflight.remove(&lane_id) else {
+                                eprintln!(
+                                    "[orchestrate] submit ack without pending submit: lane={} tab_id={} turn_id={}",
+                                    ctx.lanes[lane_id].label,
+                                    tab_id,
+                                    turn_id
+                                );
+                                continue;
+                            };
+                            if executor_submit_timed_out(
+                                pending.started_ms,
+                                now_ms(),
+                                pending_submit_timeout_ms,
+                            ) {
+                                eprintln!(
+                                    "[orchestrate] submit ack arrived after timeout: lane={} tab_id={} turn_id={}",
+                                    ctx.lanes[lane_id].label,
+                                    tab_id,
+                                    turn_id
+                                );
+                                dispatch_state.lane_submit_in_flight.insert(lane_id, false);
+                                dispatch_state.lane_prompt_in_flight.insert(lane_id, false);
+                                continue;
+                            }
+                            if let Some(active_tab) = dispatch_state.lane_active_tab.get(&lane_id) {
+                                if *active_tab != tab_id {
+                                    eprintln!(
+                                        "[orchestrate] submit ack tab mismatch: lane={} active_tab={} ack_tab={} (overwriting active tab)",
+                                        ctx.lanes[lane_id].label,
+                                        active_tab,
+                                        tab_id
+                                    );
+                                }
+                            }
+                            dispatch_state.lane_active_tab.insert(lane_id, tab_id);
+                            dispatch_state
+                                .tab_id_to_lane
+                                .entry(tab_id)
+                                .or_insert(lane_id);
+                            dispatch_state.submitted_turns.insert(
+                                (tab_id, turn_id),
+                                SubmittedExecutorTurn {
+                                    tab_id,
+                                    lane: job.lane_index,
+                                    lane_label: job.label.clone(),
+                                    command_id: command_id.unwrap_or_else(|| pending.command_id.clone()),
+                                    actor: job.executor_role.clone(),
+                                    endpoint_id: pending.endpoint_id.clone(),
+                                    tabs: pending.tabs.clone(),
+                                    steps_used: *dispatch_state
+                                        .lane_steps_used
+                                        .get(&job.lane_index)
+                                        .unwrap_or(&0),
+                                },
+                            );
+                            dispatch_state.lane_next_submit_at_ms.insert(lane_id, now_ms());
+                            dispatch_state.lane_submit_in_flight.insert(lane_id, false);
+                            cycle_progress = true;
+                        } else {
+                            eprintln!("[orchestrate] {} missing submit_ack: {exec_result}", job.executor_name);
+                            let lane = dispatch_lane_mut(dispatch_state, job.lane_index);
+                            lane.in_progress_by = None;
+                            lane.pending = true;
+                            dispatch_state.executor_submit_inflight.remove(&job.lane_index);
+                            dispatch_state.lane_submit_in_flight.insert(job.lane_index, false);
+                        }
+                    }
+                    Err(err) => {
+                        eprintln!("[orchestrate] {} submit error: {err:#}", job.executor_name);
+                        let lane = dispatch_lane_mut(dispatch_state, job.lane_index);
+                        lane.in_progress_by = None;
+                        lane.pending = true;
+                        dispatch_state.executor_submit_inflight.remove(&job.lane_index);
+                        dispatch_state.lane_submit_in_flight.insert(job.lane_index, false);
+                    }
+                }
+            }
+            Err(err) => {
+                eprintln!("[orchestrate] submit join error: {err:#}");
+            }
+        }
+    }
+
+    cycle_progress
+}
+
+async fn process_completed_turns(
+    ctx: &OrchestratorContext<'_>,
+    dispatch_state: &mut DispatchState,
+    continuation_joinset: &mut tokio::task::JoinSet<(SubmittedExecutorTurn, u64, Result<String>)>,
+    verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
+) -> bool {
+    let mut cycle_progress = false;
+    let completed_turns = ctx.bridge.take_completed_turns().await;
+    for item in completed_turns {
+        append_orchestration_trace("llm_message_received", item.clone());
+        let Some((tab_id, turn_id, exec_result, completed_endpoint_id)) = parse_completed_turn(&item) else {
+            continue;
+        };
+        let submitted = if let Some(submitted) =
+            dispatch_state.submitted_turns.remove(&(tab_id, turn_id))
+        {
+            if check_completion_endpoint(&submitted.endpoint_id, completed_endpoint_id.as_deref())
+                == CompletionEndpointCheck::Mismatch
+            {
+                append_orchestration_trace(
+                    "executor_completion_endpoint_mismatch",
+                    json!({
+                        "tab_id": tab_id,
+                        "turn_id": turn_id,
+                        "expected_endpoint_id": submitted.endpoint_id,
+                        "completed_endpoint_id": completed_endpoint_id,
+                    }),
+                );
+                continue;
+            }
+            submitted
+        } else {
+            let lane_id = dispatch_state.tab_id_to_lane.get(&tab_id).copied();
+            let Some(lane_id) = lane_id else {
+                append_orchestration_trace(
+                    "executor_completion_unmatched",
+                    json!({
+                        "tab_id": tab_id,
+                        "turn_id": turn_id,
+                        "text": truncate(&exec_result, MAX_SNIPPET),
+                    }),
+                );
+                continue;
+            };
+            if check_completion_endpoint(&ctx.lanes[lane_id].endpoint.id, completed_endpoint_id.as_deref())
+                == CompletionEndpointCheck::Mismatch
+            {
+                append_orchestration_trace(
+                    "executor_completion_endpoint_mismatch",
+                    json!({
+                        "lane_name": ctx.lanes[lane_id].label,
+                        "tab_id": tab_id,
+                        "turn_id": turn_id,
+                        "expected_endpoint_id": ctx.lanes[lane_id].endpoint.id,
+                        "completed_endpoint_id": completed_endpoint_id,
+                    }),
+                );
+                continue;
+            }
+            match check_completion_tab(
+                dispatch_state.lane_active_tab.get(&lane_id).copied(),
+                tab_id,
+            ) {
+                CompletionTabCheck::Mismatch => {
+                    append_orchestration_trace(
+                        "executor_completion_tab_mismatch",
+                        json!({
+                            "lane_name": ctx.lanes[lane_id].label,
+                            "active_tab": dispatch_state.lane_active_tab.get(&lane_id),
+                            "tab_id": tab_id,
+                            "turn_id": turn_id,
+                        }),
+                    );
+                    continue;
+                }
+                CompletionTabCheck::NoneSet => {
+                    dispatch_state.lane_active_tab.insert(lane_id, tab_id);
+                }
+                CompletionTabCheck::Ok => {}
+            }
+            let Some(pending) = dispatch_state.executor_submit_inflight.remove(&lane_id) else {
+                append_orchestration_trace(
+                    "executor_completion_unmatched",
+                    json!({
+                        "tab_id": tab_id,
+                        "turn_id": turn_id,
+                        "text": truncate(&exec_result, MAX_SNIPPET),
+                    }),
+                );
+                continue;
+            };
+            dispatch_state.lane_submit_in_flight.insert(lane_id, false);
+            dispatch_state.lane_next_submit_at_ms.insert(lane_id, now_ms());
+            SubmittedExecutorTurn {
+                tab_id,
+                lane: lane_id,
+                lane_label: ctx.lanes[lane_id].label.clone(),
+                command_id: pending.command_id,
+                actor: pending.job.executor_role,
+                endpoint_id: pending.endpoint_id,
+                tabs: pending.tabs,
+                steps_used: *dispatch_state
+                    .lane_steps_used
+                    .get(&lane_id)
+                    .unwrap_or(&0),
+            }
+        };
+        dispatch_state.lane_prompt_in_flight.insert(submitted.lane, false);
+        if handle_executor_completion(
+            submitted,
+            tab_id,
+            turn_id,
+            exec_result,
+            dispatch_state,
+            ctx.lanes,
+            ctx.bridge,
+            ctx.workspace,
+            continuation_joinset,
+            verifier_pending_results,
+        ) {
+            cycle_progress = true;
+        }
+    }
+    cycle_progress
+}
+
+fn drain_continuations(
+    dispatch_state: &mut DispatchState,
+    continuation_joinset: &mut tokio::task::JoinSet<(SubmittedExecutorTurn, u64, Result<String>)>,
+    verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
+) -> bool {
+    let mut cycle_progress = false;
+    while let Some(joined) = continuation_joinset.try_join_next() {
+        match joined {
+            Ok((submitted, turn_id, result)) => match result {
+                Ok(final_exec_result) => {
+                    dispatch_state.lane_prompt_in_flight.insert(submitted.lane, false);
+                    // Continuations only return once the executor has reached completion,
+                    // and the returned value is the completion summary (not the raw action JSON).
+                    verifier_pending_results.push_back((submitted, turn_id, final_exec_result));
+                    cycle_progress = true;
+                }
+                Err(err) => {
+                    eprintln!(
+                        "[orchestrate] executor continuation error: lane={} err={err:#}",
+                        submitted.lane_label
+                    );
+                    dispatch_state.lane_prompt_in_flight.insert(submitted.lane, false);
+                    let lane = dispatch_lane_mut(dispatch_state, submitted.lane);
+                    lane.in_progress_by = None;
+                    lane.pending = true;
+                    cycle_progress = true;
+                }
+            },
+            Err(err) => {
+                eprintln!("[orchestrate] continuation join error: {err:#}");
+            }
+        }
+    }
+    cycle_progress
+}
+
+fn drain_deferred_completions(
+    ctx: &OrchestratorContext<'_>,
+    dispatch_state: &mut DispatchState,
+    continuation_joinset: &mut tokio::task::JoinSet<(SubmittedExecutorTurn, u64, Result<String>)>,
+    verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
+) -> bool {
+    let mut cycle_progress = false;
+    for lane_id in 0..ctx.lanes.len() {
+        if dispatch_state.lane_in_flight(lane_id) {
+            continue;
+        }
+        while let Some(deferred) = dispatch_state
+            .deferred_completions
+            .get_mut(&lane_id)
+            .and_then(|queue| queue.pop_front())
+        {
+            if handle_executor_completion(
+                deferred.submitted,
+                deferred.tab_id,
+                deferred.turn_id,
+                deferred.exec_result,
+                dispatch_state,
+                ctx.lanes,
+                ctx.bridge,
+                ctx.workspace,
+                continuation_joinset,
+                verifier_pending_results,
+            ) {
+                cycle_progress = true;
+            }
+            if dispatch_state.lane_in_flight(lane_id) {
+                break;
+            }
+        }
+    }
+    cycle_progress
 }
 
 fn canonical_role_label(role: &str) -> &'static str {
@@ -222,10 +939,6 @@ fn blocker_escalation_prompt(role: &str, last_error: &str, task_context: &str) -
         evidence = truncate(last_error, MAX_SNIPPET),
         context = truncate(task_context, MAX_SNIPPET),
     )
-}
-
-fn executor_diff_unavailable(reason: &str) -> String {
-    format!("(executor diff unavailable: {reason})")
 }
 
 #[derive(Clone)]
@@ -349,35 +1062,6 @@ fn load_checkpoint(workspace: &Path) -> Option<OrchestratorCheckpoint> {
     serde_json::from_str(&raw).ok()
 }
 
-fn diff_since_last_cycle(current: &str, last: &str) -> String {
-    if current.trim().is_empty() {
-        return "(no changes)".to_string();
-    }
-    if current == last {
-        return "(no changes)".to_string();
-    }
-    if last.trim().is_empty() {
-        return current.to_string();
-    }
-    if current.starts_with("(") {
-        return current.to_string();
-    }
-    let last_lines: std::collections::HashSet<&str> = last.lines().collect();
-    let mut out_lines = Vec::new();
-    for line in current.lines() {
-        if !last_lines.contains(line) {
-            out_lines.push(line);
-        }
-    }
-    if out_lines.is_empty() {
-        "(no changes)".to_string()
-    } else {
-        let mut out = out_lines.join("\n");
-        out.push('\n');
-        out
-    }
-}
-
 fn looks_like_diff(raw: &str) -> bool {
     raw.contains("diff --git")
         || (raw.contains("--- ") && raw.contains("+++ "))
@@ -417,60 +1101,6 @@ fn guardrail_action_from_raw(raw: &str, role: &str) -> Option<Value> {
         }));
     }
     None
-}
-
-fn executor_diff(workspace: &Path, max_lines: usize) -> String {
-    let mut cmd = Command::new("git");
-    cmd.current_dir(workspace).args(["diff", "--name-only"]);
-    let Ok(output) = cmd.output() else {
-        return executor_diff_unavailable("failed to run git diff --name-only");
-    };
-    if !output.status.success() {
-        return executor_diff_unavailable("git diff --name-only failed");
-    }
-    let text = String::from_utf8_lossy(&output.stdout);
-    let files: Vec<&str> = text
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .filter(|line| {
-            !line.starts_with("PLAN.json")
-                && !line.starts_with("PLAN.md")
-                && !line.starts_with("PLANS/")
-                && *line != "VIOLATIONS.json"
-                && *line != "DIAGNOSTICS.json"
-        })
-        .collect();
-    if files.is_empty() {
-        return "(no executor diff)".to_string();
-    }
-    let mut diff_cmd = Command::new("git");
-    diff_cmd
-        .current_dir(workspace)
-        .arg("diff")
-        .arg("--unified=3")
-        .arg("--")
-        .args(&files);
-    let Ok(diff_out) = diff_cmd.output() else {
-        return executor_diff_unavailable("failed to run git diff");
-    };
-    if !diff_out.status.success() {
-        return executor_diff_unavailable("git diff failed");
-    }
-    let diff_text = String::from_utf8_lossy(&diff_out.stdout);
-    if diff_text.trim().is_empty() {
-        return "(no executor diff)".to_string();
-    }
-    let mut out = String::new();
-    for (idx, line) in diff_text.lines().enumerate() {
-        if idx >= max_lines {
-            out.push_str("... (truncated)\n");
-            break;
-        }
-        out.push_str(line);
-        out.push('\n');
-    }
-    out
 }
 
 fn apply_error_result(
@@ -538,7 +1168,7 @@ fn parse_action_from_raw(
             trace("parse_error");
             return Err(InvalidActionFeedback {
                 err_text: e.to_string(),
-                feedback: build_invalid_action_feedback(None, &e.to_string()),
+                feedback: build_invalid_action_feedback(None, &e.to_string(), role),
             });
         }
     };
@@ -550,7 +1180,7 @@ fn parse_action_from_raw(
         trace("invalid_action_count");
         return Err(InvalidActionFeedback {
             err_text: msg.clone(),
-            feedback: build_invalid_action_feedback(None, &msg),
+            feedback: build_invalid_action_feedback(None, &msg, role),
         });
     }
 
@@ -562,7 +1192,7 @@ fn parse_action_from_raw(
         }));
         return Err(InvalidActionFeedback {
             err_text: e.to_string(),
-            feedback: build_invalid_action_feedback(Some(&raw_action), &e.to_string()),
+            feedback: build_invalid_action_feedback(Some(&raw_action), &e.to_string(), role),
         });
     }
 
@@ -579,7 +1209,11 @@ fn parse_action_from_raw(
         if let Some(prompt) = corrective_invalid_action_prompt(&action, &err_text, role) {
             return Err(InvalidActionFeedback {
                 err_text: err_text.clone(),
-                feedback: format!("{}\n\n{}", build_invalid_action_feedback(Some(&action), &err_text), prompt),
+                feedback: format!(
+                    "{}\n\n{}",
+                    build_invalid_action_feedback(Some(&action), &err_text, role),
+                    prompt
+                ),
             });
         }
         if err_text.contains("cargo_test missing 'crate'") {
@@ -592,7 +1226,7 @@ fn parse_action_from_raw(
         }
         return Err(InvalidActionFeedback {
             err_text: err_text.clone(),
-            feedback: build_invalid_action_feedback(Some(&action), &err_text),
+            feedback: build_invalid_action_feedback(Some(&action), &err_text, role),
         });
     }
 
@@ -832,15 +1466,6 @@ fn persist_planner_message(action: &Value) {
     let _ = std::fs::write(agent_state_dir.join("wakeup_planner.flag"), "handoff");
 }
 
-#[derive(Clone)]
-struct LaneConfig {
-    index: usize,
-    endpoint: LlmEndpoint,
-    plan_file: String,
-    label: String,
-    tabs: TabManagerHandle,
-}
-
 struct LlmResponseContext<'a> {
     role: &'a str,
     endpoint: &'a LlmEndpoint,
@@ -864,30 +1489,24 @@ impl<'a> LlmResponseContext<'a> {
                 "prompt": truncate(prompt, MAX_SNIPPET),
             }),
         );
-        append_orchestration_trace(
-            "llm_message_forwarded",
-            json!({
-                "role": self.role,
-                "prompt_kind": self.prompt_kind,
-                "step": step,
-                "endpoint_id": self.endpoint.id,
-                "submit_only": self.submit_only,
-                "prompt_bytes": prompt.len(),
-            }),
+        trace_message_forwarded(
+            self.role,
+            self.prompt_kind,
+            step,
+            &self.endpoint.id,
+            self.submit_only,
+            prompt.len(),
         );
     }
 
     fn log_response(&self, step: usize, exchange_id: &str, raw: &str) {
-        append_orchestration_trace(
-            "llm_message_received",
-            json!({
-                "role": self.role,
-                "prompt_kind": self.prompt_kind,
-                "step": step,
-                "endpoint_id": self.endpoint.id,
-                "submit_only": self.submit_only,
-                "response_bytes": raw.len(),
-            }),
+        trace_message_received(
+            self.role,
+            self.prompt_kind,
+            step,
+            &self.endpoint.id,
+            self.submit_only,
+            raw.len(),
         );
         log_message_event(
             self.role,
@@ -1021,7 +1640,31 @@ async fn continue_executor_completion(
     ) {
         Ok(action) => action,
         Err(invalid) => {
-            return Err(anyhow!("executor invalid_action: {}", invalid.feedback));
+            let agent_type = role.to_uppercase();
+            let retry_prompt = action_result_prompt(
+                Some(submitted.tab_id),
+                Some(turn_id),
+                agent_type.as_str(),
+                &invalid.feedback,
+                Some("invalid_action"),
+                Some(EXECUTOR_STEP_LIMIT.saturating_sub(submitted.steps_used)),
+            );
+            return run_agent(
+                role,
+                prompt_kind,
+                "",
+                retry_prompt,
+                endpoint,
+                bridge,
+                workspace,
+                tabs,
+                false,
+                true,
+                false,
+                submitted.steps_used,
+            )
+            .await
+            .map_err(|e| anyhow!("executor invalid_action recovery failed: {e}"));
         }
     };
 
@@ -1243,7 +1886,7 @@ async fn run_agent(
                 &mut last_error,
                 &mut last_result,
                 "reaction_only_response",
-                build_invalid_action_feedback(None, "reaction-only response"),
+                build_invalid_action_feedback(None, "reaction-only response", role),
             );
             step += 1;
             continue;
@@ -1787,16 +2430,13 @@ async fn submit_executor_turn(
             "prompt": truncate(&prompt, MAX_SNIPPET),
         }),
     );
-    append_orchestration_trace(
-        "llm_message_forwarded",
-        json!({
-            "role": job.executor_role,
-            "prompt_kind": "executor",
-            "step": 1,
-            "endpoint_id": endpoint.id,
-            "submit_only": true,
-            "prompt_bytes": prompt.len(),
-        }),
+    trace_message_forwarded(
+        &job.executor_role,
+        "executor",
+        1,
+        &endpoint.id,
+        true,
+        prompt.len(),
     );
     let raw = llm_worker_send_request_timeout(
         bridge,
@@ -1816,16 +2456,13 @@ async fn submit_executor_turn(
         Some(response_timeout_secs),
     )
     .await?;
-    append_orchestration_trace(
-        "llm_message_received",
-        json!({
-            "role": job.executor_role,
-            "prompt_kind": "executor",
-            "step": 1,
-            "endpoint_id": endpoint.id,
-            "submit_only": true,
-            "response_bytes": raw.len(),
-        }),
+    trace_message_received(
+        &job.executor_role,
+        "executor",
+        1,
+        &endpoint.id,
+        true,
+        raw.len(),
     );
     log_message_event(
         &job.executor_role,
@@ -2137,574 +2774,102 @@ pub async fn run() -> Result<()> {
                 scheduled_phase.as_deref(),
             );
 
+            let orchestrator_ctx = OrchestratorContext {
+                lanes: &lanes,
+                workspace: &workspace,
+                bridge: &bridge,
+                tabs_planner: &tabs_planner,
+                tabs_diagnostics: &tabs_diagnostics,
+                tabs_verify: &tabs_verify,
+                planner_ep: &planner_ep,
+                diagnostics_ep: &diagnostics_ep,
+                verifier_ep: &verifier_ep,
+                master_plan_path: &master_plan_path,
+                violations_path: &violations_path,
+                diagnostics_path: &diagnostics_path,
+            };
+            let cargo_test_failures = load_cargo_test_failures(&workspace);
+
             if phase_gates.planner {
                 current_phase = "planner".to_string();
                 current_phase_lane = None;
-                let summary_text = lanes
-                    .iter()
-                    .map(|lane| format!("{}={}", lane.label, verifier_summary[lane.index]))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                let lane_plan_list = lanes
-                    .iter()
-                    .map(|lane| lane.plan_file.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let objectives_text =
-                    std::fs::read_to_string(workspace.join(OBJECTIVES_FILE)).unwrap_or_default();
-                let invariants_text =
-                    std::fs::read_to_string(workspace.join(INVARIANTS_FILE)).unwrap_or_default();
-                let violations_text =
-                    std::fs::read_to_string(&violations_path).unwrap_or_default();
-                let diagnostics_text =
-                    std::fs::read_to_string(&diagnostics_path).unwrap_or_default();
-                let cargo_test_failures = load_cargo_test_failures(&workspace);
-                let plan_text =
-                    std::fs::read_to_string(&master_plan_path).unwrap_or_default();
-                let plan_diff_text = plan_diff(&dispatch_state.last_plan_text, &plan_text, 400);
-                let current_executor_diff = executor_diff(&workspace, 400);
-                let executor_diff_text =
-                    diff_since_last_cycle(&current_executor_diff, &dispatch_state.last_executor_diff);
-                dispatch_state.last_executor_diff = current_executor_diff;
-                let mut planner_prompt = planner_cycle_prompt(
-                    &summary_text,
-                    &lane_plan_list,
-                    &objectives_text,
-                    &invariants_text,
-                    &violations_text,
-                    &diagnostics_text,
-                    &plan_diff_text,
-                    &executor_diff_text,
+                if run_planner_phase(
+                    &orchestrator_ctx,
+                    &mut dispatch_state,
+                    &verifier_summary,
+                    &mut planner_bootstrapped,
                     &cargo_test_failures,
-                );
-                inject_inbound_message(&mut planner_prompt, "planner");
-                append_orchestration_trace(
-                    "llm_message_forwarded",
-                    json!({
-                        "from": "orchestrator",
-                        "to": "planner",
-                        "phase": "planner",
-                    }),
-                );
-                let planner_system = system_instructions(AgentPromptKind::Planner);
-                let result = run_agent(
-                    "planner",
-                    "planner",
-                    &planner_system,
-                    planner_prompt,
-                    &planner_ep,
-                    &bridge,
-                    &workspace,
-                    &tabs_planner,
-                    false,
-                    false,
-                    !planner_bootstrapped,
-                    0,
                 )
-                .await;
-                match result {
-                    Ok(result) => {
-                        eprintln!("[orchestrate] planner ok bytes={}", result.len());
-                        dispatch_state.last_plan_text =
-                            std::fs::read_to_string(&master_plan_path).unwrap_or_default();
-                        for lane in &lanes {
-                            let mut plan_text = std::fs::read_to_string(workspace.join(&lane.plan_file)).unwrap_or_default();
-                            if plan_text.trim().is_empty() {
-                                let legacy_paths = match lane.index {
-                                    0 => vec!["PLANS/executor-a.json", "PLANS/executor-a.md"],
-                                    1 => vec!["PLANS/executor-b.json", "PLANS/executor-b.md"],
-                                    _ => Vec::new(),
-                                };
-                                for legacy in legacy_paths {
-                                    let legacy_text =
-                                        std::fs::read_to_string(workspace.join(legacy)).unwrap_or_default();
-                                    if !legacy_text.trim().is_empty() {
-                                        eprintln!(
-                                            "[orchestrate] legacy lane plan fallback: {} -> {}",
-                                            legacy,
-                                            lane.plan_file
-                                        );
-                                        plan_text = legacy_text;
-                                        break;
-                                    }
-                                }
-                            }
-                            let lane_state = dispatch_lane_mut(&mut dispatch_state, lane.index);
-                            let changed = lane_state.plan_text != plan_text;
-                            lane_state.plan_text = plan_text;
-                            if lane_state.in_progress_by.is_none()
-                                && (changed || !verifier_confirmed(&lane_state.latest_verifier_result))
-                            {
-                                lane_state.pending = !lane_state.plan_text.trim().is_empty();
-                            }
-                        }
-
-                        dispatch_state.planner_pending = false;
-                        cycle_progress = true;
-                    }
-                    Err(err) => {
-                        eprintln!("[orchestrate] planner error: {err:#}");
-                    }
-                }
-                planner_bootstrapped = true;
-            }
-
-            apply_wake_flags(agent_state_dir, &mut dispatch_state, &mut scheduled_phase);
-            let now = now_ms();
-            if !dispatch_state.executor_submit_inflight.is_empty() {
-                let mut timed_out = Vec::new();
-                for (lane_id, pending) in dispatch_state.executor_submit_inflight.iter() {
-                    if executor_submit_timed_out(pending.started_ms, now, PENDING_SUBMIT_TIMEOUT_MS) {
-                        timed_out.push(*lane_id);
-                    }
-                }
-                for lane_id in timed_out {
-                    if let Some(pending) = dispatch_state.executor_submit_inflight.remove(&lane_id) {
-                        eprintln!(
-                            "[orchestrate] pending submit timeout: lane={} command_id={}",
-                            lanes[lane_id].label,
-                            pending.command_id
-                        );
-                        append_orchestration_trace(
-                            "executor_submit_timeout",
-                            json!({
-                                "lane_name": lanes[lane_id].label,
-                                "command_id": pending.command_id,
-                            }),
-                        );
-                    }
-                   dispatch_state.lane_submit_in_flight.insert(lane_id, false);
-                   let lane = dispatch_lane_mut(&mut dispatch_state, lane_id);
-                    lane.in_progress_by = None;
-                    lane.pending = true;
-                }
-            }
-            if phase_gates.executor {
-                for lane in &lanes {
-                    if dispatch_state.lane_submit_active(lane.index)
-                        || dispatch_state.lane_next_submit_ms(lane.index) > now {
-                        continue;
-                    }
-                    if let Some(job) = claim_executor_submit(&mut dispatch_state, lane) {
-                        current_phase = "executor".to_string();
-                        current_phase_lane = Some(lane.index);
-                        let lane_index = lane.index;
-                        let endpoint = lane.endpoint.clone();
-                        let bridge = bridge.clone();
-                        let tabs = lane.tabs.clone();
-                        let command_id = make_command_id(&job.executor_role, "executor", 1);
-                        let response_timeout_secs = response_timeout_for_role(&job.executor_role);
-                        dispatch_state.executor_submit_inflight.insert(
-                            lane_index,
-                            PendingSubmitState {
-                                job: job.clone(),
-                                started_ms: now_ms(),
-                                command_id: command_id.clone(),
-                                endpoint_id: endpoint.id.clone(),
-                                tabs: tabs.clone(),
-                            },
-                        );
-                        dispatch_state.lane_submit_in_flight.insert(lane_index, true);
-                        submit_joinset.spawn(async move {
-                            let result = submit_executor_turn(
-                                &job,
-                                &endpoint,
-                                &bridge,
-                                &tabs,
-                                true,
-                                &command_id,
-                                response_timeout_secs,
-                            )
-                            .await;
-                            (lane_index, job, result)
-                        });
-                    }
-                }
-            }
-
-            while let Some(joined) = submit_joinset.try_join_next() {
-                match joined {
-                    Ok((lane_id, job, result)) => {
-                        match result {
-                            Ok(exec_result) => {
-                                if let Some((tab_id, turn_id, command_id)) = parse_submit_ack(&exec_result) {
-                                    let Some(pending) = dispatch_state.executor_submit_inflight.remove(&lane_id) else {
-                                        eprintln!(
-                                            "[orchestrate] submit ack without pending submit: lane={} tab_id={} turn_id={}",
-                                            lanes[lane_id].label,
-                                            tab_id,
-                                            turn_id
-                                        );
-                                        continue;
-                                    };
-                                    if executor_submit_timed_out(pending.started_ms, now_ms(), PENDING_SUBMIT_TIMEOUT_MS) {
-                                        eprintln!(
-                                            "[orchestrate] submit ack arrived after timeout: lane={} tab_id={} turn_id={}",
-                                            lanes[lane_id].label,
-                                            tab_id,
-                                            turn_id
-                                        );
-                                        dispatch_state.lane_submit_in_flight.insert(lane_id, false);
-                                        dispatch_state.lane_prompt_in_flight.insert(lane_id, false);
-                                        continue;
-                                    }
-                                    if let Some(active_tab) = dispatch_state.lane_active_tab.get(&lane_id) {
-                                        if *active_tab != tab_id {
-                                            eprintln!(
-                                                "[orchestrate] submit ack tab mismatch: lane={} active_tab={} ack_tab={} (overwriting active tab)",
-                                                lanes[lane_id].label,
-                                                active_tab,
-                                                tab_id
-                                            );
-                                        }
-                                    }
-                                    dispatch_state.lane_active_tab.insert(lane_id, tab_id);
-                                    dispatch_state
-                                        .tab_id_to_lane
-                                        .entry(tab_id)
-                                        .or_insert(lane_id);
-                                    dispatch_state.submitted_turns.insert(
-                                        (tab_id, turn_id),
-                                        SubmittedExecutorTurn {
-                                            tab_id,
-                                            lane: job.lane_index,
-                                            lane_label: job.label.clone(),
-                                            command_id: command_id.unwrap_or_else(|| pending.command_id.clone()),
-                                            actor: job.executor_role.clone(),
-                                            endpoint_id: pending.endpoint_id.clone(),
-                                            tabs: pending.tabs.clone(),
-                                            steps_used: *dispatch_state
-                                                .lane_steps_used
-                                                .get(&job.lane_index)
-                                                .unwrap_or(&0),
-                                        },
-                                    );
-                                    dispatch_state.lane_next_submit_at_ms.insert(lane_id, now_ms());
-                                    dispatch_state.lane_submit_in_flight.insert(lane_id, false);
-                                    cycle_progress = true;
-                                } else {
-                                    eprintln!("[orchestrate] {} missing submit_ack: {exec_result}", job.executor_name);
-                                    let lane = dispatch_lane_mut(&mut dispatch_state, job.lane_index);
-                                    lane.in_progress_by = None;
-                                    lane.pending = true;
-                                    dispatch_state.executor_submit_inflight.remove(&job.lane_index);
-                   dispatch_state.lane_submit_in_flight.insert(job.lane_index, false);
-                               }
-                           }
-                           Err(err) => {
-                               eprintln!("[orchestrate] {} submit error: {err:#}", job.executor_name);
-                               let lane = dispatch_lane_mut(&mut dispatch_state, job.lane_index);
-                               lane.in_progress_by = None;
-                               lane.pending = true;
-                               dispatch_state.executor_submit_inflight.remove(&job.lane_index);
-                               dispatch_state.lane_submit_in_flight.insert(job.lane_index, false);
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        eprintln!("[orchestrate] submit join error: {err:#}");
-                    }
-                }
-            }
-
-            let completed_turns = bridge.take_completed_turns().await;
-            let mut verifier_changed = false;
-            for item in completed_turns {
-                append_orchestration_trace("llm_message_received", item.clone());
-                let Some((tab_id, turn_id, exec_result, completed_endpoint_id)) = parse_completed_turn(&item) else {
-                    continue;
-                };
-                let submitted = if let Some(submitted) =
-                    dispatch_state.submitted_turns.remove(&(tab_id, turn_id))
+                .await
                 {
-                    if check_completion_endpoint(&submitted.endpoint_id, completed_endpoint_id.as_deref())
-                        == CompletionEndpointCheck::Mismatch
-                    {
-                        append_orchestration_trace(
-                            "executor_completion_endpoint_mismatch",
-                            json!({
-                                "tab_id": tab_id,
-                                "turn_id": turn_id,
-                                "expected_endpoint_id": submitted.endpoint_id,
-                                "completed_endpoint_id": completed_endpoint_id,
-                            }),
-                        );
-                        continue;
-                    }
-                    submitted
-                } else {
-                    let lane_id = dispatch_state.tab_id_to_lane.get(&tab_id).copied();
-                    let Some(lane_id) = lane_id else {
-                        append_orchestration_trace(
-                            "executor_completion_unmatched",
-                            json!({
-                                "tab_id": tab_id,
-                                "turn_id": turn_id,
-                                "text": truncate(&exec_result, MAX_SNIPPET),
-                            }),
-                        );
-                        continue;
-                    };
-                    if check_completion_endpoint(&lanes[lane_id].endpoint.id, completed_endpoint_id.as_deref())
-                        == CompletionEndpointCheck::Mismatch
-                    {
-                        append_orchestration_trace(
-                            "executor_completion_endpoint_mismatch",
-                            json!({
-                                "lane_name": lanes[lane_id].label,
-                                "tab_id": tab_id,
-                                "turn_id": turn_id,
-                                "expected_endpoint_id": lanes[lane_id].endpoint.id,
-                                "completed_endpoint_id": completed_endpoint_id,
-                            }),
-                        );
-                        continue;
-                    }
-                    match check_completion_tab(
-                        dispatch_state.lane_active_tab.get(&lane_id).copied(),
-                        tab_id,
-                    ) {
-                        CompletionTabCheck::Mismatch => {
-                            append_orchestration_trace(
-                                "executor_completion_tab_mismatch",
-                                json!({
-                                    "lane_name": lanes[lane_id].label,
-                                    "active_tab": dispatch_state.lane_active_tab.get(&lane_id),
-                                    "tab_id": tab_id,
-                                    "turn_id": turn_id,
-                                }),
-                            );
-                            continue;
-                        }
-                        CompletionTabCheck::NoneSet => {
-                            dispatch_state.lane_active_tab.insert(lane_id, tab_id);
-                        }
-                        CompletionTabCheck::Ok => {}
-                    }
-                    let Some(pending) = dispatch_state.executor_submit_inflight.remove(&lane_id) else {
-                        append_orchestration_trace(
-                            "executor_completion_unmatched",
-                            json!({
-                                "tab_id": tab_id,
-                                "turn_id": turn_id,
-                                "text": truncate(&exec_result, MAX_SNIPPET),
-                            }),
-                        );
-                        continue;
-                    };
-                dispatch_state.lane_submit_in_flight.insert(lane_id, false);
-                dispatch_state.lane_next_submit_at_ms.insert(lane_id, now_ms());
-                SubmittedExecutorTurn {
-                    tab_id,
-                    lane: lane_id,
-                    lane_label: lanes[lane_id].label.clone(),
-                    command_id: pending.command_id,
-                    actor: pending.job.executor_role,
-                    endpoint_id: pending.endpoint_id,
-                    tabs: pending.tabs,
-                    steps_used: *dispatch_state
-                        .lane_steps_used
-                        .get(&lane_id)
-                        .unwrap_or(&0),
+                    cycle_progress = true;
                 }
-            };
-            dispatch_state.lane_prompt_in_flight.insert(submitted.lane, false);
-            if handle_executor_completion(
-                submitted,
-                tab_id,
-                turn_id,
-                exec_result,
+            }
+
+            let now = now_ms();
+            if phase_gates.executor {
+                if run_executor_phase(
+                    &orchestrator_ctx,
+                    &mut dispatch_state,
+                    now,
+                    PENDING_SUBMIT_TIMEOUT_MS,
+                    &mut submit_joinset,
+                    scheduled_phase.as_deref(),
+                    &mut current_phase,
+                    &mut current_phase_lane,
+                ) {
+                    cycle_progress = true;
+                }
+            }
+
+            if process_completed_turns(
+                &orchestrator_ctx,
                 &mut dispatch_state,
-                &lanes,
-                &bridge,
-                &workspace,
+                &mut continuation_joinset,
+                &mut verifier_pending_results,
+            )
+            .await
+            {
+                cycle_progress = true;
+            }
+
+            if drain_continuations(
+                &mut dispatch_state,
                 &mut continuation_joinset,
                 &mut verifier_pending_results,
             ) {
                 cycle_progress = true;
             }
-        }
 
-            while let Some(joined) = continuation_joinset.try_join_next() {
-                match joined {
-                    Ok((submitted, turn_id, result)) => match result {
-                        Ok(final_exec_result) => {
-                            dispatch_state.lane_prompt_in_flight.insert(submitted.lane, false);
-                            // Continuations only return once the executor has reached completion,
-                            // and the returned value is the completion summary (not the raw action JSON).
-                            verifier_pending_results.push_back((submitted, turn_id, final_exec_result));
-                            cycle_progress = true;
-                        }
-                        Err(err) => {
-                            eprintln!(
-                                "[orchestrate] executor continuation error: lane={} err={err:#}",
-                                submitted.lane_label
-                            );
-                            dispatch_state.lane_prompt_in_flight.insert(submitted.lane, false);
-                            let lane = dispatch_lane_mut(&mut dispatch_state, submitted.lane);
-                            lane.in_progress_by = None;
-                            lane.pending = true;
-                            cycle_progress = true;
-                        }
-                    },
-                    Err(err) => {
-                        eprintln!("[orchestrate] continuation join error: {err:#}");
-                    }
-                }
+            if drain_deferred_completions(
+                &orchestrator_ctx,
+                &mut dispatch_state,
+                &mut continuation_joinset,
+                &mut verifier_pending_results,
+            ) {
+                cycle_progress = true;
             }
 
-            for lane_id in 0..lanes.len() {
-                if dispatch_state.lane_in_flight(lane_id) {
-                    continue;
+            let mut verifier_changed = false;
+            if !verifier_pending_results.is_empty() || !verifier_joinset.is_empty() {
+                let (phase_progress, phase_changed) = run_verifier_phase(
+                    &orchestrator_ctx,
+                    &mut dispatch_state,
+                    &mut verifier_pending_results,
+                    &mut verifier_summary,
+                    &mut verifier_joinset,
+                    &mut verifier_bootstrapped,
+                    &mut scheduled_phase,
+                    &mut current_phase,
+                    &mut current_phase_lane,
+                    &cargo_test_failures,
+                )
+                .await;
+                if phase_progress {
+                    cycle_progress = true;
                 }
-                while let Some(deferred) = dispatch_state
-                    .deferred_completions
-                    .get_mut(&lane_id)
-                    .and_then(|queue| queue.pop_front())
-                {
-                    if handle_executor_completion(
-                        deferred.submitted,
-                        deferred.tab_id,
-                        deferred.turn_id,
-                        deferred.exec_result,
-                        &mut dispatch_state,
-                        &lanes,
-                        &bridge,
-                        &workspace,
-                        &mut continuation_joinset,
-                        &mut verifier_pending_results,
-                    ) {
-                        cycle_progress = true;
-                    }
-                    if dispatch_state.lane_in_flight(lane_id) {
-                        break;
-                    }
-                }
-            }
-
-            while let Some((submitted, turn_id, final_exec_result)) = verifier_pending_results.pop_front() {
-                if !allow_verifier_run(scheduled_phase.as_deref()) {
-                    verifier_pending_results.push_front((submitted, turn_id, final_exec_result));
-                    break;
-                }
-                current_phase = "verifier".to_string();
-                current_phase_lane = Some(submitted.lane);
-                let lane_plan_file = lanes[submitted.lane].plan_file.clone();
-                let current_executor_diff = executor_diff(&workspace, 400);
-                let executor_diff_text =
-                    diff_since_last_cycle(&current_executor_diff, &dispatch_state.last_executor_diff);
-                dispatch_state.last_executor_diff = current_executor_diff;
-                let mut verifier_prompt = verifier_cycle_prompt(
-                    submitted.lane_label.as_str(),
-                    lane_plan_file.as_str(),
-                    &final_exec_result,
-                    &executor_diff_text,
-                    &load_cargo_test_failures(&workspace),
-                );
-                if let Some(inbound) = take_inbound_message("verifier") {
-                    if let Some((_, to, payload)) = try_parse_blocker(&inbound) {
-                        let blocker_text = jstr(&payload, "blocker");
-                        let required_action = jstr(&payload, "required_action");
-                        let blocker_display = if blocker_text.is_empty() { "upstream blocker" } else { blocker_text };
-                        let severity = { let s = jstr(&payload, "severity"); if s.is_empty() { "error" } else { s } };
-                        let verifier_specific = is_verifier_specific_blocker(blocker_text, required_action);
-                        if to.eq_ignore_ascii_case("verifier")
-                            && verifier_blocker_phase_override(verifier_specific).is_some()
-                        {
-                            let ack = json!({
-                                "action": "message",
-                                "from": "verifier",
-                                "to": "planner",
-                                "type": "blocker",
-                                "status": "blocked",
-                                "observation": "Inbound blocker received; verifier yielding without further work until resolved.",
-                                "rationale": "Blocker is not verifier-specific; pausing verification avoids unnecessary work.",
-                                "payload": {
-                                    "summary": "Verifier paused due to upstream blocker.",
-                                    "blocker": blocker_display,
-                                    "evidence": jstr(&payload, "evidence"),
-                                    "required_action": required_action,
-                                    "severity": severity
-                                }
-                            });
-                            persist_planner_message(&ack);
-                            verifier_pending_results.push_front((submitted, turn_id, final_exec_result));
-                            let override_phase = verifier_blocker_phase_override(verifier_specific).unwrap();
-                            scheduled_phase = Some(override_phase.to_string());
-                            continue;
-                        }
-                    }
-                    append_inbound_to_prompt(&mut verifier_prompt, &inbound);
-                } else if let Some(inbound) = extract_message_action(&final_exec_result) {
-                    append_inbound_to_prompt(&mut verifier_prompt, &inbound);
-                }
-                append_orchestration_trace(
-                    "llm_message_forwarded",
-                    json!({
-                        "from": format!("executor:{}", submitted.lane_label),
-                        "to": "verifier",
-                        "tab_id": submitted.tab_id,
-                        "turn_id": turn_id,
-                        "lane_name": submitted.lane_label.as_str(),
-                        "lane_plan_file": lane_plan_file,
-                    }),
-                );
-                let verifier_system = system_instructions(AgentPromptKind::Verifier);
-                let verifier_ep = verifier_ep.clone();
-                let bridge = bridge.clone();
-                let workspace = workspace.clone();
-                let send_system = !verifier_bootstrapped;
-                verifier_bootstrapped = true;
-                let tabs_verify = tabs_verify.clone();
-                verifier_joinset.spawn(async move {
-                    let verify_result = match run_agent(
-                        "verifier",
-                        "verifier",
-                        &verifier_system,
-                        verifier_prompt,
-                        &verifier_ep,
-                        &bridge,
-                        &workspace,
-                        &tabs_verify,
-                        false,
-                        false,
-                        send_system,
-                        0,
-                    )
-                    .await
-                    {
-                        Ok(result) => result,
-                        Err(err) => format!(
-                            "{{\"verified\":false,\"summary\":\"verifier error: {}\"}}",
-                            err.to_string().replace('"', "'")
-                        ),
-                    };
-                    (submitted.lane, verify_result)
-                });
-            }
-
-            while let Some(joined) = verifier_joinset.try_join_next() {
-                match joined {
-                    Ok((lane_id, verify_result)) => {
-                        if verify_result.trim().eq_ignore_ascii_case("shutdown requested") {
-                            eprintln!(
-                                "[orchestrate] verifier shutdown marker received; preserving previous verifier result"
-                            );
-                            cycle_progress = true;
-                            continue;
-                        }
-                        let lane = dispatch_lane_mut(&mut dispatch_state, lane_id);
-                        let changed = lane.latest_verifier_result != verify_result;
-                        lane.latest_verifier_result = verify_result.clone();
-                        lane.in_progress_by = None;
-                        lane.pending = !verifier_confirmed(&verify_result);
-                        verifier_changed |= changed;
-                        verifier_summary[lane_id] = verify_result;
-                        cycle_progress = true;
-                    }
-                    Err(err) => {
-                        eprintln!("[orchestrate] verifier join error: {err:#}");
-                    }
+                if phase_changed {
+                    verifier_changed = true;
                 }
             }
 
@@ -2717,54 +2882,18 @@ pub async fn run() -> Result<()> {
             {
                 current_phase = "diagnostics".to_string();
                 current_phase_lane = None;
-                let summary_text = lanes
-                    .iter()
-                    .map(|lane| format!("{}={}", lane.label, verifier_summary[lane.index]))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                let cargo_test_failures = load_cargo_test_failures(&workspace);
-                let mut prompt = diagnostics_cycle_prompt(&summary_text, &cargo_test_failures);
-                inject_inbound_message(&mut prompt, "diagnostics");
-                append_orchestration_trace(
-                    "llm_message_forwarded",
-                    json!({
-                        "from": "verifier",
-                        "to": "diagnostics",
-                        "phase": "diagnostics",
-                    }),
-                );
-                let diagnostics_system = system_instructions(AgentPromptKind::Diagnostics);
-                match run_agent(
-                    "diagnostics",
-                    "diagnostics",
-                    &diagnostics_system,
-                    prompt,
-                    &diagnostics_ep,
-                    &bridge,
-                    &workspace,
-                    &tabs_diagnostics,
-                    false,
-                    false,
-                    !diagnostics_bootstrapped,
-                    0,
+                if run_diagnostics_phase(
+                    &orchestrator_ctx,
+                    &mut dispatch_state,
+                    &verifier_summary,
+                    &mut diagnostics_bootstrapped,
+                    verifier_changed,
+                    &cargo_test_failures,
                 )
                 .await
                 {
-                    Ok(result) => {
-                        eprintln!("[orchestrate] diagnostics ok bytes={}", result.len());
-                        let new_diagnostics_text =
-                            std::fs::read_to_string(&diagnostics_path).unwrap_or_default();
-                        let diagnostics_changed = dispatch_state.diagnostics_text != new_diagnostics_text;
-                        dispatch_state.diagnostics_text = new_diagnostics_text;
-                        dispatch_state.diagnostics_pending = false;
-                        dispatch_state.planner_pending = decide_post_diagnostics(diagnostics_changed, verifier_changed);
-                        cycle_progress = true;
-                    }
-                    Err(err) => {
-                        eprintln!("[orchestrate] diagnostics error: {err:#}");
-                    }
+                    cycle_progress = true;
                 }
-                diagnostics_bootstrapped = true;
             }
 
             if scheduled_phase.as_deref() == Some("diagnostics") && !dispatch_state.diagnostics_pending {
@@ -2795,88 +2924,39 @@ pub async fn run() -> Result<()> {
         }
     } else {
         // Single-role mode
-        let (role, prompt_kind) = if is_verifier {
-            ("verifier", AgentPromptKind::Verifier)
-        } else if is_diagnostics {
-            ("diagnostics", AgentPromptKind::Diagnostics)
-        } else if is_planner {
-            ("mini_planner", AgentPromptKind::Planner)
-        } else {
-            ("executor", AgentPromptKind::Executor)
+        let single_role_ctx = SingleRoleContext {
+            workspace: &workspace,
+            spec_path: &spec_path,
+            master_plan_path: &master_plan_path,
+            violations_path: &violations_path,
+            diagnostics_path: &diagnostics_path,
+            lanes: &lanes,
         };
-        let instructions = system_instructions(prompt_kind);
-
-        let primary_input_path = if is_verifier || is_planner {
-            &spec_path
-        } else {
-            &workspace.join(&lanes[0].plan_file)
-        };
-        let primary_input_name = if is_verifier || is_planner {
-            SPEC_FILE
-        } else {
-            lanes[0].plan_file.as_str()
-        };
-        let primary_input = std::fs::read_to_string(primary_input_path).with_context(|| format!("failed to read {primary_input_name}"))?;
-        if primary_input.trim().is_empty() {
-            bail!("input file is empty — write content into {primary_input_name} before running");
-        }
-        eprintln!("[canon-mini-agent] role={role} input loaded ({} bytes)", primary_input.len());
-
-        let endpoint = find_endpoint(&endpoints, role)?.clone();
+        let (inputs, endpoint) =
+            load_single_role_setup(&single_role_ctx, &endpoints, is_verifier, is_diagnostics, is_planner)?;
+        let instructions = system_instructions(inputs.prompt_kind);
+        eprintln!(
+            "[canon-mini-agent] role={} input loaded ({} bytes)",
+            inputs.role,
+            inputs.primary_input.len()
+        );
         eprintln!("[canon-mini-agent] endpoint id={} url={}", endpoint.id, endpoint.pick_url(0));
 
-        let initial_prompt = if is_verifier {
-            let invariants = std::fs::read_to_string(workspace.join(INVARIANTS_FILE)).unwrap_or_default();
-            let objectives = std::fs::read_to_string(workspace.join(OBJECTIVES_FILE)).unwrap_or_default();
-            let executor_diff_text = executor_diff(&workspace, 400);
-            let cargo_test_failures = load_cargo_test_failures(&workspace);
-            format!(
-                "WORKSPACE: {WORKSPACE}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{primary_input}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff_text}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nVerify that objectives in {OBJECTIVES_FILE} are completed properly.\nUpdate task status fields in {MASTER_PLAN_FILE} to reflect verified results.\nWrite violations to {VIOLATIONS_FILE} if any are found.\nWhen complete, report verified/unverified/false items in `message.payload`.\nEmit exactly one action to begin."
-            )
-        } else if is_diagnostics {
-            let violations = std::fs::read_to_string(&violations_path).unwrap_or_default();
-            let objectives = std::fs::read_to_string(workspace.join(OBJECTIVES_FILE)).unwrap_or_default();
-            let cargo_test_failures = load_cargo_test_failures(&workspace);
-            format!(
-                "WORKSPACE: {WORKSPACE}\nAll relative paths resolve against WORKSPACE.\n\nAlways inspect state/event_log/event.tlog.d and the relevant canon system files.\nRead files and search the source code for the bugs (use read_file + run_command/ripgrep).\nRun 5+ python analysis actions over event logs and code evidence.\nInfer the root cause from the evidence and cite detailed sources of errors (file paths, functions, and log evidence).\nPrioritize canon-route, canon-loop, canon-runtime, canon-semantic-state, and canon-mini-agent when control flow or prompt contracts are implicated.\nLatest verifier summary:\n(none yet)\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nVerify whether objectives in {OBJECTIVES_FILE} are being met and note gaps.\nUse {SPEC_FILE}, {OBJECTIVES_FILE}, and {INVARIANTS_FILE} as the contract, not lane plans.\nInfer failures from code, logs, runtime state, and verifier findings.\nCanonical law:\n- SemanticStateSummary is the single source of truth for routing.\n- scheduler_len / planned_pending are not routing authority.\nFocus on route/control-flow correctness, event successor discharge, duplicate fanout, state-authority drift, queue-driven routing, synthetic dispatch bypasses, and prompt-shell mismatches.\n\nWrite a ranked diagnostics report to {diagnostics_rel}. Emit exactly one action to begin."
-            )
-        } else if is_planner {
-            let violations = std::fs::read_to_string(&violations_path).unwrap_or_default();
-            let diagnostics = std::fs::read_to_string(&diagnostics_path).unwrap_or_default();
-            let objectives = std::fs::read_to_string(workspace.join(OBJECTIVES_FILE)).unwrap_or_default();
-            let invariants = std::fs::read_to_string(workspace.join(INVARIANTS_FILE)).unwrap_or_default();
-            let cargo_test_failures = load_cargo_test_failures(&workspace);
-            let lane_plan_list = lanes
-                .iter()
-                .map(|lane| lane.plan_file.as_str())
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!(
-                "WORKSPACE: {WORKSPACE}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{primary_input}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_rel}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nCanonical law:\n- SemanticStateSummary is the single source of truth for routing.\n- scheduler_len / planned_pending are not routing authority.\n- Prioritize migration to state-authority before edge patches.\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE} and derive lane plans: {lane_plan_list}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nEmit exactly one action to begin."
-            )
-        } else {
-            let spec = std::fs::read_to_string(&spec_path).with_context(|| format!("failed to read {SPEC_FILE}"))?;
-            let master_plan = std::fs::read_to_string(&master_plan_path).unwrap_or_default();
-            let violations = std::fs::read_to_string(&violations_path).unwrap_or_default();
-            let diagnostics = std::fs::read_to_string(&diagnostics_path).unwrap_or_default();
-            let invariants = std::fs::read_to_string(workspace.join(INVARIANTS_FILE)).unwrap_or_default();
-            format!(
-                "WORKSPACE: {WORKSPACE}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{spec}\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics (from {diagnostics_rel}):\n{diagnostics}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nAssigned lane plan (from {primary_input_name}):\n{primary_input}\n\nDo not modify spec, plan, lane plans, violations, or diagnostics. Use `message.payload` to report evidence for verifier review. Emit exactly one action to begin."
-            )
-        };
+        let cargo_test_failures = load_cargo_test_failures(&workspace);
+        let initial_prompt = build_single_role_prompt(&single_role_ctx, &inputs, &cargo_test_failures)?;
 
-        let submit_only = role == "executor";
+        let submit_only = inputs.role == "executor";
         let reason = run_agent(
-            role,
-            canonical_role_label(role),
+            inputs.role.as_str(),
+            canonical_role_label(inputs.role.as_str()),
             &instructions,
             initial_prompt,
-            if role == "executor" { &lanes[0].endpoint } else { &endpoint },
+            if inputs.role == "executor" { &lanes[0].endpoint } else { &endpoint },
             &bridge,
             &workspace,
             &tabs,
             submit_only,
-            role == "executor",
+            inputs.role == "executor",
             true,
             0,
         ).await?;
