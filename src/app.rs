@@ -1,3 +1,4 @@
+//
 use anyhow::{anyhow, bail, Context, Result};
 use canon_llm::{
     config::LlmEndpoint,
@@ -47,7 +48,7 @@ use crate::constants::{
 use crate::md_convert::ensure_objectives_and_invariants_json;
 use crate::prompt_inputs::{
     build_single_role_prompt, lane_summary_text, load_planner_inputs, load_single_role_inputs,
-    load_verifier_prompt_inputs, read_lane_plan_with_legacy, read_text_or_empty, LaneConfig,
+    load_verifier_prompt_inputs, read_text_or_empty, LaneConfig,
     OrchestratorContext, PlannerInputs, SingleRoleContext, SingleRoleInputs, VerifierPromptInputs,
 };
 
@@ -337,14 +338,12 @@ async fn run_planner_phase(
             eprintln!("[orchestrate] planner ok bytes={}", result.len());
             dispatch_state.last_plan_text = inputs.plan_text;
             for lane in ctx.lanes {
-                let plan_text = read_lane_plan_with_legacy(ctx.workspace, lane);
                 let lane_state = dispatch_lane_mut(dispatch_state, lane.index);
-                let changed = lane_state.plan_text != plan_text;
-                lane_state.plan_text = plan_text;
+                lane_state.plan_text.clear();
                 if lane_state.in_progress_by.is_none()
-                    && (changed || !verifier_confirmed(&lane_state.latest_verifier_result))
+                    && !verifier_confirmed(&lane_state.latest_verifier_result)
                 {
-                    lane_state.pending = !lane_state.plan_text.trim().is_empty();
+                    lane_state.pending = true;
                 }
             }
             dispatch_state.planner_pending = false;
@@ -1618,6 +1617,7 @@ impl<'a> LlmResponseContext<'a> {
 
 async fn continue_executor_completion(
     submitted: &SubmittedExecutorTurn,
+    active_tab_id: u32,
     completion_text: &str,
     turn_id: u64,
     endpoint: &LlmEndpoint,
@@ -1639,13 +1639,13 @@ async fn continue_executor_completion(
         completion_text,
         true,
         true,
-        Some((submitted.lane_label.as_str(), submitted.tab_id)),
+        Some((submitted.lane_label.as_str(), active_tab_id)),
     ) {
         Ok(action) => action,
         Err(invalid) => {
             let agent_type = role.to_uppercase();
             let retry_prompt = action_result_prompt(
-                Some(submitted.tab_id),
+                Some(active_tab_id),
                 Some(turn_id),
                 agent_type.as_str(),
                 &invalid.feedback,
@@ -1689,7 +1689,7 @@ async fn continue_executor_completion(
         "executor_tool_result_forwarded",
         json!({
             "lane_name": submitted.lane_label,
-            "tab_id": submitted.tab_id,
+            "tab_id": active_tab_id,
             "command_id": command_id,
             "action": action.get("action").and_then(|v| v.as_str()),
             "result_bytes": out.len(),
@@ -1702,7 +1702,7 @@ async fn continue_executor_completion(
         prompt_kind,
         "",
         action_result_prompt(
-            Some(submitted.tab_id),
+            Some(active_tab_id),
             Some(turn_id),
             agent_type.as_str(),
             &out,
@@ -2141,7 +2141,6 @@ struct PendingExecutorSubmit {
     executor_name: String,
     executor_display: String,
     lane_index: usize,
-    lane_plan_file: String,
     label: String,
     latest_verify_result: String,
     executor_role: String,
@@ -2319,15 +2318,24 @@ fn handle_executor_completion(
             }
         }
     }
+    let mut submitted = submitted;
     if submitted.tab_id != tab_id {
         eprintln!(
-            "[orchestrate] completed turn tab mismatch: turn_id={} expected_tab={} actual_tab={}",
+            "[orchestrate] completed turn tab rebound: turn_id={} expected_tab={} actual_tab={}",
             turn_id, submitted.tab_id, tab_id
         );
-        let lane = dispatch_lane_mut(dispatch_state, submitted.lane);
-        lane.in_progress_by = None;
-        lane.pending = true;
-        return true;
+        append_orchestration_trace(
+            "executor_completion_tab_rebound",
+            json!({
+                "lane_name": lane_name,
+                "turn_id": turn_id,
+                "expected_tab": submitted.tab_id,
+                "actual_tab": tab_id,
+            }),
+        );
+        dispatch_state.lane_active_tab.insert(submitted.lane, tab_id);
+        dispatch_state.tab_id_to_lane.insert(tab_id, submitted.lane);
+        submitted.tab_id = tab_id;
     }
     eprintln!(
         "[orchestrate] executor turn requires tool execution: lane={} turn_id={}",
@@ -2355,6 +2363,7 @@ fn handle_executor_completion(
     continuation_joinset.spawn(async move {
         let result = continue_executor_completion(
             &submitted_clone,
+            tab_id,
             &exec_result,
             turn_id,
             &executor_endpoint,
@@ -2387,7 +2396,7 @@ fn dispatch_lane_mut<'a>(state: &'a mut DispatchState, lane_id: usize) -> &'a mu
 fn claim_next_lane(state: &mut DispatchState, lane: &LaneConfig) -> Option<(usize, String)> {
     let lane_id = lane.index;
     let lane_state = dispatch_lane_mut(state, lane_id);
-    if lane_state.pending && lane_state.in_progress_by.is_none() && !lane_state.plan_text.trim().is_empty() {
+    if lane_state.pending && lane_state.in_progress_by.is_none() {
         lane_state.pending = false;
         lane_state.in_progress_by = Some(lane.label.clone());
         return Some((lane_id, lane_state.latest_verifier_result.clone()));
@@ -2403,7 +2412,6 @@ fn claim_executor_submit(state: &mut DispatchState, lane: &LaneConfig) -> Option
         executor_name: "executor".to_string(),
         executor_display,
         lane_index: lane_id,
-        lane_plan_file: lane.plan_file.clone(),
         label: lane.label.clone(),
         latest_verify_result,
         executor_role,
@@ -2419,7 +2427,6 @@ async fn submit_executor_turn(
     command_id: &str,
     response_timeout_secs: u64,
 ) -> Result<String> {
-    let _lane_plan_text = std::fs::read_to_string(Path::new(workspace()).join(&job.lane_plan_file)).unwrap_or_default();
     let mut exec_prompt = executor_cycle_prompt(
         job.executor_display.as_str(),
         job.label.as_str(),
