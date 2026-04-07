@@ -1,4 +1,4 @@
-cargo run -p canon-mini-agent --bin canon-mini-supervisor \
+cargo run -p canon-mini-agent --bin canon-mini-supervisor -- \
     --orchestrate \
     --workspace /workspace/ai_sandbox/canon-mini-agent \
     --instance agent_0 \
