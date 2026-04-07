@@ -46,20 +46,20 @@ canon-mini-agent [FLAGS] [OPTIONS]
 ```
 
 ### 2.1 Flags
-| Flag | Description |
-|------|-------------|
+| Flag            | Description                                                                                        |
+|-----------------+----------------------------------------------------------------------------------------------------|
 | `--orchestrate` | Run the full multi-role orchestration loop (planner → executors → verifier/diagnostics → planner). |
-| `--planner` | Run only the planner role (single role mode). |
-| `--verifier` | Run only the verifier role (single role mode). |
-| `--diagnostics` | Run only the diagnostics role (single role mode). |
+| `--planner`     | Run only the planner role (single role mode).                                                      |
+| `--verifier`    | Run only the verifier role (single role mode).                                                     |
+| `--diagnostics` | Run only the diagnostics role (single role mode).                                                  |
 
 ### 2.2 Options
-| Option | Default | Description |
-|--------|---------|-------------|
+| Option               | Default                       | Description                                                                                                                                |
+|----------------------+-------------------------------+--------------------------------------------------------------------------------------------------------------------------------------------|
 | `--workspace <path>` | `/workspace/ai_sandbox/canon` | **Absolute path** to the target project workspace. All agent file operations resolve relative to this path. Must exist and be a directory. |
-| `--start <role>` | `executor` | Start role for orchestration: `executor`, `verifier`, `planner`, or `diagnostics`. |
-| `--instance <id>` | `default` | Instance identifier used to namespace PLANS subdirectories and diagnostics files. |
-| `--port <port>` | auto | WebSocket port for Chrome extension. Auto-selects from candidates if not specified. |
+| `--start <role>`     | `executor`                    | Start role for orchestration: `executor`, `verifier`, `planner`, or `diagnostics`.                                                         |
+| `--instance <id>`    | `default`                     | Instance identifier used to namespace PLANS subdirectories and diagnostics files.                                                          |
+| `--port <port>`      | auto                          | WebSocket port for Chrome extension. Auto-selects from candidates if not specified.                                                        |
 
 ### 2.3 Workspace Validation
 - `--workspace` value must be an absolute path (starts with `/`). Non-absolute paths are rejected at startup with a fatal error.
@@ -155,14 +155,14 @@ Outputs: JSON reports under metrics/analysis directories.
 
 **Message Matrix**
 
-| From       | To          | Type           | Status             | Payload (required keys)              |
-|------------|-------------|----------------|--------------------|--------------------------------------|
-| Executor   | Verifier    | handoff        | complete           | `summary`, `artifacts`               |
-| Executor   | Planner     | handoff        | complete / blocked | `summary`, `evidence`                |
-| Verifier   | Planner     | verification   | verified / failed  | `summary`, `verified_items` / `false_items` |
-| Verifier   | Planner     | failure        | failed             | `summary`, `next_actions`            |
-| Diagnostics| Planner     | diagnostics    | complete           | `summary`, `ranked_failures`         |
-| Planner    | Executor    | tasking        | ready / blocked    | `summary`, `tasks` / `blockers`      |
+| From        | To       | Type         | Status             | Payload (required keys)                     |
+|-------------+----------+--------------+--------------------+---------------------------------------------|
+| Executor    | Verifier | handoff      | complete           | `summary`, `artifacts`                      |
+| Executor    | Planner  | handoff      | complete / blocked | `summary`, `evidence`                       |
+| Verifier    | Planner  | verification | verified / failed  | `summary`, `verified_items` / `false_items` |
+| Verifier    | Planner  | failure      | failed             | `summary`, `next_actions`                   |
+| Diagnostics | Planner  | diagnostics  | complete           | `summary`, `ranked_failures`                |
+| Planner     | Executor | tasking      | ready / blocked    | `summary`, `tasks` / `blockers`             |
 
 **Routing guarantee (added 2026-04-07):** When an executor emits a `message` action, the system writes `last_message_to_<to>.json` and `wakeup_<to>.flag` to `AgentStateDir` and sets `planner_pending = true` (for planner-targeted messages). This ensures the target role wakes on the next orchestration cycle regardless of whether the action was emitted in the inline or deferred completion path.
 
