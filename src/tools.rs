@@ -394,7 +394,7 @@ pub(crate) fn patch_scope_error_with_mode(role: &str, patch: &str, self_mod: boo
             // In self-modification mode the executor is allowed to patch SPEC.md and src/ files.
             let spec_blocked = touches_spec && !self_mod;
             let src_blocked = (touches_src || touches_tests) && !self_mod;
-            let other_blocked = touches_other && !self_mod;
+            let other_blocked = touches_other;
             if spec_blocked
                 || touches_master_plan
                 || touches_lane

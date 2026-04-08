@@ -1,6 +1,6 @@
 # Canonical Law
 
-canon-mini-agent is an event-driven LLM orchestrator. All correctness decisions are governed by the invariants in `INVARIANTS.json`.
+canon-mini-agent is an event-driven LLM orchestrator. All correctness decisions are governed by this Canonical Law and must be consistent with the declared invariants in `INVARIANTS.json`.
 
 ## Source of Truth
 

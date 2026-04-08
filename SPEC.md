@@ -12,7 +12,7 @@ The system is a deterministic event-driven loop with explicit roles.
 - `SelfModificationMode`: true when `Workspace` is the parent directory of `AgentStateDir`. Detected at runtime via `is_self_modification_mode()` in `src/constants.rs`. Relaxes only the executor rule for `SPEC.md` patching; source-file patching is already allowed by the current scope-guard implementation in both modes.
 - `Role`: one of `{Planner, Executor, Verifier, Diagnostics, Solo}`.
 - `Lane`: executor lane id (e.g., `executor_pool`), bound to a role of type Executor.
-- `PromptKind`: `{planner, executor, verifier, diagnostics}`.
+- `PromptKind`: `{planner, executor, verifier, diagnostics, solo}`.
 - `Action`: a typed JSON object (see Section 3).
 - `ActionResult`: `{ complete: bool, output: string }`.
 - `RunConfig`: timeouts, tool availability, and patch scope policy.
@@ -104,7 +104,7 @@ Notes:
 - `create_task` / `update_task` require `task` object with at least `id`. `create_task` requires `title`.
 - `delete_task` requires `task_id`.
 - `add_edge` / `remove_edge` require `from` and `to` task ids.
-- `set_status` requires `status` (`in_progress | blocked | complete`).
+- `set_status` requires `status` and updates the top-level `PLAN.json` status field.
 - The plan tool enforces a DAG (no cycles) when adding edges.
 
 ### 3.5 `apply_patch`
@@ -193,20 +193,20 @@ Outputs: JSON reports under metrics/analysis directories.
 ### 4.1 Scope Invariants
 
 **Normal mode** (workspace ≠ orchestrator source):
-- **Executor** may not patch `SPEC.md`, `PLAN.json`, `INVARIANTS.json`, `VIOLATIONS.json`, `OBJECTIVES.json`, any lane plan, or diagnostics files. Current implementation allows executor patches under `src/` in normal mode because `patch_scope_error()` does not block `src/` targets for executor.
+- **Executor** may not patch `SPEC.md`, `PLAN.json`, `INVARIANTS.json`, `VIOLATIONS.json`, `OBJECTIVES.json`, any lane plan, diagnostics files, `src/`, or `tests/`.
 - **Verifier** may patch **only** `PLAN.json` and `VIOLATIONS.json`.
 - **Diagnostics** may patch **only** the active diagnostics report file.
 - **Planner** may patch **only** `PLAN.json` and lane plans.
 - **Solo** may patch any in-workspace file (full capabilities).
 
 **Self-modification mode** (workspace == orchestrator source, see §9):
-- **Executor** may additionally patch `SPEC.md`. Current implementation continues to allow `src/` patching here as well.
+- **Executor** may additionally patch `SPEC.md`, `src/`, and `tests/`.
 - All other role restrictions are unchanged.
 
 Enforcement: `src/tools.rs::patch_scope_error()` (see `src/tools.rs:363-477`). Changes to that function require verifier sign-off (I13).
 
 Additional clarification (from implementation):
-- Executor is blocked from patching any non-`src/` files in normal mode via `touches_other` guard (`src/tools.rs:379-388`, `392-409`).
+- Executor blocks `SPEC.md` outside self-mod mode, blocks `src/` and `tests/` outside self-mod mode, and blocks all other non-authorized files in every mode via the `touches_other` guard (`src/tools.rs:379-388`, `392-409`).
 - Diagnostics file path is dynamically resolved (`diagnostics_file()`), and both configured and legacy `DIAGNOSTICS.json` are accepted (`src/tools.rs:369-377`).
 - Lane plan detection includes both instance-scoped and legacy formats (`src/tools.rs:49-63`).
 
@@ -369,7 +369,7 @@ Allows canon-mini-agent to act as its own target workspace — reading source fi
 ### 9.2 Relaxed Executor Scope
 In self-modification mode only:
 - Executor **may** patch `SPEC.md` directly.
-- Executor patching of `src/` remains allowed by the current implementation, as in normal mode.
+- Executor patching of `src/` and `tests/` is allowed only in self-modification mode; normal mode blocks both paths.
 - All other scope restrictions remain in force (no patching `PLAN.json`, `INVARIANTS.json`, `VIOLATIONS.json`, lane plans, or diagnostics).
 
 ### 9.3 Safety Requirements (Invariants I11–I14)

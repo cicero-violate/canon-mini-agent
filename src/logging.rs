@@ -18,7 +18,8 @@ pub fn init_log_paths(prefix: &str) {
     let base = std::path::Path::new(crate::constants::agent_state_dir()).join(prefix);
     let _ = std::fs::create_dir_all(&base);
     // Ensure canonical event log directory exists (state/event_log/event.tlog.d)
-    let event_log_dir = std::path::Path::new(crate::constants::agent_state_dir())
+    let event_log_dir = std::path::Path::new(crate::constants::workspace())
+        .join("state")
         .join("event_log")
         .join("event.tlog.d");
     let _ = std::fs::create_dir_all(&event_log_dir);

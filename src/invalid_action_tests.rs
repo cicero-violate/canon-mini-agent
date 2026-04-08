@@ -209,6 +209,26 @@ fn scope_guard_executor_self_mod_allows_spec_and_src_only() {
 }
 
 #[test]
+fn scope_guard_executor_self_mod_blocks_other_files() {
+    let other_patch = "\
+*** Begin Patch
+*** Update File: Cargo.toml
+@@
+-old
++new
+*** End Patch";
+    let diagnostics_patch = "\
+*** Begin Patch
+*** Update File: DIAGNOSTICS.json
+@@
+-{}
++{}
+*** End Patch";
+    assert!(patch_scope_error_with_mode("executor", other_patch, true).is_some());
+    assert!(patch_scope_error_with_mode("executor", diagnostics_patch, true).is_some());
+}
+
+#[test]
 fn scope_guard_planner_blocks_source_files_in_self_mod_mode() {
     let src_patch = "\
 *** Begin Patch
