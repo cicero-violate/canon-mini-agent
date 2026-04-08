@@ -151,6 +151,7 @@ pub(crate) fn invalid_action_expected_fields(kind: &str) -> Vec<&'static str> {
         "cargo_test" => vec!["action", "crate", "observation", "rationale"],
         "list_dir" => vec!["action", "path", "observation", "rationale"],
         "python" => vec!["action", "code", "observation", "rationale"],
+        "plan" => vec!["action", "op", "observation", "rationale"],
         "message" => vec![
             "action",
             "from",
@@ -174,6 +175,7 @@ fn is_supported_action(kind: &str) -> bool {
             | "apply_patch"
             | "python"
             | "cargo_test"
+            | "plan"
             | "message"
     )
 }
@@ -216,6 +218,18 @@ fn example_action_for(kind: &str, role: &str, raw_action: Option<&Value>) -> Val
             "test": "optional_test_name",
             "observation": "Run the targeted test.",
             "rationale": "Verify the change."
+        }),
+        "plan" => json!({
+            "action": "plan",
+            "op": "create_task",
+            "task": {
+                "id": "T4",
+                "title": "Add plan DAG",
+                "status": "todo",
+                "priority": 3
+            },
+            "observation": "Planning update needed.",
+            "rationale": "Track work in PLAN.json via plan tool."
         }),
         "message" => {
             let (from, to, msg_type, status) = raw_action
@@ -402,6 +416,24 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
                         .is_none()
                     {
                         schema_diff.push("missing field: crate".to_string());
+                    }
+                }
+                "plan" => {
+                    push_type_mismatch(&mut schema_diff, obj, "op", "string");
+                    let op = obj.get("op").and_then(|v| v.as_str()).map(str::trim);
+                    match op {
+                        Some("") | None => schema_diff.push("missing field: op".to_string()),
+                        Some(
+                            "create_task"
+                            | "update_task"
+                            | "delete_task"
+                            | "add_edge"
+                            | "remove_edge"
+                            | "set_status",
+                        ) => {}
+                        Some(other) => {
+                            schema_diff.push(format!("unknown plan op: {other}"));
+                        }
                     }
                 }
                 "message" => {

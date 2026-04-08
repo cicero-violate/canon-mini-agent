@@ -121,6 +121,31 @@ fn build_invalid_action_feedback_requires_message_observation() {
 }
 
 #[test]
+fn build_invalid_action_feedback_requires_plan_op() {
+    let action = json!({
+        "action": "plan",
+        "observation": "plan update requested",
+        "rationale": "update PLAN.json"
+    });
+    let feedback = build_invalid_action_feedback(Some(&action), "plan missing 'op'", "solo");
+    assert!(feedback.contains("missing field: op"));
+    assert!(feedback.contains("\"action\":\"plan\"") || feedback.contains("\"action\": \"plan\""));
+}
+
+#[test]
+fn build_invalid_action_feedback_rejects_unknown_plan_op() {
+    let action = json!({
+        "action": "plan",
+        "op": "set",
+        "observation": "attempted invalid plan op",
+        "rationale": "update PLAN.json"
+    });
+    let feedback = build_invalid_action_feedback(Some(&action), "unknown plan op: set", "solo");
+    assert!(feedback.contains("unknown plan op: set"));
+    assert!(!feedback.contains("unsupported action: plan"));
+}
+
+#[test]
 fn scope_guard_executor_blocks_invariants_and_objectives_in_normal_mode() {
     let invariants_patch = "\
 *** Begin Patch
