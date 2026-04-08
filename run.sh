@@ -1,4 +1,4 @@
-# cargo run -p canon-mini-agent --bin canon-mini-supervisor -- --workspace /workspace/ai_sandbox/canon --role solo
+cargo run -p canon-mini-agent --bin canon-mini-supervisor -- --workspace /workspace/ai_sandbox/canon --orchestrate --start solo
 
 cargo run -p canon-mini-agent --bin canon-mini-supervisor -- \
     --orchestrate \
@@ -28,4 +28,3 @@ done
 /workspace/ai_sandbox/canon/target/debug/canon-mini-agent --orchestrate --instance agent_2 --port 9105
 
 /workspace/ai_sandbox/canon/target/debug/canon-mini-agent --orchestrate --instance agent_3 --port 9106
-
