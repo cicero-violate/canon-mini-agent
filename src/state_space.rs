@@ -285,7 +285,11 @@ impl CargoTestGate {
 
     pub fn note_result(&mut self, kind: &str, output: &str) {
         if kind == "cargo_test" && output.contains("note: cargo test detached") {
-            self.pending_tail_path = extract_progress_path_from_result(output);
+            if output.contains("output_log_tail:") {
+                self.pending_tail_path = None;
+            } else {
+                self.pending_tail_path = extract_progress_path_from_result(output);
+            }
         }
     }
 

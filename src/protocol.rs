@@ -85,6 +85,7 @@ pub enum ActionKind {
     RunCommand,
     Python,
     CargoTest,
+    Plan,
     RustcHir,
     RustcMir,
     GraphProbe,

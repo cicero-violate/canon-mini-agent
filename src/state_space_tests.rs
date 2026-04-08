@@ -2,7 +2,12 @@ use crate::state_space::{
     decide_bootstrap_phase, decide_resume_phase, extract_progress_path_from_result, CargoTestGate,
 };
 use crate::state_space::{
-    decide_wake_flags, executor_step_limit_exceeded, scheduled_phase_resume_done, WakeFlagInput,
+    allow_diagnostics_run, allow_planner_run, allow_verifier_run, check_completion_endpoint,
+    check_completion_tab, decide_active_blocker, decide_phase_gates, decide_post_diagnostics,
+    decide_wake_flags, executor_step_limit_exceeded, executor_submit_timed_out,
+    is_verifier_specific_blocker, scheduled_phase_resume_done, should_force_blocker,
+    verifier_blocker_phase_override, ActiveBlockerDecision, CompletionEndpointCheck,
+    CompletionTabCheck, PhaseGates, WakeFlagInput,
 };
 
 #[test]
@@ -107,4 +112,130 @@ fn executor_step_limit_boundary() {
     assert!(!executor_step_limit_exceeded(9, 10));
     assert!(executor_step_limit_exceeded(10, 10));
     assert!(executor_step_limit_exceeded(11, 10));
+}
+
+#[test]
+fn executor_submit_timeout_boundary() {
+    assert!(!executor_submit_timed_out(100, 149, 50));
+    assert!(executor_submit_timed_out(100, 150, 50));
+    assert!(executor_submit_timed_out(100, 151, 50));
+}
+
+#[test]
+fn completion_endpoint_reports_mismatch_only_for_wrong_endpoint() {
+    assert_eq!(
+        check_completion_endpoint("planner", Some("executor")),
+        CompletionEndpointCheck::Mismatch
+    );
+    assert_eq!(
+        check_completion_endpoint("planner", Some("planner")),
+        CompletionEndpointCheck::Ok
+    );
+    assert_eq!(
+        check_completion_endpoint("planner", None),
+        CompletionEndpointCheck::Ok
+    );
+}
+
+#[test]
+fn completion_tab_reports_none_match_and_mismatch() {
+    assert_eq!(check_completion_tab(None, 7), CompletionTabCheck::NoneSet);
+    assert_eq!(check_completion_tab(Some(7), 7), CompletionTabCheck::Ok);
+    assert_eq!(check_completion_tab(Some(8), 7), CompletionTabCheck::Mismatch);
+}
+
+#[test]
+fn active_blocker_clears_planner_ownership_when_needed() {
+    assert_eq!(
+        decide_active_blocker(true, true, Some("planner")),
+        ActiveBlockerDecision {
+            planner_pending: false,
+            scheduled_phase: None,
+        }
+    );
+    assert_eq!(
+        decide_active_blocker(true, false, Some("diagnostics")),
+        ActiveBlockerDecision {
+            planner_pending: false,
+            scheduled_phase: Some("diagnostics".to_string()),
+        }
+    );
+    assert_eq!(
+        decide_active_blocker(false, true, Some("planner")),
+        ActiveBlockerDecision {
+            planner_pending: true,
+            scheduled_phase: Some("planner".to_string()),
+        }
+    );
+}
+
+#[test]
+fn planner_verifier_and_diagnostics_gate_helpers_follow_schedule() {
+    assert!(allow_planner_run(None));
+    assert!(allow_planner_run(Some("planner")));
+    assert!(!allow_planner_run(Some("verifier")));
+
+    assert!(allow_verifier_run(None));
+    assert!(allow_verifier_run(Some("verifier")));
+    assert!(!allow_verifier_run(Some("planner")));
+
+    assert!(allow_diagnostics_run(None, false));
+    assert!(allow_diagnostics_run(Some("diagnostics"), false));
+    assert!(!allow_diagnostics_run(Some("planner"), false));
+    assert!(!allow_diagnostics_run(Some("diagnostics"), true));
+}
+
+#[test]
+fn decide_phase_gates_combines_pending_and_schedule_rules() {
+    assert_eq!(
+        decide_phase_gates(true, true, true, false, None),
+        PhaseGates {
+            planner: true,
+            executor: true,
+            verifier: true,
+            diagnostics: true,
+            solo: false,
+        }
+    );
+    assert_eq!(
+        decide_phase_gates(true, true, true, true, Some("planner")),
+        PhaseGates {
+            planner: true,
+            executor: false,
+            verifier: false,
+            diagnostics: false,
+            solo: false,
+        }
+    );
+    assert_eq!(
+        decide_phase_gates(false, false, false, false, Some("solo")),
+        PhaseGates {
+            planner: false,
+            executor: false,
+            verifier: false,
+            diagnostics: false,
+            solo: true,
+        }
+    );
+}
+
+#[test]
+fn blocker_threshold_and_verifier_specific_detection_are_stable() {
+    assert!(!should_force_blocker(2));
+    assert!(should_force_blocker(3));
+    assert!(is_verifier_specific_blocker("Verifier failed schema check", "verifier must retry"));
+    assert!(!is_verifier_specific_blocker("planner blocked", "rewrite plan"));
+}
+
+#[test]
+fn verifier_blocker_override_routes_non_verifier_blockers_to_planner() {
+    assert_eq!(verifier_blocker_phase_override(true), None);
+    assert_eq!(verifier_blocker_phase_override(false), Some("planner"));
+}
+
+#[test]
+fn post_diagnostics_retriggers_planner_when_inputs_changed() {
+    assert!(!decide_post_diagnostics(false, false));
+    assert!(decide_post_diagnostics(true, false));
+    assert!(decide_post_diagnostics(false, true));
 }

@@ -7,13 +7,13 @@ This document defines **invariants, state model, typed interfaces, CLI contract,
 The system is a deterministic event-driven loop with explicit roles.
 
 ### 1.1 Global State
-- `Workspace`: absolute root path of the target project being operated on. Set via `--workspace <path>` CLI argument; defaults to `/workspace/ai_sandbox/canon`. Must be absolute. All relative paths in actions resolve against this value.
+- `Workspace`: absolute root path of the target project being operated on. Set via `--workspace <path>` CLI argument; if omitted, `run()` defaults it to `env!("CARGO_MANIFEST_DIR")` (the canon-mini-agent source root in this build). Must be absolute. All relative paths in actions resolve against this value.
 - `AgentStateDir`: operational state for canon-mini-agent itself. Defaults to `/workspace/ai_sandbox/canon-mini-agent/agent_state`; overridable via `--state-dir`. When `Workspace` equals the canon-mini-agent source root, the system is in **self-modification mode** (see §9).
-- `SelfModificationMode`: true when `Workspace` is the parent directory of `AgentStateDir`. Detected at runtime via `is_self_modification_mode()` in `src/constants.rs`. Relaxes executor scope guards (see §4.1 and §9).
+- `SelfModificationMode`: true when `Workspace` is the parent directory of `AgentStateDir`. Detected at runtime via `is_self_modification_mode()` in `src/constants.rs`. Relaxes only the executor rule for `SPEC.md` patching; source-file patching is already allowed by the current scope-guard implementation in both modes.
 - `Role`: one of `{Planner, Executor, Verifier, Diagnostics, Solo}`.
 - `Lane`: executor lane id (e.g., `executor_pool`), bound to a role of type Executor.
 - `PromptKind`: `{planner, executor, verifier, diagnostics}`.
-- `Action`: a typed JSON object (see Section 2).
+- `Action`: a typed JSON object (see Section 3).
 - `ActionResult`: `{ complete: bool, output: string }`.
 - `RunConfig`: timeouts, tool availability, and patch scope policy.
 
@@ -32,13 +32,15 @@ Canonical file paths are absolute under `Workspace` (see `src/constants.rs:3-11`
 - `MasterPlan`: `PLAN.json`
 - `LanePlan`: `PLANS/<instance>/executor-<id>.json` (preferred) or legacy `PLANS/executor-<id>.md` (see `src/tools.rs:49-63`)
 - `Violations`: `VIOLATIONS.json`
-- `Diagnostics`: runtime-configured via `diagnostics_file()` (default `DIAGNOSTICS.json`, see `src/constants.rs:140-146`) or instance-scoped path
+- `Diagnostics`: runtime-configured via `diagnostics_file()` (default `DIAGNOSTICS.json`, see `src/constants.rs:149-156`) or instance-scoped path
 
 ### 1.4 Workspace Resolution Rule
 Every `path` field in every action is resolved as follows:
 1. If already absolute and under `Workspace`, use as-is.
-2. If relative, join with `Workspace` and canonicalize.
-3. If absolute but outside `Workspace` and not in `/tmp`, the action is rejected with a scope violation.
+2. If absolute and under `/tmp`, use as-is.
+3. If relative, reject any `..` component and then join directly with `Workspace`.
+4. No canonicalization step is performed by `safe_join()`; enforcement is prefix- and component-based rather than realpath-based.
+5. If absolute but outside `Workspace` and not in `/tmp`, the action is rejected with a scope violation.
 
 ## 2. CLI Interface
 
@@ -57,7 +59,8 @@ canon-mini-agent [FLAGS] [OPTIONS]
 ### 2.2 Options
 | Option               | Default                       | Description                                                                                                                                |
 |----------------------+-------------------------------+--------------------------------------------------------------------------------------------------------------------------------------------|
-| `--workspace <path>` | `/workspace/ai_sandbox/canon` | **Absolute path** to the target project workspace. All agent file operations resolve relative to this path. Must exist and be a directory. |
+| `--workspace <path>` | build-time source root        | **Absolute path** to the target project workspace. All agent file operations resolve relative to this path. Must exist and be a directory. |
+| `--state-dir <path>` | `/workspace/ai_sandbox/canon-mini-agent/agent_state` | **Absolute path** to canon-mini-agent's own runtime state directory for checkpoints, wake flags, and inbound messages. |
 | `--start <role>`     | `executor`                    | Start role for orchestration: `executor`, `verifier`, `planner`, `diagnostics`, or `solo`.                                                 |
 | `--role <role>`      | none                          | Single-role selector: `executor`, `verifier`, `planner`, or `diagnostics`. Mutually exclusive with other role flags and `--orchestrate`.    |
 | `--instance <id>`    | `default`                     | Instance identifier used to namespace PLANS subdirectories and diagnostics files.                                                          |
@@ -65,7 +68,8 @@ canon-mini-agent [FLAGS] [OPTIONS]
 
 ### 2.3 Workspace Validation
 - `--workspace` value must be an absolute path (starts with `/`). Non-absolute paths are rejected at startup with a fatal error.
-- If omitted, `DEFAULT_WORKSPACE` (`/workspace/ai_sandbox/canon`) is used.
+- If omitted, `run()` sets the workspace to `env!("CARGO_MANIFEST_DIR")`, which is the canon-mini-agent source root for the current binary.
+- `--state-dir` value must also be an absolute path when provided; non-absolute values are rejected at startup with a fatal error.
 - The runtime value is stored in a process-global `OnceLock<String>` and never changes after startup.
 
 ## 3. Typed Interfaces (Actions)
@@ -78,7 +82,7 @@ All actions are JSON objects with a mandatory `"action"` string field. Any missi
 ```
 Notes:
 - `rationale` is required.
-- `observation` may be optional and can be auto-filled depending on context (see src/prompts.rs).
+- `observation` is action-dependent. Some flows and tests require it for `message`, while other action kinds may omit it and rely on normalization or validation paths.
 
 ### 3.2 `list_dir`
 ```json
@@ -92,57 +96,68 @@ Constraints: `path` is relative to `Workspace` or absolute under `Workspace`.
 ```
 Constraints: `line` / `line_start` / `line_end` are 1-based when present.
 
-### 3.4 `apply_patch`
+### 3.4 `plan`
+```json
+{ "action": "plan", "op": "create_task | update_task | delete_task | add_edge | remove_edge | set_status", ... }
+```
+Notes:
+- `create_task` / `update_task` require `task` object with at least `id`. `create_task` requires `title`.
+- `delete_task` requires `task_id`.
+- `add_edge` / `remove_edge` require `from` and `to` task ids.
+- `set_status` requires `status` (`in_progress | blocked | complete`).
+- The plan tool enforces a DAG (no cycles) when adding edges.
+
+### 3.5 `apply_patch`
 ```json
 { "action": "apply_patch", "patch": "<string>" }
 ```
 Constraints: patch must follow unified patch grammar. The first `*** Update File:` or `*** Add File:` path determines scope. Executor scope guards apply.
 
-### 3.5 `run_command`
+### 3.6 `run_command`
 ```json
 { "action": "run_command", "cmd": "<string>", "cwd"?: "<string>" }
 ```
 Constraints: `cwd` defaults to `Workspace`. Must be under `Workspace` or `/tmp`.
 
-### 3.6 `python`
+### 3.7 `python`
 ```json
 { "action": "python", "code": "<string>", "cwd"?: "<string>" }
 ```
 Constraints: `cwd` defaults to `Workspace`. Write operations must target paths under `Workspace` or `/tmp`.
 
-### 3.7 `cargo_test`
+### 3.8 `cargo_test`
 ```json
 { "action": "cargo_test", "crate": "<string>", "test": "<string>" }
 ```
 Semantics: maps to `cargo test -p <crate> <test> -- --exact --nocapture`.
 
-### 3.8 `rustc_hir`
+### 3.9 `rustc_hir`
 ```json
 { "action": "rustc_hir", "crate": "<string>", "mode"?: "<string>", "extra"?: "<string>" }
 ```
 Semantics: maps to `cargo rustc -p <crate> -- -Zunpretty=<mode> <extra>`.
 
-### 3.9 `rustc_mir`
+### 3.10 `rustc_mir`
 ```json
 { "action": "rustc_mir", "crate": "<string>", "mode"?: "<string>", "extra"?: "<string>" }
 ```
 Semantics: maps to `cargo rustc -p <crate> -- -Zunpretty=<mode> <extra>`.
 
-### 3.10 `graph_call` / `graph_cfg`
+### 3.11 `graph_call` / `graph_cfg`
 ```json
 { "action": "graph_call", "crate": "<string>", "out_dir"?: "<string>" }
 { "action": "graph_cfg",  "crate": "<string>", "out_dir"?: "<string>" }
 ```
 Outputs: CSVs plus `callgraph.symbol.txt` / `cfg.symbol.txt` with symbol→symbol edges.
 
-### 3.11 `graph_dataflow` / `graph_reachability`
+### 3.12 `graph_dataflow` / `graph_reachability`
 ```json
 { "action": "graph_dataflow",    "crate": "<string>", "tlog"?: "<string>", "out_dir"?: "<string>" }
 { "action": "graph_reachability","crate": "<string>", "tlog"?: "<string>", "out_dir"?: "<string>" }
 ```
 Outputs: JSON reports under metrics/analysis directories.
 
-### 3.12 `message` (Inter-Agent Handoff Protocol)
+### 3.13 `message` (Inter-Agent Handoff Protocol)
 ```json
 {
   "action": "message",
@@ -178,21 +193,21 @@ Outputs: JSON reports under metrics/analysis directories.
 ### 4.1 Scope Invariants
 
 **Normal mode** (workspace ≠ orchestrator source):
-- **Executor** may not patch `SPEC.md`, `PLAN.json`, `INVARIANTS.json`, `VIOLATIONS.json`, `OBJECTIVES.json`, any lane plan, or diagnostics files. May read and patch `src/` freely.
+- **Executor** may not patch `SPEC.md`, `PLAN.json`, `INVARIANTS.json`, `VIOLATIONS.json`, `OBJECTIVES.json`, any lane plan, or diagnostics files. Current implementation allows executor patches under `src/` in normal mode because `patch_scope_error()` does not block `src/` targets for executor.
 - **Verifier** may patch **only** `PLAN.json` and `VIOLATIONS.json`.
 - **Diagnostics** may patch **only** the active diagnostics report file.
 - **Planner** may patch **only** `PLAN.json` and lane plans.
 - **Solo** may patch any in-workspace file (full capabilities).
 
 **Self-modification mode** (workspace == orchestrator source, see §9):
-- **Executor** may additionally patch `SPEC.md` and `src/` files. All other restrictions still apply.
+- **Executor** may additionally patch `SPEC.md`. Current implementation continues to allow `src/` patching here as well.
 - All other role restrictions are unchanged.
 
-Enforcement: `src/tools.rs::patch_scope_error()` (see `src/tools.rs:355-451`). Changes to that function require verifier sign-off (I13).
+Enforcement: `src/tools.rs::patch_scope_error()` (see `src/tools.rs:363-477`). Changes to that function require verifier sign-off (I13).
 
 Additional clarification (from implementation):
-- Executor is blocked from patching any non-`src/` files in normal mode via `touches_other` guard (`src/tools.rs:381-390`).
-- Diagnostics file path is dynamically resolved (`diagnostics_file()`), and both configured and legacy `DIAGNOSTICS.json` are accepted (`src/tools.rs:361-369`).
+- Executor is blocked from patching any non-`src/` files in normal mode via `touches_other` guard (`src/tools.rs:379-388`, `392-409`).
+- Diagnostics file path is dynamically resolved (`diagnostics_file()`), and both configured and legacy `DIAGNOSTICS.json` are accepted (`src/tools.rs:369-377`).
 - Lane plan detection includes both instance-scoped and legacy formats (`src/tools.rs:49-63`).
 
 ### 4.2 Action Validity Invariants
@@ -293,58 +308,43 @@ Role emits message{to=Planner}
 ### 7.2 PLAN Protocol (Canonical Structure)
 ```json
 {
-  "plan_id": "<uuid>",
-  "version": 1,
-  "status": "in_progress",
-  "derived_from": {
-    "spec": "SPEC.md",
-    "objectives": "PLANS/OBJECTIVES.json",
-    "invariants": "INVARIANTS.json",
-    "violations": "VIOLATIONS.json",
-    "diagnostics": "PLANS/<instance>/diagnostics-<instance>.json"
-  },
-  "global_constraints": [
-    "SemanticStateSummary is source of truth",
-    "All transitions must follow spec",
-    "No role violates scope invariants",
-    "scheduler_len and planned_pending are not routing authority"
-  ],
-  "ready_window": { "executor_pool": ["<task_id>"] },
-  "completed_task_ids": [],
-  "blocked_task_ids": [],
-  "lanes": [
+  "version": 2,
+  "status": "in_progress | blocked | complete",
+  "tasks": [
     {
-      "lane_id": "executor_pool",
-      "role": "Executor",
-      "tasks": []
+      "id": "T1",
+      "title": "Short deterministic label",
+      "status": "todo | in_progress | blocked | done",
+      "priority": 1,
+      "steps": ["read file", "patch", "test"]
     }
-  ]
+  ],
+  "dag": {
+    "edges": [
+      { "from": "T1", "to": "T2" }
+    ]
+  }
 }
 ```
+Notes:
+- `tasks` are DAG nodes.
+- `dag.edges` defines dependencies (`from` must complete before `to`).
+- The plan tool enforces DAG acyclicity.
 
 ### 7.3 Task Protocol
 ```json
 {
-  "task_id": "<uuid>",
+  "id": "<uuid>",
   "title": "<short deterministic label>",
-  "status": "ready | blocked | in_progress | done",
+  "status": "todo | in_progress | blocked | done",
   "priority": 1,
-  "inputs": ["file:path", "diagnostic:id"],
-  "actions": [
-    { "type": "read | patch | test | command", "target": "<file or cmd>", "details": "<exact instruction>" }
-  ],
-  "outputs": ["file:path", "test:result"],
-  "dependencies": ["<task_id>"],
-  "success_criteria": ["cargo build passes", "specific invariant holds"],
-  "failure_modes": ["test fails", "invariant violation"],
-  "next_on_success": ["<task_id>"],
-  "next_on_failure": ["<task_id>"]
+  "steps": ["read file", "patch", "test"]
 }
 ```
 
 ### 7.4 Lane Execution Rules
-- Execute top 1–10 tasks with `status=ready`.
-- Respect dependencies: `∀ T_i: deps(T_i) ⊆ done`.
+- Execute top 1–10 tasks with `status=todo`.
+- Respect dependencies: `∀ edge(from->to): status(from)=done before status(to)!=todo`.
 - No reordering beyond dependency graph.
 - After completing work, emit exactly one `message` action to handoff.
 
@@ -369,7 +369,7 @@ Allows canon-mini-agent to act as its own target workspace — reading source fi
 ### 9.2 Relaxed Executor Scope
 In self-modification mode only:
 - Executor **may** patch `SPEC.md` directly.
-- Executor **may** patch files under `src/`.
+- Executor patching of `src/` remains allowed by the current implementation, as in normal mode.
 - All other scope restrictions remain in force (no patching `PLAN.json`, `INVARIANTS.json`, `VIOLATIONS.json`, lane plans, or diagnostics).
 
 ### 9.3 Safety Requirements (Invariants I11–I14)

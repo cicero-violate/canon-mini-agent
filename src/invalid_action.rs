@@ -60,6 +60,7 @@ pub(crate) fn unsupported_action_templates() -> Vec<String> {
         "```json\n{\n  \"action\": \"list_dir\",\n  \"path\": \".\",\n  \"observation\": \"List workspace root to locate targets.\",\n  \"rationale\": \"Confirm files before acting.\"\n}\n```",
         "```json\n{\n  \"action\": \"read_file\",\n  \"path\": \"canon-utils/canon-loop/src/executor.rs\",\n  \"observation\": \"Read file to understand current logic.\",\n  \"rationale\": \"Need context before patching.\"\n}\n```",
         "```json\n{\n  \"action\": \"apply_patch\",\n  \"patch\": \"*** Begin Patch\\n*** Update File: path/to/file.rs\\n@@\\n- old\\n+ new\\n*** End Patch\",\n  \"observation\": \"Apply the required edit.\",\n  \"rationale\": \"Implement the change directly.\"\n}\n```",
+        "```json\n{\n  \"action\": \"plan\",\n  \"op\": \"create_task\",\n  \"task\": {\"id\": \"T4\", \"title\": \"Add plan DAG\", \"status\": \"todo\", \"priority\": 3},\n  \"observation\": \"Planning update needed.\",\n  \"rationale\": \"Track work in PLAN.json via plan tool.\"\n}\n```",
         "```json\n{\n  \"action\": \"run_command\",\n  \"cmd\": \"rg -n \\\"trigger_observe\\\" canon-utils/canon-loop/src/executor.rs\",\n  \"observation\": \"Search for observe triggers.\",\n  \"rationale\": \"Locate all callsites before patching.\"\n}\n```",
         "```json\n{\n  \"action\": \"python\",\n  \"code\": \"import json; print('analyze')\",\n  \"observation\": \"Run structured analysis.\",\n  \"rationale\": \"Use Python for parsing tasks.\"\n}\n```",
         "```json\n{\n  \"action\": \"cargo_test\",\n  \"crate\": \"canon-runtime\",\n  \"test\": \"optional_test_name\",\n  \"observation\": \"Run tests for the target crate.\",\n  \"rationale\": \"Verify changes.\"\n}\n```",
@@ -317,10 +318,16 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
                 schema_diff.push("missing field: action".to_string());
             }
             push_type_mismatch(&mut schema_diff, obj, "action", "string");
-            // observation is optional; only validate type if present
-            if obj.contains_key("observation") {
-                push_type_mismatch(&mut schema_diff, obj, "observation", "string");
+            if obj
+                .get("observation")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .is_none()
+            {
+                schema_diff.push("missing field: observation".to_string());
             }
+            push_type_mismatch(&mut schema_diff, obj, "observation", "string");
             if obj
                 .get("rationale")
                 .and_then(|v| v.as_str())
@@ -398,59 +405,6 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
                     }
                 }
                 "message" => {
-                    // ensure blocker payload fields are auto-filled if missing
-                    if let Some(payload) = obj.get("payload").and_then(|v| v.as_object()) {
-                        let mut payload = payload.clone();
-                        let is_blocker = obj
-                            .get("type")
-                            .and_then(|v| v.as_str())
-                            .map(|s| s == "blocker")
-                            .unwrap_or(false)
-                            || obj
-                                .get("status")
-                                .and_then(|v| v.as_str())
-                                .map(|s| s == "blocked")
-                                .unwrap_or(false);
-
-                        if is_blocker {
-                            if payload
-                                .get("summary")
-                                .and_then(|v| v.as_str())
-                                .map(str::trim)
-                                .filter(|s| !s.is_empty())
-                                .is_none()
-                            {
-                                payload.insert("summary".to_string(), Value::String("auto-filled summary".to_string()));
-                            }
-                            if payload
-                                .get("blocker")
-                                .and_then(|v| v.as_str())
-                                .map(str::trim)
-                                .filter(|s| !s.is_empty())
-                                .is_none()
-                            {
-                                payload.insert("blocker".to_string(), Value::String("auto-filled blocker".to_string()));
-                            }
-                            if payload
-                                .get("evidence")
-                                .and_then(|v| v.as_str())
-                                .map(str::trim)
-                                .filter(|s| !s.is_empty())
-                                .is_none()
-                            {
-                                payload.insert("evidence".to_string(), Value::String("auto-filled evidence".to_string()));
-                            }
-                            if payload
-                                .get("required_action")
-                                .and_then(|v| v.as_str())
-                                .map(str::trim)
-                                .filter(|s| !s.is_empty())
-                                .is_none()
-                            {
-                                payload.insert("required_action".to_string(), Value::String("auto-filled required action".to_string()));
-                            }
-                        }
-                    }
                     let mut msg_type: Option<String> = None;
                     let mut msg_status: Option<String> = None;
                     for field in ["from", "to", "type", "status"] {

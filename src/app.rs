@@ -372,7 +372,13 @@ async fn run_solo_phase(
         }
     };
     let master_plan = read_text_or_empty(ctx.master_plan_path);
-    let objectives = read_text_or_empty(ctx.workspace.join(OBJECTIVES_FILE));
+    let agent_root = crate::constants::agent_state_dir().trim_end_matches("/agent_state");
+    let agent_objectives = Path::new(agent_root).join(OBJECTIVES_FILE);
+    let objectives = if agent_objectives.exists() {
+        read_text_or_empty(agent_objectives)
+    } else {
+        read_text_or_empty(ctx.workspace.join(OBJECTIVES_FILE))
+    };
     let invariants = read_text_or_empty(ctx.workspace.join(INVARIANTS_FILE));
     let violations = read_text_or_empty(ctx.violations_path);
     let diagnostics = read_text_or_empty(ctx.diagnostics_path);
@@ -1056,6 +1062,10 @@ struct OrchestratorCheckpoint {
 
 fn checkpoint_path(_workspace: &Path) -> PathBuf {
     PathBuf::from(crate::constants::agent_state_dir()).join("mini_agent_checkpoint.json")
+}
+
+fn cycle_idle_marker_path() -> PathBuf {
+    PathBuf::from(crate::constants::agent_state_dir()).join("orchestrator_cycle_idle.flag")
 }
 
 fn save_checkpoint(
@@ -2442,13 +2452,40 @@ fn handle_executor_completion(
     true
 }
 
-fn verifier_confirmed(reason: &str) -> bool {
+fn plan_has_incomplete_tasks(plan_text: &str) -> bool {
+    let Ok(value) = serde_json::from_str::<Value>(plan_text) else {
+        return true;
+    };
+    value
+        .get("tasks")
+        .and_then(|v| v.as_array())
+        .map(|tasks| {
+            tasks.iter().any(|task| {
+                task.get("status")
+                    .and_then(|v| v.as_str())
+                    .map(|status| status != "done")
+                    .unwrap_or(true)
+            })
+        })
+        .unwrap_or(true)
+}
+
+fn verifier_confirmed_with_plan_text(reason: &str, plan_text: &str) -> bool {
+    if plan_has_incomplete_tasks(plan_text) {
+        return false;
+    }
     if let Ok(v) = serde_json::from_str::<Value>(reason) {
         if let Some(verified) = v.get("verified").and_then(|x| x.as_bool()) {
             return verified;
         }
     }
     false
+}
+
+fn verifier_confirmed(reason: &str) -> bool {
+    let plan_path = Path::new(workspace()).join(MASTER_PLAN_FILE);
+    let plan_text = std::fs::read_to_string(plan_path).unwrap_or_default();
+    verifier_confirmed_with_plan_text(reason, &plan_text)
 }
 
 fn dispatch_lane_mut<'a>(state: &'a mut DispatchState, lane_id: usize) -> &'a mut DispatchLaneState {
@@ -2878,6 +2915,7 @@ pub async fn run() -> Result<()> {
         eprintln!("[orchestrate] pipeline started: planner -> background executors -> verifier/diagnostics -> planner");
 
         loop {
+            let _ = std::fs::remove_file(cycle_idle_marker_path());
             let mut cycle_progress = false;
             if shutdown.flag.load(Ordering::SeqCst) {
                 eprintln!("[orchestrate] shutdown requested; saving checkpoint");
@@ -3099,6 +3137,7 @@ pub async fn run() -> Result<()> {
             }
 
             if !cycle_progress {
+                let _ = std::fs::write(cycle_idle_marker_path(), "idle\n");
                 tokio::time::sleep(std::time::Duration::from_millis(SERVICE_POLL_MS)).await;
             }
         }
@@ -3141,5 +3180,40 @@ pub async fn run() -> Result<()> {
         ).await?;
         println!("message: {reason}");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{plan_has_incomplete_tasks, verifier_confirmed_with_plan_text};
+
+    #[test]
+    fn verifier_confirmed_rejects_when_plan_has_incomplete_tasks() {
+        let reason = r#"{"verified":true,"summary":"ok"}"#;
+        let plan = r#"{
+          "version": 1,
+          "tasks": [
+            {"id": "T1", "status": "ready"},
+            {"id": "T2", "status": "done"}
+          ]
+        }"#;
+        assert!(plan_has_incomplete_tasks(plan));
+        assert!(!verifier_confirmed_with_plan_text(reason, plan));
+    }
+
+    #[test]
+    fn verifier_confirmed_accepts_only_verified_when_plan_is_done() {
+        let verified = r#"{"verified":true,"summary":"ok"}"#;
+        let unverified = r#"{"verified":false,"summary":"blocked"}"#;
+        let plan = r#"{
+          "version": 1,
+          "tasks": [
+            {"id": "T1", "status": "done"},
+            {"id": "T2", "status": "done"}
+          ]
+        }"#;
+        assert!(!plan_has_incomplete_tasks(plan));
+        assert!(verifier_confirmed_with_plan_text(verified, plan));
+        assert!(!verifier_confirmed_with_plan_text(unverified, plan));
     }
 }

@@ -4,8 +4,12 @@ canon-mini-agent is an event-driven LLM orchestrator. All correctness decisions 
 
 ## Source of Truth
 
-- `INVARIANTS.json` is the authoritative source for all correctness, scope, and control-flow rules.
+Hierarchy (highest to lowest authority):
+LAW → SPEC → INVARIANT → OBJECTIVE → PLAN
+
 - `SPEC.md` is the authoritative description of runtime behavior; it must stay consistent with the source code in `src/`.
+- `INVARIANTS.json` is the authoritative source for correctness, scope, and control-flow rules.
+- `PLANS/OBJECTIVES.json` is the authoritative objective list; it must align with SPEC and invariants.
 - `PLAN.json` is the master plan; task status in `PLAN.json` is the authoritative record of work state.
 
 ## Orchestration Discipline

@@ -4,7 +4,7 @@ use crate::invalid_action::{
     auto_fill_message_fields, build_invalid_action_feedback, default_message_route,
     expected_message_format,
 };
-use crate::tools::patch_scope_error;
+use crate::tools::{patch_scope_error, patch_scope_error_with_mode};
 
 #[test]
 fn default_message_route_executor() {
@@ -98,14 +98,13 @@ fn build_invalid_action_feedback_includes_missing_fields() {
         "cmd": ""
     });
     let feedback = build_invalid_action_feedback(Some(&action), "bad action", "executor");
-    // observation is now optional per SPEC.md; should not be required
-    assert!(!feedback.contains("missing field: observation"));
+    assert!(feedback.contains("missing field: observation"));
     assert!(feedback.contains("missing field: rationale"));
     assert!(feedback.contains("missing field: cmd"));
 }
 
 #[test]
-fn build_invalid_action_feedback_does_not_require_message_observation() {
+fn build_invalid_action_feedback_requires_message_observation() {
     let action = json!({
         "action": "message",
         "from": "executor",
@@ -118,7 +117,7 @@ fn build_invalid_action_feedback_does_not_require_message_observation() {
         }
     });
     let feedback = build_invalid_action_feedback(Some(&action), "bad action", "executor");
-    assert!(!feedback.contains("missing field: observation"));
+    assert!(feedback.contains("missing field: observation"));
 }
 
 #[test]
@@ -182,6 +181,54 @@ fn scope_guard_planner_blocks_source_files() {
 }
 
 #[test]
+fn scope_guard_executor_self_mod_allows_spec_and_src_only() {
+    let spec_patch = "\
+*** Begin Patch
+*** Update File: SPEC.md
+@@
+-old
++new
+*** End Patch";
+    let src_patch = "\
+*** Begin Patch
+*** Update File: src/app.rs
+@@
+-old
++new
+*** End Patch";
+    let plan_patch = "\
+*** Begin Patch
+*** Update File: PLAN.json
+@@
+-{}
++{}
+*** End Patch";
+    assert!(patch_scope_error_with_mode("executor", spec_patch, true).is_none());
+    assert!(patch_scope_error_with_mode("executor", src_patch, true).is_none());
+    assert!(patch_scope_error_with_mode("executor", plan_patch, true).is_some());
+}
+
+#[test]
+fn scope_guard_planner_blocks_source_files_in_self_mod_mode() {
+    let src_patch = "\
+*** Begin Patch
+*** Update File: src/app.rs
+@@
+-old
++new
+*** End Patch";
+    let test_patch = "\
+*** Begin Patch
+*** Update File: tests/invalid_action_harness.rs
+@@
+-old
++new
+*** End Patch";
+    assert!(patch_scope_error_with_mode("planner", src_patch, true).is_some());
+    assert!(patch_scope_error_with_mode("planner", test_patch, true).is_some());
+}
+
+#[test]
 fn scope_guard_solo_allows_full_workspace_patch_surface() {
     let src_patch = "\
 *** Begin Patch
@@ -238,6 +285,26 @@ fn scope_guard_executor_blocks_plan_and_diagnostics() {
 }
 
 #[test]
+fn scope_guard_executor_blocks_source_files_in_normal_mode() {
+    let src_patch = "\
+*** Begin Patch
+*** Update File: src/app.rs
+@@
+-old
++new
+*** End Patch";
+    let test_patch = "\
+*** Begin Patch
+*** Update File: tests/invalid_action_harness.rs
+@@
+-old
++new
+*** End Patch";
+    assert!(patch_scope_error_with_mode("executor", src_patch, false).is_some());
+    assert!(patch_scope_error_with_mode("executor", test_patch, false).is_some());
+}
+
+#[test]
 fn scope_guard_diagnostics_allows_only_diagnostics_files() {
     let diagnostics_patch = "\
 *** Begin Patch
@@ -253,8 +320,16 @@ fn scope_guard_diagnostics_allows_only_diagnostics_files() {
 -{}
 +{}
 *** End Patch";
+    let src_patch = "\
+*** Begin Patch
+*** Update File: src/app.rs
+@@
+-old
++new
+*** End Patch";
     assert!(patch_scope_error("diagnostics", diagnostics_patch).is_none());
     assert!(patch_scope_error("diagnostics", plan_patch).is_some());
+    assert!(patch_scope_error("diagnostics", src_patch).is_some());
 }
 
 #[test]

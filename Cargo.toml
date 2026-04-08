@@ -3,6 +3,10 @@ name = "canon-mini-agent"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "canon_mini_agent"
+path = "src/lib.rs"
+
 [[bin]]
 name = "canon-mini-agent"
 path = "src/main.rs"

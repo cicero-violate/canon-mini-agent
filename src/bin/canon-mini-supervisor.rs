@@ -155,6 +155,26 @@ fn has_updated(root: &Path, last: &BinaryCandidate) -> Result<Option<BinaryCandi
     Ok(updated)
 }
 
+fn agent_state_dir_from_args(args: &[String]) -> PathBuf {
+    let mut i = 0usize;
+    while i + 1 < args.len() {
+        if args[i] == "--state-dir" {
+            return PathBuf::from(&args[i + 1]);
+        }
+        i += 1;
+    }
+    PathBuf::from("/workspace/ai_sandbox/canon-mini-agent/agent_state")
+}
+
+fn cycle_idle_marker_path(args: &[String]) -> PathBuf {
+    agent_state_dir_from_args(args).join("orchestrator_cycle_idle.flag")
+}
+
+fn file_mtime_if_exists(path: &Path) -> Option<SystemTime> {
+    let meta = fs::metadata(path).ok()?;
+    meta.modified().ok()
+}
+
 fn main() -> Result<()> {
     let mut args: Vec<String> = std::env::args().collect();
     let exe = args.remove(0);
@@ -201,6 +221,7 @@ fn main() -> Result<()> {
         })
         .context("install ctrlc handler")?;
     }
+    let idle_marker = cycle_idle_marker_path(&filtered_args);
 
     loop {
         let current = newest_candidate(&root, prefer_release)?;
@@ -217,6 +238,8 @@ fn main() -> Result<()> {
             child.id(),
             current.kind
         );
+        let mut pending_update: Option<BinaryCandidate> = None;
+        let child_started_at = SystemTime::now();
 
         loop {
             thread::sleep(Duration::from_millis(1000));
@@ -237,14 +260,37 @@ fn main() -> Result<()> {
             }
             if !no_watch {
                 if let Some(updated) = has_updated(&root, &current)? {
-                    eprintln!(
-                        "[canon-mini-supervisor] binary updated; restarting from {}",
-                        updated.path.display()
-                    );
-                    send_sigint(&child);
-                    wait_for_exit(child, Duration::from_secs(10));
-                    eprintln!("[canon-mini-supervisor] restarting...");
-                    break;
+                    let should_record = pending_update
+                        .as_ref()
+                        .map(|prev| prev.mtime < updated.mtime)
+                        .unwrap_or(true);
+                    if should_record {
+                        eprintln!(
+                            "[canon-mini-supervisor] binary updated; deferring restart until idle from {}",
+                            updated.path.display()
+                        );
+                        pending_update = Some(updated);
+                    }
+                }
+                if let Some(updated) = pending_update.as_ref() {
+                    let idle_marker_is_fresh = file_mtime_if_exists(&idle_marker)
+                        .map(|mtime| mtime >= child_started_at && mtime >= updated.mtime)
+                        .unwrap_or(false);
+                    if idle_marker_is_fresh {
+                        eprintln!(
+                            "[canon-mini-supervisor] idle marker observed; restarting from {}",
+                            updated.path.display()
+                        );
+                        send_sigint(&child);
+                        wait_for_exit(child, Duration::from_secs(10));
+                        eprintln!("[canon-mini-supervisor] restarting...");
+                        break;
+                    } else if idle_marker.exists() {
+                        eprintln!(
+                            "[canon-mini-supervisor] ignoring stale idle marker while update is pending from {}",
+                            updated.path.display()
+                        );
+                    }
                 }
             }
         }

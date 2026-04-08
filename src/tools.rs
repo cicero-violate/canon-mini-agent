@@ -360,7 +360,7 @@ fn symbol_label(map: &std::collections::HashMap<u32, (String, String)>, raw: &st
     raw.to_string()
 }
 
-pub(crate) fn patch_scope_error(role: &str, patch: &str) -> Option<String> {
+pub(crate) fn patch_scope_error_with_mode(role: &str, patch: &str, self_mod: bool) -> Option<String> {
     let targets = patch_targets(patch);
     if targets.is_empty() {
         return None;
@@ -375,7 +375,8 @@ pub(crate) fn patch_scope_error(role: &str, patch: &str) -> Option<String> {
     let touches_diagnostics = targets
         .iter()
         .any(|path| *path == diagnostics_file || *path == legacy_diagnostics_file);
-    let _touches_src = targets.iter().any(|path| is_src_path(path));
+    let touches_src = targets.iter().any(|path| is_src_path(path));
+    let touches_tests = targets.iter().any(|path| is_tests_path(path));
     let touches_other = targets.iter().any(|path| {
         *path != SPEC_FILE
         && *path != MASTER_PLAN_FILE
@@ -391,13 +392,15 @@ pub(crate) fn patch_scope_error(role: &str, patch: &str) -> Option<String> {
         "solo" => None,
         role if role.starts_with("executor") => {
             // In self-modification mode the executor is allowed to patch SPEC.md and src/ files.
-            let spec_blocked = touches_spec && !is_self_modification_mode();
-            let other_blocked = touches_other && !is_self_modification_mode();
+            let spec_blocked = touches_spec && !self_mod;
+            let src_blocked = (touches_src || touches_tests) && !self_mod;
+            let other_blocked = touches_other && !self_mod;
             if spec_blocked
                 || touches_master_plan
                 || touches_lane
                 || touches_violations
                 || touches_diagnostics
+                || src_blocked
                 || other_blocked
             {
                 Some(
@@ -426,31 +429,20 @@ pub(crate) fn patch_scope_error(role: &str, patch: &str) -> Option<String> {
             }
         }
         "planner" | "mini_planner" => {
-            let self_mod = is_self_modification_mode();
-            let touches_disallowed_source = targets
-                .iter()
-                .any(|path| is_src_path(path) || is_tests_path(path))
-                && !self_mod;
-            let touches_allowed_self_mod_source = targets
-                .iter()
-                .any(|path| is_src_path(path) || is_tests_path(path));
             if touches_spec
                 || touches_violations
                 || touches_diagnostics
-                || touches_disallowed_source
+                || targets.iter().any(|path| is_src_path(path) || is_tests_path(path))
             {
                 Some(
-                    "Planner may patch lane plans under `PLANS/<instance>/executor-<id>.json` (or legacy `PLANS/executor-<id>.md`); in self-modification mode planner may also patch `src/` and `tests/` files. Planner may not patch `SPEC.md`, `VIOLATIONS.json`, or diagnostics files."
+                    "Planner may patch lane plans under `PLANS/<instance>/executor-<id>.json` (or legacy `PLANS/executor-<id>.md`); planner may not patch `src/`, `tests/`, `SPEC.md`, `VIOLATIONS.json`, or diagnostics files."
                         .to_string(),
                 )
-            } else if touches_master_plan
-                || touches_lane
-                || (self_mod && touches_allowed_self_mod_source && !touches_other)
-            {
+            } else if touches_master_plan || touches_lane {
                 None
             } else {
                 Some(
-                    "Planner must patch `PLAN.json`, a lane plan, or in self-modification mode a `src/` or `tests/` file; no other patches are allowed."
+                    "Planner must patch `PLAN.json` or a lane plan; no other patches are allowed."
                         .to_string(),
                 )
             }
@@ -460,6 +452,8 @@ pub(crate) fn patch_scope_error(role: &str, patch: &str) -> Option<String> {
                 || touches_master_plan
                 || touches_lane
                 || touches_violations
+                || touches_src
+                || touches_tests
                 || touches_other
             {
                 Some(
@@ -475,6 +469,10 @@ pub(crate) fn patch_scope_error(role: &str, patch: &str) -> Option<String> {
         }
         _ => None,
     }
+}
+
+pub(crate) fn patch_scope_error(role: &str, patch: &str) -> Option<String> {
+    patch_scope_error_with_mode(role, patch, is_self_modification_mode())
 }
 
 /// Walk up from `file_path` (workspace-relative) to find the nearest Cargo.toml.
@@ -1233,6 +1231,7 @@ fn handle_cargo_test_action(
             }
         }
     }
+    let mut tail_preview: Option<String> = None;
     if out.contains("detached cargo test") {
         summary.push_str("\nnote: cargo test detached; see output_log for live results");
     }
@@ -1279,19 +1278,303 @@ fn handle_cargo_test_action(
         }
     }
     if let Some(path) = progress_path.as_ref() {
+        summary.push_str(&format!("\noutput_log: {}", path));
         summary.push_str(&format!("\nprogress_path: {}", path));
-        let hint = format!(
-            "{{ \"action\": \"run_command\", \"cmd\": \"tail -n 200 {}\", \"cwd\": \"{}\", \"observation\": \"Inspect live cargo test output.\", \"rationale\": \"Detached cargo test output is in the log file; tail it for progress and failures.\" }}",
-            path,
-            crate::constants::workspace()
-        );
-        summary.push_str("\nnext_action_hint:\n");
-        summary.push_str(&hint);
+        if out.contains("detached cargo test") {
+            tail_preview = tail_file_lines(Path::new(path), 200);
+        }
+        if let Some(tail) = tail_preview.as_ref() {
+            if tail.trim().is_empty() {
+                summary.push_str("\noutput_log_tail: (log empty)");
+            } else {
+                summary.push_str("\noutput_log_tail:\n");
+                summary.push_str(tail);
+            }
+        } else if out.contains("detached cargo test") {
+            summary.push_str("\noutput_log_tail: (not ready yet)");
+        }
     }
     Ok((
         false,
         format!("{summary}\n\nfull_output:\n{}", truncate(&out, MAX_SNIPPET)),
     ))
+}
+
+fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(bool, String)> {
+    if role.starts_with("executor") {
+        bail!("plan action is not allowed for executor roles");
+    }
+    let op = action
+        .get("op")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("plan missing 'op'"))?;
+    let plan_path = workspace.join(MASTER_PLAN_FILE);
+    let mut plan = load_or_init_plan(&plan_path)?;
+    let obj = plan
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("PLAN.json must be a JSON object"))?;
+    match op {
+        "create_task" => {
+            let tasks = obj
+                .get_mut("tasks")
+                .and_then(|v| v.as_array_mut())
+                .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+            let task = action
+                .get("task")
+                .and_then(|v| v.as_object())
+                .ok_or_else(|| anyhow!("plan create_task missing task object"))?;
+            let id = task
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("plan task missing id"))?;
+            if tasks.iter().any(|t| t.get("id").and_then(|v| v.as_str()) == Some(id)) {
+                bail!("plan task already exists: {id}");
+            }
+            let mut new_task = serde_json::Map::new();
+            new_task.insert("id".to_string(), Value::String(id.to_string()));
+            if let Some(title) = task.get("title").and_then(|v| v.as_str()) {
+                new_task.insert("title".to_string(), Value::String(title.to_string()));
+            }
+            let status = task
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("todo");
+            new_task.insert("status".to_string(), Value::String(status.to_string()));
+            if let Some(priority) = task.get("priority") {
+                new_task.insert("priority".to_string(), priority.clone());
+            }
+            if let Some(steps) = task.get("steps") {
+                new_task.insert("steps".to_string(), steps.clone());
+            }
+            tasks.push(Value::Object(new_task));
+        }
+        "update_task" => {
+            let tasks = obj
+                .get_mut("tasks")
+                .and_then(|v| v.as_array_mut())
+                .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+            let task = action
+                .get("task")
+                .and_then(|v| v.as_object())
+                .ok_or_else(|| anyhow!("plan update_task missing task object"))?;
+            let id = task
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("plan task missing id"))?;
+            let Some(existing) = tasks
+                .iter_mut()
+                .find(|t| t.get("id").and_then(|v| v.as_str()) == Some(id))
+                .and_then(|t| t.as_object_mut())
+            else {
+                bail!("plan task not found: {id}");
+            };
+            for (key, value) in task {
+                if key != "id" {
+                    existing.insert(key.to_string(), value.clone());
+                }
+            }
+        }
+        "delete_task" => {
+            let tasks = obj
+                .get_mut("tasks")
+                .and_then(|v| v.as_array_mut())
+                .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+            let task_id = action
+                .get("task_id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("plan delete_task missing task_id"))?;
+            tasks.retain(|t| t.get("id").and_then(|v| v.as_str()) != Some(task_id));
+            let dag = obj
+                .get_mut("dag")
+                .and_then(|v| v.as_object_mut())
+                .ok_or_else(|| anyhow!("PLAN.json missing dag object"))?;
+            let edges = dag
+                .get_mut("edges")
+                .and_then(|v| v.as_array_mut())
+                .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))?;
+            edges.retain(|e| {
+                let from = e.get("from").and_then(|v| v.as_str());
+                let to = e.get("to").and_then(|v| v.as_str());
+                from != Some(task_id) && to != Some(task_id)
+            });
+        }
+        "add_edge" => {
+            let ids = {
+                let tasks = obj
+                    .get("tasks")
+                    .and_then(|v| v.as_array())
+                    .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+                collect_task_ids(tasks)
+            };
+            let from = action
+                .get("from")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("plan add_edge missing from"))?;
+            let to = action
+                .get("to")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("plan add_edge missing to"))?;
+            if !ids.contains(from) || !ids.contains(to) {
+                bail!("plan edge refers to unknown task id");
+            }
+            let dag = obj
+                .get_mut("dag")
+                .and_then(|v| v.as_object_mut())
+                .ok_or_else(|| anyhow!("PLAN.json missing dag object"))?;
+            let edges = dag
+                .get_mut("edges")
+                .and_then(|v| v.as_array_mut())
+                .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))?;
+            if edges.iter().any(|e| e.get("from").and_then(|v| v.as_str()) == Some(from)
+                && e.get("to").and_then(|v| v.as_str()) == Some(to))
+            {
+                return Ok((false, "plan edge already exists".to_string()));
+            }
+            let mut edge = serde_json::Map::new();
+            edge.insert("from".to_string(), Value::String(from.to_string()));
+            edge.insert("to".to_string(), Value::String(to.to_string()));
+            edges.push(Value::Object(edge));
+            let edges_snapshot = edges.clone();
+            let _ = edges;
+            let tasks = obj
+                .get("tasks")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+            ensure_dag(tasks, &edges_snapshot)?;
+        }
+        "remove_edge" => {
+            let dag = obj
+                .get_mut("dag")
+                .and_then(|v| v.as_object_mut())
+                .ok_or_else(|| anyhow!("PLAN.json missing dag object"))?;
+            let edges = dag
+                .get_mut("edges")
+                .and_then(|v| v.as_array_mut())
+                .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))?;
+            let from = action
+                .get("from")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("plan remove_edge missing from"))?;
+            let to = action
+                .get("to")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("plan remove_edge missing to"))?;
+            edges.retain(|e| {
+                let e_from = e.get("from").and_then(|v| v.as_str());
+                let e_to = e.get("to").and_then(|v| v.as_str());
+                !(e_from == Some(from) && e_to == Some(to))
+            });
+        }
+        "set_status" => {
+            let status = action
+                .get("status")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("plan set_status missing status"))?;
+            obj.insert("status".to_string(), Value::String(status.to_string()));
+        }
+        _ => bail!("unknown plan op: {op}"),
+    }
+
+    std::fs::write(&plan_path, serde_json::to_string_pretty(&plan)?)?;
+    Ok((
+        false,
+        format!("plan ok\nplan_path: {}", plan_path.display()),
+    ))
+}
+
+fn load_or_init_plan(path: &Path) -> Result<Value> {
+    let raw = std::fs::read_to_string(path).unwrap_or_default();
+    let mut plan = if raw.trim().is_empty() {
+        json!({
+            "version": 2,
+            "status": "in_progress",
+            "tasks": [],
+            "dag": { "edges": [] }
+        })
+    } else {
+        serde_json::from_str(&raw)?
+    };
+    let obj = plan
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("PLAN.json must be a JSON object"))?;
+    let version_val = obj.get("version").and_then(|v| v.as_i64()).unwrap_or(0);
+    if version_val < 2 {
+        obj.insert("version".to_string(), Value::Number(2.into()));
+    }
+    if obj.get("status").and_then(|v| v.as_str()).is_none() {
+        obj.insert("status".to_string(), Value::String("in_progress".to_string()));
+    }
+    if obj.get("tasks").and_then(|v| v.as_array()).is_none() {
+        obj.insert("tasks".to_string(), Value::Array(Vec::new()));
+    }
+    let dag = obj.entry("dag".to_string()).or_insert_with(|| json!({}));
+    if dag.get("edges").and_then(|v| v.as_array()).is_none() {
+        dag.as_object_mut()
+            .ok_or_else(|| anyhow!("PLAN.json dag must be object"))?
+            .insert("edges".to_string(), Value::Array(Vec::new()));
+    }
+    Ok(plan)
+}
+
+fn collect_task_ids(tasks: &[Value]) -> BTreeSet<String> {
+    let mut ids = BTreeSet::new();
+    for task in tasks {
+        if let Some(id) = task.get("id").and_then(|v| v.as_str()) {
+            ids.insert(id.to_string());
+        }
+    }
+    ids
+}
+
+fn ensure_dag(tasks: &[Value], edges: &[Value]) -> Result<()> {
+    let ids = collect_task_ids(tasks);
+    let mut adj: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    for id in &ids {
+        adj.insert(id.clone(), Vec::new());
+    }
+    for edge in edges {
+        let from = edge.get("from").and_then(|v| v.as_str()).unwrap_or("");
+        let to = edge.get("to").and_then(|v| v.as_str()).unwrap_or("");
+        if from.is_empty() || to.is_empty() {
+            bail!("plan edge missing from/to");
+        }
+        if !ids.contains(from) || !ids.contains(to) {
+            bail!("plan edge refers to unknown task id");
+        }
+        adj.entry(from.to_string())
+            .or_default()
+            .push(to.to_string());
+    }
+    let mut visiting = BTreeSet::new();
+    let mut visited = BTreeSet::new();
+
+    fn dfs(
+        node: &str,
+        adj: &std::collections::HashMap<String, Vec<String>>,
+        visiting: &mut BTreeSet<String>,
+        visited: &mut BTreeSet<String>,
+    ) -> Result<()> {
+        if visited.contains(node) {
+            return Ok(());
+        }
+        if visiting.contains(node) {
+            bail!("plan DAG cycle detected at {node}");
+        }
+        visiting.insert(node.to_string());
+        if let Some(nexts) = adj.get(node) {
+            for next in nexts {
+                dfs(next, adj, visiting, visited)?;
+            }
+        }
+        visiting.remove(node);
+        visited.insert(node.to_string());
+        Ok(())
+    }
+
+    for id in ids {
+        dfs(&id, &adj, &mut visiting, &mut visited)?;
+    }
+    Ok(())
 }
 
 fn shell_tokens(cmd: &str) -> Vec<&str> {
@@ -1433,6 +1716,28 @@ fn exec_run_command(workspace: &Path, cmd: &str, cwd: &str) -> Result<(bool, Str
 
         Ok((output.status.success(), combined))
     }
+}
+
+fn tail_file_lines(path: &Path, max_lines: usize) -> Option<String> {
+    use std::thread::sleep;
+    use std::time::Duration;
+
+    for _ in 0..3 {
+        match std::fs::read_to_string(path) {
+            Ok(contents) => {
+                let lines: Vec<&str> = contents.lines().collect();
+                if lines.is_empty() {
+                    return Some(String::new());
+                }
+                let start = lines.len().saturating_sub(max_lines);
+                return Some(lines[start..].join("\n"));
+            }
+            Err(_) => {
+                sleep(Duration::from_millis(200));
+            }
+        }
+    }
+    None
 }
 
 fn exec_run_command_blocking_with_timeout(
@@ -1582,10 +1887,11 @@ fn execute_action(
             handle_graph_reports_action(role, step, k, workspace, action)
         }
         "cargo_test" => handle_cargo_test_action(role, step, workspace, action),
+        "plan" => handle_plan_action(role, workspace, action),
         other => Ok((
             false,
             format!(
-                "unsupported action '{other}' — use list_dir, read_file, apply_patch, run_command, python, cargo_test, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, or message"
+                "unsupported action '{other}' — use list_dir, read_file, apply_patch, run_command, python, cargo_test, plan, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, or message"
             ),
         )),
     }

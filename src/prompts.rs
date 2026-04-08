@@ -29,6 +29,7 @@ pub(crate) enum ToolPromptKind {
     RunCommand,
     Python,
     CargoTest,
+    Plan,
     Message,
 }
 
@@ -42,6 +43,7 @@ fn available_actions(kind: AgentPromptKind) -> &'static [&'static str] {
             "run_command",
             "python",
             "cargo_test",
+            "plan",
         ],
         AgentPromptKind::Executor
         | AgentPromptKind::Planner
@@ -54,6 +56,7 @@ fn available_actions(kind: AgentPromptKind) -> &'static [&'static str] {
             "run_command",
             "python",
             "cargo_test",
+            "plan",
         ],
     }
 }
@@ -67,6 +70,7 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
             ToolPromptKind::RunCommand,
             ToolPromptKind::ApplyPatch,
             ToolPromptKind::CargoTest,
+            ToolPromptKind::Plan,
             ToolPromptKind::Message,
         ],
         AgentPromptKind::Verifier => &[
@@ -76,6 +80,7 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
             ToolPromptKind::RunCommand,
             ToolPromptKind::Python,
             ToolPromptKind::CargoTest,
+            ToolPromptKind::Plan,
             ToolPromptKind::Message,
         ],
         AgentPromptKind::Executor | AgentPromptKind::Planner | AgentPromptKind::Solo => &[
@@ -85,6 +90,7 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
             ToolPromptKind::RunCommand,
             ToolPromptKind::Python,
             ToolPromptKind::CargoTest,
+            ToolPromptKind::Plan,
             ToolPromptKind::Message,
         ],
     }
@@ -97,10 +103,10 @@ fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
             "read_file — read a file; output is line-numbered (\"42: code here\")"
         }
         (AgentPromptKind::Verifier, ToolPromptKind::ApplyPatch) => {
-            "apply_patch — update `PLAN.json` status or write `VIOLATIONS.json`"
+            "apply_patch — write `VIOLATIONS.json`"
         }
         (AgentPromptKind::Planner, ToolPromptKind::ApplyPatch) => {
-            "apply_patch — update `PLAN.json` or source files under `src/`"
+            "apply_patch — update lane plans under `PLANS/`"
         }
         (AgentPromptKind::Diagnostics, ToolPromptKind::ApplyPatch) => {
             "apply_patch — write the diagnostics report"
@@ -114,6 +120,7 @@ fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
         }
         (_, ToolPromptKind::Python) => "python — run Python analysis inside the workspace",
         (_, ToolPromptKind::CargoTest) => "cargo_test — run a targeted cargo test (harness-style)",
+        (_, ToolPromptKind::Plan) => "plan — create/update/delete tasks and DAG edges in PLAN.json",
         (_, ToolPromptKind::Message) => "message — send inter-agent protocol message",
     }
 }
@@ -165,10 +172,10 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
             "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: path/to/new.rs\\n+line one\\n+line two\\n*** End Patch\",\"rationale\":\"Apply the concrete code change after reading the target context.\"}\n\n   To UPDATE an existing file, each @@ hunk needs 3 unchanged context lines around the change:\n   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Update File: src/lib.rs\\n@@\\n fn before_before() {}\\n fn before() {}\\n fn target() {\\n-    old_body();\\n+    new_body();\\n }\\n fn after() {}\\n*** End Patch\",\"rationale\":\"Update the file using exact surrounding context from the read.\"}\n\n   To REPLACE most or all of a file use Delete + Add, never a giant @@ block:\n   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Delete File: PLANS/executor-b.json\\n*** Add File: PLANS/executor-b.json\\n+# new content\\n+line two\\n*** End Patch\",\"rationale\":\"Full-file replacement is safer than a giant hunk with many - lines.\"}\n\n   WRONG — removing many lines with @@ causes anchor-miss failures:\n   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Update File: PLANS/executor-b.json\\n@@\\n-line one\\n-line two\\n-line three\\n+replacement\\n*** End Patch\",\"rationale\":\"Bad: too many - lines from memory, anchor will miss if file differs by even one char.\"}\n\n   Rules:\n   - Every @@ hunk must have AT LEAST 3 unchanged context lines (space-prefixed) around the edit.\n   - Never use @@ with only 1 context line — the patcher will fail to locate the anchor.\n   - ALL - lines must be copied CHARACTER-FOR-CHARACTER from read_file output (minus the \\\"N: \\\" prefix). Never write - lines from memory.\n   - If replacing more than ~10 lines, use *** Delete File + *** Add File instead of a large @@ hunk.\n   - *** Add File for new files, *** Update File for existing files.\n   - NEVER use absolute paths inside the patch string.".to_string()
         }
         (AgentPromptKind::Planner, ToolPromptKind::ApplyPatch) => {
-            "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Update File: PLAN.json\\n@@\\n line_before_before\\n line_before\\n - [ ] task to expand\\n+  1. sub-step one\\n+  2. sub-step two\\n line_after\\n line_after_after\\n*** End Patch\",\"rationale\":\"Refresh the master plan so priorities and dependencies are explicit.\"}".to_string()
+            "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Update File: PLANS/default/executor-1.json\\n@@\\n line_before_before\\n line_before\\n-  \\\"status\\\": \\\"blocked\\\"\\n+  \\\"status\\\": \\\"ready\\\"\\n line_after\\n line_after_after\\n*** End Patch\",\"rationale\":\"Update a lane plan entry after updating PLAN.json via the plan tool.\"}".to_string()
         }
         (AgentPromptKind::Verifier, ToolPromptKind::ApplyPatch) => {
-            "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: VIOLATIONS.json\\n+{\\n+  \\\"status\\\": \\\"failed\\\",\\n+  \\\"summary\\\": \\\"Short summary\\\",\\n+  \\\"violations\\\": [\\n+    {\\n+      \\\"id\\\": \\\"V1\\\",\\n+      \\\"title\\\": \\\"Control flow gated by executor-local state\\\",\\n+      \\\"severity\\\": \\\"critical\\\",\\n+      \\\"evidence\\\": [\\\"executor.rs:56-61 dispatch_in_progress gate\\\"],\\n+      \\\"issue\\\": \\\"Route dispatch suppressed before semantic evaluation\\\",\\n+      \\\"impact\\\": \\\"RouteTick does not guarantee dispatch\\\",\\n+      \\\"required_fix\\\": [\\\"Remove dispatch_in_progress gating\\\"],\\n+      \\\"files\\\": [\\\"canon-utils/canon-route/src/executor.rs\\\"]\\n+    }\\n+  ]\\n+}\\n*** End Patch\",\"rationale\":\"Record spec violations discovered during verification.\"}".to_string()
+            "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: VIOLATIONS.json\\n+{\\n+  \\\"status\\\": \\\"failed\\\",\\n+  \\\"summary\\\": \\\"Short summary\\\",\\n+  \\\"violations\\\": [\\n+    {\\n+      \\\"id\\\": \\\"V1\\\",\\n+      \\\"title\\\": \\\"Control flow gated by executor-local state\\\",\\n+      \\\"severity\\\": \\\"critical\\\",\\n+      \\\"evidence\\\": [\\\"executor.rs:56-61 dispatch_in_progress gate\\\"],\\n+      \\\"issue\\\": \\\"Route dispatch suppressed before semantic evaluation\\\",\\n+      \\\"impact\\\": \\\"RouteTick does not guarantee dispatch\\\",\\n+      \\\"required_fix\\\": [\\\"Remove dispatch_in_progress gating\\\"],\\n+      \\\"files\\\": [\\\"canon-utils/canon-route/src/executor.rs\\\"]\\n+    }\\n+  ]\\n+}\\n*** End Patch\",\"rationale\":\"Record spec violations discovered during verification.\"}\\n\\n   {\\\"action\\\":\\\"plan\\\",\\\"op\\\":\\\"set_status\\\",\\\"task_id\\\":\\\"T4\\\",\\\"status\\\":\\\"done\\\",\\\"rationale\\\":\\\"Mark the verified task as done in PLAN.json.\\\"}".to_string()
         }
         (AgentPromptKind::Diagnostics, ToolPromptKind::ApplyPatch) => {
             "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: DIAGNOSTICS.json\\n+{\\n+  \\\"status\\\": \\\"critical_failure\\\",\\n+  \\\"inputs_scanned\\\": [\\\"state/event_log/event.tlog.d\\\", \\\"VIOLATIONS.json\\\"],\\n+  \\\"ranked_failures\\\": [\\n+    {\\n+      \\\"id\\\": \\\"D1\\\",\\n+      \\\"impact\\\": \\\"critical\\\",\\n+      \\\"signal\\\": \\\"No control events in canonical log\\\",\\n+      \\\"evidence\\\": [\\\"Tick=0, RouteTick=0 in 20 segments\\\"],\\n+      \\\"root_cause\\\": \\\"emit_tick not executed or not persisted\\\",\\n+      \\\"repair_targets\\\": [\\\"canon-runtime/src/lib.rs::emit_tick\\\"]\\n+    }\\n+  ],\\n+  \\\"planner_handoff\\\": [\\\"Restore emit_tick loop execution\\\"]\\n+}\\n*** End Patch\",\"rationale\":\"Write the ranked diagnostics report after collecting evidence from logs and code.\"}".to_string()
@@ -214,6 +221,21 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
         | (AgentPromptKind::Diagnostics, ToolPromptKind::CargoTest) => {
             "   {\"action\":\"cargo_test\",\"crate\":\"canon-runtime\",\"test\":\"some_test_name\",\"rationale\":\"Run the exact failing test using the harness-style command.\"}".to_string()
         }
+        (AgentPromptKind::Executor, ToolPromptKind::Plan) => {
+            "   {\"action\":\"read_file\",\"path\":\"PLAN.json\",\"rationale\":\"Read the master plan; executors should not edit it.\"}".to_string()
+        }
+        (AgentPromptKind::Solo, ToolPromptKind::Plan) => {
+            "   {\"action\":\"plan\",\"op\":\"set_status\",\"task_id\":\"T1\",\"status\":\"in_progress\",\"rationale\":\"Update PLAN.json via the plan tool while running solo.\"}".to_string()
+        }
+        (AgentPromptKind::Planner, ToolPromptKind::Plan) => {
+            "   {\"action\":\"plan\",\"op\":\"create_task\",\"task\":{\"id\":\"T4\",\"title\":\"Add plan DAG\",\"status\":\"todo\",\"priority\":3},\"rationale\":\"Add a new task to PLAN.json without manual patching.\"}".to_string()
+        }
+        (AgentPromptKind::Verifier, ToolPromptKind::Plan) => {
+            "   {\"action\":\"read_file\",\"path\":\"PLAN.json\",\"rationale\":\"Read the current plan before judging whether claimed work matches recorded state.\"}".to_string()
+        }
+        (AgentPromptKind::Diagnostics, ToolPromptKind::Plan) => {
+            "   {\"action\":\"read_file\",\"path\":\"PLAN.json\",\"rationale\":\"Read the master plan to correlate diagnostics findings with planned work and blocked tasks.\"}".to_string()
+        }
 
         (_, ToolPromptKind::Message) => {
             "   {\"action\":\"message\",\"from\":\"executor\",\"to\":\"verifier\",\"type\":\"handoff\",\"status\":\"complete\",\"observation\":\"Summarize what happened.\",\"rationale\":\"Execution work is complete and the verifier now has enough evidence to judge it.\",\"payload\":{\"summary\":\"brief evidence summary\",\"artifacts\":[\"path/to/file.rs\"]}}\n   {\"action\":\"message\",\"from\":\"executor\",\"to\":\"planner\",\"type\":\"blocker\",\"status\":\"blocked\",\"observation\":\"Describe the blocker.\",\"rationale\":\"Explain why progress is impossible.\",\"payload\":{\"summary\":\"Short blocker summary\",\"blocker\":\"Root cause\",\"evidence\":\"Concrete error text\",\"required_action\":\"What must be done to unblock\",\"severity\":\"error\"}}\n   Allowed roles: executor|planner|verifier|diagnostics|solo. Allowed types: handoff|result|verification|failure|blocker|plan|diagnostics. Allowed status: complete|in_progress|failed|verified|ready|blocked.\n   ⚠ message with status=complete is REJECTED if build or tests fail — fix all errors first.".to_string()
@@ -235,9 +257,9 @@ fn prompt_mission(kind: AgentPromptKind) -> &'static str {
     match kind {
         AgentPromptKind::Executor => "Your job is to execute the highest-priority READY work described in planner handoff messages and the master plan.\n`SPEC.md` is the canonical contract.\nLane plans are deprecated and should not be relied on for task selection.\nThe verifier judges code against `SPEC.md`.\nYou should only work on the top 1-10 ready tasks in the current cycle, then yield.\nDo not use internal tools.\nDo not reorganize or update `SPEC.md` or plan files yourself.\nMake source changes, run checks, and report evidence in `message.payload`.",
         AgentPromptKind::Verifier => "Your job is to critically review executor evidence against the codebase and judge whether the implementation satisfies `SPEC.md`.\nExecutor evidence is a hint only. The canonical truth is the codebase versus `SPEC.md`.\nIf violations are found, write `VIOLATIONS.json` with a clear, actionable list using the enums in canon-mini-agent/src/reports.rs.\nBe skeptical — do not trust executor claims at face value.",
-        AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `PLANS/OBJECTIVES.md`, `VIOLATIONS.json`, and `DIAGNOSTICS.json` and derive the master plan plus executor handoff guidance.\nYou own priority, dependency ordering, task allocation, and the ready-work window for each executor.\nOn every cycle, re-evaluate the workspace, rewrite `PLAN.json`, and when needed apply minimal source edits under `src/` to unblock or tighten execution flow.\nDo not use internal tools.\nDo not hand off work; complete the needed planning and execution directly in the current role flow.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
+        AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `PLANS/OBJECTIVES.md`, `VIOLATIONS.json`, and `DIAGNOSTICS.json` and derive the master plan plus executor handoff guidance.\nYou own priority, dependency ordering, task allocation, and the ready-work window for each executor.\nOn every cycle, re-evaluate the workspace and update `PLAN.json` via the plan tool.\nDo not use internal tools.\nDo not hand off work; complete the needed planning and execution directly in the current role flow.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
         AgentPromptKind::Diagnostics => "Your job is to scan the canon project state, analyze `VIOLATIONS.json`, detect root causes, rank them by impact, and write concrete repair targets for the planner in `DIAGNOSTICS.json` using the enums in canon-mini-agent/src/reports.rs.",
-        AgentPromptKind::Solo => "Your job is to coordinate planning, execution, and verification in a single role while participating in orchestration.\nYou may read, patch, and verify any in-workspace files when justified by evidence.\nYou may send `message` actions to other agents for parallel work or handoffs.\nKeep evidence tight and run checks before claiming completion.",
+        AgentPromptKind::Solo => "Your job is to coordinate planning, execution, and verification in a single role while participating in orchestration.\nUse the `plan` action to update `PLAN.json`; do not apply_patch the master plan.\nYou may read, patch, and verify any in-workspace files when justified by evidence.\nYou may send `message` actions to other agents for parallel work or handoffs.\nKeep evidence tight and run checks before claiming completion.",
     }
 }
 
@@ -252,7 +274,7 @@ fn prompt_workspace(kind: AgentPromptKind) -> String {
     match kind {
         AgentPromptKind::Executor => format!("You work inside the canon workspace at {ws}. All relative file paths resolve against this workspace root."),
         AgentPromptKind::Verifier => format!("You work inside the canon workspace at {ws}."),
-        AgentPromptKind::Planner => format!("You work inside the canon workspace at {ws}. Use bash, rg, read_file, python, apply_patch, and diagnostics evidence to review the current project state before reorganizing the plan or editing `src/`."),
+        AgentPromptKind::Planner => format!("You work inside the canon workspace at {ws}. Use bash, rg, read_file, python, apply_patch (lane plans only), and diagnostics evidence to review the current project state before reorganizing the plan."),
         AgentPromptKind::Diagnostics => format!("You must inspect both:\n- the project source tree under {ws}\n- the event log segments under {ws}/state/event_log/event.tlog.d"),
         AgentPromptKind::Solo => format!("You work inside the canon workspace at {ws}. Use the full tool suite to plan, execute, and verify changes."),
     }
@@ -319,9 +341,9 @@ fn rules_section(rules: &[&str], blocker_target: Option<&str>) -> String {
     out
 }
 
-const VERIFIER_PROCESS: &str = "━━━ VERIFICATION PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nFor each executor claim:\n1. Use the executor result summary plus `SPEC.md` to derive the candidate obligations.\n2. Read the relevant source files to confirm the described change exists.\n3. Run cargo check or cargo test if the task involves code correctness.\n4. Judge whether the code satisfies the spec.\n5. If violations are found, write `VIOLATIONS.json` with a clear, actionable list using the enums in canon-mini-agent/src/reports.rs.\n6. Update task `status` fields in `PLAN.json` to reflect verified results (ready/in_progress/done/blocked) and update any related `next_on_success` / `next_on_failure` as needed.\n7. Report a verification breakdown in `message.payload` (verified, unverified, false) with explicit items.\n8. For any control-flow or state-management claim, verify that the described behavior matches the source code and is consistent with INVARIANTS.json.";
+const VERIFIER_PROCESS: &str = "━━━ VERIFICATION PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nFor each executor claim:\n1. Use the executor result summary plus `SPEC.md` to derive the candidate obligations.\n2. Read the relevant source files to confirm the described change exists.\n3. Run cargo check or cargo test if the task involves code correctness.\n4. Judge whether the code satisfies the spec.\n5. If violations are found, write `VIOLATIONS.json` with a clear, actionable list using the enums in canon-mini-agent/src/reports.rs.\n6. Update task `status` fields in `PLAN.json` via the `plan` action (never `apply_patch`) and update any related `next_on_success` / `next_on_failure` as needed.\n7. Report a verification breakdown in `message.payload` (verified, unverified, false) with explicit items.\n8. For any control-flow or state-management claim, verify that the described behavior matches the source code and is consistent with INVARIANTS.json.";
 
-const PLANNER_PROCESS: &str = "━━━ PLANNING PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nOn every planning cycle:\n1. Read `SPEC.md`, `VIOLATIONS.json`, `DIAGNOSTICS.json`, relevant source files, and recent workspace state to understand what changed.\n2. Update `PLAN.json` as the master plan and derive the ready-work window for each executor.\n3. Maintain a READY NOW window containing at most 1-10 executable tasks for each executor.\n4. Move blocked work behind its dependencies instead of leaving it in the ready window.\n5. Rewrite priorities whenever new evidence changes the critical path.\n6. If canonical-law authority (INVARIANTS.json, CANONICAL_LAW.md) conflicts with local heuristics in the plan, prioritize canonical-law authority and move heuristic cleanup behind it as follow-on work.\n7. Write detailed, imperative tasks that include file paths and concrete actions (read/patch/test).\n8. Send handoff messages to executors reflecting the updated ready window.";
+const PLANNER_PROCESS: &str = "━━━ PLANNING PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nOn every planning cycle:\n1. Read `SPEC.md`, `VIOLATIONS.json`, `DIAGNOSTICS.json`, relevant source files, and recent workspace state to understand what changed.\n2. Update `PLAN.json` via the `plan` action and derive the ready-work window for each executor.\n3. Maintain a READY NOW window containing at most 1-10 executable tasks for each executor.\n4. Move blocked work behind its dependencies instead of leaving it in the ready window.\n5. Rewrite priorities whenever new evidence changes the critical path.\n6. If canonical-law authority (INVARIANTS.json, CANONICAL_LAW.md) conflicts with local heuristics in the plan, prioritize canonical-law authority and move heuristic cleanup behind it as follow-on work.\n7. Write detailed, imperative tasks that include file paths and concrete actions (read/patch/test).\n8. Send handoff messages to executors reflecting the updated ready window.";
 
 fn diagnostics_process() -> String {
     format!("━━━ DIAGNOSTICS PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nGather evidence from the workspace, `VIOLATIONS.json`, and the current codebase, then write DIAGNOSTICS.json using the enums in canon-mini-agent/src/reports.rs.\nRules:\n- Use the `python` action for structured analysis of project state and any available logs.\n- Only modify DIAGNOSTICS.json.\n- Rank issues by impact on correctness, convergence, and repairability.\n- Check whether control-flow decisions are consistent with the canonical law in CANONICAL_LAW.md and the invariants in INVARIANTS.json.\n- Before trusting any trace or log file, confirm it was updated in the current cycle (mtime, size change, or fresh producer command).\n- Treat empty `rg` / `grep` results as ambiguous: no match, stale file, or incomplete write are all possible.\n- Prefer the most recently written evidence sources over ad-hoc temp traces when they disagree.")
@@ -350,6 +372,7 @@ const EXECUTION_DISCIPLINE_BULLETS: &[&str] = &[
 const SOLO_EXECUTION_DISCIPLINE_BULLETS: &[&str] = &[
     "Prefer tasks explicitly marked ready / highest priority by the planner.",
     "Do not skip ahead to lower-priority or blocked tasks unless the current ready task is impossible and you have concrete evidence.",
+    "Use the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.",
     "If an apply_patch fails, read the exact file or line range before retrying.",
     "Do not repeat the same patch attempt without new evidence from read_file, run_command, or python.",
     "When touching routing, policy, or control-flow code, favor the authority described in CANONICAL_LAW.md and INVARIANTS.json over local heuristics.",
@@ -384,7 +407,8 @@ const VERIFIER_RULES: &[&str] = &[
     "- Do not mark anything verified unless you have read the actual code and run verification commands.",
     "- You must run `run_command` (and `cargo_test` when relevant) to validate executor claims; do not accept evidence without running checks yourself.",
     "- Run `cargo build --workspace` before completing the cycle; fix failures before `message` with status=complete.",
-    "- Only modify `PLAN.json` and `VIOLATIONS.json` — never edit `SPEC.md` or source files.",
+    "- Update `PLAN.json` only via the `plan` action; never use `apply_patch` for plan edits.",
+    "- Use `apply_patch` only for `VIOLATIONS.json` (no source or spec edits).",
     "- Reject any claimed completion that violates the canonical law in CANONICAL_LAW.md or the invariants in INVARIANTS.json.",
     "- When using `message`, set:",
     "  - `from`: \"Verifier\"",
@@ -396,9 +420,9 @@ const VERIFIER_RULES: &[&str] = &[
 ];
 
 const PLANNER_RULES: &[&str] = &[
-    "- Prefer `python` to update `PLAN.json`; it is more reliable and efficient than `apply_patch` for structured JSON edits.",
+    "- Use the `plan` action for all `PLAN.json` edits; never use `apply_patch` on the master plan.",
     "- `PLAN.json` MUST be valid JSON following the PLAN/TASK protocol in `SPEC.md`.",
-    "- Only modify `PLAN.json`, lane plans, or in self-modification mode `src/` files — never edit `SPEC.md`, `VIOLATIONS.json`, or diagnostics reports.",
+    "- Only modify `PLAN.json` (via `plan`) and lane plans (via `apply_patch`) — never edit `src/`, `tests/`, `SPEC.md`, `VIOLATIONS.json`, or diagnostics reports.",
     "- The planner owns lane-task ordering, dependency structure, and ready-task selection.",
     "- Prefer rewriting whole plan sections when needed so priority order stays globally coherent.",
     "- Keep each executor's ready window small: 1-10 tasks maximum.",
@@ -442,7 +466,7 @@ fn solo_rules() -> Vec<String> {
         "- Use list_dir and read_file freely before assuming project state.".to_string(),
         "- Use run_command for cargo builds, tests, and shell discovery.".to_string(),
         "- Run cargo build/test before `message` with status=complete when changes affect code.".to_string(),
-        "- You may modify any in-workspace files, including SPEC/PLAN/VIOLATIONS/DIAGNOSTICS, when justified by evidence.".to_string(),
+        "- You may modify any in-workspace files when justified by evidence; use the `plan` action for PLAN.json edits.".to_string(),
         "- Coordinate with other roles via `message` when parallel work is beneficial.".to_string(),
         format!("- Never operate outside {ws}."),
         "- Never emit destructive commands (rm -rf, git reset --hard, git clean -f, etc.).".to_string(),
@@ -622,7 +646,7 @@ pub(crate) fn single_role_solo_prompt(
     let diagnostics_path = diagnostics_file();
     let canonical_law = prompt_canonical_law(AgentPromptKind::Planner);
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{spec}\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nCanonical law:\n{canonical_law}\n\nYou are running as the solo role inside orchestration.\nYou may modify any in-workspace source and control files directly when justified by evidence, including `src/`, `tests/`, `{MASTER_PLAN_FILE}`, `{VIOLATIONS_FILE}`, diagnostics files, and `{SPEC_FILE}`.\nYou may send `message` actions to other agents for parallel execution or verification.\nComplete the work directly and emit exactly one action to begin."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{spec}\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nCanonical law:\n{canonical_law}\n\nYou are running as the solo role inside orchestration.\nYou may modify any in-workspace source and control files directly when justified by evidence.\nUse the `plan` action for `{MASTER_PLAN_FILE}` edits; do not apply_patch the master plan.\nYou may send `message` actions to other agents for parallel execution or verification.\nComplete the work directly and emit exactly one action to begin."
     )
 }
 
@@ -904,8 +928,10 @@ fn derive_next_action_hint(result: &str, last_action: Option<&str>) -> NextActio
     if result.contains("graph_probe ok") {
         return NextActionHint::GraphFollowups;
     }
-    if let Some(path) = extract_output_log_path(result) {
-        return NextActionHint::TailOutputLog { path };
+    if !result.contains("output_log_tail:") {
+        if let Some(path) = extract_output_log_path(result) {
+            return NextActionHint::TailOutputLog { path };
+        }
     }
     if let Some(action) = last_action.map(str::trim).filter(|s| !s.is_empty()) {
         return NextActionHint::ReuseRecent {
@@ -918,7 +944,7 @@ fn derive_next_action_hint(result: &str, last_action: Option<&str>) -> NextActio
 }
 
 fn next_action_hint_text(result: &str, last_action: Option<&str>) -> String {
-    let all_actions = "list_dir, read_file, apply_patch, run_command, python, cargo_test, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, message";
+    let all_actions = "list_dir, read_file, apply_patch, run_command, python, cargo_test, plan, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, message";
     match derive_next_action_hint(result, last_action) {
         NextActionHint::TailOutputLog { path } => {
             format!("next_action_hint: run_command tail -n 200 {path}")
@@ -927,7 +953,7 @@ fn next_action_hint_text(result: &str, last_action: Option<&str>) -> String {
             "next_action_hint: run graph_call, graph_cfg, graph_reachability".to_string()
         }
         NextActionHint::UseApplyPatch => {
-            "next_action_hint: use apply_patch to update workspace files (`PLAN.json` or `src/`) if python cannot write.".to_string()
+            "next_action_hint: use apply_patch to update workspace files (`src/` or lane plans) if python cannot write.".to_string()
         }
         NextActionHint::ReuseRecent { action } => {
             format!("next_action_hint: reuse recent action `{action}` or choose one of: {all_actions}.")
@@ -963,6 +989,7 @@ fn is_supported_action(kind: &str) -> bool {
             | "run_command"
             | "python"
             | "cargo_test"
+            | "plan"
             | "rustc_hir"
             | "rustc_mir"
             | "graph_call"
@@ -1031,5 +1058,49 @@ mod tests {
             "path": "SPEC.md"
         });
         assert!(validate_action(&action).is_ok());
+    }
+
+    #[test]
+    fn planner_requires_plan_action_for_master_plan_edits() {
+        let rules = PLANNER_RULES.join("\n");
+        assert!(
+            rules.contains("Use the `plan` action for all `PLAN.json` edits"),
+            "planner rules must require plan tool for PLAN.json edits"
+        );
+    }
+
+    #[test]
+    fn verifier_requires_plan_action_for_master_plan_edits() {
+        let rules = VERIFIER_RULES.join("\n");
+        assert!(
+            rules.contains("Update `PLAN.json` only via the `plan` action"),
+            "verifier rules must require plan tool for PLAN.json edits"
+        );
+    }
+
+    #[test]
+    fn solo_rules_require_plan_action_for_master_plan_edits() {
+        let rules = SOLO_EXECUTION_DISCIPLINE_BULLETS.join("\n");
+        assert!(
+            rules.contains("Use the `plan` action for `PLAN.json` edits"),
+            "solo rules must require plan tool for PLAN.json edits"
+        );
+    }
+
+    #[test]
+    fn solo_prompt_mentions_plan_tool_for_master_plan() {
+        let prompt = single_role_solo_prompt(
+            "{spec}",
+            "{master_plan}",
+            "{objectives}",
+            "{invariants}",
+            "{violations}",
+            "{diagnostics}",
+            "{cargo_test_failures}",
+        );
+        assert!(
+            prompt.contains("Use the `plan` action for `PLAN.json` edits"),
+            "solo prompt must direct plan tool usage for PLAN.json"
+        );
     }
 }

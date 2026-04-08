@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 
+pub mod app;
 mod constants;
+mod engine;
 mod logging;
 mod md_convert;
 mod prompts;
