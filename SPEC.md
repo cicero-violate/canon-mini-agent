@@ -104,7 +104,7 @@ Notes:
 - `create_task` / `update_task` require `task` object with at least `id`. `create_task` requires `title`.
 - `delete_task` requires `task_id`.
 - `add_edge` / `remove_edge` require `from` and `to` task ids.
-- `set_status` requires `status` and updates the top-level `PLAN.json` status field.
+- `set_status` requires `task_id` plus `status` (`todo | in_progress | blocked | done`) and updates the referenced task.
 - The plan tool enforces a DAG (no cycles) when adding edges.
 
 ### 3.5 `apply_patch`
@@ -194,9 +194,9 @@ Outputs: JSON reports under metrics/analysis directories.
 
 **Normal mode** (workspace ≠ orchestrator source):
 - **Executor** may not patch `SPEC.md`, `PLAN.json`, `INVARIANTS.json`, `VIOLATIONS.json`, `OBJECTIVES.json`, any lane plan, diagnostics files, `src/`, or `tests/`.
-- **Verifier** may patch **only** `PLAN.json` and `VIOLATIONS.json`.
+- **Verifier** may patch **only** `VIOLATIONS.json` (use the `plan` action for `PLAN.json` edits).
 - **Diagnostics** may patch **only** the active diagnostics report file.
-- **Planner** may patch **only** `PLAN.json` and lane plans.
+- **Planner** may patch **only** lane plans (use the `plan` action for `PLAN.json` edits).
 - **Solo** may patch any in-workspace file (full capabilities).
 
 **Self-modification mode** (workspace == orchestrator source, see §9):

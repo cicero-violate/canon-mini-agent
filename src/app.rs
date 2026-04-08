@@ -2489,10 +2489,7 @@ fn verifier_confirmed(reason: &str) -> bool {
 }
 
 fn dispatch_lane_mut<'a>(state: &'a mut DispatchState, lane_id: usize) -> &'a mut DispatchLaneState {
-    state
-        .lanes
-        .get_mut(&lane_id)
-        .unwrap_or_else(|| panic!("missing lane state for {:?}", lane_id))
+    state.lanes.entry(lane_id).or_default()
 }
 
 fn claim_next_lane(state: &mut DispatchState, lane: &LaneConfig) -> Option<(usize, String)> {
