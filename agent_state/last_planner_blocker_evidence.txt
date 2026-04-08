@@ -1,1 +1,1 @@
-Invalid action rejected: field type mismatch payload.evidence (expected string).
+Turn 8 rejected planner `apply_patch` with: "Planner may only patch `PLAN.json` and lane plans under `PLANS/<instance>/executor-<id>.json` (or legacy `PLANS/executor-<id>.md`)". Source evidence already read: `src/prompts.rs:227-230` mission strings lack the requested no-internal-tools guidance, and `src/prompts.rs:580-588` short-circuits on the first fenced JSON block, causing the observed `parse_error` when that fence is not a valid action object.

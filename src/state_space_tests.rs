@@ -1,6 +1,9 @@
 use crate::state_space::{
     decide_bootstrap_phase, decide_resume_phase, extract_progress_path_from_result, CargoTestGate,
 };
+use crate::state_space::{
+    decide_wake_flags, executor_step_limit_exceeded, scheduled_phase_resume_done, WakeFlagInput,
+};
 
 #[test]
 fn extract_progress_path_detects_output_log() {
@@ -52,4 +55,46 @@ fn bootstrap_phase_from_start_role() {
     );
     assert_eq!(decide_bootstrap_phase("executor"), Some("executor".to_string()));
     assert_eq!(decide_bootstrap_phase("unknown"), None);
+}
+
+#[test]
+fn wake_flags_selects_newest_non_blocked() {
+    let flags = vec![
+        WakeFlagInput { role: "planner", modified_ms: 10 },
+        WakeFlagInput { role: "executor", modified_ms: 20 },
+    ];
+    let decision = decide_wake_flags(false, &flags);
+    assert_eq!(decision.scheduled_phase, Some("executor".to_string()));
+    assert!(decision.executor_wake);
+}
+
+#[test]
+fn wake_flags_blocks_planner_when_active_blocker() {
+    let flags = vec![
+        WakeFlagInput { role: "planner", modified_ms: 30 },
+        WakeFlagInput { role: "executor", modified_ms: 20 },
+    ];
+    let decision = decide_wake_flags(true, &flags);
+    assert_eq!(decision.scheduled_phase, Some("executor".to_string()));
+    assert!(decision.executor_wake);
+}
+
+#[test]
+fn scheduled_phase_resume_done_all_cases() {
+    assert!(scheduled_phase_resume_done("planner", false, false, 0, true, false, false));
+    assert!(scheduled_phase_resume_done("verifier", false, false, 0, true, false, false));
+    assert!(scheduled_phase_resume_done("diagnostics", false, false, 0, true, false, false));
+    assert!(scheduled_phase_resume_done("executor", false, false, 0, true, false, false));
+
+    assert!(!scheduled_phase_resume_done("planner", true, false, 0, true, false, false));
+    assert!(!scheduled_phase_resume_done("verifier", false, false, 1, false, false, false));
+    assert!(!scheduled_phase_resume_done("diagnostics", false, true, 0, true, false, false));
+    assert!(!scheduled_phase_resume_done("executor", false, false, 0, true, true, true));
+}
+
+#[test]
+fn executor_step_limit_boundary() {
+    assert!(!executor_step_limit_exceeded(9, 10));
+    assert!(executor_step_limit_exceeded(10, 10));
+    assert!(executor_step_limit_exceeded(11, 10));
 }

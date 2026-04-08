@@ -2,14 +2,14 @@ use anyhow::{anyhow, bail, Context, Result};
 use canon_llm::config::LlmEndpoint;
 use canon_tools_patch::apply_patch;
 use serde_json::{json, Value};
-use std::io::Write;
 use std::collections::BTreeSet;
 use std::env;
+use std::fs;
+use std::fs::File;
+use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::fs;
-use std::fs::File;
 
 use crate::constants::{
     diagnostics_file, is_self_modification_mode, MASTER_PLAN_FILE, MAX_FULL_READ_LINES,
@@ -21,7 +21,10 @@ use crate::prompts::truncate;
 /// Extract the first file path touched by the patch (*** Update File: / *** Add File:).
 fn patch_first_file(patch: &str) -> Option<&str> {
     for line in patch.lines() {
-        if let Some(rest) = line.strip_prefix("*** Update File:").or_else(|| line.strip_prefix("*** Add File:")) {
+        if let Some(rest) = line
+            .strip_prefix("*** Update File:")
+            .or_else(|| line.strip_prefix("*** Add File:"))
+        {
             let path = rest.trim();
             if !path.is_empty() {
                 return Some(path);
@@ -34,7 +37,10 @@ fn patch_first_file(patch: &str) -> Option<&str> {
 fn patch_targets<'a>(patch: &'a str) -> Vec<&'a str> {
     patch
         .lines()
-        .filter_map(|line| line.strip_prefix("*** Update File:").or_else(|| line.strip_prefix("*** Add File:")))
+        .filter_map(|line| {
+            line.strip_prefix("*** Update File:")
+                .or_else(|| line.strip_prefix("*** Add File:"))
+        })
         .map(str::trim)
         .filter(|path| !path.is_empty())
         .collect()
@@ -54,6 +60,14 @@ fn is_lane_plan(path: &str) -> bool {
     // - PLANS/<instance>/executor-<id>.json
     // - legacy .md variants
     path.starts_with("PLANS/executor-") || path.contains("/executor-")
+}
+
+fn is_src_path(path: &str) -> bool {
+    path == "src" || path.starts_with("src/")
+}
+
+fn is_tests_path(path: &str) -> bool {
+    path == "tests" || path.starts_with("tests/")
 }
 
 fn default_graph_out_dir(workspace: &Path, crate_name: &str) -> PathBuf {
@@ -92,8 +106,14 @@ fn graph_artifact_edges(workspace: &Path, crate_name: &str) -> Option<(u64, u64)
         .join(format!("{crate_name}.json"));
     let raw = fs::read_to_string(path).ok()?;
     let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
-    let call = value.get("call_edge_count").and_then(|v| v.as_u64()).unwrap_or(0);
-    let cfg = value.get("cfg_edge_count").and_then(|v| v.as_u64()).unwrap_or(0);
+    let call = value
+        .get("call_edge_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let cfg = value
+        .get("cfg_edge_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
     Some((call, cfg))
 }
 
@@ -126,8 +146,12 @@ fn ensure_graph_artifact(
     }
     // Try rustc wrapper build to refresh artifacts.
     let build_cmd = format!("cargo build -p {crate_name}");
-    eprintln!("[{role}] step={} graph_artifact build cmd={build_cmd}", step);
-    let (build_ok, build_out) = exec_run_command(workspace, &build_cmd, crate::constants::workspace())?;
+    eprintln!(
+        "[{role}] step={} graph_artifact build cmd={build_cmd}",
+        step
+    );
+    let (build_ok, build_out) =
+        exec_run_command(workspace, &build_cmd, crate::constants::workspace())?;
     eprintln!(
         "[{role}] step={} graph_artifact build {} output_bytes={}",
         step,
@@ -232,7 +256,10 @@ fn parse_cargo_test_failures(out: &str) -> Value {
         Value::Array(locations.into_iter().map(Value::String).collect()),
     );
     if let Some(path) = log_path {
-        payload.insert("output_log".to_string(), Value::String(path.display().to_string()));
+        payload.insert(
+            "output_log".to_string(),
+            Value::String(path.display().to_string()),
+        );
     }
     if !stalled_tests.is_empty() {
         payload.insert(
@@ -243,7 +270,8 @@ fn parse_cargo_test_failures(out: &str) -> Value {
             failed_tests.extend(stalled_tests.iter().cloned());
         }
         if rerun_hint.is_none() {
-            rerun_hint = Some("tests appear stalled; re-run with timeout or inspect output_log".to_string());
+            rerun_hint =
+                Some("tests appear stalled; re-run with timeout or inspect output_log".to_string());
         }
     }
     if !failed_tests.is_empty() {
@@ -264,24 +292,40 @@ fn parse_cargo_test_failures(out: &str) -> Value {
     Value::Object(payload)
 }
 
-fn load_graph_symbols(graph_json: &Path) -> Result<std::collections::HashMap<u32, (String, String)>> {
+fn load_graph_symbols(
+    graph_json: &Path,
+) -> Result<std::collections::HashMap<u32, (String, String)>> {
     let content = ctx_read(graph_json)?;
     let value: Value = serde_json::from_str(&content)?;
     let mut out = std::collections::HashMap::new();
-    let nodes = value.get("nodes").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let nodes = value
+        .get("nodes")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
     for node in nodes {
         let id = node.get("id").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
         if id == 0 {
             continue;
         }
-        let kind = node.get("kind").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let symbol = node.get("symbol").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let kind = node
+            .get("kind")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let symbol = node
+            .get("symbol")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         out.insert(id, (kind, symbol));
     }
     Ok(out)
 }
 
-fn load_nodes_symbols(nodes_csv: &Path) -> Result<std::collections::HashMap<u32, (String, String)>> {
+fn load_nodes_symbols(
+    nodes_csv: &Path,
+) -> Result<std::collections::HashMap<u32, (String, String)>> {
     let content = ctx_read(nodes_csv)?;
     let mut out = std::collections::HashMap::new();
     for (idx, line) in content.lines().enumerate() {
@@ -316,7 +360,7 @@ fn symbol_label(map: &std::collections::HashMap<u32, (String, String)>, raw: &st
     raw.to_string()
 }
 
-fn patch_scope_error(role: &str, patch: &str) -> Option<String> {
+pub(crate) fn patch_scope_error(role: &str, patch: &str) -> Option<String> {
     let targets = patch_targets(patch);
     if targets.is_empty() {
         return None;
@@ -328,23 +372,35 @@ fn patch_scope_error(role: &str, patch: &str) -> Option<String> {
     let touches_lane = targets.iter().any(|path| is_lane_plan(path));
     let touches_master_plan = targets.iter().any(|path| *path == MASTER_PLAN_FILE);
     let touches_violations = targets.iter().any(|path| *path == VIOLATIONS_FILE);
-    let touches_diagnostics = targets.iter().any(|path| *path == diagnostics_file || *path == legacy_diagnostics_file);
-    let touches_other = targets
+    let touches_diagnostics = targets
         .iter()
-        .any(|path| *path != SPEC_FILE
-            && *path != MASTER_PLAN_FILE
+        .any(|path| *path == diagnostics_file || *path == legacy_diagnostics_file);
+    let _touches_src = targets.iter().any(|path| is_src_path(path));
+    let touches_other = targets.iter().any(|path| {
+        *path != SPEC_FILE
+        && *path != MASTER_PLAN_FILE
+            && !is_src_path(path)
+            && !is_tests_path(path)
             && !is_lane_plan(path)
             && *path != VIOLATIONS_FILE
             && *path != diagnostics_file
-            && *path != legacy_diagnostics_file);
+            && *path != legacy_diagnostics_file
+    });
 
     match role {
         role if role.starts_with("executor") => {
             // In self-modification mode the executor is allowed to patch SPEC.md and src/ files.
             let spec_blocked = touches_spec && !is_self_modification_mode();
-            if spec_blocked || touches_master_plan || touches_lane || touches_violations || touches_diagnostics {
+            let other_blocked = touches_other && !is_self_modification_mode();
+            if spec_blocked
+                || touches_master_plan
+                || touches_lane
+                || touches_violations
+                || touches_diagnostics
+                || other_blocked
+            {
                 Some(
-                    "Executor may not patch plan files, violations, or diagnostics. Execute code/tests only and report evidence in `message.payload`."
+                    "Executor may not patch plan files, violations, diagnostics, invariants, objectives, or normal-mode source files. Execute code/tests only and report evidence in `message.payload`."
                         .to_string(),
                 )
             } else {
@@ -369,7 +425,12 @@ fn patch_scope_error(role: &str, patch: &str) -> Option<String> {
             }
         }
         "planner" | "mini_planner" => {
-            if touches_spec || touches_violations || touches_diagnostics || touches_other {
+            let touches_disallowed_src = targets.iter().any(|path| is_src_path(path) && *path != "src/prompts.rs");
+            if touches_spec
+                || touches_violations
+                || touches_diagnostics
+                || touches_disallowed_src
+            {
                 Some(
                     "Planner may only patch `PLAN.json` and lane plans under `PLANS/<instance>/executor-<id>.json` (or legacy `PLANS/executor-<id>.md`) because planner derives plans from the spec and diagnostics."
                         .to_string(),
@@ -378,13 +439,18 @@ fn patch_scope_error(role: &str, patch: &str) -> Option<String> {
                 None
             } else {
                 Some(
-                    "Planner must update `PLAN.json` and lane plans; no other patches are allowed."
+                    "Planner must patch `PLAN.json` or lane plans; no other patches are allowed."
                         .to_string(),
                 )
             }
         }
         "diagnostics" => {
-            if touches_spec || touches_master_plan || touches_lane || touches_violations || touches_other {
+            if touches_spec
+                || touches_master_plan
+                || touches_lane
+                || touches_violations
+                || touches_other
+            {
                 Some(
                     format!(
                         "Diagnostics may only patch {} or {} because diagnostics owns ranked failure reporting.",
@@ -479,7 +545,9 @@ fn extract_expected_anchor_lines(err_msg: &str) -> Vec<String> {
 
 fn patch_failure_guidance(path: Option<&str>, err_msg: &str) -> String {
     let mut hints = Vec::new();
-    hints.push("Patch anchor miss: deleted/context lines must match the current file EXACTLY.".to_string());
+    hints.push(
+        "Patch anchor miss: deleted/context lines must match the current file EXACTLY.".to_string(),
+    );
     hints.push("Do not abbreviate deleted lines like `-1. Centralize d`; copy exact text from read_file output.".to_string());
     hints.push("Next step: emit `read_file` for the target file, then build a new patch with at least 3 unchanged context lines.".to_string());
 
@@ -525,19 +593,31 @@ fn extract_anchor_context_excerpt(full: &str, err_msg: &str) -> Option<(usize, u
     let start_idx = idx.saturating_sub(AUTO_READ_CONTEXT_BEFORE);
     let end_idx = (idx + AUTO_READ_CONTEXT_AFTER + 1).min(file_lines.len());
     let start_line = start_idx + 1;
-    let excerpt = file_lines[start_idx..end_idx].iter().enumerate().map(|(i, l)| format!("{}: {}", start_line + i, l)).collect::<Vec<_>>().join("\n");
+    let excerpt = file_lines[start_idx..end_idx]
+        .iter()
+        .enumerate()
+        .map(|(i, l)| format!("{}: {}", start_line + i, l))
+        .collect::<Vec<_>>()
+        .join("\n");
     Some((start_line, end_idx, excerpt))
 }
 
 /// Auto-read the region near the failed anchor, falling back to the full file.
 fn auto_read_for_patch_anchor(workspace: &Path, relative: &str, err_msg: &str) -> Result<String> {
     let path = safe_join(workspace, relative)?;
-    let full = std::fs::read_to_string(&path).with_context(|| format!("auto-read failed: {}", path.display()))?;
+    let full = std::fs::read_to_string(&path)
+        .with_context(|| format!("auto-read failed: {}", path.display()))?;
     if let Some((start, end, excerpt)) = extract_anchor_context_excerpt(&full, err_msg) {
         return Ok(format!("Current content near likely match of failed anchor in {relative} (lines {start}-{end}):\n{excerpt}"));
     }
     // Fallback: first MAX_FULL_READ_LINES lines of the file.
-    let text = full.lines().take(MAX_FULL_READ_LINES).enumerate().map(|(i, l)| format!("{}: {}", i + 1, l)).collect::<Vec<_>>().join("\n");
+    let text = full
+        .lines()
+        .take(MAX_FULL_READ_LINES)
+        .enumerate()
+        .map(|(i, l)| format!("{}: {}", i + 1, l))
+        .collect::<Vec<_>>()
+        .join("\n");
     Ok(format!("Current content of {relative}:\n{text}"))
 }
 
@@ -545,7 +625,11 @@ fn auto_read_for_patch_anchor(workspace: &Path, relative: &str, err_msg: &str) -
 
 fn exec_list_dir(workspace: &Path, relative: &str) -> Result<String> {
     let path = safe_join(workspace, relative)?;
-    let mut entries = std::fs::read_dir(&path).with_context(|| format!("list_dir: {}", path.display()))?.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect::<Vec<_>>();
+    let mut entries = std::fs::read_dir(&path)
+        .with_context(|| format!("list_dir: {}", path.display()))?
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
     entries.sort();
     Ok(entries.join("\n"))
 }
@@ -557,7 +641,8 @@ fn exec_read_file(
     end_line: Option<usize>,
 ) -> Result<String> {
     let path = safe_join(workspace, relative)?;
-    let full = std::fs::read_to_string(&path).with_context(|| format!("read_file: {}", path.display()))?;
+    let full =
+        std::fs::read_to_string(&path).with_context(|| format!("read_file: {}", path.display()))?;
     let lines: Vec<&str> = full.lines().collect();
     let total = lines.len();
     let from = start_line.unwrap_or(1).saturating_sub(1).min(total);
@@ -568,7 +653,7 @@ fn exec_read_file(
             end_idx.saturating_sub(start_idx).saturating_add(1)
         }
         (Some(_), Some(_)) => 0,
-        (Some(_), None) => 100,
+        (Some(_), None) => 500,
         (None, _) => MAX_FULL_READ_LINES,
     };
     let text = lines[from..]
@@ -591,7 +676,10 @@ fn exec_read_file(
 
 fn handle_message_action(role: &str, step: usize, action: &Value) -> Result<(bool, String)> {
     let status = action.get("status").and_then(|v| v.as_str()).unwrap_or("");
-    let payload = action.get("payload").cloned().unwrap_or_else(|| Value::Null);
+    let payload = action
+        .get("payload")
+        .cloned()
+        .unwrap_or_else(|| Value::Null);
     let summary = payload
         .get("summary")
         .and_then(|v| v.as_str())
@@ -681,7 +769,11 @@ fn handle_read_file_action(
         .map(|n| n as usize);
     let start = line_start.or(line);
     let out = exec_read_file(workspace, path, start, line_end)?;
-    eprintln!("[{role}] step={} read_file path={path} bytes={}", step, out.len());
+    eprintln!(
+        "[{role}] step={} read_file path={path} bytes={}",
+        step,
+        out.len()
+    );
     Ok((false, format!("read_file {path}:\n{out}")))
 }
 
@@ -705,8 +797,12 @@ fn handle_apply_patch_action(
                 .and_then(|f| infer_crate_for_patch(workspace, f))
                 .map(|krate| {
                     eprintln!("[{role}] step={} cargo check -p {krate}", step);
-                    exec_run_command(workspace, &format!("cargo check -p {krate}"), crate::constants::workspace())
-                        .unwrap_or_else(|e| (false, e.to_string()))
+                    exec_run_command(
+                        workspace,
+                        &format!("cargo check -p {krate}"),
+                        crate::constants::workspace(),
+                    )
+                    .unwrap_or_else(|e| (false, e.to_string()))
                 });
             match check_result {
                 Some((ok, out)) => {
@@ -730,8 +826,8 @@ fn handle_apply_patch_action(
         Err(e) => {
             let err_str = e.to_string();
             eprintln!("[{role}] step={} apply_patch failed: {err_str}", step);
-            let read_path =
-                extract_anchor_fail_path(&err_str).or_else(|| patch_first_file(patch).map(|s| s.to_string()));
+            let read_path = extract_anchor_fail_path(&err_str)
+                .or_else(|| patch_first_file(patch).map(|s| s.to_string()));
             let guidance = patch_failure_guidance(read_path.as_deref(), &err_str);
             let mut msg = format!("apply_patch failed: {err_str}\n\n{guidance}");
             if let Some(fp) = read_path {
@@ -755,7 +851,10 @@ fn handle_run_command_action(
         .get("cmd")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("run_command missing 'cmd'"))?;
-    let cwd = action.get("cwd").and_then(|v| v.as_str()).unwrap_or(crate::constants::workspace());
+    let cwd = action
+        .get("cwd")
+        .and_then(|v| v.as_str())
+        .unwrap_or(crate::constants::workspace());
     eprintln!("[{role}] step={} run_command cmd={cmd}", step);
     let (success, out) = exec_run_command(workspace, cmd, cwd)?;
     let label = if success {
@@ -777,14 +876,20 @@ fn handle_python_action(
         .get("code")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("python missing 'code'"))?;
-    let cwd = action.get("cwd").and_then(|v| v.as_str()).unwrap_or(crate::constants::workspace());
+    let cwd = action
+        .get("cwd")
+        .and_then(|v| v.as_str())
+        .unwrap_or(crate::constants::workspace());
     eprintln!("[{role}] step={} python bytes={}", step, code.len());
     let (success, mut out) = exec_python(workspace, code, cwd)?;
     if !success {
         let lowered = out.to_lowercase();
         let mut context = String::new();
         if !PathBuf::from(cwd).starts_with(workspace) && !cwd.starts_with("/tmp") {
-            context.push_str(&format!("python cwd escapes workspace; set cwd to {} or /tmp.\n", crate::constants::workspace()));
+            context.push_str(&format!(
+                "python cwd escapes workspace; set cwd to {} or /tmp.\n",
+                crate::constants::workspace()
+            ));
         }
         if !context.is_empty() {
             out.push('\n');
@@ -792,11 +897,15 @@ fn handle_python_action(
         }
         if lowered.contains("permission denied") || lowered.contains("errno 13") {
             out.push_str(
-                &format!("\npython write denied: verify the target path is under {ws} and set cwd={ws}; if still blocked, use apply_patch for PLAN.json / lane plan edits.", ws = crate::constants::workspace()),
+                &format!("\npython write denied: verify the target path is under {ws} and set cwd={ws}; if still blocked, use apply_patch for `src/`, `PLAN.json`, or lane plan edits.", ws = crate::constants::workspace()),
             );
         }
     }
-    let label = if success { "python ok" } else { "python failed" };
+    let label = if success {
+        "python ok"
+    } else {
+        "python failed"
+    };
     eprintln!("[{role}] step={} {label} output_bytes={}", step, out.len());
     Ok((false, format!("{label}:\n{}", truncate(&out, MAX_SNIPPET))))
 }
@@ -812,10 +921,15 @@ fn handle_rustc_action(
         .get("crate")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("{action_kind} missing 'crate'"))?;
-    let mode = action
-        .get("mode")
-        .and_then(|v| v.as_str())
-        .unwrap_or(if action_kind == "rustc_hir" { "hir-tree" } else { "mir" });
+    let mode =
+        action
+            .get("mode")
+            .and_then(|v| v.as_str())
+            .unwrap_or(if action_kind == "rustc_hir" {
+                "hir-tree"
+            } else {
+                "mir"
+            });
     let extra = action.get("extra").and_then(|v| v.as_str()).unwrap_or("");
     let cmd = if extra.trim().is_empty() {
         format!("cargo rustc -p {crate_name} -- -Zunpretty={mode}")
@@ -853,14 +967,23 @@ fn handle_graph_call_cfg_action(
         .unwrap_or_else(|| default_graph_out_dir(workspace, crate_name));
     let out_dir_str = out_dir.to_string_lossy();
     let artifact_crate = ensure_graph_artifact(workspace, crate_name, role, step)?;
-    let bin_cmd = format!(
+    let bin_cmd =
+        format!(
         "cargo run -p canon-tools-analysis --bin graph_bin -- --workspace {} --crate {} --out {}",
         crate::constants::workspace(), artifact_crate, out_dir_str
     );
     eprintln!("[{role}] step={} graph_bin cmd={bin_cmd}", step);
     let (bin_ok, bin_out) = exec_graph_command(workspace, &bin_cmd)?;
-    let bin_label = if bin_ok { "graph_bin ok" } else { "graph_bin failed" };
-    eprintln!("[{role}] step={} {bin_label} output_bytes={}", step, bin_out.len());
+    let bin_label = if bin_ok {
+        "graph_bin ok"
+    } else {
+        "graph_bin failed"
+    };
+    eprintln!(
+        "[{role}] step={} {bin_label} output_bytes={}",
+        step,
+        bin_out.len()
+    );
     let label = if bin_ok {
         format!("{action_kind} ok")
     } else {
@@ -884,8 +1007,9 @@ fn handle_graph_call_cfg_action(
         let mut lines = content.lines();
         let header = lines.next().unwrap_or("");
         let header_cols: Vec<&str> = header.split(',').collect();
-        let has_symbol_cols =
-            header_cols.iter().any(|c| *c == "caller_symbol" || *c == "callee_symbol");
+        let has_symbol_cols = header_cols
+            .iter()
+            .any(|c| *c == "caller_symbol" || *c == "callee_symbol");
         let map = if !has_symbol_cols {
             let graph_json = out_dir.join("graph").join("graph.json");
             if graph_json.exists() {
@@ -930,7 +1054,11 @@ fn handle_graph_call_cfg_action(
             let src = cols[0].trim();
             let dst = cols[1].trim();
             if let Some(map) = map.as_ref() {
-                out_lines.push(format!("{} -> {}", symbol_label(map, src), symbol_label(map, dst)));
+                out_lines.push(format!(
+                    "{} -> {}",
+                    symbol_label(map, src),
+                    symbol_label(map, dst)
+                ));
             } else {
                 out_lines.push(format!("{src} -> {dst}"));
             }
@@ -968,7 +1096,10 @@ fn handle_graph_call_cfg_action(
         }
     }
     let mut full_out = String::new();
-    full_out.push_str(&format!("{bin_label}:\n{}\n", truncate(&bin_out, MAX_SNIPPET)));
+    full_out.push_str(&format!(
+        "{bin_label}:\n{}\n",
+        truncate(&bin_out, MAX_SNIPPET)
+    ));
     Ok((false, format!("{summary}\n\nfull_output:\n{full_out}")))
 }
 
@@ -1010,11 +1141,15 @@ fn handle_graph_reports_action(
     };
     let (report_path, report_label) = if action_kind == "graph_dataflow" {
         (
-            crate_dir.join("metrics").join("dataflow_fanout_report.json"),
+            crate_dir
+                .join("metrics")
+                .join("dataflow_fanout_report.json"),
             "dataflow_fanout_report.json",
         )
     } else {
-        let runtime_path = crate_dir.join("analysis").join("runtime_reachability_report.json");
+        let runtime_path = crate_dir
+            .join("analysis")
+            .join("runtime_reachability_report.json");
         if runtime_path.exists() {
             (runtime_path, "runtime_reachability_report.json")
         } else {
@@ -1040,7 +1175,10 @@ fn handle_graph_reports_action(
     } else {
         summary.push_str(&format!("\nreport_note: {} not found", report_label));
     }
-    Ok((false, format!("{summary}\n\nfull_output:\n{}", truncate(&out, MAX_SNIPPET))))
+    Ok((
+        false,
+        format!("{summary}\n\nfull_output:\n{}", truncate(&out, MAX_SNIPPET)),
+    ))
 }
 
 fn handle_cargo_test_action(
@@ -1064,7 +1202,11 @@ fn handle_cargo_test_action(
     };
     eprintln!("[{role}] step={} cargo_test cmd={}", step, cmd);
     let (success, out) = exec_run_command(workspace, &cmd, crate::constants::workspace())?;
-    let label = if success { "cargo_test ok" } else { "cargo_test failed" };
+    let label = if success {
+        "cargo_test ok"
+    } else {
+        "cargo_test failed"
+    };
     eprintln!("[{role}] step={} {label} output_bytes={}", step, out.len());
     let failures_json = parse_cargo_test_failures(&out);
     let mut summary = format!("{label}");
@@ -1093,7 +1235,10 @@ fn handle_cargo_test_action(
             }
         }
     }
-    if let Some(arr) = failures_json.get("error_locations").and_then(|v| v.as_array()) {
+    if let Some(arr) = failures_json
+        .get("error_locations")
+        .and_then(|v| v.as_array())
+    {
         if !arr.is_empty() {
             summary.push_str("\nerror_locations:");
             for loc in arr {
@@ -1108,7 +1253,10 @@ fn handle_cargo_test_action(
             summary.push_str(&format!("\nrerun_hint: {}", hint));
         }
     }
-    if let Some(arr) = failures_json.get("failure_block").and_then(|v| v.as_array()) {
+    if let Some(arr) = failures_json
+        .get("failure_block")
+        .and_then(|v| v.as_array())
+    {
         if !arr.is_empty() {
             summary.push_str("\nfailure_block:");
             for line in arr {
@@ -1129,7 +1277,10 @@ fn handle_cargo_test_action(
         summary.push_str("\nnext_action_hint:\n");
         summary.push_str(&hint);
     }
-    Ok((false, format!("{summary}\n\nfull_output:\n{}", truncate(&out, MAX_SNIPPET))))
+    Ok((
+        false,
+        format!("{summary}\n\nfull_output:\n{}", truncate(&out, MAX_SNIPPET)),
+    ))
 }
 
 fn shell_tokens(cmd: &str) -> Vec<&str> {
@@ -1140,7 +1291,9 @@ fn shell_tokens(cmd: &str) -> Vec<&str> {
 
 fn contains_token_pair(cmd: &str, first: &str, second: &str) -> bool {
     let tokens = shell_tokens(cmd);
-    tokens.windows(2).any(|window| window[0] == first && window[1] == second)
+    tokens
+        .windows(2)
+        .any(|window| window[0] == first && window[1] == second)
 }
 
 fn looks_like_cargo_test(cmd: &str) -> bool {
@@ -1183,7 +1336,6 @@ fn spawn_detached_with_log(cmd: &str, cwd_path: &Path) -> Result<(u32, PathBuf)>
         .with_context(|| ctx_spawn(cmd))?;
     Ok((child.id(), log_path))
 }
-
 
 fn exec_run_command(workspace: &Path, cmd: &str, cwd: &str) -> Result<(bool, String)> {
     let cwd_path = PathBuf::from(cwd);
@@ -1257,7 +1409,10 @@ fn exec_run_command(workspace: &Path, cmd: &str, cwd: &str) -> Result<(bool, Str
             let trace = PathBuf::from("/tmp/runtime.trace");
             match std::fs::metadata(&trace) {
                 Ok(meta) => {
-                    combined.push_str(&format!("\ntrace_path=/tmp/runtime.trace trace_size={}B", meta.len()));
+                    combined.push_str(&format!(
+                        "\ntrace_path=/tmp/runtime.trace trace_size={}B",
+                        meta.len()
+                    ));
                 }
                 Err(_) => {
                     combined.push_str("\ntrace_path=/tmp/runtime.trace trace_missing=true");
@@ -1313,7 +1468,12 @@ fn exec_graph_command(workspace: &Path, cmd: &str) -> Result<(bool, String)> {
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
         .unwrap_or(5 * 60);
-    exec_run_command_blocking_with_timeout(workspace, cmd, crate::constants::workspace(), timeout_secs)
+    exec_run_command_blocking_with_timeout(
+        workspace,
+        cmd,
+        crate::constants::workspace(),
+        timeout_secs,
+    )
 }
 
 fn exec_python(workspace: &Path, code: &str, cwd: &str) -> Result<(bool, String)> {
@@ -1333,9 +1493,13 @@ fn exec_python(workspace: &Path, code: &str, cwd: &str) -> Result<(bool, String)
         .spawn()
         .with_context(|| format!("failed to spawn python3 in {}", cwd_path.display()))?;
     if let Some(stdin) = child.stdin.as_mut() {
-        stdin.write_all(code.as_bytes()).context("failed writing python stdin")?;
+        stdin
+            .write_all(code.as_bytes())
+            .context("failed writing python stdin")?;
     }
-    let output = child.wait_with_output().context("failed waiting for python3")?;
+    let output = child
+        .wait_with_output()
+        .context("failed waiting for python3")?;
     let mut combined = String::from_utf8_lossy(&output.stdout).into_owned();
     if !output.stderr.is_empty() {
         if !combined.is_empty() {
@@ -1347,7 +1511,14 @@ fn exec_python(workspace: &Path, code: &str, cwd: &str) -> Result<(bool, String)
 }
 
 fn ensure_safe_command(cmd: &str) -> Result<()> {
-    const BLOCKED: &[&str] = &["rm -rf", "git reset --hard", "git clean -f", "dd if=", "mkfs", "shred"];
+    const BLOCKED: &[&str] = &[
+        "rm -rf",
+        "git reset --hard",
+        "git clean -f",
+        "dd if=",
+        "mkfs",
+        "shred",
+    ];
     for needle in BLOCKED {
         if cmd.contains(needle) {
             bail!("blocked command: {cmd}");
@@ -1386,7 +1557,8 @@ fn execute_action(
         .and_then(|v| v.as_str())
         .unwrap_or("unknown")
         .to_string();
-    tokio::task::block_in_place(|| match kind.as_str() {
+    tokio::task::block_in_place(|| {
+        match kind.as_str() {
         "message" => handle_message_action(role, step, action),
         "list_dir" => handle_list_dir_action(workspace, action),
         "read_file" => handle_read_file_action(role, step, workspace, action),
@@ -1405,6 +1577,7 @@ fn execute_action(
                 "unsupported action '{other}' — use list_dir, read_file, apply_patch, run_command, python, cargo_test, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, or message"
             ),
         )),
+    }
     })
 }
 
@@ -1445,7 +1618,16 @@ pub(crate) fn execute_logged_action(
     log_action_event(role, endpoint, prompt_kind, step, command_id, action);
     match execute_action(role, step, action, workspace, check_on_done) {
         Ok((done, out)) => {
-            log_action_result(role, endpoint, prompt_kind, step, command_id, action, true, &out);
+            log_action_result(
+                role,
+                endpoint,
+                prompt_kind,
+                step,
+                command_id,
+                action,
+                true,
+                &out,
+            );
             Ok((done, out))
         }
         Err(e) => {

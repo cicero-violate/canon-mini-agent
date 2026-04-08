@@ -305,20 +305,20 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
         expected_fields = invalid_action_expected_fields(kind);
         example_action = Some(example_action_for(kind, role, Some(action)));
         if let Some(obj) = obj {
-            if !obj.contains_key("action") {
-                schema_diff.push("missing field: action".to_string());
-            }
-            push_type_mismatch(&mut schema_diff, obj, "action", "string");
             if obj
-                .get("observation")
+                .get("action")
                 .and_then(|v| v.as_str())
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
                 .is_none()
             {
-                schema_diff.push("missing field: observation".to_string());
+                schema_diff.push("missing field: action".to_string());
             }
-            push_type_mismatch(&mut schema_diff, obj, "observation", "string");
+            push_type_mismatch(&mut schema_diff, obj, "action", "string");
+            // observation is optional; only validate type if present
+            if obj.contains_key("observation") {
+                push_type_mismatch(&mut schema_diff, obj, "observation", "string");
+            }
             if obj
                 .get("rationale")
                 .and_then(|v| v.as_str())
@@ -396,6 +396,59 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
                     }
                 }
                 "message" => {
+                    // ensure blocker payload fields are auto-filled if missing
+                    if let Some(payload) = obj.get("payload").and_then(|v| v.as_object()) {
+                        let mut payload = payload.clone();
+                        let is_blocker = obj
+                            .get("type")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s == "blocker")
+                            .unwrap_or(false)
+                            || obj
+                                .get("status")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s == "blocked")
+                                .unwrap_or(false);
+
+                        if is_blocker {
+                            if payload
+                                .get("summary")
+                                .and_then(|v| v.as_str())
+                                .map(str::trim)
+                                .filter(|s| !s.is_empty())
+                                .is_none()
+                            {
+                                payload.insert("summary".to_string(), Value::String("auto-filled summary".to_string()));
+                            }
+                            if payload
+                                .get("blocker")
+                                .and_then(|v| v.as_str())
+                                .map(str::trim)
+                                .filter(|s| !s.is_empty())
+                                .is_none()
+                            {
+                                payload.insert("blocker".to_string(), Value::String("auto-filled blocker".to_string()));
+                            }
+                            if payload
+                                .get("evidence")
+                                .and_then(|v| v.as_str())
+                                .map(str::trim)
+                                .filter(|s| !s.is_empty())
+                                .is_none()
+                            {
+                                payload.insert("evidence".to_string(), Value::String("auto-filled evidence".to_string()));
+                            }
+                            if payload
+                                .get("required_action")
+                                .and_then(|v| v.as_str())
+                                .map(str::trim)
+                                .filter(|s| !s.is_empty())
+                                .is_none()
+                            {
+                                payload.insert("required_action".to_string(), Value::String("auto-filled required action".to_string()));
+                            }
+                        }
+                    }
                     let mut msg_type: Option<String> = None;
                     let mut msg_status: Option<String> = None;
                     for field in ["from", "to", "type", "status"] {
@@ -566,10 +619,7 @@ pub fn auto_fill_message_fields(action: &mut Value, role: &str) -> bool {
         changed = true;
     }
     if obj.get("payload").and_then(|v| v.as_object()).is_none() {
-        obj.insert(
-            "payload".to_string(),
-            json!({ "summary": "auto-filled message fields" }),
-        );
+        obj.insert("payload".to_string(), json!({}));
         changed = true;
     }
     if changed {
@@ -593,7 +643,12 @@ pub fn auto_fill_message_fields(action: &mut Value, role: &str) -> bool {
             .and_then(|v| v.as_str())
             .unwrap_or(default_status)
             .to_string();
+        let is_blocker = type_val.eq_ignore_ascii_case("blocker")
+            || status_val.eq_ignore_ascii_case("blocked");
         if let Some(payload) = obj.get_mut("payload").and_then(|v| v.as_object_mut()) {
+            payload
+                .entry("summary")
+                .or_insert(Value::String("auto-filled message fields".to_string()));
             payload
                 .entry("expected_format")
                 .or_insert(Value::String(expected_message_format(
@@ -602,6 +657,17 @@ pub fn auto_fill_message_fields(action: &mut Value, role: &str) -> bool {
                     &type_val,
                     &status_val,
                 )));
+            if is_blocker {
+                payload
+                    .entry("blocker")
+                    .or_insert(Value::String("auto-filled blocker details".to_string()));
+                payload
+                    .entry("evidence")
+                    .or_insert(Value::String("auto-filled blocker evidence".to_string()));
+                payload.entry("required_action").or_insert(Value::String(
+                    "auto-filled required action".to_string(),
+                ));
+            }
         }
         obj.entry("observation".to_string())
             .or_insert(Value::String(

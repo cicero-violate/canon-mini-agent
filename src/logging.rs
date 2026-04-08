@@ -17,6 +17,11 @@ static LOG_PATHS: OnceLock<LogPaths> = OnceLock::new();
 pub fn init_log_paths(prefix: &str) {
     let base = std::path::Path::new(crate::constants::agent_state_dir()).join(prefix);
     let _ = std::fs::create_dir_all(&base);
+    // Ensure canonical event log directory exists (state/event_log/event.tlog.d)
+    let event_log_dir = std::path::Path::new(crate::constants::agent_state_dir())
+        .join("event_log")
+        .join("event.tlog.d");
+    let _ = std::fs::create_dir_all(&event_log_dir);
     let _ = LOG_PATHS.set(LogPaths {
         action_log: base.join("actions.jsonl"),
         secondary_log: base.join("log.jsonl"),
@@ -274,6 +279,14 @@ fn inject_action_fields(record: &mut Value, action: &Value) {
     insert_if_missing("action", action.get("action").cloned());
     insert_if_missing("path", action.get("path").cloned());
     insert_if_missing("line", action.get("line").cloned());
+    // Ensure message actions preserve routing + payload metadata
+    if action.get("action").and_then(|v| v.as_str()) == Some("message") {
+        insert_if_missing("from", action.get("from").cloned());
+        insert_if_missing("to", action.get("to").cloned());
+        insert_if_missing("type", action.get("type").cloned());
+        insert_if_missing("status", action.get("status").cloned());
+        insert_if_missing("payload", action.get("payload").cloned());
+    }
 }
 
 fn append_secondary_action_log(role: &str, action: &Value) -> Result<()> {

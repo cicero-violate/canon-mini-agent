@@ -25,14 +25,14 @@ The system is a deterministic event-driven loop with explicit roles.
 - `lane_plan_path: string?` (Executors only)
 
 ### 1.3 Canonical Files
-Canonical file paths are absolute under `Workspace`:
+Canonical file paths are absolute under `Workspace` (see `src/constants.rs:3-11`, `42-48`):
 - `Spec`: `SPEC.md`
 - `Objectives`: `PLANS/OBJECTIVES.md` (authoritative MD) / `PLANS/OBJECTIVES.json` (derived JSON)
 - `Invariants`: `INVARIANT.md` (authoritative MD) / `INVARIANTS.json` (derived JSON)
 - `MasterPlan`: `PLAN.json`
-- `LanePlan`: `PLANS/<instance>/executor-<id>.md` or legacy `PLANS/executor-<id>.md`
+- `LanePlan`: `PLANS/<instance>/executor-<id>.json` (preferred) or legacy `PLANS/executor-<id>.md` (see `src/tools.rs:49-63`)
 - `Violations`: `VIOLATIONS.json`
-- `Diagnostics`: `PLANS/<instance>/diagnostics-<instance>.json` (or legacy `DIAGNOSTICS.json`)
+- `Diagnostics`: runtime-configured via `diagnostics_file()` (default `DIAGNOSTICS.json`, see `src/constants.rs:140-146`) or instance-scoped path
 
 ### 1.4 Workspace Resolution Rule
 Every `path` field in every action is resolved as follows:
@@ -73,8 +73,11 @@ All actions are JSON objects with a mandatory `"action"` string field. Any missi
 
 ### 3.1 Common Action Envelope
 ```json
-{ "action": "<type>", "observation": "<why>", "rationale": "<why now>" }
+{ "action": "<type>", "rationale": "<why now>", "observation"?: "<why>" }
 ```
+Notes:
+- `rationale` is required.
+- `observation` may be optional and can be auto-filled depending on context (see src/prompts.rs).
 
 ### 3.2 `list_dir`
 ```json
@@ -181,7 +184,12 @@ Outputs: JSON reports under metrics/analysis directories.
 - **Executor** may additionally patch `SPEC.md` and `src/` files. All other restrictions still apply.
 - All other role restrictions are unchanged.
 
-Enforcement: `src/tools.rs::patch_scope_error()`. Changes to that function require verifier sign-off (I13).
+Enforcement: `src/tools.rs::patch_scope_error()` (see `src/tools.rs:355-451`). Changes to that function require verifier sign-off (I13).
+
+Additional clarification (from implementation):
+- Executor is blocked from patching any non-`src/` files in normal mode via `touches_other` guard (`src/tools.rs:381-390`).
+- Diagnostics file path is dynamically resolved (`diagnostics_file()`), and both configured and legacy `DIAGNOSTICS.json` are accepted (`src/tools.rs:361-369`).
+- Lane plan detection includes both instance-scoped and legacy formats (`src/tools.rs:49-63`).
 
 ### 4.2 Action Validity Invariants
 - Each action must satisfy its typed schema (Section 3).

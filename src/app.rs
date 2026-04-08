@@ -678,8 +678,9 @@ fn run_executor_phase(
                             dispatch_state.lane_submit_in_flight.insert(lane_id, false);
                             cycle_progress = true;
                         } else {
-                            eprintln!("[orchestrate] {} missing submit_ack: {exec_result}", job.executor_name);
+                            eprintln!("[orchestrate] {} missing submit_ack (preserving lane ownership): {exec_result}", job.executor_name);
                             let lane = dispatch_lane_mut(dispatch_state, job.lane_index);
+                            // Recovery: clear stuck ownership and requeue lane
                             lane.in_progress_by = None;
                             lane.pending = true;
                             dispatch_state.executor_submit_inflight.remove(&job.lane_index);
@@ -687,8 +688,9 @@ fn run_executor_phase(
                         }
                     }
                     Err(err) => {
-                        eprintln!("[orchestrate] {} submit error: {err:#}", job.executor_name);
+                        eprintln!("[orchestrate] {} submit error (preserving lane ownership): {err:#}", job.executor_name);
                         let lane = dispatch_lane_mut(dispatch_state, job.lane_index);
+                        // Recovery: clear stuck ownership and requeue lane
                         lane.in_progress_by = None;
                         lane.pending = true;
                         dispatch_state.executor_submit_inflight.remove(&job.lane_index);
@@ -2549,7 +2551,12 @@ pub async fn run() -> Result<()> {
         set_workspace(path.clone());
         eprintln!("[canon-mini-agent] workspace={path} (--workspace)");
     } else {
-        eprintln!("[canon-mini-agent] workspace={} (default)", DEFAULT_WORKSPACE);
+        let default_workspace = env!("CARGO_MANIFEST_DIR").to_string();
+        set_workspace(default_workspace.clone());
+        eprintln!(
+            "[canon-mini-agent] workspace={} (default self)",
+            default_workspace
+        );
     }
 
     // Resolve agent state directory (canon-mini-agent's own runtime state).
@@ -2717,20 +2724,29 @@ pub async fn run() -> Result<()> {
             scheduled_phase = resume_decision.scheduled_phase;
             dispatch_state.planner_pending = resume_decision.planner_pending;
             dispatch_state.diagnostics_pending = resume_decision.diagnostics_pending;
-            // Drop in-flight submit state on resume: tabs/acks are stale when URLs rotate.
-            dispatch_state.submitted_turns.clear();
-            dispatch_state.executor_submit_inflight.clear();
-            dispatch_state.tab_id_to_lane.clear();
-            dispatch_state.lane_active_tab.clear();
+            // On resume, DO NOT clear executor_submit_inflight.
+            // Clearing inflight state while preserving active tabs and submitted_turns
+            // causes valid submit_ack events to lose their pending context, triggering
+            // "submit ack without pending submit" and orphaning executor state.
+            // We preserve executor_submit_inflight so late acks remain reconcilable.
+            // Keep submitted_turns, tab_id_to_lane, and lane_active_tab intact
+            // so late completions and active tabs can still be reconciled.
             dispatch_state.deferred_completions.clear();
             for lane in &lanes {
                 dispatch_state.lane_prompt_in_flight.insert(lane.index, false);
                 dispatch_state.lane_submit_in_flight.insert(lane.index, false);
             }
-            for lane in dispatch_state.lanes.values_mut() {
+            for (lane_id, lane) in dispatch_state.lanes.iter_mut() {
                 if lane.in_progress_by.is_some() {
-                    lane.in_progress_by = None;
-                    lane.pending = true;
+                    let has_active_tab = dispatch_state
+                        .lane_active_tab
+                        .get(lane_id)
+                        .is_some();
+                    // Only reset lanes that truly lost ownership (no active tab)
+                    if !has_active_tab {
+                        lane.in_progress_by = None;
+                        lane.pending = true;
+                    }
                 }
             }
         }

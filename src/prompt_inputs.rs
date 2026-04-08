@@ -78,30 +78,6 @@ pub fn lane_summary_text(lanes: &[LaneConfig], verifier_summary: &[String]) -> S
         .join("\n")
 }
 
-
-pub fn read_lane_plan_with_legacy(workspace: &Path, lane: &LaneConfig) -> String {
-    let mut plan_text = read_text_or_empty(workspace.join(&lane.plan_file));
-    if plan_text.trim().is_empty() {
-        let legacy_paths = match lane.index {
-            0 => vec!["PLANS/executor-a.json", "PLANS/executor-a.md"],
-            1 => vec!["PLANS/executor-b.json", "PLANS/executor-b.md"],
-            _ => Vec::new(),
-        };
-        for legacy in legacy_paths {
-            let legacy_text = read_text_or_empty(workspace.join(legacy));
-            if !legacy_text.trim().is_empty() {
-                eprintln!(
-                    "[orchestrate] legacy lane plan fallback: {} -> {}",
-                    legacy, lane.plan_file
-                );
-                plan_text = legacy_text;
-                break;
-            }
-        }
-    }
-    plan_text
-}
-
 pub fn load_executor_diff_inputs(
     workspace: &Path,
     last_executor_diff: &mut String,
