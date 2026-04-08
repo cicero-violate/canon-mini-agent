@@ -1,4 +1,4 @@
-# Canonical Law
+[<51;90;17M# Canonical Law
 
 canon-mini-agent is an event-driven LLM orchestrator. All correctness decisions are governed by the invariants in `INVARIANTS.json`.
 
