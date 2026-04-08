@@ -9,6 +9,8 @@ pub fn default_message_route(
         ("verifier", "planner", "verification", "verified")
     } else if role == "diagnostics" {
         ("diagnostics", "planner", "diagnostics", "complete")
+    } else if role == "solo" {
+        ("solo", "solo", "result", "complete")
     } else if role == "planner" || role == "mini_planner" {
         ("planner", "executor", "plan", "complete")
     } else {

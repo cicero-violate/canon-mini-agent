@@ -388,6 +388,7 @@ pub(crate) fn patch_scope_error(role: &str, patch: &str) -> Option<String> {
     });
 
     match role {
+        "solo" => None,
         role if role.starts_with("executor") => {
             // In self-modification mode the executor is allowed to patch SPEC.md and src/ files.
             let spec_blocked = touches_spec && !is_self_modification_mode();
@@ -425,21 +426,31 @@ pub(crate) fn patch_scope_error(role: &str, patch: &str) -> Option<String> {
             }
         }
         "planner" | "mini_planner" => {
-            let touches_disallowed_src = targets.iter().any(|path| is_src_path(path) && *path != "src/prompts.rs");
+            let self_mod = is_self_modification_mode();
+            let touches_disallowed_source = targets
+                .iter()
+                .any(|path| is_src_path(path) || is_tests_path(path))
+                && !self_mod;
+            let touches_allowed_self_mod_source = targets
+                .iter()
+                .any(|path| is_src_path(path) || is_tests_path(path));
             if touches_spec
                 || touches_violations
                 || touches_diagnostics
-                || touches_disallowed_src
+                || touches_disallowed_source
             {
                 Some(
-                    "Planner may only patch `PLAN.json` and lane plans under `PLANS/<instance>/executor-<id>.json` (or legacy `PLANS/executor-<id>.md`) because planner derives plans from the spec and diagnostics."
+                    "Planner may patch lane plans under `PLANS/<instance>/executor-<id>.json` (or legacy `PLANS/executor-<id>.md`); in self-modification mode planner may also patch `src/` and `tests/` files. Planner may not patch `SPEC.md`, `VIOLATIONS.json`, or diagnostics files."
                         .to_string(),
                 )
-            } else if touches_master_plan || touches_lane {
+            } else if touches_master_plan
+                || touches_lane
+                || (self_mod && touches_allowed_self_mod_source && !touches_other)
+            {
                 None
             } else {
                 Some(
-                    "Planner must patch `PLAN.json` or lane plans; no other patches are allowed."
+                    "Planner must patch `PLAN.json`, a lane plan, or in self-modification mode a `src/` or `tests/` file; no other patches are allowed."
                         .to_string(),
                 )
             }

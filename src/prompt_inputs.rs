@@ -22,9 +22,11 @@ pub struct OrchestratorContext<'a> {
     pub workspace: &'a PathBuf,
     pub bridge: &'a WsBridge,
     pub tabs_planner: &'a TabManagerHandle,
+    pub tabs_solo: &'a TabManagerHandle,
     pub tabs_diagnostics: &'a TabManagerHandle,
     pub tabs_verify: &'a TabManagerHandle,
     pub planner_ep: &'a LlmEndpoint,
+    pub solo_ep: &'a LlmEndpoint,
     pub diagnostics_ep: &'a LlmEndpoint,
     pub verifier_ep: &'a LlmEndpoint,
     pub master_plan_path: &'a Path,
@@ -258,6 +260,9 @@ pub fn build_single_role_prompt(
                 &diagnostics,
                 &invariants,
             )
+        }
+        AgentPromptKind::Solo => {
+            bail!("solo role is only supported in orchestration mode")
         }
     };
     Ok(prompt)

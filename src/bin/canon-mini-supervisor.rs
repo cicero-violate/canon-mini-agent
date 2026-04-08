@@ -227,8 +227,13 @@ fn main() -> Result<()> {
             }
             if let Some(status) = child.try_wait().context("wait child")? {
                 eprintln!("[canon-mini-supervisor] child exited: {status}");
-                eprintln!("[canon-mini-supervisor] restarting...");
-                break;
+                if status.success() {
+                    eprintln!("[canon-mini-supervisor] child exited cleanly; not restarting");
+                    return Ok(());
+                } else {
+                    eprintln!("[canon-mini-supervisor] restarting due to failure...");
+                    break;
+                }
             }
             if !no_watch {
                 if let Some(updated) = has_updated(&root, &current)? {

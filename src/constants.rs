@@ -21,6 +21,7 @@ pub const ROLE_TIMEOUT_SECS: &[(&str, u64)] = &[
     ("verifier", 120),
     ("diagnostics", 120),
     ("executor", 30),
+    ("solo", 600),
 ];
 
 static WORKSPACE_PATH: OnceLock<String> = OnceLock::new();
@@ -95,6 +96,14 @@ pub const ENDPOINT_SPECS: &[EndpointSpec] = &[
             // "https://chatgpt.com/gg/69ca778f7ea0819c8437275ff608eb35",
             // "https://chatgpt.com/gg/69c265cd2274819690fc291ef716524e",
         ],
+        stateful: true,
+        max_tabs: 1,
+    },
+    EndpointSpec {
+        id: "solo_chatgpt",
+        role: "solo",
+        role_markdown: "builtin:planner",
+        urls: &["https://chatgpt.com/"],
         stateful: true,
         max_tabs: 1,
     },

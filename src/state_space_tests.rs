@@ -47,6 +47,14 @@ fn resume_diagnostics_sets_pending() {
 }
 
 #[test]
+fn resume_solo_preserves_phase() {
+    let decision = decide_resume_phase("solo", false, false, false);
+    assert_eq!(decision.scheduled_phase, Some("solo".to_string()));
+    assert!(!decision.planner_pending);
+    assert!(!decision.diagnostics_pending);
+}
+
+#[test]
 fn bootstrap_phase_from_start_role() {
     assert_eq!(decide_bootstrap_phase("planner"), Some("planner".to_string()));
     assert_eq!(
@@ -54,6 +62,7 @@ fn bootstrap_phase_from_start_role() {
         Some("diagnostics".to_string())
     );
     assert_eq!(decide_bootstrap_phase("executor"), Some("executor".to_string()));
+    assert_eq!(decide_bootstrap_phase("solo"), Some("solo".to_string()));
     assert_eq!(decide_bootstrap_phase("unknown"), None);
 }
 
@@ -85,6 +94,7 @@ fn scheduled_phase_resume_done_all_cases() {
     assert!(scheduled_phase_resume_done("verifier", false, false, 0, true, false, false));
     assert!(scheduled_phase_resume_done("diagnostics", false, false, 0, true, false, false));
     assert!(scheduled_phase_resume_done("executor", false, false, 0, true, false, false));
+    assert!(scheduled_phase_resume_done("solo", false, false, 0, true, false, false));
 
     assert!(!scheduled_phase_resume_done("planner", true, false, 0, true, false, false));
     assert!(!scheduled_phase_resume_done("verifier", false, false, 1, false, false, false));

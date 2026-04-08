@@ -10,7 +10,7 @@ The system is a deterministic event-driven loop with explicit roles.
 - `Workspace`: absolute root path of the target project being operated on. Set via `--workspace <path>` CLI argument; defaults to `/workspace/ai_sandbox/canon`. Must be absolute. All relative paths in actions resolve against this value.
 - `AgentStateDir`: operational state for canon-mini-agent itself. Defaults to `/workspace/ai_sandbox/canon-mini-agent/agent_state`; overridable via `--state-dir`. When `Workspace` equals the canon-mini-agent source root, the system is in **self-modification mode** (see §9).
 - `SelfModificationMode`: true when `Workspace` is the parent directory of `AgentStateDir`. Detected at runtime via `is_self_modification_mode()` in `src/constants.rs`. Relaxes executor scope guards (see §4.1 and §9).
-- `Role`: one of `{Planner, Executor, Verifier, Diagnostics}`.
+- `Role`: one of `{Planner, Executor, Verifier, Diagnostics, Solo}`.
 - `Lane`: executor lane id (e.g., `executor_pool`), bound to a role of type Executor.
 - `PromptKind`: `{planner, executor, verifier, diagnostics}`.
 - `Action`: a typed JSON object (see Section 2).
@@ -58,7 +58,8 @@ canon-mini-agent [FLAGS] [OPTIONS]
 | Option               | Default                       | Description                                                                                                                                |
 |----------------------+-------------------------------+--------------------------------------------------------------------------------------------------------------------------------------------|
 | `--workspace <path>` | `/workspace/ai_sandbox/canon` | **Absolute path** to the target project workspace. All agent file operations resolve relative to this path. Must exist and be a directory. |
-| `--start <role>`     | `executor`                    | Start role for orchestration: `executor`, `verifier`, `planner`, or `diagnostics`.                                                         |
+| `--start <role>`     | `executor`                    | Start role for orchestration: `executor`, `verifier`, `planner`, `diagnostics`, or `solo`.                                                 |
+| `--role <role>`      | none                          | Single-role selector: `executor`, `verifier`, `planner`, or `diagnostics`. Mutually exclusive with other role flags and `--orchestrate`.    |
 | `--instance <id>`    | `default`                     | Instance identifier used to namespace PLANS subdirectories and diagnostics files.                                                          |
 | `--port <port>`      | auto                          | WebSocket port for Chrome extension. Auto-selects from candidates if not specified.                                                        |
 
@@ -167,8 +168,10 @@ Outputs: JSON reports under metrics/analysis directories.
 | Verifier    | Planner  | failure      | failed             | `summary`, `next_actions`                   |
 | Diagnostics | Planner  | diagnostics  | complete           | `summary`, `ranked_failures`                |
 | Planner     | Executor | tasking      | ready / blocked    | `summary`, `tasks` / `blockers`             |
+| Solo        | Solo     | result       | complete           | `summary`                                   |
 
-**Routing guarantee (added 2026-04-07):** When an executor emits a `message` action, the system writes `last_message_to_<to>.json` and `wakeup_<to>.flag` to `AgentStateDir` and sets `planner_pending = true` (for planner-targeted messages). This ensures the target role wakes on the next orchestration cycle regardless of whether the action was emitted in the inline or deferred completion path.
+**Routing guarantee (added 2026-04-07):** When a role emits a `message` action, the system writes `last_message_to_<to>.json` and `wakeup_<to>.flag` to `AgentStateDir` and sets `planner_pending = true` (for planner-targeted messages). This ensures the target role wakes on the next orchestration cycle regardless of whether the action was emitted in the inline or deferred completion path.
+**Solo note:** Solo is an orchestrated role. It may send messages to any other role; wakeup flags are honored for `solo` like the other roles.
 
 ## 4. Invariants (Must Always Hold)
 
@@ -179,6 +182,7 @@ Outputs: JSON reports under metrics/analysis directories.
 - **Verifier** may patch **only** `PLAN.json` and `VIOLATIONS.json`.
 - **Diagnostics** may patch **only** the active diagnostics report file.
 - **Planner** may patch **only** `PLAN.json` and lane plans.
+- **Solo** may patch any in-workspace file (full capabilities).
 
 **Self-modification mode** (workspace == orchestrator source, see §9):
 - **Executor** may additionally patch `SPEC.md` and `src/` files. All other restrictions still apply.
@@ -246,6 +250,7 @@ Transitions are strictly ordered; skipping any state is invalid.
 ```
 Bootstrap
   -> Planner
+  -> Solo (when scheduled)
   -> Executor(s) [parallel lanes]
   -> Verifier
   -> Diagnostics (conditional)
@@ -255,8 +260,8 @@ The orchestrator uses wakeup flags and `planner_pending` / `diagnostics_pending`
 
 ### 5.3 Handoff Transition
 ```
-Executor emits message{to=Planner}
-  -> persist_planner_message() writes last_message_to_planner.json + wakeup_planner.flag
+Role emits message{to=Planner}
+  -> persist_inbound_message() writes last_message_to_planner.json + wakeup_planner.flag
   -> dispatch_state.planner_pending = true
   -> next orchestration loop iteration: apply_wake_flags() schedules planner
   -> planner prompt injects inbound message via inject_inbound_message()
@@ -376,6 +381,7 @@ In self-modification mode only:
 **I13 — No permission escalation:** Executor must not patch `src/tools.rs::patch_scope_error` or any other scope-guard logic in a way that expands role permissions beyond SPEC.md §4. Any such patch requires verifier sign-off with explicit SPEC.md §4 justification.
 
 **I14 — Checkpoint compatibility:** Changes to `OrchestratorCheckpoint` fields must use `#[serde(default)]` for additions. Removing or renaming fields requires a version bump or checkpoint discard on load. The `workspace` field must always be populated on save and validated on load.
+Checkpoint `phase` values include `planner`, `executor`, `verifier`, `diagnostics`, and `solo`.
 
 ### 9.4 Safety Properties (Why It's Safe)
 - **No mid-run corruption:** The running orchestrator binary is already loaded into memory. Patching `src/` files does not affect the current process — changes take effect only on the next `cargo build` + process restart.

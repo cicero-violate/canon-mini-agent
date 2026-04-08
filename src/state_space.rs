@@ -52,6 +52,7 @@ pub fn decide_bootstrap_phase(start_role: &str) -> Option<String> {
         "planner" => Some("planner".to_string()),
         "diagnostics" => Some("diagnostics".to_string()),
         "executor" => Some("executor".to_string()),
+        "solo" => Some("solo".to_string()),
         _ => None,
     }
 }
@@ -102,6 +103,7 @@ pub fn scheduled_phase_resume_done(
         "verifier" => verifier_pending_results == 0 && verifier_joinset_empty,
         "diagnostics" => !diagnostics_pending,
         "executor" => !executor_lane_pending && !executor_in_progress,
+        "solo" => true,
         _ => true,
     }
 }
@@ -184,7 +186,10 @@ pub fn allow_planner_run(scheduled_phase: Option<&str>) -> bool {
 /// Returns true when executor dispatch should be frozen because a resume phase
 /// that requires serialized execution (planner, verifier, diagnostics) is active.
 pub fn block_executor_dispatch(scheduled_phase: Option<&str>) -> bool {
-    matches!(scheduled_phase, Some("planner") | Some("verifier") | Some("diagnostics"))
+    matches!(
+        scheduled_phase,
+        Some("planner") | Some("verifier") | Some("diagnostics") | Some("solo")
+    )
 }
 
 /// Returns true when diagnostics is allowed to run.
@@ -203,6 +208,7 @@ pub struct PhaseGates {
     pub executor: bool,
     pub verifier: bool,
     pub diagnostics: bool,
+    pub solo: bool,
 }
 
 /// Compute all phase gates at once from the current orchestrator state.
@@ -219,6 +225,7 @@ pub fn decide_phase_gates(
         executor: !block_executor_dispatch(scheduled_phase),
         verifier: verifier_queued && allow_verifier_run(scheduled_phase),
         diagnostics: diagnostics_pending && allow_diagnostics_run(scheduled_phase, verifier_in_flight),
+        solo: matches!(scheduled_phase, Some("solo")),
     }
 }
 

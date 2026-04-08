@@ -24,7 +24,7 @@ use crate::logging::{
 use crate::prompts::{
     action_observation, action_rationale, action_result_prompt, diagnostics_cycle_prompt,
     diagnostics_python_reads_event_logs, executor_cycle_prompt, is_explicit_idle_action,
-    normalize_action, parse_actions, planner_cycle_prompt, system_instructions,
+    normalize_action, parse_actions, planner_cycle_prompt, single_role_solo_prompt, system_instructions,
     truncate, validate_action, verifier_cycle_prompt, AgentPromptKind,
 };
 use crate::invalid_action::{
@@ -40,15 +40,16 @@ use crate::state_space::{
     CompletionTabCheck, WakeFlagInput,
 };
 use crate::constants::{
-    DEFAULT_AGENT_STATE_DIR, DEFAULT_RESPONSE_TIMEOUT_SECS, DEFAULT_WORKSPACE,
-    DIAGNOSTICS_FILE_PATH, ENDPOINT_SPECS, EXECUTOR_STEP_LIMIT, MASTER_PLAN_FILE, MAX_SNIPPET,
-    MAX_STEPS, ROLE_TIMEOUT_SECS, SPEC_FILE, VIOLATIONS_FILE, WS_PORT_CANDIDATES,
+    DEFAULT_AGENT_STATE_DIR, DEFAULT_RESPONSE_TIMEOUT_SECS,
+    DIAGNOSTICS_FILE_PATH, ENDPOINT_SPECS, EXECUTOR_STEP_LIMIT, INVARIANTS_FILE, MASTER_PLAN_FILE,
+    MAX_SNIPPET, MAX_STEPS, OBJECTIVES_FILE, ROLE_TIMEOUT_SECS, SPEC_FILE, VIOLATIONS_FILE,
+    WS_PORT_CANDIDATES,
     set_agent_state_dir, set_workspace, workspace,
 };
 use crate::md_convert::ensure_objectives_and_invariants_json;
 use crate::prompt_inputs::{
     build_single_role_prompt, lane_summary_text, load_planner_inputs, load_single_role_inputs,
-    load_verifier_prompt_inputs, read_text_or_empty, LaneConfig,
+    load_verifier_prompt_inputs, read_required_text, read_text_or_empty, LaneConfig,
     OrchestratorContext, PlannerInputs, SingleRoleContext, SingleRoleInputs, VerifierPromptInputs,
 };
 
@@ -96,6 +97,8 @@ fn choose_ws_port(args: &[String]) -> Result<(u16, bool)> {
 fn role_key(role: &str) -> &str {
     if role.starts_with("executor") {
         "executor"
+    } else if role == "solo" {
+        "solo"
     } else {
         role
     }
@@ -351,6 +354,63 @@ async fn run_planner_phase(
         }
         Err(err) => {
             eprintln!("[orchestrate] planner error: {err:#}");
+            false
+        }
+    }
+}
+
+async fn run_solo_phase(
+    ctx: &OrchestratorContext<'_>,
+    solo_bootstrapped: &mut bool,
+    cargo_test_failures: &str,
+) -> bool {
+    let spec = match read_required_text(ctx.workspace.join(SPEC_FILE), SPEC_FILE) {
+        Ok(spec) => spec,
+        Err(err) => {
+            eprintln!("[orchestrate] solo error: {err:#}");
+            return false;
+        }
+    };
+    let master_plan = read_text_or_empty(ctx.master_plan_path);
+    let objectives = read_text_or_empty(ctx.workspace.join(OBJECTIVES_FILE));
+    let invariants = read_text_or_empty(ctx.workspace.join(INVARIANTS_FILE));
+    let violations = read_text_or_empty(ctx.violations_path);
+    let diagnostics = read_text_or_empty(ctx.diagnostics_path);
+    let mut prompt = single_role_solo_prompt(
+        &spec,
+        &master_plan,
+        &objectives,
+        &invariants,
+        &violations,
+        &diagnostics,
+        cargo_test_failures,
+    );
+    inject_inbound_message(&mut prompt, "solo");
+    trace_orchestrator_forwarded("orchestrator", "solo", "solo", None, None, None, None);
+    let solo_system = system_instructions(AgentPromptKind::Solo);
+    let result = run_agent(
+        "solo",
+        "solo",
+        &solo_system,
+        prompt,
+        ctx.solo_ep,
+        ctx.bridge,
+        ctx.workspace,
+        ctx.tabs_solo,
+        false,
+        true,
+        !*solo_bootstrapped,
+        0,
+    )
+    .await;
+    *solo_bootstrapped = true;
+    match result {
+        Ok(result) => {
+            eprintln!("[orchestrate] solo ok bytes={}", result.len());
+            true
+        }
+        Err(err) => {
+            eprintln!("[orchestrate] solo error: {err:#}");
             false
         }
     }
@@ -907,6 +967,8 @@ fn drain_deferred_completions(
 fn canonical_role_label(role: &str) -> &'static str {
     if role.starts_with("executor") {
         "executor"
+    } else if role == "solo" {
+        "solo"
     } else if role == "verifier" {
         "verifier"
     } else if role == "diagnostics" {
@@ -1396,6 +1458,7 @@ fn apply_wake_flags(
 
     let flag_paths = [
         ("planner",     agent_state_dir.join("wakeup_planner.flag")),
+        ("solo",        agent_state_dir.join("wakeup_solo.flag")),
         ("verifier",    agent_state_dir.join("wakeup_verifier.flag")),
         ("diagnostics", agent_state_dir.join("wakeup_diagnostics.flag")),
         ("executor",    agent_state_dir.join("wakeup_executor.flag")),
@@ -2573,13 +2636,40 @@ pub async fn run() -> Result<()> {
     }
 
     let orchestrate = args.iter().any(|a| a == "--orchestrate");
-    let start_role = args.windows(2).find(|w| w[0] == "--start").map(|w| w[1].as_str()).unwrap_or("executor");
-    if !matches!(start_role, "executor" | "verifier" | "planner" | "diagnostics") {
-        bail!("invalid --start value: {start_role} (expected executor|verifier|planner|diagnostics)");
+    let start_role = args
+        .windows(2)
+        .find(|w| w[0] == "--start")
+        .map(|w| w[1].as_str())
+        .unwrap_or("executor");
+    if !matches!(start_role, "executor" | "verifier" | "planner" | "diagnostics" | "solo") {
+        bail!("invalid --start value: {start_role} (expected executor|verifier|planner|diagnostics|solo)");
     }
-    let is_verifier = !orchestrate && args.iter().any(|a| a == "--verifier");
-    let is_planner = !orchestrate && args.iter().any(|a| a == "--planner");
-    let is_diagnostics = !orchestrate && args.iter().any(|a| a == "--diagnostics");
+    let role_arg = args
+        .windows(2)
+        .find(|w| w[0] == "--role")
+        .map(|w| w[1].as_str());
+    let role_flags = ["--verifier", "--planner", "--diagnostics"];
+    let has_role_flag = args.iter().any(|a| role_flags.contains(&a.as_str()));
+    if role_arg.is_some() && has_role_flag {
+        bail!("--role cannot be combined with --planner, --verifier, or --diagnostics");
+    }
+    if role_arg.is_some() && orchestrate {
+        bail!("--role cannot be combined with --orchestrate");
+    }
+
+    let mut is_verifier = !orchestrate && args.iter().any(|a| a == "--verifier");
+    let mut is_planner = !orchestrate && args.iter().any(|a| a == "--planner");
+    let mut is_diagnostics = !orchestrate && args.iter().any(|a| a == "--diagnostics");
+
+    if let Some(role) = role_arg {
+        match role {
+            "executor" => {}
+            "planner" => is_planner = true,
+            "verifier" => is_verifier = true,
+            "diagnostics" => is_diagnostics = true,
+            _ => bail!("invalid --role value: {role} (expected executor|planner|verifier|diagnostics)"),
+        }
+    }
     let (ws_port, ws_port_explicit) = choose_ws_port(&args)?;
     if ws_port_explicit {
         eprintln!("[canon-mini-agent] ws_port={} (explicit)", ws_port);
@@ -2677,10 +2767,12 @@ pub async fn run() -> Result<()> {
 
         let diagnostics_ep = find_endpoint(&endpoints, "diagnostics")?.clone();
         let planner_ep = find_endpoint(&endpoints, "mini_planner")?.clone();
+        let solo_ep = find_endpoint(&endpoints, "solo")?.clone();
         let verifier_ep = find_endpoint(&endpoints, "verifier")?.clone();
 
         let tabs_diagnostics = llm_worker_new_tabs();
         let tabs_planner = llm_worker_new_tabs();
+        let tabs_solo = llm_worker_new_tabs();
         let tabs_verify = llm_worker_new_tabs();
         let mut verifier_summary: Vec<String> = vec!["(none yet)".to_string(); lanes.len()];
         let mut dispatch_state = new_dispatch_state(&lanes);
@@ -2689,6 +2781,7 @@ pub async fn run() -> Result<()> {
         let mut current_phase_lane: Option<usize> = None;
         let mut scheduled_phase: Option<String> = None;
         let mut resume_verifier_items: Vec<ResumeVerifierItem> = Vec::new();
+        let mut solo_bootstrapped = false;
         if let Some(checkpoint) = load_checkpoint(&workspace) {
             eprintln!(
                 "[orchestrate] resume checkpoint loaded: phase={} lane={:?} age_ms={}",
@@ -2819,6 +2912,9 @@ pub async fn run() -> Result<()> {
                     if current_phase == "diagnostics" {
                         dispatch_state.diagnostics_pending = true;
                     }
+                    if current_phase == "solo" {
+                        scheduled_phase = Some("solo".to_string());
+                    }
                 }
             }
 
@@ -2851,9 +2947,11 @@ pub async fn run() -> Result<()> {
                 workspace: &workspace,
                 bridge: &bridge,
                 tabs_planner: &tabs_planner,
+                tabs_solo: &tabs_solo,
                 tabs_diagnostics: &tabs_diagnostics,
                 tabs_verify: &tabs_verify,
                 planner_ep: &planner_ep,
+                solo_ep: &solo_ep,
                 diagnostics_ep: &diagnostics_ep,
                 verifier_ep: &verifier_ep,
                 master_plan_path: &master_plan_path,
@@ -2873,6 +2971,16 @@ pub async fn run() -> Result<()> {
                     &cargo_test_failures,
                 )
                 .await
+                {
+                    cycle_progress = true;
+                }
+            }
+
+            if phase_gates.solo {
+                current_phase = "solo".to_string();
+                current_phase_lane = None;
+                if run_solo_phase(&orchestrator_ctx, &mut solo_bootstrapped, &cargo_test_failures)
+                    .await
                 {
                     cycle_progress = true;
                 }

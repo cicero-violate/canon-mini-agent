@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod constants;
 mod logging;
 mod md_convert;

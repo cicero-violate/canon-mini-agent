@@ -7,6 +7,7 @@ pub enum Role {
     Planner,
     Verifier,
     Diagnostics,
+    Solo,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -16,6 +16,15 @@ fn default_message_route_executor() {
 }
 
 #[test]
+fn default_message_route_solo() {
+    let (from, to, msg_type, status) = default_message_route("solo");
+    assert_eq!(from, "solo");
+    assert_eq!(to, "solo");
+    assert_eq!(msg_type, "result");
+    assert_eq!(status, "complete");
+}
+
+#[test]
 fn auto_fill_message_fields_populates_defaults_and_expected_format() {
     let mut action = json!({
         "action": "message"
@@ -170,6 +179,42 @@ fn scope_guard_planner_blocks_source_files() {
 +new
 *** End Patch";
     assert!(patch_scope_error("planner", src_patch).is_some());
+}
+
+#[test]
+fn scope_guard_solo_allows_full_workspace_patch_surface() {
+    let src_patch = "\
+*** Begin Patch
+*** Update File: src/app.rs
+@@
+-old
++new
+*** End Patch";
+    let plan_patch = "\
+*** Begin Patch
+*** Update File: PLAN.json
+@@
+-{}
++{}
+*** End Patch";
+    let violations_patch = "\
+*** Begin Patch
+*** Update File: VIOLATIONS.json
+@@
+-{}
++{}
+*** End Patch";
+    let diagnostics_patch = "\
+*** Begin Patch
+*** Update File: DIAGNOSTICS.json
+@@
+-{}
++{}
+*** End Patch";
+    assert!(patch_scope_error("solo", src_patch).is_none());
+    assert!(patch_scope_error("solo", plan_patch).is_none());
+    assert!(patch_scope_error("solo", violations_patch).is_none());
+    assert!(patch_scope_error("solo", diagnostics_patch).is_none());
 }
 
 #[test]
