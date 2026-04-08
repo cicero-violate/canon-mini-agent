@@ -1,5 +1,6 @@
+cargo run --bin canon-mini-agent -- --workspace /workspace/ai_sandbox/canon --role solo
+
 cargo run -p canon-mini-agent --bin canon-mini-supervisor -- \
-    --solo \
     --orchestrate \
     --workspace /workspace/ai_sandbox/canon-mini-agent \
     --instance agent_0 \
