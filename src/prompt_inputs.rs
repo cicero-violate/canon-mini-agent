@@ -85,14 +85,18 @@ fn diagnostics_have_current_source_validation(failures: &[Value]) -> bool {
                     normalized.contains("read_file")
                         || normalized.contains("verified against current source")
                         || normalized.contains("validated against current source")
-                        || normalized.contains("source validation")
+                        || (
+                            normalized.contains("source validation")
+                                && !normalized.contains("without source validation")
+                                && !normalized.contains("no source validation")
+                        )
                 })
             })
             .unwrap_or(false)
     })
 }
 
-fn sanitize_diagnostics_for_planner(raw_diagnostics_text: &str) -> String {
+pub(crate) fn sanitize_diagnostics_for_planner(raw_diagnostics_text: &str) -> String {
     if raw_diagnostics_text.trim().is_empty() {
         return "(no diagnostics)".to_string();
     }

@@ -189,19 +189,169 @@ fn read_json_report(path: &Path, max_bytes: usize) -> Result<String> {
 }
 
 fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+    let op_raw = action
+        .get("op")
+        .and_then(|v| v.as_str())
+        .or_else(|| action.get("operation").and_then(|v| v.as_str()))
+        .unwrap_or("read");
     let include_done = action
         .get("include_done")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let raw = fs::read_to_string(workspace.join(OBJECTIVES_FILE)).unwrap_or_default();
-    if raw.trim().is_empty() {
+    let path = workspace.join(OBJECTIVES_FILE);
+    let raw = fs::read_to_string(&path).unwrap_or_default();
+    if raw.trim().is_empty() && op_raw == "read" {
         return Ok((false, "(no objectives)".to_string()));
     }
-    if include_done {
-        return Ok((false, raw));
+    match op_raw {
+        "read" => {
+            if include_done {
+                return Ok((false, raw));
+            }
+            let filtered = filter_incomplete_objectives_json(&raw).unwrap_or(raw);
+            Ok((false, filtered))
+        }
+        "sorted_view" => {
+            let mut file: crate::objectives::ObjectivesFile =
+                serde_json::from_str(&raw).unwrap_or_default();
+            file.objectives.sort_by(|a, b| {
+                let rank = |status: &str| match status.trim().to_lowercase().as_str() {
+                    "active" => 0,
+                    "ready" => 1,
+                    "in_progress" => 2,
+                    "blocked" => 3,
+                    "done" | "complete" | "completed" => 4,
+                    _ => 5,
+                };
+                rank(&a.status)
+                    .cmp(&rank(&b.status))
+                    .then_with(|| a.id.cmp(&b.id))
+            });
+            if !include_done {
+                file.objectives = file
+                    .objectives
+                    .into_iter()
+                    .filter(|obj| !crate::objectives::is_completed(obj))
+                    .collect();
+            }
+            Ok((false, serde_json::to_string_pretty(&file).unwrap_or(raw)))
+        }
+        "create_objective" => {
+            let objective_val = action
+                .get("objective")
+                .ok_or_else(|| anyhow!("objectives create_objective missing objective"))?;
+            let mut file: crate::objectives::ObjectivesFile =
+                serde_json::from_str(&raw).unwrap_or_default();
+            let objective: crate::objectives::Objective =
+                serde_json::from_value(objective_val.clone())
+                    .map_err(|e| anyhow!("invalid objective payload: {e}"))?;
+            if objective.id.trim().is_empty() {
+                bail!("objective.id must be non-empty");
+            }
+            if file.objectives.iter().any(|o| o.id == objective.id) {
+                bail!("objective id already exists: {}", objective.id);
+            }
+            file.objectives.push(objective);
+            std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
+            Ok((false, "objectives create_objective ok".to_string()))
+        }
+        "update_objective" => {
+            let objective_id = action
+                .get("objective_id")
+                .or_else(|| action.get("id"))
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("objectives update_objective missing objective_id"))?;
+            let updates = action
+                .get("updates")
+                .and_then(|v| v.as_object())
+                .ok_or_else(|| anyhow!("objectives update_objective missing updates object"))?;
+            let mut file: crate::objectives::ObjectivesFile =
+                serde_json::from_str(&raw).unwrap_or_default();
+            let mut found = false;
+            for obj in file.objectives.iter_mut() {
+                if obj.id == objective_id {
+                    let mut value = serde_json::to_value(obj.clone())?;
+                    if let Some(map) = value.as_object_mut() {
+                        for (k, v) in updates {
+                            map.insert(k.clone(), v.clone());
+                        }
+                    }
+                    *obj = serde_json::from_value(value)?;
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                bail!("objective not found: {objective_id}");
+            }
+            std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
+            Ok((false, "objectives update_objective ok".to_string()))
+        }
+        "delete_objective" => {
+            let objective_id = action
+                .get("objective_id")
+                .or_else(|| action.get("id"))
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("objectives delete_objective missing objective_id"))?;
+            let mut file: crate::objectives::ObjectivesFile =
+                serde_json::from_str(&raw).unwrap_or_default();
+            let before = file.objectives.len();
+            file.objectives.retain(|obj| obj.id != objective_id);
+            if file.objectives.len() == before {
+                bail!("objective not found: {objective_id}");
+            }
+            std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
+            Ok((false, "objectives delete_objective ok".to_string()))
+        }
+        "set_status" => {
+            let objective_id = action
+                .get("objective_id")
+                .or_else(|| action.get("id"))
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("objectives set_status missing objective_id"))?;
+            let status = action
+                .get("status")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("objectives set_status missing status"))?;
+            let mut file: crate::objectives::ObjectivesFile =
+                serde_json::from_str(&raw).unwrap_or_default();
+            let mut found = false;
+            for obj in file.objectives.iter_mut() {
+                if obj.id == objective_id {
+                    obj.status = status.to_string();
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                bail!("objective not found: {objective_id}");
+            }
+            std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
+            Ok((false, "objectives set_status ok".to_string()))
+        }
+        "replace_objectives" => {
+            let mut file: crate::objectives::ObjectivesFile =
+                serde_json::from_str(&raw).unwrap_or_default();
+            if let Some(obj_value) = action.get("objectives") {
+                if obj_value.is_array() {
+                    let objectives: Vec<crate::objectives::Objective> =
+                        serde_json::from_value(obj_value.clone())
+                            .map_err(|e| anyhow!("invalid objectives array: {e}"))?;
+                    file.objectives = objectives;
+                } else if obj_value.is_object() {
+                    file = serde_json::from_value(obj_value.clone())
+                        .map_err(|e| anyhow!("invalid objectives file payload: {e}"))?;
+                } else {
+                    bail!("objectives replace_objectives requires objectives array or object");
+                }
+            } else {
+                bail!("objectives replace_objectives missing objectives");
+            }
+            std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
+            Ok((false, "objectives replace_objectives ok".to_string()))
+        }
+        _ => bail!("unknown objectives op: {op_raw}"),
     }
-    let filtered = filter_incomplete_objectives_json(&raw).unwrap_or(raw);
-    Ok((false, filtered))
 }
 
 fn handle_plan_sorted_view_action(workspace: &Path) -> Result<(bool, String)> {
@@ -479,6 +629,7 @@ pub(crate) fn patch_scope_error_with_mode(role: &str, patch: &str, self_mod: boo
     let touches_lane = targets.iter().any(|path| is_lane_plan(path));
     let touches_master_plan = targets.iter().any(|path| *path == MASTER_PLAN_FILE);
     let touches_violations = targets.iter().any(|path| *path == VIOLATIONS_FILE);
+    let touches_objectives = targets.iter().any(|path| *path == OBJECTIVES_FILE);
     let touches_diagnostics = targets
         .iter()
         .any(|path| *path == diagnostics_file || *path == legacy_diagnostics_file);
@@ -491,6 +642,7 @@ pub(crate) fn patch_scope_error_with_mode(role: &str, patch: &str, self_mod: boo
             && !is_tests_path(path)
             && !is_lane_plan(path)
             && *path != VIOLATIONS_FILE
+            && *path != OBJECTIVES_FILE
             && *path != diagnostics_file
             && *path != legacy_diagnostics_file
     });
@@ -536,18 +688,18 @@ pub(crate) fn patch_scope_error_with_mode(role: &str, patch: &str, self_mod: boo
         "planner" | "mini_planner" => {
             if touches_spec
                 || touches_violations
-                || touches_diagnostics
                 || targets.iter().any(|path| is_src_path(path) || is_tests_path(path))
             {
                 Some(
-                    "Planner may patch lane plans under `PLANS/<instance>/executor-<id>.json` (or legacy `PLANS/executor-<id>.md`); planner may not patch `src/`, `tests/`, `SPEC.md`, `VIOLATIONS.json`, or diagnostics files."
+                    "Planner may patch lane plans under `PLANS/<instance>/executor-<id>.json` (or legacy `PLANS/executor-<id>.md`); planner may not patch `src/`, `tests/`, `SPEC.md`, or `VIOLATIONS.json`."
                         .to_string(),
                 )
-            } else if touches_lane {
+            } else if touches_lane || touches_diagnostics || touches_objectives {
+                // Allow planner to update diagnostics/objectives/lane plans in a controlled way
                 None
             } else {
                 Some(
-                    "Planner may patch lane plans only. Use the `plan` action for `PLAN.json` updates; no other patches are allowed."
+                    "Planner may patch lane plans, diagnostics, or `PLANS/OBJECTIVES.json` only. Use the `plan` action for `PLAN.json` updates; no other patches are allowed."
                         .to_string(),
                 )
             }
@@ -901,13 +1053,13 @@ fn handle_apply_patch_action(
         .get("patch")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("apply_patch missing 'patch'"))?;
-    if let Some(msg) = patch_scope_error(role, patch) {
+    if let Some(msg) = patch_scope_error(role, &patch) {
         return Ok((false, msg));
     }
-    match apply_patch(patch, workspace) {
+    match apply_patch(&patch, workspace) {
         Ok(_) => {
             eprintln!("[{role}] step={} apply_patch ok", step);
-            let check_result = patch_first_file(patch)
+            let check_result = patch_first_file(&patch)
                 .and_then(|f| infer_crate_for_patch(workspace, f))
                 .map(|krate| {
                     eprintln!("[{role}] step={} cargo check -p {krate}", step);
@@ -941,7 +1093,7 @@ fn handle_apply_patch_action(
             let err_str = e.to_string();
             eprintln!("[{role}] step={} apply_patch failed: {err_str}", step);
             let read_path = extract_anchor_fail_path(&err_str)
-                .or_else(|| patch_first_file(patch).map(|s| s.to_string()));
+                .or_else(|| patch_first_file(&patch).map(|s| s.to_string()));
             let guidance = patch_failure_guidance(read_path.as_deref(), &err_str);
             let mut msg = format!("apply_patch failed: {err_str}\n\n{guidance}");
             if let Some(fp) = read_path {

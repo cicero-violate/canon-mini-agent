@@ -473,7 +473,8 @@ async fn run_diagnostics_phase(
     match result {
         Ok(result) => {
             eprintln!("[orchestrate] diagnostics ok bytes={}", result.len());
-            let new_diagnostics_text = read_text_or_empty(ctx.diagnostics_path);
+            let raw_diagnostics_text = read_text_or_empty(ctx.diagnostics_path);
+            let new_diagnostics_text = crate::prompt_inputs::sanitize_diagnostics_for_planner(&raw_diagnostics_text);
             let diagnostics_changed = dispatch_state.diagnostics_text != new_diagnostics_text;
             dispatch_state.diagnostics_text = new_diagnostics_text;
             dispatch_state.diagnostics_pending = false;

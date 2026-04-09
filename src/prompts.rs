@@ -110,7 +110,7 @@ fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
             "read_file — read a file; output is line-numbered (\"42: code here\")"
         }
         (_, ToolPromptKind::Objectives) => {
-            "objectives — read objectives (defaults to non-completed)"
+            "objectives — read/update objectives in PLANS/OBJECTIVES.json"
         }
         (AgentPromptKind::Verifier, ToolPromptKind::ApplyPatch) => {
             "apply_patch — write `VIOLATIONS.json`"
@@ -178,7 +178,7 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
             "   {\"action\":\"read_file\",\"path\":\"src/app.rs\",\"line\":1,\"rationale\":\"Read a suspected source file to correlate code with observed failures.\"}\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.".to_string()
         }
         (_, ToolPromptKind::Objectives) => {
-            "   {\"action\":\"objectives\",\"rationale\":\"Load only non-completed objectives for planning/verification.\"}\n   {\"action\":\"objectives\",\"include_done\":true,\"rationale\":\"Load all objectives, including completed.\"}".to_string()
+            "   {\"action\":\"objectives\",\"op\":\"read\",\"rationale\":\"Load only non-completed objectives for planning/verification.\"}\n   {\"action\":\"objectives\",\"op\":\"read\",\"include_done\":true,\"rationale\":\"Load all objectives, including completed.\"}\n   {\"action\":\"objectives\",\"op\":\"create_objective\",\"objective\":{\"id\":\"obj_new\",\"title\":\"New objective\",\"status\":\"active\",\"scope\":\"...\",\"authority_files\":[\"src/foo.rs\"],\"category\":\"quality\",\"level\":\"low\",\"description\":\"...\",\"requirement\":[],\"verification\":[],\"success_criteria\":[]},\"rationale\":\"Record a new objective.\"}\n   {\"action\":\"objectives\",\"op\":\"set_status\",\"objective_id\":\"obj_new\",\"status\":\"done\",\"rationale\":\"Mark objective complete.\"}\n   {\"action\":\"objectives\",\"op\":\"update_objective\",\"objective_id\":\"obj_new\",\"updates\":{\"scope\":\"updated scope\"},\"rationale\":\"Update objective fields.\"}\n   {\"action\":\"objectives\",\"op\":\"delete_objective\",\"objective_id\":\"obj_new\",\"rationale\":\"Remove obsolete objective.\"}\n   {\"action\":\"objectives\",\"op\":\"replace_objectives\",\"objectives\":[],\"rationale\":\"Replace objectives list.\"}\n   {\"action\":\"objectives\",\"op\":\"sorted_view\",\"rationale\":\"View objectives sorted by status.\"}".to_string()
         }
 
         (AgentPromptKind::Executor | AgentPromptKind::Solo, ToolPromptKind::ApplyPatch) => {

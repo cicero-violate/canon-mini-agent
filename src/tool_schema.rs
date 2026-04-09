@@ -65,6 +65,18 @@ pub enum PlanOp {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ObjectivesOp {
+    Read,
+    CreateObjective,
+    UpdateObjective,
+    DeleteObjective,
+    SetStatus,
+    ReplaceObjectives,
+    SortedView,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum ToolAction {
     Message {
@@ -95,6 +107,18 @@ pub enum ToolAction {
     Objectives {
         #[serde(flatten)]
         base: ActionBase,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        op: Option<ObjectivesOp>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        objective_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        status: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        objective: Option<serde_json::Value>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        updates: Option<serde_json::Value>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        objectives: Option<serde_json::Value>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         include_done: Option<bool>,
     },
@@ -400,7 +424,25 @@ fn first_missing_field_for_action(action: &Value, action_name: &str) -> Option<S
         }
         "list_dir" => missing_field("path"),
         "read_file" => missing_field("path"),
-        "objectives" => None,
+        "objectives" => {
+            let op = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
+            let id_missing = || {
+                if action.get("objective_id").is_none() && action.get("id").is_none() {
+                    Some("missing field: objective_id".to_string())
+                } else {
+                    None
+                }
+            };
+            match op {
+                "read" | "sorted_view" => None,
+                "create_objective" => missing_field("objective"),
+                "update_objective" => id_missing().or_else(|| missing_field("updates")),
+                "delete_objective" => id_missing(),
+                "set_status" => id_missing().or_else(|| missing_field("status")),
+                "replace_objectives" => missing_field("objectives"),
+                _ => None,
+            }
+        }
         "apply_patch" => missing_field("patch"),
         "run_command" => missing_field("cmd"),
         "python" => missing_field("code"),

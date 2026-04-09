@@ -1,1 +1,1 @@
-cargo check error[E0425] at canon-llm-runtime/src/ws_server.rs:177:44; file path خارج /workspace/ai_sandbox/canon-mini-agent.
+TURN_ID 18 action result rejected the objective-file patch with: "Planner may patch lane plans or diagnostics only. Use the `plan` action for `PLAN.json` updates; no other patches are allowed."

@@ -251,7 +251,7 @@ Outputs: JSON reports under metrics/analysis directories.
 - **Executor** may not patch `SPEC.md`, `PLAN.json`, `INVARIANTS.json`, `VIOLATIONS.json`, `OBJECTIVES.json`, any lane plan, diagnostics files, `src/`, or `tests/`.
 - **Verifier** may patch **only** `VIOLATIONS.json`; verifier must use the `plan` action for `PLAN.json` edits.
 - **Diagnostics** may patch **only** the active diagnostics report file.
-- **Planner** may patch **only** lane plans; planner must use the `plan` action for `PLAN.json` edits.
+- **Planner** may patch **only** lane plans and `PLANS/OBJECTIVES.json`; planner must use the `plan` action for `PLAN.json` edits.
 - **Solo** may patch any in-workspace file (full capabilities).
 
 **Self-modification mode** (workspace == orchestrator source, see §9):
