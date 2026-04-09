@@ -137,35 +137,35 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
     let ws = crate::constants::workspace();
     match (kind, tool) {
         (AgentPromptKind::Executor | AgentPromptKind::Solo, ToolPromptKind::ListDir) => {
-            "   {\"action\":\"list_dir\",\"path\":\"canon-utils\",\"rationale\":\"Inspect the workspace before making assumptions.\"}".to_string()
+            "   {\"action\":\"list_dir\",\"path\":\".\",\"rationale\":\"Inspect the workspace before making assumptions.\"}".to_string()
         }
         (AgentPromptKind::Planner, ToolPromptKind::ListDir) => {
-            "   {\"action\":\"list_dir\",\"path\":\"canon-utils\",\"rationale\":\"Inspect the relevant code area before expanding tasks.\"}".to_string()
+            "   {\"action\":\"list_dir\",\"path\":\"src\",\"rationale\":\"Inspect the relevant code area before expanding tasks.\"}".to_string()
         }
         (AgentPromptKind::Verifier, ToolPromptKind::ListDir) => {
-            "   {\"action\":\"list_dir\",\"path\":\"canon-utils\",\"rationale\":\"Inspect the relevant area before verifying claims about it.\"}".to_string()
+            "   {\"action\":\"list_dir\",\"path\":\"src\",\"rationale\":\"Inspect the relevant area before verifying claims about it.\"}".to_string()
         }
         (AgentPromptKind::Diagnostics, ToolPromptKind::ListDir) => {
-            "   {\"action\":\"list_dir\",\"path\":\"state/event_log/event.tlog.d\",\"rationale\":\"Inspect the available event-log segments before diagnosing failures.\"}\n   {\"action\":\"list_dir\",\"path\":\"canon-utils\",\"rationale\":\"Inspect the project layout before targeting diagnostics.\"}".to_string()
+            "   {\"action\":\"list_dir\",\"path\":\"state\",\"rationale\":\"Inspect workspace-local state and observability artifacts before diagnosing failures.\"}\n   {\"action\":\"list_dir\",\"path\":\"src\",\"rationale\":\"Inspect the active workspace layout before targeting diagnostics.\"}".to_string()
         }
 
         (AgentPromptKind::Executor | AgentPromptKind::Solo, ToolPromptKind::ReadFile) => {
             format!(
-                "   {{\"action\":\"read_file\",\"path\":\"canon-utils/some-crate/src/lib.rs\",\"rationale\":\"Read the file before editing it.\"}}\n   {{\"action\":\"read_file\",\"path\":\"canon-utils/some-crate/src/lib.rs\",\"line\":120,\"rationale\":\"Read the relevant section before editing it.\"}}\n{READ_FILE_EXECUTOR_FOOTER}"
+                "   {{\"action\":\"read_file\",\"path\":\"src/app.rs\",\"rationale\":\"Read the file before editing it.\"}}\n   {{\"action\":\"read_file\",\"path\":\"src/app.rs\",\"line\":120,\"rationale\":\"Read the relevant section before editing it.\"}}\n{READ_FILE_EXECUTOR_FOOTER}"
             )
         }
         (AgentPromptKind::Planner, ToolPromptKind::ReadFile) => {
             format!(
-                "   {{\"action\":\"read_file\",\"path\":\"canon-utils/some-crate/src/lib.rs\",\"rationale\":\"Read the source before deriving actionable plan steps.\"}}\n   {{\"action\":\"read_file\",\"path\":\"canon-utils/some-crate/src/lib.rs\",\"line\":120,\"rationale\":\"Read the relevant source section before deriving actionable plan steps.\"}}\n{READ_FILE_FOOTER}"
+                "   {{\"action\":\"read_file\",\"path\":\"src/app.rs\",\"rationale\":\"Read the source before deriving actionable plan steps.\"}}\n   {{\"action\":\"read_file\",\"path\":\"src/app.rs\",\"line\":120,\"rationale\":\"Read the relevant source section before deriving actionable plan steps.\"}}\n{READ_FILE_FOOTER}"
             )
         }
         (AgentPromptKind::Verifier, ToolPromptKind::ReadFile) => {
             format!(
-                "   {{\"action\":\"read_file\",\"path\":\"canon-utils/some-crate/src/lib.rs\",\"rationale\":\"Read the source to verify whether the claimed change exists.\"}}\n   {{\"action\":\"read_file\",\"path\":\"canon-utils/some-crate/src/lib.rs\",\"line\":120,\"rationale\":\"Jump to the relevant section to verify the claimed change.\"}}\n{READ_FILE_FOOTER}"
+                "   {{\"action\":\"read_file\",\"path\":\"src/app.rs\",\"rationale\":\"Read the source to verify whether the claimed change exists.\"}}\n   {{\"action\":\"read_file\",\"path\":\"src/app.rs\",\"line\":120,\"rationale\":\"Jump to the relevant section to verify the claimed change.\"}}\n{READ_FILE_FOOTER}"
             )
         }
         (AgentPromptKind::Diagnostics, ToolPromptKind::ReadFile) => {
-            "   {\"action\":\"read_file\",\"path\":\"canon-utils/canon-route/src/policy.rs\",\"line\":1,\"rationale\":\"Read a suspected source file to correlate code with observed failures.\"}\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.".to_string()
+            "   {\"action\":\"read_file\",\"path\":\"src/app.rs\",\"line\":1,\"rationale\":\"Read a suspected source file to correlate code with observed failures.\"}\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.".to_string()
         }
 
         (AgentPromptKind::Executor | AgentPromptKind::Solo, ToolPromptKind::ApplyPatch) => {
@@ -178,30 +178,30 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
             "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: VIOLATIONS.json\\n+{\\n+  \\\"status\\\": \\\"failed\\\",\\n+  \\\"summary\\\": \\\"Short summary\\\",\\n+  \\\"violations\\\": [\\n+    {\\n+      \\\"id\\\": \\\"V1\\\",\\n+      \\\"title\\\": \\\"Control flow gated by executor-local state\\\",\\n+      \\\"severity\\\": \\\"critical\\\",\\n+      \\\"evidence\\\": [\\\"executor.rs:56-61 dispatch_in_progress gate\\\"],\\n+      \\\"issue\\\": \\\"Route dispatch suppressed before semantic evaluation\\\",\\n+      \\\"impact\\\": \\\"RouteTick does not guarantee dispatch\\\",\\n+      \\\"required_fix\\\": [\\\"Remove dispatch_in_progress gating\\\"],\\n+      \\\"files\\\": [\\\"canon-utils/canon-route/src/executor.rs\\\"]\\n+    }\\n+  ]\\n+}\\n*** End Patch\",\"rationale\":\"Record spec violations discovered during verification.\"}\\n\\n   {\\\"action\\\":\\\"plan\\\",\\\"op\\\":\\\"set_status\\\",\\\"task_id\\\":\\\"T4\\\",\\\"status\\\":\\\"done\\\",\\\"rationale\\\":\\\"Mark the verified task as done in PLAN.json.\\\"}".to_string()
         }
         (AgentPromptKind::Diagnostics, ToolPromptKind::ApplyPatch) => {
-            "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: DIAGNOSTICS.json\\n+{\\n+  \\\"status\\\": \\\"critical_failure\\\",\\n+  \\\"inputs_scanned\\\": [\\\"state/event_log/event.tlog.d\\\", \\\"VIOLATIONS.json\\\"],\\n+  \\\"ranked_failures\\\": [\\n+    {\\n+      \\\"id\\\": \\\"D1\\\",\\n+      \\\"impact\\\": \\\"critical\\\",\\n+      \\\"signal\\\": \\\"No control events in canonical log\\\",\\n+      \\\"evidence\\\": [\\\"Tick=0, RouteTick=0 in 20 segments\\\"],\\n+      \\\"root_cause\\\": \\\"emit_tick not executed or not persisted\\\",\\n+      \\\"repair_targets\\\": [\\\"canon-runtime/src/lib.rs::emit_tick\\\"]\\n+    }\\n+  ],\\n+  \\\"planner_handoff\\\": [\\\"Restore emit_tick loop execution\\\"]\\n+}\\n*** End Patch\",\"rationale\":\"Write the ranked diagnostics report after collecting evidence from logs and code.\"}".to_string()
+            "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: PLANS/default/diagnostics-default.json\\n+{\\n+  \\\"status\\\": \\\"critical_failure\\\",\\n+  \\\"inputs_scanned\\\": [\\\"<workspace-local log/state paths discovered during diagnostics>\\\", \\\"VIOLATIONS.json\\\"],\\n+  \\\"ranked_failures\\\": [\\n+    {\\n+      \\\"id\\\": \\\"D1\\\",\\n+      \\\"impact\\\": \\\"critical\\\",\\n+      \\\"signal\\\": \\\"Primary runtime or agent observability artifacts are missing expected progress signals\\\",\\n+      \\\"evidence\\\": [\\\"<concrete evidence from files that exist in the active workspace AND VERIFIED against current source via read_file>\\\"],\\n+      \\\"root_cause\\\": \\\"<workspace-specific root cause derived ONLY from verified current source and observed state>\\\",\\n+      \\\"repair_targets\\\": [\\\"<workspace-specific source locations>\\\"]\\n+    }\\n+  ],\\n+  \\\"planner_handoff\\\": [\\\"Diagnostics MUST NOT emit failures without direct source verification; stale signals must be suppressed.\\\"]\\n+}\\n*** End Patch\",\"rationale\":\"Write diagnostics report only after validating signals against current source; suppress stale or unverified diagnostics.\"}".to_string()
         }
 
         (AgentPromptKind::Executor | AgentPromptKind::Solo, ToolPromptKind::RunCommand) => {
-            format!("   {{\"action\":\"run_command\",\"cmd\":\"cargo check -p some-crate\",\"cwd\":\"{ws}\",\"rationale\":\"Validate the target crate after a change.\"}}\n   {{\"action\":\"run_command\",\"cmd\":\"rg -n 'fn foo' canon-utils/some-crate/src/\",\"cwd\":\"{ws}\",\"rationale\":\"Search the codebase for the relevant symbol before editing.\"}}\n{RUN_COMMAND_FOOTER}")
+            format!("   {{\"action\":\"run_command\",\"cmd\":\"cargo check -p canon-mini-agent\",\"cwd\":\"{ws}\",\"rationale\":\"Validate the target crate after a change.\"}}\n   {{\"action\":\"run_command\",\"cmd\":\"rg -n 'fn foo' src\",\"cwd\":\"{ws}\",\"rationale\":\"Search the codebase for the relevant symbol before editing.\"}}\n{RUN_COMMAND_FOOTER}")
         }
         (AgentPromptKind::Planner, ToolPromptKind::RunCommand) => {
-            format!("   {{\"action\":\"run_command\",\"cmd\":\"rg -n 'fn foo'\",\"cwd\":\"{ws}\",\"rationale\":\"Search for implementation details needed to expand the plan accurately.\"}}\n{RUN_COMMAND_FOOTER}")
+            format!("   {{\"action\":\"run_command\",\"cmd\":\"rg -n 'fn foo' src\",\"cwd\":\"{ws}\",\"rationale\":\"Search for implementation details needed to expand the plan accurately.\"}}\n{RUN_COMMAND_FOOTER}")
         }
         (AgentPromptKind::Verifier, ToolPromptKind::RunCommand) => {
-            format!("   {{\"action\":\"run_command\",\"cmd\":\"cargo check -p some-crate\",\"cwd\":\"{ws}\",\"rationale\":\"Validate the crate implicated by the completed task.\"}}\n   {{\"action\":\"run_command\",\"cmd\":\"cargo test -q --workspace\",\"cwd\":\"{ws}\",\"rationale\":\"Verify the claimed completion does not break workspace tests.\"}}\n   {{\"action\":\"run_command\",\"cmd\":\"rg -n 'fn foo'\",\"cwd\":\"{ws}\",\"rationale\":\"Find the implementation or call sites mentioned by the completed task.\"}}\n{RUN_COMMAND_FOOTER}")
+            format!("   {{\"action\":\"run_command\",\"cmd\":\"cargo check -p canon-mini-agent\",\"cwd\":\"{ws}\",\"rationale\":\"Validate the crate implicated by the completed task.\"}}\n   {{\"action\":\"run_command\",\"cmd\":\"cargo test -q --workspace\",\"cwd\":\"{ws}\",\"rationale\":\"Verify the claimed completion does not break workspace tests.\"}}\n   {{\"action\":\"run_command\",\"cmd\":\"rg -n 'fn foo' src\",\"cwd\":\"{ws}\",\"rationale\":\"Find the implementation or call sites mentioned by the completed task.\"}}\n{RUN_COMMAND_FOOTER}")
         }
         (AgentPromptKind::Diagnostics, ToolPromptKind::RunCommand) => {
-            format!("   {{\"action\":\"run_command\",\"cmd\":\"rg -n \\\"invariant|panic|TODO|unreachable!|assert!\\\" canon-utils state\",\"cwd\":\"{ws}\",\"rationale\":\"Search the codebase and state for likely failure markers.\"}}\n   {{\"action\":\"run_command\",\"cmd\":\"cargo check --workspace\",\"cwd\":\"{ws}\",\"rationale\":\"Detect compiler-visible inconsistencies that belong in diagnostics.\"}}\n{RUN_COMMAND_FOOTER}")
+            format!("   {{\"action\":\"run_command\",\"cmd\":\"rg -n \\\"invariant|panic|TODO|unreachable!|assert!\\\" src state\",\"cwd\":\"{ws}\",\"rationale\":\"Search the active workspace code and state directories for likely failure markers.\"}}\n   {{\"action\":\"run_command\",\"cmd\":\"cargo check --workspace\",\"cwd\":\"{ws}\",\"rationale\":\"Detect compiler-visible inconsistencies that belong in diagnostics.\"}}\n{RUN_COMMAND_FOOTER}")
         }
 
         (AgentPromptKind::Executor | AgentPromptKind::Solo, ToolPromptKind::Python) => {
             format!(
-                "   {{\"action\":\"python\",\"code\":\"from pathlib import Path\\nprint(len(list(Path('canon-utils').glob('**/*.rs'))))\",\"cwd\":\"{ws}\",\"rationale\":\"Use Python for structured workspace analysis.\"}}\n{PYTHON_FOOTER}"
+                "   {{\"action\":\"python\",\"code\":\"from pathlib import Path\\nprint(len(list(Path('src').glob('**/*.rs'))))\",\"cwd\":\"{ws}\",\"rationale\":\"Use Python for structured workspace analysis.\"}}\n{PYTHON_FOOTER}"
             )
         }
         (AgentPromptKind::Planner, ToolPromptKind::Python) => {
             format!(
-                "   {{\"action\":\"python\",\"code\":\"from pathlib import Path\\nprint(sum(1 for _ in Path('canon-utils').glob('**/*.rs')))\",\"cwd\":\"{ws}\",\"rationale\":\"Use Python to gather structured planning context from the workspace.\"}}\n{PYTHON_FOOTER}"
+                "   {{\"action\":\"python\",\"code\":\"from pathlib import Path\\nprint(sum(1 for _ in Path('src').glob('**/*.rs')))\",\"cwd\":\"{ws}\",\"rationale\":\"Use Python to gather structured planning context from the workspace.\"}}\n{PYTHON_FOOTER}"
             )
         }
         (AgentPromptKind::Verifier, ToolPromptKind::Python) => {
@@ -211,7 +211,7 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
         }
         (AgentPromptKind::Diagnostics, ToolPromptKind::Python) => {
             format!(
-                "   {{\"action\":\"python\",\"code\":\"from pathlib import Path\\nroot = Path('{ws}/state/event_log/event.tlog.d')\\nfor path in sorted(root.glob('*.log')):\\n    print(path.name, path.stat().st_size)\",\"cwd\":\"{ws}\",\"rationale\":\"Analyze the event-source logs to find failure signals and inconsistencies.\"}}\n{PYTHON_FOOTER}"
+                "   {{\"action\":\"python\",\"code\":\"from pathlib import Path\\nfor root in [Path('state'), Path('log'), Path('logs'), Path('src')]:\\n    if root.exists():\\n        print(root)\\n        for path in sorted(root.rglob('*')):\\n            if path.is_file():\\n                print(path)\",\"cwd\":\"{ws}\",\"rationale\":\"Analyze workspace-local state, log, and source artifacts to find failure signals and inconsistencies.\"}}\n{PYTHON_FOOTER}"
             )
         }
         (AgentPromptKind::Executor, ToolPromptKind::CargoTest)
@@ -257,9 +257,9 @@ fn prompt_mission(kind: AgentPromptKind) -> &'static str {
     match kind {
         AgentPromptKind::Executor => "Your job is to execute the highest-priority READY work described in planner handoff messages and the master plan.\n`SPEC.md` is the canonical contract.\nLane plans are deprecated and should not be relied on for task selection.\nThe verifier judges code against `SPEC.md`.\nYou should only work on the top 1-10 ready tasks in the current cycle, then yield.\nDo not use internal tools.\nDo not reorganize or update `SPEC.md` or plan files yourself.\nMake source changes, run checks, and report evidence in `message.payload`.",
         AgentPromptKind::Verifier => "Your job is to critically review executor evidence against the codebase and judge whether the implementation satisfies `SPEC.md`.\nExecutor evidence is a hint only. The canonical truth is the codebase versus `SPEC.md`.\nIf violations are found, write `VIOLATIONS.json` with a clear, actionable list using the enums in canon-mini-agent/src/reports.rs.\nBe skeptical — do not trust executor claims at face value.",
-        AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `PLANS/OBJECTIVES.md`, `VIOLATIONS.json`, and `DIAGNOSTICS.json` and derive the master plan plus executor handoff guidance.\nYou own priority, dependency ordering, task allocation, and the ready-work window for each executor.\nOn every cycle, re-evaluate the workspace and update `PLAN.json` via the plan tool.\nDo not use internal tools.\nDo not hand off work; complete the needed planning and execution directly in the current role flow.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
-        AgentPromptKind::Diagnostics => "Your job is to scan the canon project state, analyze `VIOLATIONS.json`, detect root causes, rank them by impact, and write concrete repair targets for the planner in `DIAGNOSTICS.json` using the enums in canon-mini-agent/src/reports.rs.",
-        AgentPromptKind::Solo => "Your job is to coordinate planning, execution, and verification in a single role while participating in orchestration.\nUse the `plan` action to update `PLAN.json`; do not apply_patch the master plan.\nYou may read, patch, and verify any in-workspace files when justified by evidence.\nYou may send `message` actions to other agents for parallel work or handoffs.\nKeep evidence tight and run checks before claiming completion.",
+        AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `PLANS/OBJECTIVES.md`, `VIOLATIONS.json`, and `DIAGNOSTICS.json` and derive the master plan plus executor handoff guidance.\nYou own priority, dependency ordering, task allocation, and the ready-work window for each executor.\nOn every cycle, re-evaluate the workspace and update `PLAN.json` via the plan tool.\nAt the end of every planner cycle, review `PLANS/OBJECTIVES.json` and add or update objectives to reflect what was discovered. New objectives must have a unique id, title, category, level, and description. Use `apply_patch` to write them.\nDo not use internal tools.\nDo not hand off work; complete the needed planning and execution directly in the current role flow.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
+        AgentPromptKind::Diagnostics => "Your job is to scan the active workspace state, analyze `VIOLATIONS.json`, detect root causes, rank them by impact, and write concrete repair targets for the planner in `DIAGNOSTICS.json` using the enums in canon-mini-agent/src/reports.rs.",
+        AgentPromptKind::Solo => "Your job is to coordinate planning, execution, and verification in a single role while participating in orchestration.\nUse the `plan` action to update `PLAN.json`; do not apply_patch the master plan.\nYou may read, patch, and verify any in-workspace files when justified by evidence.\nKeep evidence tight and run checks before claiming completion.\nAt the end of every cycle — before emitting a completion message — review `PLANS/OBJECTIVES.json` and add or update objectives based on what you discovered. New objectives must have a unique id, title, category, level, and description. Use `apply_patch` to write them directly.",
     }
 }
 
@@ -275,7 +275,7 @@ fn prompt_workspace(kind: AgentPromptKind) -> String {
         AgentPromptKind::Executor => format!("You work inside the canon workspace at {ws}. All relative file paths resolve against this workspace root."),
         AgentPromptKind::Verifier => format!("You work inside the canon workspace at {ws}."),
         AgentPromptKind::Planner => format!("You work inside the canon workspace at {ws}. Use bash, rg, read_file, python, apply_patch (lane plans only), and diagnostics evidence to review the current project state before reorganizing the plan."),
-        AgentPromptKind::Diagnostics => format!("You must inspect both:\n- the project source tree under {ws}\n- the event log segments under {ws}/state/event_log/event.tlog.d"),
+        AgentPromptKind::Diagnostics => format!("You must inspect the active workspace under {ws}, including source files plus any workspace-local state and observability artifacts that exist for this project."),
         AgentPromptKind::Solo => format!("You work inside the canon workspace at {ws}. Use the full tool suite to plan, execute, and verify changes."),
     }
 }
@@ -287,13 +287,8 @@ fn action_contract(kind: AgentPromptKind) -> String {
         .collect::<Vec<_>>()
         .join("\n");
     let graph_hint = "Graph tools hint: artifacts come from rustc wrapper capture (run `cargo build -p <crate>`). `graph_probe` inspects symbols/coverage; `graph_call`/`graph_cfg` emit CSVs; `graph_dataflow`/`graph_reachability` emit reports.";
-    let example = if kind == AgentPromptKind::Planner {
-        ""
-    } else {
-        "\n\n```json\n{ \"observation\": \"Saw file list for canon-utils\", \"action\": \"list_dir\", \"path\": \"canon-utils\", \"rationale\": \"Inspect the workspace before making assumptions.\" }\n```"
-    };
     format!(
-        "Each turn you receive either:\n  (a) the initial instruction; or\n  (b) the result of your last action.\n\nYou respond with exactly one action per turn, as a single JSON object wrapped in a `json` code block.\nAvailable actions:\n{actions}\n{graph_hint}\nEvery action MUST include:\n- `observation`: what you can see purely from evidence only, as a single string\n- `rationale`: why this is the next best step\n\nDo NOT include any extra text outside the JSON code block.\nDo NOT echo the tools list or the prompt.\nDo NOT use placeholder action names like `...`; choose a real action from the list.{example}"
+        "Each turn you receive either:\n  (a) the initial instruction; or\n  (b) the result of your last action.\n\nBefore choosing your action, think through the following internally:\n  1. What does the current evidence tell me about system state?\n  2. What is the highest-value action I can take right now?\n  3. What are the 2-3 most likely actions after this one?\n\nEmit exactly one action per turn as a single JSON object in a fenced json code block. Think through the decision internally; reveal your chain-of-thought. Only output the JSON action.\nAvailable actions:\n{actions}\n{graph_hint}\nEvery action MUST include:\n- `observation`: what you can see purely from evidence only, as a single string\n- `rationale`: why this is the next best step right now\n- `predicted_next_actions`: ordered array of 2-3 likely follow-on actions, each with an `action` name and `intent` string. This is your decision tree — drives the next turn.\n\nDo NOT include any extra text outside the JSON code block.\nDo NOT echo the tools list or the prompt.\nDo NOT use placeholder action names like `...`; choose a real action from the list."
     )
 }
 
@@ -319,7 +314,7 @@ fn rules_common_footer() -> String {
         String::new()
     };
     format!(
-        "{protect_rule}- Emit exactly one action per turn.\n- If you cannot proceed (missing files/permissions, repeated tool errors, or irreconcilable evidence), emit a `message` with `type=blocker`, `status=blocked`, and payload fields `blocker`, `evidence`, `required_action`.\n- Output format: exactly one JSON object in a ```json code block. No prose outside it."
+        "{protect_rule}- Emit exactly one action per turn. Think through the decision internally; reveal chain-of-thought. Only output the JSON action.\n- If you cannot proceed (missing files/permissions, repeated tool errors, or irreconcilable evidence), emit a `message` with `type=blocker`, `status=blocked`, and payload fields `blocker`, `evidence`, `required_action`.\n- Before emitting a completion message, review `PLANS/OBJECTIVES.json`. Add new objectives for anything you discovered this cycle that is not yet captured. Update the status of existing objectives that changed. Use `apply_patch` to write changes.\n- Output format: exactly one JSON object in a fenced json code block. No prose outside it."
     )
 }
 
@@ -328,7 +323,8 @@ fn rules_blocker_route(target: &str) -> String {
 }
 
 fn rules_section(rules: &[&str], blocker_target: Option<&str>) -> String {
-    let mut out = String::from("━━━ RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n");
+    let mut out =
+        String::from("━━━ RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n");
     for rule in rules {
         out.push_str(rule);
         out.push('\n');
@@ -341,12 +337,49 @@ fn rules_section(rules: &[&str], blocker_target: Option<&str>) -> String {
     out
 }
 
+fn role_key(kind: AgentPromptKind) -> &'static str {
+    match kind {
+        AgentPromptKind::Executor => "executor",
+        AgentPromptKind::Verifier => "verifier",
+        AgentPromptKind::Planner => "planner",
+        AgentPromptKind::Diagnostics => "diagnostics",
+        AgentPromptKind::Solo => "solo",
+    }
+}
+
+fn load_role_overrides(kind: AgentPromptKind) -> Vec<String> {
+    let roles_path = std::path::Path::new(workspace()).join("ROLES.json");
+    let raw = match std::fs::read_to_string(&roles_path) {
+        Ok(text) => text,
+        Err(_) => return Vec::new(),
+    };
+    let value: Value = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+    let roles_obj = value
+        .get("roles")
+        .and_then(|v| v.as_object())
+        .or_else(|| value.as_object());
+    let Some(roles_obj) = roles_obj else {
+        return Vec::new();
+    };
+    let Some(rules) = roles_obj.get(role_key(kind)).and_then(|v| v.as_array()) else {
+        return Vec::new();
+    };
+    rules
+        .iter()
+        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+        .collect()
+}
+
 const VERIFIER_PROCESS: &str = "━━━ VERIFICATION PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nFor each executor claim:\n1. Use the executor result summary plus `SPEC.md` to derive the candidate obligations.\n2. Read the relevant source files to confirm the described change exists.\n3. Run cargo check or cargo test if the task involves code correctness.\n4. Judge whether the code satisfies the spec.\n5. If violations are found, write `VIOLATIONS.json` with a clear, actionable list using the enums in canon-mini-agent/src/reports.rs.\n6. Update task `status` fields in `PLAN.json` via the `plan` action (never `apply_patch`) and update any related `next_on_success` / `next_on_failure` as needed.\n7. Report a verification breakdown in `message.payload` (verified, unverified, false) with explicit items.\n8. For any control-flow or state-management claim, verify that the described behavior matches the source code and is consistent with INVARIANTS.json.";
 
 const PLANNER_PROCESS: &str = "━━━ PLANNING PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nOn every planning cycle:\n1. Read `SPEC.md`, `VIOLATIONS.json`, `DIAGNOSTICS.json`, relevant source files, and recent workspace state to understand what changed.\n2. Update `PLAN.json` via the `plan` action and derive the ready-work window for each executor.\n3. Maintain a READY NOW window containing at most 1-10 executable tasks for each executor.\n4. Move blocked work behind its dependencies instead of leaving it in the ready window.\n5. Rewrite priorities whenever new evidence changes the critical path.\n6. If canonical-law authority (INVARIANTS.json, CANONICAL_LAW.md) conflicts with local heuristics in the plan, prioritize canonical-law authority and move heuristic cleanup behind it as follow-on work.\n7. Write detailed, imperative tasks that include file paths and concrete actions (read/patch/test).\n8. Send handoff messages to executors reflecting the updated ready window.";
 
 fn diagnostics_process() -> String {
-    format!("━━━ DIAGNOSTICS PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nGather evidence from the workspace, `VIOLATIONS.json`, and the current codebase, then write DIAGNOSTICS.json using the enums in canon-mini-agent/src/reports.rs.\nRules:\n- Use the `python` action for structured analysis of project state and any available logs.\n- Only modify DIAGNOSTICS.json.\n- Rank issues by impact on correctness, convergence, and repairability.\n- Check whether control-flow decisions are consistent with the canonical law in CANONICAL_LAW.md and the invariants in INVARIANTS.json.\n- Before trusting any trace or log file, confirm it was updated in the current cycle (mtime, size change, or fresh producer command).\n- Treat empty `rg` / `grep` results as ambiguous: no match, stale file, or incomplete write are all possible.\n- Prefer the most recently written evidence sources over ad-hoc temp traces when they disagree.")
+    let diagnostics_path = diagnostics_file();
+    format!("━━━ DIAGNOSTICS PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nGather evidence from the workspace, `VIOLATIONS.json`, and the current codebase, then write {diagnostics_path} using the enums in canon-mini-agent/src/reports.rs.\nRules:\n- Use the `python` action for structured analysis of project state and any available logs.\n- Only modify {diagnostics_path}.\n- Rank issues by impact on correctness, convergence, and repairability.\n- Check whether control-flow decisions are consistent with the canonical law in CANONICAL_LAW.md and the invariants in INVARIANTS.json.\n- Before trusting any trace or log file, confirm it was updated in the current cycle (mtime, size change, or fresh producer command).\n- Treat empty `rg` / `grep` results as ambiguous: no match, stale file, or incomplete write are all possible.\n- Prefer the most recently written evidence sources over ad-hoc temp traces when they disagree.\n- Derive observability paths from workspace-local state and log artifacts that actually exist for this project instead of assuming canon-specific defaults.")
 }
 
 const EXECUTOR_HANDOFF_BULLETS: &[&str] = &[
@@ -395,11 +428,19 @@ fn format_bullets(header: &str, bullets: &[&str], suffix: Option<&str>) -> Strin
 }
 
 fn execution_discipline() -> String {
-    format_bullets("Execution discipline:\n", EXECUTION_DISCIPLINE_BULLETS, None)
+    format_bullets(
+        "Execution discipline:\n",
+        EXECUTION_DISCIPLINE_BULLETS,
+        None,
+    )
 }
 
 fn solo_execution_discipline() -> String {
-    format_bullets("Execution discipline:\n", SOLO_EXECUTION_DISCIPLINE_BULLETS, None)
+    format_bullets(
+        "Execution discipline:\n",
+        SOLO_EXECUTION_DISCIPLINE_BULLETS,
+        None,
+    )
 }
 
 const VERIFIER_RULES: &[&str] = &[
@@ -431,7 +472,7 @@ const PLANNER_RULES: &[&str] = &[
 ];
 
 fn diagnostics_rules() -> Vec<String> {
-    vec![
+    let mut rules = vec![
         "- Use the `python` action for structured analysis of project state and any available logs.".to_string(),
         "- Only modify DIAGNOSTICS.json.".to_string(),
         "- Rank issues by impact on correctness, convergence, and repairability.".to_string(),
@@ -439,38 +480,42 @@ fn diagnostics_rules() -> Vec<String> {
         "- Before trusting any trace or log file, confirm it was updated in the current cycle (mtime, size change, or fresh producer command).".to_string(),
         "- Treat empty `rg` / `grep` results as ambiguous: no match, stale file, or incomplete write are all possible.".to_string(),
         "- Prefer the most recently written evidence sources over ad-hoc temp traces when they disagree.".to_string(),
-    ]
+    ];
+    rules.extend(load_role_overrides(AgentPromptKind::Diagnostics));
+    rules
 }
 
 fn executor_rules() -> Vec<String> {
     let ws = crate::constants::workspace();
-    vec![
+    let mut rules = vec![
         "- Always read a file before patching it.".to_string(),
-        "- Use list_dir and read_file freely before assuming project state.".to_string(),
+        "- Use list_dir and read_file before assuming project state; if unsure, list_dir `.` first.".to_string(),
+        "- Only list_dir paths that exist under WORKSPACE; do not assume `canon-utils` exists unless WORKSPACE is `/workspace/ai_sandbox/canon`.".to_string(),
         "- Use run_command for cargo builds, tests, and shell discovery.".to_string(),
         "- If test output is truncated, re-run tests with `cargo test -- --nocapture 2>&1 | tail -n 200` and report the tail in `message.payload`.".to_string(),
-        "- Run the runtime to confirm it works before completing the cycle. Use this exact command:".to_string(),
-        "  `tmpdir=$(mktemp -d) && mkdir -p \"$tmpdir/event.tlog.d\" && CANON_EVENT_RUNTIME_LOG=\"$tmpdir/event_runtime.log\" timeout 12s target/debug/canon-runtime --tlog \"$tmpdir/event.tlog.d\" --once > /tmp/canon_runtime_check.out 2> /tmp/canon_runtime_check.err; status=$?; echo TMPDIR=\"$tmpdir\"; echo STATUS=\"$status\"; echo \"--- STDOUT ---\"; tail -n 50 /tmp/canon_runtime_check.out; echo \"--- STDERR ---\"; tail -n 100 /tmp/canon_runtime_check.err; echo \"--- FILES ---\"; find \"$tmpdir\" -maxdepth 2 -type f | sort`".to_string(),
-        "  Report the command and outcome in `message.payload`.".to_string(),
         "- Use python for structured analysis when shell pipelines are awkward.".to_string(),
         format!("- Never operate outside {ws}."),
         "- Never modify `SPEC.md`, `PLAN.json`, `VIOLATIONS.json`, or `DIAGNOSTICS.json`.".to_string(),
         "- Never emit destructive commands (rm -rf, git reset --hard, git clean -f, etc.).".to_string(),
-    ]
+    ];
+    rules.extend(load_role_overrides(AgentPromptKind::Executor));
+    rules
 }
 
 fn solo_rules() -> Vec<String> {
     let ws = crate::constants::workspace();
-    vec![
+    let mut rules = vec![
         "- Always read a file before patching it.".to_string(),
         "- Use list_dir and read_file freely before assuming project state.".to_string(),
         "- Use run_command for cargo builds, tests, and shell discovery.".to_string(),
         "- Run cargo build/test before `message` with status=complete when changes affect code.".to_string(),
+        "- If you rebuild canon-mini-agent, the supervisor may restart immediately in solo mode; be ready for a restart before the next step.".to_string(),
         "- You may modify any in-workspace files when justified by evidence; use the `plan` action for PLAN.json edits.".to_string(),
-        "- Coordinate with other roles via `message` when parallel work is beneficial.".to_string(),
         format!("- Never operate outside {ws}."),
         "- Never emit destructive commands (rm -rf, git reset --hard, git clean -f, etc.).".to_string(),
-    ]
+    ];
+    rules.extend(load_role_overrides(AgentPromptKind::Solo));
+    rules
 }
 
 fn executor_handoff() -> String {
@@ -493,12 +538,34 @@ fn prompt_tail(kind: AgentPromptKind) -> String {
                 rules_section(&er_refs, Some("Planner"))
             )
         }
-        AgentPromptKind::Verifier => format!("{}\n\n{}", VERIFIER_PROCESS, rules_section(VERIFIER_RULES, Some("Planner"))),
-        AgentPromptKind::Planner => format!("{}\n\n{}", PLANNER_PROCESS, rules_section(PLANNER_RULES, Some("Diagnostics"))),
+        AgentPromptKind::Verifier => {
+            let mut rules: Vec<String> = VERIFIER_RULES.iter().map(|s| s.to_string()).collect();
+            rules.extend(load_role_overrides(AgentPromptKind::Verifier));
+            let refs: Vec<&str> = rules.iter().map(|s| s.as_str()).collect();
+            format!(
+                "{}\n\n{}",
+                VERIFIER_PROCESS,
+                rules_section(&refs, Some("Planner"))
+            )
+        }
+        AgentPromptKind::Planner => {
+            let mut rules: Vec<String> = PLANNER_RULES.iter().map(|s| s.to_string()).collect();
+            rules.extend(load_role_overrides(AgentPromptKind::Planner));
+            let refs: Vec<&str> = rules.iter().map(|s| s.as_str()).collect();
+            format!(
+                "{}\n\n{}",
+                PLANNER_PROCESS,
+                rules_section(&refs, Some("Diagnostics"))
+            )
+        }
         AgentPromptKind::Diagnostics => {
             let dr = diagnostics_rules();
             let dr_refs: Vec<&str> = dr.iter().map(|s| s.as_str()).collect();
-            format!("{}\n\n{}", diagnostics_process(), rules_section(&dr_refs, Some("Planner")))
+            format!(
+                "{}\n\n{}",
+                diagnostics_process(),
+                rules_section(&dr_refs, Some("Planner"))
+            )
         }
         AgentPromptKind::Solo => {
             let sr = solo_rules();
@@ -547,7 +614,7 @@ pub(crate) fn planner_cycle_prompt(
     let workspace = workspace();
     let diagnostics_file = diagnostics_file();
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics: {diagnostics_file}\n- Master plan: {MASTER_PLAN_FILE}\n\nPlan diff (from {MASTER_PLAN_FILE}):\n{plan_diff}\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants_text}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations_text}\n\nDiagnostics report (from {diagnostics_file}):\n{diagnostics_text}\n\nLatest verifier summary:\n{summary_text}\n\nYou may send a message action to other agents at any time."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics: {diagnostics_file}\n- Master plan: {MASTER_PLAN_FILE}\n\nPlan diff (from {MASTER_PLAN_FILE}):\n{plan_diff}\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants_text}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations_text}\n\nDiagnostics report (from {diagnostics_file}):\n{diagnostics_text}\n\nLatest verifier summary:\n{summary_text}\n\nBefore completing this cycle, review {OBJECTIVES_FILE} and add or update objectives to capture anything discovered. New objectives require a unique id, title, category, level, and description. Use apply_patch to write them.\n\nYou may send a message action to other agents at any time."
     )
 }
 
@@ -559,7 +626,9 @@ pub(crate) fn executor_cycle_prompt(
     let workspace = workspace();
     let diagnostics_file = diagnostics_file();
     let verify_result = if latest_verify_result.trim().is_empty()
-        || latest_verify_result.trim().eq_ignore_ascii_case("shutdown requested")
+        || latest_verify_result
+            .trim()
+            .eq_ignore_ascii_case("shutdown requested")
     {
         "(no verifier result available)".to_string()
     } else {
@@ -587,7 +656,7 @@ pub(crate) fn diagnostics_cycle_prompt(summary_text: &str, cargo_test_failures: 
     let workspace = workspace();
     let diagnostics_file = diagnostics_file();
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics report to write: {diagnostics_file}\n- Event log directory: state/event_log/event.tlog.d\n\nLatest verifier summary:\n{summary_text}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nYou may send a message action to other agents at any time."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics report to write: {diagnostics_file}\n- Observability artifacts: inspect workspace-local state and log paths that actually exist for this project\n\nLatest verifier summary:\n{summary_text}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nYou may send a message action to other agents at any time."
     )
 }
 
@@ -600,7 +669,7 @@ pub(crate) fn single_role_verifier_prompt(
 ) -> String {
     let workspace = workspace();
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{primary_input}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff_text}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nVerify that objectives in {OBJECTIVES_FILE} are completed properly.\nUpdate task status fields in {MASTER_PLAN_FILE} to reflect verified results.\nWrite violations to {VIOLATIONS_FILE} if any are found.\nWhen complete, report verified/unverified/false items in `message.payload`.\nEmit exactly one action to begin."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{primary_input}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff_text}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nVerify that objectives in {OBJECTIVES_FILE} are completed properly.\nUpdate task status fields in {MASTER_PLAN_FILE} to reflect verified results.\nWrite violations to {VIOLATIONS_FILE} if any are found.\nWhen complete, report verified/unverified/false items in `message.payload`.\nEmit exactly one action to begin. Think through the decision internally; reveal chain-of-thought."
     )
 }
 
@@ -613,7 +682,7 @@ pub(crate) fn single_role_diagnostics_prompt(
     let diagnostics_path = diagnostics_file();
     let canonical_law = prompt_canonical_law(AgentPromptKind::Diagnostics);
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nRead files and search the source code for bugs and inconsistencies (use read_file + run_command/ripgrep).\nRun python analysis actions over available logs and code evidence.\nInfer the root cause from the evidence and cite detailed sources of errors (file paths, functions, log evidence).\n\nLatest verifier summary:\n(none yet)\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nVerify whether objectives in {OBJECTIVES_FILE} are being met and note gaps.\nUse {SPEC_FILE}, {OBJECTIVES_FILE}, and {INVARIANTS_FILE} as the contract, not lane plans.\nInfer failures from code, logs, runtime state, and verifier findings.\n\nCanonical law:\n{canonical_law}\n\nWrite a ranked diagnostics report to {diagnostics_path}. Emit exactly one action to begin."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nRead files and search the source code for bugs and inconsistencies (use read_file + run_command/ripgrep).\nRun python analysis actions over available workspace-local logs, state, and code evidence.\nDo not assume canon-specific observability names or paths. Discover the actual project-local artifacts first by inspecting files and directories that exist under WORKSPACE. Examples may include state/, log/, logs/, runtime logs, jsonl logs, agent logs, or other workspace-defined artifacts.\nInfer the root cause from the evidence and cite detailed sources of errors (file paths, functions, log evidence).\n\nLatest verifier summary:\n(none yet)\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nVerify whether objectives in {OBJECTIVES_FILE} are being met and note gaps.\nUse {SPEC_FILE}, {OBJECTIVES_FILE}, and {INVARIANTS_FILE} as the contract, not lane plans.\nInfer failures from code, logs, runtime state, and verifier findings.\nPrefer evidence from workspace-local artifacts that actually exist over assumptions from other projects.\n\nCanonical law:\n{canonical_law}\n\nWrite a ranked diagnostics report to {diagnostics_path}. Emit exactly one action to begin. Think through the decision internally; reveal chain-of-thought."
     )
 }
 
@@ -629,7 +698,7 @@ pub(crate) fn single_role_planner_prompt(
     let diagnostics_path = diagnostics_file();
     let canonical_law = prompt_canonical_law(AgentPromptKind::Planner);
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{primary_input}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nCanonical law:\n{canonical_law}\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nEmit exactly one action to begin."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{primary_input}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nCanonical law:\n{canonical_law}\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nEmit exactly one action to begin. Think through the decision internally; reveal chain-of-thought."
     )
 }
 
@@ -646,7 +715,7 @@ pub(crate) fn single_role_solo_prompt(
     let diagnostics_path = diagnostics_file();
     let canonical_law = prompt_canonical_law(AgentPromptKind::Planner);
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{spec}\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nCanonical law:\n{canonical_law}\n\nYou are running as the solo role inside orchestration.\nYou may modify any in-workspace source and control files directly when justified by evidence.\nUse the `plan` action for `{MASTER_PLAN_FILE}` edits; do not apply_patch the master plan.\nYou may send `message` actions to other agents for parallel execution or verification.\nComplete the work directly and emit exactly one action to begin."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{spec}\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nCanonical law:\n{canonical_law}\n\nYou are running as the solo role inside orchestration.\nYou may modify any in-workspace source and control files directly when justified by evidence.\nUse the `plan` action for `{MASTER_PLAN_FILE}` edits; do not apply_patch the master plan.\nBefore emitting a completion message, review `{OBJECTIVES_FILE}` and add or update objectives based on what you learned this cycle. Use `apply_patch` to write them.\nComplete the work directly and emit exactly one action to begin."
     )
 }
 
@@ -660,15 +729,15 @@ pub(crate) fn single_role_executor_prompt(
     let workspace = workspace();
     let diagnostics_path = diagnostics_file();
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{spec}\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics (from {diagnostics_path}):\n{diagnostics}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nLane plans are deprecated. Use planner handoff messages and {MASTER_PLAN_FILE} for task selection.\n\nDo not modify spec, plan, violations, or diagnostics.\nDo not use internal tools.\nDo not hand off work; continue execution directly in the current role flow.\nUse `message.payload` to report evidence for verifier review. Emit exactly one action to begin."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{spec}\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics (from {diagnostics_path}):\n{diagnostics}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nLane plans are deprecated. Use planner handoff messages and {MASTER_PLAN_FILE} for task selection.\n\nDo not modify spec, plan, violations, or diagnostics.\nDo not use internal tools.\nDo not hand off work; continue execution directly in the current role flow.\nUse `message.payload` to report evidence for verifier review. Emit exactly one action to begin. Think through the decision internally; reveal chain-of-thought."
     )
 }
 
 // ── Action parsing ─────────────────────────────────────────────────────────────
 
 pub(crate) fn parse_actions(raw: &str) -> Result<Vec<Value>> {
-    if let Some(json_text) = extract_json_fence(raw) {
-        if let Ok(actions) = parse_json_action(json_text) {
+    if let Some(json_text) = extract_json_candidate(raw) {
+        if let Ok(actions) = parse_json_action(&json_text) {
             return Ok(actions);
         }
     }
@@ -684,12 +753,69 @@ pub(crate) fn parse_actions(raw: &str) -> Result<Vec<Value>> {
     }
 }
 
+fn extract_json_candidate(text: &str) -> Option<String> {
+    if let Some(fenced) = extract_json_fence(text) {
+        return Some(fenced.to_string());
+    }
+    let bytes = text.as_bytes();
+    let mut start = None;
+    for (i, &b) in bytes.iter().enumerate() {
+        if b == b'{' || b == b'[' {
+            start = Some(i);
+            break;
+        }
+    }
+    let start = start?;
+    let mut depth: i32 = 0;
+    let mut in_string = false;
+    let mut escape = false;
+    for (offset, ch) in text[start..].char_indices() {
+        if in_string {
+            if escape {
+                escape = false;
+            } else if ch == '\\' {
+                escape = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_string = true,
+            '{' | '[' => depth += 1,
+            '}' | ']' => {
+                depth -= 1;
+                if depth == 0 {
+                    let end = start + offset + ch.len_utf8();
+                    return Some(text[start..end].trim().to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    Some(text[start..].trim().to_string())
+}
+
 fn extract_json_fence(text: &str) -> Option<&str> {
-    let start = text.find("```json").or_else(|| text.find("```JSON"))?;
-    let after_newline = start + text[start..].find('\n')?;
-    let rest = &text[after_newline + 1..];
-    let end = rest.find("```")?;
-    Some(rest[..end].trim())
+    let mut search_start = 0;
+    while let Some(rel) = text[search_start..].find("```") {
+        let fence_start = search_start + rel;
+        let line_end = text[fence_start..]
+            .find('\n')
+            .map(|idx| fence_start + idx)?;
+        let fence_line = &text[fence_start..line_end];
+        let fence_line_lc = fence_line.to_ascii_lowercase();
+        if fence_line_lc.contains("json") {
+            let rest = &text[line_end + 1..];
+            let end = rest.find("```");
+            return Some(match end {
+                Some(idx) => rest[..idx].trim(),
+                None => rest.trim(),
+            });
+        }
+        search_start = line_end + 1;
+    }
+    None
 }
 
 fn parse_json_from_text(text: &str) -> Result<Value> {
@@ -738,9 +864,15 @@ pub(crate) fn diagnostics_python_reads_event_logs(action: &Value) -> bool {
         return false;
     }
     let code = action.get("code").and_then(|v| v.as_str()).unwrap_or("");
-    // Accept either a full literal path or path segments built via Path / operator.
-    code.contains("state/event_log/event.tlog.d")
-        || (code.contains("event_log") && code.contains("event.tlog.d"))
+    // Accept generic workspace-local state/log inspection instead of privileging canon-specific paths.
+    code.contains("Path('state')")
+        || code.contains("Path(\"state\")")
+        || code.contains("Path('log')")
+        || code.contains("Path(\"log\")")
+        || code.contains("Path('logs')")
+        || code.contains("Path(\"logs\")")
+        || (code.contains("state") && code.contains("rglob"))
+        || (code.contains("log") && code.contains("rglob"))
 }
 
 pub(crate) fn action_rationale(action: &Value) -> Option<&str> {
@@ -807,7 +939,9 @@ fn validate_message_action(action: &Value, mode: MessageValidationMode) -> Resul
                     bail!("blocker payload fields must be non-empty strings");
                 }
             }
-            _ => bail!("blocker messages must include payload fields: blocker, evidence, required_action"),
+            _ => bail!(
+                "blocker messages must include payload fields: blocker, evidence, required_action"
+            ),
         }
     }
     if let Some(severity) = obj.get("severity").and_then(|v| v.as_str()) {
@@ -894,6 +1028,35 @@ pub(crate) fn validate_action(action: &Value) -> Result<()> {
         .filter(|s| !s.is_empty())
         .ok_or_else(|| anyhow!("action missing non-empty 'rationale'"))?;
     let _ = rationale;
+    let predicted = obj
+        .get("predicted_next_actions")
+        .ok_or_else(|| anyhow!("action missing 'predicted_next_actions'"))?;
+    let predicted = predicted
+        .as_array()
+        .ok_or_else(|| anyhow!("predicted_next_actions must be an array"))?;
+    if !(2..=3).contains(&predicted.len()) {
+        bail!("predicted_next_actions must contain 2-3 entries");
+    }
+    for (idx, item) in predicted.iter().enumerate() {
+        let entry = item
+            .as_object()
+            .ok_or_else(|| anyhow!("predicted_next_actions[{idx}] must be an object"))?;
+        let action_name = entry
+            .get("action")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| anyhow!("predicted_next_actions[{idx}] missing non-empty 'action'"))?;
+        if !is_supported_action(action_name) {
+            bail!("predicted_next_actions[{idx}] uses unsupported action '{action_name}'");
+        }
+        entry
+            .get("intent")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| anyhow!("predicted_next_actions[{idx}] missing non-empty 'intent'"))?;
+    }
     if kind == "message" {
         validate_message_action(action, MessageValidationMode::Strict)?;
     }
@@ -922,7 +1085,10 @@ enum NextActionHint {
 
 fn derive_next_action_hint(result: &str, last_action: Option<&str>) -> NextActionHint {
     let lowered = result.to_lowercase();
-    if lowered.contains("python write denied") || lowered.contains("permission denied") || lowered.contains("errno 13") {
+    if lowered.contains("python write denied")
+        || lowered.contains("permission denied")
+        || lowered.contains("errno 13")
+    {
         return NextActionHint::UseApplyPatch;
     }
     if result.contains("graph_probe ok") {
@@ -1007,6 +1173,7 @@ pub(crate) fn action_result_prompt(
     result: &str,
     last_action: Option<&str>,
     steps_used: Option<usize>,
+    predicted_next_actions: Option<&str>,
 ) -> String {
     let tab_label = tab_id
         .map(|v| v.to_string())
@@ -1020,8 +1187,15 @@ pub(crate) fn action_result_prompt(
     } else {
         String::new()
     };
+    let predicted_block = match predicted_next_actions {
+        Some(p) if !p.is_empty() => p.to_string(),
+        _ => "<none>".to_string(),
+    };
+    let predicted_line = format!(
+        "Your predicted_next_actions from your last turn:\n{predicted_block}\nCompare these against the actual result above before choosing your next action.\n\n"
+    );
     format!(
-        "TAB_ID: {tab_label}\nTURN_ID: {turn_label}\nAGENT_TYPE: {agent_type}\n\n{limit_line}Action result:\n{}\n\n{}\nEmit exactly one action.",
+        "TAB_ID: {tab_label}\nTURN_ID: {turn_label}\nAGENT_TYPE: {agent_type}\n\n{limit_line}Action result:\n{}\n\n{predicted_line}{}\nEmit exactly one action. Think through the decision internally; reveal chain-of-thought.",
         truncate(result, MAX_SNIPPET),
         next_action_hint_text(result, last_action),
     )
@@ -1055,9 +1229,24 @@ mod tests {
         let action = json!({
             "action": "read_file",
             "rationale": "observation optional",
+            "predicted_next_actions": [
+                {"action": "read_file", "intent": "scan for related guidance"},
+                {"action": "apply_patch", "intent": "update the prompt copy"},
+                {"action": "run_command", "intent": "run tests if needed"}
+            ],
             "path": "SPEC.md"
         });
         assert!(validate_action(&action).is_ok());
+    }
+
+    #[test]
+    fn validate_requires_predicted_next_actions() {
+        let action = json!({
+            "action": "read_file",
+            "rationale": "missing predicted list should fail",
+            "path": "SPEC.md"
+        });
+        assert!(validate_action(&action).is_err());
     }
 
     #[test]
@@ -1102,5 +1291,50 @@ mod tests {
             prompt.contains("Use the `plan` action for `PLAN.json` edits"),
             "solo prompt must direct plan tool usage for PLAN.json"
         );
+    }
+
+    #[test]
+    fn diagnostics_python_reads_event_logs_accepts_generic_state_and_log_discovery() {
+        let state_action = json!({
+            "action": "python",
+            "code": "from pathlib import Path\nfor root in [Path('state')]:\n    if root.exists():\n        for path in root.rglob('*'):\n            print(path)",
+            "rationale": "Inspect workspace-local state artifacts."
+        });
+        assert!(diagnostics_python_reads_event_logs(&state_action));
+
+        let log_action = json!({
+            "action": "python",
+            "code": "from pathlib import Path\nfor root in [Path(\"log\")]:\n    if root.exists():\n        for path in root.rglob('*'):\n            print(path)",
+            "rationale": "Inspect workspace-local log artifacts."
+        });
+        assert!(diagnostics_python_reads_event_logs(&log_action));
+
+        let logs_action = json!({
+            "action": "python",
+            "code": "from pathlib import Path\nfor root in [Path('logs')]:\n    if root.exists():\n        for path in root.rglob('*'):\n            print(path)",
+            "rationale": "Inspect workspace-local logs artifacts."
+        });
+        assert!(diagnostics_python_reads_event_logs(&logs_action));
+    }
+
+    #[test]
+    fn diagnostics_python_reads_event_logs_does_not_require_canon_specific_path() {
+        let helper_source = include_str!("prompts.rs");
+        let helper_start = helper_source
+            .find("pub(crate) fn diagnostics_python_reads_event_logs")
+            .expect("missing helper");
+        let helper_source = &helper_source[helper_start..];
+        let helper_end = helper_source
+            .find("pub(crate) fn action_rationale")
+            .expect("missing helper end anchor");
+        let helper_body = &helper_source[..helper_end];
+        assert!(!helper_body.contains("state/event_log/event.tlog.d"));
+
+        let generic_action = json!({
+            "action": "python",
+            "code": "from pathlib import Path\nroot = Path('state')\nprint(root)\nfor path in root.rglob('*'):\n    print(path)",
+            "rationale": "Inspect generic workspace-local state artifacts."
+        });
+        assert!(diagnostics_python_reads_event_logs(&generic_action));
     }
 }
