@@ -1161,9 +1161,15 @@ pub(crate) fn action_result_prompt(
         String::new()
     };
     let predicted_line = match predicted_next_actions {
-        Some(p) if !p.is_empty() => format!(
-            "Predicted next actions from your last turn:\n```json\n{p}\n```\nCompare these against the actual result above before choosing your next action.\n\n"
-        ),
+        Some(p) if !p.is_empty() => {
+            let pretty = serde_json::from_str::<serde_json::Value>(p)
+                .ok()
+                .and_then(|v| serde_json::to_string_pretty(&v).ok())
+                .unwrap_or_else(|| p.to_string());
+            format!(
+                "Predicted next actions from your last turn:\n```json\n{pretty}\n```\nCompare these against the actual result above before choosing your next action.\n\n"
+            )
+        }
         _ => {
             "Predicted next actions from your last turn:\nNone.\nCompare these against the actual result above before choosing your next action.\n\n".to_string()
         }

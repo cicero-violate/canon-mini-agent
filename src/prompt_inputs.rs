@@ -1,5 +1,6 @@
 use anyhow::{bail, Context, Result};
 use canon_llm::{config::LlmEndpoint, tab_management::TabManagerHandle, ws_server::WsBridge};
+use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 use crate::constants::{INVARIANTS_FILE, MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE};
@@ -73,6 +74,58 @@ pub fn read_required_text(path: impl AsRef<Path>, name: &str) -> Result<String> 
     std::fs::read_to_string(path.as_ref()).with_context(|| format!("failed to read {name}"))
 }
 
+fn diagnostics_have_current_source_validation(failures: &[Value]) -> bool {
+    failures.iter().all(|failure| {
+        failure
+            .get("evidence")
+            .and_then(Value::as_array)
+            .map(|entries| {
+                entries.iter().filter_map(Value::as_str).any(|entry| {
+                    let normalized = entry.to_ascii_lowercase();
+                    normalized.contains("read_file")
+                        || normalized.contains("verified against current source")
+                        || normalized.contains("validated against current source")
+                        || normalized.contains("source validation")
+                })
+            })
+            .unwrap_or(false)
+    })
+}
+
+fn sanitize_diagnostics_for_planner(raw_diagnostics_text: &str) -> String {
+    if raw_diagnostics_text.trim().is_empty() {
+        return "(no diagnostics)".to_string();
+    }
+
+    let Ok(value) = serde_json::from_str::<Value>(raw_diagnostics_text) else {
+        return "(invalid diagnostics: not valid json)".to_string();
+    };
+
+    let Some(ranked_failures) = value.get("ranked_failures").and_then(Value::as_array) else {
+        return "(invalid diagnostics: missing ranked_failures)".to_string();
+    };
+
+    if ranked_failures.is_empty() {
+        return raw_diagnostics_text.to_string();
+    }
+
+    if diagnostics_have_current_source_validation(ranked_failures) {
+        return format!(
+            "(SOURCE-VALIDATED DIAGNOSTICS — current-source evidence is present; still verify before creating tasks)\n{}",
+            raw_diagnostics_text
+        );
+    }
+
+    let summary = value
+        .get("summary")
+        .and_then(Value::as_str)
+        .unwrap_or("Diagnostics failures suppressed until current-source validation is recorded.");
+    format!(
+        "(suppressed stale or unverified diagnostics: ranked_failures present without current-source validation evidence)\n{}",
+        summary
+    )
+}
+
 pub fn lane_summary_text(lanes: &[LaneConfig], verifier_summary: &[String]) -> String {
     lanes
         .iter()
@@ -129,17 +182,7 @@ pub fn load_planner_inputs(
     let invariants_text = read_text_or_empty(workspace.join(INVARIANTS_FILE));
     let violations_text = read_text_or_empty(violations_path);
     let raw_diagnostics_text = read_text_or_empty(diagnostics_path);
-    let diagnostics_text = if raw_diagnostics_text.trim().is_empty() {
-        "(no diagnostics)".to_string()
-    } else if raw_diagnostics_text.contains("\"ranked_failures\"") {
-        // Add staleness guard: require explicit validation and flag potential stale reuse
-        format!(
-            "(UNVERIFIED DIAGNOSTICS — require source validation before use; DO NOT derive tasks without read_file evidence; treat repeated signals as potentially stale)\n{}",
-            raw_diagnostics_text
-        )
-    } else {
-        "(invalid diagnostics: missing ranked_failures)".to_string()
-    };
+    let diagnostics_text = sanitize_diagnostics_for_planner(&raw_diagnostics_text);
     let plan_text = read_text_or_empty(master_plan_path);
     let plan_diff_text = plan_diff(last_plan_text, &plan_text, 400);
     PlannerInputs {
@@ -250,16 +293,7 @@ pub fn build_single_role_prompt(
         AgentPromptKind::Planner => {
             let violations = ctx.read(SingleRoleRead::Violations)?;
             let raw_diagnostics = ctx.read(SingleRoleRead::Diagnostics)?;
-            let diagnostics = if raw_diagnostics.trim().is_empty() {
-                "(no diagnostics)".to_string()
-            } else if raw_diagnostics.contains("\"ranked_failures\"") {
-                format!(
-                    "(UNVERIFIED DIAGNOSTICS — require source validation before use; DO NOT derive tasks without read_file evidence; treat repeated signals as potentially stale)\n{}",
-                    raw_diagnostics
-                )
-            } else {
-                "(invalid diagnostics: missing ranked_failures)".to_string()
-            };
+            let diagnostics = sanitize_diagnostics_for_planner(&raw_diagnostics);
             let objectives = ctx.read(SingleRoleRead::Objectives)?;
             let invariants = ctx.read(SingleRoleRead::Invariants)?;
             single_role_planner_prompt(
@@ -441,4 +475,45 @@ fn executor_diff(workspace: &Path, max_lines: usize) -> String {
         out.push('\n');
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize_diagnostics_for_planner;
+
+    #[test]
+    fn sanitize_diagnostics_suppresses_unverified_ranked_failures() {
+        let raw = r#"{
+  "status": "critical_failure",
+  "summary": "diagnostics found a stale issue",
+  "ranked_failures": [
+    {
+      "id": "D1",
+      "evidence": ["old report without source validation"]
+    }
+  ]
+}"#;
+
+        let sanitized = sanitize_diagnostics_for_planner(raw);
+        assert!(sanitized.contains("suppressed stale or unverified diagnostics"));
+        assert!(sanitized.contains("diagnostics found a stale issue"));
+    }
+
+    #[test]
+    fn sanitize_diagnostics_allows_source_validated_failures() {
+        let raw = r#"{
+  "status": "critical_failure",
+  "summary": "validated diagnostics",
+  "ranked_failures": [
+    {
+      "id": "D1",
+      "evidence": ["read_file src/app.rs verified against current source"]
+    }
+  ]
+}"#;
+
+        let sanitized = sanitize_diagnostics_for_planner(raw);
+        assert!(sanitized.contains("SOURCE-VALIDATED DIAGNOSTICS"));
+        assert!(sanitized.contains("validated diagnostics"));
+    }
 }

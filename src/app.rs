@@ -39,11 +39,10 @@ use crate::state_space::{
     CompletionTabCheck, WakeFlagInput,
 };
 use crate::constants::{
-    DEFAULT_AGENT_STATE_DIR, DEFAULT_RESPONSE_TIMEOUT_SECS,
-    DIAGNOSTICS_FILE_PATH, ENDPOINT_SPECS, EXECUTOR_STEP_LIMIT, INVARIANTS_FILE, MASTER_PLAN_FILE,
-    MAX_SNIPPET, MAX_STEPS, OBJECTIVES_FILE, ROLE_TIMEOUT_SECS, SPEC_FILE, VIOLATIONS_FILE,
-    WS_PORT_CANDIDATES,
-    set_agent_state_dir, set_workspace, workspace,
+    DEFAULT_AGENT_STATE_DIR, DEFAULT_LLM_RETRY_COUNT, DEFAULT_LLM_RETRY_DELAY_SECS,
+    DEFAULT_RESPONSE_TIMEOUT_SECS, DIAGNOSTICS_FILE_PATH, ENDPOINT_SPECS, EXECUTOR_STEP_LIMIT,
+    INVARIANTS_FILE, MASTER_PLAN_FILE, MAX_SNIPPET, MAX_STEPS, OBJECTIVES_FILE, ROLE_TIMEOUT_SECS,
+    SPEC_FILE, VIOLATIONS_FILE, WS_PORT_CANDIDATES, set_agent_state_dir, set_workspace, workspace,
 };
 use crate::md_convert::ensure_objectives_and_invariants_json;
 use crate::prompt_inputs::{
@@ -2924,7 +2923,13 @@ pub async fn run() -> Result<()> {
     }
 
     let ws_addr: std::net::SocketAddr = format!("127.0.0.1:{ws_port}").parse()?;
-    let bridge = ws_server::spawn(ws_addr, DEFAULT_RESPONSE_TIMEOUT_SECS, Arc::new(OnceLock::new()));
+    let bridge = ws_server::spawn(
+        ws_addr,
+        DEFAULT_RESPONSE_TIMEOUT_SECS,
+        DEFAULT_LLM_RETRY_COUNT,
+        DEFAULT_LLM_RETRY_DELAY_SECS,
+        Arc::new(OnceLock::new()),
+    );
     eprintln!("[canon-mini-agent] waiting for Chrome extension on ws://127.0.0.1:{ws_port}");
     bridge.wait_for_connection().await;
     eprintln!("[canon-mini-agent] Chrome extension connected");

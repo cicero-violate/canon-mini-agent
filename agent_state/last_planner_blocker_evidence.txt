@@ -1,0 +1,1 @@
+cargo check error[E0425] at canon-llm-runtime/src/ws_server.rs:177:44; file path خارج /workspace/ai_sandbox/canon-mini-agent.
