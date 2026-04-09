@@ -6,6 +6,7 @@ use crate::constants::{
     MASTER_PLAN_FILE, MAX_SNIPPET, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
 };
 use crate::protocol::{MessagePayload, MessageStatus, MessageType, ProtocolMessage, Role};
+use crate::tool_schema::validate_tool_action;
 
 pub(crate) fn truncate(s: &str, max: usize) -> &str {
     let end = s.char_indices().nth(max).map(|(i, _)| i).unwrap_or(s.len());
@@ -232,19 +233,19 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
             "   {\"action\":\"cargo_test\",\"crate\":\"canon-runtime\",\"test\":\"some_test_name\",\"rationale\":\"Run the exact failing test using the harness-style command.\"}".to_string()
         }
         (AgentPromptKind::Executor, ToolPromptKind::Plan) => {
-            "   {\"action\":\"read_file\",\"path\":\"PLAN.json\",\"rationale\":\"Read the master plan; executors should not edit it.\"}".to_string()
+            "   {\"action\":\"read_file\",\"path\":\"PLAN.json\",\"rationale\":\"Read the master plan; executors should not edit it.\"}\n   {\"action\":\"plan\",\"op\":\"sorted_view\",\"rationale\":\"View the current plan in DAG order (read-only).\"}".to_string()
         }
         (AgentPromptKind::Solo, ToolPromptKind::Plan) => {
-            "   {\"action\":\"plan\",\"op\":\"set_status\",\"task_id\":\"T1\",\"status\":\"in_progress\",\"rationale\":\"Update PLAN.json via the plan tool while running solo.\"}".to_string()
+            "   {\"action\":\"plan\",\"op\":\"set_status\",\"task_id\":\"T1\",\"status\":\"in_progress\",\"rationale\":\"Update PLAN.json via the plan tool while running solo.\"}\n   {\"action\":\"plan\",\"op\":\"sorted_view\",\"rationale\":\"View the current plan in DAG order (read-only).\"}".to_string()
         }
         (AgentPromptKind::Planner, ToolPromptKind::Plan) => {
-            "   {\"action\":\"plan\",\"op\":\"create_task\",\"task\":{\"id\":\"T4\",\"title\":\"Add plan DAG\",\"status\":\"todo\",\"priority\":3},\"rationale\":\"Add a new task to PLAN.json without manual patching.\"}".to_string()
+            "   {\"action\":\"plan\",\"op\":\"create_task\",\"task\":{\"id\":\"T4\",\"title\":\"Add plan DAG\",\"status\":\"todo\",\"priority\":3},\"rationale\":\"Add a new task to PLAN.json without manual patching.\"}\n   {\"action\":\"plan\",\"op\":\"sorted_view\",\"rationale\":\"View the current plan in DAG order (read-only).\"}".to_string()
         }
         (AgentPromptKind::Verifier, ToolPromptKind::Plan) => {
-            "   {\"action\":\"read_file\",\"path\":\"PLAN.json\",\"rationale\":\"Read the current plan before judging whether claimed work matches recorded state.\"}".to_string()
+            "   {\"action\":\"read_file\",\"path\":\"PLAN.json\",\"rationale\":\"Read the current plan before judging whether claimed work matches recorded state.\"}\n   {\"action\":\"plan\",\"op\":\"sorted_view\",\"rationale\":\"View the current plan in DAG order (read-only).\"}".to_string()
         }
         (AgentPromptKind::Diagnostics, ToolPromptKind::Plan) => {
-            "   {\"action\":\"read_file\",\"path\":\"PLAN.json\",\"rationale\":\"Read the master plan to correlate diagnostics findings with planned work and blocked tasks.\"}".to_string()
+            "   {\"action\":\"read_file\",\"path\":\"PLAN.json\",\"rationale\":\"Read the master plan to correlate diagnostics findings with planned work and blocked tasks.\"}\n   {\"action\":\"plan\",\"op\":\"sorted_view\",\"rationale\":\"View the current plan in DAG order (read-only).\"}".to_string()
         }
 
         (_, ToolPromptKind::Message) => {
@@ -267,7 +268,7 @@ fn prompt_mission(kind: AgentPromptKind) -> &'static str {
     match kind {
         AgentPromptKind::Executor => "Your job is to execute the highest-priority READY work described in planner handoff messages and the master plan.\n`SPEC.md` is the canonical contract.\nLane plans are deprecated and should not be relied on for task selection.\nThe verifier judges code against `SPEC.md`.\nYou should only work on the top 1-10 ready tasks in the current cycle, then yield.\nDo not use internal tools.\nDo not reorganize or update `SPEC.md` or plan files yourself.\nMake source changes, run checks, and report evidence in `message.payload`.",
         AgentPromptKind::Verifier => "Your job is to critically review executor evidence against the codebase and judge whether the implementation satisfies `SPEC.md`.\nExecutor evidence is a hint only. The canonical truth is the codebase versus `SPEC.md`.\nIf violations are found, write `VIOLATIONS.json` with a clear, actionable list using the enums in canon-mini-agent/src/reports.rs.\nBe skeptical — do not trust executor claims at face value.",
-        AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `PLANS/OBJECTIVES.json`, `VIOLATIONS.json`, and `DIAGNOSTICS.json` and derive the master plan plus executor handoff guidance.\nYou own priority, dependency ordering, task allocation, and the ready-work window for each executor.\nOn every cycle, re-evaluate the workspace and update `PLAN.json` via the plan tool.\nAt the end of every planner cycle, review `PLANS/OBJECTIVES.json` and add or update objectives to reflect what was discovered. New objectives must have a unique id, title, category, level, and description. Use `apply_patch` to write them.\nDo not use internal tools.\nDo not hand off work; complete the needed planning and execution directly in the current role flow.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
+        AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `PLANS/OBJECTIVES.json`, `VIOLATIONS.json`, and `DIAGNOSTICS.json` and derive the master plan plus executor handoff guidance.\nYou own priority, dependency ordering, task allocation, and the ready-work window for each executor.\nOn every cycle, re-evaluate the workspace and update `PLAN.json` via the plan tool.\nAt the end of every planner cycle, review `PLANS/OBJECTIVES.json` and add or update objectives to reflect what was discovered. New objectives must have a unique id, title, category, level, and description. Use `apply_patch` to write them.\nDiagnostics are advisory only: do not create, reopen, or reprioritize tasks from diagnostics claims unless the same cycle includes direct current-workspace evidence from `read_file`, `run_command`, or `python`.\nIf diagnostics suggest a problem but direct evidence is missing, plan only evidence-gathering or diagnostics-repair work instead of implementation work.\nDo not use internal tools.\nDo not hand off work; complete the needed planning and execution directly in the current role flow.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
         AgentPromptKind::Diagnostics => "Your job is to scan the active workspace state, analyze `VIOLATIONS.json`, detect root causes, rank them by impact, and write concrete repair targets for the planner in `DIAGNOSTICS.json` using the enums in canon-mini-agent/src/reports.rs.",
         AgentPromptKind::Solo => "Your job is to coordinate planning, execution, and verification in a single role while participating in orchestration.\nUse the `plan` action to update `PLAN.json`; do not apply_patch the master plan.\nYou may read, patch, and verify any in-workspace files when justified by evidence.\nKeep evidence tight and run checks before claiming completion.\nAt the end of every cycle — before emitting a completion message — review `PLANS/OBJECTIVES.json` and add or update objectives based on what you discovered. New objectives must have a unique id, title, category, level, and description. Use `apply_patch` to write them directly.",
     }
@@ -385,7 +386,7 @@ fn load_role_overrides(kind: AgentPromptKind) -> Vec<String> {
 
 const VERIFIER_PROCESS: &str = "━━━ VERIFICATION PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nFor each executor claim:\n1. Use the executor result summary plus `SPEC.md` to derive the candidate obligations.\n2. Read the relevant source files to confirm the described change exists.\n3. Run cargo check or cargo test if the task involves code correctness.\n4. Judge whether the code satisfies the spec.\n5. If violations are found, write `VIOLATIONS.json` with a clear, actionable list using the enums in canon-mini-agent/src/reports.rs.\n6. Update task `status` fields in `PLAN.json` via the `plan` action (never `apply_patch`) and update any related `next_on_success` / `next_on_failure` as needed.\n7. Report a verification breakdown in `message.payload` (verified, unverified, false) with explicit items.\n8. For any control-flow or state-management claim, verify that the described behavior matches the source code and is consistent with INVARIANTS.json.";
 
-const PLANNER_PROCESS: &str = "━━━ PLANNING PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nOn every planning cycle:\n1. Read `SPEC.md`, `VIOLATIONS.json`, `DIAGNOSTICS.json`, relevant source files, and recent workspace state to understand what changed.\n2. Update `PLAN.json` via the `plan` action and derive the ready-work window for each executor.\n3. Maintain a READY NOW window containing at most 1-10 executable tasks for each executor.\n4. Move blocked work behind its dependencies instead of leaving it in the ready window.\n5. Rewrite priorities whenever new evidence changes the critical path.\n6. If canonical-law authority (INVARIANTS.json, CANONICAL_LAW.md) conflicts with local heuristics in the plan, prioritize canonical-law authority and move heuristic cleanup behind it as follow-on work.\n7. Write detailed, imperative tasks that include file paths and concrete actions (read/patch/test).\n8. Send handoff messages to executors reflecting the updated ready window.";
+const PLANNER_PROCESS: &str = "━━━ PLANNING PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nOn every planning cycle:\n1. Read `SPEC.md`, `VIOLATIONS.json`, `DIAGNOSTICS.json`, relevant source files, and recent workspace state to understand what changed.\n2. Update `PLAN.json` via the `plan` action and derive the ready-work window for each executor.\n3. Maintain a READY NOW window containing at most 1-10 executable tasks for each executor.\n4. Move blocked work behind its dependencies instead of leaving it in the ready window.\n5. Rewrite priorities whenever new evidence changes the critical path.\n6. If canonical-law authority (INVARIANTS.json, CANONICAL_LAW.md) conflicts with local heuristics in the plan, prioritize canonical-law authority and move heuristic cleanup behind it as follow-on work.\n7. Treat diagnostics as unverified hints until the same cycle includes direct current-workspace evidence from `read_file`, `run_command`, or `python`; do not create, reopen, or reprioritize implementation tasks from diagnostics alone.\n8. If diagnostics suggest a failure but source evidence is still missing, create only evidence-gathering or diagnostics-repair tasks until the claim is verified.\n9. Write detailed, imperative tasks that include file paths and concrete actions (read/patch/test).\n10. Send handoff messages to executors reflecting the updated ready window.";
 
 fn diagnostics_process() -> String {
     let diagnostics_path = diagnostics_file();
@@ -600,6 +601,9 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
     out.push_str(&prompt_workspace(kind));
     out.push_str("\n\n");
     out.push_str(&action_contract(kind));
+    out.push_str("\n\nTool protocol JSON schema (schemars):\n```json\n");
+    out.push_str(&crate::tool_schema::tool_protocol_schema_json());
+    out.push_str("\n```");
     if kind != AgentPromptKind::Planner {
         out.push_str("\n\n");
         out.push_str(&tools_section(kind));
@@ -914,12 +918,12 @@ fn default_rationale(kind: &str) -> &'static str {
     }
 }
 
-enum MessageValidationMode {
+pub(crate) enum MessageValidationMode {
     Basic,
     Strict,
 }
 
-fn validate_message_action(action: &Value, mode: MessageValidationMode) -> Result<()> {
+pub(crate) fn validate_message_action(action: &Value, mode: MessageValidationMode) -> Result<()> {
     let obj = action
         .as_object()
         .ok_or_else(|| anyhow!("action payload must be a JSON object"))?;
@@ -1020,54 +1024,33 @@ pub(crate) fn normalize_action(action: &mut Value) -> Result<()> {
 }
 
 pub(crate) fn validate_action(action: &Value) -> Result<()> {
-    let obj = action
-        .as_object()
-        .ok_or_else(|| anyhow!("action payload must be a JSON object"))?;
-    let kind = obj
-        .get("action")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow!("action missing 'action'"))?;
-    if !is_supported_action(kind) {
-        bail!("unsupported action '{kind}'");
-    }
-    // observation is optional per SPEC; do not enforce presence
-    let rationale = obj
-        .get("rationale")
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| anyhow!("action missing non-empty 'rationale'"))?;
-    let _ = rationale;
-    let predicted = obj
-        .get("predicted_next_actions")
-        .ok_or_else(|| anyhow!("action missing 'predicted_next_actions'"))?;
-    let predicted = predicted
-        .as_array()
-        .ok_or_else(|| anyhow!("predicted_next_actions must be an array"))?;
-    if !(2..=3).contains(&predicted.len()) {
-        bail!("predicted_next_actions must contain 2-3 entries");
-    }
-    for (idx, item) in predicted.iter().enumerate() {
-        let entry = item
-            .as_object()
-            .ok_or_else(|| anyhow!("predicted_next_actions[{idx}] must be an object"))?;
-        let action_name = entry
-            .get("action")
+    validate_tool_action(action)?;
+    if action.get("action").and_then(|v| v.as_str()) == Some("plan") {
+        let rationale = action
+            .get("rationale")
             .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .ok_or_else(|| anyhow!("predicted_next_actions[{idx}] missing non-empty 'action'"))?;
-        if !is_supported_action(action_name) {
-            bail!("predicted_next_actions[{idx}] uses unsupported action '{action_name}'");
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let observation = action
+            .get("observation")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let combined = format!("{observation}\n{rationale}");
+        let diagnostics_claim = combined.contains("diagnostic");
+        let has_source_evidence = combined.contains("read_file")
+            || combined.contains("run_command")
+            || combined.contains("python")
+            || combined.contains("source evidence")
+            || combined.contains("current source")
+            || combined.contains("verified source");
+        if diagnostics_claim && !has_source_evidence {
+            bail!(
+                "plan actions derived from diagnostics must cite same-cycle source evidence in observation/rationale (for example read_file, run_command, python, or verified current source evidence)"
+            );
         }
-        entry
-            .get("intent")
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .ok_or_else(|| anyhow!("predicted_next_actions[{idx}] missing non-empty 'intent'"))?;
     }
-    if kind == "message" {
+    if action.get("action").and_then(|v| v.as_str()) == Some("message") {
         validate_message_action(action, MessageValidationMode::Strict)?;
     }
     Ok(())
@@ -1156,27 +1139,6 @@ fn extract_output_log_path(out: &str) -> Option<String> {
     }
 }
 
-fn is_supported_action(kind: &str) -> bool {
-    matches!(
-        kind,
-        "list_dir"
-            | "read_file"
-            | "objectives"
-            | "apply_patch"
-            | "run_command"
-            | "python"
-            | "cargo_test"
-            | "plan"
-            | "rustc_hir"
-            | "rustc_mir"
-            | "graph_call"
-            | "graph_cfg"
-            | "graph_dataflow"
-            | "graph_reachability"
-            | "message"
-    )
-}
-
 pub(crate) fn action_result_prompt(
     tab_id: Option<u32>,
     turn_id: Option<u64>,
@@ -1198,13 +1160,14 @@ pub(crate) fn action_result_prompt(
     } else {
         String::new()
     };
-    let predicted_block = match predicted_next_actions {
-        Some(p) if !p.is_empty() => p.to_string(),
-        _ => "<none>".to_string(),
+    let predicted_line = match predicted_next_actions {
+        Some(p) if !p.is_empty() => format!(
+            "Predicted next actions from your last turn:\n```json\n{p}\n```\nCompare these against the actual result above before choosing your next action.\n\n"
+        ),
+        _ => {
+            "Predicted next actions from your last turn:\nNone.\nCompare these against the actual result above before choosing your next action.\n\n".to_string()
+        }
     };
-    let predicted_line = format!(
-        "Your predicted_next_actions from your last turn:\n{predicted_block}\nCompare these against the actual result above before choosing your next action.\n\n"
-    );
     format!(
         "TAB_ID: {tab_label}\nTURN_ID: {turn_label}\nAGENT_TYPE: {agent_type}\n\n{limit_line}Action result:\n{}\n\n{predicted_line}{}\nEmit exactly one action. Think through the decision internally; reveal chain-of-thought.",
         truncate(result, MAX_SNIPPET),
@@ -1258,6 +1221,40 @@ mod tests {
             "path": "SPEC.md"
         });
         assert!(validate_action(&action).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_diagnostics_derived_plan_without_source_evidence() {
+        let action = json!({
+            "action": "plan",
+            "op": "set_status",
+            "task_id": "T26_planner_evidence_enforcement_hook",
+            "status": "in_progress",
+            "observation": "Diagnostics reported a planner issue.",
+            "rationale": "Update the task based on diagnostics-only planning guidance.",
+            "predicted_next_actions": [
+                {"action": "read_file", "intent": "inspect source next"},
+                {"action": "cargo_test", "intent": "verify after any later patch"}
+            ]
+        });
+        assert!(validate_action(&action).is_err());
+    }
+
+    #[test]
+    fn validate_allows_diagnostics_derived_plan_with_source_evidence() {
+        let action = json!({
+            "action": "plan",
+            "op": "set_status",
+            "task_id": "T26_planner_evidence_enforcement_hook",
+            "status": "in_progress",
+            "observation": "read_file src/app.rs confirmed the planner path and current source evidence supports follow-up work.",
+            "rationale": "Diagnostics signal is now backed by same-cycle read_file source evidence, so plan update is justified.",
+            "predicted_next_actions": [
+                {"action": "apply_patch", "intent": "implement the validated planner guard"},
+                {"action": "cargo_test", "intent": "verify the guarded behavior"}
+            ]
+        });
+        assert!(validate_action(&action).is_ok());
     }
 
     #[test]

@@ -16,7 +16,7 @@ use crate::constants::{
     MAX_SNIPPET, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
 };
 use crate::objectives::filter_incomplete_objectives_json;
-use crate::logging::{log_action_event, log_action_result, now_ms};
+use crate::logging::{log_action_event, log_action_result, log_error_event, now_ms};
 use crate::prompts::truncate;
 
 /// Extract the first file path touched by the patch (*** Update File: / *** Add File:).
@@ -202,6 +202,96 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
     }
     let filtered = filter_incomplete_objectives_json(&raw).unwrap_or(raw);
     Ok((false, filtered))
+}
+
+fn handle_plan_sorted_view_action(workspace: &Path) -> Result<(bool, String)> {
+    let plan_path = workspace.join(MASTER_PLAN_FILE);
+    let plan = load_or_init_plan(&plan_path)?;
+    let obj = plan
+        .as_object()
+        .ok_or_else(|| anyhow!("PLAN.json must be a JSON object"))?;
+    let tasks = obj
+        .get("tasks")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+    let edges = obj
+        .get("dag")
+        .and_then(|v| v.as_object())
+        .and_then(|d| d.get("edges"))
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))?;
+    ensure_dag(tasks, edges)?;
+
+    let mut task_map: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
+    for task in tasks {
+        if let Some(id) = task.get("id").and_then(|v| v.as_str()) {
+            task_map.insert(id.to_string(), task.clone());
+        }
+    }
+
+    let mut indegree: std::collections::HashMap<String, usize> =
+        task_map.keys().map(|k| (k.clone(), 0)).collect();
+    let mut adj: std::collections::HashMap<String, BTreeSet<String>> = std::collections::HashMap::new();
+    for id in task_map.keys() {
+        adj.insert(id.clone(), BTreeSet::new());
+    }
+    for edge in edges {
+        let from = edge.get("from").and_then(|v| v.as_str()).unwrap_or("");
+        let to = edge.get("to").and_then(|v| v.as_str()).unwrap_or("");
+        if from.is_empty() || to.is_empty() {
+            bail!("plan edge missing from/to");
+        }
+        if let Some(nexts) = adj.get_mut(from) {
+            nexts.insert(to.to_string());
+        }
+        if let Some(count) = indegree.get_mut(to) {
+            *count += 1;
+        }
+    }
+
+    let mut ready: BTreeSet<String> = indegree
+        .iter()
+        .filter(|(_, &deg)| deg == 0)
+        .map(|(id, _)| id.clone())
+        .collect();
+    let mut order: Vec<String> = Vec::new();
+    while let Some(id) = ready.iter().next().cloned() {
+        ready.remove(&id);
+        order.push(id.clone());
+        if let Some(nexts) = adj.get(&id) {
+            for next in nexts {
+                if let Some(count) = indegree.get_mut(next) {
+                    *count = count.saturating_sub(1);
+                    if *count == 0 {
+                        ready.insert(next.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    let mut ordered_tasks: Vec<Value> = Vec::new();
+    for id in &order {
+        if let Some(task) = task_map.get(id) {
+            ordered_tasks.push(task.clone());
+        }
+    }
+
+    let mut output = serde_json::Map::new();
+    if let Some(version) = obj.get("version") {
+        output.insert("version".to_string(), version.clone());
+    }
+    if let Some(status) = obj.get("status") {
+        output.insert("status".to_string(), status.clone());
+    }
+    output.insert(
+        "order".to_string(),
+        Value::Array(order.into_iter().map(Value::String).collect()),
+    );
+    output.insert("tasks".to_string(), Value::Array(ordered_tasks));
+    output.insert("edges".to_string(), Value::Array(edges.clone()));
+    let rendered = serde_json::to_string_pretty(&Value::Object(output))?;
+    Ok((false, rendered))
 }
 
 fn extract_output_log_path(out: &str) -> Option<PathBuf> {
@@ -1345,10 +1435,17 @@ impl PlanOp {
 }
 
 fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(bool, String)> {
-    if role.starts_with("executor") {
+    let op_raw = action
+        .get("op")
+        .and_then(|v| v.as_str())
+        .or_else(|| action.get("operation").and_then(|v| v.as_str()))
+        .unwrap_or("update");
+    if op_raw != "sorted_view" && role.starts_with("executor") {
         bail!("plan action is not allowed for executor roles");
     }
-    capture_plan_schema(action);
+    if op_raw != "sorted_view" {
+        capture_plan_schema(action);
+    }
     if matches!(role, "planner" | "mini_planner") {
         let rationale = action.get("rationale").and_then(|v| v.as_str()).unwrap_or("");
         let observation = action.get("observation").and_then(|v| v.as_str()).unwrap_or("");
@@ -1371,11 +1468,9 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
             bail!("plan path must be {MASTER_PLAN_FILE}, got {path}");
         }
     }
-    let op_raw = action
-        .get("op")
-        .and_then(|v| v.as_str())
-        .or_else(|| action.get("operation").and_then(|v| v.as_str()))
-        .unwrap_or("update");
+    if op_raw == "sorted_view" {
+        return handle_plan_sorted_view_action(workspace);
+    }
     if op_raw == "update" {
         if action.get("updates").is_none() && action.get("plan").is_some() {
             return handle_plan_replace_bundle(workspace, action);
@@ -2225,6 +2320,13 @@ fn persist_inbound_message(role: &str, step: usize, action: &Value, full_message
         eprintln!(
             "[{role}] step={} failed to persist inbound message for {}: {}",
             step, to, err
+        );
+        log_error_event(
+            role,
+            "persist_inbound_message",
+            Some(step),
+            &format!("failed to persist inbound message for {}: {}", to, err),
+            Some(json!({ "path": path.to_string_lossy(), "to": to })),
         );
     }
     let wake_path = agent_state_dir.join(format!("wakeup_{to}.flag"));

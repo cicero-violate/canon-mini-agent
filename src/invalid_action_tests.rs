@@ -51,3 +51,46 @@ fn observation_type_still_validated_if_present() {
     );
 }
 
+#[test]
+fn planner_diagnostics_plan_requires_source_validation_evidence() {
+    let action = json!({
+        "action": "plan",
+        "op": "set_status",
+        "status": "in_progress",
+        "observation": "Diagnostics report says a stale violation is active.",
+        "rationale": "Reprioritize work from diagnostics.",
+        "predicted_next_actions": [
+            {"action": "read_file", "intent": "Inspect the relevant source file."},
+            {"action": "cargo_test", "intent": "Verify the guard after updating plan behavior."}
+        ]
+    });
+
+    let result = build_invalid_action_feedback(Some(&action), "", "planner");
+
+    assert!(
+        result.contains("must cite current source validation"),
+        "planner diagnostics-derived plan actions without source validation should be rejected"
+    );
+}
+
+#[test]
+fn planner_diagnostics_plan_allows_cited_source_validation_evidence() {
+    let action = json!({
+        "action": "plan",
+        "op": "set_status",
+        "status": "in_progress",
+        "observation": "Diagnostics claim rechecked with read_file on src/tools.rs and verified against current-cycle source evidence.",
+        "rationale": "Use verified source evidence before acting on diagnostics.",
+        "predicted_next_actions": [
+            {"action": "cargo_test", "intent": "Verify the planner guard remains green."},
+            {"action": "plan", "intent": "Continue with source-validated planning work."}
+        ]
+    });
+
+    let result = build_invalid_action_feedback(Some(&action), "", "planner");
+
+    assert!(
+        !result.contains("must cite current source validation"),
+        "planner diagnostics-derived plan actions with cited source validation should be allowed"
+    );
+}

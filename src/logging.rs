@@ -490,6 +490,34 @@ pub(crate) fn log_action_result(
     }
 }
 
+pub(crate) fn log_error_event(
+    role: &str,
+    phase: &str,
+    step: Option<usize>,
+    text: &str,
+    meta: Option<Value>,
+) {
+    let record = compact_log_record(
+        "error",
+        phase,
+        Some(role),
+        None,
+        None,
+        step,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(text.to_string()),
+        meta,
+    );
+    if let Err(err) = append_action_log_record(&record) {
+        eprintln!("[{role}] step={} error_log_error: {err}", step.unwrap_or(0));
+    }
+}
+
 pub(crate) fn append_llm_completion_log(
     role: &str,
     endpoint: &LlmEndpoint,

@@ -6,6 +6,7 @@ mod engine;
 mod logging;
 mod md_convert;
 mod objectives;
+mod tool_schema;
 mod prompts;
 mod prompt_inputs;
 mod protocol;

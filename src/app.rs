@@ -18,7 +18,7 @@ use tokio::sync::Notify;
 use crate::engine::process_action_and_execute;
 use crate::logging::{
     append_action_log_record, append_orchestration_trace, compact_log_record, init_log_paths,
-    log_action_result, log_message_event, make_command_id, now_ms,
+    log_action_result, log_error_event, log_message_event, make_command_id, now_ms,
 };
 use crate::prompts::{
     action_observation, action_rationale, action_result_prompt, diagnostics_cycle_prompt,
@@ -353,6 +353,13 @@ async fn run_planner_phase(
         }
         Err(err) => {
             eprintln!("[orchestrate] planner error: {err:#}");
+            log_error_event(
+                "planner",
+                "orchestrate",
+                None,
+                &format!("planner error: {err:#}"),
+                Some(json!({ "stage": "planner_cycle" })),
+            );
             false
         }
     }
@@ -367,6 +374,13 @@ async fn run_solo_phase(
         Ok(spec) => spec,
         Err(err) => {
             eprintln!("[orchestrate] solo error: {err:#}");
+            log_error_event(
+                "solo",
+                "orchestrate",
+                None,
+                &format!("solo error: {err:#}"),
+                Some(json!({ "stage": "solo_load" })),
+            );
             return false;
         }
     };
@@ -416,6 +430,13 @@ async fn run_solo_phase(
         }
         Err(err) => {
             eprintln!("[orchestrate] solo error: {err:#}");
+            log_error_event(
+                "solo",
+                "orchestrate",
+                None,
+                &format!("solo error: {err:#}"),
+                Some(json!({ "stage": "solo_cycle" })),
+            );
             false
         }
     }
@@ -463,6 +484,13 @@ async fn run_diagnostics_phase(
         }
         Err(err) => {
             eprintln!("[orchestrate] diagnostics error: {err:#}");
+            log_error_event(
+                "diagnostics",
+                "orchestrate",
+                None,
+                &format!("diagnostics error: {err:#}"),
+                Some(json!({ "stage": "diagnostics_cycle" })),
+            );
             false
         }
     }
@@ -590,6 +618,13 @@ async fn run_verifier_phase(
             }
             Err(err) => {
                 eprintln!("[orchestrate] verifier join error: {err:#}");
+                log_error_event(
+                    "verifier",
+                    "orchestrate",
+                    None,
+                    &format!("verifier join error: {err:#}"),
+                    Some(json!({ "stage": "verifier_join" })),
+                );
             }
         }
     }
@@ -754,6 +789,16 @@ fn run_executor_phase(
                     }
                     Err(err) => {
                         eprintln!("[orchestrate] {} submit error (preserving lane ownership): {err:#}", job.executor_name);
+                        log_error_event(
+                            "executor",
+                            "orchestrate",
+                            None,
+                            &format!(
+                                "{} submit error (preserving lane ownership): {err:#}",
+                                job.executor_name
+                            ),
+                            Some(json!({ "stage": "executor_submit", "lane": job.executor_name })),
+                        );
                         let lane = dispatch_lane_mut(dispatch_state, job.lane_index);
                         // Recovery: clear stuck ownership and requeue lane
                         lane.in_progress_by = None;
@@ -765,6 +810,13 @@ fn run_executor_phase(
             }
             Err(err) => {
                 eprintln!("[orchestrate] submit join error: {err:#}");
+                log_error_event(
+                    "orchestrate",
+                    "orchestrate",
+                    None,
+                    &format!("submit join error: {err:#}"),
+                    Some(json!({ "stage": "submit_join" })),
+                );
             }
         }
     }
@@ -916,6 +968,16 @@ fn drain_continuations(
                         "[orchestrate] executor continuation error: lane={} err={err:#}",
                         submitted.lane_label
                     );
+                    log_error_event(
+                        "executor",
+                        "orchestrate",
+                        None,
+                        &format!(
+                            "executor continuation error: lane={} err={err:#}",
+                            submitted.lane_label
+                        ),
+                        Some(json!({ "stage": "executor_continuation", "lane": submitted.lane_label })),
+                    );
                     dispatch_state.lane_prompt_in_flight.insert(submitted.lane, false);
                     let lane = dispatch_lane_mut(dispatch_state, submitted.lane);
                     lane.in_progress_by = None;
@@ -925,6 +987,13 @@ fn drain_continuations(
             },
             Err(err) => {
                 eprintln!("[orchestrate] continuation join error: {err:#}");
+                log_error_event(
+                    "orchestrate",
+                    "orchestrate",
+                    None,
+                    &format!("continuation join error: {err:#}"),
+                    Some(json!({ "stage": "continuation_join" })),
+                );
             }
         }
     }
@@ -2789,6 +2858,13 @@ pub async fn run() -> Result<()> {
     let _ = DIAGNOSTICS_FILE_PATH.set(diagnostics_rel.clone());
     if let Err(err) = ensure_objectives_and_invariants_json(&workspace) {
         eprintln!("[canon-mini-agent] objectives/invariants conversion failed: {err:#}");
+        log_error_event(
+            "orchestrate",
+            "startup",
+            None,
+            &format!("objectives/invariants conversion failed: {err:#}"),
+            Some(json!({ "stage": "startup" })),
+        );
     }
 
     let shutdown = init_shutdown_signal();
@@ -2994,6 +3070,13 @@ pub async fn run() -> Result<()> {
                     &verifier_pending_results,
                 ) {
                     eprintln!("[orchestrate] checkpoint save failed: {err:#}");
+                    log_error_event(
+                        "orchestrate",
+                        "checkpoint",
+                        None,
+                        &format!("checkpoint save failed: {err:#}"),
+                        None,
+                    );
                 }
                 return Ok(());
             }

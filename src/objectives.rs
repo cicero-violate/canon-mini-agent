@@ -25,6 +25,12 @@ pub struct Objective {
     #[serde(default)]
     pub title: String,
     #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub scope: String,
+    #[serde(default)]
+    pub authority_files: Vec<String>,
+    #[serde(default)]
     pub category: String,
     #[serde(default)]
     pub level: String,
@@ -57,18 +63,21 @@ pub fn filter_incomplete_objectives_json(raw: &str) -> Option<String> {
 }
 
 pub fn is_completed(obj: &Objective) -> bool {
-    match extract_status(&obj.description) {
-        Some(status) => matches!(status.as_str(), "done" | "complete" | "completed"),
-        None => false,
-    }
+    let status = if !obj.status.trim().is_empty() {
+        Some(obj.status.trim().to_lowercase())
+    } else {
+        extract_status(&obj.description)
+    };
+    matches!(status.as_deref(), Some("done" | "complete" | "completed"))
 }
 
 pub fn extract_status(description: &str) -> Option<String> {
     let lower = description.to_lowercase();
     let marker = "status:";
     let idx = lower.find(marker)?;
-    let rest = &description[idx + marker.len()..];
+    let rest = &lower[idx + marker.len()..];
     let rest = rest.trim_start();
+    let rest = rest.trim_start_matches(|c: char| !c.is_ascii_alphanumeric());
     let end = rest
         .find("**")
         .or_else(|| rest.find('\n'))

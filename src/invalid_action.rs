@@ -1,5 +1,8 @@
 use serde_json::{json, Value};
 
+use crate::prompts::{validate_message_action, MessageValidationMode};
+use crate::tool_schema::schema_diff_messages;
+
 pub fn default_message_route(
     role: &str,
 ) -> (&'static str, &'static str, &'static str, &'static str) {
@@ -167,18 +170,17 @@ pub(crate) fn invalid_action_expected_fields(kind: &str) -> Vec<&'static str> {
     }
 }
 
-fn is_supported_action(kind: &str) -> bool {
-    matches!(
-        kind,
-        "run_command"
-            | "read_file"
-            | "list_dir"
-            | "apply_patch"
-            | "python"
-            | "cargo_test"
-            | "plan"
-            | "message"
-    )
+fn example_predicted_next_actions() -> Value {
+    json!([
+        {
+            "action": "read_file",
+            "intent": "Inspect the relevant source before making changes."
+        },
+        {
+            "action": "run_command",
+            "intent": "Verify the current workspace state after the read."
+        }
+    ])
 }
 
 fn example_action_for(kind: &str, role: &str, raw_action: Option<&Value>) -> Value {
@@ -187,38 +189,44 @@ fn example_action_for(kind: &str, role: &str, raw_action: Option<&Value>) -> Val
             "action": "run_command",
             "cmd": "rg -n \"pattern\" src/",
             "observation": "Search for the relevant code.",
-            "rationale": "Locate the target before patching."
+            "rationale": "Locate the target before patching.",
+            "predicted_next_actions": example_predicted_next_actions()
         }),
         "read_file" => json!({
             "action": "read_file",
             "path": "src/lib.rs",
             "observation": "Read the file for context.",
-            "rationale": "Need context before editing."
+            "rationale": "Need context before editing.",
+            "predicted_next_actions": example_predicted_next_actions()
         }),
         "list_dir" => json!({
             "action": "list_dir",
             "path": ".",
             "observation": "List workspace files.",
-            "rationale": "Locate the target before acting."
+            "rationale": "Locate the target before acting.",
+            "predicted_next_actions": example_predicted_next_actions()
         }),
         "apply_patch" => json!({
             "action": "apply_patch",
             "patch": "*** Begin Patch\n*** Update File: path/to/file.rs\n@@\n- old\n+ new\n*** End Patch",
             "observation": "Apply the requested change.",
-            "rationale": "Implement the edit directly."
+            "rationale": "Implement the edit directly.",
+            "predicted_next_actions": example_predicted_next_actions()
         }),
         "python" => json!({
             "action": "python",
             "code": "print('analysis')",
             "observation": "Run structured analysis.",
-            "rationale": "Use Python for parsing tasks."
+            "rationale": "Use Python for parsing tasks.",
+            "predicted_next_actions": example_predicted_next_actions()
         }),
         "cargo_test" => json!({
             "action": "cargo_test",
             "crate": "canon-mini-agent",
             "test": "optional_test_name",
             "observation": "Run the targeted test.",
-            "rationale": "Verify the change."
+            "rationale": "Verify the change.",
+            "predicted_next_actions": example_predicted_next_actions()
         }),
         "plan" => json!({
             "action": "plan",
@@ -230,7 +238,8 @@ fn example_action_for(kind: &str, role: &str, raw_action: Option<&Value>) -> Val
                 "priority": 3
             },
             "observation": "Planning update needed.",
-            "rationale": "Track work in PLAN.json via plan tool."
+            "rationale": "Track work in PLAN.json via plan tool.",
+            "predicted_next_actions": example_predicted_next_actions()
         }),
         "message" => {
             let (from, to, msg_type, status) = raw_action
@@ -271,6 +280,7 @@ fn example_action_for(kind: &str, role: &str, raw_action: Option<&Value>) -> Val
                 "status": status,
                 "observation": "Summarize what happened.",
                 "rationale": "Explain why this is the next step.",
+                "predicted_next_actions": example_predicted_next_actions(),
                 "payload": {
                     "summary": "Short summary"
                 }
@@ -284,28 +294,11 @@ fn example_action_for(kind: &str, role: &str, raw_action: Option<&Value>) -> Val
             "status": "complete",
             "observation": "Summarize what happened.",
             "rationale": "Explain why this is the next step.",
+            "predicted_next_actions": example_predicted_next_actions(),
             "payload": {
                 "summary": "Short summary"
             }
         }),
-    }
-}
-
-fn push_type_mismatch(
-    schema_diff: &mut Vec<String>,
-    obj: &serde_json::Map<String, Value>,
-    field: &str,
-    expected: &str,
-) {
-    if let Some(val) = obj.get(field) {
-        let type_ok = match expected {
-            "string" => val.is_string(),
-            "object" => val.is_object(),
-            _ => true,
-        };
-        if !type_ok {
-            schema_diff.push(format!("field type mismatch: {field} (expected {expected})"));
-        }
     }
 }
 
@@ -322,220 +315,234 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
             .unwrap_or("unknown");
         expected_fields = invalid_action_expected_fields(kind);
         example_action = Some(example_action_for(kind, role, Some(action)));
+        schema_diff = schema_diff_messages(action);
         if let Some(obj) = obj {
-            if obj
-                .get("action")
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .is_none()
+            if let Some(value) = obj.get("action") {
+                if !value.is_string()
+                    && !schema_diff
+                        .iter()
+                        .any(|s| s.starts_with("field type mismatch: action"))
+                {
+                    schema_diff.push("field type mismatch: action (expected string)".to_string());
+                }
+            }
+            if let Some(rationale) = obj.get("rationale") {
+                if let Some(text) = rationale.as_str() {
+                    if text.trim().is_empty()
+                        && !schema_diff.iter().any(|s| s == "missing field: rationale")
+                    {
+                        schema_diff.push("missing field: rationale".to_string());
+                    }
+                } else {
+                    schema_diff
+                        .push("field type mismatch: rationale (expected string)".to_string());
+                }
+            }
+        }
+        if let Some(observation) = action.get("observation") {
+            if !observation.is_string()
+                && !schema_diff
+                    .iter()
+                    .any(|s| s.starts_with("field type mismatch: observation"))
             {
-                schema_diff.push("missing field: action".to_string());
+                schema_diff
+                    .push("field type mismatch: observation (expected string)".to_string());
             }
-            push_type_mismatch(&mut schema_diff, obj, "action", "string");
-            if obj
-                .get("observation")
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .is_some()
-            {
-                // observation is optional per SPEC.md; do not enforce non-empty
+        }
+        if obj
+            .and_then(|o| o.get("action"))
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .is_none()
+        {
+            schema_diff.push("missing field: action".to_string());
+            schema_diff.push("unsupported action: missing or unknown action".to_string());
+        }
+        if matches!(kind, "run_command" | "read_file" | "apply_patch" | "python" | "cargo_test") {
+            let field = match kind {
+                "run_command" => "cmd",
+                "read_file" => "path",
+                "apply_patch" => "patch",
+                "python" => "code",
+                "cargo_test" => "crate",
+                _ => "",
+            };
+            if let Some(obj) = obj {
+                if let Some(value) = obj.get(field) {
+                    if let Some(text) = value.as_str() {
+                        if text.trim().is_empty()
+                            && !schema_diff
+                                .iter()
+                                .any(|s| s == &format!("missing field: {field}"))
+                        {
+                            schema_diff.push(format!("missing field: {field}"));
+                        }
+                    } else if !schema_diff
+                        .iter()
+                        .any(|s| s == &format!("field type mismatch: {field} (expected string)"))
+                    {
+                        schema_diff
+                            .push(format!("field type mismatch: {field} (expected string)"));
+                    }
+                }
             }
-            push_type_mismatch(&mut schema_diff, obj, "observation", "string");
-            if obj
-                .get("rationale")
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .is_none()
-            {
-                schema_diff.push("missing field: rationale".to_string());
+        }
+        if kind == "plan" && matches!(role, "planner" | "mini_planner") {
+            let rationale = action.get("rationale").and_then(|v| v.as_str()).unwrap_or("");
+            let observation = action.get("observation").and_then(|v| v.as_str()).unwrap_or("");
+            let combined = format!("{observation}\n{rationale}").to_ascii_lowercase();
+            let references_diagnostics = combined.contains("diagnostic")
+                || combined.contains("stale")
+                || combined.contains("violation");
+            let has_source_validation = combined.contains("read_file")
+                || combined.contains("source")
+                || combined.contains("verified")
+                || combined.contains("current-cycle")
+                || combined.contains("rg ")
+                || combined.contains("run_command");
+            if references_diagnostics && !has_source_validation {
+                let msg = "planner plan actions that rely on diagnostics must cite current source validation in observation/rationale (for example read_file, run_command, or verified source evidence)";
+                if !schema_diff.iter().any(|s| s == msg) {
+                    schema_diff.push(msg.to_string());
+                }
             }
-            push_type_mismatch(&mut schema_diff, obj, "rationale", "string");
-            if obj.get("action").is_none() || kind == "unknown" {
-                schema_diff.push("unsupported action: missing or unknown action".to_string());
-            } else if !is_supported_action(kind) {
-                schema_diff.push(format!("unsupported action: {kind}"));
+        }
+        if kind == "message" {
+            if let Some(obj) = obj {
+                for field in ["from", "to", "type", "status", "payload", "rationale"] {
+                    let value = obj.get(field);
+                    let missing = match field {
+                        "payload" => value.and_then(|v| v.as_object()).is_none(),
+                        _ => value
+                            .and_then(|v| v.as_str())
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                            .is_none(),
+                    };
+                    if missing && !schema_diff.iter().any(|s| s == &format!("missing field: {field}"))
+                    {
+                        schema_diff.push(format!("missing field: {field}"));
+                    }
+                    if field == "payload" {
+                        if let Some(val) = value {
+                            if !val.is_object()
+                                && !schema_diff.iter().any(|s| s == "payload must be object")
+                            {
+                                schema_diff.push("payload must be object".to_string());
+                            }
+                            if !val.is_object()
+                                && !schema_diff
+                                    .iter()
+                                    .any(|s| s == "field type mismatch: payload (expected object)")
+                            {
+                                schema_diff.push(
+                                    "field type mismatch: payload (expected object)".to_string(),
+                                );
+                            }
+                        }
+                    }
+                }
             }
-            match kind {
-                "run_command" => {
-                    push_type_mismatch(&mut schema_diff, obj, "cmd", "string");
-                    if obj
-                        .get("cmd")
-                        .and_then(|v| v.as_str())
-                        .map(str::trim)
-                        .filter(|s| !s.is_empty())
-                        .is_none()
-                    {
-                        schema_diff.push("missing field: cmd".to_string());
-                    }
+            if let Err(err) = validate_message_action(action, MessageValidationMode::Strict) {
+                let msg = err.to_string();
+                if !schema_diff.iter().any(|s| s == &msg) {
+                    schema_diff.push(msg);
                 }
-                "read_file" | "list_dir" => {
-                    push_type_mismatch(&mut schema_diff, obj, "path", "string");
-                    if obj
-                        .get("path")
-                        .and_then(|v| v.as_str())
-                        .map(str::trim)
-                        .filter(|s| !s.is_empty())
-                        .is_none()
-                    {
-                        schema_diff.push("missing field: path".to_string());
-                    }
-                }
-                "apply_patch" => {
-                    push_type_mismatch(&mut schema_diff, obj, "patch", "string");
-                    if obj
-                        .get("patch")
-                        .and_then(|v| v.as_str())
-                        .map(str::trim)
-                        .filter(|s| !s.is_empty())
-                        .is_none()
-                    {
-                        schema_diff.push("missing field: patch".to_string());
-                    }
-                }
-                "python" => {
-                    push_type_mismatch(&mut schema_diff, obj, "code", "string");
-                    if obj
-                        .get("code")
-                        .and_then(|v| v.as_str())
-                        .map(str::trim)
-                        .filter(|s| !s.is_empty())
-                        .is_none()
-                    {
-                        schema_diff.push("missing field: code".to_string());
-                    }
-                }
-                "cargo_test" => {
-                    push_type_mismatch(&mut schema_diff, obj, "crate", "string");
-                    if obj
-                        .get("crate")
-                        .and_then(|v| v.as_str())
-                        .map(str::trim)
-                        .filter(|s| !s.is_empty())
-                        .is_none()
-                    {
-                        schema_diff.push("missing field: crate".to_string());
-                    }
-                }
-                "plan" => {
-                    push_type_mismatch(&mut schema_diff, obj, "op", "string");
-                    let op = obj.get("op").and_then(|v| v.as_str()).map(str::trim);
-                    match op {
-                        Some("") | None => schema_diff.push("missing field: op".to_string()),
-                        Some(
-                            "create_task"
-                            | "update_task"
-                            | "delete_task"
-                            | "add_edge"
-                            | "remove_edge"
-                            | "set_status",
-                        ) => {}
-                        Some(other) => {
-                            schema_diff.push(format!("unknown plan op: {other}"));
+            }
+            if let Some(obj) = obj {
+                let mut msg_type: Option<String> = None;
+                let mut msg_status: Option<String> = None;
+                for field in ["from", "to", "type", "status"] {
+                    if let Some(val) = obj.get(field).and_then(|v| v.as_str()) {
+                        if val != val.to_lowercase() {
+                            schema_diff.push(format!("role casing invalid: {field}={val}"));
+                        }
+                        if field == "type" {
+                            msg_type = Some(val.to_string());
+                        } else if field == "status" {
+                            msg_status = Some(val.to_string());
                         }
                     }
                 }
-                "message" => {
-                    let mut msg_type: Option<String> = None;
-                    let mut msg_status: Option<String> = None;
-                    for field in ["from", "to", "type", "status"] {
-                        push_type_mismatch(&mut schema_diff, obj, field, "string");
-                        if let Some(val) = obj.get(field).and_then(|v| v.as_str()) {
-                            if val != val.to_lowercase() {
-                                schema_diff.push(format!("role casing invalid: {field}={val}"));
-                            }
-                            if field == "type" {
-                                msg_type = Some(val.to_string());
-                            } else if field == "status" {
-                                msg_status = Some(val.to_string());
+                if let (Some(msg_type), Some(msg_status)) = (msg_type, msg_status) {
+                    let type_is_blocker = msg_type.eq_ignore_ascii_case("blocker");
+                    let status_is_blocked = msg_status.eq_ignore_ascii_case("blocked");
+                    if type_is_blocker != status_is_blocked {
+                        schema_diff.push(format!(
+                            "type/status mismatch: type={msg_type} status={msg_status}"
+                        ));
+                    }
+                    let expected = expected_message_format(
+                        obj.get("from").and_then(|v| v.as_str()).unwrap_or("executor"),
+                        obj.get("to").and_then(|v| v.as_str()).unwrap_or("verifier"),
+                        &msg_type,
+                        &msg_status,
+                    );
+                    expected_format = Some(expected);
+                }
+                if obj.get("payload").and_then(|v| v.as_object()).is_none() {
+                    if !schema_diff.iter().any(|s| s == "missing field: payload") {
+                        schema_diff.push("missing field: payload".to_string());
+                    }
+                    if obj.get("payload").is_some()
+                        && !schema_diff
+                            .iter()
+                            .any(|s| s == "payload must be object")
+                    {
+                        schema_diff.push("payload must be object".to_string());
+                    }
+                }
+                let payload = obj.get("payload").and_then(|v| v.as_object());
+                if payload
+                    .and_then(|p| p.get("summary"))
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .is_none()
+                {
+                    schema_diff.push("payload.summary missing".to_string());
+                }
+                if obj.contains_key("blocker")
+                    || obj.contains_key("evidence")
+                    || obj.contains_key("required_action")
+                {
+                    schema_diff.push(
+                        "blocker fields must be inside payload: blocker/evidence/required_action"
+                            .to_string(),
+                    );
+                }
+                let is_blocker = obj
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .map(|v| v.eq_ignore_ascii_case("blocker"))
+                    .unwrap_or(false)
+                    || obj
+                        .get("status")
+                        .and_then(|v| v.as_str())
+                        .map(|v| v.eq_ignore_ascii_case("blocked"))
+                        .unwrap_or(false);
+                if is_blocker {
+                    for field in ["blocker", "evidence", "required_action"] {
+                        let value = payload.and_then(|p| p.get(field));
+                        if let Some(val) = value {
+                            if !val.is_string() {
+                                schema_diff.push(format!(
+                                    "field type mismatch: payload.{field} (expected string)"
+                                ));
+                                continue;
                             }
                         }
-                        if obj
-                            .get(field)
+                        if value
                             .and_then(|v| v.as_str())
                             .map(str::trim)
                             .filter(|s| !s.is_empty())
                             .is_none()
                         {
-                            schema_diff.push(format!("missing field: {field}"));
-                        }
-                    }
-                    if let (Some(msg_type), Some(msg_status)) = (msg_type, msg_status) {
-                        let type_is_blocker = msg_type.eq_ignore_ascii_case("blocker");
-                        let status_is_blocked = msg_status.eq_ignore_ascii_case("blocked");
-                        if type_is_blocker != status_is_blocked {
-                            schema_diff.push(format!(
-                                "type/status mismatch: type={msg_type} status={msg_status}"
-                            ));
-                        }
-                        let expected = expected_message_format(
-                            obj.get("from").and_then(|v| v.as_str()).unwrap_or("executor"),
-                            obj.get("to").and_then(|v| v.as_str()).unwrap_or("verifier"),
-                            &msg_type,
-                            &msg_status,
-                        );
-                        expected_format = Some(expected);
-                    }
-                    if obj.get("payload").and_then(|v| v.as_object()).is_none() {
-                        schema_diff.push("missing field: payload".to_string());
-                        if obj.get("payload").is_some() {
-                            schema_diff.push("payload must be object".to_string());
-                        }
-                    }
-                    push_type_mismatch(&mut schema_diff, obj, "payload", "object");
-                    let payload = obj.get("payload").and_then(|v| v.as_object());
-                    if payload
-                        .and_then(|p| p.get("summary"))
-                        .and_then(|v| v.as_str())
-                        .map(str::trim)
-                        .filter(|s| !s.is_empty())
-                        .is_none()
-                    {
-                        schema_diff.push("payload.summary missing".to_string());
-                    }
-                    if obj.contains_key("blocker")
-                        || obj.contains_key("evidence")
-                        || obj.contains_key("required_action")
-                    {
-                        schema_diff.push(
-                            "blocker fields must be inside payload: blocker/evidence/required_action"
-                                .to_string(),
-                        );
-                    }
-                    let is_blocker = obj
-                        .get("type")
-                        .and_then(|v| v.as_str())
-                        .map(|v| v.eq_ignore_ascii_case("blocker"))
-                        .unwrap_or(false)
-                        || obj
-                            .get("status")
-                            .and_then(|v| v.as_str())
-                            .map(|v| v.eq_ignore_ascii_case("blocked"))
-                            .unwrap_or(false);
-                    if is_blocker {
-                        for field in ["blocker", "evidence", "required_action"] {
-                            let value = payload.and_then(|p| p.get(field));
-                            if let Some(val) = value {
-                                if !val.is_string() {
-                                    schema_diff.push(format!(
-                                        "field type mismatch: payload.{field} (expected string)"
-                                    ));
-                                    continue;
-                                }
-                            }
-                            if value
-                                .and_then(|v| v.as_str())
-                                .map(str::trim)
-                                .filter(|s| !s.is_empty())
-                                .is_none()
-                            {
-                                schema_diff.push(format!("payload.{field} missing"));
-                            }
+                            schema_diff.push(format!("payload.{field} missing"));
                         }
                     }
                 }
-                _ => {}
             }
         }
     }
