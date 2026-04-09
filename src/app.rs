@@ -1,4 +1,3 @@
-//
 use anyhow::{anyhow, bail, Context, Result};
 use canon_llm::{
     config::LlmEndpoint,
@@ -1068,6 +1067,10 @@ fn cycle_idle_marker_path() -> PathBuf {
     PathBuf::from(crate::constants::agent_state_dir()).join("orchestrator_cycle_idle.flag")
 }
 
+fn orchestrator_mode_flag_path() -> PathBuf {
+    PathBuf::from(crate::constants::agent_state_dir()).join("orchestrator_mode.flag")
+}
+
 fn save_checkpoint(
     workspace: &Path,
     phase: &str,
@@ -1151,7 +1154,7 @@ fn looks_like_diff(raw: &str) -> bool {
 fn guardrail_action_from_raw(raw: &str, role: &str) -> Option<Value> {
     if raw.contains("assistant reaction-only terminal frame:") {
         let path = if role == "diagnostics" {
-            "state/event_log/event.tlog.d"
+            "<workspace-local log/state artifacts discovered during diagnostics>"
         } else {
             "canon-utils"
         };
@@ -1242,7 +1245,12 @@ fn parse_action_from_raw(
                     return Ok(guard_action);
                 }
             }
-            eprintln!("[{role}] step={} parse_error: {e}", step);
+            eprintln!(
+                "[{role}] step={} parse_error: {e}\n[{role}] step={} parse_error_raw: {}",
+                step,
+                step,
+                truncate(raw, MAX_SNIPPET)
+            );
             log("llm_parse_error", json!({ "error": e.to_string(), "raw": truncate(raw, MAX_SNIPPET) }));
             trace("parse_error");
             return Err(InvalidActionFeedback {
@@ -1363,12 +1371,16 @@ fn enforce_executor_step_limit(
     if role.starts_with("executor") && executor_step_limit_exceeded(total_steps, EXECUTOR_STEP_LIMIT)
     {
         *error_streak = error_streak.saturating_add(1);
-        *last_result = Some(format!(
-            "Executor exceeded {EXECUTOR_STEP_LIMIT} actions without handoff. You must send a `message` action to planner (handoff or blocker) now."
-        ));
+        *last_result = Some(executor_step_limit_feedback());
         return true;
     }
     false
+}
+
+fn executor_step_limit_feedback() -> String {
+    format!(
+        "Step limit reached: executor must send a message to planner after {EXECUTOR_STEP_LIMIT} actions. Send exactly one `message` action now.\n\nRequired schema:\n```json\n{{\n  \"action\": \"message\",\n  \"from\": \"executor\",\n  \"to\": \"planner\",\n  \"type\": \"handoff\" | \"blocker\",\n  \"status\": \"complete\" | \"blocked\",\n  \"observation\": \"What happened, based only on evidence.\",\n  \"rationale\": \"Why planner must act next.\",\n  \"payload\": {{\n    \"summary\": \"Short summary\",\n    \"evidence\": \"Concrete evidence or artifact paths\"\n  }}\n}}\n```\n\nExample complete handoff:\n```json\n{{\n  \"action\": \"message\",\n  \"from\": \"executor\",\n  \"to\": \"planner\",\n  \"type\": \"handoff\",\n  \"status\": \"complete\",\n  \"observation\": \"Completed the assigned executor work and gathered verification evidence.\",\n  \"rationale\": \"Planner should record completion and schedule the next ready task.\",\n  \"payload\": {{\n    \"summary\": \"Executor work is complete.\",\n    \"evidence\": \"Include files changed, commands run, and test results.\"\n  }}\n}}\n```\n\nExample blocker:\n```json\n{{\n  \"action\": \"message\",\n  \"from\": \"executor\",\n  \"to\": \"planner\",\n  \"type\": \"blocker\",\n  \"status\": \"blocked\",\n  \"observation\": \"Progress is blocked by a concrete failure.\",\n  \"rationale\": \"Planner must resolve the blocker before more executor actions.\",\n  \"payload\": {{\n    \"summary\": \"Executor is blocked.\",\n    \"blocker\": \"Root cause\",\n    \"evidence\": \"Exact error text or failed command\",\n    \"required_action\": \"What planner should do next\"\n  }}\n}}\n```"
+    )
 }
 
 fn enforce_diagnostics_python(
@@ -1387,13 +1399,13 @@ fn enforce_diagnostics_python(
     }
     if step == 0 {
         return Some(format!(
-            "Diagnostics must begin with a `python` action that analyzes {}/state/event_log/event.tlog.d to diagnose problems, detect inconsistencies, and extract concrete failure signals.",
+            "Diagnostics must begin with a `python` action that discovers and analyzes workspace-local log/state artifacts that actually exist under {} to diagnose problems, detect inconsistencies, and extract concrete failure signals.",
             workspace()
         ));
     }
     if matches!(kind, "apply_patch" | "message") {
         return Some(format!(
-            "Before writing diagnostics or finishing, run a `python` action that analyzes {}/state/event_log/event.tlog.d to find errors, inconsistencies, invariant violations, repeated failure patterns, and concrete repair targets. Diagnostics is for finding what is broken.",
+            "Before writing diagnostics or finishing, run a `python` action that discovers and analyzes workspace-local log/state artifacts that actually exist under {} to find errors, inconsistencies, invariant violations, repeated failure patterns, and concrete repair targets. Diagnostics is for finding what is broken.",
             workspace()
         ));
     }
@@ -1550,6 +1562,28 @@ struct LlmResponseContext<'a> {
     submit_only: bool,
 }
 
+fn full_exchange_path(exchange_id: &str, suffix: &str) -> PathBuf {
+    let safe_id = exchange_id.replace(':', "_");
+    let ts = exchange_id
+        .rsplit(':')
+        .next()
+        .and_then(|v| v.parse::<u128>().ok())
+        .unwrap_or(0);
+    PathBuf::from(crate::constants::agent_state_dir())
+        .join("llm_full")
+        .join(format!("{ts}_{safe_id}_{suffix}.json"))
+}
+
+fn write_full_exchange(exchange_id: &str, suffix: &str, payload: &Value) {
+    let path = full_exchange_path(exchange_id, suffix);
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(text) = serde_json::to_string_pretty(payload) {
+        let _ = std::fs::write(path, text);
+    }
+}
+
 impl<'a> LlmResponseContext<'a> {
     fn log_request(&self, step: usize, exchange_id: &str, prompt: &str, role_schema: &str) {
         log_message_event(
@@ -1564,6 +1598,17 @@ impl<'a> LlmResponseContext<'a> {
                 "prompt_bytes": prompt.len(),
                 "role_schema_bytes": role_schema.len(),
                 "prompt": truncate(prompt, MAX_SNIPPET),
+            }),
+        );
+        write_full_exchange(
+            exchange_id,
+            "prompt",
+            &json!({
+                "role": self.role,
+                "prompt_kind": self.prompt_kind,
+                "submit_only": self.submit_only,
+                "prompt": prompt,
+                "role_schema": role_schema,
             }),
         );
         trace_message_forwarded(
@@ -1596,6 +1641,16 @@ impl<'a> LlmResponseContext<'a> {
                 "submit_only": self.submit_only,
                 "response_bytes": raw.len(),
                 "raw": truncate(raw, MAX_SNIPPET),
+            }),
+        );
+        write_full_exchange(
+            exchange_id,
+            "response",
+            &json!({
+                "role": self.role,
+                "prompt_kind": self.prompt_kind,
+                "submit_only": self.submit_only,
+                "raw": raw,
             }),
         );
     }
@@ -1862,9 +1917,7 @@ async fn run_agent(
         if role.starts_with("executor")
             && executor_step_limit_exceeded(total_steps, EXECUTOR_STEP_LIMIT)
         {
-            last_result = Some(format!(
-                "Step limit reached: executor must send a message to planner after {EXECUTOR_STEP_LIMIT} actions. Use a message action with evidence or blocker details."
-            ));
+            last_result = Some(executor_step_limit_feedback());
         }
 
         let (role_schema, prompt) = build_agent_prompt(
@@ -2797,6 +2850,12 @@ pub async fn run() -> Result<()> {
         const SERVICE_POLL_MS: u64 = 500;
         const PENDING_SUBMIT_TIMEOUT_MS: u64 = 10_000;
 
+        let solo_mode = start_role == "solo";
+        let _ = std::fs::write(
+            orchestrator_mode_flag_path(),
+            if solo_mode { "single\n" } else { "orchestrate\n" },
+        );
+
         eprintln!("[orchestrate] start_role={start_role}");
 
         let diagnostics_ep = find_endpoint(&endpoints, "diagnostics")?.clone();
@@ -3140,6 +3199,7 @@ pub async fn run() -> Result<()> {
         }
     } else {
         // Single-role mode
+        let _ = std::fs::write(orchestrator_mode_flag_path(), "single\n");
         let single_role_ctx = SingleRoleContext {
             workspace: &workspace,
             spec_path: &spec_path,
@@ -3175,6 +3235,7 @@ pub async fn run() -> Result<()> {
             true,
             0,
         ).await?;
+        let _ = std::fs::write(cycle_idle_marker_path(), "idle\n");
         println!("message: {reason}");
         Ok(())
     }
@@ -3182,7 +3243,9 @@ pub async fn run() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{plan_has_incomplete_tasks, verifier_confirmed_with_plan_text};
+    use super::{
+        executor_step_limit_feedback, plan_has_incomplete_tasks, verifier_confirmed_with_plan_text,
+    };
 
     #[test]
     fn verifier_confirmed_rejects_when_plan_has_incomplete_tasks() {
@@ -3212,5 +3275,16 @@ mod tests {
         assert!(!plan_has_incomplete_tasks(plan));
         assert!(verifier_confirmed_with_plan_text(verified, plan));
         assert!(!verifier_confirmed_with_plan_text(unverified, plan));
+    }
+
+    #[test]
+    fn executor_step_limit_feedback_includes_message_schema_and_examples() {
+        let feedback = executor_step_limit_feedback();
+        assert!(feedback.contains("\"action\": \"message\""));
+        assert!(feedback.contains("\"type\": \"handoff\" | \"blocker\""));
+        assert!(feedback.contains("\"status\": \"complete\" | \"blocked\""));
+        assert!(feedback.contains("Example complete handoff"));
+        assert!(feedback.contains("Example blocker"));
+        assert!(feedback.contains("\"required_action\": \"What planner should do next\""));
     }
 }
