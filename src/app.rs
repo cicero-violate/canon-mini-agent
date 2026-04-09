@@ -374,9 +374,9 @@ async fn run_solo_phase(
     let agent_root = crate::constants::agent_state_dir().trim_end_matches("/agent_state");
     let agent_objectives = Path::new(agent_root).join(OBJECTIVES_FILE);
     let objectives = if agent_objectives.exists() {
-        read_text_or_empty(agent_objectives)
+        crate::objectives::read_objectives_filtered(&agent_objectives)
     } else {
-        read_text_or_empty(ctx.workspace.join(OBJECTIVES_FILE))
+        crate::objectives::read_objectives_filtered(&ctx.workspace.join(OBJECTIVES_FILE))
     };
     let invariants = read_text_or_empty(ctx.workspace.join(INVARIANTS_FILE));
     let violations = read_text_or_empty(ctx.violations_path);
@@ -1331,6 +1331,7 @@ fn build_agent_prompt(
     last_turn_id: Option<u64>,
     last_action: Option<&str>,
     total_steps: usize,
+    last_predicted_next_actions: Option<&str>,
 ) -> (String, String) {
     if step == 0 {
         (
@@ -1357,6 +1358,7 @@ fn build_agent_prompt(
                 } else {
                     None
                 },
+                last_predicted_next_actions,
             ),
         )
     }
@@ -1781,6 +1783,7 @@ async fn continue_executor_completion(
                 &invalid.feedback,
                 Some("invalid_action"),
                 Some(submitted.steps_used),
+                None,
             );
             return run_agent(
                 role,
@@ -1838,6 +1841,7 @@ async fn continue_executor_completion(
             &out,
             action.get("action").and_then(|v| v.as_str()),
             Some(submitted.steps_used),
+            None,
         ),
         endpoint,
         bridge,
@@ -1882,6 +1886,7 @@ async fn run_agent(
     let mut last_tab_id: Option<u32> = None;
     let mut last_turn_id: Option<u64> = None;
     let mut last_action: Option<String> = None;
+    let mut last_predicted_next_actions: Option<String> = None;
     let mut error_streak: usize = 0;
     #[allow(unused_assignments)]
     let mut last_error: Option<String> = None;
@@ -1931,6 +1936,7 @@ async fn run_agent(
             last_turn_id,
             last_action.as_deref(),
             total_steps,
+            last_predicted_next_actions.as_deref(),
         );
         let exchange_id = make_command_id(role, prompt_kind, step + 1);
 
@@ -2075,6 +2081,9 @@ async fn run_agent(
         error_streak = 0;
         eprintln!("[{role}] step={} action={}", step + 1, kind);
         last_action = Some(kind.clone());
+        last_predicted_next_actions = action
+            .get("predicted_next_actions")
+            .and_then(|v| serde_json::to_string(v).ok());
         append_orchestration_trace(
             "llm_message_processed",
             json!({

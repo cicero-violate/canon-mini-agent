@@ -5,6 +5,7 @@ mod constants;
 mod engine;
 mod logging;
 mod md_convert;
+mod objectives;
 mod prompts;
 mod prompt_inputs;
 mod protocol;

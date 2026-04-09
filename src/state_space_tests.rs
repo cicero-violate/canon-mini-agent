@@ -60,6 +60,55 @@ fn resume_solo_preserves_phase() {
 }
 
 #[test]
+fn resume_verifier_with_items_preserves_verifier_phase() {
+    let decision = decide_resume_phase("verifier", true, false, false);
+    assert_eq!(decision.scheduled_phase, Some("verifier".to_string()));
+    assert!(!decision.planner_pending);
+    assert!(!decision.diagnostics_pending);
+}
+
+#[test]
+fn resume_unknown_phase_is_passthrough() {
+    let decision = decide_resume_phase("executor", false, true, true);
+    assert_eq!(decision.scheduled_phase, Some("executor".to_string()));
+    assert!(decision.planner_pending);
+    assert!(decision.diagnostics_pending);
+}
+
+#[test]
+fn resume_phase_covers_all_documented_branches() {
+    let planner = decide_resume_phase("planner", true, false, false);
+    assert_eq!(planner.scheduled_phase, Some("planner".to_string()));
+    assert!(planner.planner_pending);
+    assert!(!planner.diagnostics_pending);
+
+    let diagnostics = decide_resume_phase("diagnostics", true, false, false);
+    assert_eq!(diagnostics.scheduled_phase, Some("diagnostics".to_string()));
+    assert!(!diagnostics.planner_pending);
+    assert!(diagnostics.diagnostics_pending);
+
+    let verifier_without_items = decide_resume_phase("verifier", false, false, false);
+    assert_eq!(verifier_without_items.scheduled_phase, Some("planner".to_string()));
+    assert!(verifier_without_items.planner_pending);
+    assert!(!verifier_without_items.diagnostics_pending);
+
+    let verifier_with_items = decide_resume_phase("verifier", true, false, false);
+    assert_eq!(verifier_with_items.scheduled_phase, Some("verifier".to_string()));
+    assert!(!verifier_with_items.planner_pending);
+    assert!(!verifier_with_items.diagnostics_pending);
+
+    let executor = decide_resume_phase("executor", false, true, true);
+    assert_eq!(executor.scheduled_phase, Some("executor".to_string()));
+    assert!(executor.planner_pending);
+    assert!(executor.diagnostics_pending);
+
+    let solo = decide_resume_phase("solo", false, false, false);
+    assert_eq!(solo.scheduled_phase, Some("solo".to_string()));
+    assert!(!solo.planner_pending);
+    assert!(!solo.diagnostics_pending);
+}
+
+#[test]
 fn bootstrap_phase_from_start_role() {
     assert_eq!(decide_bootstrap_phase("planner"), Some("planner".to_string()));
     assert_eq!(
@@ -94,6 +143,119 @@ fn wake_flags_blocks_planner_when_active_blocker() {
 }
 
 #[test]
+fn wake_flags_returns_none_when_no_flags_exist() {
+    let decision = decide_wake_flags(false, &[]);
+    assert_eq!(decision.scheduled_phase, None);
+    assert!(!decision.planner_pending);
+    assert!(!decision.diagnostics_pending);
+    assert!(!decision.executor_wake);
+}
+
+#[test]
+fn wake_flags_sets_planner_pending_when_planner_is_newest() {
+    let flags = vec![
+        WakeFlagInput { role: "executor", modified_ms: 10 },
+        WakeFlagInput { role: "planner", modified_ms: 20 },
+    ];
+    let decision = decide_wake_flags(false, &flags);
+    assert_eq!(decision.scheduled_phase, Some("planner".to_string()));
+    assert!(decision.planner_pending);
+    assert!(!decision.diagnostics_pending);
+    assert!(!decision.executor_wake);
+}
+
+#[test]
+fn wake_flags_sets_diagnostics_pending_when_diagnostics_is_newest() {
+    let flags = vec![
+        WakeFlagInput { role: "planner", modified_ms: 10 },
+        WakeFlagInput { role: "diagnostics", modified_ms: 30 },
+    ];
+    let decision = decide_wake_flags(false, &flags);
+    assert_eq!(decision.scheduled_phase, Some("diagnostics".to_string()));
+    assert!(!decision.planner_pending);
+    assert!(decision.diagnostics_pending);
+    assert!(!decision.executor_wake);
+}
+
+#[test]
+fn wake_flags_ignores_blocked_planner_and_keeps_next_newest_role() {
+    let flags = vec![
+        WakeFlagInput { role: "planner", modified_ms: 50 },
+        WakeFlagInput { role: "diagnostics", modified_ms: 40 },
+        WakeFlagInput { role: "executor", modified_ms: 30 },
+    ];
+    let decision = decide_wake_flags(true, &flags);
+    assert_eq!(decision.scheduled_phase, Some("diagnostics".to_string()));
+    assert!(!decision.planner_pending);
+    assert!(decision.diagnostics_pending);
+    assert!(!decision.executor_wake);
+}
+
+#[test]
+fn wake_flags_covers_blocker_filtering_and_newest_role_selection() {
+    let blocked_to_none = vec![WakeFlagInput {
+        role: "planner",
+        modified_ms: 50,
+    }];
+    let blocked_decision = decide_wake_flags(true, &blocked_to_none);
+    assert_eq!(blocked_decision.scheduled_phase, None);
+    assert!(!blocked_decision.planner_pending);
+    assert!(!blocked_decision.diagnostics_pending);
+    assert!(!blocked_decision.executor_wake);
+
+    let planner_newest = vec![
+        WakeFlagInput {
+            role: "executor",
+            modified_ms: 10,
+        },
+        WakeFlagInput {
+            role: "planner",
+            modified_ms: 20,
+        },
+    ];
+    let planner_decision = decide_wake_flags(false, &planner_newest);
+    assert_eq!(planner_decision.scheduled_phase, Some("planner".to_string()));
+    assert!(planner_decision.planner_pending);
+    assert!(!planner_decision.diagnostics_pending);
+    assert!(!planner_decision.executor_wake);
+
+    let diagnostics_newest = vec![
+        WakeFlagInput {
+            role: "planner",
+            modified_ms: 10,
+        },
+        WakeFlagInput {
+            role: "diagnostics",
+            modified_ms: 30,
+        },
+    ];
+    let diagnostics_decision = decide_wake_flags(false, &diagnostics_newest);
+    assert_eq!(
+        diagnostics_decision.scheduled_phase,
+        Some("diagnostics".to_string())
+    );
+    assert!(!diagnostics_decision.planner_pending);
+    assert!(diagnostics_decision.diagnostics_pending);
+    assert!(!diagnostics_decision.executor_wake);
+
+    let executor_newest = vec![
+        WakeFlagInput {
+            role: "planner",
+            modified_ms: 10,
+        },
+        WakeFlagInput {
+            role: "executor",
+            modified_ms: 20,
+        },
+    ];
+    let executor_decision = decide_wake_flags(false, &executor_newest);
+    assert_eq!(executor_decision.scheduled_phase, Some("executor".to_string()));
+    assert!(!executor_decision.planner_pending);
+    assert!(!executor_decision.diagnostics_pending);
+    assert!(executor_decision.executor_wake);
+}
+
+#[test]
 fn scheduled_phase_resume_done_all_cases() {
     assert!(scheduled_phase_resume_done("planner", false, false, 0, true, false, false));
     assert!(scheduled_phase_resume_done("verifier", false, false, 0, true, false, false));
@@ -109,6 +271,8 @@ fn scheduled_phase_resume_done_all_cases() {
 
 #[test]
 fn executor_step_limit_boundary() {
+    assert!(!executor_step_limit_exceeded(0, 10));
+    assert!(executor_step_limit_exceeded(0, 0));
     assert!(!executor_step_limit_exceeded(9, 10));
     assert!(executor_step_limit_exceeded(10, 10));
     assert!(executor_step_limit_exceeded(11, 10));

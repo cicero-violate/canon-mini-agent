@@ -2,6 +2,61 @@
 
 This document defines **invariants, state model, typed interfaces, CLI contract, and determinism guarantees** for `canon-mini-agent`.
 
+## 0. System Purpose — Autonomous Self-Building AI
+
+canon-mini-agent is a prototype for a **self-building, self-directing, self-learning autonomous system**. All architectural decisions flow from three meta-goals:
+
+### 0.1 Self-Building
+The system can read and improve its own source code. In self-modification mode (`Workspace` == orchestrator source root), the executor role may patch `src/`, `tests/`, and `SPEC.md` directly. After every patch the build gate (`cargo build --workspace && cargo test --workspace`) must pass — a broken build is always a blocker. This ensures the system can never leave itself in a non-runnable state.
+
+### 0.2 Self-Direction
+Every LLM response includes a `predicted_next_actions` field — an ordered array of 2–3 likely follow-on actions. This is the agent's declared decision tree. It:
+- Lets the agent drive itself across turns without waiting for external instruction.
+- Makes the agent's intent transparent and auditable.
+- Enables loop detection: if the same `predicted_next_actions` array repeats without progress, the orchestrator can inject a blocker prompt.
+
+`predicted_next_actions` format:
+```
+[
+  {"action": "<action_name>", "intent": "<one-line reason>"},
+  ...
+]
+```
+
+### 0.3 Self-Learning
+The agent reads its own execution history (`agent_state/` logs, `VIOLATIONS.json`, prior `PLAN.json` states) at the start of each planner cycle. It must:
+- Identify repeated failures and encode the root cause in the next task's `steps`.
+- Update `SPEC.md` when runtime behavior diverges from the spec.
+- Never re-close a task that was re-opened without adding a regression test to prevent recurrence.
+
+### 0.5 Objective Evolution
+
+At the end of every orchestration cycle, the active role (solo or planner) MUST review `PLANS/OBJECTIVES.json` and update it:
+
+- **Add** new objectives for any capability gap, invariant, or sub-goal discovered this cycle.
+- **Update** existing objective status when state changes (active → done, blocked, deferred).
+- **Never remove** an objective entry — use `"status": "deferred"` with a reason.
+
+New objective schema:
+```
+{
+  "id": "<snake_case_unique_id>",
+  "title": "OBJ-N — Short Title",
+  "category": "<autonomy | correctness | observability | other>",
+  "level": "<low | medium | high | critical>",
+  "description": "**Status:** <active|done|deferred> **Scope:** ... **Authority files:** ... <checklist>"
+}
+```
+
+This is enforced by `CANONICAL_LAW.md §Objective Evolution`. The verifier should flag any completion that leaves `PLANS/OBJECTIVES.json` unreviewed.
+
+### 0.4 Safety Properties
+Self-improvement is safe because:
+- The build gate prevents a broken `src/` from persisting across restarts.
+- Scope guards prevent any single role from unilaterally rewriting authority files (`INVARIANTS.json`, `PLAN.json`).
+- The verifier role independently checks every executor claim against source evidence before accepting it.
+- `predicted_next_actions` is advisory — the agent's prediction for turn N+1 is not binding; actual evidence at turn N+1 always takes precedence.
+
 ## 1. State Model
 
 The system is a deterministic event-driven loop with explicit roles.
@@ -9,7 +64,7 @@ The system is a deterministic event-driven loop with explicit roles.
 ### 1.1 Global State
 - `Workspace`: absolute root path of the target project being operated on. Set via `--workspace <path>` CLI argument; if omitted, `run()` defaults it to `env!("CARGO_MANIFEST_DIR")` (the canon-mini-agent source root in this build). Must be absolute. All relative paths in actions resolve against this value.
 - `AgentStateDir`: operational state for canon-mini-agent itself. Defaults to `/workspace/ai_sandbox/canon-mini-agent/agent_state`; overridable via `--state-dir`. When `Workspace` equals the canon-mini-agent source root, the system is in **self-modification mode** (see §9).
-- `SelfModificationMode`: true when `Workspace` is the parent directory of `AgentStateDir`. Detected at runtime via `is_self_modification_mode()` in `src/constants.rs`. Relaxes only the executor rule for `SPEC.md` patching; source-file patching is already allowed by the current scope-guard implementation in both modes.
+- `SelfModificationMode`: true when `Workspace` is the parent directory of `AgentStateDir`. Detected at runtime via `is_self_modification_mode()` in `src/constants.rs`. In this mode, executor scope is relaxed to allow patching `SPEC.md`, `src/`, and `tests/`; normal mode blocks executor patching of `SPEC.md`, `src/`, and `tests/`.
 - `Role`: one of `{Planner, Executor, Verifier, Diagnostics, Solo}`.
 - `Lane`: executor lane id (e.g., `executor_pool`), bound to a role of type Executor.
 - `PromptKind`: `{planner, executor, verifier, diagnostics, solo}`.
@@ -27,12 +82,12 @@ The system is a deterministic event-driven loop with explicit roles.
 ### 1.3 Canonical Files
 Canonical file paths are absolute under `Workspace` (see `src/constants.rs:3-11`, `42-48`):
 - `Spec`: `SPEC.md`
-- `Objectives`: `PLANS/OBJECTIVES.md` (authoritative MD) / `PLANS/OBJECTIVES.json` (derived JSON)
-- `Invariants`: `INVARIANT.md` (authoritative MD) / `INVARIANTS.json` (derived JSON)
+- `Objectives`: `PLANS/OBJECTIVES.json` (runtime path) and `PLANS/OBJECTIVES.md` (companion markdown source when present)
+- `Invariants`: `INVARIANTS.json` (runtime path) and `INVARIANT.md` (companion markdown source when present)
 - `MasterPlan`: `PLAN.json`
 - `LanePlan`: `PLANS/<instance>/executor-<id>.json` (preferred) or legacy `PLANS/executor-<id>.md` (see `src/tools.rs:49-63`)
 - `Violations`: `VIOLATIONS.json`
-- `Diagnostics`: runtime-configured via `diagnostics_file()` (default `DIAGNOSTICS.json`, see `src/constants.rs:149-156`) or instance-scoped path
+- `Diagnostics`: runtime-configured instance-scoped path `PLANS/<instance>/diagnostics-<instance>.json`; legacy `DIAGNOSTICS.json` is still accepted for migration/read compatibility
 
 ### 1.4 Workspace Resolution Rule
 Every `path` field in every action is resolved as follows:
@@ -101,10 +156,10 @@ Constraints: `line` / `line_start` / `line_end` are 1-based when present.
 { "action": "plan", "op": "create_task | update_task | delete_task | add_edge | remove_edge | set_status", ... }
 ```
 Notes:
-- `create_task` / `update_task` require `task` object with at least `id`. `create_task` requires `title`.
+- `create_task` / `update_task` require `task` object with at least `id`.
 - `delete_task` requires `task_id`.
 - `add_edge` / `remove_edge` require `from` and `to` task ids.
-- `set_status` requires `task_id` plus `status` (`todo | in_progress | blocked | done`) and updates the referenced task.
+- `set_status` requires `status` and updates the top-level `PLAN.json` `status` field.
 - The plan tool enforces a DAG (no cycles) when adding edges.
 
 ### 3.5 `apply_patch`
@@ -182,7 +237,7 @@ Outputs: JSON reports under metrics/analysis directories.
 | Verifier    | Planner  | verification | verified / failed  | `summary`, `verified_items` / `false_items` |
 | Verifier    | Planner  | failure      | failed             | `summary`, `next_actions`                   |
 | Diagnostics | Planner  | diagnostics  | complete           | `summary`, `ranked_failures`                |
-| Planner     | Executor | tasking      | ready / blocked    | `summary`, `tasks` / `blockers`             |
+| Planner     | Executor | plan         | ready / blocked    | `summary`, `tasks` / `blockers`             |
 | Solo        | Solo     | result       | complete           | `summary`                                   |
 
 **Routing guarantee (added 2026-04-07):** When a role emits a `message` action, the system writes `last_message_to_<to>.json` and `wakeup_<to>.flag` to `AgentStateDir` and sets `planner_pending = true` (for planner-targeted messages). This ensures the target role wakes on the next orchestration cycle regardless of whether the action was emitted in the inline or deferred completion path.
@@ -194,9 +249,9 @@ Outputs: JSON reports under metrics/analysis directories.
 
 **Normal mode** (workspace ≠ orchestrator source):
 - **Executor** may not patch `SPEC.md`, `PLAN.json`, `INVARIANTS.json`, `VIOLATIONS.json`, `OBJECTIVES.json`, any lane plan, diagnostics files, `src/`, or `tests/`.
-- **Verifier** may patch **only** `VIOLATIONS.json` (use the `plan` action for `PLAN.json` edits).
+- **Verifier** may patch **only** `VIOLATIONS.json`; verifier must use the `plan` action for `PLAN.json` edits.
 - **Diagnostics** may patch **only** the active diagnostics report file.
-- **Planner** may patch **only** lane plans (use the `plan` action for `PLAN.json` edits).
+- **Planner** may patch **only** lane plans; planner must use the `plan` action for `PLAN.json` edits.
 - **Solo** may patch any in-workspace file (full capabilities).
 
 **Self-modification mode** (workspace == orchestrator source, see §9):
@@ -209,6 +264,7 @@ Additional clarification (from implementation):
 - Executor blocks `SPEC.md` outside self-mod mode, blocks `src/` and `tests/` outside self-mod mode, and blocks all other non-authorized files in every mode via the `touches_other` guard (`src/tools.rs:379-388`, `392-409`).
 - Diagnostics file path is dynamically resolved (`diagnostics_file()`), and both configured and legacy `DIAGNOSTICS.json` are accepted (`src/tools.rs:369-377`).
 - Lane plan detection includes both instance-scoped and legacy formats (`src/tools.rs:49-63`).
+- Verifier and planner scope guards reject direct `PLAN.json` patching; `PLAN.json` updates are routed through the `plan` action instead of `apply_patch`.
 
 ### 4.2 Action Validity Invariants
 - Each action must satisfy its typed schema (Section 3).
@@ -272,6 +328,12 @@ Bootstrap
   -> Planner
 ```
 The orchestrator uses wakeup flags and `planner_pending` / `diagnostics_pending` to schedule transitions. Phase order may be overridden by verifier blocker messages.
+
+### 5.4 Supervisor Restart Rules
+- The supervisor watches the `canon-mini-agent` binary for updates.
+- The agent writes `agent_state/orchestrator_mode.flag` with `orchestrate` or `single` to describe the running mode. When `--orchestrate --start solo` is used, the agent writes `single` to allow immediate restarts during solo-only orchestration.
+- In orchestrated mode (`orchestrate`), the supervisor restarts only after a fresh `agent_state/orchestrator_cycle_idle.flag`.
+- In single-role mode (`single`) or when the flag is missing, the supervisor restarts immediately on binary updates.
 
 ### 5.3 Handoff Transition
 ```

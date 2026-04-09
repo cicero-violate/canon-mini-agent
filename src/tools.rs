@@ -13,9 +13,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::constants::{
     diagnostics_file, is_self_modification_mode, MASTER_PLAN_FILE, MAX_FULL_READ_LINES,
-    MAX_SNIPPET, SPEC_FILE, VIOLATIONS_FILE,
+    MAX_SNIPPET, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
 };
-use crate::logging::{log_action_event, log_action_result};
+use crate::objectives::filter_incomplete_objectives_json;
+use crate::logging::{log_action_event, log_action_result, now_ms};
 use crate::prompts::truncate;
 
 /// Extract the first file path touched by the patch (*** Update File: / *** Add File:).
@@ -185,6 +186,22 @@ fn read_json_report(path: &Path, max_bytes: usize) -> Result<String> {
     let content = ctx_read(path)?;
     let trimmed = truncate(&content, max_bytes);
     Ok(trimmed.to_string())
+}
+
+fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+    let include_done = action
+        .get("include_done")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let raw = fs::read_to_string(workspace.join(OBJECTIVES_FILE)).unwrap_or_default();
+    if raw.trim().is_empty() {
+        return Ok((false, "(no objectives)".to_string()));
+    }
+    if include_done {
+        return Ok((false, raw));
+    }
+    let filtered = filter_incomplete_objectives_json(&raw).unwrap_or(raw);
+    Ok((false, filtered))
 }
 
 fn extract_output_log_path(out: &str) -> Option<PathBuf> {
@@ -414,16 +431,14 @@ pub(crate) fn patch_scope_error_with_mode(role: &str, patch: &str, self_mod: boo
         "verifier" | "verifier_a" | "verifier_b" => {
             if touches_spec || touches_lane || touches_diagnostics || touches_other {
                 Some(
-                    "Verifier may only patch `PLAN.json` and `VIOLATIONS.json`. Do not modify spec, lane plans, diagnostics, or source files."
+                    "Verifier may only patch `VIOLATIONS.json`. Use the `plan` action for `PLAN.json` updates. Do not modify `SPEC.md`, lane plans, diagnostics, or source files."
                         .to_string(),
                 )
             } else if touches_violations {
                 None
-            } else if touches_master_plan {
-                None
             } else {
                 Some(
-                    "Verifier should update `PLAN.json` status fields and write `VIOLATIONS.json` when violations are found; no other patches are allowed."
+                    "Verifier may only patch `VIOLATIONS.json`. Use the `plan` action for `PLAN.json` updates; no other patches are allowed."
                         .to_string(),
                 )
             }
@@ -438,11 +453,11 @@ pub(crate) fn patch_scope_error_with_mode(role: &str, patch: &str, self_mod: boo
                     "Planner may patch lane plans under `PLANS/<instance>/executor-<id>.json` (or legacy `PLANS/executor-<id>.md`); planner may not patch `src/`, `tests/`, `SPEC.md`, `VIOLATIONS.json`, or diagnostics files."
                         .to_string(),
                 )
-            } else if touches_master_plan || touches_lane {
+            } else if touches_lane {
                 None
             } else {
                 Some(
-                    "Planner must patch `PLAN.json` or a lane plan; no other patches are allowed."
+                    "Planner may patch lane plans only. Use the `plan` action for `PLAN.json` updates; no other patches are allowed."
                         .to_string(),
                 )
             }
@@ -1300,21 +1315,81 @@ fn handle_cargo_test_action(
     ))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PlanOp {
+    CreateTask,
+    UpdateTask,
+    DeleteTask,
+    AddEdge,
+    RemoveEdge,
+    SetStatus,
+    ReplacePlan,
+}
+
+impl PlanOp {
+    const VALID_OPS: &'static str =
+        "create_task, update_task, delete_task, add_edge, remove_edge, set_status, replace_plan";
+
+    fn parse(op: &str) -> Result<Self> {
+        match op {
+            "create_task" => Ok(Self::CreateTask),
+            "update_task" => Ok(Self::UpdateTask),
+            "delete_task" => Ok(Self::DeleteTask),
+            "add_edge" => Ok(Self::AddEdge),
+            "remove_edge" => Ok(Self::RemoveEdge),
+            "set_status" => Ok(Self::SetStatus),
+            "replace_plan" => Ok(Self::ReplacePlan),
+            _ => bail!("unknown plan op: {op} (valid ops: {})", Self::VALID_OPS),
+        }
+    }
+}
+
 fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(bool, String)> {
     if role.starts_with("executor") {
         bail!("plan action is not allowed for executor roles");
     }
-    let op = action
+    capture_plan_schema(action);
+    if matches!(role, "planner" | "mini_planner") {
+        let rationale = action.get("rationale").and_then(|v| v.as_str()).unwrap_or("");
+        let observation = action.get("observation").and_then(|v| v.as_str()).unwrap_or("");
+        let combined = format!("{observation}\n{rationale}").to_ascii_lowercase();
+        let references_diagnostics = combined.contains("diagnostic")
+            || combined.contains("stale")
+            || combined.contains("violation");
+        let has_source_validation = combined.contains("read_file")
+            || combined.contains("source")
+            || combined.contains("verified")
+            || combined.contains("current-cycle")
+            || combined.contains("rg ")
+            || combined.contains("run_command");
+        if references_diagnostics && !has_source_validation {
+            bail!("planner plan actions that rely on diagnostics must cite current source validation in observation/rationale (for example read_file, run_command, or verified source evidence)");
+        }
+    }
+    if let Some(path) = action.get("path").and_then(|v| v.as_str()) {
+        if path != MASTER_PLAN_FILE {
+            bail!("plan path must be {MASTER_PLAN_FILE}, got {path}");
+        }
+    }
+    let op_raw = action
         .get("op")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow!("plan missing 'op'"))?;
+        .or_else(|| action.get("operation").and_then(|v| v.as_str()))
+        .unwrap_or("update");
+    if op_raw == "update" {
+        if action.get("updates").is_none() && action.get("plan").is_some() {
+            return handle_plan_replace_bundle(workspace, action);
+        }
+        return handle_plan_update_bundle(workspace, action);
+    }
+    let op = PlanOp::parse(op_raw)?;
     let plan_path = workspace.join(MASTER_PLAN_FILE);
     let mut plan = load_or_init_plan(&plan_path)?;
     let obj = plan
         .as_object_mut()
         .ok_or_else(|| anyhow!("PLAN.json must be a JSON object"))?;
     match op {
-        "create_task" => {
+        PlanOp::CreateTask => {
             let tasks = obj
                 .get_mut("tasks")
                 .and_then(|v| v.as_array_mut())
@@ -1348,7 +1423,7 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
             }
             tasks.push(Value::Object(new_task));
         }
-        "update_task" => {
+        PlanOp::UpdateTask => {
             let tasks = obj
                 .get_mut("tasks")
                 .and_then(|v| v.as_array_mut())
@@ -1374,7 +1449,7 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
                 }
             }
         }
-        "delete_task" => {
+        PlanOp::DeleteTask => {
             let tasks = obj
                 .get_mut("tasks")
                 .and_then(|v| v.as_array_mut())
@@ -1398,7 +1473,7 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
                 from != Some(task_id) && to != Some(task_id)
             });
         }
-        "add_edge" => {
+        PlanOp::AddEdge => {
             let ids = {
                 let tasks = obj
                     .get("tasks")
@@ -1442,7 +1517,7 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
                 .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
             ensure_dag(tasks, &edges_snapshot)?;
         }
-        "remove_edge" => {
+        PlanOp::RemoveEdge => {
             let dag = obj
                 .get_mut("dag")
                 .and_then(|v| v.as_object_mut())
@@ -1465,17 +1540,245 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
                 !(e_from == Some(from) && e_to == Some(to))
             });
         }
-        "set_status" => {
+        PlanOp::SetStatus => {
             let status = action
                 .get("status")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("plan set_status missing status"))?;
             obj.insert("status".to_string(), Value::String(status.to_string()));
         }
-        _ => bail!("unknown plan op: {op}"),
+        PlanOp::ReplacePlan => {
+            let mut next_plan = action
+                .get("plan")
+                .cloned()
+                .ok_or_else(|| anyhow!("plan replace_plan missing plan object"))?;
+            normalize_plan_object(&mut next_plan)?;
+            let tasks = next_plan
+                .get("tasks")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+            let edges = next_plan
+                .get("dag")
+                .and_then(|v| v.get("edges"))
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))?;
+            ensure_dag(tasks, edges)?;
+            plan = next_plan;
+        }
     }
 
     std::fs::write(&plan_path, serde_json::to_string_pretty(&plan)?)?;
+    // Emit control-plane log for plan mutation
+    if let Ok(paths) = crate::logging::append_action_log_record(&crate::logging::compact_log_record(
+        "control",
+        "plan_update",
+        Some(role),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(true),
+        Some("PLAN.json updated via plan action".to_string()),
+        action.get("rationale").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        None,
+        Some(json!({"op": op_raw, "path": MASTER_PLAN_FILE}))
+    )) {
+        let _ = paths;
+    }
+    Ok((
+        false,
+        format!("plan ok\nplan_path: {}", plan_path.display()),
+    ))
+}
+
+fn capture_plan_schema(action: &Value) {
+    let path = std::path::Path::new(crate::constants::agent_state_dir())
+        .join("plan_action_schemas.jsonl");
+    let record = json!({
+        "ts_ms": now_ms(),
+        "action": action,
+    });
+    if let Ok(line) = serde_json::to_string(&record) {
+        let _ = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .and_then(|mut f| writeln!(f, "{}", line));
+    }
+}
+
+fn handle_plan_update_bundle(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+    let updates = action
+        .get("updates")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| anyhow!("plan update missing updates object"))?;
+    let plan_path = workspace.join(MASTER_PLAN_FILE);
+    let mut plan = load_or_init_plan(&plan_path)?;
+    let obj = plan
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("PLAN.json must be a JSON object"))?;
+
+    if let Some(status) = updates.get("status").and_then(|v| v.as_str()) {
+        obj.insert("status".to_string(), Value::String(status.to_string()));
+    }
+
+    if let Some(tasks) = updates.get("tasks").and_then(|v| v.as_array()) {
+        let tasks_obj = obj
+            .get_mut("tasks")
+            .and_then(|v| v.as_array_mut())
+            .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+        for task in tasks {
+            let task_obj = task
+                .as_object()
+                .ok_or_else(|| anyhow!("plan update tasks must be objects"))?;
+            let id = task_obj
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("plan update task missing id"))?;
+            let Some(existing) = tasks_obj
+                .iter_mut()
+                .find(|t| t.get("id").and_then(|v| v.as_str()) == Some(id))
+                .and_then(|t| t.as_object_mut())
+            else {
+                bail!("plan task not found: {id}");
+            };
+            for (key, value) in task_obj {
+                if key != "id" {
+                    existing.insert(key.to_string(), value.clone());
+                }
+            }
+        }
+    }
+
+    if let Some(edges) = updates.get("remove_edges").and_then(|v| v.as_array()) {
+        let dag = obj
+            .get_mut("dag")
+            .and_then(|v| v.as_object_mut())
+            .ok_or_else(|| anyhow!("PLAN.json missing dag object"))?;
+        let edges_obj = dag
+            .get_mut("edges")
+            .and_then(|v| v.as_array_mut())
+            .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))?;
+        for edge in edges {
+            let from = edge.get("from").and_then(|v| v.as_str());
+            let to = edge.get("to").and_then(|v| v.as_str());
+            if let (Some(from), Some(to)) = (from, to) {
+                edges_obj.retain(|e| {
+                    let e_from = e.get("from").and_then(|v| v.as_str());
+                    let e_to = e.get("to").and_then(|v| v.as_str());
+                    !(e_from == Some(from) && e_to == Some(to))
+                });
+            }
+        }
+    }
+
+    if let Some(edges) = updates.get("add_edges").and_then(|v| v.as_array()) {
+        let ids = {
+            let tasks = obj
+                .get("tasks")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+            collect_task_ids(tasks)
+        };
+        let dag = obj
+            .get_mut("dag")
+            .and_then(|v| v.as_object_mut())
+            .ok_or_else(|| anyhow!("PLAN.json missing dag object"))?;
+        let edges_obj = dag
+            .get_mut("edges")
+            .and_then(|v| v.as_array_mut())
+            .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))?;
+        for edge in edges {
+            let from = edge
+                .get("from")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("plan add_edge missing from"))?;
+            let to = edge
+                .get("to")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("plan add_edge missing to"))?;
+            if !ids.contains(from) || !ids.contains(to) {
+                bail!("plan edge refers to unknown task id");
+            }
+            if edges_obj.iter().any(|e| e.get("from").and_then(|v| v.as_str()) == Some(from)
+                && e.get("to").and_then(|v| v.as_str()) == Some(to))
+            {
+                continue;
+            }
+            let mut edge_obj = serde_json::Map::new();
+            edge_obj.insert("from".to_string(), Value::String(from.to_string()));
+            edge_obj.insert("to".to_string(), Value::String(to.to_string()));
+            edges_obj.push(Value::Object(edge_obj));
+        }
+        let edges_snapshot = edges_obj.clone();
+        let tasks = obj
+            .get("tasks")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+        ensure_dag(tasks, &edges_snapshot)?;
+    }
+
+    std::fs::write(&plan_path, serde_json::to_string_pretty(&plan)?)?;
+    // Emit control-plane log for plan mutation (update bundle)
+    let _ = crate::logging::append_action_log_record(&crate::logging::compact_log_record(
+        "control",
+        "plan_update",
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(true),
+        Some("PLAN.json updated via plan update bundle".to_string()),
+        action.get("rationale").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        None,
+        Some(json!({"op": "update_bundle", "path": MASTER_PLAN_FILE}))
+    ));
+    Ok((
+        false,
+        format!("plan ok\nplan_path: {}", plan_path.display()),
+    ))
+}
+
+fn handle_plan_replace_bundle(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+    let plan_path = workspace.join(MASTER_PLAN_FILE);
+    let mut next_plan = action
+        .get("plan")
+        .cloned()
+        .ok_or_else(|| anyhow!("plan replace_plan missing plan object"))?;
+    normalize_plan_object(&mut next_plan)?;
+    let tasks = next_plan
+        .get("tasks")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+    let edges = next_plan
+        .get("dag")
+        .and_then(|v| v.get("edges"))
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))?;
+    ensure_dag(tasks, edges)?;
+    std::fs::write(&plan_path, serde_json::to_string_pretty(&next_plan)?)?;
+    // Emit control-plane log for plan mutation (replace bundle)
+    let _ = crate::logging::append_action_log_record(&crate::logging::compact_log_record(
+        "control",
+        "plan_update",
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(true),
+        Some("PLAN.json replaced via plan action".to_string()),
+        action.get("rationale").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        None,
+        Some(json!({"op": "replace_bundle", "path": MASTER_PLAN_FILE}))
+    ));
     Ok((
         false,
         format!("plan ok\nplan_path: {}", plan_path.display()),
@@ -1494,6 +1797,11 @@ fn load_or_init_plan(path: &Path) -> Result<Value> {
     } else {
         serde_json::from_str(&raw)?
     };
+    normalize_plan_object(&mut plan)?;
+    Ok(plan)
+}
+
+fn normalize_plan_object(plan: &mut Value) -> Result<()> {
     let obj = plan
         .as_object_mut()
         .ok_or_else(|| anyhow!("PLAN.json must be a JSON object"))?;
@@ -1513,7 +1821,7 @@ fn load_or_init_plan(path: &Path) -> Result<Value> {
             .ok_or_else(|| anyhow!("PLAN.json dag must be object"))?
             .insert("edges".to_string(), Value::Array(Vec::new()));
     }
-    Ok(plan)
+    Ok(())
 }
 
 fn collect_task_ids(tasks: &[Value]) -> BTreeSet<String> {
@@ -1878,6 +2186,7 @@ fn execute_action(
         "message" => handle_message_action(role, step, action),
         "list_dir" => handle_list_dir_action(workspace, action),
         "read_file" => handle_read_file_action(role, step, workspace, action),
+        "objectives" => handle_objectives_action(workspace, action),
         "apply_patch" => handle_apply_patch_action(role, step, workspace, action),
         "run_command" => handle_run_command_action(role, step, workspace, action),
         "python" => handle_python_action(role, step, workspace, action),
@@ -1891,7 +2200,7 @@ fn execute_action(
         other => Ok((
             false,
             format!(
-                "unsupported action '{other}' — use list_dir, read_file, apply_patch, run_command, python, cargo_test, plan, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, or message"
+                "unsupported action '{other}' — use list_dir, read_file, objectives, apply_patch, run_command, python, cargo_test, plan, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, or message"
             ),
         )),
     }
@@ -1948,7 +2257,13 @@ pub(crate) fn execute_logged_action(
             Ok((done, out))
         }
         Err(e) => {
-            let err_text = format!("Error executing action: {e}");
+            let err_text = if action.get("action").and_then(|v| v.as_str()) == Some("plan") {
+                format!(
+                    "Error executing action: {e}\n\nPlan tool examples:\n{{\"action\":\"plan\",\"op\":\"set_status\",\"task_id\":\"T1\",\"status\":\"in_progress\",\"rationale\":\"Update PLAN.json via the plan tool while running solo.\"}}\n{{\"action\":\"plan\",\"op\":\"create_task\",\"task\":{{\"id\":\"T4\",\"title\":\"Add plan DAG\",\"status\":\"todo\",\"priority\":3}},\"rationale\":\"Add a new task to PLAN.json without manual patching.\"}}"
+                )
+            } else {
+                format!("Error executing action: {e}")
+            };
             log_action_result(
                 role,
                 endpoint,

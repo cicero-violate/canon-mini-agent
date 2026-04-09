@@ -3,6 +3,7 @@ use canon_llm::{config::LlmEndpoint, tab_management::TabManagerHandle, ws_server
 use std::path::{Path, PathBuf};
 
 use crate::constants::{INVARIANTS_FILE, MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE};
+use crate::objectives::read_objectives_filtered;
 use crate::prompts::{
     single_role_diagnostics_prompt, single_role_executor_prompt, single_role_planner_prompt,
     single_role_verifier_prompt, AgentPromptKind,
@@ -124,10 +125,21 @@ pub fn load_planner_inputs(
 ) -> PlannerInputs {
     let summary_text = lane_summary_text(lanes, verifier_summary);
     let executor_diff_text = load_executor_diff_inputs(workspace, last_executor_diff, 400).diff_text;
-    let objectives_text = read_text_or_empty(workspace.join(OBJECTIVES_FILE));
+    let objectives_text = read_objectives_filtered(&workspace.join(OBJECTIVES_FILE));
     let invariants_text = read_text_or_empty(workspace.join(INVARIANTS_FILE));
     let violations_text = read_text_or_empty(violations_path);
-    let diagnostics_text = read_text_or_empty(diagnostics_path);
+    let raw_diagnostics_text = read_text_or_empty(diagnostics_path);
+    let diagnostics_text = if raw_diagnostics_text.trim().is_empty() {
+        "(no diagnostics)".to_string()
+    } else if raw_diagnostics_text.contains("\"ranked_failures\"") {
+        // Add staleness guard: require explicit validation and flag potential stale reuse
+        format!(
+            "(UNVERIFIED DIAGNOSTICS — require source validation before use; DO NOT derive tasks without read_file evidence; treat repeated signals as potentially stale)\n{}",
+            raw_diagnostics_text
+        )
+    } else {
+        "(invalid diagnostics: missing ranked_failures)".to_string()
+    };
     let plan_text = read_text_or_empty(master_plan_path);
     let plan_diff_text = plan_diff(last_plan_text, &plan_text, 400);
     PlannerInputs {
@@ -155,7 +167,9 @@ pub enum SingleRoleRead {
 impl SingleRoleContext<'_> {
     pub fn read(&self, kind: SingleRoleRead) -> Result<String> {
         let text = match kind {
-            SingleRoleRead::Objectives => read_text_or_empty(self.workspace.join(OBJECTIVES_FILE)),
+            SingleRoleRead::Objectives => {
+                read_objectives_filtered(&self.workspace.join(OBJECTIVES_FILE))
+            }
             SingleRoleRead::Invariants => read_text_or_empty(self.workspace.join(INVARIANTS_FILE)),
             SingleRoleRead::Violations => read_text_or_empty(self.violations_path),
             SingleRoleRead::Diagnostics => read_text_or_empty(self.diagnostics_path),
@@ -235,7 +249,17 @@ pub fn build_single_role_prompt(
         }
         AgentPromptKind::Planner => {
             let violations = ctx.read(SingleRoleRead::Violations)?;
-            let diagnostics = ctx.read(SingleRoleRead::Diagnostics)?;
+            let raw_diagnostics = ctx.read(SingleRoleRead::Diagnostics)?;
+            let diagnostics = if raw_diagnostics.trim().is_empty() {
+                "(no diagnostics)".to_string()
+            } else if raw_diagnostics.contains("\"ranked_failures\"") {
+                format!(
+                    "(UNVERIFIED DIAGNOSTICS — require source validation before use; DO NOT derive tasks without read_file evidence; treat repeated signals as potentially stale)\n{}",
+                    raw_diagnostics
+                )
+            } else {
+                "(invalid diagnostics: missing ranked_failures)".to_string()
+            };
             let objectives = ctx.read(SingleRoleRead::Objectives)?;
             let invariants = ctx.read(SingleRoleRead::Invariants)?;
             single_role_planner_prompt(

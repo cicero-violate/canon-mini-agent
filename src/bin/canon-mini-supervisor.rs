@@ -170,6 +170,14 @@ fn cycle_idle_marker_path(args: &[String]) -> PathBuf {
     agent_state_dir_from_args(args).join("orchestrator_cycle_idle.flag")
 }
 
+fn orchestrator_mode_flag_path(args: &[String]) -> PathBuf {
+    agent_state_dir_from_args(args).join("orchestrator_mode.flag")
+}
+
+fn read_orchestrator_mode(path: &Path) -> Option<String> {
+    std::fs::read_to_string(path).ok().map(|s| s.trim().to_string())
+}
+
 fn file_mtime_if_exists(path: &Path) -> Option<SystemTime> {
     let meta = fs::metadata(path).ok()?;
     meta.modified().ok()
@@ -222,6 +230,7 @@ fn main() -> Result<()> {
         .context("install ctrlc handler")?;
     }
     let idle_marker = cycle_idle_marker_path(&filtered_args);
+    let orchestrator_mode_flag = orchestrator_mode_flag_path(&filtered_args);
 
     loop {
         let current = newest_candidate(&root, prefer_release)?;
@@ -273,6 +282,17 @@ fn main() -> Result<()> {
                     }
                 }
                 if let Some(updated) = pending_update.as_ref() {
+                    let mode = read_orchestrator_mode(&orchestrator_mode_flag);
+                    if mode.as_deref() != Some("orchestrate") {
+                        eprintln!(
+                            "[canon-mini-supervisor] binary updated in single-role; restarting from {}",
+                            updated.path.display()
+                        );
+                        send_sigint(&child);
+                        wait_for_exit(child, Duration::from_secs(10));
+                        eprintln!("[canon-mini-supervisor] restarting...");
+                        break;
+                    }
                     let idle_marker_is_fresh = file_mtime_if_exists(&idle_marker)
                         .map(|mtime| mtime >= child_started_at && mtime >= updated.mtime)
                         .unwrap_or(false);

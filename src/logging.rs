@@ -118,7 +118,7 @@ pub(crate) fn append_action_log_record(record: &Value) -> Result<()> {
 }
 
 pub(crate) fn make_command_id(role: &str, prompt_kind: &str, step: usize) -> String {
-    format!("{}:{}:{}:{}", role, prompt_kind, step, now_ms())
+    format!("{}:{}:{:04}:{}", role, prompt_kind, step, now_ms())
 }
 
 fn compact_json(value: Value) -> Option<Value> {
@@ -586,7 +586,9 @@ pub(crate) fn append_orchestration_trace(event: &str, payload: Value) {
         text,
         filtered_payload_meta(&payload),
     );
-    let _ = append_action_log_record(&record);
+    if let Err(err) = append_action_log_record(&record) {
+        eprintln!("[trace] orchestration_log_error: {err}");
+    }
 }
 
 pub(crate) fn now_ms() -> u64 {

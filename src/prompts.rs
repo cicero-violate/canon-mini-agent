@@ -25,6 +25,7 @@ pub(crate) enum AgentPromptKind {
 pub(crate) enum ToolPromptKind {
     ListDir,
     ReadFile,
+    Objectives,
     ApplyPatch,
     RunCommand,
     Python,
@@ -39,6 +40,7 @@ fn available_actions(kind: AgentPromptKind) -> &'static [&'static str] {
             "message",
             "list_dir",
             "read_file",
+            "objectives",
             "apply_patch",
             "run_command",
             "python",
@@ -52,6 +54,7 @@ fn available_actions(kind: AgentPromptKind) -> &'static [&'static str] {
             "message",
             "list_dir",
             "read_file",
+            "objectives",
             "apply_patch",
             "run_command",
             "python",
@@ -66,6 +69,7 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
         AgentPromptKind::Diagnostics => &[
             ToolPromptKind::ListDir,
             ToolPromptKind::ReadFile,
+            ToolPromptKind::Objectives,
             ToolPromptKind::Python,
             ToolPromptKind::RunCommand,
             ToolPromptKind::ApplyPatch,
@@ -76,6 +80,7 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
         AgentPromptKind::Verifier => &[
             ToolPromptKind::ListDir,
             ToolPromptKind::ReadFile,
+            ToolPromptKind::Objectives,
             ToolPromptKind::ApplyPatch,
             ToolPromptKind::RunCommand,
             ToolPromptKind::Python,
@@ -86,6 +91,7 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
         AgentPromptKind::Executor | AgentPromptKind::Planner | AgentPromptKind::Solo => &[
             ToolPromptKind::ListDir,
             ToolPromptKind::ReadFile,
+            ToolPromptKind::Objectives,
             ToolPromptKind::ApplyPatch,
             ToolPromptKind::RunCommand,
             ToolPromptKind::Python,
@@ -102,6 +108,7 @@ fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
         (_, ToolPromptKind::ReadFile) => {
             "read_file — read a file; output is line-numbered (\"42: code here\")"
         }
+        (_, ToolPromptKind::Objectives) => "objectives — read objectives (defaults to non-completed)",
         (AgentPromptKind::Verifier, ToolPromptKind::ApplyPatch) => {
             "apply_patch — write `VIOLATIONS.json`"
         }
@@ -166,6 +173,9 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
         }
         (AgentPromptKind::Diagnostics, ToolPromptKind::ReadFile) => {
             "   {\"action\":\"read_file\",\"path\":\"src/app.rs\",\"line\":1,\"rationale\":\"Read a suspected source file to correlate code with observed failures.\"}\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.".to_string()
+        }
+        (_, ToolPromptKind::Objectives) => {
+            "   {\"action\":\"objectives\",\"rationale\":\"Load only non-completed objectives for planning/verification.\"}\n   {\"action\":\"objectives\",\"include_done\":true,\"rationale\":\"Load all objectives, including completed.\"}".to_string()
         }
 
         (AgentPromptKind::Executor | AgentPromptKind::Solo, ToolPromptKind::ApplyPatch) => {
@@ -257,7 +267,7 @@ fn prompt_mission(kind: AgentPromptKind) -> &'static str {
     match kind {
         AgentPromptKind::Executor => "Your job is to execute the highest-priority READY work described in planner handoff messages and the master plan.\n`SPEC.md` is the canonical contract.\nLane plans are deprecated and should not be relied on for task selection.\nThe verifier judges code against `SPEC.md`.\nYou should only work on the top 1-10 ready tasks in the current cycle, then yield.\nDo not use internal tools.\nDo not reorganize or update `SPEC.md` or plan files yourself.\nMake source changes, run checks, and report evidence in `message.payload`.",
         AgentPromptKind::Verifier => "Your job is to critically review executor evidence against the codebase and judge whether the implementation satisfies `SPEC.md`.\nExecutor evidence is a hint only. The canonical truth is the codebase versus `SPEC.md`.\nIf violations are found, write `VIOLATIONS.json` with a clear, actionable list using the enums in canon-mini-agent/src/reports.rs.\nBe skeptical — do not trust executor claims at face value.",
-        AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `PLANS/OBJECTIVES.md`, `VIOLATIONS.json`, and `DIAGNOSTICS.json` and derive the master plan plus executor handoff guidance.\nYou own priority, dependency ordering, task allocation, and the ready-work window for each executor.\nOn every cycle, re-evaluate the workspace and update `PLAN.json` via the plan tool.\nAt the end of every planner cycle, review `PLANS/OBJECTIVES.json` and add or update objectives to reflect what was discovered. New objectives must have a unique id, title, category, level, and description. Use `apply_patch` to write them.\nDo not use internal tools.\nDo not hand off work; complete the needed planning and execution directly in the current role flow.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
+        AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `PLANS/OBJECTIVES.json`, `VIOLATIONS.json`, and `DIAGNOSTICS.json` and derive the master plan plus executor handoff guidance.\nYou own priority, dependency ordering, task allocation, and the ready-work window for each executor.\nOn every cycle, re-evaluate the workspace and update `PLAN.json` via the plan tool.\nAt the end of every planner cycle, review `PLANS/OBJECTIVES.json` and add or update objectives to reflect what was discovered. New objectives must have a unique id, title, category, level, and description. Use `apply_patch` to write them.\nDo not use internal tools.\nDo not hand off work; complete the needed planning and execution directly in the current role flow.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
         AgentPromptKind::Diagnostics => "Your job is to scan the active workspace state, analyze `VIOLATIONS.json`, detect root causes, rank them by impact, and write concrete repair targets for the planner in `DIAGNOSTICS.json` using the enums in canon-mini-agent/src/reports.rs.",
         AgentPromptKind::Solo => "Your job is to coordinate planning, execution, and verification in a single role while participating in orchestration.\nUse the `plan` action to update `PLAN.json`; do not apply_patch the master plan.\nYou may read, patch, and verify any in-workspace files when justified by evidence.\nKeep evidence tight and run checks before claiming completion.\nAt the end of every cycle — before emitting a completion message — review `PLANS/OBJECTIVES.json` and add or update objectives based on what you discovered. New objectives must have a unique id, title, category, level, and description. Use `apply_patch` to write them directly.",
     }
@@ -614,7 +624,7 @@ pub(crate) fn planner_cycle_prompt(
     let workspace = workspace();
     let diagnostics_file = diagnostics_file();
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics: {diagnostics_file}\n- Master plan: {MASTER_PLAN_FILE}\n\nPlan diff (from {MASTER_PLAN_FILE}):\n{plan_diff}\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants_text}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations_text}\n\nDiagnostics report (from {diagnostics_file}):\n{diagnostics_text}\n\nLatest verifier summary:\n{summary_text}\n\nBefore completing this cycle, review {OBJECTIVES_FILE} and add or update objectives to capture anything discovered. New objectives require a unique id, title, category, level, and description. Use apply_patch to write them.\n\nYou may send a message action to other agents at any time."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics: {diagnostics_file}\n- Master plan: {MASTER_PLAN_FILE}\n\nPlan diff (from {MASTER_PLAN_FILE}):\n{plan_diff}\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants_text}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations_text}\n\nDiagnostics report (from {diagnostics_file}):\n{diagnostics_text}\n\nLatest verifier summary:\n{summary_text}\n\nDiagnostics-derived planning guard:\n- Do not create or reprioritize tasks from diagnostics alone.\n- Before accepting any diagnostics claim, read the implicated source files or gather equivalent current-cycle evidence.\n- Treat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\n- If diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks.\n\nBefore completing this cycle, review {OBJECTIVES_FILE} and add or update objectives to capture anything discovered. New objectives require a unique id, title, category, level, and description. Use apply_patch to write them.\n\nYou may send a message action to other agents at any time."
     )
 }
 
@@ -698,7 +708,7 @@ pub(crate) fn single_role_planner_prompt(
     let diagnostics_path = diagnostics_file();
     let canonical_law = prompt_canonical_law(AgentPromptKind::Planner);
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{primary_input}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nCanonical law:\n{canonical_law}\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nEmit exactly one action to begin. Think through the decision internally; reveal chain-of-thought."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{primary_input}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nCanonical law:\n{canonical_law}\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nDo not create or reprioritize tasks from diagnostics alone.\nBefore accepting any diagnostics claim, read the implicated source files or gather equivalent current-cycle evidence.\nTreat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\nIf diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nEmit exactly one action to begin. Think through the decision internally; reveal chain-of-thought."
     )
 }
 
@@ -1110,7 +1120,7 @@ fn derive_next_action_hint(result: &str, last_action: Option<&str>) -> NextActio
 }
 
 fn next_action_hint_text(result: &str, last_action: Option<&str>) -> String {
-    let all_actions = "list_dir, read_file, apply_patch, run_command, python, cargo_test, plan, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, message";
+    let all_actions = "list_dir, read_file, objectives, apply_patch, run_command, python, cargo_test, plan, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, message";
     match derive_next_action_hint(result, last_action) {
         NextActionHint::TailOutputLog { path } => {
             format!("next_action_hint: run_command tail -n 200 {path}")
@@ -1151,6 +1161,7 @@ fn is_supported_action(kind: &str) -> bool {
         kind,
         "list_dir"
             | "read_file"
+            | "objectives"
             | "apply_patch"
             | "run_command"
             | "python"

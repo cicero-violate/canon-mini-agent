@@ -59,6 +59,7 @@ pub(crate) fn unsupported_action_templates() -> Vec<String> {
     let mut templates = vec![
         "```json\n{\n  \"action\": \"list_dir\",\n  \"path\": \".\",\n  \"observation\": \"List workspace root to locate targets.\",\n  \"rationale\": \"Confirm files before acting.\"\n}\n```",
         "```json\n{\n  \"action\": \"read_file\",\n  \"path\": \"canon-utils/canon-loop/src/executor.rs\",\n  \"observation\": \"Read file to understand current logic.\",\n  \"rationale\": \"Need context before patching.\"\n}\n```",
+        "```json\n{\n  \"action\": \"objectives\",\n  \"observation\": \"Load non-completed objectives for planning context.\",\n  \"rationale\": \"Need current objectives without completed items.\"\n}\n```",
         "```json\n{\n  \"action\": \"apply_patch\",\n  \"patch\": \"*** Begin Patch\\n*** Update File: path/to/file.rs\\n@@\\n- old\\n+ new\\n*** End Patch\",\n  \"observation\": \"Apply the required edit.\",\n  \"rationale\": \"Implement the change directly.\"\n}\n```",
         "```json\n{\n  \"action\": \"plan\",\n  \"op\": \"create_task\",\n  \"task\": {\"id\": \"T4\", \"title\": \"Add plan DAG\", \"status\": \"todo\", \"priority\": 3},\n  \"observation\": \"Planning update needed.\",\n  \"rationale\": \"Track work in PLAN.json via plan tool.\"\n}\n```",
         "```json\n{\n  \"action\": \"run_command\",\n  \"cmd\": \"rg -n \\\"trigger_observe\\\" canon-utils/canon-loop/src/executor.rs\",\n  \"observation\": \"Search for observe triggers.\",\n  \"rationale\": \"Locate all callsites before patching.\"\n}\n```",
@@ -336,10 +337,9 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
                 .get("observation")
                 .and_then(|v| v.as_str())
                 .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .is_none()
+                .is_some()
             {
-                schema_diff.push("missing field: observation".to_string());
+                // observation is optional per SPEC.md; do not enforce non-empty
             }
             push_type_mismatch(&mut schema_diff, obj, "observation", "string");
             if obj
