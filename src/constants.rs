@@ -103,7 +103,11 @@ pub const ENDPOINT_SPECS: &[EndpointSpec] = &[
         id: "solo_chatgpt",
         role: "solo",
         role_markdown: "builtin:planner",
-        urls: &["https://chatgpt.com/"],
+        // urls: &["https://chatgpt.com/"],
+        urls: &[
+            // "https://chatgpt.com/",
+            "https://chatgpt.com/gg/69d7931e25b881929ff153362c36df93",
+        ],
         stateful: true,
         max_tabs: 1,
     },
