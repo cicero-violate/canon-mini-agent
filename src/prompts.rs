@@ -109,7 +109,9 @@ fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
         (_, ToolPromptKind::ReadFile) => {
             "read_file — read a file; output is line-numbered (\"42: code here\")"
         }
-        (_, ToolPromptKind::Objectives) => "objectives — read objectives (defaults to non-completed)",
+        (_, ToolPromptKind::Objectives) => {
+            "objectives — read objectives (defaults to non-completed)"
+        }
         (AgentPromptKind::Verifier, ToolPromptKind::ApplyPatch) => {
             "apply_patch — write `VIOLATIONS.json`"
         }
@@ -628,7 +630,7 @@ pub(crate) fn planner_cycle_prompt(
     let workspace = workspace();
     let diagnostics_file = diagnostics_file();
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics: {diagnostics_file}\n- Master plan: {MASTER_PLAN_FILE}\n\nPlan diff (from {MASTER_PLAN_FILE}):\n{plan_diff}\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants_text}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations_text}\n\nDiagnostics report (from {diagnostics_file}):\n{diagnostics_text}\n\nLatest verifier summary:\n{summary_text}\n\nDiagnostics-derived planning guard:\n- Do not create or reprioritize tasks from diagnostics alone.\n- Before accepting any diagnostics claim, read the implicated source files or gather equivalent current-cycle evidence.\n- Treat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\n- If diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks.\n\nBefore completing this cycle, review {OBJECTIVES_FILE} and add or update objectives to capture anything discovered. New objectives require a unique id, title, category, level, and description. Use apply_patch to write them.\n\nYou may send a message action to other agents at any time."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics: {diagnostics_file}\n- Master plan: {MASTER_PLAN_FILE}\n\nPlan diff (from {MASTER_PLAN_FILE}):\n{plan_diff}\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants_text}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations_text}\n\nDiagnostics report (from {diagnostics_file}):\n{diagnostics_text}\n\nLatest verifier summary:\n{summary_text}\n\nDiagnostics-derived planning guard:\n- Do not create or reprioritize tasks from diagnostics alone.\n- Before accepting any diagnostics claim, read the implicated source files or gather equivalent current-cycle evidence.\n- Treat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\n- If diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks.\n\nBefore completing this cycle, review {OBJECTIVES_FILE} and add or update objectives to capture anything discovered. New objectives require a unique id, title, category, level, and description. Use apply_patch to write them.\n\nYou may send a message action to other agents at any time.  Think hard internally before responding."
     )
 }
 
@@ -662,7 +664,7 @@ pub(crate) fn verifier_cycle_prompt(
     let workspace = workspace();
     let diagnostics_file = diagnostics_file();
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Master plan: {MASTER_PLAN_FILE}\n- Diagnostics: {diagnostics_file}\n- Violations to write: {VIOLATIONS_FILE}\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nExecutor lane: {lane_label}\nExecutor result summary:\n{exec_result}\n\nYou may send a message action to other agents at any time."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Master plan: {MASTER_PLAN_FILE}\n- Diagnostics: {diagnostics_file}\n- Violations to write: {VIOLATIONS_FILE}\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nExecutor lane: {lane_label}\nExecutor result summary:\n{exec_result}\n\nYou may send a message action to other agents at any time. Think hard internally before responding."
     )
 }
 
@@ -670,7 +672,7 @@ pub(crate) fn diagnostics_cycle_prompt(summary_text: &str, cargo_test_failures: 
     let workspace = workspace();
     let diagnostics_file = diagnostics_file();
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics report to write: {diagnostics_file}\n- Observability artifacts: inspect workspace-local state and log paths that actually exist for this project\n\nLatest verifier summary:\n{summary_text}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nYou may send a message action to other agents at any time."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics report to write: {diagnostics_file}\n- Observability artifacts: inspect workspace-local state and log paths that actually exist for this project\n\nLatest verifier summary:\n{summary_text}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nYou may send a message action to other agents at any time.Think hard internally before responding "
     )
 }
 
