@@ -241,7 +241,7 @@ Outputs: JSON reports under metrics/analysis directories.
 | Solo        | Solo     | result       | complete           | `summary`                                   |
 
 **Routing guarantee (added 2026-04-07):** When a role emits a `message` action, the system writes `last_message_to_<to>.json` and `wakeup_<to>.flag` to `AgentStateDir` and sets `planner_pending = true` (for planner-targeted messages). This ensures the target role wakes on the next orchestration cycle regardless of whether the action was emitted in the inline or deferred completion path.
-**Solo note:** Solo is an orchestrated role. It may send messages to any other role; wakeup flags are honored for `solo` like the other roles.
+**Solo note:** Solo is an orchestrated role. Wakeup flags are honored for `solo` like the other roles.
 
 ## 4. Invariants (Must Always Hold)
 
