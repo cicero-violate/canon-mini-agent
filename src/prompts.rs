@@ -1359,6 +1359,25 @@ mod tests {
     }
 
     #[test]
+    fn solo_prompt_includes_lessons_artifact_section() {
+        let prompt = single_role_solo_prompt(
+            "{spec}",
+            "{master_plan}",
+            "{objectives}",
+            "LESSON_TEXT",
+            "{invariants}",
+            "{violations}",
+            "{diagnostics}",
+            "{issues}",
+            "{cargo_test_failures}",
+        );
+        assert!(
+            prompt.contains("Lessons artifact:\nLESSON_TEXT"),
+            "solo prompt must embed the lessons artifact body"
+        );
+    }
+
+    #[test]
     fn diagnostics_python_reads_event_logs_accepts_generic_state_and_log_discovery() {
         let state_action = json!({
             "action": "python",
@@ -1428,6 +1447,23 @@ mod tests {
         assert!(
             prompt.contains("If diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks."),
             "planner prompt must direct diagnostics-repair follow-up for stale reports"
+        );
+    }
+
+    #[test]
+    fn planner_prompt_includes_lessons_artifact_section() {
+        let prompt = single_role_planner_prompt(
+            "{spec}",
+            "{objectives}",
+            "LESSON_TEXT",
+            "{invariants}",
+            "{violations}",
+            "{diagnostics}",
+            "{cargo_test_failures}",
+        );
+        assert!(
+            prompt.contains("Lessons artifact:\nLESSON_TEXT"),
+            "planner prompt must embed the lessons artifact body"
         );
     }
 }

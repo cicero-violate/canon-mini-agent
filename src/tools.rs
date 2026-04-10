@@ -1407,13 +1407,16 @@ fn handle_rename_symbol_action(
         .syntax()
         .token_at_offset(offset)
         .left_biased()
-        .or_else(|| root.syntax().token_at_offset(offset).right_biased());
+        .filter(|t| t.kind() == SyntaxKind::IDENT)
+        .or_else(|| {
+            root.syntax()
+                .token_at_offset(offset)
+                .right_biased()
+                .filter(|t| t.kind() == SyntaxKind::IDENT)
+        });
     let Some(target) = token_at_offset else {
         bail!("rename_symbol could not resolve token at line/column");
     };
-    if target.kind() != SyntaxKind::IDENT {
-        bail!("rename_symbol target is not an identifier token");
-    }
     if target.text() != old_name {
         bail!(
             "rename_symbol old_name mismatch at location: expected '{}', found '{}'",
