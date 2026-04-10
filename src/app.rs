@@ -2864,6 +2864,30 @@ fn plan_has_incomplete_tasks(plan_text: &str) -> bool {
         .unwrap_or(true)
 }
 
+fn objective_status_normalized(objective: &crate::objectives::Objective) -> Option<String> {
+    if !objective.status.trim().is_empty() {
+        return Some(objective.status.trim().to_ascii_lowercase());
+    }
+    crate::objectives::extract_status(&objective.description).map(|s| s.to_ascii_lowercase())
+}
+
+fn objective_requires_plan_work(objective: &crate::objectives::Objective) -> bool {
+    let status = objective_status_normalized(objective);
+    if let Some(status) = status.as_deref() {
+        if matches!(status, "deferred" | "blocked") {
+            return false;
+        }
+    }
+    !crate::objectives::is_completed(objective)
+}
+
+fn has_actionable_objectives(objectives_text: &str) -> bool {
+    let Ok(file) = serde_json::from_str::<crate::objectives::ObjectivesFile>(objectives_text) else {
+        return false;
+    };
+    file.objectives.iter().any(objective_requires_plan_work)
+}
+
 fn verifier_confirmed_with_plan_text(reason: &str, plan_text: &str) -> bool {
     if plan_has_incomplete_tasks(plan_text) {
         return false;
@@ -3634,6 +3658,24 @@ pub async fn run() -> Result<()> {
                 cycle_progress = true;
             }
 
+            let objectives_text = read_text_or_empty(&workspace.join(OBJECTIVES_FILE));
+            let plan_text = read_text_or_empty(&master_plan_path);
+            let has_objective_work = has_actionable_objectives(&objectives_text);
+            let has_plan_work = plan_has_incomplete_tasks(&plan_text);
+            if has_objective_work && !has_plan_work {
+                append_orchestration_trace(
+                    "objective_plan_enforcement_signal",
+                    json!({
+                        "required_action": "plan_task_required_for_actionable_objective",
+                        "reason": "objectives_require_work_but_plan_has_no_pending_tasks",
+                        "objectives_path": OBJECTIVES_FILE,
+                        "plan_path": MASTER_PLAN_FILE,
+                    }),
+                );
+                dispatch_state.planner_pending = true;
+                cycle_progress = true;
+            }
+
             // Convergence guard: detect cycles where work was dispatched but no watched
             // file changed. Consecutive stalls indicate a livelock.
             //
@@ -3722,7 +3764,8 @@ pub async fn run() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        executor_step_limit_feedback, plan_has_incomplete_tasks, verifier_confirmed_with_plan_text,
+        executor_step_limit_feedback, has_actionable_objectives, plan_has_incomplete_tasks,
+        verifier_confirmed_with_plan_text,
     };
 
     #[test]
@@ -3764,5 +3807,30 @@ mod tests {
         assert!(feedback.contains("Example complete handoff"));
         assert!(feedback.contains("Example blocker"));
         assert!(feedback.contains("\"required_action\": \"What planner should do next\""));
+    }
+
+    #[test]
+    fn actionable_objectives_ignore_deferred_or_blocked_and_done() {
+        let objectives = r#"{
+          "version": 1,
+          "objectives": [
+            {"id":"o1","status":"done"},
+            {"id":"o2","status":"deferred"},
+            {"id":"o3","status":"blocked"}
+          ]
+        }"#;
+        assert!(!has_actionable_objectives(objectives));
+    }
+
+    #[test]
+    fn actionable_objectives_detect_active_entries() {
+        let objectives = r#"{
+          "version": 1,
+          "objectives": [
+            {"id":"o1","status":"done"},
+            {"id":"o2","status":"active"}
+          ]
+        }"#;
+        assert!(has_actionable_objectives(objectives));
     }
 }
