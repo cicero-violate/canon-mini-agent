@@ -895,8 +895,8 @@ fn executor_diff(workspace: &Path, max_lines: usize) -> String {
 #[cfg(test)]
 mod diagnostics_filter_tests {
     use super::{
-        filter_active_diagnostics_json, filter_active_violations_json, filter_pending_plan_json,
-        sanitize_diagnostics_for_planner,
+        filter_active_diagnostics_json, filter_active_violations_json, filter_invariants_json,
+        filter_pending_plan_json, sanitize_diagnostics_for_planner,
     };
 
     const NON_AUTHORITATIVE_VIOLATIONS: &str = r#"{}"#;
