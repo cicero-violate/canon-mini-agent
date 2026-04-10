@@ -45,7 +45,9 @@ struct SourceSpan {
     file: String,
     line: u32,
     col: u32,
+    #[serde(alias = "lo")]
     start_offset: u32,
+    #[serde(alias = "hi")]
     end_offset: u32,
 }
 
@@ -536,15 +538,6 @@ impl SemanticIndex {
         let key = self.resolve_symbol_key(symbol)?;
         let node = self.graph.nodes.get(key).context("symbol key not present")?;
         let mut out = Vec::new();
-        if let Some(def) = &node.def {
-            out.push(SymbolOccurrence {
-                file: def.file.clone(),
-                line: def.line,
-                col: def.col,
-                lo: def.start_offset,
-                hi: def.end_offset,
-            });
-        }
         for r in &node.refs {
             out.push(SymbolOccurrence {
                 file: r.file.clone(),
@@ -553,6 +546,17 @@ impl SemanticIndex {
                 lo: r.start_offset,
                 hi: r.end_offset,
             });
+        }
+        if out.is_empty() {
+            if let Some(def) = &node.def {
+                out.push(SymbolOccurrence {
+                    file: def.file.clone(),
+                    line: def.line,
+                    col: def.col,
+                    lo: def.start_offset,
+                    hi: def.end_offset,
+                });
+            }
         }
         out.sort_by(|a, b| a.file.cmp(&b.file).then(a.lo.cmp(&b.lo)).then(a.hi.cmp(&b.hi)));
         out.dedup_by(|a, b| a.file == b.file && a.lo == b.lo && a.hi == b.hi);
