@@ -21,6 +21,7 @@ pub enum PredictedActionName {
     Message,
     ListDir,
     ReadFile,
+    SymbolsIndex,
     RenameSymbol,
     Objectives,
     Issue,
@@ -46,6 +47,7 @@ pub const TOOL_ACTION_NAMES: &[&str] = &[
     "message",
     "list_dir",
     "read_file",
+    "symbols_index",
     "rename_symbol",
     "objectives",
     "issue",
@@ -59,6 +61,7 @@ pub const TOOL_ACTION_NAMES: &[&str] = &[
 pub const ALL_TOOL_PROMPT_KINDS: &[&str] = &[
     "list_dir",
     "read_file",
+    "symbols_index",
     "rename_symbol",
     "objectives",
     "issue",
@@ -217,6 +220,14 @@ pub enum ToolAction {
         path: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         line: Option<u64>,
+    },
+    SymbolsIndex {
+        #[serde(flatten)]
+        base: ActionBase,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        out: Option<String>,
     },
     RenameSymbol {
         #[serde(flatten)]
@@ -397,6 +408,13 @@ pub fn tool_protocol_schema_split_text() -> String {
             "read a file; output is line-numbered",
             Some(
                 "Examples:\n  {\"action\":\"read_file\",\"path\":\"src/app.rs\",\"rationale\":\"Read the file before editing it.\"}\n  {\"action\":\"read_file\",\"path\":\"src/app.rs\",\"line\":120,\"rationale\":\"Read the relevant section before editing it.\"}\nWith \"line\":N the output starts at line N and shows up to 1000 lines.\n⚠ Always read a file before patching it. Never patch from memory.\n⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.\n⚠ read_file output is prefixed with line numbers (\"42: code here\"). Strip the \"N: \" prefix when writing patch lines.\nWRONG:  -42: fn old() {}   RIGHT:  -fn old() {}",
+            ),
+        ),
+        (
+            "symbols_index",
+            "build deterministic symbols index JSON from Rust sources",
+            Some(
+                "Example:\n  {\"action\":\"symbols_index\",\"path\":\"src\",\"out\":\"state/symbols.json\",\"rationale\":\"Build a deterministic unique symbol catalog for planning and rename work.\",\"predicted_next_actions\":[{\"action\":\"read_file\",\"intent\":\"Inspect generated symbols.json and choose target symbols.\"},{\"action\":\"rename_symbol\",\"intent\":\"Apply a precise rename for one selected symbol.\"}]}\nNotes:\n- `path` defaults to workspace root.\n- `out` defaults to `state/symbols.json`.",
             ),
         ),
         (
@@ -701,6 +719,7 @@ fn is_known_action(action: &str) -> bool {
         "message"
             | "list_dir"
             | "read_file"
+            | "symbols_index"
             | "rename_symbol"
             | "objectives"
             | "apply_patch"
@@ -735,6 +754,7 @@ fn first_missing_field_for_action(action: &Value, action_name: &str) -> Option<S
         }
         "list_dir" => missing_field("path"),
         "read_file" => missing_field("path"),
+        "symbols_index" => None,
         "rename_symbol" => missing_field("path")
             .or_else(|| missing_field("line"))
             .or_else(|| missing_field("column"))

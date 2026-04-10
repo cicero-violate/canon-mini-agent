@@ -30,6 +30,7 @@ Before every mutating action (`apply_patch`, `plan`, `objectives`, `issue`, `ren
 Three questions are selected per turn from a 20-question bank in `src/structured_questions.rs` and injected into the agent prompt via `rules_common_footer`. The selection rotates across all 20 questions over time. The intent is to surface different failure-mode questions (provenance, redundancy, scope, cascade, deferral, verifiability, role) across many turns rather than habituating the agent to a fixed list.
 
 The `question` field is enforced as a required field for mutating actions by `invalid_action_expected_fields` in `src/invalid_action.rs`. Missing it generates corrective feedback.
+Additionally, corrective/error feedback emitted after failed actions must explicitly remind the model to include a decision-boundary `question` before any mutating retry action.
 
 ### 0.3 Self-Learning
 The agent reads its own execution history (`agent_state/` logs, `VIOLATIONS.json`, prior `PLAN.json` states) at the start of each planner cycle. It must:

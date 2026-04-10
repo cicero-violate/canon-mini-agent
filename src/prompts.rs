@@ -29,6 +29,7 @@ pub(crate) enum AgentPromptKind {
 pub(crate) enum ToolPromptKind {
     ListDir,
     ReadFile,
+    SymbolsIndex,
     RenameSymbol,
     Objectives,
     ApplyPatch,
@@ -49,6 +50,7 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
         AgentPromptKind::Diagnostics => &[
             ToolPromptKind::ListDir,
             ToolPromptKind::ReadFile,
+            ToolPromptKind::SymbolsIndex,
             ToolPromptKind::RenameSymbol,
             ToolPromptKind::Objectives,
             ToolPromptKind::Python,
@@ -61,6 +63,7 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
         AgentPromptKind::Verifier => &[
             ToolPromptKind::ListDir,
             ToolPromptKind::ReadFile,
+            ToolPromptKind::SymbolsIndex,
             ToolPromptKind::RenameSymbol,
             ToolPromptKind::Objectives,
             ToolPromptKind::ApplyPatch,
@@ -73,6 +76,7 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
         AgentPromptKind::Executor | AgentPromptKind::Planner | AgentPromptKind::Solo => &[
             ToolPromptKind::ListDir,
             ToolPromptKind::ReadFile,
+            ToolPromptKind::SymbolsIndex,
             ToolPromptKind::RenameSymbol,
             ToolPromptKind::Objectives,
             ToolPromptKind::ApplyPatch,
@@ -94,6 +98,9 @@ fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
         (_, ToolPromptKind::ListDir) => "list_dir — inspect directory contents",
         (_, ToolPromptKind::ReadFile) => {
             "read_file — read a file; output is line-numbered (\"42: code here\")"
+        }
+        (_, ToolPromptKind::SymbolsIndex) => {
+            "symbols_index — build deterministic symbols.json from Rust sources"
         }
         (_, ToolPromptKind::RenameSymbol) => {
             "rename_symbol — rename a Rust identifier at line/column (file-scoped v1)"
@@ -183,6 +190,9 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
         }
         (AgentPromptKind::Diagnostics, ToolPromptKind::ReadFile) => {
             "   {\"action\":\"read_file\",\"path\":\"src/app.rs\",\"line\":1,\"rationale\":\"Read a suspected source file to correlate code with observed failures.\"}\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.".to_string()
+        }
+        (_, ToolPromptKind::SymbolsIndex) => {
+            "   {\"action\":\"symbols_index\",\"path\":\"src\",\"out\":\"state/symbols.json\",\"rationale\":\"Build a deterministic unique symbols catalog before selecting rename/refactor targets.\"}\n   Notes: `path` defaults to workspace root; `out` defaults to `state/symbols.json`.".to_string()
         }
         (AgentPromptKind::Executor | AgentPromptKind::Solo, ToolPromptKind::RenameSymbol) => {
             "   {\"action\":\"rename_symbol\",\"path\":\"src/tools.rs\",\"line\":2230,\"column\":8,\"old_name\":\"handle_plan_action\",\"new_name\":\"handle_master_plan_action\",\"question\":\"Is this exact symbol-at-position the one that should be renamed without changing behavior?\",\"rationale\":\"Perform a deterministic symbol rename.\",\"predicted_next_actions\":[{\"action\":\"cargo_test\",\"intent\":\"Run focused tests for the renamed path.\"},{\"action\":\"run_command\",\"intent\":\"Run cargo check after the rename.\"}]}\n   Notes: line/column are 1-based; v1 is file-scoped and supports .rs files.".to_string()

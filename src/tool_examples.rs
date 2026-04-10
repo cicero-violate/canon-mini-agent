@@ -29,6 +29,14 @@ pub fn non_message_example_action(kind: &str) -> Option<Value> {
             "rationale": "Need context before editing.",
             "predicted_next_actions": example_predicted_next_actions()
         }),
+        "symbols_index" => json!({
+            "action": "symbols_index",
+            "path": "src",
+            "out": "state/symbols.json",
+            "observation": "Build deterministic symbol inventory.",
+            "rationale": "Need a unique sorted symbols catalog before rename/refactor planning.",
+            "predicted_next_actions": example_predicted_next_actions()
+        }),
         "rename_symbol" => json!({
             "action": "rename_symbol",
             "path": "src/tools.rs",

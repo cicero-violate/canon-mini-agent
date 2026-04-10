@@ -2,6 +2,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use canon_llm::config::LlmEndpoint;
 use canon_tools_patch::apply_patch;
 use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind, TextSize};
+use serde::Serialize;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::env;
@@ -1305,6 +1306,221 @@ fn handle_read_file_action(
         out.len()
     );
     Ok((false, format!("read_file {path}:\n{out}")))
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+struct SymbolSpan {
+    start: usize,
+    end: usize,
+    line: usize,
+    column: usize,
+    end_line: usize,
+    end_column: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+struct SymbolEntry {
+    name: String,
+    kind: String,
+    file: String,
+    span: SymbolSpan,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+struct SymbolsIndexFile {
+    version: u32,
+    symbols: Vec<SymbolEntry>,
+}
+
+fn line_starts(text: &str) -> Vec<usize> {
+    let mut starts = vec![0usize];
+    for (i, b) in text.bytes().enumerate() {
+        if b == b'\n' {
+            starts.push(i + 1);
+        }
+    }
+    starts
+}
+
+fn offset_to_line_col(text: &str, starts: &[usize], offset: usize) -> (usize, usize) {
+    let idx = match starts.binary_search(&offset) {
+        Ok(i) => i,
+        Err(i) => i.saturating_sub(1),
+    };
+    let line_start = starts[idx];
+    let line = idx + 1;
+    let col = text[line_start..offset].chars().count() + 1;
+    (line, col)
+}
+
+fn symbol_kind_from_name_owner(owner_kind: SyntaxKind) -> Option<&'static str> {
+    match owner_kind {
+        SyntaxKind::FN => Some("function"),
+        SyntaxKind::STRUCT => Some("struct"),
+        SyntaxKind::ENUM => Some("enum"),
+        SyntaxKind::TRAIT => Some("trait"),
+        SyntaxKind::TYPE_ALIAS => Some("type_alias"),
+        SyntaxKind::CONST => Some("const"),
+        SyntaxKind::STATIC => Some("static"),
+        SyntaxKind::MODULE => Some("module"),
+        SyntaxKind::UNION => Some("union"),
+        SyntaxKind::VARIANT => Some("enum_variant"),
+        SyntaxKind::RECORD_FIELD => Some("field"),
+        SyntaxKind::TYPE_PARAM => Some("type_param"),
+        _ => None,
+    }
+}
+
+fn collect_rust_files(root: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
+    if root.is_file() {
+        if root.extension().and_then(|e| e.to_str()) == Some("rs") {
+            out.push(root.to_path_buf());
+        }
+        return Ok(());
+    }
+    let mut entries = Vec::new();
+    for entry in fs::read_dir(root).with_context(|| format!("read_dir {}", root.display()))? {
+        entries.push(entry?);
+    }
+    entries.sort_by(|a, b| a.path().cmp(&b.path()));
+    for entry in entries {
+        let path = entry.path();
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if matches!(
+                name.as_ref(),
+                ".git" | "target" | "node_modules" | ".idea" | ".vscode"
+            ) {
+                continue;
+            }
+            collect_rust_files(&path, out)?;
+            continue;
+        }
+        if file_type.is_file() && path.extension().and_then(|e| e.to_str()) == Some("rs") {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
+fn extract_decl_symbols(workspace: &Path, file_path: &Path, text: &str) -> Vec<SymbolEntry> {
+    let parse = SourceFile::parse(text, Edition::CURRENT);
+    if !parse.errors().is_empty() {
+        return Vec::new();
+    }
+    let root = parse.tree();
+    let starts = line_starts(text);
+    let file_rel = file_path
+        .strip_prefix(workspace)
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_else(|_| file_path.to_string_lossy().replace('\\', "/"));
+    let mut out = Vec::new();
+    for token in root
+        .syntax()
+        .descendants_with_tokens()
+        .filter_map(|e| e.into_token())
+    {
+        if token.kind() != SyntaxKind::IDENT {
+            continue;
+        }
+        let Some(name_node) = token.parent() else {
+            continue;
+        };
+        if name_node.kind() != SyntaxKind::NAME {
+            continue;
+        }
+        let Some(owner) = name_node.parent() else {
+            continue;
+        };
+        let Some(kind) = symbol_kind_from_name_owner(owner.kind()) else {
+            continue;
+        };
+        let range = token.text_range();
+        let start = u32::from(range.start()) as usize;
+        let end = u32::from(range.end()) as usize;
+        let (line, column) = offset_to_line_col(text, &starts, start);
+        let (end_line, end_column) = offset_to_line_col(text, &starts, end);
+        out.push(SymbolEntry {
+            name: token.text().to_string(),
+            kind: kind.to_string(),
+            file: file_rel.clone(),
+            span: SymbolSpan {
+                start,
+                end,
+                line,
+                column,
+                end_line,
+                end_column,
+            },
+        });
+    }
+    out
+}
+
+fn handle_symbols_index_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+    let path_raw = action.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+    let out_raw = action
+        .get("out")
+        .and_then(|v| v.as_str())
+        .unwrap_or("state/symbols.json");
+    let scan_root = safe_join(workspace, path_raw)?;
+    let out_path = safe_join(workspace, out_raw)?;
+    let mut files = Vec::new();
+    collect_rust_files(&scan_root, &mut files)?;
+    files.sort();
+
+    let mut symbols = Vec::new();
+    for file in files {
+        let text = fs::read_to_string(&file).unwrap_or_default();
+        symbols.extend(extract_decl_symbols(workspace, &file, &text));
+    }
+    symbols.sort_by(|a, b| {
+        (
+            a.file.as_str(),
+            a.span.start,
+            a.span.end,
+            a.kind.as_str(),
+            a.name.as_str(),
+        )
+            .cmp(&(
+                b.file.as_str(),
+                b.span.start,
+                b.span.end,
+                b.kind.as_str(),
+                b.name.as_str(),
+            ))
+    });
+    symbols.dedup_by(|a, b| {
+        a.file == b.file
+            && a.span.start == b.span.start
+            && a.span.end == b.span.end
+            && a.kind == b.kind
+            && a.name == b.name
+    });
+
+    let payload = SymbolsIndexFile {
+        version: 1,
+        symbols,
+    };
+    if let Some(parent) = out_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("create symbols output dir {}", parent.display()))?;
+    }
+    fs::write(
+        &out_path,
+        serde_json::to_string_pretty(&payload).context("serialize symbols index")?,
+    )
+    .with_context(|| format!("write {}", out_path.display()))?;
+    Ok((
+        false,
+        format!(
+            "symbols_index ok: output={} symbols={}",
+            out_raw,
+            payload.symbols.len()
+        ),
+    ))
 }
 
 fn is_valid_rust_identifier(name: &str) -> bool {
@@ -3318,6 +3534,7 @@ fn execute_action(
         "message" => handle_message_action(role, step, action),
         "list_dir" => handle_list_dir_action(workspace, action),
         "read_file" => handle_read_file_action(role, step, workspace, action),
+        "symbols_index" => handle_symbols_index_action(workspace, action),
         "rename_symbol" => handle_rename_symbol_action(role, step, workspace, action),
         "objectives" => handle_objectives_action(workspace, action),
         "issue" => handle_issue_action(workspace, action),
@@ -3334,7 +3551,7 @@ fn execute_action(
         other => Ok((
             false,
             format!(
-                "unsupported action '{other}' — use list_dir, read_file, rename_symbol, objectives, issue, apply_patch, run_command, python, cargo_test, plan, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, or message"
+                "unsupported action '{other}' — use list_dir, read_file, symbols_index, rename_symbol, objectives, issue, apply_patch, run_command, python, cargo_test, plan, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, or message"
             ),
         )),
     }
@@ -3447,6 +3664,7 @@ mod tests {
     use super::handle_objectives_action;
     use super::handle_plan_action;
     use super::handle_rename_symbol_action;
+    use super::handle_symbols_index_action;
     use serde_json::json;
     use std::path::PathBuf;
 
@@ -3549,6 +3767,58 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("old_name mismatch"));
+    }
+
+    #[test]
+    fn symbols_index_writes_deterministic_sorted_unique_output() {
+        let tmp = fresh_test_dir("symbols-index-deterministic");
+        std::fs::create_dir_all(tmp.join("src")).unwrap();
+        std::fs::write(
+            tmp.join("src/a.rs"),
+            "pub struct Alpha {}\nimpl Alpha { pub fn new() -> Self { Self {} } }\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("src/b.rs"), "pub enum Beta { One }\n").unwrap();
+
+        let action = json!({
+            "path": "src",
+            "out": "state/symbols.json",
+            "rationale": "Index symbols",
+            "predicted_next_actions": [
+                {"action": "read_file", "intent": "inspect symbols"},
+                {"action": "rename_symbol", "intent": "rename a selected symbol"}
+            ]
+        });
+        let (_done, out) = handle_symbols_index_action(&tmp, &action).unwrap();
+        assert!(out.contains("symbols_index ok"));
+
+        let symbols_path = tmp.join("state/symbols.json");
+        assert!(symbols_path.exists());
+        let raw = std::fs::read_to_string(&symbols_path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(parsed.get("version").and_then(|v| v.as_u64()), Some(1));
+        let symbols = parsed
+            .get("symbols")
+            .and_then(|v| v.as_array())
+            .expect("symbols array");
+        assert!(!symbols.is_empty());
+        let mut prev = String::new();
+        for sym in symbols {
+            let file = sym.get("file").and_then(|v| v.as_str()).unwrap_or("");
+            let start = sym
+                .get("span")
+                .and_then(|s| s.get("start"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let kind = sym.get("kind").and_then(|v| v.as_str()).unwrap_or("");
+            let name = sym.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let key = format!("{file}:{start}:{kind}:{name}");
+            assert!(
+                prev.is_empty() || prev < key,
+                "symbols output should be strictly sorted and unique"
+            );
+            prev = key;
+        }
     }
 
     #[test]
