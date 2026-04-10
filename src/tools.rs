@@ -3979,6 +3979,129 @@ fn handle_stage_graph_action(workspace: &Path, action: &Value) -> Result<(bool, 
     Ok((false, text))
 }
 
+const BATCH_MUTATING: &[&str] = &[
+    "message",
+    "rename_symbol",
+    "apply_patch",
+    "run_command",
+    "python",
+    "cargo_test",
+];
+
+fn is_batch_item_mutating(kind: &str, item: &Value) -> bool {
+    if BATCH_MUTATING.contains(&kind) {
+        return true;
+    }
+    let op = item.get("op").and_then(|v| v.as_str()).unwrap_or("");
+    match kind {
+        "plan" => op != "sorted_view",
+        "objectives" => op != "read" && op != "sorted_view",
+        "issue" => op != "read",
+        _ => false,
+    }
+}
+
+fn execute_batch_item(
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    kind: &str,
+    item: &Value,
+) -> Result<(bool, String)> {
+    match kind {
+        "list_dir" => handle_list_dir_action(workspace, item),
+        "read_file" => handle_read_file_action(role, step, workspace, item),
+        "symbols_index" => handle_symbols_index_action(workspace, item),
+        "symbols_rename_candidates" => handle_symbols_rename_candidates_action(workspace, item),
+        "symbols_prepare_rename" => handle_symbols_prepare_rename_action(workspace, item),
+        "objectives" => handle_objectives_action(workspace, item),
+        "issue" => handle_issue_action(workspace, item),
+        "plan" => handle_plan_action(role, workspace, item),
+        k @ ("rustc_hir" | "rustc_mir") => handle_rustc_action(role, step, k, workspace, item),
+        k @ ("graph_call" | "graph_cfg") => {
+            handle_graph_call_cfg_action(role, step, k, workspace, item)
+        }
+        k @ ("graph_dataflow" | "graph_reachability") => {
+            handle_graph_reports_action(role, step, k, workspace, item)
+        }
+        "semantic_map" => handle_semantic_map_action(workspace, item),
+        "stage_graph" => handle_stage_graph_action(workspace, item),
+        "symbol_window" => handle_symbol_window_action(workspace, item),
+        "symbol_refs" => handle_symbol_refs_action(workspace, item),
+        "symbol_path" => handle_symbol_path_action(workspace, item),
+        "symbol_neighborhood" => handle_symbol_neighborhood_action(workspace, item),
+        other => Ok((false, format!("unknown batchable action '{other}'"))),
+    }
+}
+
+fn handle_batch_action(
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
+    const MAX_BATCH: usize = 8;
+
+    let items = match action.get("actions").and_then(|v| v.as_array()) {
+        Some(arr) => arr.clone(),
+        None => return Ok((false, "batch: `actions` array is required".to_string())),
+    };
+
+    if items.is_empty() {
+        return Ok((false, "batch: `actions` array must not be empty".to_string()));
+    }
+
+    if items.len() > MAX_BATCH {
+        return Ok((
+            false,
+            format!(
+                "batch: too many items ({} > {MAX_BATCH}); split into smaller batches",
+                items.len()
+            ),
+        ));
+    }
+
+    let total = items.len();
+    let mut out = String::new();
+
+    for (i, item) in items.iter().enumerate() {
+        let n = i + 1;
+        let kind = item
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+
+        if is_batch_item_mutating(kind, item) {
+            let op_note = match item.get("op").and_then(|v| v.as_str()) {
+                Some(op) => format!(" op={op}"),
+                None => String::new(),
+            };
+            out.push_str(&format!(
+                "[batch {n}/{total}: REJECTED {kind}{op_note}]\n\
+                 mutating action '{kind}{op_note}' is not allowed in batch\n\n"
+            ));
+            continue;
+        }
+
+        out.push_str(&format!("[batch {n}/{total}: {kind}]\n"));
+
+        match execute_batch_item(role, step, workspace, kind, item) {
+            Ok((_done, result)) => {
+                out.push_str(&result);
+                if !result.ends_with('\n') {
+                    out.push('\n');
+                }
+            }
+            Err(e) => {
+                out.push_str(&format!("ERROR: {e}\n"));
+            }
+        }
+        out.push('\n');
+    }
+
+    Ok((false, out))
+}
+
 fn execute_action(
     role: &str,
     step: usize,
@@ -4019,10 +4142,11 @@ fn execute_action(
         "symbol_refs" => handle_symbol_refs_action(workspace, action),
         "symbol_path" => handle_symbol_path_action(workspace, action),
         "symbol_neighborhood" => handle_symbol_neighborhood_action(workspace, action),
+        "batch" => handle_batch_action(role, step, workspace, action),
         other => Ok((
             false,
             format!(
-                "unsupported action '{other}' — use list_dir, read_file, symbols_index, symbols_rename_candidates, symbols_prepare_rename, rename_symbol, objectives, issue, apply_patch, run_command, python, cargo_test, plan, stage_graph, semantic_map, symbol_window, symbol_refs, symbol_path, symbol_neighborhood, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, or message"
+                "unsupported action '{other}' — use batch, list_dir, read_file, symbols_index, symbols_rename_candidates, symbols_prepare_rename, rename_symbol, objectives, issue, apply_patch, run_command, python, cargo_test, plan, stage_graph, semantic_map, symbol_window, symbol_refs, symbol_path, symbol_neighborhood, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, or message"
             ),
         )),
     }
