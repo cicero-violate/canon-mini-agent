@@ -9,7 +9,7 @@
 //!   symbol_neighborhood — immediate callers + callees of a symbol
 
 use anyhow::{bail, Context, Result};
-use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind, TextSize};
+use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
