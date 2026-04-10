@@ -21,6 +21,9 @@ use crate::logging::{
     append_orchestration_trace, log_action_event, log_action_result, log_error_event, now_ms,
 };
 use crate::prompts::truncate;
+use crate::tool_schema::{
+    plan_set_plan_status_action_example, plan_set_task_status_action_example,
+};
 
 /// Extract the first file path touched by the patch (*** Update File: / *** Add File:).
 fn patch_first_file(patch: &str) -> Option<&str> {
@@ -2076,13 +2079,14 @@ enum PlanOp {
     DeleteTask,
     AddEdge,
     RemoveEdge,
-    SetStatus,
+    SetPlanStatus,
+    SetTaskStatus,
     ReplacePlan,
 }
 
 impl PlanOp {
     const VALID_OPS: &'static str =
-        "create_task, update_task, delete_task, add_edge, remove_edge, set_status, replace_plan";
+        "create_task, update_task, delete_task, add_edge, remove_edge, set_plan_status, set_task_status, replace_plan";
 
     fn parse(op: &str) -> Result<Self> {
         match op {
@@ -2091,7 +2095,8 @@ impl PlanOp {
             "delete_task" => Ok(Self::DeleteTask),
             "add_edge" => Ok(Self::AddEdge),
             "remove_edge" => Ok(Self::RemoveEdge),
-            "set_status" => Ok(Self::SetStatus),
+            "set_plan_status" => Ok(Self::SetPlanStatus),
+            "set_task_status" => Ok(Self::SetTaskStatus),
             "replace_plan" => Ok(Self::ReplacePlan),
             _ => bail!("unknown plan op: {op} (valid ops: {})", Self::VALID_OPS),
         }
@@ -2148,6 +2153,17 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
         .and_then(|v| v.as_str())
         .or_else(|| action.get("operation").and_then(|v| v.as_str()))
         .unwrap_or("update");
+    let op_raw = if op_raw == "set_status" {
+        // Backward-compatible alias: set_status with task_id maps to task status;
+        // otherwise it maps to plan status.
+        if action.get("task_id").and_then(|v| v.as_str()).is_some() {
+            "set_task_status"
+        } else {
+            "set_plan_status"
+        }
+    } else {
+        op_raw
+    };
     if op_raw != "sorted_view" && role.starts_with("executor") {
         bail!("plan action is not allowed for executor roles");
     }
@@ -2344,11 +2360,11 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
                 !(e_from == Some(from) && e_to == Some(to))
             });
         }
-        PlanOp::SetStatus => {
+        PlanOp::SetPlanStatus => {
             let status = action
                 .get("status")
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("plan set_status missing status"))?;
+                .ok_or_else(|| anyhow!("plan set_plan_status missing status"))?;
             // Invariant: cannot mark plan done if any task is not done
             if status == "done" {
                 let tasks = obj
@@ -2366,6 +2382,31 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
                 }
             }
             obj.insert("status".to_string(), Value::String(status.to_string()));
+        }
+        PlanOp::SetTaskStatus => {
+            let task_id = action
+                .get("task_id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("plan set_task_status missing task_id"))?;
+            let status = action
+                .get("status")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("plan set_task_status missing status"))?;
+            let tasks = obj
+                .get_mut("tasks")
+                .and_then(|v| v.as_array_mut())
+                .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+            let Some(existing) = tasks
+                .iter_mut()
+                .find(|t| t.get("id").and_then(|v| v.as_str()) == Some(task_id))
+                .and_then(|t| t.as_object_mut())
+            else {
+                bail!("plan task not found: {task_id}");
+            };
+            let mut updated = serde_json::Map::new();
+            updated.insert("status".to_string(), Value::String(status.to_string()));
+            ensure_reopened_task_has_regression_linkage(existing, &updated, task_id)?;
+            existing.insert("status".to_string(), Value::String(status.to_string()));
         }
         PlanOp::ReplacePlan => {
             let mut next_plan = action
@@ -3134,7 +3175,16 @@ pub(crate) fn execute_logged_action(
         Err(e) => {
             let err_text = if action.get("action").and_then(|v| v.as_str()) == Some("plan") {
                 format!(
-                    "Error executing action: {e}\n\nPlan tool examples:\n{{\"action\":\"plan\",\"op\":\"set_status\",\"task_id\":\"T1\",\"status\":\"in_progress\",\"rationale\":\"Update PLAN.json via the plan tool while running solo.\"}}\n{{\"action\":\"plan\",\"op\":\"create_task\",\"task\":{{\"id\":\"T4\",\"title\":\"Add plan DAG\",\"status\":\"todo\",\"priority\":3}},\"rationale\":\"Add a new task to PLAN.json without manual patching.\"}}"
+                    "Error executing action: {e}\n\nPlan tool examples:\n{}\n{}\n{{\"action\":\"plan\",\"op\":\"update_task\",\"task\":{{\"id\":\"T4\",\"status\":\"done\"}},\"rationale\":\"Update a task by id using task payload.\"}}\n\nTo mark a task done, use update_task or set_task_status. set_plan_status changes only PLAN.status.",
+                    plan_set_task_status_action_example(
+                        "T1",
+                        "in_progress",
+                        "Update one task status in PLAN.json."
+                    ),
+                    plan_set_plan_status_action_example(
+                        "in_progress",
+                        "Update top-level PLAN.json status."
+                    ),
                 )
             } else {
                 format!("Error executing action: {e}")
@@ -3325,7 +3375,7 @@ mod tests {
         .unwrap();
 
         let action = json!({
-            "op": "set_status",
+            "op": "set_plan_status",
             "status": "done",
             "rationale": "Exercise plan/task convergence guard"
         });
@@ -3335,6 +3385,85 @@ mod tests {
         assert!(err.contains("plan status cannot be set to done while tasks remain incomplete"));
         let persisted = std::fs::read_to_string(tmp.join("PLAN.json")).unwrap();
         assert!(persisted.contains("\"status\": \"in_progress\""));
+    }
+
+    #[test]
+    fn plan_set_task_status_marks_only_target_task_done() {
+        let tmp = fresh_test_dir("set-task-status-only-target-task");
+        std::fs::write(
+            tmp.join("PLAN.json"),
+            r#"{
+  "version": 2,
+  "status": "in_progress",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Task one",
+      "status": "in_progress",
+      "priority": 1
+    },
+    {
+      "id": "T2",
+      "title": "Task two",
+      "status": "todo",
+      "priority": 2
+    }
+  ],
+  "dag": { "edges": [] }
+}"#,
+        )
+        .unwrap();
+        let action = json!({
+            "op": "set_task_status",
+            "task_id": "T1",
+            "status": "done",
+            "rationale": "Close only one task"
+        });
+
+        let (_done, out) = handle_plan_action("solo", &tmp, &action).unwrap();
+        assert!(out.contains("plan ok"));
+
+        let persisted = std::fs::read_to_string(tmp.join("PLAN.json")).unwrap();
+        assert!(persisted.contains("\"id\": \"T1\""));
+        assert!(persisted.contains("\"status\": \"done\""));
+        assert!(persisted.contains("\"id\": \"T2\""));
+        assert!(persisted.contains("\"status\": \"todo\""));
+        assert!(persisted.contains("\"status\": \"in_progress\""));
+    }
+
+    #[test]
+    fn plan_legacy_set_status_with_task_id_maps_to_set_task_status() {
+        let tmp = fresh_test_dir("legacy-set-status-task-id-maps");
+        std::fs::write(
+            tmp.join("PLAN.json"),
+            r#"{
+  "version": 2,
+  "status": "in_progress",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Task one",
+      "status": "in_progress",
+      "priority": 1
+    }
+  ],
+  "dag": { "edges": [] }
+}"#,
+        )
+        .unwrap();
+        let action = json!({
+            "op": "set_status",
+            "task_id": "T1",
+            "status": "done",
+            "rationale": "Backward compatibility for old op naming"
+        });
+
+        let (_done, out) = handle_plan_action("solo", &tmp, &action).unwrap();
+        assert!(out.contains("plan ok"));
+
+        let persisted = std::fs::read_to_string(tmp.join("PLAN.json")).unwrap();
+        assert!(persisted.contains("\"id\": \"T1\""));
+        assert!(persisted.contains("\"status\": \"done\""));
     }
 
     #[test]

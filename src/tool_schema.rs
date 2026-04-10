@@ -4,7 +4,7 @@ use jsonschema::JSONSchema;
 use schemars::{schema_for, JsonSchema};
 use schemars::schema::SchemaObject;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::borrow::Cow;
 use std::sync::OnceLock;
 
@@ -71,6 +71,58 @@ pub fn cargo_test_action_example() -> &'static str {
     "Example:\n  {\"action\":\"cargo_test\",\"crate\":\"canon-runtime\",\"test\":\"some_test_name\",\"rationale\":\"Run the exact failing test using the harness-style command.\"}"
 }
 
+fn compact_example_json(value: Value) -> String {
+    serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
+}
+
+pub fn plan_set_task_status_action_example(task_id: &str, status: &str, rationale: &str) -> String {
+    compact_example_json(json!({
+        "action": "plan",
+        "op": "set_task_status",
+        "task_id": task_id,
+        "status": status,
+        "rationale": rationale
+    }))
+}
+
+pub fn plan_set_plan_status_action_example(status: &str, rationale: &str) -> String {
+    compact_example_json(json!({
+        "action": "plan",
+        "op": "set_plan_status",
+        "status": status,
+        "rationale": rationale
+    }))
+}
+
+pub fn plan_sorted_view_action_example(rationale: &str) -> String {
+    compact_example_json(json!({
+        "action": "plan",
+        "op": "sorted_view",
+        "rationale": rationale
+    }))
+}
+
+pub fn plan_action_examples_block() -> &'static str {
+    static TEXT: OnceLock<String> = OnceLock::new();
+    TEXT
+        .get_or_init(|| {
+            format!(
+                "Examples:\n  {}\n  {}\n  {}",
+                plan_set_task_status_action_example(
+                    "T1",
+                    "in_progress",
+                    "Update a single task status in PLAN.json."
+                ),
+                plan_set_plan_status_action_example(
+                    "in_progress",
+                    "Update top-level PLAN.json status."
+                ),
+                plan_sorted_view_action_example("View the current plan in DAG order (read-only).")
+            )
+        })
+        .as_str()
+}
+
 fn extract_enum_strings(schema: &SchemaObject) -> Option<Vec<String>> {
     let enums = schema.enum_values.as_ref()?;
     let mut out = Vec::with_capacity(enums.len());
@@ -107,6 +159,9 @@ pub enum PlanOp {
     DeleteTask,
     AddEdge,
     RemoveEdge,
+    SetPlanStatus,
+    SetTaskStatus,
+    // Backward-compat alias; prefer set_plan_status or set_task_status.
     SetStatus,
     ReplacePlan,
     SortedView,
@@ -377,9 +432,7 @@ pub fn tool_protocol_schema_split_text() -> String {
         (
             "plan",
             "create/update/delete tasks and DAG edges in PLAN.json",
-            Some(
-                "Examples:\n  {\"action\":\"plan\",\"op\":\"set_status\",\"task_id\":\"T1\",\"status\":\"in_progress\",\"rationale\":\"Update PLAN.json via the plan tool while running solo.\"}\n  {\"action\":\"plan\",\"op\":\"sorted_view\",\"rationale\":\"View the current plan in DAG order (read-only).\"}",
-            ),
+            Some(plan_action_examples_block()),
         ),
         ("rustc_hir", "emit HIR for analysis", None),
         ("rustc_mir", "emit MIR for analysis", None),

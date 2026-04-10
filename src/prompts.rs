@@ -7,7 +7,8 @@ use crate::constants::{
 };
 use crate::protocol::{MessagePayload, MessageStatus, MessageType, ProtocolMessage, Role};
 use crate::tool_schema::{
-    cargo_test_action_example, validate_tool_action, ALL_TOOL_PROMPT_KINDS, TOOL_ACTION_NAMES,
+    cargo_test_action_example, plan_set_task_status_action_example, plan_sorted_view_action_example,
+    validate_tool_action, ALL_TOOL_PROMPT_KINDS, TOOL_ACTION_NAMES,
 };
 
 pub(crate) fn truncate(s: &str, max: usize) -> &str {
@@ -124,8 +125,11 @@ const RUN_COMMAND_FOOTER: &str =
     "   ⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE.";
 const PYTHON_FOOTER: &str = "   ⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE.";
 
-fn plan_sorted_view_example() -> &'static str {
-    "   {\"action\":\"plan\",\"op\":\"sorted_view\",\"rationale\":\"View the current plan in DAG order (read-only).\"}"
+fn plan_sorted_view_example() -> String {
+    format!(
+        "   {}",
+        plan_sorted_view_action_example("View the current plan in DAG order (read-only).")
+    )
 }
 
 fn read_plan_with_sorted_view_example(rationale: &str) -> String {
@@ -184,7 +188,14 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
             "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Update File: PLANS/default/executor-1.json\\n@@\\n line_before_before\\n line_before\\n-  \\\"status\\\": \\\"blocked\\\"\\n+  \\\"status\\\": \\\"ready\\\"\\n line_after\\n line_after_after\\n*** End Patch\",\"rationale\":\"Update a lane plan entry after updating PLAN.json via the plan tool.\"}".to_string()
         }
         (AgentPromptKind::Verifier, ToolPromptKind::ApplyPatch) => {
-            "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: VIOLATIONS.json\\n+{\\n+  \\\"status\\\": \\\"failed\\\",\\n+  \\\"summary\\\": \\\"Short summary\\\",\\n+  \\\"violations\\\": [\\n+    {\\n+      \\\"id\\\": \\\"V1\\\",\\n+      \\\"title\\\": \\\"Control flow gated by executor-local state\\\",\\n+      \\\"severity\\\": \\\"critical\\\",\\n+      \\\"evidence\\\": [\\\"executor.rs:56-61 dispatch_in_progress gate\\\"],\\n+      \\\"issue\\\": \\\"Route dispatch suppressed before semantic evaluation\\\",\\n+      \\\"impact\\\": \\\"RouteTick does not guarantee dispatch\\\",\\n+      \\\"required_fix\\\": [\\\"Remove dispatch_in_progress gating\\\"],\\n+      \\\"files\\\": [\\\"canon-utils/canon-route/src/executor.rs\\\"]\\n+    }\\n+  ]\\n+}\\n*** End Patch\",\"rationale\":\"Record spec violations discovered during verification.\"}\\n\\n   {\\\"action\\\":\\\"plan\\\",\\\"op\\\":\\\"set_status\\\",\\\"task_id\\\":\\\"T4\\\",\\\"status\\\":\\\"done\\\",\\\"rationale\\\":\\\"Mark the verified task as done in PLAN.json.\\\"}".to_string()
+            format!(
+                "   {{\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: VIOLATIONS.json\\n+{{\\n+  \\\"status\\\": \\\"failed\\\",\\n+  \\\"summary\\\": \\\"Short summary\\\",\\n+  \\\"violations\\\": [\\n+    {{\\n+      \\\"id\\\": \\\"V1\\\",\\n+      \\\"title\\\": \\\"Control flow gated by executor-local state\\\",\\n+      \\\"severity\\\": \\\"critical\\\",\\n+      \\\"evidence\\\": [\\\"executor.rs:56-61 dispatch_in_progress gate\\\"],\\n+      \\\"issue\\\": \\\"Route dispatch suppressed before semantic evaluation\\\",\\n+      \\\"impact\\\": \\\"RouteTick does not guarantee dispatch\\\",\\n+      \\\"required_fix\\\": [\\\"Remove dispatch_in_progress gating\\\"],\\n+      \\\"files\\\": [\\\"canon-utils/canon-route/src/executor.rs\\\"]\\n+    }}\\n+  ]\\n+}}\\n*** End Patch\",\"rationale\":\"Record spec violations discovered during verification.\"}}\n\n   {}",
+                plan_set_task_status_action_example(
+                    "T4",
+                    "done",
+                    "Mark the verified task as done in PLAN.json."
+                )
+            )
         }
         (AgentPromptKind::Diagnostics, ToolPromptKind::ApplyPatch) => {
             "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: PLANS/default/diagnostics-default.json\\n+{\\n+  \\\"status\\\": \\\"critical_failure\\\",\\n+  \\\"inputs_scanned\\\": [\\\"<workspace-local log/state paths discovered during diagnostics>\\\", \\\"VIOLATIONS.json\\\"],\\n+  \\\"ranked_failures\\\": [\\n+    {\\n+      \\\"id\\\": \\\"D1\\\",\\n+      \\\"impact\\\": \\\"critical\\\",\\n+      \\\"signal\\\": \\\"Primary runtime or agent observability artifacts are missing expected progress signals\\\",\\n+      \\\"evidence\\\": [\\\"<concrete evidence from files that exist in the active workspace AND VERIFIED against current source via read_file>\\\"],\\n+      \\\"root_cause\\\": \\\"<workspace-specific root cause derived ONLY from verified current source and observed state>\\\",\\n+      \\\"repair_targets\\\": [\\\"<workspace-specific source locations>\\\"]\\n+    }\\n+  ],\\n+  \\\"planner_handoff\\\": [\\\"Diagnostics MUST NOT emit failures without direct source verification; stale signals must be suppressed.\\\"]\\n+}\\n*** End Patch\",\"rationale\":\"Write diagnostics report only after validating signals against current source; suppress stale or unverified diagnostics.\"}".to_string()
@@ -235,7 +246,12 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
         }
         (AgentPromptKind::Solo, ToolPromptKind::Plan) => {
             format!(
-                "   {{\"action\":\"plan\",\"op\":\"set_status\",\"task_id\":\"T1\",\"status\":\"in_progress\",\"rationale\":\"Update PLAN.json via the plan tool while running solo.\"}}\n{}",
+                "   {}\n{}",
+                plan_set_task_status_action_example(
+                    "T1",
+                    "in_progress",
+                    "Update one PLAN task while running solo."
+                ),
                 plan_sorted_view_example()
             )
         }
@@ -1253,7 +1269,7 @@ mod tests {
     fn validate_rejects_diagnostics_derived_plan_without_source_evidence() {
         let action = json!({
             "action": "plan",
-            "op": "set_status",
+            "op": "set_task_status",
             "task_id": "T26_planner_evidence_enforcement_hook",
             "status": "in_progress",
             "observation": "Diagnostics reported a planner issue.",
@@ -1270,7 +1286,7 @@ mod tests {
     fn validate_allows_diagnostics_derived_plan_with_source_evidence() {
         let action = json!({
             "action": "plan",
-            "op": "set_status",
+            "op": "set_task_status",
             "task_id": "T26_planner_evidence_enforcement_hook",
             "status": "in_progress",
             "observation": "read_file src/app.rs confirmed the planner path and current source evidence supports follow-up work.",
