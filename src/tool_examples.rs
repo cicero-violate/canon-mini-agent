@@ -45,6 +45,15 @@ pub fn non_message_example_action(kind: &str) -> Option<Value> {
             "rationale": "Prioritize naming cleanup before direct symbol mutation.",
             "predicted_next_actions": example_predicted_next_actions()
         }),
+        "symbols_prepare_rename" => json!({
+            "action": "symbols_prepare_rename",
+            "candidates_path": "state/rename_candidates.json",
+            "index": 0,
+            "out": "state/next_rename_action.json",
+            "observation": "Select the top rename candidate.",
+            "rationale": "Prepare a concrete rename_symbol payload before mutation.",
+            "predicted_next_actions": example_predicted_next_actions()
+        }),
         "rename_symbol" => json!({
             "action": "rename_symbol",
             "path": "src/tools.rs",

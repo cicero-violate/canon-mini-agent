@@ -29,6 +29,11 @@ pub fn init_log_paths(prefix: &str) {
     });
 }
 
+#[cfg(test)]
+pub(crate) fn current_action_log_path_for_tests() -> Option<PathBuf> {
+    LOG_PATHS.get().map(|paths| paths.action_log.clone())
+}
+
 fn log_paths() -> Result<&'static LogPaths> {
     LOG_PATHS.get().ok_or_else(|| anyhow::anyhow!("log paths not initialized"))
 }
