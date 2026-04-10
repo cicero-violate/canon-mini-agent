@@ -1603,7 +1603,10 @@ fn parse_action_from_raw(
         }));
         return Err(InvalidActionFeedback {
             err_text: e.to_string(),
-            feedback: build_invalid_action_feedback(Some(&raw_action), &e.to_string(), role),
+            feedback: format!(
+                "{}\nFor any mutating retry (`apply_patch`, `plan`, `objectives`, `issue`, or `rename_symbol`), include a non-empty `question` field stating the decision-boundary premise. Return exactly one action.",
+                build_invalid_action_feedback(Some(&raw_action), &e.to_string(), role)
+            ),
         });
     }
 
