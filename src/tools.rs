@@ -4608,21 +4608,13 @@ mod tests {
                 .unwrap_or(""),
             "rename_symbol"
         );
-        assert_eq!(
-            rename_action.get("path").and_then(|v| v.as_str()).unwrap_or(""),
-            "src/a.rs"
-        );
-        assert_eq!(
-            rename_action.get("line").and_then(|v| v.as_u64()).unwrap_or(0),
-            10
-        );
-        assert_eq!(
-            rename_action
-                .get("column")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0),
-            5
-        );
+        // v2 payload shape: ensure symbol-based fields exist instead of span-based fields
+        assert!(rename_action.get("old_symbol").is_some());
+        assert!(rename_action.get("new_symbol").is_some());
+        // ensure deprecated fields are not present
+        assert!(rename_action.get("path").is_none());
+        assert!(rename_action.get("line").is_none());
+        assert!(rename_action.get("column").is_none());
     }
 
     #[test]
