@@ -338,9 +338,9 @@ Role emits message{to=Planner}
 
 ### 5.5 Convergence Guard (Livelock Detection)
 
-The orchestrator tracks content hashes of four watched files at the start and end of every cycle: `PLAN.json`, `VIOLATIONS.json`, the active diagnostics report, and `PLANS/OBJECTIVES.json`.
+The orchestrator tracks content hashes of five watched files at the start and end of every cycle: `PLAN.json`, `VIOLATIONS.json`, the active diagnostics report, `PLANS/OBJECTIVES.json`, and `ISSUES.json`.
 
-If `cycle_progress = true` (work was dispatched) but all four hashes are unchanged, the stall counter increments. At `STALL_CYCLE_THRESHOLD` (5) consecutive stalls:
+If `cycle_progress = true` (work was dispatched) but all five hashes are unchanged, the stall counter increments. At `STALL_CYCLE_THRESHOLD` (5) consecutive stalls:
 - `agent_state/livelock_report.json` is written with timestamp, stall count, watched files, and pending flag state at detection.
 - `planner_pending` and `diagnostics_pending` are cleared.
 - The stall counter resets and the orchestrator enters the normal idle path.

@@ -41,8 +41,9 @@ use crate::state_space::{
 use crate::constants::{
     DEFAULT_AGENT_STATE_DIR, DEFAULT_LLM_RETRY_COUNT, DEFAULT_LLM_RETRY_DELAY_SECS,
     DEFAULT_RESPONSE_TIMEOUT_SECS, DIAGNOSTICS_FILE_PATH, ENDPOINT_SPECS, EXECUTOR_STEP_LIMIT,
-    INVARIANTS_FILE, MASTER_PLAN_FILE, MAX_SNIPPET, MAX_STEPS, OBJECTIVES_FILE, ROLE_TIMEOUT_SECS,
-    SPEC_FILE, VIOLATIONS_FILE, WS_PORT_CANDIDATES, set_agent_state_dir, set_workspace, workspace,
+    INVARIANTS_FILE, ISSUES_FILE, MASTER_PLAN_FILE, MAX_SNIPPET, MAX_STEPS, OBJECTIVES_FILE,
+    ROLE_TIMEOUT_SECS, SPEC_FILE, VIOLATIONS_FILE, WS_PORT_CANDIDATES, set_agent_state_dir,
+    set_workspace, workspace,
 };
 use crate::md_convert::ensure_objectives_and_invariants_json;
 use crate::prompt_inputs::{
@@ -390,6 +391,7 @@ async fn run_planner_phase(
         ctx.diagnostics_path,
         ctx.master_plan_path,
     );
+    let issues_text = crate::issues::read_open_issues(ctx.workspace);
     let mut planner_prompt = planner_cycle_prompt(
         &inputs.summary_text,
         &inputs.objectives_text,
@@ -397,6 +399,7 @@ async fn run_planner_phase(
         &inputs.invariants_text,
         &inputs.violations_text,
         &inputs.diagnostics_text,
+        &issues_text,
         &inputs.plan_diff_text,
         &inputs.executor_diff_text,
         &inputs.cargo_test_failures,
@@ -3457,11 +3460,13 @@ pub async fn run() -> Result<()> {
             let diagnostics_mtime_before = file_modified_ms(&diagnostics_path);
 
             let objectives_path = workspace.join(OBJECTIVES_FILE);
-            let convergence_watched: [&Path; 4] = [
+            let issues_path = workspace.join(ISSUES_FILE);
+            let convergence_watched: [&Path; 5] = [
                 master_plan_path.as_path(),
                 violations_path.as_path(),
                 diagnostics_path.as_path(),
                 objectives_path.as_path(),
+                issues_path.as_path(),
             ];
             let state_hash_before = cycle_state_hash(&convergence_watched);
             if shutdown.flag.load(Ordering::SeqCst) {

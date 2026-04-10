@@ -247,6 +247,9 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
         (AgentPromptKind::Diagnostics, ToolPromptKind::ReadFile) => {
             "   {\"action\":\"read_file\",\"path\":\"src/app.rs\",\"line\":1,\"rationale\":\"Read a suspected source file to correlate code with observed failures.\"}\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.".to_string()
         }
+        (_, ToolPromptKind::StageGraph) => {
+            "   {\"action\":\"stage_graph\",\"rationale\":\"Generate the current synthetic stage graph for branching and introspection.\",\"predicted_next_actions\":[{\"action\":\"read_file\",\"intent\":\"Inspect the generated stage graph JSON.\"},{\"action\":\"plan\",\"intent\":\"Promote stage insights into executable PLAN tasks.\"}]}".to_string()
+        }
         (_, ToolPromptKind::SymbolsIndex) => {
             "   {\"action\":\"symbols_index\",\"path\":\"src\",\"out\":\"state/symbols.json\",\"rationale\":\"Build a deterministic unique symbols catalog before selecting rename/refactor targets.\"}\n   Notes: `path` defaults to workspace root; `out` defaults to `state/symbols.json`.".to_string()
         }
@@ -598,6 +601,7 @@ const PLANNER_RULES: &[&str] = &[
     "- `PLAN.json` MUST be valid JSON following the PLAN/TASK protocol in `SPEC.md`.",
     "- Only modify `PLAN.json` (via `plan`) and lane plans (via `apply_patch`) — never edit `src/`, `tests/`, `SPEC.md`, `VIOLATIONS.json`, or diagnostics reports.",
     "- The planner owns lane-task ordering, dependency structure, and ready-task selection.",
+    "- Read `ISSUES.json` every cycle and promote top open issues into `PLANS/OBJECTIVES.json` and `PLAN.json` (or explicitly mark them resolved/wontfix with evidence). Issues are hints; objectives/plan are commitments.",
     "- Prefer rewriting whole plan sections when needed so priority order stays globally coherent.",
     "- Keep each executor's ready window small: 1-10 tasks maximum.",
     "- Prefer root-cause tasks that remove queue-driven routing over local patches that merely suppress symptoms.",
@@ -741,14 +745,16 @@ pub(crate) fn planner_cycle_prompt(
     invariants_text: &str,
     violations_text: &str,
     diagnostics_text: &str,
+    issues_text: &str,
     plan_diff: &str,
     executor_diff: &str,
     cargo_test_failures: &str,
 ) -> String {
     let workspace = workspace();
     let diagnostics_file = diagnostics_file();
+    let issues_file = crate::constants::ISSUES_FILE;
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics: {diagnostics_file}\n- Master plan: {MASTER_PLAN_FILE}\n\nPlan diff (from {MASTER_PLAN_FILE}):\n{plan_diff}\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives_text}\n\nLessons artifact:\n{lessons_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants_text}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations_text}\n\nDiagnostics report (from {diagnostics_file}):\n{diagnostics_text}\n\nLatest verifier summary:\n{summary_text}\n\nDiagnostics-derived planning guard:\n- Do not create or reprioritize tasks from diagnostics alone.\n- Before accepting any diagnostics claim, read the implicated source files or gather equivalent current-cycle evidence.\n- Treat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\n- If diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks.\n\nBefore completing this cycle, review {OBJECTIVES_FILE} and add or update objectives to capture anything discovered. New objectives require a unique id, title, category, level, and description. Use apply_patch to write them.\n\nYou may send a message action to other agents at any time.  Think hard internally before responding."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics: {diagnostics_file}\n- Issues: {issues_file}\n- Master plan: {MASTER_PLAN_FILE}\n\nPlan diff (from {MASTER_PLAN_FILE}):\n{plan_diff}\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives_text}\n\nOpen issues (from {issues_file}):\n{issues_text}\n\nLessons artifact:\n{lessons_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants_text}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations_text}\n\nDiagnostics report (from {diagnostics_file}):\n{diagnostics_text}\n\nLatest verifier summary:\n{summary_text}\n\nDiagnostics-derived planning guard:\n- Do not create or reprioritize tasks from diagnostics alone.\n- Before accepting any diagnostics claim, read the implicated source files or gather equivalent current-cycle evidence.\n- Treat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\n- If diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks.\n\nBefore completing this cycle, review {OBJECTIVES_FILE} and add or update objectives to capture anything discovered. New objectives require a unique id, title, category, level, and description. Use apply_patch to write them.\n\nYou may send a message action to other agents at any time.  Think hard internally before responding."
     )
 }
 
@@ -826,12 +832,14 @@ pub(crate) fn single_role_planner_prompt(
     invariants: &str,
     violations: &str,
     diagnostics: &str,
+    issues: &str,
     cargo_test_failures: &str,
 ) -> String {
     let workspace = workspace();
     let diagnostics_path = diagnostics_file();
+    let issues_file = crate::constants::ISSUES_FILE;
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{primary_input}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nLessons artifact:\n{lessons_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nDo not create or reprioritize tasks from diagnostics alone.\nBefore accepting any diagnostics claim, read the implicated source files or gather equivalent current-cycle evidence.\nTreat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\nIf diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{primary_input}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nOpen issues (from {issues_file}):\n{issues}\n\nLessons artifact:\n{lessons_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nDo not create or reprioritize tasks from diagnostics alone.\nBefore accepting any diagnostics claim, read the implicated source files or gather equivalent current-cycle evidence.\nTreat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\nIf diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow."
     )
 }
 
@@ -1442,6 +1450,19 @@ mod tests {
     }
 
     #[test]
+    fn planner_rules_require_promoting_issues_into_objectives_and_plan() {
+        let rules = PLANNER_RULES.join("\n");
+        assert!(
+            rules.contains("Read `ISSUES.json` every cycle"),
+            "planner rules must require consuming ISSUES.json"
+        );
+        assert!(
+            rules.contains("promote top open issues into `PLANS/OBJECTIVES.json` and `PLAN.json`"),
+            "planner rules must require promoting issues into objectives/plan"
+        );
+    }
+
+    #[test]
     fn verifier_requires_plan_action_for_master_plan_edits() {
         let rules = VERIFIER_RULES.join("\n");
         assert!(
@@ -1556,6 +1577,7 @@ mod tests {
             "{invariants}",
             "{violations}",
             "{diagnostics}",
+            "{issues}",
             "{cargo_test_failures}",
         );
         assert!(
@@ -1577,6 +1599,7 @@ mod tests {
             "{invariants}",
             "{violations}",
             "{diagnostics}",
+            "{issues}",
             "{cargo_test_failures}",
         );
         assert!(

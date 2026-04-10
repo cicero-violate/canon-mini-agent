@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use crate::constants::{INVARIANTS_FILE, MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE};
 use crate::objectives::read_objectives_filtered;
+use crate::issues::read_open_issues;
 use crate::prompts::{
     single_role_diagnostics_prompt, single_role_executor_prompt, single_role_planner_prompt,
     single_role_verifier_prompt, AgentPromptKind,
@@ -529,6 +530,7 @@ pub enum SingleRoleRead {
     Lessons,
     Violations,
     Diagnostics,
+    Issues,
     MasterPlan,
     Spec,
 }
@@ -547,6 +549,7 @@ impl SingleRoleContext<'_> {
             SingleRoleRead::Diagnostics => {
                 filter_active_diagnostics_json(&read_text_or_empty(self.diagnostics_path))
             }
+            SingleRoleRead::Issues => read_open_issues(self.workspace),
             SingleRoleRead::MasterPlan => {
                 filter_pending_plan_json(&read_text_or_empty(self.master_plan_path))
             }
@@ -629,6 +632,7 @@ pub fn build_single_role_prompt(
             let diagnostics = sanitize_diagnostics_for_planner(&raw_diagnostics, &violations);
             let lessons = ctx.read(SingleRoleRead::Lessons)?;
             let objectives = ctx.read(SingleRoleRead::Objectives)?;
+            let issues = ctx.read(SingleRoleRead::Issues)?;
             let invariants = ctx.read(SingleRoleRead::Invariants)?;
             single_role_planner_prompt(
                 &inputs.primary_input,
@@ -637,6 +641,7 @@ pub fn build_single_role_prompt(
                 &invariants,
                 &violations,
                 &diagnostics,
+                &issues,
                 cargo_test_failures,
             )
         }
