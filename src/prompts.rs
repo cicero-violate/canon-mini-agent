@@ -127,9 +127,11 @@ fn all_tool_prompt_kinds() -> &'static [&'static str] {
 
 fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
     match (kind, tool) {
-        (_, ToolPromptKind::ListDir) => "list_dir — inspect directory contents",
+        (_, ToolPromptKind::ListDir) => {
+            "list_dir — inspect directory contents (use semantic_map instead for Rust source structure)"
+        }
         (_, ToolPromptKind::ReadFile) => {
-            "read_file — read a file; output is line-numbered (\"42: code here\")"
+            "read_file — read a file line-numbered (fallback: use symbol_* for Rust source; reserve read_file for non-Rust files and pre-patch reads)"
         }
         (_, ToolPromptKind::SymbolsIndex) => {
             "symbols_index — build deterministic symbols.json from Rust sources"
@@ -169,19 +171,19 @@ fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
             "stage_graph — emit a synthetic OODA-style stage graph artifact"
         }
         (_, ToolPromptKind::SemanticMap) => {
-            "semantic_map — rustc-backed repomap: symbol outline by file (kind, name, signature)"
+            "semantic_map — [PREFER over list_dir] rustc-backed crate outline: symbol kind, name, signature by file"
         }
         (_, ToolPromptKind::SymbolWindow) => {
-            "symbol_window — extract the full definition body of a symbol (byte-precise)"
+            "symbol_window — [PREFER over read_file] extract full definition body of a symbol (byte-precise, no line-number noise)"
         }
         (_, ToolPromptKind::SymbolRefs) => {
-            "symbol_refs — list all reference sites (file:line:col) for a symbol"
+            "symbol_refs — [PREFER over grep] all reference sites (file:line:col) for a symbol"
         }
         (_, ToolPromptKind::SymbolPath) => {
-            "symbol_path — BFS shortest call-graph path between two symbols"
+            "symbol_path — [PREFER over manual tracing] BFS shortest call-graph path between two symbols"
         }
         (_, ToolPromptKind::SymbolNeighborhood) => {
-            "symbol_neighborhood — immediate callers and callees of a symbol"
+            "symbol_neighborhood — [PREFER over manual tracing] immediate callers and callees of a symbol"
         }
         (_, ToolPromptKind::Message) => "message — send inter-agent protocol message",
     }
@@ -412,7 +414,7 @@ fn prompt_workspace(kind: AgentPromptKind) -> String {
     match kind {
         AgentPromptKind::Executor => format!("You work inside the canon workspace at {ws}. All relative file paths resolve against this workspace root."),
         AgentPromptKind::Verifier => format!("You work inside the canon workspace at {ws}."),
-        AgentPromptKind::Planner => format!("You work inside the canon workspace at {ws}. Use bash, rg, read_file, python, apply_patch (lane plans only), and diagnostics evidence to review the current project state before reorganizing the plan."),
+        AgentPromptKind::Planner => format!("You work inside the canon workspace at {ws}. Use bash, semantic_map/symbol_window/symbol_refs (prefer over read_file for Rust source), python, apply_patch (lane plans only), and diagnostics evidence to review the current project state before reorganizing the plan."),
         AgentPromptKind::Diagnostics => format!("You must inspect the active workspace under {ws}, including source files plus any workspace-local state and observability artifacts that exist for this project."),
         AgentPromptKind::Solo => format!("You work inside the canon workspace at {ws}. Use the full tool suite to plan, execute, and verify changes."),
     }
@@ -626,7 +628,8 @@ fn executor_rules() -> Vec<String> {
     let ws = crate::constants::workspace();
     let mut rules = vec![
         "- Always read a file before patching it.".to_string(),
-        "- Use list_dir and read_file before assuming project state; if unsure, list_dir `.` first.".to_string(),
+        "- For Rust source navigation prefer semantic tools over raw file access: semantic_map (crate outline) → symbol_window (function body) → symbol_neighborhood / symbol_refs (call sites / references) → symbol_path (call chain). Use read_file only for non-Rust files or immediately before patching a Rust file to get line-numbered output.".to_string(),
+        "- Use list_dir only to check whether a path exists or to enumerate non-source artifacts; use semantic_map to explore Rust source structure.".to_string(),
         "- Only list_dir paths that exist under WORKSPACE; do not assume `canon-utils` exists unless WORKSPACE is `/workspace/ai_sandbox/canon`.".to_string(),
         "- Use run_command for cargo builds, tests, and shell discovery.".to_string(),
         "- If test output is truncated, re-run tests with `cargo test -- --nocapture 2>&1 | tail -n 200` and report the tail in `message.payload`.".to_string(),
@@ -643,7 +646,8 @@ fn solo_rules() -> Vec<String> {
     let ws = crate::constants::workspace();
     let mut rules = vec![
         "- Always read a file before patching it.".to_string(),
-        "- Use list_dir and read_file freely before assuming project state.".to_string(),
+        "- For Rust source navigation prefer semantic tools over raw file access: semantic_map (crate outline) → symbol_window (function body) → symbol_neighborhood / symbol_refs (call sites / references) → symbol_path (call chain). Use read_file only for non-Rust files or immediately before patching a Rust file to get line-numbered output.".to_string(),
+        "- Use list_dir only to check whether a path exists or to enumerate non-source artifacts; use semantic_map to explore Rust source structure.".to_string(),
         "- Use run_command for cargo builds, tests, and shell discovery.".to_string(),
         "- Run cargo build/test before `message` with status=complete when changes affect code.".to_string(),
         "- If you rebuild canon-mini-agent, the supervisor may restart immediately in solo mode; be ready for a restart before the next step.".to_string(),
