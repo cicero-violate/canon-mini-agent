@@ -2362,7 +2362,7 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
                         .unwrap_or(true)
                 });
                 if any_incomplete {
-                    bail!("cannot set plan status to done while tasks remain incomplete");
+                    bail!("plan status cannot be set to done while tasks remain incomplete");
                 }
             }
             obj.insert("status".to_string(), Value::String(status.to_string()));
