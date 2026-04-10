@@ -316,6 +316,20 @@ fn append_secondary_action_log(role: &str, action: &Value) -> Result<()> {
     if let Some(value) = action.get("rationale").cloned().and_then(compact_json) {
         record.insert("rationale".to_string(), value);
     }
+    if let Some(value) = action.get("question").cloned().and_then(compact_json) {
+        record.insert("question".to_string(), value);
+    }
+    if let Some(value) = action
+        .get("predicated_next_actions")
+        .cloned()
+        .or_else(|| action.get("predicted_next_actions").cloned())
+        .and_then(compact_json)
+    {
+        record.insert("predicated_next_actions".to_string(), value);
+    }
+    if let Some(value) = compact_json(action.clone()) {
+        record.insert("llm_response".to_string(), value);
+    }
     if record.is_empty() {
         return Ok(());
     }
