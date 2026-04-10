@@ -207,11 +207,8 @@ pub(crate) fn invalid_action_expected_fields(kind: &str) -> Vec<&'static str> {
         "symbols_prepare_rename" => vec!["action", "rationale", "predicted_next_actions"],
         "rename_symbol" => vec![
             "action",
-            "path",
-            "line",
-            "column",
-            "old_name",
-            "new_name",
+            "old_symbol",
+            "new_symbol",
             "question",
             "rationale",
             "predicted_next_actions",
@@ -478,14 +475,11 @@ fn example_action_for(kind: &str, role: &str, raw_action: Option<&Value>) -> Val
         }),
         "rename_symbol" => json!({
             "action": "rename_symbol",
-            "path": "src/tools.rs",
-            "line": 2230,
-            "column": 8,
-            "old_name": "handle_plan_action",
-            "new_name": "handle_master_plan_action",
-            "question": "Is this exact symbol-at-position the one that should be renamed without changing behavior?",
-            "observation": "Target identifier located at the given position.",
-            "rationale": "Perform a deterministic symbol rename.",
+            "old_symbol": "tools::handle_plan_action",
+            "new_symbol": "tools::handle_master_plan_action",
+            "question": "Is this the exact symbol to rename across the crate?",
+            "observation": "Span-backed rename should update all references consistently.",
+            "rationale": "Perform a deterministic symbol rename using rustc graph spans.",
             "predicted_next_actions": example_predicted_next_actions()
         }),
         "list_dir" => example_action_with_string_field(

@@ -47,6 +47,18 @@ pub enum PredictedActionName {
     Batch,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RenamePair {
+    /// Canonical-ish symbol path for the old symbol (module-relative, e.g. `tools::my_fn`).
+    /// Crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted.
+    #[schemars(length(min = 1))]
+    pub old: String,
+    /// Canonical-ish symbol path for the new symbol. Only the last path segment is used as
+    /// the identifier replacement (e.g. `tools::new_name` → `new_name`).
+    #[schemars(length(min = 1))]
+    pub new: String,
+}
+
 pub fn predicted_action_name_list() -> Vec<String> {
     let schema = schema_for!(PredictedActionName);
     extract_enum_strings(&schema.schema).unwrap_or_default()
@@ -319,11 +331,18 @@ pub enum ToolAction {
     RenameSymbol {
         #[serde(flatten)]
         base: ActionBase,
-        path: String,
-        line: u64,
-        column: u64,
-        old_name: String,
-        new_name: String,
+        /// Optional crate name for loading `state/rustc/<crate>/graph.json` (defaults to `canon_mini_agent`).
+        /// Hyphens are normalized to underscores.
+        #[serde(rename = "crate", default, skip_serializing_if = "Option::is_none")]
+        crate_name: Option<String>,
+        /// Shorthand single rename pair. Prefer `renames` for bulk.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        old_symbol: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        new_symbol: Option<String>,
+        /// Bulk renames. If present and non-empty, takes precedence over `old_symbol`/`new_symbol`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        renames: Option<Vec<RenamePair>>,
     },
     Issue {
         #[serde(flatten)]
@@ -598,9 +617,9 @@ fn build_tool_actions_list() -> Vec<(&'static str, &'static str, Option<&'static
         ),
         (
             "rename_symbol",
-            "rename a Rust identifier at an exact line/column using rust-analyzer syntax APIs (file-scoped in v1)",
+            "rename Rust symbols using rustc graph spans (crate-wide; supports bulk)",
             Some(
-                "Example:\n  {\"action\":\"rename_symbol\",\"path\":\"src/tools.rs\",\"line\":2230,\"column\":8,\"old_name\":\"handle_plan_action\",\"new_name\":\"handle_master_plan_action\",\"question\":\"Is this exact symbol-at-position the one that should be renamed without changing behavior?\",\"rationale\":\"Apply a deterministic symbol rename at the precise declaration/reference location.\",\"predicted_next_actions\":[{\"action\":\"cargo_test\",\"intent\":\"Run focused tests covering the renamed symbol path.\"},{\"action\":\"run_command\",\"intent\":\"Run cargo check to verify no compile regressions.\"}]}\nNotes:\n- `line` and `column` are 1-based.\n- v1 is file-scoped and only supports `.rs` files.",
+                "Example (single):\n  {\"action\":\"rename_symbol\",\"old_symbol\":\"tools::handle_plan_action\",\"new_symbol\":\"tools::handle_master_plan_action\",\"question\":\"Is this the exact symbol to rename across the crate?\",\"rationale\":\"Use span-backed rename so all references update consistently.\",\"predicted_next_actions\":[{\"action\":\"cargo_test\",\"intent\":\"Run focused tests covering the renamed symbol.\"},{\"action\":\"run_command\",\"intent\":\"Run cargo check to verify the workspace compiles.\"}]}\nExample (bulk):\n  {\"action\":\"rename_symbol\",\"renames\":[{\"old\":\"constants::EndpointSpec\",\"new\":\"constants::EndpointDescriptor\"},{\"old\":\"tools::execute_logged_action\",\"new\":\"tools::execute_action_logged\"}],\"question\":\"Are these renames correct and non-breaking?\",\"rationale\":\"Batch related renames to minimize rebuild cycles.\",\"predicted_next_actions\":[{\"action\":\"cargo_test\",\"intent\":\"Run tests after applying the batch rename.\"},{\"action\":\"run_command\",\"intent\":\"Run cargo check after rename.\"}]}\nNotes:\n- Symbol paths are module-relative (e.g. `tools::my_fn`). Crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped.\n- Uses `state/rustc/<crate>/graph.json` spans; if the graph is stale, the rename is rejected and you should rebuild then retry.",
             ),
         ),
         (
@@ -1035,11 +1054,19 @@ fn first_missing_field_for_action(action: &Value, action_name: &str) -> Option<S
         "symbols_index" => None,
         "symbols_rename_candidates" => None,
         "symbols_prepare_rename" => None,
-        "rename_symbol" => missing_field("path")
-            .or_else(|| missing_field("line"))
-            .or_else(|| missing_field("column"))
-            .or_else(|| missing_field("old_name"))
-            .or_else(|| missing_field("new_name")),
+        "rename_symbol" => {
+            // Manual guards not expressible in schemars 0.8: require either
+            // (old_symbol + new_symbol) OR a non-empty `renames` array.
+            let has_bulk = action
+                .get("renames")
+                .and_then(|v| v.as_array())
+                .is_some_and(|arr| !arr.is_empty());
+            if has_bulk {
+                None
+            } else {
+                missing_field("old_symbol").or_else(|| missing_field("new_symbol"))
+            }
+        }
         "objectives" => {
             let op = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
             let id_missing = || {
