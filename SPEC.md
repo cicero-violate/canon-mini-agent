@@ -277,6 +277,11 @@ Additional clarification (from implementation):
 - The orchestrator's own state (`AgentStateDir`) is never the target workspace.
 - Agents are told the active `Workspace` value in every prompt (header line `WORKSPACE: <path>`).
 
+### 4.10 Solo Completion Plan-Objective Coupling
+- A solo `message` action with `status = complete` is rejected when active actionable objectives still exist and `PLAN.json` has no incomplete tasks.
+- Runtime predicate: reject when `has_actionable_objectives(objectives) == true` and `plan_has_incomplete_tasks(plan) == false`.
+- Rejection feedback: `Create/update PLAN tasks for active objectives, or mark objectives deferred/blocked with rationale.`
+
 ## 5. State Transitions
 
 ### 5.1 Per-Role Cycle

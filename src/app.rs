@@ -2415,6 +2415,24 @@ async fn run_agent(
         let command_id = exchange_id.clone();
         action["command_id"] = Value::String(command_id.clone());
 
+        if role == "solo" {
+            let objectives_text = read_text_or_empty(preferred_objectives_path(workspace));
+            let plan_text = read_text_or_empty(workspace.join(MASTER_PLAN_FILE));
+            if should_reject_solo_self_complete(&action, &objectives_text, &plan_text) {
+                apply_error_result(
+                    role,
+                    &task_context,
+                    &mut error_streak,
+                    &mut last_error,
+                    &mut last_result,
+                    "solo_completion_requires_plan_work_for_active_objectives",
+                    "Create/update PLAN tasks for active objectives, or mark objectives deferred/blocked with rationale.".to_string(),
+                );
+                step += 1;
+                continue;
+            }
+        }
+
         if let Some(msg) = enforce_diagnostics_python(
             role,
             kind.as_str(),
@@ -2864,6 +2882,16 @@ fn plan_has_incomplete_tasks(plan_text: &str) -> bool {
         .unwrap_or(true)
 }
 
+fn preferred_objectives_path(workspace: &Path) -> PathBuf {
+    let agent_root = crate::constants::agent_state_dir().trim_end_matches("/agent_state");
+    let agent_objectives = Path::new(agent_root).join(OBJECTIVES_FILE);
+    if agent_objectives.exists() {
+        agent_objectives
+    } else {
+        workspace.join(OBJECTIVES_FILE)
+    }
+}
+
 fn objective_status_normalized(objective: &crate::objectives::Objective) -> Option<String> {
     if !objective.status.trim().is_empty() {
         return Some(objective.status.trim().to_ascii_lowercase());
@@ -2886,6 +2914,18 @@ fn has_actionable_objectives(objectives_text: &str) -> bool {
         return false;
     };
     file.objectives.iter().any(objective_requires_plan_work)
+}
+
+fn should_reject_solo_self_complete(action: &Value, objectives_text: &str, plan_text: &str) -> bool {
+    let is_complete_message = action.get("action").and_then(|v| v.as_str()) == Some("message")
+        && action
+            .get("status")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| s.eq_ignore_ascii_case("complete"));
+    if !is_complete_message {
+        return false;
+    }
+    has_actionable_objectives(objectives_text) && !plan_has_incomplete_tasks(plan_text)
 }
 
 fn verifier_confirmed_with_plan_text(reason: &str, plan_text: &str) -> bool {
@@ -3765,8 +3805,9 @@ pub async fn run() -> Result<()> {
 mod tests {
     use super::{
         executor_step_limit_feedback, has_actionable_objectives, plan_has_incomplete_tasks,
-        verifier_confirmed_with_plan_text,
+        should_reject_solo_self_complete, verifier_confirmed_with_plan_text,
     };
+    use serde_json::json;
 
     #[test]
     fn verifier_confirmed_rejects_when_plan_has_incomplete_tasks() {
@@ -3832,5 +3873,47 @@ mod tests {
           ]
         }"#;
         assert!(has_actionable_objectives(objectives));
+    }
+
+    #[test]
+    fn solo_complete_rejected_when_objectives_actionable_and_plan_done() {
+        let action = json!({
+            "action": "message",
+            "status": "complete"
+        });
+        let objectives = r#"{
+          "version": 1,
+          "objectives": [
+            {"id":"o1","status":"active"}
+          ]
+        }"#;
+        let plan = r#"{
+          "version": 1,
+          "tasks": [
+            {"id":"T1","status":"done"}
+          ]
+        }"#;
+        assert!(should_reject_solo_self_complete(&action, objectives, plan));
+    }
+
+    #[test]
+    fn solo_complete_not_rejected_when_plan_has_incomplete_tasks() {
+        let action = json!({
+            "action": "message",
+            "status": "complete"
+        });
+        let objectives = r#"{
+          "version": 1,
+          "objectives": [
+            {"id":"o1","status":"active"}
+          ]
+        }"#;
+        let plan = r#"{
+          "version": 1,
+          "tasks": [
+            {"id":"T1","status":"todo"}
+          ]
+        }"#;
+        assert!(!should_reject_solo_self_complete(&action, objectives, plan));
     }
 }
