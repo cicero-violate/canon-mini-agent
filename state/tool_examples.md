@@ -439,7 +439,7 @@ Notes: symbol paths are module-relative (e.g. `tools::my_fn`). Crate-qualified p
 
 Example:
   {"action":"symbol_window","crate":"canon_mini_agent","symbol":"tools::execute_logged_action","rationale":"Read the exact body of a function before editing it."}
-Notes: accepts short unambiguous suffix if the full module path is unknown.
+Notes: `symbol` is module-relative (e.g. `tools::my_fn`). Crate-qualified prefixes like `canon_mini_agent::tools::my_fn` or `crate::tools::my_fn` are accepted and stripped. Accepts short unambiguous suffix if the full module path is unknown.
 
 ## `symbol_refs` — list all reference sites for a symbol; set expand_bodies:true to also show each enclosing function/struct/trait body (like symbol_window)
 
@@ -447,7 +447,7 @@ Example (sites only):
   {"action":"symbol_refs","crate":"canon_mini_agent","symbol":"tools::execute_logged_action","rationale":"Find all call sites before changing a signature."}
 Example (with bodies):
   {"action":"symbol_refs","crate":"canon_mini_agent","symbol":"app::run_agent","expand_bodies":true,"rationale":"Read every caller body to understand the call contract before refactoring."}
-Notes: covers every identifier span recorded by the HIR visitor during compilation. expand_bodies finds the tightest enclosing symbol in the graph and inlines its source.
+Notes: `symbol` is module-relative; crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped. Covers every identifier span recorded by the HIR visitor during compilation. expand_bodies finds the tightest enclosing symbol in the graph and inlines its source.
 
 ## `symbol_path` — BFS shortest call-graph path between two symbols; set expand_bodies:true to inline the source body of each hop
 
@@ -455,7 +455,7 @@ Example:
   {"action":"symbol_path","crate":"canon_mini_agent","from":"app::run_agent","to":"tools::handle_apply_patch_action","rationale":"Trace how a high-level entry point reaches a specific handler."}
 Example (with bodies):
   {"action":"symbol_path","crate":"canon_mini_agent","from":"app::run_agent","to":"tools::handle_apply_patch_action","expand_bodies":true,"rationale":"Read every function along the call chain before changing a handler signature."}
-Notes: uses static call edges only; returns path with file:line annotations.
+Notes: `from`/`to` are module-relative; crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped. Uses static call edges only; returns path with file:line annotations.
 
 ## `symbol_neighborhood` — immediate callers and callees of a symbol; set expand_bodies:true to inline the source body of each caller and callee
 
@@ -463,7 +463,7 @@ Example:
   {"action":"symbol_neighborhood","crate":"canon_mini_agent","symbol":"tools::execute_logged_action","rationale":"Understand the blast radius of a function before modifying it."}
 Example (with bodies):
   {"action":"symbol_neighborhood","crate":"canon_mini_agent","symbol":"tools::execute_logged_action","expand_bodies":true,"rationale":"Read every caller and callee body before refactoring."}
-Notes: returns all direct callers and callees from the static call graph.
+Notes: `symbol` is module-relative; crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped. Returns all direct callers and callees from the static call graph.
 
 ## `batch` — execute up to 8 non-mutating actions in one turn; results returned as labeled sections
 
