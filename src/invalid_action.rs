@@ -23,17 +23,17 @@ pub fn default_message_route(
 
 struct MessageRoute<'a> {
     from: &'a str,
-    to: &'a str,
+    to_role: &'a str,
     msg_type: &'a str,
     status: &'a str,
 }
 
 impl<'a> MessageRoute<'a> {
     fn default_for_role(role: &'a str) -> Self {
-        let (from, to, msg_type, status) = default_message_route(role);
+        let (from, to_role, msg_type, status) = default_message_route(role);
         Self {
             from,
-            to,
+            to_role,
             msg_type,
             status,
         }
@@ -41,12 +41,12 @@ impl<'a> MessageRoute<'a> {
 
     fn from_action_obj(obj: &'a serde_json::Map<String, Value>) -> Option<Self> {
         let from = obj.get("from").and_then(|v| v.as_str())?;
-        let to = obj.get("to").and_then(|v| v.as_str())?;
+        let to_role = obj.get("to").and_then(|v| v.as_str())?;
         let msg_type = obj.get("type").and_then(|v| v.as_str())?;
         let status = obj.get("status").and_then(|v| v.as_str())?;
         Some(Self {
             from,
-            to,
+            to_role,
             msg_type,
             status,
         })
@@ -55,7 +55,7 @@ impl<'a> MessageRoute<'a> {
     fn into_owned_lowercase(self) -> (String, String, String, String) {
         (
             self.from.to_lowercase(),
-            self.to.to_lowercase(),
+            self.to_role.to_lowercase(),
             self.msg_type.to_lowercase(),
             self.status.to_lowercase(),
         )
@@ -64,18 +64,18 @@ impl<'a> MessageRoute<'a> {
 
 pub fn expected_message_format(
     from: &str,
-    to: &str,
+    to_role: &str,
     msg_type: &str,
     status: &str,
 ) -> String {
     format!(
-        "{{ \"action\": \"message\", \"from\": \"{from}\", \"to\": \"{to}\", \"type\": \"{msg_type}\", \"status\": \"{status}\", \"payload\": {{ \"summary\": \"...\" }} }}"
+        "{{ \"action\": \"message\", \"from\": \"{from}\", \"to\": \"{to_role}\", \"type\": \"{msg_type}\", \"status\": \"{status}\", \"payload\": {{ \"summary\": \"...\" }} }}"
     )
 }
 
 pub fn format_message_schema(
     from: &str,
-    to: &str,
+    to_role: &str,
     msg_type: &str,
     status: &str,
     extra_payload: &[(&str, &str)],
@@ -86,7 +86,7 @@ pub fn format_message_schema(
     }
     let payload_lines = payload.join(",\n    ");
     format!(
-        "```json\n{{\n  \"action\": \"message\",\n  \"from\": \"{from}\",\n  \"to\": \"{to}\",\n  \"type\": \"{msg_type}\",\n  \"status\": \"{status}\",\n  \"observation\": \"...\",\n  \"rationale\": \"...\",\n  \"payload\": {{\n    {payload_lines}\n  }}\n}}\n```"
+        "```json\n{{\n  \"action\": \"message\",\n  \"from\": \"{from}\",\n  \"to\": \"{to_role}\",\n  \"type\": \"{msg_type}\",\n  \"status\": \"{status}\",\n  \"observation\": \"...\",\n  \"rationale\": \"...\",\n  \"payload\": {{\n    {payload_lines}\n  }}\n}}\n```"
     )
 }
 
@@ -151,8 +151,8 @@ pub(crate) fn unsupported_action_correction(kind: &str) -> String {
 
 #[allow(dead_code)]
 pub(crate) fn message_schema_correction(missing_field: &str, role: &str) -> String {
-    let (from, to, msg_type, status) = default_message_route(role);
-    let expected = expected_message_format(from, to, msg_type, status);
+    let (from, to_role, msg_type, status) = default_message_route(role);
+    let expected = expected_message_format(from, to_role, msg_type, status);
     let mut msg = String::new();
     msg.push_str(&format!(
         "Invalid action: message missing non-empty '{missing_field}'.\nCorrective action required: use a full message schema with required fields. Do not use `content`; use `payload`.\nTemplate:\n"
@@ -161,7 +161,7 @@ pub(crate) fn message_schema_correction(missing_field: &str, role: &str) -> Stri
         "{}\nFor any mutating retry (`apply_patch`, `plan`, `objectives`, `issue`, or `rename_symbol`), include a non-empty `question` field stating the decision-boundary premise. Return exactly one action.",
         format_message_schema(
             from,
-            to,
+            to_role,
             msg_type,
             status,
             &[
@@ -310,7 +310,7 @@ fn example_plan_action() -> Value {
     })
 }
 
-fn example_message_action(from: &str, to: &str, msg_type: &str, status: &str) -> Value {
+fn example_message_action(from: &str, to_role: &str, msg_type: &str, status: &str) -> Value {
     let payload = if msg_type == "blocker" || status == "blocked" {
         json!({
             "summary": "Short blocker summary",
@@ -327,7 +327,7 @@ fn example_message_action(from: &str, to: &str, msg_type: &str, status: &str) ->
     json!({
         "action": "message",
         "from": from,
-        "to": to,
+        "to": to_role,
         "type": msg_type,
         "status": status,
         "observation": "Summarize what happened.",
@@ -517,8 +517,8 @@ fn example_action_for(kind: &str, role: &str, raw_action: Option<&Value>) -> Val
         ),
         "plan" => example_plan_action(),
         "message" => {
-            let (from, to, msg_type, status) = normalized_message_example_route(raw_action, role);
-            example_message_action(&from, &to, &msg_type, &status)
+            let (from, to_role, msg_type, status) = normalized_message_example_route(raw_action, role);
+            example_message_action(&from, &to_role, &msg_type, &status)
         }
         _ => example_message_action("executor", "verifier", "handoff", "complete"),
     }
@@ -744,7 +744,7 @@ pub fn auto_fill_message_fields(action: &mut Value, role: &str) -> bool {
     }
     let defaults = MessageRoute::default_for_role(role);
     let default_from = defaults.from;
-    let default_to = defaults.to;
+    let default_to = defaults.to_role;
     let default_type = defaults.msg_type;
     let default_status = defaults.status;
     let mut changed = false;

@@ -672,28 +672,28 @@ fn build_tool_actions_list() -> Vec<(&'static str, &'static str, Option<&'static
             "symbol_window",
             "extract the full definition body of a symbol (byte-precise, via def span)",
             Some(
-                "Example:\n  {\"action\":\"symbol_window\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"rationale\":\"Read the exact body of a function before editing it.\"}\nNotes: accepts short unambiguous suffix if the full module path is unknown.",
+                "Example:\n  {\"action\":\"symbol_window\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"rationale\":\"Read the exact body of a function before editing it.\"}\nNotes: `symbol` is module-relative (e.g. `tools::my_fn`). Crate-qualified prefixes like `canon_mini_agent::tools::my_fn` or `crate::tools::my_fn` are accepted and stripped. Accepts short unambiguous suffix if the full module path is unknown.",
             ),
         ),
         (
             "symbol_refs",
             "list all reference sites for a symbol; set expand_bodies:true to also show each enclosing function/struct/trait body (like symbol_window)",
             Some(
-                "Example (sites only):\n  {\"action\":\"symbol_refs\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"rationale\":\"Find all call sites before changing a signature.\"}\nExample (with bodies):\n  {\"action\":\"symbol_refs\",\"crate\":\"canon_mini_agent\",\"symbol\":\"app::run_agent\",\"expand_bodies\":true,\"rationale\":\"Read every caller body to understand the call contract before refactoring.\"}\nNotes: covers every identifier span recorded by the HIR visitor during compilation. expand_bodies finds the tightest enclosing symbol in the graph and inlines its source.",
+                "Example (sites only):\n  {\"action\":\"symbol_refs\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"rationale\":\"Find all call sites before changing a signature.\"}\nExample (with bodies):\n  {\"action\":\"symbol_refs\",\"crate\":\"canon_mini_agent\",\"symbol\":\"app::run_agent\",\"expand_bodies\":true,\"rationale\":\"Read every caller body to understand the call contract before refactoring.\"}\nNotes: `symbol` is module-relative; crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped. Covers every identifier span recorded by the HIR visitor during compilation. expand_bodies finds the tightest enclosing symbol in the graph and inlines its source.",
             ),
         ),
         (
             "symbol_path",
             "BFS shortest call-graph path between two symbols; set expand_bodies:true to inline the source body of each hop",
             Some(
-                "Example:\n  {\"action\":\"symbol_path\",\"crate\":\"canon_mini_agent\",\"from\":\"app::run_agent\",\"to\":\"tools::handle_apply_patch_action\",\"rationale\":\"Trace how a high-level entry point reaches a specific handler.\"}\nExample (with bodies):\n  {\"action\":\"symbol_path\",\"crate\":\"canon_mini_agent\",\"from\":\"app::run_agent\",\"to\":\"tools::handle_apply_patch_action\",\"expand_bodies\":true,\"rationale\":\"Read every function along the call chain before changing a handler signature.\"}\nNotes: uses static call edges only; returns path with file:line annotations.",
+                "Example:\n  {\"action\":\"symbol_path\",\"crate\":\"canon_mini_agent\",\"from\":\"app::run_agent\",\"to\":\"tools::handle_apply_patch_action\",\"rationale\":\"Trace how a high-level entry point reaches a specific handler.\"}\nExample (with bodies):\n  {\"action\":\"symbol_path\",\"crate\":\"canon_mini_agent\",\"from\":\"app::run_agent\",\"to\":\"tools::handle_apply_patch_action\",\"expand_bodies\":true,\"rationale\":\"Read every function along the call chain before changing a handler signature.\"}\nNotes: `from`/`to` are module-relative; crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped. Uses static call edges only; returns path with file:line annotations.",
             ),
         ),
         (
             "symbol_neighborhood",
             "immediate callers and callees of a symbol; set expand_bodies:true to inline the source body of each caller and callee",
             Some(
-                "Example:\n  {\"action\":\"symbol_neighborhood\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"rationale\":\"Understand the blast radius of a function before modifying it.\"}\nExample (with bodies):\n  {\"action\":\"symbol_neighborhood\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"expand_bodies\":true,\"rationale\":\"Read every caller and callee body before refactoring.\"}\nNotes: returns all direct callers and callees from the static call graph.",
+                "Example:\n  {\"action\":\"symbol_neighborhood\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"rationale\":\"Understand the blast radius of a function before modifying it.\"}\nExample (with bodies):\n  {\"action\":\"symbol_neighborhood\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"expand_bodies\":true,\"rationale\":\"Read every caller and callee body before refactoring.\"}\nNotes: `symbol` is module-relative; crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped. Returns all direct callers and callees from the static call graph.",
             ),
         ),
         (
