@@ -41,6 +41,13 @@ fn binary_path(root: &Path, kind: BuildKind) -> PathBuf {
     }
 }
 
+fn tickets_binary_path(root: &Path, kind: BuildKind) -> PathBuf {
+    match kind {
+        BuildKind::Debug => root.join("target").join("debug").join("canon-tickets"),
+        BuildKind::Release => root.join("target").join("release").join("canon-tickets"),
+    }
+}
+
 fn candidate_from_path(path: PathBuf, kind: BuildKind) -> Result<BinaryCandidate> {
     let meta = fs::metadata(&path).with_context(|| format!("metadata: {}", path.display()))?;
     let mtime = meta.modified().with_context(|| format!("mtime: {}", path.display()))?;
@@ -222,7 +229,51 @@ fn run_cmd(root: &Path, program: &str, args: &[&str]) -> Result<bool> {
     Ok(status.success())
 }
 
-fn stage_commit_push_before_restart(root: &Path, reason: &str) {
+fn run_ticket_refresh(root: &Path, kind: BuildKind) {
+    let bin = tickets_binary_path(root, kind);
+    if !bin.exists() {
+        eprintln!(
+            "[canon-mini-supervisor] ticket refresh skipped (missing {}); run `cargo build` to produce it",
+            bin.display()
+        );
+        return;
+    }
+
+    let ws = root.to_string_lossy();
+    let args = [
+        "--workspace",
+        ws.as_ref(),
+        "--all-crates",
+        "--top",
+        "3",
+        "--prune",
+    ];
+    eprintln!(
+        "[canon-mini-supervisor] pre-restart: refreshing refactor tickets via {}",
+        bin.display()
+    );
+    let status = Command::new(&bin)
+        .args(args)
+        .current_dir(root)
+        .status();
+    match status {
+        Ok(st) if st.success() => {
+            eprintln!("[canon-mini-supervisor] ticket refresh ok");
+        }
+        Ok(st) => {
+            eprintln!(
+                "[canon-mini-supervisor] ticket refresh failed (status={st}); continuing restart"
+            );
+        }
+        Err(err) => {
+            eprintln!(
+                "[canon-mini-supervisor] ticket refresh errored ({err:#}); continuing restart"
+            );
+        }
+    }
+}
+
+fn stage_commit_push_before_restart(root: &Path, reason: &str, prefer_release: bool) {
     eprintln!(
         "[canon-mini-supervisor] pre-restart checkpoint start ({reason})"
     );
@@ -248,6 +299,18 @@ fn stage_commit_push_before_restart(root: &Path, reason: &str) {
             return;
         }
     }
+
+    // IMPORTANT: `cargo build` (with rustc wrapper) generates the latest state/rustc/*/graph.json.
+    // Refresh the top auto-generated refactor tickets *after* the build, before staging/committing.
+    // Use the same build kind preference as the watched binary.
+    run_ticket_refresh(
+        root,
+        if prefer_release {
+            BuildKind::Release
+        } else {
+            BuildKind::Debug
+        },
+    );
 
     eprintln!(
         "[canon-mini-supervisor] pre-restart: running `git add -A` ({reason})"
@@ -414,7 +477,7 @@ fn main() -> Result<()> {
                     return Ok(());
                 } else {
                     eprintln!("[canon-mini-supervisor] restarting due to failure...");
-                    stage_commit_push_before_restart(&root, "failure-restart");
+                    stage_commit_push_before_restart(&root, "failure-restart", prefer_release);
                     log_error_event(
                         "supervisor",
                         "supervisor_main",
@@ -466,7 +529,7 @@ fn main() -> Result<()> {
                             ),
                             None,
                         );
-                        stage_commit_push_before_restart(&root, "single-role-update");
+                        stage_commit_push_before_restart(&root, "single-role-update", prefer_release);
                         send_sigint(&child);
                         wait_for_exit(child, Duration::from_secs(10));
                         eprintln!("[canon-mini-supervisor] restarting...");
@@ -490,7 +553,7 @@ fn main() -> Result<()> {
                             ),
                             None,
                         );
-                        stage_commit_push_before_restart(&root, "orchestrate-idle-update");
+                        stage_commit_push_before_restart(&root, "orchestrate-idle-update", prefer_release);
                         send_sigint(&child);
                         wait_for_exit(child, Duration::from_secs(10));
                         eprintln!("[canon-mini-supervisor] restarting...");

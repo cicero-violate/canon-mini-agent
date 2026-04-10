@@ -9,6 +9,3 @@ rustc-wrapper = "/workspace/ai_sandbox/canon-rustc-v2/target/debug/canon-rustc-v
 
 [env]
 CANON_RUSTC_V2_ARTIFACT_DIR = "/workspace/ai_sandbox/canon-mini-agent/state/rustc"
-
-[alias]
-build-tickets = "!bash scripts/build_tickets.sh"
