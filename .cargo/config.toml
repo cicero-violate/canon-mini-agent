@@ -1,0 +1,11 @@
+[build]
+# Use canon-rustc-v2 as a workspace wrapper so it runs after each successful
+# crate compilation and emits HIR/MIR artifacts to:
+#   /workspace/ai_sandbox/canon-mini-agent/state/rustc/<crate>/
+#
+# To override the artifact output directory set CANON_RUSTC_V2_ARTIFACT_DIR.
+# To disable wrapper for a single invocation: RUSTC_WORKSPACE_WRAPPER="" cargo build
+rustc-wrapper = "/workspace/ai_sandbox/canon-rustc-v2/target/debug/canon-rustc-v2"
+
+[env]
+CANON_RUSTC_V2_ARTIFACT_DIR = "/workspace/ai_sandbox/canon-mini-agent/state/rustc"
