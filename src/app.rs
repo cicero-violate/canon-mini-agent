@@ -1672,8 +1672,13 @@ fn build_agent_prompt(
     } else {
         let result = last_result.unwrap_or("").to_string();
         let agent_type = role_key(role).to_uppercase();
+        let role_schema = if send_system_prompt {
+            system_instructions.to_string()
+        } else {
+            String::new()
+        };
         (
-            String::new(),
+            role_schema,
             action_result_prompt(
                 last_tab_id,
                 last_turn_id,
