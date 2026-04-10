@@ -923,4 +923,69 @@ mod diagnostics_filter_tests {
             "(no active diagnostics failures)"
         );
     }
+
+    #[test]
+    fn build_single_role_prompt_planner_includes_rendered_lessons_from_context() {
+        use std::fs;
+        use std::path::PathBuf;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos();
+        let workspace = std::env::temp_dir().join(format!(
+            "canon-mini-agent-single-role-planner-lessons-{}-{}",
+            std::process::id(),
+            unique
+        ));
+        fs::create_dir_all(workspace.join("PLANS/default")).unwrap();
+        fs::create_dir_all(workspace.join("agent_state")).unwrap();
+
+        fs::write(workspace.join("SPEC.md"), "planner spec body").unwrap();
+        fs::write(
+            workspace.join("PLANS/OBJECTIVES.json"),
+            r#"{"version":1,"objectives":[{"id":"obj_15","title":"OBJ-15","status":"active"}]}"#,
+        )
+        .unwrap();
+        fs::write(workspace.join("INVARIANTS.json"), r#"{"version":1,"invariants":[]}"#).unwrap();
+        fs::write(workspace.join("VIOLATIONS.json"), r#"{"status":"verified","violations":[]}"#).unwrap();
+        fs::write(
+            workspace.join("PLANS/default/diagnostics-default.json"),
+            r#"{"status":"verified","ranked_failures":[]}"#,
+        )
+        .unwrap();
+        fs::write(
+            workspace.join("agent_state/lessons.json"),
+            r#"{
+  "summary": "Structured planner lesson summary.",
+  "failures": ["Missing writeback coverage"],
+  "fixes": ["Add planner-side regression"],
+  "required_actions": ["Validate shared prompt-load path"]
+}"#,
+        )
+        .unwrap();
+
+        let spec_path = workspace.join("SPEC.md");
+        let master_plan_path = workspace.join("PLAN.json");
+        let violations_path = workspace.join("VIOLATIONS.json");
+        let diagnostics_path = workspace.join("PLANS/default/diagnostics-default.json");
+        fs::write(&master_plan_path, r#"{"version":2,"tasks":[]}"#).unwrap();
+
+        let ctx = SingleRoleContext {
+            workspace: workspace.as_path(),
+            spec_path: spec_path.as_path(),
+            master_plan_path: master_plan_path.as_path(),
+            violations_path: violations_path.as_path(),
+            diagnostics_path: diagnostics_path.as_path(),
+        };
+
+        let inputs = load_single_role_inputs(&ctx, false, false, true).unwrap();
+        let prompt = build_single_role_prompt(&ctx, &inputs, "").unwrap();
+
+        assert!(prompt.contains("Summary:\nStructured planner lesson summary."));
+        assert!(prompt.contains("Failures:\n- Missing writeback coverage"));
+        assert!(prompt.contains("Fixes:\n- Add planner-side regression"));
+        assert!(prompt.contains("Required actions:\n- Validate shared prompt-load path"));
+    }
 }
