@@ -3820,19 +3820,46 @@ fn safe_join(workspace: &Path, relative: &str) -> Result<PathBuf> {
 // ---------------------------------------------------------------------------
 
 fn load_semantic(workspace: &Path, action: &Value) -> anyhow::Result<crate::semantic::SemanticIndex> {
-    let crate_name = action
-        .get("crate")
-        .and_then(|v| v.as_str())
-        .unwrap_or("canon_mini_agent");
-    crate::semantic::SemanticIndex::load(workspace, crate_name)
+    let crate_name = semantic_crate_name(action);
+    crate::semantic::SemanticIndex::load(workspace, &crate_name)
         .map_err(|e| anyhow!("semantic index not available for crate '{crate_name}': {e}\n\
             Run `cargo build` (with canon-rustc-v2 wrapper) to generate the graph, or check \
             state/rustc/<crate>/graph.json exists."))
 }
 
+fn semantic_crate_name(action: &Value) -> String {
+    action
+        .get("crate")
+        .and_then(|v| v.as_str())
+        .unwrap_or("canon_mini_agent")
+        .replace('-', "_")
+}
+
+fn strip_semantic_crate_prefix<'a>(crate_name: &str, input: &'a str) -> &'a str {
+    let mut s = input.trim();
+    if let Some(rest) = s.strip_prefix("crate::") {
+        s = rest;
+    }
+    if s == crate_name {
+        return "";
+    }
+    if s.starts_with(crate_name) {
+        let rest = &s[crate_name.len()..];
+        if let Some(rest2) = rest.strip_prefix("::") {
+            s = rest2;
+        }
+    }
+    s
+}
+
 fn handle_semantic_map_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
     let idx = load_semantic(workspace, action)?;
-    let filter = action.get("filter").and_then(|v| v.as_str());
+    let crate_name = semantic_crate_name(action);
+    let filter = action
+        .get("filter")
+        .and_then(|v| v.as_str())
+        .map(|f| strip_semantic_crate_prefix(&crate_name, f))
+        .filter(|f| !f.is_empty());
     let expand = action
         .get("expand_bodies")
         .and_then(|v| v.as_bool())
@@ -3843,20 +3870,30 @@ fn handle_semantic_map_action(workspace: &Path, action: &Value) -> Result<(bool,
 
 fn handle_symbol_window_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
     let idx = load_semantic(workspace, action)?;
+    let crate_name = semantic_crate_name(action);
     let symbol = action
         .get("symbol")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("symbol_window requires a `symbol` field"))?;
+    let symbol = strip_semantic_crate_prefix(&crate_name, symbol);
+    if symbol.is_empty() {
+        return Err(anyhow!("symbol_window requires a non-empty `symbol`"));
+    }
     let out = idx.symbol_window(symbol)?;
     Ok((false, out))
 }
 
 fn handle_symbol_refs_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
     let idx = load_semantic(workspace, action)?;
+    let crate_name = semantic_crate_name(action);
     let symbol = action
         .get("symbol")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("symbol_refs requires a `symbol` field"))?;
+    let symbol = strip_semantic_crate_prefix(&crate_name, symbol);
+    if symbol.is_empty() {
+        return Err(anyhow!("symbol_refs requires a non-empty `symbol`"));
+    }
     let expand = action
         .get("expand_bodies")
         .and_then(|v| v.as_bool())
@@ -3871,6 +3908,7 @@ fn handle_symbol_refs_action(workspace: &Path, action: &Value) -> Result<(bool, 
 
 fn handle_symbol_path_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
     let idx = load_semantic(workspace, action)?;
+    let crate_name = semantic_crate_name(action);
     let from = action
         .get("from")
         .and_then(|v| v.as_str())
@@ -3879,6 +3917,11 @@ fn handle_symbol_path_action(workspace: &Path, action: &Value) -> Result<(bool, 
         .get("to")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("symbol_path requires a `to` field"))?;
+    let from = strip_semantic_crate_prefix(&crate_name, from);
+    let to = strip_semantic_crate_prefix(&crate_name, to);
+    if from.is_empty() || to.is_empty() {
+        return Err(anyhow!("symbol_path requires non-empty `from` and `to`"));
+    }
     let expand = action
         .get("expand_bodies")
         .and_then(|v| v.as_bool())
@@ -3889,16 +3932,42 @@ fn handle_symbol_path_action(workspace: &Path, action: &Value) -> Result<(bool, 
 
 fn handle_symbol_neighborhood_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
     let idx = load_semantic(workspace, action)?;
+    let crate_name = semantic_crate_name(action);
     let symbol = action
         .get("symbol")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("symbol_neighborhood requires a `symbol` field"))?;
+    let symbol = strip_semantic_crate_prefix(&crate_name, symbol);
+    if symbol.is_empty() {
+        return Err(anyhow!("symbol_neighborhood requires a non-empty `symbol`"));
+    }
     let expand = action
         .get("expand_bodies")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     let out = idx.symbol_neighborhood(symbol, expand)?;
     Ok((false, out))
+}
+
+#[cfg(test)]
+mod semantic_input_normalization_tests {
+    use super::strip_semantic_crate_prefix;
+
+    #[test]
+    fn strips_crate_prefixes() {
+        assert_eq!(
+            strip_semantic_crate_prefix("canon_mini_agent", "canon_mini_agent::constants"),
+            "constants"
+        );
+        assert_eq!(
+            strip_semantic_crate_prefix("canon_mini_agent", "crate::constants::EndpointSpec"),
+            "constants::EndpointSpec"
+        );
+        assert_eq!(
+            strip_semantic_crate_prefix("canon_mini_agent", "constants::EndpointSpec"),
+            "constants::EndpointSpec"
+        );
+    }
 }
 
 /// Write the canonical stage graph artifact to `state/orchestrator/stage_graph.json`.

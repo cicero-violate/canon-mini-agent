@@ -45,7 +45,7 @@ struct SourceSpan {
     file: String,
     line: u32,
     col: u32,
-    lo: u32,
+    start_offset: u32,
     hi: u32,
 }
 
@@ -238,13 +238,16 @@ impl SemanticIndex {
         let source = fs::read_to_string(&def.file)
             .with_context(|| format!("could not read source file {}", def.file))?;
 
-        let lo = def.lo as usize;
+        let start_offset = def.start_offset as usize;
         let hi = def.hi as usize;
-        if hi > source.len() || lo > hi {
-            bail!("byte offsets out of range (lo={lo} hi={hi} file_len={})", source.len());
+        if hi > source.len() || start_offset > hi {
+            bail!(
+                "byte offsets out of range (start_offset={start_offset} hi={hi} file_len={})",
+                source.len()
+            );
         }
 
-        let (slice_lo, slice_hi) = expand_symbol_window_span(&source, lo, hi).unwrap_or((lo, hi));
+        let (slice_lo, slice_hi) = expand_symbol_window_span(&source, start_offset, hi).unwrap_or((start_offset, hi));
         let text = source.get(slice_lo..slice_hi).with_context(|| {
             format!("expanded symbol span is not on UTF-8 boundaries (lo={slice_lo} hi={slice_hi})")
         })?;
@@ -336,10 +339,10 @@ impl SemanticIndex {
         for (key, node) in &self.graph.nodes {
             if let Some(def) = &node.def {
                 if def.file == ref_span.file
-                    && def.lo <= ref_span.lo
-                    && ref_span.lo < def.hi
+                    && def.start_offset <= ref_span.start_offset
+                    && ref_span.start_offset < def.hi
                 {
-                    let width = def.hi - def.lo;
+                    let width = def.hi - def.start_offset;
                     let tighter = best.map_or(true, |(_, w)| width < w);
                     if tighter {
                         best = Some((key.as_str(), width));
@@ -569,8 +572,8 @@ impl SemanticIndex {
             if def.file != span.file {
                 continue;
             }
-            if def.lo <= span.lo && def.hi >= span.hi {
-                let width = def.hi.saturating_sub(def.lo);
+            if def.start_offset <= span.start_offset && def.hi >= span.hi {
+                let width = def.hi.saturating_sub(def.start_offset);
                 match best {
                     None => best = Some((sym.as_str(), width)),
                     Some((_, best_width)) if width < best_width => {
@@ -584,8 +587,8 @@ impl SemanticIndex {
     }
 }
 
-fn expand_symbol_window_span(source: &str, lo: usize, hi: usize) -> Option<(usize, usize)> {
-    if lo > hi || hi > source.len() {
+fn expand_symbol_window_span(source: &str, start_offset: usize, hi: usize) -> Option<(usize, usize)> {
+    if start_offset > hi || hi > source.len() {
         return None;
     }
     let parse = SourceFile::parse(source, Edition::CURRENT);
@@ -602,7 +605,7 @@ fn expand_symbol_window_span(source: &str, lo: usize, hi: usize) -> Option<(usiz
         let range = node.text_range();
         let start = u32::from(range.start()) as usize;
         let end = u32::from(range.end()) as usize;
-        if start <= lo && end >= hi {
+        if start <= start_offset && end >= hi {
             match best {
                 None => best = Some((start, end)),
                 Some((best_lo, best_hi)) if (end - start) < (best_hi - best_lo) => {
@@ -654,9 +657,9 @@ mod tests {
     #[test]
     fn expand_symbol_window_span_returns_full_function_block() {
         let src = "pub(crate) fn process_action_and_execute(\n    role: &str,\n) -> Result<(bool, String)> {\n    let _x = role;\n    Ok((false, String::new()))\n}\n";
-        let lo = src.find("pub(crate) fn").unwrap();
+        let start_offset = src.find("pub(crate) fn").unwrap();
         let hi = src.find(") -> Result<(bool, String)>").unwrap() + ") -> Result<(bool, String)>".len();
-        let (slice_lo, slice_hi) = expand_symbol_window_span(src, lo, hi).expect("span should expand");
+        let (slice_lo, slice_hi) = expand_symbol_window_span(src, start_offset, hi).expect("span should expand");
         let extracted = &src[slice_lo..slice_hi];
         assert!(extracted.starts_with("pub(crate) fn process_action_and_execute("));
         assert!(extracted.contains("Ok((false, String::new()))"));
@@ -676,7 +679,7 @@ mod tests {
         let src = "pub(crate) fn process_action_and_execute(\n    role: &str,\n) -> Result<(bool, String)> {\n    let _x = role;\n    Ok((false, String::new()))\n}\n";
         fs::write(&src_path, src).unwrap();
 
-        let lo = src.find("pub(crate) fn").unwrap();
+        let start_offset = src.find("pub(crate) fn").unwrap();
         let hi = src.find(") -> Result<(bool, String)>").unwrap() + ") -> Result<(bool, String)>".len();
         let mut nodes = HashMap::new();
         nodes.insert(
@@ -687,7 +690,7 @@ mod tests {
                     file: src_path.to_string_lossy().to_string(),
                     line: 1,
                     col: 1,
-                    lo: lo as u32,
+                    start_offset: start_offset as u32,
                     hi: hi as u32,
                 }),
                 refs: Vec::new(),
@@ -715,9 +718,9 @@ mod tests {
     #[test]
     fn expand_symbol_window_span_expands_struct_from_identifier_span() {
         let src = "pub struct Widget {\n    pub x: i32,\n}\n";
-        let lo = src.find("Widget").unwrap();
-        let hi = lo + "Widget".len();
-        let (slice_lo, slice_hi) = expand_symbol_window_span(src, lo, hi).expect("span should expand");
+        let start_offset = src.find("Widget").unwrap();
+        let hi = start_offset + "Widget".len();
+        let (slice_lo, slice_hi) = expand_symbol_window_span(src, start_offset, hi).expect("span should expand");
         let extracted = &src[slice_lo..slice_hi];
         assert!(extracted.starts_with("pub struct Widget"));
         assert!(extracted.contains("pub x: i32"));
@@ -727,9 +730,9 @@ mod tests {
     #[test]
     fn expand_symbol_window_span_expands_trait_from_identifier_span() {
         let src = "pub trait Greeter {\n    fn greet(&self);\n}\n";
-        let lo = src.find("Greeter").unwrap();
-        let hi = lo + "Greeter".len();
-        let (slice_lo, slice_hi) = expand_symbol_window_span(src, lo, hi).expect("span should expand");
+        let start_offset = src.find("Greeter").unwrap();
+        let hi = start_offset + "Greeter".len();
+        let (slice_lo, slice_hi) = expand_symbol_window_span(src, start_offset, hi).expect("span should expand");
         let extracted = &src[slice_lo..slice_hi];
         assert!(extracted.starts_with("pub trait Greeter"));
         assert!(extracted.contains("fn greet(&self);"));
@@ -807,7 +810,7 @@ mod tests {
                     file: "src/app.rs".to_string(),
                     line: 1,
                     col: 1,
-                    lo: 0,
+                    start_offset: 0,
                     hi: caller_src.len() as u32,
                 }),
                 refs: Vec::new(),
@@ -824,14 +827,14 @@ mod tests {
                     file: "src/app.rs".to_string(),
                     line: 10,
                     col: 1,
-                    lo: 0,
+                    start_offset: 0,
                     hi: target_src.len() as u32,
                 }),
                 refs: vec![SourceSpan {
                     file: "src/app.rs".to_string(),
                     line: 2,
                     col: 5,
-                    lo: call_lo,
+                    start_offset: call_lo,
                     hi: call_hi,
                 }],
                 signature: None,

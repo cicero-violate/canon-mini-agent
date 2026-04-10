@@ -364,7 +364,7 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
         }
 
         (_, ToolPromptKind::SemanticMap) => {
-            "   {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"rationale\":\"Get a rustc-backed symbol outline to understand the codebase structure before reading individual files.\"}\n   {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"filter\":\"tools\",\"rationale\":\"Restrict the outline to the tools module to see all symbols in that area.\"}\n   Notes: `crate` is the crate name (underscores); symbol paths use module-relative format (e.g. `tools::my_fn`); optional `filter` restricts to a symbol-path prefix.".to_string()
+            "   {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"rationale\":\"Get a rustc-backed symbol outline to understand the codebase structure before reading individual files.\"}\n   {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"filter\":\"tools\",\"rationale\":\"Restrict the outline to the tools module to see all symbols in that area.\"}\n   Notes: `crate` is the crate name (underscores). Symbol paths use module-relative format (e.g. `tools::my_fn`); crate-qualified prefixes like `canon_mini_agent::tools` or `crate::tools` are accepted and stripped. Optional `filter` restricts to a symbol-path prefix.".to_string()
         }
         (_, ToolPromptKind::SymbolWindow) => {
             "   {\"action\":\"symbol_window\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"rationale\":\"Extract the full definition of a specific function before editing it.\"}\n   Notes: `symbol` uses module-relative path (e.g. `tools::my_fn`); accepts unambiguous short name as suffix.".to_string()

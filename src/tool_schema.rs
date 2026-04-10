@@ -665,7 +665,7 @@ fn build_tool_actions_list() -> Vec<(&'static str, &'static str, Option<&'static
             "semantic_map",
             "rustc-backed repomap: symbol outline by file (kind, name, signature); set expand_bodies:true (with filter) to inline all bodies in a module",
             Some(
-                "Examples:\n  {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"rationale\":\"Get a compiler-backed symbol outline before exploring files.\"}\n  {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"filter\":\"tools\",\"rationale\":\"Restrict to the tools module.\"}\n  {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"filter\":\"tools\",\"expand_bodies\":true,\"rationale\":\"Read every symbol body in the tools module in one pass.\"}\nNotes: symbol paths are module-relative (e.g. `tools::my_fn`); `filter` is an optional path prefix; use `expand_bodies` with `filter` to avoid oversized output.",
+                "Examples:\n  {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"rationale\":\"Get a compiler-backed symbol outline before exploring files.\"}\n  {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"filter\":\"tools\",\"rationale\":\"Restrict to the tools module.\"}\n  {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"filter\":\"tools\",\"expand_bodies\":true,\"rationale\":\"Read every symbol body in the tools module in one pass.\"}\nNotes: symbol paths are module-relative (e.g. `tools::my_fn`). Crate-qualified prefixes like `canon_mini_agent::tools` or `crate::tools` are accepted and stripped. `filter` is an optional path prefix; use `expand_bodies` with `filter` to avoid oversized output.",
             ),
         ),
         (
