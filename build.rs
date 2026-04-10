@@ -2,7 +2,7 @@ use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
 struct CrateGraph {
@@ -23,9 +23,6 @@ struct GraphNode {
 struct SourceSpan {
     file: String,
     line: u32,
-    col: u32,
-    lo: u32,
-    hi: u32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -225,4 +222,3 @@ Suggested first actions:\n\
         let _ = fs::write(&issues_path, text);
     }
 }
-

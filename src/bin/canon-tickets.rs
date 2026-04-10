@@ -117,6 +117,9 @@ fn main() -> Result<()> {
 
     let crate_list = if all_crates {
         canon_mini_agent::SemanticIndex::available_crates(&PathBuf::from(&workspace))
+            .into_iter()
+            .filter(|name| !name.starts_with("build_script_"))
+            .collect()
     } else {
         vec![crate_name.clone()]
     };
