@@ -672,7 +672,10 @@ pub(crate) fn now_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{append_orchestration_trace, log_error_event, log_paths, now_ms, LogPaths, LOG_PATHS};
+    use super::{
+        append_orchestration_trace, log_error_event, log_paths, now_ms, secondary_llm_response,
+        LogPaths, LOG_PATHS,
+    };
     use serde_json::{json, Value};
     use std::fs;
 
@@ -815,5 +818,43 @@ mod tests {
             !action_log.exists(),
             "pre-init orchestration trace should not create an action log before init_log_paths"
         );
+    }
+
+    #[test]
+    fn secondary_llm_response_excludes_hoisted_fields() {
+        let action = json!({
+            "action": "cargo_test",
+            "crate": "canon-mini-agent",
+            "test": "objectives_create_update_read_lifecycle_succeeds",
+            "command_id": "solo:solo:0013:1775830600616",
+            "observation": "obs",
+            "rationale": "why",
+            "question": "q",
+            "predicted_next_actions": [
+                { "action": "run_command", "intent": "verify" }
+            ],
+            "path": "tests/invalid_action_harness.rs",
+            "line": 501
+        });
+        let nested = secondary_llm_response(&action).expect("llm_response should exist");
+        let obj = nested.as_object().expect("llm_response object");
+
+        assert_eq!(obj.get("crate").and_then(|v| v.as_str()), Some("canon-mini-agent"));
+        assert_eq!(
+            obj.get("test").and_then(|v| v.as_str()),
+            Some("objectives_create_update_read_lifecycle_succeeds")
+        );
+        assert_eq!(
+            obj.get("command_id").and_then(|v| v.as_str()),
+            Some("solo:solo:0013:1775830600616")
+        );
+        assert!(!obj.contains_key("action"));
+        assert!(!obj.contains_key("observation"));
+        assert!(!obj.contains_key("rationale"));
+        assert!(!obj.contains_key("question"));
+        assert!(!obj.contains_key("predicted_next_actions"));
+        assert!(!obj.contains_key("predicated_next_actions"));
+        assert!(!obj.contains_key("path"));
+        assert!(!obj.contains_key("line"));
     }
 }
