@@ -3891,6 +3891,19 @@ fn execute_action(
     })
 }
 
+/// Execute a single tool action with the same semantics as the main agent loop.
+///
+/// This is exported for small "capability binaries" that compose tool actions via stdin/stdout.
+pub fn execute_action_capability(
+    role: &str,
+    step: usize,
+    action: &Value,
+    workspace: &Path,
+    check_on_done: bool,
+) -> Result<(bool, String)> {
+    execute_action(role, step, action, workspace, check_on_done)
+}
+
 fn persist_inbound_message(role: &str, step: usize, action: &Value, full_message: &str) {
     let Some(to_raw) = action.get("to").and_then(|v| v.as_str()) else {
         return;

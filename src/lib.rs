@@ -19,6 +19,18 @@ pub mod invalid_action;
 mod semantic;
 pub mod state_space;
 
+// Keep the `constants` module private, but expose the few setters used by auxiliary binaries
+// (e.g. `canon-mini-supervisor`) to configure the workspace and state-dir.
+pub fn set_workspace(path: String) {
+    constants::set_workspace(path);
+}
+
+pub fn set_agent_state_dir(path: String) {
+    constants::set_agent_state_dir(path);
+}
+
+pub use crate::tools::execute_action_capability;
+
 #[cfg(test)]
 mod invalid_action_tests;
 #[cfg(test)]

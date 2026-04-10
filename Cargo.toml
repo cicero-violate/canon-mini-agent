@@ -17,6 +17,21 @@ name = "canon-mini-supervisor"
 path = "src/bin/canon-mini-supervisor.rs"
 test = false
 
+[[bin]]
+name = "canon-exec"
+path = "src/bin/canon-exec.rs"
+test = false
+
+[[bin]]
+name = "canon-step"
+path = "src/bin/canon-step.rs"
+test = false
+
+[[bin]]
+name = "canon-route"
+path = "src/bin/canon-route.rs"
+test = false
+
 [dependencies]
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }

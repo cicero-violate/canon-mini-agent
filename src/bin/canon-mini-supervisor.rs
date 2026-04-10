@@ -1,4 +1,6 @@
 use anyhow::{anyhow, Context, Result};
+use canon_mini_agent::{set_agent_state_dir, set_workspace};
+use canon_mini_agent::logging::init_log_paths;
 use canon_mini_agent::logging::log_error_event;
 use std::fs;
 use std::io::{Read, Write};
@@ -183,6 +185,17 @@ fn agent_state_dir_from_args(args: &[String]) -> PathBuf {
     PathBuf::from("/workspace/ai_sandbox/canon-mini-agent/agent_state")
 }
 
+fn workspace_from_args(args: &[String]) -> Option<String> {
+    let mut i = 0usize;
+    while i + 1 < args.len() {
+        if args[i] == "--workspace" {
+            return Some(args[i + 1].clone());
+        }
+        i += 1;
+    }
+    None
+}
+
 fn cycle_idle_marker_path(args: &[String]) -> PathBuf {
     agent_state_dir_from_args(args).join("orchestrator_cycle_idle.flag")
 }
@@ -333,6 +346,15 @@ fn main() -> Result<()> {
     let start_dir = std::env::current_dir().context("current_dir")?;
     let root = find_workspace_root(&start_dir)
         .ok_or_else(|| anyhow!("unable to locate workspace root with target/"))?;
+
+    // Initialize structured logging for the supervisor itself. These settings are derived from the
+    // same args we forward to the child binary so logs land in the same workspace/state-dir.
+    if let Some(workspace) = workspace_from_args(&filtered_args) {
+        set_workspace(workspace);
+    }
+    set_agent_state_dir(agent_state_dir_from_args(&filtered_args).to_string_lossy().to_string());
+    init_log_paths("supervisor");
+
     let shutdown = Arc::new(AtomicBool::new(false));
     let child_pid = Arc::new(AtomicU32::new(0));
     {
