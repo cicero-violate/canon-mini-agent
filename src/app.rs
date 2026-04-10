@@ -3867,6 +3867,62 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn build_agent_prompt_includes_role_schema_on_nonzero_steps_when_enabled() {
+        let (schema0, prompt0) = super::build_agent_prompt(
+            "planner",
+            true,
+            0,
+            "INIT",
+            "SYSTEM",
+            None,
+            None,
+            None,
+            None,
+            0,
+            None,
+        );
+        assert_eq!(schema0, "SYSTEM");
+        assert_eq!(prompt0, "INIT");
+
+        let (schema1, prompt1) = super::build_agent_prompt(
+            "planner",
+            true,
+            1,
+            "INIT",
+            "SYSTEM",
+            Some("LAST_RESULT"),
+            None,
+            None,
+            Some("read_file"),
+            1,
+            None,
+        );
+        assert_eq!(schema1, "SYSTEM");
+        assert!(
+            prompt1.contains("LAST_RESULT"),
+            "prompt must include last result"
+        );
+
+        let (schema_disabled, _) = super::build_agent_prompt(
+            "planner",
+            false,
+            1,
+            "INIT",
+            "SYSTEM",
+            Some("LAST_RESULT"),
+            None,
+            None,
+            None,
+            1,
+            None,
+        );
+        assert!(
+            schema_disabled.trim().is_empty(),
+            "role_schema must be empty when disabled"
+        );
+    }
+
+    #[test]
     fn verifier_confirmed_rejects_when_plan_has_incomplete_tasks() {
         let reason = r#"{"verified":true,"summary":"ok"}"#;
         let plan = r#"{
