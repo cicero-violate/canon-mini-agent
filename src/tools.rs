@@ -3802,7 +3802,7 @@ mod tests {
             .and_then(|v| v.as_array())
             .expect("symbols array");
         assert!(!symbols.is_empty());
-        let mut prev = String::new();
+        let mut prev: Option<(String, u64, u64, String, String)> = None;
         for sym in symbols {
             let file = sym.get("file").and_then(|v| v.as_str()).unwrap_or("");
             let start = sym
@@ -3817,12 +3817,17 @@ mod tests {
                 .unwrap_or(0);
             let kind = sym.get("kind").and_then(|v| v.as_str()).unwrap_or("");
             let name = sym.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            let key = format!("{file}:{start}:{end}:{kind}:{name}");
-            assert!(
-                prev.is_empty() || prev < key,
-                "symbols output should be strictly sorted and unique"
+            let key = (
+                file.to_string(),
+                start,
+                end,
+                kind.to_string(),
+                name.to_string(),
             );
-            prev = key;
+            if let Some(prev_key) = prev.take() {
+                assert!(prev_key < key, "symbols output should be strictly sorted and unique");
+            }
+            prev = Some(key);
         }
     }
 
