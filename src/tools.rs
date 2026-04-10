@@ -2349,6 +2349,22 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
                 .get("status")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("plan set_status missing status"))?;
+            // Invariant: cannot mark plan done if any task is not done
+            if status == "done" {
+                let tasks = obj
+                    .get("tasks")
+                    .and_then(|v| v.as_array())
+                    .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+                let any_incomplete = tasks.iter().any(|t| {
+                    t.get("status")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.trim() != "done")
+                        .unwrap_or(true)
+                });
+                if any_incomplete {
+                    bail!("cannot set plan status to done while tasks remain incomplete");
+                }
+            }
             obj.insert("status".to_string(), Value::String(status.to_string()));
         }
         PlanOp::ReplacePlan => {
