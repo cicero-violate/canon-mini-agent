@@ -1631,7 +1631,7 @@ fn parse_action_from_raw(
             return Err(InvalidActionFeedback {
                 err_text: err_text.clone(),
                 feedback: format!(
-                    "Invalid action: {e}\nCorrective action required: `cargo_test` must include a `crate` field.\nUse this exact format and fill in the crate name:\n```json\n{{\n  \"action\": \"cargo_test\",\n  \"crate\": \"canon-runtime\",\n  \"observation\": \"Running canon-runtime test suite after latest changes.\",\n  \"rationale\": \"Validate that canon-runtime tests pass for the updated parser logic.\"\n}}\n```\nReturn exactly one action."
+                    "Invalid action: {e}\nCorrective action required: `cargo_test` must include a `crate` field.\nUse this exact format and fill in the crate name:\n```json\n{{\n  \"action\": \"cargo_test\",\n  \"crate\": \"canon-runtime\",\n  \"observation\": \"Running canon-runtime test suite after latest changes.\",\n  \"rationale\": \"Validate that canon-runtime tests pass for the updated parser logic.\"\n}}\n```\nFor any mutating retry (`apply_patch`, `plan`, `objectives`, `issue`, or `rename_symbol`), include a non-empty `question` field stating the decision-boundary premise.\nReturn exactly one action."
                 ),
             });
         }

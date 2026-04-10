@@ -143,7 +143,9 @@ pub(crate) fn unsupported_action_correction(kind: &str) -> String {
         msg.push_str(&template);
         msg.push('\n');
     }
-    msg.push_str("Return exactly one action.");
+    msg.push_str(
+        "For any mutating retry (`apply_patch`, `plan`, `objectives`, `issue`, or `rename_symbol`), include a non-empty `question` field stating the decision-boundary premise. Return exactly one action."
+    );
     msg
 }
 
@@ -156,7 +158,7 @@ pub(crate) fn message_schema_correction(missing_field: &str, role: &str) -> Stri
         "Invalid action: message missing non-empty '{missing_field}'.\nCorrective action required: use a full message schema with required fields. Do not use `content`; use `payload`.\nTemplate:\n"
     ));
     msg.push_str(&format!(
-        "{}\nReturn exactly one action.",
+        "{}\nFor any mutating retry (`apply_patch`, `plan`, `objectives`, `issue`, or `rename_symbol`), include a non-empty `question` field stating the decision-boundary premise. Return exactly one action.",
         format_message_schema(
             from,
             to,
@@ -727,7 +729,7 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
         "example_action": example_action,
     });
     format!(
-        "Invalid action rejected.\naction_result:\n{}\nReturn exactly one action as a single JSON object in a ```json code block. No prose outside it.",
+        "Invalid action rejected.\naction_result:\n{}\nFor any mutating retry (`apply_patch`, `plan`, `objectives`, `issue`, or `rename_symbol`), include a non-empty `question` field stating the decision-boundary premise. Return exactly one action as a single JSON object in a ```json code block. No prose outside it.",
         feedback.to_string()
     )
 }
