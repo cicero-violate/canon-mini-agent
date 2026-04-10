@@ -927,7 +927,6 @@ mod diagnostics_filter_tests {
     #[test]
     fn build_single_role_prompt_planner_includes_rendered_lessons_from_context() {
         use std::fs;
-        use std::path::PathBuf;
         use std::time::{SystemTime, UNIX_EPOCH};
 
         let unique = SystemTime::now()
@@ -972,7 +971,7 @@ mod diagnostics_filter_tests {
         let diagnostics_path = workspace.join("PLANS/default/diagnostics-default.json");
         fs::write(&master_plan_path, r#"{"version":2,"tasks":[]}"#).unwrap();
 
-        let ctx = SingleRoleContext {
+        let ctx = super::SingleRoleContext {
             workspace: workspace.as_path(),
             spec_path: spec_path.as_path(),
             master_plan_path: master_plan_path.as_path(),
@@ -980,8 +979,8 @@ mod diagnostics_filter_tests {
             diagnostics_path: diagnostics_path.as_path(),
         };
 
-        let inputs = load_single_role_inputs(&ctx, false, false, true).unwrap();
-        let prompt = build_single_role_prompt(&ctx, &inputs, "").unwrap();
+        let inputs = super::load_single_role_inputs(&ctx, false, false, true).unwrap();
+        let prompt = super::build_single_role_prompt(&ctx, &inputs, "").unwrap();
 
         assert!(prompt.contains("Summary:\nStructured planner lesson summary."));
         assert!(prompt.contains("Failures:\n- Missing writeback coverage"));
