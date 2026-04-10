@@ -250,6 +250,19 @@ fn example_plan_action() -> Value {
 }
 
 fn example_message_action(from: &str, to: &str, msg_type: &str, status: &str) -> Value {
+    let payload = if msg_type == "blocker" || status == "blocked" {
+        json!({
+            "summary": "Short blocker summary",
+            "blocker": "Root cause",
+            "evidence": "Concrete error text or failing command",
+            "required_action": "What must be done to unblock",
+            "severity": "error"
+        })
+    } else {
+        json!({
+            "summary": "Short summary"
+        })
+    };
     json!({
         "action": "message",
         "from": from,
@@ -259,9 +272,7 @@ fn example_message_action(from: &str, to: &str, msg_type: &str, status: &str) ->
         "observation": "Summarize what happened.",
         "rationale": "Explain why this is the next step.",
         "predicted_next_actions": example_predicted_next_actions(),
-        "payload": {
-            "summary": "Short summary"
-        }
+        "payload": payload
     })
 }
 
