@@ -21,6 +21,47 @@ pub fn default_message_route(
     }
 }
 
+struct MessageRoute<'a> {
+    from: &'a str,
+    to: &'a str,
+    msg_type: &'a str,
+    status: &'a str,
+}
+
+impl<'a> MessageRoute<'a> {
+    fn default_for_role(role: &'a str) -> Self {
+        let (from, to, msg_type, status) = default_message_route(role);
+        Self {
+            from,
+            to,
+            msg_type,
+            status,
+        }
+    }
+
+    fn from_action_obj(obj: &'a serde_json::Map<String, Value>) -> Option<Self> {
+        let from = obj.get("from").and_then(|v| v.as_str())?;
+        let to = obj.get("to").and_then(|v| v.as_str())?;
+        let msg_type = obj.get("type").and_then(|v| v.as_str())?;
+        let status = obj.get("status").and_then(|v| v.as_str())?;
+        Some(Self {
+            from,
+            to,
+            msg_type,
+            status,
+        })
+    }
+
+    fn into_owned_lowercase(self) -> (String, String, String, String) {
+        (
+            self.from.to_lowercase(),
+            self.to.to_lowercase(),
+            self.msg_type.to_lowercase(),
+            self.status.to_lowercase(),
+        )
+    }
+}
+
 pub fn expected_message_format(
     from: &str,
     to: &str,
@@ -429,30 +470,9 @@ fn example_action_for(kind: &str, role: &str, raw_action: Option<&Value>) -> Val
 fn normalized_message_example_route(raw_action: Option<&Value>, role: &str) -> (String, String, String, String) {
     raw_action
         .and_then(|action| action.as_object())
-        .and_then(|obj| {
-            let from = obj.get("from").and_then(|v| v.as_str());
-            let to = obj.get("to").and_then(|v| v.as_str());
-            let msg_type = obj.get("type").and_then(|v| v.as_str());
-            let status = obj.get("status").and_then(|v| v.as_str());
-            match (from, to, msg_type, status) {
-                (Some(from), Some(to), Some(msg_type), Some(status)) => Some((
-                    from.to_lowercase(),
-                    to.to_lowercase(),
-                    msg_type.to_lowercase(),
-                    status.to_lowercase(),
-                )),
-                _ => None,
-            }
-        })
-        .unwrap_or_else(|| {
-            let (from, to, msg_type, status) = default_message_route(role);
-            (
-                from.to_string(),
-                to.to_string(),
-                msg_type.to_string(),
-                status.to_string(),
-            )
-        })
+        .and_then(MessageRoute::from_action_obj)
+        .map(MessageRoute::into_owned_lowercase)
+        .unwrap_or_else(|| MessageRoute::default_for_role(role).into_owned_lowercase())
 }
 
 pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str, role: &str) -> String {
@@ -665,7 +685,11 @@ pub fn auto_fill_message_fields(action: &mut Value, role: &str) -> bool {
     if obj.get("action").and_then(|v| v.as_str()) != Some("message") {
         return false;
     }
-    let (default_from, default_to, default_type, default_status) = default_message_route(role);
+    let defaults = MessageRoute::default_for_role(role);
+    let default_from = defaults.from;
+    let default_to = defaults.to;
+    let default_type = defaults.msg_type;
+    let default_status = defaults.status;
     let mut changed = false;
     if obj
         .get("from")
