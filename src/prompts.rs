@@ -884,6 +884,78 @@ pub(crate) fn single_role_executor_prompt(
     )
 }
 
+#[cfg(test)]
+mod prompt_regression_tests {
+    use super::single_role_solo_prompt;
+
+    #[test]
+    fn single_role_solo_prompt_omits_rename_section_when_candidates_empty() {
+        let output = single_role_solo_prompt(
+            "spec",
+            "plan",
+            "objectives",
+            "lessons",
+            "invariants",
+            "violations",
+            "diagnostics",
+            "failures",
+            "",
+        );
+
+        assert!(!output.contains("Pending rename tasks (from state/rename_candidates.json):"));
+        assert!(!output.contains("For each candidate: use `symbols_prepare_rename` to select it"));
+    }
+
+    #[test]
+    fn single_role_solo_prompt_includes_rename_section_when_candidates_present() {
+        let output = single_role_solo_prompt(
+            "spec",
+            "plan",
+            "objectives",
+            "lessons",
+            "invariants",
+            "violations",
+            "diagnostics",
+            "failures",
+            "candidate1",
+        );
+
+        assert!(output.contains("Pending rename tasks (from state/rename_candidates.json):"));
+        assert!(output.contains("candidate1"));
+        assert!(output.contains("For each candidate: use `symbols_prepare_rename` to select it"));
+    }
+
+    #[test]
+    fn single_role_solo_prompt_rename_section_formatting_is_stable() {
+        let empty_output = single_role_solo_prompt(
+            "spec",
+            "plan",
+            "objectives",
+            "lessons",
+            "invariants",
+            "violations",
+            "diagnostics",
+            "failures",
+            "",
+        );
+        let non_empty_output = single_role_solo_prompt(
+            "spec",
+            "plan",
+            "objectives",
+            "lessons",
+            "invariants",
+            "violations",
+            "diagnostics",
+            "failures",
+            "candidate1",
+        );
+
+        assert!(empty_output.contains("Latest cargo test failures (from cargo_test_failures.json):\nfailures\n\nUse the `plan` action"));
+        assert!(non_empty_output.contains("Latest cargo test failures (from cargo_test_failures.json):\nfailures\n\nPending rename tasks (from state/rename_candidates.json):\ncandidate1\nFor each candidate: use `symbols_prepare_rename` to select it, then `rename_symbol` to apply. Work through them in score-descending order.\n\nUse the `plan` action"));
+        assert!(non_empty_output.len() > empty_output.len());
+    }
+}
+
 // ── Action parsing ─────────────────────────────────────────────────────────────
 
 pub(crate) fn parse_actions(raw: &str) -> Result<Vec<Value>> {

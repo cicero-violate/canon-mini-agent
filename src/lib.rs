@@ -9,7 +9,7 @@ mod action_examples;
 mod issues;
 mod objectives;
 mod tool_schema;
-mod prompts;
+pub mod prompts;
 mod prompt_inputs;
 mod structured_questions;
 mod protocol;

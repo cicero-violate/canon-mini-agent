@@ -423,6 +423,8 @@ pub enum ToolAction {
         out: Option<String>,
     },
     /// Repomap-style symbol outline for a crate (backed by rustc graph.json).
+    /// Set `expand_bodies` to true to inline the full source body of each symbol.
+    /// Most useful when combined with `filter` to scope to a single file or module.
     SemanticMap {
         #[serde(flatten)]
         base: ActionBase,
@@ -431,6 +433,10 @@ pub enum ToolAction {
         /// Optional symbol-path prefix to restrict output (e.g. "canon_mini_agent::tools").
         #[serde(default, skip_serializing_if = "Option::is_none")]
         filter: Option<String>,
+        /// When true, inlines the full source body of each symbol after its outline entry.
+        /// Best used with `filter` to avoid enormous output.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        expand_bodies: bool,
     },
     /// Extract the full definition body of a symbol using byte-precise def span.
     SymbolWindow {
@@ -455,6 +461,7 @@ pub enum ToolAction {
         expand_bodies: bool,
     },
     /// BFS shortest call-graph path between two symbols.
+    /// Set `expand_bodies` to true to inline the source body of each hop along the path.
     SymbolPath {
         #[serde(flatten)]
         base: ActionBase,
@@ -462,14 +469,21 @@ pub enum ToolAction {
         crate_name: String,
         from: String,
         to: String,
+        /// When true, inlines the full source body of each symbol along the call path.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        expand_bodies: bool,
     },
     /// Immediate callers and callees of a symbol in the call graph.
+    /// Set `expand_bodies` to true to inline the source body of each caller and callee.
     SymbolNeighborhood {
         #[serde(flatten)]
         base: ActionBase,
         #[serde(rename = "crate")]
         crate_name: String,
         symbol: String,
+        /// When true, inlines the full source body of each caller and callee.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        expand_bodies: bool,
     },
 }
 
@@ -597,9 +611,9 @@ pub fn tool_protocol_schema_split_text() -> String {
         ),
         (
             "semantic_map",
-            "rustc-backed repomap: symbol outline by file (kind, name, signature)",
+            "rustc-backed repomap: symbol outline by file (kind, name, signature); set expand_bodies:true (with filter) to inline all bodies in a module",
             Some(
-                "Examples:\n  {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"rationale\":\"Get a compiler-backed symbol outline before exploring files.\"}\n  {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"filter\":\"tools\",\"rationale\":\"Restrict to the tools module.\"}\nNotes: symbol paths are module-relative (e.g. `tools::my_fn`); `filter` is an optional path prefix.",
+                "Examples:\n  {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"rationale\":\"Get a compiler-backed symbol outline before exploring files.\"}\n  {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"filter\":\"tools\",\"rationale\":\"Restrict to the tools module.\"}\n  {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"filter\":\"tools\",\"expand_bodies\":true,\"rationale\":\"Read every symbol body in the tools module in one pass.\"}\nNotes: symbol paths are module-relative (e.g. `tools::my_fn`); `filter` is an optional path prefix; use `expand_bodies` with `filter` to avoid oversized output.",
             ),
         ),
         (
@@ -618,16 +632,16 @@ pub fn tool_protocol_schema_split_text() -> String {
         ),
         (
             "symbol_path",
-            "BFS shortest call-graph path between two symbols",
+            "BFS shortest call-graph path between two symbols; set expand_bodies:true to inline the source body of each hop",
             Some(
-                "Example:\n  {\"action\":\"symbol_path\",\"crate\":\"canon_mini_agent\",\"from\":\"app::run_agent\",\"to\":\"tools::handle_apply_patch_action\",\"rationale\":\"Trace how a high-level entry point reaches a specific handler.\"}\nNotes: uses static call edges only; returns path with file:line annotations.",
+                "Example:\n  {\"action\":\"symbol_path\",\"crate\":\"canon_mini_agent\",\"from\":\"app::run_agent\",\"to\":\"tools::handle_apply_patch_action\",\"rationale\":\"Trace how a high-level entry point reaches a specific handler.\"}\nExample (with bodies):\n  {\"action\":\"symbol_path\",\"crate\":\"canon_mini_agent\",\"from\":\"app::run_agent\",\"to\":\"tools::handle_apply_patch_action\",\"expand_bodies\":true,\"rationale\":\"Read every function along the call chain before changing a handler signature.\"}\nNotes: uses static call edges only; returns path with file:line annotations.",
             ),
         ),
         (
             "symbol_neighborhood",
-            "immediate callers and callees of a symbol in the call graph",
+            "immediate callers and callees of a symbol; set expand_bodies:true to inline the source body of each caller and callee",
             Some(
-                "Example:\n  {\"action\":\"symbol_neighborhood\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"rationale\":\"Understand the blast radius of a function before modifying it.\"}\nNotes: returns all direct callers and callees from the static call graph.",
+                "Example:\n  {\"action\":\"symbol_neighborhood\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"rationale\":\"Understand the blast radius of a function before modifying it.\"}\nExample (with bodies):\n  {\"action\":\"symbol_neighborhood\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"expand_bodies\":true,\"rationale\":\"Read every caller and callee body before refactoring.\"}\nNotes: returns all direct callers and callees from the static call graph.",
             ),
         ),
     ];

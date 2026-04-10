@@ -3818,7 +3818,11 @@ fn load_semantic(workspace: &Path, action: &Value) -> anyhow::Result<crate::sema
 fn handle_semantic_map_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
     let idx = load_semantic(workspace, action)?;
     let filter = action.get("filter").and_then(|v| v.as_str());
-    let out = idx.semantic_map(filter);
+    let expand = action
+        .get("expand_bodies")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let out = idx.semantic_map(filter, expand);
     Ok((false, out))
 }
 
@@ -3860,7 +3864,11 @@ fn handle_symbol_path_action(workspace: &Path, action: &Value) -> Result<(bool, 
         .get("to")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("symbol_path requires a `to` field"))?;
-    let out = idx.symbol_path(from, to)?;
+    let expand = action
+        .get("expand_bodies")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let out = idx.symbol_path(from, to, expand)?;
     Ok((false, out))
 }
 
@@ -3870,7 +3878,11 @@ fn handle_symbol_neighborhood_action(workspace: &Path, action: &Value) -> Result
         .get("symbol")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("symbol_neighborhood requires a `symbol` field"))?;
-    let out = idx.symbol_neighborhood(symbol)?;
+    let expand = action
+        .get("expand_bodies")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let out = idx.symbol_neighborhood(symbol, expand)?;
     Ok((false, out))
 }
 

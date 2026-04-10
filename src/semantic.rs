@@ -160,7 +160,7 @@ impl SemanticIndex {
 
     /// Repomap-style outline: one line per symbol sorted by file + line.
     /// Format: `<file>:<line> <kind> <path> [sig] [fields: f1, f2]`
-    pub fn semantic_map(&self, filter_path: Option<&str>) -> String {
+    pub fn semantic_map(&self, filter_path: Option<&str>, expand_bodies: bool) -> String {
         // Group by file, then sort by line.
         let mut by_file: HashMap<String, Vec<(u32, &str, &GraphNode)>> = HashMap::new();
         for (path, node) in &self.graph.nodes {
@@ -204,6 +204,18 @@ impl SemanticIndex {
                 }
                 out.push_str(&entry);
                 out.push('\n');
+                if expand_bodies {
+                    match self.symbol_window(path) {
+                        Ok(body) => {
+                            for body_line in body.lines() {
+                                out.push_str("    ");
+                                out.push_str(body_line);
+                                out.push('\n');
+                            }
+                        }
+                        Err(_) => {}
+                    }
+                }
             }
         }
         if out.is_empty() {
@@ -344,7 +356,8 @@ impl SemanticIndex {
 
     /// BFS shortest path in the call graph from `from` to `to`.
     /// Returns the chain with file:line annotations.
-    pub fn symbol_path(&self, from: &str, to: &str) -> Result<String> {
+    /// If `expand_bodies` is true, inlines the source body of each hop.
+    pub fn symbol_path(&self, from: &str, to: &str, expand_bodies: bool) -> Result<String> {
         let from_key = self.resolve_symbol_key(from)?;
         let to_key = self.resolve_symbol_key(to)?;
         if from_key == to_key {
@@ -411,6 +424,15 @@ impl SemanticIndex {
                         shorten_path(&def.file),
                         def.line
                     ));
+                    if expand_bodies {
+                        if let Ok(body) = self.symbol_window(sym) {
+                            for line in body.lines() {
+                                out.push_str("    ");
+                                out.push_str(line);
+                                out.push('\n');
+                            }
+                        }
+                    }
                     continue;
                 }
             }
@@ -424,7 +446,8 @@ impl SemanticIndex {
     // -----------------------------------------------------------------------
 
     /// Immediate callers and callees of `symbol` in the call graph.
-    pub fn symbol_neighborhood(&self, symbol: &str) -> Result<String> {
+    /// If `expand_bodies` is true, inlines the source body of each caller and callee.
+    pub fn symbol_neighborhood(&self, symbol: &str, expand_bodies: bool) -> Result<String> {
         // Confirm symbol exists and normalize to canonical graph key.
         let symbol_key = self.resolve_symbol_key(symbol)?;
         let node = self.graph.nodes.get(symbol_key).unwrap();
@@ -455,9 +478,22 @@ impl SemanticIndex {
 
         let mut out = format!("Neighborhood of `{symbol}`:\n");
 
+        let expand_sym = |out: &mut String, sym: &str| {
+            if expand_bodies {
+                if let Ok(body) = self.symbol_window(sym) {
+                    for line in body.lines() {
+                        out.push_str("      ");
+                        out.push_str(line);
+                        out.push('\n');
+                    }
+                }
+            }
+        };
+
         out.push_str(&format!("  Callers ({}):\n", callers.len()));
         for s in &callers {
             out.push_str(&format!("    {s}\n"));
+            expand_sym(&mut out, s);
         }
 
         if !inferred_callers.is_empty() {
@@ -467,12 +503,14 @@ impl SemanticIndex {
             ));
             for s in &inferred_callers {
                 out.push_str(&format!("    {s}\n"));
+                expand_sym(&mut out, s);
             }
         }
 
         out.push_str(&format!("  Callees ({}):\n", callees.len()));
         for s in &callees {
             out.push_str(&format!("    {s}\n"));
+            expand_sym(&mut out, s);
         }
 
         Ok(out)
@@ -736,7 +774,7 @@ mod tests {
         };
 
         let n = idx
-            .symbol_neighborhood("engine::process_action_and_execute")
+            .symbol_neighborhood("engine::process_action_and_execute", false)
             .expect("neighborhood should resolve suffix symbol");
         assert!(n.contains("Callers (1):"));
         assert!(n.contains("canon_mini_agent::app::continue_executor_completion"));
@@ -745,6 +783,7 @@ mod tests {
             .symbol_path(
                 "app::continue_executor_completion",
                 "engine::process_action_and_execute",
+                false,
             )
             .expect("path should resolve suffix symbols");
         assert!(p.contains("1 hops"));
@@ -807,7 +846,7 @@ mod tests {
             },
         };
         let out = idx
-            .symbol_neighborhood("app::run_planner_phase")
+            .symbol_neighborhood("app::run_planner_phase", false)
             .expect("neighborhood should succeed");
         assert!(out.contains("Callers (0):"));
         assert!(out.contains("Inferred callers from refs (1):"));
