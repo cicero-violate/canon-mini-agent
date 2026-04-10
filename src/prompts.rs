@@ -39,6 +39,11 @@ pub(crate) enum ToolPromptKind {
     Python,
     CargoTest,
     Plan,
+    SemanticMap,
+    SymbolWindow,
+    SymbolRefs,
+    SymbolPath,
+    SymbolNeighborhood,
     Message,
 }
 
@@ -52,6 +57,11 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
         AgentPromptKind::Diagnostics => &[
             ToolPromptKind::ListDir,
             ToolPromptKind::ReadFile,
+            ToolPromptKind::SemanticMap,
+            ToolPromptKind::SymbolWindow,
+            ToolPromptKind::SymbolRefs,
+            ToolPromptKind::SymbolPath,
+            ToolPromptKind::SymbolNeighborhood,
             ToolPromptKind::SymbolsIndex,
             ToolPromptKind::SymbolsRenameCandidates,
             ToolPromptKind::SymbolsPrepareRename,
@@ -67,6 +77,11 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
         AgentPromptKind::Verifier => &[
             ToolPromptKind::ListDir,
             ToolPromptKind::ReadFile,
+            ToolPromptKind::SemanticMap,
+            ToolPromptKind::SymbolWindow,
+            ToolPromptKind::SymbolRefs,
+            ToolPromptKind::SymbolPath,
+            ToolPromptKind::SymbolNeighborhood,
             ToolPromptKind::SymbolsIndex,
             ToolPromptKind::SymbolsRenameCandidates,
             ToolPromptKind::SymbolsPrepareRename,
@@ -82,6 +97,11 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
         AgentPromptKind::Executor | AgentPromptKind::Planner | AgentPromptKind::Solo => &[
             ToolPromptKind::ListDir,
             ToolPromptKind::ReadFile,
+            ToolPromptKind::SemanticMap,
+            ToolPromptKind::SymbolWindow,
+            ToolPromptKind::SymbolRefs,
+            ToolPromptKind::SymbolPath,
+            ToolPromptKind::SymbolNeighborhood,
             ToolPromptKind::SymbolsIndex,
             ToolPromptKind::SymbolsRenameCandidates,
             ToolPromptKind::SymbolsPrepareRename,
@@ -141,6 +161,21 @@ fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
         (_, ToolPromptKind::Python) => "python — run Python analysis inside the workspace",
         (_, ToolPromptKind::CargoTest) => "cargo_test — run a targeted cargo test (harness-style)",
         (_, ToolPromptKind::Plan) => "plan — create/update/delete tasks and DAG edges in PLAN.json",
+        (_, ToolPromptKind::SemanticMap) => {
+            "semantic_map — rustc-backed repomap: symbol outline by file (kind, name, signature)"
+        }
+        (_, ToolPromptKind::SymbolWindow) => {
+            "symbol_window — extract the full definition body of a symbol (byte-precise)"
+        }
+        (_, ToolPromptKind::SymbolRefs) => {
+            "symbol_refs — list all reference sites (file:line:col) for a symbol"
+        }
+        (_, ToolPromptKind::SymbolPath) => {
+            "symbol_path — BFS shortest call-graph path between two symbols"
+        }
+        (_, ToolPromptKind::SymbolNeighborhood) => {
+            "symbol_neighborhood — immediate callers and callees of a symbol"
+        }
         (_, ToolPromptKind::Message) => "message — send inter-agent protocol message",
     }
 }
@@ -315,6 +350,21 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
             )
         }
 
+        (_, ToolPromptKind::SemanticMap) => {
+            "   {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"rationale\":\"Get a rustc-backed symbol outline to understand the codebase structure before reading individual files.\"}\n   {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"filter\":\"canon_mini_agent::tools\",\"rationale\":\"Restrict the outline to the tools module to see all symbols in that area.\"}\n   Notes: `crate` is the crate name (underscores); optional `filter` restricts to a symbol-path prefix.".to_string()
+        }
+        (_, ToolPromptKind::SymbolWindow) => {
+            "   {\"action\":\"symbol_window\",\"crate\":\"canon_mini_agent\",\"symbol\":\"canon_mini_agent::tools::execute_logged_action\",\"rationale\":\"Extract the full definition of a specific function before editing it.\"}\n   Notes: `symbol` is the fully-qualified path; accepts a short suffix if unambiguous.".to_string()
+        }
+        (_, ToolPromptKind::SymbolRefs) => {
+            "   {\"action\":\"symbol_refs\",\"crate\":\"canon_mini_agent\",\"symbol\":\"canon_mini_agent::tools::execute_logged_action\",\"rationale\":\"Find all call sites before renaming or changing the signature.\"}\n   Notes: returns file:line:col for every identifier reference span recorded during compilation.".to_string()
+        }
+        (_, ToolPromptKind::SymbolPath) => {
+            "   {\"action\":\"symbol_path\",\"crate\":\"canon_mini_agent\",\"from\":\"canon_mini_agent::app::run_cycle\",\"to\":\"canon_mini_agent::tools::handle_apply_patch_action\",\"rationale\":\"Find the call chain between two symbols to understand how they are connected.\"}\n   Notes: BFS over call edges; returns the shortest path with file:line annotations.".to_string()
+        }
+        (_, ToolPromptKind::SymbolNeighborhood) => {
+            "   {\"action\":\"symbol_neighborhood\",\"crate\":\"canon_mini_agent\",\"symbol\":\"canon_mini_agent::tools::execute_logged_action\",\"rationale\":\"See all callers and callees of a symbol to understand its role before changing it.\"}\n   Notes: returns all immediate callers and callees from the static call graph.".to_string()
+        }
         (_, ToolPromptKind::Message) => {
             message_tool_prompt_examples().to_string()
         }

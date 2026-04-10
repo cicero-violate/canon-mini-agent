@@ -16,6 +16,7 @@ mod protocol;
 mod reports;
 mod tools;
 pub mod invalid_action;
+mod semantic;
 pub mod state_space;
 
 #[cfg(test)]

@@ -60,6 +60,11 @@ pub const TOOL_ACTION_NAMES: &[&str] = &[
     "python",
     "cargo_test",
     "plan",
+    "semantic_map",
+    "symbol_window",
+    "symbol_refs",
+    "symbol_path",
+    "symbol_neighborhood",
 ];
 
 pub const ALL_TOOL_PROMPT_KINDS: &[&str] = &[
@@ -76,6 +81,11 @@ pub const ALL_TOOL_PROMPT_KINDS: &[&str] = &[
     "python",
     "cargo_test",
     "plan",
+    "semantic_map",
+    "symbol_window",
+    "symbol_refs",
+    "symbol_path",
+    "symbol_neighborhood",
     "message",
 ];
 
@@ -395,6 +405,50 @@ pub enum ToolAction {
         tlog: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         out_dir: Option<String>,
+    },
+    /// Repomap-style symbol outline for a crate (backed by rustc graph.json).
+    SemanticMap {
+        #[serde(flatten)]
+        base: ActionBase,
+        #[serde(rename = "crate")]
+        crate_name: String,
+        /// Optional symbol-path prefix to restrict output (e.g. "canon_mini_agent::tools").
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        filter: Option<String>,
+    },
+    /// Extract the full definition body of a symbol using byte-precise def span.
+    SymbolWindow {
+        #[serde(flatten)]
+        base: ActionBase,
+        #[serde(rename = "crate")]
+        crate_name: String,
+        /// Fully-qualified symbol path (e.g. "canon_mini_agent::tools::execute_logged_action").
+        symbol: String,
+    },
+    /// List all reference sites (ident spans) for a symbol across the crate.
+    SymbolRefs {
+        #[serde(flatten)]
+        base: ActionBase,
+        #[serde(rename = "crate")]
+        crate_name: String,
+        symbol: String,
+    },
+    /// BFS shortest call-graph path between two symbols.
+    SymbolPath {
+        #[serde(flatten)]
+        base: ActionBase,
+        #[serde(rename = "crate")]
+        crate_name: String,
+        from: String,
+        to: String,
+    },
+    /// Immediate callers and callees of a symbol in the call graph.
+    SymbolNeighborhood {
+        #[serde(flatten)]
+        base: ActionBase,
+        #[serde(rename = "crate")]
+        crate_name: String,
+        symbol: String,
     },
 }
 
