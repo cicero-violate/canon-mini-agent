@@ -990,6 +990,24 @@ mod diagnostics_filter_tests {
     }
 
     #[test]
+    fn filter_invariants_json_derives_compact_lines() {
+        let raw = r#"{"version":1,"invariants":[
+            {"id":"I1","title":"Workspace Isolation","level":"critical","category":"scope"},
+            {"id":"I2","title":"Handoff Delivery","level":"critical","category":"control-flow"}
+        ]}"#;
+        let out = filter_invariants_json(raw);
+        assert!(out.contains("[critical]  I1  —  Workspace Isolation  (scope)"));
+        assert!(out.contains("[critical]  I2  —  Handoff Delivery  (control-flow)"));
+        assert!(out.contains("INVARIANTS.json"));
+    }
+
+    #[test]
+    fn filter_invariants_json_empty_returns_empty() {
+        let raw = r#"{"version":1,"invariants":[]}"#;
+        assert!(filter_invariants_json(raw).is_empty());
+    }
+
+    #[test]
     fn filter_active_violations_json_reports_none_when_empty() {
         let raw = r#"{"status":"verified","violations":[]}"#;
         assert!(filter_active_violations_json(raw).is_empty());
