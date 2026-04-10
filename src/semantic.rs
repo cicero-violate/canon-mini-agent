@@ -9,6 +9,7 @@
 //!   symbol_neighborhood — immediate callers + callees of a symbol
 
 use anyhow::{bail, Context, Result};
+use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind, TextSize};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
@@ -168,7 +169,7 @@ impl SemanticIndex {
         let node = self.find_node(symbol)?;
         let def = node.def.as_ref().context("symbol has no definition span")?;
 
-        let source = fs::read(&def.file)
+        let source = fs::read_to_string(&def.file)
             .with_context(|| format!("could not read source file {}", def.file))?;
 
         let lo = def.lo as usize;
@@ -177,8 +178,10 @@ impl SemanticIndex {
             bail!("byte offsets out of range (lo={lo} hi={hi} file_len={})", source.len());
         }
 
-        let text = std::str::from_utf8(&source[lo..hi])
-            .context("source slice is not valid UTF-8")?;
+        let (slice_lo, slice_hi) = expand_symbol_window_span(&source, lo, hi).unwrap_or((lo, hi));
+        let text = source.get(slice_lo..slice_hi).with_context(|| {
+            format!("expanded symbol span is not on UTF-8 boundaries (lo={slice_lo} hi={slice_hi})")
+        })?;
 
         let display = shorten_path(&def.file);
         let mut out = format!("// {} — {}:{}\n", symbol, display, def.line);
@@ -377,6 +380,50 @@ impl SemanticIndex {
     }
 }
 
+fn expand_symbol_window_span(source: &str, lo: usize, hi: usize) -> Option<(usize, usize)> {
+    if lo > hi || hi > source.len() {
+        return None;
+    }
+    let parse = SourceFile::parse(source, Edition::CURRENT);
+    let root = parse.tree();
+    let offset = TextSize::new(lo as u32);
+    let token = root
+        .syntax()
+        .token_at_offset(offset)
+        .left_biased()
+        .or_else(|| root.syntax().token_at_offset(offset).right_biased())?;
+    for node in token.parent_ancestors() {
+        if !is_symbol_window_item_kind(node.kind()) {
+            continue;
+        }
+        let range = node.text_range();
+        let start = u32::from(range.start()) as usize;
+        let end = u32::from(range.end()) as usize;
+        if start <= lo && end >= hi {
+            return Some((start, end));
+        }
+    }
+    None
+}
+
+fn is_symbol_window_item_kind(kind: SyntaxKind) -> bool {
+    matches!(
+        kind,
+        SyntaxKind::FN
+            | SyntaxKind::STRUCT
+            | SyntaxKind::ENUM
+            | SyntaxKind::TRAIT
+            | SyntaxKind::IMPL
+            | SyntaxKind::MODULE
+            | SyntaxKind::TYPE_ALIAS
+            | SyntaxKind::CONST
+            | SyntaxKind::STATIC
+            | SyntaxKind::UNION
+            | SyntaxKind::VARIANT
+            | SyntaxKind::RECORD_FIELD
+    )
+}
+
 fn shorten_path(path: &str) -> String {
     // Strip known workspace prefix for readability.
     const WORKSPACE: &str = "/workspace/ai_sandbox/canon-mini-agent/";
@@ -384,4 +431,21 @@ fn shorten_path(path: &str) -> String {
         return rest.to_string();
     }
     path.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::expand_symbol_window_span;
+
+    #[test]
+    fn expand_symbol_window_span_returns_full_function_block() {
+        let src = "pub(crate) fn process_action_and_execute(\n    role: &str,\n) -> Result<(bool, String)> {\n    let _x = role;\n    Ok((false, String::new()))\n}\n";
+        let lo = src.find("pub(crate) fn").unwrap();
+        let hi = src.find(") -> Result<(bool, String)>").unwrap() + ") -> Result<(bool, String)>".len();
+        let (slice_lo, slice_hi) = expand_symbol_window_span(src, lo, hi).expect("span should expand");
+        let extracted = &src[slice_lo..slice_hi];
+        assert!(extracted.starts_with("pub(crate) fn process_action_and_execute("));
+        assert!(extracted.contains("Ok((false, String::new()))"));
+        assert!(extracted.trim_end().ends_with('}'));
+    }
 }
