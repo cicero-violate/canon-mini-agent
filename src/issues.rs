@@ -43,7 +43,7 @@ pub struct Issue {
 pub fn is_closed(issue: &Issue) -> bool {
     matches!(
         issue.status.trim().to_lowercase().as_str(),
-        "resolved" | "wontfix"
+        "resolved" | "wontfix" | "done" | "complete" | "completed" | "verified" | "closed"
     )
 }
 
@@ -74,4 +74,49 @@ pub fn read_open_issues(workspace: &Path) -> String {
             .then_with(|| a.id.cmp(&b.id))
     });
     serde_json::to_string_pretty(&file).unwrap_or(raw)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_closed, read_open_issues, Issue};
+
+    #[test]
+    fn is_closed_treats_done_like_statuses_as_closed() {
+        for status in [
+            "resolved",
+            "wontfix",
+            "done",
+            "complete",
+            "completed",
+            "verified",
+            "closed",
+        ] {
+            let issue = Issue {
+                status: status.to_string(),
+                ..Issue::default()
+            };
+            assert!(is_closed(&issue), "status should be closed: {status}");
+        }
+    }
+
+    #[test]
+    fn read_open_issues_filters_done_entries() {
+        let root = std::env::temp_dir().join(format!(
+            "canon-mini-agent-issues-test-{}",
+            crate::logging::now_ms()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp issues dir");
+        let path = root.join(crate::constants::ISSUES_FILE);
+        let raw = r#"{
+  "version": 0,
+  "issues": [
+    { "id": "i_done", "title": "done issue", "status": "done", "priority": "high" },
+    { "id": "i_open", "title": "open issue", "status": "open", "priority": "high" }
+  ]
+}"#;
+        std::fs::write(&path, raw).expect("write issues file");
+        let filtered = read_open_issues(&root);
+        assert!(filtered.contains("\"id\": \"i_open\""));
+        assert!(!filtered.contains("\"id\": \"i_done\""));
+    }
 }
