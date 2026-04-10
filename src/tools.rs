@@ -2909,65 +2909,10 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
         .ok_or_else(|| anyhow!("PLAN.json must be a JSON object"))?;
     match op {
         PlanOp::CreateTask => {
-            let tasks = obj
-                .get_mut("tasks")
-                .and_then(|v| v.as_array_mut())
-                .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
-            let task = action
-                .get("task")
-                .and_then(|v| v.as_object())
-                .ok_or_else(|| anyhow!("plan create_task missing task object"))?;
-            let id = task
-                .get("id")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("plan task missing id"))?;
-            if tasks.iter().any(|t| t.get("id").and_then(|v| v.as_str()) == Some(id)) {
-                bail!("plan task already exists: {id}");
-            }
-            let mut new_task = serde_json::Map::new();
-            new_task.insert("id".to_string(), Value::String(id.to_string()));
-            if let Some(title) = task.get("title").and_then(|v| v.as_str()) {
-                new_task.insert("title".to_string(), Value::String(title.to_string()));
-            }
-            let status = task
-                .get("status")
-                .and_then(|v| v.as_str())
-                .unwrap_or("todo");
-            new_task.insert("status".to_string(), Value::String(status.to_string()));
-            if let Some(priority) = task.get("priority") {
-                new_task.insert("priority".to_string(), priority.clone());
-            }
-            if let Some(steps) = task.get("steps") {
-                new_task.insert("steps".to_string(), steps.clone());
-            }
-            tasks.push(Value::Object(new_task));
+            handle_plan_create_task(obj, action)?;
         }
         PlanOp::UpdateTask => {
-            let tasks = obj
-                .get_mut("tasks")
-                .and_then(|v| v.as_array_mut())
-                .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
-            let task = action
-                .get("task")
-                .and_then(|v| v.as_object())
-                .ok_or_else(|| anyhow!("plan update_task missing task object"))?;
-            let id = task
-                .get("id")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("plan task missing id"))?;
-            let Some(existing) = tasks
-                .iter_mut()
-                .find(|t| t.get("id").and_then(|v| v.as_str()) == Some(id))
-                .and_then(|t| t.as_object_mut())
-            else {
-                bail!("plan task not found: {id}");
-            };
-            ensure_reopened_task_has_regression_linkage(existing, task, id)?;
-            for (key, value) in task {
-                if key != "id" {
-                    existing.insert(key.to_string(), value.clone());
-                }
-            }
+            handle_plan_update_task(obj, action)?;
         }
         PlanOp::DeleteTask => {
             let tasks = obj
@@ -3084,29 +3029,7 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
             obj.insert("status".to_string(), Value::String(status.to_string()));
         }
         PlanOp::SetTaskStatus => {
-            let task_id = action
-                .get("task_id")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("plan set_task_status missing task_id"))?;
-            let status = action
-                .get("status")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("plan set_task_status missing status"))?;
-            let tasks = obj
-                .get_mut("tasks")
-                .and_then(|v| v.as_array_mut())
-                .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
-            let Some(existing) = tasks
-                .iter_mut()
-                .find(|t| t.get("id").and_then(|v| v.as_str()) == Some(task_id))
-                .and_then(|t| t.as_object_mut())
-            else {
-                bail!("plan task not found: {task_id}");
-            };
-            let mut updated = serde_json::Map::new();
-            updated.insert("status".to_string(), Value::String(status.to_string()));
-            ensure_reopened_task_has_regression_linkage(existing, &updated, task_id)?;
-            existing.insert("status".to_string(), Value::String(status.to_string()));
+            handle_plan_set_task_status(obj, action)?;
         }
         PlanOp::ReplacePlan => {
             let mut next_plan = action
@@ -3152,6 +3075,107 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
         false,
         format!("plan ok\nplan_path: {}", plan_path.display()),
     ))
+}
+
+fn handle_plan_create_task(
+    obj: &mut serde_json::Map<String, Value>,
+    action: &Value,
+) -> Result<()> {
+    let tasks = obj
+        .get_mut("tasks")
+        .and_then(|v| v.as_array_mut())
+        .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+    let task = action
+        .get("task")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| anyhow!("plan create_task missing task object"))?;
+    let id = task
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("plan task missing id"))?;
+    if tasks.iter().any(|t| t.get("id").and_then(|v| v.as_str()) == Some(id)) {
+        bail!("plan task already exists: {id}");
+    }
+    let mut new_task = serde_json::Map::new();
+    new_task.insert("id".to_string(), Value::String(id.to_string()));
+    if let Some(title) = task.get("title").and_then(|v| v.as_str()) {
+        new_task.insert("title".to_string(), Value::String(title.to_string()));
+    }
+    let status = task
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("todo");
+    new_task.insert("status".to_string(), Value::String(status.to_string()));
+    if let Some(priority) = task.get("priority") {
+        new_task.insert("priority".to_string(), priority.clone());
+    }
+    if let Some(steps) = task.get("steps") {
+        new_task.insert("steps".to_string(), steps.clone());
+    }
+    tasks.push(Value::Object(new_task));
+    Ok(())
+}
+
+fn handle_plan_update_task(
+    obj: &mut serde_json::Map<String, Value>,
+    action: &Value,
+) -> Result<()> {
+    let tasks = obj
+        .get_mut("tasks")
+        .and_then(|v| v.as_array_mut())
+        .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+    let task = action
+        .get("task")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| anyhow!("plan update_task missing task object"))?;
+    let id = task
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("plan task missing id"))?;
+    let Some(existing) = tasks
+        .iter_mut()
+        .find(|t| t.get("id").and_then(|v| v.as_str()) == Some(id))
+        .and_then(|t| t.as_object_mut())
+    else {
+        bail!("plan task not found: {id}");
+    };
+    ensure_reopened_task_has_regression_linkage(existing, task, id)?;
+    for (key, value) in task {
+        if key != "id" {
+            existing.insert(key.to_string(), value.clone());
+        }
+    }
+    Ok(())
+}
+
+fn handle_plan_set_task_status(
+    obj: &mut serde_json::Map<String, Value>,
+    action: &Value,
+) -> Result<()> {
+    let task_id = action
+        .get("task_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("plan set_task_status missing task_id"))?;
+    let status = action
+        .get("status")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("plan set_task_status missing status"))?;
+    let tasks = obj
+        .get_mut("tasks")
+        .and_then(|v| v.as_array_mut())
+        .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+    let Some(existing) = tasks
+        .iter_mut()
+        .find(|t| t.get("id").and_then(|v| v.as_str()) == Some(task_id))
+        .and_then(|t| t.as_object_mut())
+    else {
+        bail!("plan task not found: {task_id}");
+    };
+    let mut updated = serde_json::Map::new();
+    updated.insert("status".to_string(), Value::String(status.to_string()));
+    ensure_reopened_task_has_regression_linkage(existing, &updated, task_id)?;
+    existing.insert("status".to_string(), Value::String(status.to_string()));
+    Ok(())
 }
 
 fn capture_plan_schema(action: &Value) {
