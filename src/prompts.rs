@@ -836,14 +836,12 @@ pub(crate) fn single_role_solo_prompt(
     invariants: &str,
     violations: &str,
     diagnostics: &str,
-    issues: &str,
     cargo_test_failures: &str,
 ) -> String {
     let workspace = workspace();
     let diagnostics_path = diagnostics_file();
-    let issues_file = crate::constants::ISSUES_FILE;
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{spec}\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nLessons artifact:\n{lessons_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nOpen issues (from {issues_file}):\n{issues}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nUse the `issue` action to record discovered problems for later attention."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{spec}\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nLessons artifact:\n{lessons_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nUse the `issue` action to record discovered problems for later attention."
     )
 }
 
@@ -1464,7 +1462,6 @@ mod tests {
             "{invariants}",
             "{violations}",
             "{diagnostics}",
-            "{issues}",
             "{cargo_test_failures}",
         );
         assert!(
@@ -1483,7 +1480,6 @@ mod tests {
             "{invariants}",
             "{violations}",
             "{diagnostics}",
-            "{issues}",
             "{cargo_test_failures}",
         );
         assert!(

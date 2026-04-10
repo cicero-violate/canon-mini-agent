@@ -415,7 +415,7 @@ async fn run_planner_phase(
         ctx.tabs_planner,
         false,
         false,
-        !*planner_bootstrapped,
+        true,
         0,
     )
     .await;
@@ -497,7 +497,6 @@ async fn run_solo_phase(
     let diagnostics = crate::prompt_inputs::filter_active_diagnostics_json(&read_text_or_empty(
         ctx.diagnostics_path,
     ));
-    let issues = crate::issues::read_open_issues(ctx.workspace);
     let objectives_mtime_before = file_modified_ms(&agent_objectives)
         .or_else(|| file_modified_ms(&ctx.workspace.join(OBJECTIVES_FILE)));
     let plan_mtime_before = file_modified_ms(&ctx.workspace.join(MASTER_PLAN_FILE));
@@ -509,7 +508,6 @@ async fn run_solo_phase(
         &invariants,
         &violations,
         &diagnostics,
-        &issues,
         cargo_test_failures,
     );
     inject_inbound_message(&mut prompt, "solo");
@@ -526,7 +524,7 @@ async fn run_solo_phase(
         ctx.tabs_solo,
         false,
         true,
-        !*solo_bootstrapped,
+        true,
         0,
     )
     .await;
@@ -621,7 +619,7 @@ async fn run_diagnostics_phase(
         ctx.tabs_diagnostics,
         false,
         false,
-        !*diagnostics_bootstrapped,
+        true,
         0,
     )
     .await;
@@ -740,7 +738,6 @@ async fn run_verifier_phase(
         let verifier_ep = ctx.verifier_ep.clone();
         let bridge = ctx.bridge.clone();
         let workspace = ctx.workspace.to_path_buf();
-        let send_system = !*verifier_bootstrapped;
         *verifier_bootstrapped = true;
         let tabs_verify = ctx.tabs_verify.clone();
         verifier_joinset.spawn(async move {
@@ -755,7 +752,7 @@ async fn run_verifier_phase(
                 &tabs_verify,
                 false,
                 false,
-                send_system,
+                true,
                 0,
             )
             .await
