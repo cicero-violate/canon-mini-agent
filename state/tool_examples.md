@@ -465,3 +465,18 @@ Example (with bodies):
   {"action":"symbol_neighborhood","crate":"canon_mini_agent","symbol":"tools::execute_logged_action","expand_bodies":true,"rationale":"Read every caller and callee body before refactoring."}
 Notes: returns all direct callers and callees from the static call graph.
 
+## `batch` — execute up to 8 non-mutating actions in one turn; results returned as labeled sections
+
+Example (read multiple files before patching):
+  {"action":"batch","rationale":"Gather all context needed before forming a patch.","predicted_next_actions":[{"action":"apply_patch","intent":"Apply the fix after reading all relevant code."},{"action":"cargo_test","intent":"Confirm fix compiles and tests pass."}],"actions":[{"action":"read_file","path":"src/app.rs","line":1800},{"action":"symbol_window","crate":"canon_mini_agent","symbol":"app::apply_wake_flags"},{"action":"symbol_neighborhood","crate":"canon_mini_agent","symbol":"app::apply_wake_flags"}]}
+Example (survey multiple modules):
+  {"action":"batch","rationale":"Map the relevant modules before a cross-cutting change.","predicted_next_actions":[{"action":"semantic_map","intent":"Drill into a specific module after surveying."}],"actions":[{"action":"semantic_map","crate":"canon_mini_agent","filter":"tools"},{"action":"semantic_map","crate":"canon_mini_agent","filter":"app"},{"action":"list_dir","path":"state"}]}
+Rules:
+- Max 8 items per batch.
+- Mutating actions (apply_patch, rename_symbol, message, run_command, python, cargo_test) are rejected.
+- For plan: only op=sorted_view is accepted.
+- For objectives: only op=read or op=sorted_view.
+- For issue: only op=read.
+- Items must omit rationale, predicted_next_actions, and observation.
+- On per-item error the item is labeled [batch N/M: ERROR] and execution continues.
+

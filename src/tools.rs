@@ -2899,28 +2899,7 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
             handle_plan_update_task(obj, action)?;
         }
         PlanOp::DeleteTask => {
-            let tasks = obj
-                .get_mut("tasks")
-                .and_then(|v| v.as_array_mut())
-                .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
-            let task_id = action
-                .get("task_id")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("plan delete_task missing task_id"))?;
-            tasks.retain(|t| t.get("id").and_then(|v| v.as_str()) != Some(task_id));
-            let dag = obj
-                .get_mut("dag")
-                .and_then(|v| v.as_object_mut())
-                .ok_or_else(|| anyhow!("PLAN.json missing dag object"))?;
-            let edges = dag
-                .get_mut("edges")
-                .and_then(|v| v.as_array_mut())
-                .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))?;
-            edges.retain(|e| {
-                let from = e.get("from").and_then(|v| v.as_str());
-                let to = e.get("to").and_then(|v| v.as_str());
-                from != Some(task_id) && to != Some(task_id)
-            });
+            handle_plan_delete_task(obj, action)?;
         }
         PlanOp::AddEdge => {
             let ids = {
@@ -3181,6 +3160,36 @@ fn handle_plan_set_task_status(
     updated.insert("status".to_string(), Value::String(status.to_string()));
     ensure_reopened_task_has_regression_linkage(existing, &updated, task_id)?;
     existing.insert("status".to_string(), Value::String(status.to_string()));
+    Ok(())
+}
+
+fn handle_plan_delete_task(
+    obj: &mut serde_json::Map<String, Value>,
+    action: &Value,
+) -> Result<()> {
+    let tasks = obj
+        .get_mut("tasks")
+        .and_then(|v| v.as_array_mut())
+        .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+    let task_id = action
+        .get("task_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("plan delete_task missing task_id"))?;
+    tasks.retain(|t| t.get("id").and_then(|v| v.as_str()) != Some(task_id));
+
+    let dag = obj
+        .get_mut("dag")
+        .and_then(|v| v.as_object_mut())
+        .ok_or_else(|| anyhow!("PLAN.json missing dag object"))?;
+    let edges = dag
+        .get_mut("edges")
+        .and_then(|v| v.as_array_mut())
+        .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))?;
+    edges.retain(|e| {
+        let from = e.get("from").and_then(|v| v.as_str());
+        let to = e.get("to").and_then(|v| v.as_str());
+        from != Some(task_id) && to != Some(task_id)
+    });
     Ok(())
 }
 
