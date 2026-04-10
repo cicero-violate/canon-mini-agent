@@ -231,35 +231,39 @@ Additional clarification (from implementation):
 - Missing required fields or invalid types must be rejected.
 - `read_file` line numbers are 1-based.
 
-### 4.3 Canonical-File Authority Invariants
+### 4.3 Diagnostics Evidence Scan Invariant
+- Diagnostics must perform at least one `python` scan of workspace-local log/state artifacts (for example `agent_state/*.jsonl`, `actions.jsonl`, `log.jsonl`, `frames/`) before it writes the diagnostics report or sends a diagnostics handoff message.
+- The scan can occur at any point earlier in the same diagnostics cycle; it does **not** need to be the immediately preceding action.
+
+### 4.4 Canonical-File Authority Invariants
 - `SPEC.md` is the canonical contract for repair work.
 - `PLANS/OBJECTIVES.md` and `INVARIANT.md` are authoritative for objectives and invariants.
 - Planner must derive lane plans from canonical files, not from memory or stale copies.
 - `SemanticStateSummary` is the single source of truth for routing and control-flow correctness.
 
-### 4.4 Event Ordering Invariants
+### 4.5 Event Ordering Invariants
 - Actions are processed in strict step order per role: `step` is monotonic.
 - Each `step` produces at most one `ActionResult`.
 - A role must not emit a new action without observing the result of the previous action.
 - Executor hard cap: after `EXECUTOR_STEP_LIMIT` (20) actions without a `message` handoff, the system forces a handoff prompt.
 
-### 4.5 Logging Invariants
+### 4.6 Logging Invariants
 - Every action must be appended to `agent_logs/.../actions.jsonl`.
 - Every action result must be appended to `agent_logs/.../action_results.jsonl`.
 - Action logs must preserve order of execution.
 
-### 4.6 Build/Test Gate Invariants
+### 4.7 Build/Test Gate Invariants
 - If a completion `message` (status = `complete`) triggers checks:
   - `cargo build --workspace` must pass.
   - `cargo test --workspace` must pass.
   - Otherwise completion is rejected.
 
-### 4.7 Handoff Delivery Invariant
+### 4.8 Handoff Delivery Invariant
 - A `message` action emitted by any role **must** result in the target role receiving the payload before its next cycle begins.
 - Wakeup flags (`wakeup_<role>.flag`) and inbound message files (`last_message_to_<role>.json`) are the delivery mechanism.
 - The `apply_wake_flags` function in the orchestration loop is the authority that translates these flags into scheduled phase transitions.
 
-### 4.8 Workspace Isolation Invariant
+### 4.9 Workspace Isolation Invariant
 - All file operations by agents are confined to `Workspace`.
 - The orchestrator's own state (`AgentStateDir`) is never the target workspace.
 - Agents are told the active `Workspace` value in every prompt (header line `WORKSPACE: <path>`).

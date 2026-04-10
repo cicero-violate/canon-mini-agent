@@ -416,6 +416,7 @@ async fn run_solo_phase(
     let invariants = read_text_or_empty(ctx.workspace.join(INVARIANTS_FILE));
     let violations = read_text_or_empty(ctx.violations_path);
     let diagnostics = read_text_or_empty(ctx.diagnostics_path);
+    let issues = crate::issues::read_open_issues(ctx.workspace);
     let objectives_mtime_before = file_modified_ms(&agent_objectives)
         .or_else(|| file_modified_ms(&ctx.workspace.join(OBJECTIVES_FILE)));
     let plan_mtime_before = file_modified_ms(&ctx.workspace.join(MASTER_PLAN_FILE));
@@ -427,6 +428,7 @@ async fn run_solo_phase(
         &invariants,
         &violations,
         &diagnostics,
+        &issues,
         cargo_test_failures,
     );
     inject_inbound_message(&mut prompt, "solo");
@@ -1608,7 +1610,6 @@ fn executor_step_limit_feedback() -> String {
 
 fn enforce_diagnostics_python(
     role: &str,
-    step: usize,
     kind: &str,
     action: &Value,
     diagnostics_eventlog_python_done: &mut bool,
@@ -1620,15 +1621,9 @@ fn enforce_diagnostics_python(
         *diagnostics_eventlog_python_done = true;
         return None;
     }
-    if step == 0 {
-        return Some(format!(
-            "Diagnostics must begin with a `python` action that discovers and analyzes workspace-local log/state artifacts that actually exist under {} to diagnose problems, detect inconsistencies, and extract concrete failure signals.",
-            workspace()
-        ));
-    }
     if matches!(kind, "apply_patch" | "message") {
         return Some(format!(
-            "Before writing diagnostics or finishing, run a `python` action that discovers and analyzes workspace-local log/state artifacts that actually exist under {} to find errors, inconsistencies, invariant violations, repeated failure patterns, and concrete repair targets. Diagnostics is for finding what is broken.",
+            "Before writing diagnostics or finishing, run a `python` action earlier in this diagnostics cycle that discovers and analyzes workspace-local log/state artifacts under {} to find errors, inconsistencies, invariant violations, repeated failure patterns, and concrete repair targets. The scan may occur before read_file steps; it does not need to be the immediately previous action.",
             workspace()
         ));
     }
@@ -2321,7 +2316,6 @@ async fn run_agent(
 
         if let Some(msg) = enforce_diagnostics_python(
             role,
-            step,
             kind.as_str(),
             &action,
             &mut diagnostics_eventlog_python_done,

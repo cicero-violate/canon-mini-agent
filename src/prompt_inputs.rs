@@ -81,6 +81,51 @@ pub fn read_lessons_or_empty(workspace: &Path) -> String {
     read_text_or_empty(workspace.join(LESSONS_FILE))
 }
 
+/// Returns a human-readable explanation of which failure is missing source
+/// validation and what keywords are accepted, for use in tool result messages.
+pub(crate) fn describe_missing_source_validation(failures: &[Value]) -> String {
+    let keywords = &[
+        "read_file",
+        "verified against current source",
+        "validated against current source",
+        "source validation",
+    ];
+    for failure in failures {
+        let id = failure.get("id").and_then(Value::as_str).unwrap_or("?");
+        let entries: Vec<&str> = failure
+            .get("evidence")
+            .and_then(Value::as_array)
+            .map(|arr| arr.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        let has_validation = entries.iter().any(|e| {
+            let n = e.to_ascii_lowercase();
+            keywords.iter().any(|kw| n.contains(kw))
+                && !n.contains("without source validation")
+                && !n.contains("no source validation")
+        });
+        if !has_validation {
+            let shown: Vec<String> = entries.iter().map(|e| format!("    - {e}")).collect();
+            let shown_text = if shown.is_empty() {
+                "    (no evidence entries)".to_string()
+            } else {
+                shown.join("\n")
+            };
+            return format!(
+                "ranked_failures[\"{id}\"] has no current-source validation marker.\n\
+                 At least one evidence entry must contain one of: {kw_list}.\n\
+                 Current evidence:\n{shown_text}\n\
+                 Add an entry such as: \"read_file <path>:<lines> — <what you observed>\"",
+                kw_list = keywords
+                    .iter()
+                    .map(|k| format!("\"{k}\""))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            );
+        }
+    }
+    "ranked_failures missing current-source validation (no failures to inspect)".to_string()
+}
+
 fn diagnostics_have_current_source_validation(failures: &[Value]) -> bool {
     failures.iter().all(|failure| {
         failure

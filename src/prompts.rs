@@ -6,7 +6,9 @@ use crate::constants::{
     MASTER_PLAN_FILE, MAX_SNIPPET, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
 };
 use crate::protocol::{MessagePayload, MessageStatus, MessageType, ProtocolMessage, Role};
-use crate::tool_schema::{validate_tool_action, ALL_TOOL_PROMPT_KINDS, TOOL_ACTION_NAMES};
+use crate::tool_schema::{
+    cargo_test_action_example, validate_tool_action, ALL_TOOL_PROMPT_KINDS, TOOL_ACTION_NAMES,
+};
 
 pub(crate) fn truncate(s: &str, max: usize) -> &str {
     let end = s.char_indices().nth(max).map(|(i, _)| i).unwrap_or(s.len());
@@ -36,13 +38,8 @@ pub(crate) enum ToolPromptKind {
 }
 
 fn available_actions(kind: AgentPromptKind) -> &'static [&'static str] {
-    match kind {
-        AgentPromptKind::Verifier => TOOL_ACTION_NAMES,
-        AgentPromptKind::Executor
-        | AgentPromptKind::Planner
-        | AgentPromptKind::Diagnostics
-        | AgentPromptKind::Solo => TOOL_ACTION_NAMES,
-    }
+    let _ = kind;
+    TOOL_ACTION_NAMES
 }
 
 fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
@@ -126,6 +123,21 @@ const READ_FILE_EXECUTOR_FOOTER: &str = "   With \"line\":N the output starts at
 const RUN_COMMAND_FOOTER: &str =
     "   ⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE.";
 const PYTHON_FOOTER: &str = "   ⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE.";
+
+fn plan_sorted_view_example() -> &'static str {
+    "   {\"action\":\"plan\",\"op\":\"sorted_view\",\"rationale\":\"View the current plan in DAG order (read-only).\"}"
+}
+
+fn read_plan_with_sorted_view_example(rationale: &str) -> String {
+    format!(
+        "   {{\"action\":\"read_file\",\"path\":\"PLAN.json\",\"rationale\":\"{rationale}\"}}\n{}",
+        plan_sorted_view_example()
+    )
+}
+
+fn message_tool_prompt_examples() -> &'static str {
+    "   {\"action\":\"message\",\"from\":\"executor\",\"to\":\"verifier\",\"type\":\"handoff\",\"status\":\"complete\",\"observation\":\"Summarize what happened.\",\"rationale\":\"Execution work is complete and the verifier now has enough evidence to judge it.\",\"payload\":{\"summary\":\"brief evidence summary\",\"artifacts\":[\"path/to/file.rs\"]}}\n   {\"action\":\"message\",\"from\":\"executor\",\"to\":\"planner\",\"type\":\"blocker\",\"status\":\"blocked\",\"observation\":\"Describe the blocker.\",\"rationale\":\"Explain why progress is impossible.\",\"payload\":{\"summary\":\"Short blocker summary\",\"blocker\":\"Root cause\",\"evidence\":\"Concrete error text\",\"required_action\":\"What must be done to unblock\",\"severity\":\"error\"}}\n   Allowed roles: executor|planner|verifier|diagnostics|solo. Allowed types: handoff|result|verification|failure|blocker|plan|diagnostics. Allowed status: complete|in_progress|failed|verified|ready|blocked.\n   ⚠ message with status=complete is REJECTED if build or tests fail — fix all errors first."
+}
 
 fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
     let ws = crate::constants::workspace();
@@ -216,26 +228,36 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
         | (AgentPromptKind::Planner, ToolPromptKind::CargoTest)
         | (AgentPromptKind::Verifier, ToolPromptKind::CargoTest)
         | (AgentPromptKind::Diagnostics, ToolPromptKind::CargoTest) => {
-            "   {\"action\":\"cargo_test\",\"crate\":\"canon-runtime\",\"test\":\"some_test_name\",\"rationale\":\"Run the exact failing test using the harness-style command.\"}".to_string()
+            format!("   {}", cargo_test_action_example())
         }
         (AgentPromptKind::Executor, ToolPromptKind::Plan) => {
-            "   {\"action\":\"read_file\",\"path\":\"PLAN.json\",\"rationale\":\"Read the master plan; executors should not edit it.\"}\n   {\"action\":\"plan\",\"op\":\"sorted_view\",\"rationale\":\"View the current plan in DAG order (read-only).\"}".to_string()
+            read_plan_with_sorted_view_example("Read the master plan; executors should not edit it.")
         }
         (AgentPromptKind::Solo, ToolPromptKind::Plan) => {
-            "   {\"action\":\"plan\",\"op\":\"set_status\",\"task_id\":\"T1\",\"status\":\"in_progress\",\"rationale\":\"Update PLAN.json via the plan tool while running solo.\"}\n   {\"action\":\"plan\",\"op\":\"sorted_view\",\"rationale\":\"View the current plan in DAG order (read-only).\"}".to_string()
+            format!(
+                "   {{\"action\":\"plan\",\"op\":\"set_status\",\"task_id\":\"T1\",\"status\":\"in_progress\",\"rationale\":\"Update PLAN.json via the plan tool while running solo.\"}}\n{}",
+                plan_sorted_view_example()
+            )
         }
         (AgentPromptKind::Planner, ToolPromptKind::Plan) => {
-            "   {\"action\":\"plan\",\"op\":\"create_task\",\"task\":{\"id\":\"T4\",\"title\":\"Add plan DAG\",\"status\":\"todo\",\"priority\":3},\"rationale\":\"Add a new task to PLAN.json without manual patching.\"}\n   {\"action\":\"plan\",\"op\":\"sorted_view\",\"rationale\":\"View the current plan in DAG order (read-only).\"}".to_string()
+            format!(
+                "   {{\"action\":\"plan\",\"op\":\"create_task\",\"task\":{{\"id\":\"T4\",\"title\":\"Add plan DAG\",\"status\":\"todo\",\"priority\":3}},\"rationale\":\"Add a new task to PLAN.json without manual patching.\"}}\n{}",
+                plan_sorted_view_example()
+            )
         }
         (AgentPromptKind::Verifier, ToolPromptKind::Plan) => {
-            "   {\"action\":\"read_file\",\"path\":\"PLAN.json\",\"rationale\":\"Read the current plan before judging whether claimed work matches recorded state.\"}\n   {\"action\":\"plan\",\"op\":\"sorted_view\",\"rationale\":\"View the current plan in DAG order (read-only).\"}".to_string()
+            read_plan_with_sorted_view_example(
+                "Read the current plan before judging whether claimed work matches recorded state.",
+            )
         }
         (AgentPromptKind::Diagnostics, ToolPromptKind::Plan) => {
-            "   {\"action\":\"read_file\",\"path\":\"PLAN.json\",\"rationale\":\"Read the master plan to correlate diagnostics findings with planned work and blocked tasks.\"}\n   {\"action\":\"plan\",\"op\":\"sorted_view\",\"rationale\":\"View the current plan in DAG order (read-only).\"}".to_string()
+            read_plan_with_sorted_view_example(
+                "Read the master plan to correlate diagnostics findings with planned work and blocked tasks.",
+            )
         }
 
         (_, ToolPromptKind::Message) => {
-            "   {\"action\":\"message\",\"from\":\"executor\",\"to\":\"verifier\",\"type\":\"handoff\",\"status\":\"complete\",\"observation\":\"Summarize what happened.\",\"rationale\":\"Execution work is complete and the verifier now has enough evidence to judge it.\",\"payload\":{\"summary\":\"brief evidence summary\",\"artifacts\":[\"path/to/file.rs\"]}}\n   {\"action\":\"message\",\"from\":\"executor\",\"to\":\"planner\",\"type\":\"blocker\",\"status\":\"blocked\",\"observation\":\"Describe the blocker.\",\"rationale\":\"Explain why progress is impossible.\",\"payload\":{\"summary\":\"Short blocker summary\",\"blocker\":\"Root cause\",\"evidence\":\"Concrete error text\",\"required_action\":\"What must be done to unblock\",\"severity\":\"error\"}}\n   Allowed roles: executor|planner|verifier|diagnostics|solo. Allowed types: handoff|result|verification|failure|blocker|plan|diagnostics. Allowed status: complete|in_progress|failed|verified|ready|blocked.\n   ⚠ message with status=complete is REJECTED if build or tests fail — fix all errors first.".to_string()
+            message_tool_prompt_examples().to_string()
         }
     }
 }
@@ -693,12 +715,14 @@ pub(crate) fn single_role_solo_prompt(
     invariants: &str,
     violations: &str,
     diagnostics: &str,
+    issues: &str,
     cargo_test_failures: &str,
 ) -> String {
     let workspace = workspace();
     let diagnostics_path = diagnostics_file();
+    let issues_file = crate::constants::ISSUES_FILE;
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{spec}\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nLessons artifact:\n{lessons_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{spec}\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nLessons artifact:\n{lessons_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nOpen issues (from {issues_file}):\n{issues}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nUse the `issue` action to record discovered problems for later attention."
     )
 }
 
@@ -847,6 +871,7 @@ pub(crate) fn diagnostics_python_reads_event_logs(action: &Value) -> bool {
         return false;
     }
     let code = action.get("code").and_then(|v| v.as_str()).unwrap_or("");
+    let lower = code.to_lowercase();
     // Accept generic workspace-local state/log inspection instead of privileging canon-specific paths.
     code.contains("Path('state')")
         || code.contains("Path(\"state\")")
@@ -856,6 +881,13 @@ pub(crate) fn diagnostics_python_reads_event_logs(action: &Value) -> bool {
         || code.contains("Path(\"logs\")")
         || (code.contains("state") && code.contains("rglob"))
         || (code.contains("log") && code.contains("rglob"))
+        // Accept common canon-mini-agent observability locations.
+        || lower.contains("agent_state")
+        || lower.contains("actions.jsonl")
+        || lower.contains("log.jsonl")
+        || lower.contains("canon-mini-agent-logs.log")
+        || lower.contains("frames/")
+        || lower.contains("frames\\")
 }
 
 pub(crate) fn action_rationale(action: &Value) -> Option<&str> {
@@ -1269,6 +1301,7 @@ mod tests {
             "{invariants}",
             "{violations}",
             "{diagnostics}",
+            "{issues}",
             "{cargo_test_failures}",
         );
         assert!(
@@ -1299,6 +1332,13 @@ mod tests {
             "rationale": "Inspect workspace-local logs artifacts."
         });
         assert!(diagnostics_python_reads_event_logs(&logs_action));
+
+        let agent_state_action = json!({
+            "action": "python",
+            "code": "from pathlib import Path\nroot = Path('agent_state')\nprint(root)\nfor path in root.rglob('*.jsonl'):\n    print(path)",
+            "rationale": "Inspect workspace-local agent_state artifacts."
+        });
+        assert!(diagnostics_python_reads_event_logs(&agent_state_action));
     }
 
     #[test]

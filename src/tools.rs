@@ -12,9 +12,10 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::constants::{
-    diagnostics_file, is_self_modification_mode, MASTER_PLAN_FILE, MAX_FULL_READ_LINES,
-    MAX_SNIPPET, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
+    diagnostics_file, is_self_modification_mode, ISSUES_FILE, MASTER_PLAN_FILE,
+    MAX_FULL_READ_LINES, MAX_SNIPPET, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
 };
+use crate::issues::{is_closed, IssuesFile, Issue};
 use crate::objectives::filter_incomplete_objectives_json;
 use crate::logging::{log_action_event, log_action_result, log_error_event, now_ms};
 use crate::prompts::truncate;
@@ -188,6 +189,21 @@ fn read_json_report(path: &Path, max_bytes: usize) -> Result<String> {
     Ok(trimmed.to_string())
 }
 
+fn normalize_objective_id_for_match(value: &str) -> String {
+    value
+        .trim()
+        .trim_matches('`')
+        .trim_matches('"')
+        .trim_matches('\'')
+        .chars()
+        .filter(|c| !c.is_control())
+        .collect::<String>()
+}
+
+fn objective_id_matches(candidate: &str, requested: &str) -> bool {
+    normalize_objective_id_for_match(candidate) == normalize_objective_id_for_match(requested)
+}
+
 fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
     let op_raw = action
         .get("op")
@@ -213,7 +229,8 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
         }
         "sorted_view" => {
             let mut file: crate::objectives::ObjectivesFile =
-                serde_json::from_str(&raw).unwrap_or_default();
+                serde_json::from_str(&raw)
+                    .map_err(|e| anyhow!("failed to parse OBJECTIVES.json: {e}"))?;
             file.objectives.sort_by(|a, b| {
                 let rank = |status: &str| match status.trim().to_lowercase().as_str() {
                     "active" => 0,
@@ -241,7 +258,8 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
                 .get("objective")
                 .ok_or_else(|| anyhow!("objectives create_objective missing objective"))?;
             let mut file: crate::objectives::ObjectivesFile =
-                serde_json::from_str(&raw).unwrap_or_default();
+                serde_json::from_str(&raw)
+                    .map_err(|e| anyhow!("failed to parse OBJECTIVES.json: {e}"))?;
             let objective: crate::objectives::Objective =
                 serde_json::from_value(objective_val.clone())
                     .map_err(|e| anyhow!("invalid objective payload: {e}"))?;
@@ -266,10 +284,11 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
                 .and_then(|v| v.as_object())
                 .ok_or_else(|| anyhow!("objectives update_objective missing updates object"))?;
             let mut file: crate::objectives::ObjectivesFile =
-                serde_json::from_str(&raw).unwrap_or_default();
+                serde_json::from_str(&raw)
+                    .map_err(|e| anyhow!("failed to parse OBJECTIVES.json: {e}"))?;
             let mut found = false;
             for obj in file.objectives.iter_mut() {
-                if obj.id == objective_id {
+                if objective_id_matches(&obj.id, objective_id) {
                     let mut value = serde_json::to_value(obj.clone())?;
                     if let Some(map) = value.as_object_mut() {
                         for (k, v) in updates {
@@ -296,7 +315,8 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
             let mut file: crate::objectives::ObjectivesFile =
                 serde_json::from_str(&raw).unwrap_or_default();
             let before = file.objectives.len();
-            file.objectives.retain(|obj| obj.id != objective_id);
+            file.objectives
+                .retain(|obj| !objective_id_matches(&obj.id, objective_id));
             if file.objectives.len() == before {
                 bail!("objective not found: {objective_id}");
             }
@@ -317,7 +337,7 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
                 serde_json::from_str(&raw).unwrap_or_default();
             let mut found = false;
             for obj in file.objectives.iter_mut() {
-                if obj.id == objective_id {
+                if objective_id_matches(&obj.id, objective_id) {
                     obj.status = status.to_string();
                     found = true;
                     break;
@@ -351,6 +371,109 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
             Ok((false, "objectives replace_objectives ok".to_string()))
         }
         _ => bail!("unknown objectives op: {op_raw}"),
+    }
+}
+
+fn handle_issue_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+    let op_raw = action
+        .get("op")
+        .and_then(|v| v.as_str())
+        .unwrap_or("read");
+    let path = workspace.join(ISSUES_FILE);
+    let raw = fs::read_to_string(&path).unwrap_or_default();
+    match op_raw {
+        "read" => {
+            if raw.trim().is_empty() {
+                return Ok((false, "(no open issues)".to_string()));
+            }
+            let mut file: IssuesFile = serde_json::from_str(&raw).unwrap_or_default();
+            file.issues.retain(|i| !is_closed(i));
+            if file.issues.is_empty() {
+                return Ok((false, "(no open issues)".to_string()));
+            }
+            Ok((false, serde_json::to_string_pretty(&file).unwrap_or(raw)))
+        }
+        "create" => {
+            let issue_val = action
+                .get("issue")
+                .ok_or_else(|| anyhow!("issue create missing 'issue' field"))?;
+            let mut file: IssuesFile = if raw.trim().is_empty() {
+                IssuesFile::default()
+            } else {
+                serde_json::from_str(&raw)
+                    .map_err(|e| anyhow!("failed to parse ISSUES.json: {e}"))?
+            };
+            let issue: Issue = serde_json::from_value(issue_val.clone())
+                .map_err(|e| anyhow!("invalid issue payload: {e}"))?;
+            if issue.id.trim().is_empty() {
+                bail!("issue.id must be non-empty");
+            }
+            if file.issues.iter().any(|i| i.id == issue.id) {
+                bail!("issue id already exists: {}", issue.id);
+            }
+            file.issues.push(issue);
+            std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
+            Ok((false, "issue create ok".to_string()))
+        }
+        "update" => {
+            let issue_id = action
+                .get("issue_id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("issue update missing 'issue_id'"))?;
+            let updates = action
+                .get("updates")
+                .and_then(|v| v.as_object())
+                .ok_or_else(|| anyhow!("issue update missing 'updates' object"))?;
+            let mut file: IssuesFile = serde_json::from_str(&raw)
+                .map_err(|e| anyhow!("failed to parse ISSUES.json: {e}"))?;
+            let found = file.issues.iter_mut().find(|i| i.id == issue_id);
+            let Some(issue) = found else {
+                bail!("issue not found: {issue_id}");
+            };
+            let mut value = serde_json::to_value(issue.clone())?;
+            if let Some(map) = value.as_object_mut() {
+                for (k, v) in updates {
+                    map.insert(k.clone(), v.clone());
+                }
+            }
+            *issue = serde_json::from_value(value)?;
+            std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
+            Ok((false, "issue update ok".to_string()))
+        }
+        "delete" => {
+            let issue_id = action
+                .get("issue_id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("issue delete missing 'issue_id'"))?;
+            let mut file: IssuesFile = serde_json::from_str(&raw).unwrap_or_default();
+            let before = file.issues.len();
+            file.issues.retain(|i| i.id != issue_id);
+            if file.issues.len() == before {
+                bail!("issue not found: {issue_id}");
+            }
+            std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
+            Ok((false, "issue delete ok".to_string()))
+        }
+        "set_status" => {
+            let issue_id = action
+                .get("issue_id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("issue set_status missing 'issue_id'"))?;
+            let status = action
+                .get("status")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("issue set_status missing 'status'"))?;
+            let mut file: IssuesFile = serde_json::from_str(&raw)
+                .map_err(|e| anyhow!("failed to parse ISSUES.json: {e}"))?;
+            let found = file.issues.iter_mut().find(|i| i.id == issue_id);
+            let Some(issue) = found else {
+                bail!("issue not found: {issue_id}");
+            };
+            issue.status = status.to_string();
+            std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
+            Ok((false, "issue set_status ok".to_string()))
+        }
+        _ => bail!("unknown issue op '{op_raw}' — use read | create | update | delete | set_status"),
     }
 }
 
@@ -1084,20 +1207,31 @@ fn handle_apply_patch_action(
                     if let Some(previous) = previous_diagnostics_text {
                         std::fs::write(&diagnostics_path, previous)?;
                     }
+                    // Build a specific error explaining which failure is missing
+                    // validation and exactly what needs to be added.
+                    let detail = serde_json::from_str::<Value>(&new_diagnostics_text)
+                        .ok()
+                        .and_then(|v| v.get("ranked_failures").and_then(Value::as_array).cloned())
+                        .map(|failures| {
+                            crate::prompt_inputs::describe_missing_source_validation(&failures)
+                        })
+                        .unwrap_or_else(|| "ranked_failures missing current-source validation".to_string());
+                    let rejection_msg = format!(
+                        "apply_patch rejected: {detail}\n\
+                         Fix: add a read_file evidence entry that cites the specific file and line range \
+                         you read, e.g. \"read_file src/app.rs:420-450 — confirmed X\"."
+                    );
                     log_error_event(
                         role,
                         "apply_patch",
                         Some(step),
-                        "diagnostics apply_patch rejected: ranked_failures require current-source validation before persistence",
+                        &rejection_msg,
                         Some(json!({
                             "stage": "diagnostics_emission_validation",
                             "path": current_diagnostics_file,
                         })),
                     );
-                    return Ok((
-                        false,
-                        "apply_patch rejected: diagnostics ranked_failures require current-source validation before persistence".to_string(),
-                    ));
+                    return Ok((false, rejection_msg));
                 }
             }
             eprintln!("[{role}] step={} apply_patch ok", step);
@@ -1715,6 +1849,50 @@ impl PlanOp {
     }
 }
 
+fn task_status_value(task: &serde_json::Map<String, Value>) -> Option<&str> {
+    task.get("status").and_then(|v| v.as_str()).map(str::trim)
+}
+
+fn reopened_task_needs_regression_linkage(
+    existing: &serde_json::Map<String, Value>,
+    updated: &serde_json::Map<String, Value>,
+) -> bool {
+    let was_done = matches!(task_status_value(existing), Some("done"));
+    let next_status = updated
+        .get("status")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .or_else(|| task_status_value(existing));
+    let is_reopened = was_done && !matches!(next_status, Some("done"));
+    if !is_reopened {
+        return false;
+    }
+    let steps = updated
+        .get("steps")
+        .or_else(|| existing.get("steps"))
+        .and_then(|v| v.as_array());
+    let has_regression_linkage = steps
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str())
+        .map(|s| s.to_ascii_lowercase())
+        .any(|s| s.contains("regression"));
+    !has_regression_linkage
+}
+
+fn ensure_reopened_task_has_regression_linkage(
+    existing: &serde_json::Map<String, Value>,
+    updated: &serde_json::Map<String, Value>,
+    task_id: &str,
+) -> Result<()> {
+    if reopened_task_needs_regression_linkage(existing, updated) {
+        bail!(
+            "reopened task {task_id} must include regression-test linkage in steps when status changes from done to a non-done state"
+        );
+    }
+    Ok(())
+}
+
 fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(bool, String)> {
     let op_raw = action
         .get("op")
@@ -1819,6 +1997,7 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
             else {
                 bail!("plan task not found: {id}");
             };
+            ensure_reopened_task_has_regression_linkage(existing, task, id)?;
             for (key, value) in task {
                 if key != "id" {
                     existing.insert(key.to_string(), value.clone());
@@ -2020,6 +2199,7 @@ fn handle_plan_update_bundle(workspace: &Path, action: &Value) -> Result<(bool, 
             else {
                 bail!("plan task not found: {id}");
             };
+            ensure_reopened_task_has_regression_linkage(existing, task_obj, id)?;
             for (key, value) in task_obj {
                 if key != "id" {
                     existing.insert(key.to_string(), value.clone());
@@ -2609,6 +2789,7 @@ fn execute_action(
         "list_dir" => handle_list_dir_action(workspace, action),
         "read_file" => handle_read_file_action(role, step, workspace, action),
         "objectives" => handle_objectives_action(workspace, action),
+        "issue" => handle_issue_action(workspace, action),
         "apply_patch" => handle_apply_patch_action(role, step, workspace, action),
         "run_command" => handle_run_command_action(role, step, workspace, action),
         "python" => handle_python_action(role, step, workspace, action),
@@ -2622,7 +2803,7 @@ fn execute_action(
         other => Ok((
             false,
             format!(
-                "unsupported action '{other}' — use list_dir, read_file, objectives, apply_patch, run_command, python, cargo_test, plan, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, or message"
+                "unsupported action '{other}' — use list_dir, read_file, objectives, issue, apply_patch, run_command, python, cargo_test, plan, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, or message"
             ),
         )),
     }
@@ -2723,6 +2904,7 @@ pub(crate) fn execute_logged_action(
 #[cfg(test)]
 mod tests {
     use super::handle_apply_patch_action;
+    use super::handle_plan_action;
     use serde_json::json;
     use std::path::PathBuf;
 
@@ -2772,5 +2954,80 @@ mod tests {
         assert!(out.contains("apply_patch ok"));
         let persisted = std::fs::read_to_string(tmp.join("DIAGNOSTICS.json")).unwrap();
         assert!(persisted.contains("validated issue"));
+    }
+
+    #[test]
+    fn plan_update_task_rejects_reopened_task_without_regression_linkage() {
+        let tmp = fresh_test_dir("rejects-reopened-task-without-regression-linkage");
+        std::fs::write(
+            tmp.join("PLAN.json"),
+            r#"{
+  "version": 2,
+  "status": "in_progress",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Regression-linked task",
+      "status": "done",
+      "priority": 1,
+      "steps": ["existing regression coverage"]
+    }
+  ],
+  "dag": { "edges": [] }
+}"#,
+        )
+        .unwrap();
+        let action = json!({
+            "op": "update_task",
+            "task": {
+                "id": "T1",
+                "status": "in_progress",
+                "steps": ["resume implementation without linked test"]
+            },
+            "rationale": "Exercise reopened-task enforcement"
+        });
+
+        let err = handle_plan_action("solo", &tmp, &action).unwrap_err().to_string();
+
+        assert!(err.contains("reopened task T1 must include regression-test linkage"));
+    }
+
+    #[test]
+    fn plan_update_task_allows_reopened_task_with_regression_linkage() {
+        let tmp = fresh_test_dir("allows-reopened-task-with-regression-linkage");
+        std::fs::write(
+            tmp.join("PLAN.json"),
+            r#"{
+  "version": 2,
+  "status": "in_progress",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Regression-linked task",
+      "status": "done",
+      "priority": 1,
+      "steps": ["existing regression coverage"]
+    }
+  ],
+  "dag": { "edges": [] }
+}"#,
+        )
+        .unwrap();
+        let action = json!({
+            "op": "update_task",
+            "task": {
+                "id": "T1",
+                "status": "in_progress",
+                "steps": ["add regression test linkage before reopening"]
+            },
+            "rationale": "Exercise reopened-task allowance"
+        });
+
+        let (_done, out) = handle_plan_action("solo", &tmp, &action).unwrap();
+
+        assert!(out.contains("plan ok"));
+        let persisted = std::fs::read_to_string(tmp.join("PLAN.json")).unwrap();
+        assert!(persisted.contains("\"status\": \"in_progress\""));
+        assert!(persisted.contains("add regression test linkage before reopening"));
     }
 }

@@ -57,6 +57,10 @@ const GRAPH_TOOL_TEMPLATES: [&str; 4] = [
     "```json\n{\n  \"action\": \"graph_reachability\",\n  \"crate\": \"canon-runtime\",\n  \"tlog\": \"\",\n  \"out_dir\": \"\",\n  \"observation\": \"Generate reachability report.\",\n  \"rationale\": \"Inspect reachability metrics.\"\n}\n```",
 ];
 
+fn blocker_message_example_template() -> &'static str {
+    "```json\n{\n  \"action\": \"message\",\n  \"from\": \"executor\",\n  \"to\": \"planner\",\n  \"type\": \"blocker\",\n  \"status\": \"blocked\",\n  \"observation\": \"Describe the blocked state.\",\n  \"rationale\": \"Explain why progress is impossible without external action.\",\n  \"payload\": {\n    \"summary\": \"Short blocker summary\",\n    \"blocker\": \"Root cause\",\n    \"evidence\": \"Concrete error text or failing command\",\n    \"required_action\": \"What must be done to unblock\",\n    \"severity\": \"error\"\n  }\n}\n```"
+}
+
 #[allow(dead_code)]
 pub(crate) fn unsupported_action_templates() -> Vec<String> {
     let mut templates = vec![
@@ -78,7 +82,7 @@ pub(crate) fn unsupported_action_templates() -> Vec<String> {
     let message_example = format!(
         "{}\n{}",
         format_message_schema("executor", "verifier", "result", "complete", &[]),
-        "```json\n{\n  \"action\": \"message\",\n  \"from\": \"executor\",\n  \"to\": \"planner\",\n  \"type\": \"blocker\",\n  \"status\": \"blocked\",\n  \"observation\": \"Describe the blocked state.\",\n  \"rationale\": \"Explain why progress is impossible without external action.\",\n  \"payload\": {\n    \"summary\": \"Short blocker summary\",\n    \"blocker\": \"Root cause\",\n    \"evidence\": \"Concrete error text or failing command\",\n    \"required_action\": \"What must be done to unblock\",\n    \"severity\": \"error\"\n  }\n}\n```"
+        blocker_message_example_template()
     );
     templates.push(message_example);
     templates
@@ -228,6 +232,136 @@ fn example_action_with_string_fields(
     Value::Object(map)
 }
 
+fn example_plan_action() -> Value {
+    json!({
+        "action": "plan",
+        "op": "create_task",
+        "task": {
+            "id": "T4",
+            "title": "Add plan DAG",
+            "status": "todo",
+            "priority": 3
+        },
+        "observation": "Planning update needed.",
+        "rationale": "Track work in PLAN.json via plan tool.",
+        "predicted_next_actions": example_predicted_next_actions()
+    })
+}
+
+fn example_message_action(from: &str, to: &str, msg_type: &str, status: &str) -> Value {
+    json!({
+        "action": "message",
+        "from": from,
+        "to": to,
+        "type": msg_type,
+        "status": status,
+        "observation": "Summarize what happened.",
+        "rationale": "Explain why this is the next step.",
+        "predicted_next_actions": example_predicted_next_actions(),
+        "payload": {
+            "summary": "Short summary"
+        }
+    })
+}
+
+fn push_missing_string_payload_field(
+    schema_diff: &mut Vec<String>,
+    payload: Option<&serde_json::Map<String, Value>>,
+    field: &str,
+) {
+    let value = payload.and_then(|p| p.get(field));
+    if let Some(val) = value {
+        if !val.is_string() {
+            if !schema_diff
+                .iter()
+                .any(|s| s == &format!("field type mismatch: payload.{field} (expected string)"))
+            {
+                schema_diff.push(format!("field type mismatch: payload.{field} (expected string)"));
+            }
+            return;
+        }
+    }
+    if value
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .is_none()
+        && !schema_diff
+            .iter()
+            .any(|s| s == &format!("payload.{field} missing"))
+    {
+        schema_diff.push(format!("payload.{field} missing"));
+    }
+}
+
+fn push_missing_string_object_field(
+    schema_diff: &mut Vec<String>,
+    obj: Option<&serde_json::Map<String, Value>>,
+    field: &str,
+) {
+    let value = obj.and_then(|o| o.get(field));
+    if let Some(val) = value {
+        if let Some(text) = val.as_str() {
+            if text.trim().is_empty()
+                && !schema_diff
+                    .iter()
+                    .any(|s| s == &format!("missing field: {field}"))
+            {
+                schema_diff.push(format!("missing field: {field}"));
+            }
+        } else if !schema_diff
+            .iter()
+            .any(|s| s == &format!("field type mismatch: {field} (expected string)"))
+        {
+            schema_diff.push(format!("field type mismatch: {field} (expected string)"));
+        }
+    } else if !schema_diff
+        .iter()
+        .any(|s| s == &format!("missing field: {field}"))
+    {
+        schema_diff.push(format!("missing field: {field}"));
+    }
+}
+
+fn push_missing_message_required_fields(
+    schema_diff: &mut Vec<String>,
+    obj: &serde_json::Map<String, Value>,
+) {
+    for field in ["from", "to", "type", "status", "payload", "rationale"] {
+        let value = obj.get(field);
+        let missing = match field {
+            "payload" => value.and_then(|v| v.as_object()).is_none(),
+            _ => value
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .is_none(),
+        };
+        if missing {
+            if !schema_diff.iter().any(|s| s == &format!("missing field: {field}")) {
+                schema_diff.push(format!("missing field: {field}"));
+            }
+        }
+        if field == "payload" {
+            if let Some(val) = value {
+                if !val.is_object() {
+                    if !schema_diff.iter().any(|s| s == "payload must be object") {
+                        schema_diff.push("payload must be object".to_string());
+                    }
+                    if !schema_diff
+                        .iter()
+                        .any(|s| s == "field type mismatch: payload (expected object)")
+                    {
+                        schema_diff.push(
+                            "field type mismatch: payload (expected object)".to_string(),
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn example_action_for(kind: &str, role: &str, raw_action: Option<&Value>) -> Value {
     match kind {
         "run_command" => example_action_with_string_field(
@@ -271,75 +405,42 @@ fn example_action_for(kind: &str, role: &str, raw_action: Option<&Value>) -> Val
             "Run the targeted test.",
             "Verify the change.",
         ),
-        "plan" => json!({
-            "action": "plan",
-            "op": "create_task",
-            "task": {
-                "id": "T4",
-                "title": "Add plan DAG",
-                "status": "todo",
-                "priority": 3
-            },
-            "observation": "Planning update needed.",
-            "rationale": "Track work in PLAN.json via plan tool.",
-            "predicted_next_actions": example_predicted_next_actions()
-        }),
+        "plan" => example_plan_action(),
         "message" => {
-            let (from, to, msg_type, status) = raw_action
-                .and_then(|action| action.as_object())
-                .and_then(|obj| {
-                    let from = obj.get("from").and_then(|v| v.as_str());
-                    let to = obj.get("to").and_then(|v| v.as_str());
-                    let msg_type = obj.get("type").and_then(|v| v.as_str());
-                    let status = obj.get("status").and_then(|v| v.as_str());
-                    match (from, to, msg_type, status) {
-                        (Some(from), Some(to), Some(msg_type), Some(status)) => Some((
-                            from.to_lowercase(),
-                            to.to_lowercase(),
-                            msg_type.to_lowercase(),
-                            status.to_lowercase(),
-                        )),
-                        _ => None,
-                    }
-                })
-                .map(|(from, to, msg_type, status)| (from, to, msg_type, status))
-                .unwrap_or_else(|| {
-                    let (from, to, msg_type, status) = default_message_route(role);
-                    (
-                        from.to_string(),
-                        to.to_string(),
-                        msg_type.to_string(),
-                        status.to_string(),
-                    )
-                });
-            json!({
-                "action": "message",
-                "from": from,
-                "to": to,
-                "type": msg_type,
-                "status": status,
-                "observation": "Summarize what happened.",
-                "rationale": "Explain why this is the next step.",
-                "predicted_next_actions": example_predicted_next_actions(),
-                "payload": {
-                    "summary": "Short summary"
-                }
-            })
+            let (from, to, msg_type, status) = normalized_message_example_route(raw_action, role);
+            example_message_action(&from, &to, &msg_type, &status)
         }
-        _ => json!({
-            "action": "message",
-            "from": "executor",
-            "to": "verifier",
-            "type": "handoff",
-            "status": "complete",
-            "observation": "Summarize what happened.",
-            "rationale": "Explain why this is the next step.",
-            "predicted_next_actions": example_predicted_next_actions(),
-            "payload": {
-                "summary": "Short summary"
-            }
-        }),
+        _ => example_message_action("executor", "verifier", "handoff", "complete"),
     }
+}
+
+fn normalized_message_example_route(raw_action: Option<&Value>, role: &str) -> (String, String, String, String) {
+    raw_action
+        .and_then(|action| action.as_object())
+        .and_then(|obj| {
+            let from = obj.get("from").and_then(|v| v.as_str());
+            let to = obj.get("to").and_then(|v| v.as_str());
+            let msg_type = obj.get("type").and_then(|v| v.as_str());
+            let status = obj.get("status").and_then(|v| v.as_str());
+            match (from, to, msg_type, status) {
+                (Some(from), Some(to), Some(msg_type), Some(status)) => Some((
+                    from.to_lowercase(),
+                    to.to_lowercase(),
+                    msg_type.to_lowercase(),
+                    status.to_lowercase(),
+                )),
+                _ => None,
+            }
+        })
+        .unwrap_or_else(|| {
+            let (from, to, msg_type, status) = default_message_route(role);
+            (
+                from.to_string(),
+                to.to_string(),
+                msg_type.to_string(),
+                status.to_string(),
+            )
+        })
 }
 
 pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str, role: &str) -> String {
@@ -370,7 +471,10 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
                         .iter()
                         .any(|s| s.starts_with("field type mismatch: action"))
                 {
-                    schema_diff.push("field type mismatch: action (expected string)".to_string());
+                    push_unique(
+                        &mut schema_diff,
+                        "field type mismatch: action (expected string)".to_string(),
+                    );
                 }
             }
             if let Some(rationale) = obj.get("rationale") {
@@ -378,11 +482,13 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
                     if text.trim().is_empty()
                         && !schema_diff.iter().any(|s| s == "missing field: rationale")
                     {
-                        schema_diff.push("missing field: rationale".to_string());
+                        push_unique(&mut schema_diff, "missing field: rationale".to_string());
                     }
                 } else {
-                    schema_diff
-                        .push("field type mismatch: rationale (expected string)".to_string());
+                    push_unique(
+                        &mut schema_diff,
+                        "field type mismatch: rationale (expected string)".to_string(),
+                    );
                 }
             }
         }
@@ -412,8 +518,11 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
             .filter(|s| !s.is_empty())
             .is_none()
         {
-            schema_diff.push("missing field: action".to_string());
-            schema_diff.push("unsupported action: missing or unknown action".to_string());
+            push_unique(&mut schema_diff, "missing field: action".to_string());
+            push_unique(
+                &mut schema_diff,
+                "unsupported action: missing or unknown action".to_string(),
+            );
         }
         if matches!(kind, "run_command" | "read_file" | "apply_patch" | "python" | "cargo_test") {
             let field = match kind {
@@ -424,25 +533,7 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
                 "cargo_test" => "crate",
                 _ => "",
             };
-            if let Some(obj) = obj {
-                if let Some(value) = obj.get(field) {
-                    if let Some(text) = value.as_str() {
-                        if text.trim().is_empty()
-                            && !schema_diff
-                                .iter()
-                                .any(|s| s == &format!("missing field: {field}"))
-                        {
-                            schema_diff.push(format!("missing field: {field}"));
-                        }
-                    } else if !schema_diff
-                        .iter()
-                        .any(|s| s == &format!("field type mismatch: {field} (expected string)"))
-                    {
-                        schema_diff
-                            .push(format!("field type mismatch: {field} (expected string)"));
-                    }
-                }
-            }
+            push_missing_string_object_field(&mut schema_diff, obj, field);
         }
         if kind == "plan" && matches!(role, "planner" | "mini_planner") {
             let rationale = action.get("rationale").and_then(|v| v.as_str()).unwrap_or("");
@@ -464,31 +555,7 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
         }
         if kind == "message" {
             if let Some(obj) = obj {
-                for field in ["from", "to", "type", "status", "payload", "rationale"] {
-                    let value = obj.get(field);
-                    let missing = match field {
-                        "payload" => value.and_then(|v| v.as_object()).is_none(),
-                        _ => value
-                            .and_then(|v| v.as_str())
-                            .map(str::trim)
-                            .filter(|s| !s.is_empty())
-                            .is_none(),
-                    };
-                    if missing {
-                        push_unique(&mut schema_diff, format!("missing field: {field}"));
-                    }
-                    if field == "payload" {
-                        if let Some(val) = value {
-                            if !val.is_object() {
-                                push_unique(&mut schema_diff, "payload must be object".to_string());
-                                push_unique(
-                                    &mut schema_diff,
-                                    "field type mismatch: payload (expected object)".to_string(),
-                                );
-                            }
-                        }
-                    }
-                }
+                push_missing_message_required_fields(&mut schema_diff, obj);
             }
             if let Err(err) = validate_message_action(action, MessageValidationMode::Strict) {
                 let msg = err.to_string();
@@ -557,24 +624,7 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
                         .unwrap_or(false);
                 if is_blocker {
                     for field in ["blocker", "evidence", "required_action"] {
-                        let value = payload.and_then(|p| p.get(field));
-                        if let Some(val) = value {
-                            if !val.is_string() {
-                                push_unique(
-                                    &mut schema_diff,
-                                    format!("field type mismatch: payload.{field} (expected string)"),
-                                );
-                                continue;
-                            }
-                        }
-                        if value
-                            .and_then(|v| v.as_str())
-                            .map(str::trim)
-                            .filter(|s| !s.is_empty())
-                            .is_none()
-                        {
-                            push_unique(&mut schema_diff, format!("payload.{field} missing"));
-                        }
+                        push_missing_string_payload_field(&mut schema_diff, payload, field);
                     }
                 }
             }

@@ -22,6 +22,7 @@ pub enum PredictedActionName {
     ListDir,
     ReadFile,
     Objectives,
+    Issue,
     ApplyPatch,
     RunCommand,
     Python,
@@ -45,6 +46,7 @@ pub const TOOL_ACTION_NAMES: &[&str] = &[
     "list_dir",
     "read_file",
     "objectives",
+    "issue",
     "apply_patch",
     "run_command",
     "python",
@@ -56,6 +58,7 @@ pub const ALL_TOOL_PROMPT_KINDS: &[&str] = &[
     "list_dir",
     "read_file",
     "objectives",
+    "issue",
     "apply_patch",
     "run_command",
     "python",
@@ -63,6 +66,10 @@ pub const ALL_TOOL_PROMPT_KINDS: &[&str] = &[
     "plan",
     "message",
 ];
+
+pub fn cargo_test_action_example() -> &'static str {
+    "Example:\n  {\"action\":\"cargo_test\",\"crate\":\"canon-runtime\",\"test\":\"some_test_name\",\"rationale\":\"Run the exact failing test using the harness-style command.\"}"
+}
 
 fn extract_enum_strings(schema: &SchemaObject) -> Option<Vec<String>> {
     let enums = schema.enum_values.as_ref()?;
@@ -107,6 +114,16 @@ pub enum PlanOp {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
+pub enum IssueOp {
+    Read,
+    Create,
+    Update,
+    Delete,
+    SetStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum ObjectivesOp {
     Read,
     CreateObjective,
@@ -144,6 +161,20 @@ pub enum ToolAction {
         path: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         line: Option<u64>,
+    },
+    Issue {
+        #[serde(flatten)]
+        base: ActionBase,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        op: Option<IssueOp>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        issue_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        status: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        issue: Option<serde_json::Value>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        updates: Option<serde_json::Value>,
     },
     Objectives {
         #[serde(flatten)]
@@ -304,6 +335,13 @@ pub fn tool_protocol_schema_split_text() -> String {
             ),
         ),
         (
+            "issue",
+            "record/update discovered issues in ISSUES.json for later attention",
+            Some(
+                "Examples:\n  {\"action\":\"issue\",\"op\":\"read\",\"rationale\":\"Check open issues before starting work.\"}\n  {\"action\":\"issue\",\"op\":\"create\",\"issue\":{\"id\":\"ISS-001\",\"title\":\"Retry loop does not fire for submit-only turns\",\"status\":\"open\",\"priority\":\"high\",\"kind\":\"bug\",\"description\":\"...\",\"location\":\"src/ws_server.rs:554\",\"evidence\":[\"frames/inbound.jsonl fc=91 only presence frames after fc=76 heartbeat\"],\"discovered_by\":\"solo\"},\"rationale\":\"Record the stall bug for later fix.\"}\n  {\"action\":\"issue\",\"op\":\"set_status\",\"issue_id\":\"ISS-001\",\"status\":\"resolved\",\"rationale\":\"Issue was fixed by removing the pending check.\"}\n  {\"action\":\"issue\",\"op\":\"update\",\"issue_id\":\"ISS-001\",\"updates\":{\"priority\":\"medium\",\"description\":\"Updated description\"},\"rationale\":\"Revise issue details.\"}\nAllowed status: open | in_progress | resolved | wontfix\nAllowed priority: high | medium | low\nAllowed kind: bug | logic | invariant_violation | performance | stale_state",
+            ),
+        ),
+        (
             "objectives",
             "read/update objectives in PLANS/OBJECTIVES.json",
             Some(
@@ -334,9 +372,7 @@ pub fn tool_protocol_schema_split_text() -> String {
         (
             "cargo_test",
             "run a targeted cargo test (harness-style)",
-            Some(
-                "Example:\n  {\"action\":\"cargo_test\",\"crate\":\"canon-runtime\",\"test\":\"some_test_name\",\"rationale\":\"Run the exact failing test using the harness-style command.\"}",
-            ),
+            Some(cargo_test_action_example()),
         ),
         (
             "plan",

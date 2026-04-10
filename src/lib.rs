@@ -6,6 +6,7 @@ mod engine;
 pub mod logging;
 mod md_convert;
 mod action_examples;
+mod issues;
 mod objectives;
 mod tool_schema;
 mod prompts;

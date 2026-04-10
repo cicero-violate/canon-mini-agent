@@ -6,6 +6,7 @@ pub const OBJECTIVES_FILE: &str = "PLANS/OBJECTIVES.json";
 pub const OBJECTIVES_MD_FILE: &str = "PLANS/OBJECTIVES.md";
 pub const MASTER_PLAN_FILE: &str = "PLAN.json";
 pub const VIOLATIONS_FILE: &str = "VIOLATIONS.json";
+pub const ISSUES_FILE: &str = "ISSUES.json";
 pub const INVARIANTS_FILE: &str = "INVARIANTS.json";
 pub const INVARIANTS_MD_FILE: &str = "INVARIANT.md";
 pub const CANONICAL_LAW_FILE: &str = "CANONICAL_LAW.md";
