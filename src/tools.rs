@@ -1332,7 +1332,7 @@ struct SymbolsIndexFile {
     symbols: Vec<SymbolEntry>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct RenameCandidate {
     name: String,
     kind: String,
@@ -1342,11 +1342,20 @@ struct RenameCandidate {
     reasons: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct RenameCandidatesFile {
     version: u32,
     source_symbols_path: String,
     candidates: Vec<RenameCandidate>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct PreparedRenameActionFile {
+    version: u32,
+    source_candidates_path: String,
+    selected_index: usize,
+    selected_candidate: RenameCandidate,
+    rename_action: Value,
 }
 
 fn line_starts(text: &str) -> Vec<usize> {
@@ -1703,6 +1712,73 @@ fn handle_symbols_rename_candidates_action(workspace: &Path, action: &Value) -> 
             "symbols_rename_candidates ok: output={} candidates={}",
             out_raw,
             payload.candidates.len()
+        ),
+    ))
+}
+
+fn handle_symbols_prepare_rename_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+    let candidates_path_raw = action
+        .get("candidates_path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("state/rename_candidates.json");
+    let out_raw = action
+        .get("out")
+        .and_then(|v| v.as_str())
+        .unwrap_or("state/next_rename_action.json");
+    let index = action.get("index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+    let candidates_path = safe_join(workspace, candidates_path_raw)?;
+    let out_path = safe_join(workspace, out_raw)?;
+    let candidates_text = fs::read_to_string(&candidates_path)
+        .with_context(|| format!("read {}", candidates_path.display()))?;
+    let candidates_file: RenameCandidatesFile =
+        serde_json::from_str(&candidates_text).context("parse rename candidates json")?;
+
+    if candidates_file.candidates.is_empty() {
+        bail!("symbols_prepare_rename: no candidates in {}", candidates_path_raw);
+    }
+    if index >= candidates_file.candidates.len() {
+        bail!(
+            "symbols_prepare_rename: index {} out of range (candidates={})",
+            index,
+            candidates_file.candidates.len()
+        );
+    }
+    let selected = candidates_file.candidates[index].clone();
+    let rename_action = json!({
+        "action": "rename_symbol",
+        "path": selected.file,
+        "line": selected.span.line,
+        "column": selected.span.column,
+        "old_name": selected.name,
+        "new_name": format!("{}_renamed", selected.name),
+        "question": "Does this selected candidate represent the exact symbol to rename at this location without changing intended behavior?",
+        "rationale": "Apply the prepared rename candidate deterministically and validate impacts immediately after.",
+        "predicted_next_actions": [
+            {"action": "cargo_test", "intent": "Run focused tests for the touched area after rename."},
+            {"action": "run_command", "intent": "Run cargo check to verify workspace compile health."}
+        ]
+    });
+    let payload = PreparedRenameActionFile {
+        version: 1,
+        source_candidates_path: candidates_path_raw.to_string(),
+        selected_index: index,
+        selected_candidate: selected,
+        rename_action,
+    };
+    if let Some(parent) = out_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("create prepared rename output dir {}", parent.display()))?;
+    }
+    fs::write(
+        &out_path,
+        serde_json::to_string_pretty(&payload).context("serialize prepared rename action json")?,
+    )
+    .with_context(|| format!("write {}", out_path.display()))?;
+    Ok((
+        false,
+        format!(
+            "symbols_prepare_rename ok: output={} selected_index={} selected_name={}",
+            out_raw, payload.selected_index, payload.selected_candidate.name
         ),
     ))
 }
@@ -3720,6 +3796,7 @@ fn execute_action(
         "read_file" => handle_read_file_action(role, step, workspace, action),
         "symbols_index" => handle_symbols_index_action(workspace, action),
         "symbols_rename_candidates" => handle_symbols_rename_candidates_action(workspace, action),
+        "symbols_prepare_rename" => handle_symbols_prepare_rename_action(workspace, action),
         "rename_symbol" => handle_rename_symbol_action(role, step, workspace, action),
         "objectives" => handle_objectives_action(workspace, action),
         "issue" => handle_issue_action(workspace, action),
@@ -3736,7 +3813,7 @@ fn execute_action(
         other => Ok((
             false,
             format!(
-                "unsupported action '{other}' — use list_dir, read_file, symbols_index, symbols_rename_candidates, rename_symbol, objectives, issue, apply_patch, run_command, python, cargo_test, plan, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, or message"
+                "unsupported action '{other}' — use list_dir, read_file, symbols_index, symbols_rename_candidates, symbols_prepare_rename, rename_symbol, objectives, issue, apply_patch, run_command, python, cargo_test, plan, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, or message"
             ),
         )),
     }
@@ -3849,6 +3926,7 @@ mod tests {
     use super::handle_objectives_action;
     use super::handle_plan_action;
     use super::handle_rename_symbol_action;
+    use super::handle_symbols_prepare_rename_action;
     use super::handle_symbols_rename_candidates_action;
     use super::handle_symbols_index_action;
     use crate::logging::init_log_paths;
@@ -4075,6 +4153,63 @@ mod tests {
                     .and_then(|v| v.as_array())
                     .is_some_and(|arr| arr.iter().any(|r| r.as_str().unwrap_or("").contains("inconsistent verb prefix")))
         }));
+    }
+
+    #[test]
+    fn symbols_prepare_rename_writes_ready_action_payload() {
+        let tmp = fresh_test_dir("symbols-prepare-rename");
+        std::fs::create_dir_all(tmp.join("state")).unwrap();
+        let candidates_json = serde_json::json!({
+            "version": 1,
+            "source_symbols_path": "state/symbols.json",
+            "candidates": [
+                {"name":"tmp","kind":"function","file":"src/a.rs","span":{"start":1,"end":4,"line":10,"column":5,"end_line":10,"end_column":8},"score":55,"reasons":["name is ambiguous/generic"]}
+            ]
+        });
+        std::fs::write(
+            tmp.join("state/rename_candidates.json"),
+            serde_json::to_string_pretty(&candidates_json).unwrap(),
+        )
+        .unwrap();
+        let action = json!({
+            "candidates_path": "state/rename_candidates.json",
+            "index": 0,
+            "out": "state/next_rename_action.json",
+            "rationale": "prepare rename action",
+            "predicted_next_actions": [
+                {"action": "read_file", "intent": "inspect payload"},
+                {"action": "rename_symbol", "intent": "execute"}
+            ]
+        });
+
+        let (_done, out) = handle_symbols_prepare_rename_action(&tmp, &action).unwrap();
+        assert!(out.contains("symbols_prepare_rename ok"));
+        let raw = std::fs::read_to_string(tmp.join("state/next_rename_action.json")).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(parsed.get("version").and_then(|v| v.as_u64()), Some(1));
+        let rename_action = parsed.get("rename_action").expect("rename_action");
+        assert_eq!(
+            rename_action
+                .get("action")
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+            "rename_symbol"
+        );
+        assert_eq!(
+            rename_action.get("path").and_then(|v| v.as_str()).unwrap_or(""),
+            "src/a.rs"
+        );
+        assert_eq!(
+            rename_action.get("line").and_then(|v| v.as_u64()).unwrap_or(0),
+            10
+        );
+        assert_eq!(
+            rename_action
+                .get("column")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0),
+            5
+        );
     }
 
     #[test]
@@ -4612,7 +4747,7 @@ mod tests {
         let objective_records: Vec<&Value> = new_records
             .iter()
             .filter(|record| {
-                record.get("kind").and_then(|v| v.as_str()) == Some("trace")
+                record.get("kind").and_then(|v| v.as_str()) == Some("orch")
                     && record.get("phase").and_then(|v| v.as_str())
                         == Some("objective_operation_context")
             })
@@ -4621,7 +4756,7 @@ mod tests {
         assert_eq!(objective_records.len(), 2, "expected attempt and success trace records");
 
         let attempt = objective_records[0];
-        assert_eq!(attempt.get("text").and_then(|v| v.as_str()), Some("objective_operation_context"));
+        assert!(attempt.get("text").is_none());
         let attempt_meta = attempt.get("meta").expect("attempt meta");
         assert_eq!(attempt_meta.get("operation").and_then(|v| v.as_str()), Some("update_objective"));
         assert_eq!(attempt_meta.get("outcome").and_then(|v| v.as_str()), Some("attempt"));
@@ -4631,7 +4766,7 @@ mod tests {
         assert_eq!(attempt_meta.get("compared_normalized_ids"), Some(&json!(["obj_alpha"])));
 
         let success = objective_records[1];
-        assert_eq!(success.get("text").and_then(|v| v.as_str()), Some("objective_operation_context"));
+        assert!(success.get("text").is_none());
         let success_meta = success.get("meta").expect("success meta");
         assert_eq!(success_meta.get("operation").and_then(|v| v.as_str()), Some("update_objective"));
         assert_eq!(success_meta.get("outcome").and_then(|v| v.as_str()), Some("success"));

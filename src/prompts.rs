@@ -31,6 +31,7 @@ pub(crate) enum ToolPromptKind {
     ReadFile,
     SymbolsIndex,
     SymbolsRenameCandidates,
+    SymbolsPrepareRename,
     RenameSymbol,
     Objectives,
     ApplyPatch,
@@ -53,6 +54,7 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
             ToolPromptKind::ReadFile,
             ToolPromptKind::SymbolsIndex,
             ToolPromptKind::SymbolsRenameCandidates,
+            ToolPromptKind::SymbolsPrepareRename,
             ToolPromptKind::RenameSymbol,
             ToolPromptKind::Objectives,
             ToolPromptKind::Python,
@@ -67,6 +69,7 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
             ToolPromptKind::ReadFile,
             ToolPromptKind::SymbolsIndex,
             ToolPromptKind::SymbolsRenameCandidates,
+            ToolPromptKind::SymbolsPrepareRename,
             ToolPromptKind::RenameSymbol,
             ToolPromptKind::Objectives,
             ToolPromptKind::ApplyPatch,
@@ -81,6 +84,7 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
             ToolPromptKind::ReadFile,
             ToolPromptKind::SymbolsIndex,
             ToolPromptKind::SymbolsRenameCandidates,
+            ToolPromptKind::SymbolsPrepareRename,
             ToolPromptKind::RenameSymbol,
             ToolPromptKind::Objectives,
             ToolPromptKind::ApplyPatch,
@@ -108,6 +112,9 @@ fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
         }
         (_, ToolPromptKind::SymbolsRenameCandidates) => {
             "symbols_rename_candidates — derive deterministic rename candidates from symbols.json"
+        }
+        (_, ToolPromptKind::SymbolsPrepareRename) => {
+            "symbols_prepare_rename — select candidate and emit ready rename_symbol payload"
         }
         (_, ToolPromptKind::RenameSymbol) => {
             "rename_symbol — rename a Rust identifier at line/column (file-scoped v1)"
@@ -203,6 +210,9 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
         }
         (_, ToolPromptKind::SymbolsRenameCandidates) => {
             "   {\"action\":\"symbols_rename_candidates\",\"symbols_path\":\"state/symbols.json\",\"out\":\"state/rename_candidates.json\",\"rationale\":\"Derive deterministic rename candidates from symbols inventory before mutating code.\"}\n   Notes: `symbols_path` defaults to `state/symbols.json`; `out` defaults to `state/rename_candidates.json`.".to_string()
+        }
+        (_, ToolPromptKind::SymbolsPrepareRename) => {
+            "   {\"action\":\"symbols_prepare_rename\",\"candidates_path\":\"state/rename_candidates.json\",\"index\":0,\"out\":\"state/next_rename_action.json\",\"rationale\":\"Select one deterministic candidate and prepare a ready rename_symbol action payload.\"}\n   Notes: `candidates_path` defaults to `state/rename_candidates.json`; `index` defaults to 0; `out` defaults to `state/next_rename_action.json`.".to_string()
         }
         (AgentPromptKind::Executor | AgentPromptKind::Solo, ToolPromptKind::RenameSymbol) => {
             "   {\"action\":\"rename_symbol\",\"path\":\"src/tools.rs\",\"line\":2230,\"column\":8,\"old_name\":\"handle_plan_action\",\"new_name\":\"handle_master_plan_action\",\"question\":\"Is this exact symbol-at-position the one that should be renamed without changing behavior?\",\"rationale\":\"Perform a deterministic symbol rename.\",\"predicted_next_actions\":[{\"action\":\"cargo_test\",\"intent\":\"Run focused tests for the renamed path.\"},{\"action\":\"run_command\",\"intent\":\"Run cargo check after the rename.\"}]}\n   Notes: line/column are 1-based; v1 is file-scoped and supports .rs files.".to_string()
