@@ -492,18 +492,8 @@ pub fn tool_protocol_schema_json() -> String {
     serde_json::to_string_pretty(&schema).unwrap_or_else(|_| "{}".to_string())
 }
 
-pub fn tool_protocol_schema_split_text() -> String {
-    let schema = schema_for!(ToolAction);
-    let value = serde_json::to_value(&schema).unwrap_or_else(|_| Value::Object(Default::default()));
-    let mut out = String::new();
-    out.push_str(
-        "Each action has its own schema; choose the schema that matches the `action` field.\n",
-    );
-    out.push_str(
-        "Common fields appear in every action: `rationale` (non-empty), `predicted_next_actions` (2-3 items), and optional `observation`.\n\n",
-    );
-
-    let actions = [
+fn build_tool_actions_list() -> Vec<(&'static str, &'static str, Option<&'static str>)> {
+    vec![
         (
             "message",
             "send inter-agent protocol message",
@@ -644,17 +634,26 @@ pub fn tool_protocol_schema_split_text() -> String {
                 "Example:\n  {\"action\":\"symbol_neighborhood\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"rationale\":\"Understand the blast radius of a function before modifying it.\"}\nExample (with bodies):\n  {\"action\":\"symbol_neighborhood\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"expand_bodies\":true,\"rationale\":\"Read every caller and callee body before refactoring.\"}\nNotes: returns all direct callers and callees from the static call graph.",
             ),
         ),
-    ];
+    ]
+}
 
-    for (action, desc, notes) in actions {
+pub fn tool_protocol_schema_split_text() -> String {
+    let schema = schema_for!(ToolAction);
+    let value = serde_json::to_value(&schema).unwrap_or_else(|_| Value::Object(Default::default()));
+    let mut out = String::new();
+    out.push_str(
+        "Each action has its own schema; choose the schema that matches the `action` field.\n",
+    );
+    out.push_str(
+        "Common fields appear in every action: `rationale` (non-empty), `predicted_next_actions` (2-3 items), and optional `observation`.\n\n",
+    );
+
+    let actions = build_tool_actions_list();
+    for (action, desc, _notes) in &actions {
         let schema = find_action_schema(&value, action)
             .and_then(|v| serde_json::to_string_pretty(v).ok())
             .unwrap_or_else(|| "{}".to_string());
         out.push_str(&format!("Action: `{action}` — {desc}\n```json\n{schema}\n```\n\n"));
-        if let Some(notes) = notes {
-            out.push_str(notes);
-            out.push_str("\n\n");
-        }
     }
 
     if let Some(defs) = value.get("definitions") {
@@ -665,7 +664,40 @@ pub fn tool_protocol_schema_split_text() -> String {
         }
     }
 
+    out.push_str("\nSyntax examples for every action: state/tool_examples.md — use read_file when you need a reminder.\n");
     out
+}
+
+/// Write per-action syntax examples to `state/tool_examples.md`.
+/// Called once at agent-loop startup so the file is always fresh.
+pub fn write_tool_examples(workspace: &std::path::Path) {
+    if let Err(e) = write_tool_examples_inner(workspace) {
+        eprintln!("[tool_examples] failed to write: {e}");
+    }
+}
+
+fn write_tool_examples_inner(workspace: &std::path::Path) -> anyhow::Result<()> {
+    let schema = schema_for!(ToolAction);
+    let value = serde_json::to_value(&schema).unwrap_or_else(|_| Value::Object(Default::default()));
+    let actions = build_tool_actions_list();
+    let dir = workspace.join("state");
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join("tool_examples.md");
+    let mut out = String::from("# Tool action syntax examples\n\n");
+    for (action, desc, notes) in &actions {
+        out.push_str(&format!("## `{action}` — {desc}\n\n"));
+        if let Some(notes) = notes {
+            out.push_str(notes);
+            out.push_str("\n\n");
+        } else {
+            let schema = find_action_schema(&value, action)
+                .and_then(|v| serde_json::to_string_pretty(v).ok())
+                .unwrap_or_else(|| "{}".to_string());
+            out.push_str(&format!("```json\n{schema}\n```\n\n"));
+        }
+    }
+    std::fs::write(&path, out)?;
+    Ok(())
 }
 
 pub(crate) fn validate_tool_action(action: &Value) -> Result<()> {

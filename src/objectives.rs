@@ -52,6 +52,31 @@ pub fn read_objectives_filtered(path: &Path) -> String {
     filter_incomplete_objectives_json(&raw).unwrap_or(raw)
 }
 
+/// Compact one-liner-per-objective for prompt injection.
+/// Strips description/requirement/verification/success_criteria to keep token cost low.
+/// Only non-done objectives are included.
+pub fn read_objectives_compact(path: &Path) -> String {
+    let raw = std::fs::read_to_string(path).unwrap_or_default();
+    if raw.trim().is_empty() {
+        return String::new();
+    }
+    let Ok(file) = serde_json::from_str::<ObjectivesFile>(&raw) else {
+        return raw;
+    };
+    let active: Vec<&Objective> = file.objectives.iter().filter(|o| !is_completed(o)).collect();
+    if active.is_empty() {
+        return String::new();
+    }
+    let mut out = String::new();
+    for obj in &active {
+        let status = if obj.status.trim().is_empty() { "active" } else { obj.status.trim() };
+        let scope = if obj.scope.trim().is_empty() { String::new() } else { format!("  ({})", obj.scope.trim()) };
+        out.push_str(&format!("[{status}]  {}  —  {}{scope}\n", obj.id, obj.title));
+    }
+    out.push_str("Full detail: {\"action\":\"objectives\",\"op\":\"read\"}");
+    out
+}
+
 pub fn filter_incomplete_objectives_json(raw: &str) -> Option<String> {
     let mut file: ObjectivesFile = serde_json::from_str(raw).ok()?;
     file.objectives = file

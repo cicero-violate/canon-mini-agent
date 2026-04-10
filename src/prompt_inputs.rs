@@ -5,7 +5,6 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 use crate::constants::{INVARIANTS_FILE, MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE};
-use crate::objectives::read_objectives_filtered;
 use crate::issues::read_open_issues;
 use crate::prompts::{
     single_role_diagnostics_prompt, single_role_executor_prompt, single_role_planner_prompt,
@@ -303,42 +302,54 @@ pub fn filter_pending_plan_json(raw: &str) -> String {
 
 pub fn filter_active_violations_json(raw: &str) -> String {
     if raw.trim().is_empty() {
-        return "(no active violations)".to_string();
+        return String::new();
     }
-    let Ok(mut value) = serde_json::from_str::<Value>(raw) else {
+    let Ok(value) = serde_json::from_str::<Value>(raw) else {
         return raw.to_string();
     };
-    let Some(obj) = value.as_object_mut() else {
-        return raw.to_string();
-    };
-    let Some(violations) = obj.get("violations").and_then(Value::as_array) else {
+    let Some(violations) = value.get("violations").and_then(Value::as_array) else {
         return raw.to_string();
     };
     if violations.is_empty() {
-        return "(no active violations)".to_string();
+        return String::new();
     }
-    obj.insert("violations".to_string(), Value::Array(violations.clone()));
-    serde_json::to_string_pretty(&value).unwrap_or_else(|_| raw.to_string())
+    let mut out = String::new();
+    for v in violations {
+        let id = v.get("id").and_then(Value::as_str).unwrap_or("?");
+        let title = v.get("title").and_then(Value::as_str)
+            .or_else(|| v.get("description").and_then(Value::as_str))
+            .unwrap_or("(no title)");
+        let severity = v.get("severity").and_then(Value::as_str).unwrap_or("error");
+        out.push_str(&format!("[{severity}]  {id}  —  {title}\n"));
+    }
+    out.push_str("Full detail: {\"action\":\"read_file\",\"path\":\"VIOLATIONS.json\"}");
+    out
 }
 
 pub fn filter_active_diagnostics_json(raw: &str) -> String {
     if raw.trim().is_empty() {
-        return "(no active diagnostics failures)".to_string();
+        return String::new();
     }
-    let Ok(mut value) = serde_json::from_str::<Value>(raw) else {
+    let Ok(value) = serde_json::from_str::<Value>(raw) else {
         return raw.to_string();
     };
-    let Some(obj) = value.as_object_mut() else {
-        return raw.to_string();
-    };
-    let Some(failures) = obj.get("ranked_failures").and_then(Value::as_array) else {
+    let Some(failures) = value.get("ranked_failures").and_then(Value::as_array) else {
         return raw.to_string();
     };
     if failures.is_empty() {
-        return "(no active diagnostics failures)".to_string();
+        return String::new();
     }
-    obj.insert("ranked_failures".to_string(), Value::Array(failures.clone()));
-    serde_json::to_string_pretty(&value).unwrap_or_else(|_| raw.to_string())
+    let mut out = String::new();
+    for (rank, f) in failures.iter().enumerate() {
+        let id = f.get("id").and_then(Value::as_str).unwrap_or("?");
+        let title = f.get("title").and_then(Value::as_str)
+            .or_else(|| f.get("description").and_then(Value::as_str))
+            .unwrap_or("(no title)");
+        let severity = f.get("severity").and_then(Value::as_str).unwrap_or("?");
+        out.push_str(&format!("[{}] [{severity}]  {id}  —  {title}\n", rank + 1));
+    }
+    out.push_str("Full detail: {\"action\":\"read_file\",\"path\":\"DIAGNOSTICS.json\"}");
+    out
 }
 
 /// Returns a human-readable explanation of which failure is missing source
@@ -538,7 +549,7 @@ pub fn load_planner_inputs(
     let summary_text = lane_summary_text(lanes, verifier_summary);
     let executor_diff_text = load_executor_diff_inputs(workspace, last_executor_diff, 400).diff_text;
     let lessons_text = read_lessons_or_empty(workspace);
-    let objectives_text = read_objectives_filtered(&workspace.join(OBJECTIVES_FILE));
+    let objectives_text = crate::objectives::read_objectives_compact(&workspace.join(OBJECTIVES_FILE));
     let invariants_text = read_text_or_empty(workspace.join(INVARIANTS_FILE));
     let raw_violations_text = read_text_or_empty(violations_path);
     let violations_text = filter_active_violations_json(&raw_violations_text);
@@ -575,7 +586,7 @@ impl SingleRoleContext<'_> {
     pub fn read(&self, kind: SingleRoleRead) -> Result<String> {
         let text = match kind {
             SingleRoleRead::Objectives => {
-                read_objectives_filtered(&self.workspace.join(OBJECTIVES_FILE))
+                crate::objectives::read_objectives_compact(&self.workspace.join(OBJECTIVES_FILE))
             }
             SingleRoleRead::Invariants => read_text_or_empty(self.workspace.join(INVARIANTS_FILE)),
             SingleRoleRead::Lessons => read_lessons_or_empty(self.workspace),
@@ -953,16 +964,13 @@ mod diagnostics_filter_tests {
     #[test]
     fn filter_active_violations_json_reports_none_when_empty() {
         let raw = r#"{"status":"verified","violations":[]}"#;
-        assert_eq!(filter_active_violations_json(raw), "(no active violations)");
+        assert!(filter_active_violations_json(raw).is_empty());
     }
 
     #[test]
     fn filter_active_diagnostics_json_reports_none_when_empty() {
         let raw = r#"{"status":"verified","ranked_failures":[]}"#;
-        assert_eq!(
-            filter_active_diagnostics_json(raw),
-            "(no active diagnostics failures)"
-        );
+        assert!(filter_active_diagnostics_json(raw).is_empty());
     }
 
     #[test]

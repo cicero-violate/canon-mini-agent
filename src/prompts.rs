@@ -189,6 +189,7 @@ fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
     }
 }
 
+
 const READ_FILE_FOOTER: &str = "   With \"line\":N the output starts at line N and shows up to 1000 lines.\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.\n   ⚠ read_file output is prefixed with line numbers (\"42: code here\"). Strip the \"N: \" prefix when\n     writing patch lines — patch lines must contain ONLY the raw source text, never \"42: code here\".\n     WRONG:  -42: fn old() {}   RIGHT:  -fn old() {}";
 
 const READ_FILE_EXECUTOR_FOOTER: &str = "   With \"line\":N the output starts at line N and shows up to 1000 lines.\n   ⚠ Always read a file before patching it. Never patch from memory.\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.\n   ⚠ read_file output is prefixed with line numbers (\"42: code here\"). Strip the \"N: \" prefix when\n     writing patch lines — patch lines must contain ONLY the raw source text, never \"42: code here\".\n     WRONG:  -42: fn old() {}   RIGHT:  -fn old() {}";
@@ -757,9 +758,39 @@ pub(crate) fn planner_cycle_prompt(
     let workspace = workspace();
     let diagnostics_file = diagnostics_file();
     let issues_file = crate::constants::ISSUES_FILE;
-    format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics: {diagnostics_file}\n- Issues: {issues_file}\n- Master plan: {MASTER_PLAN_FILE}\n\nPlan diff (from {MASTER_PLAN_FILE}):\n{plan_diff}\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives_text}\n\nOpen issues (from {issues_file}):\n{issues_text}\n\nLessons artifact:\n{lessons_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants_text}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations_text}\n\nDiagnostics report (from {diagnostics_file}):\n{diagnostics_text}\n\nLatest verifier summary:\n{summary_text}\n\nDiagnostics-derived planning guard:\n- Do not create or reprioritize tasks from diagnostics alone.\n- Before accepting any diagnostics claim, read the implicated source files or gather equivalent current-cycle evidence.\n- Treat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\n- If diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks.\n\nBefore completing this cycle, review {OBJECTIVES_FILE} and add or update objectives to capture anything discovered. New objectives require a unique id, title, category, level, and description. Use apply_patch to write them.\n\nYou may send a message action to other agents at any time.  Think hard internally before responding."
-    )
+    let mut s = format!(
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics: {diagnostics_file}\n- Issues: {issues_file}\n- Master plan: {MASTER_PLAN_FILE}\n\nPlan diff (from {MASTER_PLAN_FILE}):\n{plan_diff}"
+    );
+    if !executor_diff.trim().is_empty() {
+        s.push_str(&format!("\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff}"));
+    }
+    if !cargo_test_failures.trim().is_empty() {
+        s.push_str(&format!("\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}"));
+    }
+    if !objectives_text.trim().is_empty() {
+        s.push_str(&format!("\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives_text}"));
+    }
+    if !issues_text.trim().is_empty() {
+        s.push_str(&format!("\n\nOpen issues (from {issues_file}):\n{issues_text}"));
+    }
+    if !lessons_text.trim().is_empty() {
+        s.push_str(&format!("\n\nLessons artifact:\n{lessons_text}"));
+    }
+    if !invariants_text.trim().is_empty() {
+        s.push_str(&format!("\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants_text}"));
+    }
+    if !violations_text.trim().is_empty() {
+        s.push_str(&format!("\n\nViolations (from {VIOLATIONS_FILE}):\n{violations_text}"));
+    }
+    if !diagnostics_text.trim().is_empty() {
+        s.push_str(&format!("\n\nDiagnostics report (from {diagnostics_file}):\n{diagnostics_text}"));
+    }
+    if !summary_text.trim().is_empty() {
+        s.push_str(&format!("\n\nLatest verifier summary:\n{summary_text}"));
+    }
+    s.push_str("\n\nDiagnostics-derived planning guard:\n- Do not create or reprioritize tasks from diagnostics alone.\n- Before accepting any diagnostics claim, read the implicated source files or gather equivalent current-cycle evidence.\n- Treat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\n- If diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks.");
+    s.push_str(&format!("\n\nBefore completing this cycle, review {OBJECTIVES_FILE} and add or update objectives to capture anything discovered. New objectives require a unique id, title, category, level, and description. Use apply_patch to write them.\n\nYou may send a message action to other agents at any time.  Think hard internally before responding."));
+    s
 }
 
 pub(crate) fn executor_cycle_prompt(
@@ -805,16 +836,30 @@ pub(crate) fn diagnostics_cycle_prompt(summary_text: &str, cargo_test_failures: 
 }
 
 pub(crate) fn single_role_verifier_prompt(
-    primary_input: &str,
+    _primary_input: &str,
     objectives: &str,
     invariants: &str,
     executor_diff_text: &str,
     cargo_test_failures: &str,
 ) -> String {
     let workspace = workspace();
-    format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{primary_input}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff_text}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nVerify that objectives in {OBJECTIVES_FILE} are completed properly.\nUpdate task status fields in {MASTER_PLAN_FILE} to reflect verified results.\nWrite violations to {VIOLATIONS_FILE} if any are found.\nWhen complete, report verified/unverified/false items in `message.payload`.\nEmit exactly one action to begin. Think through the decision internally; reveal chain-of-thought."
-    )
+    let mut sections = format!(
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed."
+    );
+    if !objectives.trim().is_empty() {
+        sections.push_str(&format!("\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}"));
+    }
+    if !invariants.trim().is_empty() {
+        sections.push_str(&format!("\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}"));
+    }
+    if !executor_diff_text.trim().is_empty() {
+        sections.push_str(&format!("\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff_text}"));
+    }
+    if !cargo_test_failures.trim().is_empty() {
+        sections.push_str(&format!("\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}"));
+    }
+    sections.push_str(&format!("\n\nVerify that objectives in {OBJECTIVES_FILE} are completed properly.\nUpdate task status fields in {MASTER_PLAN_FILE} to reflect verified results.\nWrite violations to {VIOLATIONS_FILE} if any are found.\nWhen complete, report verified/unverified/false items in `message.payload`.\nEmit exactly one action to begin. Think through the decision internally; reveal chain-of-thought."));
+    sections
 }
 
 pub(crate) fn single_role_diagnostics_prompt(
@@ -830,7 +875,7 @@ pub(crate) fn single_role_diagnostics_prompt(
 }
 
 pub(crate) fn single_role_planner_prompt(
-    primary_input: &str,
+    _primary_input: &str,
     objectives: &str,
     lessons_text: &str,
     invariants: &str,
@@ -842,13 +887,36 @@ pub(crate) fn single_role_planner_prompt(
     let workspace = workspace();
     let diagnostics_path = diagnostics_file();
     let issues_file = crate::constants::ISSUES_FILE;
-    format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{primary_input}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nOpen issues (from {issues_file}):\n{issues}\n\nLessons artifact:\n{lessons_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nDo not create or reprioritize tasks from diagnostics alone.\nBefore accepting any diagnostics claim, read the implicated source files or gather equivalent current-cycle evidence.\nTreat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\nIf diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow."
-    )
+    let mut sections = format!(
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed."
+    );
+    if !objectives.trim().is_empty() {
+        sections.push_str(&format!("\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}"));
+    }
+    if !issues.trim().is_empty() {
+        sections.push_str(&format!("\n\nOpen issues (from {issues_file}):\n{issues}"));
+    }
+    if !lessons_text.trim().is_empty() {
+        sections.push_str(&format!("\n\nLessons artifact:\n{lessons_text}"));
+    }
+    if !invariants.trim().is_empty() {
+        sections.push_str(&format!("\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}"));
+    }
+    if !violations.trim().is_empty() {
+        sections.push_str(&format!("\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}"));
+    }
+    if !diagnostics.trim().is_empty() {
+        sections.push_str(&format!("\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}"));
+    }
+    if !cargo_test_failures.trim().is_empty() {
+        sections.push_str(&format!("\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}"));
+    }
+    sections.push_str(&format!("\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nDo not create or reprioritize tasks from diagnostics alone.\nBefore accepting any diagnostics claim, read the implicated source files or gather equivalent current-cycle evidence.\nTreat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\nIf diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow."));
+    sections
 }
 
 pub(crate) fn single_role_solo_prompt(
-    spec: &str,
+    _spec: &str,
     master_plan: &str,
     objectives: &str,
     lessons_text: &str,
@@ -860,18 +928,36 @@ pub(crate) fn single_role_solo_prompt(
 ) -> String {
     let workspace = workspace();
     let diagnostics_path = diagnostics_file();
-    let rename_section = if rename_candidates.trim().is_empty() {
-        String::new()
-    } else {
-        format!("\n\nPending rename tasks (from state/rename_candidates.json):\n{rename_candidates}\nFor each candidate: use `symbols_prepare_rename` to select it, then `rename_symbol` to apply. Work through them in score-descending order.")
-    };
-    format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{spec}\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nLessons artifact:\n{lessons_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}{rename_section}\n\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nUse the `issue` action to record discovered problems for later attention."
-    )
+    let mut sections = format!(
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed.\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}"
+    );
+    if !objectives.trim().is_empty() {
+        sections.push_str(&format!("\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}"));
+    }
+    if !lessons_text.trim().is_empty() {
+        sections.push_str(&format!("\n\nLessons artifact:\n{lessons_text}"));
+    }
+    if !invariants.trim().is_empty() {
+        sections.push_str(&format!("\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}"));
+    }
+    if !violations.trim().is_empty() {
+        sections.push_str(&format!("\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}"));
+    }
+    if !diagnostics.trim().is_empty() {
+        sections.push_str(&format!("\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}"));
+    }
+    if !cargo_test_failures.trim().is_empty() {
+        sections.push_str(&format!("\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}"));
+    }
+    if !rename_candidates.trim().is_empty() {
+        sections.push_str(&format!("\n\nPending rename tasks (from state/rename_candidates.json):\n{rename_candidates}\nFor each candidate: use `symbols_prepare_rename` to select it, then `rename_symbol` to apply. Work through them in score-descending order."));
+    }
+    sections.push_str("\n\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nUse the `issue` action to record discovered problems for later attention.");
+    sections
 }
 
 pub(crate) fn single_role_executor_prompt(
-    spec: &str,
+    _spec: &str,
     master_plan: &str,
     violations: &str,
     diagnostics: &str,
@@ -879,9 +965,20 @@ pub(crate) fn single_role_executor_prompt(
 ) -> String {
     let workspace = workspace();
     let diagnostics_path = diagnostics_file();
-    format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{spec}\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics (from {diagnostics_path}):\n{diagnostics}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nLane plans are deprecated. Use planner handoff messages and {MASTER_PLAN_FILE} for task selection.\n\nDo not modify spec, plan, violations, or diagnostics.\nDo not use internal tools.\nDo not hand off work; continue execution directly in the current role flow.\nUse `message.payload` to report evidence for verifier review. Emit exactly one action to begin. Think through the decision internally; reveal chain-of-thought."
-    )
+    let mut sections = format!(
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed.\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}"
+    );
+    if !violations.trim().is_empty() {
+        sections.push_str(&format!("\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}"));
+    }
+    if !diagnostics.trim().is_empty() {
+        sections.push_str(&format!("\n\nDiagnostics (from {diagnostics_path}):\n{diagnostics}"));
+    }
+    if !invariants.trim().is_empty() {
+        sections.push_str(&format!("\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}"));
+    }
+    sections.push_str("\n\nLane plans are deprecated. Use planner handoff messages and {MASTER_PLAN_FILE} for task selection.\n\nDo not modify spec, plan, violations, or diagnostics.\nDo not use internal tools.\nDo not hand off work; continue execution directly in the current role flow.\nUse `message.payload` to report evidence for verifier review. Emit exactly one action to begin. Think through the decision internally; reveal chain-of-thought.");
+    sections
 }
 
 #[cfg(test)]

@@ -490,9 +490,9 @@ async fn run_solo_phase(
     let agent_root = crate::constants::agent_state_dir().trim_end_matches("/agent_state");
     let agent_objectives = Path::new(agent_root).join(OBJECTIVES_FILE);
     let objectives = if agent_objectives.exists() {
-        crate::objectives::read_objectives_filtered(&agent_objectives)
+        crate::objectives::read_objectives_compact(&agent_objectives)
     } else {
-        crate::objectives::read_objectives_filtered(&ctx.workspace.join(OBJECTIVES_FILE))
+        crate::objectives::read_objectives_compact(&ctx.workspace.join(OBJECTIVES_FILE))
     };
     let invariants = read_text_or_empty(ctx.workspace.join(INVARIANTS_FILE));
     let violations = crate::prompt_inputs::filter_active_violations_json(&read_text_or_empty(
