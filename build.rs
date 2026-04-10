@@ -70,6 +70,15 @@ fn main() {
     println!("cargo:rerun-if-changed=state/rustc/index.json");
     println!("cargo:rerun-if-changed=state/rustc/canon_mini_agent/graph.json");
 
+    // NOTE: Cargo build scripts run *before* compiling the crate. The rustc wrapper produces
+    // `state/rustc/.../graph.json` during compilation, so a single `cargo build` cannot reliably
+    // generate a fresh graph.json and then consume it in this same build script invocation.
+    //
+    // Use `cargo build-tickets` (alias) to do: `cargo build` then `canon-tickets` post-build.
+    if std::env::var("CANON_BUILD_RS_TICKETS").ok().as_deref() != Some("1") {
+        return;
+    }
+
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
     let root = PathBuf::from(manifest_dir);
     let graph_path = root.join("state/rustc/canon_mini_agent/graph.json");
