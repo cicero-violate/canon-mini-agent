@@ -1,9 +1,7 @@
 cargo run -p canon-mini-agent --bin canon-mini-supervisor \
 -- --workspace /workspace/ai_sandbox/canon-mini-agent \
 --orchestrate --start solo \
-> /workspace/ai_sandbox/canon-mini-agent/agent_state/canon-mini-agent-logs.log 2>&1
-
-
+2>&1 | tee /workspace/ai_sandbox/canon-mini-agent/agent_state/canon-mini-agent-logs.log
 
 cargo run -p canon-mini-agent --bin canon-mini-supervisor -- --workspace /workspace/ai_sandbox/canon-mini-agent --orchestrate --start solo
 
