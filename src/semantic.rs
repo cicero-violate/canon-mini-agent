@@ -435,7 +435,12 @@ fn shorten_path(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::expand_symbol_window_span;
+    use super::{
+        expand_symbol_window_span, CrateGraph, GraphNode, SemanticIndex, SourceSpan,
+    };
+    use std::collections::HashMap;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn expand_symbol_window_span_returns_full_function_block() {
@@ -447,5 +452,54 @@ mod tests {
         assert!(extracted.starts_with("pub(crate) fn process_action_and_execute("));
         assert!(extracted.contains("Ok((false, String::new()))"));
         assert!(extracted.trim_end().ends_with('}'));
+    }
+
+    #[test]
+    fn symbol_window_returns_full_item_when_graph_span_is_signature_only() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let tmp_dir = std::env::temp_dir().join(format!("semantic-window-{unique}"));
+        fs::create_dir_all(&tmp_dir).unwrap();
+        let src_path = tmp_dir.join("engine.rs");
+
+        let src = "pub(crate) fn process_action_and_execute(\n    role: &str,\n) -> Result<(bool, String)> {\n    let _x = role;\n    Ok((false, String::new()))\n}\n";
+        fs::write(&src_path, src).unwrap();
+
+        let lo = src.find("pub(crate) fn").unwrap();
+        let hi = src.find(") -> Result<(bool, String)>").unwrap() + ") -> Result<(bool, String)>".len();
+        let mut nodes = HashMap::new();
+        nodes.insert(
+            "engine::process_action_and_execute".to_string(),
+            GraphNode {
+                kind: "fn".to_string(),
+                def: Some(SourceSpan {
+                    file: src_path.to_string_lossy().to_string(),
+                    line: 1,
+                    col: 1,
+                    lo: lo as u32,
+                    hi: hi as u32,
+                }),
+                refs: Vec::new(),
+                signature: None,
+                mir: None,
+                fields: Vec::new(),
+            },
+        );
+
+        let idx = SemanticIndex {
+            graph: CrateGraph {
+                nodes,
+                edges: Vec::new(),
+            },
+        };
+        let out = idx
+            .symbol_window("engine::process_action_and_execute")
+            .expect("symbol_window should succeed");
+        assert!(out.contains("pub(crate) fn process_action_and_execute("));
+        assert!(out.contains("Ok((false, String::new()))"));
+        assert!(out.contains("}\n"));
+        let _ = fs::remove_dir_all(&tmp_dir);
     }
 }
