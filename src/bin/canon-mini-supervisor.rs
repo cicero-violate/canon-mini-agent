@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context, Result};
+use canon_mini_agent::logging::log_error_event;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -129,13 +130,29 @@ fn wait_for_exit(mut child: Child, timeout: Duration) {
             Ok(Some(_status)) => break,
             Ok(None) => {
                 if start.elapsed().unwrap_or_default() > timeout {
+                    log_error_event(
+                        "supervisor",
+                        "supervisor_wait_for_exit",
+                        None,
+                        "wait_for_exit timed out; killing child process",
+                        None,
+                    );
                     let _ = child.kill();
                     let _ = child.wait();
                     break;
                 }
                 thread::sleep(Duration::from_millis(200));
             }
-            Err(_) => break,
+            Err(err) => {
+                log_error_event(
+                    "supervisor",
+                    "supervisor_wait_for_exit",
+                    None,
+                    &format!("wait_for_exit try_wait error: {err:#}"),
+                    None,
+                );
+                break;
+            }
         }
     }
 }
@@ -254,6 +271,13 @@ fn main() -> Result<()> {
             thread::sleep(Duration::from_millis(1000));
             if shutdown.load(Ordering::SeqCst) {
                 eprintln!("[canon-mini-supervisor] shutdown requested; waiting for child");
+                log_error_event(
+                    "supervisor",
+                    "supervisor_main",
+                    None,
+                    "shutdown requested; waiting for child",
+                    None,
+                );
                 wait_for_exit(child, Duration::from_secs(10));
                 return Ok(());
             }
@@ -264,6 +288,13 @@ fn main() -> Result<()> {
                     return Ok(());
                 } else {
                     eprintln!("[canon-mini-supervisor] restarting due to failure...");
+                    log_error_event(
+                        "supervisor",
+                        "supervisor_main",
+                        None,
+                        &format!("child exited unsuccessfully: {status}"),
+                        None,
+                    );
                     break;
                 }
             }
@@ -278,6 +309,16 @@ fn main() -> Result<()> {
                             "[canon-mini-supervisor] binary updated; deferring restart until idle from {}",
                             updated.path.display()
                         );
+                        log_error_event(
+                            "supervisor",
+                            "supervisor_main",
+                            None,
+                            &format!(
+                                "binary updated; deferring restart until idle from {}",
+                                updated.path.display()
+                            ),
+                            None,
+                        );
                         pending_update = Some(updated);
                     }
                 }
@@ -287,6 +328,16 @@ fn main() -> Result<()> {
                         eprintln!(
                             "[canon-mini-supervisor] binary updated in single-role; restarting from {}",
                             updated.path.display()
+                        );
+                        log_error_event(
+                            "supervisor",
+                            "supervisor_main",
+                            None,
+                            &format!(
+                                "binary updated in single-role; restarting from {}",
+                                updated.path.display()
+                            ),
+                            None,
                         );
                         send_sigint(&child);
                         wait_for_exit(child, Duration::from_secs(10));
@@ -301,6 +352,16 @@ fn main() -> Result<()> {
                             "[canon-mini-supervisor] idle marker observed; restarting from {}",
                             updated.path.display()
                         );
+                        log_error_event(
+                            "supervisor",
+                            "supervisor_main",
+                            None,
+                            &format!(
+                                "idle marker observed; restarting from {}",
+                                updated.path.display()
+                            ),
+                            None,
+                        );
                         send_sigint(&child);
                         wait_for_exit(child, Duration::from_secs(10));
                         eprintln!("[canon-mini-supervisor] restarting...");
@@ -309,6 +370,16 @@ fn main() -> Result<()> {
                         eprintln!(
                             "[canon-mini-supervisor] ignoring stale idle marker while update is pending from {}",
                             updated.path.display()
+                        );
+                        log_error_event(
+                            "supervisor",
+                            "supervisor_main",
+                            None,
+                            &format!(
+                                "ignoring stale idle marker while update is pending from {}",
+                                updated.path.display()
+                            ),
+                            None,
                         );
                     }
                 }

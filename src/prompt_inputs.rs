@@ -40,6 +40,7 @@ pub struct PlannerInputs {
     pub summary_text: String,
     pub executor_diff_text: String,
     pub cargo_test_failures: String,
+    pub lessons_text: String,
     pub objectives_text: String,
     pub invariants_text: String,
     pub violations_text: String,
@@ -66,12 +67,18 @@ pub struct SingleRoleContext<'a> {
     pub diagnostics_path: &'a Path,
 }
 
+const LESSONS_FILE: &str = "agent_state/lessons.json";
+
 pub fn read_text_or_empty(path: impl AsRef<Path>) -> String {
     std::fs::read_to_string(path).unwrap_or_default()
 }
 
 pub fn read_required_text(path: impl AsRef<Path>, name: &str) -> Result<String> {
     std::fs::read_to_string(path.as_ref()).with_context(|| format!("failed to read {name}"))
+}
+
+pub fn read_lessons_or_empty(workspace: &Path) -> String {
+    read_text_or_empty(workspace.join(LESSONS_FILE))
 }
 
 fn diagnostics_have_current_source_validation(failures: &[Value]) -> bool {
@@ -182,6 +189,7 @@ pub fn load_planner_inputs(
 ) -> PlannerInputs {
     let summary_text = lane_summary_text(lanes, verifier_summary);
     let executor_diff_text = load_executor_diff_inputs(workspace, last_executor_diff, 400).diff_text;
+    let lessons_text = read_lessons_or_empty(workspace);
     let objectives_text = read_objectives_filtered(&workspace.join(OBJECTIVES_FILE));
     let invariants_text = read_text_or_empty(workspace.join(INVARIANTS_FILE));
     let violations_text = read_text_or_empty(violations_path);
@@ -193,6 +201,7 @@ pub fn load_planner_inputs(
         summary_text,
         executor_diff_text,
         cargo_test_failures,
+        lessons_text,
         objectives_text,
         invariants_text,
         violations_text,
@@ -205,6 +214,7 @@ pub fn load_planner_inputs(
 pub enum SingleRoleRead {
     Objectives,
     Invariants,
+    Lessons,
     Violations,
     Diagnostics,
     MasterPlan,
@@ -218,6 +228,7 @@ impl SingleRoleContext<'_> {
                 read_objectives_filtered(&self.workspace.join(OBJECTIVES_FILE))
             }
             SingleRoleRead::Invariants => read_text_or_empty(self.workspace.join(INVARIANTS_FILE)),
+            SingleRoleRead::Lessons => read_lessons_or_empty(self.workspace),
             SingleRoleRead::Violations => read_text_or_empty(self.violations_path),
             SingleRoleRead::Diagnostics => read_text_or_empty(self.diagnostics_path),
             SingleRoleRead::MasterPlan => read_text_or_empty(self.master_plan_path),
@@ -298,11 +309,13 @@ pub fn build_single_role_prompt(
             let violations = ctx.read(SingleRoleRead::Violations)?;
             let raw_diagnostics = ctx.read(SingleRoleRead::Diagnostics)?;
             let diagnostics = sanitize_diagnostics_for_planner(&raw_diagnostics);
+            let lessons = ctx.read(SingleRoleRead::Lessons)?;
             let objectives = ctx.read(SingleRoleRead::Objectives)?;
             let invariants = ctx.read(SingleRoleRead::Invariants)?;
             single_role_planner_prompt(
                 &inputs.primary_input,
                 &objectives,
+                &lessons,
                 &invariants,
                 &violations,
                 &diagnostics,

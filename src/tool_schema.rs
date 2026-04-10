@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use jsonschema::error::{TypeKind, ValidationErrorKind};
 use jsonschema::JSONSchema;
 use schemars::{schema_for, JsonSchema};
+use schemars::schema::SchemaObject;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::borrow::Cow;
@@ -32,6 +33,46 @@ pub enum PredictedActionName {
     GraphCfg,
     GraphDataflow,
     GraphReachability,
+}
+
+pub fn predicted_action_name_list() -> Vec<String> {
+    let schema = schema_for!(PredictedActionName);
+    extract_enum_strings(&schema.schema).unwrap_or_default()
+}
+
+pub const TOOL_ACTION_NAMES: &[&str] = &[
+    "message",
+    "list_dir",
+    "read_file",
+    "objectives",
+    "apply_patch",
+    "run_command",
+    "python",
+    "cargo_test",
+    "plan",
+];
+
+pub const ALL_TOOL_PROMPT_KINDS: &[&str] = &[
+    "list_dir",
+    "read_file",
+    "objectives",
+    "apply_patch",
+    "run_command",
+    "python",
+    "cargo_test",
+    "plan",
+    "message",
+];
+
+fn extract_enum_strings(schema: &SchemaObject) -> Option<Vec<String>> {
+    let enums = schema.enum_values.as_ref()?;
+    let mut out = Vec::with_capacity(enums.len());
+    for value in enums {
+        if let Some(s) = value.as_str() {
+            out.push(s.to_string());
+        }
+    }
+    Some(out)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -231,6 +272,109 @@ pub fn tool_protocol_schema_json() -> String {
     serde_json::to_string_pretty(&schema).unwrap_or_else(|_| "{}".to_string())
 }
 
+pub fn tool_protocol_schema_split_text() -> String {
+    let schema = schema_for!(ToolAction);
+    let value = serde_json::to_value(&schema).unwrap_or_else(|_| Value::Object(Default::default()));
+    let mut out = String::new();
+    out.push_str(
+        "Each action has its own schema; choose the schema that matches the `action` field.\n",
+    );
+    out.push_str(
+        "Common fields appear in every action: `rationale` (non-empty), `predicted_next_actions` (2-3 items), and optional `observation`.\n\n",
+    );
+
+    let actions = [
+        (
+            "message",
+            "send inter-agent protocol message",
+            Some(
+                "Examples:\n  {\"action\":\"message\",\"from\":\"executor\",\"to\":\"verifier\",\"type\":\"handoff\",\"status\":\"complete\",\"observation\":\"Summarize what happened.\",\"rationale\":\"Execution work is complete and the verifier now has enough evidence to judge it.\",\"payload\":{\"summary\":\"brief evidence summary\",\"artifacts\":[\"path/to/file.rs\"]}}\n  {\"action\":\"message\",\"from\":\"executor\",\"to\":\"planner\",\"type\":\"blocker\",\"status\":\"blocked\",\"observation\":\"Describe the blocker.\",\"rationale\":\"Explain why progress is impossible.\",\"payload\":{\"summary\":\"Short blocker summary\",\"blocker\":\"Root cause\",\"evidence\":\"Concrete error text\",\"required_action\":\"What must be done to unblock\",\"severity\":\"error\"}}\nAllowed roles: executor|planner|verifier|diagnostics|solo. Allowed types: handoff|result|verification|failure|blocker|plan|diagnostics. Allowed status: complete|in_progress|failed|verified|ready|blocked.\n⚠ message with status=complete is REJECTED if build or tests fail — fix all errors first.",
+            ),
+        ),
+        (
+            "list_dir",
+            "inspect directory contents",
+            Some("Example:\n  {\"action\":\"list_dir\",\"path\":\".\",\"rationale\":\"Inspect the workspace before making assumptions.\"}"),
+        ),
+        (
+            "read_file",
+            "read a file; output is line-numbered",
+            Some(
+                "Examples:\n  {\"action\":\"read_file\",\"path\":\"src/app.rs\",\"rationale\":\"Read the file before editing it.\"}\n  {\"action\":\"read_file\",\"path\":\"src/app.rs\",\"line\":120,\"rationale\":\"Read the relevant section before editing it.\"}\nWith \"line\":N the output starts at line N and shows up to 1000 lines.\n⚠ Always read a file before patching it. Never patch from memory.\n⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.\n⚠ read_file output is prefixed with line numbers (\"42: code here\"). Strip the \"N: \" prefix when writing patch lines.\nWRONG:  -42: fn old() {}   RIGHT:  -fn old() {}",
+            ),
+        ),
+        (
+            "objectives",
+            "read/update objectives in PLANS/OBJECTIVES.json",
+            Some(
+                "Examples:\n  {\"action\":\"objectives\",\"op\":\"read\",\"rationale\":\"Load only non-completed objectives for planning/verification.\"}\n  {\"action\":\"objectives\",\"op\":\"read\",\"include_done\":true,\"rationale\":\"Load all objectives, including completed.\"}\n  {\"action\":\"objectives\",\"op\":\"create_objective\",\"objective\":{\"id\":\"obj_new\",\"title\":\"New objective\",\"status\":\"active\",\"scope\":\"...\",\"authority_files\":[\"src/foo.rs\"],\"category\":\"quality\",\"level\":\"low\",\"description\":\"...\",\"requirement\":[],\"verification\":[],\"success_criteria\":[]},\"rationale\":\"Record a new objective.\"}\n  {\"action\":\"objectives\",\"op\":\"set_status\",\"objective_id\":\"obj_new\",\"status\":\"done\",\"rationale\":\"Mark objective complete.\"}\n  {\"action\":\"objectives\",\"op\":\"update_objective\",\"objective_id\":\"obj_new\",\"updates\":{\"scope\":\"updated scope\"},\"rationale\":\"Update objective fields.\"}\n  {\"action\":\"objectives\",\"op\":\"delete_objective\",\"objective_id\":\"obj_new\",\"rationale\":\"Remove obsolete objective.\"}\n  {\"action\":\"objectives\",\"op\":\"replace_objectives\",\"objectives\":[],\"rationale\":\"Replace objectives list.\"}\n  {\"action\":\"objectives\",\"op\":\"sorted_view\",\"rationale\":\"View objectives sorted by status.\"}",
+            ),
+        ),
+        (
+            "apply_patch",
+            "create or update files using unified patch syntax",
+            Some(
+                "Examples:\n  {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: path/to/new.rs\\n+line one\\n+line two\\n*** End Patch\",\"rationale\":\"Apply the concrete code change after reading the target context.\"}\n  {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Update File: src/lib.rs\\n@@\\n fn before_before() {}\\n fn before() {}\\n fn target() {\\n-    old_body();\\n+    new_body();\\n }\\n fn after() {}\\n*** End Patch\",\"rationale\":\"Update the file using exact surrounding context from the read.\"}\n  {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Delete File: PLANS/executor-b.json\\n*** Add File: PLANS/executor-b.json\\n+# new content\\n+line two\\n*** End Patch\",\"rationale\":\"Full-file replacement is safer than a giant hunk with many - lines.\"}\nRules:\n- Every @@ hunk must have AT LEAST 3 unchanged context lines around the edit.\n- Never use @@ with only 1 context line.\n- ALL - lines must be copied character-for-character from read_file output (minus the \"N: \" prefix).\n- If replacing more than ~10 lines, use *** Delete File + *** Add File instead of a large @@ hunk.\n- NEVER use absolute paths inside the patch string.",
+            ),
+        ),
+        (
+            "run_command",
+            "run shell commands for discovery or verification",
+            Some(
+                "Examples:\n  {\"action\":\"run_command\",\"cmd\":\"cargo check -p canon-mini-agent\",\"cwd\":\"/workspace/ai_sandbox/canon-mini-agent\",\"rationale\":\"Validate the target crate after a change.\"}\n  {\"action\":\"run_command\",\"cmd\":\"rg -n 'fn foo' src\",\"cwd\":\"/workspace/ai_sandbox/canon-mini-agent\",\"rationale\":\"Search the codebase for the relevant symbol before editing.\"}\n⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE.",
+            ),
+        ),
+        (
+            "python",
+            "run Python analysis inside the workspace",
+            Some(
+                "Example:\n  {\"action\":\"python\",\"code\":\"from pathlib import Path\\nprint(len(list(Path('src').glob('**/*.rs'))))\",\"cwd\":\"/workspace/ai_sandbox/canon-mini-agent\",\"rationale\":\"Use Python for structured workspace analysis.\"}\n⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE.",
+            ),
+        ),
+        (
+            "cargo_test",
+            "run a targeted cargo test (harness-style)",
+            Some(
+                "Example:\n  {\"action\":\"cargo_test\",\"crate\":\"canon-runtime\",\"test\":\"some_test_name\",\"rationale\":\"Run the exact failing test using the harness-style command.\"}",
+            ),
+        ),
+        (
+            "plan",
+            "create/update/delete tasks and DAG edges in PLAN.json",
+            Some(
+                "Examples:\n  {\"action\":\"plan\",\"op\":\"set_status\",\"task_id\":\"T1\",\"status\":\"in_progress\",\"rationale\":\"Update PLAN.json via the plan tool while running solo.\"}\n  {\"action\":\"plan\",\"op\":\"sorted_view\",\"rationale\":\"View the current plan in DAG order (read-only).\"}",
+            ),
+        ),
+        ("rustc_hir", "emit HIR for analysis", None),
+        ("rustc_mir", "emit MIR for analysis", None),
+        ("graph_call", "emit call graph CSVs", None),
+        ("graph_cfg", "emit CFG CSVs", None),
+        ("graph_dataflow", "emit dataflow reports", None),
+        ("graph_reachability", "emit reachability reports", None),
+    ];
+
+    for (action, desc, notes) in actions {
+        let schema = find_action_schema(&value, action)
+            .and_then(|v| serde_json::to_string_pretty(v).ok())
+            .unwrap_or_else(|| "{}".to_string());
+        out.push_str(&format!("Action: `{action}` — {desc}\n```json\n{schema}\n```\n\n"));
+        if let Some(notes) = notes {
+            out.push_str(notes);
+            out.push_str("\n\n");
+        }
+    }
+
+    if let Some(defs) = value.get("definitions") {
+        if let Ok(defs_json) = serde_json::to_string_pretty(defs) {
+            out.push_str("Shared definitions (referenced via `$ref`):\n```json\n");
+            out.push_str(&defs_json);
+            out.push_str("\n```\n");
+        }
+    }
+
+    out
+}
+
 pub(crate) fn validate_tool_action(action: &Value) -> Result<()> {
     static SCHEMA: OnceLock<JSONSchema> = OnceLock::new();
     let compiled = SCHEMA.get_or_init(|| {
@@ -291,6 +435,13 @@ pub(crate) fn schema_diff_messages(action: &Value) -> Vec<String> {
     diffs
 }
 
+pub(crate) fn action_schema_json(action: &str) -> Option<String> {
+    let schema = schema_for!(ToolAction);
+    let value = serde_json::to_value(&schema).ok()?;
+    let schema = find_action_schema(&value, action)?;
+    serde_json::to_string_pretty(schema).ok()
+}
+
 fn map_schema_error(err: &jsonschema::error::ValidationError, action: &Value) -> String {
     let path = path_from_error(err);
     match &err.kind {
@@ -343,6 +494,59 @@ fn map_schema_error(err: &jsonschema::error::ValidationError, action: &Value) ->
         }
         other => format!("schema violation: {other:?}"),
     }
+}
+
+fn find_action_schema<'a>(value: &'a Value, action: &str) -> Option<&'a Value> {
+    fn matches_action(value: &Value, action: &str) -> bool {
+        let action_prop = value.get("properties").and_then(|p| p.get("action"));
+        let const_match = action_prop
+            .and_then(|a| a.get("const"))
+            .and_then(|c| c.as_str())
+            == Some(action);
+        let enum_match = action_prop
+            .and_then(|a| a.get("enum"))
+            .and_then(|e| e.as_array())
+            .map(|arr| arr.iter().any(|v| v.as_str() == Some(action)))
+            .unwrap_or(false);
+        const_match || enum_match
+    }
+
+    if matches_action(value, action) {
+        return Some(value);
+    }
+
+    if let Some(arr) = value.get("oneOf").and_then(|v| v.as_array()) {
+        for item in arr {
+            if let Some(found) = find_action_schema(item, action) {
+                return Some(found);
+            }
+        }
+    }
+    if let Some(arr) = value.get("anyOf").and_then(|v| v.as_array()) {
+        for item in arr {
+            if let Some(found) = find_action_schema(item, action) {
+                return Some(found);
+            }
+        }
+    }
+    match value {
+        Value::Array(arr) => {
+            for item in arr {
+                if let Some(found) = find_action_schema(item, action) {
+                    return Some(found);
+                }
+            }
+        }
+        Value::Object(map) => {
+            for item in map.values() {
+                if let Some(found) = find_action_schema(item, action) {
+                    return Some(found);
+                }
+            }
+        }
+        _ => {}
+    }
+    None
 }
 
 fn path_from_error(err: &jsonschema::error::ValidationError) -> String {

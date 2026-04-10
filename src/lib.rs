@@ -3,8 +3,9 @@
 pub mod app;
 mod constants;
 mod engine;
-mod logging;
+pub mod logging;
 mod md_convert;
+mod action_examples;
 mod objectives;
 mod tool_schema;
 mod prompts;

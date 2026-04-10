@@ -490,7 +490,7 @@ pub(crate) fn log_action_result(
     }
 }
 
-pub(crate) fn log_error_event(
+pub fn log_error_event(
     role: &str,
     phase: &str,
     step: Option<usize>,
@@ -622,4 +622,130 @@ pub(crate) fn append_orchestration_trace(event: &str, payload: Value) {
 pub(crate) fn now_ms() -> u64 {
     let ms = canon_llm::endpoint_worker::tab_manager_now_ms();
     u64::try_from(ms).unwrap_or(u64::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{log_error_event, log_paths, now_ms, LogPaths, LOG_PATHS};
+    use serde_json::{json, Value};
+    use std::fs;
+
+    fn read_last_record(action_log: &std::path::Path) -> Value {
+        let log_text = fs::read_to_string(action_log).expect("read action log");
+        let last_line = log_text.lines().last().expect("action log line");
+        serde_json::from_str(last_line).expect("parse structured error record")
+    }
+
+    fn assert_common_error_shape(record: &Value, actor: &str, phase: &str, step: Option<u64>) {
+        assert_eq!(record.get("kind").and_then(|v| v.as_str()), Some("error"));
+        assert_eq!(record.get("phase").and_then(|v| v.as_str()), Some(phase));
+        assert_eq!(record.get("actor").and_then(|v| v.as_str()), Some(actor));
+        assert_eq!(record.get("step").and_then(|v| v.as_u64()), step);
+        assert!(record.get("ts_ms").and_then(|v| v.as_u64()).is_some());
+        assert!(record.get("text").and_then(|v| v.as_str()).is_some());
+        assert!(record.get("meta").is_some(), "meta field should be present");
+        assert!(
+            record.get("meta").is_some_and(|v| v.is_object()),
+            "meta must be a JSON object"
+        );
+    }
+
+    fn ensure_test_action_log_path() -> std::path::PathBuf {
+        if let Some(paths) = LOG_PATHS.get() {
+            return paths.action_log.clone();
+        }
+
+        let root = std::env::temp_dir().join(format!(
+            "canon-mini-agent-logging-test-{}",
+            now_ms()
+        ));
+        let action_log = root.join("actions.jsonl");
+        let secondary_log = root.join("log.jsonl");
+        let _ = LOG_PATHS.set(LogPaths {
+            action_log: action_log.clone(),
+            secondary_log,
+        });
+        log_paths()
+            .expect("test log paths should initialize")
+            .action_log
+            .clone()
+    }
+
+    #[test]
+    fn log_error_event_persists_structured_error_record() {
+        let action_log = ensure_test_action_log_path();
+        if let Some(parent) = action_log.parent() {
+            fs::create_dir_all(parent).expect("create action log parent");
+        }
+
+        let marker = format!("logging persistence marker {}", now_ms());
+        log_error_event(
+            "solo",
+            "test_phase",
+            Some(7),
+            &marker,
+            Some(json!({ "case": "persisted_error_event" })),
+        );
+
+        let record = read_last_record(&action_log);
+        assert_common_error_shape(&record, "solo", "test_phase", Some(7));
+        assert_eq!(record.get("text").and_then(|v| v.as_str()), Some(marker.as_str()));
+        assert_eq!(
+            record
+                .get("meta")
+                .and_then(|v| v.get("case"))
+                .and_then(|v| v.as_str()),
+            Some("persisted_error_event")
+        );
+    }
+
+    #[test]
+    fn log_error_event_preserves_consistent_shape_across_error_categories() {
+        let action_log = ensure_test_action_log_path();
+        if let Some(parent) = action_log.parent() {
+            fs::create_dir_all(parent).expect("create action log parent");
+        }
+
+        let cases = vec![
+            (
+                "executor",
+                "orchestrate",
+                None,
+                format!("executor timeout {}", now_ms()),
+                json!({
+                    "stage": "executor_submit_timeout",
+                    "lane": "lane-a",
+                    "command_id": "executor:executor:0001:123"
+                }),
+            ),
+            (
+                "solo",
+                "run_command",
+                Some(3),
+                format!("run command failed {}", now_ms()),
+                json!({
+                    "cmd": "cargo test -p canon-mini-agent",
+                    "cwd": "/workspace/ai_sandbox/canon-mini-agent"
+                }),
+            ),
+            (
+                "supervisor",
+                "supervisor_main",
+                None,
+                format!("binary updated {}", now_ms()),
+                json!({
+                    "stage": "restart_pending",
+                    "path": "target/debug/canon-mini-agent"
+                }),
+            ),
+        ];
+
+        for (actor, phase, step, text, meta) in cases {
+            log_error_event(actor, phase, step, &text, Some(meta.clone()));
+            let record = read_last_record(&action_log);
+            assert_common_error_shape(&record, actor, phase, step.map(|v| v as u64));
+            assert_eq!(record.get("text").and_then(|v| v.as_str()), Some(text.as_str()));
+            assert_eq!(record.get("meta"), Some(&meta));
+        }
+    }
 }

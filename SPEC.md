@@ -37,16 +37,50 @@ At the end of every orchestration cycle, the active role (solo or planner) MUST 
 - **Update** existing objective status when state changes (active → done, blocked, deferred).
 - **Never remove** an objective entry — use `"status": "deferred"` with a reason.
 
-New objective schema:
-```
+Formal objectives JSON Schema (draft-07, current runtime shape):
+```json
 {
-  "id": "<snake_case_unique_id>",
-  "title": "OBJ-N — Short Title",
-  "category": "<autonomy | correctness | observability | other>",
-  "level": "<low | medium | high | critical>",
-  "description": "**Status:** <active|done|deferred> **Scope:** ... **Authority files:** ... <checklist>"
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ObjectivesFile",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "version": { "type": "integer", "minimum": 0 },
+    "objectives": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "status": { "type": "string" },
+          "scope": { "type": "string" },
+          "authority_files": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "category": { "type": "string" },
+          "level": { "type": "string" },
+          "description": { "type": "string" },
+          "requirement": { "type": "array" },
+          "verification": { "type": "array" },
+          "success_criteria": { "type": "array" }
+        }
+      }
+    },
+    "goal": { "type": "array" },
+    "instrumentation": { "type": "array" },
+    "definition_of_done": { "type": "array" },
+    "non_goals": { "type": "array" }
+  }
 }
 ```
+
+Notes:
+- Fields are optional at the schema level to match runtime defaults in `src/objectives.rs`.
+- `status`, `scope`, and `authority_files` are first-class fields; do not embed them only in `description`.
+- `description` may still include a Status/Scope/Authority checklist, but the authoritative values live in the top-level fields.
 
 This is enforced by `CANONICAL_LAW.md §Objective Evolution`. The verifier should flag any completion that leaves `PLANS/OBJECTIVES.json` unreviewed.
 
@@ -129,90 +163,16 @@ canon-mini-agent [FLAGS] [OPTIONS]
 
 ## 3. Typed Interfaces (Actions)
 
-All actions are JSON objects with a mandatory `"action"` string field. Any missing required field is an error.
+Action shapes, required fields, and basic field constraints are defined by the ToolAction JSON schema (schemars) in `src/tool_schema.rs`. This section does not duplicate those schema details; it only documents runtime semantics and protocol rules not captured by the schema itself.
 
-### 3.1 Common Action Envelope
-```json
-{ "action": "<type>", "rationale": "<why now>", "observation"?: "<why>" }
-```
-Notes:
-- `rationale` is required.
-- `observation` is action-dependent. Some flows and tests require it for `message`, while other action kinds may omit it and rely on normalization or validation paths.
+### 3.1 Runtime Semantics (Non-Obvious Behaviors)
+- `cargo_test` maps to `cargo test -p <crate> <test> -- --exact --nocapture`.
+- `rustc_hir` maps to `cargo rustc -p <crate> -- -Zunpretty=<mode> <extra>`.
+- `rustc_mir` maps to `cargo rustc -p <crate> -- -Zunpretty=<mode> <extra>`.
+- `graph_call` / `graph_cfg` output CSVs plus `callgraph.symbol.txt` / `cfg.symbol.txt` with symbol→symbol edges.
+- `graph_dataflow` / `graph_reachability` output JSON reports under metrics/analysis directories.
 
-### 3.2 `list_dir`
-```json
-{ "action": "list_dir", "path": "<string>" }
-```
-Constraints: `path` is relative to `Workspace` or absolute under `Workspace`.
-
-### 3.3 `read_file`
-```json
-{ "action": "read_file", "path": "<string>", "line"?: "<integer>", "line_start"?: "<integer>", "line_end"?: "<integer>" }
-```
-Constraints: `line` / `line_start` / `line_end` are 1-based when present.
-
-### 3.4 `plan`
-```json
-{ "action": "plan", "op": "create_task | update_task | delete_task | add_edge | remove_edge | set_status", ... }
-```
-Notes:
-- `create_task` / `update_task` require `task` object with at least `id`.
-- `delete_task` requires `task_id`.
-- `add_edge` / `remove_edge` require `from` and `to` task ids.
-- `set_status` requires `status` and updates the top-level `PLAN.json` `status` field.
-- The plan tool enforces a DAG (no cycles) when adding edges.
-
-### 3.5 `apply_patch`
-```json
-{ "action": "apply_patch", "patch": "<string>" }
-```
-Constraints: patch must follow unified patch grammar. The first `*** Update File:` or `*** Add File:` path determines scope. Executor scope guards apply.
-
-### 3.6 `run_command`
-```json
-{ "action": "run_command", "cmd": "<string>", "cwd"?: "<string>" }
-```
-Constraints: `cwd` defaults to `Workspace`. Must be under `Workspace` or `/tmp`.
-
-### 3.7 `python`
-```json
-{ "action": "python", "code": "<string>", "cwd"?: "<string>" }
-```
-Constraints: `cwd` defaults to `Workspace`. Write operations must target paths under `Workspace` or `/tmp`.
-
-### 3.8 `cargo_test`
-```json
-{ "action": "cargo_test", "crate": "<string>", "test": "<string>" }
-```
-Semantics: maps to `cargo test -p <crate> <test> -- --exact --nocapture`.
-
-### 3.9 `rustc_hir`
-```json
-{ "action": "rustc_hir", "crate": "<string>", "mode"?: "<string>", "extra"?: "<string>" }
-```
-Semantics: maps to `cargo rustc -p <crate> -- -Zunpretty=<mode> <extra>`.
-
-### 3.10 `rustc_mir`
-```json
-{ "action": "rustc_mir", "crate": "<string>", "mode"?: "<string>", "extra"?: "<string>" }
-```
-Semantics: maps to `cargo rustc -p <crate> -- -Zunpretty=<mode> <extra>`.
-
-### 3.11 `graph_call` / `graph_cfg`
-```json
-{ "action": "graph_call", "crate": "<string>", "out_dir"?: "<string>" }
-{ "action": "graph_cfg",  "crate": "<string>", "out_dir"?: "<string>" }
-```
-Outputs: CSVs plus `callgraph.symbol.txt` / `cfg.symbol.txt` with symbol→symbol edges.
-
-### 3.12 `graph_dataflow` / `graph_reachability`
-```json
-{ "action": "graph_dataflow",    "crate": "<string>", "tlog"?: "<string>", "out_dir"?: "<string>" }
-{ "action": "graph_reachability","crate": "<string>", "tlog"?: "<string>", "out_dir"?: "<string>" }
-```
-Outputs: JSON reports under metrics/analysis directories.
-
-### 3.13 `message` (Inter-Agent Handoff Protocol)
+### 3.2 `message` (Inter-Agent Handoff Protocol)
 ```json
 {
   "action": "message",
@@ -392,6 +352,7 @@ Notes:
 - `tasks` are DAG nodes.
 - `dag.edges` defines dependencies (`from` must complete before `to`).
 - The plan tool enforces DAG acyclicity.
+- Planner prompt instruction: derive `PLAN.json` tasks from `PLANS/OBJECTIVES.json` (objectives are the source of plan items; do not introduce plan tasks unrelated to objectives without explicitly updating objectives first).
 
 ### 7.3 Task Protocol
 ```json

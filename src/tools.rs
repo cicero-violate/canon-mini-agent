@@ -694,12 +694,12 @@ pub(crate) fn patch_scope_error_with_mode(role: &str, patch: &str, self_mod: boo
                     "Planner may patch lane plans under `PLANS/<instance>/executor-<id>.json` (or legacy `PLANS/executor-<id>.md`); planner may not patch `src/`, `tests/`, `SPEC.md`, or `VIOLATIONS.json`."
                         .to_string(),
                 )
-            } else if touches_lane || touches_diagnostics || touches_objectives {
-                // Allow planner to update diagnostics/objectives/lane plans in a controlled way
+            } else if touches_lane || touches_objectives {
+                // Allow planner to update lane plans and objectives only (SPEC §4.1 compliant)
                 None
             } else {
                 Some(
-                    "Planner may patch lane plans, diagnostics, or `PLANS/OBJECTIVES.json` only. Use the `plan` action for `PLAN.json` updates; no other patches are allowed."
+                    "Planner may patch lane plans or `PLANS/OBJECTIVES.json` only. Use the `plan` action for `PLAN.json` updates; no other patches are allowed."
                         .to_string(),
                 )
             }
@@ -1053,11 +1053,53 @@ fn handle_apply_patch_action(
         .get("patch")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("apply_patch missing 'patch'"))?;
+    let diagnostics_targeted = if role == "diagnostics" {
+        let current_diagnostics_file = diagnostics_file();
+        let legacy_diagnostics_file = "DIAGNOSTICS.json";
+        patch_targets(patch)
+            .into_iter()
+            .any(|path| path == current_diagnostics_file || path == legacy_diagnostics_file)
+    } else {
+        false
+    };
+    let previous_diagnostics_text = if diagnostics_targeted {
+        let current_diagnostics_file = diagnostics_file();
+        Some(fs::read_to_string(workspace.join(current_diagnostics_file)).unwrap_or_default())
+    } else {
+        None
+    };
     if let Some(msg) = patch_scope_error(role, &patch) {
         return Ok((false, msg));
     }
     match apply_patch(&patch, workspace) {
         Ok(_) => {
+            if diagnostics_targeted {
+                let current_diagnostics_file = diagnostics_file();
+                let diagnostics_path = workspace.join(current_diagnostics_file);
+                let new_diagnostics_text = fs::read_to_string(&diagnostics_path).unwrap_or_default();
+                let sanitized = crate::prompt_inputs::sanitize_diagnostics_for_planner(&new_diagnostics_text);
+                let introduces_unvalidated_ranked_failures = new_diagnostics_text.contains("\"ranked_failures\"")
+                    && sanitized.starts_with("(suppressed stale or unverified diagnostics:");
+                if introduces_unvalidated_ranked_failures {
+                    if let Some(previous) = previous_diagnostics_text {
+                        std::fs::write(&diagnostics_path, previous)?;
+                    }
+                    log_error_event(
+                        role,
+                        "apply_patch",
+                        Some(step),
+                        "diagnostics apply_patch rejected: ranked_failures require current-source validation before persistence",
+                        Some(json!({
+                            "stage": "diagnostics_emission_validation",
+                            "path": current_diagnostics_file,
+                        })),
+                    );
+                    return Ok((
+                        false,
+                        "apply_patch rejected: diagnostics ranked_failures require current-source validation before persistence".to_string(),
+                    ));
+                }
+            }
             eprintln!("[{role}] step={} apply_patch ok", step);
             let check_result = patch_first_file(&patch)
                 .and_then(|f| infer_crate_for_patch(workspace, f))
@@ -1092,6 +1134,16 @@ fn handle_apply_patch_action(
         Err(e) => {
             let err_str = e.to_string();
             eprintln!("[{role}] step={} apply_patch failed: {err_str}", step);
+            log_error_event(
+                role,
+                "apply_patch",
+                Some(step),
+                &format!("apply_patch failed: {err_str}"),
+                patch_first_file(&patch).map(|path| json!({
+                    "stage": "apply_patch",
+                    "path": path,
+                })),
+            );
             let read_path = extract_anchor_fail_path(&err_str)
                 .or_else(|| patch_first_file(&patch).map(|s| s.to_string()));
             let guidance = patch_failure_guidance(read_path.as_deref(), &err_str);
@@ -1129,6 +1181,19 @@ fn handle_run_command_action(
         "run_command failed"
     };
     eprintln!("[{role}] step={} {label} output_bytes={}", step, out.len());
+    if !success {
+        log_error_event(
+            role,
+            "run_command",
+            Some(step),
+            &format!("run_command failed: {cmd}"),
+            Some(json!({
+                "stage": "run_command",
+                "cmd": cmd,
+                "cwd": cwd,
+            })),
+        );
+    }
     Ok((false, format!("{label}:\n{}", truncate(&out, MAX_SNIPPET))))
 }
 
@@ -1173,6 +1238,18 @@ fn handle_python_action(
         "python failed"
     };
     eprintln!("[{role}] step={} {label} output_bytes={}", step, out.len());
+    if !success {
+        log_error_event(
+            role,
+            "python",
+            Some(step),
+            "python action failed",
+            Some(json!({
+                "stage": "python",
+                "cwd": cwd,
+            })),
+        );
+    }
     Ok((false, format!("{label}:\n{}", truncate(&out, MAX_SNIPPET))))
 }
 
@@ -1210,6 +1287,21 @@ fn handle_rustc_action(
         format!("{action_kind} failed")
     };
     eprintln!("[{role}] step={} {label} output_bytes={}", step, out.len());
+    if !success {
+        log_error_event(
+            role,
+            action_kind,
+            Some(step),
+            &format!("{action_kind} failed for crate {crate_name}"),
+            Some(json!({
+                "stage": action_kind,
+                "crate": crate_name,
+                "mode": mode,
+                "extra": extra,
+                "cmd": cmd,
+            })),
+        );
+    }
     Ok((false, format!("{label}:\n{}", truncate(&out, MAX_SNIPPET))))
 }
 
@@ -1250,6 +1342,21 @@ fn handle_graph_call_cfg_action(
         step,
         bin_out.len()
     );
+    if !bin_ok {
+        log_error_event(
+            role,
+            action_kind,
+            Some(step),
+            &format!("graph_bin failed for crate {crate_name}"),
+            Some(json!({
+                "stage": action_kind,
+                "crate": crate_name,
+                "artifact_crate": artifact_crate,
+                "cmd": bin_cmd,
+                "out_dir": out_dir_str.to_string(),
+            })),
+        );
+    }
     let label = if bin_ok {
         format!("{action_kind} ok")
     } else {
@@ -1405,6 +1512,22 @@ fn handle_graph_reports_action(
     } else {
         format!("{action_kind} failed")
     };
+    if !success {
+        log_error_event(
+            role,
+            action_kind,
+            Some(step),
+            &format!("{action_kind} failed for crate {crate_name}"),
+            Some(json!({
+                "stage": action_kind,
+                "crate": crate_name,
+                "artifact_crate": artifact_crate,
+                "cmd": cmd,
+                "out_dir": out_dir_str.to_string(),
+                "tlog": tlog,
+            })),
+        );
+    }
     let (report_path, report_label) = if action_kind == "graph_dataflow" {
         (
             crate_dir
@@ -1474,6 +1597,20 @@ fn handle_cargo_test_action(
         "cargo_test failed"
     };
     eprintln!("[{role}] step={} {label} output_bytes={}", step, out.len());
+    if !success {
+        log_error_event(
+            role,
+            "cargo_test",
+            Some(step),
+            &format!("cargo_test failed for crate {crate_name}"),
+            Some(json!({
+                "stage": "cargo_test",
+                "crate": crate_name,
+                "test": test_name,
+                "cmd": cmd,
+            })),
+        );
+    }
     let failures_json = parse_cargo_test_failures(&out);
     let mut summary = format!("{label}");
     let mut progress_path: Option<String> = None;
@@ -1488,7 +1625,6 @@ fn handle_cargo_test_action(
             }
         }
     }
-    let mut tail_preview: Option<String> = None;
     if out.contains("detached cargo test") {
         summary.push_str("\nnote: cargo test detached; see output_log for live results");
     }
@@ -1538,17 +1674,10 @@ fn handle_cargo_test_action(
         summary.push_str(&format!("\noutput_log: {}", path));
         summary.push_str(&format!("\nprogress_path: {}", path));
         if out.contains("detached cargo test") {
-            tail_preview = tail_file_lines(Path::new(path), 200);
-        }
-        if let Some(tail) = tail_preview.as_ref() {
-            if tail.trim().is_empty() {
-                summary.push_str("\noutput_log_tail: (log empty)");
-            } else {
-                summary.push_str("\noutput_log_tail:\n");
-                summary.push_str(tail);
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            if let Some(summary_line) = summarize_cargo_test_log(Path::new(path)) {
+                summary.push_str(&format!("\nsummary: {summary_line}"));
             }
-        } else if out.contains("detached cargo test") {
-            summary.push_str("\noutput_log_tail: (not ready yet)");
         }
     }
     Ok((
@@ -2186,6 +2315,47 @@ fn spawn_detached_with_log(cmd: &str, cwd_path: &Path) -> Result<(u32, PathBuf)>
     Ok((child.id(), log_path))
 }
 
+fn summarize_cargo_test_log(path: &Path) -> Option<String> {
+    let contents = std::fs::read_to_string(path).ok()?;
+    if contents.trim().is_empty() {
+        return None;
+    }
+    let mut passed = 0usize;
+    let mut failed = 0usize;
+    for line in contents.lines() {
+        let line = line.trim_start();
+        if line.starts_with("test ") {
+            if line.ends_with("... ok") {
+                passed += 1;
+            } else if line.ends_with("... FAILED") {
+                failed += 1;
+            }
+        }
+    }
+    for line in contents.lines() {
+        if let Some(idx) = line.find("test result:") {
+            let tail = line[idx..].trim();
+            if failed == 0 {
+                return Some(format!(
+                    "all tests passed (counted: passed={passed} failed={failed}). last: {tail}"
+                ));
+            }
+            return Some(format!(
+                "tests failed (counted: passed={passed} failed={failed}). last: {tail}"
+            ));
+        }
+    }
+    if failed == 0 {
+        Some(format!(
+            "all tests passed (counted: passed={passed} failed={failed})"
+        ))
+    } else {
+        Some(format!(
+            "tests failed (counted: passed={passed} failed={failed})"
+        ))
+    }
+}
+
 fn exec_run_command(workspace: &Path, cmd: &str, cwd: &str) -> Result<(bool, String)> {
     let cwd_path = PathBuf::from(cwd);
     if !cwd_path.is_absolute() {
@@ -2206,15 +2376,20 @@ fn exec_run_command(workspace: &Path, cmd: &str, cwd: &str) -> Result<(bool, Str
             .unwrap_or(20 * 60);
         let wrapped_cmd = format!("timeout -s TERM {}s {}", timeout_secs, cmd);
         let (pid, log_path) = spawn_detached_with_log(&wrapped_cmd, &cwd_path)?;
-        return Ok((
-            true,
-            format!(
-                "detached cargo test pid={} output_log={} timeout_secs={}",
-                pid,
-                log_path.display(),
-                timeout_secs
-            ),
-        ));
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let summary_line = summarize_cargo_test_log(&log_path);
+        let mut summary = format!(
+            "detached cargo test pid={} output_log={} timeout_secs={}",
+            pid,
+            log_path.display(),
+            timeout_secs
+        );
+        summary.push_str(&format!("\noutput_log: {}", log_path.display()));
+        summary.push_str(&format!("\nprogress_path: {}", log_path.display()));
+        if let Some(summary_line) = summary_line {
+            summary.push_str(&format!("\nsummary: {summary_line}"));
+        }
+        return Ok((true, summary));
     }
 
     let is_long_running = looks_like_long_running_command(cmd);
@@ -2528,8 +2703,74 @@ pub(crate) fn execute_logged_action(
                 false,
                 &err_text,
             );
+            log_error_event(
+                role,
+                "execute_logged_action",
+                Some(step),
+                &format!("execute_logged_action error: {e}"),
+                Some(json!({
+                    "prompt_kind": prompt_kind,
+                    "command_id": command_id,
+                    "action": action.get("action").and_then(|v| v.as_str()),
+                })),
+            );
             eprintln!("[{role}] step={} error: {e}", step);
             Ok((false, err_text))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::handle_apply_patch_action;
+    use serde_json::json;
+    use std::path::PathBuf;
+
+    fn fresh_test_dir(name: &str) -> PathBuf {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("canon-mini-agent-{name}-{unique}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn diagnostics_apply_patch_rejects_unvalidated_ranked_failures() {
+        let tmp = fresh_test_dir("rejects-unvalidated-ranked-failures");
+        std::fs::write(
+            tmp.join("DIAGNOSTICS.json"),
+            "{\"status\":\"healthy\",\"ranked_failures\":[]}",
+        )
+        .unwrap();
+        let action = json!({
+            "patch": "*** Begin Patch\n*** Delete File: DIAGNOSTICS.json\n*** Add File: DIAGNOSTICS.json\n+{\n+  \"status\": \"critical_failure\",\n+  \"summary\": \"stale issue\",\n+  \"ranked_failures\": [\n+    {\n+      \"id\": \"D1\",\n+      \"evidence\": [\"old report without source validation\"]\n+    }\n+  ]\n+}\n*** End Patch"
+        });
+
+        let (_done, out) = handle_apply_patch_action("diagnostics", 1, &tmp, &action).unwrap();
+
+        assert!(out.contains("ranked_failures require current-source validation before persistence"));
+        let persisted = std::fs::read_to_string(tmp.join("DIAGNOSTICS.json")).unwrap();
+        assert_eq!(persisted, "{\"status\":\"healthy\",\"ranked_failures\":[]}");
+    }
+
+    #[test]
+    fn diagnostics_apply_patch_allows_source_validated_ranked_failures() {
+        let tmp = fresh_test_dir("allows-source-validated-ranked-failures");
+        std::fs::write(
+            tmp.join("DIAGNOSTICS.json"),
+            "{\"status\":\"healthy\",\"ranked_failures\":[]}",
+        )
+        .unwrap();
+        let action = json!({
+            "patch": "*** Begin Patch\n*** Delete File: DIAGNOSTICS.json\n*** Add File: DIAGNOSTICS.json\n+{\n+  \"status\": \"critical_failure\",\n+  \"summary\": \"validated issue\",\n+  \"ranked_failures\": [\n+    {\n+      \"id\": \"D1\",\n+      \"evidence\": [\"read_file src/app.rs verified against current source\"]\n+    }\n+  ]\n+}\n*** End Patch"
+        });
+
+        let (_done, out) = handle_apply_patch_action("diagnostics", 1, &tmp, &action).unwrap();
+
+        assert!(out.contains("apply_patch ok"));
+        let persisted = std::fs::read_to_string(tmp.join("DIAGNOSTICS.json")).unwrap();
+        assert!(persisted.contains("validated issue"));
     }
 }

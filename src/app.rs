@@ -287,6 +287,16 @@ fn build_verifier_blocker_ack(fields: &BlockerFields) -> Value {
     })
 }
 
+fn file_modified_ms(path: &Path) -> Option<u128> {
+    std::fs::metadata(path)
+        .ok()?
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_millis())
+}
+
 async fn run_planner_phase(
     ctx: &OrchestratorContext<'_>,
     dispatch_state: &mut DispatchState,
@@ -308,6 +318,7 @@ async fn run_planner_phase(
     let mut planner_prompt = planner_cycle_prompt(
         &inputs.summary_text,
         &inputs.objectives_text,
+        &inputs.lessons_text,
         &inputs.invariants_text,
         &inputs.violations_text,
         &inputs.diagnostics_text,
@@ -337,6 +348,17 @@ async fn run_planner_phase(
     match result {
         Ok(result) => {
             eprintln!("[orchestrate] planner ok bytes={}", result.len());
+            let lessons_text = crate::prompt_inputs::read_lessons_or_empty(ctx.workspace);
+            append_orchestration_trace(
+                "learning_loop_cycle_audit",
+                json!({
+                    "phase": "planner",
+                    "lessons_present": !lessons_text.trim().is_empty(),
+                    "lessons_bytes": lessons_text.len(),
+                    "objectives_path": OBJECTIVES_FILE,
+                    "plan_path": MASTER_PLAN_FILE,
+                }),
+            );
             dispatch_state.last_plan_text = inputs.plan_text;
             for lane in ctx.lanes {
                 let lane_state = dispatch_lane_mut(dispatch_state, lane.index);
@@ -394,10 +416,14 @@ async fn run_solo_phase(
     let invariants = read_text_or_empty(ctx.workspace.join(INVARIANTS_FILE));
     let violations = read_text_or_empty(ctx.violations_path);
     let diagnostics = read_text_or_empty(ctx.diagnostics_path);
+    let objectives_mtime_before = file_modified_ms(&agent_objectives)
+        .or_else(|| file_modified_ms(&ctx.workspace.join(OBJECTIVES_FILE)));
+    let plan_mtime_before = file_modified_ms(&ctx.workspace.join(MASTER_PLAN_FILE));
     let mut prompt = single_role_solo_prompt(
         &spec,
         &master_plan,
         &objectives,
+        &crate::prompt_inputs::read_lessons_or_empty(ctx.workspace),
         &invariants,
         &violations,
         &diagnostics,
@@ -425,6 +451,53 @@ async fn run_solo_phase(
     match result {
         Ok(result) => {
             eprintln!("[orchestrate] solo ok bytes={}", result.len());
+            let lessons_text = crate::prompt_inputs::read_lessons_or_empty(ctx.workspace);
+            append_orchestration_trace(
+                "learning_loop_cycle_audit",
+                json!({
+                    "phase": "solo",
+                    "lessons_present": !lessons_text.trim().is_empty(),
+                    "lessons_bytes": lessons_text.len(),
+                    "objectives_path": OBJECTIVES_FILE,
+                    "plan_path": MASTER_PLAN_FILE,
+                }),
+            );
+            // Minimal enforcement hook (OBJ-15): if lessons exist, require objective/plan follow-up
+            if !lessons_text.trim().is_empty() {
+                let objectives_mtime_after = file_modified_ms(&agent_objectives)
+                    .or_else(|| file_modified_ms(&ctx.workspace.join(OBJECTIVES_FILE)));
+                let plan_mtime_after = file_modified_ms(&ctx.workspace.join(MASTER_PLAN_FILE));
+                let objective_or_plan_updated = objectives_mtime_before != objectives_mtime_after
+                    || plan_mtime_before != plan_mtime_after;
+                append_orchestration_trace(
+                    "learning_loop_enforcement_signal",
+                    json!({
+                        "required_action": "objective_or_plan_update_required",
+                        "reason": if objective_or_plan_updated {
+                            "lessons_present_with_followup_update"
+                        } else {
+                            "lessons_present_without_verified_followup"
+                        },
+                        "objective_or_plan_updated": objective_or_plan_updated,
+                        "objectives_path": OBJECTIVES_FILE,
+                        "plan_path": MASTER_PLAN_FILE,
+                    }),
+                );
+                if !objective_or_plan_updated {
+                    log_error_event(
+                        "solo",
+                        "orchestrate",
+                        None,
+                        "learning loop follow-up missing: lessons were present but neither objectives nor plan changed during the solo cycle",
+                        Some(json!({
+                            "stage": "learning_loop_followup_missing",
+                            "objectives_path": OBJECTIVES_FILE,
+                            "plan_path": MASTER_PLAN_FILE,
+                        })),
+                    );
+                    return false;
+                }
+            }
             true
         }
         Err(err) => {
@@ -657,6 +730,21 @@ fn run_executor_phase(
                     ctx.lanes[lane_id].label,
                     pending.command_id
                 );
+                log_error_event(
+                    "executor",
+                    "orchestrate",
+                    None,
+                    &format!(
+                        "pending submit timeout: lane={} command_id={}",
+                        ctx.lanes[lane_id].label,
+                        pending.command_id
+                    ),
+                    Some(json!({
+                        "stage": "executor_submit_timeout",
+                        "lane": ctx.lanes[lane_id].label,
+                        "command_id": pending.command_id,
+                    })),
+                );
                 append_orchestration_trace(
                     "executor_submit_timeout",
                     json!({
@@ -729,6 +817,23 @@ fn run_executor_phase(
                                     tab_id,
                                     turn_id
                                 );
+                                log_error_event(
+                                    "executor",
+                                    "orchestrate",
+                                    None,
+                                    &format!(
+                                        "submit ack without pending submit: lane={} tab_id={} turn_id={}",
+                                        ctx.lanes[lane_id].label,
+                                        tab_id,
+                                        turn_id
+                                    ),
+                                    Some(json!({
+                                        "stage": "executor_submit_ack",
+                                        "lane": ctx.lanes[lane_id].label,
+                                        "tab_id": tab_id,
+                                        "turn_id": turn_id,
+                                    })),
+                                );
                                 continue;
                             };
                             if executor_submit_timed_out(
@@ -742,6 +847,23 @@ fn run_executor_phase(
                                     tab_id,
                                     turn_id
                                 );
+                                log_error_event(
+                                    "executor",
+                                    "orchestrate",
+                                    None,
+                                    &format!(
+                                        "submit ack arrived after timeout: lane={} tab_id={} turn_id={}",
+                                        ctx.lanes[lane_id].label,
+                                        tab_id,
+                                        turn_id
+                                    ),
+                                    Some(json!({
+                                        "stage": "executor_submit_ack_timeout",
+                                        "lane": ctx.lanes[lane_id].label,
+                                        "tab_id": tab_id,
+                                        "turn_id": turn_id,
+                                    })),
+                                );
                                 dispatch_state.lane_submit_in_flight.insert(lane_id, false);
                                 dispatch_state.lane_prompt_in_flight.insert(lane_id, false);
                                 continue;
@@ -753,6 +875,23 @@ fn run_executor_phase(
                                         ctx.lanes[lane_id].label,
                                         active_tab,
                                         tab_id
+                                    );
+                                    log_error_event(
+                                        "executor",
+                                        "orchestrate",
+                                        None,
+                                        &format!(
+                                            "submit ack tab mismatch: lane={} active_tab={} ack_tab={} (overwriting active tab)",
+                                            ctx.lanes[lane_id].label,
+                                            active_tab,
+                                            tab_id
+                                        ),
+                                        Some(json!({
+                                            "stage": "executor_submit_ack_tab_mismatch",
+                                            "lane": ctx.lanes[lane_id].label,
+                                            "active_tab": active_tab,
+                                            "ack_tab": tab_id,
+                                        })),
                                     );
                                 }
                             }
@@ -779,6 +918,19 @@ fn run_executor_phase(
                             cycle_progress = true;
                         } else {
                             eprintln!("[orchestrate] {} missing submit_ack (preserving lane ownership): {exec_result}", job.executor_name);
+                            log_error_event(
+                                "executor",
+                                "orchestrate",
+                                None,
+                                &format!(
+                                    "{} missing submit_ack (preserving lane ownership): {exec_result}",
+                                    job.executor_name
+                                ),
+                                Some(json!({
+                                    "stage": "executor_submit_ack_missing",
+                                    "lane": job.executor_name,
+                                })),
+                            );
                             let lane = dispatch_lane_mut(dispatch_state, job.lane_index);
                             // Recovery: clear stuck ownership and requeue lane
                             lane.in_progress_by = None;
@@ -2502,6 +2654,22 @@ fn handle_executor_completion(
     );
     if let Err(e) = append_executor_completion_log(&submitted, 1, turn_id, tab_id, &exec_result) {
         eprintln!("[orchestrate] executor_completion_log_error: {e}");
+        log_error_event(
+            "orchestrate",
+            "executor_completion_log",
+            Some(1),
+            &format!(
+                "executor completion log append failed for lane={} turn_id={} tab_id={}: {e}",
+                lane_name, turn_id, tab_id
+            ),
+            Some(json!({
+                "lane_name": lane_name,
+                "turn_id": turn_id,
+                "tab_id": tab_id,
+                "endpoint_id": submitted.endpoint_id,
+                "command_id": submitted.command_id,
+            })),
+        );
     }
     if let Ok(mut actions) = parse_actions(&exec_result) {
         if actions.first().and_then(|a| a.get("action")).and_then(|v| v.as_str()) == Some("message") {
@@ -3064,6 +3232,9 @@ pub async fn run() -> Result<()> {
         loop {
             let _ = std::fs::remove_file(cycle_idle_marker_path());
             let mut cycle_progress = false;
+            let objectives_mtime_before = file_modified_ms(&workspace.join(OBJECTIVES_FILE));
+            let plan_mtime_before = file_modified_ms(&master_plan_path);
+            let diagnostics_mtime_before = file_modified_ms(&diagnostics_path);
             if shutdown.flag.load(Ordering::SeqCst) {
                 eprintln!("[orchestrate] shutdown requested; saving checkpoint");
                 if let Err(err) = save_checkpoint(
@@ -3174,6 +3345,9 @@ pub async fn run() -> Result<()> {
                 if run_solo_phase(&orchestrator_ctx, &mut solo_bootstrapped, &cargo_test_failures)
                     .await
                 {
+                    cycle_progress = true;
+                } else {
+                    dispatch_state.planner_pending = true;
                     cycle_progress = true;
                 }
             }
@@ -3288,6 +3462,29 @@ pub async fn run() -> Result<()> {
                 ) {
                     scheduled_phase = None;
                 }
+            }
+
+            let objectives_mtime_after = file_modified_ms(&workspace.join(OBJECTIVES_FILE));
+            let plan_mtime_after = file_modified_ms(&master_plan_path);
+            let diagnostics_mtime_after = file_modified_ms(&diagnostics_path);
+            let objective_review_required = plan_mtime_before != plan_mtime_after
+                || diagnostics_mtime_before != diagnostics_mtime_after;
+            let objectives_updated = objectives_mtime_before != objectives_mtime_after;
+            if objective_review_required && !objectives_updated {
+                append_orchestration_trace(
+                    "objective_evolution_enforcement_signal",
+                    json!({
+                        "required_action": "objective_review_or_update_required",
+                        "reason": "plan_or_diagnostics_changed_without_objective_update",
+                        "plan_changed": plan_mtime_before != plan_mtime_after,
+                        "diagnostics_changed": diagnostics_mtime_before != diagnostics_mtime_after,
+                        "objectives_updated": objectives_updated,
+                        "objectives_path": OBJECTIVES_FILE,
+                        "plan_path": MASTER_PLAN_FILE,
+                    }),
+                );
+                dispatch_state.planner_pending = true;
+                cycle_progress = true;
             }
 
             if !cycle_progress {

@@ -1,7 +1,7 @@
 use serde_json::{json, Value};
 
 use crate::prompts::{validate_message_action, MessageValidationMode};
-use crate::tool_schema::schema_diff_messages;
+use crate::tool_schema::{action_schema_json, schema_diff_messages};
 
 pub fn default_message_route(
     role: &str,
@@ -149,14 +149,14 @@ pub(crate) fn corrective_invalid_action_prompt(
 
 pub(crate) fn invalid_action_expected_fields(kind: &str) -> Vec<&'static str> {
     match kind {
-        "run_command" => vec!["action", "cmd", "observation", "rationale"],
-        "read_file" => vec!["action", "path", "observation", "rationale"],
-        "apply_patch" => vec!["action", "patch", "observation", "rationale"],
-        "cargo_test" => vec!["action", "crate", "observation", "rationale"],
-        "list_dir" => vec!["action", "path", "observation", "rationale"],
-        "python" => vec!["action", "code", "observation", "rationale"],
-        "plan" => vec!["action", "op", "observation", "rationale"],
-        "objectives" => vec!["action", "op", "observation", "rationale"],
+        "run_command" => vec!["action", "cmd", "rationale", "predicted_next_actions"],
+        "read_file" => vec!["action", "path", "rationale", "predicted_next_actions"],
+        "apply_patch" => vec!["action", "patch", "rationale", "predicted_next_actions"],
+        "cargo_test" => vec!["action", "crate", "rationale", "predicted_next_actions"],
+        "list_dir" => vec!["action", "rationale", "predicted_next_actions"],
+        "python" => vec!["action", "code", "rationale", "predicted_next_actions"],
+        "plan" => vec!["action", "op", "rationale", "predicted_next_actions"],
+        "objectives" => vec!["action", "rationale", "predicted_next_actions"],
         "message" => vec![
             "action",
             "from",
@@ -164,10 +164,10 @@ pub(crate) fn invalid_action_expected_fields(kind: &str) -> Vec<&'static str> {
             "type",
             "status",
             "payload",
-            "observation",
             "rationale",
+            "predicted_next_actions",
         ],
-        _ => vec!["action", "observation", "rationale"],
+        _ => vec!["action", "rationale", "predicted_next_actions"],
     }
 }
 
@@ -184,51 +184,93 @@ fn example_predicted_next_actions() -> Value {
     ])
 }
 
+fn example_action_base(observation: &str, rationale: &str) -> serde_json::Map<String, Value> {
+    let mut map = serde_json::Map::new();
+    map.insert(
+        "observation".to_string(),
+        Value::String(observation.to_string()),
+    );
+    map.insert(
+        "rationale".to_string(),
+        Value::String(rationale.to_string()),
+    );
+    map.insert(
+        "predicted_next_actions".to_string(),
+        example_predicted_next_actions(),
+    );
+    map
+}
+
+fn example_action_with_string_field(
+    action: &str,
+    field: &str,
+    value: &str,
+    observation: &str,
+    rationale: &str,
+) -> Value {
+    let mut map = example_action_base(observation, rationale);
+    map.insert("action".to_string(), Value::String(action.to_string()));
+    map.insert(field.to_string(), Value::String(value.to_string()));
+    Value::Object(map)
+}
+
+fn example_action_with_string_fields(
+    action: &str,
+    fields: &[(&str, &str)],
+    observation: &str,
+    rationale: &str,
+) -> Value {
+    let mut map = example_action_base(observation, rationale);
+    map.insert("action".to_string(), Value::String(action.to_string()));
+    for (field, value) in fields {
+        map.insert((*field).to_string(), Value::String((*value).to_string()));
+    }
+    Value::Object(map)
+}
+
 fn example_action_for(kind: &str, role: &str, raw_action: Option<&Value>) -> Value {
     match kind {
-        "run_command" => json!({
-            "action": "run_command",
-            "cmd": "rg -n \"pattern\" src/",
-            "observation": "Search for the relevant code.",
-            "rationale": "Locate the target before patching.",
-            "predicted_next_actions": example_predicted_next_actions()
-        }),
-        "read_file" => json!({
-            "action": "read_file",
-            "path": "src/lib.rs",
-            "observation": "Read the file for context.",
-            "rationale": "Need context before editing.",
-            "predicted_next_actions": example_predicted_next_actions()
-        }),
-        "list_dir" => json!({
-            "action": "list_dir",
-            "path": ".",
-            "observation": "List workspace files.",
-            "rationale": "Locate the target before acting.",
-            "predicted_next_actions": example_predicted_next_actions()
-        }),
-        "apply_patch" => json!({
-            "action": "apply_patch",
-            "patch": "*** Begin Patch\n*** Update File: path/to/file.rs\n@@\n- old\n+ new\n*** End Patch",
-            "observation": "Apply the requested change.",
-            "rationale": "Implement the edit directly.",
-            "predicted_next_actions": example_predicted_next_actions()
-        }),
-        "python" => json!({
-            "action": "python",
-            "code": "print('analysis')",
-            "observation": "Run structured analysis.",
-            "rationale": "Use Python for parsing tasks.",
-            "predicted_next_actions": example_predicted_next_actions()
-        }),
-        "cargo_test" => json!({
-            "action": "cargo_test",
-            "crate": "canon-mini-agent",
-            "test": "optional_test_name",
-            "observation": "Run the targeted test.",
-            "rationale": "Verify the change.",
-            "predicted_next_actions": example_predicted_next_actions()
-        }),
+        "run_command" => example_action_with_string_field(
+            "run_command",
+            "cmd",
+            "rg -n \"pattern\" src/",
+            "Search for the relevant code.",
+            "Locate the target before patching.",
+        ),
+        "read_file" => example_action_with_string_field(
+            "read_file",
+            "path",
+            "src/lib.rs",
+            "Read the file for context.",
+            "Need context before editing.",
+        ),
+        "list_dir" => example_action_with_string_field(
+            "list_dir",
+            "path",
+            ".",
+            "List workspace files.",
+            "Locate the target before acting.",
+        ),
+        "apply_patch" => example_action_with_string_field(
+            "apply_patch",
+            "patch",
+            "*** Begin Patch\n*** Update File: path/to/file.rs\n@@\n- old\n+ new\n*** End Patch",
+            "Apply the requested change.",
+            "Implement the edit directly.",
+        ),
+        "python" => example_action_with_string_field(
+            "python",
+            "code",
+            "print('analysis')",
+            "Run structured analysis.",
+            "Use Python for parsing tasks.",
+        ),
+        "cargo_test" => example_action_with_string_fields(
+            "cargo_test",
+            &[("crate", "canon-mini-agent"), ("test", "optional_test_name")],
+            "Run the targeted test.",
+            "Verify the change.",
+        ),
         "plan" => json!({
             "action": "plan",
             "op": "create_task",
@@ -261,9 +303,6 @@ fn example_action_for(kind: &str, role: &str, raw_action: Option<&Value>) -> Val
                     }
                 })
                 .map(|(from, to, msg_type, status)| (from, to, msg_type, status))
-                .map(|(from, to, msg_type, status)| {
-                    (from, to, msg_type, status)
-                })
                 .unwrap_or_else(|| {
                     let (from, to, msg_type, status) = default_message_route(role);
                     (
@@ -308,6 +347,12 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
     let mut expected_fields: Vec<&'static str> = Vec::new();
     let mut expected_format: Option<String> = None;
     let mut example_action: Option<Value> = None;
+    let mut action_schema: Option<String> = None;
+    let push_unique = |schema_diff: &mut Vec<String>, msg: String| {
+        if !schema_diff.iter().any(|s| s == &msg) {
+            schema_diff.push(msg);
+        }
+    };
     if let Some(action) = raw_action {
         let obj = action.as_object();
         let kind = obj
@@ -316,6 +361,7 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
             .unwrap_or("unknown");
         expected_fields = invalid_action_expected_fields(kind);
         example_action = Some(example_action_for(kind, role, Some(action)));
+        action_schema = action_schema_json(kind);
         schema_diff = schema_diff_messages(action);
         if let Some(obj) = obj {
             if let Some(value) = obj.get("action") {
@@ -346,8 +392,17 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
                     .iter()
                     .any(|s| s.starts_with("field type mismatch: observation"))
             {
-                schema_diff
-                    .push("field type mismatch: observation (expected string)".to_string());
+                push_unique(
+                    &mut schema_diff,
+                    "field type mismatch: observation (expected string)".to_string(),
+                );
+            }
+        }
+        if kind == "apply_patch" {
+            if let Some(patch) = action.get("patch").and_then(|v| v.as_str()) {
+                if let Some(msg) = crate::tools::patch_scope_error(role, patch) {
+                    push_unique(&mut schema_diff, msg);
+                }
             }
         }
         if obj
@@ -404,9 +459,7 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
                 || combined.contains("run_command");
             if references_diagnostics && !has_source_validation {
                 let msg = "planner plan actions that rely on diagnostics must cite current source validation in observation/rationale (for example read_file, run_command, or verified source evidence)";
-                if !schema_diff.iter().any(|s| s == msg) {
-                    schema_diff.push(msg.to_string());
-                }
+                push_unique(&mut schema_diff, msg.to_string());
             }
         }
         if kind == "message" {
@@ -421,23 +474,15 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
                             .filter(|s| !s.is_empty())
                             .is_none(),
                     };
-                    if missing && !schema_diff.iter().any(|s| s == &format!("missing field: {field}"))
-                    {
-                        schema_diff.push(format!("missing field: {field}"));
+                    if missing {
+                        push_unique(&mut schema_diff, format!("missing field: {field}"));
                     }
                     if field == "payload" {
                         if let Some(val) = value {
-                            if !val.is_object()
-                                && !schema_diff.iter().any(|s| s == "payload must be object")
-                            {
-                                schema_diff.push("payload must be object".to_string());
-                            }
-                            if !val.is_object()
-                                && !schema_diff
-                                    .iter()
-                                    .any(|s| s == "field type mismatch: payload (expected object)")
-                            {
-                                schema_diff.push(
+                            if !val.is_object() {
+                                push_unique(&mut schema_diff, "payload must be object".to_string());
+                                push_unique(
+                                    &mut schema_diff,
                                     "field type mismatch: payload (expected object)".to_string(),
                                 );
                             }
@@ -447,17 +492,16 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
             }
             if let Err(err) = validate_message_action(action, MessageValidationMode::Strict) {
                 let msg = err.to_string();
-                if !schema_diff.iter().any(|s| s == &msg) {
-                    schema_diff.push(msg);
-                }
+                push_unique(&mut schema_diff, msg);
             }
             if let Some(obj) = obj {
+                let get_str = |field: &str| obj.get(field).and_then(|v| v.as_str());
                 let mut msg_type: Option<String> = None;
                 let mut msg_status: Option<String> = None;
                 for field in ["from", "to", "type", "status"] {
-                    if let Some(val) = obj.get(field).and_then(|v| v.as_str()) {
+                    if let Some(val) = get_str(field) {
                         if val != val.to_lowercase() {
-                            schema_diff.push(format!("role casing invalid: {field}={val}"));
+                            push_unique(&mut schema_diff, format!("role casing invalid: {field}={val}"));
                         }
                         if field == "type" {
                             msg_type = Some(val.to_string());
@@ -466,33 +510,22 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
                         }
                     }
                 }
-                if let (Some(msg_type), Some(msg_status)) = (msg_type, msg_status) {
+                if let (Some(msg_type), Some(msg_status)) = (msg_type.as_deref(), msg_status.as_deref()) {
                     let type_is_blocker = msg_type.eq_ignore_ascii_case("blocker");
                     let status_is_blocked = msg_status.eq_ignore_ascii_case("blocked");
                     if type_is_blocker != status_is_blocked {
-                        schema_diff.push(format!(
-                            "type/status mismatch: type={msg_type} status={msg_status}"
-                        ));
+                        push_unique(
+                            &mut schema_diff,
+                            format!("type/status mismatch: type={msg_type} status={msg_status}"),
+                        );
                     }
                     let expected = expected_message_format(
-                        obj.get("from").and_then(|v| v.as_str()).unwrap_or("executor"),
-                        obj.get("to").and_then(|v| v.as_str()).unwrap_or("verifier"),
+                        get_str("from").unwrap_or("executor"),
+                        get_str("to").unwrap_or("verifier"),
                         &msg_type,
                         &msg_status,
                     );
                     expected_format = Some(expected);
-                }
-                if obj.get("payload").and_then(|v| v.as_object()).is_none() {
-                    if !schema_diff.iter().any(|s| s == "missing field: payload") {
-                        schema_diff.push("missing field: payload".to_string());
-                    }
-                    if obj.get("payload").is_some()
-                        && !schema_diff
-                            .iter()
-                            .any(|s| s == "payload must be object")
-                    {
-                        schema_diff.push("payload must be object".to_string());
-                    }
                 }
                 let payload = obj.get("payload").and_then(|v| v.as_object());
                 if payload
@@ -502,25 +535,24 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
                     .filter(|s| !s.is_empty())
                     .is_none()
                 {
-                    schema_diff.push("payload.summary missing".to_string());
+                    push_unique(&mut schema_diff, "payload.summary missing".to_string());
                 }
                 if obj.contains_key("blocker")
                     || obj.contains_key("evidence")
                     || obj.contains_key("required_action")
                 {
-                    schema_diff.push(
+                    push_unique(
+                        &mut schema_diff,
                         "blocker fields must be inside payload: blocker/evidence/required_action"
                             .to_string(),
                     );
                 }
-                let is_blocker = obj
-                    .get("type")
-                    .and_then(|v| v.as_str())
+                let is_blocker = msg_type
+                    .as_deref()
                     .map(|v| v.eq_ignore_ascii_case("blocker"))
                     .unwrap_or(false)
-                    || obj
-                        .get("status")
-                        .and_then(|v| v.as_str())
+                    || msg_status
+                        .as_deref()
                         .map(|v| v.eq_ignore_ascii_case("blocked"))
                         .unwrap_or(false);
                 if is_blocker {
@@ -528,9 +560,10 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
                         let value = payload.and_then(|p| p.get(field));
                         if let Some(val) = value {
                             if !val.is_string() {
-                                schema_diff.push(format!(
-                                    "field type mismatch: payload.{field} (expected string)"
-                                ));
+                                push_unique(
+                                    &mut schema_diff,
+                                    format!("field type mismatch: payload.{field} (expected string)"),
+                                );
                                 continue;
                             }
                         }
@@ -540,7 +573,7 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
                             .filter(|s| !s.is_empty())
                             .is_none()
                         {
-                            schema_diff.push(format!("payload.{field} missing"));
+                            push_unique(&mut schema_diff, format!("payload.{field} missing"));
                         }
                     }
                 }
@@ -552,6 +585,7 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
         "reason": err_text,
         "expected_fields": expected_fields,
         "schema_diff": schema_diff,
+        "action_schema": action_schema,
         "expected_format": expected_format,
         "example_action": example_action,
     });

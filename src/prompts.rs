@@ -6,7 +6,7 @@ use crate::constants::{
     MASTER_PLAN_FILE, MAX_SNIPPET, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
 };
 use crate::protocol::{MessagePayload, MessageStatus, MessageType, ProtocolMessage, Role};
-use crate::tool_schema::validate_tool_action;
+use crate::tool_schema::{validate_tool_action, ALL_TOOL_PROMPT_KINDS, TOOL_ACTION_NAMES};
 
 pub(crate) fn truncate(s: &str, max: usize) -> &str {
     let end = s.char_indices().nth(max).map(|(i, _)| i).unwrap_or(s.len());
@@ -37,31 +37,11 @@ pub(crate) enum ToolPromptKind {
 
 fn available_actions(kind: AgentPromptKind) -> &'static [&'static str] {
     match kind {
-        AgentPromptKind::Verifier => &[
-            "message",
-            "list_dir",
-            "read_file",
-            "objectives",
-            "apply_patch",
-            "run_command",
-            "python",
-            "cargo_test",
-            "plan",
-        ],
+        AgentPromptKind::Verifier => TOOL_ACTION_NAMES,
         AgentPromptKind::Executor
         | AgentPromptKind::Planner
         | AgentPromptKind::Diagnostics
-        | AgentPromptKind::Solo => &[
-            "message",
-            "list_dir",
-            "read_file",
-            "objectives",
-            "apply_patch",
-            "run_command",
-            "python",
-            "cargo_test",
-            "plan",
-        ],
+        | AgentPromptKind::Solo => TOOL_ACTION_NAMES,
     }
 }
 
@@ -101,6 +81,10 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
             ToolPromptKind::Message,
         ],
     }
+}
+
+fn all_tool_prompt_kinds() -> &'static [&'static str] {
+    ALL_TOOL_PROMPT_KINDS
 }
 
 fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
@@ -270,9 +254,9 @@ fn prompt_mission(kind: AgentPromptKind) -> &'static str {
     match kind {
         AgentPromptKind::Executor => "Your job is to execute the highest-priority READY work described in planner handoff messages and the master plan.\n`SPEC.md` is the canonical contract.\nLane plans are deprecated and should not be relied on for task selection.\nThe verifier judges code against `SPEC.md`.\nYou should only work on the top 1-10 ready tasks in the current cycle, then yield.\nDo not use internal tools.\nDo not reorganize or update `SPEC.md` or plan files yourself.\nMake source changes, run checks, and report evidence in `message.payload`.",
         AgentPromptKind::Verifier => "Your job is to critically review executor evidence against the codebase and judge whether the implementation satisfies `SPEC.md`.\nExecutor evidence is a hint only. The canonical truth is the codebase versus `SPEC.md`.\nIf violations are found, write `VIOLATIONS.json` with a clear, actionable list using the enums in canon-mini-agent/src/reports.rs.\nBe skeptical — do not trust executor claims at face value.",
-        AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `PLANS/OBJECTIVES.json`, `VIOLATIONS.json`, and `DIAGNOSTICS.json` and derive the master plan plus executor handoff guidance.\nYou own priority, dependency ordering, task allocation, and the ready-work window for each executor.\nOn every cycle, re-evaluate the workspace and update `PLAN.json` via the plan tool.\nAt the end of every planner cycle, review `PLANS/OBJECTIVES.json` and add or update objectives to reflect what was discovered. New objectives must have a unique id, title, category, level, and description. Use `apply_patch` to write them.\nDiagnostics are advisory only: do not create, reopen, or reprioritize tasks from diagnostics claims unless the same cycle includes direct current-workspace evidence from `read_file`, `run_command`, or `python`.\nIf diagnostics suggest a problem but direct evidence is missing, plan only evidence-gathering or diagnostics-repair work instead of implementation work.\nDo not use internal tools.\nDo not hand off work; complete the needed planning and execution directly in the current role flow.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
+        AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `PLANS/OBJECTIVES.json`, `VIOLATIONS.json`, and `DIAGNOSTICS.json` and derive the master plan plus executor handoff guidance.\nYou own priority, dependency ordering, task allocation, and the ready-work window for each executor.\nOn every cycle, re-evaluate the workspace and update `PLAN.json` via the plan tool.\nAt the end of every planner cycle, review `PLANS/OBJECTIVES.json` and add or update objectives to reflect what was discovered. New objectives must include id, title, status, scope, authority_files, category, level, description, requirement, verification, and success_criteria. Use `apply_patch` to write them.\nDiagnostics are advisory only: do not create, reopen, or reprioritize tasks from diagnostics claims unless the same cycle includes direct current-workspace evidence from `read_file`, `run_command`, or `python`.\nIf diagnostics suggest a problem but direct evidence is missing, plan only evidence-gathering or diagnostics-repair work instead of implementation work.\nDo not use internal tools.\nDo not hand off work; complete the needed planning and execution directly in the current role flow.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
         AgentPromptKind::Diagnostics => "Your job is to scan the active workspace state, analyze `VIOLATIONS.json`, detect root causes, rank them by impact, and write concrete repair targets for the planner in `DIAGNOSTICS.json` using the enums in canon-mini-agent/src/reports.rs.",
-        AgentPromptKind::Solo => "Your job is to coordinate planning, execution, and verification in a single role while participating in orchestration.\nUse the `plan` action to update `PLAN.json`; do not apply_patch the master plan.\nYou may read, patch, and verify any in-workspace files when justified by evidence.\nKeep evidence tight and run checks before claiming completion.\nAt the end of every cycle — before emitting a completion message — review `PLANS/OBJECTIVES.json` and add or update objectives based on what you discovered. New objectives must have a unique id, title, category, level, and description. Use `apply_patch` to write them directly.",
+        AgentPromptKind::Solo => "Your job is to coordinate planning, execution, and verification in a single role while participating in orchestration.\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nYou may read, patch, and verify any in-workspace files when justified by evidence.\nKeep evidence tight and run checks before claiming completion.\nAt the end of every cycle — before emitting a completion message — review `PLANS/OBJECTIVES.json` and add or update objectives based on what you discovered. New objectives must include id, title, status, scope, authority_files, category, level, description, requirement, verification, and success_criteria. Use `apply_patch` to write them directly.",
     }
 }
 
@@ -306,17 +290,8 @@ fn action_contract(kind: AgentPromptKind) -> String {
 }
 
 fn tools_section(kind: AgentPromptKind) -> String {
-    let mut out =
-        String::from("━━━ TOOLS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n");
-    for (idx, tool) in tool_order(kind).iter().enumerate() {
-        out.push_str(&format!(
-            "{}. {}\n{}\n\n",
-            idx + 1,
-            tool_title(kind, *tool),
-            tool_prompt(kind, *tool)
-        ));
-    }
-    out.trim_end().to_string()
+    let _ = kind;
+    String::new()
 }
 
 fn rules_common_footer() -> String {
@@ -602,17 +577,9 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
     out.push_str("\n\n");
     out.push_str(&prompt_workspace(kind));
     out.push_str("\n\n");
-    out.push_str(&action_contract(kind));
-    out.push_str("\n\nTool protocol JSON schema (schemars):\n```json\n");
-    out.push_str(&crate::tool_schema::tool_protocol_schema_json());
-    out.push_str("\n```");
-    if kind != AgentPromptKind::Planner {
-        out.push_str("\n\n");
-        out.push_str(&tools_section(kind));
-        out.push_str("\n\n");
-    } else {
-        out.push_str("\n\n");
-    }
+    out.push_str("Tool protocol schemas (schemars):\n");
+    out.push_str(&crate::tool_schema::tool_protocol_schema_split_text());
+    out.push_str("\n\n");
     out.push_str(&prompt_tail(kind));
     out
 }
@@ -620,6 +587,7 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
 pub(crate) fn planner_cycle_prompt(
     summary_text: &str,
     objectives_text: &str,
+    lessons_text: &str,
     invariants_text: &str,
     violations_text: &str,
     diagnostics_text: &str,
@@ -630,7 +598,7 @@ pub(crate) fn planner_cycle_prompt(
     let workspace = workspace();
     let diagnostics_file = diagnostics_file();
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics: {diagnostics_file}\n- Master plan: {MASTER_PLAN_FILE}\n\nPlan diff (from {MASTER_PLAN_FILE}):\n{plan_diff}\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants_text}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations_text}\n\nDiagnostics report (from {diagnostics_file}):\n{diagnostics_text}\n\nLatest verifier summary:\n{summary_text}\n\nDiagnostics-derived planning guard:\n- Do not create or reprioritize tasks from diagnostics alone.\n- Before accepting any diagnostics claim, read the implicated source files or gather equivalent current-cycle evidence.\n- Treat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\n- If diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks.\n\nBefore completing this cycle, review {OBJECTIVES_FILE} and add or update objectives to capture anything discovered. New objectives require a unique id, title, category, level, and description. Use apply_patch to write them.\n\nYou may send a message action to other agents at any time.  Think hard internally before responding."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics: {diagnostics_file}\n- Master plan: {MASTER_PLAN_FILE}\n\nPlan diff (from {MASTER_PLAN_FILE}):\n{plan_diff}\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives_text}\n\nLessons artifact:\n{lessons_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants_text}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations_text}\n\nDiagnostics report (from {diagnostics_file}):\n{diagnostics_text}\n\nLatest verifier summary:\n{summary_text}\n\nDiagnostics-derived planning guard:\n- Do not create or reprioritize tasks from diagnostics alone.\n- Before accepting any diagnostics claim, read the implicated source files or gather equivalent current-cycle evidence.\n- Treat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\n- If diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks.\n\nBefore completing this cycle, review {OBJECTIVES_FILE} and add or update objectives to capture anything discovered. New objectives require a unique id, title, category, level, and description. Use apply_patch to write them.\n\nYou may send a message action to other agents at any time.  Think hard internally before responding."
     )
 }
 
@@ -696,15 +664,15 @@ pub(crate) fn single_role_diagnostics_prompt(
 ) -> String {
     let workspace = workspace();
     let diagnostics_path = diagnostics_file();
-    let canonical_law = prompt_canonical_law(AgentPromptKind::Diagnostics);
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nRead files and search the source code for bugs and inconsistencies (use read_file + run_command/ripgrep).\nRun python analysis actions over available workspace-local logs, state, and code evidence.\nDo not assume canon-specific observability names or paths. Discover the actual project-local artifacts first by inspecting files and directories that exist under WORKSPACE. Examples may include state/, log/, logs/, runtime logs, jsonl logs, agent logs, or other workspace-defined artifacts.\nInfer the root cause from the evidence and cite detailed sources of errors (file paths, functions, log evidence).\n\nLatest verifier summary:\n(none yet)\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nVerify whether objectives in {OBJECTIVES_FILE} are being met and note gaps.\nUse {SPEC_FILE}, {OBJECTIVES_FILE}, and {INVARIANTS_FILE} as the contract, not lane plans.\nInfer failures from code, logs, runtime state, and verifier findings.\nPrefer evidence from workspace-local artifacts that actually exist over assumptions from other projects.\n\nCanonical law:\n{canonical_law}\n\nWrite a ranked diagnostics report to {diagnostics_path}. Emit exactly one action to begin. Think through the decision internally; reveal chain-of-thought."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nRead files and search the source code for bugs and inconsistencies (use read_file + run_command/ripgrep).\nRun python analysis actions over available workspace-local logs, state, and code evidence.\nDo not assume canon-specific observability names or paths. Discover the actual project-local artifacts first by inspecting files and directories that exist under WORKSPACE. Examples may include state/, log/, logs/, runtime logs, jsonl logs, agent logs, or other workspace-defined artifacts.\nInfer the root cause from the evidence and cite detailed sources of errors (file paths, functions, log evidence).\n\nLatest verifier summary:\n(none yet)\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nVerify whether objectives in {OBJECTIVES_FILE} are being met and note gaps.\nUse {SPEC_FILE}, {OBJECTIVES_FILE}, and {INVARIANTS_FILE} as the contract, not lane plans.\nInfer failures from code, logs, runtime state, and verifier findings.\nPrefer evidence from workspace-local artifacts that actually exist over assumptions from other projects.\n\nWrite a ranked diagnostics report to {diagnostics_path}."
     )
 }
 
 pub(crate) fn single_role_planner_prompt(
     primary_input: &str,
     objectives: &str,
+    lessons_text: &str,
     invariants: &str,
     violations: &str,
     diagnostics: &str,
@@ -712,9 +680,8 @@ pub(crate) fn single_role_planner_prompt(
 ) -> String {
     let workspace = workspace();
     let diagnostics_path = diagnostics_file();
-    let canonical_law = prompt_canonical_law(AgentPromptKind::Planner);
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{primary_input}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nCanonical law:\n{canonical_law}\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nDo not create or reprioritize tasks from diagnostics alone.\nBefore accepting any diagnostics claim, read the implicated source files or gather equivalent current-cycle evidence.\nTreat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\nIf diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nEmit exactly one action to begin. Think through the decision internally; reveal chain-of-thought."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{primary_input}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nLessons artifact:\n{lessons_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nDo not create or reprioritize tasks from diagnostics alone.\nBefore accepting any diagnostics claim, read the implicated source files or gather equivalent current-cycle evidence.\nTreat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\nIf diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow."
     )
 }
 
@@ -722,6 +689,7 @@ pub(crate) fn single_role_solo_prompt(
     spec: &str,
     master_plan: &str,
     objectives: &str,
+    lessons_text: &str,
     invariants: &str,
     violations: &str,
     diagnostics: &str,
@@ -729,9 +697,8 @@ pub(crate) fn single_role_solo_prompt(
 ) -> String {
     let workspace = workspace();
     let diagnostics_path = diagnostics_file();
-    let canonical_law = prompt_canonical_law(AgentPromptKind::Planner);
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{spec}\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nCanonical law:\n{canonical_law}\n\nYou are running as the solo role inside orchestration.\nYou may modify any in-workspace source and control files directly when justified by evidence.\nUse the `plan` action for `{MASTER_PLAN_FILE}` edits; do not apply_patch the master plan.\nBefore emitting a completion message, review `{OBJECTIVES_FILE}` and add or update objectives based on what you learned this cycle. Use `apply_patch` to write them.\nComplete the work directly and emit exactly one action to begin."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{spec}\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nLessons artifact:\n{lessons_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan."
     )
 }
 
@@ -1105,7 +1072,7 @@ fn derive_next_action_hint(result: &str, last_action: Option<&str>) -> NextActio
 }
 
 fn next_action_hint_text(result: &str, last_action: Option<&str>) -> String {
-    let all_actions = "list_dir, read_file, objectives, apply_patch, run_command, python, cargo_test, plan, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, message";
+    let all_actions = crate::tool_schema::predicted_action_name_list().join(", ");
     match derive_next_action_hint(result, last_action) {
         NextActionHint::TailOutputLog { path } => {
             format!("next_action_hint: run_command tail -n 200 {path}")
@@ -1298,6 +1265,7 @@ mod tests {
             "{spec}",
             "{master_plan}",
             "{objectives}",
+            "{lessons}",
             "{invariants}",
             "{violations}",
             "{diagnostics}",
