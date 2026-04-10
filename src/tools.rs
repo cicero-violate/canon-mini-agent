@@ -3810,9 +3810,14 @@ mod tests {
                 .and_then(|s| s.get("start"))
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0);
+            let end = sym
+                .get("span")
+                .and_then(|s| s.get("end"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
             let kind = sym.get("kind").and_then(|v| v.as_str()).unwrap_or("");
             let name = sym.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            let key = format!("{file}:{start}:{kind}:{name}");
+            let key = format!("{file}:{start}:{end}:{kind}:{name}");
             assert!(
                 prev.is_empty() || prev < key,
                 "symbols output should be strictly sorted and unique"
