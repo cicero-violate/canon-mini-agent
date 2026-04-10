@@ -2212,6 +2212,9 @@ async fn run_agent(
     let task_context = initial_prompt.clone();
     let mut diagnostics_eventlog_python_done = false;
     let mut idle_streak = 0usize;
+    let mut repeated_failed_action_fingerprint: Option<String> = None;
+    let mut last_failed_action_fingerprint: Option<String> = None;
+    let mut repeated_failed_action_count: usize = 0;
     let shutdown = shutdown_signal();
     let ctx = LlmResponseContext {
         role,
@@ -2414,6 +2417,21 @@ async fn run_agent(
 
         let command_id = exchange_id.clone();
         action["command_id"] = Value::String(command_id.clone());
+        let action_fingerprint = action_retry_fingerprint(&action);
+
+        if repeated_failed_action_fingerprint.as_deref() == Some(action_fingerprint.as_str()) {
+            apply_error_result(
+                role,
+                &task_context,
+                &mut error_streak,
+                &mut last_error,
+                &mut last_result,
+                "repeated_failed_action_payload",
+                "This exact action payload has failed repeatedly. Choose a different action class or a materially different payload before retrying.".to_string(),
+            );
+            step += 1;
+            continue;
+        }
 
         if role == "solo" {
             let objectives_text = read_text_or_empty(preferred_objectives_path(workspace));
@@ -2471,6 +2489,24 @@ async fn run_agent(
             }
             (false, out) => {
                 cargo_test_gate.note_result(&kind, &out);
+                if out.starts_with("Error executing action:") {
+                    if last_failed_action_fingerprint
+                        .as_deref()
+                        .is_some_and(|f| f == action_fingerprint)
+                    {
+                        repeated_failed_action_count = repeated_failed_action_count.saturating_add(1);
+                    } else {
+                        last_failed_action_fingerprint = Some(action_fingerprint.clone());
+                        repeated_failed_action_count = 1;
+                    }
+                    if repeated_failed_action_count >= 2 {
+                        repeated_failed_action_fingerprint = Some(action_fingerprint.clone());
+                    }
+                } else {
+                    last_failed_action_fingerprint = None;
+                    repeated_failed_action_count = 0;
+                    repeated_failed_action_fingerprint = None;
+                }
                 last_result = Some(out);
             }
         }
@@ -2926,6 +2962,23 @@ fn should_reject_solo_self_complete(action: &Value, objectives_text: &str, plan_
         return false;
     }
     has_actionable_objectives(objectives_text) && !plan_has_incomplete_tasks(plan_text)
+}
+
+fn action_retry_fingerprint(action: &Value) -> String {
+    let mut action = action.clone();
+    if let Some(obj) = action.as_object_mut() {
+        for key in [
+            "command_id",
+            "observation",
+            "rationale",
+            "question",
+            "predicted_next_actions",
+            "predicated_next_actions",
+        ] {
+            obj.remove(key);
+        }
+    }
+    serde_json::to_string(&action).unwrap_or_default()
 }
 
 fn verifier_confirmed_with_plan_text(reason: &str, plan_text: &str) -> bool {
@@ -3804,8 +3857,8 @@ pub async fn run() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        executor_step_limit_feedback, has_actionable_objectives, plan_has_incomplete_tasks,
-        should_reject_solo_self_complete, verifier_confirmed_with_plan_text,
+        action_retry_fingerprint, executor_step_limit_feedback, has_actionable_objectives,
+        plan_has_incomplete_tasks, should_reject_solo_self_complete, verifier_confirmed_with_plan_text,
     };
     use serde_json::json;
 
@@ -3915,5 +3968,33 @@ mod tests {
           ]
         }"#;
         assert!(!should_reject_solo_self_complete(&action, objectives, plan));
+    }
+
+    #[test]
+    fn action_retry_fingerprint_ignores_volatile_fields() {
+        let a = json!({
+            "action": "plan",
+            "op": "set_task_status",
+            "task_id": "T1",
+            "status": "done",
+            "observation": "first",
+            "rationale": "r1",
+            "question": "q1",
+            "predicted_next_actions": [{"action":"read_file","intent":"next"}],
+            "command_id": "solo:solo:0001:1"
+        });
+        let b = json!({
+            "action": "plan",
+            "op": "set_task_status",
+            "task_id": "T1",
+            "status": "done",
+            "observation": "second",
+            "rationale": "r2",
+            "question": "q2",
+            "predicted_next_actions": [{"action":"message","intent":"different"}],
+            "command_id": "solo:solo:0002:2"
+        });
+
+        assert_eq!(action_retry_fingerprint(&a), action_retry_fingerprint(&b));
     }
 }

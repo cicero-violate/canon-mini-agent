@@ -740,7 +740,32 @@ fn first_missing_field_for_action(action: &Value, action_name: &str) -> Option<S
         "run_command" => missing_field("cmd"),
         "python" => missing_field("code"),
         "cargo_test" => missing_field("crate"),
-        "plan" => missing_field("op"),
+        "plan" => {
+            let op = action
+                .get("op")
+                .and_then(|v| v.as_str())
+                .or_else(|| action.get("operation").and_then(|v| v.as_str()))?;
+            match op {
+                "create_task" | "update_task" => missing_field("task"),
+                "delete_task" => missing_field("task_id"),
+                "add_edge" | "remove_edge" => missing_field("from").or_else(|| missing_field("to")),
+                "set_plan_status" => missing_field("status"),
+                "set_task_status" => {
+                    missing_field("task_id").or_else(|| missing_field("status"))
+                }
+                // Backward-compatible alias
+                "set_status" => {
+                    if action.get("task_id").is_some() {
+                        missing_field("status")
+                    } else {
+                        missing_field("status")
+                    }
+                }
+                "replace_plan" => missing_field("plan"),
+                "sorted_view" => None,
+                _ => None,
+            }
+        }
         "rustc_hir" | "rustc_mir" => missing_field("crate"),
         "graph_call" | "graph_cfg" | "graph_dataflow" | "graph_reachability" => {
             missing_field("crate")

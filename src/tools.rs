@@ -2147,6 +2147,86 @@ fn ensure_reopened_task_has_regression_linkage(
     Ok(())
 }
 
+fn validate_plan_action_shape(action: &Value, normalized_op: &str) -> Result<()> {
+    let has = |field: &str| action.get(field).is_some();
+    let require = |field: &str| {
+        if has(field) {
+            Ok(())
+        } else {
+            Err(anyhow!("plan {normalized_op} missing {field}"))
+        }
+    };
+    let reject = |field: &str, why: &str| {
+        if has(field) {
+            Err(anyhow!("plan {normalized_op} does not accept {field} ({why})"))
+        } else {
+            Ok(())
+        }
+    };
+
+    match normalized_op {
+        "create_task" => {
+            require("task")?;
+            reject("task_id", "use task.id inside task object")?;
+            reject("status", "set status inside task object")?;
+            reject("from", "edge fields are only for add_edge/remove_edge")?;
+            reject("to", "edge fields are only for add_edge/remove_edge")?;
+            reject("plan", "use replace_plan to write a full plan object")?;
+        }
+        "update_task" => {
+            require("task")?;
+            reject("task_id", "task id belongs inside task object for update_task")?;
+            reject("status", "set status inside task object or use set_task_status")?;
+            reject("from", "edge fields are only for add_edge/remove_edge")?;
+            reject("to", "edge fields are only for add_edge/remove_edge")?;
+            reject("plan", "use replace_plan to write a full plan object")?;
+        }
+        "delete_task" => {
+            require("task_id")?;
+            reject("task", "delete_task targets by task_id only")?;
+            reject("status", "status is not used by delete_task")?;
+            reject("from", "edge fields are only for add_edge/remove_edge")?;
+            reject("to", "edge fields are only for add_edge/remove_edge")?;
+            reject("plan", "use replace_plan to write a full plan object")?;
+        }
+        "add_edge" | "remove_edge" => {
+            require("from")?;
+            require("to")?;
+            reject("task", "task object is not used for edge operations")?;
+            reject("task_id", "task_id is not used for edge operations")?;
+            reject("status", "status is not used for edge operations")?;
+            reject("plan", "use replace_plan to write a full plan object")?;
+        }
+        "set_plan_status" => {
+            require("status")?;
+            reject("task_id", "set_plan_status changes PLAN.status only")?;
+            reject("task", "set_plan_status changes PLAN.status only")?;
+            reject("from", "edge fields are only for add_edge/remove_edge")?;
+            reject("to", "edge fields are only for add_edge/remove_edge")?;
+            reject("plan", "use replace_plan to write a full plan object")?;
+        }
+        "set_task_status" => {
+            require("task_id")?;
+            require("status")?;
+            reject("task", "use update_task for full task updates")?;
+            reject("from", "edge fields are only for add_edge/remove_edge")?;
+            reject("to", "edge fields are only for add_edge/remove_edge")?;
+            reject("plan", "use replace_plan to write a full plan object")?;
+        }
+        "replace_plan" => {
+            require("plan")?;
+            reject("task", "replace_plan uses plan object")?;
+            reject("task_id", "replace_plan uses plan object")?;
+            reject("status", "replace_plan uses plan object")?;
+            reject("from", "replace_plan uses plan object")?;
+            reject("to", "replace_plan uses plan object")?;
+        }
+        "sorted_view" | "update" => {}
+        _ => {}
+    }
+    Ok(())
+}
+
 fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(bool, String)> {
     let op_raw = action
         .get("op")
@@ -2201,6 +2281,7 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
         }
         return handle_plan_update_bundle(workspace, action);
     }
+    validate_plan_action_shape(action, op_raw)?;
     let op = PlanOp::parse(op_raw)?;
     let plan_path = workspace.join(MASTER_PLAN_FILE);
     let mut plan = load_or_init_plan(&plan_path)?;
@@ -3464,6 +3545,55 @@ mod tests {
         let persisted = std::fs::read_to_string(tmp.join("PLAN.json")).unwrap();
         assert!(persisted.contains("\"id\": \"T1\""));
         assert!(persisted.contains("\"status\": \"done\""));
+    }
+
+    #[test]
+    fn plan_set_plan_status_rejects_task_id_field() {
+        let tmp = fresh_test_dir("set-plan-status-rejects-task-id");
+        std::fs::write(
+            tmp.join("PLAN.json"),
+            r#"{
+  "version": 2,
+  "status": "in_progress",
+  "tasks": [{"id":"T1","status":"todo"}],
+  "dag": { "edges": [] }
+}"#,
+        )
+        .unwrap();
+        let action = json!({
+            "op": "set_plan_status",
+            "task_id": "T1",
+            "status": "in_progress",
+            "rationale": "Invalid mixed payload"
+        });
+
+        let err = handle_plan_action("solo", &tmp, &action).unwrap_err().to_string();
+        assert!(err.contains("does not accept task_id"));
+    }
+
+    #[test]
+    fn plan_set_task_status_rejects_task_object_field() {
+        let tmp = fresh_test_dir("set-task-status-rejects-task-object");
+        std::fs::write(
+            tmp.join("PLAN.json"),
+            r#"{
+  "version": 2,
+  "status": "in_progress",
+  "tasks": [{"id":"T1","status":"todo"}],
+  "dag": { "edges": [] }
+}"#,
+        )
+        .unwrap();
+        let action = json!({
+            "op": "set_task_status",
+            "task_id": "T1",
+            "status": "done",
+            "task": {"id":"T1","status":"done"},
+            "rationale": "Invalid mixed payload"
+        });
+
+        let err = handle_plan_action("solo", &tmp, &action).unwrap_err().to_string();
+        assert!(err.contains("does not accept task"));
     }
 
     #[test]

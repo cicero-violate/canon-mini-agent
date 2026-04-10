@@ -330,12 +330,11 @@ fn append_secondary_action_log(role: &str, action: &Value) -> Result<()> {
         record.insert("question".to_string(), value);
     }
     if let Some(value) = action
-        .get("predicated_next_actions")
+        .get("predicted_next_actions")
         .cloned()
-        .or_else(|| action.get("predicted_next_actions").cloned())
         .and_then(compact_json)
     {
-        record.insert("predicated_next_actions".to_string(), value);
+        record.insert("predicted_next_actions".to_string(), value);
     }
     if let Some(value) = secondary_llm_response(action) {
         record.insert("llm_response".to_string(), value);
@@ -871,5 +870,28 @@ mod tests {
         assert!(!obj.contains_key("predicated_next_actions"));
         assert!(!obj.contains_key("path"));
         assert!(!obj.contains_key("line"));
+    }
+
+    #[test]
+    fn secondary_log_uses_predicted_next_actions_key() {
+        let _ = ensure_test_action_log_path();
+        let secondary_log = log_paths().expect("log paths").secondary_log.clone();
+        if let Some(parent) = secondary_log.parent() {
+            fs::create_dir_all(parent).expect("create secondary log parent");
+        }
+        let action = json!({
+            "action": "read_file",
+            "path": "SPEC.md",
+            "rationale": "read",
+            "predicted_next_actions": [
+                { "action": "run_command", "intent": "next" },
+                { "action": "message", "intent": "handoff" }
+            ]
+        });
+
+        append_secondary_action_log("solo", &action).expect("append secondary action log");
+        let record = read_last_record(&secondary_log);
+        assert!(record.get("predicted_next_actions").is_some());
+        assert!(record.get("predicated_next_actions").is_none());
     }
 }
