@@ -1,5 +1,6 @@
 use anyhow::{bail, Context, Result};
 use canon_llm::{config::LlmEndpoint, tab_management::TabManagerHandle, ws_server::WsBridge};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
@@ -69,6 +70,18 @@ pub struct SingleRoleContext<'a> {
 
 const LESSONS_FILE: &str = "agent_state/lessons.json";
 
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LessonsArtifact {
+    #[serde(default)]
+    pub summary: String,
+    #[serde(default)]
+    pub failures: Vec<String>,
+    #[serde(default)]
+    pub fixes: Vec<String>,
+    #[serde(default)]
+    pub required_actions: Vec<String>,
+}
+
 pub fn read_text_or_empty(path: impl AsRef<Path>) -> String {
     std::fs::read_to_string(path).unwrap_or_default()
 }
@@ -77,8 +90,110 @@ pub fn read_required_text(path: impl AsRef<Path>, name: &str) -> Result<String> 
     std::fs::read_to_string(path.as_ref()).with_context(|| format!("failed to read {name}"))
 }
 
+fn render_lessons_list(title: &str, items: &[String]) -> Option<String> {
+    let filtered: Vec<&str> = items
+        .iter()
+        .map(|item| item.trim())
+        .filter(|item| !item.is_empty())
+        .collect();
+    if filtered.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "{title}:\n{}",
+        filtered
+            .iter()
+            .map(|item| format!("- {item}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    ))
+}
+
+fn render_lessons_artifact(artifact: &LessonsArtifact) -> String {
+    let mut sections = Vec::new();
+    let summary = artifact.summary.trim();
+    if !summary.is_empty() {
+        sections.push(format!("Summary:\n{summary}"));
+    }
+    if let Some(section) = render_lessons_list("Failures", &artifact.failures) {
+        sections.push(section);
+    }
+    if let Some(section) = render_lessons_list("Fixes", &artifact.fixes) {
+        sections.push(section);
+    }
+    if let Some(section) = render_lessons_list("Required actions", &artifact.required_actions) {
+        sections.push(section);
+    }
+    sections.join("\n\n")
+}
+
 pub fn read_lessons_or_empty(workspace: &Path) -> String {
-    read_text_or_empty(workspace.join(LESSONS_FILE))
+    let raw = read_text_or_empty(workspace.join(LESSONS_FILE));
+    if raw.trim().is_empty() {
+        return raw;
+    }
+    match serde_json::from_str::<LessonsArtifact>(&raw) {
+        Ok(artifact) => render_lessons_artifact(&artifact),
+        Err(_) => raw,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_workspace(label: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "canon-mini-agent-{label}-{}-{}",
+            std::process::id(),
+            unique
+        ))
+    }
+
+    #[test]
+    fn read_lessons_or_empty_renders_structured_json_for_prompts() {
+        let workspace = temp_workspace("lessons-structured");
+        fs::create_dir_all(workspace.join("agent_state")).unwrap();
+        fs::write(
+            workspace.join(LESSONS_FILE),
+            r#"{
+  "summary": "Recent solo cycles found missing objective/plan follow-up when lessons exist.",
+  "failures": ["Lessons present without follow-up state update"],
+  "fixes": ["Added explicit cycle-end enforcement signal"],
+  "required_actions": ["Add focused prompt-load coverage for structured lessons"]
+}"#,
+        )
+        .unwrap();
+
+        let rendered = read_lessons_or_empty(&workspace);
+
+        assert!(rendered.contains("Summary:"));
+        assert!(rendered.contains("Failures:"));
+        assert!(rendered.contains("Fixes:"));
+        assert!(rendered.contains("Required actions:"));
+        assert!(rendered.contains("- Lessons present without follow-up state update"));
+    }
+
+    #[test]
+    fn read_lessons_or_empty_preserves_plaintext_lessons() {
+        let workspace = temp_workspace("lessons-plaintext");
+        fs::create_dir_all(workspace.join("agent_state")).unwrap();
+        fs::write(
+            workspace.join(LESSONS_FILE),
+            "plain text lesson entry for prompt injection",
+        )
+        .unwrap();
+
+        let rendered = read_lessons_or_empty(&workspace);
+
+        assert_eq!(rendered, "plain text lesson entry for prompt injection");
+    }
 }
 
 fn is_done_like_status(status: &str) -> bool {
