@@ -71,6 +71,20 @@ pub struct SemanticIndex {
     graph: CrateGraph,
 }
 
+#[derive(Debug, Clone)]
+pub struct SymbolSummary {
+    pub symbol: String,
+    pub kind: String,
+    pub file: String,
+    pub line: u32,
+    pub signature: Option<String>,
+    pub mir_fingerprint: Option<String>,
+    pub mir_blocks: Option<usize>,
+    pub mir_stmts: Option<usize>,
+    pub call_in: usize,
+    pub call_out: usize,
+}
+
 impl SemanticIndex {
     /// Load the graph for `crate_name` from the standard artifact location.
     pub fn load(workspace: &Path, crate_name: &str) -> Result<Self> {
@@ -98,6 +112,46 @@ impl SemanticIndex {
             .as_object()
             .map(|m| m.keys().cloned().collect())
             .unwrap_or_default()
+    }
+
+    /// Extract a stable summary for each symbol with a definition span.
+    pub fn symbol_summaries(&self) -> Vec<SymbolSummary> {
+        let mut call_in: HashMap<&str, usize> = HashMap::new();
+        let mut call_out: HashMap<&str, usize> = HashMap::new();
+        for edge in &self.graph.edges {
+            if edge.kind != "call" {
+                continue;
+            }
+            *call_out.entry(edge.from.as_str()).or_insert(0) += 1;
+            *call_in.entry(edge.to.as_str()).or_insert(0) += 1;
+        }
+
+        let mut out = Vec::new();
+        for (symbol, node) in &self.graph.nodes {
+            if node.kind == "unknown" {
+                continue;
+            }
+            let Some(def) = &node.def else { continue };
+            let (mir_fingerprint, mir_blocks, mir_stmts) = match &node.mir {
+                Some(m) => (Some(m.fingerprint.clone()), Some(m.blocks), Some(m.stmts)),
+                None => (None, None, None),
+            };
+            out.push(SymbolSummary {
+                symbol: symbol.clone(),
+                kind: node.kind.clone(),
+                file: def.file.clone(),
+                line: def.line,
+                signature: node.signature.clone(),
+                mir_fingerprint,
+                mir_blocks,
+                mir_stmts,
+                call_in: *call_in.get(symbol.as_str()).unwrap_or(&0),
+                call_out: *call_out.get(symbol.as_str()).unwrap_or(&0),
+            });
+        }
+
+        out.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)).then(a.symbol.cmp(&b.symbol)));
+        out
     }
 
     // -----------------------------------------------------------------------

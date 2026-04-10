@@ -1,1 +1,1 @@
-Diagnostics report already reflects blocker; VIOLATIONS.json remains empty; no executor diff or new source evidence; existing PLAN tasks cannot progress under current failure mode.
+Current-cycle `read_file PLAN.json:306-317` shows `T_supervisor_logging_bootstrap_validation` is already in_progress with source-backed bootstrap/regression steps, and current-cycle `read_file PLANS/OBJECTIVES.json:570-601` shows OBJ-28 carries the same active scope, requirements, and pending regression checklist.

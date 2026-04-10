@@ -32,6 +32,11 @@ name = "canon-route"
 path = "src/bin/canon-route.rs"
 test = false
 
+[[bin]]
+name = "canon-tickets"
+path = "src/bin/canon-tickets.rs"
+test = false
+
 [dependencies]
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }

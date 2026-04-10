@@ -30,6 +30,7 @@ pub fn set_agent_state_dir(path: String) {
 }
 
 pub use crate::tools::execute_action_capability;
+pub use crate::semantic::{SemanticIndex, SymbolSummary};
 
 #[cfg(test)]
 mod invalid_action_tests;

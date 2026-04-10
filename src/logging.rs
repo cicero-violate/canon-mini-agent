@@ -697,10 +697,15 @@ mod tests {
     use serde_json::{json, Value};
     use std::fs;
 
-    fn read_last_record(action_log: &std::path::Path) -> Value {
+    fn read_record_with_text(action_log: &std::path::Path, expected_text: &str) -> Value {
         let log_text = fs::read_to_string(action_log).expect("read action log");
-        let last_line = log_text.lines().last().expect("action log line");
-        serde_json::from_str(last_line).expect("parse structured error record")
+        for line in log_text.lines().rev() {
+            let Ok(record) = serde_json::from_str::<Value>(line) else { continue };
+            if record.get("text").and_then(|v| v.as_str()) == Some(expected_text) {
+                return record;
+            }
+        }
+        panic!("expected record with matching text not found in action log");
     }
 
     fn assert_common_error_shape(record: &Value, actor: &str, phase: &str, step: Option<u64>) {
@@ -754,7 +759,7 @@ mod tests {
             Some(json!({ "case": "persisted_error_event" })),
         );
 
-        let record = read_last_record(&action_log);
+        let record = read_record_with_text(&action_log, &marker);
         assert_common_error_shape(&record, "solo", "test_phase", Some(7));
         assert_eq!(record.get("text").and_then(|v| v.as_str()), Some(marker.as_str()));
         assert_eq!(
@@ -809,7 +814,7 @@ mod tests {
 
         for (actor, phase, step, text, meta) in cases {
             log_error_event(actor, phase, step, &text, Some(meta.clone()));
-            let record = read_last_record(&action_log);
+            let record = read_record_with_text(&action_log, &text);
             assert_common_error_shape(&record, actor, phase, step.map(|v| v as u64));
             assert_eq!(record.get("text").and_then(|v| v.as_str()), Some(text.as_str()));
             assert_eq!(record.get("meta"), Some(&meta));
