@@ -2,7 +2,6 @@
 name = "canon-mini-agent"
 version = "0.1.0"
 edition = "2021"
-build = "build.rs"
 
 [lib]
 name = "canon_mini_agent"
@@ -49,7 +48,3 @@ canon-tools-patch = { path = "../canon/canon-utils/canon-tools-patch" }
 canon_llm = { package = "canon-llm-runtime", path = "../canon/canon-utils/canon-llm-runtime" }
 ctrlc = "3"
 ra_ap_syntax = "0.0.327"
-
-[build-dependencies]
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
