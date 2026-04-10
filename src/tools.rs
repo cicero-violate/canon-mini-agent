@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail, Context, Result};
 use canon_llm::config::LlmEndpoint;
 use canon_tools_patch::apply_patch;
-use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind, TextSize};
+use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
@@ -1568,7 +1568,7 @@ fn ambiguous_name_reasons(name: &str) -> Vec<String> {
     reasons
 }
 
-fn split_prefix_stem(name: &str) -> Option<(&'static str, String)> {
+fn split_prefix_and_stem(name: &str) -> Option<(&'static str, String)> {
     let prefixes: [(&str, &str); 12] = [
         ("get_", "get"),
         ("fetch_", "fetch"),
@@ -1613,7 +1613,7 @@ fn handle_symbols_rename_candidates_action(workspace: &Path, action: &Value) -> 
         std::collections::BTreeMap::new();
     for sym in &symbols_file.symbols {
         if sym.kind == "function" {
-            if let Some((prefix, stem)) = split_prefix_stem(&sym.name) {
+            if let Some((prefix, stem)) = split_prefix_and_stem(&sym.name) {
                 prefixes_by_stem
                     .entry(stem)
                     .or_default()
@@ -1626,7 +1626,7 @@ fn handle_symbols_rename_candidates_action(workspace: &Path, action: &Value) -> 
     for sym in &symbols_file.symbols {
         let mut reasons = ambiguous_name_reasons(&sym.name);
         if sym.kind == "function" {
-            if let Some((prefix, stem)) = split_prefix_stem(&sym.name) {
+            if let Some((prefix, stem)) = split_prefix_and_stem(&sym.name) {
                 if let Some(prefixes) = prefixes_by_stem.get(&stem) {
                     if prefixes.len() > 1 {
                         let mut other = prefixes

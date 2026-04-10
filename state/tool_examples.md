@@ -49,13 +49,15 @@ Notes:
 - `index` defaults to 0.
 - `out` defaults to `state/next_rename_action.json`.
 
-## `rename_symbol` — rename a Rust identifier at an exact line/column using rust-analyzer syntax APIs (file-scoped in v1)
+## `rename_symbol` — rename Rust symbols using rustc graph spans (crate-wide; supports bulk)
 
-Example:
-  {"action":"rename_symbol","path":"src/tools.rs","line":2230,"column":8,"old_name":"handle_plan_action","new_name":"handle_master_plan_action","question":"Is this exact symbol-at-position the one that should be renamed without changing behavior?","rationale":"Apply a deterministic symbol rename at the precise declaration/reference location.","predicted_next_actions":[{"action":"cargo_test","intent":"Run focused tests covering the renamed symbol path."},{"action":"run_command","intent":"Run cargo check to verify no compile regressions."}]}
+Example (single):
+  {"action":"rename_symbol","old_symbol":"tools::handle_plan_action","new_symbol":"tools::handle_master_plan_action","question":"Is this the exact symbol to rename across the crate?","rationale":"Use span-backed rename so all references update consistently.","predicted_next_actions":[{"action":"cargo_test","intent":"Run focused tests covering the renamed symbol."},{"action":"run_command","intent":"Run cargo check to verify the workspace compiles."}]}
+Example (bulk):
+  {"action":"rename_symbol","renames":[{"old":"constants::EndpointSpec","new":"constants::EndpointDescriptor"},{"old":"tools::execute_logged_action","new":"tools::execute_action_logged"}],"question":"Are these renames correct and non-breaking?","rationale":"Batch related renames to minimize rebuild cycles.","predicted_next_actions":[{"action":"cargo_test","intent":"Run tests after applying the batch rename."},{"action":"run_command","intent":"Run cargo check after rename."}]}
 Notes:
-- `line` and `column` are 1-based.
-- v1 is file-scoped and only supports `.rs` files.
+- Symbol paths are module-relative (e.g. `tools::my_fn`). Crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped.
+- Uses `state/rustc/<crate>/graph.json` spans; if the graph is stale, the rename is rejected and you should rebuild then retry.
 
 ## `issue` — record/update discovered issues in ISSUES.json for later attention
 
