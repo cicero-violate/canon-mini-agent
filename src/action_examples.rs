@@ -38,6 +38,14 @@ pub fn non_message_example_action(kind: &str) -> Option<Value> {
             "rationale": "Need a unique sorted symbols catalog before rename/refactor planning.",
             "predicted_next_actions": predicted_next_actions
         })),
+        "symbols_rename_candidates" => Some(json!({
+            "action": "symbols_rename_candidates",
+            "symbols_path": "state/symbols.json",
+            "out": "state/rename_candidates.json",
+            "observation": "Derive deterministic rename candidates from symbol inventory.",
+            "rationale": "Prioritize naming cleanup before direct symbol mutation.",
+            "predicted_next_actions": predicted_next_actions
+        })),
         "rename_symbol" => Some(json!({
             "action": "rename_symbol",
             "path": "src/tools.rs",

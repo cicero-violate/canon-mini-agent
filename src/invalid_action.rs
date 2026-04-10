@@ -108,6 +108,7 @@ pub(crate) fn unsupported_action_templates() -> Vec<String> {
         "```json\n{\n  \"action\": \"list_dir\",\n  \"path\": \".\",\n  \"observation\": \"List workspace root to locate targets.\",\n  \"rationale\": \"Confirm files before acting.\"\n}\n```",
         "```json\n{\n  \"action\": \"read_file\",\n  \"path\": \"canon-utils/canon-loop/src/executor.rs\",\n  \"observation\": \"Read file to understand current logic.\",\n  \"rationale\": \"Need context before patching.\"\n}\n```",
         "```json\n{\n  \"action\": \"symbols_index\",\n  \"path\": \"src\",\n  \"out\": \"state/symbols.json\",\n  \"observation\": \"Build deterministic symbol inventory.\",\n  \"rationale\": \"Need a unique sorted symbols catalog before rename/refactor planning.\",\n  \"predicted_next_actions\": [\n    {\"action\": \"read_file\", \"intent\": \"Inspect generated symbols catalog.\"},\n    {\"action\": \"rename_symbol\", \"intent\": \"Rename one selected symbol precisely.\"}\n  ]\n}\n```",
+        "```json\n{\n  \"action\": \"symbols_rename_candidates\",\n  \"symbols_path\": \"state/symbols.json\",\n  \"out\": \"state/rename_candidates.json\",\n  \"observation\": \"Derive deterministic rename candidates from symbol inventory.\",\n  \"rationale\": \"Prioritize naming cleanup before direct symbol mutation.\",\n  \"predicted_next_actions\": [\n    {\"action\": \"read_file\", \"intent\": \"Inspect generated rename candidates.\"},\n    {\"action\": \"rename_symbol\", \"intent\": \"Apply one selected rename candidate.\"}\n  ]\n}\n```",
         "```json\n{\n  \"action\": \"rename_symbol\",\n  \"path\": \"src/tools.rs\",\n  \"line\": 2230,\n  \"column\": 8,\n  \"old_name\": \"handle_plan_action\",\n  \"new_name\": \"handle_master_plan_action\",\n  \"question\": \"Is this exact symbol-at-position the one that should be renamed without changing behavior?\",\n  \"observation\": \"Target identifier located at the given position.\",\n  \"rationale\": \"Perform a deterministic symbol rename.\",\n  \"predicted_next_actions\": [\n    {\"action\": \"cargo_test\", \"intent\": \"Run focused tests for renamed behavior.\"},\n    {\"action\": \"run_command\", \"intent\": \"Run cargo check for compile safety.\"}\n  ]\n}\n```",
         "```json\n{\n  \"action\": \"objectives\",\n  \"op\": \"read\",\n  \"observation\": \"Load non-completed objectives for planning context.\",\n  \"rationale\": \"Need current objectives without completed items.\"\n}\n```",
         "```json\n{\n  \"action\": \"apply_patch\",\n  \"patch\": \"*** Begin Patch\\n*** Update File: path/to/file.rs\\n@@\\n- old\\n+ new\\n*** End Patch\",\n  \"observation\": \"Apply the required edit.\",\n  \"rationale\": \"Implement the change directly.\"\n}\n```",
@@ -199,6 +200,7 @@ pub(crate) fn invalid_action_expected_fields(kind: &str) -> Vec<&'static str> {
         "run_command" => vec!["action", "cmd", "rationale", "predicted_next_actions"],
         "read_file" => vec!["action", "path", "rationale", "predicted_next_actions"],
         "symbols_index" => vec!["action", "rationale", "predicted_next_actions"],
+        "symbols_rename_candidates" => vec!["action", "rationale", "predicted_next_actions"],
         "rename_symbol" => vec![
             "action",
             "path",
@@ -451,6 +453,14 @@ fn example_action_for(kind: &str, role: &str, raw_action: Option<&Value>) -> Val
             "out": "state/symbols.json",
             "observation": "Build deterministic symbol inventory.",
             "rationale": "Need a unique sorted symbols catalog before rename/refactor planning.",
+            "predicted_next_actions": example_predicted_next_actions()
+        }),
+        "symbols_rename_candidates" => json!({
+            "action": "symbols_rename_candidates",
+            "symbols_path": "state/symbols.json",
+            "out": "state/rename_candidates.json",
+            "observation": "Derive deterministic rename candidates from symbol inventory.",
+            "rationale": "Prioritize naming cleanup before direct symbol mutation.",
             "predicted_next_actions": example_predicted_next_actions()
         }),
         "rename_symbol" => json!({

@@ -2,7 +2,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use canon_llm::config::LlmEndpoint;
 use canon_tools_patch::apply_patch;
 use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind, TextSize};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::env;
@@ -1308,7 +1308,7 @@ fn handle_read_file_action(
     Ok((false, format!("read_file {path}:\n{out}")))
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct SymbolSpan {
     start: usize,
     end: usize,
@@ -1318,7 +1318,7 @@ struct SymbolSpan {
     end_column: usize,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct SymbolEntry {
     name: String,
     kind: String,
@@ -1326,10 +1326,27 @@ struct SymbolEntry {
     span: SymbolSpan,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct SymbolsIndexFile {
     version: u32,
     symbols: Vec<SymbolEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+struct RenameCandidate {
+    name: String,
+    kind: String,
+    file: String,
+    span: SymbolSpan,
+    score: u32,
+    reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+struct RenameCandidatesFile {
+    version: u32,
+    source_symbols_path: String,
+    candidates: Vec<RenameCandidate>,
 }
 
 fn line_starts(text: &str) -> Vec<usize> {
@@ -1519,6 +1536,173 @@ fn handle_symbols_index_action(workspace: &Path, action: &Value) -> Result<(bool
             "symbols_index ok: output={} symbols={}",
             out_raw,
             payload.symbols.len()
+        ),
+    ))
+}
+
+fn ambiguous_name_reasons(name: &str) -> Vec<String> {
+    let lower = name.to_ascii_lowercase();
+    let vague = [
+        "tmp", "temp", "data", "info", "item", "obj", "val", "foo", "bar", "baz", "util",
+        "helper", "thing", "stuff", "misc",
+    ];
+    let mut reasons = Vec::new();
+    if lower.len() <= 2 {
+        reasons.push("name is very short".to_string());
+    }
+    if vague.contains(&lower.as_str()) {
+        reasons.push("name is ambiguous/generic".to_string());
+    }
+    if lower.ends_with('_') || lower.contains("__") {
+        reasons.push("name shape suggests low clarity".to_string());
+    }
+    reasons
+}
+
+fn split_prefix_stem(name: &str) -> Option<(&'static str, String)> {
+    let prefixes: [(&str, &str); 12] = [
+        ("get_", "get"),
+        ("fetch_", "fetch"),
+        ("load_", "load"),
+        ("read_", "read"),
+        ("build_", "build"),
+        ("make_", "make"),
+        ("create_", "create"),
+        ("set_", "set"),
+        ("update_", "update"),
+        ("handle_", "handle"),
+        ("process_", "process"),
+        ("compute_", "compute"),
+    ];
+    for (needle, tag) in prefixes {
+        if let Some(rest) = name.strip_prefix(needle) {
+            if !rest.is_empty() {
+                return Some((tag, rest.to_string()));
+            }
+        }
+    }
+    None
+}
+
+fn handle_symbols_rename_candidates_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+    let symbols_path_raw = action
+        .get("symbols_path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("state/symbols.json");
+    let out_raw = action
+        .get("out")
+        .and_then(|v| v.as_str())
+        .unwrap_or("state/rename_candidates.json");
+    let symbols_path = safe_join(workspace, symbols_path_raw)?;
+    let out_path = safe_join(workspace, out_raw)?;
+    let symbols_text = fs::read_to_string(&symbols_path)
+        .with_context(|| format!("read {}", symbols_path.display()))?;
+    let symbols_file: SymbolsIndexFile =
+        serde_json::from_str(&symbols_text).context("parse symbols index json")?;
+
+    let mut prefixes_by_stem: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
+        std::collections::BTreeMap::new();
+    for sym in &symbols_file.symbols {
+        if sym.kind == "function" {
+            if let Some((prefix, stem)) = split_prefix_stem(&sym.name) {
+                prefixes_by_stem
+                    .entry(stem)
+                    .or_default()
+                    .insert(prefix.to_string());
+            }
+        }
+    }
+
+    let mut candidates = Vec::new();
+    for sym in &symbols_file.symbols {
+        let mut reasons = ambiguous_name_reasons(&sym.name);
+        if sym.kind == "function" {
+            if let Some((prefix, stem)) = split_prefix_stem(&sym.name) {
+                if let Some(prefixes) = prefixes_by_stem.get(&stem) {
+                    if prefixes.len() > 1 {
+                        let mut other = prefixes
+                            .iter()
+                            .filter(|p| p.as_str() != prefix)
+                            .cloned()
+                            .collect::<Vec<_>>();
+                        other.sort();
+                        reasons.push(format!(
+                            "inconsistent verb prefix for stem '{stem}' (also: {})",
+                            other.join(", ")
+                        ));
+                    }
+                }
+            }
+        }
+        if reasons.is_empty() {
+            continue;
+        }
+        let mut score = 10u32;
+        for reason in &reasons {
+            if reason.contains("inconsistent verb prefix") {
+                score += 30;
+            } else if reason.contains("ambiguous/generic") {
+                score += 20;
+            } else if reason.contains("very short") {
+                score += 10;
+            } else {
+                score += 5;
+            }
+        }
+        candidates.push(RenameCandidate {
+            name: sym.name.clone(),
+            kind: sym.kind.clone(),
+            file: sym.file.clone(),
+            span: sym.span.clone(),
+            score,
+            reasons,
+        });
+    }
+
+    candidates.sort_by(|a, b| {
+        (
+            std::cmp::Reverse(a.score),
+            a.file.as_str(),
+            a.span.start,
+            a.name.as_str(),
+            a.kind.as_str(),
+        )
+            .cmp(&(
+                std::cmp::Reverse(b.score),
+                b.file.as_str(),
+                b.span.start,
+                b.name.as_str(),
+                b.kind.as_str(),
+            ))
+    });
+    candidates.dedup_by(|a, b| {
+        a.file == b.file
+            && a.span.start == b.span.start
+            && a.span.end == b.span.end
+            && a.name == b.name
+            && a.kind == b.kind
+    });
+
+    let payload = RenameCandidatesFile {
+        version: 1,
+        source_symbols_path: symbols_path_raw.to_string(),
+        candidates,
+    };
+    if let Some(parent) = out_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("create rename candidates output dir {}", parent.display()))?;
+    }
+    fs::write(
+        &out_path,
+        serde_json::to_string_pretty(&payload).context("serialize rename candidates json")?,
+    )
+    .with_context(|| format!("write {}", out_path.display()))?;
+    Ok((
+        false,
+        format!(
+            "symbols_rename_candidates ok: output={} candidates={}",
+            out_raw,
+            payload.candidates.len()
         ),
     ))
 }
@@ -3535,6 +3719,7 @@ fn execute_action(
         "list_dir" => handle_list_dir_action(workspace, action),
         "read_file" => handle_read_file_action(role, step, workspace, action),
         "symbols_index" => handle_symbols_index_action(workspace, action),
+        "symbols_rename_candidates" => handle_symbols_rename_candidates_action(workspace, action),
         "rename_symbol" => handle_rename_symbol_action(role, step, workspace, action),
         "objectives" => handle_objectives_action(workspace, action),
         "issue" => handle_issue_action(workspace, action),
@@ -3551,7 +3736,7 @@ fn execute_action(
         other => Ok((
             false,
             format!(
-                "unsupported action '{other}' — use list_dir, read_file, symbols_index, rename_symbol, objectives, issue, apply_patch, run_command, python, cargo_test, plan, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, or message"
+                "unsupported action '{other}' — use list_dir, read_file, symbols_index, symbols_rename_candidates, rename_symbol, objectives, issue, apply_patch, run_command, python, cargo_test, plan, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, or message"
             ),
         )),
     }
@@ -3664,8 +3849,11 @@ mod tests {
     use super::handle_objectives_action;
     use super::handle_plan_action;
     use super::handle_rename_symbol_action;
+    use super::handle_symbols_rename_candidates_action;
     use super::handle_symbols_index_action;
+    use crate::logging::init_log_paths;
     use serde_json::json;
+    use serde_json::Value;
     use std::path::PathBuf;
 
     fn fresh_test_dir(name: &str) -> PathBuf {
@@ -3676,6 +3864,16 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("canon-mini-agent-{name}-{unique}"));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    fn read_last_jsonl_record(path: &std::path::Path) -> Value {
+        let raw = std::fs::read_to_string(path).expect("read jsonl log");
+        let line = raw
+            .lines()
+            .rev()
+            .find(|line| !line.trim().is_empty())
+            .expect("jsonl log should contain at least one record");
+        serde_json::from_str(line).expect("parse jsonl record")
     }
 
     #[test]
@@ -3829,6 +4027,54 @@ mod tests {
             }
             prev = Some(key);
         }
+    }
+
+    #[test]
+    fn symbols_rename_candidates_derives_heuristic_candidates() {
+        let tmp = fresh_test_dir("symbols-rename-candidates");
+        std::fs::create_dir_all(tmp.join("state")).unwrap();
+        let symbols_json = serde_json::json!({
+            "version": 1,
+            "symbols": [
+                {"name":"tmp","kind":"function","file":"src/a.rs","span":{"start":1,"end":4,"line":1,"column":1,"end_line":1,"end_column":4}},
+                {"name":"get_data","kind":"function","file":"src/a.rs","span":{"start":10,"end":18,"line":2,"column":1,"end_line":2,"end_column":9}},
+                {"name":"fetch_data","kind":"function","file":"src/b.rs","span":{"start":20,"end":30,"line":3,"column":1,"end_line":3,"end_column":11}},
+                {"name":"clear_name","kind":"function","file":"src/c.rs","span":{"start":40,"end":50,"line":4,"column":1,"end_line":4,"end_column":11}}
+            ]
+        });
+        std::fs::write(
+            tmp.join("state/symbols.json"),
+            serde_json::to_string_pretty(&symbols_json).unwrap(),
+        )
+        .unwrap();
+        let action = json!({
+            "symbols_path": "state/symbols.json",
+            "out": "state/rename_candidates.json",
+            "rationale": "derive candidates",
+            "predicted_next_actions": [
+                {"action": "read_file", "intent": "inspect"},
+                {"action": "rename_symbol", "intent": "apply"}
+            ]
+        });
+
+        let (_done, out) = handle_symbols_rename_candidates_action(&tmp, &action).unwrap();
+        assert!(out.contains("symbols_rename_candidates ok"));
+        let raw = std::fs::read_to_string(tmp.join("state/rename_candidates.json")).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let candidates = parsed
+            .get("candidates")
+            .and_then(|v| v.as_array())
+            .expect("candidates array");
+        assert!(!candidates.is_empty());
+        assert!(
+            candidates.iter().any(|c| c.get("name").and_then(|v| v.as_str()) == Some("tmp"))
+        );
+        assert!(candidates.iter().any(|c| {
+            c.get("name").and_then(|v| v.as_str()) == Some("get_data")
+                && c.get("reasons")
+                    .and_then(|v| v.as_array())
+                    .is_some_and(|arr| arr.iter().any(|r| r.as_str().unwrap_or("").contains("inconsistent verb prefix")))
+        }));
     }
 
     #[test]
@@ -4302,5 +4548,102 @@ mod tests {
         assert!(read_out.contains("\"scope\": \"updated lifecycle scope\""));
         assert!(read_out.contains("\"description\": \"updated lifecycle objective\""));
         assert!(read_out.contains("updated through handle_objectives_action"));
+    }
+
+    #[test]
+    fn objectives_update_objective_emits_attempt_and_success_trace_records() {
+        let tmp = fresh_test_dir("objective-update-trace-records");
+        std::fs::create_dir_all(tmp.join("PLANS")).unwrap();
+        std::fs::write(
+            tmp.join("PLANS").join("OBJECTIVES.json"),
+            r#"{
+  "version": 1,
+  "objectives": [
+    {
+      "id": "obj_alpha",
+      "title": "Alpha",
+      "status": "active",
+      "scope": "alpha scope",
+      "authority_files": ["src/tools.rs"],
+      "category": "quality",
+      "level": "low",
+      "description": "alpha",
+      "requirement": [],
+      "verification": [],
+      "success_criteria": []
+    }
+  ],
+  "goal": [],
+  "instrumentation": [],
+  "definition_of_done": [],
+  "non_goals": []
+}"#,
+        )
+        .unwrap();
+
+        let log_prefix = format!("objective-update-trace-{}", fresh_test_dir("trace-log-prefix").display());
+        init_log_paths(&log_prefix);
+        let action_log = std::path::Path::new(crate::constants::agent_state_dir())
+            .join(&log_prefix)
+            .join("actions.jsonl");
+        let before_count = std::fs::read_to_string(&action_log)
+            .ok()
+            .map(|raw| raw.lines().filter(|line| !line.trim().is_empty()).count())
+            .unwrap_or(0);
+
+        let action = json!({
+            "op": "update_objective",
+            "objective_id": "obj_alpha",
+            "updates": {
+                "scope": "updated alpha scope"
+            }
+        });
+
+        let (_done, out) = handle_objectives_action(&tmp, &action).unwrap();
+        assert!(out.contains("objectives update_objective ok"));
+
+        let raw = std::fs::read_to_string(&action_log).expect("read action log after update");
+        let records: Vec<Value> = raw
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| serde_json::from_str(line).expect("parse action log record"))
+            .collect();
+        let new_records = &records[before_count..];
+        let objective_records: Vec<&Value> = new_records
+            .iter()
+            .filter(|record| {
+                record.get("kind").and_then(|v| v.as_str()) == Some("trace")
+                    && record.get("phase").and_then(|v| v.as_str())
+                        == Some("objective_operation_context")
+            })
+            .collect();
+
+        assert_eq!(objective_records.len(), 2, "expected attempt and success trace records");
+
+        let attempt = objective_records[0];
+        assert_eq!(attempt.get("text").and_then(|v| v.as_str()), Some("objective_operation_context"));
+        let attempt_meta = attempt.get("meta").expect("attempt meta");
+        assert_eq!(attempt_meta.get("operation").and_then(|v| v.as_str()), Some("update_objective"));
+        assert_eq!(attempt_meta.get("outcome").and_then(|v| v.as_str()), Some("attempt"));
+        assert_eq!(attempt_meta.get("requested_raw").and_then(|v| v.as_str()), Some("obj_alpha"));
+        assert_eq!(attempt_meta.get("requested_id").and_then(|v| v.as_str()), Some("obj_alpha"));
+        assert_eq!(attempt_meta.get("compared_ids"), Some(&json!(["obj_alpha"])));
+        assert_eq!(attempt_meta.get("compared_normalized_ids"), Some(&json!(["obj_alpha"])));
+
+        let success = objective_records[1];
+        assert_eq!(success.get("text").and_then(|v| v.as_str()), Some("objective_operation_context"));
+        let success_meta = success.get("meta").expect("success meta");
+        assert_eq!(success_meta.get("operation").and_then(|v| v.as_str()), Some("update_objective"));
+        assert_eq!(success_meta.get("outcome").and_then(|v| v.as_str()), Some("success"));
+        assert_eq!(success_meta.get("requested_raw").and_then(|v| v.as_str()), Some("obj_alpha"));
+        assert_eq!(success_meta.get("requested_id").and_then(|v| v.as_str()), Some("obj_alpha"));
+        assert_eq!(success_meta.get("compared_ids"), Some(&json!(["obj_alpha"])));
+        assert_eq!(success_meta.get("compared_normalized_ids"), Some(&json!(["obj_alpha"])));
+
+        let persisted = std::fs::read_to_string(tmp.join("PLANS").join("OBJECTIVES.json")).unwrap();
+        assert!(persisted.contains("\"scope\": \"updated alpha scope\""));
+
+        let last_record = read_last_jsonl_record(&action_log);
+        assert_eq!(last_record.get("phase").and_then(|v| v.as_str()), Some("objective_operation_context"));
     }
 }

@@ -22,6 +22,7 @@ pub enum PredictedActionName {
     ListDir,
     ReadFile,
     SymbolsIndex,
+    SymbolsRenameCandidates,
     RenameSymbol,
     Objectives,
     Issue,
@@ -48,6 +49,7 @@ pub const TOOL_ACTION_NAMES: &[&str] = &[
     "list_dir",
     "read_file",
     "symbols_index",
+    "symbols_rename_candidates",
     "rename_symbol",
     "objectives",
     "issue",
@@ -62,6 +64,7 @@ pub const ALL_TOOL_PROMPT_KINDS: &[&str] = &[
     "list_dir",
     "read_file",
     "symbols_index",
+    "symbols_rename_candidates",
     "rename_symbol",
     "objectives",
     "issue",
@@ -226,6 +229,14 @@ pub enum ToolAction {
         base: ActionBase,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        out: Option<String>,
+    },
+    SymbolsRenameCandidates {
+        #[serde(flatten)]
+        base: ActionBase,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        symbols_path: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         out: Option<String>,
     },
@@ -415,6 +426,13 @@ pub fn tool_protocol_schema_split_text() -> String {
             "build deterministic symbols index JSON from Rust sources",
             Some(
                 "Example:\n  {\"action\":\"symbols_index\",\"path\":\"src\",\"out\":\"state/symbols.json\",\"rationale\":\"Build a deterministic unique symbol catalog for planning and rename work.\",\"predicted_next_actions\":[{\"action\":\"read_file\",\"intent\":\"Inspect generated symbols.json and choose target symbols.\"},{\"action\":\"rename_symbol\",\"intent\":\"Apply a precise rename for one selected symbol.\"}]}\nNotes:\n- `path` defaults to workspace root.\n- `out` defaults to `state/symbols.json`.",
+            ),
+        ),
+        (
+            "symbols_rename_candidates",
+            "derive deterministic rename candidates from symbols.json using naming heuristics",
+            Some(
+                "Example:\n  {\"action\":\"symbols_rename_candidates\",\"symbols_path\":\"state/symbols.json\",\"out\":\"state/rename_candidates.json\",\"rationale\":\"Surface high-value rename candidates before mutating code.\",\"predicted_next_actions\":[{\"action\":\"read_file\",\"intent\":\"Inspect rename candidates and choose one.\"},{\"action\":\"rename_symbol\",\"intent\":\"Apply a precise rename for the selected candidate.\"}]}\nNotes:\n- `symbols_path` defaults to `state/symbols.json`.\n- `out` defaults to `state/rename_candidates.json`.",
             ),
         ),
         (
@@ -720,6 +738,7 @@ fn is_known_action(action: &str) -> bool {
             | "list_dir"
             | "read_file"
             | "symbols_index"
+            | "symbols_rename_candidates"
             | "rename_symbol"
             | "objectives"
             | "apply_patch"
@@ -755,6 +774,7 @@ fn first_missing_field_for_action(action: &Value, action_name: &str) -> Option<S
         "list_dir" => missing_field("path"),
         "read_file" => missing_field("path"),
         "symbols_index" => None,
+        "symbols_rename_candidates" => None,
         "rename_symbol" => missing_field("path")
             .or_else(|| missing_field("line"))
             .or_else(|| missing_field("column"))
