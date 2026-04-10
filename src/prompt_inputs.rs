@@ -300,6 +300,32 @@ pub fn filter_pending_plan_json(raw: &str) -> String {
     serde_json::to_string_pretty(&value).unwrap_or_else(|_| raw.to_string())
 }
 
+pub fn filter_invariants_json(raw: &str) -> String {
+    if raw.trim().is_empty() {
+        return String::new();
+    }
+    let Ok(value) = serde_json::from_str::<Value>(raw) else {
+        return raw.to_string();
+    };
+    let Some(invariants) = value.get("invariants").and_then(Value::as_array) else {
+        return raw.to_string();
+    };
+    if invariants.is_empty() {
+        return String::new();
+    }
+    let mut out = String::new();
+    for inv in invariants {
+        let id = inv.get("id").and_then(Value::as_str).unwrap_or("?");
+        let title = inv.get("title").and_then(Value::as_str).unwrap_or("(no title)");
+        let level = inv.get("level").and_then(Value::as_str).unwrap_or("?");
+        let category = inv.get("category").and_then(Value::as_str).unwrap_or("");
+        let scope = if category.is_empty() { String::new() } else { format!("  ({})", category) };
+        out.push_str(&format!("[{level}]  {id}  —  {title}{scope}\n"));
+    }
+    out.push_str("Full detail: {\"action\":\"read_file\",\"path\":\"INVARIANTS.json\"}");
+    out
+}
+
 pub fn filter_active_violations_json(raw: &str) -> String {
     if raw.trim().is_empty() {
         return String::new();
@@ -550,7 +576,7 @@ pub fn load_planner_inputs(
     let executor_diff_text = load_executor_diff_inputs(workspace, last_executor_diff, 400).diff_text;
     let lessons_text = read_lessons_or_empty(workspace);
     let objectives_text = crate::objectives::read_objectives_compact(&workspace.join(OBJECTIVES_FILE));
-    let invariants_text = read_text_or_empty(workspace.join(INVARIANTS_FILE));
+    let invariants_text = filter_invariants_json(&read_text_or_empty(workspace.join(INVARIANTS_FILE)));
     let raw_violations_text = read_text_or_empty(violations_path);
     let violations_text = filter_active_violations_json(&raw_violations_text);
     let raw_diagnostics_text = read_text_or_empty(diagnostics_path);
@@ -588,7 +614,9 @@ impl SingleRoleContext<'_> {
             SingleRoleRead::Objectives => {
                 crate::objectives::read_objectives_compact(&self.workspace.join(OBJECTIVES_FILE))
             }
-            SingleRoleRead::Invariants => read_text_or_empty(self.workspace.join(INVARIANTS_FILE)),
+            SingleRoleRead::Invariants => {
+                filter_invariants_json(&read_text_or_empty(self.workspace.join(INVARIANTS_FILE)))
+            }
             SingleRoleRead::Lessons => read_lessons_or_empty(self.workspace),
             SingleRoleRead::Violations => {
                 filter_active_violations_json(&read_text_or_empty(self.violations_path))
