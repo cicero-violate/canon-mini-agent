@@ -2869,23 +2869,7 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
     if op_raw != "sorted_view" {
         capture_plan_schema(action);
     }
-    if matches!(role, "planner" | "mini_planner") {
-        let rationale = action.get("rationale").and_then(|v| v.as_str()).unwrap_or("");
-        let observation = action.get("observation").and_then(|v| v.as_str()).unwrap_or("");
-        let combined = format!("{observation}\n{rationale}").to_ascii_lowercase();
-        let references_diagnostics = combined.contains("diagnostic")
-            || combined.contains("stale")
-            || combined.contains("violation");
-        let has_source_validation = combined.contains("read_file")
-            || combined.contains("source")
-            || combined.contains("verified")
-            || combined.contains("current-cycle")
-            || combined.contains("rg ")
-            || combined.contains("run_command");
-        if references_diagnostics && !has_source_validation {
-            bail!("planner plan actions that rely on diagnostics must cite current source validation in observation/rationale (for example read_file, run_command, or verified source evidence)");
-        }
-    }
+    validate_planner_diagnostics(role, action)?;
     if let Some(path) = action.get("path").and_then(|v| v.as_str()) {
         if path != MASTER_PLAN_FILE {
             bail!("plan path must be {MASTER_PLAN_FILE}, got {path}");
@@ -3075,6 +3059,28 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
         false,
         format!("plan ok\nplan_path: {}", plan_path.display()),
     ))
+}
+
+fn validate_planner_diagnostics(role: &str, action: &Value) -> Result<()> {
+    if !matches!(role, "planner" | "mini_planner") {
+        return Ok(());
+    }
+    let rationale = action.get("rationale").and_then(|v| v.as_str()).unwrap_or("");
+    let observation = action.get("observation").and_then(|v| v.as_str()).unwrap_or("");
+    let combined = format!("{observation}\n{rationale}").to_ascii_lowercase();
+    let references_diagnostics = combined.contains("diagnostic")
+        || combined.contains("stale")
+        || combined.contains("violation");
+    let has_source_validation = combined.contains("read_file")
+        || combined.contains("source")
+        || combined.contains("verified")
+        || combined.contains("current-cycle")
+        || combined.contains("rg ")
+        || combined.contains("run_command");
+    if references_diagnostics && !has_source_validation {
+        bail!("planner plan actions that rely on diagnostics must cite current source validation in observation/rationale (for example read_file, run_command, or verified source evidence)");
+    }
+    Ok(())
 }
 
 fn handle_plan_create_task(
