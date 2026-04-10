@@ -1855,7 +1855,13 @@ fn apply_wake_flags(
     if decision.executor_wake {
         for lane in dispatch_state.lanes.values_mut() {
             lane.pending = true;
-            lane.in_progress_by = None;
+            // Do NOT clear in_progress_by here. If the lane already has a submit
+            // in flight, clearing ownership causes a double-submit on the next tick
+            // (claim_next_lane sees pending=true + in_progress_by=None and spawns a
+            // second request while the first is still running). The wake effect is
+            // preserved: once the in-flight turn completes and in_progress_by is
+            // cleared by the normal completion path, pending=true ensures the lane
+            // is claimed again immediately.
         }
     }
 }
@@ -3405,7 +3411,16 @@ pub async fn run() -> Result<()> {
             dispatch_state.deferred_completions.clear();
             for lane in &lanes {
                 dispatch_state.lane_prompt_in_flight.insert(lane.index, false);
-                dispatch_state.lane_submit_in_flight.insert(lane.index, false);
+                // Only clear the submit guard for lanes that have no live inflight entry.
+                // If executor_submit_inflight still holds an entry for this lane, the
+                // submit_joinset task is still running and will deliver an ack — clearing
+                // the guard now would allow a second submit to be spawned while the first
+                // is in flight, causing a double-submit and the "submit ack without pending
+                // submit" error when the first ack arrives after the inflight map entry has
+                // been overwritten by the second submit.
+                if !dispatch_state.executor_submit_inflight.contains_key(&lane.index) {
+                    dispatch_state.lane_submit_in_flight.insert(lane.index, false);
+                }
             }
             for (lane_id, lane) in dispatch_state.lanes.iter_mut() {
                 if lane.in_progress_by.is_some() {
