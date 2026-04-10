@@ -277,6 +277,16 @@ fn build_verifier_blocker_ack(fields: &BlockerFields) -> Value {
         "status": "blocked",
         "observation": "Inbound blocker received; verifier yielding without further work until resolved.",
         "rationale": "Blocker is not verifier-specific; pausing verification avoids unnecessary work.",
+        "predicted_next_actions": [
+            {
+                "action": "message",
+                "intent": "Resume verification only after planner addresses the upstream blocker and re-handoffs the lane."
+            },
+            {
+                "action": "read_file",
+                "intent": "Reinspect the updated planner handoff or affected artifacts after the blocker is resolved."
+            }
+        ],
         "payload": build_blocker_payload(
             "Verifier paused due to upstream blocker.",
             &fields.blocker_display,
@@ -1305,7 +1315,7 @@ fn blocker_escalation_prompt(role: &str, last_error: &str, task_context: &str) -
     let from = canonical_role_label(role);
     let to = blocker_target_role(role);
     format!(
-        "Repeated failures detected. You cannot proceed without external action.\nReturn exactly one action that reports a blocker using this schema:\n```json\n{{\n  \"action\": \"message\",\n  \"from\": \"{from}\",\n  \"to\": \"{to}\",\n  \"type\": \"blocker\",\n  \"status\": \"blocked\",\n  \"observation\": \"Summarize the blocked state based on evidence.\",\n  \"rationale\": \"Explain why you cannot proceed.\",\n  \"payload\": {{\n    \"summary\": \"Short blocker summary.\",\n    \"blocker\": \"Root cause that prevents progress.\",\n    \"evidence\": \"{evidence}\",\n    \"required_action\": \"What must be fixed to continue.\",\n    \"severity\": \"error\"\n  }}\n}}\n```\nTask context:\n{context}\nReturn exactly one action.",
+        "Repeated failures detected. You cannot proceed without external action.\nReturn exactly one action that reports a blocker using this schema:\n```json\n{{\n  \"action\": \"message\",\n  \"from\": \"{from}\",\n  \"to\": \"{to}\",\n  \"type\": \"blocker\",\n  \"status\": \"blocked\",\n  \"observation\": \"Summarize the blocked state based on evidence.\",\n  \"rationale\": \"Explain why you cannot proceed.\",\n  \"predicted_next_actions\": [\n    {{\n      \"action\": \"read_file\",\n      \"intent\": \"Reinspect the blocking artifact after the required external fix lands.\"\n    }},\n    {{\n      \"action\": \"message\",\n      \"intent\": \"Report completion or a narrower blocker once the external fix is available.\"\n    }}\n  ],\n  \"payload\": {{\n    \"summary\": \"Short blocker summary.\",\n    \"blocker\": \"Root cause that prevents progress.\",\n    \"evidence\": \"{evidence}\",\n    \"required_action\": \"What must be fixed to continue.\",\n    \"severity\": \"error\"\n  }}\n}}\n```\nTask context:\n{context}\nReturn exactly one action.",
         evidence = truncate(last_error, MAX_SNIPPET),
         context = truncate(task_context, MAX_SNIPPET),
     )
