@@ -261,32 +261,81 @@ impl SemanticIndex {
 
     /// All reference sites for `symbol` — file:line:col, one per line.
     pub fn symbol_refs(&self, symbol: &str) -> Result<String> {
-        let node = self.find_node(symbol)?;
-        if node.refs.is_empty() {
+        let unique = self.collect_unique_refs(symbol)?;
+        if unique.is_empty() {
             return Ok(format!("No reference sites recorded for `{symbol}`."));
         }
+        let mut out = format!("References to `{symbol}` ({} sites):\n", unique.len());
+        for s in &unique {
+            out.push_str(&format!("  {}:{}:{}\n", shorten_path(&s.file), s.line, s.col));
+        }
+        Ok(out)
+    }
 
+    /// Same as `symbol_refs` but appends the body of the enclosing symbol at each site.
+    pub fn symbol_refs_expanded(&self, symbol: &str) -> Result<String> {
+        let unique = self.collect_unique_refs(symbol)?;
+        if unique.is_empty() {
+            return Ok(format!("No reference sites recorded for `{symbol}`."));
+        }
+        let mut out = format!("References to `{symbol}` ({} sites):\n\n", unique.len());
+        for span in &unique {
+            out.push_str(&format!(
+                "── {}:{}:{} ──\n",
+                shorten_path(&span.file),
+                span.line,
+                span.col
+            ));
+            match self.find_enclosing_symbol(span) {
+                Some(enclosing_key) => match self.symbol_window(enclosing_key) {
+                    Ok(body) => out.push_str(&body),
+                    Err(e) => out.push_str(&format!("  (could not extract body: {e})\n")),
+                },
+                None => out.push_str("  (no enclosing symbol found in graph)\n"),
+            }
+            out.push('\n');
+        }
+        Ok(out)
+    }
+
+    /// Collect deduplicated, sorted ref spans for `symbol`.
+    fn collect_unique_refs<'a>(&'a self, symbol: &str) -> Result<Vec<&'a SourceSpan>> {
+        let node = self.find_node(symbol)?;
         let mut spans: Vec<&SourceSpan> = node.refs.iter().collect();
-        spans.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line).then(a.col.cmp(&b.col))));
-        let mut unique = Vec::new();
+        spans.sort_by(|a, b| {
+            a.file
+                .cmp(&b.file)
+                .then(a.line.cmp(&b.line))
+                .then(a.col.cmp(&b.col))
+        });
+        let mut unique: Vec<&SourceSpan> = Vec::new();
         let mut seen = HashSet::<(String, u32, u32)>::new();
         for s in spans {
-            let key = (s.file.clone(), s.line, s.col);
-            if seen.insert(key) {
+            if seen.insert((s.file.clone(), s.line, s.col)) {
                 unique.push(s);
             }
         }
+        Ok(unique)
+    }
 
-        let mut out = format!("References to `{symbol}` ({} sites):\n", unique.len());
-        for s in unique {
-            out.push_str(&format!(
-                "  {}:{}:{}\n",
-                shorten_path(&s.file),
-                s.line,
-                s.col
-            ));
+    /// Find the tightest graph node whose def span contains `ref_span` by byte offset.
+    fn find_enclosing_symbol(&self, ref_span: &SourceSpan) -> Option<&str> {
+        let mut best: Option<(&str, u32)> = None; // (key, span_width)
+        for (key, node) in &self.graph.nodes {
+            if let Some(def) = &node.def {
+                if def.file == ref_span.file
+                    && def.lo <= ref_span.lo
+                    && ref_span.lo < def.hi
+                {
+                    let width = def.hi - def.lo;
+                    let tighter = best.map_or(true, |(_, w)| width < w);
+                    if tighter {
+                        best = Some((key.as_str(), width));
+                    }
+                }
+            }
         }
-        Ok(out)
+        best.map(|(k, _)| k)
     }
 
     // -----------------------------------------------------------------------

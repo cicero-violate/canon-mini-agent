@@ -3838,7 +3838,15 @@ fn handle_symbol_refs_action(workspace: &Path, action: &Value) -> Result<(bool, 
         .get("symbol")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("symbol_refs requires a `symbol` field"))?;
-    let out = idx.symbol_refs(symbol)?;
+    let expand = action
+        .get("expand_bodies")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let out = if expand {
+        idx.symbol_refs_expanded(symbol)?
+    } else {
+        idx.symbol_refs(symbol)?
+    };
     Ok((false, out))
 }
 

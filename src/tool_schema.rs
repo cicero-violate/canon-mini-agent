@@ -442,12 +442,17 @@ pub enum ToolAction {
         symbol: String,
     },
     /// List all reference sites (ident spans) for a symbol across the crate.
+    /// Set `expand_bodies` to true to also show the enclosing function/struct/trait body at each site (like symbol_window).
     SymbolRefs {
         #[serde(flatten)]
         base: ActionBase,
         #[serde(rename = "crate")]
         crate_name: String,
         symbol: String,
+        /// When true, includes the full enclosing symbol body at each reference site.
+        /// Defaults to false (file:line:col only).
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        expand_bodies: bool,
     },
     /// BFS shortest call-graph path between two symbols.
     SymbolPath {
@@ -606,9 +611,9 @@ pub fn tool_protocol_schema_split_text() -> String {
         ),
         (
             "symbol_refs",
-            "list all reference sites (file:line:col) for a symbol",
+            "list all reference sites for a symbol; set expand_bodies:true to also show each enclosing function/struct/trait body (like symbol_window)",
             Some(
-                "Example:\n  {\"action\":\"symbol_refs\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"rationale\":\"Find all call sites before changing a signature.\"}\nNotes: covers every identifier span recorded by the HIR visitor during compilation.",
+                "Example (sites only):\n  {\"action\":\"symbol_refs\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"rationale\":\"Find all call sites before changing a signature.\"}\nExample (with bodies):\n  {\"action\":\"symbol_refs\",\"crate\":\"canon_mini_agent\",\"symbol\":\"app::run_agent\",\"expand_bodies\":true,\"rationale\":\"Read every caller body to understand the call contract before refactoring.\"}\nNotes: covers every identifier span recorded by the HIR visitor during compilation. expand_bodies finds the tightest enclosing symbol in the graph and inlines its source.",
             ),
         ),
         (
