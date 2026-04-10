@@ -449,13 +449,12 @@ fn expand_symbol_window_span(source: &str, lo: usize, hi: usize) -> Option<(usiz
     }
     let parse = SourceFile::parse(source, Edition::CURRENT);
     let root = parse.tree();
-    let offset = TextSize::new(lo as u32);
-    let token = root
-        .syntax()
-        .token_at_offset(offset)
-        .left_biased()
-        .or_else(|| root.syntax().token_at_offset(offset).right_biased())?;
-    for node in token.parent_ancestors() {
+
+    // Avoid relying on `token_at_offset(lo)`, because rustc-provided spans can point at just the
+    // identifier, a type in the signature, etc. Scanning for the smallest enclosing "item" node
+    // is more reliable across `fn`/`struct`/`trait`/`impl` and friends.
+    let mut best: Option<(usize, usize)> = None;
+    for node in root.syntax().descendants() {
         if !is_symbol_window_item_kind(node.kind()) {
             continue;
         }
@@ -463,10 +462,16 @@ fn expand_symbol_window_span(source: &str, lo: usize, hi: usize) -> Option<(usiz
         let start = u32::from(range.start()) as usize;
         let end = u32::from(range.end()) as usize;
         if start <= lo && end >= hi {
-            return Some((start, end));
+            match best {
+                None => best = Some((start, end)),
+                Some((best_lo, best_hi)) if (end - start) < (best_hi - best_lo) => {
+                    best = Some((start, end))
+                }
+                _ => {}
+            }
         }
     }
-    None
+    best
 }
 
 fn is_symbol_window_item_kind(kind: SyntaxKind) -> bool {
@@ -564,6 +569,30 @@ mod tests {
         assert!(out.contains("Ok((false, String::new()))"));
         assert!(out.contains("}\n"));
         let _ = fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn expand_symbol_window_span_expands_struct_from_identifier_span() {
+        let src = "pub struct Widget {\n    pub x: i32,\n}\n";
+        let lo = src.find("Widget").unwrap();
+        let hi = lo + "Widget".len();
+        let (slice_lo, slice_hi) = expand_symbol_window_span(src, lo, hi).expect("span should expand");
+        let extracted = &src[slice_lo..slice_hi];
+        assert!(extracted.starts_with("pub struct Widget"));
+        assert!(extracted.contains("pub x: i32"));
+        assert!(extracted.trim_end().ends_with('}'));
+    }
+
+    #[test]
+    fn expand_symbol_window_span_expands_trait_from_identifier_span() {
+        let src = "pub trait Greeter {\n    fn greet(&self);\n}\n";
+        let lo = src.find("Greeter").unwrap();
+        let hi = lo + "Greeter".len();
+        let (slice_lo, slice_hi) = expand_symbol_window_span(src, lo, hi).expect("span should expand");
+        let extracted = &src[slice_lo..slice_hi];
+        assert!(extracted.starts_with("pub trait Greeter"));
+        assert!(extracted.contains("fn greet(&self);"));
+        assert!(extracted.trim_end().ends_with('}'));
     }
 
     #[test]

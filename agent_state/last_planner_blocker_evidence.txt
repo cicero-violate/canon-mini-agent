@@ -1,0 +1,1 @@
+Diagnostics report already reflects blocker; VIOLATIONS.json remains empty; no executor diff or new source evidence; existing PLAN tasks cannot progress under current failure mode.
