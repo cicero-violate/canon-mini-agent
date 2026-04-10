@@ -11,6 +11,7 @@ mod objectives;
 mod tool_schema;
 mod prompts;
 mod prompt_inputs;
+mod structured_questions;
 mod protocol;
 mod reports;
 mod tools;

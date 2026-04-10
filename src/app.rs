@@ -297,6 +297,71 @@ fn file_modified_ms(path: &Path) -> Option<u128> {
         .map(|duration| duration.as_millis())
 }
 
+/// Hash the contents of a set of files to detect net state changes across a cycle.
+/// Missing files contribute a fixed sentinel so a file appearing or disappearing
+/// also changes the hash.
+fn cycle_state_hash(paths: &[&Path]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    use std::collections::hash_map::DefaultHasher;
+    let mut hasher = DefaultHasher::new();
+    for path in paths {
+        match std::fs::read(path) {
+            Ok(bytes) => bytes.hash(&mut hasher),
+            Err(_) => u8::MAX.hash(&mut hasher),
+        }
+    }
+    hasher.finish()
+}
+
+fn write_livelock_report(
+    agent_state_dir: &Path,
+    stall_cycles: u32,
+    watched_paths: &[&Path],
+    planner_pending: bool,
+    diagnostics_pending: bool,
+) {
+    let report = json!({
+        "timestamp_ms": now_ms(),
+        "stall_cycles": stall_cycles,
+        "watched_files": watched_paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
+        "pending_at_detection": {
+            "planner_pending": planner_pending,
+            "diagnostics_pending": diagnostics_pending,
+        },
+        "message": format!(
+            "Orchestrator detected {} consecutive cycles where work was dispatched but \
+             no watched file changed. Pending flags cleared. Write a wakeup_*.flag or \
+             restart to resume.",
+            stall_cycles
+        ),
+    });
+    let report_path = agent_state_dir.join("livelock_report.json");
+    if let Ok(text) = serde_json::to_string_pretty(&report) {
+        let _ = std::fs::write(&report_path, text);
+    }
+    eprintln!(
+        "[orchestrate] livelock detected: {} stall cycles, pending flags cleared, \
+         report written to {}",
+        stall_cycles,
+        report_path.display()
+    );
+    log_error_event(
+        "orchestrate",
+        "livelock_detected",
+        None,
+        &format!(
+            "livelock detected after {} consecutive no-change cycles; pending flags cleared",
+            stall_cycles
+        ),
+        Some(json!({
+            "stage": "livelock_detected",
+            "stall_cycles": stall_cycles,
+            "planner_pending": planner_pending,
+            "diagnostics_pending": diagnostics_pending,
+        })),
+    );
+}
+
 async fn run_planner_phase(
     ctx: &OrchestratorContext<'_>,
     dispatch_state: &mut DispatchState,
@@ -549,7 +614,27 @@ async fn run_diagnostics_phase(
         Ok(result) => {
             eprintln!("[orchestrate] diagnostics ok bytes={}", result.len());
             let raw_diagnostics_text = read_text_or_empty(ctx.diagnostics_path);
-            let new_diagnostics_text = crate::prompt_inputs::sanitize_diagnostics_for_planner(&raw_diagnostics_text);
+            let raw_violations_text = read_text_or_empty(ctx.violations_path);
+            let reconciled_diagnostics_text = crate::prompt_inputs::reconcile_diagnostics_report(
+                &raw_diagnostics_text,
+                &raw_violations_text,
+            );
+            if reconciled_diagnostics_text != raw_diagnostics_text {
+                if let Err(err) = std::fs::write(ctx.diagnostics_path, &reconciled_diagnostics_text) {
+                    log_error_event(
+                        "diagnostics",
+                        "orchestrate",
+                        None,
+                        &format!("failed to persist reconciled diagnostics: {err:#}"),
+                        Some(json!({ "stage": "diagnostics_reconcile_write" })),
+                    );
+                    return false;
+                }
+            }
+            let new_diagnostics_text = crate::prompt_inputs::sanitize_diagnostics_for_planner(
+                &reconciled_diagnostics_text,
+                &raw_violations_text,
+            );
             let diagnostics_changed = dispatch_state.diagnostics_text != new_diagnostics_text;
             dispatch_state.diagnostics_text = new_diagnostics_text;
             dispatch_state.diagnostics_pending = false;
@@ -3223,12 +3308,24 @@ pub async fn run() -> Result<()> {
 
         eprintln!("[orchestrate] pipeline started: planner -> background executors -> verifier/diagnostics -> planner");
 
+        const STALL_CYCLE_THRESHOLD: u32 = 5;
+        let mut stall_count: u32 = 0;
+
         loop {
             let _ = std::fs::remove_file(cycle_idle_marker_path());
             let mut cycle_progress = false;
             let objectives_mtime_before = file_modified_ms(&workspace.join(OBJECTIVES_FILE));
             let plan_mtime_before = file_modified_ms(&master_plan_path);
             let diagnostics_mtime_before = file_modified_ms(&diagnostics_path);
+
+            let objectives_path = workspace.join(OBJECTIVES_FILE);
+            let convergence_watched: [&Path; 4] = [
+                master_plan_path.as_path(),
+                violations_path.as_path(),
+                diagnostics_path.as_path(),
+                objectives_path.as_path(),
+            ];
+            let state_hash_before = cycle_state_hash(&convergence_watched);
             if shutdown.flag.load(Ordering::SeqCst) {
                 eprintln!("[orchestrate] shutdown requested; saving checkpoint");
                 if let Err(err) = save_checkpoint(
@@ -3316,6 +3413,26 @@ pub async fn run() -> Result<()> {
                 diagnostics_path: &diagnostics_path,
             };
             let cargo_test_failures = load_cargo_test_failures(&workspace);
+            let raw_diagnostics_text = read_text_or_empty(&diagnostics_path);
+            let raw_violations_text = read_text_or_empty(&violations_path);
+            let reconciled_diagnostics_text = crate::prompt_inputs::reconcile_diagnostics_report(
+                &raw_diagnostics_text,
+                &raw_violations_text,
+            );
+            let diagnostics_reconciliation_needed =
+                reconciled_diagnostics_text != raw_diagnostics_text;
+            if diagnostics_reconciliation_needed {
+                if let Err(err) = std::fs::write(&diagnostics_path, &reconciled_diagnostics_text) {
+                    log_error_event(
+                        "orchestrate",
+                        "diagnostics_reconcile_preflight",
+                        None,
+                        &format!("failed to persist reconciled diagnostics before scheduling diagnostics: {err:#}"),
+                        Some(json!({ "stage": "diagnostics_reconcile_preflight" })),
+                    );
+                }
+                dispatch_state.diagnostics_pending = true;
+            }
 
             if phase_gates.planner {
                 current_phase = "planner".to_string();
@@ -3413,7 +3530,27 @@ pub async fn run() -> Result<()> {
                 }
             }
 
-            if verifier_changed {
+            let raw_diagnostics_text = read_text_or_empty(&diagnostics_path);
+            let raw_violations_text = read_text_or_empty(&violations_path);
+            let reconciled_diagnostics_text = crate::prompt_inputs::reconcile_diagnostics_report(
+                &raw_diagnostics_text,
+                &raw_violations_text,
+            );
+            let stale_diagnostics_pending = reconciled_diagnostics_text != raw_diagnostics_text;
+
+            if stale_diagnostics_pending {
+                if let Err(err) = std::fs::write(&diagnostics_path, &reconciled_diagnostics_text) {
+                    log_error_event(
+                        "orchestrate",
+                        "diagnostics_reconcile_post_verifier",
+                        None,
+                        &format!("failed to persist reconciled diagnostics after verifier phase: {err:#}"),
+                        Some(json!({ "stage": "diagnostics_reconcile_post_verifier" })),
+                    );
+                }
+            }
+
+            if verifier_changed || stale_diagnostics_pending {
                 dispatch_state.diagnostics_pending = true;
             }
 
@@ -3479,6 +3616,42 @@ pub async fn run() -> Result<()> {
                 );
                 dispatch_state.planner_pending = true;
                 cycle_progress = true;
+            }
+
+            // Convergence guard: detect cycles where work was dispatched but no watched
+            // file changed. Consecutive stalls indicate a livelock.
+            //
+            // Skip the stall increment when executor turns are still in flight: the
+            // browser tab has accepted a submission (submitted_turns) or a submit is
+            // being negotiated (executor_submit_inflight / lane_submit_in_flight).
+            // In those cases the files will change once the result arrives; counting
+            // the cycle as a stall would be a false positive.
+            let executor_inflight = !dispatch_state.submitted_turns.is_empty()
+                || !dispatch_state.executor_submit_inflight.is_empty()
+                || dispatch_state.lane_submit_in_flight.values().any(|&v| v);
+            let state_hash_after = cycle_state_hash(&convergence_watched);
+            if cycle_progress && state_hash_before == state_hash_after && !executor_inflight {
+                stall_count += 1;
+                eprintln!(
+                    "[orchestrate] convergence: no net state change (stall {}/{})",
+                    stall_count, STALL_CYCLE_THRESHOLD
+                );
+                if stall_count >= STALL_CYCLE_THRESHOLD {
+                    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
+                    write_livelock_report(
+                        agent_state_dir,
+                        stall_count,
+                        &convergence_watched,
+                        dispatch_state.planner_pending,
+                        dispatch_state.diagnostics_pending,
+                    );
+                    dispatch_state.planner_pending = false;
+                    dispatch_state.diagnostics_pending = false;
+                    stall_count = 0;
+                    cycle_progress = false;
+                }
+            } else {
+                stall_count = 0;
             }
 
             if !cycle_progress {

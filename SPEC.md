@@ -23,6 +23,14 @@ Every LLM response includes a `predicted_next_actions` field — an ordered arra
 ]
 ```
 
+### 0.6 Structured Decision Questions
+
+Before every mutating action (`apply_patch`, `plan`, `objectives`, `issue`), the agent must emit a `question` field: the single decision-boundary question this action answers. The question identifies the premise the action depends on — if the premise were false, a different action would be taken. This makes the agent's assumptions explicit and auditable.
+
+Three questions are selected per turn from a 20-question bank in `src/structured_questions.rs` and injected into the agent prompt via `rules_common_footer`. The selection rotates across all 20 questions over time. The intent is to surface different failure-mode questions (provenance, redundancy, scope, cascade, deferral, verifiability, role) across many turns rather than habituating the agent to a fixed list.
+
+The `question` field is enforced as a required field for mutating actions by `invalid_action_expected_fields` in `src/invalid_action.rs`. Missing it generates corrective feedback.
+
 ### 0.3 Self-Learning
 The agent reads its own execution history (`agent_state/` logs, `VIOLATIONS.json`, prior `PLAN.json` states) at the start of each planner cycle. It must:
 - Identify repeated failures and encode the root cause in the next task's `steps`.
@@ -230,6 +238,7 @@ Additional clarification (from implementation):
 - Each action must satisfy its typed schema (Section 3).
 - Missing required fields or invalid types must be rejected.
 - `read_file` line numbers are 1-based.
+- Every mutating action (`apply_patch`, `plan`, `objectives`, `issue`) must include a non-empty `question` field (see §0.6). Absence is treated as a missing required field and generates corrective feedback.
 
 ### 4.3 Diagnostics Evidence Scan Invariant
 - Diagnostics must perform at least one `python` scan of workspace-local log/state artifacts (for example `agent_state/*.jsonl`, `actions.jsonl`, `log.jsonl`, `frames/`) before it writes the diagnostics report or sends a diagnostics handoff message.
@@ -298,6 +307,7 @@ The orchestrator uses wakeup flags and `planner_pending` / `diagnostics_pending`
 - The agent writes `agent_state/orchestrator_mode.flag` with `orchestrate` or `single` to describe the running mode. When `--orchestrate --start solo` is used, the agent writes `single` to allow immediate restarts during solo-only orchestration.
 - In orchestrated mode (`orchestrate`), the supervisor restarts only after a fresh `agent_state/orchestrator_cycle_idle.flag`.
 - In single-role mode (`single`) or when the flag is missing, the supervisor restarts immediately on binary updates.
+- Before any supervisor-triggered restart, the supervisor runs `cargo build --workspace`; if it succeeds, it runs `git add -A`, `git commit`, and `git push` (commit/push are skipped when there are no staged changes).
 
 ### 5.3 Handoff Transition
 ```
@@ -306,6 +316,42 @@ Role emits message{to=Planner}
   -> dispatch_state.planner_pending = true
   -> next orchestration loop iteration: apply_wake_flags() schedules planner
   -> planner prompt injects inbound message via inject_inbound_message()
+```
+
+### 5.5 Convergence Guard (Livelock Detection)
+
+The orchestrator tracks content hashes of four watched files at the start and end of every cycle: `PLAN.json`, `VIOLATIONS.json`, the active diagnostics report, and `PLANS/OBJECTIVES.json`.
+
+If `cycle_progress = true` (work was dispatched) but all four hashes are unchanged, the stall counter increments. At `STALL_CYCLE_THRESHOLD` (5) consecutive stalls:
+- `agent_state/livelock_report.json` is written with timestamp, stall count, watched files, and pending flag state at detection.
+- `planner_pending` and `diagnostics_pending` are cleared.
+- The stall counter resets and the orchestrator enters the normal idle path.
+- Resuming requires a manual `wakeup_*.flag` write or process restart.
+
+The stall counter is **not** incremented when executor turns are in flight (`submitted_turns`, `executor_submit_inflight`, or any `lane_submit_in_flight` non-empty). In-flight executor work legitimately produces no file change until the browser tab returns a result; counting those cycles as stalls would be a false positive.
+
+Implementation: `cycle_state_hash`, `write_livelock_report` in `src/app.rs`; constant `STALL_CYCLE_THRESHOLD = 5`.
+
+**Diagnostics report schema note:** The canonical `DiagnosticsReport` shape (defined in `src/reports.rs`) contains `status`, `inputs_scanned`, `ranked_failures`, and `planner_handoff`. The runtime reconciliation function (`reconcile_diagnostics_report` in `src/prompt_inputs.rs`) uses a typed round-trip through `DiagnosticsReport` so no unrecognised fields can be introduced — extra fields cannot survive re-serialisation of the struct.
+
+### 5.6 Schema-Guarded File Writes
+
+After every successful `apply_patch` that targets a schema-guarded JSON state file, the orchestrator validates the resulting file content against a compiled `JSONSchema` (generated via `schemars::schema_for!` with `additionalProperties: false`). If validation fails, the file is reverted to its pre-patch content and the error is returned as the action result, closing the feedback loop to the LLM in the same turn.
+
+Schema-guarded files and their canonical types (`src/reports.rs`):
+
+| File | Type | Canonical fields |
+|------|------|-----------------|
+| Active diagnostics report | `DiagnosticsReport` | `status`, `inputs_scanned`, `ranked_failures`, `planner_handoff` |
+| `VIOLATIONS.json` | `ViolationsReport` | `status`, `summary`, `violations` |
+
+Implementation: `validate_state_file_schema` in `src/tools.rs`, called from `handle_apply_patch_action` after patch application and the ranked-failures semantic check. Each schema is compiled once via `OnceLock<JSONSchema>`.
+
+Rejection message format:
+```
+apply_patch rejected: <TypeName> schema violation
+<jsonschema error lines>
+Canonical fields: ...  No additional fields are permitted. Remove any extra fields and retry.
 ```
 
 ## 6. Determinism Guarantees

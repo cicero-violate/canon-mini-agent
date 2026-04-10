@@ -17,7 +17,9 @@ use crate::constants::{
 };
 use crate::issues::{is_closed, IssuesFile, Issue};
 use crate::objectives::filter_incomplete_objectives_json;
-use crate::logging::{log_action_event, log_action_result, log_error_event, now_ms};
+use crate::logging::{
+    append_orchestration_trace, log_action_event, log_action_result, log_error_event, now_ms,
+};
 use crate::prompts::truncate;
 
 /// Extract the first file path touched by the patch (*** Update File: / *** Add File:).
@@ -204,6 +206,64 @@ fn objective_id_matches(candidate: &str, requested: &str) -> bool {
     normalize_objective_id_for_match(candidate) == normalize_objective_id_for_match(requested)
 }
 
+fn objective_compared_ids(objectives: &[crate::objectives::Objective]) -> Vec<String> {
+    objectives.iter().map(|obj| obj.id.clone()).collect()
+}
+
+fn objective_compared_normalized_ids(objectives: &[crate::objectives::Objective]) -> Vec<String> {
+    objectives
+        .iter()
+        .map(|obj| normalize_objective_id_for_match(&obj.id))
+        .collect()
+}
+
+fn objective_not_found_message(
+    objectives: &[crate::objectives::Objective],
+    requested: &str,
+) -> String {
+    let requested_id = normalize_objective_id_for_match(requested);
+    let requested_raw = requested.to_string();
+    let compared_ids = objective_compared_ids(objectives);
+    let compared_normalized_ids = objective_compared_normalized_ids(objectives);
+    format!(
+        "objective not found: requested_raw={requested_raw:?}; requested_id={requested_id}; compared_ids={compared_ids:?}; compared_normalized_ids={compared_normalized_ids:?}"
+    )
+}
+
+fn objective_already_exists_message(
+    objectives: &[crate::objectives::Objective],
+    requested: &str,
+) -> String {
+    let requested_id = normalize_objective_id_for_match(requested);
+    let requested_raw = requested.to_string();
+    let compared_ids = objective_compared_ids(objectives);
+    let compared_normalized_ids = objective_compared_normalized_ids(objectives);
+    format!(
+        "objective id already exists: requested_raw={requested_raw:?}; requested_id={requested_id}; compared_ids={compared_ids:?}; compared_normalized_ids={compared_normalized_ids:?}"
+    )
+}
+
+fn log_objective_operation_context(
+    op: &str,
+    outcome: &str,
+    requested: Option<&str>,
+    objectives: &[crate::objectives::Objective],
+) {
+    let requested_raw = requested.map(str::to_string);
+    let requested_id = requested.map(normalize_objective_id_for_match);
+    append_orchestration_trace(
+        "objective_operation_context",
+        json!({
+            "operation": op,
+            "outcome": outcome,
+            "requested_raw": requested_raw,
+            "requested_id": requested_id,
+            "compared_ids": objective_compared_ids(objectives),
+            "compared_normalized_ids": objective_compared_normalized_ids(objectives),
+        }),
+    );
+}
+
 fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
     let op_raw = action
         .get("op")
@@ -266,10 +326,33 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
             if objective.id.trim().is_empty() {
                 bail!("objective.id must be non-empty");
             }
-            if file.objectives.iter().any(|o| o.id == objective.id) {
-                bail!("objective id already exists: {}", objective.id);
+            log_objective_operation_context(
+                "create_objective",
+                "attempt",
+                Some(&objective.id),
+                &file.objectives,
+            );
+            if file
+                .objectives
+                .iter()
+                .any(|o| objective_id_matches(&o.id, &objective.id))
+            {
+                log_objective_operation_context(
+                    "create_objective",
+                    "duplicate",
+                    Some(&objective.id),
+                    &file.objectives,
+                );
+                bail!("{}", objective_already_exists_message(&file.objectives, &objective.id));
             }
             file.objectives.push(objective);
+            let created_id = file.objectives.last().map(|obj| obj.id.as_str());
+            log_objective_operation_context(
+                "create_objective",
+                "success",
+                created_id,
+                &file.objectives,
+            );
             std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
             Ok((false, "objectives create_objective ok".to_string()))
         }
@@ -286,6 +369,12 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
             let mut file: crate::objectives::ObjectivesFile =
                 serde_json::from_str(&raw)
                     .map_err(|e| anyhow!("failed to parse OBJECTIVES.json: {e}"))?;
+            log_objective_operation_context(
+                "update_objective",
+                "attempt",
+                Some(objective_id),
+                &file.objectives,
+            );
             let mut found = false;
             for obj in file.objectives.iter_mut() {
                 if objective_id_matches(&obj.id, objective_id) {
@@ -301,8 +390,20 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
                 }
             }
             if !found {
-                bail!("objective not found: {objective_id}");
+                log_objective_operation_context(
+                    "update_objective",
+                    "not_found",
+                    Some(objective_id),
+                    &file.objectives,
+                );
+                bail!("{}", objective_not_found_message(&file.objectives, objective_id));
             }
+            log_objective_operation_context(
+                "update_objective",
+                "success",
+                Some(objective_id),
+                &file.objectives,
+            );
             std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
             Ok((false, "objectives update_objective ok".to_string()))
         }
@@ -314,12 +415,30 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
                 .ok_or_else(|| anyhow!("objectives delete_objective missing objective_id"))?;
             let mut file: crate::objectives::ObjectivesFile =
                 serde_json::from_str(&raw).unwrap_or_default();
+            log_objective_operation_context(
+                "delete_objective",
+                "attempt",
+                Some(objective_id),
+                &file.objectives,
+            );
             let before = file.objectives.len();
             file.objectives
                 .retain(|obj| !objective_id_matches(&obj.id, objective_id));
             if file.objectives.len() == before {
-                bail!("objective not found: {objective_id}");
+                log_objective_operation_context(
+                    "delete_objective",
+                    "not_found",
+                    Some(objective_id),
+                    &file.objectives,
+                );
+                bail!("{}", objective_not_found_message(&file.objectives, objective_id));
             }
+            log_objective_operation_context(
+                "delete_objective",
+                "success",
+                Some(objective_id),
+                &file.objectives,
+            );
             std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
             Ok((false, "objectives delete_objective ok".to_string()))
         }
@@ -335,6 +454,12 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
                 .ok_or_else(|| anyhow!("objectives set_status missing status"))?;
             let mut file: crate::objectives::ObjectivesFile =
                 serde_json::from_str(&raw).unwrap_or_default();
+            log_objective_operation_context(
+                "set_status",
+                "attempt",
+                Some(objective_id),
+                &file.objectives,
+            );
             let mut found = false;
             for obj in file.objectives.iter_mut() {
                 if objective_id_matches(&obj.id, objective_id) {
@@ -344,8 +469,20 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
                 }
             }
             if !found {
-                bail!("objective not found: {objective_id}");
+                log_objective_operation_context(
+                    "set_status",
+                    "not_found",
+                    Some(objective_id),
+                    &file.objectives,
+                );
+                bail!("{}", objective_not_found_message(&file.objectives, objective_id));
             }
+            log_objective_operation_context(
+                "set_status",
+                "success",
+                Some(objective_id),
+                &file.objectives,
+            );
             std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
             Ok((false, "objectives set_status ok".to_string()))
         }
@@ -1166,6 +1303,79 @@ fn handle_read_file_action(
     Ok((false, format!("read_file {path}:\n{out}")))
 }
 
+/// Validate that a just-written JSON state file conforms to its canonical schema.
+/// Returns `Some(rejection_message)` if the file violates the schema, `None` if valid
+/// or if the file is not a schema-guarded type.
+/// Uses `additionalProperties: false` so any extra field is caught and reported to the LLM.
+fn validate_state_file_schema(file_path: &str, content: &str) -> Option<String> {
+    use crate::reports::{DiagnosticsReport, ViolationsReport};
+    use jsonschema::JSONSchema;
+    use schemars::schema_for;
+    use std::sync::OnceLock;
+
+    let json_value = match serde_json::from_str::<serde_json::Value>(content) {
+        Ok(v) => v,
+        Err(e) => {
+            return Some(format!(
+                "apply_patch rejected: file is not valid JSON after patch: {e}"
+            ))
+        }
+    };
+
+    let diag = diagnostics_file();
+    let legacy_diag = "DIAGNOSTICS.json";
+
+    if file_path == diag || file_path == legacy_diag {
+        static SCHEMA: OnceLock<JSONSchema> = OnceLock::new();
+        let compiled = SCHEMA.get_or_init(|| {
+            let mut val =
+                serde_json::to_value(schema_for!(DiagnosticsReport)).expect("diagnostics schema");
+            // Enforce no additional properties beyond the canonical four fields.
+            if let Some(obj) = val.as_object_mut() {
+                obj.insert(
+                    "additionalProperties".to_string(),
+                    serde_json::Value::Bool(false),
+                );
+            }
+            JSONSchema::compile(&val).expect("compile diagnostics schema")
+        });
+        if let Err(errors) = compiled.validate(&json_value) {
+            let msgs: Vec<String> = errors.take(5).map(|e| e.to_string()).collect();
+            return Some(format!(
+                "apply_patch rejected: DiagnosticsReport schema violation\n{}\n\
+                 Canonical fields: status, inputs_scanned, ranked_failures, planner_handoff.\n\
+                 No additional fields are permitted. Remove any extra fields and retry.",
+                msgs.join("\n")
+            ));
+        }
+    } else if file_path == VIOLATIONS_FILE {
+        static SCHEMA: OnceLock<JSONSchema> = OnceLock::new();
+        let compiled = SCHEMA.get_or_init(|| {
+            let mut val =
+                serde_json::to_value(schema_for!(ViolationsReport)).expect("violations schema");
+            if let Some(obj) = val.as_object_mut() {
+                obj.insert(
+                    "additionalProperties".to_string(),
+                    serde_json::Value::Bool(false),
+                );
+            }
+            JSONSchema::compile(&val).expect("compile violations schema")
+        });
+        if let Err(errors) = compiled.validate(&json_value) {
+            let msgs: Vec<String> = errors.take(5).map(|e| e.to_string()).collect();
+            return Some(format!(
+                "apply_patch rejected: ViolationsReport schema violation\n{}\n\
+                 Canonical fields: status, summary, violations (each with: id, title, severity, \
+                 evidence, issue, impact, required_fix, files).\n\
+                 No additional fields are permitted. Remove any extra fields and retry.",
+                msgs.join("\n")
+            ));
+        }
+    }
+
+    None
+}
+
 fn handle_apply_patch_action(
     role: &str,
     step: usize,
@@ -1191,6 +1401,22 @@ fn handle_apply_patch_action(
     } else {
         None
     };
+    // Snapshot contents of all schema-guarded files before the patch so we can
+    // revert them if schema validation fails after the write.
+    let diag_file = diagnostics_file();
+    let schema_snapshots: Vec<(String, Option<String>)> = {
+        let legacy_diag = "DIAGNOSTICS.json";
+        patch_targets(patch)
+            .into_iter()
+            .filter(|p| {
+                *p == VIOLATIONS_FILE || *p == diag_file || *p == legacy_diag
+            })
+            .map(|p| {
+                let content = fs::read_to_string(workspace.join(p)).ok();
+                (p.to_string(), content)
+            })
+            .collect()
+    };
     if let Some(msg) = patch_scope_error(role, &patch) {
         return Ok((false, msg));
     }
@@ -1200,7 +1426,11 @@ fn handle_apply_patch_action(
                 let current_diagnostics_file = diagnostics_file();
                 let diagnostics_path = workspace.join(current_diagnostics_file);
                 let new_diagnostics_text = fs::read_to_string(&diagnostics_path).unwrap_or_default();
-                let sanitized = crate::prompt_inputs::sanitize_diagnostics_for_planner(&new_diagnostics_text);
+                let raw_violations_text = fs::read_to_string(workspace.join(VIOLATIONS_FILE)).unwrap_or_default();
+                let sanitized = crate::prompt_inputs::sanitize_diagnostics_for_planner(
+                    &new_diagnostics_text,
+                    &raw_violations_text,
+                );
                 let introduces_unvalidated_ranked_failures = new_diagnostics_text.contains("\"ranked_failures\"")
                     && sanitized.starts_with("(suppressed stale or unverified diagnostics:");
                 if introduces_unvalidated_ranked_failures {
@@ -1217,7 +1447,8 @@ fn handle_apply_patch_action(
                         })
                         .unwrap_or_else(|| "ranked_failures missing current-source validation".to_string());
                     let rejection_msg = format!(
-                        "apply_patch rejected: {detail}\n\
+                        "apply_patch rejected: ranked_failures require current-source validation before persistence\n\
+                         Detail: {detail}\n\
                          Fix: add a read_file evidence entry that cites the specific file and line range \
                          you read, e.g. \"read_file src/app.rs:420-450 — confirmed X\"."
                     );
@@ -1232,6 +1463,24 @@ fn handle_apply_patch_action(
                         })),
                     );
                     return Ok((false, rejection_msg));
+                }
+            }
+            // Schema validation: reject writes that introduce fields outside the canonical schema.
+            for (target, prev_content) in &schema_snapshots {
+                let new_content = fs::read_to_string(workspace.join(target)).unwrap_or_default();
+                if let Some(err_msg) = validate_state_file_schema(target, &new_content) {
+                    // Revert the file to its pre-patch content.
+                    if let Some(prev) = prev_content {
+                        let _ = fs::write(workspace.join(target), prev);
+                    }
+                    log_error_event(
+                        role,
+                        "apply_patch",
+                        Some(step),
+                        &err_msg,
+                        Some(json!({"stage": "schema_validation", "path": target})),
+                    );
+                    return Ok((false, err_msg));
                 }
             }
             eprintln!("[{role}] step={} apply_patch ok", step);
@@ -2904,6 +3153,7 @@ pub(crate) fn execute_logged_action(
 #[cfg(test)]
 mod tests {
     use super::handle_apply_patch_action;
+    use super::handle_objectives_action;
     use super::handle_plan_action;
     use serde_json::json;
     use std::path::PathBuf;
@@ -2942,18 +3192,18 @@ mod tests {
         let tmp = fresh_test_dir("allows-source-validated-ranked-failures");
         std::fs::write(
             tmp.join("DIAGNOSTICS.json"),
-            "{\"status\":\"healthy\",\"ranked_failures\":[]}",
+            r#"{"status":"healthy","inputs_scanned":[],"ranked_failures":[],"planner_handoff":[]}"#,
         )
         .unwrap();
         let action = json!({
-            "patch": "*** Begin Patch\n*** Delete File: DIAGNOSTICS.json\n*** Add File: DIAGNOSTICS.json\n+{\n+  \"status\": \"critical_failure\",\n+  \"summary\": \"validated issue\",\n+  \"ranked_failures\": [\n+    {\n+      \"id\": \"D1\",\n+      \"evidence\": [\"read_file src/app.rs verified against current source\"]\n+    }\n+  ]\n+}\n*** End Patch"
+            "patch": "*** Begin Patch\n*** Delete File: DIAGNOSTICS.json\n*** Add File: DIAGNOSTICS.json\n+{\n+  \"status\": \"critical_failure\",\n+  \"inputs_scanned\": [\"agent_state/default/log.jsonl\"],\n+  \"ranked_failures\": [\n+    {\n+      \"id\": \"D1\",\n+      \"impact\": \"high\",\n+      \"signal\": \"read_file src/app.rs verified against current source\",\n+      \"evidence\": [\"read_file src/app.rs:1-50 — confirmed missing check\"],\n+      \"root_cause\": \"missing validation\",\n+      \"repair_targets\": [\"src/app.rs\"]\n+    }\n+  ],\n+  \"planner_handoff\": [\"Fix missing validation in src/app.rs\"]\n+}\n*** End Patch"
         });
 
         let (_done, out) = handle_apply_patch_action("diagnostics", 1, &tmp, &action).unwrap();
 
-        assert!(out.contains("apply_patch ok"));
+        assert!(out.contains("apply_patch ok"), "unexpected: {out}");
         let persisted = std::fs::read_to_string(tmp.join("DIAGNOSTICS.json")).unwrap();
-        assert!(persisted.contains("validated issue"));
+        assert!(persisted.contains("critical_failure"));
     }
 
     #[test]
@@ -3029,5 +3279,254 @@ mod tests {
         let persisted = std::fs::read_to_string(tmp.join("PLAN.json")).unwrap();
         assert!(persisted.contains("\"status\": \"in_progress\""));
         assert!(persisted.contains("add regression test linkage before reopening"));
+    }
+
+    #[test]
+    fn plan_set_status_rejects_done_when_any_task_is_incomplete() {
+        let tmp = fresh_test_dir("rejects-plan-done-while-task-incomplete");
+        std::fs::write(
+            tmp.join("PLAN.json"),
+            r#"{
+  "version": 2,
+  "status": "in_progress",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Completed task",
+      "status": "done",
+      "priority": 1
+    },
+    {
+      "id": "T2",
+      "title": "Incomplete task",
+      "status": "in_progress",
+      "priority": 2
+    }
+  ],
+  "dag": { "edges": [] }
+}"#,
+        )
+        .unwrap();
+
+        let action = json!({
+            "op": "set_status",
+            "status": "done",
+            "rationale": "Exercise plan/task convergence guard"
+        });
+
+        let err = handle_plan_action("solo", &tmp, &action).unwrap_err().to_string();
+
+        assert!(err.contains("plan status cannot be set to done while tasks remain incomplete"));
+        let persisted = std::fs::read_to_string(tmp.join("PLAN.json")).unwrap();
+        assert!(persisted.contains("\"status\": \"in_progress\""));
+    }
+
+    #[test]
+    fn objectives_update_objective_reports_requested_and_compared_ids() {
+        let tmp = fresh_test_dir("objective-update-not-found-context");
+        std::fs::create_dir_all(tmp.join("PLANS")).unwrap();
+        std::fs::write(
+            tmp.join("PLANS").join("OBJECTIVES.json"),
+            r#"{
+  "version": 1,
+  "objectives": [
+    {
+      "id": "obj_alpha",
+      "title": "Alpha",
+      "status": "active",
+      "scope": "alpha scope",
+      "authority_files": ["src/tools.rs"],
+      "category": "quality",
+      "level": "low",
+      "description": "alpha",
+      "requirement": [],
+      "verification": [],
+      "success_criteria": []
+    },
+    {
+      "id": "obj_beta",
+      "title": "Beta",
+      "status": "active",
+      "scope": "beta scope",
+      "authority_files": ["src/objectives.rs"],
+      "category": "quality",
+      "level": "low",
+      "description": "beta",
+      "requirement": [],
+      "verification": [],
+      "success_criteria": []
+    }
+  ],
+  "goal": [],
+  "instrumentation": [],
+  "definition_of_done": [],
+  "non_goals": []
+}"#,
+        )
+        .unwrap();
+
+        let action = json!({
+            "op": "update_objective",
+            "objective_id": "obj_missing",
+            "updates": {
+                "scope": "updated"
+            }
+        });
+
+        let err = handle_objectives_action(&tmp, &action).unwrap_err().to_string();
+
+        assert!(err.contains("requested_raw=\"obj_missing\""));
+        assert!(err.contains("objective not found:"));
+        assert!(err.contains("requested_id=obj_missing"));
+        assert!(err.contains("compared_ids=[\"obj_alpha\", \"obj_beta\"]"));
+        assert!(err.contains("compared_normalized_ids=[\"obj_alpha\", \"obj_beta\"]"));
+    }
+
+    #[test]
+    fn objectives_set_status_matches_normalized_id() {
+        let tmp = fresh_test_dir("objective-set-status-normalized-id");
+        std::fs::create_dir_all(tmp.join("PLANS")).unwrap();
+        std::fs::write(
+            tmp.join("PLANS").join("OBJECTIVES.json"),
+            r#"{
+  "version": 1,
+  "objectives": [
+    {
+      "id": "obj_alpha",
+      "title": "Alpha",
+      "status": "active",
+      "scope": "alpha scope",
+      "authority_files": ["src/tools.rs"],
+      "category": "quality",
+      "level": "low",
+      "description": "alpha",
+      "requirement": [],
+      "verification": [],
+      "success_criteria": []
+    }
+  ],
+  "goal": [],
+  "instrumentation": [],
+  "definition_of_done": [],
+  "non_goals": []
+}"#,
+        )
+        .unwrap();
+
+        let action = json!({
+            "op": "set_status",
+            "objective_id": "`obj_alpha`",
+            "status": "done"
+        });
+
+        let (_done, out) = handle_objectives_action(&tmp, &action).unwrap();
+
+        assert!(out.contains("objectives set_status ok"));
+        let persisted = std::fs::read_to_string(tmp.join("PLANS").join("OBJECTIVES.json")).unwrap();
+        assert!(persisted.contains("\"status\": \"done\""));
+    }
+
+    #[test]
+    fn objectives_update_objective_reports_raw_and_normalized_lookup_context() {
+        let tmp = fresh_test_dir("objective-update-raw-and-normalized-context");
+        std::fs::create_dir_all(tmp.join("PLANS")).unwrap();
+        std::fs::write(
+            tmp.join("PLANS").join("OBJECTIVES.json"),
+            r#"{
+  "version": 1,
+  "objectives": [
+    {
+      "id": "obj_alpha",
+      "title": "Alpha",
+      "status": "active",
+      "scope": "alpha scope",
+      "authority_files": ["src/tools.rs"],
+      "category": "quality",
+      "level": "low",
+      "description": "alpha",
+      "requirement": [],
+      "verification": [],
+      "success_criteria": []
+    }
+  ],
+  "goal": [],
+  "instrumentation": [],
+  "definition_of_done": [],
+  "non_goals": []
+}"#,
+        )
+        .unwrap();
+
+        let action = json!({
+            "op": "update_objective",
+            "objective_id": "`obj_missing`",
+            "updates": {
+                "scope": "updated"
+            }
+        });
+
+        let err = handle_objectives_action(&tmp, &action).unwrap_err().to_string();
+
+        assert!(err.contains("requested_raw=\"`obj_missing`\""));
+        assert!(err.contains("requested_id=obj_missing"));
+        assert!(err.contains("compared_ids=[\"obj_alpha\"]"));
+        assert!(err.contains("compared_normalized_ids=[\"obj_alpha\"]"));
+    }
+
+    #[test]
+    fn objectives_create_objective_reports_raw_and_normalized_duplicate_context() {
+        let tmp = fresh_test_dir("objective-create-duplicate-context");
+        std::fs::create_dir_all(tmp.join("PLANS")).unwrap();
+        std::fs::write(
+            tmp.join("PLANS").join("OBJECTIVES.json"),
+            r#"{
+  "version": 1,
+  "objectives": [
+    {
+      "id": "obj_alpha",
+      "title": "Alpha",
+      "status": "active",
+      "scope": "alpha scope",
+      "authority_files": ["src/tools.rs"],
+      "category": "quality",
+      "level": "low",
+      "description": "alpha",
+      "requirement": [],
+      "verification": [],
+      "success_criteria": []
+    }
+  ],
+  "goal": [],
+  "instrumentation": [],
+  "definition_of_done": [],
+  "non_goals": []
+}"#,
+        )
+        .unwrap();
+
+        let action = json!({
+            "op": "create_objective",
+            "objective": {
+                "id": "`obj_alpha`",
+                "title": "Alpha duplicate",
+                "status": "active",
+                "scope": "duplicate scope",
+                "authority_files": ["src/tools.rs"],
+                "category": "quality",
+                "level": "low",
+                "description": "duplicate",
+                "requirement": [],
+                "verification": [],
+                "success_criteria": []
+            }
+        });
+
+        let err = handle_objectives_action(&tmp, &action).unwrap_err().to_string();
+
+        assert!(err.contains("objective id already exists:"));
+        assert!(err.contains("requested_raw="));
+        assert!(err.contains("requested_id=obj_alpha"));
+        assert!(err.contains("compared_ids=[\"obj_alpha\"]"));
+        assert!(err.contains("compared_normalized_ids=[\"obj_alpha\"]"));
     }
 }

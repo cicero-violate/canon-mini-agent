@@ -200,6 +200,110 @@ fn file_mtime_if_exists(path: &Path) -> Option<SystemTime> {
     meta.modified().ok()
 }
 
+fn run_cmd(root: &Path, program: &str, args: &[&str]) -> Result<bool> {
+    let status = Command::new(program)
+        .args(args)
+        .current_dir(root)
+        .status()
+        .with_context(|| format!("run {} {}", program, args.join(" ")))?;
+    Ok(status.success())
+}
+
+fn stage_commit_push_before_restart(root: &Path, reason: &str) {
+    eprintln!(
+        "[canon-mini-supervisor] pre-restart checkpoint start ({reason})"
+    );
+    eprintln!(
+        "[canon-mini-supervisor] pre-restart: running `cargo build --workspace` ({reason})"
+    );
+    match run_cmd(root, "cargo", &["build", "--workspace"]) {
+        Ok(true) => {
+            eprintln!(
+                "[canon-mini-supervisor] pre-restart: cargo build passed ({reason})"
+            );
+        }
+        Ok(false) => {
+            eprintln!(
+                "[canon-mini-supervisor] pre-restart cargo build failed; skipping git add/commit/push ({reason})"
+            );
+            return;
+        }
+        Err(err) => {
+            eprintln!(
+                "[canon-mini-supervisor] pre-restart cargo build errored; skipping git add/commit/push ({reason}): {err:#}"
+            );
+            return;
+        }
+    }
+
+    eprintln!(
+        "[canon-mini-supervisor] pre-restart: running `git add -A` ({reason})"
+    );
+    if let Err(err) = run_cmd(root, "git", &["add", "-A"]) {
+        eprintln!("[canon-mini-supervisor] git add failed ({reason}): {err:#}");
+        return;
+    }
+    eprintln!(
+        "[canon-mini-supervisor] pre-restart: git add completed ({reason})"
+    );
+
+    let has_changes = match run_cmd(root, "git", &["diff", "--cached", "--quiet"]) {
+        Ok(true) => false,
+        Ok(false) => true,
+        Err(err) => {
+            eprintln!("[canon-mini-supervisor] git diff --cached failed ({reason}): {err:#}");
+            return;
+        }
+    };
+    if !has_changes {
+        eprintln!(
+            "[canon-mini-supervisor] no staged changes after successful build; skipping commit/push ({reason})"
+        );
+        return;
+    }
+
+    let commit_msg = format!("supervisor pre-restart checkpoint ({reason})");
+    eprintln!(
+        "[canon-mini-supervisor] pre-restart: running `git commit -m \"{}\"` ({reason})",
+        commit_msg
+    );
+    match run_cmd(root, "git", &["commit", "-m", &commit_msg]) {
+        Ok(true) => {
+            eprintln!(
+                "[canon-mini-supervisor] pre-restart: git commit completed ({reason})"
+            );
+        }
+        Ok(false) => {
+            eprintln!("[canon-mini-supervisor] git commit returned non-zero ({reason})");
+            return;
+        }
+        Err(err) => {
+            eprintln!("[canon-mini-supervisor] git commit failed ({reason}): {err:#}");
+            return;
+        }
+    }
+
+    eprintln!(
+        "[canon-mini-supervisor] pre-restart: running `git push` ({reason})"
+    );
+    match run_cmd(root, "git", &["push"]) {
+        Ok(true) => {
+            eprintln!(
+                "[canon-mini-supervisor] pre-restart: git push completed ({reason})"
+            );
+            eprintln!(
+                "[canon-mini-supervisor] pre-restart checkpoint done ({reason})"
+            );
+        }
+        Ok(false) => {
+            eprintln!("[canon-mini-supervisor] git push returned non-zero ({reason})");
+        }
+        Err(err) => {
+            eprintln!("[canon-mini-supervisor] git push failed ({reason}): {err:#}");
+        }
+    }
+}
+
 fn main() -> Result<()> {
     let mut args: Vec<String> = std::env::args().collect();
     let exe = args.remove(0);
@@ -288,6 +392,7 @@ fn main() -> Result<()> {
                     return Ok(());
                 } else {
                     eprintln!("[canon-mini-supervisor] restarting due to failure...");
+                    stage_commit_push_before_restart(&root, "failure-restart");
                     log_error_event(
                         "supervisor",
                         "supervisor_main",
@@ -339,6 +444,7 @@ fn main() -> Result<()> {
                             ),
                             None,
                         );
+                        stage_commit_push_before_restart(&root, "single-role-update");
                         send_sigint(&child);
                         wait_for_exit(child, Duration::from_secs(10));
                         eprintln!("[canon-mini-supervisor] restarting...");
@@ -362,6 +468,7 @@ fn main() -> Result<()> {
                             ),
                             None,
                         );
+                        stage_commit_push_before_restart(&root, "orchestrate-idle-update");
                         send_sigint(&child);
                         wait_for_exit(child, Duration::from_secs(10));
                         eprintln!("[canon-mini-supervisor] restarting...");

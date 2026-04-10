@@ -614,6 +614,9 @@ pub(crate) fn append_orchestration_trace(event: &str, payload: Value) {
         text,
         filtered_payload_meta(&payload),
     );
+    if LOG_PATHS.get().is_none() {
+        return;
+    }
     if let Err(err) = append_action_log_record(&record) {
         eprintln!("[trace] orchestration_log_error: {err}");
     }
@@ -626,7 +629,7 @@ pub(crate) fn now_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{log_error_event, log_paths, now_ms, LogPaths, LOG_PATHS};
+    use super::{append_orchestration_trace, log_error_event, log_paths, now_ms, LogPaths, LOG_PATHS};
     use serde_json::{json, Value};
     use std::fs;
 
@@ -747,5 +750,27 @@ mod tests {
             assert_eq!(record.get("text").and_then(|v| v.as_str()), Some(text.as_str()));
             assert_eq!(record.get("meta"), Some(&meta));
         }
+    }
+
+    #[test]
+    fn append_orchestration_trace_before_init_is_silent_and_does_not_create_logs() {
+        let unique = now_ms();
+        let probe_root = std::env::temp_dir().join(format!(
+            "canon-mini-agent-preinit-trace-probe-{unique}"
+        ));
+        let action_log = probe_root.join("actions.jsonl");
+
+        append_orchestration_trace(
+            "pre_init_probe",
+            json!({
+                "role": "solo",
+                "summary": format!("pre-init probe {unique}")
+            }),
+        );
+
+        assert!(
+            !action_log.exists(),
+            "pre-init orchestration trace should not create an action log before init_log_paths"
+        );
     }
 }

@@ -155,12 +155,12 @@ pub(crate) fn invalid_action_expected_fields(kind: &str) -> Vec<&'static str> {
     match kind {
         "run_command" => vec!["action", "cmd", "rationale", "predicted_next_actions"],
         "read_file" => vec!["action", "path", "rationale", "predicted_next_actions"],
-        "apply_patch" => vec!["action", "patch", "rationale", "predicted_next_actions"],
+        "apply_patch" => vec!["action", "patch", "question", "rationale", "predicted_next_actions"],
         "cargo_test" => vec!["action", "crate", "rationale", "predicted_next_actions"],
         "list_dir" => vec!["action", "rationale", "predicted_next_actions"],
         "python" => vec!["action", "code", "rationale", "predicted_next_actions"],
-        "plan" => vec!["action", "op", "rationale", "predicted_next_actions"],
-        "objectives" => vec!["action", "rationale", "predicted_next_actions"],
+        "plan" => vec!["action", "op", "question", "rationale", "predicted_next_actions"],
+        "objectives" => vec!["action", "question", "rationale", "predicted_next_actions"],
         "message" => vec![
             "action",
             "from",
@@ -171,6 +171,7 @@ pub(crate) fn invalid_action_expected_fields(kind: &str) -> Vec<&'static str> {
             "rationale",
             "predicted_next_actions",
         ],
+        "issue" => vec!["action", "op", "question", "rationale", "predicted_next_actions"],
         _ => vec!["action", "rationale", "predicted_next_actions"],
     }
 }
@@ -702,60 +703,119 @@ pub fn auto_fill_message_fields(action: &mut Value, role: &str) -> bool {
         obj.insert("payload".to_string(), json!({}));
         changed = true;
     }
-    if changed {
-        let from_val = obj
-            .get("from")
+    let from_val = obj
+        .get("from")
+        .and_then(|v| v.as_str())
+        .unwrap_or(default_from)
+        .to_string();
+    let to_val = obj
+        .get("to")
+        .and_then(|v| v.as_str())
+        .unwrap_or(default_to)
+        .to_string();
+    let type_val = obj
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or(default_type)
+        .to_string();
+    let status_val = obj
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or(default_status)
+        .to_string();
+    let is_blocker = type_val.eq_ignore_ascii_case("blocker")
+        || status_val.eq_ignore_ascii_case("blocked");
+
+    if obj
+        .get("predicted_next_actions")
+        .and_then(|v| v.as_array())
+        .filter(|items| (2..=3).contains(&items.len()))
+        .is_none()
+    {
+        obj.insert(
+            "predicted_next_actions".to_string(),
+            example_predicted_next_actions(),
+        );
+        changed = true;
+    }
+
+    if let Some(payload) = obj.get_mut("payload").and_then(|v| v.as_object_mut()) {
+        if payload
+            .get("summary")
             .and_then(|v| v.as_str())
-            .unwrap_or(default_from)
-            .to_string();
-        let to_val = obj
-            .get("to")
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .is_none()
+        {
+            payload.insert(
+                "summary".to_string(),
+                Value::String("auto-filled message fields".to_string()),
+            );
+            changed = true;
+        }
+        if payload
+            .get("expected_format")
             .and_then(|v| v.as_str())
-            .unwrap_or(default_to)
-            .to_string();
-        let type_val = obj
-            .get("type")
-            .and_then(|v| v.as_str())
-            .unwrap_or(default_type)
-            .to_string();
-        let status_val = obj
-            .get("status")
-            .and_then(|v| v.as_str())
-            .unwrap_or(default_status)
-            .to_string();
-        let is_blocker = type_val.eq_ignore_ascii_case("blocker")
-            || status_val.eq_ignore_ascii_case("blocked");
-        if let Some(payload) = obj.get_mut("payload").and_then(|v| v.as_object_mut()) {
-            payload
-                .entry("summary")
-                .or_insert(Value::String("auto-filled message fields".to_string()));
-            payload
-                .entry("expected_format")
-                .or_insert(Value::String(expected_message_format(
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .is_none()
+        {
+            payload.insert(
+                "expected_format".to_string(),
+                Value::String(expected_message_format(
                     &from_val,
                     &to_val,
                     &type_val,
                     &status_val,
-                )));
-            if is_blocker {
-                payload
-                    .entry("blocker")
-                    .or_insert(Value::String("auto-filled blocker details".to_string()));
-                payload
-                    .entry("evidence")
-                    .or_insert(Value::String("auto-filled blocker evidence".to_string()));
-                payload.entry("required_action").or_insert(Value::String(
-                    "auto-filled required action".to_string(),
-                ));
+                )),
+            );
+            changed = true;
+        }
+        if is_blocker {
+            for (field, value) in [
+                ("blocker", "auto-filled blocker details"),
+                ("evidence", "auto-filled blocker evidence"),
+                ("required_action", "auto-filled required action"),
+            ] {
+                if payload
+                    .get(field)
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .is_none()
+                {
+                    payload.insert(field.to_string(), Value::String(value.to_string()));
+                    changed = true;
+                }
             }
         }
-        obj.entry("observation".to_string())
-            .or_insert(Value::String(
-                "Auto-filled missing message fields.".to_string(),
-            ));
-        obj.entry("rationale".to_string()).or_insert(Value::String(
-            "Repair invalid message schema to continue execution.".to_string(),
-        ));
+    }
+
+    if obj
+        .get("observation")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .is_none()
+    {
+        obj.insert(
+            "observation".to_string(),
+            Value::String("Auto-filled missing message fields.".to_string()),
+        );
+        changed = true;
+    }
+    if obj
+        .get("rationale")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .is_none()
+    {
+        obj.insert(
+            "rationale".to_string(),
+            Value::String("Repair invalid message schema to continue execution.".to_string()),
+        );
+        changed = true;
     }
     changed
 }

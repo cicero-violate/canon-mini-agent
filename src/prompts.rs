@@ -323,8 +323,15 @@ fn rules_common_footer() -> String {
     } else {
         String::new()
     };
+    let questions = crate::structured_questions::questions_prompt_snippet();
     format!(
-        "{protect_rule}- Emit exactly one action per turn. Think through the decision internally; reveal chain-of-thought. Only output the JSON action.\n- If you cannot proceed (missing files/permissions, repeated tool errors, or irreconcilable evidence), emit a `message` with `type=blocker`, `status=blocked`, and payload fields `blocker`, `evidence`, `required_action`.\n- Before emitting a completion message, review `PLANS/OBJECTIVES.json`. Add new objectives for anything you discovered this cycle that is not yet captured. Update the status of existing objectives that changed. Use `apply_patch` to write changes.\n- Output format: exactly one JSON object in a fenced json code block. No prose outside it."
+        "{questions}\n\n\
+         {protect_rule}\
+         - Emit exactly one action per turn. Think through the decision internally; reveal chain-of-thought. Only output the JSON action.\n\
+         - Every mutating action (`apply_patch`, `plan`, `objectives`, `issue`) MUST include a `question` field: the single decision-boundary question this action answers. If answered differently, a different action would be taken.\n\
+         - If you cannot proceed (missing files/permissions, repeated tool errors, or irreconcilable evidence), emit a `message` with `type=blocker`, `status=blocked`, and payload fields `blocker`, `evidence`, `required_action`.\n\
+         - Before emitting a completion message, review `PLANS/OBJECTIVES.json`. Add new objectives for anything you discovered this cycle that is not yet captured. Update the status of existing objectives that changed. Use `apply_patch` to write changes.\n\
+         - Output format: exactly one JSON object in a fenced json code block. No prose outside it."
     )
 }
 
@@ -662,7 +669,7 @@ pub(crate) fn diagnostics_cycle_prompt(summary_text: &str, cargo_test_failures: 
     let workspace = workspace();
     let diagnostics_file = diagnostics_file();
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics report to write: {diagnostics_file}\n- Observability artifacts: inspect workspace-local state and log paths that actually exist for this project\n\nLatest verifier summary:\n{summary_text}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nYou may send a message action to other agents at any time.Think hard internally before responding."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics report to write: {diagnostics_file}\n- Observability artifacts: inspect workspace-local state and log paths that actually exist for this project\n\nLatest verifier summary:\n{summary_text}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nDiagnostics reconciliation guard:\n- Cross-check every ranked failure against the current {VIOLATIONS_FILE} contents and current-source evidence from this cycle.\n- Do not re-report failures that the verifier has already cleared unless fresh source or runtime evidence now reconfirms them.\n- If the stale state is in diagnostics itself, emit a diagnostics-repair finding instead of reopening the resolved implementation issue.\n\nYou may send a message action to other agents at any time.Think hard internally before responding."
     )
 }
 
@@ -687,7 +694,7 @@ pub(crate) fn single_role_diagnostics_prompt(
     let workspace = workspace();
     let diagnostics_path = diagnostics_file();
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nRead files and search the source code for bugs and inconsistencies (use read_file + run_command/ripgrep).\nRun python analysis actions over available workspace-local logs, state, and code evidence.\nDo not assume canon-specific observability names or paths. Discover the actual project-local artifacts first by inspecting files and directories that exist under WORKSPACE. Examples may include state/, log/, logs/, runtime logs, jsonl logs, agent logs, or other workspace-defined artifacts.\nInfer the root cause from the evidence and cite detailed sources of errors (file paths, functions, log evidence).\n\nLatest verifier summary:\n(none yet)\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nVerify whether objectives in {OBJECTIVES_FILE} are being met and note gaps.\nUse {SPEC_FILE}, {OBJECTIVES_FILE}, and {INVARIANTS_FILE} as the contract, not lane plans.\nInfer failures from code, logs, runtime state, and verifier findings.\nPrefer evidence from workspace-local artifacts that actually exist over assumptions from other projects.\n\nWrite a ranked diagnostics report to {diagnostics_path}."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nRead files and search the source code for bugs and inconsistencies (use read_file + run_command/ripgrep).\nRun python analysis actions over available workspace-local logs, state, and code evidence.\nDo not assume canon-specific observability names or paths. Discover the actual project-local artifacts first by inspecting files and directories that exist under WORKSPACE. Examples may include state/, log/, logs/, runtime logs, jsonl logs, agent logs, or other workspace-defined artifacts.\nInfer the root cause from the evidence and cite detailed sources of errors (file paths, functions, log evidence).\n\nLatest verifier summary:\n(none yet)\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nVerify whether objectives in {OBJECTIVES_FILE} are being met and note gaps.\nUse {SPEC_FILE}, {OBJECTIVES_FILE}, and {INVARIANTS_FILE} as the contract, not lane plans.\nInfer failures from code, logs, runtime state, and verifier findings.\nPrefer evidence from workspace-local artifacts that actually exist over assumptions from other projects.\nCross-check proposed ranked failures against the current {VIOLATIONS_FILE} state before writing diagnostics.\nDo not restate verifier-cleared or already-resolved issues unless fresh current-cycle source or runtime evidence reconfirms them.\nIf the mismatch is stale diagnostics state rather than a live implementation bug, record a diagnostics-repair failure instead of reopening the cleared issue.\n\nWrite a ranked diagnostics report to {diagnostics_path}."
     )
 }
 
@@ -1175,10 +1182,22 @@ pub(crate) fn action_result_prompt(
             "Predicted next actions from your last turn:\nNone.\nCompare these against the actual result above before choosing your next action.\n\n".to_string()
         }
     };
+    // Re-inject a single fresh question after each mutating step so the agent
+    // is prompted to re-examine its premise mid-turn, not only at turn start.
+    // last_action is the action type string (e.g. "apply_patch"), not full JSON.
+    let mutating_question = last_action
+        .filter(|kind| matches!(*kind, "apply_patch" | "plan" | "objectives" | "issue"))
+        .map(|_| {
+            let q = crate::structured_questions::select_questions()[0];
+            format!("\nBefore your next action, answer this internally: {q}\n")
+        })
+        .unwrap_or_default();
+
     format!(
-        "TAB_ID: {tab_label}\nTURN_ID: {turn_label}\nAGENT_TYPE: {agent_type}\n\n{limit_line}Action result:\n{}\n\n{predicted_line}{}\nEmit exactly one action. Think through the decision internally; reveal chain-of-thought.",
+        "TAB_ID: {tab_label}\nTURN_ID: {turn_label}\nAGENT_TYPE: {agent_type}\n\n{limit_line}Action result:\n{}\n\n{predicted_line}{}{}\nEmit exactly one action. Think through the decision internally; reveal chain-of-thought.",
         truncate(result, MAX_SNIPPET),
         next_action_hint_text(result, last_action),
+        mutating_question,
     )
 }
 
@@ -1360,5 +1379,26 @@ mod tests {
             "rationale": "Inspect generic workspace-local state artifacts."
         });
         assert!(diagnostics_python_reads_event_logs(&generic_action));
+    }
+
+    #[test]
+    fn planner_prompt_marks_stale_diagnostics_non_actionable_and_repairs_them() {
+        let prompt = single_role_planner_prompt(
+            "{spec}",
+            "{objectives}",
+            "{lessons}",
+            "{invariants}",
+            "{violations}",
+            "{diagnostics}",
+            "{cargo_test_failures}",
+        );
+        assert!(
+            prompt.contains("Treat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them."),
+            "planner prompt must keep stale diagnostics non-actionable"
+        );
+        assert!(
+            prompt.contains("If diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks."),
+            "planner prompt must direct diagnostics-repair follow-up for stale reports"
+        );
     }
 }

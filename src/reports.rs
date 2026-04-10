@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Severity {
     Critical,
@@ -11,7 +12,7 @@ pub enum Severity {
     Low,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Violation {
     pub id: String,
     pub title: String,
@@ -24,14 +25,14 @@ pub struct Violation {
     pub files: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ViolationsReport {
     pub status: String,
     pub summary: String,
     pub violations: Vec<Violation>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Impact {
     Critical,
@@ -40,7 +41,7 @@ pub enum Impact {
     Low,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct DiagnosticsFinding {
     pub id: String,
     pub impact: Impact,
@@ -51,7 +52,7 @@ pub struct DiagnosticsFinding {
     pub repair_targets: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct DiagnosticsReport {
     pub status: String,
     pub inputs_scanned: Vec<String>,

@@ -148,7 +148,46 @@ fn diagnostics_have_current_source_validation(failures: &[Value]) -> bool {
     })
 }
 
-pub(crate) fn sanitize_diagnostics_for_planner(raw_diagnostics_text: &str) -> String {
+fn violations_are_verified_and_empty(raw_violations_text: &str) -> bool {
+    let Ok(value) = serde_json::from_str::<Value>(raw_violations_text) else {
+        return false;
+    };
+    value.get("status").and_then(Value::as_str) == Some("verified")
+        && value
+            .get("violations")
+            .and_then(Value::as_array)
+            .map(|violations| violations.is_empty())
+            .unwrap_or(false)
+}
+
+pub(crate) fn reconcile_diagnostics_report(
+    raw_diagnostics_text: &str,
+    raw_violations_text: &str,
+) -> String {
+    if !violations_are_verified_and_empty(raw_violations_text) {
+        return raw_diagnostics_text.to_string();
+    }
+
+    // Use typed round-trip so no unrecognised fields can be introduced.
+    let Ok(mut report) = serde_json::from_str::<crate::reports::DiagnosticsReport>(raw_diagnostics_text) else {
+        return raw_diagnostics_text.to_string();
+    };
+
+    report.status = "verified".to_string();
+    report.ranked_failures = Vec::new();
+    report.planner_handoff = vec![
+        "No active diagnostics contradictions remain after verifier reconciliation; \
+         treat prior ranked failures as resolved unless new current-source evidence is recorded."
+            .to_string(),
+    ];
+
+    serde_json::to_string_pretty(&report).unwrap_or_else(|_| raw_diagnostics_text.to_string())
+}
+
+pub(crate) fn sanitize_diagnostics_for_planner(
+    raw_diagnostics_text: &str,
+    raw_violations_text: &str,
+) -> String {
     if raw_diagnostics_text.trim().is_empty() {
         return "(no diagnostics)".to_string();
     }
@@ -163,6 +202,10 @@ pub(crate) fn sanitize_diagnostics_for_planner(raw_diagnostics_text: &str) -> St
 
     if ranked_failures.is_empty() {
         return raw_diagnostics_text.to_string();
+    }
+
+    if violations_are_verified_and_empty(raw_violations_text) {
+        return "(suppressed stale diagnostics: verifier state is authoritative and VIOLATIONS.json is verified with no active violations)".to_string();
     }
 
     if diagnostics_have_current_source_validation(ranked_failures) {
@@ -239,7 +282,7 @@ pub fn load_planner_inputs(
     let invariants_text = read_text_or_empty(workspace.join(INVARIANTS_FILE));
     let violations_text = read_text_or_empty(violations_path);
     let raw_diagnostics_text = read_text_or_empty(diagnostics_path);
-    let diagnostics_text = sanitize_diagnostics_for_planner(&raw_diagnostics_text);
+    let diagnostics_text = sanitize_diagnostics_for_planner(&raw_diagnostics_text, &violations_text);
     let plan_text = read_text_or_empty(master_plan_path);
     let plan_diff_text = plan_diff(last_plan_text, &plan_text, 400);
     PlannerInputs {
@@ -353,7 +396,7 @@ pub fn build_single_role_prompt(
         AgentPromptKind::Planner => {
             let violations = ctx.read(SingleRoleRead::Violations)?;
             let raw_diagnostics = ctx.read(SingleRoleRead::Diagnostics)?;
-            let diagnostics = sanitize_diagnostics_for_planner(&raw_diagnostics);
+            let diagnostics = sanitize_diagnostics_for_planner(&raw_diagnostics, &violations);
             let lessons = ctx.read(SingleRoleRead::Lessons)?;
             let objectives = ctx.read(SingleRoleRead::Objectives)?;
             let invariants = ctx.read(SingleRoleRead::Invariants)?;
@@ -543,6 +586,14 @@ fn executor_diff(workspace: &Path, max_lines: usize) -> String {
 mod tests {
     use super::sanitize_diagnostics_for_planner;
 
+    const NON_AUTHORITATIVE_VIOLATIONS: &str = r#"{}"#;
+
+    const VERIFIED_EMPTY_VIOLATIONS: &str = r#"{
+  "status": "verified",
+  "summary": "no current violations",
+  "violations": []
+}"#;
+
     #[test]
     fn sanitize_diagnostics_suppresses_unverified_ranked_failures() {
         let raw = r#"{
@@ -556,7 +607,7 @@ mod tests {
   ]
 }"#;
 
-        let sanitized = sanitize_diagnostics_for_planner(raw);
+        let sanitized = sanitize_diagnostics_for_planner(raw, NON_AUTHORITATIVE_VIOLATIONS);
         assert!(sanitized.contains("suppressed stale or unverified diagnostics"));
         assert!(sanitized.contains("diagnostics found a stale issue"));
     }
@@ -574,8 +625,26 @@ mod tests {
   ]
 }"#;
 
-        let sanitized = sanitize_diagnostics_for_planner(raw);
+        let sanitized = sanitize_diagnostics_for_planner(raw, NON_AUTHORITATIVE_VIOLATIONS);
         assert!(sanitized.contains("SOURCE-VALIDATED DIAGNOSTICS"));
         assert!(sanitized.contains("validated diagnostics"));
+    }
+
+    #[test]
+    fn sanitize_diagnostics_suppresses_when_violations_are_verified_and_empty() {
+        let raw = r#"{
+  "status": "needs_repair",
+  "summary": "stale contradiction remains in persisted diagnostics",
+  "ranked_failures": [
+    {
+      "id": "D1",
+      "evidence": ["read_file VIOLATIONS.json:1-5 verified against current source"]
+    }
+  ]
+}"#;
+
+        let sanitized = sanitize_diagnostics_for_planner(raw, VERIFIED_EMPTY_VIOLATIONS);
+        assert!(sanitized.contains("suppressed stale diagnostics"));
+        assert!(sanitized.contains("VIOLATIONS.json is verified with no active violations"));
     }
 }
