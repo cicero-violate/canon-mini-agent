@@ -3842,6 +3842,56 @@ fn handle_symbol_neighborhood_action(workspace: &Path, action: &Value) -> Result
     Ok((false, out))
 }
 
+fn handle_stage_graph_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+    let out_rel = action
+        .get("out")
+        .and_then(|v| v.as_str())
+        .unwrap_or("state/orchestrator/stage_graph.json");
+    let out_path = {
+        let p = std::path::Path::new(out_rel);
+        if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            workspace.join(p)
+        }
+    };
+    if !out_path.starts_with(workspace) {
+        bail!(
+            "stage_graph output path must be under workspace: {}",
+            out_path.display()
+        );
+    }
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("create stage_graph parent dir {}", parent.display()))?;
+    }
+
+    // Synthetic OODA-style stage graph. Keep output deterministic (no timestamps).
+    let graph = serde_json::json!({
+      "nodes": [
+        {"id":"observe.input","layer":0,"type":"stage","intent":"collect state","inputs":[],"outputs":["state"]},
+        {"id":"orient.update","layer":1,"type":"stage","intent":"update world model","inputs":["state"],"outputs":["context"]},
+        {"id":"plan.generate","layer":2,"type":"stage","intent":"generate actions","inputs":["context"],"outputs":["actions"]},
+        {"id":"act.execute","layer":3,"type":"stage","intent":"execute action","inputs":["actions"],"outputs":["result"]},
+        {"id":"verify.check","layer":4,"type":"stage","intent":"validate result","inputs":["result"],"outputs":["verified"]},
+        {"id":"reward.score","layer":5,"type":"stage","intent":"score outcome","inputs":["verified"],"outputs":["feedback"]}
+      ],
+      "edges": [
+        {"from":"observe.input","to":"orient.update","type":"call"},
+        {"from":"orient.update","to":"plan.generate","type":"call"},
+        {"from":"plan.generate","to":"act.execute","type":"call"},
+        {"from":"act.execute","to":"verify.check","type":"call"},
+        {"from":"verify.check","to":"reward.score","type":"call"},
+        {"from":"verify.check","to":"plan.generate","type":"retry"},
+        {"from":"orient.update","to":"plan.generate","type":"refine"}
+      ]
+    });
+    let text = serde_json::to_string_pretty(&graph).unwrap_or_else(|_| graph.to_string());
+    std::fs::write(&out_path, &text)
+        .with_context(|| format!("write stage graph to {}", out_path.display()))?;
+    Ok((false, text))
+}
+
 fn execute_action(
     role: &str,
     step: usize,
@@ -3877,6 +3927,7 @@ fn execute_action(
         "cargo_test" => handle_cargo_test_action(role, step, workspace, action),
         "plan" => handle_plan_action(role, workspace, action),
         "semantic_map" => handle_semantic_map_action(workspace, action),
+        "stage_graph" => handle_stage_graph_action(workspace, action),
         "symbol_window" => handle_symbol_window_action(workspace, action),
         "symbol_refs" => handle_symbol_refs_action(workspace, action),
         "symbol_path" => handle_symbol_path_action(workspace, action),
@@ -3884,7 +3935,7 @@ fn execute_action(
         other => Ok((
             false,
             format!(
-                "unsupported action '{other}' — use list_dir, read_file, symbols_index, symbols_rename_candidates, symbols_prepare_rename, rename_symbol, objectives, issue, apply_patch, run_command, python, cargo_test, plan, semantic_map, symbol_window, symbol_refs, symbol_path, symbol_neighborhood, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, or message"
+                "unsupported action '{other}' — use list_dir, read_file, symbols_index, symbols_rename_candidates, symbols_prepare_rename, rename_symbol, objectives, issue, apply_patch, run_command, python, cargo_test, plan, stage_graph, semantic_map, symbol_window, symbol_refs, symbol_path, symbol_neighborhood, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, or message"
             ),
         )),
     }
@@ -4010,6 +4061,7 @@ mod tests {
     use super::handle_objectives_action;
     use super::handle_plan_action;
     use super::handle_rename_symbol_action;
+    use super::handle_stage_graph_action;
     use super::handle_symbols_prepare_rename_action;
     use super::handle_symbols_rename_candidates_action;
     use super::handle_symbols_index_action;
@@ -4055,6 +4107,21 @@ mod tests {
         assert!(out.contains("ranked_failures require current-source validation before persistence"));
         let persisted = std::fs::read_to_string(tmp.join("DIAGNOSTICS.json")).unwrap();
         assert_eq!(persisted, "{\"status\":\"healthy\",\"ranked_failures\":[]}");
+    }
+
+    #[test]
+    fn stage_graph_writes_default_artifact() {
+        let tmp = fresh_test_dir("stage-graph");
+        init_log_paths("stage-graph-test");
+        let action = json!({});
+        let (_done, out) = handle_stage_graph_action(&tmp, &action).unwrap();
+        assert!(out.contains("\"nodes\""));
+        assert!(out.contains("observe.input"));
+        let path = tmp.join("state/orchestrator/stage_graph.json");
+        assert!(path.exists(), "expected stage graph at {}", path.display());
+        let parsed: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(parsed.get("nodes").and_then(|v| v.as_array()).unwrap().len() >= 6);
+        assert!(parsed.get("edges").and_then(|v| v.as_array()).unwrap().len() >= 7);
     }
 
     #[test]

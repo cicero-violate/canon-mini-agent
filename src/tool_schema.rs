@@ -38,6 +38,7 @@ pub enum PredictedActionName {
     GraphCfg,
     GraphDataflow,
     GraphReachability,
+    StageGraph,
     SemanticMap,
     SymbolWindow,
     SymbolRefs,
@@ -65,6 +66,7 @@ pub const TOOL_ACTION_NAMES: &[&str] = &[
     "python",
     "cargo_test",
     "plan",
+    "stage_graph",
     "semantic_map",
     "symbol_window",
     "symbol_refs",
@@ -86,6 +88,7 @@ pub const ALL_TOOL_PROMPT_KINDS: &[&str] = &[
     "python",
     "cargo_test",
     "plan",
+    "stage_graph",
     "semantic_map",
     "symbol_window",
     "symbol_refs",
@@ -411,6 +414,14 @@ pub enum ToolAction {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         out_dir: Option<String>,
     },
+    /// Emit a synthetic OODA-style stage graph artifact (independent of rustc call graph).
+    StageGraph {
+        #[serde(flatten)]
+        base: ActionBase,
+        /// Output path. Defaults to `state/orchestrator/stage_graph.json`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        out: Option<String>,
+    },
     /// Repomap-style symbol outline for a crate (backed by rustc graph.json).
     SemanticMap {
         #[serde(flatten)]
@@ -572,6 +583,13 @@ pub fn tool_protocol_schema_split_text() -> String {
         ("graph_cfg", "emit CFG CSVs", None),
         ("graph_dataflow", "emit dataflow reports", None),
         ("graph_reachability", "emit reachability reports", None),
+        (
+            "stage_graph",
+            "emit a synthetic OODA-style stage graph (written to state/orchestrator/stage_graph.json by default)",
+            Some(
+                "Example:\n  {\"action\":\"stage_graph\",\"rationale\":\"Generate the current stage graph for agent branching and introspection.\",\"predicted_next_actions\":[{\"action\":\"read_file\",\"intent\":\"Inspect the generated stage graph JSON.\"},{\"action\":\"semantic_map\",\"intent\":\"Jump from a stage anchor to code symbols.\"}]}\nNotes:\n- `out` defaults to `state/orchestrator/stage_graph.json`.",
+            ),
+        ),
         (
             "semantic_map",
             "rustc-backed repomap: symbol outline by file (kind, name, signature)",

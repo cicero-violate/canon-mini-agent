@@ -1,1 +1,1 @@
-Current-cycle `read_file PLAN.json:306-317` shows `T_supervisor_logging_bootstrap_validation` is already in_progress with source-backed bootstrap/regression steps, and current-cycle `read_file PLANS/OBJECTIVES.json:570-601` shows OBJ-28 carries the same active scope, requirements, and pending regression checklist.
+I19 enforcement: actionable objectives require corresponding incomplete (and executable) plan tasks. Current PLAN.json has no tasks in `todo` or `in_progress` for these objectives. Newly added task is explicitly `blocked`, so executor cannot act.

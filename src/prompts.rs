@@ -39,6 +39,7 @@ pub(crate) enum ToolPromptKind {
     Python,
     CargoTest,
     Plan,
+    StageGraph,
     SemanticMap,
     SymbolWindow,
     SymbolRefs,
@@ -57,6 +58,7 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
         AgentPromptKind::Diagnostics => &[
             ToolPromptKind::ListDir,
             ToolPromptKind::ReadFile,
+            ToolPromptKind::StageGraph,
             ToolPromptKind::SemanticMap,
             ToolPromptKind::SymbolWindow,
             ToolPromptKind::SymbolRefs,
@@ -77,6 +79,7 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
         AgentPromptKind::Verifier => &[
             ToolPromptKind::ListDir,
             ToolPromptKind::ReadFile,
+            ToolPromptKind::StageGraph,
             ToolPromptKind::SemanticMap,
             ToolPromptKind::SymbolWindow,
             ToolPromptKind::SymbolRefs,
@@ -97,6 +100,7 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
         AgentPromptKind::Executor | AgentPromptKind::Planner | AgentPromptKind::Solo => &[
             ToolPromptKind::ListDir,
             ToolPromptKind::ReadFile,
+            ToolPromptKind::StageGraph,
             ToolPromptKind::SemanticMap,
             ToolPromptKind::SymbolWindow,
             ToolPromptKind::SymbolRefs,
@@ -161,6 +165,9 @@ fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
         (_, ToolPromptKind::Python) => "python — run Python analysis inside the workspace",
         (_, ToolPromptKind::CargoTest) => "cargo_test — run a targeted cargo test (harness-style)",
         (_, ToolPromptKind::Plan) => "plan — create/update/delete tasks and DAG edges in PLAN.json",
+        (_, ToolPromptKind::StageGraph) => {
+            "stage_graph — emit a synthetic OODA-style stage graph artifact"
+        }
         (_, ToolPromptKind::SemanticMap) => {
             "semantic_map — rustc-backed repomap: symbol outline by file (kind, name, signature)"
         }
