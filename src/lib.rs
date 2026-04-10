@@ -17,6 +17,7 @@ mod reports;
 mod tools;
 pub mod invalid_action;
 mod semantic;
+mod rename_semantic;
 pub mod state_space;
 
 // Keep the `constants` module private, but expose the few setters used by auxiliary binaries

@@ -49,6 +49,15 @@ struct SourceSpan {
     end_offset: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SymbolOccurrence {
+    pub file: String,
+    pub line: u32,
+    pub col: u32,
+    pub lo: u32,
+    pub hi: u32,
+}
+
 #[derive(Debug, Deserialize)]
 struct MirInfo {
     fingerprint: String,
@@ -516,6 +525,37 @@ impl SemanticIndex {
             expand_sym(&mut out, s);
         }
 
+        Ok(out)
+    }
+
+    // -----------------------------------------------------------------------
+    // occurrences
+    // -----------------------------------------------------------------------
+
+    pub fn symbol_occurrences(&self, symbol: &str) -> Result<Vec<SymbolOccurrence>> {
+        let key = self.resolve_symbol_key(symbol)?;
+        let node = self.graph.nodes.get(key).context("symbol key not present")?;
+        let mut out = Vec::new();
+        if let Some(def) = &node.def {
+            out.push(SymbolOccurrence {
+                file: def.file.clone(),
+                line: def.line,
+                col: def.col,
+                lo: def.start_offset,
+                hi: def.end_offset,
+            });
+        }
+        for r in &node.refs {
+            out.push(SymbolOccurrence {
+                file: r.file.clone(),
+                line: r.line,
+                col: r.col,
+                lo: r.start_offset,
+                hi: r.end_offset,
+            });
+        }
+        out.sort_by(|a, b| a.file.cmp(&b.file).then(a.lo.cmp(&b.lo)).then(a.hi.cmp(&b.hi)));
+        out.dedup_by(|a, b| a.file == b.file && a.lo == b.lo && a.hi == b.hi);
         Ok(out)
     }
 
