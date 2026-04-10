@@ -296,14 +296,6 @@ fn append_secondary_action_log(role: &str, action: &Value) -> Result<()> {
     let _guard = lock.lock().expect("secondary action log mutex poisoned");
 
     let mut record = serde_json::Map::new();
-    record.insert("agent_role".to_string(), Value::String(role.to_string()));
-    record.insert(
-        "timestamp".to_string(),
-        json!(canon_llm::endpoint_worker::tab_manager_now_ms()),
-    );
-    if let Some(value) = action.get("observation").cloned().and_then(compact_json) {
-        record.insert("observation".to_string(), value);
-    }
     if let Some(value) = action.get("action").cloned().and_then(compact_json) {
         record.insert("action".to_string(), value);
     }
@@ -312,6 +304,24 @@ fn append_secondary_action_log(role: &str, action: &Value) -> Result<()> {
     }
     if let Some(value) = action.get("line").cloned().and_then(compact_json) {
         record.insert("line".to_string(), value);
+    }
+    if let Some(value) = action.get("from").cloned().and_then(compact_json) {
+        record.insert("from".to_string(), value);
+    }
+    if let Some(value) = action.get("to").cloned().and_then(compact_json) {
+        record.insert("to".to_string(), value);
+    }
+    if let Some(value) = action.get("type").cloned().and_then(compact_json) {
+        record.insert("type".to_string(), value);
+    }
+    if let Some(value) = action.get("status").cloned().and_then(compact_json) {
+        record.insert("status".to_string(), value);
+    }
+    if let Some(value) = action.get("payload").cloned().and_then(compact_json) {
+        record.insert("payload".to_string(), value);
+    }
+    if let Some(value) = action.get("observation").cloned().and_then(compact_json) {
+        record.insert("observation".to_string(), value);
     }
     if let Some(value) = action.get("rationale").cloned().and_then(compact_json) {
         record.insert("rationale".to_string(), value);
@@ -330,6 +340,11 @@ fn append_secondary_action_log(role: &str, action: &Value) -> Result<()> {
     if let Some(value) = secondary_llm_response(action) {
         record.insert("llm_response".to_string(), value);
     }
+    record.insert("agent_role".to_string(), Value::String(role.to_string()));
+    record.insert(
+        "timestamp".to_string(),
+        json!(canon_llm::endpoint_worker::tab_manager_now_ms()),
+    );
     if record.is_empty() {
         return Ok(());
     }
