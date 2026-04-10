@@ -128,6 +128,42 @@ fn render_lessons_artifact(artifact: &LessonsArtifact) -> String {
     sections.join("\n\n")
 }
 
+const RENAME_CANDIDATES_FILE: &str = "state/rename_candidates.json";
+
+pub fn read_rename_candidates_or_empty(workspace: &Path) -> String {
+    let raw = read_text_or_empty(workspace.join(RENAME_CANDIDATES_FILE));
+    if raw.trim().is_empty() {
+        return String::new();
+    }
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return raw;
+    };
+    let Some(candidates) = v.get("candidates").and_then(|c| c.as_array()) else {
+        return raw;
+    };
+    if candidates.is_empty() {
+        return String::new();
+    }
+    let mut lines = Vec::new();
+    for c in candidates {
+        let name = c.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+        let kind = c.get("kind").and_then(|v| v.as_str()).unwrap_or("?");
+        let file = c.get("file").and_then(|v| v.as_str()).unwrap_or("?");
+        let line = c.get("span").and_then(|s| s.get("line")).and_then(|v| v.as_u64());
+        let score = c.get("score").and_then(|v| v.as_u64()).unwrap_or(0);
+        let reasons = c.get("reasons")
+            .and_then(|r| r.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(", "))
+            .unwrap_or_default();
+        let loc = match line {
+            Some(l) => format!("{file}:{l}"),
+            None => file.to_string(),
+        };
+        lines.push(format!("- [{score}] `{name}` ({kind}) at {loc} — {reasons}"));
+    }
+    lines.join("\n")
+}
+
 pub fn read_lessons_or_empty(workspace: &Path) -> String {
     let raw = read_text_or_empty(workspace.join(LESSONS_FILE));
     if raw.trim().is_empty() {

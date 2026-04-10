@@ -513,6 +513,7 @@ async fn run_solo_phase(
         &violations,
         &diagnostics,
         cargo_test_failures,
+        &crate::prompt_inputs::read_rename_candidates_or_empty(ctx.workspace),
     );
     inject_inbound_message(&mut prompt, "solo");
     trace_orchestrator_forwarded("orchestrator", "solo", "solo", None, None, None, None);

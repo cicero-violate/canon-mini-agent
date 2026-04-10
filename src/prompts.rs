@@ -856,11 +856,17 @@ pub(crate) fn single_role_solo_prompt(
     violations: &str,
     diagnostics: &str,
     cargo_test_failures: &str,
+    rename_candidates: &str,
 ) -> String {
     let workspace = workspace();
     let diagnostics_path = diagnostics_file();
+    let rename_section = if rename_candidates.trim().is_empty() {
+        String::new()
+    } else {
+        format!("\n\nPending rename tasks (from state/rename_candidates.json):\n{rename_candidates}\nFor each candidate: use `symbols_prepare_rename` to select it, then `rename_symbol` to apply. Work through them in score-descending order.")
+    };
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{spec}\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nLessons artifact:\n{lessons_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nUse the `issue` action to record discovered problems for later attention."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical spec (from {SPEC_FILE}):\n{spec}\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nLessons artifact:\n{lessons_text}\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}{rename_section}\n\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nUse the `issue` action to record discovered problems for later attention."
     )
 }
 
@@ -1495,6 +1501,7 @@ mod tests {
             "{violations}",
             "{diagnostics}",
             "{cargo_test_failures}",
+            "",
         );
         assert!(
             prompt.contains("Use the `plan` action for `PLAN.json` edits"),
@@ -1513,6 +1520,7 @@ mod tests {
             "{violations}",
             "{diagnostics}",
             "{cargo_test_failures}",
+            "",
         );
         assert!(
             prompt.contains("Lessons artifact:\nLESSON_TEXT"),
