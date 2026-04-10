@@ -3866,6 +3866,62 @@ fn handle_symbol_neighborhood_action(workspace: &Path, action: &Value) -> Result
     Ok((false, out))
 }
 
+/// Write the canonical stage graph artifact to `state/orchestrator/stage_graph.json`.
+/// Called automatically at agent-loop startup so the file is always present as a live artifact.
+pub(crate) fn write_stage_graph(workspace: &Path) {
+    if let Err(e) = write_stage_graph_inner(workspace, "state/orchestrator/stage_graph.json") {
+        eprintln!("[stage_graph] failed to write live artifact: {e}");
+    }
+}
+
+fn write_stage_graph_inner(workspace: &Path, out_rel: &str) -> Result<()> {
+    let out_path = {
+        let p = std::path::Path::new(out_rel);
+        if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            workspace.join(p)
+        }
+    };
+    if !out_path.starts_with(workspace) {
+        bail!(
+            "stage_graph output path must be under workspace: {}",
+            out_path.display()
+        );
+    }
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("create stage_graph parent dir {}", parent.display()))?;
+    }
+    let graph = build_stage_graph();
+    let text = serde_json::to_string_pretty(&graph).unwrap_or_else(|_| graph.to_string());
+    std::fs::write(&out_path, &text)
+        .with_context(|| format!("write stage graph to {}", out_path.display()))?;
+    Ok(())
+}
+
+fn build_stage_graph() -> serde_json::Value {
+    serde_json::json!({
+      "nodes": [
+        {"id":"observe.input","layer":0,"type":"stage","intent":"collect state","inputs":[],"outputs":["state"]},
+        {"id":"orient.update","layer":1,"type":"stage","intent":"update world model","inputs":["state"],"outputs":["context"]},
+        {"id":"plan.generate","layer":2,"type":"stage","intent":"generate actions","inputs":["context"],"outputs":["actions"]},
+        {"id":"act.execute","layer":3,"type":"stage","intent":"execute action","inputs":["actions"],"outputs":["result"]},
+        {"id":"verify.check","layer":4,"type":"stage","intent":"validate result","inputs":["result"],"outputs":["verified"]},
+        {"id":"reward.score","layer":5,"type":"stage","intent":"score outcome","inputs":["verified"],"outputs":["feedback"]}
+      ],
+      "edges": [
+        {"from":"observe.input","to":"orient.update","type":"call"},
+        {"from":"orient.update","to":"plan.generate","type":"call"},
+        {"from":"plan.generate","to":"act.execute","type":"call"},
+        {"from":"act.execute","to":"verify.check","type":"call"},
+        {"from":"verify.check","to":"reward.score","type":"call"},
+        {"from":"verify.check","to":"plan.generate","type":"retry"},
+        {"from":"orient.update","to":"plan.generate","type":"refine"}
+      ]
+    })
+}
+
 fn handle_stage_graph_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
     let out_rel = action
         .get("out")
@@ -3890,26 +3946,7 @@ fn handle_stage_graph_action(workspace: &Path, action: &Value) -> Result<(bool, 
             .with_context(|| format!("create stage_graph parent dir {}", parent.display()))?;
     }
 
-    // Synthetic OODA-style stage graph. Keep output deterministic (no timestamps).
-    let graph = serde_json::json!({
-      "nodes": [
-        {"id":"observe.input","layer":0,"type":"stage","intent":"collect state","inputs":[],"outputs":["state"]},
-        {"id":"orient.update","layer":1,"type":"stage","intent":"update world model","inputs":["state"],"outputs":["context"]},
-        {"id":"plan.generate","layer":2,"type":"stage","intent":"generate actions","inputs":["context"],"outputs":["actions"]},
-        {"id":"act.execute","layer":3,"type":"stage","intent":"execute action","inputs":["actions"],"outputs":["result"]},
-        {"id":"verify.check","layer":4,"type":"stage","intent":"validate result","inputs":["result"],"outputs":["verified"]},
-        {"id":"reward.score","layer":5,"type":"stage","intent":"score outcome","inputs":["verified"],"outputs":["feedback"]}
-      ],
-      "edges": [
-        {"from":"observe.input","to":"orient.update","type":"call"},
-        {"from":"orient.update","to":"plan.generate","type":"call"},
-        {"from":"plan.generate","to":"act.execute","type":"call"},
-        {"from":"act.execute","to":"verify.check","type":"call"},
-        {"from":"verify.check","to":"reward.score","type":"call"},
-        {"from":"verify.check","to":"plan.generate","type":"retry"},
-        {"from":"orient.update","to":"plan.generate","type":"refine"}
-      ]
-    });
+    let graph = build_stage_graph();
     let text = serde_json::to_string_pretty(&graph).unwrap_or_else(|_| graph.to_string());
     std::fs::write(&out_path, &text)
         .with_context(|| format!("write stage graph to {}", out_path.display()))?;
