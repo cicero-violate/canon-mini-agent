@@ -324,6 +324,7 @@ impl SemanticIndex {
     pub fn symbol_neighborhood(&self, symbol: &str) -> Result<String> {
         // Confirm symbol exists and normalize to canonical graph key.
         let symbol_key = self.resolve_symbol_key(symbol)?;
+        let node = self.graph.nodes.get(symbol_key).unwrap();
 
         let mut callers: Vec<&str> = Vec::new();
         let mut callees: Vec<&str> = Vec::new();
@@ -345,11 +346,25 @@ impl SemanticIndex {
         callees.sort();
         callees.dedup();
 
+        let mut inferred_callers = self.infer_callers_from_refs(symbol_key, &node.refs);
+        inferred_callers.sort();
+        inferred_callers.dedup();
+
         let mut out = format!("Neighborhood of `{symbol}`:\n");
 
         out.push_str(&format!("  Callers ({}):\n", callers.len()));
         for s in &callers {
             out.push_str(&format!("    {s}\n"));
+        }
+
+        if !inferred_callers.is_empty() {
+            out.push_str(&format!(
+                "  Inferred callers from refs ({}):\n",
+                inferred_callers.len()
+            ));
+            for s in &inferred_callers {
+                out.push_str(&format!("    {s}\n"));
+            }
         }
 
         out.push_str(&format!("  Callees ({}):\n", callees.len()));
@@ -392,6 +407,39 @@ impl SemanticIndex {
                 matches.join(", ")
             ),
         }
+    }
+
+    fn infer_callers_from_refs<'a>(&'a self, symbol_key: &str, refs: &'a [SourceSpan]) -> Vec<&'a str> {
+        let mut out = Vec::new();
+        for span in refs {
+            if let Some(owner) = self.enclosing_symbol_for_span(span) {
+                if owner != symbol_key {
+                    out.push(owner);
+                }
+            }
+        }
+        out
+    }
+
+    fn enclosing_symbol_for_span<'a>(&'a self, span: &SourceSpan) -> Option<&'a str> {
+        let mut best: Option<(&str, u32)> = None;
+        for (sym, node) in &self.graph.nodes {
+            let Some(def) = node.def.as_ref() else { continue };
+            if def.file != span.file {
+                continue;
+            }
+            if def.lo <= span.lo && def.hi >= span.hi {
+                let width = def.hi.saturating_sub(def.lo);
+                match best {
+                    None => best = Some((sym.as_str(), width)),
+                    Some((_, best_width)) if width < best_width => {
+                        best = Some((sym.as_str(), width))
+                    }
+                    _ => {}
+                }
+            }
+        }
+        best.map(|(sym, _)| sym)
     }
 }
 
@@ -570,5 +618,67 @@ mod tests {
         assert!(p.contains("1 hops"));
         assert!(p.contains("canon_mini_agent::app::continue_executor_completion"));
         assert!(p.contains("canon_mini_agent::engine::process_action_and_execute"));
+    }
+
+    #[test]
+    fn neighborhood_infers_callers_from_refs_when_call_edges_absent() {
+        let caller_src = "fn drive() {\n    run_planner_phase();\n}\n";
+        let target_src = "fn run_planner_phase() {}\n";
+        let call_lo = caller_src.find("run_planner_phase").unwrap() as u32;
+        let call_hi = call_lo + "run_planner_phase".len() as u32;
+
+        let mut nodes = HashMap::new();
+        nodes.insert(
+            "app::drive".to_string(),
+            GraphNode {
+                kind: "fn".to_string(),
+                def: Some(SourceSpan {
+                    file: "src/app.rs".to_string(),
+                    line: 1,
+                    col: 1,
+                    lo: 0,
+                    hi: caller_src.len() as u32,
+                }),
+                refs: Vec::new(),
+                signature: None,
+                mir: None,
+                fields: Vec::new(),
+            },
+        );
+        nodes.insert(
+            "app::run_planner_phase".to_string(),
+            GraphNode {
+                kind: "fn".to_string(),
+                def: Some(SourceSpan {
+                    file: "src/app.rs".to_string(),
+                    line: 10,
+                    col: 1,
+                    lo: 0,
+                    hi: target_src.len() as u32,
+                }),
+                refs: vec![SourceSpan {
+                    file: "src/app.rs".to_string(),
+                    line: 2,
+                    col: 5,
+                    lo: call_lo,
+                    hi: call_hi,
+                }],
+                signature: None,
+                mir: None,
+                fields: Vec::new(),
+            },
+        );
+        let idx = SemanticIndex {
+            graph: CrateGraph {
+                nodes,
+                edges: Vec::new(),
+            },
+        };
+        let out = idx
+            .symbol_neighborhood("app::run_planner_phase")
+            .expect("neighborhood should succeed");
+        assert!(out.contains("Callers (0):"));
+        assert!(out.contains("Inferred callers from refs (1):"));
+        assert!(out.contains("app::drive"));
     }
 }

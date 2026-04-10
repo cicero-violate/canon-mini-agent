@@ -1,57 +1,41 @@
-Semantic tools proof run for crate: canon_mini_agent
+Semantic tools proof rerun for symbol shape: app::run_planner_phase
 
 1) semantic_map
-- Returned non-empty symbol inventory for the crate, including:
-  - engine::process_action_and_execute
-  - app::continue_executor_completion
-  - app::run_agent
-  - many additional symbols across src/app.rs, src/engine.rs, src/invalid_action.rs, src/constants.rs, src/logging.rs, and others
+- Returned non-empty crate symbol inventory.
+- Included app::run_planner_phase in src/app.rs.
 - Result: PASS (non-empty)
 
 2) Chosen symbol
-- engine::process_action_and_execute
+- app::run_planner_phase
 
 3) symbol_window
-- Returned non-empty definition body/signature for engine::process_action_and_execute from src/engine.rs:9
-- Included MIR summary: 29 blocks, 38 stmts
+- Returned non-empty definition body/signature for app::run_planner_phase from src/app.rs:375.
 - Result: PASS (non-empty)
 
 4) symbol_refs
-- Returned non-empty references for engine::process_action_and_execute
+- Returned non-empty references for app::run_planner_phase.
 - Reported sites:
-  - src/app.rs:18:19
-  - src/app.rs:2127:22
-  - src/app.rs:2477:26
-  - src/engine.rs:9:14
-- Output included duplicate spans, but it was non-empty and pointed to the expected defining file plus app.rs callsites
+  - src/app.rs:375:9
+  - src/app.rs:3575:19
 - Result: PASS (non-empty)
 
 5) symbol_neighborhood
-- Returned non-empty neighborhood for engine::process_action_and_execute
-- Callers: 0
-- Callees: 14, including tools::execute_logged_action, logging::log_error_event, logging::append_llm_completion_log, serde_json helpers, std formatting helpers
-- Result: PASS (non-empty)
+- Returned non-empty command output, but the graph neighborhood itself was empty:
+  - Callers: 0
+  - Callees: 0
+- Result: FAIL for cross-consistency purposes, because src/app.rs has a concrete non-definition reference at line 3575.
 
 6) symbol_path
-- Query from app::run_agent -> engine::process_action_and_execute returned: no path found
-- Query from app::continue_executor_completion -> engine::process_action_and_execute returned: no path found
-- Result: FAIL for this chosen path proof because output was empty / no path found
+- Query from app::run -> app::run_planner_phase returned: no path found.
+- Result: FAIL (empty / no path found)
 
 7) Cross-consistency check
-- semantic_map and symbol_window agree that engine::process_action_and_execute exists in src/engine.rs
-- symbol_refs agrees the symbol is referenced from src/app.rs and defined in src/engine.rs
-- read_file src/app.rs confirmed at least one concrete callsite inside app::continue_executor_completion at line 2127 calling process_action_and_execute(...)
-- symbol_neighborhood is not fully cross-consistent with symbol_refs/read_file because it reported 0 callers despite concrete reference evidence from src/app.rs
-- symbol_path is also not cross-consistent for the tested caller symbols because no caller-to-target path was found even after retrying with the enclosing caller symbol identified from the concrete callsite
+- semantic_map and symbol_window agree that app::run_planner_phase exists in src/app.rs.
+- symbol_refs agrees there is a concrete non-definition reference at src/app.rs:3575:19.
+- read_file src/app.rs:3572-3585 confirms app::run directly calls run_planner_phase(...).await.
+- symbol_neighborhood is not cross-consistent with symbol_refs/read_file because it reported 0 callers and 0 callees despite the concrete callsite.
+- symbol_path is not cross-consistent with read_file because no call-graph path was found from app::run to app::run_planner_phase even though the source shows a direct awaited call.
 
 Conclusion
-- semantic_map: working on this proof run
-- symbol_window: working on this proof run
-- symbol_refs: working on this proof run
-- symbol_neighborhood: returns non-empty output, but caller data appears inconsistent with symbol_refs/read_file for this symbol
-- symbol_path: did not produce a non-empty connecting path for the tested caller symbols in this proof run
-
-Overall verdict
-- The semantic toolchain is only partially proven by this run.
-- Non-empty proof succeeded for semantic_map, symbol_window, symbol_refs, and symbol_neighborhood.
-- Cross-consistency failed for caller/path connectivity on the chosen symbol, so the full requested proof does NOT pass as written.
+- For this rerun, steps 6 and the cross-consistency check still fail for app::run_planner_phase.
+- The current evidence supports that this symbol shape is still inconsistent across symbol_refs/read_file versus neighborhood/path.
