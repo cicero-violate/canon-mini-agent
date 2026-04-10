@@ -351,19 +351,19 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
         }
 
         (_, ToolPromptKind::SemanticMap) => {
-            "   {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"rationale\":\"Get a rustc-backed symbol outline to understand the codebase structure before reading individual files.\"}\n   {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"filter\":\"canon_mini_agent::tools\",\"rationale\":\"Restrict the outline to the tools module to see all symbols in that area.\"}\n   Notes: `crate` is the crate name (underscores); optional `filter` restricts to a symbol-path prefix.".to_string()
+            "   {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"rationale\":\"Get a rustc-backed symbol outline to understand the codebase structure before reading individual files.\"}\n   {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"filter\":\"tools\",\"rationale\":\"Restrict the outline to the tools module to see all symbols in that area.\"}\n   Notes: `crate` is the crate name (underscores); symbol paths use module-relative format (e.g. `tools::my_fn`); optional `filter` restricts to a symbol-path prefix.".to_string()
         }
         (_, ToolPromptKind::SymbolWindow) => {
-            "   {\"action\":\"symbol_window\",\"crate\":\"canon_mini_agent\",\"symbol\":\"canon_mini_agent::tools::execute_logged_action\",\"rationale\":\"Extract the full definition of a specific function before editing it.\"}\n   Notes: `symbol` is the fully-qualified path; accepts a short suffix if unambiguous.".to_string()
+            "   {\"action\":\"symbol_window\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"rationale\":\"Extract the full definition of a specific function before editing it.\"}\n   Notes: `symbol` uses module-relative path (e.g. `tools::my_fn`); accepts unambiguous short name as suffix.".to_string()
         }
         (_, ToolPromptKind::SymbolRefs) => {
-            "   {\"action\":\"symbol_refs\",\"crate\":\"canon_mini_agent\",\"symbol\":\"canon_mini_agent::tools::execute_logged_action\",\"rationale\":\"Find all call sites before renaming or changing the signature.\"}\n   Notes: returns file:line:col for every identifier reference span recorded during compilation.".to_string()
+            "   {\"action\":\"symbol_refs\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"rationale\":\"Find all call sites before renaming or changing the signature.\"}\n   Notes: returns file:line:col for every identifier reference span recorded during compilation.".to_string()
         }
         (_, ToolPromptKind::SymbolPath) => {
-            "   {\"action\":\"symbol_path\",\"crate\":\"canon_mini_agent\",\"from\":\"canon_mini_agent::app::run_cycle\",\"to\":\"canon_mini_agent::tools::handle_apply_patch_action\",\"rationale\":\"Find the call chain between two symbols to understand how they are connected.\"}\n   Notes: BFS over call edges; returns the shortest path with file:line annotations.".to_string()
+            "   {\"action\":\"symbol_path\",\"crate\":\"canon_mini_agent\",\"from\":\"app::run_agent\",\"to\":\"tools::handle_apply_patch_action\",\"rationale\":\"Find the call chain between two symbols to understand how they are connected.\"}\n   Notes: BFS over call edges; returns the shortest path with file:line annotations.".to_string()
         }
         (_, ToolPromptKind::SymbolNeighborhood) => {
-            "   {\"action\":\"symbol_neighborhood\",\"crate\":\"canon_mini_agent\",\"symbol\":\"canon_mini_agent::tools::execute_logged_action\",\"rationale\":\"See all callers and callees of a symbol to understand its role before changing it.\"}\n   Notes: returns all immediate callers and callees from the static call graph.".to_string()
+            "   {\"action\":\"symbol_neighborhood\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"rationale\":\"See all callers and callees of a symbol to understand its role before changing it.\"}\n   Notes: returns all immediate callers and callees from the static call graph.".to_string()
         }
         (_, ToolPromptKind::Message) => {
             message_tool_prompt_examples().to_string()

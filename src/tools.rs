@@ -3776,6 +3776,72 @@ fn safe_join(workspace: &Path, relative: &str) -> Result<PathBuf> {
     Ok(workspace.join(p))
 }
 
+// ---------------------------------------------------------------------------
+// Semantic navigation handlers (backed by rustc graph.json)
+// ---------------------------------------------------------------------------
+
+fn load_semantic(workspace: &Path, action: &Value) -> anyhow::Result<crate::semantic::SemanticIndex> {
+    let crate_name = action
+        .get("crate")
+        .and_then(|v| v.as_str())
+        .unwrap_or("canon_mini_agent");
+    crate::semantic::SemanticIndex::load(workspace, crate_name)
+        .map_err(|e| anyhow!("semantic index not available for crate '{crate_name}': {e}\n\
+            Run `cargo build` (with canon-rustc-v2 wrapper) to generate the graph, or check \
+            state/rustc/<crate>/graph.json exists."))
+}
+
+fn handle_semantic_map_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+    let idx = load_semantic(workspace, action)?;
+    let filter = action.get("filter").and_then(|v| v.as_str());
+    let out = idx.semantic_map(filter);
+    Ok((false, out))
+}
+
+fn handle_symbol_window_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+    let idx = load_semantic(workspace, action)?;
+    let symbol = action
+        .get("symbol")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("symbol_window requires a `symbol` field"))?;
+    let out = idx.symbol_window(symbol)?;
+    Ok((false, out))
+}
+
+fn handle_symbol_refs_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+    let idx = load_semantic(workspace, action)?;
+    let symbol = action
+        .get("symbol")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("symbol_refs requires a `symbol` field"))?;
+    let out = idx.symbol_refs(symbol)?;
+    Ok((false, out))
+}
+
+fn handle_symbol_path_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+    let idx = load_semantic(workspace, action)?;
+    let from = action
+        .get("from")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("symbol_path requires a `from` field"))?;
+    let to = action
+        .get("to")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("symbol_path requires a `to` field"))?;
+    let out = idx.symbol_path(from, to)?;
+    Ok((false, out))
+}
+
+fn handle_symbol_neighborhood_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+    let idx = load_semantic(workspace, action)?;
+    let symbol = action
+        .get("symbol")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("symbol_neighborhood requires a `symbol` field"))?;
+    let out = idx.symbol_neighborhood(symbol)?;
+    Ok((false, out))
+}
+
 fn execute_action(
     role: &str,
     step: usize,
@@ -3810,10 +3876,15 @@ fn execute_action(
         }
         "cargo_test" => handle_cargo_test_action(role, step, workspace, action),
         "plan" => handle_plan_action(role, workspace, action),
+        "semantic_map" => handle_semantic_map_action(workspace, action),
+        "symbol_window" => handle_symbol_window_action(workspace, action),
+        "symbol_refs" => handle_symbol_refs_action(workspace, action),
+        "symbol_path" => handle_symbol_path_action(workspace, action),
+        "symbol_neighborhood" => handle_symbol_neighborhood_action(workspace, action),
         other => Ok((
             false,
             format!(
-                "unsupported action '{other}' — use list_dir, read_file, symbols_index, symbols_rename_candidates, symbols_prepare_rename, rename_symbol, objectives, issue, apply_patch, run_command, python, cargo_test, plan, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, or message"
+                "unsupported action '{other}' — use list_dir, read_file, symbols_index, symbols_rename_candidates, symbols_prepare_rename, rename_symbol, objectives, issue, apply_patch, run_command, python, cargo_test, plan, semantic_map, symbol_window, symbol_refs, symbol_path, symbol_neighborhood, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, or message"
             ),
         )),
     }

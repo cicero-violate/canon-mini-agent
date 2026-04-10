@@ -9,7 +9,7 @@
 //!   symbol_neighborhood — immediate callers + callees of a symbol
 
 use anyhow::{bail, Context, Result};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::Path;
@@ -109,6 +109,10 @@ impl SemanticIndex {
         // Group by file, then sort by line.
         let mut by_file: HashMap<String, Vec<(u32, &str, &GraphNode)>> = HashMap::new();
         for (path, node) in &self.graph.nodes {
+            // Skip synthetic/unknown items (e.g. {use#0}, {impl#0}).
+            if node.kind == "unknown" {
+                continue;
+            }
             if let Some(fp) = filter_path {
                 if !path.starts_with(fp) {
                     continue;
