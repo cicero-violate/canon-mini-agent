@@ -27,3 +27,4 @@ tokio = { version = "1", features = ["full"] }
 canon-tools-patch = { path = "../canon/canon-utils/canon-tools-patch" }
 canon_llm = { package = "canon-llm-runtime", path = "../canon/canon-utils/canon-llm-runtime" }
 ctrlc = "3"
+ra_ap_syntax = "0.0.327"

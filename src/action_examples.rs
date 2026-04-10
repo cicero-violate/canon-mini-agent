@@ -30,6 +30,18 @@ pub fn non_message_example_action(kind: &str) -> Option<Value> {
             "rationale": "Need context before editing.",
             "predicted_next_actions": predicted_next_actions
         })),
+        "rename_symbol" => Some(json!({
+            "action": "rename_symbol",
+            "path": "src/tools.rs",
+            "line": 2230,
+            "column": 8,
+            "old_name": "handle_plan_action",
+            "new_name": "handle_master_plan_action",
+            "question": "Is this exact symbol-at-position the one that should be renamed without changing behavior?",
+            "observation": "Target identifier located at the given position.",
+            "rationale": "Perform a deterministic symbol rename.",
+            "predicted_next_actions": predicted_next_actions
+        })),
         "list_dir" => Some(json!({
             "action": "list_dir",
             "path": ".",

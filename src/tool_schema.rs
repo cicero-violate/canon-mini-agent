@@ -21,6 +21,7 @@ pub enum PredictedActionName {
     Message,
     ListDir,
     ReadFile,
+    RenameSymbol,
     Objectives,
     Issue,
     ApplyPatch,
@@ -45,6 +46,7 @@ pub const TOOL_ACTION_NAMES: &[&str] = &[
     "message",
     "list_dir",
     "read_file",
+    "rename_symbol",
     "objectives",
     "issue",
     "apply_patch",
@@ -57,6 +59,7 @@ pub const TOOL_ACTION_NAMES: &[&str] = &[
 pub const ALL_TOOL_PROMPT_KINDS: &[&str] = &[
     "list_dir",
     "read_file",
+    "rename_symbol",
     "objectives",
     "issue",
     "apply_patch",
@@ -214,6 +217,15 @@ pub enum ToolAction {
         path: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         line: Option<u64>,
+    },
+    RenameSymbol {
+        #[serde(flatten)]
+        base: ActionBase,
+        path: String,
+        line: u64,
+        column: u64,
+        old_name: String,
+        new_name: String,
     },
     Issue {
         #[serde(flatten)]
@@ -385,6 +397,13 @@ pub fn tool_protocol_schema_split_text() -> String {
             "read a file; output is line-numbered",
             Some(
                 "Examples:\n  {\"action\":\"read_file\",\"path\":\"src/app.rs\",\"rationale\":\"Read the file before editing it.\"}\n  {\"action\":\"read_file\",\"path\":\"src/app.rs\",\"line\":120,\"rationale\":\"Read the relevant section before editing it.\"}\nWith \"line\":N the output starts at line N and shows up to 1000 lines.\n⚠ Always read a file before patching it. Never patch from memory.\n⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.\n⚠ read_file output is prefixed with line numbers (\"42: code here\"). Strip the \"N: \" prefix when writing patch lines.\nWRONG:  -42: fn old() {}   RIGHT:  -fn old() {}",
+            ),
+        ),
+        (
+            "rename_symbol",
+            "rename a Rust identifier at an exact line/column using rust-analyzer syntax APIs (file-scoped in v1)",
+            Some(
+                "Example:\n  {\"action\":\"rename_symbol\",\"path\":\"src/tools.rs\",\"line\":2230,\"column\":8,\"old_name\":\"handle_plan_action\",\"new_name\":\"handle_master_plan_action\",\"question\":\"Is this exact symbol-at-position the one that should be renamed without changing behavior?\",\"rationale\":\"Apply a deterministic symbol rename at the precise declaration/reference location.\",\"predicted_next_actions\":[{\"action\":\"cargo_test\",\"intent\":\"Run focused tests covering the renamed symbol path.\"},{\"action\":\"run_command\",\"intent\":\"Run cargo check to verify no compile regressions.\"}]}\nNotes:\n- `line` and `column` are 1-based.\n- v1 is file-scoped and only supports `.rs` files.",
             ),
         ),
         (
@@ -682,6 +701,7 @@ fn is_known_action(action: &str) -> bool {
         "message"
             | "list_dir"
             | "read_file"
+            | "rename_symbol"
             | "objectives"
             | "apply_patch"
             | "run_command"
@@ -715,6 +735,11 @@ fn first_missing_field_for_action(action: &Value, action_name: &str) -> Option<S
         }
         "list_dir" => missing_field("path"),
         "read_file" => missing_field("path"),
+        "rename_symbol" => missing_field("path")
+            .or_else(|| missing_field("line"))
+            .or_else(|| missing_field("column"))
+            .or_else(|| missing_field("old_name"))
+            .or_else(|| missing_field("new_name")),
         "objectives" => {
             let op = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
             let id_missing = || {
