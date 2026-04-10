@@ -14,6 +14,13 @@ pub struct SpanReplacement {
     pub replacement: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CheckedReplacement {
+    span: ByteSpan,
+    replacement: String,
+    expected: String,
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct RenameReport {
     pub touched_files: Vec<PathBuf>,
@@ -163,52 +170,60 @@ fn ensure_under_workspace(workspace: &Path, file: &Path) -> Result<()> {
 /// - `new_symbol` may be fully qualified; only its last `::` segment is used as the identifier.
 /// - Offsets are byte offsets into the on-disk file content; if sources changed since the graph
 ///   was built, the rename will fail with a mismatch error.
-pub fn rename_symbol_via_semantic_spans(
+pub fn rename_symbols_via_semantic_spans(
     workspace: &Path,
     idx: &crate::semantic::SemanticIndex,
-    old_symbol: &str,
-    new_symbol: &str,
+    renames: &[(String, String)],
 ) -> Result<RenameReport> {
-    let old_ident = old_symbol
-        .rsplit("::")
-        .next()
-        .unwrap_or(old_symbol)
-        .trim();
-    let new_ident = new_symbol
-        .rsplit("::")
-        .next()
-        .unwrap_or(new_symbol)
-        .trim();
-
-    if !is_valid_rust_identifier(old_ident) || !is_valid_rust_identifier(new_ident) {
-        bail!("rename requires valid Rust identifier names (old={old_ident}, new={new_ident})");
-    }
-    if old_ident == new_ident {
-        bail!("rename old and new identifiers are identical: {old_ident}");
+    if renames.is_empty() {
+        bail!("rename requires at least one (old,new) pair");
     }
 
-    let occurrences = idx
-        .symbol_occurrences(old_symbol)
-        .with_context(|| format!("resolve occurrences for symbol {old_symbol}"))?;
-    if occurrences.is_empty() {
-        bail!("no recorded occurrences for symbol {old_symbol}");
-    }
+    let mut per_file: HashMap<PathBuf, Vec<CheckedReplacement>> = HashMap::new();
+    for (old_symbol, new_symbol) in renames {
+        let old_ident = old_symbol
+            .rsplit("::")
+            .next()
+            .unwrap_or(old_symbol.as_str())
+            .trim();
+        let new_ident = new_symbol
+            .rsplit("::")
+            .next()
+            .unwrap_or(new_symbol.as_str())
+            .trim();
 
-    let mut per_file: HashMap<PathBuf, Vec<SpanReplacement>> = HashMap::new();
-    for occ in occurrences {
-        let file = PathBuf::from(&occ.file);
-        ensure_under_workspace(workspace, &file)?;
-        per_file.entry(file).or_default().push(SpanReplacement {
-            span: ByteSpan {
-                lo: occ.lo as usize,
-                hi: occ.hi as usize,
-            },
-            replacement: new_ident.to_string(),
-        });
+        if !is_valid_rust_identifier(old_ident) || !is_valid_rust_identifier(new_ident) {
+            bail!(
+                "rename requires valid Rust identifier names (old={old_ident}, new={new_ident})"
+            );
+        }
+        if old_ident == new_ident {
+            bail!("rename old and new identifiers are identical: {old_ident}");
+        }
+
+        let occurrences = idx
+            .symbol_occurrences(old_symbol)
+            .with_context(|| format!("resolve occurrences for symbol {old_symbol}"))?;
+        if occurrences.is_empty() {
+            bail!("no recorded occurrences for symbol {old_symbol}");
+        }
+
+        for occ in occurrences {
+            let file = PathBuf::from(&occ.file);
+            ensure_under_workspace(workspace, &file)?;
+            per_file.entry(file).or_default().push(CheckedReplacement {
+                span: ByteSpan {
+                    lo: occ.lo as usize,
+                    hi: occ.hi as usize,
+                },
+                replacement: new_ident.to_string(),
+                expected: old_ident.to_string(),
+            });
+        }
     }
 
     let mut report = RenameReport::default();
-    for (file, mut replacements) in per_file {
+    for (file, replacements) in per_file {
         let original = std::fs::read_to_string(&file)
             .with_context(|| format!("read {}", file.display()))?;
 
@@ -216,17 +231,25 @@ pub fn rename_symbol_via_semantic_spans(
             let snippet = original
                 .get(r.span.lo..r.span.hi)
                 .ok_or_else(|| anyhow!("span out of bounds for {}", file.display()))?;
-            if snippet != old_ident {
+            if snippet != r.expected {
                 bail!(
-                    "span mismatch in {} at {}..{}: expected '{old_ident}', found '{snippet}'. Rebuild the semantic graph and retry.",
+                    "span mismatch in {} at {}..{}: expected '{}', found '{snippet}'. Rebuild the semantic graph and retry.",
                     file.display(),
                     r.span.lo,
-                    r.span.hi
+                    r.span.hi,
+                    r.expected
                 );
             }
         }
 
-        let updated = apply_replacements(&original, &mut replacements)
+        let mut span_replacements: Vec<SpanReplacement> = replacements
+            .iter()
+            .map(|r| SpanReplacement {
+                span: r.span,
+                replacement: r.replacement.clone(),
+            })
+            .collect();
+        let updated = apply_replacements(&original, &mut span_replacements)
             .with_context(|| format!("apply replacements for {}", file.display()))?;
         if updated != original {
             std::fs::write(&file, updated).with_context(|| format!("write {}", file.display()))?;
@@ -238,6 +261,19 @@ pub fn rename_symbol_via_semantic_spans(
     report.touched_files.sort();
     report.touched_files.dedup();
     Ok(report)
+}
+
+pub fn rename_symbol_via_semantic_spans(
+    workspace: &Path,
+    idx: &crate::semantic::SemanticIndex,
+    old_symbol: &str,
+    new_symbol: &str,
+) -> Result<RenameReport> {
+    rename_symbols_via_semantic_spans(
+        workspace,
+        idx,
+        &[(old_symbol.to_string(), new_symbol.to_string())],
+    )
 }
 
 #[cfg(test)]
@@ -302,4 +338,3 @@ mod tests {
         assert!(err.contains("outside workspace"));
     }
 }
-
