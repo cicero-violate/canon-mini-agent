@@ -213,10 +213,18 @@ impl SemanticIndex {
         }
 
         let mut spans: Vec<&SourceSpan> = node.refs.iter().collect();
-        spans.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
-
-        let mut out = format!("References to `{symbol}` ({} sites):\n", spans.len());
+        spans.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line).then(a.col.cmp(&b.col))));
+        let mut unique = Vec::new();
+        let mut seen = HashSet::<(String, u32, u32)>::new();
         for s in spans {
+            let key = (s.file.clone(), s.line, s.col);
+            if seen.insert(key) {
+                unique.push(s);
+            }
+        }
+
+        let mut out = format!("References to `{symbol}` ({} sites):\n", unique.len());
+        for s in unique {
             out.push_str(&format!(
                 "  {}:{}:{}\n",
                 shorten_path(&s.file),
@@ -234,7 +242,9 @@ impl SemanticIndex {
     /// BFS shortest path in the call graph from `from` to `to`.
     /// Returns the chain with file:line annotations.
     pub fn symbol_path(&self, from: &str, to: &str) -> Result<String> {
-        if from == to {
+        let from_key = self.resolve_symbol_key(from)?;
+        let to_key = self.resolve_symbol_key(to)?;
+        if from_key == to_key {
             return Ok(format!("`{from}` is the same as `{to}`."));
         }
 
@@ -251,8 +261,8 @@ impl SemanticIndex {
         let mut prev: HashMap<&str, &str> = HashMap::new();
         let mut queue: VecDeque<&str> = VecDeque::new();
 
-        visited.insert(from);
-        queue.push_back(from);
+        visited.insert(from_key);
+        queue.push_back(from_key);
 
         'bfs: loop {
             let Some(cur) = queue.pop_front() else { break };
@@ -260,7 +270,7 @@ impl SemanticIndex {
                 for &nb in neighbors {
                     if visited.insert(nb) {
                         prev.insert(nb, cur);
-                        if nb == to {
+                        if nb == to_key {
                             break 'bfs;
                         }
                         queue.push_back(nb);
@@ -269,16 +279,16 @@ impl SemanticIndex {
             }
         }
 
-        if !prev.contains_key(to) {
+        if !prev.contains_key(to_key) {
             return Ok(format!("No call-graph path found from `{from}` to `{to}`."));
         }
 
         // Reconstruct path.
         let mut path: Vec<&str> = Vec::new();
-        let mut cur = to;
+        let mut cur = to_key;
         loop {
             path.push(cur);
-            if cur == from {
+            if cur == from_key {
                 break;
             }
             cur = prev[cur];
@@ -312,8 +322,8 @@ impl SemanticIndex {
 
     /// Immediate callers and callees of `symbol` in the call graph.
     pub fn symbol_neighborhood(&self, symbol: &str) -> Result<String> {
-        // Confirm symbol exists.
-        let _ = self.find_node(symbol)?;
+        // Confirm symbol exists and normalize to canonical graph key.
+        let symbol_key = self.resolve_symbol_key(symbol)?;
 
         let mut callers: Vec<&str> = Vec::new();
         let mut callees: Vec<&str> = Vec::new();
@@ -322,10 +332,10 @@ impl SemanticIndex {
             if edge.kind != "call" {
                 continue;
             }
-            if edge.to == symbol {
+            if edge.to == symbol_key {
                 callers.push(&edge.from);
             }
-            if edge.from == symbol {
+            if edge.from == symbol_key {
                 callees.push(&edge.to);
             }
         }
@@ -355,8 +365,13 @@ impl SemanticIndex {
     // -----------------------------------------------------------------------
 
     fn find_node(&self, symbol: &str) -> Result<&GraphNode> {
-        if let Some(node) = self.graph.nodes.get(symbol) {
-            return Ok(node);
+        let key = self.resolve_symbol_key(symbol)?;
+        Ok(self.graph.nodes.get(key).unwrap())
+    }
+
+    fn resolve_symbol_key(&self, symbol: &str) -> Result<&str> {
+        if let Some((key, _node)) = self.graph.nodes.get_key_value(symbol) {
+            return Ok(key.as_str());
         }
         // Fuzzy: try suffix match.
         let suffix = format!("::{symbol}");
@@ -371,7 +386,7 @@ impl SemanticIndex {
             0 => bail!(
                 "symbol `{symbol}` not found in graph. Use semantic_map to list available symbols."
             ),
-            1 => Ok(self.graph.nodes.get(matches[0]).unwrap()),
+            1 => Ok(matches[0]),
             n => bail!(
                 "ambiguous symbol `{symbol}` — {n} matches: {}. Use the fully-qualified path.",
                 matches.join(", ")
@@ -436,7 +451,7 @@ fn shorten_path(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        expand_symbol_window_span, CrateGraph, GraphNode, SemanticIndex, SourceSpan,
+        expand_symbol_window_span, CrateGraph, GraphEdge, GraphNode, SemanticIndex, SourceSpan,
     };
     use std::collections::HashMap;
     use std::fs;
@@ -501,5 +516,59 @@ mod tests {
         assert!(out.contains("Ok((false, String::new()))"));
         assert!(out.contains("}\n"));
         let _ = fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn neighborhood_and_path_resolve_suffix_symbols_to_canonical_keys() {
+        let mut nodes = HashMap::new();
+        nodes.insert(
+            "canon_mini_agent::app::continue_executor_completion".to_string(),
+            GraphNode {
+                kind: "fn".to_string(),
+                def: None,
+                refs: Vec::new(),
+                signature: None,
+                mir: None,
+                fields: Vec::new(),
+            },
+        );
+        nodes.insert(
+            "canon_mini_agent::engine::process_action_and_execute".to_string(),
+            GraphNode {
+                kind: "fn".to_string(),
+                def: None,
+                refs: Vec::new(),
+                signature: None,
+                mir: None,
+                fields: Vec::new(),
+            },
+        );
+
+        let idx = SemanticIndex {
+            graph: CrateGraph {
+                nodes,
+                edges: vec![GraphEdge {
+                    kind: "call".to_string(),
+                    from: "canon_mini_agent::app::continue_executor_completion".to_string(),
+                    to: "canon_mini_agent::engine::process_action_and_execute".to_string(),
+                }],
+            },
+        };
+
+        let n = idx
+            .symbol_neighborhood("engine::process_action_and_execute")
+            .expect("neighborhood should resolve suffix symbol");
+        assert!(n.contains("Callers (1):"));
+        assert!(n.contains("canon_mini_agent::app::continue_executor_completion"));
+
+        let p = idx
+            .symbol_path(
+                "app::continue_executor_completion",
+                "engine::process_action_and_execute",
+            )
+            .expect("path should resolve suffix symbols");
+        assert!(p.contains("1 hops"));
+        assert!(p.contains("canon_mini_agent::app::continue_executor_completion"));
+        assert!(p.contains("canon_mini_agent::engine::process_action_and_execute"));
     }
 }
