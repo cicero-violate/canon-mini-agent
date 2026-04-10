@@ -4756,11 +4756,14 @@ mod tests {
             .iter()
             .copied()
             .filter(|record| {
-                record
-                    .get("meta")
-                    .and_then(|meta| meta.get("operation"))
+                let meta = record.get("meta");
+                meta.and_then(|meta| meta.get("operation"))
                     .and_then(|v| v.as_str())
                     == Some("update_objective")
+                    && meta
+                        .and_then(|meta| meta.get("requested_id"))
+                        .and_then(|v| v.as_str())
+                        == Some("obj_alpha")
             })
             .collect();
         let attempt = matching_records
