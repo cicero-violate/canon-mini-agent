@@ -4811,7 +4811,13 @@ mod tests {
         let persisted = std::fs::read_to_string(tmp.join("PLANS").join("OBJECTIVES.json")).unwrap();
         assert!(persisted.contains("\"scope\": \"updated alpha scope\""));
 
-        let last_record = read_last_jsonl_record(&action_log);
-        assert_eq!(last_record.get("phase").and_then(|v| v.as_str()), Some("objective_operation_context"));
+        let last_objective_record = objective_records
+            .last()
+            .copied()
+            .expect("at least one objective trace record");
+        assert_eq!(
+            last_objective_record.get("phase").and_then(|v| v.as_str()),
+            Some("objective_operation_context")
+        );
     }
 }
