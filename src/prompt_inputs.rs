@@ -81,6 +81,114 @@ pub fn read_lessons_or_empty(workspace: &Path) -> String {
     read_text_or_empty(workspace.join(LESSONS_FILE))
 }
 
+fn is_done_like_status(status: &str) -> bool {
+    matches!(
+        status.trim().to_ascii_lowercase().as_str(),
+        "done" | "complete" | "completed" | "verified" | "resolved" | "closed" | "wontfix"
+    )
+}
+
+pub fn filter_pending_plan_json(raw: &str) -> String {
+    if raw.trim().is_empty() {
+        return "(no pending plan tasks)".to_string();
+    }
+    let Ok(mut value) = serde_json::from_str::<Value>(raw) else {
+        return raw.to_string();
+    };
+    let Some(obj) = value.as_object_mut() else {
+        return raw.to_string();
+    };
+    let Some(tasks) = obj.get("tasks").and_then(Value::as_array) else {
+        return raw.to_string();
+    };
+
+    let pending_tasks: Vec<Value> = tasks
+        .iter()
+        .filter(|task| {
+            !task
+                .get("status")
+                .and_then(Value::as_str)
+                .map(is_done_like_status)
+                .unwrap_or(false)
+        })
+        .cloned()
+        .collect();
+
+    if pending_tasks.is_empty() {
+        return "(no pending plan tasks)".to_string();
+    }
+
+    let pending_ids: std::collections::HashSet<String> = pending_tasks
+        .iter()
+        .filter_map(|task| task.get("id").and_then(Value::as_str))
+        .map(str::to_string)
+        .collect();
+
+    obj.insert("tasks".to_string(), Value::Array(pending_tasks));
+    if let Some(edges) = obj
+        .get("dag")
+        .and_then(Value::as_object)
+        .and_then(|dag| dag.get("edges"))
+        .and_then(Value::as_array)
+    {
+        let filtered_edges: Vec<Value> = edges
+            .iter()
+            .filter(|edge| {
+                let from = edge.get("from").and_then(Value::as_str);
+                let to = edge.get("to").and_then(Value::as_str);
+                match (from, to) {
+                    (Some(from), Some(to)) => pending_ids.contains(from) && pending_ids.contains(to),
+                    _ => false,
+                }
+            })
+            .cloned()
+            .collect();
+        obj.insert("dag".to_string(), serde_json::json!({ "edges": filtered_edges }));
+    }
+
+    serde_json::to_string_pretty(&value).unwrap_or_else(|_| raw.to_string())
+}
+
+pub fn filter_active_violations_json(raw: &str) -> String {
+    if raw.trim().is_empty() {
+        return "(no active violations)".to_string();
+    }
+    let Ok(mut value) = serde_json::from_str::<Value>(raw) else {
+        return raw.to_string();
+    };
+    let Some(obj) = value.as_object_mut() else {
+        return raw.to_string();
+    };
+    let Some(violations) = obj.get("violations").and_then(Value::as_array) else {
+        return raw.to_string();
+    };
+    if violations.is_empty() {
+        return "(no active violations)".to_string();
+    }
+    obj.insert("violations".to_string(), Value::Array(violations.clone()));
+    serde_json::to_string_pretty(&value).unwrap_or_else(|_| raw.to_string())
+}
+
+pub fn filter_active_diagnostics_json(raw: &str) -> String {
+    if raw.trim().is_empty() {
+        return "(no active diagnostics failures)".to_string();
+    }
+    let Ok(mut value) = serde_json::from_str::<Value>(raw) else {
+        return raw.to_string();
+    };
+    let Some(obj) = value.as_object_mut() else {
+        return raw.to_string();
+    };
+    let Some(failures) = obj.get("ranked_failures").and_then(Value::as_array) else {
+        return raw.to_string();
+    };
+    if failures.is_empty() {
+        return "(no active diagnostics failures)".to_string();
+    }
+    obj.insert("ranked_failures".to_string(), Value::Array(failures.clone()));
+    serde_json::to_string_pretty(&value).unwrap_or_else(|_| raw.to_string())
+}
+
 /// Returns a human-readable explanation of which failure is missing source
 /// validation and what keywords are accepted, for use in tool result messages.
 pub(crate) fn describe_missing_source_validation(failures: &[Value]) -> String {
@@ -201,7 +309,7 @@ pub(crate) fn sanitize_diagnostics_for_planner(
     };
 
     if ranked_failures.is_empty() {
-        return raw_diagnostics_text.to_string();
+        return "(no active diagnostics failures)".to_string();
     }
 
     if violations_are_verified_and_empty(raw_violations_text) {
@@ -280,9 +388,10 @@ pub fn load_planner_inputs(
     let lessons_text = read_lessons_or_empty(workspace);
     let objectives_text = read_objectives_filtered(&workspace.join(OBJECTIVES_FILE));
     let invariants_text = read_text_or_empty(workspace.join(INVARIANTS_FILE));
-    let violations_text = read_text_or_empty(violations_path);
+    let raw_violations_text = read_text_or_empty(violations_path);
+    let violations_text = filter_active_violations_json(&raw_violations_text);
     let raw_diagnostics_text = read_text_or_empty(diagnostics_path);
-    let diagnostics_text = sanitize_diagnostics_for_planner(&raw_diagnostics_text, &violations_text);
+    let diagnostics_text = sanitize_diagnostics_for_planner(&raw_diagnostics_text, &raw_violations_text);
     let plan_text = read_text_or_empty(master_plan_path);
     let plan_diff_text = plan_diff(last_plan_text, &plan_text, 400);
     PlannerInputs {
@@ -317,9 +426,15 @@ impl SingleRoleContext<'_> {
             }
             SingleRoleRead::Invariants => read_text_or_empty(self.workspace.join(INVARIANTS_FILE)),
             SingleRoleRead::Lessons => read_lessons_or_empty(self.workspace),
-            SingleRoleRead::Violations => read_text_or_empty(self.violations_path),
-            SingleRoleRead::Diagnostics => read_text_or_empty(self.diagnostics_path),
-            SingleRoleRead::MasterPlan => read_text_or_empty(self.master_plan_path),
+            SingleRoleRead::Violations => {
+                filter_active_violations_json(&read_text_or_empty(self.violations_path))
+            }
+            SingleRoleRead::Diagnostics => {
+                filter_active_diagnostics_json(&read_text_or_empty(self.diagnostics_path))
+            }
+            SingleRoleRead::MasterPlan => {
+                filter_pending_plan_json(&read_text_or_empty(self.master_plan_path))
+            }
             SingleRoleRead::Spec => read_required_text(self.spec_path, SPEC_FILE)?,
         };
         Ok(text)
@@ -584,7 +699,10 @@ fn executor_diff(workspace: &Path, max_lines: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::sanitize_diagnostics_for_planner;
+    use super::{
+        filter_active_diagnostics_json, filter_active_violations_json, filter_pending_plan_json,
+        sanitize_diagnostics_for_planner,
+    };
 
     const NON_AUTHORITATIVE_VIOLATIONS: &str = r#"{}"#;
 
@@ -646,5 +764,48 @@ mod tests {
         let sanitized = sanitize_diagnostics_for_planner(raw, VERIFIED_EMPTY_VIOLATIONS);
         assert!(sanitized.contains("suppressed stale diagnostics"));
         assert!(sanitized.contains("VIOLATIONS.json is verified with no active violations"));
+    }
+
+    #[test]
+    fn filter_pending_plan_json_removes_done_tasks() {
+        let raw = r#"{
+  "version": 1,
+  "status": "in_progress",
+  "tasks": [
+    {"id": "T1", "status": "done"},
+    {"id": "T2", "status": "todo"}
+  ],
+  "dag": { "edges": [ {"from":"T1","to":"T2"}, {"from":"T2","to":"T1"} ] }
+}"#;
+        let filtered = filter_pending_plan_json(raw);
+        assert!(filtered.contains("\"id\": \"T2\""));
+        assert!(!filtered.contains("\"id\": \"T1\""));
+        assert!(!filtered.contains("\"from\": \"T1\""));
+    }
+
+    #[test]
+    fn filter_pending_plan_json_reports_none_when_all_done() {
+        let raw = r#"{
+  "tasks": [
+    {"id":"T1","status":"done"},
+    {"id":"T2","status":"complete"}
+  ]
+}"#;
+        assert_eq!(filter_pending_plan_json(raw), "(no pending plan tasks)");
+    }
+
+    #[test]
+    fn filter_active_violations_json_reports_none_when_empty() {
+        let raw = r#"{"status":"verified","violations":[]}"#;
+        assert_eq!(filter_active_violations_json(raw), "(no active violations)");
+    }
+
+    #[test]
+    fn filter_active_diagnostics_json_reports_none_when_empty() {
+        let raw = r#"{"status":"verified","ranked_failures":[]}"#;
+        assert_eq!(
+            filter_active_diagnostics_json(raw),
+            "(no active diagnostics failures)"
+        );
     }
 }

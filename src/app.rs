@@ -480,7 +480,9 @@ async fn run_solo_phase(
             return false;
         }
     };
-    let master_plan = read_text_or_empty(ctx.master_plan_path);
+    let master_plan = crate::prompt_inputs::filter_pending_plan_json(&read_text_or_empty(
+        ctx.master_plan_path,
+    ));
     let agent_root = crate::constants::agent_state_dir().trim_end_matches("/agent_state");
     let agent_objectives = Path::new(agent_root).join(OBJECTIVES_FILE);
     let objectives = if agent_objectives.exists() {
@@ -489,8 +491,12 @@ async fn run_solo_phase(
         crate::objectives::read_objectives_filtered(&ctx.workspace.join(OBJECTIVES_FILE))
     };
     let invariants = read_text_or_empty(ctx.workspace.join(INVARIANTS_FILE));
-    let violations = read_text_or_empty(ctx.violations_path);
-    let diagnostics = read_text_or_empty(ctx.diagnostics_path);
+    let violations = crate::prompt_inputs::filter_active_violations_json(&read_text_or_empty(
+        ctx.violations_path,
+    ));
+    let diagnostics = crate::prompt_inputs::filter_active_diagnostics_json(&read_text_or_empty(
+        ctx.diagnostics_path,
+    ));
     let issues = crate::issues::read_open_issues(ctx.workspace);
     let objectives_mtime_before = file_modified_ms(&agent_objectives)
         .or_else(|| file_modified_ms(&ctx.workspace.join(OBJECTIVES_FILE)));
