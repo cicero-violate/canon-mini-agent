@@ -17,6 +17,7 @@ use tokio::sync::Notify;
 
 use crate::engine::process_action_and_execute;
 use crate::tools::write_stage_graph;
+use crate::tool_schema::write_tool_examples;
 use crate::logging::{
     append_action_log_record, append_orchestration_trace, compact_log_record, init_log_paths,
     log_action_result, log_error_event, log_message_event, make_command_id, now_ms,
@@ -2235,6 +2236,7 @@ async fn run_agent(
     };
 
     write_stage_graph(workspace);
+    write_tool_examples(workspace);
 
     loop {
         if let Some(sig) = shutdown.as_ref() {

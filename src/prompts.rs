@@ -738,7 +738,7 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
     out.push_str("\n\n");
     out.push_str("Tool protocol schemas (schemars):\n");
     out.push_str(&crate::tool_schema::tool_protocol_schema_split_text());
-    out.push_str("\n\n");
+    out.push_str("\nFull syntax examples with notes: state/tool_examples.md — use read_file when you need a reminder.\n\n");
     out.push_str(&prompt_tail(kind));
     out
 }
