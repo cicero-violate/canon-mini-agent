@@ -686,8 +686,8 @@ pub(crate) fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        append_orchestration_trace, log_error_event, log_paths, now_ms, secondary_llm_response,
-        LogPaths, LOG_PATHS,
+        append_orchestration_trace, append_secondary_action_log, log_error_event, log_paths,
+        now_ms, secondary_llm_response, LogPaths, LOG_PATHS,
     };
     use serde_json::{json, Value};
     use std::fs;
