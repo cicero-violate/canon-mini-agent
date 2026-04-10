@@ -697,6 +697,16 @@ mod tests {
     use serde_json::{json, Value};
     use std::fs;
 
+    fn read_last_json_record(path: &std::path::Path) -> Value {
+        let log_text = fs::read_to_string(path).expect("read log");
+        for line in log_text.lines().rev() {
+            if let Ok(record) = serde_json::from_str::<Value>(line) {
+                return record;
+            }
+        }
+        panic!("expected at least one JSON record in log");
+    }
+
     fn read_record_with_text(action_log: &std::path::Path, expected_text: &str) -> Value {
         let log_text = fs::read_to_string(action_log).expect("read action log");
         for line in log_text.lines().rev() {
@@ -899,7 +909,7 @@ mod tests {
         });
 
         append_secondary_action_log("solo", &action).expect("append secondary action log");
-        let record = read_last_record(&secondary_log);
+        let record = read_last_json_record(&secondary_log);
         assert!(record.get("predicted_next_actions").is_some());
         assert!(record.get("predicated_next_actions").is_none());
     }
