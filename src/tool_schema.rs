@@ -567,6 +567,41 @@ pub fn tool_protocol_schema_split_text() -> String {
         ("graph_cfg", "emit CFG CSVs", None),
         ("graph_dataflow", "emit dataflow reports", None),
         ("graph_reachability", "emit reachability reports", None),
+        (
+            "semantic_map",
+            "rustc-backed repomap: symbol outline by file (kind, name, signature)",
+            Some(
+                "Examples:\n  {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"rationale\":\"Get a compiler-backed symbol outline before exploring files.\"}\n  {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"filter\":\"tools\",\"rationale\":\"Restrict to the tools module.\"}\nNotes: symbol paths are module-relative (e.g. `tools::my_fn`); `filter` is an optional path prefix.",
+            ),
+        ),
+        (
+            "symbol_window",
+            "extract the full definition body of a symbol (byte-precise, via def span)",
+            Some(
+                "Example:\n  {\"action\":\"symbol_window\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"rationale\":\"Read the exact body of a function before editing it.\"}\nNotes: accepts short unambiguous suffix if the full module path is unknown.",
+            ),
+        ),
+        (
+            "symbol_refs",
+            "list all reference sites (file:line:col) for a symbol",
+            Some(
+                "Example:\n  {\"action\":\"symbol_refs\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"rationale\":\"Find all call sites before changing a signature.\"}\nNotes: covers every identifier span recorded by the HIR visitor during compilation.",
+            ),
+        ),
+        (
+            "symbol_path",
+            "BFS shortest call-graph path between two symbols",
+            Some(
+                "Example:\n  {\"action\":\"symbol_path\",\"crate\":\"canon_mini_agent\",\"from\":\"app::run_agent\",\"to\":\"tools::handle_apply_patch_action\",\"rationale\":\"Trace how a high-level entry point reaches a specific handler.\"}\nNotes: uses static call edges only; returns path with file:line annotations.",
+            ),
+        ),
+        (
+            "symbol_neighborhood",
+            "immediate callers and callees of a symbol in the call graph",
+            Some(
+                "Example:\n  {\"action\":\"symbol_neighborhood\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"rationale\":\"Understand the blast radius of a function before modifying it.\"}\nNotes: returns all direct callers and callees from the static call graph.",
+            ),
+        ),
     ];
 
     for (action, desc, notes) in actions {
