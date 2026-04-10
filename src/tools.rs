@@ -3545,4 +3545,60 @@ mod tests {
         assert!(err.contains("compared_ids=[\"obj_alpha\"]"));
         assert!(err.contains("compared_normalized_ids=[\"obj_alpha\"]"));
     }
+
+    #[test]
+    fn objectives_create_update_read_lifecycle_succeeds() {
+        let tmp = fresh_test_dir("objective-create-update-read-lifecycle");
+        std::fs::create_dir_all(tmp.join("PLANS")).unwrap();
+        std::fs::write(
+            tmp.join("PLANS").join("OBJECTIVES.json"),
+            r#"{
+  "version": 1,
+  "objectives": [],
+  "goal": [],
+  "instrumentation": [],
+  "definition_of_done": [],
+  "non_goals": []
+}"#,
+        )
+        .unwrap();
+
+        let create_action = json!({
+            "op": "create_objective",
+            "objective": {
+                "id": "obj_lifecycle",
+                "title": "Lifecycle",
+                "status": "active",
+                "scope": "objective lifecycle coverage",
+                "authority_files": ["src/tools.rs", "PLANS/OBJECTIVES.json"],
+                "category": "quality",
+                "level": "medium",
+                "description": "create/update/read lifecycle objective",
+                "requirement": ["create succeeds"],
+                "verification": [],
+                "success_criteria": ["updated objective is readable"]
+            }
+        });
+        let (_done, create_out) = handle_objectives_action(&tmp, &create_action).unwrap();
+        assert!(create_out.contains("objectives create_objective ok"));
+
+        let update_action = json!({
+            "op": "update_objective",
+            "objective_id": "obj_lifecycle",
+            "updates": {
+                "scope": "updated lifecycle scope",
+                "description": "updated lifecycle objective",
+                "verification": ["updated through handle_objectives_action"]
+            }
+        });
+        let (_done, update_out) = handle_objectives_action(&tmp, &update_action).unwrap();
+        assert!(update_out.contains("objectives update_objective ok"));
+
+        let read_action = json!({ "op": "read", "include_done": true });
+        let (_done, read_out) = handle_objectives_action(&tmp, &read_action).unwrap();
+        assert!(read_out.contains("\"id\": \"obj_lifecycle\""));
+        assert!(read_out.contains("\"scope\": \"updated lifecycle scope\""));
+        assert!(read_out.contains("\"description\": \"updated lifecycle objective\""));
+        assert!(read_out.contains("updated through handle_objectives_action"));
+    }
 }

@@ -327,7 +327,23 @@ fn append_secondary_action_log(role: &str, action: &Value) -> Result<()> {
     {
         record.insert("predicated_next_actions".to_string(), value);
     }
-    if let Some(value) = compact_json(action.clone()) {
+    let mut llm_response = action.clone();
+    if let Some(obj) = llm_response.as_object_mut() {
+        // Avoid duplicating fields already hoisted to the top-level log record.
+        for key in [
+            "action",
+            "path",
+            "line",
+            "observation",
+            "rationale",
+            "question",
+            "predicated_next_actions",
+            "predicted_next_actions",
+        ] {
+            obj.remove(key);
+        }
+    }
+    if let Some(value) = compact_json(llm_response) {
         record.insert("llm_response".to_string(), value);
     }
     if record.is_empty() {
