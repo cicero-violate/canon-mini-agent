@@ -161,8 +161,6 @@ pub enum PlanOp {
     RemoveEdge,
     SetPlanStatus,
     SetTaskStatus,
-    // Backward-compat alias; prefer set_plan_status or set_task_status.
-    SetStatus,
     ReplacePlan,
     SortedView,
 }
@@ -752,14 +750,6 @@ fn first_missing_field_for_action(action: &Value, action_name: &str) -> Option<S
                 "set_plan_status" => missing_field("status"),
                 "set_task_status" => {
                     missing_field("task_id").or_else(|| missing_field("status"))
-                }
-                // Backward-compatible alias
-                "set_status" => {
-                    if action.get("task_id").is_some() {
-                        missing_field("status")
-                    } else {
-                        missing_field("status")
-                    }
                 }
                 "replace_plan" => missing_field("plan"),
                 "sorted_view" => None,

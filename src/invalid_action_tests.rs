@@ -55,7 +55,7 @@ fn observation_type_still_validated_if_present() {
 fn planner_diagnostics_plan_requires_source_validation_evidence() {
     let action = json!({
         "action": "plan",
-        "op": "set_status",
+        "op": "set_plan_status",
         "status": "in_progress",
         "observation": "Diagnostics report says a stale violation is active.",
         "rationale": "Reprioritize work from diagnostics.",
@@ -77,7 +77,7 @@ fn planner_diagnostics_plan_requires_source_validation_evidence() {
 fn planner_diagnostics_plan_allows_cited_source_validation_evidence() {
     let action = json!({
         "action": "plan",
-        "op": "set_status",
+        "op": "set_plan_status",
         "status": "in_progress",
         "observation": "Diagnostics claim rechecked with read_file on src/tools.rs and verified against current-cycle source evidence.",
         "rationale": "Use verified source evidence before acting on diagnostics.",

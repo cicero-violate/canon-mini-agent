@@ -2973,7 +2973,6 @@ fn action_retry_fingerprint(action: &Value) -> String {
             "rationale",
             "question",
             "predicted_next_actions",
-            "predicated_next_actions",
         ] {
             obj.remove(key);
         }

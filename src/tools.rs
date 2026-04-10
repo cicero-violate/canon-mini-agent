@@ -2233,17 +2233,6 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
         .and_then(|v| v.as_str())
         .or_else(|| action.get("operation").and_then(|v| v.as_str()))
         .unwrap_or("update");
-    let op_raw = if op_raw == "set_status" {
-        // Backward-compatible alias: set_status with task_id maps to task status;
-        // otherwise it maps to plan status.
-        if action.get("task_id").and_then(|v| v.as_str()).is_some() {
-            "set_task_status"
-        } else {
-            "set_plan_status"
-        }
-    } else {
-        op_raw
-    };
     if op_raw != "sorted_view" && role.starts_with("executor") {
         bail!("plan action is not allowed for executor roles");
     }
@@ -3429,7 +3418,7 @@ mod tests {
     }
 
     #[test]
-    fn plan_set_status_rejects_done_when_any_task_is_incomplete() {
+    fn plan_set_plan_status_rejects_done_when_any_task_is_incomplete() {
         let tmp = fresh_test_dir("rejects-plan-done-while-task-incomplete");
         std::fs::write(
             tmp.join("PLAN.json"),
@@ -3510,41 +3499,6 @@ mod tests {
         assert!(persisted.contains("\"id\": \"T2\""));
         assert!(persisted.contains("\"status\": \"todo\""));
         assert!(persisted.contains("\"status\": \"in_progress\""));
-    }
-
-    #[test]
-    fn plan_legacy_set_status_with_task_id_maps_to_set_task_status() {
-        let tmp = fresh_test_dir("legacy-set-status-task-id-maps");
-        std::fs::write(
-            tmp.join("PLAN.json"),
-            r#"{
-  "version": 2,
-  "status": "in_progress",
-  "tasks": [
-    {
-      "id": "T1",
-      "title": "Task one",
-      "status": "in_progress",
-      "priority": 1
-    }
-  ],
-  "dag": { "edges": [] }
-}"#,
-        )
-        .unwrap();
-        let action = json!({
-            "op": "set_status",
-            "task_id": "T1",
-            "status": "done",
-            "rationale": "Backward compatibility for old op naming"
-        });
-
-        let (_done, out) = handle_plan_action("solo", &tmp, &action).unwrap();
-        assert!(out.contains("plan ok"));
-
-        let persisted = std::fs::read_to_string(tmp.join("PLAN.json")).unwrap();
-        assert!(persisted.contains("\"id\": \"T1\""));
-        assert!(persisted.contains("\"status\": \"done\""));
     }
 
     #[test]

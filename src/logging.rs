@@ -364,7 +364,6 @@ fn secondary_llm_response(action: &Value) -> Option<Value> {
                 | "observation"
                 | "rationale"
                 | "question"
-                | "predicated_next_actions"
                 | "predicted_next_actions"
         ) {
             continue;
