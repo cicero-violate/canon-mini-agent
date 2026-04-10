@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -33,37 +33,29 @@ fn usage() -> &'static str {
 \n\
 Usage:\n\
   canon-tickets --workspace <path> [--crate <name> | --all-crates] [--issues <path>]\n\
-               [--limit <n>] [--min-blocks <n>] [--min-stmts <n>] [--dry-run]\n\
+               [--limit <n>] [--min-blocks <n>] [--min-stmts <n>] [--top <n>]\n\
+               [--dry-run] [--print]\n\
 \n\
 Defaults:\n\
   --crate canon_mini_agent\n\
   --issues <workspace>/ISSUES.json\n\
   --limit 20\n\
   --min-blocks 50\n\
-  --min-stmts 200\n"
+  --min-stmts 200\n\
+  --top 3\n"
 }
 
-fn stable_id(prefix: &str, fingerprint: Option<&str>, symbol: &str) -> String {
-    if let Some(fp) = fingerprint {
-        let short = fp.chars().take(16).collect::<String>();
-        return format!("{prefix}_{short}");
-    }
-    // Fallback: simple deterministic hash for the symbol string.
+fn stable_id(prefix: &str, crate_name: &str, symbol: &str) -> String {
+    // Stable across rebuilds: hash only the crate + symbol + ticket family.
     let mut h: u64 = 1469598103934665603;
-    for b in symbol.as_bytes() {
+    for b in prefix.as_bytes() {
         h ^= *b as u64;
         h = h.wrapping_mul(1099511628211);
     }
-    format!("{prefix}_{:016x}", h)
-}
-
-fn stable_id_scoped(prefix: &str, crate_name: &str, fingerprint: Option<&str>, symbol: &str) -> String {
-    // Use the same scheme but namespace by crate to avoid cross-crate collisions when scanning.
-    if let Some(fp) = fingerprint {
-        let short = fp.chars().take(16).collect::<String>();
-        return format!("{prefix}_{crate_name}_{short}");
+    for b in crate_name.as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(1099511628211);
     }
-    let mut h: u64 = 1469598103934665603;
     for b in symbol.as_bytes() {
         h ^= *b as u64;
         h = h.wrapping_mul(1099511628211);
@@ -106,7 +98,9 @@ fn main() -> Result<()> {
     let limit = parse_usize_flag(&args, "--limit", 20)?;
     let min_blocks = parse_usize_flag(&args, "--min-blocks", 50)?;
     let min_stmts = parse_usize_flag(&args, "--min-stmts", 200)?;
+    let top = parse_usize_flag(&args, "--top", 3)?;
     let dry_run = has_flag(&args, "--dry-run");
+    let print = has_flag(&args, "--print");
 
     let issues_path = take_flag_value(&args, "--issues")
         .map(PathBuf::from)
@@ -116,6 +110,7 @@ fn main() -> Result<()> {
     canon_mini_agent::logging::init_log_paths("tickets");
 
     let mut new_issues: Vec<Value> = Vec::new();
+    let mut issue_scores: Vec<(String, u32, i64)> = Vec::new(); // (id, priority_rank, score)
 
     let mut per_crate_added: BTreeMap<String, usize> = BTreeMap::new();
     let mut per_crate_candidates: BTreeMap<String, Value> = BTreeMap::new();
@@ -162,11 +157,7 @@ fn main() -> Result<()> {
         let mut added_here = 0usize;
 
         for s in branch_candidates.into_iter().take(limit) {
-            let id = if all_crates {
-                stable_id_scoped("auto_branch_reduce", &crate_name, s.mir_fingerprint.as_deref(), &s.symbol)
-            } else {
-                stable_id("auto_branch_reduce", s.mir_fingerprint.as_deref(), &s.symbol)
-            };
+            let id = stable_id("auto_branch_reduce", &crate_name, &s.symbol);
             let title = format!("Reduce branch complexity: {}", s.symbol);
             let description = format!(
                 "MIR suggests high branch complexity (blocks={:?}, stmts={:?}).\n\
@@ -200,15 +191,12 @@ Suggested first actions:\n\
                 "evidence": evidence,
                 "discovered_by": "tickets",
             }));
+            issue_scores.push((id.clone(), 1, s.mir_blocks.unwrap_or(0) as i64));
             added_here += 1;
         }
 
         for s in refactor_candidates.into_iter().take(limit) {
-            let id = if all_crates {
-                stable_id_scoped("auto_refactor_split", &crate_name, s.mir_fingerprint.as_deref(), &s.symbol)
-            } else {
-                stable_id("auto_refactor_split", s.mir_fingerprint.as_deref(), &s.symbol)
-            };
+            let id = stable_id("auto_refactor_split", &crate_name, &s.symbol);
             let title = format!("Mechanical refactor: split/DRY {}", s.symbol);
             let description = format!(
                 "MIR suggests a large function (blocks={:?}, stmts={:?}).\n\
@@ -241,6 +229,7 @@ Suggested first actions:\n\
                 "evidence": evidence,
                 "discovered_by": "tickets",
             }));
+            issue_scores.push((id.clone(), 2, s.mir_stmts.unwrap_or(0) as i64));
             added_here += 1;
         }
 
@@ -252,20 +241,45 @@ Suggested first actions:\n\
     let obj = root.as_object_mut().unwrap();
     let issues = obj.get_mut("issues").unwrap().as_array_mut().unwrap();
 
-    let mut existing_ids = HashSet::<String>::new();
-    for it in issues.iter() {
+    // Only apply the top N issues globally after sorting by priority then score.
+    // Priority rank: 0=high,1=medium,2=low. (We currently emit medium+low only.)
+    let mut score_by_id = std::collections::HashMap::<String, (u32, i64)>::new();
+    for (id, pr, score) in issue_scores {
+        score_by_id.insert(id, (pr, score));
+    }
+    new_issues.sort_by(|a, b| {
+        let ida = a.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let idb = b.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let (pra, sa) = score_by_id.get(&ida).cloned().unwrap_or((9, 0));
+        let (prb, sb) = score_by_id.get(&idb).cloned().unwrap_or((9, 0));
+        pra.cmp(&prb).then_with(|| sb.cmp(&sa)).then_with(|| ida.cmp(&idb))
+    });
+    if top > 0 && new_issues.len() > top {
+        new_issues.truncate(top);
+    }
+
+    // Update-in-place by id (no duplicates); keep latest object contents.
+    let mut index_by_id = std::collections::HashMap::<String, usize>::new();
+    for (idx, it) in issues.iter().enumerate() {
         if let Some(id) = it.get("id").and_then(|v| v.as_str()) {
-            existing_ids.insert(id.to_string());
+            index_by_id.insert(id.to_string(), idx);
         }
     }
 
     let mut added_ids = Vec::new();
+    let mut updated_ids = Vec::new();
+    let mut applied_issue_objects: Vec<Value> = Vec::new();
     for issue in new_issues {
         let Some(id) = issue.get("id").and_then(|v| v.as_str()) else { continue };
-        if existing_ids.insert(id.to_string()) {
+        if let Some(&pos) = index_by_id.get(id) {
+            issues[pos] = issue.clone();
+            updated_ids.push(id.to_string());
+        } else {
+            index_by_id.insert(id.to_string(), issues.len());
             added_ids.push(id.to_string());
-            issues.push(issue);
+            issues.push(issue.clone());
         }
+        applied_issue_objects.push(issue);
     }
 
     // Keep stable-ish ordering: priority, then id. Use a BTreeMap for ranking.
@@ -287,14 +301,23 @@ Suggested first actions:\n\
         "issues_path": issues_path.to_string_lossy(),
         "added": added_ids.len(),
         "added_ids": added_ids,
+        "updated": updated_ids.len(),
+        "updated_ids": updated_ids,
         "total": issues.len(),
         "all_crates": all_crates,
         "per_crate_candidates": per_crate_candidates,
         "per_crate_generated": per_crate_added,
-        "dry_run": dry_run
+        "dry_run": dry_run,
+        "print": print,
+        "top": top
     });
     if dry_run {
         println!("{}", serde_json::to_string_pretty(&summary)?);
+        if print {
+            // Keep stdout streamable: summary line, then the exact issue objects that would be appended.
+            let payload = json!({ "generated_issues": applied_issue_objects });
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+        }
         return Ok(());
     }
 
@@ -309,5 +332,9 @@ Suggested first actions:\n\
         .with_context(|| format!("write {}", issues_path.display()))?;
 
     println!("{}", serde_json::to_string_pretty(&summary)?);
+    if print {
+        let payload = json!({ "generated_issues": applied_issue_objects });
+        println!("{}", serde_json::to_string_pretty(&payload)?);
+    }
     Ok(())
 }

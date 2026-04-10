@@ -715,6 +715,11 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
     out.push_str("\n\n");
     out.push_str(&prompt_workspace(kind));
     out.push_str("\n\n");
+    out.push_str(&crate::issues::read_top_open_issues(
+        std::path::Path::new(workspace()),
+        3,
+    ));
+    out.push_str("\n\n");
     out.push_str("Tool protocol schemas (schemars):\n");
     out.push_str(&crate::tool_schema::tool_protocol_schema_split_text());
     out.push_str("\n\n");

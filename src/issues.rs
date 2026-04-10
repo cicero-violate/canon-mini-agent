@@ -76,9 +76,53 @@ pub fn read_open_issues(workspace: &Path) -> String {
     serde_json::to_string_pretty(&file).unwrap_or(raw)
 }
 
+/// Read ISSUES.json and return a small human-readable summary of the top open issues.
+/// Used for system-prompt priming; keep it short.
+pub fn read_top_open_issues(workspace: &Path, limit: usize) -> String {
+    let path = workspace.join(ISSUES_FILE);
+    let raw = std::fs::read_to_string(&path).unwrap_or_default();
+    if raw.trim().is_empty() {
+        return "(no open issues)".to_string();
+    }
+    let Ok(mut file) = serde_json::from_str::<IssuesFile>(&raw) else {
+        return "(ISSUES.json is not valid JSON)".to_string();
+    };
+    file.issues.retain(|i| !is_closed(i));
+    if file.issues.is_empty() {
+        return "(no open issues)".to_string();
+    }
+    let priority_rank = |p: &str| match p.trim().to_lowercase().as_str() {
+        "high" => 0,
+        "medium" => 1,
+        _ => 2,
+    };
+    file.issues.sort_by(|a, b| {
+        priority_rank(&a.priority)
+            .cmp(&priority_rank(&b.priority))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    let mut out = String::new();
+    out.push_str("Top open issues:\n");
+    for issue in file.issues.into_iter().take(limit.max(1)) {
+        let loc = if issue.location.trim().is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", issue.location.trim())
+        };
+        out.push_str(&format!(
+            "- [{}] {}: {}{}\n",
+            issue.priority.trim(),
+            issue.id,
+            issue.title.trim(),
+            loc
+        ));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{is_closed, read_open_issues, Issue};
+    use super::{is_closed, read_open_issues, read_top_open_issues, Issue};
 
     #[test]
     fn is_closed_treats_done_like_statuses_as_closed() {
@@ -118,5 +162,27 @@ mod tests {
         let filtered = read_open_issues(&root);
         assert!(filtered.contains("\"id\": \"i_open\""));
         assert!(!filtered.contains("\"id\": \"i_done\""));
+    }
+
+    #[test]
+    fn read_top_open_issues_returns_small_summary() {
+        let root = std::env::temp_dir().join(format!(
+            "canon-mini-agent-issues-top-test-{}",
+            crate::logging::now_ms()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp issues dir");
+        let path = root.join(crate::constants::ISSUES_FILE);
+        let raw = r#"{
+  "version": 0,
+  "issues": [
+    { "id": "i_low", "title": "low issue", "status": "open", "priority": "low", "location": "a.rs:1" },
+    { "id": "i_high", "title": "high issue", "status": "open", "priority": "high", "location": "b.rs:2" }
+  ]
+}"#;
+        std::fs::write(&path, raw).expect("write issues file");
+        let summary = read_top_open_issues(&root, 1);
+        assert!(summary.contains("Top open issues"));
+        assert!(summary.contains("i_high"));
+        assert!(!summary.contains("i_low"));
     }
 }
