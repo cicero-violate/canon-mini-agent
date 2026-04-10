@@ -1,6 +1,7 @@
 use anyhow::{anyhow, bail, Context, Result};
 use canon_llm::config::LlmEndpoint;
 use canon_tools_patch::apply_patch;
+use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind, TextSize};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::env;
@@ -1304,6 +1305,156 @@ fn handle_read_file_action(
         out.len()
     );
     Ok((false, format!("read_file {path}:\n{out}")))
+}
+
+fn is_valid_rust_identifier(name: &str) -> bool {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first == '_' || first.is_ascii_alphabetic()) {
+        return false;
+    }
+    chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
+}
+
+fn line_col_to_offset(text: &str, line: usize, column: usize) -> Result<usize> {
+    if line == 0 || column == 0 {
+        bail!("rename_symbol line and column must be >= 1");
+    }
+    let mut byte_offset = 0usize;
+    for (idx, raw_line) in text.split_inclusive('\n').enumerate() {
+        let current_line = idx + 1;
+        let line_text = raw_line.strip_suffix('\n').unwrap_or(raw_line);
+        if current_line == line {
+            let line_chars = line_text.chars().count();
+            if column > line_chars + 1 {
+                bail!(
+                    "rename_symbol column {} out of range for line {} (max {})",
+                    column,
+                    line,
+                    line_chars + 1
+                );
+            }
+            let in_line = if column == line_chars + 1 {
+                line_text.len()
+            } else {
+                line_text
+                    .char_indices()
+                    .nth(column - 1)
+                    .map(|(i, _)| i)
+                    .unwrap_or(0)
+            };
+            return Ok(byte_offset + in_line);
+        }
+        byte_offset += raw_line.len();
+    }
+    if line == text.lines().count() + 1 && column == 1 {
+        return Ok(text.len());
+    }
+    bail!("rename_symbol line {} out of range", line)
+}
+
+fn handle_rename_symbol_action(
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
+    let path_raw = action
+        .get("path")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("rename_symbol missing 'path'"))?;
+    let line = action
+        .get("line")
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| anyhow!("rename_symbol missing 'line'"))? as usize;
+    let column = action
+        .get("column")
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| anyhow!("rename_symbol missing 'column'"))? as usize;
+    let old_name = action
+        .get("old_name")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| anyhow!("rename_symbol missing non-empty 'old_name'"))?;
+    let new_name = action
+        .get("new_name")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| anyhow!("rename_symbol missing non-empty 'new_name'"))?;
+    if !is_valid_rust_identifier(old_name) || !is_valid_rust_identifier(new_name) {
+        bail!("rename_symbol requires valid Rust identifier names for old_name/new_name");
+    }
+    if old_name == new_name {
+        bail!("rename_symbol old_name and new_name are identical");
+    }
+    let path = safe_join(workspace, path_raw)?;
+    if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+        bail!("rename_symbol currently supports only .rs files");
+    }
+    let original = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    let offset = line_col_to_offset(&original, line, column)?;
+    let parse = SourceFile::parse(&original, Edition::CURRENT);
+    if !parse.errors().is_empty() {
+        bail!("rename_symbol aborted: target file has syntax errors");
+    }
+    let root = parse.tree();
+    let offset = TextSize::new(offset as u32);
+    let token_at_offset = root
+        .syntax()
+        .token_at_offset(offset)
+        .left_biased()
+        .or_else(|| root.syntax().token_at_offset(offset).right_biased());
+    let Some(target) = token_at_offset else {
+        bail!("rename_symbol could not resolve token at line/column");
+    };
+    if target.kind() != SyntaxKind::IDENT {
+        bail!("rename_symbol target is not an identifier token");
+    }
+    if target.text() != old_name {
+        bail!(
+            "rename_symbol old_name mismatch at location: expected '{}', found '{}'",
+            old_name,
+            target.text()
+        );
+    }
+
+    let mut ranges = Vec::<(usize, usize)>::new();
+    for token in root.syntax().descendants_with_tokens().filter_map(|e| e.into_token()) {
+        if token.kind() == SyntaxKind::IDENT && token.text() == old_name {
+            let range = token.text_range();
+            ranges.push((u32::from(range.start()) as usize, u32::from(range.end()) as usize));
+        }
+    }
+    if ranges.is_empty() {
+        bail!("rename_symbol found no identifier occurrences for '{}'", old_name);
+    }
+    let mut rewritten = original.clone();
+    for (start, end) in ranges.iter().rev().copied() {
+        rewritten.replace_range(start..end, new_name);
+    }
+    fs::write(&path, rewritten).with_context(|| format!("write {}", path.display()))?;
+    eprintln!(
+        "[{role}] step={} rename_symbol path={} old={} new={} edits={}",
+        step,
+        path_raw,
+        old_name,
+        new_name,
+        ranges.len()
+    );
+    Ok((
+        false,
+        format!(
+            "rename_symbol ok: path={} old_name={} new_name={} replacements={}",
+            path_raw,
+            old_name,
+            new_name,
+            ranges.len()
+        ),
+    ))
 }
 
 /// Validate that a just-written JSON state file conforms to its canonical schema.
@@ -3164,6 +3315,7 @@ fn execute_action(
         "message" => handle_message_action(role, step, action),
         "list_dir" => handle_list_dir_action(workspace, action),
         "read_file" => handle_read_file_action(role, step, workspace, action),
+        "rename_symbol" => handle_rename_symbol_action(role, step, workspace, action),
         "objectives" => handle_objectives_action(workspace, action),
         "issue" => handle_issue_action(workspace, action),
         "apply_patch" => handle_apply_patch_action(role, step, workspace, action),
@@ -3179,7 +3331,7 @@ fn execute_action(
         other => Ok((
             false,
             format!(
-                "unsupported action '{other}' — use list_dir, read_file, objectives, issue, apply_patch, run_command, python, cargo_test, plan, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, or message"
+                "unsupported action '{other}' — use list_dir, read_file, rename_symbol, objectives, issue, apply_patch, run_command, python, cargo_test, plan, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, or message"
             ),
         )),
     }
@@ -3291,6 +3443,7 @@ mod tests {
     use super::handle_apply_patch_action;
     use super::handle_objectives_action;
     use super::handle_plan_action;
+    use super::handle_rename_symbol_action;
     use serde_json::json;
     use std::path::PathBuf;
 
@@ -3340,6 +3493,59 @@ mod tests {
         assert!(out.contains("apply_patch ok"), "unexpected: {out}");
         let persisted = std::fs::read_to_string(tmp.join("DIAGNOSTICS.json")).unwrap();
         assert!(persisted.contains("critical_failure"));
+    }
+
+    #[test]
+    fn rename_symbol_renames_identifier_tokens_in_file() {
+        let tmp = fresh_test_dir("rename-symbol-success");
+        std::fs::write(
+            tmp.join("lib.rs"),
+            "fn foo() {\n    foo();\n    let foo = 1;\n    let _ = foo;\n}\n",
+        )
+        .unwrap();
+        let action = json!({
+            "path": "lib.rs",
+            "line": 1,
+            "column": 4,
+            "old_name": "foo",
+            "new_name": "bar",
+            "rationale": "Rename symbol",
+            "predicted_next_actions": [
+                {"action": "cargo_test", "intent": "verify"},
+                {"action": "run_command", "intent": "check"}
+            ]
+        });
+
+        let (_done, out) = handle_rename_symbol_action("solo", 1, &tmp, &action).unwrap();
+        assert!(out.contains("rename_symbol ok"));
+        let persisted = std::fs::read_to_string(tmp.join("lib.rs")).unwrap();
+        assert!(persisted.contains("fn bar()"));
+        assert!(persisted.contains("bar();"));
+        assert!(persisted.contains("let bar = 1;"));
+        assert!(!persisted.contains("foo"));
+    }
+
+    #[test]
+    fn rename_symbol_rejects_old_name_mismatch_at_location() {
+        let tmp = fresh_test_dir("rename-symbol-old-name-mismatch");
+        std::fs::write(tmp.join("lib.rs"), "fn foo() {}\n").unwrap();
+        let action = json!({
+            "path": "lib.rs",
+            "line": 1,
+            "column": 4,
+            "old_name": "bar",
+            "new_name": "baz",
+            "rationale": "Rename symbol",
+            "predicted_next_actions": [
+                {"action": "read_file", "intent": "re-check position"},
+                {"action": "message", "intent": "report blocker"}
+            ]
+        });
+
+        let err = handle_rename_symbol_action("solo", 1, &tmp, &action)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("old_name mismatch"));
     }
 
     #[test]

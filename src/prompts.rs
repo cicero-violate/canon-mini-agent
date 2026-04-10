@@ -29,6 +29,7 @@ pub(crate) enum AgentPromptKind {
 pub(crate) enum ToolPromptKind {
     ListDir,
     ReadFile,
+    RenameSymbol,
     Objectives,
     ApplyPatch,
     RunCommand,
@@ -48,6 +49,7 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
         AgentPromptKind::Diagnostics => &[
             ToolPromptKind::ListDir,
             ToolPromptKind::ReadFile,
+            ToolPromptKind::RenameSymbol,
             ToolPromptKind::Objectives,
             ToolPromptKind::Python,
             ToolPromptKind::RunCommand,
@@ -59,6 +61,7 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
         AgentPromptKind::Verifier => &[
             ToolPromptKind::ListDir,
             ToolPromptKind::ReadFile,
+            ToolPromptKind::RenameSymbol,
             ToolPromptKind::Objectives,
             ToolPromptKind::ApplyPatch,
             ToolPromptKind::RunCommand,
@@ -70,6 +73,7 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
         AgentPromptKind::Executor | AgentPromptKind::Planner | AgentPromptKind::Solo => &[
             ToolPromptKind::ListDir,
             ToolPromptKind::ReadFile,
+            ToolPromptKind::RenameSymbol,
             ToolPromptKind::Objectives,
             ToolPromptKind::ApplyPatch,
             ToolPromptKind::RunCommand,
@@ -90,6 +94,9 @@ fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
         (_, ToolPromptKind::ListDir) => "list_dir — inspect directory contents",
         (_, ToolPromptKind::ReadFile) => {
             "read_file — read a file; output is line-numbered (\"42: code here\")"
+        }
+        (_, ToolPromptKind::RenameSymbol) => {
+            "rename_symbol — rename a Rust identifier at line/column (file-scoped v1)"
         }
         (_, ToolPromptKind::Objectives) => {
             "objectives — read/update objectives in PLANS/OBJECTIVES.json"
@@ -176,6 +183,12 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
         }
         (AgentPromptKind::Diagnostics, ToolPromptKind::ReadFile) => {
             "   {\"action\":\"read_file\",\"path\":\"src/app.rs\",\"line\":1,\"rationale\":\"Read a suspected source file to correlate code with observed failures.\"}\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.".to_string()
+        }
+        (AgentPromptKind::Executor | AgentPromptKind::Solo, ToolPromptKind::RenameSymbol) => {
+            "   {\"action\":\"rename_symbol\",\"path\":\"src/tools.rs\",\"line\":2230,\"column\":8,\"old_name\":\"handle_plan_action\",\"new_name\":\"handle_master_plan_action\",\"question\":\"Is this exact symbol-at-position the one that should be renamed without changing behavior?\",\"rationale\":\"Perform a deterministic symbol rename.\",\"predicted_next_actions\":[{\"action\":\"cargo_test\",\"intent\":\"Run focused tests for the renamed path.\"},{\"action\":\"run_command\",\"intent\":\"Run cargo check after the rename.\"}]}\n   Notes: line/column are 1-based; v1 is file-scoped and supports .rs files.".to_string()
+        }
+        (AgentPromptKind::Planner | AgentPromptKind::Verifier | AgentPromptKind::Diagnostics, ToolPromptKind::RenameSymbol) => {
+            "   {\"action\":\"rename_symbol\",\"path\":\"src/tools.rs\",\"line\":2230,\"column\":8,\"old_name\":\"handle_plan_action\",\"new_name\":\"handle_master_plan_action\",\"question\":\"Is this exact symbol-at-position the one that should be renamed without changing behavior?\",\"rationale\":\"Apply a precise symbol rename when source evidence confirms it is required.\",\"predicted_next_actions\":[{\"action\":\"cargo_test\",\"intent\":\"Run focused tests after rename.\"},{\"action\":\"run_command\",\"intent\":\"Run cargo check after rename.\"}]}\n   Notes: line/column are 1-based; v1 is file-scoped and supports .rs files.".to_string()
         }
         (_, ToolPromptKind::Objectives) => {
             "   {\"action\":\"objectives\",\"op\":\"read\",\"rationale\":\"Load only non-completed objectives for planning/verification.\"}\n   {\"action\":\"objectives\",\"op\":\"read\",\"include_done\":true,\"rationale\":\"Load all objectives, including completed.\"}\n   {\"action\":\"objectives\",\"op\":\"create_objective\",\"objective\":{\"id\":\"obj_new\",\"title\":\"New objective\",\"status\":\"active\",\"scope\":\"...\",\"authority_files\":[\"src/foo.rs\"],\"category\":\"quality\",\"level\":\"low\",\"description\":\"...\",\"requirement\":[],\"verification\":[],\"success_criteria\":[]},\"rationale\":\"Record a new objective.\"}\n   {\"action\":\"objectives\",\"op\":\"set_status\",\"objective_id\":\"obj_new\",\"status\":\"done\",\"rationale\":\"Mark objective complete.\"}\n   {\"action\":\"objectives\",\"op\":\"update_objective\",\"objective_id\":\"obj_new\",\"updates\":{\"scope\":\"updated scope\"},\"rationale\":\"Update objective fields.\"}\n   {\"action\":\"objectives\",\"op\":\"delete_objective\",\"objective_id\":\"obj_new\",\"rationale\":\"Remove obsolete objective.\"}\n   {\"action\":\"objectives\",\"op\":\"replace_objectives\",\"objectives\":[],\"rationale\":\"Replace objectives list.\"}\n   {\"action\":\"objectives\",\"op\":\"sorted_view\",\"rationale\":\"View objectives sorted by status.\"}".to_string()

@@ -25,7 +25,7 @@ Every LLM response includes a `predicted_next_actions` field — an ordered arra
 
 ### 0.6 Structured Decision Questions
 
-Before every mutating action (`apply_patch`, `plan`, `objectives`, `issue`), the agent must emit a `question` field: the single decision-boundary question this action answers. The question identifies the premise the action depends on — if the premise were false, a different action would be taken. This makes the agent's assumptions explicit and auditable.
+Before every mutating action (`apply_patch`, `plan`, `objectives`, `issue`, `rename_symbol`), the agent must emit a `question` field: the single decision-boundary question this action answers. The question identifies the premise the action depends on — if the premise were false, a different action would be taken. This makes the agent's assumptions explicit and auditable.
 
 Three questions are selected per turn from a 20-question bank in `src/structured_questions.rs` and injected into the agent prompt via `rules_common_footer`. The selection rotates across all 20 questions over time. The intent is to surface different failure-mode questions (provenance, redundancy, scope, cascade, deferral, verifiability, role) across many turns rather than habituating the agent to a fixed list.
 
@@ -179,6 +179,7 @@ Action shapes, required fields, and basic field constraints are defined by the T
 - `rustc_mir` maps to `cargo rustc -p <crate> -- -Zunpretty=<mode> <extra>`.
 - `graph_call` / `graph_cfg` output CSVs plus `callgraph.symbol.txt` / `cfg.symbol.txt` with symbol→symbol edges.
 - `graph_dataflow` / `graph_reachability` output JSON reports under metrics/analysis directories.
+- `rename_symbol` performs a rust-analyzer-syntax-backed Rust identifier rename at the exact `path` + 1-based `line`/`column` token location. Current implementation is file-scoped (`.rs` files only).
 
 ### 3.2 `message` (Inter-Agent Handoff Protocol)
 ```json
@@ -238,7 +239,7 @@ Additional clarification (from implementation):
 - Each action must satisfy its typed schema (Section 3).
 - Missing required fields or invalid types must be rejected.
 - `read_file` line numbers are 1-based.
-- Every mutating action (`apply_patch`, `plan`, `objectives`, `issue`) must include a non-empty `question` field (see §0.6). Absence is treated as a missing required field and generates corrective feedback.
+- Every mutating action (`apply_patch`, `plan`, `objectives`, `issue`, `rename_symbol`) must include a non-empty `question` field (see §0.6). Absence is treated as a missing required field and generates corrective feedback.
 
 ### 4.3 Diagnostics Evidence Scan Invariant
 - Diagnostics must perform at least one `python` scan of workspace-local log/state artifacts (for example `agent_state/*.jsonl`, `actions.jsonl`, `log.jsonl`, `frames/`) before it writes the diagnostics report or sends a diagnostics handoff message.
