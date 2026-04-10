@@ -34,7 +34,7 @@ fn usage() -> &'static str {
 Usage:\n\
   canon-tickets --workspace <path> [--crate <name> | --all-crates] [--issues <path>]\n\
                [--limit <n>] [--min-blocks <n>] [--min-stmts <n>] [--top <n>]\n\
-               [--dry-run] [--print]\n\
+               [--prune] [--dry-run] [--print]\n\
 \n\
 Defaults:\n\
   --crate canon_mini_agent\n\
@@ -99,6 +99,7 @@ fn main() -> Result<()> {
     let min_blocks = parse_usize_flag(&args, "--min-blocks", 50)?;
     let min_stmts = parse_usize_flag(&args, "--min-stmts", 200)?;
     let top = parse_usize_flag(&args, "--top", 3)?;
+    let prune = has_flag(&args, "--prune");
     let dry_run = has_flag(&args, "--dry-run");
     let print = has_flag(&args, "--print");
 
@@ -285,6 +286,30 @@ Suggested first actions:\n\
         applied_issue_objects.push(issue);
     }
 
+    // Optional cleanup: remove previous auto-generated tickets from this generator that are not
+    // part of the currently-selected top set.
+    let keep_ids: std::collections::HashSet<String> = applied_issue_objects
+        .iter()
+        .filter_map(|it| it.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
+        .collect();
+    let mut pruned = 0usize;
+    if prune {
+        issues.retain(|it| {
+            let Some(id) = it.get("id").and_then(|v| v.as_str()) else { return true };
+            let discovered_by = it
+                .get("discovered_by")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let is_auto = id.starts_with("auto_branch_reduce_") || id.starts_with("auto_refactor_split_");
+            let is_from_this_generator = discovered_by == "tickets";
+            if is_auto && is_from_this_generator && !keep_ids.contains(id) {
+                pruned += 1;
+                return false;
+            }
+            true
+        });
+    }
+
     // Keep stable-ish ordering: priority, then id. Use a BTreeMap for ranking.
     let rank: BTreeMap<&str, u32> = [("high", 0u32), ("medium", 1u32), ("low", 2u32)].into_iter().collect();
     issues.sort_by(|a, b| {
@@ -312,7 +337,9 @@ Suggested first actions:\n\
         "per_crate_generated": per_crate_added,
         "dry_run": dry_run,
         "print": print,
-        "top": top
+        "top": top,
+        "prune": prune,
+        "pruned": pruned
     });
     if dry_run {
         println!("{}", serde_json::to_string_pretty(&summary)?);

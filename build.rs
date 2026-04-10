@@ -180,8 +180,10 @@ Suggested first actions:\n\
         }
     }
     let mut changed = false;
+    let mut keep_ids = HashMap::<String, ()>::new();
     for issue in generated {
         let Some(id) = issue.get("id").and_then(|v| v.as_str()) else { continue };
+        keep_ids.insert(id.to_string(), ());
         if let Some(&pos) = idx_by_id.get(id) {
             if issues[pos] != issue {
                 issues[pos] = issue;
@@ -192,6 +194,26 @@ Suggested first actions:\n\
             issues.push(issue);
             changed = true;
         }
+    }
+
+    // Prune older build-generated auto tickets so the file doesn't grow unbounded.
+    let before_len = issues.len();
+    issues.retain(|it| {
+        let Some(id) = it.get("id").and_then(|v| v.as_str()) else { return true };
+        let discovered_by = it
+            .get("discovered_by")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if discovered_by != "build" {
+            return true;
+        }
+        if !id.starts_with("auto_refactor_split_canon_mini_agent_") {
+            return true;
+        }
+        keep_ids.contains_key(id)
+    });
+    if issues.len() != before_len {
+        changed = true;
     }
 
     if !changed {
