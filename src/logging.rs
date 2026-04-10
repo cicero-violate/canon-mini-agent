@@ -327,23 +327,7 @@ fn append_secondary_action_log(role: &str, action: &Value) -> Result<()> {
     {
         record.insert("predicated_next_actions".to_string(), value);
     }
-    let mut llm_response = action.clone();
-    if let Some(obj) = llm_response.as_object_mut() {
-        // Avoid duplicating fields already hoisted to the top-level log record.
-        for key in [
-            "action",
-            "path",
-            "line",
-            "observation",
-            "rationale",
-            "question",
-            "predicated_next_actions",
-            "predicted_next_actions",
-        ] {
-            obj.remove(key);
-        }
-    }
-    if let Some(value) = compact_json(llm_response) {
+    if let Some(value) = secondary_llm_response(action) {
         record.insert("llm_response".to_string(), value);
     }
     if record.is_empty() {
@@ -351,6 +335,35 @@ fn append_secondary_action_log(role: &str, action: &Value) -> Result<()> {
     }
     let path = log_paths()?.secondary_log.clone();
     append_record_to_path(&path, &Value::Object(record))
+}
+
+fn secondary_llm_response(action: &Value) -> Option<Value> {
+    let obj = action.as_object()?;
+    let mut out = serde_json::Map::new();
+    for (key, value) in obj {
+        // Keep only non-hoisted fields in the nested llm_response payload.
+        if matches!(
+            key.as_str(),
+            "action"
+                | "path"
+                | "line"
+                | "observation"
+                | "rationale"
+                | "question"
+                | "predicated_next_actions"
+                | "predicted_next_actions"
+        ) {
+            continue;
+        }
+        if let Some(value) = compact_json(value.clone()) {
+            out.insert(key.clone(), value);
+        }
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(Value::Object(out))
+    }
 }
 
 pub(crate) fn append_message_log(
