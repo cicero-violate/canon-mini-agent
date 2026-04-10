@@ -4752,9 +4752,12 @@ mod tests {
             })
             .collect();
 
-        assert_eq!(objective_records.len(), 2, "expected attempt and success trace records");
+        // Select the last attempt/success pair for this operation in case prior
+        // objective_operation_context records exist in the log
+        let last_two = &objective_records[objective_records.len().saturating_sub(2)..];
+        assert_eq!(last_two.len(), 2, "expected attempt and success trace records");
 
-        let attempt = objective_records[0];
+        let attempt = last_two[0];
         assert!(attempt.get("text").is_none());
         let attempt_meta = attempt.get("meta").expect("attempt meta");
         assert_eq!(attempt_meta.get("operation").and_then(|v| v.as_str()), Some("update_objective"));
@@ -4764,7 +4767,7 @@ mod tests {
         assert_eq!(attempt_meta.get("compared_ids"), Some(&json!(["obj_alpha"])));
         assert_eq!(attempt_meta.get("compared_normalized_ids"), Some(&json!(["obj_alpha"])));
 
-        let success = objective_records[1];
+        let success = last_two[1];
         assert!(success.get("text").is_none());
         let success_meta = success.get("meta").expect("success meta");
         assert_eq!(success_meta.get("operation").and_then(|v| v.as_str()), Some("update_objective"));
