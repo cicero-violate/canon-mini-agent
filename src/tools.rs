@@ -4752,12 +4752,29 @@ mod tests {
             })
             .collect();
 
-        // Select the last attempt/success pair for this operation in case prior
-        // objective_operation_context records exist in the log
-        let last_two = &objective_records[objective_records.len().saturating_sub(2)..];
-        assert_eq!(last_two.len(), 2, "expected attempt and success trace records");
-
-        let attempt = last_two[0];
+        let matching_records: Vec<&Value> = objective_records
+            .iter()
+            .copied()
+            .filter(|record| {
+                record
+                    .get("meta")
+                    .and_then(|meta| meta.get("operation"))
+                    .and_then(|v| v.as_str())
+                    == Some("update_objective")
+            })
+            .collect();
+        let attempt = matching_records
+            .iter()
+            .rev()
+            .copied()
+            .find(|record| {
+                record
+                    .get("meta")
+                    .and_then(|meta| meta.get("outcome"))
+                    .and_then(|v| v.as_str())
+                    == Some("attempt")
+            })
+            .expect("latest attempt record");
         assert!(attempt.get("text").is_none());
         let attempt_meta = attempt.get("meta").expect("attempt meta");
         assert_eq!(attempt_meta.get("operation").and_then(|v| v.as_str()), Some("update_objective"));
@@ -4767,7 +4784,18 @@ mod tests {
         assert_eq!(attempt_meta.get("compared_ids"), Some(&json!(["obj_alpha"])));
         assert_eq!(attempt_meta.get("compared_normalized_ids"), Some(&json!(["obj_alpha"])));
 
-        let success = last_two[1];
+        let success = matching_records
+            .iter()
+            .rev()
+            .copied()
+            .find(|record| {
+                record
+                    .get("meta")
+                    .and_then(|meta| meta.get("outcome"))
+                    .and_then(|v| v.as_str())
+                    == Some("success")
+            })
+            .expect("latest success record");
         assert!(success.get("text").is_none());
         let success_meta = success.get("meta").expect("success meta");
         assert_eq!(success_meta.get("operation").and_then(|v| v.as_str()), Some("update_objective"));
