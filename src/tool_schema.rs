@@ -44,6 +44,7 @@ pub enum PredictedActionName {
     SymbolRefs,
     SymbolPath,
     SymbolNeighborhood,
+    Batch,
 }
 
 pub fn predicted_action_name_list() -> Vec<String> {
@@ -72,6 +73,7 @@ pub const TOOL_ACTION_NAMES: &[&str] = &[
     "symbol_refs",
     "symbol_path",
     "symbol_neighborhood",
+    "batch",
 ];
 
 pub const ALL_TOOL_PROMPT_KINDS: &[&str] = &[
@@ -94,6 +96,7 @@ pub const ALL_TOOL_PROMPT_KINDS: &[&str] = &[
     "symbol_refs",
     "symbol_path",
     "symbol_neighborhood",
+    "batch",
     "message",
 ];
 
@@ -215,6 +218,48 @@ pub enum ObjectivesOp {
     SetStatus,
     ReplaceObjectives,
     SortedView,
+}
+
+/// The subset of actions allowed inside a `batch`. All are non-mutating.
+/// `plan`, `objectives`, and `issue` are included but only read-only ops
+/// are accepted at runtime (sorted_view / read).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchableActionName {
+    ReadFile,
+    ListDir,
+    SemanticMap,
+    SymbolWindow,
+    SymbolRefs,
+    SymbolPath,
+    SymbolNeighborhood,
+    SymbolsIndex,
+    SymbolsRenameCandidates,
+    SymbolsPrepareRename,
+    StageGraph,
+    RustcHir,
+    RustcMir,
+    GraphCall,
+    GraphCfg,
+    GraphDataflow,
+    GraphReachability,
+    /// Only `sorted_view` op is accepted at runtime.
+    Plan,
+    /// Only `read` and `sorted_view` ops are accepted at runtime.
+    Objectives,
+    /// Only `read` op is accepted at runtime.
+    Issue,
+}
+
+/// A single sub-action inside a `batch`. Carries the same fields as the
+/// corresponding top-level action, but without `rationale`,
+/// `predicted_next_actions`, and `observation` (those belong on the outer
+/// `batch` envelope).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BatchItem {
+    pub action: BatchableActionName,
+    #[serde(flatten)]
+    pub params: std::collections::BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -484,6 +529,23 @@ pub enum ToolAction {
         /// When true, inlines the full source body of each caller and callee.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         expand_bodies: bool,
+    },
+    /// Execute multiple non-mutating actions in a single turn.
+    ///
+    /// All items must be read-only actions. Mutating actions (`apply_patch`,
+    /// `rename_symbol`, `message`, `run_command`, `python`, `cargo_test`) are
+    /// rejected. For `plan`, only `sorted_view` is accepted; for `objectives`,
+    /// only `read`/`sorted_view`; for `issue`, only `read`.
+    ///
+    /// Max 8 items. Results are returned as labeled sections in declaration order.
+    Batch {
+        #[serde(flatten)]
+        base: ActionBase,
+        /// Sub-actions to execute. Each item carries an `action` field (from
+        /// `BatchableActionName`) plus that action's normal parameters.
+        /// Omit `rationale`, `predicted_next_actions`, and `observation` on
+        /// items — those fields belong on the outer `batch` envelope.
+        actions: Vec<BatchItem>,
     },
 }
 

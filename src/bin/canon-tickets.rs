@@ -85,6 +85,100 @@ fn ensure_shape(mut root: Value) -> Value {
     root
 }
 
+fn sort_and_truncate_issues(
+    mut new_issues: Vec<Value>,
+    score_by_id: &std::collections::HashMap<String, (u32, i64)>,
+    top: usize,
+) -> Vec<Value> {
+    new_issues.sort_by(|a, b| {
+        let ida = a.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let idb = b.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let (pra, sa) = score_by_id.get(&ida).cloned().unwrap_or((9, 0));
+        let (prb, sb) = score_by_id.get(&idb).cloned().unwrap_or((9, 0));
+        pra.cmp(&prb).then_with(|| sb.cmp(&sa)).then_with(|| ida.cmp(&idb))
+    });
+    if top > 0 && new_issues.len() > top {
+        new_issues.truncate(top);
+    }
+    new_issues
+}
+
+fn build_issues_for_symbols(
+    crate_name: &str,
+    symbols: Vec<&canon_mini_agent::SymbolSummary>,
+    limit: usize,
+    kind: &str,
+    new_issues: &mut Vec<Value>,
+    issue_scores: &mut Vec<(String, u32, i64)>,
+    added_here: &mut usize,
+) {
+    for s in symbols.into_iter().take(limit) {
+        let (id, title, description, priority_rank, score) = if kind == "branch" {
+            (
+                stable_id("auto_branch_reduce", crate_name, &s.symbol),
+                format!("Reduce branch complexity: {}", s.symbol),
+                format!(
+                    "MIR suggests high branch complexity (blocks={:?}, stmts={:?}).\n\
+\n\
+Goal: reduce MIR basic blocks while preserving behavior.\n\
+Suggested first actions:\n\
+  - {{\"action\":\"symbol_window\",\"crate\":\"{crate_name}\",\"symbol\":\"{}\"}}\n\
+  - {{\"action\":\"rustc_mir\",\"crate\":\"{crate_name}\",\"mode\":\"mir\",\"extra\":\"{}\"}}",
+                    s.mir_blocks,
+                    s.mir_stmts,
+                    s.symbol,
+                    s.symbol
+                ),
+                1u32,
+                s.mir_blocks.unwrap_or(0) as i64,
+            )
+        } else {
+            (
+                stable_id("auto_refactor_split", crate_name, &s.symbol),
+                format!("Mechanical refactor: split/DRY {}", s.symbol),
+                format!(
+                    "MIR suggests a large function (blocks={:?}, stmts={:?}).\n\
+\n\
+Goal: split into helpers / reduce duplication without changing behavior.\n\
+Suggested first actions:\n\
+  - {{\"action\":\"symbol_window\",\"crate\":\"{crate_name}\",\"symbol\":\"{}\"}}\n\
+  - {{\"action\":\"cargo_test\",\"intent\":\"Run focused tests after refactor.\"}}",
+                    s.mir_blocks,
+                    s.mir_stmts,
+                    s.symbol
+                ),
+                2u32,
+                s.mir_stmts.unwrap_or(0) as i64,
+            )
+        };
+
+        let evidence = vec![
+            format!("crate={crate_name}"),
+            format!("file={} line={}", s.file, s.line),
+            format!(
+                "mir: fingerprint={:?} blocks={:?} stmts={:?}",
+                s.mir_fingerprint, s.mir_blocks, s.mir_stmts
+            ),
+            format!("call_graph: callers={} callees={}", s.call_in, s.call_out),
+        ];
+
+        new_issues.push(json!({
+            "id": id,
+            "title": title,
+            "status": "open",
+            "priority": if priority_rank == 1 { "medium" } else { "low" },
+            "kind": "performance",
+            "description": description,
+            "location": format!("{}:{}", s.file, s.line),
+            "evidence": evidence,
+            "discovered_by": "tickets",
+        }));
+
+        issue_scores.push((id.clone(), priority_rank, score));
+        *added_here += 1;
+    }
+}
+
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     if has_flag(&args, "--help") || has_flag(&args, "-h") {
@@ -160,82 +254,25 @@ fn main() -> Result<()> {
 
         let mut added_here = 0usize;
 
-        for s in branch_candidates.into_iter().take(limit) {
-            let id = stable_id("auto_branch_reduce", &crate_name, &s.symbol);
-            let title = format!("Reduce branch complexity: {}", s.symbol);
-            let description = format!(
-                "MIR suggests high branch complexity (blocks={:?}, stmts={:?}).\n\
-\n\
-Goal: reduce MIR basic blocks while preserving behavior.\n\
-Suggested first actions:\n\
-  - {{\"action\":\"symbol_window\",\"crate\":\"{crate_name}\",\"symbol\":\"{}\"}}\n\
-  - {{\"action\":\"rustc_mir\",\"crate\":\"{crate_name}\",\"mode\":\"mir\",\"extra\":\"{}\"}}",
-                s.mir_blocks,
-                s.mir_stmts,
-                s.symbol,
-                s.symbol
-            );
-            let evidence = vec![
-                format!("crate={crate_name}"),
-                format!("file={} line={}", s.file, s.line),
-                format!(
-                    "mir: fingerprint={:?} blocks={:?} stmts={:?}",
-                    s.mir_fingerprint, s.mir_blocks, s.mir_stmts
-                ),
-                format!("call_graph: callers={} callees={}", s.call_in, s.call_out),
-            ];
-            new_issues.push(json!({
-                "id": id,
-                "title": title,
-                "status": "open",
-                "priority": "medium",
-                "kind": "performance",
-                "description": description,
-                "location": format!("{}:{}", s.file, s.line),
-                "evidence": evidence,
-                "discovered_by": "tickets",
-            }));
-            issue_scores.push((id.clone(), 1, s.mir_blocks.unwrap_or(0) as i64));
-            added_here += 1;
-        }
+        build_issues_for_symbols(
+            &crate_name,
+            branch_candidates,
+            limit,
+            "branch",
+            &mut new_issues,
+            &mut issue_scores,
+            &mut added_here,
+        );
 
-        for s in refactor_candidates.into_iter().take(limit) {
-            let id = stable_id("auto_refactor_split", &crate_name, &s.symbol);
-            let title = format!("Mechanical refactor: split/DRY {}", s.symbol);
-            let description = format!(
-                "MIR suggests a large function (blocks={:?}, stmts={:?}).\n\
-\n\
-Goal: split into helpers / reduce duplication without changing behavior.\n\
-Suggested first actions:\n\
-  - {{\"action\":\"symbol_window\",\"crate\":\"{crate_name}\",\"symbol\":\"{}\"}}\n\
-  - {{\"action\":\"cargo_test\",\"intent\":\"Run focused tests after refactor.\"}}",
-                s.mir_blocks,
-                s.mir_stmts,
-                s.symbol
-            );
-            let evidence = vec![
-                format!("crate={crate_name}"),
-                format!("file={} line={}", s.file, s.line),
-                format!(
-                    "mir: fingerprint={:?} blocks={:?} stmts={:?}",
-                    s.mir_fingerprint, s.mir_blocks, s.mir_stmts
-                ),
-                format!("call_graph: callers={} callees={}", s.call_in, s.call_out),
-            ];
-            new_issues.push(json!({
-                "id": id,
-                "title": title,
-                "status": "open",
-                "priority": "low",
-                "kind": "performance",
-                "description": description,
-                "location": format!("{}:{}", s.file, s.line),
-                "evidence": evidence,
-                "discovered_by": "tickets",
-            }));
-            issue_scores.push((id.clone(), 2, s.mir_stmts.unwrap_or(0) as i64));
-            added_here += 1;
-        }
+        build_issues_for_symbols(
+            &crate_name,
+            refactor_candidates,
+            limit,
+            "refactor",
+            &mut new_issues,
+            &mut issue_scores,
+            &mut added_here,
+        );
 
         per_crate_added.insert(crate_name, added_here);
     }
@@ -251,16 +288,7 @@ Suggested first actions:\n\
     for (id, pr, score) in issue_scores {
         score_by_id.insert(id, (pr, score));
     }
-    new_issues.sort_by(|a, b| {
-        let ida = a.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let idb = b.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let (pra, sa) = score_by_id.get(&ida).cloned().unwrap_or((9, 0));
-        let (prb, sb) = score_by_id.get(&idb).cloned().unwrap_or((9, 0));
-        pra.cmp(&prb).then_with(|| sb.cmp(&sa)).then_with(|| ida.cmp(&idb))
-    });
-    if top > 0 && new_issues.len() > top {
-        new_issues.truncate(top);
-    }
+    new_issues = sort_and_truncate_issues(new_issues, &score_by_id, top);
 
     // Update-in-place by id (no duplicates); keep latest object contents.
     let mut index_by_id = std::collections::HashMap::<String, usize>::new();
