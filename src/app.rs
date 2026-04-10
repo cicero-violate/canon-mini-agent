@@ -2083,6 +2083,7 @@ async fn continue_executor_completion(
     let prompt_kind = "executor";
     let step = 1usize;
     let command_id = submitted.command_id.as_str();
+    let executor_system = system_instructions(AgentPromptKind::Executor);
 
     let action = match parse_action_from_raw(
         role,
@@ -2110,7 +2111,7 @@ async fn continue_executor_completion(
             return run_agent(
                 role,
                 prompt_kind,
-                "",
+                &executor_system,
                 retry_prompt,
                 endpoint,
                 bridge,
@@ -2118,7 +2119,7 @@ async fn continue_executor_completion(
                 tabs,
                 false,
                 true,
-                false,
+                true,
                 submitted.steps_used,
             )
             .await
@@ -2155,7 +2156,7 @@ async fn continue_executor_completion(
     run_agent(
         role,
         prompt_kind,
-        "",
+        &executor_system,
         action_result_prompt(
             Some(active_tab_id),
             Some(turn_id),
@@ -2171,7 +2172,7 @@ async fn continue_executor_completion(
         tabs,
         false,
         true,
-        false,
+        true,
         submitted.steps_used,
     )
     .await
