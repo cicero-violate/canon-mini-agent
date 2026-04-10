@@ -4718,9 +4718,8 @@ mod tests {
 
         let log_prefix = format!("objective-update-trace-{}", fresh_test_dir("trace-log-prefix").display());
         init_log_paths(&log_prefix);
-        let action_log = std::path::Path::new(crate::constants::agent_state_dir())
-            .join(&log_prefix)
-            .join("actions.jsonl");
+        let action_log = crate::logging::current_action_log_path_for_tests()
+            .expect("action log path after init");
         let before_count = std::fs::read_to_string(&action_log)
             .ok()
             .map(|raw| raw.lines().filter(|line| !line.trim().is_empty()).count())
