@@ -1,0 +1,181 @@
+canon-mini-agent semantic navigation report
+
+1. semantic_map on crate `canon_mini_agent` with filter `tools`
+
+Module/file outline recovered from the semantic map result:
+
+- `src/lib.rs:17` — module `tools`
+- `src/tools.rs:272` — `handle_objectives_action`
+- `src/tools.rs:519` — `handle_issue_action`
+- `src/tools.rs:622` — `handle_plan_sorted_view_action`
+- `src/tools.rs:1208` — `handle_message_action`
+- `src/tools.rs:1270` — `handle_list_dir_action`
+- `src/tools.rs:1279` — `handle_read_file_action`
+- `src/tools.rs:1488` — `handle_symbols_index_action`
+- `src/tools.rs:1596` — `handle_symbols_rename_candidates_action`
+- `src/tools.rs:1719` — `handle_symbols_prepare_rename_action`
+- `src/tools.rs:1834` — `handle_rename_symbol_action`
+- `src/tools.rs:2012` — `handle_apply_patch_action`
+- `src/tools.rs:2178` — `handle_run_command_action`
+- `src/tools.rs:2216` — `handle_python_action`
+- `src/tools.rs:2272` — `handle_rustc_action`
+- `src/tools.rs:2324` — `handle_graph_call_cfg_action`
+- `src/tools.rs:2495` — `handle_graph_reports_action`
+- `src/tools.rs:2589` — `handle_cargo_test_action`
+- `src/tools.rs:2860` — `handle_plan_action`
+- `src/tools.rs:3794` — `handle_semantic_map_action`
+- `src/tools.rs:3801` — `handle_symbol_window_action`
+- `src/tools.rs:3811` — `handle_symbol_refs_action`
+- `src/tools.rs:3821` — `handle_symbol_path_action`
+- `src/tools.rs:3835` — `handle_symbol_neighborhood_action`
+- `src/tools.rs:3845` — `execute_action`
+- `src/tools.rs:3925` — `execute_logged_action`
+
+Takeaway: the `tools` module is the central action-dispatch layer. The semantic-navigation handlers are registered alongside the existing file, plan, patch, run, graph, and messaging handlers.
+
+2. symbol_neighborhood on `tools::execute_logged_action`
+
+Immediate caller:
+
+- `engine::process_action_and_execute`
+
+Immediate callees reported by the neighborhood tool:
+
+- `logging::log_action_event`
+- `logging::log_action_result`
+- `logging::log_error_event`
+- `tool_schema::plan_set_plan_status_action_example`
+- `tool_schema::plan_set_task_status_action_example`
+- `tools::execute_action`
+- plus standard-library / serde formatting and map helpers (`serde_json::Map::new`, `serde_json::Map::insert`, `serde_json::Value::get`, formatting/unwrap utilities, etc.)
+
+Takeaway: `execute_logged_action` is a thin orchestration wrapper around `execute_action`; its main responsibility is observability and enriched error reporting, not dispatch logic itself.
+
+3. symbol_window on `tools::execute_logged_action`
+
+The dedicated symbol-window response only exposed the signature/MIR summary, so the full body was read directly from `src/tools.rs:3925-3992`:
+
+```rust
+pub(crate) fn execute_logged_action(
+    role: &str,
+    prompt_kind: &str,
+    endpoint: &LlmEndpoint,
+    workspace: &Path,
+    step: usize,
+    command_id: &str,
+    action: &Value,
+    check_on_done: bool,
+) -> Result<(bool, String)> {
+    log_action_event(role, endpoint, prompt_kind, step, command_id, action);
+    match execute_action(role, step, action, workspace, check_on_done) {
+        Ok((done, out)) => {
+            log_action_result(
+                role,
+                endpoint,
+                prompt_kind,
+                step,
+                command_id,
+                action,
+                true,
+                &out,
+            );
+            Ok((done, out))
+        }
+        Err(e) => {
+            let err_text = if action.get("action").and_then(|v| v.as_str()) == Some("plan") {
+                format!(
+                    "Error executing action: {e}\n\nPlan tool examples:\n{}\n{}\n{{\"action\":\"plan\",\"op\":\"update_task\",\"task\":{{\"id\":\"T4\",\"status\":\"done\"}},\"rationale\":\"Update a task by id using task payload.\"}}\n\nTo mark a task done, use update_task or set_task_status. set_plan_status changes only PLAN.status.",
+                    plan_set_task_status_action_example(
+                        "T1",
+                        "in_progress",
+                        "Update one task status in PLAN.json."
+                    ),
+                    plan_set_plan_status_action_example(
+                        "in_progress",
+                        "Update top-level PLAN.json status."
+                    ),
+                )
+            } else {
+                format!("Error executing action: {e}")
+            };
+            log_action_result(
+                role,
+                endpoint,
+                prompt_kind,
+                step,
+                command_id,
+                action,
+                false,
+                &err_text,
+            );
+            log_error_event(
+                role,
+                "execute_logged_action",
+                Some(step),
+                &format!("execute_logged_action error: {e}"),
+                Some(json!({
+                    "prompt_kind": prompt_kind,
+                    "command_id": command_id,
+                    "action": action.get("action").and_then(|v| v.as_str()),
+                })),
+            );
+            eprintln!("[{role}] step={} error: {e}", step);
+            Ok((false, err_text))
+        }
+    }
+}
+```
+
+Function summary:
+
+- Logs the action before execution.
+- Delegates real work to `execute_action`.
+- Logs success results on the `Ok` path.
+- Converts execution errors into a logged, user-facing `(false, err_text)` result instead of propagating the error upward.
+- Adds special remediation/examples when the failed action kind is `plan`.
+
+4. symbol_refs on `tools::execute_logged_action`
+
+The requested dedicated `symbol_refs` action was rejected by the current validator as an unsupported action, even though `src/tools.rs:3881` shows that `execute_action` has a `"symbol_refs" => handle_symbol_refs_action(...)` dispatch arm and prompt/schema examples also exist. To still provide the requested reference inventory, I used a workspace search equivalent.
+
+Reference sites found with `rg -n "execute_logged_action" src`:
+
+- `src/engine.rs:7` — import: `use crate::tools::execute_logged_action;`
+- `src/engine.rs:29` — call site inside `process_action_and_execute`
+- `src/tools.rs:3925` — function definition
+- `src/tools.rs:3979` — string literal context: `"execute_logged_action"`
+- `src/tools.rs:3981` — formatted error text: `"execute_logged_action error: ..."`
+
+Additional non-code documentation/schema mentions were also found in:
+
+- `src/tool_schema.rs:425`
+- `src/tool_schema.rs:581`
+- `src/tool_schema.rs:588`
+- `src/tool_schema.rs:602`
+- `src/prompts.rs:357`
+- `src/prompts.rs:360`
+- `src/prompts.rs:366`
+
+Takeaway: there is one real call site (`src/engine.rs:29`), one definition site, and two self-referential logging/error strings in `src/tools.rs`.
+
+5. symbol_path from `engine::process_action_and_execute` to `tools::handle_apply_patch_action`
+
+Recovered path from source reads:
+
+1. `engine::process_action_and_execute` (`src/engine.rs:9-39`)
+2. `tools::execute_logged_action` (`src/tools.rs:3925-3992`)
+3. `tools::execute_action` (`src/tools.rs:3845-3892`)
+4. `tools::handle_apply_patch_action` via dispatch arm `"apply_patch" => handle_apply_patch_action(role, step, workspace, action)` at `src/tools.rs:3869`
+
+Call-chain summary:
+
+- `process_action_and_execute` appends the completion log, then directly calls `execute_logged_action`.
+- `execute_logged_action` wraps execution with logging and error shaping, then calls `execute_action`.
+- `execute_action` performs string-based action dispatch.
+- When `action["action"] == "apply_patch"`, dispatch reaches `handle_apply_patch_action`.
+
+Overall findings
+
+- The semantic navigation tools are wired into `tools::execute_action`, alongside the rest of the action system.
+- `execute_logged_action` is not itself a dispatcher; it is a logging/error wrapper around `execute_action`.
+- The requested `symbol_refs` capability appears implemented in dispatch and prompt/schema surfaces, but the runtime validator that handled the earlier turn still rejected the action as unsupported. That mismatch is itself a useful finding about the current tool surface.

@@ -38,6 +38,11 @@ pub enum PredictedActionName {
     GraphCfg,
     GraphDataflow,
     GraphReachability,
+    SemanticMap,
+    SymbolWindow,
+    SymbolRefs,
+    SymbolPath,
+    SymbolNeighborhood,
 }
 
 pub fn predicted_action_name_list() -> Vec<String> {
@@ -851,11 +856,17 @@ fn is_known_action(action: &str) -> bool {
             | "symbols_prepare_rename"
             | "rename_symbol"
             | "objectives"
+            | "issue"
             | "apply_patch"
             | "run_command"
             | "python"
             | "cargo_test"
             | "plan"
+            | "semantic_map"
+            | "symbol_window"
+            | "symbol_refs"
+            | "symbol_path"
+            | "symbol_neighborhood"
             | "rustc_hir"
             | "rustc_mir"
             | "graph_call"

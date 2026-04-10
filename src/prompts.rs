@@ -1393,6 +1393,36 @@ mod tests {
     }
 
     #[test]
+    fn validate_accepts_symbol_refs_action() {
+        let action = json!({
+            "action": "symbol_refs",
+            "crate": "canon_mini_agent",
+            "symbol": "tools::execute_logged_action",
+            "rationale": "Find all call sites before changing this function.",
+            "predicted_next_actions": [
+                {"action": "read_file", "intent": "Inspect the highest-impact call sites in source."},
+                {"action": "symbol_path", "intent": "Trace a concrete caller-to-callee route."}
+            ]
+        });
+        assert!(validate_action(&action).is_ok());
+    }
+
+    #[test]
+    fn validate_accepts_semantic_actions_in_predicted_next_actions() {
+        let action = json!({
+            "action": "read_file",
+            "path": "src/tools.rs",
+            "rationale": "Open dispatcher source before making changes.",
+            "predicted_next_actions": [
+                {"action": "semantic_map", "intent": "Get symbol outline for the tools module."},
+                {"action": "symbol_window", "intent": "Read the exact target function body."},
+                {"action": "symbol_refs", "intent": "Collect all reference sites before edits."}
+            ]
+        });
+        assert!(validate_action(&action).is_ok());
+    }
+
+    #[test]
     fn planner_requires_plan_action_for_master_plan_edits() {
         let rules = PLANNER_RULES.join("\n");
         assert!(
