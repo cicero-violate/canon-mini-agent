@@ -1760,28 +1760,14 @@ fn handle_symbols_rename_candidates_action(workspace: &Path, action: &Value) -> 
     let symbols_file = load_symbols_index_file(&symbols_path)?;
     let prefixes_by_stem = build_function_prefixes_by_stem(&symbols_file);
 
-    let identity_surface_names: BTreeSet<&'static str> =
-        ["id", "endpoint_id", "lane_id"].into_iter().collect();
-    let identity_surface_files: BTreeSet<&'static str> = [
-        "src/constants.rs",
-        "src/protocol.rs",
-        "src/app.rs",
-        "src/logging.rs",
-    ]
-    .into_iter()
-    .collect();
-
-    let mut candidates = Vec::new();
-    for sym in &symbols_file.symbols {
-        if let Some(candidate) = build_rename_candidate(
-            sym,
-            &prefixes_by_stem,
-            &identity_surface_names,
-            &identity_surface_files,
-        ) {
-            candidates.push(candidate);
-        }
-    }
+    let identity_surface_names = rename_candidate_identity_surface_names();
+    let identity_surface_files = rename_candidate_identity_surface_files();
+    let mut candidates = collect_rename_candidates(
+        &symbols_file,
+        &prefixes_by_stem,
+        &identity_surface_names,
+        &identity_surface_files,
+    );
 
     sort_and_dedup_rename_candidates(&mut candidates);
     let payload = RenameCandidatesFile {
@@ -1843,6 +1829,41 @@ fn build_function_prefixes_by_stem(
         }
     }
     prefixes_by_stem
+}
+
+fn rename_candidate_identity_surface_names() -> BTreeSet<&'static str> {
+    ["id", "endpoint_id", "lane_id"].into_iter().collect()
+}
+
+fn rename_candidate_identity_surface_files() -> BTreeSet<&'static str> {
+    [
+        "src/constants.rs",
+        "src/protocol.rs",
+        "src/app.rs",
+        "src/logging.rs",
+    ]
+    .into_iter()
+    .collect()
+}
+
+fn collect_rename_candidates(
+    symbols_file: &SymbolsIndexFile,
+    prefixes_by_stem: &std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
+    identity_surface_names: &BTreeSet<&'static str>,
+    identity_surface_files: &BTreeSet<&'static str>,
+) -> Vec<RenameCandidate> {
+    let mut candidates = Vec::new();
+    for sym in &symbols_file.symbols {
+        if let Some(candidate) = build_rename_candidate(
+            sym,
+            prefixes_by_stem,
+            identity_surface_names,
+            identity_surface_files,
+        ) {
+            candidates.push(candidate);
+        }
+    }
+    candidates
 }
 
 fn build_rename_candidate(
