@@ -4837,30 +4837,38 @@ fn exec_run_command(workspace: &Path, cmd: &str, cwd: &str) -> Result<(bool, Str
     }
 
     if matches!(kind, RunCommandKind::LongRunning) {
-        let child = Command::new("/bin/bash")
-            .arg("-c")
-            .arg(cmd)
-            .current_dir(&cwd_path)
-            .stdin(Stdio::null())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .with_context(|| ctx_spawn(cmd))?;
-
-        Ok((true, format!("spawned pid={}", child.id())))
+        exec_run_command_spawn(cmd, &cwd_path)
     } else {
-        let output = Command::new("/bin/bash")
-            .arg("-c")
-            .arg(cmd)
-            .current_dir(&cwd_path)
-            .output()
-            .with_context(|| ctx_spawn(cmd))?;
-
-        let mut combined = combine_command_output(&output, cmd);
-        append_trace_probe_info(&mut combined, cmd);
-
-        Ok((output.status.success(), combined))
+        exec_run_command_capture(cmd, &cwd_path)
     }
+}
+
+fn exec_run_command_spawn(cmd: &str, cwd_path: &Path) -> Result<(bool, String)> {
+    let child = Command::new("/bin/bash")
+        .arg("-c")
+        .arg(cmd)
+        .current_dir(cwd_path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .with_context(|| ctx_spawn(cmd))?;
+
+    Ok((true, format!("spawned pid={}", child.id())))
+}
+
+fn exec_run_command_capture(cmd: &str, cwd_path: &Path) -> Result<(bool, String)> {
+    let output = Command::new("/bin/bash")
+        .arg("-c")
+        .arg(cmd)
+        .current_dir(cwd_path)
+        .output()
+        .with_context(|| ctx_spawn(cmd))?;
+
+    let mut combined = combine_command_output(&output, cmd);
+    append_trace_probe_info(&mut combined, cmd);
+
+    Ok((output.status.success(), combined))
 }
 
 fn combine_command_output(output: &std::process::Output, cmd: &str) -> String {
