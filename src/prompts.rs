@@ -629,7 +629,6 @@ fn executor_rules() -> Vec<String> {
         "- Use list_dir only to check whether a path exists or to enumerate non-source artifacts; use semantic_map to explore Rust source structure.".to_string(),
         "- Only list_dir paths that exist under WORKSPACE; do not assume `canon-utils` exists unless WORKSPACE is `/workspace/ai_sandbox/canon`.".to_string(),
         "- Use run_command for cargo builds, tests, and shell discovery.".to_string(),
-        "- If test output is truncated, re-run tests with `cargo test -- --nocapture 2>&1 | tail -n 200` and report the tail in `message.payload`.".to_string(),
         "- Use python for structured analysis when shell pipelines are awkward.".to_string(),
         format!("- Never operate outside {ws}."),
         "- Never modify `SPEC.md`, `PLAN.json`, `VIOLATIONS.json`, or `DIAGNOSTICS.json`.".to_string(),
@@ -1381,7 +1380,6 @@ pub(crate) fn is_explicit_idle_action(action: &Value) -> bool {
 }
 
 enum NextActionHint {
-    TailOutputLog { path: String },
     GraphFollowups,
     UseApplyPatch,
     ReuseRecent { action: String },
@@ -1399,11 +1397,6 @@ fn derive_next_action_hint(result: &str, last_action: Option<&str>) -> NextActio
     if result.contains("graph_probe ok") {
         return NextActionHint::GraphFollowups;
     }
-    if !result.contains("output_log_tail:") {
-        if let Some(path) = extract_output_log_path(result) {
-            return NextActionHint::TailOutputLog { path };
-        }
-    }
     if let Some(action) = last_action.map(str::trim).filter(|s| !s.is_empty()) {
         return NextActionHint::ReuseRecent {
             action: action.to_string(),
@@ -1417,9 +1410,6 @@ fn derive_next_action_hint(result: &str, last_action: Option<&str>) -> NextActio
 fn next_action_hint_text(result: &str, last_action: Option<&str>) -> String {
     let all_actions = crate::tool_schema::predicted_action_name_list().join(", ");
     match derive_next_action_hint(result, last_action) {
-        NextActionHint::TailOutputLog { path } => {
-            format!("next_action_hint: run_command tail -n 200 {path}")
-        }
         NextActionHint::GraphFollowups => {
             "next_action_hint: run graph_call, graph_cfg, graph_reachability".to_string()
         }
@@ -1436,18 +1426,6 @@ fn next_action_hint_text(result: &str, last_action: Option<&str>) -> String {
                 format!("next_action_hint: choose one of: {all_actions}.")
             }
         }
-    }
-}
-
-fn extract_output_log_path(out: &str) -> Option<String> {
-    let needle = "output_log=";
-    let idx = out.find(needle)?;
-    let rest = &out[idx + needle.len()..];
-    let path = rest.split_whitespace().next()?;
-    if path.is_empty() {
-        None
-    } else {
-        Some(path.to_string())
     }
 }
 
