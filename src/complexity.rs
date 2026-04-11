@@ -35,25 +35,7 @@ fn process_crate(
         }
     };
 
-    let mut items = Vec::new();
-    for s in idx.symbol_summaries() {
-        let blocks = s.mir_blocks.unwrap_or(0);
-        let stmts = s.mir_stmts.unwrap_or(0);
-        if blocks == 0 && stmts == 0 {
-            continue;
-        }
-        let entry = build_complexity_entry(&s, blocks, stmts);
-        items.push(entry.clone());
-        global.push(json!({
-            "crate": crate_name,
-            "symbol": entry.get("symbol"),
-            "file": entry.get("file"),
-            "line": entry.get("line"),
-            "complexity_proxy": entry.get("complexity_proxy"),
-            "mir_blocks": entry.get("mir_blocks"),
-            "mir_stmts": entry.get("mir_stmts"),
-        }));
-    }
+    let mut items = collect_complexity_items(&idx, crate_name, global);
 
     items.sort_by(sort_by_complexity_desc);
     let top = items.into_iter().take(50).collect::<Vec<_>>();
@@ -63,6 +45,40 @@ fn process_crate(
         "status": "ok",
         "metric": "mir_blocks_proxy",
         "top": top,
+    })
+}
+
+fn collect_complexity_items(
+    idx: &crate::semantic::SemanticIndex,
+    crate_name: &str,
+    global: &mut Vec<serde_json::Value>,
+) -> Vec<serde_json::Value> {
+    let mut items = Vec::new();
+    for s in idx.symbol_summaries() {
+        let blocks = s.mir_blocks.unwrap_or(0);
+        let stmts = s.mir_stmts.unwrap_or(0);
+        if blocks == 0 && stmts == 0 {
+            continue;
+        }
+        let entry = build_complexity_entry(&s, blocks, stmts);
+        global.push(build_global_complexity_entry(crate_name, &entry));
+        items.push(entry);
+    }
+    items
+}
+
+fn build_global_complexity_entry(
+    crate_name: &str,
+    entry: &serde_json::Value,
+) -> serde_json::Value {
+    json!({
+        "crate": crate_name,
+        "symbol": entry.get("symbol"),
+        "file": entry.get("file"),
+        "line": entry.get("line"),
+        "complexity_proxy": entry.get("complexity_proxy"),
+        "mir_blocks": entry.get("mir_blocks"),
+        "mir_stmts": entry.get("mir_stmts"),
     })
 }
 
