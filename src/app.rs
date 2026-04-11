@@ -1033,6 +1033,173 @@ fn handle_executor_submit_join_result(
     }
 }
 
+fn log_missing_submit_ack(job: &PendingExecutorSubmit, exec_result: &str) {
+    eprintln!(
+        "[orchestrate] {} missing submit_ack (preserving lane ownership): {exec_result}",
+        job.executor_name
+    );
+    log_error_event(
+        "executor",
+        "orchestrate",
+        None,
+        &format!(
+            "{} missing submit_ack (preserving lane ownership): {exec_result}",
+            job.executor_name
+        ),
+        Some(json!({
+            "stage": "executor_submit_ack_missing",
+            "lane": job.executor_name,
+        })),
+    );
+}
+
+fn handle_missing_submit_ack(
+    dispatch_state: &mut DispatchState,
+    job: &PendingExecutorSubmit,
+    exec_result: &str,
+) -> bool {
+    log_missing_submit_ack(job, exec_result);
+    // Recovery: clear stuck ownership and requeue lane
+    requeue_lane_after_submit_recovery(dispatch_state, job.lane_index);
+    false
+}
+
+fn log_late_submit_ack(
+    ctx: &OrchestratorContext<'_>,
+    lane_id: usize,
+    tab_id: u32,
+    turn_id: u64,
+) {
+    eprintln!(
+        "[orchestrate] submit ack without pending submit (late ack — registering turn): lane={} tab_id={} turn_id={}",
+        ctx.lanes[lane_id].label,
+        tab_id,
+        turn_id
+    );
+    log_error_event(
+        "executor",
+        "orchestrate",
+        None,
+        &format!(
+            "submit ack without pending submit (late ack — registering turn): lane={} tab_id={} turn_id={}",
+            ctx.lanes[lane_id].label,
+            tab_id,
+            turn_id
+        ),
+        Some(json!({
+            "stage": "executor_submit_ack_late",
+            "lane": ctx.lanes[lane_id].label,
+            "tab_id": tab_id,
+            "turn_id": turn_id,
+        })),
+    );
+}
+
+fn register_late_submit_ack(
+    ctx: &OrchestratorContext<'_>,
+    dispatch_state: &mut DispatchState,
+    lane_id: usize,
+    job: &PendingExecutorSubmit,
+    tab_id: u32,
+    turn_id: u64,
+    command_id: Option<String>,
+) -> bool {
+    log_late_submit_ack(ctx, lane_id, tab_id, turn_id);
+    register_submitted_executor_turn(
+        dispatch_state,
+        lane_id,
+        tab_id,
+        turn_id,
+        SubmittedExecutorTurn {
+            tab_id,
+            lane: job.lane_index,
+            lane_label: job.label.clone(),
+            command_id: command_id
+                .unwrap_or_else(|| make_command_id(&job.executor_role, "executor", 1)),
+            actor: job.executor_role.clone(),
+            endpoint_id: job.endpoint_id.clone(),
+            tabs: job.tabs.clone(),
+            steps_used: dispatch_state.lane_steps_used(job.lane_index),
+        },
+    );
+    true
+}
+
+fn log_submit_ack_timeout(
+    ctx: &OrchestratorContext<'_>,
+    lane_id: usize,
+    tab_id: u32,
+    turn_id: u64,
+) {
+    eprintln!(
+        "[orchestrate] submit ack arrived after timeout: lane={} tab_id={} turn_id={}",
+        ctx.lanes[lane_id].label,
+        tab_id,
+        turn_id
+    );
+    log_error_event(
+        "executor",
+        "orchestrate",
+        None,
+        &format!(
+            "submit ack arrived after timeout: lane={} tab_id={} turn_id={}",
+            ctx.lanes[lane_id].label,
+            tab_id,
+            turn_id
+        ),
+        Some(json!({
+            "stage": "executor_submit_ack_timeout",
+            "lane": ctx.lanes[lane_id].label,
+            "tab_id": tab_id,
+            "turn_id": turn_id,
+        })),
+    );
+}
+
+fn handle_submit_ack_timeout(
+    ctx: &OrchestratorContext<'_>,
+    dispatch_state: &mut DispatchState,
+    lane_id: usize,
+    tab_id: u32,
+    turn_id: u64,
+) -> bool {
+    log_submit_ack_timeout(ctx, lane_id, tab_id, turn_id);
+    dispatch_state.lane_submit_in_flight.insert(lane_id, false);
+    dispatch_state.lane_prompt_in_flight.insert(lane_id, false);
+    false
+}
+
+fn log_submit_ack_tab_mismatch(
+    ctx: &OrchestratorContext<'_>,
+    lane_id: usize,
+    active_tab: u32,
+    tab_id: u32,
+) {
+    eprintln!(
+        "[orchestrate] submit ack tab mismatch: lane={} active_tab={} ack_tab={} (overwriting active tab)",
+        ctx.lanes[lane_id].label,
+        active_tab,
+        tab_id
+    );
+    log_error_event(
+        "executor",
+        "orchestrate",
+        None,
+        &format!(
+            "submit ack tab mismatch: lane={} active_tab={} ack_tab={} (overwriting active tab)",
+            ctx.lanes[lane_id].label,
+            active_tab,
+            tab_id
+        ),
+        Some(json!({
+            "stage": "executor_submit_ack_tab_mismatch",
+            "lane": ctx.lanes[lane_id].label,
+            "active_tab": active_tab,
+            "ack_tab": tab_id,
+        })),
+    );
+}
+
 fn handle_executor_submit_ack_result(
     ctx: &OrchestratorContext<'_>,
     dispatch_state: &mut DispatchState,
@@ -1042,73 +1209,22 @@ fn handle_executor_submit_ack_result(
     pending_submit_timeout_ms: u64,
 ) -> bool {
     let Some((tab_id, turn_id, command_id)) = parse_submit_ack(&exec_result) else {
-        eprintln!(
-            "[orchestrate] {} missing submit_ack (preserving lane ownership): {exec_result}",
-            job.executor_name
-        );
-        log_error_event(
-            "executor",
-            "orchestrate",
-            None,
-            &format!(
-                "{} missing submit_ack (preserving lane ownership): {exec_result}",
-                job.executor_name
-            ),
-            Some(json!({
-                "stage": "executor_submit_ack_missing",
-                "lane": job.executor_name,
-            })),
-        );
-        // Recovery: clear stuck ownership and requeue lane
-        requeue_lane_after_submit_recovery(dispatch_state, job.lane_index);
-        return false;
+        return handle_missing_submit_ack(dispatch_state, &job, &exec_result);
     };
 
     let Some(pending) = dispatch_state.executor_submit_inflight.remove(&lane_id) else {
         // The timeout path already removed executor_submit_inflight for
         // this lane, but the submit actually succeeded.  Register the turn
         // so the completion can still be routed back to the LLM.
-        eprintln!(
-            "[orchestrate] submit ack without pending submit (late ack — registering turn): lane={} tab_id={} turn_id={}",
-            ctx.lanes[lane_id].label,
-            tab_id,
-            turn_id
-        );
-        log_error_event(
-            "executor",
-            "orchestrate",
-            None,
-            &format!(
-                "submit ack without pending submit (late ack — registering turn): lane={} tab_id={} turn_id={}",
-                ctx.lanes[lane_id].label,
-                tab_id,
-                turn_id
-            ),
-            Some(json!({
-                "stage": "executor_submit_ack_late",
-                "lane": ctx.lanes[lane_id].label,
-                "tab_id": tab_id,
-                "turn_id": turn_id,
-            })),
-        );
-        register_submitted_executor_turn(
+        return register_late_submit_ack(
+            ctx,
             dispatch_state,
             lane_id,
+            &job,
             tab_id,
             turn_id,
-            SubmittedExecutorTurn {
-                tab_id,
-                lane: job.lane_index,
-                lane_label: job.label.clone(),
-                command_id: command_id
-                    .unwrap_or_else(|| make_command_id(&job.executor_role, "executor", 1)),
-                actor: job.executor_role.clone(),
-                endpoint_id: job.endpoint_id.clone(),
-                tabs: job.tabs.clone(),
-                steps_used: dispatch_state.lane_steps_used(job.lane_index),
-            },
+            command_id,
         );
-        return true;
     };
 
     if executor_submit_timed_out(
@@ -1116,59 +1232,12 @@ fn handle_executor_submit_ack_result(
         now_ms(),
         pending_submit_timeout_ms,
     ) {
-        eprintln!(
-            "[orchestrate] submit ack arrived after timeout: lane={} tab_id={} turn_id={}",
-            ctx.lanes[lane_id].label,
-            tab_id,
-            turn_id
-        );
-        log_error_event(
-            "executor",
-            "orchestrate",
-            None,
-            &format!(
-                "submit ack arrived after timeout: lane={} tab_id={} turn_id={}",
-                ctx.lanes[lane_id].label,
-                tab_id,
-                turn_id
-            ),
-            Some(json!({
-                "stage": "executor_submit_ack_timeout",
-                "lane": ctx.lanes[lane_id].label,
-                "tab_id": tab_id,
-                "turn_id": turn_id,
-            })),
-        );
-        dispatch_state.lane_submit_in_flight.insert(lane_id, false);
-        dispatch_state.lane_prompt_in_flight.insert(lane_id, false);
-        return false;
+        return handle_submit_ack_timeout(ctx, dispatch_state, lane_id, tab_id, turn_id);
     }
 
     if let Some(active_tab) = dispatch_state.lane_active_tab(lane_id) {
         if active_tab != tab_id {
-            eprintln!(
-                "[orchestrate] submit ack tab mismatch: lane={} active_tab={} ack_tab={} (overwriting active tab)",
-                ctx.lanes[lane_id].label,
-                active_tab,
-                tab_id
-            );
-            log_error_event(
-                "executor",
-                "orchestrate",
-                None,
-                &format!(
-                    "submit ack tab mismatch: lane={} active_tab={} ack_tab={} (overwriting active tab)",
-                    ctx.lanes[lane_id].label,
-                    active_tab,
-                    tab_id
-                ),
-                Some(json!({
-                    "stage": "executor_submit_ack_tab_mismatch",
-                    "lane": ctx.lanes[lane_id].label,
-                    "active_tab": active_tab,
-                    "ack_tab": tab_id,
-                })),
-            );
+            log_submit_ack_tab_mismatch(ctx, lane_id, active_tab, tab_id);
         }
     }
 
