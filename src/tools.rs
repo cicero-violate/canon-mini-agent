@@ -674,19 +674,7 @@ fn handle_plan_sorted_view_action(workspace: &Path) -> Result<(bool, String)> {
         }
     }
 
-    let mut indegree: std::collections::HashMap<String, usize> =
-        task_map.keys().map(|k| (k.clone(), 0)).collect();
-    let mut adj: std::collections::HashMap<String, BTreeSet<String>> = std::collections::HashMap::new();
-    for id in task_map.keys() {
-        adj.insert(id.clone(), BTreeSet::new());
-    }
-    for edge in edges {
-        let from = edge.get("from").and_then(|v| v.as_str()).unwrap_or("");
-        let to = edge.get("to").and_then(|v| v.as_str()).unwrap_or("");
-        ensure_plan_edge_endpoints_present(from, to)?;
-        insert_plan_edge_adjacency(&mut adj, from, to);
-        increment_plan_edge_indegree(&mut indegree, to);
-    }
+    let (mut indegree, adj) = build_plan_sorted_graph_state(&task_map, edges)?;
 
     let mut ready: BTreeSet<String> = indegree
         .iter()
@@ -708,6 +696,30 @@ fn handle_plan_sorted_view_action(workspace: &Path) -> Result<(bool, String)> {
 
     let rendered = render_plan_sorted_view_output(obj, order, ordered_tasks, edges)?;
     Ok((false, rendered))
+}
+
+fn build_plan_sorted_graph_state(
+    task_map: &std::collections::HashMap<String, Value>,
+    edges: &[Value],
+) -> Result<(
+    std::collections::HashMap<String, usize>,
+    std::collections::HashMap<String, BTreeSet<String>>,
+)> {
+    let mut indegree: std::collections::HashMap<String, usize> =
+        task_map.keys().map(|k| (k.clone(), 0)).collect();
+    let mut adj: std::collections::HashMap<String, BTreeSet<String>> =
+        std::collections::HashMap::new();
+    for id in task_map.keys() {
+        adj.insert(id.clone(), BTreeSet::new());
+    }
+    for edge in edges {
+        let from = edge.get("from").and_then(|v| v.as_str()).unwrap_or("");
+        let to = edge.get("to").and_then(|v| v.as_str()).unwrap_or("");
+        ensure_plan_edge_endpoints_present(from, to)?;
+        insert_plan_edge_adjacency(&mut adj, from, to);
+        increment_plan_edge_indegree(&mut indegree, to);
+    }
+    Ok((indegree, adj))
 }
 
 fn render_plan_sorted_view_output(
