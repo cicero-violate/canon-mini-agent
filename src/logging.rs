@@ -301,46 +301,18 @@ fn append_secondary_action_log(role: &str, action: &Value) -> Result<()> {
     let _guard = lock.lock().expect("secondary action log mutex poisoned");
 
     let mut record = serde_json::Map::new();
-    if let Some(value) = action.get("action").cloned().and_then(compact_json) {
-        record.insert("action".to_string(), value);
-    }
-    if let Some(value) = action.get("path").cloned().and_then(compact_json) {
-        record.insert("path".to_string(), value);
-    }
-    if let Some(value) = action.get("line").cloned().and_then(compact_json) {
-        record.insert("line".to_string(), value);
-    }
-    if let Some(value) = action.get("from").cloned().and_then(compact_json) {
-        record.insert("from".to_string(), value);
-    }
-    if let Some(value) = action.get("to").cloned().and_then(compact_json) {
-        record.insert("to".to_string(), value);
-    }
-    if let Some(value) = action.get("type").cloned().and_then(compact_json) {
-        record.insert("type".to_string(), value);
-    }
-    if let Some(value) = action.get("status").cloned().and_then(compact_json) {
-        record.insert("status".to_string(), value);
-    }
-    if let Some(value) = action.get("payload").cloned().and_then(compact_json) {
-        record.insert("payload".to_string(), value);
-    }
-    if let Some(value) = action.get("observation").cloned().and_then(compact_json) {
-        record.insert("observation".to_string(), value);
-    }
-    if let Some(value) = action.get("rationale").cloned().and_then(compact_json) {
-        record.insert("rationale".to_string(), value);
-    }
-    if let Some(value) = action.get("question").cloned().and_then(compact_json) {
-        record.insert("question".to_string(), value);
-    }
-    if let Some(value) = action
-        .get("predicted_next_actions")
-        .cloned()
-        .and_then(compact_json)
-    {
-        record.insert("predicted_next_actions".to_string(), value);
-    }
+    append_secondary_action_field(&mut record, action, "action");
+    append_secondary_action_field(&mut record, action, "path");
+    append_secondary_action_field(&mut record, action, "line");
+    append_secondary_action_field(&mut record, action, "from");
+    append_secondary_action_field(&mut record, action, "to");
+    append_secondary_action_field(&mut record, action, "type");
+    append_secondary_action_field(&mut record, action, "status");
+    append_secondary_action_field(&mut record, action, "payload");
+    append_secondary_action_field(&mut record, action, "observation");
+    append_secondary_action_field(&mut record, action, "rationale");
+    append_secondary_action_field(&mut record, action, "question");
+    append_secondary_action_field(&mut record, action, "predicted_next_actions");
     if let Some(value) = secondary_llm_response(action) {
         record.insert("llm_response".to_string(), value);
     }
@@ -354,6 +326,16 @@ fn append_secondary_action_log(role: &str, action: &Value) -> Result<()> {
     }
     let path = log_paths()?.secondary_log.clone();
     append_record_to_path(&path, &Value::Object(record))
+}
+
+fn append_secondary_action_field(
+    record: &mut serde_json::Map<String, Value>,
+    action: &Value,
+    field: &str,
+) {
+    if let Some(value) = action.get(field).cloned().and_then(compact_json) {
+        record.insert(field.to_string(), value);
+    }
 }
 
 fn secondary_llm_response(action: &Value) -> Option<Value> {
