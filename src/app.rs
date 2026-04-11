@@ -917,8 +917,11 @@ fn run_executor_phase(
                     Ok(exec_result) => {
                         if let Some((tab_id, turn_id, command_id)) = parse_submit_ack(&exec_result) {
                             let Some(pending) = dispatch_state.executor_submit_inflight.remove(&lane_id) else {
+                                // The timeout path already removed executor_submit_inflight for
+                                // this lane, but the submit actually succeeded.  Register the turn
+                                // so the completion can still be routed back to the LLM.
                                 eprintln!(
-                                    "[orchestrate] submit ack without pending submit: lane={} tab_id={} turn_id={}",
+                                    "[orchestrate] submit ack without pending submit (late ack — registering turn): lane={} tab_id={} turn_id={}",
                                     ctx.lanes[lane_id].label,
                                     tab_id,
                                     turn_id
@@ -928,18 +931,36 @@ fn run_executor_phase(
                                     "orchestrate",
                                     None,
                                     &format!(
-                                        "submit ack without pending submit: lane={} tab_id={} turn_id={}",
+                                        "submit ack without pending submit (late ack — registering turn): lane={} tab_id={} turn_id={}",
                                         ctx.lanes[lane_id].label,
                                         tab_id,
                                         turn_id
                                     ),
                                     Some(json!({
-                                        "stage": "executor_submit_ack",
+                                        "stage": "executor_submit_ack_late",
                                         "lane": ctx.lanes[lane_id].label,
                                         "tab_id": tab_id,
                                         "turn_id": turn_id,
                                     })),
                                 );
+                                dispatch_state.lane_active_tab.insert(lane_id, tab_id);
+                                dispatch_state.tab_id_to_lane.entry(tab_id).or_insert(lane_id);
+                                dispatch_state.submitted_turns.insert(
+                                    (tab_id, turn_id),
+                                    SubmittedExecutorTurn {
+                                        tab_id,
+                                        lane: job.lane_index,
+                                        lane_label: job.label.clone(),
+                                        command_id: command_id.unwrap_or_else(|| make_command_id(&job.executor_role, "executor", 1)),
+                                        actor: job.executor_role.clone(),
+                                        endpoint_id: job.endpoint_id.clone(),
+                                        tabs: job.tabs.clone(),
+                                        steps_used: dispatch_state.lane_steps_used(job.lane_index),
+                                    },
+                                );
+                                dispatch_state.lane_next_submit_at_ms.insert(lane_id, now_ms());
+                                dispatch_state.lane_submit_in_flight.insert(lane_id, false);
+                                cycle_progress = true;
                                 continue;
                             };
                             if executor_submit_timed_out(
@@ -2664,7 +2685,7 @@ struct SubmittedExecutorTurn {
     steps_used: usize,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct PendingExecutorSubmit {
     executor_name: String,
     executor_display: String,
@@ -2672,6 +2693,10 @@ struct PendingExecutorSubmit {
     label: String,
     latest_verify_result: String,
     executor_role: String,
+    // Carried for late-ack recovery: allows submitted_turns registration even
+    // after executor_submit_inflight has been cleared by the timeout path.
+    endpoint_id: String,
+    tabs: TabManagerHandle,
 }
 
 fn parse_submit_ack(raw: &str) -> Option<(u32, u64, Option<String>)> {
@@ -3045,6 +3070,8 @@ fn claim_executor_submit(state: &mut DispatchState, lane: &LaneConfig) -> Option
         label: lane.label.clone(),
         latest_verify_result,
         executor_role,
+        endpoint_id: lane.endpoint.id.clone(),
+        tabs: lane.tabs.clone(),
     })
 }
 
