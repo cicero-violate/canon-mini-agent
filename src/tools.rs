@@ -684,12 +684,8 @@ fn handle_plan_sorted_view_action(workspace: &Path) -> Result<(bool, String)> {
         let from = edge.get("from").and_then(|v| v.as_str()).unwrap_or("");
         let to = edge.get("to").and_then(|v| v.as_str()).unwrap_or("");
         ensure_plan_edge_endpoints_present(from, to)?;
-        if let Some(nexts) = adj.get_mut(from) {
-            nexts.insert(to.to_string());
-        }
-        if let Some(count) = indegree.get_mut(to) {
-            *count += 1;
-        }
+        insert_plan_edge_adjacency(&mut adj, from, to);
+        increment_plan_edge_indegree(&mut indegree, to);
     }
 
     let mut ready: BTreeSet<String> = indegree
@@ -742,6 +738,25 @@ fn ensure_plan_edge_endpoints_present(from: &str, to: &str) -> Result<()> {
         bail!("plan edge missing from/to");
     }
     Ok(())
+}
+
+fn insert_plan_edge_adjacency(
+    adj: &mut std::collections::HashMap<String, BTreeSet<String>>,
+    from: &str,
+    to: &str,
+) {
+    if let Some(nexts) = adj.get_mut(from) {
+        nexts.insert(to.to_string());
+    }
+}
+
+fn increment_plan_edge_indegree(
+    indegree: &mut std::collections::HashMap<String, usize>,
+    to: &str,
+) {
+    if let Some(count) = indegree.get_mut(to) {
+        *count += 1;
+    }
 }
 
 fn extract_output_log_path(out: &str) -> Option<PathBuf> {
