@@ -152,6 +152,75 @@ fn apply_replacements(source: &str, replacements: &mut Vec<SpanReplacement>) -> 
 /// non-attribute code so that `#[` patterns inside strings are ignored.
 /// Inside an attribute block the bracket depth is tracked while advancing past
 /// string literals without counting their contents toward depth.
+fn skip_quoted_string(bytes: &[u8], mut i: usize, n: usize) -> usize {
+    i += 1;
+    while i < n {
+        if bytes[i] == b'\\' {
+            i = (i + 2).min(n);
+            continue;
+        }
+        let c = bytes[i];
+        i += 1;
+        if c == b'"' {
+            break;
+        }
+    }
+    i
+}
+
+fn skip_line_comment(bytes: &[u8], mut i: usize, n: usize) -> usize {
+    i += 2;
+    while i < n && bytes[i] != b'\n' {
+        i += 1;
+    }
+    i
+}
+
+fn skip_block_comment(bytes: &[u8], mut i: usize, n: usize) -> usize {
+    i += 2;
+    while i + 1 < n && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+        i += 1;
+    }
+    (i + 2).min(n)
+}
+
+fn attr_open_len(bytes: &[u8], i: usize, n: usize) -> Option<usize> {
+    (bytes[i] == b'#' && i + 1 < n).then_some(())?;
+    if bytes[i + 1] == b'[' {
+        Some(2)
+    } else if bytes[i + 1] == b'!' && i + 2 < n && bytes[i + 2] == b'[' {
+        Some(3)
+    } else {
+        None
+    }
+}
+
+fn consume_attr_range(bytes: &[u8], mut i: usize, n: usize) -> (usize, Option<(usize, usize)>) {
+    let attr_start = i;
+    let Some(open_len) = attr_open_len(bytes, i, n) else {
+        return (i, None);
+    };
+    i += open_len;
+    let mut depth = 1usize;
+    while i < n {
+        if bytes[i] == b'"' {
+            i = skip_quoted_string(bytes, i, n);
+            continue;
+        }
+        if bytes[i] == b'[' {
+            depth += 1;
+        } else if bytes[i] == b']' {
+            depth -= 1;
+            if depth == 0 {
+                i += 1;
+                return (i, Some((attr_start, i)));
+            }
+        }
+        i += 1;
+    }
+    (i, None)
+}
+
 fn scan_attr_ranges(source: &str) -> Vec<(usize, usize)> {
     let b = source.as_bytes();
     let n = b.len();
@@ -159,82 +228,22 @@ fn scan_attr_ranges(source: &str) -> Vec<(usize, usize)> {
     let mut i = 0;
 
     while i < n {
-        // Line comment → skip to end of line.
         if i + 1 < n && b[i] == b'/' && b[i + 1] == b'/' {
-            i += 2;
-            while i < n && b[i] != b'\n' {
-                i += 1;
-            }
+            i = skip_line_comment(b, i, n);
             continue;
         }
-        // Block comment → skip to closing `*/`.
         if i + 1 < n && b[i] == b'/' && b[i + 1] == b'*' {
-            i += 2;
-            while i + 1 < n && !(b[i] == b'*' && b[i + 1] == b'/') {
-                i += 1;
-            }
-            i = (i + 2).min(n);
+            i = skip_block_comment(b, i, n);
             continue;
         }
-        // String literal in non-attr code → skip contents so `#[` inside a
-        // string literal doesn't trigger attr detection.
         if b[i] == b'"' {
-            i += 1;
-            while i < n {
-                if b[i] == b'\\' {
-                    i += 2;
-                    continue;
-                }
-                let c = b[i];
-                i += 1;
-                if c == b'"' {
-                    break;
-                }
-            }
+            i = skip_quoted_string(b, i, n);
             continue;
         }
-        // Attribute start: `#[` (outer) or `#![` (inner).
-        if b[i] == b'#'
-            && i + 1 < n
-            && (b[i + 1] == b'['
-                || (b[i + 1] == b'!' && i + 2 < n && b[i + 2] == b'['))
-        {
-            let attr_start = i;
-            i += if b[i + 1] == b'!' { 3 } else { 2 }; // skip `#[` or `#![`
-            let mut depth = 1usize;
-            let mut closed = false;
-            while i < n {
-                // Skip string literal contents inside the attr (bracket depth
-                // must not be affected by `[` or `]` inside strings).
-                if b[i] == b'"' {
-                    i += 1;
-                    while i < n {
-                        if b[i] == b'\\' {
-                            i += 2;
-                            continue;
-                        }
-                        let c = b[i];
-                        i += 1;
-                        if c == b'"' {
-                            break;
-                        }
-                    }
-                    continue;
-                }
-                if b[i] == b'[' {
-                    depth += 1;
-                } else if b[i] == b']' {
-                    depth -= 1;
-                    if depth == 0 {
-                        i += 1;
-                        ranges.push((attr_start, i));
-                        closed = true;
-                        break;
-                    }
-                }
-                i += 1;
-            }
-            let _ = closed;
+        let (next_i, range) = consume_attr_range(b, i, n);
+        if let Some(range) = range {
+            ranges.push(range);
+            i = next_i;
             continue;
         }
         i += 1;
