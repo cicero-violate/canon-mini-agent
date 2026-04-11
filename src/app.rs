@@ -3053,25 +3053,14 @@ fn handle_executor_completion(
         .insert(submitted.lane, submitted.steps_used);
     let lane_cfg = &lanes[submitted.lane];
     let lane_name = lane_cfg.label.as_str();
-    if dispatch_state.lane_in_flight(submitted.lane) {
-        dispatch_state
-            .deferred_completions
-            .entry(submitted.lane)
-            .or_default()
-            .push_back(DeferredExecutorCompletion {
-                submitted,
-                turn_id,
-                tab_id,
-                exec_result,
-            });
-        append_orchestration_trace(
-            "executor_completion_deferred",
-            json!({
-                "lane_name": lane_name,
-                "tab_id": tab_id,
-                "turn_id": turn_id,
-            }),
-        );
+    if maybe_defer_executor_completion(
+        dispatch_state,
+        &submitted,
+        turn_id,
+        tab_id,
+        &exec_result,
+        lane_name,
+    ) {
         return false;
     }
 
@@ -3104,24 +3093,7 @@ fn handle_executor_completion(
     }
     handle_executor_completion_message_action(dispatch_state, &submitted, lane_cfg, &exec_result);
     let mut submitted = submitted;
-    if submitted.tab_id != tab_id {
-        eprintln!(
-            "[orchestrate] completed turn tab rebound: turn_id={} expected_tab={} actual_tab={}",
-            turn_id, submitted.tab_id, tab_id
-        );
-        append_orchestration_trace(
-            "executor_completion_tab_rebound",
-            json!({
-                "lane_name": lane_name,
-                "turn_id": turn_id,
-                "expected_tab": submitted.tab_id,
-                "actual_tab": tab_id,
-            }),
-        );
-        dispatch_state.lane_active_tab.insert(submitted.lane, tab_id);
-        dispatch_state.tab_id_to_lane.insert(tab_id, submitted.lane);
-        submitted.tab_id = tab_id;
-    }
+    maybe_rebind_executor_completion_tab(dispatch_state, &mut submitted, tab_id, turn_id, lane_name);
     eprintln!(
         "[orchestrate] executor turn requires tool execution: lane={} turn_id={}",
         lane_name,
@@ -3136,10 +3108,95 @@ fn handle_executor_completion(
             "endpoint_id": lane_cfg.endpoint.id,
         }),
     );
+    spawn_executor_completion_continuation(
+        dispatch_state,
+        &submitted,
+        lane_cfg,
+        tab_id,
+        turn_id,
+        &exec_result,
+        bridge,
+        workspace,
+        continuation_joinset,
+    );
+    true
+}
+
+fn maybe_defer_executor_completion(
+    dispatch_state: &mut DispatchState,
+    submitted: &SubmittedExecutorTurn,
+    turn_id: u64,
+    tab_id: u32,
+    exec_result: &str,
+    lane_name: &str,
+) -> bool {
+    if !dispatch_state.lane_in_flight(submitted.lane) {
+        return false;
+    }
+    dispatch_state
+        .deferred_completions
+        .entry(submitted.lane)
+        .or_default()
+        .push_back(DeferredExecutorCompletion {
+            submitted: submitted.clone(),
+            turn_id,
+            tab_id,
+            exec_result: exec_result.to_string(),
+        });
+    append_orchestration_trace(
+        "executor_completion_deferred",
+        json!({
+            "lane_name": lane_name,
+            "tab_id": tab_id,
+            "turn_id": turn_id,
+        }),
+    );
+    true
+}
+
+fn maybe_rebind_executor_completion_tab(
+    dispatch_state: &mut DispatchState,
+    submitted: &mut SubmittedExecutorTurn,
+    tab_id: u32,
+    turn_id: u64,
+    lane_name: &str,
+) {
+    if submitted.tab_id == tab_id {
+        return;
+    }
+    eprintln!(
+        "[orchestrate] completed turn tab rebound: turn_id={} expected_tab={} actual_tab={}",
+        turn_id, submitted.tab_id, tab_id
+    );
+    append_orchestration_trace(
+        "executor_completion_tab_rebound",
+        json!({
+            "lane_name": lane_name,
+            "turn_id": turn_id,
+            "expected_tab": submitted.tab_id,
+            "actual_tab": tab_id,
+        }),
+    );
+    dispatch_state.lane_active_tab.insert(submitted.lane, tab_id);
+    dispatch_state.tab_id_to_lane.insert(tab_id, submitted.lane);
+    submitted.tab_id = tab_id;
+}
+
+fn spawn_executor_completion_continuation(
+    dispatch_state: &mut DispatchState,
+    submitted: &SubmittedExecutorTurn,
+    lane_cfg: &LaneConfig,
+    tab_id: u32,
+    turn_id: u64,
+    exec_result: &str,
+    bridge: &WsBridge,
+    workspace: &PathBuf,
+    continuation_joinset: &mut tokio::task::JoinSet<(SubmittedExecutorTurn, u64, Result<String>)>,
+) {
     let executor_endpoint = lane_cfg.endpoint.clone();
     let bridge = bridge.clone();
     let workspace = workspace.clone();
-    let exec_result = exec_result.clone();
+    let exec_result = exec_result.to_string();
     let submitted_clone = submitted.clone();
     let tabs = submitted.tabs.clone();
     dispatch_state
@@ -3159,7 +3216,6 @@ fn handle_executor_completion(
         .await;
         (submitted_clone, turn_id, result)
     });
-    true
 }
 
 fn handle_executor_completion_message_action(
