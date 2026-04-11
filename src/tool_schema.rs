@@ -67,7 +67,7 @@ pub fn predicted_action_name_list() -> Vec<String> {
 }
 
 pub fn cargo_test_action_example() -> &'static str {
-    "Example:\n  {\"action\":\"cargo_test\",\"crate\":\"canon-runtime\",\"test\":\"some_test_name\",\"rationale\":\"Run the exact failing test using the harness-style command.\"}"
+    "Example:\n  {\"action\":\"cargo_test\",\"crate\":\"canon-mini-agent\",\"test\":\"some_test_name\",\"rationale\":\"Run the exact failing test using the harness-style command.\"}"
 }
 
 fn compact_example_json(value: Value) -> String {
