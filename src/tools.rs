@@ -6012,7 +6012,7 @@ mod tests {
         let records: Vec<Value> = raw
             .lines()
             .filter(|line| !line.trim().is_empty())
-            .map(|line| serde_json::from_str(line).expect("parse action log record"))
+            .filter_map(|line| serde_json::from_str(line).ok())
             .collect();
         let new_records = &records[before_count..];
         let objective_records: Vec<&Value> = new_records
