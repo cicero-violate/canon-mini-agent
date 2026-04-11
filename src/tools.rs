@@ -3323,23 +3323,8 @@ fn validate_plan_action_shape(action: &Value, normalized_op: &str) -> Result<()>
 }
 
 fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(bool, String)> {
-    let op_raw = action
-        .get("op")
-        .and_then(|v| v.as_str())
-        .or_else(|| action.get("operation").and_then(|v| v.as_str()))
-        .unwrap_or("update");
-    if op_raw != "sorted_view" && role.starts_with("executor") {
-        bail!("plan action is not allowed for executor roles");
-    }
-    if op_raw != "sorted_view" {
-        capture_plan_schema(action);
-    }
-    validate_planner_diagnostics(role, action)?;
-    if let Some(path) = action.get("path").and_then(|v| v.as_str()) {
-        if path != MASTER_PLAN_FILE {
-            bail!("plan path must be {MASTER_PLAN_FILE}, got {path}");
-        }
-    }
+    let op_raw = extract_plan_op(action);
+    preflight_plan_action(role, action, op_raw)?;
     if op_raw == "sorted_view" {
         return handle_plan_sorted_view_action(workspace);
     }
@@ -3503,6 +3488,30 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
         false,
         format!("plan ok\nplan_path: {}", plan_path.display()),
     ))
+}
+
+fn extract_plan_op(action: &Value) -> &str {
+    action
+        .get("op")
+        .and_then(|v| v.as_str())
+        .or_else(|| action.get("operation").and_then(|v| v.as_str()))
+        .unwrap_or("update")
+}
+
+fn preflight_plan_action(role: &str, action: &Value, op_raw: &str) -> Result<()> {
+    if op_raw != "sorted_view" && role.starts_with("executor") {
+        bail!("plan action is not allowed for executor roles");
+    }
+    if op_raw != "sorted_view" {
+        capture_plan_schema(action);
+    }
+    validate_planner_diagnostics(role, action)?;
+    if let Some(path) = action.get("path").and_then(|v| v.as_str()) {
+        if path != MASTER_PLAN_FILE {
+            bail!("plan path must be {MASTER_PLAN_FILE}, got {path}");
+        }
+    }
+    Ok(())
 }
 
 fn validate_planner_diagnostics(role: &str, action: &Value) -> Result<()> {
