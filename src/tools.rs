@@ -706,6 +706,16 @@ fn handle_plan_sorted_view_action(workspace: &Path) -> Result<(bool, String)> {
         }
     }
 
+    let rendered = render_plan_sorted_view_output(obj, order, ordered_tasks, edges)?;
+    Ok((false, rendered))
+}
+
+fn render_plan_sorted_view_output(
+    obj: &serde_json::Map<String, Value>,
+    order: Vec<String>,
+    ordered_tasks: Vec<Value>,
+    edges: &[Value],
+) -> Result<String> {
     let mut output = serde_json::Map::new();
     if let Some(version) = obj.get("version") {
         output.insert("version".to_string(), version.clone());
@@ -718,9 +728,8 @@ fn handle_plan_sorted_view_action(workspace: &Path) -> Result<(bool, String)> {
         Value::Array(order.into_iter().map(Value::String).collect()),
     );
     output.insert("tasks".to_string(), Value::Array(ordered_tasks));
-    output.insert("edges".to_string(), Value::Array(edges.clone()));
-    let rendered = serde_json::to_string_pretty(&Value::Object(output))?;
-    Ok((false, rendered))
+    output.insert("edges".to_string(), Value::Array(edges.to_vec()));
+    Ok(serde_json::to_string_pretty(&Value::Object(output))?)
 }
 
 fn ensure_plan_edge_endpoints_present(from: &str, to: &str) -> Result<()> {
