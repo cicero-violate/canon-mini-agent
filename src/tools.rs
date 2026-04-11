@@ -2837,9 +2837,6 @@ fn handle_cargo_test_action(
             }
         }
     }
-    if out.contains("detached cargo test") {
-        summary.push_str("\nnote: cargo test detached; see output_log for live results");
-    }
     if let Some(arr) = failures_json.get("failed_tests").and_then(|v| v.as_array()) {
         if !arr.is_empty() {
             summary.push_str("\nfailed_tests:");
@@ -2861,11 +2858,6 @@ fn handle_cargo_test_action(
                     summary.push_str(&format!("\n- {}", loc));
                 }
             }
-        }
-    }
-    if let Some(hint) = failures_json.get("rerun_hint").and_then(|v| v.as_str()) {
-        if !hint.is_empty() {
-            summary.push_str(&format!("\nrerun_hint: {}", hint));
         }
     }
     if let Some(arr) = failures_json
