@@ -832,15 +832,7 @@ fn parse_cargo_test_failures(out: &str) -> Value {
             if let Some(name) = stripped.strip_suffix(" ... FAILED") {
                 failed_tests.insert(name.trim().to_string());
             }
-            if let Some(name) = stripped.strip_suffix(" has been running for over 60 seconds") {
-                stalled_tests.insert(name.trim().to_string());
-            }
-            if let Some(name) = stripped.strip_suffix(" has been running for over 30 seconds") {
-                stalled_tests.insert(name.trim().to_string());
-            }
-            if let Some(name) = stripped.strip_suffix(" has been running for over 10 seconds") {
-                stalled_tests.insert(name.trim().to_string());
-            }
+            collect_stalled_test_name(&mut stalled_tests, stripped);
         }
         if rerun_hint.is_none() && trimmed.contains("To rerun") {
             rerun_hint = Some(trimmed.to_string());
@@ -893,6 +885,18 @@ fn parse_cargo_test_failures(out: &str) -> Value {
         );
     }
     Value::Object(payload)
+}
+
+fn collect_stalled_test_name(stalled_tests: &mut BTreeSet<String>, stripped: &str) {
+    for suffix in [
+        " has been running for over 60 seconds",
+        " has been running for over 30 seconds",
+        " has been running for over 10 seconds",
+    ] {
+        if let Some(name) = stripped.strip_suffix(suffix) {
+            stalled_tests.insert(name.trim().to_string());
+        }
+    }
 }
 
 fn load_graph_symbols(
