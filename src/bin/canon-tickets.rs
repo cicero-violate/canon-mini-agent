@@ -209,60 +209,30 @@ fn main() -> Result<()> {
     let mut per_crate_added: BTreeMap<String, usize> = BTreeMap::new();
     let mut per_crate_candidates: BTreeMap<String, Value> = BTreeMap::new();
 
-    let crate_list = if all_crates {
-        canon_mini_agent::SemanticIndex::available_crates(&PathBuf::from(&workspace))
-            .into_iter()
-            .filter(|name| !name.starts_with("build_script_"))
-            .collect()
-    } else {
-        vec![crate_name.clone()]
-    };
-
-    for crate_name in crate_list {
-        match collect_issues_for_crate(
-            &workspace,
-            &crate_name,
-            limit,
-            min_blocks,
-            min_stmts,
-            &mut new_issues,
-            &mut issue_scores,
-        ) {
-            Ok((added_here, candidate_summary)) => {
-                per_crate_candidates.insert(crate_name.clone(), candidate_summary);
-                per_crate_added.insert(crate_name, added_here);
-            }
-            Err(err) => {
-                per_crate_candidates.insert(crate_name.clone(), json!({"error": format!("{err:#}")}));
-            }
-        }
-    }
+    let crate_list = selected_crates(&workspace, all_crates, &crate_name);
+    collect_issues_for_selected_crates(
+        &workspace,
+        &crate_list,
+        limit,
+        min_blocks,
+        min_stmts,
+        &mut new_issues,
+        &mut issue_scores,
+        &mut per_crate_added,
+        &mut per_crate_candidates,
+    );
 
     // Load, merge, write.
     let mut root = ensure_shape(load_issues(&issues_path));
     let obj = root.as_object_mut().unwrap();
     let issues = obj.get_mut("issues").unwrap().as_array_mut().unwrap();
 
-    // Only apply the top N issues globally after sorting by priority then score.
-    // Priority rank: 0=high,1=medium,2=low. (We currently emit medium+low only.)
-    let mut score_by_id = std::collections::HashMap::<String, (u32, i64)>::new();
-    for (id, pr, score) in issue_scores {
-        score_by_id.insert(id, (pr, score));
-    }
-    new_issues = sort_and_truncate_issues(new_issues, &score_by_id, top);
-
-    let MergeAppliedIssues {
+    let AppliedTicketResults {
         added_ids,
         updated_ids,
         applied_issue_objects,
-    } = merge_generated_issues(issues, new_issues);
-
-    // Optional cleanup: remove previous auto-generated tickets from this generator that are not
-    // part of the currently-selected top set.
-    let pruned = prune_stale_generated_issues(issues, &applied_issue_objects, prune);
-
-    // Keep stable-ish ordering: priority, then id. Use a BTreeMap for ranking.
-    sort_issues_by_priority(issues);
+        pruned,
+    } = apply_generated_issues(issues, new_issues, issue_scores, top, prune);
 
     let summary = json!({
         "ok": true,
@@ -290,6 +260,50 @@ fn main() -> Result<()> {
         print,
     )?;
     Ok(())
+}
+
+fn selected_crates(workspace: &str, all_crates: bool, crate_name: &str) -> Vec<String> {
+    if all_crates {
+        canon_mini_agent::SemanticIndex::available_crates(&PathBuf::from(workspace))
+            .into_iter()
+            .filter(|name| !name.starts_with("build_script_"))
+            .collect()
+    } else {
+        vec![crate_name.to_string()]
+    }
+}
+
+fn collect_issues_for_selected_crates(
+    workspace: &str,
+    crate_list: &[String],
+    limit: usize,
+    min_blocks: usize,
+    min_stmts: usize,
+    new_issues: &mut Vec<Value>,
+    issue_scores: &mut Vec<(String, u32, i64)>,
+    per_crate_added: &mut BTreeMap<String, usize>,
+    per_crate_candidates: &mut BTreeMap<String, Value>,
+) {
+    for crate_name in crate_list {
+        match collect_issues_for_crate(
+            workspace,
+            crate_name,
+            limit,
+            min_blocks,
+            min_stmts,
+            new_issues,
+            issue_scores,
+        ) {
+            Ok((added_here, candidate_summary)) => {
+                per_crate_candidates.insert(crate_name.clone(), candidate_summary);
+                per_crate_added.insert(crate_name.clone(), added_here);
+            }
+            Err(err) => {
+                per_crate_candidates
+                    .insert(crate_name.clone(), json!({"error": format!("{err:#}")}));
+            }
+        }
+    }
 }
 
 struct TicketArgs {
@@ -395,6 +409,54 @@ struct MergeAppliedIssues {
     added_ids: Vec<String>,
     updated_ids: Vec<String>,
     applied_issue_objects: Vec<Value>,
+}
+
+struct AppliedTicketResults {
+    added_ids: Vec<String>,
+    updated_ids: Vec<String>,
+    applied_issue_objects: Vec<Value>,
+    pruned: usize,
+}
+
+fn score_by_issue_id(issue_scores: Vec<(String, u32, i64)>) -> std::collections::HashMap<String, (u32, i64)> {
+    let mut score_by_id = std::collections::HashMap::<String, (u32, i64)>::new();
+    for (id, pr, score) in issue_scores {
+        score_by_id.insert(id, (pr, score));
+    }
+    score_by_id
+}
+
+fn apply_generated_issues(
+    issues: &mut Vec<Value>,
+    new_issues: Vec<Value>,
+    issue_scores: Vec<(String, u32, i64)>,
+    top: usize,
+    prune: bool,
+) -> AppliedTicketResults {
+    // Only apply the top N issues globally after sorting by priority then score.
+    // Priority rank: 0=high,1=medium,2=low. (We currently emit medium+low only.)
+    let score_by_id = score_by_issue_id(issue_scores);
+    let new_issues = sort_and_truncate_issues(new_issues, &score_by_id, top);
+
+    let MergeAppliedIssues {
+        added_ids,
+        updated_ids,
+        applied_issue_objects,
+    } = merge_generated_issues(issues, new_issues);
+
+    // Optional cleanup: remove previous auto-generated tickets from this generator that are not
+    // part of the currently-selected top set.
+    let pruned = prune_stale_generated_issues(issues, &applied_issue_objects, prune);
+
+    // Keep stable-ish ordering: priority, then id. Use a BTreeMap for ranking.
+    sort_issues_by_priority(issues);
+
+    AppliedTicketResults {
+        added_ids,
+        updated_ids,
+        applied_issue_objects,
+        pruned,
+    }
 }
 
 fn merge_generated_issues(issues: &mut Vec<Value>, new_issues: Vec<Value>) -> MergeAppliedIssues {
