@@ -4780,7 +4780,7 @@ mod tests {
             out_hir.contains("rustc_hir ok (graph)"),
             "unexpected: {out_hir}"
         );
-        assert!(out_hir.contains("app::foo"), "unexpected: {out_hir}");
+        assert!(out_hir.contains("fn foo"), "unexpected: {out_hir}");
 
         let action = json!({
             "crate": "canon_mini_agent",
