@@ -51,22 +51,7 @@ fn main() -> Result<()> {
     let msg_type = take_flag_value(&args, "--type").unwrap_or_else(|| default_type.to_string());
     let status = take_flag_value(&args, "--status").unwrap_or_else(|| default_status.to_string());
 
-    let summary = input
-        .get("summary")
-        .and_then(|v| v.as_str())
-        .map(str::to_string)
-        .or_else(|| {
-            input.get("output")
-                .and_then(|v| v.as_str())
-                .map(|s| s.lines().next().unwrap_or("").trim().to_string())
-        })
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "pipeline message".to_string());
-
-    let payload = match input.get("payload") {
-        Some(p) if p.is_object() => p.clone(),
-        _ => json!({ "summary": summary, "input": input }),
-    };
+    let payload = build_route_payload(input);
 
     let msg = json!({
         "action": "message",
@@ -81,3 +66,21 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+fn build_route_payload(input: Value) -> Value {
+    let summary = input
+        .get("summary")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .or_else(|| {
+            input.get("output")
+                .and_then(|v| v.as_str())
+                .map(|s| s.lines().next().unwrap_or("").trim().to_string())
+        })
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "pipeline message".to_string());
+
+    match input.get("payload") {
+        Some(p) if p.is_object() => p.clone(),
+        _ => json!({ "summary": summary, "input": input }),
+    }
+}
