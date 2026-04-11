@@ -281,14 +281,18 @@ fn build_verifier_blocker_ack(fields: &BlockerFields) -> Value {
         "observation": "Inbound blocker received; verifier yielding without further work until resolved.",
         "rationale": "Blocker is not verifier-specific; pausing verification avoids unnecessary work.",
         "predicted_next_actions": verifier_blocker_ack_predicted_next_actions(),
-        "payload": build_blocker_payload(
-            "Verifier paused due to upstream blocker.",
-            &fields.blocker_display,
-            &fields.evidence,
-            &fields.required_action,
-            &fields.severity,
-        )
+        "payload": verifier_blocker_ack_payload(fields)
     })
+}
+
+fn verifier_blocker_ack_payload(fields: &BlockerFields) -> Value {
+    build_blocker_payload(
+        "Verifier paused due to upstream blocker.",
+        &fields.blocker_display,
+        &fields.evidence,
+        &fields.required_action,
+        &fields.severity,
+    )
 }
 
 fn verifier_blocker_ack_predicted_next_actions() -> Value {
