@@ -4947,31 +4947,42 @@ fn exec_run_command_cargo_test(cmd: &str, cwd_path: &Path) -> Result<(bool, Stri
         .and_then(|v| v.parse::<u64>().ok())
         .unwrap_or(20 * 60);
     let wrapped_cmd = format!("timeout -s TERM {}s {}", timeout_secs, cmd);
-    let (pid, log_path) = spawn_detached_with_log(&wrapped_cmd, cwd_path)?;
-    // Increase retry window to reduce race with detached log writer
-    let summary_line = summarize_cargo_test_log_with_retry(
-        &log_path,
-        60,
-        std::time::Duration::from_millis(500),
-    )
-    .or_else(|| {
-        // Fallback: tail last lines and try to surface a late summary
-        tail_file_lines(&log_path, 50).and_then(|t| {
-            t.lines()
-                .rev()
-                .find(|l| l.contains("test result:"))
-                .map(|s| s.to_string())
+    let output = Command::new("/bin/bash")
+        .arg("-c")
+        .arg(&wrapped_cmd)
+        .current_dir(cwd_path)
+        .output()
+        .with_context(|| ctx_spawn(&wrapped_cmd))?;
+    let pid = std::process::id();
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_else(|_| Duration::from_secs(0))
+        .as_millis();
+    let log_path = env::temp_dir().join(format!("canon-mini-agent-{pid}-{ts}.log"));
+    let mut combined = String::from_utf8_lossy(&output.stdout).into_owned();
+    if !output.stderr.is_empty() {
+        if !combined.is_empty() {
+            combined.push('\n');
+        }
+        combined.push_str(&String::from_utf8_lossy(&output.stderr));
+    }
+    fs::write(&log_path, &combined)
+        .with_context(|| format!("failed to write cargo_test log {}", log_path.display()))?;
+    let summary_line = combined
+        .lines()
+        .rev()
+        .find_map(|line| {
+            line.find("test result:")
+                .map(|idx| line[idx..].trim().to_string())
         })
-    })
-    .unwrap_or_else(|| "(no test result yet)".to_string());
+        .unwrap_or_else(|| "(no test result yet)".to_string());
     let summary = format!(
         "output_log: {}\nsummary: {}",
         log_path.display(),
         summary_line
     );
-    let _ = pid;
     let _ = timeout_secs;
-    Ok((true, summary))
+    Ok((output.status.success(), summary))
 }
 
 fn tail_file_lines(path: &Path, max_lines: usize) -> Option<String> {
