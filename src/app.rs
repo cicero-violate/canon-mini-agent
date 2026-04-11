@@ -280,16 +280,7 @@ fn build_verifier_blocker_ack(fields: &BlockerFields) -> Value {
         "status": "blocked",
         "observation": "Inbound blocker received; verifier yielding without further work until resolved.",
         "rationale": "Blocker is not verifier-specific; pausing verification avoids unnecessary work.",
-        "predicted_next_actions": [
-            {
-                "action": "message",
-                "intent": "Resume verification only after planner addresses the upstream blocker and re-handoffs the lane."
-            },
-            {
-                "action": "read_file",
-                "intent": "Reinspect the updated planner handoff or affected artifacts after the blocker is resolved."
-            }
-        ],
+        "predicted_next_actions": verifier_blocker_ack_predicted_next_actions(),
         "payload": build_blocker_payload(
             "Verifier paused due to upstream blocker.",
             &fields.blocker_display,
@@ -298,6 +289,19 @@ fn build_verifier_blocker_ack(fields: &BlockerFields) -> Value {
             &fields.severity,
         )
     })
+}
+
+fn verifier_blocker_ack_predicted_next_actions() -> Value {
+    json!([
+        {
+            "action": "message",
+            "intent": "Resume verification only after planner addresses the upstream blocker and re-handoffs the lane."
+        },
+        {
+            "action": "read_file",
+            "intent": "Reinspect the updated planner handoff or affected artifacts after the blocker is resolved."
+        }
+    ])
 }
 
 fn file_modified_ms(path: &Path) -> Option<u128> {
