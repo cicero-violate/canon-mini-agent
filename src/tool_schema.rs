@@ -1025,9 +1025,7 @@ fn is_known_action(action: &str) -> bool {
 }
 
 fn first_missing_field_for_action(action: &Value, action_name: &str) -> Option<String> {
-    let missing_field = |field: &str| {
-        action.get(field).is_none().then(|| format!("missing field: {field}"))
-    };
+    let missing_field = |field: &str| missing_field_in_action(action, field);
     if action.get("predicted_next_actions").is_none() {
         return Some("missing field: predicted_next_actions".to_string());
     }
@@ -1058,53 +1056,72 @@ fn first_missing_field_for_action(action: &Value, action_name: &str) -> Option<S
                 missing_field("old_symbol").or_else(|| missing_field("new_symbol"))
             }
         }
-        "objectives" => {
-            let op = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
-            let id_missing = || {
-                if action.get("objective_id").is_none() && action.get("id").is_none() {
-                    Some("missing field: objective_id".to_string())
-                } else {
-                    None
-                }
-            };
-            match op {
-                "read" | "sorted_view" => None,
-                "create_objective" => missing_field("objective"),
-                "update_objective" => id_missing().or_else(|| missing_field("updates")),
-                "delete_objective" => id_missing(),
-                "set_status" => id_missing().or_else(|| missing_field("status")),
-                "replace_objectives" => missing_field("objectives"),
-                _ => None,
-            }
-        }
+        "objectives" => missing_field_for_objectives_action(action),
         "apply_patch" => missing_field("patch"),
         "run_command" => missing_field("cmd"),
         "python" => missing_field("code"),
         "cargo_test" => missing_field("crate"),
         "cargo_fmt" => None,
         "cargo_clippy" => None,
-        "plan" => {
-            let op = action
-                .get("op")
-                .and_then(|v| v.as_str())
-                .or_else(|| action.get("operation").and_then(|v| v.as_str()))?;
-            match op {
-                "create_task" | "update_task" => missing_field("task"),
-                "delete_task" => missing_field("task_id"),
-                "add_edge" | "remove_edge" => missing_field("from").or_else(|| missing_field("to")),
-                "set_plan_status" => missing_field("status"),
-                "set_task_status" => {
-                    missing_field("task_id").or_else(|| missing_field("status"))
-                }
-                "replace_plan" => missing_field("plan"),
-                "sorted_view" => None,
-                _ => None,
-            }
-        }
+        "plan" => missing_field_for_plan_action(action),
         "rustc_hir" | "rustc_mir" => missing_field("crate"),
         "graph_call" | "graph_cfg" | "graph_dataflow" | "graph_reachability" => {
             missing_field("crate")
         }
+        _ => None,
+    }
+}
+
+fn missing_field_in_action(action: &Value, field: &str) -> Option<String> {
+    action
+        .get(field)
+        .is_none()
+        .then(|| format!("missing field: {field}"))
+}
+
+fn missing_objective_id_field(action: &Value) -> Option<String> {
+    if action.get("objective_id").is_none() && action.get("id").is_none() {
+        Some("missing field: objective_id".to_string())
+    } else {
+        None
+    }
+}
+
+fn missing_field_for_objectives_action(action: &Value) -> Option<String> {
+    let op = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
+    match op {
+        "read" | "sorted_view" => None,
+        "create_objective" => missing_field_in_action(action, "objective"),
+        "update_objective" => {
+            missing_objective_id_field(action).or_else(|| missing_field_in_action(action, "updates"))
+        }
+        "delete_objective" => missing_objective_id_field(action),
+        "set_status" => {
+            missing_objective_id_field(action).or_else(|| missing_field_in_action(action, "status"))
+        }
+        "replace_objectives" => missing_field_in_action(action, "objectives"),
+        _ => None,
+    }
+}
+
+fn missing_field_for_plan_action(action: &Value) -> Option<String> {
+    let op = action
+        .get("op")
+        .and_then(|v| v.as_str())
+        .or_else(|| action.get("operation").and_then(|v| v.as_str()))?;
+    match op {
+        "create_task" | "update_task" => missing_field_in_action(action, "task"),
+        "delete_task" => missing_field_in_action(action, "task_id"),
+        "add_edge" | "remove_edge" => {
+            missing_field_in_action(action, "from").or_else(|| missing_field_in_action(action, "to"))
+        }
+        "set_plan_status" => missing_field_in_action(action, "status"),
+        "set_task_status" => {
+            missing_field_in_action(action, "task_id")
+                .or_else(|| missing_field_in_action(action, "status"))
+        }
+        "replace_plan" => missing_field_in_action(action, "plan"),
+        "sorted_view" => None,
         _ => None,
     }
 }
