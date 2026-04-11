@@ -1350,50 +1350,82 @@ fn handle_message_action(role: &str, step: usize, action: &Value) -> Result<(boo
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let _ = std::fs::create_dir_all(agent_state_dir);
 
-    if role == "planner" && msg_type == "blocker" {
-        let evidence = payload
-            .get("evidence")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        if !evidence.is_empty() {
-            let evidence_path = agent_state_dir.join("last_planner_blocker_evidence.txt");
-            if let Ok(prev) = std::fs::read_to_string(&evidence_path) {
-                if prev.trim() == evidence {
-                    return Ok((
-                        true,
-                        "planner blocker suppressed: evidence unchanged".to_string(),
-                    ));
-                }
-            }
-            let _ = std::fs::write(evidence_path, evidence);
-        }
+    if let Some(result) = suppress_redundant_planner_blocker(
+        role,
+        msg_type,
+        &payload,
+        agent_state_dir,
+    ) {
+        return Ok(result);
     }
 
-    if to_role.eq_ignore_ascii_case("verifier") {
-        let active_path = agent_state_dir.join("active_blocker_to_verifier.json");
-        if msg_type == "blocker" && status == "blocked" {
-            let blocker_state = json!({
-                "from": role,
-                "summary": summary,
-                "evidence": payload.get("evidence").and_then(|v| v.as_str()).unwrap_or(""),
-                "required_action": payload.get("required_action").and_then(|v| v.as_str()).unwrap_or(""),
-                "severity": payload.get("severity").and_then(|v| v.as_str()).unwrap_or(""),
-            });
-            let _ = std::fs::write(
-                &active_path,
-                serde_json::to_string_pretty(&blocker_state).unwrap_or_default(),
-            );
-        } else if active_path.exists() {
-            let _ = std::fs::remove_file(active_path);
-        }
-    }
+    sync_verifier_blocker_state(role, to_role, msg_type, status, summary, &payload, agent_state_dir);
     persist_inbound_message(role, step, action, &full_message);
     Ok((
         true,
         format!("{summary}\n\nmessage_action:\n{full_message}"),
     ))
+}
+
+fn suppress_redundant_planner_blocker(
+    role: &str,
+    msg_type: &str,
+    payload: &Value,
+    agent_state_dir: &Path,
+) -> Option<(bool, String)> {
+    if role != "planner" || msg_type != "blocker" {
+        return None;
+    }
+    let evidence = payload
+        .get("evidence")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if evidence.is_empty() {
+        return None;
+    }
+    let evidence_path = agent_state_dir.join("last_planner_blocker_evidence.txt");
+    if let Ok(prev) = std::fs::read_to_string(&evidence_path) {
+        if prev.trim() == evidence {
+            return Some((
+                true,
+                "planner blocker suppressed: evidence unchanged".to_string(),
+            ));
+        }
+    }
+    let _ = std::fs::write(evidence_path, evidence);
+    None
+}
+
+fn sync_verifier_blocker_state(
+    role: &str,
+    to_role: &str,
+    msg_type: &str,
+    status: &str,
+    summary: &str,
+    payload: &Value,
+    agent_state_dir: &Path,
+) {
+    if !to_role.eq_ignore_ascii_case("verifier") {
+        return;
+    }
+    let active_path = agent_state_dir.join("active_blocker_to_verifier.json");
+    if msg_type == "blocker" && status == "blocked" {
+        let blocker_state = json!({
+            "from": role,
+            "summary": summary,
+            "evidence": payload.get("evidence").and_then(|v| v.as_str()).unwrap_or(""),
+            "required_action": payload.get("required_action").and_then(|v| v.as_str()).unwrap_or(""),
+            "severity": payload.get("severity").and_then(|v| v.as_str()).unwrap_or(""),
+        });
+        let _ = std::fs::write(
+            &active_path,
+            serde_json::to_string_pretty(&blocker_state).unwrap_or_default(),
+        );
+    } else if active_path.exists() {
+        let _ = std::fs::remove_file(active_path);
+    }
 }
 
 fn handle_list_dir_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
