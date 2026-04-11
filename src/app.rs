@@ -2054,7 +2054,7 @@ fn cargo_test_missing_crate_feedback(err_text: &str) -> InvalidActionFeedback {
     InvalidActionFeedback {
         err_text: err_text.to_string(),
         feedback: format!(
-            "Invalid action: {err_text}\nCorrective action required: `cargo_test` must include a `crate` field.\nUse this exact format and fill in the crate name:\n```json\n{{\n  \"action\": \"cargo_test\",\n  \"crate\": \"canon-runtime\",\n  \"observation\": \"Running canon-runtime test suite after latest changes.\",\n  \"rationale\": \"Validate that canon-runtime tests pass for the updated parser logic.\"\n}}\n```\nFor any mutating retry (`apply_patch`, `plan`, `objectives`, `issue`, or `rename_symbol`), include a non-empty `question` field stating the decision-boundary premise.\nReturn exactly one action."
+            "Invalid action: {err_text}\nCorrective action required: `cargo_test` must include a `crate` field.\nUse this exact format and fill in the crate name:\n```json\n{{\n  \"action\": \"cargo_test\",\n  \"crate\": \"canon-mini-agent\",\n  \"observation\": \"Running canon-mini-agent test suite after latest changes.\",\n  \"rationale\": \"Validate that canon-mini-agent tests pass after the latest change.\",\n  \"predicted_next_actions\": [\n    {{\"action\": \"read_file\", \"intent\": \"Inspect the failing source or artifact if the test still fails.\"}},\n    {{\"action\": \"apply_patch\", \"intent\": \"Patch the verified defect if the test output identifies a code issue.\"}}\n  ]\n}}\n```\nFor any mutating retry (`apply_patch`, `plan`, `objectives`, `issue`, or `rename_symbol`), include a non-empty `question` field stating the decision-boundary premise.\nReturn exactly one action."
         ),
     }
 }
