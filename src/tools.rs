@@ -3835,7 +3835,17 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
         }
     }
 
-    std::fs::write(&plan_path, serde_json::to_string_pretty(&plan)?)?;
+    persist_plan_action_update(role, action, op_raw, &plan_path, &plan)
+}
+
+fn persist_plan_action_update(
+    role: &str,
+    action: &Value,
+    op_raw: &str,
+    plan_path: &Path,
+    plan: &Value,
+) -> Result<(bool, String)> {
+    std::fs::write(plan_path, serde_json::to_string_pretty(plan)?)?;
     // Emit control-plane log for plan mutation
     if let Ok(paths) = crate::logging::append_action_log_record(&crate::logging::compact_log_record(
         "control",
