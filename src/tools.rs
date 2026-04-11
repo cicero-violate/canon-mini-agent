@@ -1895,18 +1895,7 @@ fn handle_symbols_prepare_rename_action(workspace: &Path, action: &Value) -> Res
         .with_context(|| format!("read {}", candidates_path.display()))?;
     let candidates_file: RenameCandidatesFile =
         serde_json::from_str(&candidates_text).context("parse rename candidates json")?;
-
-    if candidates_file.candidates.is_empty() {
-        bail!("symbols_prepare_rename: no candidates in {}", candidates_path_raw);
-    }
-    if index >= candidates_file.candidates.len() {
-        bail!(
-            "symbols_prepare_rename: index {} out of range (candidates={})",
-            index,
-            candidates_file.candidates.len()
-        );
-    }
-    let selected = candidates_file.candidates[index].clone();
+    let selected = selected_rename_candidate(&candidates_file, index, candidates_path_raw)?;
     let rename_action = json!({
         "action": "rename_symbol",
         "old_symbol": selected.name,
@@ -1941,6 +1930,24 @@ fn handle_symbols_prepare_rename_action(workspace: &Path, action: &Value) -> Res
             out_raw, payload.selected_index, payload.selected_candidate.name
         ),
     ))
+}
+
+fn selected_rename_candidate(
+    candidates_file: &RenameCandidatesFile,
+    index: usize,
+    candidates_path_raw: &str,
+) -> Result<RenameCandidate> {
+    if candidates_file.candidates.is_empty() {
+        bail!("symbols_prepare_rename: no candidates in {}", candidates_path_raw);
+    }
+    if index >= candidates_file.candidates.len() {
+        bail!(
+            "symbols_prepare_rename: index {} out of range (candidates={})",
+            index,
+            candidates_file.candidates.len()
+        );
+    }
+    Ok(candidates_file.candidates[index].clone())
 }
 
 fn handle_rename_symbol_action(
