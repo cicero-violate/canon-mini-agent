@@ -846,30 +846,53 @@ pub(crate) fn action_schema_json(action: &str) -> Option<String> {
 
 fn map_schema_error(err: &jsonschema::error::ValidationError, action: &Value) -> String {
     let path = path_from_error(err);
-    match &err.kind {
+    map_schema_error_kind(&path, &err.kind, &err.instance, action)
+}
+
+fn map_schema_error_kind(
+    path: &str,
+    kind: &ValidationErrorKind,
+    instance: &Cow<'_, Value>,
+    action: &Value,
+) -> String {
+    match kind {
         ValidationErrorKind::Required { property } => {
-            missing_required_field_message(&path, property.as_str().unwrap_or("unknown"))
+            missing_required_field_message(path, property.as_str().unwrap_or("unknown"))
         }
-        ValidationErrorKind::Type { kind } => format!(
-            "field type mismatch: {} (expected {})",
-            schema_error_field(&path),
-            type_kind_label(kind)
-        ),
-        ValidationErrorKind::MinLength { .. } => {
-            format!("missing field: {}", schema_error_field(&path))
-        }
+        ValidationErrorKind::Type { kind } => schema_type_mismatch_message(path, kind),
+        ValidationErrorKind::MinLength { .. } => schema_missing_field_message(path),
         ValidationErrorKind::MinItems { .. } | ValidationErrorKind::MaxItems { .. } => {
-            "predicted_next_actions must contain 2-3 entries".to_string()
+            predicted_next_actions_count_message()
         }
-        ValidationErrorKind::Enum { .. } => enum_schema_error_message(&path, &err.instance),
+        ValidationErrorKind::Enum { .. } => enum_schema_error_message(path, instance),
         ValidationErrorKind::OneOfNotValid | ValidationErrorKind::AnyOf => {
             action_schema_mismatch_message(action)
         }
         ValidationErrorKind::AdditionalProperties { unexpected } => {
-            format!("unexpected fields: {}", unexpected.join(", "))
+            unexpected_fields_message(unexpected)
         }
         other => format!("schema violation: {other:?}"),
     }
+}
+
+fn schema_type_mismatch_message(path: &str, kind: &TypeKind) -> String {
+    format!(
+        "field type mismatch: {} (expected {})",
+        schema_error_field(path),
+        type_kind_label(kind)
+    )
+}
+
+fn schema_missing_field_message(path: &str) -> String {
+    format!("missing field: {}", schema_error_field(path))
+}
+
+fn predicted_next_actions_count_message() -> String {
+    "predicted_next_actions must contain 2-3 entries".to_string()
+}
+
+fn unexpected_fields_message(unexpected: &[String]) -> String {
+    format!("unexpected fields: {}", unexpected.join(", "))
 }
 
 fn schema_error_field(path: &str) -> String {
