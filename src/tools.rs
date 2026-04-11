@@ -694,19 +694,9 @@ fn handle_plan_sorted_view_action(workspace: &Path) -> Result<(bool, String)> {
         .map(|(id, _)| id.clone())
         .collect();
     let mut order: Vec<String> = Vec::new();
-    while let Some(id) = ready.iter().next().cloned() {
-        ready.remove(&id);
+    while let Some(id) = take_next_ready_plan_node(&mut ready) {
         order.push(id.clone());
-        if let Some(nexts) = adj.get(&id) {
-            for next in nexts {
-                if let Some(count) = indegree.get_mut(next) {
-                    *count = count.saturating_sub(1);
-                    if *count == 0 {
-                        ready.insert(next.clone());
-                    }
-                }
-            }
-        }
+        drain_plan_sorted_successors(&adj, &id, &mut indegree, &mut ready);
     }
 
     let mut ordered_tasks: Vec<Value> = Vec::new();
@@ -756,6 +746,38 @@ fn increment_plan_edge_indegree(
 ) {
     if let Some(count) = indegree.get_mut(to) {
         *count += 1;
+    }
+}
+
+fn take_next_ready_plan_node(ready: &mut BTreeSet<String>) -> Option<String> {
+    let id = ready.iter().next().cloned()?;
+    ready.remove(&id);
+    Some(id)
+}
+
+fn drain_plan_sorted_successors(
+    adj: &std::collections::HashMap<String, BTreeSet<String>>,
+    id: &str,
+    indegree: &mut std::collections::HashMap<String, usize>,
+    ready: &mut BTreeSet<String>,
+) {
+    if let Some(nexts) = adj.get(id) {
+        for next in nexts {
+            update_plan_sorted_successor_indegree(indegree, ready, next);
+        }
+    }
+}
+
+fn update_plan_sorted_successor_indegree(
+    indegree: &mut std::collections::HashMap<String, usize>,
+    ready: &mut BTreeSet<String>,
+    next: &str,
+) {
+    if let Some(count) = indegree.get_mut(next) {
+        *count = count.saturating_sub(1);
+        if *count == 0 {
+            ready.insert(next.to_string());
+        }
     }
 }
 
