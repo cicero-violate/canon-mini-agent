@@ -4121,25 +4121,88 @@ fn write_stage_graph_inner(workspace: &Path, out_rel: &str) -> Result<()> {
     Ok(())
 }
 
+fn stage_graph_node(
+    id: &str,
+    layer: u64,
+    intent: &str,
+    inputs: &[&str],
+    outputs: &[&str],
+) -> serde_json::Value {
+    serde_json::json!({
+        "id": id,
+        "layer": layer,
+        "type": "stage",
+        "intent": intent,
+        "inputs": inputs,
+        "outputs": outputs,
+    })
+}
+
+fn stage_graph_edge(from: &str, to: &str, edge_type: &str) -> serde_json::Value {
+    serde_json::json!({
+        "from": from,
+        "to": to,
+        "type": edge_type,
+    })
+}
+
+fn build_stage_graph_nodes() -> Vec<serde_json::Value> {
+    vec![
+        stage_graph_node("observe.input", 0, "collect state", &[], &["state"]),
+        stage_graph_node(
+            "orient.update",
+            1,
+            "update world model",
+            &["state"],
+            &["context"],
+        ),
+        stage_graph_node(
+            "plan.generate",
+            2,
+            "generate actions",
+            &["context"],
+            &["actions"],
+        ),
+        stage_graph_node(
+            "act.execute",
+            3,
+            "execute action",
+            &["actions"],
+            &["result"],
+        ),
+        stage_graph_node(
+            "verify.check",
+            4,
+            "validate result",
+            &["result"],
+            &["verified"],
+        ),
+        stage_graph_node(
+            "reward.score",
+            5,
+            "score outcome",
+            &["verified"],
+            &["feedback"],
+        ),
+    ]
+}
+
+fn build_stage_graph_edges() -> Vec<serde_json::Value> {
+    vec![
+        stage_graph_edge("observe.input", "orient.update", "call"),
+        stage_graph_edge("orient.update", "plan.generate", "call"),
+        stage_graph_edge("plan.generate", "act.execute", "call"),
+        stage_graph_edge("act.execute", "verify.check", "call"),
+        stage_graph_edge("verify.check", "reward.score", "call"),
+        stage_graph_edge("verify.check", "plan.generate", "retry"),
+        stage_graph_edge("orient.update", "plan.generate", "refine"),
+    ]
+}
+
 fn build_stage_graph() -> serde_json::Value {
     serde_json::json!({
-      "nodes": [
-        {"id":"observe.input","layer":0,"type":"stage","intent":"collect state","inputs":[],"outputs":["state"]},
-        {"id":"orient.update","layer":1,"type":"stage","intent":"update world model","inputs":["state"],"outputs":["context"]},
-        {"id":"plan.generate","layer":2,"type":"stage","intent":"generate actions","inputs":["context"],"outputs":["actions"]},
-        {"id":"act.execute","layer":3,"type":"stage","intent":"execute action","inputs":["actions"],"outputs":["result"]},
-        {"id":"verify.check","layer":4,"type":"stage","intent":"validate result","inputs":["result"],"outputs":["verified"]},
-        {"id":"reward.score","layer":5,"type":"stage","intent":"score outcome","inputs":["verified"],"outputs":["feedback"]}
-      ],
-      "edges": [
-        {"from":"observe.input","to":"orient.update","type":"call"},
-        {"from":"orient.update","to":"plan.generate","type":"call"},
-        {"from":"plan.generate","to":"act.execute","type":"call"},
-        {"from":"act.execute","to":"verify.check","type":"call"},
-        {"from":"verify.check","to":"reward.score","type":"call"},
-        {"from":"verify.check","to":"plan.generate","type":"retry"},
-        {"from":"orient.update","to":"plan.generate","type":"refine"}
-      ]
+        "nodes": build_stage_graph_nodes(),
+        "edges": build_stage_graph_edges(),
     })
 }
 
