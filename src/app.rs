@@ -1983,26 +1983,35 @@ fn validate_action_or_feedback(
     log: &impl Fn(&str, Value),
 ) -> Result<(), InvalidActionFeedback> {
     if let Err(e) = validate_action(action) {
-        let err_text = e.to_string();
-        log(
-            "llm_invalid_action",
-            json!({
-                "stage": "validate_action",
-                "error": err_text,
-                "raw": truncate(raw, MAX_SNIPPET),
-                "action": action.clone(),
-            }),
-        );
-        if let Some(prompt) = corrective_invalid_action_prompt(action, &err_text, role) {
-            return Err(invalid_action_feedback_with_prompt(action, &err_text, role, &prompt));
-        }
-        if err_text.contains("cargo_test missing 'crate'") {
-            return Err(cargo_test_missing_crate_feedback(&err_text));
-        }
-        return Err(invalid_action_feedback(action, &err_text, role));
+        return Err(handle_invalid_action_error(role, raw, action, log, &e.to_string()));
     }
 
     Ok(())
+}
+
+fn handle_invalid_action_error(
+    role: &str,
+    raw: &str,
+    action: &Value,
+    log: &impl Fn(&str, Value),
+    err_text: &str,
+) -> InvalidActionFeedback {
+    log(
+        "llm_invalid_action",
+        json!({
+            "stage": "validate_action",
+            "error": err_text,
+            "raw": truncate(raw, MAX_SNIPPET),
+            "action": action.clone(),
+        }),
+    );
+    if let Some(prompt) = corrective_invalid_action_prompt(action, err_text, role) {
+        return invalid_action_feedback_with_prompt(action, err_text, role, &prompt);
+    }
+    if err_text.contains("cargo_test missing 'crate'") {
+        return cargo_test_missing_crate_feedback(err_text);
+    }
+    invalid_action_feedback(action, err_text, role)
 }
 
 fn invalid_action_feedback(action: &Value, err_text: &str, role: &str) -> InvalidActionFeedback {
