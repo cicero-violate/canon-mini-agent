@@ -3064,33 +3064,7 @@ fn handle_executor_completion(
         return false;
     }
 
-    append_orchestration_trace(
-        "llm_message_processed",
-        json!({
-            "tab_id": tab_id,
-            "turn_id": turn_id,
-            "lane_name": lane_name,
-        }),
-    );
-    if let Err(e) = append_executor_completion_log(&submitted, 1, turn_id, tab_id, &exec_result) {
-        eprintln!("[orchestrate] executor_completion_log_error: {e}");
-        log_error_event(
-            "orchestrate",
-            "executor_completion_log",
-            Some(1),
-            &format!(
-                "executor completion log append failed for lane={} turn_id={} tab_id={}: {e}",
-                lane_name, turn_id, tab_id
-            ),
-            Some(json!({
-                "lane_name": lane_name,
-                "turn_id": turn_id,
-                "tab_id": tab_id,
-                "endpoint_id": submitted.endpoint_id,
-                "command_id": submitted.command_id,
-            })),
-        );
-    }
+    record_executor_completion_observation(&submitted, lane_name, turn_id, tab_id, &exec_result);
     handle_executor_completion_message_action(dispatch_state, &submitted, lane_cfg, &exec_result);
     let mut submitted = submitted;
     maybe_rebind_executor_completion_tab(dispatch_state, &mut submitted, tab_id, turn_id, lane_name);
@@ -3120,6 +3094,42 @@ fn handle_executor_completion(
         continuation_joinset,
     );
     true
+}
+
+fn record_executor_completion_observation(
+    submitted: &SubmittedExecutorTurn,
+    lane_name: &str,
+    turn_id: u64,
+    tab_id: u32,
+    exec_result: &str,
+) {
+    append_orchestration_trace(
+        "llm_message_processed",
+        json!({
+            "tab_id": tab_id,
+            "turn_id": turn_id,
+            "lane_name": lane_name,
+        }),
+    );
+    if let Err(e) = append_executor_completion_log(submitted, 1, turn_id, tab_id, exec_result) {
+        eprintln!("[orchestrate] executor_completion_log_error: {e}");
+        log_error_event(
+            "orchestrate",
+            "executor_completion_log",
+            Some(1),
+            &format!(
+                "executor completion log append failed for lane={} turn_id={} tab_id={}: {e}",
+                lane_name, turn_id, tab_id
+            ),
+            Some(json!({
+                "lane_name": lane_name,
+                "turn_id": turn_id,
+                "tab_id": tab_id,
+                "endpoint_id": submitted.endpoint_id,
+                "command_id": submitted.command_id,
+            })),
+        );
+    }
 }
 
 fn maybe_defer_executor_completion(
