@@ -374,137 +374,154 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
     match op_raw {
         "read" => handle_objectives_read(&raw, include_done),
         "sorted_view" => handle_objectives_sorted_view(&raw, include_done),
-        "create_objective" => {
-            let objective_val = action
-                .get("objective")
-                .ok_or_else(|| anyhow!("objectives create_objective missing objective"))?;
-            let mut file = parse_objectives_file_strict(&raw)?;
-            let objective: crate::objectives::Objective =
-                serde_json::from_value(objective_val.clone())
-                    .map_err(|e| anyhow!("invalid objective payload: {e}"))?;
-            if objective.id.trim().is_empty() {
-                bail!("objective.id must be non-empty");
-            }
-            log_objective_attempt("create_objective", Some(&objective.id), &file.objectives);
-            if file
-                .objectives
-                .iter()
-                .any(|o| objective_id_matches(&o.id, &objective.id))
-            {
-                log_objective_operation_context(
-                    "create_objective",
-                    "duplicate",
-                    Some(&objective.id),
-                    &file.objectives,
-                );
-                bail!("{}", objective_already_exists_message(&file.objectives, &objective.id));
-            }
-            file.objectives.push(objective);
-            let created_id = file.objectives.last().map(|obj| obj.id.as_str());
-            log_objective_success("create_objective", created_id, &file.objectives);
-            std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
-            Ok((false, "objectives create_objective ok".to_string()))
-        }
-        "update_objective" => {
-            let objective_id = objective_id_from_action(action, "update_objective")?;
-            let updates = action
-                .get("updates")
-                .and_then(|v| v.as_object())
-                .ok_or_else(|| anyhow!("objectives update_objective missing updates object"))?;
-            let mut file = parse_objectives_file_strict(&raw)?;
-            log_objective_attempt("update_objective", Some(objective_id), &file.objectives);
-            let mut found = false;
-            for obj in file.objectives.iter_mut() {
-                if objective_id_matches(&obj.id, objective_id) {
-                    let mut value = serde_json::to_value(obj.clone())?;
-                    if let Some(map) = value.as_object_mut() {
-                        for (k, v) in updates {
-                            map.insert(k.clone(), v.clone());
-                        }
-                    }
-                    *obj = serde_json::from_value(value)?;
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
-                return log_objective_not_found_and_bail(
-                    "update_objective",
-                    objective_id,
-                    &file.objectives,
-                );
-            }
-            log_objective_success("update_objective", Some(objective_id), &file.objectives);
-            std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
-            Ok((false, "objectives update_objective ok".to_string()))
-        }
-        "delete_objective" => {
-            let objective_id = objective_id_from_action(action, "delete_objective")?;
-            let mut file = parse_objectives_file_or_default(&raw);
-            log_objective_attempt("delete_objective", Some(objective_id), &file.objectives);
-            let before = file.objectives.len();
-            file.objectives
-                .retain(|obj| !objective_id_matches(&obj.id, objective_id));
-            if file.objectives.len() == before {
-                return log_objective_not_found_and_bail(
-                    "delete_objective",
-                    objective_id,
-                    &file.objectives,
-                );
-            }
-            log_objective_success("delete_objective", Some(objective_id), &file.objectives);
-            std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
-            Ok((false, "objectives delete_objective ok".to_string()))
-        }
-        "set_status" => {
-            let objective_id = objective_id_from_action(action, "set_status")?;
-            let status = action
-                .get("status")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("objectives set_status missing status"))?;
-            let mut file = parse_objectives_file_or_default(&raw);
-            log_objective_attempt("set_status", Some(objective_id), &file.objectives);
-            let mut found = false;
-            for obj in file.objectives.iter_mut() {
-                if objective_id_matches(&obj.id, objective_id) {
-                    obj.status = status.to_string();
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
-                return log_objective_not_found_and_bail(
-                    "set_status",
-                    objective_id,
-                    &file.objectives,
-                );
-            }
-            log_objective_success("set_status", Some(objective_id), &file.objectives);
-            std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
-            Ok((false, "objectives set_status ok".to_string()))
-        }
-        "replace_objectives" => {
-            let mut file = parse_objectives_file_or_default(&raw);
-            if let Some(obj_value) = action.get("objectives") {
-                if obj_value.is_array() {
-                    let objectives: Vec<crate::objectives::Objective> =
-                        serde_json::from_value(obj_value.clone())
-                            .map_err(|e| anyhow!("invalid objectives array: {e}"))?;
-                    file.objectives = objectives;
-                } else if obj_value.is_object() {
-                    file = serde_json::from_value(obj_value.clone())
-                        .map_err(|e| anyhow!("invalid objectives file payload: {e}"))?;
-                } else {
-                    bail!("objectives replace_objectives requires objectives array or object");
-                }
-            } else {
-                bail!("objectives replace_objectives missing objectives");
-            }
-            write_objectives_file(&path, &file)
-                .map(|_| (false, "objectives replace_objectives ok".to_string()))
-        }
+        "create_objective" => handle_objectives_create_objective(action, &path, &raw),
+        "update_objective" => handle_objectives_update_objective(action, &path, &raw),
+        "delete_objective" => handle_objectives_delete_objective(action, &path, &raw),
+        "set_status" => handle_objectives_set_status(action, &path, &raw),
+        "replace_objectives" => handle_objectives_replace_objectives(action, &path, &raw),
         _ => bail!("unknown objectives op: {op_raw}"),
     }
+}
+
+fn handle_objectives_create_objective(
+    action: &Value,
+    path: &Path,
+    raw: &str,
+) -> Result<(bool, String)> {
+    let objective_val = action
+        .get("objective")
+        .ok_or_else(|| anyhow!("objectives create_objective missing objective"))?;
+    let mut file = parse_objectives_file_strict(raw)?;
+    let objective: crate::objectives::Objective = serde_json::from_value(objective_val.clone())
+        .map_err(|e| anyhow!("invalid objective payload: {e}"))?;
+    if objective.id.trim().is_empty() {
+        bail!("objective.id must be non-empty");
+    }
+    log_objective_attempt("create_objective", Some(&objective.id), &file.objectives);
+    if file
+        .objectives
+        .iter()
+        .any(|o| objective_id_matches(&o.id, &objective.id))
+    {
+        log_objective_operation_context(
+            "create_objective",
+            "duplicate",
+            Some(&objective.id),
+            &file.objectives,
+        );
+        bail!("{}", objective_already_exists_message(&file.objectives, &objective.id));
+    }
+    file.objectives.push(objective);
+    let created_id = file.objectives.last().map(|obj| obj.id.as_str());
+    log_objective_success("create_objective", created_id, &file.objectives);
+    std::fs::write(path, serde_json::to_string_pretty(&file)?)?;
+    Ok((false, "objectives create_objective ok".to_string()))
+}
+
+fn handle_objectives_update_objective(
+    action: &Value,
+    path: &Path,
+    raw: &str,
+) -> Result<(bool, String)> {
+    let objective_id = objective_id_from_action(action, "update_objective")?;
+    let updates = action
+        .get("updates")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| anyhow!("objectives update_objective missing updates object"))?;
+    let mut file = parse_objectives_file_strict(raw)?;
+    log_objective_attempt("update_objective", Some(objective_id), &file.objectives);
+    let mut found = false;
+    for obj in file.objectives.iter_mut() {
+        if objective_id_matches(&obj.id, objective_id) {
+            let mut value = serde_json::to_value(obj.clone())?;
+            if let Some(map) = value.as_object_mut() {
+                for (k, v) in updates {
+                    map.insert(k.clone(), v.clone());
+                }
+            }
+            *obj = serde_json::from_value(value)?;
+            found = true;
+            break;
+        }
+    }
+    if !found {
+        return log_objective_not_found_and_bail("update_objective", objective_id, &file.objectives);
+    }
+    log_objective_success("update_objective", Some(objective_id), &file.objectives);
+    std::fs::write(path, serde_json::to_string_pretty(&file)?)?;
+    Ok((false, "objectives update_objective ok".to_string()))
+}
+
+fn handle_objectives_delete_objective(
+    action: &Value,
+    path: &Path,
+    raw: &str,
+) -> Result<(bool, String)> {
+    let objective_id = objective_id_from_action(action, "delete_objective")?;
+    let mut file = parse_objectives_file_or_default(raw);
+    log_objective_attempt("delete_objective", Some(objective_id), &file.objectives);
+    let before = file.objectives.len();
+    file.objectives
+        .retain(|obj| !objective_id_matches(&obj.id, objective_id));
+    if file.objectives.len() == before {
+        return log_objective_not_found_and_bail("delete_objective", objective_id, &file.objectives);
+    }
+    log_objective_success("delete_objective", Some(objective_id), &file.objectives);
+    std::fs::write(path, serde_json::to_string_pretty(&file)?)?;
+    Ok((false, "objectives delete_objective ok".to_string()))
+}
+
+fn handle_objectives_set_status(
+    action: &Value,
+    path: &Path,
+    raw: &str,
+) -> Result<(bool, String)> {
+    let objective_id = objective_id_from_action(action, "set_status")?;
+    let status = action
+        .get("status")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("objectives set_status missing status"))?;
+    let mut file = parse_objectives_file_or_default(raw);
+    log_objective_attempt("set_status", Some(objective_id), &file.objectives);
+    let mut found = false;
+    for obj in file.objectives.iter_mut() {
+        if objective_id_matches(&obj.id, objective_id) {
+            obj.status = status.to_string();
+            found = true;
+            break;
+        }
+    }
+    if !found {
+        return log_objective_not_found_and_bail("set_status", objective_id, &file.objectives);
+    }
+    log_objective_success("set_status", Some(objective_id), &file.objectives);
+    std::fs::write(path, serde_json::to_string_pretty(&file)?)?;
+    Ok((false, "objectives set_status ok".to_string()))
+}
+
+fn handle_objectives_replace_objectives(
+    action: &Value,
+    path: &Path,
+    raw: &str,
+) -> Result<(bool, String)> {
+    let mut file = parse_objectives_file_or_default(raw);
+    if let Some(obj_value) = action.get("objectives") {
+        if obj_value.is_array() {
+            let objectives: Vec<crate::objectives::Objective> =
+                serde_json::from_value(obj_value.clone())
+                    .map_err(|e| anyhow!("invalid objectives array: {e}"))?;
+            file.objectives = objectives;
+        } else if obj_value.is_object() {
+            file = serde_json::from_value(obj_value.clone())
+                .map_err(|e| anyhow!("invalid objectives file payload: {e}"))?;
+        } else {
+            bail!("objectives replace_objectives requires objectives array or object");
+        }
+    } else {
+        bail!("objectives replace_objectives missing objectives");
+    }
+    write_objectives_file(path, &file)
+        .map(|_| (false, "objectives replace_objectives ok".to_string()))
 }
 
 fn handle_issue_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
