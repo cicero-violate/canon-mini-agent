@@ -378,36 +378,8 @@ impl SemanticIndex {
             return Ok(format!("`{from}` is the same as `{to}`."));
         }
 
-        // Build adjacency from call edges only.
-        let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
-        for edge in &self.graph.edges {
-            if edge.kind == "call" {
-                adj.entry(&edge.from).or_default().push(&edge.to);
-            }
-        }
-
-        // BFS.
-        let mut visited: HashSet<&str> = HashSet::new();
-        let mut prev: HashMap<&str, &str> = HashMap::new();
-        let mut queue: VecDeque<&str> = VecDeque::new();
-
-        visited.insert(from_key);
-        queue.push_back(from_key);
-
-        'bfs: loop {
-            let Some(cur) = queue.pop_front() else { break };
-            if let Some(neighbors) = adj.get(cur) {
-                for &nb in neighbors {
-                    if visited.insert(nb) {
-                        prev.insert(nb, cur);
-                        if nb == to_key {
-                            break 'bfs;
-                        }
-                        queue.push_back(nb);
-                    }
-                }
-            }
-        }
+        let adj = self.call_adjacency();
+        let prev = self.bfs_prev_map(&adj, from_key, to_key);
 
         if !prev.contains_key(to_key) {
             return Ok(format!("No call-graph path found from `{from}` to `{to}`."));
@@ -618,6 +590,47 @@ impl SemanticIndex {
             }
         }
         out
+    }
+
+    fn call_adjacency(&self) -> HashMap<&str, Vec<&str>> {
+        let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
+        for edge in &self.graph.edges {
+            if edge.kind == "call" {
+                adj.entry(&edge.from).or_default().push(&edge.to);
+            }
+        }
+        adj
+    }
+
+    fn bfs_prev_map<'a>(
+        &'a self,
+        adj: &HashMap<&'a str, Vec<&'a str>>,
+        from_key: &'a str,
+        to_key: &'a str,
+    ) -> HashMap<&'a str, &'a str> {
+        let mut visited: HashSet<&str> = HashSet::new();
+        let mut prev: HashMap<&str, &str> = HashMap::new();
+        let mut queue: VecDeque<&str> = VecDeque::new();
+
+        visited.insert(from_key);
+        queue.push_back(from_key);
+
+        'bfs: loop {
+            let Some(cur) = queue.pop_front() else { break };
+            if let Some(neighbors) = adj.get(cur) {
+                for &nb in neighbors {
+                    if visited.insert(nb) {
+                        prev.insert(nb, cur);
+                        if nb == to_key {
+                            break 'bfs;
+                        }
+                        queue.push_back(nb);
+                    }
+                }
+            }
+        }
+
+        prev
     }
 
     fn enclosing_symbol_for_span<'a>(&'a self, span: &SourceSpan) -> Option<&'a str> {
