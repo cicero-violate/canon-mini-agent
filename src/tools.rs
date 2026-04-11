@@ -1626,6 +1626,13 @@ fn handle_symbols_rename_candidates_action(workspace: &Path, action: &Value) -> 
 
     let mut candidates = Vec::new();
     for sym in &symbols_file.symbols {
+        // Field-level symbols are currently not resolvable by the semantic rename tool:
+        // `symbol_occurrences` delegates to `resolve_symbol_key`, which only matches graph
+        // node keys/suffixes, while the graph does not expose record fields as standalone
+        // node identities. Skip them here so prepared rename actions stay executable.
+        if sym.kind == "field" {
+            continue;
+        }
         let mut reasons = ambiguous_name_reasons(&sym.name);
         if sym.kind == "function" {
             if let Some((prefix, stem)) = split_prefix_and_stem(&sym.name) {
