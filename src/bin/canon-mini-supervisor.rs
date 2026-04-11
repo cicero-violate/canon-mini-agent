@@ -391,32 +391,9 @@ fn main() -> Result<()> {
     let start_dir = std::env::current_dir().context("current_dir")?;
     let root = find_workspace_root(&start_dir)
         .ok_or_else(|| anyhow!("unable to locate workspace root with target/"))?;
-
-    // Initialize structured logging for the supervisor itself. These settings are derived from the
-    // same args we forward to the child binary so logs land in the same workspace/state-dir.
-    if let Some(workspace) = workspace_from_args(&filtered_args) {
-        set_workspace(workspace);
-    }
-    set_agent_state_dir(agent_state_dir_from_args(&filtered_args).to_string_lossy().to_string());
-    init_log_paths("supervisor");
-
     let shutdown = Arc::new(AtomicBool::new(false));
     let child_pid = Arc::new(AtomicU32::new(0));
-    {
-        let shutdown = shutdown.clone();
-        let child_pid = child_pid.clone();
-        ctrlc::set_handler(move || {
-            shutdown.store(true, Ordering::SeqCst);
-            let pid = child_pid.load(Ordering::SeqCst);
-            if pid != 0 {
-                let _ = Command::new("kill")
-                    .arg("-INT")
-                    .arg(pid.to_string())
-                    .status();
-            }
-        })
-        .context("install ctrlc handler")?;
-    }
+    initialize_supervisor_runtime(&filtered_args, &shutdown, &child_pid)?;
     let idle_marker = cycle_idle_marker_path(&filtered_args);
     let orchestrator_mode_flag = orchestrator_mode_flag_path(&filtered_args);
 
@@ -432,15 +409,8 @@ fn main() -> Result<()> {
             .map(PathBuf::from)
             .unwrap_or_else(|| root.clone());
         emit_complexity_report_status(&report_workspace);
-        let mut child = spawn_child(&current, &filtered_args)?;
-        child_pid.store(child.id(), Ordering::SeqCst);
-        eprintln!(
-            "[canon-mini-supervisor] started pid={} ({:?})",
-            child.id(),
-            current.kind
-        );
-        let mut pending_update: Option<BinaryCandidate> = None;
-        let child_started_at = SystemTime::now();
+        let (mut child, mut pending_update, child_started_at) =
+            start_supervisor_child(&current, &filtered_args, &child_pid)?;
 
         loop {
             thread::sleep(Duration::from_millis(1000));
@@ -490,6 +460,56 @@ fn main() -> Result<()> {
         }
         thread::sleep(Duration::from_millis(1000));
     }
+}
+
+fn initialize_supervisor_runtime(
+    filtered_args: &[String],
+    shutdown: &Arc<AtomicBool>,
+    child_pid: &Arc<AtomicU32>,
+) -> Result<()> {
+    // Initialize structured logging for the supervisor itself. These settings are derived from the
+    // same args we forward to the child binary so logs land in the same workspace/state-dir.
+    if let Some(workspace) = workspace_from_args(filtered_args) {
+        set_workspace(workspace);
+    }
+    set_agent_state_dir(agent_state_dir_from_args(filtered_args).to_string_lossy().to_string());
+    init_log_paths("supervisor");
+    install_supervisor_ctrlc_handler(shutdown, child_pid)
+}
+
+fn install_supervisor_ctrlc_handler(
+    shutdown: &Arc<AtomicBool>,
+    child_pid: &Arc<AtomicU32>,
+) -> Result<()> {
+    let shutdown = shutdown.clone();
+    let child_pid = child_pid.clone();
+    ctrlc::set_handler(move || {
+        shutdown.store(true, Ordering::SeqCst);
+        let pid = child_pid.load(Ordering::SeqCst);
+        if pid != 0 {
+            let _ = Command::new("kill")
+                .arg("-INT")
+                .arg(pid.to_string())
+                .status();
+        }
+    })
+    .context("install ctrlc handler")?;
+    Ok(())
+}
+
+fn start_supervisor_child(
+    current: &BinaryCandidate,
+    filtered_args: &[String],
+    child_pid: &Arc<AtomicU32>,
+) -> Result<(Child, Option<BinaryCandidate>, SystemTime)> {
+    let child = spawn_child(current, filtered_args)?;
+    child_pid.store(child.id(), Ordering::SeqCst);
+    eprintln!(
+        "[canon-mini-supervisor] started pid={} ({:?})",
+        child.id(),
+        current.kind
+    );
+    Ok((child, None, SystemTime::now()))
 }
 
 fn should_restart_for_pending_update(
