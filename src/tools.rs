@@ -1773,61 +1773,14 @@ fn handle_symbols_rename_candidates_action(workspace: &Path, action: &Value) -> 
 
     let mut candidates = Vec::new();
     for sym in &symbols_file.symbols {
-        // Field-level symbols are currently not resolvable by the semantic rename tool:
-        // `symbol_occurrences` delegates to `resolve_symbol_key`, which only matches graph
-        // node keys/suffixes, while the graph does not expose record fields as standalone
-        // node identities. Skip them here so prepared rename actions stay executable.
-        if sym.kind == "field" {
-            continue;
+        if let Some(candidate) = build_rename_candidate(
+            sym,
+            &prefixes_by_stem,
+            &identity_surface_names,
+            &identity_surface_files,
+        ) {
+            candidates.push(candidate);
         }
-        // Exclude conventional status/result enum variants that are semantically
-        // meaningful and should not be mechanically renamed.
-        if sym.kind == "enum_variant" {
-            match sym.name.as_str() {
-                "Ok" | "Err" | "Some" | "None" => {
-                    continue;
-                }
-                _ => {}
-            }
-        }
-        // Defense in depth: endpoint/protocol identity names are part of external routing,
-        // persistence, and filename surfaces in known authority files. Exclude them even if
-        // a future symbol-index/runtime mismatch reclassifies them away from `field`.
-        if identity_surface_names.contains(sym.name.as_str())
-            && identity_surface_files.contains(sym.file.as_str())
-        {
-            continue;
-        }
-        let mut reasons = ambiguous_name_reasons(&sym.name);
-        if sym.kind == "function" {
-            if let Some((prefix, stem)) = split_prefix_and_stem(&sym.name) {
-                if let Some(prefixes) = prefixes_by_stem.get(&stem) {
-                    if prefixes.len() > 1 {
-                        let mut other = prefixes
-                            .iter()
-                            .filter(|p| p.as_str() != prefix)
-                            .cloned()
-                            .collect::<Vec<_>>();
-                        other.sort();
-                        reasons.push(format!(
-                            "inconsistent verb prefix for stem '{stem}' (also: {})",
-                            other.join(", ")
-                        ));
-                    }
-                }
-            }
-        }
-        if reasons.is_empty() {
-            continue;
-        }
-        candidates.push(RenameCandidate {
-            name: sym.name.clone(),
-            kind: sym.kind.clone(),
-            file: sym.file.clone(),
-            span: sym.span.clone(),
-            score: score_rename_candidate_reasons(&reasons),
-            reasons,
-        });
     }
 
     sort_and_dedup_rename_candidates(&mut candidates);
@@ -1890,6 +1843,91 @@ fn build_function_prefixes_by_stem(
         }
     }
     prefixes_by_stem
+}
+
+fn build_rename_candidate(
+    sym: &SymbolEntry,
+    prefixes_by_stem: &std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
+    identity_surface_names: &BTreeSet<&'static str>,
+    identity_surface_files: &BTreeSet<&'static str>,
+) -> Option<RenameCandidate> {
+    if should_skip_rename_candidate_symbol(sym, identity_surface_names, identity_surface_files) {
+        return None;
+    }
+
+    let reasons = rename_candidate_reasons(sym, prefixes_by_stem);
+    if reasons.is_empty() {
+        return None;
+    }
+
+    Some(RenameCandidate {
+        name: sym.name.clone(),
+        kind: sym.kind.clone(),
+        file: sym.file.clone(),
+        span: sym.span.clone(),
+        score: score_rename_candidate_reasons(&reasons),
+        reasons,
+    })
+}
+
+fn should_skip_rename_candidate_symbol(
+    sym: &SymbolEntry,
+    identity_surface_names: &BTreeSet<&'static str>,
+    identity_surface_files: &BTreeSet<&'static str>,
+) -> bool {
+    // Field-level symbols are currently not resolvable by the semantic rename tool:
+    // `symbol_occurrences` delegates to `resolve_symbol_key`, which only matches graph
+    // node keys/suffixes, while the graph does not expose record fields as standalone
+    // node identities. Skip them here so prepared rename actions stay executable.
+    if sym.kind == "field" {
+        return true;
+    }
+
+    // Exclude conventional status/result enum variants that are semantically
+    // meaningful and should not be mechanically renamed.
+    if sym.kind == "enum_variant"
+        && matches!(sym.name.as_str(), "Ok" | "Err" | "Some" | "None")
+    {
+        return true;
+    }
+
+    // Defense in depth: endpoint/protocol identity names are part of external routing,
+    // persistence, and filename surfaces in known authority files. Exclude them even if
+    // a future symbol-index/runtime mismatch reclassifies them away from `field`.
+    identity_surface_names.contains(sym.name.as_str())
+        && identity_surface_files.contains(sym.file.as_str())
+}
+
+fn rename_candidate_reasons(
+    sym: &SymbolEntry,
+    prefixes_by_stem: &std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
+) -> Vec<String> {
+    let mut reasons = ambiguous_name_reasons(&sym.name);
+    if sym.kind != "function" {
+        return reasons;
+    }
+
+    let Some((prefix, stem)) = split_prefix_and_stem(&sym.name) else {
+        return reasons;
+    };
+    let Some(prefixes) = prefixes_by_stem.get(&stem) else {
+        return reasons;
+    };
+    if prefixes.len() <= 1 {
+        return reasons;
+    }
+
+    let mut other = prefixes
+        .iter()
+        .filter(|p| p.as_str() != prefix)
+        .cloned()
+        .collect::<Vec<_>>();
+    other.sort();
+    reasons.push(format!(
+        "inconsistent verb prefix for stem '{stem}' (also: {})",
+        other.join(", ")
+    ));
+    reasons
 }
 
 fn score_rename_candidate_reasons(reasons: &[String]) -> u32 {
