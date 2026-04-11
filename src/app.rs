@@ -1890,18 +1890,9 @@ fn handle_parse_actions_error(
     trace: &impl Fn(&str),
     err_text: &str,
 ) -> Result<Value, InvalidActionFeedback> {
-    if allow_guardrail {
-        if let Some(guard_action) = guardrail_action_from_raw(raw, role) {
-            log(
-                "llm_guardrail_action",
-                json!({
-                    "error": err_text,
-                    "raw": truncate(raw, MAX_SNIPPET),
-                    "action": guard_action,
-                }),
-            );
-            return Ok(guard_action);
-        }
+    if let Some(guard_action) = maybe_guardrail_parse_action(role, raw, allow_guardrail, log, err_text)
+    {
+        return Ok(guard_action);
     }
 
     eprintln!(
@@ -1920,6 +1911,28 @@ fn handle_parse_actions_error(
         err_text: err_text.to_string(),
         feedback: build_invalid_action_feedback(None, err_text, role),
     })
+}
+
+fn maybe_guardrail_parse_action(
+    role: &str,
+    raw: &str,
+    allow_guardrail: bool,
+    log: &impl Fn(&str, Value),
+    err_text: &str,
+) -> Option<Value> {
+    if !allow_guardrail {
+        return None;
+    }
+    let guard_action = guardrail_action_from_raw(raw, role)?;
+    log(
+        "llm_guardrail_action",
+        json!({
+            "error": err_text,
+            "raw": truncate(raw, MAX_SNIPPET),
+            "action": guard_action,
+        }),
+    );
+    Some(guard_action)
 }
 
 fn extract_single_action(
