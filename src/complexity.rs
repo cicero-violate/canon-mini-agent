@@ -122,19 +122,26 @@ pub fn write_complexity_report(workspace: &Path) -> Result<Option<PathBuf>> {
     global.sort_by(sort_by_complexity_desc);
     let global_top = global.into_iter().take(100).collect::<Vec<_>>();
 
-    let report = json!({
+    let report = build_complexity_report(per_crate, global_top);
+
+    let dir = reports_dir(workspace);
+    let latest = persist_complexity_report(&dir, &report)?;
+
+    Ok(Some(latest))
+}
+
+fn build_complexity_report(
+    per_crate: Vec<serde_json::Value>,
+    global_top: Vec<serde_json::Value>,
+) -> serde_json::Value {
+    json!({
         "version": 1,
         "metric": "mir_blocks_proxy",
         "generated_at_ms": crate::logging::now_ms(),
         "global_top": global_top,
         "per_crate": per_crate,
         "note": "Proxy report: complexity_proxy=mir_blocks. Upgrade canon-rustc-v2 to record true CFG-based cyclomatic complexity for accuracy.",
-    });
-
-    let dir = reports_dir(workspace);
-    let latest = persist_complexity_report(&dir, &report)?;
-
-    Ok(Some(latest))
+    })
 }
 
 fn persist_complexity_report(dir: &Path, report: &serde_json::Value) -> Result<PathBuf> {
