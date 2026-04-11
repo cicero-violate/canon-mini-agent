@@ -269,6 +269,92 @@ fn log_objective_operation_context(
     );
 }
 
+fn sort_objectives_for_view(file: &mut crate::objectives::ObjectivesFile, include_done: bool) {
+    file.objectives.sort_by(|a, b| {
+        let rank = |status: &str| match status.trim().to_lowercase().as_str() {
+            "active" => 0,
+            "ready" => 1,
+            "in_progress" => 2,
+            "blocked" => 3,
+            "done" | "complete" | "completed" => 4,
+            _ => 5,
+        };
+        rank(&a.status)
+            .cmp(&rank(&b.status))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    if !include_done {
+        file.objectives = file
+            .objectives
+            .drain(..)
+            .filter(|obj| !crate::objectives::is_completed(obj))
+            .collect();
+    }
+}
+
+fn parse_objectives_file_strict(raw: &str) -> Result<crate::objectives::ObjectivesFile> {
+    serde_json::from_str(raw).map_err(|e| anyhow!("failed to parse OBJECTIVES.json: {e}"))
+}
+
+fn parse_objectives_file_or_default(raw: &str) -> crate::objectives::ObjectivesFile {
+    serde_json::from_str(raw).unwrap_or_default()
+}
+
+fn write_objectives_file(
+    path: &Path,
+    file: &crate::objectives::ObjectivesFile,
+) -> Result<(bool, String)> {
+    std::fs::write(path, serde_json::to_string_pretty(file)?)?;
+    Ok((false, "objectives write ok".to_string()))
+}
+
+fn objective_id_from_action<'a>(action: &'a Value, op_name: &str) -> Result<&'a str> {
+    action
+        .get("objective_id")
+        .or_else(|| action.get("id"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("objectives {op_name} missing objective_id"))
+}
+
+fn log_objective_attempt(
+    op: &str,
+    objective_id: Option<&str>,
+    objectives: &[crate::objectives::Objective],
+) {
+    log_objective_operation_context(op, "attempt", objective_id, objectives);
+}
+
+fn log_objective_success(
+    op: &str,
+    objective_id: Option<&str>,
+    objectives: &[crate::objectives::Objective],
+) {
+    log_objective_operation_context(op, "success", objective_id, objectives);
+}
+
+fn log_objective_not_found_and_bail(
+    op: &str,
+    objective_id: &str,
+    objectives: &[crate::objectives::Objective],
+) -> Result<(bool, String)> {
+    log_objective_operation_context(op, "not_found", Some(objective_id), objectives);
+    bail!("{}", objective_not_found_message(objectives, objective_id));
+}
+
+fn handle_objectives_read(raw: &str, include_done: bool) -> Result<(bool, String)> {
+    if include_done {
+        return Ok((false, raw.to_string()));
+    }
+    let filtered = filter_incomplete_objectives_json(raw).unwrap_or(raw.to_string());
+    Ok((false, filtered))
+}
+
+fn handle_objectives_sorted_view(raw: &str, include_done: bool) -> Result<(bool, String)> {
+    let mut file = parse_objectives_file_strict(raw)?;
+    sort_objectives_for_view(&mut file, include_done);
+    Ok((false, serde_json::to_string_pretty(&file).unwrap_or(raw.to_string())))
+}
+
 fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
     let op_raw = action
         .get("op")
@@ -284,61 +370,22 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
     if raw.trim().is_empty() && op_raw == "read" {
         return Ok((false, "(no objectives)".to_string()));
     }
-    fn handle_read(raw: &str, include_done: bool) -> Result<(bool, String)> {
-        if include_done {
-            return Ok((false, raw.to_string()));
-        }
-        let filtered = filter_incomplete_objectives_json(raw).unwrap_or(raw.to_string());
-        Ok((false, filtered))
-    }
 
     match op_raw {
-        "read" => handle_read(&raw, include_done),
-        "sorted_view" => {
-            let mut file: crate::objectives::ObjectivesFile =
-                serde_json::from_str(&raw)
-                    .map_err(|e| anyhow!("failed to parse OBJECTIVES.json: {e}"))?;
-            file.objectives.sort_by(|a, b| {
-                let rank = |status: &str| match status.trim().to_lowercase().as_str() {
-                    "active" => 0,
-                    "ready" => 1,
-                    "in_progress" => 2,
-                    "blocked" => 3,
-                    "done" | "complete" | "completed" => 4,
-                    _ => 5,
-                };
-                rank(&a.status)
-                    .cmp(&rank(&b.status))
-                    .then_with(|| a.id.cmp(&b.id))
-            });
-            if !include_done {
-                file.objectives = file
-                    .objectives
-                    .into_iter()
-                    .filter(|obj| !crate::objectives::is_completed(obj))
-                    .collect();
-            }
-            Ok((false, serde_json::to_string_pretty(&file).unwrap_or(raw)))
-        }
+        "read" => handle_objectives_read(&raw, include_done),
+        "sorted_view" => handle_objectives_sorted_view(&raw, include_done),
         "create_objective" => {
             let objective_val = action
                 .get("objective")
                 .ok_or_else(|| anyhow!("objectives create_objective missing objective"))?;
-            let mut file: crate::objectives::ObjectivesFile =
-                serde_json::from_str(&raw)
-                    .map_err(|e| anyhow!("failed to parse OBJECTIVES.json: {e}"))?;
+            let mut file = parse_objectives_file_strict(&raw)?;
             let objective: crate::objectives::Objective =
                 serde_json::from_value(objective_val.clone())
                     .map_err(|e| anyhow!("invalid objective payload: {e}"))?;
             if objective.id.trim().is_empty() {
                 bail!("objective.id must be non-empty");
             }
-            log_objective_operation_context(
-                "create_objective",
-                "attempt",
-                Some(&objective.id),
-                &file.objectives,
-            );
+            log_objective_attempt("create_objective", Some(&objective.id), &file.objectives);
             if file
                 .objectives
                 .iter()
@@ -354,34 +401,18 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
             }
             file.objectives.push(objective);
             let created_id = file.objectives.last().map(|obj| obj.id.as_str());
-            log_objective_operation_context(
-                "create_objective",
-                "success",
-                created_id,
-                &file.objectives,
-            );
+            log_objective_success("create_objective", created_id, &file.objectives);
             std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
             Ok((false, "objectives create_objective ok".to_string()))
         }
         "update_objective" => {
-            let objective_id = action
-                .get("objective_id")
-                .or_else(|| action.get("id"))
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("objectives update_objective missing objective_id"))?;
+            let objective_id = objective_id_from_action(action, "update_objective")?;
             let updates = action
                 .get("updates")
                 .and_then(|v| v.as_object())
                 .ok_or_else(|| anyhow!("objectives update_objective missing updates object"))?;
-            let mut file: crate::objectives::ObjectivesFile =
-                serde_json::from_str(&raw)
-                    .map_err(|e| anyhow!("failed to parse OBJECTIVES.json: {e}"))?;
-            log_objective_operation_context(
-                "update_objective",
-                "attempt",
-                Some(objective_id),
-                &file.objectives,
-            );
+            let mut file = parse_objectives_file_strict(&raw)?;
+            log_objective_attempt("update_objective", Some(objective_id), &file.objectives);
             let mut found = false;
             for obj in file.objectives.iter_mut() {
                 if objective_id_matches(&obj.id, objective_id) {
@@ -397,76 +428,42 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
                 }
             }
             if !found {
-                log_objective_operation_context(
+                return log_objective_not_found_and_bail(
                     "update_objective",
-                    "not_found",
-                    Some(objective_id),
+                    objective_id,
                     &file.objectives,
                 );
-                bail!("{}", objective_not_found_message(&file.objectives, objective_id));
             }
-            log_objective_operation_context(
-                "update_objective",
-                "success",
-                Some(objective_id),
-                &file.objectives,
-            );
+            log_objective_success("update_objective", Some(objective_id), &file.objectives);
             std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
             Ok((false, "objectives update_objective ok".to_string()))
         }
         "delete_objective" => {
-            let objective_id = action
-                .get("objective_id")
-                .or_else(|| action.get("id"))
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("objectives delete_objective missing objective_id"))?;
-            let mut file: crate::objectives::ObjectivesFile =
-                serde_json::from_str(&raw).unwrap_or_default();
-            log_objective_operation_context(
-                "delete_objective",
-                "attempt",
-                Some(objective_id),
-                &file.objectives,
-            );
+            let objective_id = objective_id_from_action(action, "delete_objective")?;
+            let mut file = parse_objectives_file_or_default(&raw);
+            log_objective_attempt("delete_objective", Some(objective_id), &file.objectives);
             let before = file.objectives.len();
             file.objectives
                 .retain(|obj| !objective_id_matches(&obj.id, objective_id));
             if file.objectives.len() == before {
-                log_objective_operation_context(
+                return log_objective_not_found_and_bail(
                     "delete_objective",
-                    "not_found",
-                    Some(objective_id),
+                    objective_id,
                     &file.objectives,
                 );
-                bail!("{}", objective_not_found_message(&file.objectives, objective_id));
             }
-            log_objective_operation_context(
-                "delete_objective",
-                "success",
-                Some(objective_id),
-                &file.objectives,
-            );
+            log_objective_success("delete_objective", Some(objective_id), &file.objectives);
             std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
             Ok((false, "objectives delete_objective ok".to_string()))
         }
         "set_status" => {
-            let objective_id = action
-                .get("objective_id")
-                .or_else(|| action.get("id"))
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("objectives set_status missing objective_id"))?;
+            let objective_id = objective_id_from_action(action, "set_status")?;
             let status = action
                 .get("status")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("objectives set_status missing status"))?;
-            let mut file: crate::objectives::ObjectivesFile =
-                serde_json::from_str(&raw).unwrap_or_default();
-            log_objective_operation_context(
-                "set_status",
-                "attempt",
-                Some(objective_id),
-                &file.objectives,
-            );
+            let mut file = parse_objectives_file_or_default(&raw);
+            log_objective_attempt("set_status", Some(objective_id), &file.objectives);
             let mut found = false;
             for obj in file.objectives.iter_mut() {
                 if objective_id_matches(&obj.id, objective_id) {
@@ -476,26 +473,18 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
                 }
             }
             if !found {
-                log_objective_operation_context(
+                return log_objective_not_found_and_bail(
                     "set_status",
-                    "not_found",
-                    Some(objective_id),
+                    objective_id,
                     &file.objectives,
                 );
-                bail!("{}", objective_not_found_message(&file.objectives, objective_id));
             }
-            log_objective_operation_context(
-                "set_status",
-                "success",
-                Some(objective_id),
-                &file.objectives,
-            );
+            log_objective_success("set_status", Some(objective_id), &file.objectives);
             std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
             Ok((false, "objectives set_status ok".to_string()))
         }
         "replace_objectives" => {
-            let mut file: crate::objectives::ObjectivesFile =
-                serde_json::from_str(&raw).unwrap_or_default();
+            let mut file = parse_objectives_file_or_default(&raw);
             if let Some(obj_value) = action.get("objectives") {
                 if obj_value.is_array() {
                     let objectives: Vec<crate::objectives::Objective> =
@@ -511,8 +500,8 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
             } else {
                 bail!("objectives replace_objectives missing objectives");
             }
-            std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
-            Ok((false, "objectives replace_objectives ok".to_string()))
+            write_objectives_file(&path, &file)
+                .map(|_| (false, "objectives replace_objectives ok".to_string()))
         }
         _ => bail!("unknown objectives op: {op_raw}"),
     }
