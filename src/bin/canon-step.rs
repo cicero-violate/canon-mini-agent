@@ -28,27 +28,31 @@ fn predicted_next_actions(action: &Value) -> Vec<Value> {
         "apply_patch" => vec![json!({"action": "cargo_test", "intent": "Verify the patch compiles and tests pass."})],
         "symbols_index" => {
             let out = action.get("out").and_then(|v| v.as_str()).unwrap_or("state/symbols.json");
-            vec![json!({"action": "read_file", "path": out, "intent": "Inspect generated symbols inventory."})]
+            build_read_file_prediction(out, "Inspect generated symbols inventory.")
         }
         "symbols_rename_candidates" => {
             let out = action
                 .get("out")
                 .and_then(|v| v.as_str())
                 .unwrap_or("state/rename_candidates.json");
-            vec![json!({"action": "read_file", "path": out, "intent": "Inspect generated rename candidates."})]
+            build_read_file_prediction(out, "Inspect generated rename candidates.")
         }
         "symbols_prepare_rename" => {
             let out = action
                 .get("out")
                 .and_then(|v| v.as_str())
                 .unwrap_or("state/next_rename_action.json");
-            vec![json!({"action": "read_file", "path": out, "intent": "Inspect prepared rename action JSON."})]
+            build_read_file_prediction(out, "Inspect prepared rename action JSON.")
         }
         "rename_symbol" => vec![json!({"action": "cargo_test", "intent": "Run tests after rename to ensure no regressions."})],
         "run_command" => vec![json!({"action": "message", "intent": "Summarize command output and decide next step."})],
         "read_file" => vec![json!({"action": "message", "intent": "Summarize findings and choose the next concrete action."})],
         _ => Vec::new(),
     }
+}
+
+fn build_read_file_prediction(path: &str, intent: &str) -> Vec<Value> {
+    vec![json!({"action": "read_file", "path": path, "intent": intent})]
 }
 
 fn main() -> Result<()> {
@@ -69,4 +73,3 @@ fn main() -> Result<()> {
     println!("{}", serde_json::to_string_pretty(&out)?);
     Ok(())
 }
-
