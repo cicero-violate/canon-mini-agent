@@ -532,11 +532,6 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
     let mut expected_format: Option<String> = None;
     let mut example_action: Option<Value> = None;
     let mut action_schema: Option<String> = None;
-    let push_unique = |schema_diff: &mut Vec<String>, msg: String| {
-        if !schema_diff.iter().any(|s| s == &msg) {
-            schema_diff.push(msg);
-        }
-    };
     if let Some(action) = raw_action {
         let obj = action.as_object();
         let kind = obj
@@ -554,7 +549,7 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
                         .iter()
                         .any(|s| s.starts_with("field type mismatch: action"))
                 {
-                    push_unique(
+                    add_unique_schema_diff(
                         &mut schema_diff,
                         "field type mismatch: action (expected string)".to_string(),
                     );
@@ -565,10 +560,10 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
                     if text.trim().is_empty()
                         && !schema_diff.iter().any(|s| s == "missing field: rationale")
                     {
-                        push_unique(&mut schema_diff, "missing field: rationale".to_string());
+                        add_unique_schema_diff(&mut schema_diff, "missing field: rationale".to_string());
                     }
                 } else {
-                    push_unique(
+                    add_unique_schema_diff(
                         &mut schema_diff,
                         "field type mismatch: rationale (expected string)".to_string(),
                     );
@@ -581,7 +576,7 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
                     .iter()
                     .any(|s| s.starts_with("field type mismatch: observation"))
             {
-                push_unique(
+                add_unique_schema_diff(
                     &mut schema_diff,
                     "field type mismatch: observation (expected string)".to_string(),
                 );
@@ -590,7 +585,7 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
         if kind == "apply_patch" {
             if let Some(patch) = action.get("patch").and_then(|v| v.as_str()) {
                 if let Some(msg) = crate::tools::patch_scope_error(role, patch) {
-                    push_unique(&mut schema_diff, msg);
+                    add_unique_schema_diff(&mut schema_diff, msg);
                 }
             }
         }
@@ -601,8 +596,8 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
             .filter(|s| !s.is_empty())
             .is_none()
         {
-            push_unique(&mut schema_diff, "missing field: action".to_string());
-            push_unique(
+            add_unique_schema_diff(&mut schema_diff, "missing field: action".to_string());
+            add_unique_schema_diff(
                 &mut schema_diff,
                 "unsupported action: missing or unknown action".to_string(),
             );
@@ -618,99 +613,9 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
             };
             push_missing_string_object_field(&mut schema_diff, obj, field);
         }
-        if kind == "plan" && matches!(role, "planner" | "mini_planner") {
-            let rationale = action.get("rationale").and_then(|v| v.as_str()).unwrap_or("");
-            let observation = action.get("observation").and_then(|v| v.as_str()).unwrap_or("");
-            let combined = format!("{observation}\n{rationale}").to_ascii_lowercase();
-            let references_diagnostics = combined.contains("diagnostic")
-                || combined.contains("stale")
-                || combined.contains("violation");
-            let has_source_validation = combined.contains("read_file")
-                || combined.contains("source")
-                || combined.contains("verified")
-                || combined.contains("current-cycle")
-                || combined.contains("rg ")
-                || combined.contains("run_command");
-            if references_diagnostics && !has_source_validation {
-                let msg = "planner plan actions that rely on diagnostics must cite current source validation in observation/rationale (for example read_file, run_command, or verified source evidence)";
-                push_unique(&mut schema_diff, msg.to_string());
-            }
-        }
+        maybe_push_planner_plan_diagnostics_error(&mut schema_diff, action, role, kind);
         if kind == "message" {
-            if let Some(obj) = obj {
-                push_missing_message_required_fields(&mut schema_diff, obj);
-            }
-            if let Err(err) = validate_message_action(action, MessageValidationMode::Strict) {
-                let msg = err.to_string();
-                push_unique(&mut schema_diff, msg);
-            }
-            if let Some(obj) = obj {
-                let get_str = |field: &str| obj.get(field).and_then(|v| v.as_str());
-                let mut msg_type: Option<String> = None;
-                let mut msg_status: Option<String> = None;
-                for field in ["from", "to", "type", "status"] {
-                    if let Some(val) = get_str(field) {
-                        if val != val.to_lowercase() {
-                            push_unique(&mut schema_diff, format!("role casing invalid: {field}={val}"));
-                        }
-                        if field == "type" {
-                            msg_type = Some(val.to_string());
-                        } else if field == "status" {
-                            msg_status = Some(val.to_string());
-                        }
-                    }
-                }
-                if let (Some(msg_type), Some(msg_status)) = (msg_type.as_deref(), msg_status.as_deref()) {
-                    let type_is_blocker = msg_type.eq_ignore_ascii_case("blocker");
-                    let status_is_blocked = msg_status.eq_ignore_ascii_case("blocked");
-                    if type_is_blocker != status_is_blocked {
-                        push_unique(
-                            &mut schema_diff,
-                            format!("type/status mismatch: type={msg_type} status={msg_status}"),
-                        );
-                    }
-                    let expected = expected_message_format(
-                        get_str("from").unwrap_or("executor"),
-                        get_str("to").unwrap_or("verifier"),
-                        &msg_type,
-                        &msg_status,
-                    );
-                    expected_format = Some(expected);
-                }
-                let payload = obj.get("payload").and_then(|v| v.as_object());
-                if payload
-                    .and_then(|p| p.get("summary"))
-                    .and_then(|v| v.as_str())
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .is_none()
-                {
-                    push_unique(&mut schema_diff, "payload.summary missing".to_string());
-                }
-                if obj.contains_key("blocker")
-                    || obj.contains_key("evidence")
-                    || obj.contains_key("required_action")
-                {
-                    push_unique(
-                        &mut schema_diff,
-                        "blocker fields must be inside payload: blocker/evidence/required_action"
-                            .to_string(),
-                    );
-                }
-                let is_blocker = msg_type
-                    .as_deref()
-                    .map(|v| v.eq_ignore_ascii_case("blocker"))
-                    .unwrap_or(false)
-                    || msg_status
-                        .as_deref()
-                        .map(|v| v.eq_ignore_ascii_case("blocked"))
-                        .unwrap_or(false);
-                if is_blocker {
-                    for field in ["blocker", "evidence", "required_action"] {
-                        push_missing_string_payload_field(&mut schema_diff, payload, field);
-                    }
-                }
-            }
+            collect_message_schema_diff(&mut schema_diff, action, obj, &mut expected_format);
         }
     }
     let feedback = json!({
@@ -726,6 +631,119 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
         "Invalid action rejected.\naction_result:\n{}\nReturn exactly one action as a single JSON object in a ```json code block. No prose outside it.\nFor any mutating retry (`apply_patch`, `plan`, `objectives`, `issue`, or `rename_symbol`), include a non-empty `question` field stating the decision-boundary premise.",
         feedback.to_string()
     )
+}
+
+fn add_unique_schema_diff(schema_diff: &mut Vec<String>, msg: String) {
+    if !schema_diff.iter().any(|s| s == &msg) {
+        schema_diff.push(msg);
+    }
+}
+
+fn maybe_push_planner_plan_diagnostics_error(
+    schema_diff: &mut Vec<String>,
+    action: &Value,
+    role: &str,
+    kind: &str,
+) {
+    if kind != "plan" || !matches!(role, "planner" | "mini_planner") {
+        return;
+    }
+    let rationale = action.get("rationale").and_then(|v| v.as_str()).unwrap_or("");
+    let observation = action.get("observation").and_then(|v| v.as_str()).unwrap_or("");
+    let combined = format!("{observation}\n{rationale}").to_ascii_lowercase();
+    let references_diagnostics = combined.contains("diagnostic")
+        || combined.contains("stale")
+        || combined.contains("violation");
+    let has_source_validation = combined.contains("read_file")
+        || combined.contains("source")
+        || combined.contains("verified")
+        || combined.contains("current-cycle")
+        || combined.contains("rg ")
+        || combined.contains("run_command");
+    if references_diagnostics && !has_source_validation {
+        let msg = "planner plan actions that rely on diagnostics must cite current source validation in observation/rationale (for example read_file, run_command, or verified source evidence)";
+        add_unique_schema_diff(schema_diff, msg.to_string());
+    }
+}
+
+fn collect_message_schema_diff(
+    schema_diff: &mut Vec<String>,
+    action: &Value,
+    obj: Option<&serde_json::Map<String, Value>>,
+    expected_format: &mut Option<String>,
+) {
+    if let Some(obj) = obj {
+        push_missing_message_required_fields(schema_diff, obj);
+    }
+    if let Err(err) = validate_message_action(action, MessageValidationMode::Strict) {
+        add_unique_schema_diff(schema_diff, err.to_string());
+    }
+    let Some(obj) = obj else {
+        return;
+    };
+    let get_str = |field: &str| obj.get(field).and_then(|v| v.as_str());
+    let mut msg_type: Option<String> = None;
+    let mut msg_status: Option<String> = None;
+    for field in ["from", "to", "type", "status"] {
+        if let Some(val) = get_str(field) {
+            if val != val.to_lowercase() {
+                add_unique_schema_diff(schema_diff, format!("role casing invalid: {field}={val}"));
+            }
+            if field == "type" {
+                msg_type = Some(val.to_string());
+            } else if field == "status" {
+                msg_status = Some(val.to_string());
+            }
+        }
+    }
+    if let (Some(msg_type), Some(msg_status)) = (msg_type.as_deref(), msg_status.as_deref()) {
+        let type_is_blocker = msg_type.eq_ignore_ascii_case("blocker");
+        let status_is_blocked = msg_status.eq_ignore_ascii_case("blocked");
+        if type_is_blocker != status_is_blocked {
+            add_unique_schema_diff(
+                schema_diff,
+                format!("type/status mismatch: type={msg_type} status={msg_status}"),
+            );
+        }
+        *expected_format = Some(expected_message_format(
+            get_str("from").unwrap_or("executor"),
+            get_str("to").unwrap_or("verifier"),
+            msg_type,
+            msg_status,
+        ));
+    }
+    let payload = obj.get("payload").and_then(|v| v.as_object());
+    if payload
+        .and_then(|p| p.get("summary"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .is_none()
+    {
+        add_unique_schema_diff(schema_diff, "payload.summary missing".to_string());
+    }
+    if obj.contains_key("blocker")
+        || obj.contains_key("evidence")
+        || obj.contains_key("required_action")
+    {
+        add_unique_schema_diff(
+            schema_diff,
+            "blocker fields must be inside payload: blocker/evidence/required_action".to_string(),
+        );
+    }
+    let is_blocker = msg_type
+        .as_deref()
+        .map(|v| v.eq_ignore_ascii_case("blocker"))
+        .unwrap_or(false)
+        || msg_status
+            .as_deref()
+            .map(|v| v.eq_ignore_ascii_case("blocked"))
+            .unwrap_or(false);
+    if is_blocker {
+        for field in ["blocker", "evidence", "required_action"] {
+            push_missing_string_payload_field(schema_diff, payload, field);
+        }
+    }
 }
 
 pub fn auto_fill_message_fields(action: &mut Value, role: &str) -> bool {
