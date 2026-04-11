@@ -86,7 +86,7 @@ pub fn format_message_schema(
     }
     let payload_lines = payload.join(",\n    ");
     format!(
-        "```json\n{{\n  \"action\": \"message\",\n  \"from\": \"{from}\",\n  \"to\": \"{to_role}\",\n  \"type\": \"{msg_type}\",\n  \"status\": \"{status}\",\n  \"observation\": \"...\",\n  \"rationale\": \"...\",\n  \"payload\": {{\n    {payload_lines}\n  }}\n}}\n```"
+        "```json\n{{\n  \"action\": \"message\",\n  \"from\": \"{from}\",\n  \"to\": \"{to_role}\",\n  \"type\": \"{msg_type}\",\n  \"status\": \"{status}\",\n  \"observation\": \"...\",\n  \"rationale\": \"...\",\n  \"predicted_next_actions\": [\n    {{\"action\": \"read_file\", \"intent\": \"Inspect the relevant source before making changes.\"}},\n    {{\"action\": \"run_command\", \"intent\": \"Verify the current workspace state after the read.\"}}\n  ],\n  \"payload\": {{\n    {payload_lines}\n  }}\n}}\n```"
     )
 }
 
@@ -99,7 +99,7 @@ const GRAPH_TOOL_TEMPLATES: [&str; 4] = [
 ];
 
 fn blocker_message_example_template() -> &'static str {
-    "```json\n{\n  \"action\": \"message\",\n  \"from\": \"executor\",\n  \"to\": \"planner\",\n  \"type\": \"blocker\",\n  \"status\": \"blocked\",\n  \"observation\": \"Describe the blocked state.\",\n  \"rationale\": \"Explain why progress is impossible without external action.\",\n  \"payload\": {\n    \"summary\": \"Short blocker summary\",\n    \"blocker\": \"Root cause\",\n    \"evidence\": \"Concrete error text or failing command\",\n    \"required_action\": \"What must be done to unblock\",\n    \"severity\": \"error\"\n  }\n}\n```"
+    "```json\n{\n  \"action\": \"message\",\n  \"from\": \"executor\",\n  \"to\": \"planner\",\n  \"type\": \"blocker\",\n  \"status\": \"blocked\",\n  \"observation\": \"Describe the blocked state.\",\n  \"rationale\": \"Explain why progress is impossible without external action.\",\n  \"predicted_next_actions\": [\n    {\"action\": \"read_file\", \"intent\": \"Inspect the relevant source before making changes.\"},\n    {\"action\": \"run_command\", \"intent\": \"Verify the current workspace state after the read.\"}\n  ],\n  \"payload\": {\n    \"summary\": \"Short blocker summary\",\n    \"blocker\": \"Root cause\",\n    \"evidence\": \"Concrete error text or failing command\",\n    \"required_action\": \"What must be done to unblock\",\n    \"severity\": \"error\"\n  }\n}\n```"
 }
 
 #[allow(dead_code)]
