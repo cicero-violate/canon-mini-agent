@@ -2136,35 +2136,59 @@ fn handle_apply_patch_action(
                 }
             }
             eprintln!("[{role}] step={} apply_patch ok", step);
-            let check_result = patch_first_file(&patch)
-                .and_then(|f| infer_crate_for_patch(workspace, f))
-                .map(|krate| {
-                    eprintln!("[{role}] step={} cargo check -p {krate}", step);
-                    exec_run_command(
-                        workspace,
-                        &format!("cargo check -p {krate}"),
-                        crate::constants::workspace(),
-                    )
-                    .unwrap_or_else(|e| (false, e.to_string()))
-                });
-            match check_result {
-                Some((ok, out)) => {
-                    let label = if ok {
-                        "cargo check ok"
-                    } else {
-                        "cargo check failed"
-                    };
-                    eprintln!("[{role}] step={} {label}", step);
-                    Ok((
+            let crate_for_patch = patch_first_file(&patch)
+                .and_then(|f| infer_crate_for_patch(workspace, f));
+            if let Some(krate) = crate_for_patch {
+                eprintln!("[{role}] step={} cargo check -p {krate}", step);
+                let (check_ok, check_out) = exec_run_command(
+                    workspace,
+                    &format!("cargo check -p {krate}"),
+                    crate::constants::workspace(),
+                )
+                .unwrap_or_else(|e| (false, e.to_string()));
+
+                let check_label = if check_ok { "cargo check ok" } else { "cargo check failed" };
+                eprintln!("[{role}] step={} {check_label}", step);
+
+                if !check_ok {
+                    return Ok((
                         false,
                         format!(
-                            "apply_patch ok\n\n{label}:\n{}",
-                            truncate(&out, MAX_SNIPPET)
+                            "apply_patch ok\n\n{check_label}:\n{}",
+                            truncate(&check_out, MAX_SNIPPET)
                         ),
-                    ))
+                    ));
                 }
-                None => Ok((false, "apply_patch ok".to_string())),
+
+                eprintln!("[{role}] step={} cargo test -p {krate}", step);
+                let (test_ok, test_out) = exec_run_command(
+                    workspace,
+                    &format!("cargo test -p {krate} -q"),
+                    crate::constants::workspace(),
+                )
+                .unwrap_or_else(|e| (false, e.to_string()));
+
+                let test_label = if test_ok { "cargo test ok" } else { "cargo test failed" };
+                eprintln!("[{role}] step={} {test_label}", step);
+
+                let test_summary = cargo_test_totals_summary(&test_out);
+                let test_display = if test_ok && !test_summary.trim().is_empty() {
+                    test_summary
+                } else {
+                    truncate(&test_out, MAX_SNIPPET).to_string()
+                };
+
+                return Ok((
+                    false,
+                    format!(
+                        "apply_patch ok\n\n{check_label}:\n{}\n\n{test_label}:\n{}",
+                        truncate(&check_out, MAX_SNIPPET),
+                        test_display
+                    ),
+                ));
             }
+
+            Ok((false, "apply_patch ok".to_string()))
         }
         Err(e) => {
             let err_str = e.to_string();
@@ -2436,6 +2460,21 @@ fn parse_rustc_graph_filter(extra: &str) -> Option<String> {
         }
     }
     Some(s.to_string())
+}
+
+fn cargo_test_totals_summary(out: &str) -> String {
+    let mut kept = Vec::new();
+    for line in out.lines() {
+        let t = line.trim_end();
+        if t.starts_with("running ")
+            || t.starts_with("test result:")
+            || t.starts_with("Doc-tests ")
+            || t.starts_with("running unittests ")
+        {
+            kept.push(t.to_string());
+        }
+    }
+    kept.join("\n")
 }
 
 fn handle_graph_call_cfg_action(

@@ -181,6 +181,7 @@ Action shapes, required fields, and basic field constraints are defined by the T
 - `graph_call` / `graph_cfg` output CSVs plus `callgraph.symbol.txt` / `cfg.symbol.txt` with symbol→symbol edges.
 - `graph_dataflow` / `graph_reachability` output JSON reports under metrics/analysis directories.
 - `rename_symbol` performs a rust-analyzer-syntax-backed Rust identifier rename at the exact `path` + 1-based `line`/`column` token location. Current implementation is file-scoped (`.rs` files only).
+- `apply_patch` runs `cargo check -p <inferred_crate>` after a successful patch; if check passes it then runs `cargo test -p <inferred_crate> -q` and returns the cargo test totals summary (the `test result:` lines).
 
 ### 3.2 `message` (Inter-Agent Handoff Protocol)
 ```json
