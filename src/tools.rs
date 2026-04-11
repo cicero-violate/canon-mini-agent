@@ -3187,33 +3187,25 @@ fn handle_graph_reports_action(
     ))
 }
 
-fn handle_cargo_test_action(
-    role: &str,
-    step: usize,
-    workspace: &Path,
-    action: &Value,
-) -> Result<(bool, String)> {
-    let crate_name = action
-        .get("crate")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow!("cargo_test missing 'crate'"))?;
-    let test_name = action.get("test").and_then(|v| v.as_str());
-    let cmd = if let Some(test_name) = test_name {
+fn build_cargo_test_command(crate_name: &str, test_name: Option<&str>) -> String {
+    if let Some(test_name) = test_name {
         format!(
             "cargo test -p {} {} -- --exact --nocapture",
             crate_name, test_name
         )
     } else {
         format!("cargo test -p {} -- --nocapture", crate_name)
-    };
-    eprintln!("[{role}] step={} cargo_test cmd={}", step, cmd);
-    let (spawn_ok, out) = exec_run_command(workspace, &cmd, crate::constants::workspace())?;
-    let log_path = extract_output_log_path(&out);
-    let summary_line = log_path
-        .as_ref()
-        .and_then(|p| summarize_cargo_test_log(p))
-        .or_else(|| cargo_test_totals_summary(&out).lines().next().map(|s| s.to_string()));
-    let label = if let Some(summary) = summary_line.as_deref() {
+    }
+}
+
+fn cargo_test_summary_line(log_path: Option<&Path>, out: &str) -> Option<String> {
+    log_path
+        .and_then(summarize_cargo_test_log)
+        .or_else(|| cargo_test_totals_summary(out).lines().next().map(|s| s.to_string()))
+}
+
+fn cargo_test_label(summary_line: Option<&str>, spawn_ok: bool) -> &'static str {
+    if let Some(summary) = summary_line {
         if summary.contains("test result: ok.") {
             "cargo_test ok"
         } else if summary.contains("test result: FAILED") {
@@ -3225,7 +3217,88 @@ fn handle_cargo_test_action(
         "cargo_test running"
     } else {
         "cargo_test failed"
+    }
+}
+
+fn append_cargo_test_failure_section(
+    summary: &mut String,
+    failures_json: &Value,
+    key: &str,
+    header: &str,
+    bullet_prefix: bool,
+) {
+    let Some(arr) = failures_json.get(key).and_then(|v| v.as_array()) else {
+        return;
     };
+    if arr.is_empty() {
+        return;
+    }
+    summary.push_str(header);
+    for value in arr {
+        if let Some(value) = value.as_str() {
+            summary.push_str("\n");
+            if bullet_prefix {
+                summary.push_str("- ");
+            }
+            summary.push_str(value);
+        }
+    }
+}
+
+fn build_cargo_test_summary(
+    label: &str,
+    failures_json: &Value,
+    log_path: Option<&Path>,
+    summary_line: Option<&str>,
+) -> String {
+    let mut summary = label.to_string();
+    append_cargo_test_failure_section(
+        &mut summary,
+        failures_json,
+        "failed_tests",
+        "\nfailed_tests:",
+        true,
+    );
+    append_cargo_test_failure_section(
+        &mut summary,
+        failures_json,
+        "error_locations",
+        "\nerror_locations:",
+        true,
+    );
+    append_cargo_test_failure_section(
+        &mut summary,
+        failures_json,
+        "failure_block",
+        "\nfailure_block:",
+        false,
+    );
+    if let Some(path) = log_path {
+        summary.push_str(&format!("\noutput_log: {}", path.display()));
+    }
+    if let Some(line) = summary_line {
+        summary.push_str(&format!("\nsummary: {line}"));
+    }
+    summary
+}
+
+fn handle_cargo_test_action(
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
+    let crate_name = action
+        .get("crate")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("cargo_test missing 'crate'"))?;
+    let test_name = action.get("test").and_then(|v| v.as_str());
+    let cmd = build_cargo_test_command(crate_name, test_name);
+    eprintln!("[{role}] step={} cargo_test cmd={}", step, cmd);
+    let (spawn_ok, out) = exec_run_command(workspace, &cmd, crate::constants::workspace())?;
+    let log_path = extract_output_log_path(&out);
+    let summary_line = cargo_test_summary_line(log_path.as_deref(), &out);
+    let label = cargo_test_label(summary_line.as_deref(), spawn_ok);
     eprintln!("[{role}] step={} {label} output_bytes={}", step, out.len());
     if !spawn_ok {
         log_error_event(
@@ -3242,50 +3315,12 @@ fn handle_cargo_test_action(
         );
     }
     let failures_json = parse_cargo_test_failures(&out);
-    let mut summary = format!("{label}");
-    if let Some(arr) = failures_json.get("failed_tests").and_then(|v| v.as_array()) {
-        if !arr.is_empty() {
-            summary.push_str("\nfailed_tests:");
-            for name in arr {
-                if let Some(name) = name.as_str() {
-                    summary.push_str(&format!("\n- {}", name));
-                }
-            }
-        }
-    }
-    if let Some(arr) = failures_json
-        .get("error_locations")
-        .and_then(|v| v.as_array())
-    {
-        if !arr.is_empty() {
-            summary.push_str("\nerror_locations:");
-            for loc in arr {
-                if let Some(loc) = loc.as_str() {
-                    summary.push_str(&format!("\n- {}", loc));
-                }
-            }
-        }
-    }
-    if let Some(arr) = failures_json
-        .get("failure_block")
-        .and_then(|v| v.as_array())
-    {
-        if !arr.is_empty() {
-            summary.push_str("\nfailure_block:");
-            for line in arr {
-                if let Some(line) = line.as_str() {
-                    summary.push_str("\n");
-                    summary.push_str(line);
-                }
-            }
-        }
-    }
-    if let Some(path) = log_path.as_ref() {
-        summary.push_str(&format!("\noutput_log: {}", path.display()));
-    }
-    if let Some(line) = summary_line.as_deref() {
-        summary.push_str(&format!("\nsummary: {line}"));
-    }
+    let summary = build_cargo_test_summary(
+        label,
+        &failures_json,
+        log_path.as_deref(),
+        summary_line.as_deref(),
+    );
     Ok((false, summary))
 }
 
