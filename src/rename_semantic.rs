@@ -228,27 +228,31 @@ fn scan_attr_ranges(source: &str) -> Vec<(usize, usize)> {
     let mut i = 0;
 
     while i < n {
-        if i + 1 < n && b[i] == b'/' && b[i + 1] == b'/' {
-            i = skip_line_comment(b, i, n);
-            continue;
-        }
-        if i + 1 < n && b[i] == b'/' && b[i + 1] == b'*' {
-            i = skip_block_comment(b, i, n);
-            continue;
-        }
-        if b[i] == b'"' {
-            i = skip_quoted_string(b, i, n);
-            continue;
-        }
-        let (next_i, range) = consume_attr_range(b, i, n);
+        let (next_i, range) = scan_attr_range_step(b, i, n);
         if let Some(range) = range {
             ranges.push(range);
-            i = next_i;
-            continue;
         }
-        i += 1;
+        i = next_i;
     }
     ranges
+}
+
+fn scan_attr_range_step(b: &[u8], i: usize, n: usize) -> (usize, Option<(usize, usize)>) {
+    if i + 1 < n && b[i] == b'/' && b[i + 1] == b'/' {
+        return (skip_line_comment(b, i, n), None);
+    }
+    if i + 1 < n && b[i] == b'/' && b[i + 1] == b'*' {
+        return (skip_block_comment(b, i, n), None);
+    }
+    if b[i] == b'"' {
+        return (skip_quoted_string(b, i, n), None);
+    }
+    let (next_i, range) = consume_attr_range(b, i, n);
+    if range.is_some() {
+        (next_i, range)
+    } else {
+        (i + 1, None)
+    }
 }
 
 /// Return byte positions `(lo, hi)` of every `"<old_ident>"` string literal
