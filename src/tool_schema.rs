@@ -31,6 +31,8 @@ pub enum PredictedActionName {
     RunCommand,
     Python,
     CargoTest,
+    CargoFmt,
+    CargoClippy,
     Plan,
     RustcHir,
     RustcMir,
@@ -355,6 +357,21 @@ pub enum ToolAction {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         test: Option<String>,
     },
+    CargoFmt {
+        #[serde(flatten)]
+        base: ActionBase,
+        /// When true, runs `cargo fmt` (may modify files). When false (default), runs `cargo fmt --check`.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        fix: bool,
+    },
+    CargoClippy {
+        #[serde(flatten)]
+        base: ActionBase,
+        /// Optional crate selector. When set, runs `cargo clippy -p <crate> -D warnings`.
+        /// When omitted, runs `cargo clippy -D warnings` for the workspace.
+        #[serde(rename = "crate", default, skip_serializing_if = "Option::is_none")]
+        crate_name: Option<String>,
+    },
     Plan {
         #[serde(flatten)]
         base: ActionBase,
@@ -613,6 +630,20 @@ fn build_tool_actions_list() -> Vec<(&'static str, &'static str, Option<&'static
             "cargo_test",
             "run a targeted cargo test (harness-style)",
             Some(cargo_test_action_example()),
+        ),
+        (
+            "cargo_fmt",
+            "run cargo fmt (default: --check)",
+            Some(
+                "Examples:\n  {\"action\":\"cargo_fmt\",\"fix\":false,\"rationale\":\"Verify formatting without modifying files.\"}\n  {\"action\":\"cargo_fmt\",\"fix\":true,\"rationale\":\"Auto-format the workspace.\"}",
+            ),
+        ),
+        (
+            "cargo_clippy",
+            "run cargo clippy -D warnings (optionally scoped to a crate)",
+            Some(
+                "Examples:\n  {\"action\":\"cargo_clippy\",\"rationale\":\"Lint the workspace with clippy.\"}\n  {\"action\":\"cargo_clippy\",\"crate\":\"canon-mini-agent\",\"rationale\":\"Lint only the target crate.\"}",
+            ),
         ),
         (
             "plan",
@@ -970,6 +1001,8 @@ fn is_known_action(action: &str) -> bool {
             | "run_command"
             | "python"
             | "cargo_test"
+            | "cargo_fmt"
+            | "cargo_clippy"
             | "plan"
             | "semantic_map"
             | "symbol_window"
@@ -1042,6 +1075,8 @@ fn first_missing_field_for_action(action: &Value, action_name: &str) -> Option<S
         "run_command" => missing_field("cmd"),
         "python" => missing_field("code"),
         "cargo_test" => missing_field("crate"),
+        "cargo_fmt" => None,
+        "cargo_clippy" => None,
         "plan" => {
             let op = action
                 .get("op")

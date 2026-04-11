@@ -2,6 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use canon_mini_agent::{set_agent_state_dir, set_workspace};
 use canon_mini_agent::logging::init_log_paths;
 use canon_mini_agent::logging::log_error_event;
+use canon_mini_agent::complexity::write_complexity_report;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -446,6 +447,30 @@ fn main() -> Result<()> {
             root.display(),
             current.path.display()
         );
+        let report_workspace = workspace_from_args(&filtered_args)
+            .map(PathBuf::from)
+            .unwrap_or_else(|| root.clone());
+        match write_complexity_report(&report_workspace) {
+            Ok(Some(path)) => {
+                eprintln!(
+                    "[canon-mini-supervisor] complexity_report: {}",
+                    path.display()
+                );
+            }
+            Ok(None) => {}
+            Err(err) => {
+                eprintln!(
+                    "[canon-mini-supervisor] complexity_report failed: {err:#}"
+                );
+                log_error_event(
+                    "supervisor",
+                    "complexity_report",
+                    None,
+                    &format!("complexity_report failed: {err:#}"),
+                    None,
+                );
+            }
+        }
         let mut child = spawn_child(&current, &filtered_args)?;
         child_pid.store(child.id(), Ordering::SeqCst);
         eprintln!(

@@ -2486,6 +2486,54 @@ fn cargo_test_totals_summary(out: &str) -> String {
     kept.join("\n")
 }
 
+fn write_state_log(workspace: &Path, tool: &str, content: &str) -> Result<String> {
+    let safe_tool = tool
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect::<String>();
+    let dir = workspace.join("state").join("logs").join(safe_tool);
+    std::fs::create_dir_all(&dir)
+        .with_context(|| format!("create log dir {}", dir.display()))?;
+    let ts = now_ms();
+    let path = dir.join(format!("{ts}.log"));
+    std::fs::write(&path, content).with_context(|| format!("write log {}", path.display()))?;
+    Ok(path
+        .strip_prefix(workspace)
+        .unwrap_or(&path)
+        .to_string_lossy()
+        .to_string())
+}
+
+fn summarize_compiler_like_output(out: &str) -> String {
+    let mut errors = 0usize;
+    let mut warnings = 0usize;
+    let mut first: Option<String> = None;
+    for line in out.lines() {
+        let t = line.trim_start();
+        if t.starts_with("error:") {
+            errors += 1;
+            if first.is_none() {
+                first = Some(t.to_string());
+            }
+        } else if t.starts_with("warning:") {
+            warnings += 1;
+            if first.is_none() {
+                first = Some(t.to_string());
+            }
+        }
+    }
+    let mut summary = format!("errors={errors} warnings={warnings}");
+    if let Some(first) = first {
+        let mut first = first.replace('\n', " ");
+        if first.len() > 160 {
+            first.truncate(160);
+            first.push_str("…");
+        }
+        summary.push_str(&format!(" first={first}"));
+    }
+    summary
+}
+
 fn handle_graph_call_cfg_action(
     role: &str,
     step: usize,
@@ -2891,6 +2939,83 @@ fn handle_cargo_test_action(
         summary.push_str(&format!("\nsummary: {line}"));
     }
     Ok((false, summary))
+}
+
+fn handle_cargo_fmt_action(
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
+    let fix = action.get("fix").and_then(|v| v.as_bool()).unwrap_or(false);
+    let cmd = if fix { "cargo fmt" } else { "cargo fmt --check" };
+    let timeout_secs = env::var("CANON_CARGO_FMT_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(5 * 60);
+    eprintln!("[{role}] step={} cargo_fmt cmd={cmd}", step);
+    let (ok, out) = exec_run_command_blocking_with_timeout(
+        workspace,
+        cmd,
+        crate::constants::workspace(),
+        timeout_secs,
+    )?;
+    let log_rel = write_state_log(workspace, "cargo_fmt", &out)?;
+    let status = if ok { "cargo_fmt ok" } else { "cargo_fmt failed" };
+    let diff_files = out.lines().filter(|l| l.trim_start().starts_with("Diff in ")).count();
+    let summary = if ok {
+        if fix {
+            "formatted".to_string()
+        } else if diff_files == 0 {
+            "no formatting diffs".to_string()
+        } else {
+            format!("formatting diffs found (files={diff_files})")
+        }
+    } else if diff_files > 0 {
+        format!("formatting diffs found (files={diff_files})")
+    } else {
+        summarize_compiler_like_output(&out)
+    };
+    Ok((
+        false,
+        format!("{status}\nlog: {log_rel}\nsummary: {summary}"),
+    ))
+}
+
+fn handle_cargo_clippy_action(
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
+    let crate_name = action.get("crate").and_then(|v| v.as_str()).map(|s| s.trim()).filter(|s| !s.is_empty());
+    let cmd = if let Some(krate) = crate_name {
+        format!("cargo clippy -p {krate} -- -D warnings")
+    } else {
+        "cargo clippy -- -D warnings".to_string()
+    };
+    let timeout_secs = env::var("CANON_CARGO_CLIPPY_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(20 * 60);
+    eprintln!("[{role}] step={} cargo_clippy cmd={cmd}", step);
+    let (ok, out) = exec_run_command_blocking_with_timeout(
+        workspace,
+        &cmd,
+        crate::constants::workspace(),
+        timeout_secs,
+    )?;
+    let log_rel = write_state_log(workspace, "cargo_clippy", &out)?;
+    let status = if ok {
+        "cargo_clippy ok"
+    } else {
+        "cargo_clippy failed"
+    };
+    let summary = summarize_compiler_like_output(&out);
+    Ok((
+        false,
+        format!("{status}\nlog: {log_rel}\nsummary: {summary}"),
+    ))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -4287,6 +4412,8 @@ const BATCH_MUTATING: &[&str] = &[
     "run_command",
     "python",
     "cargo_test",
+    "cargo_fmt",
+    "cargo_clippy",
 ];
 
 fn is_batch_item_mutating(kind: &str, item: &Value) -> bool {
@@ -4436,6 +4563,8 @@ fn execute_action(
             handle_graph_reports_action(role, step, k, workspace, action)
         }
         "cargo_test" => handle_cargo_test_action(role, step, workspace, action),
+        "cargo_fmt" => handle_cargo_fmt_action(role, step, workspace, action),
+        "cargo_clippy" => handle_cargo_clippy_action(role, step, workspace, action),
         "plan" => handle_plan_action(role, workspace, action),
         "semantic_map" => handle_semantic_map_action(workspace, action),
         "stage_graph" => handle_stage_graph_action(workspace, action),

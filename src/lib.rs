@@ -17,6 +17,7 @@ mod reports;
 mod tools;
 pub mod invalid_action;
 mod semantic;
+pub mod complexity;
 pub mod rename_semantic;
 mod rename_example_target;
 mod rename_example_caller;
