@@ -434,71 +434,24 @@ impl SemanticIndex {
     /// Immediate callers and callees of `symbol` in the call graph.
     /// If `expand_bodies` is true, inlines the source body of each caller and callee.
     pub fn symbol_neighborhood(&self, symbol: &str, expand_bodies: bool) -> Result<String> {
-        // Confirm symbol exists and normalize to canonical graph key.
         let symbol_key = self.resolve_symbol_key(symbol)?;
         let node = self.graph.nodes.get(symbol_key).unwrap();
-
-        let mut callers: Vec<&str> = Vec::new();
-        let mut callees: Vec<&str> = Vec::new();
-
-        for edge in &self.graph.edges {
-            if edge.kind != "call" {
-                continue;
-            }
-            if edge.to == symbol_key {
-                callers.push(&edge.from);
-            }
-            if edge.from == symbol_key {
-                callees.push(&edge.to);
-            }
-        }
-
-        callers.sort();
-        callers.dedup();
-        callees.sort();
-        callees.dedup();
-
-        let mut inferred_callers = self.infer_callers_from_refs(symbol_key, &node.refs);
-        inferred_callers.sort();
-        inferred_callers.dedup();
+        let (callers, callees) = self.direct_call_neighbors(symbol_key);
+        let inferred_callers = self.sorted_deduped_callers_from_refs(symbol_key, &node.refs);
 
         let mut out = format!("Neighborhood of `{symbol}`:\n");
-
-        let expand_sym = |out: &mut String, sym: &str| {
-            if expand_bodies {
-                if let Ok(body) = self.symbol_window(sym) {
-                    for line in body.lines() {
-                        out.push_str("      ");
-                        out.push_str(line);
-                        out.push('\n');
-                    }
-                }
-            }
-        };
-
-        out.push_str(&format!("  Callers ({}):\n", callers.len()));
-        for s in &callers {
-            out.push_str(&format!("    {s}\n"));
-            expand_sym(&mut out, s);
-        }
+        self.push_neighborhood_section(&mut out, "Callers", &callers, expand_bodies);
 
         if !inferred_callers.is_empty() {
-            out.push_str(&format!(
-                "  Inferred callers from refs ({}):\n",
-                inferred_callers.len()
-            ));
-            for s in &inferred_callers {
-                out.push_str(&format!("    {s}\n"));
-                expand_sym(&mut out, s);
-            }
+            self.push_neighborhood_section(
+                &mut out,
+                "Inferred callers from refs",
+                &inferred_callers,
+                expand_bodies,
+            );
         }
 
-        out.push_str(&format!("  Callees ({}):\n", callees.len()));
-        for s in &callees {
-            out.push_str(&format!("    {s}\n"));
-            expand_sym(&mut out, s);
-        }
-
+        self.push_neighborhood_section(&mut out, "Callees", &callees, expand_bodies);
         Ok(out)
     }
 
@@ -590,6 +543,67 @@ impl SemanticIndex {
             }
         }
         out
+    }
+
+    fn direct_call_neighbors<'a>(&'a self, symbol_key: &str) -> (Vec<&'a str>, Vec<&'a str>) {
+        let mut callers: Vec<&str> = Vec::new();
+        let mut callees: Vec<&str> = Vec::new();
+
+        for edge in &self.graph.edges {
+            if edge.kind != "call" {
+                continue;
+            }
+            if edge.to == symbol_key {
+                callers.push(&edge.from);
+            }
+            if edge.from == symbol_key {
+                callees.push(&edge.to);
+            }
+        }
+
+        callers.sort();
+        callers.dedup();
+        callees.sort();
+        callees.dedup();
+        (callers, callees)
+    }
+
+    fn sorted_deduped_callers_from_refs<'a>(
+        &'a self,
+        symbol_key: &str,
+        refs: &'a [SourceSpan],
+    ) -> Vec<&'a str> {
+        let mut inferred_callers = self.infer_callers_from_refs(symbol_key, refs);
+        inferred_callers.sort();
+        inferred_callers.dedup();
+        inferred_callers
+    }
+
+    fn push_neighborhood_section(
+        &self,
+        out: &mut String,
+        label: &str,
+        symbols: &[&str],
+        expand_bodies: bool,
+    ) {
+        out.push_str(&format!("  {label} ({}):\n", symbols.len()));
+        for sym in symbols {
+            out.push_str(&format!("    {sym}\n"));
+            self.push_expanded_symbol_body(out, sym, expand_bodies);
+        }
+    }
+
+    fn push_expanded_symbol_body(&self, out: &mut String, sym: &str, expand_bodies: bool) {
+        if !expand_bodies {
+            return;
+        }
+        if let Ok(body) = self.symbol_window(sym) {
+            for line in body.lines() {
+                out.push_str("      ");
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
     }
 
     fn call_adjacency(&self) -> HashMap<&str, Vec<&str>> {
