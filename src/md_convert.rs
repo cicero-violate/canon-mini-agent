@@ -175,36 +175,26 @@ fn parse_objectives_md(text: &str) -> ObjectivesReport {
             let title = line.trim_start_matches("## ").trim();
             if title.contains("Goal") {
                 section = ObjectiveSection::Goal;
-                if let Some(obj) = current.take() {
-                    objectives.push(obj.finish());
-                }
+                finalize_current_objective(&mut objectives, &mut current);
                 continue;
             }
             if title.contains("Instrumentation") {
                 section = ObjectiveSection::Instrumentation;
-                if let Some(obj) = current.take() {
-                    objectives.push(obj.finish());
-                }
+                finalize_current_objective(&mut objectives, &mut current);
                 continue;
             }
             if title.contains("Definition of Done") {
                 section = ObjectiveSection::DefinitionDone;
-                if let Some(obj) = current.take() {
-                    objectives.push(obj.finish());
-                }
+                finalize_current_objective(&mut objectives, &mut current);
                 continue;
             }
             if title.contains("Non-Goals") {
                 section = ObjectiveSection::NonGoals;
-                if let Some(obj) = current.take() {
-                    objectives.push(obj.finish());
-                }
+                finalize_current_objective(&mut objectives, &mut current);
                 continue;
             }
             if title.contains("Objective") || title.starts_with("OBJ-") {
-                if let Some(obj) = current.take() {
-                    objectives.push(obj.finish());
-                }
+                finalize_current_objective(&mut objectives, &mut current);
                 current = Some(ObjectiveBuilder::new(title));
                 section = ObjectiveSection::None;
                 continue;
@@ -247,9 +237,7 @@ fn parse_objectives_md(text: &str) -> ObjectivesReport {
             }
         }
     }
-    if let Some(obj) = current.take() {
-        objectives.push(obj.finish());
-    }
+    finalize_current_objective(&mut objectives, &mut current);
 
     ObjectivesReport {
         version: 1,
@@ -258,6 +246,15 @@ fn parse_objectives_md(text: &str) -> ObjectivesReport {
         instrumentation,
         definition_of_done,
         non_goals,
+    }
+}
+
+fn finalize_current_objective(
+    objectives: &mut Vec<Objective>,
+    current: &mut Option<ObjectiveBuilder>,
+) {
+    if let Some(obj) = current.take() {
+        objectives.push(obj.finish());
     }
 }
 
