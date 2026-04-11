@@ -5635,6 +5635,16 @@ fn persist_inbound_message(role: &str, step: usize, action: &Value, full_message
         .trim()
         .to_lowercase()
         .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+    let is_redundant_solo_self_complete = role.eq_ignore_ascii_case("solo")
+        && to == "solo"
+        && action.get("action").and_then(|v| v.as_str()) == Some("message")
+        && action
+            .get("status")
+            .and_then(|v| v.as_str())
+            .is_some_and(|status| status.eq_ignore_ascii_case("complete"));
+    if is_redundant_solo_self_complete {
+        return;
+    }
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let _ = std::fs::create_dir_all(agent_state_dir);
     let path = agent_state_dir.join(format!("last_message_to_{to}.json"));
