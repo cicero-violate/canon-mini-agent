@@ -2873,24 +2873,10 @@ fn handle_graph_call_cfg_action(
     workspace: &Path,
     action: &Value,
 ) -> Result<(bool, String)> {
-    let crate_name = action
-        .get("crate")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow!("{action_kind} missing 'crate'"))?;
-    let out_dir = action
-        .get("out_dir")
-        .and_then(|v| v.as_str())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| default_graph_out_dir(workspace, crate_name));
-    let out_dir_str = out_dir.to_string_lossy();
+    let (crate_name, out_dir) = parse_graph_call_cfg_action_input(action_kind, workspace, action)?;
+    let out_dir_str = out_dir.to_string_lossy().to_string();
     let artifact_crate = ensure_graph_artifact(workspace, crate_name, role, step)?;
-    let bin_cmd =
-        format!(
-        "cargo run -p canon-tools-analysis --bin graph_bin -- --workspace {} --crate {} --out {}",
-        crate::constants::workspace(), artifact_crate, out_dir_str
-    );
+    let bin_cmd = build_graph_call_cfg_command(&artifact_crate, &out_dir_str);
     eprintln!("[{role}] step={} graph_bin cmd={bin_cmd}", step);
     let (bin_ok, bin_out) = exec_graph_command(workspace, &bin_cmd)?;
     let bin_label = if bin_ok {
@@ -2904,18 +2890,14 @@ fn handle_graph_call_cfg_action(
         bin_out.len()
     );
     if !bin_ok {
-        log_error_event(
+        log_graph_call_cfg_failure(
             role,
+            step,
             action_kind,
-            Some(step),
-            &format!("graph_bin failed for crate {crate_name}"),
-            Some(json!({
-                "stage": action_kind,
-                "crate": crate_name,
-                "artifact_crate": artifact_crate,
-                "cmd": bin_cmd,
-                "out_dir": out_dir_str.to_string(),
-            })),
+            crate_name,
+            &artifact_crate,
+            &bin_cmd,
+            &out_dir_str,
         );
     }
     let label = if bin_ok {
@@ -2925,7 +2907,82 @@ fn handle_graph_call_cfg_action(
     };
     let target_path = graph_call_cfg_target_path(&out_dir, action_kind);
     let preview = graph_preview_text(&target_path)?;
-    let (symbol_preview, symbol_path) = build_graph_symbol_preview(&out_dir, &target_path, action_kind)?;
+    let (symbol_preview, symbol_path) =
+        build_graph_symbol_preview(&out_dir, &target_path, action_kind)?;
+    let summary = build_graph_call_cfg_summary(
+        &label,
+        &out_dir_str,
+        &target_path,
+        &preview,
+        symbol_preview.as_str(),
+        symbol_path.as_ref(),
+    );
+    let mut full_out = String::new();
+    full_out.push_str(&format!(
+        "{bin_label}:\n{}\n",
+        truncate(&bin_out, MAX_SNIPPET)
+    ));
+    Ok((false, format!("{summary}\n\nfull_output:\n{full_out}")))
+}
+
+fn parse_graph_call_cfg_action_input<'a>(
+    action_kind: &'a str,
+    workspace: &'a Path,
+    action: &'a Value,
+) -> Result<(&'a str, PathBuf)> {
+    let crate_name = action
+        .get("crate")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("{action_kind} missing 'crate'"))?;
+    let out_dir = action
+        .get("out_dir")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| default_graph_out_dir(workspace, crate_name));
+    Ok((crate_name, out_dir))
+}
+
+fn build_graph_call_cfg_command(artifact_crate: &str, out_dir_str: &str) -> String {
+    format!(
+        "cargo run -p canon-tools-analysis --bin graph_bin -- --workspace {} --crate {} --out {}",
+        crate::constants::workspace(), artifact_crate, out_dir_str
+    )
+}
+
+fn log_graph_call_cfg_failure(
+    role: &str,
+    step: usize,
+    action_kind: &str,
+    crate_name: &str,
+    artifact_crate: &str,
+    bin_cmd: &str,
+    out_dir_str: &str,
+) {
+    log_error_event(
+        role,
+        action_kind,
+        Some(step),
+        &format!("graph_bin failed for crate {crate_name}"),
+        Some(json!({
+            "stage": action_kind,
+            "crate": crate_name,
+            "artifact_crate": artifact_crate,
+            "cmd": bin_cmd,
+            "out_dir": out_dir_str.to_string(),
+        })),
+    );
+}
+
+fn build_graph_call_cfg_summary(
+    label: &str,
+    out_dir_str: &str,
+    target_path: &Path,
+    preview: &str,
+    symbol_preview: &str,
+    symbol_path: Option<&PathBuf>,
+) -> String {
     let mut summary = format!(
         "{label}\noutput_dir: {}\n{}",
         out_dir_str,
@@ -2933,21 +2990,16 @@ fn handle_graph_call_cfg_action(
     );
     if !preview.is_empty() {
         summary.push_str("\npreview:\n");
-        summary.push_str(&preview);
+        summary.push_str(preview);
     }
     if let Some(path) = symbol_path {
         summary.push_str(&format!("\nsymbol_edges: {}", path.display()));
         if !symbol_preview.is_empty() {
             summary.push_str("\nsymbol_preview:\n");
-            summary.push_str(&symbol_preview);
+            summary.push_str(symbol_preview);
         }
     }
-    let mut full_out = String::new();
-    full_out.push_str(&format!(
-        "{bin_label}:\n{}\n",
-        truncate(&bin_out, MAX_SNIPPET)
-    ));
-    Ok((false, format!("{summary}\n\nfull_output:\n{full_out}")))
+    summary
 }
 
 fn graph_call_cfg_target_path(out_dir: &Path, action_kind: &str) -> PathBuf {
