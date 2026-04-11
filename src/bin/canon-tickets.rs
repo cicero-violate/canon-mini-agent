@@ -281,31 +281,14 @@ fn main() -> Result<()> {
         "prune": prune,
         "pruned": pruned
     });
-    if dry_run {
-        println!("{}", serde_json::to_string_pretty(&summary)?);
-        if print {
-            // Keep stdout streamable: summary line, then the exact issue objects that would be appended.
-            let payload = json!({ "generated_issues": applied_issue_objects });
-            println!("{}", serde_json::to_string_pretty(&payload)?);
-        }
-        return Ok(());
-    }
-
-    if let Some(parent) = issues_path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("create {}", parent.display()))?;
-    }
-    let text = serde_json::to_string_pretty(&root)?;
-    let mut file = std::fs::File::create(&issues_path)
-        .with_context(|| format!("write {}", issues_path.display()))?;
-    file.write_all(text.as_bytes())
-        .with_context(|| format!("write {}", issues_path.display()))?;
-
-    println!("{}", serde_json::to_string_pretty(&summary)?);
-    if print {
-        let payload = json!({ "generated_issues": applied_issue_objects });
-        println!("{}", serde_json::to_string_pretty(&payload)?);
-    }
+    emit_or_write_ticket_summary(
+        &issues_path,
+        &root,
+        &summary,
+        &applied_issue_objects,
+        dry_run,
+        print,
+    )?;
     Ok(())
 }
 
@@ -499,4 +482,44 @@ fn sort_issues_by_priority(issues: &mut [Value]) {
             ia.cmp(ib)
         })
     });
+}
+
+fn emit_generated_issues_payload(applied_issue_objects: &[Value]) -> Value {
+    json!({ "generated_issues": applied_issue_objects })
+}
+
+fn emit_or_write_ticket_summary(
+    issues_path: &Path,
+    root: &Value,
+    summary: &Value,
+    applied_issue_objects: &[Value],
+    dry_run: bool,
+    print: bool,
+) -> Result<()> {
+    if dry_run {
+        println!("{}", serde_json::to_string_pretty(summary)?);
+        if print {
+            // Keep stdout streamable: summary line, then the exact issue objects that would be appended.
+            let payload = emit_generated_issues_payload(applied_issue_objects);
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+        }
+        return Ok(());
+    }
+
+    if let Some(parent) = issues_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("create {}", parent.display()))?;
+    }
+    let text = serde_json::to_string_pretty(root)?;
+    let mut file = std::fs::File::create(issues_path)
+        .with_context(|| format!("write {}", issues_path.display()))?;
+    file.write_all(text.as_bytes())
+        .with_context(|| format!("write {}", issues_path.display()))?;
+
+    println!("{}", serde_json::to_string_pretty(summary)?);
+    if print {
+        let payload = emit_generated_issues_payload(applied_issue_objects);
+        println!("{}", serde_json::to_string_pretty(&payload)?);
+    }
+    Ok(())
 }
