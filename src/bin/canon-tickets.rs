@@ -251,67 +251,18 @@ fn main() -> Result<()> {
     }
     new_issues = sort_and_truncate_issues(new_issues, &score_by_id, top);
 
-    // Update-in-place by id (no duplicates); keep latest object contents.
-    let mut index_by_id = std::collections::HashMap::<String, usize>::new();
-    for (idx, it) in issues.iter().enumerate() {
-        if let Some(id) = it.get("id").and_then(|v| v.as_str()) {
-            index_by_id.insert(id.to_string(), idx);
-        }
-    }
-
-    let mut added_ids = Vec::new();
-    let mut updated_ids = Vec::new();
-    let mut applied_issue_objects: Vec<Value> = Vec::new();
-    for issue in new_issues {
-        let Some(id) = issue.get("id").and_then(|v| v.as_str()) else { continue };
-        if let Some(&pos) = index_by_id.get(id) {
-            issues[pos] = issue.clone();
-            updated_ids.push(id.to_string());
-        } else {
-            index_by_id.insert(id.to_string(), issues.len());
-            added_ids.push(id.to_string());
-            issues.push(issue.clone());
-        }
-        applied_issue_objects.push(issue);
-    }
+    let MergeAppliedIssues {
+        added_ids,
+        updated_ids,
+        applied_issue_objects,
+    } = merge_generated_issues(issues, new_issues);
 
     // Optional cleanup: remove previous auto-generated tickets from this generator that are not
     // part of the currently-selected top set.
-    let keep_ids: std::collections::HashSet<String> = applied_issue_objects
-        .iter()
-        .filter_map(|it| it.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
-        .collect();
-    let mut pruned = 0usize;
-    if prune {
-        issues.retain(|it| {
-            let Some(id) = it.get("id").and_then(|v| v.as_str()) else { return true };
-            let discovered_by = it
-                .get("discovered_by")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let is_auto = id.starts_with("auto_branch_reduce_") || id.starts_with("auto_refactor_split_");
-            let is_from_this_generator = discovered_by == "tickets";
-            if is_auto && is_from_this_generator && !keep_ids.contains(id) {
-                pruned += 1;
-                return false;
-            }
-            true
-        });
-    }
+    let pruned = prune_stale_generated_issues(issues, &applied_issue_objects, prune);
 
     // Keep stable-ish ordering: priority, then id. Use a BTreeMap for ranking.
-    let rank: BTreeMap<&str, u32> = [("high", 0u32), ("medium", 1u32), ("low", 2u32)].into_iter().collect();
-    issues.sort_by(|a, b| {
-        let pa = a.get("priority").and_then(|v| v.as_str()).unwrap_or("low").to_lowercase();
-        let pb = b.get("priority").and_then(|v| v.as_str()).unwrap_or("low").to_lowercase();
-        let ra = *rank.get(pa.as_str()).unwrap_or(&9);
-        let rb = *rank.get(pb.as_str()).unwrap_or(&9);
-        ra.cmp(&rb).then_with(|| {
-            let ia = a.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let ib = b.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            ia.cmp(ib)
-        })
-    });
+    sort_issues_by_priority(issues);
 
     let summary = json!({
         "ok": true,
@@ -455,4 +406,97 @@ fn collect_issues_for_crate(
     );
 
     Ok((added_here, candidate_summary))
+}
+
+struct MergeAppliedIssues {
+    added_ids: Vec<String>,
+    updated_ids: Vec<String>,
+    applied_issue_objects: Vec<Value>,
+}
+
+fn merge_generated_issues(issues: &mut Vec<Value>, new_issues: Vec<Value>) -> MergeAppliedIssues {
+    let mut index_by_id = std::collections::HashMap::<String, usize>::new();
+    for (idx, it) in issues.iter().enumerate() {
+        if let Some(id) = it.get("id").and_then(|v| v.as_str()) {
+            index_by_id.insert(id.to_string(), idx);
+        }
+    }
+
+    let mut added_ids = Vec::new();
+    let mut updated_ids = Vec::new();
+    let mut applied_issue_objects = Vec::new();
+    for issue in new_issues {
+        let Some(id) = issue.get("id").and_then(|v| v.as_str()) else { continue };
+        if let Some(&pos) = index_by_id.get(id) {
+            issues[pos] = issue.clone();
+            updated_ids.push(id.to_string());
+        } else {
+            index_by_id.insert(id.to_string(), issues.len());
+            added_ids.push(id.to_string());
+            issues.push(issue.clone());
+        }
+        applied_issue_objects.push(issue);
+    }
+
+    MergeAppliedIssues {
+        added_ids,
+        updated_ids,
+        applied_issue_objects,
+    }
+}
+
+fn prune_stale_generated_issues(
+    issues: &mut Vec<Value>,
+    applied_issue_objects: &[Value],
+    prune: bool,
+) -> usize {
+    if !prune {
+        return 0;
+    }
+
+    let keep_ids: std::collections::HashSet<String> = applied_issue_objects
+        .iter()
+        .filter_map(|it| it.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
+        .collect();
+    let mut pruned = 0usize;
+    issues.retain(|it| {
+        let Some(id) = it.get("id").and_then(|v| v.as_str()) else { return true };
+        let discovered_by = it
+            .get("discovered_by")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let is_auto = id.starts_with("auto_branch_reduce_") || id.starts_with("auto_refactor_split_");
+        let is_from_this_generator = discovered_by == "tickets";
+        if is_auto && is_from_this_generator && !keep_ids.contains(id) {
+            pruned += 1;
+            return false;
+        }
+        true
+    });
+    pruned
+}
+
+fn sort_issues_by_priority(issues: &mut [Value]) {
+    let rank: BTreeMap<&str, u32> = [("high", 0u32), ("medium", 1u32), ("low", 2u32)]
+        .into_iter()
+        .collect();
+    issues.sort_by(|a, b| {
+        let pa = a
+            .get("priority")
+            .and_then(|v| v.as_str())
+            .unwrap_or("low")
+            .to_lowercase();
+        let pb = b
+            .get("priority")
+            .and_then(|v| v.as_str())
+            .unwrap_or("low")
+            .to_lowercase();
+        let ra = *rank.get(pa.as_str()).unwrap_or(&9);
+        let rb = *rank.get(pb.as_str()).unwrap_or(&9);
+        ra.cmp(&rb).then_with(|| {
+            let ia = a.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let ib = b.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            ia.cmp(ib)
+        })
+    });
 }
