@@ -1644,6 +1644,16 @@ fn handle_symbols_rename_candidates_action(workspace: &Path, action: &Value) -> 
         if sym.kind == "field" {
             continue;
         }
+        // Exclude conventional status/result enum variants that are semantically
+        // meaningful and should not be mechanically renamed.
+        if sym.kind == "enum_variant" {
+            match sym.name.as_str() {
+                "Ok" | "Err" | "Some" | "None" => {
+                    continue;
+                }
+                _ => {}
+            }
+        }
         // Defense in depth: endpoint/protocol identity names are part of external routing,
         // persistence, and filename surfaces in known authority files. Exclude them even if
         // a future symbol-index/runtime mismatch reclassifies them away from `field`.

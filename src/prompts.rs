@@ -604,6 +604,7 @@ const PLANNER_RULES: &[&str] = &[
     "- Keep each executor's ready window small: 1-10 tasks maximum.",
     "- Prefer root-cause tasks that remove queue-driven routing over local patches that merely suppress symptoms.",
     "- Send handoff messages to executors reflecting the current ready window.",
+    "- If the incoming handoff was sent by solo (check `message.from` or context role), finish your planning cycle and send the return `message` to solo so it can resume execution. Do not leave solo waiting.",
 ];
 
 fn diagnostics_rules() -> Vec<String> {
