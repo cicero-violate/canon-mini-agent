@@ -3347,83 +3347,167 @@ fn ensure_reopened_task_has_regression_linkage(
 }
 
 fn validate_plan_action_shape(action: &Value, normalized_op: &str) -> Result<()> {
-    let has = |field: &str| action.get(field).is_some();
-    let require = |field: &str| {
-        if has(field) {
-            Ok(())
-        } else {
-            Err(anyhow!("plan {normalized_op} missing {field}"))
-        }
-    };
-    let reject = |field: &str, why: &str| {
-        if has(field) {
-            Err(anyhow!("plan {normalized_op} does not accept {field} ({why})"))
-        } else {
-            Ok(())
-        }
-    };
-
     match normalized_op {
-        "create_task" => {
-            require("task")?;
-            reject("task_id", "use task.id inside task object")?;
-            reject("status", "set status inside task object")?;
-            reject("from", "edge fields are only for add_edge/remove_edge")?;
-            reject("to", "edge fields are only for add_edge/remove_edge")?;
-            reject("plan", "use replace_plan to write a full plan object")?;
-        }
-        "update_task" => {
-            require("task")?;
-            reject("task_id", "task id belongs inside task object for update_task")?;
-            reject("status", "set status inside task object or use set_task_status")?;
-            reject("from", "edge fields are only for add_edge/remove_edge")?;
-            reject("to", "edge fields are only for add_edge/remove_edge")?;
-            reject("plan", "use replace_plan to write a full plan object")?;
-        }
-        "delete_task" => {
-            require("task_id")?;
-            reject("task", "delete_task targets by task_id only")?;
-            reject("status", "status is not used by delete_task")?;
-            reject("from", "edge fields are only for add_edge/remove_edge")?;
-            reject("to", "edge fields are only for add_edge/remove_edge")?;
-            reject("plan", "use replace_plan to write a full plan object")?;
-        }
-        "add_edge" | "remove_edge" => {
-            require("from")?;
-            require("to")?;
-            reject("task", "task object is not used for edge operations")?;
-            reject("task_id", "task_id is not used for edge operations")?;
-            reject("status", "status is not used for edge operations")?;
-            reject("plan", "use replace_plan to write a full plan object")?;
-        }
-        "set_plan_status" => {
-            require("status")?;
-            reject("task_id", "set_plan_status changes PLAN.status only")?;
-            reject("task", "set_plan_status changes PLAN.status only")?;
-            reject("from", "edge fields are only for add_edge/remove_edge")?;
-            reject("to", "edge fields are only for add_edge/remove_edge")?;
-            reject("plan", "use replace_plan to write a full plan object")?;
-        }
-        "set_task_status" => {
-            require("task_id")?;
-            require("status")?;
-            reject("task", "use update_task for full task updates")?;
-            reject("from", "edge fields are only for add_edge/remove_edge")?;
-            reject("to", "edge fields are only for add_edge/remove_edge")?;
-            reject("plan", "use replace_plan to write a full plan object")?;
-        }
-        "replace_plan" => {
-            require("plan")?;
-            reject("task", "replace_plan uses plan object")?;
-            reject("task_id", "replace_plan uses plan object")?;
-            reject("status", "replace_plan uses plan object")?;
-            reject("from", "replace_plan uses plan object")?;
-            reject("to", "replace_plan uses plan object")?;
-        }
-        "sorted_view" | "update" => {}
-        _ => {}
+        "create_task" => validate_plan_create_task_shape(action, normalized_op),
+        "update_task" => validate_plan_update_task_shape(action, normalized_op),
+        "delete_task" => validate_plan_delete_task_shape(action, normalized_op),
+        "add_edge" | "remove_edge" => validate_plan_edge_shape(action, normalized_op),
+        "set_plan_status" => validate_plan_set_plan_status_shape(action, normalized_op),
+        "set_task_status" => validate_plan_set_task_status_shape(action, normalized_op),
+        "replace_plan" => validate_plan_replace_plan_shape(action, normalized_op),
+        "sorted_view" | "update" => Ok(()),
+        _ => Ok(()),
+    }
+}
+
+fn plan_action_has_field(action: &Value, field: &str) -> bool {
+    action.get(field).is_some()
+}
+
+fn require_plan_action_field(action: &Value, normalized_op: &str, field: &str) -> Result<()> {
+    if plan_action_has_field(action, field) {
+        Ok(())
+    } else {
+        Err(anyhow!("plan {normalized_op} missing {field}"))
+    }
+}
+
+fn reject_plan_action_field(
+    action: &Value,
+    normalized_op: &str,
+    field: &str,
+    why: &str,
+) -> Result<()> {
+    if plan_action_has_field(action, field) {
+        Err(anyhow!("plan {normalized_op} does not accept {field} ({why})"))
+    } else {
+        Ok(())
+    }
+}
+
+fn require_plan_action_fields(
+    action: &Value,
+    normalized_op: &str,
+    fields: &[&str],
+) -> Result<()> {
+    for field in fields {
+        require_plan_action_field(action, normalized_op, field)?;
     }
     Ok(())
+}
+
+fn reject_plan_action_fields(
+    action: &Value,
+    normalized_op: &str,
+    fields: &[(&str, &str)],
+) -> Result<()> {
+    for (field, why) in fields {
+        reject_plan_action_field(action, normalized_op, field, why)?;
+    }
+    Ok(())
+}
+
+fn validate_plan_create_task_shape(action: &Value, normalized_op: &str) -> Result<()> {
+    require_plan_action_field(action, normalized_op, "task")?;
+    reject_plan_action_fields(
+        action,
+        normalized_op,
+        &[
+            ("task_id", "use task.id inside task object"),
+            ("status", "set status inside task object"),
+            ("from", "edge fields are only for add_edge/remove_edge"),
+            ("to", "edge fields are only for add_edge/remove_edge"),
+            ("plan", "use replace_plan to write a full plan object"),
+        ],
+    )
+}
+
+fn validate_plan_update_task_shape(action: &Value, normalized_op: &str) -> Result<()> {
+    require_plan_action_field(action, normalized_op, "task")?;
+    reject_plan_action_fields(
+        action,
+        normalized_op,
+        &[
+            ("task_id", "task id belongs inside task object for update_task"),
+            ("status", "set status inside task object or use set_task_status"),
+            ("from", "edge fields are only for add_edge/remove_edge"),
+            ("to", "edge fields are only for add_edge/remove_edge"),
+            ("plan", "use replace_plan to write a full plan object"),
+        ],
+    )
+}
+
+fn validate_plan_delete_task_shape(action: &Value, normalized_op: &str) -> Result<()> {
+    require_plan_action_field(action, normalized_op, "task_id")?;
+    reject_plan_action_fields(
+        action,
+        normalized_op,
+        &[
+            ("task", "delete_task targets by task_id only"),
+            ("status", "status is not used by delete_task"),
+            ("from", "edge fields are only for add_edge/remove_edge"),
+            ("to", "edge fields are only for add_edge/remove_edge"),
+            ("plan", "use replace_plan to write a full plan object"),
+        ],
+    )
+}
+
+fn validate_plan_edge_shape(action: &Value, normalized_op: &str) -> Result<()> {
+    require_plan_action_fields(action, normalized_op, &["from", "to"])?;
+    reject_plan_action_fields(
+        action,
+        normalized_op,
+        &[
+            ("task", "task object is not used for edge operations"),
+            ("task_id", "task_id is not used for edge operations"),
+            ("status", "status is not used for edge operations"),
+            ("plan", "use replace_plan to write a full plan object"),
+        ],
+    )
+}
+
+fn validate_plan_set_plan_status_shape(action: &Value, normalized_op: &str) -> Result<()> {
+    require_plan_action_field(action, normalized_op, "status")?;
+    reject_plan_action_fields(
+        action,
+        normalized_op,
+        &[
+            ("task_id", "set_plan_status changes PLAN.status only"),
+            ("task", "set_plan_status changes PLAN.status only"),
+            ("from", "edge fields are only for add_edge/remove_edge"),
+            ("to", "edge fields are only for add_edge/remove_edge"),
+            ("plan", "use replace_plan to write a full plan object"),
+        ],
+    )
+}
+
+fn validate_plan_set_task_status_shape(action: &Value, normalized_op: &str) -> Result<()> {
+    require_plan_action_fields(action, normalized_op, &["task_id", "status"])?;
+    reject_plan_action_fields(
+        action,
+        normalized_op,
+        &[
+            ("task", "use update_task for full task updates"),
+            ("from", "edge fields are only for add_edge/remove_edge"),
+            ("to", "edge fields are only for add_edge/remove_edge"),
+            ("plan", "use replace_plan to write a full plan object"),
+        ],
+    )
+}
+
+fn validate_plan_replace_plan_shape(action: &Value, normalized_op: &str) -> Result<()> {
+    require_plan_action_field(action, normalized_op, "plan")?;
+    reject_plan_action_fields(
+        action,
+        normalized_op,
+        &[
+            ("task", "replace_plan uses plan object"),
+            ("task_id", "replace_plan uses plan object"),
+            ("status", "replace_plan uses plan object"),
+            ("from", "replace_plan uses plan object"),
+            ("to", "replace_plan uses plan object"),
+        ],
+    )
 }
 
 fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(bool, String)> {
