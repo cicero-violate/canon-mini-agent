@@ -1624,6 +1624,17 @@ fn handle_symbols_rename_candidates_action(workspace: &Path, action: &Value) -> 
         }
     }
 
+    let identity_surface_names: BTreeSet<&'static str> =
+        ["id", "endpoint_id", "lane_id"].into_iter().collect();
+    let identity_surface_files: BTreeSet<&'static str> = [
+        "src/constants.rs",
+        "src/protocol.rs",
+        "src/app.rs",
+        "src/logging.rs",
+    ]
+    .into_iter()
+    .collect();
+
     let mut candidates = Vec::new();
     for sym in &symbols_file.symbols {
         // Field-level symbols are currently not resolvable by the semantic rename tool:
@@ -1631,6 +1642,14 @@ fn handle_symbols_rename_candidates_action(workspace: &Path, action: &Value) -> 
         // node keys/suffixes, while the graph does not expose record fields as standalone
         // node identities. Skip them here so prepared rename actions stay executable.
         if sym.kind == "field" {
+            continue;
+        }
+        // Defense in depth: endpoint/protocol identity names are part of external routing,
+        // persistence, and filename surfaces in known authority files. Exclude them even if
+        // a future symbol-index/runtime mismatch reclassifies them away from `field`.
+        if identity_surface_names.contains(sym.name.as_str())
+            && identity_surface_files.contains(sym.file.as_str())
+        {
             continue;
         }
         let mut reasons = ambiguous_name_reasons(&sym.name);
@@ -1854,6 +1873,21 @@ fn handle_symbols_prepare_rename_action(workspace: &Path, action: &Value) -> Res
             pairs.push((old.to_string(), new.to_string()));
         }
 
+        // Capture HEAD before touching any file so we can roll back on failure.
+        // Only attempted when the workspace is a git repository.
+        let in_git = workspace.join(".git").exists();
+        let has_cargo = workspace.join("Cargo.toml").exists();
+        let head = if in_git {
+            let out = Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(workspace)
+                .output()
+                .context("git rev-parse HEAD")?;
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        } else {
+            String::new()
+        };
+
         let report =
             crate::rename_semantic::rename_symbols_via_semantic_spans(workspace, &idx, &pairs)?;
         eprintln!(
@@ -1863,13 +1897,61 @@ fn handle_symbols_prepare_rename_action(workspace: &Path, action: &Value) -> Res
             report.replacements,
             report.touched_files.len()
         );
+
+        // Post-rename cargo check.  On failure roll back every touched file to
+        // its pre-rename state via `git checkout <head> -- <file>...` and
+        // surface the compiler output so the agent can diagnose the problem.
+        // Skipped when the workspace has no Cargo.toml (e.g. unit-test fixtures).
+        if has_cargo {
+            let check_out = Command::new("cargo")
+                .args(["check", "--workspace"])
+                .current_dir(workspace)
+                .output()
+                .context("cargo check --workspace")?;
+
+            if !check_out.status.success() {
+                // Roll back touched files only — leave the rest of the tree alone.
+                if in_git && !head.is_empty() {
+                    let mut restore_args =
+                        vec!["checkout".to_string(), head.clone(), "--".to_string()];
+                    for f in &report.touched_files {
+                        restore_args.push(f.to_string_lossy().into_owned());
+                    }
+                    let restore_args_ref: Vec<&str> =
+                        restore_args.iter().map(String::as_str).collect();
+                    let _ = Command::new("git")
+                        .args(&restore_args_ref)
+                        .current_dir(workspace)
+                        .output();
+                }
+
+                let stderr = String::from_utf8_lossy(&check_out.stderr);
+                let stdout = String::from_utf8_lossy(&check_out.stdout);
+                let compiler_output = format!("{stdout}{stderr}");
+
+                // Persist errors as an artifact so the agent (or a human) can
+                // inspect the full compiler output without having to re-run.
+                let errors_path = workspace.join("state/rename_errors.txt");
+                if let Some(p) = errors_path.parent() {
+                    let _ = fs::create_dir_all(p);
+                }
+                let _ = fs::write(&errors_path, &compiler_output);
+
+                bail!(
+                    "rename_symbol: cargo check failed after rename — rolled back {} file(s) to {head}. Errors written to state/rename_errors.txt.\n{compiler_output}",
+                    report.touched_files.len()
+                );
+            }
+        }
+
         Ok((
             false,
             format!(
-                "rename_symbol ok: pairs={} replacements={} touched_files={}",
+                "rename_symbol ok: pairs={} replacements={} touched_files={} cargo_check={}",
                 pairs.len(),
                 report.replacements,
-                report.touched_files.len()
+                report.touched_files.len(),
+                if has_cargo { "ok" } else { "skipped" },
             ),
         ))
     }
@@ -4162,7 +4244,8 @@ fn execute_action(
         other => Ok((
             false,
             format!(
-                "unsupported action '{other}' — use batch, list_dir, read_file, symbols_index, symbols_rename_candidates, symbols_prepare_rename, rename_symbol, objectives, issue, apply_patch, run_command, python, cargo_test, plan, stage_graph, semantic_map, symbol_window, symbol_refs, symbol_path, symbol_neighborhood, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, or message"
+                "unsupported action '{other}' — use one of: {}",
+                crate::tool_schema::predicted_action_name_list().join(", ")
             ),
         )),
     }

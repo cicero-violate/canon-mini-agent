@@ -8,7 +8,7 @@ use crate::constants::{
 use crate::protocol::{MessagePayload, MessageStatus, MessageType, ProtocolMessage, Role};
 use crate::tool_schema::{
     cargo_test_action_example, plan_set_task_status_action_example, plan_sorted_view_action_example,
-    validate_tool_action, ALL_TOOL_PROMPT_KINDS, TOOL_ACTION_NAMES,
+    validate_tool_action,
 };
 
 pub(crate) fn truncate(s: &str, max: usize) -> &str {
@@ -48,9 +48,8 @@ pub(crate) enum ToolPromptKind {
     Message,
 }
 
-fn available_actions(kind: AgentPromptKind) -> &'static [&'static str] {
-    let _ = kind;
-    TOOL_ACTION_NAMES
+fn available_actions(_kind: AgentPromptKind) -> Vec<String> {
+    crate::tool_schema::predicted_action_name_list()
 }
 
 fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
@@ -121,10 +120,6 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
     }
 }
 
-fn all_tool_prompt_kinds() -> &'static [&'static str] {
-    ALL_TOOL_PROMPT_KINDS
-}
-
 fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
     match (kind, tool) {
         (_, ToolPromptKind::ListDir) => {
@@ -143,7 +138,7 @@ fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
             "symbols_prepare_rename — select candidate and emit ready rename_symbol payload"
         }
         (_, ToolPromptKind::RenameSymbol) => {
-            "rename_symbol — rename Rust symbols using rustc graph spans (crate-wide; supports bulk)"
+            "rename_symbol — rename Rust symbols using rustc graph spans; cargo check runs automatically and git-rolls back on failure"
         }
         (_, ToolPromptKind::Objectives) => {
             "objectives — read/update objectives in PLANS/OBJECTIVES.json"
@@ -263,10 +258,10 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
             "   {\"action\":\"symbols_prepare_rename\",\"candidates_path\":\"state/rename_candidates.json\",\"index\":0,\"out\":\"state/next_rename_action.json\",\"rationale\":\"Select one deterministic candidate and prepare a ready rename_symbol action payload.\"}\n   Notes: `candidates_path` defaults to `state/rename_candidates.json`; `index` defaults to 0; `out` defaults to `state/next_rename_action.json`.".to_string()
         }
         (AgentPromptKind::Executor | AgentPromptKind::Solo, ToolPromptKind::RenameSymbol) => {
-            "   {\"action\":\"rename_symbol\",\"old_symbol\":\"tools::handle_plan_action\",\"new_symbol\":\"tools::handle_master_plan_action\",\"question\":\"Is this the exact symbol to rename across the crate?\",\"rationale\":\"Perform a span-backed rename so all references update consistently.\",\"predicted_next_actions\":[{\"action\":\"cargo_test\",\"intent\":\"Run focused tests after rename.\"},{\"action\":\"run_command\",\"intent\":\"Run cargo check after rename.\"}]}\n   Notes: symbol paths are module-relative (e.g. `tools::my_fn`); crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped; uses `state/rustc/<crate>/graph.json` spans.".to_string()
+            "   {\"action\":\"rename_symbol\",\"old_symbol\":\"tools::handle_plan_action\",\"new_symbol\":\"tools::handle_master_plan_action\",\"question\":\"Is this the exact symbol to rename across the crate?\",\"rationale\":\"Perform a span-backed rename so all references update consistently.\",\"predicted_next_actions\":[{\"action\":\"cargo_test\",\"intent\":\"Run focused tests after rename.\"}]}\n   Notes: symbol paths are module-relative (e.g. `tools::my_fn`); crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped; uses `state/rustc/<crate>/graph.json` spans. cargo check runs automatically — on failure the rename is rolled back via git and errors are written to state/rename_errors.txt.".to_string()
         }
         (AgentPromptKind::Planner | AgentPromptKind::Verifier | AgentPromptKind::Diagnostics, ToolPromptKind::RenameSymbol) => {
-            "   {\"action\":\"rename_symbol\",\"old_symbol\":\"tools::handle_plan_action\",\"new_symbol\":\"tools::handle_master_plan_action\",\"question\":\"Is this the exact symbol to rename across the crate?\",\"rationale\":\"Apply a span-backed rename only when source evidence confirms it is required.\",\"predicted_next_actions\":[{\"action\":\"cargo_test\",\"intent\":\"Run focused tests after rename.\"},{\"action\":\"run_command\",\"intent\":\"Run cargo check after rename.\"}]}\n   Notes: symbol paths are module-relative (e.g. `tools::my_fn`); crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped; uses `state/rustc/<crate>/graph.json` spans.".to_string()
+            "   {\"action\":\"rename_symbol\",\"old_symbol\":\"tools::handle_plan_action\",\"new_symbol\":\"tools::handle_master_plan_action\",\"question\":\"Is this the exact symbol to rename across the crate?\",\"rationale\":\"Apply a span-backed rename only when source evidence confirms it is required.\",\"predicted_next_actions\":[{\"action\":\"cargo_test\",\"intent\":\"Run focused tests after rename.\"}]}\n   Notes: symbol paths are module-relative (e.g. `tools::my_fn`); crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped; uses `state/rustc/<crate>/graph.json` spans. cargo check runs automatically — on failure the rename is rolled back via git and errors are written to state/rename_errors.txt.".to_string()
         }
         (_, ToolPromptKind::Objectives) => {
             "   {\"action\":\"objectives\",\"op\":\"read\",\"rationale\":\"Load only non-completed objectives for planning/verification.\"}\n   {\"action\":\"objectives\",\"op\":\"read\",\"include_done\":true,\"rationale\":\"Load all objectives, including completed.\"}\n   {\"action\":\"objectives\",\"op\":\"create_objective\",\"objective\":{\"id\":\"obj_new\",\"title\":\"New objective\",\"status\":\"active\",\"scope\":\"...\",\"authority_files\":[\"src/foo.rs\"],\"category\":\"quality\",\"level\":\"low\",\"description\":\"...\",\"requirement\":[],\"verification\":[],\"success_criteria\":[]},\"rationale\":\"Record a new objective.\"}\n   {\"action\":\"objectives\",\"op\":\"set_status\",\"objective_id\":\"obj_new\",\"status\":\"done\",\"rationale\":\"Mark objective complete.\"}\n   {\"action\":\"objectives\",\"op\":\"update_objective\",\"objective_id\":\"obj_new\",\"updates\":{\"scope\":\"updated scope\"},\"rationale\":\"Update objective fields.\"}\n   {\"action\":\"objectives\",\"op\":\"delete_objective\",\"objective_id\":\"obj_new\",\"rationale\":\"Remove obsolete objective.\"}\n   {\"action\":\"objectives\",\"op\":\"replace_objectives\",\"objectives\":[],\"rationale\":\"Replace objectives list.\"}\n   {\"action\":\"objectives\",\"op\":\"sorted_view\",\"rationale\":\"View objectives sorted by status.\"}".to_string()

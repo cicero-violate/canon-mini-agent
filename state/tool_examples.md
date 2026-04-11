@@ -49,15 +49,16 @@ Notes:
 - `index` defaults to 0.
 - `out` defaults to `state/next_rename_action.json`.
 
-## `rename_symbol` — rename Rust symbols using rustc graph spans (crate-wide; supports bulk)
+## `rename_symbol` — rename Rust symbols using rustc graph spans (crate-wide; supports bulk); auto cargo-check with git rollback on failure
 
 Example (single):
-  {"action":"rename_symbol","old_symbol":"tools::handle_plan_action","new_symbol":"tools::handle_master_plan_action","question":"Is this the exact symbol to rename across the crate?","rationale":"Use span-backed rename so all references update consistently.","predicted_next_actions":[{"action":"cargo_test","intent":"Run focused tests covering the renamed symbol."},{"action":"run_command","intent":"Run cargo check to verify the workspace compiles."}]}
+  {"action":"rename_symbol","old_symbol":"tools::handle_plan_action","new_symbol":"tools::handle_master_plan_action","question":"Is this the exact symbol to rename across the crate?","rationale":"Use span-backed rename so all references update consistently.","predicted_next_actions":[{"action":"cargo_test","intent":"Run focused tests covering the renamed symbol."}]}
 Example (bulk):
-  {"action":"rename_symbol","renames":[{"old":"constants::EndpointSpec","new":"constants::EndpointDescriptor"},{"old":"tools::execute_logged_action","new":"tools::execute_action_logged"}],"question":"Are these renames correct and non-breaking?","rationale":"Batch related renames to minimize rebuild cycles.","predicted_next_actions":[{"action":"cargo_test","intent":"Run tests after applying the batch rename."},{"action":"run_command","intent":"Run cargo check after rename."}]}
+  {"action":"rename_symbol","renames":[{"old":"constants::EndpointSpec","new":"constants::EndpointDescriptor"},{"old":"tools::execute_logged_action","new":"tools::execute_action_logged"}],"question":"Are these renames correct and non-breaking?","rationale":"Batch related renames to minimize rebuild cycles.","predicted_next_actions":[{"action":"cargo_test","intent":"Run tests after applying the batch rename."}]}
 Notes:
 - Symbol paths are module-relative (e.g. `tools::my_fn`). Crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped.
-- Uses `state/rustc/<crate>/graph.json` spans; if the graph is stale, the rename is rejected and you should rebuild then retry.
+- Uses `state/rustc/<crate>/graph.json` spans; if the graph is stale, the rename is rejected — rebuild then retry.
+- Safe by default: cargo check runs automatically after every rename. On failure the touched files are rolled back via git and compiler errors are written to `state/rename_errors.txt`. No manual cargo check step needed.
 
 ## `issue` — record/update discovered issues in ISSUES.json for later attention
 
