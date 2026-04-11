@@ -2534,96 +2534,9 @@ fn handle_graph_call_cfg_action(
     } else {
         format!("{action_kind} failed")
     };
-    let target_path = if action_kind == "graph_call" {
-        out_dir.join("graphs").join("callgraph.csv")
-    } else {
-        out_dir.join("graphs").join("cfg.csv")
-    };
-    let preview = if target_path.exists() {
-        read_first_lines(&target_path, 50, MAX_SNIPPET)?
-    } else {
-        String::new()
-    };
-    let mut symbol_preview = String::new();
-    let mut symbol_path = None;
-    if target_path.exists() {
-        let mut out_lines = Vec::new();
-        let content = fs::read_to_string(&target_path)?;
-        let mut lines = content.lines();
-        let header = lines.next().unwrap_or("");
-        let header_cols: Vec<&str> = header.split(',').collect();
-        let has_symbol_cols = header_cols
-            .iter()
-            .any(|c| *c == "caller_symbol" || *c == "callee_symbol");
-        let map = if !has_symbol_cols {
-            let graph_json = out_dir.join("graph").join("graph.json");
-            if graph_json.exists() {
-                Some(load_graph_symbols(&graph_json)?)
-            } else {
-                let nodes_csv = out_dir.join("graph").join("nodes.csv");
-                if nodes_csv.exists() {
-                    Some(load_nodes_symbols(&nodes_csv)?)
-                } else {
-                    None
-                }
-            }
-        } else {
-            None
-        };
-        let mut count = 0usize;
-        for line in lines {
-            if count >= 200 {
-                break;
-            }
-            let cols: Vec<&str> = line.split(',').collect();
-            if has_symbol_cols {
-                let caller_idx = header_cols.iter().position(|c| *c == "caller_symbol");
-                let callee_idx = header_cols.iter().position(|c| *c == "callee_symbol");
-                let caller = caller_idx
-                    .and_then(|i| cols.get(i))
-                    .map(|s| s.trim())
-                    .unwrap_or("");
-                let callee = callee_idx
-                    .and_then(|i| cols.get(i))
-                    .map(|s| s.trim())
-                    .unwrap_or("");
-                if !caller.is_empty() || !callee.is_empty() {
-                    out_lines.push(format!("{caller} -> {callee}"));
-                    count += 1;
-                    continue;
-                }
-            }
-            if cols.len() < 2 {
-                continue;
-            }
-            let src = cols[0].trim();
-            let dst = cols[1].trim();
-            if let Some(map) = map.as_ref() {
-                out_lines.push(format!(
-                    "{} -> {}",
-                    symbol_label(map, src),
-                    symbol_label(map, dst)
-                ));
-            } else {
-                out_lines.push(format!("{src} -> {dst}"));
-            }
-            count += 1;
-        }
-        if !out_lines.is_empty() {
-            symbol_preview = out_lines.join("\n");
-            let fname = if action_kind == "graph_call" {
-                "callgraph.symbol.txt"
-            } else {
-                "cfg.symbol.txt"
-            };
-            let out_path = out_dir.join("graphs").join(fname);
-            if let Some(parent) = out_path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            fs::write(&out_path, format!("{}\n", symbol_preview))?;
-            symbol_path = Some(out_path);
-        }
-    }
+    let target_path = graph_call_cfg_target_path(&out_dir, action_kind);
+    let preview = graph_preview_text(&target_path)?;
+    let (symbol_preview, symbol_path) = build_graph_symbol_preview(&out_dir, &target_path, action_kind)?;
     let mut summary = format!(
         "{label}\noutput_dir: {}\n{}",
         out_dir_str,
@@ -2646,6 +2559,133 @@ fn handle_graph_call_cfg_action(
         truncate(&bin_out, MAX_SNIPPET)
     ));
     Ok((false, format!("{summary}\n\nfull_output:\n{full_out}")))
+}
+
+fn graph_call_cfg_target_path(out_dir: &Path, action_kind: &str) -> PathBuf {
+    if action_kind == "graph_call" {
+        out_dir.join("graphs").join("callgraph.csv")
+    } else {
+        out_dir.join("graphs").join("cfg.csv")
+    }
+}
+
+fn graph_preview_text(target_path: &Path) -> Result<String> {
+    if target_path.exists() {
+        read_first_lines(target_path, 50, MAX_SNIPPET)
+    } else {
+        Ok(String::new())
+    }
+}
+
+fn build_graph_symbol_preview(
+    out_dir: &Path,
+    target_path: &Path,
+    action_kind: &str,
+) -> Result<(String, Option<PathBuf>)> {
+    if !target_path.exists() {
+        return Ok((String::new(), None));
+    }
+    let out_lines = graph_symbol_preview_lines(out_dir, target_path)?;
+    if out_lines.is_empty() {
+        return Ok((String::new(), None));
+    }
+    let symbol_preview = out_lines.join("\n");
+    let out_path = write_graph_symbol_preview_file(out_dir, action_kind, &symbol_preview)?;
+    Ok((symbol_preview, Some(out_path)))
+}
+
+fn graph_symbol_preview_lines(out_dir: &Path, target_path: &Path) -> Result<Vec<String>> {
+    let content = fs::read_to_string(target_path)?;
+    let mut lines = content.lines();
+    let header = lines.next().unwrap_or("");
+    let header_cols: Vec<&str> = header.split(',').collect();
+    let has_symbol_cols = header_cols
+        .iter()
+        .any(|c| *c == "caller_symbol" || *c == "callee_symbol");
+    let map = graph_symbol_map(out_dir, has_symbol_cols)?;
+    let mut out_lines = Vec::new();
+    let mut count = 0usize;
+    for line in lines {
+        if count >= 200 {
+            break;
+        }
+        if let Some(symbol_edge) = graph_symbol_edge_from_columns(&header_cols, line) {
+            out_lines.push(symbol_edge);
+            count += 1;
+            continue;
+        }
+        if let Some(mapped_edge) = graph_symbol_edge_from_ids(map.as_ref(), line) {
+            out_lines.push(mapped_edge);
+            count += 1;
+        }
+    }
+    Ok(out_lines)
+}
+
+fn graph_symbol_map(
+    out_dir: &Path,
+    has_symbol_cols: bool,
+) -> Result<Option<std::collections::HashMap<u32, (String, String)>>> {
+    if has_symbol_cols {
+        return Ok(None);
+    }
+    let graph_json = out_dir.join("graph").join("graph.json");
+    if graph_json.exists() {
+        return Ok(Some(load_graph_symbols(&graph_json)?));
+    }
+    let nodes_csv = out_dir.join("graph").join("nodes.csv");
+    if nodes_csv.exists() {
+        return Ok(Some(load_nodes_symbols(&nodes_csv)?));
+    }
+    Ok(None)
+}
+
+fn graph_symbol_edge_from_columns(header_cols: &[&str], line: &str) -> Option<String> {
+    let cols: Vec<&str> = line.split(',').collect();
+    let caller_idx = header_cols.iter().position(|c| *c == "caller_symbol")?;
+    let callee_idx = header_cols.iter().position(|c| *c == "callee_symbol")?;
+    let caller = cols.get(caller_idx).map(|s| s.trim()).unwrap_or("");
+    let callee = cols.get(callee_idx).map(|s| s.trim()).unwrap_or("");
+    if caller.is_empty() && callee.is_empty() {
+        None
+    } else {
+        Some(format!("{caller} -> {callee}"))
+    }
+}
+
+fn graph_symbol_edge_from_ids(
+    map: Option<&std::collections::HashMap<u32, (String, String)>>,
+    line: &str,
+) -> Option<String> {
+    let cols: Vec<&str> = line.split(',').collect();
+    if cols.len() < 2 {
+        return None;
+    }
+    let src = cols[0].trim();
+    let dst = cols[1].trim();
+    Some(if let Some(map) = map {
+        format!("{} -> {}", symbol_label(map, src), symbol_label(map, dst))
+    } else {
+        format!("{src} -> {dst}")
+    })
+}
+
+fn write_graph_symbol_preview_file(
+    out_dir: &Path,
+    action_kind: &str,
+    symbol_preview: &str,
+) -> Result<PathBuf> {
+    let fname = if action_kind == "graph_call" {
+        "callgraph.symbol.txt"
+    } else {
+        "cfg.symbol.txt"
+    };
+    let out_path = out_dir.join("graphs").join(fname);
+    if let Some(parent) = out_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&out_path, format!("{}\n", symbol_preview))?;
+    Ok(out_path)
 }
 
 fn handle_graph_reports_action(
