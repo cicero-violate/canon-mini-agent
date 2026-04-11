@@ -547,12 +547,7 @@ fn handle_issue_action(workspace: &Path, action: &Value) -> Result<(bool, String
             let issue_val = action
                 .get("issue")
                 .ok_or_else(|| anyhow!("issue create missing 'issue' field"))?;
-            let mut file: IssuesFile = if raw.trim().is_empty() {
-                IssuesFile::default()
-            } else {
-                serde_json::from_str(&raw)
-                    .map_err(|e| anyhow!("failed to parse ISSUES.json: {e}"))?
-            };
+            let mut file = parse_issues_file_allow_empty(&raw)?;
             let issue: Issue = serde_json::from_value(issue_val.clone())
                 .map_err(|e| anyhow!("invalid issue payload: {e}"))?;
             if issue.id.trim().is_empty() {
@@ -562,7 +557,7 @@ fn handle_issue_action(workspace: &Path, action: &Value) -> Result<(bool, String
                 bail!("issue id already exists: {}", issue.id);
             }
             file.issues.push(issue);
-            std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
+            write_issues_file(&path, &file)?;
             Ok((false, "issue create ok".to_string()))
         }
         "update" => {
@@ -574,12 +569,8 @@ fn handle_issue_action(workspace: &Path, action: &Value) -> Result<(bool, String
                 .get("updates")
                 .and_then(|v| v.as_object())
                 .ok_or_else(|| anyhow!("issue update missing 'updates' object"))?;
-            let mut file: IssuesFile = serde_json::from_str(&raw)
-                .map_err(|e| anyhow!("failed to parse ISSUES.json: {e}"))?;
-            let found = file.issues.iter_mut().find(|i| i.id == issue_id);
-            let Some(issue) = found else {
-                bail!("issue not found: {issue_id}");
-            };
+            let mut file = parse_issues_file_required(&raw)?;
+            let issue = find_issue_mut(&mut file, issue_id)?;
             let mut value = serde_json::to_value(issue.clone())?;
             if let Some(map) = value.as_object_mut() {
                 for (k, v) in updates {
@@ -587,7 +578,7 @@ fn handle_issue_action(workspace: &Path, action: &Value) -> Result<(bool, String
                 }
             }
             *issue = serde_json::from_value(value)?;
-            std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
+            write_issues_file(&path, &file)?;
             Ok((false, "issue update ok".to_string()))
         }
         "delete" => {
@@ -601,7 +592,7 @@ fn handle_issue_action(workspace: &Path, action: &Value) -> Result<(bool, String
             if file.issues.len() == before {
                 bail!("issue not found: {issue_id}");
             }
-            std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
+            write_issues_file(&path, &file)?;
             Ok((false, "issue delete ok".to_string()))
         }
         "set_status" => {
@@ -613,18 +604,39 @@ fn handle_issue_action(workspace: &Path, action: &Value) -> Result<(bool, String
                 .get("status")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("issue set_status missing 'status'"))?;
-            let mut file: IssuesFile = serde_json::from_str(&raw)
-                .map_err(|e| anyhow!("failed to parse ISSUES.json: {e}"))?;
-            let found = file.issues.iter_mut().find(|i| i.id == issue_id);
-            let Some(issue) = found else {
-                bail!("issue not found: {issue_id}");
-            };
+            let mut file = parse_issues_file_required(&raw)?;
+            let issue = find_issue_mut(&mut file, issue_id)?;
             issue.status = status.to_string();
-            std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
+            write_issues_file(&path, &file)?;
             Ok((false, "issue set_status ok".to_string()))
         }
         _ => bail!("unknown issue op '{op_raw}' — use read | create | update | delete | set_status"),
     }
+}
+
+fn parse_issues_file_allow_empty(raw: &str) -> Result<IssuesFile> {
+    if raw.trim().is_empty() {
+        Ok(IssuesFile::default())
+    } else {
+        parse_issues_file_required(raw)
+    }
+}
+
+fn parse_issues_file_required(raw: &str) -> Result<IssuesFile> {
+    serde_json::from_str(raw).map_err(|e| anyhow!("failed to parse ISSUES.json: {e}"))
+}
+
+fn find_issue_mut<'a>(file: &'a mut IssuesFile, issue_id: &str) -> Result<&'a mut Issue> {
+    let found = file.issues.iter_mut().find(|i| i.id == issue_id);
+    let Some(issue) = found else {
+        bail!("issue not found: {issue_id}");
+    };
+    Ok(issue)
+}
+
+fn write_issues_file(path: &Path, file: &IssuesFile) -> Result<()> {
+    std::fs::write(path, serde_json::to_string_pretty(file)?)?;
+    Ok(())
 }
 
 fn handle_plan_sorted_view_action(workspace: &Path) -> Result<(bool, String)> {
