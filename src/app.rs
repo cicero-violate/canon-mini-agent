@@ -811,6 +811,30 @@ async fn run_verifier_phase(
     (cycle_progress, verifier_changed)
 }
 
+fn requeue_lane_after_submit_recovery(dispatch_state: &mut DispatchState, lane_id: usize) {
+    let lane = dispatch_lane_mut(dispatch_state, lane_id);
+    lane.in_progress_by = None;
+    lane.pending = true;
+    dispatch_state.executor_submit_inflight.remove(&lane_id);
+    dispatch_state.lane_submit_in_flight.insert(lane_id, false);
+}
+
+fn register_submitted_executor_turn(
+    dispatch_state: &mut DispatchState,
+    lane_id: usize,
+    tab_id: u32,
+    turn_id: u64,
+    submitted_turn: SubmittedExecutorTurn,
+) {
+    dispatch_state.lane_active_tab.insert(lane_id, tab_id);
+    dispatch_state.tab_id_to_lane.entry(tab_id).or_insert(lane_id);
+    dispatch_state
+        .submitted_turns
+        .insert((tab_id, turn_id), submitted_turn);
+    dispatch_state.lane_next_submit_at_ms.insert(lane_id, now_ms());
+    dispatch_state.lane_submit_in_flight.insert(lane_id, false);
+}
+
 fn run_executor_phase(
     ctx: &OrchestratorContext<'_>,
     dispatch_state: &mut DispatchState,
@@ -943,10 +967,11 @@ fn run_executor_phase(
                                         "turn_id": turn_id,
                                     })),
                                 );
-                                dispatch_state.lane_active_tab.insert(lane_id, tab_id);
-                                dispatch_state.tab_id_to_lane.entry(tab_id).or_insert(lane_id);
-                                dispatch_state.submitted_turns.insert(
-                                    (tab_id, turn_id),
+                                register_submitted_executor_turn(
+                                    dispatch_state,
+                                    lane_id,
+                                    tab_id,
+                                    turn_id,
                                     SubmittedExecutorTurn {
                                         tab_id,
                                         lane: job.lane_index,
@@ -958,8 +983,6 @@ fn run_executor_phase(
                                         steps_used: dispatch_state.lane_steps_used(job.lane_index),
                                     },
                                 );
-                                dispatch_state.lane_next_submit_at_ms.insert(lane_id, now_ms());
-                                dispatch_state.lane_submit_in_flight.insert(lane_id, false);
                                 cycle_progress = true;
                                 continue;
                             };
@@ -1022,13 +1045,11 @@ fn run_executor_phase(
                                     );
                                 }
                             }
-                            dispatch_state.lane_active_tab.insert(lane_id, tab_id);
-                            dispatch_state
-                                .tab_id_to_lane
-                                .entry(tab_id)
-                                .or_insert(lane_id);
-                            dispatch_state.submitted_turns.insert(
-                                (tab_id, turn_id),
+                            register_submitted_executor_turn(
+                                dispatch_state,
+                                lane_id,
+                                tab_id,
+                                turn_id,
                                 SubmittedExecutorTurn {
                                     tab_id,
                                     lane: job.lane_index,
@@ -1040,8 +1061,6 @@ fn run_executor_phase(
                                     steps_used: dispatch_state.lane_steps_used(job.lane_index),
                                 },
                             );
-                            dispatch_state.lane_next_submit_at_ms.insert(lane_id, now_ms());
-                            dispatch_state.lane_submit_in_flight.insert(lane_id, false);
                             cycle_progress = true;
                         } else {
                             eprintln!("[orchestrate] {} missing submit_ack (preserving lane ownership): {exec_result}", job.executor_name);
@@ -1058,12 +1077,8 @@ fn run_executor_phase(
                                     "lane": job.executor_name,
                                 })),
                             );
-                            let lane = dispatch_lane_mut(dispatch_state, job.lane_index);
                             // Recovery: clear stuck ownership and requeue lane
-                            lane.in_progress_by = None;
-                            lane.pending = true;
-                            dispatch_state.executor_submit_inflight.remove(&job.lane_index);
-                            dispatch_state.lane_submit_in_flight.insert(job.lane_index, false);
+                            requeue_lane_after_submit_recovery(dispatch_state, job.lane_index);
                         }
                     }
                     Err(err) => {
@@ -1078,12 +1093,8 @@ fn run_executor_phase(
                             ),
                             Some(json!({ "stage": "executor_submit", "lane": job.executor_name })),
                         );
-                        let lane = dispatch_lane_mut(dispatch_state, job.lane_index);
                         // Recovery: clear stuck ownership and requeue lane
-                        lane.in_progress_by = None;
-                        lane.pending = true;
-                        dispatch_state.executor_submit_inflight.remove(&job.lane_index);
-                        dispatch_state.lane_submit_in_flight.insert(job.lane_index, false);
+                        requeue_lane_after_submit_recovery(dispatch_state, job.lane_index);
                     }
                 }
             }
