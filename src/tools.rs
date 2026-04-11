@@ -3048,53 +3048,24 @@ fn handle_graph_call_cfg_action(
     let (crate_name, out_dir) = parse_graph_call_cfg_action_input(action_kind, workspace, action)?;
     let out_dir_str = out_dir.to_string_lossy().to_string();
     let artifact_crate = ensure_graph_artifact(workspace, crate_name, role, step)?;
-    let bin_cmd = build_graph_call_cfg_command(&artifact_crate, &out_dir_str);
-    eprintln!("[{role}] step={} graph_bin cmd={bin_cmd}", step);
-    let (bin_ok, bin_out) = exec_graph_command(workspace, &bin_cmd)?;
-    let bin_label = if bin_ok {
-        "graph_bin ok"
-    } else {
-        "graph_bin failed"
-    };
-    eprintln!(
-        "[{role}] step={} {bin_label} output_bytes={}",
+    let (bin_ok, bin_out, bin_label) = run_graph_call_cfg_bin(
+        role,
         step,
-        bin_out.len()
-    );
-    if !bin_ok {
-        log_graph_call_cfg_failure(
-            role,
-            step,
-            action_kind,
-            crate_name,
-            &artifact_crate,
-            &bin_cmd,
-            &out_dir_str,
-        );
-    }
-    let label = if bin_ok {
-        format!("{action_kind} ok")
-    } else {
-        format!("{action_kind} failed")
-    };
-    let target_path = graph_call_cfg_target_path(&out_dir, action_kind);
-    let preview = graph_preview_text(&target_path)?;
-    let (symbol_preview, symbol_path) =
-        build_graph_symbol_preview(&out_dir, &target_path, action_kind)?;
-    let summary = build_graph_call_cfg_summary(
-        &label,
+        action_kind,
+        workspace,
+        crate_name,
+        &artifact_crate,
         &out_dir_str,
-        &target_path,
-        &preview,
-        symbol_preview.as_str(),
-        symbol_path.as_ref(),
-    );
-    let mut full_out = String::new();
-    full_out.push_str(&format!(
-        "{bin_label}:\n{}\n",
-        truncate(&bin_out, MAX_SNIPPET)
-    ));
-    Ok((false, format!("{summary}\n\nfull_output:\n{full_out}")))
+    )?;
+    let output = render_graph_call_cfg_output(
+        action_kind,
+        &out_dir,
+        &out_dir_str,
+        bin_ok,
+        &bin_out,
+        bin_label,
+    )?;
+    Ok((false, output))
 }
 
 fn parse_graph_call_cfg_action_input<'a>(
@@ -3121,6 +3092,79 @@ fn build_graph_call_cfg_command(artifact_crate: &str, out_dir_str: &str) -> Stri
         "cargo run -p canon-tools-analysis --bin graph_bin -- --workspace {} --crate {} --out {}",
         crate::constants::workspace(), artifact_crate, out_dir_str
     )
+}
+
+fn graph_call_cfg_bin_label(bin_ok: bool) -> &'static str {
+    if bin_ok {
+        "graph_bin ok"
+    } else {
+        "graph_bin failed"
+    }
+}
+
+fn graph_call_cfg_action_label(action_kind: &str, bin_ok: bool) -> String {
+    if bin_ok {
+        format!("{action_kind} ok")
+    } else {
+        format!("{action_kind} failed")
+    }
+}
+
+fn run_graph_call_cfg_bin(
+    role: &str,
+    step: usize,
+    action_kind: &str,
+    workspace: &Path,
+    crate_name: &str,
+    artifact_crate: &str,
+    out_dir_str: &str,
+) -> Result<(bool, String, &'static str)> {
+    let bin_cmd = build_graph_call_cfg_command(artifact_crate, out_dir_str);
+    eprintln!("[{role}] step={} graph_bin cmd={bin_cmd}", step);
+    let (bin_ok, bin_out) = exec_graph_command(workspace, &bin_cmd)?;
+    let bin_label = graph_call_cfg_bin_label(bin_ok);
+    eprintln!(
+        "[{role}] step={} {bin_label} output_bytes={}",
+        step,
+        bin_out.len()
+    );
+    if !bin_ok {
+        log_graph_call_cfg_failure(
+            role,
+            step,
+            action_kind,
+            crate_name,
+            artifact_crate,
+            &bin_cmd,
+            out_dir_str,
+        );
+    }
+    Ok((bin_ok, bin_out, bin_label))
+}
+
+fn render_graph_call_cfg_output(
+    action_kind: &str,
+    out_dir: &Path,
+    out_dir_str: &str,
+    bin_ok: bool,
+    bin_out: &str,
+    bin_label: &str,
+) -> Result<String> {
+    let label = graph_call_cfg_action_label(action_kind, bin_ok);
+    let target_path = graph_call_cfg_target_path(out_dir, action_kind);
+    let preview = graph_preview_text(&target_path)?;
+    let (symbol_preview, symbol_path) =
+        build_graph_symbol_preview(out_dir, &target_path, action_kind)?;
+    let summary = build_graph_call_cfg_summary(
+        &label,
+        out_dir_str,
+        &target_path,
+        &preview,
+        symbol_preview.as_str(),
+        symbol_path.as_ref(),
+    );
+    let full_out = format!("{bin_label}:\n{}\n", truncate(bin_out, MAX_SNIPPET));
+    Ok(format!("{summary}\n\nfull_output:\n{full_out}"))
 }
 
 fn log_graph_call_cfg_failure(
