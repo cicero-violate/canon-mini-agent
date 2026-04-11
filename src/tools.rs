@@ -3083,6 +3083,17 @@ fn handle_graph_call_cfg_action(
     action: &Value,
 ) -> Result<(bool, String)> {
     let (crate_name, out_dir) = parse_graph_call_cfg_action_input(action_kind, workspace, action)?;
+    execute_graph_call_cfg_action(role, step, action_kind, workspace, crate_name, out_dir)
+}
+
+fn execute_graph_call_cfg_action(
+    role: &str,
+    step: usize,
+    action_kind: &str,
+    workspace: &Path,
+    crate_name: &str,
+    out_dir: PathBuf,
+) -> Result<(bool, String)> {
     let out_dir_str = out_dir.to_string_lossy().to_string();
     let artifact_crate = ensure_graph_artifact(workspace, crate_name, role, step)?;
     let (bin_ok, bin_out, bin_label) = run_graph_call_cfg_bin(
