@@ -532,86 +532,96 @@ fn handle_issue_action(workspace: &Path, action: &Value) -> Result<(bool, String
     let path = workspace.join(ISSUES_FILE);
     let raw = fs::read_to_string(&path).unwrap_or_default();
     match op_raw {
-        "read" => {
-            if raw.trim().is_empty() {
-                return Ok((false, "(no open issues)".to_string()));
-            }
-            let mut file: IssuesFile = serde_json::from_str(&raw).unwrap_or_default();
-            file.issues.retain(|i| !is_closed(i));
-            if file.issues.is_empty() {
-                return Ok((false, "(no open issues)".to_string()));
-            }
-            Ok((false, serde_json::to_string_pretty(&file).unwrap_or(raw)))
-        }
-        "create" => {
-            let issue_val = action
-                .get("issue")
-                .ok_or_else(|| anyhow!("issue create missing 'issue' field"))?;
-            let mut file = parse_issues_file_allow_empty(&raw)?;
-            let issue: Issue = serde_json::from_value(issue_val.clone())
-                .map_err(|e| anyhow!("invalid issue payload: {e}"))?;
-            if issue.id.trim().is_empty() {
-                bail!("issue.id must be non-empty");
-            }
-            if file.issues.iter().any(|i| i.id == issue.id) {
-                bail!("issue id already exists: {}", issue.id);
-            }
-            file.issues.push(issue);
-            write_issues_file(&path, &file)?;
-            Ok((false, "issue create ok".to_string()))
-        }
-        "update" => {
-            let issue_id = action
-                .get("issue_id")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("issue update missing 'issue_id'"))?;
-            let updates = action
-                .get("updates")
-                .and_then(|v| v.as_object())
-                .ok_or_else(|| anyhow!("issue update missing 'updates' object"))?;
-            let mut file = parse_issues_file_required(&raw)?;
-            let issue = find_issue_mut(&mut file, issue_id)?;
-            let mut value = serde_json::to_value(issue.clone())?;
-            if let Some(map) = value.as_object_mut() {
-                for (k, v) in updates {
-                    map.insert(k.clone(), v.clone());
-                }
-            }
-            *issue = serde_json::from_value(value)?;
-            write_issues_file(&path, &file)?;
-            Ok((false, "issue update ok".to_string()))
-        }
-        "delete" => {
-            let issue_id = action
-                .get("issue_id")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("issue delete missing 'issue_id'"))?;
-            let mut file: IssuesFile = serde_json::from_str(&raw).unwrap_or_default();
-            let before = file.issues.len();
-            file.issues.retain(|i| i.id != issue_id);
-            if file.issues.len() == before {
-                bail!("issue not found: {issue_id}");
-            }
-            write_issues_file(&path, &file)?;
-            Ok((false, "issue delete ok".to_string()))
-        }
-        "set_status" => {
-            let issue_id = action
-                .get("issue_id")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("issue set_status missing 'issue_id'"))?;
-            let status = action
-                .get("status")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("issue set_status missing 'status'"))?;
-            let mut file = parse_issues_file_required(&raw)?;
-            let issue = find_issue_mut(&mut file, issue_id)?;
-            issue.status = status.to_string();
-            write_issues_file(&path, &file)?;
-            Ok((false, "issue set_status ok".to_string()))
-        }
+        "read" => read_open_issues(&raw),
+        "create" => create_issue(action, &path, &raw),
+        "update" => update_issue(action, &path, &raw),
+        "delete" => delete_issue(action, &path, &raw),
+        "set_status" => set_issue_status(action, &path, &raw),
         _ => bail!("unknown issue op '{op_raw}' — use read | create | update | delete | set_status"),
     }
+}
+
+fn read_open_issues(raw: &str) -> Result<(bool, String)> {
+    if raw.trim().is_empty() {
+        return Ok((false, "(no open issues)".to_string()));
+    }
+    let mut file: IssuesFile = serde_json::from_str(raw).unwrap_or_default();
+    file.issues.retain(|i| !is_closed(i));
+    if file.issues.is_empty() {
+        return Ok((false, "(no open issues)".to_string()));
+    }
+    Ok((false, serde_json::to_string_pretty(&file).unwrap_or(raw.to_string())))
+}
+
+fn create_issue(action: &Value, path: &Path, raw: &str) -> Result<(bool, String)> {
+    let issue_val = action
+        .get("issue")
+        .ok_or_else(|| anyhow!("issue create missing 'issue' field"))?;
+    let mut file = parse_issues_file_allow_empty(raw)?;
+    let issue: Issue = serde_json::from_value(issue_val.clone())
+        .map_err(|e| anyhow!("invalid issue payload: {e}"))?;
+    if issue.id.trim().is_empty() {
+        bail!("issue.id must be non-empty");
+    }
+    if file.issues.iter().any(|i| i.id == issue.id) {
+        bail!("issue id already exists: {}", issue.id);
+    }
+    file.issues.push(issue);
+    write_issues_file(path, &file)?;
+    Ok((false, "issue create ok".to_string()))
+}
+
+fn update_issue(action: &Value, path: &Path, raw: &str) -> Result<(bool, String)> {
+    let issue_id = action
+        .get("issue_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("issue update missing 'issue_id'"))?;
+    let updates = action
+        .get("updates")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| anyhow!("issue update missing 'updates' object"))?;
+    let mut file = parse_issues_file_required(raw)?;
+    let issue = find_issue_mut(&mut file, issue_id)?;
+    let mut value = serde_json::to_value(issue.clone())?;
+    if let Some(map) = value.as_object_mut() {
+        for (k, v) in updates {
+            map.insert(k.clone(), v.clone());
+        }
+    }
+    *issue = serde_json::from_value(value)?;
+    write_issues_file(path, &file)?;
+    Ok((false, "issue update ok".to_string()))
+}
+
+fn delete_issue(action: &Value, path: &Path, raw: &str) -> Result<(bool, String)> {
+    let issue_id = action
+        .get("issue_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("issue delete missing 'issue_id'"))?;
+    let mut file: IssuesFile = serde_json::from_str(raw).unwrap_or_default();
+    let before = file.issues.len();
+    file.issues.retain(|i| i.id != issue_id);
+    if file.issues.len() == before {
+        bail!("issue not found: {issue_id}");
+    }
+    write_issues_file(path, &file)?;
+    Ok((false, "issue delete ok".to_string()))
+}
+
+fn set_issue_status(action: &Value, path: &Path, raw: &str) -> Result<(bool, String)> {
+    let issue_id = action
+        .get("issue_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("issue set_status missing 'issue_id'"))?;
+    let status = action
+        .get("status")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("issue set_status missing 'status'"))?;
+    let mut file = parse_issues_file_required(raw)?;
+    let issue = find_issue_mut(&mut file, issue_id)?;
+    issue.status = status.to_string();
+    write_issues_file(path, &file)?;
+    Ok((false, "issue set_status ok".to_string()))
 }
 
 fn parse_issues_file_allow_empty(raw: &str) -> Result<IssuesFile> {
