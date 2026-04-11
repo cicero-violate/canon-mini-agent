@@ -1741,11 +1741,21 @@ fn guardrail_diff_message_action(raw: &str, role: &str) -> Value {
         "status": status,
         "observation": "Model responded with diff-only text; wrapping as message payload.",
         "rationale": "Diff output must be wrapped in a valid message action.",
-        "payload": {
-            "summary": "diff-only output captured",
-            "diff_excerpt": truncate(raw, 1500),
-            "expected_format": expected_message_format(from, to, msg_type, status)
-        }
+        "payload": guardrail_diff_message_payload(raw, from, to, msg_type, status)
+    })
+}
+
+fn guardrail_diff_message_payload(
+    raw: &str,
+    from: &str,
+    to: &str,
+    msg_type: &str,
+    status: &str,
+) -> Value {
+    json!({
+        "summary": "diff-only output captured",
+        "diff_excerpt": truncate(raw, 1500),
+        "expected_format": expected_message_format(from, to, msg_type, status)
     })
 }
 
