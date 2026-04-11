@@ -475,42 +475,93 @@ fn example_simple_action(kind: &str) -> Option<Value> {
 
 fn example_symbol_workflow_action(kind: &str) -> Option<Value> {
     match kind {
-        "symbols_index" => Some(json!({
-            "action": "symbols_index",
-            "path": "src",
-            "out": "state/symbols.json",
-            "observation": "Build deterministic symbol inventory.",
-            "rationale": "Need a unique sorted symbols catalog before rename/refactor planning.",
-            "predicted_next_actions": example_predicted_next_actions()
-        })),
-        "symbols_rename_candidates" => Some(json!({
-            "action": "symbols_rename_candidates",
-            "symbols_path": "state/symbols.json",
-            "out": "state/rename_candidates.json",
-            "observation": "Derive deterministic rename candidates from symbol inventory.",
-            "rationale": "Prioritize naming cleanup before direct symbol mutation.",
-            "predicted_next_actions": example_predicted_next_actions()
-        })),
-        "symbols_prepare_rename" => Some(json!({
-            "action": "symbols_prepare_rename",
-            "candidates_path": "state/rename_candidates.json",
-            "index": 0,
-            "out": "state/next_rename_action.json",
-            "observation": "Select the top rename candidate.",
-            "rationale": "Prepare a concrete rename_symbol payload before mutation.",
-            "predicted_next_actions": example_predicted_next_actions()
-        })),
-        "rename_symbol" => Some(json!({
-            "action": "rename_symbol",
-            "old_symbol": "tools::handle_plan_action",
-            "new_symbol": "tools::handle_master_plan_action",
-            "question": "Is this the exact symbol to rename across the crate?",
-            "observation": "Span-backed rename should update all references consistently.",
-            "rationale": "Perform a deterministic symbol rename using rustc graph spans.",
-            "predicted_next_actions": example_predicted_next_actions()
-        })),
+        "symbols_index" => Some(build_symbol_workflow_example_action(
+            "symbols_index",
+            &[
+                ("path", Value::String("src".to_string())),
+                ("out", Value::String("state/symbols.json".to_string())),
+            ],
+            "Build deterministic symbol inventory.",
+            "Need a unique sorted symbols catalog before rename/refactor planning.",
+        )),
+        "symbols_rename_candidates" => Some(build_symbol_workflow_example_action(
+            "symbols_rename_candidates",
+            &[
+                (
+                    "symbols_path",
+                    Value::String("state/symbols.json".to_string()),
+                ),
+                (
+                    "out",
+                    Value::String("state/rename_candidates.json".to_string()),
+                ),
+            ],
+            "Derive deterministic rename candidates from symbol inventory.",
+            "Prioritize naming cleanup before direct symbol mutation.",
+        )),
+        "symbols_prepare_rename" => Some(build_symbol_workflow_example_action(
+            "symbols_prepare_rename",
+            &[
+                (
+                    "candidates_path",
+                    Value::String("state/rename_candidates.json".to_string()),
+                ),
+                ("index", Value::from(0)),
+                (
+                    "out",
+                    Value::String("state/next_rename_action.json".to_string()),
+                ),
+            ],
+            "Select the top rename candidate.",
+            "Prepare a concrete rename_symbol payload before mutation.",
+        )),
+        "rename_symbol" => Some(build_symbol_workflow_example_action(
+            "rename_symbol",
+            &[
+                (
+                    "old_symbol",
+                    Value::String("tools::handle_plan_action".to_string()),
+                ),
+                (
+                    "new_symbol",
+                    Value::String("tools::handle_master_plan_action".to_string()),
+                ),
+                (
+                    "question",
+                    Value::String("Is this the exact symbol to rename across the crate?".to_string()),
+                ),
+            ],
+            "Span-backed rename should update all references consistently.",
+            "Perform a deterministic symbol rename using rustc graph spans.",
+        )),
         _ => None,
     }
+}
+
+fn build_symbol_workflow_example_action(
+    action: &str,
+    fields: &[(&str, Value)],
+    observation: &str,
+    rationale: &str,
+) -> Value {
+    let mut obj = serde_json::Map::new();
+    obj.insert("action".to_string(), Value::String(action.to_string()));
+    for (field, value) in fields {
+        obj.insert((*field).to_string(), value.clone());
+    }
+    obj.insert(
+        "observation".to_string(),
+        Value::String(observation.to_string()),
+    );
+    obj.insert(
+        "rationale".to_string(),
+        Value::String(rationale.to_string()),
+    );
+    obj.insert(
+        "predicted_next_actions".to_string(),
+        example_predicted_next_actions(),
+    );
+    Value::Object(obj)
 }
 
 fn example_action_for(kind: &str, role: &str, raw_action: Option<&Value>) -> Value {
