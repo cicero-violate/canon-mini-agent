@@ -683,9 +683,7 @@ fn handle_plan_sorted_view_action(workspace: &Path) -> Result<(bool, String)> {
     for edge in edges {
         let from = edge.get("from").and_then(|v| v.as_str()).unwrap_or("");
         let to = edge.get("to").and_then(|v| v.as_str()).unwrap_or("");
-        if from.is_empty() || to.is_empty() {
-            bail!("plan edge missing from/to");
-        }
+        ensure_plan_edge_endpoints_present(from, to)?;
         if let Some(nexts) = adj.get_mut(from) {
             nexts.insert(to.to_string());
         }
@@ -737,6 +735,13 @@ fn handle_plan_sorted_view_action(workspace: &Path) -> Result<(bool, String)> {
     output.insert("edges".to_string(), Value::Array(edges.clone()));
     let rendered = serde_json::to_string_pretty(&Value::Object(output))?;
     Ok((false, rendered))
+}
+
+fn ensure_plan_edge_endpoints_present(from: &str, to: &str) -> Result<()> {
+    if from.is_empty() || to.is_empty() {
+        bail!("plan edge missing from/to");
+    }
+    Ok(())
 }
 
 fn extract_output_log_path(out: &str) -> Option<PathBuf> {
