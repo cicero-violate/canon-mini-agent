@@ -3639,9 +3639,9 @@ fn handle_cargo_clippy_action(
 ) -> Result<(bool, String)> {
     let crate_name = action.get("crate").and_then(|v| v.as_str()).map(|s| s.trim()).filter(|s| !s.is_empty());
     let cmd = if let Some(krate) = crate_name {
-        format!("cargo clippy -p {krate} -- -D warnings")
+        format!("env -u RUSTC_WRAPPER -u RUSTC_WORKSPACE_WRAPPER cargo clippy -p {krate} -- -D warnings")
     } else {
-        "cargo clippy -- -D warnings".to_string()
+        "env -u RUSTC_WRAPPER -u RUSTC_WORKSPACE_WRAPPER cargo clippy -- -D warnings".to_string()
     };
     let timeout_secs = env::var("CANON_CARGO_CLIPPY_TIMEOUT_SECS")
         .ok()
