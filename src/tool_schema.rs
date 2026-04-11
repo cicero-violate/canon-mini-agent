@@ -837,11 +837,11 @@ pub(crate) fn schema_diff_messages(action: &Value) -> Vec<String> {
     diffs
 }
 
-pub(crate) fn action_schema_json(action: &str) -> Option<String> {
+pub(crate) fn action_schema_json(action: &str) -> Option<Value> {
     let schema = schema_for!(ToolAction);
     let value = serde_json::to_value(&schema).ok()?;
     let schema = find_action_schema(&value, action)?;
-    serde_json::to_string_pretty(schema).ok()
+    Some(schema.clone())
 }
 
 fn map_schema_error(err: &jsonschema::error::ValidationError, action: &Value) -> String {

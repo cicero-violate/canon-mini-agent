@@ -601,7 +601,7 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
     let mut expected_fields: Vec<&'static str> = Vec::new();
     let mut expected_format: Option<String> = None;
     let mut example_action: Option<Value> = None;
-    let mut action_schema: Option<String> = None;
+    let mut action_schema: Option<Value> = None;
     if let Some(action) = raw_action {
         let obj = action.as_object();
         let kind = obj
