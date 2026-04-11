@@ -1426,36 +1426,15 @@ fn drain_continuations(
     let mut cycle_progress = false;
     while let Some(joined) = continuation_joinset.try_join_next() {
         match joined {
-            Ok((submitted, turn_id, result)) => match result {
-                Ok(final_exec_result) => {
-                    dispatch_state.lane_prompt_in_flight.insert(submitted.lane, false);
-                    // Continuations only return once the executor has reached completion,
-                    // and the returned value is the completion summary (not the raw action JSON).
-                    verifier_pending_results.push_back((submitted, turn_id, final_exec_result));
-                    cycle_progress = true;
-                }
-                Err(err) => {
-                    eprintln!(
-                        "[orchestrate] executor continuation error: lane={} err={err:#}",
-                        submitted.lane_label
-                    );
-                    log_error_event(
-                        "executor",
-                        "orchestrate",
-                        None,
-                        &format!(
-                            "executor continuation error: lane={} err={err:#}",
-                            submitted.lane_label
-                        ),
-                        Some(json!({ "stage": "executor_continuation", "lane": submitted.lane_label })),
-                    );
-                    dispatch_state.lane_prompt_in_flight.insert(submitted.lane, false);
-                    let lane = dispatch_lane_mut(dispatch_state, submitted.lane);
-                    lane.in_progress_by = None;
-                    lane.pending = true;
-                    cycle_progress = true;
-                }
-            },
+            Ok((submitted, turn_id, result)) => {
+                cycle_progress |= handle_completed_continuation(
+                    dispatch_state,
+                    verifier_pending_results,
+                    submitted,
+                    turn_id,
+                    result,
+                );
+            }
             Err(err) => {
                 eprintln!("[orchestrate] continuation join error: {err:#}");
                 log_error_event(
@@ -1469,6 +1448,55 @@ fn drain_continuations(
         }
     }
     cycle_progress
+}
+
+fn handle_completed_continuation(
+    dispatch_state: &mut DispatchState,
+    verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
+    submitted: SubmittedExecutorTurn,
+    turn_id: u64,
+    result: Result<String>,
+) -> bool {
+    match result {
+        Ok(final_exec_result) => {
+            dispatch_state.lane_prompt_in_flight.insert(submitted.lane, false);
+            // Continuations only return once the executor has reached completion,
+            // and the returned value is the completion summary (not the raw action JSON).
+            verifier_pending_results.push_back((submitted, turn_id, final_exec_result));
+        }
+        Err(err) => {
+            let err_text = format!("{err:#}");
+            recover_failed_continuation(dispatch_state, &submitted, &err_text);
+        }
+    }
+    true
+}
+
+fn recover_failed_continuation(
+    dispatch_state: &mut DispatchState,
+    submitted: &SubmittedExecutorTurn,
+    err_text: &str,
+) {
+    eprintln!(
+        "[orchestrate] executor continuation error: lane={} err={}",
+        submitted.lane_label,
+        err_text
+    );
+    log_error_event(
+        "executor",
+        "orchestrate",
+        None,
+        &format!(
+            "executor continuation error: lane={} err={}",
+            submitted.lane_label,
+            err_text
+        ),
+        Some(json!({ "stage": "executor_continuation", "lane": submitted.lane_label })),
+    );
+    dispatch_state.lane_prompt_in_flight.insert(submitted.lane, false);
+    let lane = dispatch_lane_mut(dispatch_state, submitted.lane);
+    lane.in_progress_by = None;
+    lane.pending = true;
 }
 
 fn drain_deferred_completions(
