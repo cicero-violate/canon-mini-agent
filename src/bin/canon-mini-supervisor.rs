@@ -382,31 +382,12 @@ fn stage_commit_push_before_restart(root: &Path, reason: &str, prefer_release: b
 }
 
 fn main() -> Result<()> {
-    let mut args: Vec<String> = std::env::args().collect();
-    let exe = args.remove(0);
-    let mut prefer_release = false;
-    let mut no_watch = false;
-    let mut filtered_args = Vec::new();
-    let mut i = 0usize;
-    while i < args.len() {
-        let arg = &args[i];
-        if arg == "--release" {
-            prefer_release = true;
-            i += 1;
-            continue;
-        }
-        if arg == "--no-watch" {
-            no_watch = true;
-            i += 1;
-            continue;
-        }
-        if arg == "--" {
-            filtered_args.extend_from_slice(&args[i + 1..]);
-            break;
-        }
-        filtered_args.push(arg.clone());
-        i += 1;
-    }
+    let SupervisorArgs {
+        exe,
+        prefer_release,
+        no_watch,
+        filtered_args,
+    } = parse_supervisor_args();
     let start_dir = std::env::current_dir().context("current_dir")?;
     let root = find_workspace_root(&start_dir)
         .ok_or_else(|| anyhow!("unable to locate workspace root with target/"))?;
@@ -450,27 +431,7 @@ fn main() -> Result<()> {
         let report_workspace = workspace_from_args(&filtered_args)
             .map(PathBuf::from)
             .unwrap_or_else(|| root.clone());
-        match write_complexity_report(&report_workspace) {
-            Ok(Some(path)) => {
-                eprintln!(
-                    "[canon-mini-supervisor] complexity_report: {}",
-                    path.display()
-                );
-            }
-            Ok(None) => {}
-            Err(err) => {
-                eprintln!(
-                    "[canon-mini-supervisor] complexity_report failed: {err:#}"
-                );
-                log_error_event(
-                    "supervisor",
-                    "complexity_report",
-                    None,
-                    &format!("complexity_report failed: {err:#}"),
-                    None,
-                );
-            }
-        }
+        emit_complexity_report_status(&report_workspace);
         let mut child = spawn_child(&current, &filtered_args)?;
         child_pid.store(child.id(), Ordering::SeqCst);
         eprintln!(
@@ -603,5 +564,70 @@ fn main() -> Result<()> {
             }
         }
         thread::sleep(Duration::from_millis(1000));
+    }
+}
+
+struct SupervisorArgs {
+    exe: String,
+    prefer_release: bool,
+    no_watch: bool,
+    filtered_args: Vec<String>,
+}
+
+fn parse_supervisor_args() -> SupervisorArgs {
+    let mut args: Vec<String> = std::env::args().collect();
+    let exe = args.remove(0);
+    let mut prefer_release = false;
+    let mut no_watch = false;
+    let mut filtered_args = Vec::new();
+    let mut i = 0usize;
+    while i < args.len() {
+        let arg = &args[i];
+        if arg == "--release" {
+            prefer_release = true;
+            i += 1;
+            continue;
+        }
+        if arg == "--no-watch" {
+            no_watch = true;
+            i += 1;
+            continue;
+        }
+        if arg == "--" {
+            filtered_args.extend_from_slice(&args[i + 1..]);
+            break;
+        }
+        filtered_args.push(arg.clone());
+        i += 1;
+    }
+    SupervisorArgs {
+        exe,
+        prefer_release,
+        no_watch,
+        filtered_args,
+    }
+}
+
+fn emit_complexity_report_status(report_workspace: &Path) {
+    match write_complexity_report(report_workspace) {
+        Ok(Some(path)) => {
+            eprintln!(
+                "[canon-mini-supervisor] complexity_report: {}",
+                path.display()
+            );
+        }
+        Ok(None) => {}
+        Err(err) => {
+            eprintln!(
+                "[canon-mini-supervisor] complexity_report failed: {err:#}"
+            );
+            log_error_event(
+                "supervisor",
+                "complexity_report",
+                None,
+                &format!("complexity_report failed: {err:#}"),
+                None,
+            );
+        }
     }
 }
