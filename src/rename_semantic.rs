@@ -300,6 +300,145 @@ fn ensure_under_workspace(workspace: &Path, file: &Path) -> Result<()> {
     Ok(())
 }
 
+fn checked_replacement_from_occurrence(
+    workspace: &Path,
+    occ: &crate::semantic::SymbolOccurrence,
+    old_ident: &str,
+    new_ident: &str,
+) -> Result<(PathBuf, CheckedReplacement)> {
+    let file = PathBuf::from(&occ.file);
+    ensure_under_workspace(workspace, &file)?;
+    Ok((
+        file,
+        CheckedReplacement {
+            span: ByteSpan {
+                lo: occ.lo as usize,
+                hi: occ.hi as usize,
+            },
+            replacement: new_ident.to_string(),
+            expected: old_ident.to_string(),
+        },
+    ))
+}
+
+fn collect_checked_replacements_for_rename(
+    workspace: &Path,
+    idx: &crate::semantic::SemanticIndex,
+    old_symbol: &str,
+    new_symbol: &str,
+    per_file: &mut HashMap<PathBuf, Vec<CheckedReplacement>>,
+) -> Result<()> {
+    let old_ident = old_symbol
+        .rsplit("::")
+        .next()
+        .unwrap_or(old_symbol)
+        .trim();
+    let new_ident = new_symbol
+        .rsplit("::")
+        .next()
+        .unwrap_or(new_symbol)
+        .trim();
+
+    if !is_valid_rust_identifier(old_ident) || !is_valid_rust_identifier(new_ident) {
+        bail!(
+            "rename requires valid Rust identifier names (old={old_ident}, new={new_ident})"
+        );
+    }
+    if old_ident == new_ident {
+        bail!("rename old and new identifiers are identical: {old_ident}");
+    }
+
+    let canonical_old = idx
+        .canonical_symbol_key(old_symbol)
+        .with_context(|| format!("resolve canonical key for {old_symbol}"))?;
+    let new_fqn = canonical_old
+        .rsplit_once("::")
+        .map_or_else(|| new_ident.to_string(), |(prefix, _)| format!("{prefix}::{new_ident}"));
+    if idx.has_symbol(&new_fqn) {
+        bail!(
+            "rename conflict: '{new_fqn}' already exists in the graph — choose a different name"
+        );
+    }
+
+    let occurrences = idx
+        .symbol_occurrences(old_symbol)
+        .with_context(|| format!("resolve occurrences for symbol {old_symbol}"))?;
+    if occurrences.is_empty() {
+        bail!("no recorded occurrences for symbol {old_symbol}");
+    }
+
+    for occ in occurrences {
+        let (file, replacement) =
+            checked_replacement_from_occurrence(workspace, &occ, old_ident, new_ident)?;
+        per_file.entry(file).or_default().push(replacement);
+    }
+
+    Ok(())
+}
+
+fn verify_expected_spans(original: &str, file: &Path, replacements: &[CheckedReplacement]) -> Result<()> {
+    for r in replacements {
+        let snippet = original
+            .get(r.span.lo..r.span.hi)
+            .ok_or_else(|| anyhow!("span out of bounds for {}", file.display()))?;
+        if snippet != r.expected {
+            bail!(
+                "span mismatch in {} at {}..{}: expected '{}', found '{snippet}'. Rebuild the semantic graph and retry.",
+                file.display(),
+                r.span.lo,
+                r.span.hi,
+                r.expected
+            );
+        }
+    }
+    Ok(())
+}
+
+fn apply_checked_replacements(original: &str, file: &Path, replacements: &[CheckedReplacement]) -> Result<String> {
+    let mut span_replacements: Vec<SpanReplacement> = replacements
+        .iter()
+        .map(|r| SpanReplacement {
+            span: r.span,
+            replacement: r.replacement.clone(),
+        })
+        .collect();
+    apply_replacements(original, &mut span_replacements)
+        .with_context(|| format!("apply replacements for {}", file.display()))
+}
+
+fn rewrite_attr_pairs(after_spans: String, replacements: &[CheckedReplacement]) -> String {
+    let mut attr_pairs: Vec<(&str, &str)> = replacements
+        .iter()
+        .map(|r| (r.expected.as_str(), r.replacement.as_str()))
+        .collect();
+    attr_pairs.sort_unstable();
+    attr_pairs.dedup();
+    attr_pairs
+        .iter()
+        .fold(after_spans, |src, &(old, new)| rewrite_attr_string_literals(&src, old, new))
+}
+
+fn rewrite_file_from_checked_replacements(
+    file: PathBuf,
+    replacements: Vec<CheckedReplacement>,
+    report: &mut RenameReport,
+) -> Result<()> {
+    let original = std::fs::read_to_string(&file)
+        .with_context(|| format!("read {}", file.display()))?;
+    verify_expected_spans(&original, &file, &replacements)?;
+    let after_spans = apply_checked_replacements(&original, &file, &replacements)?;
+
+    let updated = rewrite_attr_pairs(after_spans, &replacements);
+    if updated != original {
+        std::fs::write(&file, &updated)
+            .with_context(|| format!("write {}", file.display()))?;
+        report.replacements += replacements.len();
+        report.touched_files.push(file);
+    }
+
+    Ok(())
+}
+
 /// Span-based rename using the semantic graph's recorded identifier spans.
 ///
 /// This is intended to be a safer replacement for the current `rename_symbol`
@@ -320,113 +459,18 @@ pub fn rename_symbols_via_semantic_spans(
 
     let mut per_file: HashMap<PathBuf, Vec<CheckedReplacement>> = HashMap::new();
     for (old_symbol, new_symbol) in renames {
-        let old_ident = old_symbol
-            .rsplit("::")
-            .next()
-            .unwrap_or(old_symbol.as_str())
-            .trim();
-        let new_ident = new_symbol
-            .rsplit("::")
-            .next()
-            .unwrap_or(new_symbol.as_str())
-            .trim();
-
-        if !is_valid_rust_identifier(old_ident) || !is_valid_rust_identifier(new_ident) {
-            bail!(
-                "rename requires valid Rust identifier names (old={old_ident}, new={new_ident})"
-            );
-        }
-        if old_ident == new_ident {
-            bail!("rename old and new identifiers are identical: {old_ident}");
-        }
-
-        // Conflict check: derive the expected new FQN and verify it doesn't
-        // already exist.  We resolve the canonical key first so the check is
-        // based on the actual graph path, not the (possibly abbreviated) input.
-        let canonical_old = idx
-            .canonical_symbol_key(old_symbol)
-            .with_context(|| format!("resolve canonical key for {old_symbol}"))?;
-        let new_fqn = canonical_old
-            .rsplit_once("::")
-            .map_or_else(|| new_ident.to_string(), |(prefix, _)| format!("{prefix}::{new_ident}"));
-        if idx.has_symbol(&new_fqn) {
-            bail!(
-                "rename conflict: '{new_fqn}' already exists in the graph — choose a different name"
-            );
-        }
-
-        let occurrences = idx
-            .symbol_occurrences(old_symbol)
-            .with_context(|| format!("resolve occurrences for symbol {old_symbol}"))?;
-        if occurrences.is_empty() {
-            bail!("no recorded occurrences for symbol {old_symbol}");
-        }
-
-        for occ in occurrences {
-            let file = PathBuf::from(&occ.file);
-            ensure_under_workspace(workspace, &file)?;
-            per_file.entry(file).or_default().push(CheckedReplacement {
-                span: ByteSpan {
-                    lo: occ.lo as usize,
-                    hi: occ.hi as usize,
-                },
-                replacement: new_ident.to_string(),
-                expected: old_ident.to_string(),
-            });
-        }
+        collect_checked_replacements_for_rename(
+            workspace,
+            idx,
+            old_symbol,
+            new_symbol,
+            &mut per_file,
+        )?;
     }
 
     let mut report = RenameReport::default();
     for (file, replacements) in per_file {
-        let original = std::fs::read_to_string(&file)
-            .with_context(|| format!("read {}", file.display()))?;
-
-        for r in replacements.iter() {
-            let snippet = original
-                .get(r.span.lo..r.span.hi)
-                .ok_or_else(|| anyhow!("span out of bounds for {}", file.display()))?;
-            if snippet != r.expected {
-                bail!(
-                    "span mismatch in {} at {}..{}: expected '{}', found '{snippet}'. Rebuild the semantic graph and retry.",
-                    file.display(),
-                    r.span.lo,
-                    r.span.hi,
-                    r.expected
-                );
-            }
-        }
-
-        let mut span_replacements: Vec<SpanReplacement> = replacements
-            .iter()
-            .map(|r| SpanReplacement {
-                span: r.span,
-                replacement: r.replacement.clone(),
-            })
-            .collect();
-        let after_spans = apply_replacements(&original, &mut span_replacements)
-            .with_context(|| format!("apply replacements for {}", file.display()))?;
-
-        // Attr string-literal rewrite: for each (old_ident, new_ident) pair that
-        // touched this file, replace `"old_ident"` literals inside `#[...]` attrs.
-        // This catches `#[serde(rename = "old_fn")]` and similar patterns that the
-        // span-based pass doesn't cover (the compiler doesn't record refs inside
-        // attribute token streams as identifier spans).
-        let mut attr_pairs: Vec<(&str, &str)> = replacements
-            .iter()
-            .map(|r| (r.expected.as_str(), r.replacement.as_str()))
-            .collect();
-        attr_pairs.sort_unstable();
-        attr_pairs.dedup();
-        let updated = attr_pairs
-            .iter()
-            .fold(after_spans, |src, &(old, new)| rewrite_attr_string_literals(&src, old, new));
-
-        if updated != original {
-            std::fs::write(&file, &updated)
-                .with_context(|| format!("write {}", file.display()))?;
-            report.replacements += replacements.len();
-            report.touched_files.push(file);
-        }
+        rewrite_file_from_checked_replacements(file, replacements, &mut report)?;
     }
 
     report.touched_files.sort();
