@@ -1924,31 +1924,43 @@ fn rename_candidate_reasons(
     prefixes_by_stem: &std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
 ) -> Vec<String> {
     let mut reasons = ambiguous_name_reasons(&sym.name);
+    if let Some(reason) = inconsistent_function_prefix_reason(sym, prefixes_by_stem) {
+        reasons.push(reason);
+    }
+    reasons
+}
+
+fn inconsistent_function_prefix_reason(
+    sym: &SymbolEntry,
+    prefixes_by_stem: &std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
+) -> Option<String> {
     if sym.kind != "function" {
-        return reasons;
+        return None;
     }
 
-    let Some((prefix, stem)) = split_prefix_and_stem(&sym.name) else {
-        return reasons;
-    };
-    let Some(prefixes) = prefixes_by_stem.get(&stem) else {
-        return reasons;
-    };
+    let (prefix, stem) = split_prefix_and_stem(&sym.name)?;
+    let prefixes = prefixes_by_stem.get(&stem)?;
     if prefixes.len() <= 1 {
-        return reasons;
+        return None;
     }
 
-    let mut other = prefixes
+    let mut other = other_prefixes(prefixes, prefix);
+    other.sort();
+    Some(format!(
+        "inconsistent verb prefix for stem '{stem}' (also: {})",
+        other.join(", ")
+    ))
+}
+
+fn other_prefixes(
+    prefixes: &std::collections::BTreeSet<String>,
+    prefix: &str,
+) -> Vec<String> {
+    prefixes
         .iter()
         .filter(|p| p.as_str() != prefix)
         .cloned()
-        .collect::<Vec<_>>();
-    other.sort();
-    reasons.push(format!(
-        "inconsistent verb prefix for stem '{stem}' (also: {})",
-        other.join(", ")
-    ));
-    reasons
+        .collect()
 }
 
 fn score_rename_candidate_reasons(reasons: &[String]) -> u32 {
