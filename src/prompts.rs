@@ -214,37 +214,9 @@ fn message_tool_prompt_examples() -> &'static str {
 fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
     let ws = crate::constants::workspace();
     match (kind, tool) {
-        (AgentPromptKind::Executor | AgentPromptKind::Solo, ToolPromptKind::ListDir) => {
-            "   {\"action\":\"list_dir\",\"path\":\".\",\"rationale\":\"Inspect the workspace before making assumptions.\"}".to_string()
-        }
-        (AgentPromptKind::Planner, ToolPromptKind::ListDir) => {
-            "   {\"action\":\"list_dir\",\"path\":\"src\",\"rationale\":\"Inspect the relevant code area before expanding tasks.\"}".to_string()
-        }
-        (AgentPromptKind::Verifier, ToolPromptKind::ListDir) => {
-            "   {\"action\":\"list_dir\",\"path\":\"src\",\"rationale\":\"Inspect the relevant area before verifying claims about it.\"}".to_string()
-        }
-        (AgentPromptKind::Diagnostics, ToolPromptKind::ListDir) => {
-            "   {\"action\":\"list_dir\",\"path\":\"state\",\"rationale\":\"Inspect workspace-local state and observability artifacts before diagnosing failures.\"}\n   {\"action\":\"list_dir\",\"path\":\"src\",\"rationale\":\"Inspect the active workspace layout before targeting diagnostics.\"}".to_string()
-        }
+        (_, ToolPromptKind::ListDir) => list_dir_tool_prompt(kind),
 
-        (AgentPromptKind::Executor | AgentPromptKind::Solo, ToolPromptKind::ReadFile) => {
-            format!(
-                "   {{\"action\":\"read_file\",\"path\":\"src/app.rs\",\"rationale\":\"Read the file before editing it.\"}}\n   {{\"action\":\"read_file\",\"path\":\"src/app.rs\",\"line\":120,\"rationale\":\"Read the relevant section before editing it.\"}}\n{READ_FILE_EXECUTOR_FOOTER}"
-            )
-        }
-        (AgentPromptKind::Planner, ToolPromptKind::ReadFile) => {
-            format!(
-                "   {{\"action\":\"read_file\",\"path\":\"src/app.rs\",\"rationale\":\"Read the source before deriving actionable plan steps.\"}}\n   {{\"action\":\"read_file\",\"path\":\"src/app.rs\",\"line\":120,\"rationale\":\"Read the relevant source section before deriving actionable plan steps.\"}}\n{READ_FILE_FOOTER}"
-            )
-        }
-        (AgentPromptKind::Verifier, ToolPromptKind::ReadFile) => {
-            format!(
-                "   {{\"action\":\"read_file\",\"path\":\"src/app.rs\",\"rationale\":\"Read the source to verify whether the claimed change exists.\"}}\n   {{\"action\":\"read_file\",\"path\":\"src/app.rs\",\"line\":120,\"rationale\":\"Jump to the relevant section to verify the claimed change.\"}}\n{READ_FILE_FOOTER}"
-            )
-        }
-        (AgentPromptKind::Diagnostics, ToolPromptKind::ReadFile) => {
-            "   {\"action\":\"read_file\",\"path\":\"src/app.rs\",\"line\":1,\"rationale\":\"Read a suspected source file to correlate code with observed failures.\"}\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.".to_string()
-        }
+        (_, ToolPromptKind::ReadFile) => read_file_tool_prompt(kind),
         (_, ToolPromptKind::StageGraph) => {
             "   {\"action\":\"stage_graph\",\"rationale\":\"Generate the current synthetic stage graph for branching and introspection.\",\"predicted_next_actions\":[{\"action\":\"read_file\",\"intent\":\"Inspect the generated stage graph JSON.\"},{\"action\":\"plan\",\"intent\":\"Promote stage insights into executable PLAN tasks.\"}]}".to_string()
         }
@@ -375,6 +347,46 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
         }
         (_, ToolPromptKind::Message) => {
             message_tool_prompt_examples().to_string()
+        }
+    }
+}
+
+fn list_dir_tool_prompt(kind: AgentPromptKind) -> String {
+    match kind {
+        AgentPromptKind::Executor | AgentPromptKind::Solo => {
+            "   {\"action\":\"list_dir\",\"path\":\".\",\"rationale\":\"Inspect the workspace before making assumptions.\"}".to_string()
+        }
+        AgentPromptKind::Planner => {
+            "   {\"action\":\"list_dir\",\"path\":\"src\",\"rationale\":\"Inspect the relevant code area before expanding tasks.\"}".to_string()
+        }
+        AgentPromptKind::Verifier => {
+            "   {\"action\":\"list_dir\",\"path\":\"src\",\"rationale\":\"Inspect the relevant area before verifying claims about it.\"}".to_string()
+        }
+        AgentPromptKind::Diagnostics => {
+            "   {\"action\":\"list_dir\",\"path\":\"state\",\"rationale\":\"Inspect workspace-local state and observability artifacts before diagnosing failures.\"}\n   {\"action\":\"list_dir\",\"path\":\"src\",\"rationale\":\"Inspect the active workspace layout before targeting diagnostics.\"}".to_string()
+        }
+    }
+}
+
+fn read_file_tool_prompt(kind: AgentPromptKind) -> String {
+    match kind {
+        AgentPromptKind::Executor | AgentPromptKind::Solo => {
+            format!(
+                "   {{\"action\":\"read_file\",\"path\":\"src/app.rs\",\"rationale\":\"Read the file before editing it.\"}}\n   {{\"action\":\"read_file\",\"path\":\"src/app.rs\",\"line\":120,\"rationale\":\"Read the relevant section before editing it.\"}}\n{READ_FILE_EXECUTOR_FOOTER}"
+            )
+        }
+        AgentPromptKind::Planner => {
+            format!(
+                "   {{\"action\":\"read_file\",\"path\":\"src/app.rs\",\"rationale\":\"Read the source before deriving actionable plan steps.\"}}\n   {{\"action\":\"read_file\",\"path\":\"src/app.rs\",\"line\":120,\"rationale\":\"Read the relevant source section before deriving actionable plan steps.\"}}\n{READ_FILE_FOOTER}"
+            )
+        }
+        AgentPromptKind::Verifier => {
+            format!(
+                "   {{\"action\":\"read_file\",\"path\":\"src/app.rs\",\"rationale\":\"Read the source to verify whether the claimed change exists.\"}}\n   {{\"action\":\"read_file\",\"path\":\"src/app.rs\",\"line\":120,\"rationale\":\"Jump to the relevant section to verify the claimed change.\"}}\n{READ_FILE_FOOTER}"
+            )
+        }
+        AgentPromptKind::Diagnostics => {
+            "   {\"action\":\"read_file\",\"path\":\"src/app.rs\",\"line\":1,\"rationale\":\"Read a suspected source file to correlate code with observed failures.\"}\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.".to_string()
         }
     }
 }
