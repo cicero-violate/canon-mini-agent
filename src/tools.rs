@@ -1017,7 +1017,33 @@ pub(crate) fn patch_scope_error_with_mode(role: &str, patch: &str, self_mod: boo
         return None;
     }
 
-    let diagnostics_file = diagnostics_file();
+    let touches = classify_patch_targets(&targets);
+    match role {
+        "solo" => None,
+        role if role.starts_with("executor") => executor_patch_scope_error(&touches, self_mod),
+        "verifier" | "verifier_a" | "verifier_b" => verifier_patch_scope_error(&touches),
+        "planner" | "mini_planner" => planner_patch_scope_error(&targets, &touches),
+        "diagnostics" => diagnostics_patch_scope_error(&touches),
+        _ => None,
+    }
+}
+
+struct PatchTargetTouches {
+    diagnostics_file: String,
+    legacy_diagnostics_file: &'static str,
+    touches_spec: bool,
+    touches_lane: bool,
+    touches_master_plan: bool,
+    touches_violations: bool,
+    touches_objectives: bool,
+    touches_diagnostics: bool,
+    touches_src: bool,
+    touches_tests: bool,
+    touches_other: bool,
+}
+
+fn classify_patch_targets(targets: &[&str]) -> PatchTargetTouches {
+    let diagnostics_file = diagnostics_file().to_string();
     let legacy_diagnostics_file = "DIAGNOSTICS.json";
     let touches_spec = targets.iter().any(|path| *path == SPEC_FILE);
     let touches_lane = targets.iter().any(|path| is_lane_plan(path));
@@ -1031,7 +1057,7 @@ pub(crate) fn patch_scope_error_with_mode(role: &str, patch: &str, self_mod: boo
     let touches_tests = targets.iter().any(|path| is_tests_path(path));
     let touches_other = targets.iter().any(|path| {
         *path != SPEC_FILE
-        && *path != MASTER_PLAN_FILE
+            && *path != MASTER_PLAN_FILE
             && !is_src_path(path)
             && !is_tests_path(path)
             && !is_lane_plan(path)
@@ -1040,85 +1066,96 @@ pub(crate) fn patch_scope_error_with_mode(role: &str, patch: &str, self_mod: boo
             && *path != diagnostics_file
             && *path != legacy_diagnostics_file
     });
+    PatchTargetTouches {
+        diagnostics_file,
+        legacy_diagnostics_file,
+        touches_spec,
+        touches_lane,
+        touches_master_plan,
+        touches_violations,
+        touches_objectives,
+        touches_diagnostics,
+        touches_src,
+        touches_tests,
+        touches_other,
+    }
+}
 
-    match role {
-        "solo" => None,
-        role if role.starts_with("executor") => {
-            // In self-modification mode the executor is allowed to patch SPEC.md and src/ files.
-            let spec_blocked = touches_spec && !self_mod;
-            let src_blocked = (touches_src || touches_tests) && !self_mod;
-            let other_blocked = touches_other;
-            if spec_blocked
-                || touches_master_plan
-                || touches_lane
-                || touches_violations
-                || touches_diagnostics
-                || src_blocked
-                || other_blocked
-            {
-                Some(
-                    "Executor may not patch plan files, violations, diagnostics, invariants, objectives, or normal-mode source files. Execute code/tests only and report evidence in `message.payload`."
-                        .to_string(),
-                )
-            } else {
-                None
-            }
-        }
-        "verifier" | "verifier_a" | "verifier_b" => {
-            if touches_spec || touches_lane || touches_diagnostics || touches_other {
-                Some(
-                    "Verifier may only patch `VIOLATIONS.json`. Use the `plan` action for `PLAN.json` updates. Do not modify `SPEC.md`, lane plans, diagnostics, or source files."
-                        .to_string(),
-                )
-            } else if touches_violations {
-                None
-            } else {
-                Some(
-                    "Verifier may only patch `VIOLATIONS.json`. Use the `plan` action for `PLAN.json` updates; no other patches are allowed."
-                        .to_string(),
-                )
-            }
-        }
-        "planner" | "mini_planner" => {
-            if touches_spec
-                || touches_violations
-                || targets.iter().any(|path| is_src_path(path) || is_tests_path(path))
-            {
-                Some(
-                    "Planner may patch lane plans under `PLANS/<instance>/executor-<id>.json` (or legacy `PLANS/executor-<id>.md`); planner may not patch `src/`, `tests/`, `SPEC.md`, or `VIOLATIONS.json`."
-                        .to_string(),
-                )
-            } else if touches_lane || touches_objectives {
-                // Allow planner to update lane plans and objectives only (SPEC §4.1 compliant)
-                None
-            } else {
-                Some(
-                    "Planner may patch lane plans or `PLANS/OBJECTIVES.json` only. Use the `plan` action for `PLAN.json` updates; no other patches are allowed."
-                        .to_string(),
-                )
-            }
-        }
-        "diagnostics" => {
-            if touches_spec
-                || touches_master_plan
-                || touches_lane
-                || touches_violations
-                || touches_src
-                || touches_tests
-                || touches_other
-            {
-                Some(
-                    format!(
-                        "Diagnostics may only patch {} or {} because diagnostics owns ranked failure reporting.",
-                        diagnostics_file,
-                        legacy_diagnostics_file
-                    ),
-                )
-            } else {
-                None
-            }
-        }
-        _ => None,
+fn executor_patch_scope_error(touches: &PatchTargetTouches, self_mod: bool) -> Option<String> {
+    let spec_blocked = touches.touches_spec && !self_mod;
+    let src_blocked = (touches.touches_src || touches.touches_tests) && !self_mod;
+    if spec_blocked
+        || touches.touches_master_plan
+        || touches.touches_lane
+        || touches.touches_violations
+        || touches.touches_diagnostics
+        || src_blocked
+        || touches.touches_other
+    {
+        Some(
+            "Executor may not patch plan files, violations, diagnostics, invariants, objectives, or normal-mode source files. Execute code/tests only and report evidence in `message.payload`."
+                .to_string(),
+        )
+    } else {
+        None
+    }
+}
+
+fn verifier_patch_scope_error(touches: &PatchTargetTouches) -> Option<String> {
+    if touches.touches_spec
+        || touches.touches_lane
+        || touches.touches_diagnostics
+        || touches.touches_other
+    {
+        Some(
+            "Verifier may only patch `VIOLATIONS.json`. Use the `plan` action for `PLAN.json` updates. Do not modify `SPEC.md`, lane plans, diagnostics, or source files."
+                .to_string(),
+        )
+    } else if touches.touches_violations {
+        None
+    } else {
+        Some(
+            "Verifier may only patch `VIOLATIONS.json`. Use the `plan` action for `PLAN.json` updates; no other patches are allowed."
+                .to_string(),
+        )
+    }
+}
+
+fn planner_patch_scope_error(targets: &[&str], touches: &PatchTargetTouches) -> Option<String> {
+    if touches.touches_spec
+        || touches.touches_violations
+        || targets.iter().any(|path| is_src_path(path) || is_tests_path(path))
+    {
+        Some(
+            "Planner may patch lane plans under `PLANS/<instance>/executor-<id>.json` (or legacy `PLANS/executor-<id>.md`); planner may not patch `src/`, `tests/`, `SPEC.md`, or `VIOLATIONS.json`."
+                .to_string(),
+        )
+    } else if touches.touches_lane || touches.touches_objectives {
+        None
+    } else {
+        Some(
+            "Planner may patch lane plans or `PLANS/OBJECTIVES.json` only. Use the `plan` action for `PLAN.json` updates; no other patches are allowed."
+                .to_string(),
+        )
+    }
+}
+
+fn diagnostics_patch_scope_error(touches: &PatchTargetTouches) -> Option<String> {
+    if touches.touches_spec
+        || touches.touches_master_plan
+        || touches.touches_lane
+        || touches.touches_violations
+        || touches.touches_src
+        || touches.touches_tests
+        || touches.touches_other
+    {
+        Some(format!(
+            "Diagnostics may only patch {} or {} because diagnostics owns ranked failure reporting.",
+            touches.diagnostics_file,
+            touches.legacy_diagnostics_file
+        ))
+    } else {
+        None
     }
 }
 
