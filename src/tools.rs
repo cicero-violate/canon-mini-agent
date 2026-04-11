@@ -2462,7 +2462,18 @@ fn handle_rustc_action(
         return Ok((false, truncate(&out, MAX_SNIPPET).to_string()));
     }
 
-    // Fallback: attempt `cargo rustc -Zunpretty=...` if graph.json isn't available.
+    fallback_rustc_action(role, step, action_kind, workspace, crate_name, mode, extra)
+}
+
+fn fallback_rustc_action(
+    role: &str,
+    step: usize,
+    action_kind: &str,
+    workspace: &Path,
+    crate_name: &str,
+    mode: &str,
+    extra: &str,
+) -> Result<(bool, String)> {
     let cmd = if extra.trim().is_empty() {
         format!("cargo rustc -p {crate_name} -- -Zunpretty={mode}")
     } else {

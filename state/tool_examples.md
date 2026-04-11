@@ -171,6 +171,13 @@ Examples:
     "rationale": {
       "minLength": 1,
       "type": "string"
+    },
+    "symbol": {
+      "description": "Optional symbol path to focus the output on one item (e.g. \"tools::handle_objectives_action\").",
+      "type": [
+        "string",
+        "null"
+      ]
     }
   },
   "required": [
@@ -222,6 +229,13 @@ Examples:
     "rationale": {
       "minLength": 1,
       "type": "string"
+    },
+    "symbol": {
+      "description": "Optional symbol path to focus the output on one item (e.g. \"tools::handle_objectives_action\").",
+      "type": [
+        "string",
+        "null"
+      ]
     }
   },
   "required": [
