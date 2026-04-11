@@ -4813,6 +4813,22 @@ fn summarize_cargo_test_log(path: &Path) -> Option<String> {
     None
 }
 
+fn summarize_cargo_test_log_with_retry(
+    path: &Path,
+    attempts: usize,
+    delay: std::time::Duration,
+) -> Option<String> {
+    for attempt in 0..attempts {
+        if let Some(summary) = summarize_cargo_test_log(path) {
+            return Some(summary);
+        }
+        if attempt + 1 < attempts {
+            std::thread::sleep(delay);
+        }
+    }
+    None
+}
+
 enum RunCommandKind {
     CargoTest,
     LongRunning,
@@ -4932,9 +4948,12 @@ fn exec_run_command_cargo_test(cmd: &str, cwd_path: &Path) -> Result<(bool, Stri
         .unwrap_or(20 * 60);
     let wrapped_cmd = format!("timeout -s TERM {}s {}", timeout_secs, cmd);
     let (pid, log_path) = spawn_detached_with_log(&wrapped_cmd, cwd_path)?;
-    std::thread::sleep(std::time::Duration::from_millis(500));
-    let summary_line =
-        summarize_cargo_test_log(&log_path).unwrap_or_else(|| "(no test result yet)".to_string());
+    let summary_line = summarize_cargo_test_log_with_retry(
+        &log_path,
+        12,
+        std::time::Duration::from_millis(250),
+    )
+    .unwrap_or_else(|| "(no test result yet)".to_string());
     let summary = format!(
         "output_log: {}\nsummary: {}",
         log_path.display(),
