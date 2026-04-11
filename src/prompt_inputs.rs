@@ -685,60 +685,89 @@ pub fn build_single_role_prompt(
 ) -> Result<String> {
     let prompt = match inputs.prompt_kind {
         AgentPromptKind::Verifier => {
-            let invariants = ctx.read(SingleRoleRead::Invariants)?;
-            let objectives = ctx.read(SingleRoleRead::Objectives)?;
-            let executor_diff_text = ctx.read_executor_diff(400);
-            single_role_verifier_prompt(
-                &inputs.primary_input,
-                &objectives,
-                &invariants,
-                &executor_diff_text,
-                cargo_test_failures,
-            )
+            build_verifier_role_prompt(ctx, inputs, cargo_test_failures)?
         }
         AgentPromptKind::Diagnostics => {
-            let violations = ctx.read(SingleRoleRead::Violations)?;
-            let objectives = ctx.read(SingleRoleRead::Objectives)?;
-            single_role_diagnostics_prompt(&violations, &objectives, cargo_test_failures)
+            build_diagnostics_role_prompt(ctx, cargo_test_failures)?
         }
         AgentPromptKind::Planner => {
-            let violations = ctx.read(SingleRoleRead::Violations)?;
-            let raw_diagnostics = ctx.read(SingleRoleRead::Diagnostics)?;
-            let diagnostics = sanitize_diagnostics_for_planner(&raw_diagnostics, &violations);
-            let lessons = ctx.read(SingleRoleRead::Lessons)?;
-            let objectives = ctx.read(SingleRoleRead::Objectives)?;
-            let issues = ctx.read(SingleRoleRead::Issues)?;
-            let invariants = ctx.read(SingleRoleRead::Invariants)?;
-            single_role_planner_prompt(
-                &inputs.primary_input,
-                &objectives,
-                &lessons,
-                &invariants,
-                &violations,
-                &diagnostics,
-                &issues,
-                cargo_test_failures,
-            )
+            build_planner_role_prompt(ctx, inputs, cargo_test_failures)?
         }
-        AgentPromptKind::Executor => {
-            let spec = ctx.read(SingleRoleRead::Spec)?;
-            let master_plan = ctx.read(SingleRoleRead::MasterPlan)?;
-            let violations = ctx.read(SingleRoleRead::Violations)?;
-            let diagnostics = ctx.read(SingleRoleRead::Diagnostics)?;
-            let invariants = ctx.read(SingleRoleRead::Invariants)?;
-            single_role_executor_prompt(
-                &spec,
-                &master_plan,
-                &violations,
-                &diagnostics,
-                &invariants,
-            )
-        }
+        AgentPromptKind::Executor => build_executor_role_prompt(ctx)?,
         AgentPromptKind::Solo => {
             bail!("solo role is only supported in orchestration mode")
         }
     };
     Ok(prompt)
+}
+
+fn build_verifier_role_prompt(
+    ctx: &SingleRoleContext<'_>,
+    inputs: &SingleRoleInputs,
+    cargo_test_failures: &str,
+) -> Result<String> {
+    let invariants = ctx.read(SingleRoleRead::Invariants)?;
+    let objectives = ctx.read(SingleRoleRead::Objectives)?;
+    let executor_diff_text = ctx.read_executor_diff(400);
+    Ok(single_role_verifier_prompt(
+        &inputs.primary_input,
+        &objectives,
+        &invariants,
+        &executor_diff_text,
+        cargo_test_failures,
+    ))
+}
+
+fn build_diagnostics_role_prompt(
+    ctx: &SingleRoleContext<'_>,
+    cargo_test_failures: &str,
+) -> Result<String> {
+    let violations = ctx.read(SingleRoleRead::Violations)?;
+    let objectives = ctx.read(SingleRoleRead::Objectives)?;
+    Ok(single_role_diagnostics_prompt(
+        &violations,
+        &objectives,
+        cargo_test_failures,
+    ))
+}
+
+fn build_planner_role_prompt(
+    ctx: &SingleRoleContext<'_>,
+    inputs: &SingleRoleInputs,
+    cargo_test_failures: &str,
+) -> Result<String> {
+    let violations = ctx.read(SingleRoleRead::Violations)?;
+    let raw_diagnostics = ctx.read(SingleRoleRead::Diagnostics)?;
+    let diagnostics = sanitize_diagnostics_for_planner(&raw_diagnostics, &violations);
+    let lessons = ctx.read(SingleRoleRead::Lessons)?;
+    let objectives = ctx.read(SingleRoleRead::Objectives)?;
+    let issues = ctx.read(SingleRoleRead::Issues)?;
+    let invariants = ctx.read(SingleRoleRead::Invariants)?;
+    Ok(single_role_planner_prompt(
+        &inputs.primary_input,
+        &objectives,
+        &lessons,
+        &invariants,
+        &violations,
+        &diagnostics,
+        &issues,
+        cargo_test_failures,
+    ))
+}
+
+fn build_executor_role_prompt(ctx: &SingleRoleContext<'_>) -> Result<String> {
+    let spec = ctx.read(SingleRoleRead::Spec)?;
+    let master_plan = ctx.read(SingleRoleRead::MasterPlan)?;
+    let violations = ctx.read(SingleRoleRead::Violations)?;
+    let diagnostics = ctx.read(SingleRoleRead::Diagnostics)?;
+    let invariants = ctx.read(SingleRoleRead::Invariants)?;
+    Ok(single_role_executor_prompt(
+        &spec,
+        &master_plan,
+        &violations,
+        &diagnostics,
+        &invariants,
+    ))
 }
 
 fn executor_diff_unavailable(reason: &str) -> String {
