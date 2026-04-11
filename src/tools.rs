@@ -284,14 +284,16 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
     if raw.trim().is_empty() && op_raw == "read" {
         return Ok((false, "(no objectives)".to_string()));
     }
-    match op_raw {
-        "read" => {
-            if include_done {
-                return Ok((false, raw));
-            }
-            let filtered = filter_incomplete_objectives_json(&raw).unwrap_or(raw);
-            Ok((false, filtered))
+    fn handle_read(raw: &str, include_done: bool) -> Result<(bool, String)> {
+        if include_done {
+            return Ok((false, raw.to_string()));
         }
+        let filtered = filter_incomplete_objectives_json(raw).unwrap_or(raw.to_string());
+        Ok((false, filtered))
+    }
+
+    match op_raw {
+        "read" => handle_read(&raw, include_done),
         "sorted_view" => {
             let mut file: crate::objectives::ObjectivesFile =
                 serde_json::from_str(&raw)
