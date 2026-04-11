@@ -835,6 +835,113 @@ fn register_submitted_executor_turn(
     dispatch_state.lane_submit_in_flight.insert(lane_id, false);
 }
 
+fn sweep_timed_out_executor_submits(
+    ctx: &OrchestratorContext<'_>,
+    dispatch_state: &mut DispatchState,
+    now: u64,
+    pending_submit_timeout_ms: u64,
+) {
+    if dispatch_state.executor_submit_inflight.is_empty() {
+        return;
+    }
+    let mut timed_out = Vec::new();
+    for (lane_id, pending) in dispatch_state.executor_submit_inflight.iter() {
+        if executor_submit_timed_out(pending.started_ms, now, pending_submit_timeout_ms) {
+            timed_out.push(*lane_id);
+        }
+    }
+    for lane_id in timed_out {
+        if let Some(pending) = dispatch_state.executor_submit_inflight.remove(&lane_id) {
+            eprintln!(
+                "[orchestrate] pending submit timeout: lane={} command_id={}",
+                ctx.lanes[lane_id].label,
+                pending.command_id
+            );
+            log_error_event(
+                "executor",
+                "orchestrate",
+                None,
+                &format!(
+                    "pending submit timeout: lane={} command_id={}",
+                    ctx.lanes[lane_id].label,
+                    pending.command_id
+                ),
+                Some(json!({
+                    "stage": "executor_submit_timeout",
+                    "lane": ctx.lanes[lane_id].label,
+                    "command_id": pending.command_id,
+                })),
+            );
+            append_orchestration_trace(
+                "executor_submit_timeout",
+                json!({
+                    "lane_name": ctx.lanes[lane_id].label,
+                    "command_id": pending.command_id,
+                }),
+            );
+        }
+        dispatch_state.lane_submit_in_flight.insert(lane_id, false);
+        let lane = dispatch_lane_mut(dispatch_state, lane_id);
+        lane.in_progress_by = None;
+        lane.pending = true;
+    }
+}
+
+fn dispatch_executor_submits(
+    ctx: &OrchestratorContext<'_>,
+    dispatch_state: &mut DispatchState,
+    now: u64,
+    submit_joinset: &mut tokio::task::JoinSet<(usize, PendingExecutorSubmit, Result<String>)>,
+    scheduled_phase: Option<&str>,
+    current_phase: &mut String,
+    current_phase_lane: &mut Option<usize>,
+) {
+    if block_executor_dispatch(scheduled_phase) {
+        return;
+    }
+    for lane in ctx.lanes {
+        if dispatch_state.lane_submit_active(lane.index)
+            || dispatch_state.lane_next_submit_ms(lane.index) > now
+        {
+            continue;
+        }
+        if let Some(job) = claim_executor_submit(dispatch_state, lane) {
+            *current_phase = "executor".to_string();
+            *current_phase_lane = Some(lane.index);
+            let lane_index = lane.index;
+            let endpoint = lane.endpoint.clone();
+            let bridge = ctx.bridge.clone();
+            let tabs = lane.tabs.clone();
+            let command_id = make_command_id(&job.executor_role, "executor", 1);
+            let response_timeout_secs = response_timeout_for_role(&job.executor_role);
+            dispatch_state.executor_submit_inflight.insert(
+                lane_index,
+                PendingSubmitState {
+                    job: job.clone(),
+                    started_ms: now_ms(),
+                    command_id: command_id.clone(),
+                    endpoint_id: endpoint.id.clone(),
+                    tabs: tabs.clone(),
+                },
+            );
+            dispatch_state.lane_submit_in_flight.insert(lane_index, true);
+            submit_joinset.spawn(async move {
+                let result = submit_executor_turn(
+                    &job,
+                    &endpoint,
+                    &bridge,
+                    &tabs,
+                    true,
+                    &command_id,
+                    response_timeout_secs,
+                )
+                .await;
+                (lane_index, job, result)
+            });
+        }
+    }
+}
+
 fn run_executor_phase(
     ctx: &OrchestratorContext<'_>,
     dispatch_state: &mut DispatchState,
@@ -846,93 +953,16 @@ fn run_executor_phase(
     current_phase_lane: &mut Option<usize>,
 ) -> bool {
     let mut cycle_progress = false;
-    if !dispatch_state.executor_submit_inflight.is_empty() {
-        let mut timed_out = Vec::new();
-        for (lane_id, pending) in dispatch_state.executor_submit_inflight.iter() {
-            if executor_submit_timed_out(pending.started_ms, now, pending_submit_timeout_ms) {
-                timed_out.push(*lane_id);
-            }
-        }
-        for lane_id in timed_out {
-            if let Some(pending) = dispatch_state.executor_submit_inflight.remove(&lane_id) {
-                eprintln!(
-                    "[orchestrate] pending submit timeout: lane={} command_id={}",
-                    ctx.lanes[lane_id].label,
-                    pending.command_id
-                );
-                log_error_event(
-                    "executor",
-                    "orchestrate",
-                    None,
-                    &format!(
-                        "pending submit timeout: lane={} command_id={}",
-                        ctx.lanes[lane_id].label,
-                        pending.command_id
-                    ),
-                    Some(json!({
-                        "stage": "executor_submit_timeout",
-                        "lane": ctx.lanes[lane_id].label,
-                        "command_id": pending.command_id,
-                    })),
-                );
-                append_orchestration_trace(
-                    "executor_submit_timeout",
-                    json!({
-                        "lane_name": ctx.lanes[lane_id].label,
-                        "command_id": pending.command_id,
-                    }),
-                );
-            }
-            dispatch_state.lane_submit_in_flight.insert(lane_id, false);
-            let lane = dispatch_lane_mut(dispatch_state, lane_id);
-            lane.in_progress_by = None;
-            lane.pending = true;
-        }
-    }
-
-    if !block_executor_dispatch(scheduled_phase) {
-        for lane in ctx.lanes {
-            if dispatch_state.lane_submit_active(lane.index)
-                || dispatch_state.lane_next_submit_ms(lane.index) > now
-            {
-                continue;
-            }
-            if let Some(job) = claim_executor_submit(dispatch_state, lane) {
-                *current_phase = "executor".to_string();
-                *current_phase_lane = Some(lane.index);
-                let lane_index = lane.index;
-                let endpoint = lane.endpoint.clone();
-                let bridge = ctx.bridge.clone();
-                let tabs = lane.tabs.clone();
-                let command_id = make_command_id(&job.executor_role, "executor", 1);
-                let response_timeout_secs = response_timeout_for_role(&job.executor_role);
-                dispatch_state.executor_submit_inflight.insert(
-                    lane_index,
-                    PendingSubmitState {
-                        job: job.clone(),
-                        started_ms: now_ms(),
-                        command_id: command_id.clone(),
-                        endpoint_id: endpoint.id.clone(),
-                        tabs: tabs.clone(),
-                    },
-                );
-                dispatch_state.lane_submit_in_flight.insert(lane_index, true);
-                submit_joinset.spawn(async move {
-                    let result = submit_executor_turn(
-                        &job,
-                        &endpoint,
-                        &bridge,
-                        &tabs,
-                        true,
-                        &command_id,
-                        response_timeout_secs,
-                    )
-                    .await;
-                    (lane_index, job, result)
-                });
-            }
-        }
-    }
+    sweep_timed_out_executor_submits(ctx, dispatch_state, now, pending_submit_timeout_ms);
+    dispatch_executor_submits(
+        ctx,
+        dispatch_state,
+        now,
+        submit_joinset,
+        scheduled_phase,
+        current_phase,
+        current_phase_lane,
+    );
 
     while let Some(joined) = submit_joinset.try_join_next() {
         match joined {
