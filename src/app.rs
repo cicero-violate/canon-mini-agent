@@ -871,39 +871,47 @@ fn timed_out_executor_submit_lanes(
     timed_out
 }
 
+fn log_timed_out_executor_submit(
+    ctx: &OrchestratorContext<'_>,
+    lane_id: usize,
+    pending: PendingSubmitState,
+) {
+    eprintln!(
+        "[orchestrate] pending submit timeout: lane={} command_id={}",
+        ctx.lanes[lane_id].label,
+        pending.command_id
+    );
+    log_error_event(
+        "executor",
+        "orchestrate",
+        None,
+        &format!(
+            "pending submit timeout: lane={} command_id={}",
+            ctx.lanes[lane_id].label,
+            pending.command_id
+        ),
+        Some(json!({
+            "stage": "executor_submit_timeout",
+            "lane": ctx.lanes[lane_id].label,
+            "command_id": pending.command_id,
+        })),
+    );
+    append_orchestration_trace(
+        "executor_submit_timeout",
+        json!({
+            "lane_name": ctx.lanes[lane_id].label,
+            "command_id": pending.command_id,
+        }),
+    );
+}
+
 fn recover_timed_out_executor_submit_lane(
     ctx: &OrchestratorContext<'_>,
     dispatch_state: &mut DispatchState,
     lane_id: usize,
 ) {
     if let Some(pending) = dispatch_state.executor_submit_inflight.remove(&lane_id) {
-        eprintln!(
-            "[orchestrate] pending submit timeout: lane={} command_id={}",
-            ctx.lanes[lane_id].label,
-            pending.command_id
-        );
-        log_error_event(
-            "executor",
-            "orchestrate",
-            None,
-            &format!(
-                "pending submit timeout: lane={} command_id={}",
-                ctx.lanes[lane_id].label,
-                pending.command_id
-            ),
-            Some(json!({
-                "stage": "executor_submit_timeout",
-                "lane": ctx.lanes[lane_id].label,
-                "command_id": pending.command_id,
-            })),
-        );
-        append_orchestration_trace(
-            "executor_submit_timeout",
-            json!({
-                "lane_name": ctx.lanes[lane_id].label,
-                "command_id": pending.command_id,
-            }),
-        );
+        log_timed_out_executor_submit(ctx, lane_id, pending);
     }
     dispatch_state.lane_submit_in_flight.insert(lane_id, false);
     let lane = dispatch_lane_mut(dispatch_state, lane_id);
