@@ -4948,11 +4948,21 @@ fn exec_run_command_cargo_test(cmd: &str, cwd_path: &Path) -> Result<(bool, Stri
         .unwrap_or(20 * 60);
     let wrapped_cmd = format!("timeout -s TERM {}s {}", timeout_secs, cmd);
     let (pid, log_path) = spawn_detached_with_log(&wrapped_cmd, cwd_path)?;
+    // Increase retry window to reduce race with detached log writer
     let summary_line = summarize_cargo_test_log_with_retry(
         &log_path,
-        12,
-        std::time::Duration::from_millis(250),
+        60,
+        std::time::Duration::from_millis(500),
     )
+    .or_else(|| {
+        // Fallback: tail last lines and try to surface a late summary
+        tail_file_lines(&log_path, 50).and_then(|t| {
+            t.lines()
+                .rev()
+                .find(|l| l.contains("test result:"))
+                .map(|s| s.to_string())
+        })
+    })
     .unwrap_or_else(|| "(no test result yet)".to_string());
     let summary = format!(
         "output_log: {}\nsummary: {}",
