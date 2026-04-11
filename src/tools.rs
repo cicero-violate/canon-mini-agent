@@ -808,13 +808,7 @@ fn parse_cargo_test_failures(out: &str) -> Value {
     let mut failure_block: Vec<String> = Vec::new();
     let mut rerun_hint: Option<String> = None;
 
-    let log_path = extract_output_log_path(out);
-    let mut scan = out.to_string();
-    if let Some(path) = log_path.as_ref() {
-        if let Ok(content) = fs::read_to_string(path) {
-            scan = truncate(&content, MAX_SNIPPET * 4).to_string();
-        }
-    }
+    let (log_path, scan) = load_cargo_test_failure_scan(out);
 
     for line in scan.lines() {
         let trimmed = line.trim();
@@ -885,6 +879,17 @@ fn parse_cargo_test_failures(out: &str) -> Value {
         );
     }
     Value::Object(payload)
+}
+
+fn load_cargo_test_failure_scan(out: &str) -> (Option<PathBuf>, String) {
+    let log_path = extract_output_log_path(out);
+    let mut scan = out.to_string();
+    if let Some(path) = log_path.as_ref() {
+        if let Ok(content) = fs::read_to_string(path) {
+            scan = truncate(&content, MAX_SNIPPET * 4).to_string();
+        }
+    }
+    (log_path, scan)
 }
 
 fn collect_stalled_test_name(stalled_tests: &mut BTreeSet<String>, stripped: &str) {
