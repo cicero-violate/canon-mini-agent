@@ -2054,6 +2054,177 @@ fn validate_state_file_schema(file_path: &str, content: &str) -> Option<String> 
     None
 }
 
+fn apply_patch_diagnostics_targeted(role: &str, patch: &str) -> bool {
+    if role != "diagnostics" {
+        return false;
+    }
+    let current_diagnostics_file = diagnostics_file();
+    let legacy_diagnostics_file = "DIAGNOSTICS.json";
+    patch_targets(patch)
+        .into_iter()
+        .any(|path| path == current_diagnostics_file || path == legacy_diagnostics_file)
+}
+
+fn previous_diagnostics_patch_text(
+    workspace: &Path,
+    diagnostics_targeted: bool,
+) -> Option<String> {
+    if !diagnostics_targeted {
+        return None;
+    }
+    let current_diagnostics_file = diagnostics_file();
+    Some(fs::read_to_string(workspace.join(current_diagnostics_file)).unwrap_or_default())
+}
+
+fn schema_guard_snapshots_for_patch(
+    workspace: &Path,
+    patch: &str,
+) -> Vec<(String, Option<String>)> {
+    let diag_file = diagnostics_file();
+    let legacy_diag = "DIAGNOSTICS.json";
+    patch_targets(patch)
+        .into_iter()
+        .filter(|p| *p == VIOLATIONS_FILE || *p == diag_file || *p == legacy_diag)
+        .map(|p| {
+            let content = fs::read_to_string(workspace.join(p)).ok();
+            (p.to_string(), content)
+        })
+        .collect()
+}
+
+fn reject_unvalidated_diagnostics_persistence(
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    diagnostics_targeted: bool,
+    previous_diagnostics_text: Option<String>,
+) -> Result<Option<(bool, String)>> {
+    if !diagnostics_targeted {
+        return Ok(None);
+    }
+    let current_diagnostics_file = diagnostics_file();
+    let diagnostics_path = workspace.join(current_diagnostics_file);
+    let new_diagnostics_text = fs::read_to_string(&diagnostics_path).unwrap_or_default();
+    let raw_violations_text = fs::read_to_string(workspace.join(VIOLATIONS_FILE)).unwrap_or_default();
+    let sanitized = crate::prompt_inputs::sanitize_diagnostics_for_planner(
+        &new_diagnostics_text,
+        &raw_violations_text,
+    );
+    let introduces_unvalidated_ranked_failures = new_diagnostics_text.contains("\"ranked_failures\"")
+        && sanitized.starts_with("(suppressed stale or unverified diagnostics:");
+    if !introduces_unvalidated_ranked_failures {
+        return Ok(None);
+    }
+    if let Some(previous) = previous_diagnostics_text {
+        std::fs::write(&diagnostics_path, previous)?;
+    }
+    let detail = serde_json::from_str::<Value>(&new_diagnostics_text)
+        .ok()
+        .and_then(|v| v.get("ranked_failures").and_then(Value::as_array).cloned())
+        .map(|failures| crate::prompt_inputs::describe_missing_source_validation(&failures))
+        .unwrap_or_else(|| "ranked_failures missing current-source validation".to_string());
+    let rejection_msg = format!(
+        "apply_patch rejected: ranked_failures require current-source validation before persistence\n\
+         Detail: {detail}\n\
+         Fix: add a read_file evidence entry that cites the specific file and line range \
+         you read, e.g. \"read_file src/app.rs:420-450 — confirmed X\"."
+    );
+    log_error_event(
+        role,
+        "apply_patch",
+        Some(step),
+        &rejection_msg,
+        Some(json!({
+            "stage": "diagnostics_emission_validation",
+            "path": current_diagnostics_file,
+        })),
+    );
+    Ok(Some((false, rejection_msg)))
+}
+
+fn validate_schema_guarded_patch_outputs(
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    schema_snapshots: &[(String, Option<String>)],
+) -> Option<(bool, String)> {
+    for (target, prev_content) in schema_snapshots {
+        let new_content = fs::read_to_string(workspace.join(target)).unwrap_or_default();
+        if let Some(err_msg) = validate_state_file_schema(target, &new_content) {
+            if let Some(prev) = prev_content {
+                let _ = fs::write(workspace.join(target), prev);
+            }
+            log_error_event(
+                role,
+                "apply_patch",
+                Some(step),
+                &err_msg,
+                Some(json!({"stage": "schema_validation", "path": target})),
+            );
+            return Some((false, err_msg));
+        }
+    }
+    None
+}
+
+fn verify_apply_patch_crate(
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    patch: &str,
+) -> Option<(bool, String)> {
+    let crate_for_patch = patch_first_file(patch).and_then(|f| infer_crate_for_patch(workspace, f));
+    let krate = crate_for_patch?;
+
+    eprintln!("[{role}] step={} cargo check -p {krate}", step);
+    let (check_ok, check_out) = exec_run_command(
+        workspace,
+        &format!("cargo check -p {krate}"),
+        crate::constants::workspace(),
+    )
+    .unwrap_or_else(|e| (false, e.to_string()));
+
+    let check_label = if check_ok { "cargo check ok" } else { "cargo check failed" };
+    eprintln!("[{role}] step={} {check_label}", step);
+
+    if !check_ok {
+        return Some((
+            false,
+            format!(
+                "apply_patch ok\n\n{check_label}:\n{}",
+                truncate(&check_out, MAX_SNIPPET)
+            ),
+        ));
+    }
+
+    eprintln!("[{role}] step={} cargo test -p {krate}", step);
+    let (test_ok, test_out) = exec_run_command(
+        workspace,
+        &format!("cargo test -p {krate} -q"),
+        crate::constants::workspace(),
+    )
+    .unwrap_or_else(|e| (false, e.to_string()));
+
+    let test_label = if test_ok { "cargo test ok" } else { "cargo test failed" };
+    eprintln!("[{role}] step={} {test_label}", step);
+
+    let test_summary = cargo_test_totals_summary(&test_out);
+    let test_display = if test_ok && !test_summary.trim().is_empty() {
+        test_summary
+    } else {
+        truncate(&test_out, MAX_SNIPPET).to_string()
+    };
+
+    Some((
+        false,
+        format!(
+            "apply_patch ok\n\n{check_label}:\n{}\n\n{test_label}:\n{}",
+            truncate(&check_out, MAX_SNIPPET),
+            test_display
+        ),
+    ))
+}
+
 fn handle_apply_patch_action(
     role: &str,
     step: usize,
@@ -2064,156 +2235,35 @@ fn handle_apply_patch_action(
         .get("patch")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("apply_patch missing 'patch'"))?;
-    let diagnostics_targeted = if role == "diagnostics" {
-        let current_diagnostics_file = diagnostics_file();
-        let legacy_diagnostics_file = "DIAGNOSTICS.json";
-        patch_targets(patch)
-            .into_iter()
-            .any(|path| path == current_diagnostics_file || path == legacy_diagnostics_file)
-    } else {
-        false
-    };
-    let previous_diagnostics_text = if diagnostics_targeted {
-        let current_diagnostics_file = diagnostics_file();
-        Some(fs::read_to_string(workspace.join(current_diagnostics_file)).unwrap_or_default())
-    } else {
-        None
-    };
-    // Snapshot contents of all schema-guarded files before the patch so we can
-    // revert them if schema validation fails after the write.
-    let diag_file = diagnostics_file();
-    let schema_snapshots: Vec<(String, Option<String>)> = {
-        let legacy_diag = "DIAGNOSTICS.json";
-        patch_targets(patch)
-            .into_iter()
-            .filter(|p| {
-                *p == VIOLATIONS_FILE || *p == diag_file || *p == legacy_diag
-            })
-            .map(|p| {
-                let content = fs::read_to_string(workspace.join(p)).ok();
-                (p.to_string(), content)
-            })
-            .collect()
-    };
+    let diagnostics_targeted = apply_patch_diagnostics_targeted(role, patch);
+    let previous_diagnostics_text = previous_diagnostics_patch_text(workspace, diagnostics_targeted);
+    let schema_snapshots = schema_guard_snapshots_for_patch(workspace, patch);
     if let Some(msg) = patch_scope_error(role, &patch) {
         return Ok((false, msg));
     }
     match apply_patch(&patch, workspace) {
         Ok(_) => {
-            if diagnostics_targeted {
-                let current_diagnostics_file = diagnostics_file();
-                let diagnostics_path = workspace.join(current_diagnostics_file);
-                let new_diagnostics_text = fs::read_to_string(&diagnostics_path).unwrap_or_default();
-                let raw_violations_text = fs::read_to_string(workspace.join(VIOLATIONS_FILE)).unwrap_or_default();
-                let sanitized = crate::prompt_inputs::sanitize_diagnostics_for_planner(
-                    &new_diagnostics_text,
-                    &raw_violations_text,
-                );
-                let introduces_unvalidated_ranked_failures = new_diagnostics_text.contains("\"ranked_failures\"")
-                    && sanitized.starts_with("(suppressed stale or unverified diagnostics:");
-                if introduces_unvalidated_ranked_failures {
-                    if let Some(previous) = previous_diagnostics_text {
-                        std::fs::write(&diagnostics_path, previous)?;
-                    }
-                    // Build a specific error explaining which failure is missing
-                    // validation and exactly what needs to be added.
-                    let detail = serde_json::from_str::<Value>(&new_diagnostics_text)
-                        .ok()
-                        .and_then(|v| v.get("ranked_failures").and_then(Value::as_array).cloned())
-                        .map(|failures| {
-                            crate::prompt_inputs::describe_missing_source_validation(&failures)
-                        })
-                        .unwrap_or_else(|| "ranked_failures missing current-source validation".to_string());
-                    let rejection_msg = format!(
-                        "apply_patch rejected: ranked_failures require current-source validation before persistence\n\
-                         Detail: {detail}\n\
-                         Fix: add a read_file evidence entry that cites the specific file and line range \
-                         you read, e.g. \"read_file src/app.rs:420-450 — confirmed X\"."
-                    );
-                    log_error_event(
-                        role,
-                        "apply_patch",
-                        Some(step),
-                        &rejection_msg,
-                        Some(json!({
-                            "stage": "diagnostics_emission_validation",
-                            "path": current_diagnostics_file,
-                        })),
-                    );
-                    return Ok((false, rejection_msg));
-                }
+            if let Some(result) = reject_unvalidated_diagnostics_persistence(
+                role,
+                step,
+                workspace,
+                diagnostics_targeted,
+                previous_diagnostics_text,
+            )? {
+                return Ok(result);
             }
-            // Schema validation: reject writes that introduce fields outside the canonical schema.
-            for (target, prev_content) in &schema_snapshots {
-                let new_content = fs::read_to_string(workspace.join(target)).unwrap_or_default();
-                if let Some(err_msg) = validate_state_file_schema(target, &new_content) {
-                    // Revert the file to its pre-patch content.
-                    if let Some(prev) = prev_content {
-                        let _ = fs::write(workspace.join(target), prev);
-                    }
-                    log_error_event(
-                        role,
-                        "apply_patch",
-                        Some(step),
-                        &err_msg,
-                        Some(json!({"stage": "schema_validation", "path": target})),
-                    );
-                    return Ok((false, err_msg));
-                }
+            if let Some(result) = validate_schema_guarded_patch_outputs(
+                role,
+                step,
+                workspace,
+                &schema_snapshots,
+            ) {
+                return Ok(result);
             }
             eprintln!("[{role}] step={} apply_patch ok", step);
-            let crate_for_patch = patch_first_file(&patch)
-                .and_then(|f| infer_crate_for_patch(workspace, f));
-            if let Some(krate) = crate_for_patch {
-                eprintln!("[{role}] step={} cargo check -p {krate}", step);
-                let (check_ok, check_out) = exec_run_command(
-                    workspace,
-                    &format!("cargo check -p {krate}"),
-                    crate::constants::workspace(),
-                )
-                .unwrap_or_else(|e| (false, e.to_string()));
-
-                let check_label = if check_ok { "cargo check ok" } else { "cargo check failed" };
-                eprintln!("[{role}] step={} {check_label}", step);
-
-                if !check_ok {
-                    return Ok((
-                        false,
-                        format!(
-                            "apply_patch ok\n\n{check_label}:\n{}",
-                            truncate(&check_out, MAX_SNIPPET)
-                        ),
-                    ));
-                }
-
-                eprintln!("[{role}] step={} cargo test -p {krate}", step);
-                let (test_ok, test_out) = exec_run_command(
-                    workspace,
-                    &format!("cargo test -p {krate} -q"),
-                    crate::constants::workspace(),
-                )
-                .unwrap_or_else(|e| (false, e.to_string()));
-
-                let test_label = if test_ok { "cargo test ok" } else { "cargo test failed" };
-                eprintln!("[{role}] step={} {test_label}", step);
-
-                let test_summary = cargo_test_totals_summary(&test_out);
-                let test_display = if test_ok && !test_summary.trim().is_empty() {
-                    test_summary
-                } else {
-                    truncate(&test_out, MAX_SNIPPET).to_string()
-                };
-
-                return Ok((
-                    false,
-                    format!(
-                        "apply_patch ok\n\n{check_label}:\n{}\n\n{test_label}:\n{}",
-                        truncate(&check_out, MAX_SNIPPET),
-                        test_display
-                    ),
-                ));
+            if let Some(result) = verify_apply_patch_crate(role, step, workspace, patch) {
+                return Ok(result);
             }
-
             Ok((false, "apply_patch ok".to_string()))
         }
         Err(e) => {
