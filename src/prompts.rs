@@ -764,36 +764,53 @@ pub(crate) fn planner_cycle_prompt(
     let mut s = format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics: {diagnostics_file}\n- Issues: {issues_file}\n- Master plan: {MASTER_PLAN_FILE}\n\nPlan diff (from {MASTER_PLAN_FILE}):\n{plan_diff}"
     );
-    if !executor_diff.trim().is_empty() {
-        s.push_str(&format!("\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff}"));
-    }
-    if !cargo_test_failures.trim().is_empty() {
-        s.push_str(&format!("\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}"));
-    }
-    if !objectives_text.trim().is_empty() {
-        s.push_str(&format!("\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives_text}"));
-    }
-    if !issues_text.trim().is_empty() {
-        s.push_str(&format!("\n\nOpen issues (from {issues_file}):\n{issues_text}"));
-    }
-    if !lessons_text.trim().is_empty() {
-        s.push_str(&format!("\n\nLessons artifact:\n{lessons_text}"));
-    }
-    if !invariants_text.trim().is_empty() {
-        s.push_str(&format!("\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants_text}"));
-    }
-    if !violations_text.trim().is_empty() {
-        s.push_str(&format!("\n\nViolations (from {VIOLATIONS_FILE}):\n{violations_text}"));
-    }
-    if !diagnostics_text.trim().is_empty() {
-        s.push_str(&format!("\n\nDiagnostics report (from {diagnostics_file}):\n{diagnostics_text}"));
-    }
-    if !summary_text.trim().is_empty() {
-        s.push_str(&format!("\n\nLatest verifier summary:\n{summary_text}"));
-    }
+    append_optional_prompt_section(
+        &mut s,
+        executor_diff,
+        "Executor diff (workspace changes excluding plans/diagnostics/violations)",
+    );
+    append_optional_prompt_section(
+        &mut s,
+        cargo_test_failures,
+        "Latest cargo test failures (from cargo_test_failures.json)",
+    );
+    append_optional_prompt_section(
+        &mut s,
+        objectives_text,
+        &format!("Objectives (from {OBJECTIVES_FILE})"),
+    );
+    append_optional_prompt_section(
+        &mut s,
+        issues_text,
+        &format!("Open issues (from {issues_file})"),
+    );
+    append_optional_prompt_section(&mut s, lessons_text, "Lessons artifact");
+    append_optional_prompt_section(
+        &mut s,
+        invariants_text,
+        &format!("Invariants (from {INVARIANTS_FILE})"),
+    );
+    append_optional_prompt_section(
+        &mut s,
+        violations_text,
+        &format!("Violations (from {VIOLATIONS_FILE})"),
+    );
+    append_optional_prompt_section(
+        &mut s,
+        diagnostics_text,
+        &format!("Diagnostics report (from {diagnostics_file})"),
+    );
+    append_optional_prompt_section(&mut s, summary_text, "Latest verifier summary");
     s.push_str("\n\nDiagnostics-derived planning guard:\n- Do not create or reprioritize tasks from diagnostics alone.\n- Before accepting any diagnostics claim, read the implicated source files or gather equivalent current-cycle evidence.\n- Treat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\n- If diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks.");
     s.push_str(&format!("\n\nBefore completing this cycle, review {OBJECTIVES_FILE} and add or update objectives to capture anything discovered. New objectives require a unique id, title, category, level, and description. Use apply_patch to write them.\n\nYou may send a message action to other agents at any time.  Think hard internally before responding."));
     s
+}
+
+fn append_optional_prompt_section(output: &mut String, body: &str, heading: &str) {
+    if body.trim().is_empty() {
+        return;
+    }
+    output.push_str(&format!("\n\n{heading}:\n{body}"));
 }
 
 pub(crate) fn executor_cycle_prompt(
