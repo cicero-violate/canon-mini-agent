@@ -1,1 +1,1 @@
-PLAN.json shows no ready in-workspace tasks while the remaining path stays externally blocked; ISS-CLIPPY-WRAPPER-INVALID-RUSTC-ARGS records repeated `multiple input filenames provided` failure from the clippy wrapper path.
+PLAN.json shows no ready in-workspace tasks, while ISS-CLIPPY-WRAPPER-INVALID-RUSTC-ARGS continues to record repeated `multiple input filenames provided` failure from the clippy wrapper path.
