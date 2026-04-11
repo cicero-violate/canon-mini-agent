@@ -2124,29 +2124,7 @@ fn apply_wake_flags(
 ) {
     let active_blocker = agent_state_dir.join("active_blocker_to_verifier.json").exists();
 
-    let flag_paths = [
-        ("planner",     agent_state_dir.join("wakeup_planner.flag")),
-        ("solo",        agent_state_dir.join("wakeup_solo.flag")),
-        ("verifier",    agent_state_dir.join("wakeup_verifier.flag")),
-        ("diagnostics", agent_state_dir.join("wakeup_diagnostics.flag")),
-        ("executor",    agent_state_dir.join("wakeup_executor.flag")),
-    ];
-
-    let mut inputs: Vec<WakeFlagInput> = Vec::new();
-    let mut path_map: std::collections::HashMap<&str, std::path::PathBuf> =
-        std::collections::HashMap::new();
-    for (role, path) in &flag_paths {
-        if !path.exists() {
-            continue;
-        }
-        let modified_ms = path
-            .metadata()
-            .and_then(|m| m.modified())
-            .map(|t| t.duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as u64)
-            .unwrap_or(0);
-        inputs.push(WakeFlagInput { role, modified_ms });
-        path_map.insert(role, path.clone());
-    }
+    let (inputs, path_map) = collect_wake_flag_inputs(agent_state_dir);
 
     let decision = decide_wake_flags(active_blocker, &inputs);
     let Some(role) = decision.scheduled_phase.as_deref() else {
@@ -2180,6 +2158,42 @@ fn apply_wake_flags(
             // is claimed again immediately.
         }
     }
+}
+
+fn collect_wake_flag_inputs(
+    agent_state_dir: &std::path::Path,
+) -> (
+    Vec<WakeFlagInput>,
+    std::collections::HashMap<&'static str, std::path::PathBuf>,
+) {
+    let flag_paths = [
+        ("planner", agent_state_dir.join("wakeup_planner.flag")),
+        ("solo", agent_state_dir.join("wakeup_solo.flag")),
+        ("verifier", agent_state_dir.join("wakeup_verifier.flag")),
+        ("diagnostics", agent_state_dir.join("wakeup_diagnostics.flag")),
+        ("executor", agent_state_dir.join("wakeup_executor.flag")),
+    ];
+
+    let mut inputs = Vec::new();
+    let mut path_map = std::collections::HashMap::new();
+    for (role, path) in flag_paths {
+        if !path.exists() {
+            continue;
+        }
+        let modified_ms = path
+            .metadata()
+            .and_then(|m| m.modified())
+            .map(|t| {
+                t.duration_since(std::time::SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64
+            })
+            .unwrap_or(0);
+        inputs.push(WakeFlagInput { role, modified_ms });
+        path_map.insert(role, path);
+    }
+
+    (inputs, path_map)
 }
 
 fn try_parse_blocker(raw: &str) -> Option<(String, String, Value)> {
