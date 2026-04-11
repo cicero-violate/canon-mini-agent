@@ -186,20 +186,19 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let workspace = take_flag_value(&args, "--workspace").context("missing --workspace")?;
-    let all_crates = has_flag(&args, "--all-crates");
-    let crate_name = take_flag_value(&args, "--crate").unwrap_or_else(|| "canon_mini_agent".to_string());
-    let limit = parse_usize_flag(&args, "--limit", 20)?;
-    let min_blocks = parse_usize_flag(&args, "--min-blocks", 50)?;
-    let min_stmts = parse_usize_flag(&args, "--min-stmts", 200)?;
-    let top = parse_usize_flag(&args, "--top", 3)?;
-    let prune = has_flag(&args, "--prune");
-    let dry_run = has_flag(&args, "--dry-run");
-    let print = has_flag(&args, "--print");
-
-    let issues_path = take_flag_value(&args, "--issues")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(&workspace).join("ISSUES.json"));
+    let TicketArgs {
+        workspace,
+        all_crates,
+        crate_name,
+        limit,
+        min_blocks,
+        min_stmts,
+        top,
+        prune,
+        dry_run,
+        print,
+        issues_path,
+    } = parse_ticket_args(&args)?;
 
     canon_mini_agent::set_workspace(workspace.clone());
     canon_mini_agent::logging::init_log_paths("tickets");
@@ -220,61 +219,23 @@ fn main() -> Result<()> {
     };
 
     for crate_name in crate_list {
-        let idx = match canon_mini_agent::SemanticIndex::load(&PathBuf::from(&workspace), &crate_name) {
-            Ok(idx) => idx,
+        match collect_issues_for_crate(
+            &workspace,
+            &crate_name,
+            limit,
+            min_blocks,
+            min_stmts,
+            &mut new_issues,
+            &mut issue_scores,
+        ) {
+            Ok((added_here, candidate_summary)) => {
+                per_crate_candidates.insert(crate_name.clone(), candidate_summary);
+                per_crate_added.insert(crate_name, added_here);
+            }
             Err(err) => {
                 per_crate_candidates.insert(crate_name.clone(), json!({"error": format!("{err:#}")}));
-                continue;
             }
-        };
-        let summaries = idx.symbol_summaries();
-
-        let mut branch_candidates = summaries
-            .iter()
-            .filter(|s| s.kind == "fn")
-            .filter(|s| s.mir_blocks.unwrap_or(0) >= min_blocks)
-            .collect::<Vec<_>>();
-        branch_candidates.sort_by(|a, b| b.mir_blocks.unwrap_or(0).cmp(&a.mir_blocks.unwrap_or(0)));
-
-        let mut refactor_candidates = summaries
-            .iter()
-            .filter(|s| s.kind == "fn")
-            .filter(|s| s.mir_stmts.unwrap_or(0) >= min_stmts)
-            .collect::<Vec<_>>();
-        refactor_candidates.sort_by(|a, b| b.mir_stmts.unwrap_or(0).cmp(&a.mir_stmts.unwrap_or(0)));
-
-        per_crate_candidates.insert(
-            crate_name.clone(),
-            json!({
-                "branch_candidates": branch_candidates.len(),
-                "refactor_candidates": refactor_candidates.len(),
-                "symbols_with_defs": summaries.len(),
-            }),
-        );
-
-        let mut added_here = 0usize;
-
-        build_issues_for_symbols(
-            &crate_name,
-            branch_candidates,
-            limit,
-            "branch",
-            &mut new_issues,
-            &mut issue_scores,
-            &mut added_here,
-        );
-
-        build_issues_for_symbols(
-            &crate_name,
-            refactor_candidates,
-            limit,
-            "refactor",
-            &mut new_issues,
-            &mut issue_scores,
-            &mut added_here,
-        );
-
-        per_crate_added.insert(crate_name, added_here);
+        }
     }
 
     // Load, merge, write.
@@ -395,4 +356,103 @@ fn main() -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&payload)?);
     }
     Ok(())
+}
+
+struct TicketArgs {
+    workspace: String,
+    all_crates: bool,
+    crate_name: String,
+    limit: usize,
+    min_blocks: usize,
+    min_stmts: usize,
+    top: usize,
+    prune: bool,
+    dry_run: bool,
+    print: bool,
+    issues_path: PathBuf,
+}
+
+fn parse_ticket_args(args: &[String]) -> Result<TicketArgs> {
+    let workspace = take_flag_value(args, "--workspace").context("missing --workspace")?;
+    let all_crates = has_flag(args, "--all-crates");
+    let crate_name = take_flag_value(args, "--crate").unwrap_or_else(|| "canon_mini_agent".to_string());
+    let limit = parse_usize_flag(args, "--limit", 20)?;
+    let min_blocks = parse_usize_flag(args, "--min-blocks", 50)?;
+    let min_stmts = parse_usize_flag(args, "--min-stmts", 200)?;
+    let top = parse_usize_flag(args, "--top", 3)?;
+    let prune = has_flag(args, "--prune");
+    let dry_run = has_flag(args, "--dry-run");
+    let print = has_flag(args, "--print");
+    let issues_path = take_flag_value(args, "--issues")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(&workspace).join("ISSUES.json"));
+
+    Ok(TicketArgs {
+        workspace,
+        all_crates,
+        crate_name,
+        limit,
+        min_blocks,
+        min_stmts,
+        top,
+        prune,
+        dry_run,
+        print,
+        issues_path,
+    })
+}
+
+fn collect_issues_for_crate(
+    workspace: &str,
+    crate_name: &str,
+    limit: usize,
+    min_blocks: usize,
+    min_stmts: usize,
+    new_issues: &mut Vec<Value>,
+    issue_scores: &mut Vec<(String, u32, i64)>,
+) -> Result<(usize, Value)> {
+    let idx = canon_mini_agent::SemanticIndex::load(&PathBuf::from(workspace), crate_name)?;
+    let summaries = idx.symbol_summaries();
+
+    let mut branch_candidates = summaries
+        .iter()
+        .filter(|s| s.kind == "fn")
+        .filter(|s| s.mir_blocks.unwrap_or(0) >= min_blocks)
+        .collect::<Vec<_>>();
+    branch_candidates.sort_by(|a, b| b.mir_blocks.unwrap_or(0).cmp(&a.mir_blocks.unwrap_or(0)));
+
+    let mut refactor_candidates = summaries
+        .iter()
+        .filter(|s| s.kind == "fn")
+        .filter(|s| s.mir_stmts.unwrap_or(0) >= min_stmts)
+        .collect::<Vec<_>>();
+    refactor_candidates.sort_by(|a, b| b.mir_stmts.unwrap_or(0).cmp(&a.mir_stmts.unwrap_or(0)));
+
+    let candidate_summary = json!({
+        "branch_candidates": branch_candidates.len(),
+        "refactor_candidates": refactor_candidates.len(),
+        "symbols_with_defs": summaries.len(),
+    });
+
+    let mut added_here = 0usize;
+    build_issues_for_symbols(
+        crate_name,
+        branch_candidates,
+        limit,
+        "branch",
+        new_issues,
+        issue_scores,
+        &mut added_here,
+    );
+    build_issues_for_symbols(
+        crate_name,
+        refactor_candidates,
+        limit,
+        "refactor",
+        new_issues,
+        issue_scores,
+        &mut added_here,
+    );
+
+    Ok((added_here, candidate_summary))
 }
