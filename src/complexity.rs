@@ -132,14 +132,18 @@ pub fn write_complexity_report(workspace: &Path) -> Result<Option<PathBuf>> {
     });
 
     let dir = reports_dir(workspace);
-    std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
-    let ts = crate::logging::now_ms();
-    let path = dir.join(format!("{ts}.json"));
-    std::fs::write(&path, serde_json::to_string_pretty(&report)?)
-        .with_context(|| format!("write {}", path.display()))?;
-    let latest = dir.join("latest.json");
-    std::fs::write(&latest, serde_json::to_string_pretty(&report)?)
-        .with_context(|| format!("write {}", latest.display()))?;
+    let latest = persist_complexity_report(&dir, &report)?;
 
     Ok(Some(latest))
+}
+
+fn persist_complexity_report(dir: &Path, report: &serde_json::Value) -> Result<PathBuf> {
+    std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
+    let body = serde_json::to_string_pretty(report)?;
+    let ts = crate::logging::now_ms();
+    let path = dir.join(format!("{ts}.json"));
+    std::fs::write(&path, &body).with_context(|| format!("write {}", path.display()))?;
+    let latest = dir.join("latest.json");
+    std::fs::write(&latest, body).with_context(|| format!("write {}", latest.display()))?;
+    Ok(latest)
 }
