@@ -1,1 +1,1 @@
-PLAN.json still shows T_blocked_fix_clippy_wrapper_external=blocked and T_verify_clippy_after_wrapper_fix=pending, while ISS-CLIPPY-WRAPPER-INVALID-RUSTC-ARGS continues to record the reproduced `multiple input filenames provided` clippy failure from the external wrapper path.
+ISS-CLIPPY-WRAPPER-INVALID-RUSTC-ARGS documents repeated `multiple input filenames provided` failure and no workspace changes indicate resolution.
