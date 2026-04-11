@@ -2309,6 +2309,71 @@ fn handle_rustc_action(
                 "mir"
             });
     let extra = action.get("extra").and_then(|v| v.as_str()).unwrap_or("");
+
+    // Preferred path: use the canonical `state/rustc/<crate>/graph.json` artifact (canon-rustc-v2).
+    // This avoids relying on `-Zunpretty` output, and works even when the project uses a non-standard rustc wrapper.
+    let graph_result = crate::semantic::SemanticIndex::load(workspace, crate_name);
+    if let Ok(idx) = graph_result {
+        let crate_norm = crate_name.replace('-', "_");
+        let graph_path = workspace
+            .join("state/rustc")
+            .join(&crate_norm)
+            .join("graph.json");
+        let extra_trimmed = extra.trim();
+        let filter = parse_rustc_graph_filter(extra_trimmed);
+        let out = if action_kind == "rustc_hir" {
+            // Best-effort HIR view: semantic_map is derived from HIR spans recorded in the graph.
+            let map = idx.semantic_map(filter.as_deref(), false);
+            format!(
+                "rustc_hir ok (graph):\nsource: {}\nmode: {}\nfilter: {}\n\n{}",
+                graph_path.display(),
+                mode,
+                filter.as_deref().unwrap_or(""),
+                map.trim_end()
+            )
+        } else {
+            // Best-effort MIR view: list symbols that have MIR metadata in the graph.
+            let mut summaries = idx.symbol_summaries();
+            if let Some(prefix) = filter.as_deref().filter(|s| !s.is_empty()) {
+                summaries.retain(|s| s.symbol.starts_with(prefix));
+            }
+            summaries.retain(|s| s.mir_fingerprint.is_some());
+            let mut body = String::new();
+            for s in summaries {
+                let fp = s.mir_fingerprint.unwrap_or_default();
+                let blocks = s.mir_blocks.unwrap_or(0);
+                let stmts = s.mir_stmts.unwrap_or(0);
+                body.push_str(&format!(
+                    "{}:{} {}  mir(fp={}, blocks={}, stmts={})\n",
+                    crate::semantic::shorten_display_path(&s.file),
+                    s.line,
+                    s.symbol,
+                    fp,
+                    blocks,
+                    stmts
+                ));
+            }
+            if body.trim().is_empty() {
+                body.push_str("(no MIR metadata entries found in graph)\n");
+            }
+            format!(
+                "rustc_mir ok (graph):\nsource: {}\nmode: {}\nfilter: {}\n\n{}",
+                graph_path.display(),
+                mode,
+                filter.as_deref().unwrap_or(""),
+                body.trim_end()
+            )
+        };
+        eprintln!(
+            "[{role}] step={} {action_kind} graph={} output_bytes={}",
+            step,
+            graph_path.display(),
+            out.len()
+        );
+        return Ok((false, truncate(&out, MAX_SNIPPET).to_string()));
+    }
+
+    // Fallback: attempt `cargo rustc -Zunpretty=...` if graph.json isn't available.
     let cmd = if extra.trim().is_empty() {
         format!("cargo rustc -p {crate_name} -- -Zunpretty={mode}")
     } else {
@@ -2337,7 +2402,40 @@ fn handle_rustc_action(
             })),
         );
     }
-    Ok((false, format!("{label}:\n{}", truncate(&out, MAX_SNIPPET))))
+    Ok((
+        false,
+        format!(
+            "{label}:\n{}",
+            truncate(
+                &format!(
+                    "{out}\n\nnote: state/rustc/{}/graph.json not available; build with canon-rustc-v2 wrapper to enable graph-backed rustc_hir/rustc_mir output.",
+                    crate_name.replace('-', "_")
+                ),
+                MAX_SNIPPET
+            )
+        ),
+    ))
+}
+
+fn parse_rustc_graph_filter(extra: &str) -> Option<String> {
+    let s = extra.trim();
+    if s.is_empty() {
+        return None;
+    }
+    // Accept a few simple conventions so existing prompts can steer the output:
+    //   --symbol=foo::bar
+    //   --filter=foo::bar
+    //   --path=foo::bar
+    // Otherwise treat the full `extra` string as the filter prefix.
+    for key in ["--symbol=", "--filter=", "--path="] {
+        if let Some(rest) = s.strip_prefix(key) {
+            let rest = rest.trim();
+            if !rest.is_empty() {
+                return Some(rest.to_string());
+            }
+        }
+    }
+    Some(s.to_string())
 }
 
 fn handle_graph_call_cfg_action(
@@ -4433,6 +4531,51 @@ mod tests {
         dir
     }
 
+    fn write_minimal_graph_with_def_and_mir(
+        workspace: &std::path::Path,
+        crate_name: &str,
+        symbol_key: &str,
+        file: &std::path::Path,
+        source: &str,
+        ident: &str,
+    ) {
+        let lo = source.find(ident).expect("ident present");
+        let hi = lo + ident.len();
+        let prefix = &source[..lo];
+        let line = prefix.bytes().filter(|b| *b == b'\n').count() + 1;
+        let col = prefix
+            .bytes()
+            .rev()
+            .take_while(|b| *b != b'\n')
+            .count();
+        let def = serde_json::json!({
+            "file": file.display().to_string(),
+            "line": line as u32,
+            "col": col as u32,
+            "lo": lo as u32,
+            "hi": hi as u32,
+        });
+        let graph = serde_json::json!({
+            "nodes": {
+                symbol_key: {
+                    "kind": "fn",
+                    "def": def,
+                    "refs": [],
+                    "signature": "fn test()",
+                    "mir": { "fingerprint": "fp1", "blocks": 2, "stmts": 3 },
+                    "fields": [],
+                }
+            },
+            "edges": []
+        });
+        let path = workspace
+            .join("state/rustc")
+            .join(crate_name)
+            .join("graph.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, serde_json::to_string_pretty(&graph).unwrap()).unwrap();
+    }
+
     fn read_last_jsonl_record(path: &std::path::Path) -> Value {
         let raw = std::fs::read_to_string(path).expect("read jsonl log");
         let line = raw
@@ -4609,6 +4752,49 @@ mod tests {
             }
             prev = Some(key);
         }
+    }
+
+    #[test]
+    fn rustc_actions_read_graph_json_when_present() {
+        let tmp = fresh_test_dir("rustc-graph-actions");
+        let file = tmp.join("lib.rs");
+        let src = "fn foo() { foo(); }\n";
+        std::fs::write(&file, src).unwrap();
+        write_minimal_graph_with_def_and_mir(
+            &tmp,
+            "canon_mini_agent",
+            "app::foo",
+            &file,
+            src,
+            "foo",
+        );
+
+        let action = json!({
+            "crate": "canon_mini_agent",
+            "mode": "hir-tree",
+            "extra": ""
+        });
+        let (_done, out_hir) =
+            super::handle_rustc_action("solo", 1, "rustc_hir", &tmp, &action).unwrap();
+        assert!(
+            out_hir.contains("rustc_hir ok (graph)"),
+            "unexpected: {out_hir}"
+        );
+        assert!(out_hir.contains("app::foo"), "unexpected: {out_hir}");
+
+        let action = json!({
+            "crate": "canon_mini_agent",
+            "mode": "mir",
+            "extra": ""
+        });
+        let (_done, out_mir) =
+            super::handle_rustc_action("solo", 1, "rustc_mir", &tmp, &action).unwrap();
+        assert!(
+            out_mir.contains("rustc_mir ok (graph)"),
+            "unexpected: {out_mir}"
+        );
+        assert!(out_mir.contains("app::foo"), "unexpected: {out_mir}");
+        assert!(out_mir.contains("fp1"), "unexpected: {out_mir}");
     }
 
     #[test]

@@ -691,13 +691,18 @@ fn is_symbol_window_item_kind(kind: SyntaxKind) -> bool {
     )
 }
 
-fn shorten_path(path: &str) -> String {
+/// Best-effort path shortening for human-facing output.
+pub fn shorten_display_path(path: &str) -> String {
     // Strip known workspace prefix for readability.
     const WORKSPACE: &str = "/workspace/ai_sandbox/canon-mini-agent/";
     if let Some(rest) = path.strip_prefix(WORKSPACE) {
         return rest.to_string();
     }
     path.to_string()
+}
+
+fn shorten_path(path: &str) -> String {
+    shorten_display_path(path)
 }
 
 #[cfg(test)]

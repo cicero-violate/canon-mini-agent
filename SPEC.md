@@ -176,8 +176,8 @@ Action shapes, required fields, and basic field constraints are defined by the T
 
 ### 3.1 Runtime Semantics (Non-Obvious Behaviors)
 - `cargo_test` maps to `cargo test -p <crate> <test> -- --exact --nocapture`.
-- `rustc_hir` maps to `cargo rustc -p <crate> -- -Zunpretty=<mode> <extra>`.
-- `rustc_mir` maps to `cargo rustc -p <crate> -- -Zunpretty=<mode> <extra>`.
+- `rustc_hir` reads `state/rustc/<crate>/graph.json` (canon-rustc-v2 artifact) and returns a best-effort HIR-derived outline; falls back to `cargo rustc -p <crate> -- -Zunpretty=<mode> <extra>` if the graph is missing.
+- `rustc_mir` reads `state/rustc/<crate>/graph.json` (canon-rustc-v2 artifact) and returns a best-effort MIR metadata listing; falls back to `cargo rustc -p <crate> -- -Zunpretty=<mode> <extra>` if the graph is missing.
 - `graph_call` / `graph_cfg` output CSVs plus `callgraph.symbol.txt` / `cfg.symbol.txt` with symbol→symbol edges.
 - `graph_dataflow` / `graph_reachability` output JSON reports under metrics/analysis directories.
 - `rename_symbol` performs a rust-analyzer-syntax-backed Rust identifier rename at the exact `path` + 1-based `line`/`column` token location. Current implementation is file-scoped (`.rs` files only).
