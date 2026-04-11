@@ -1833,85 +1833,16 @@ fn handle_symbols_prepare_rename_action(workspace: &Path, action: &Value) -> Res
     ))
 }
 
-    fn handle_rename_symbol_action(
+fn handle_rename_symbol_action(
         role: &str,
         step: usize,
         workspace: &Path,
         action: &Value,
     ) -> Result<(bool, String)> {
-        // Deprecation guard for v1 payloads.
-        if action.get("path").is_some()
-            || action.get("line").is_some()
-            || action.get("column").is_some()
-            || action.get("old_name").is_some()
-            || action.get("new_name").is_some()
-        {
-            bail!("rename_symbol v2 uses `old_symbol`/`new_symbol` (or `renames`) and rustc graph spans; line/column payloads are deprecated");
-        }
-
         let idx = load_semantic(workspace, action)?;
         let crate_name = semantic_crate_name(action);
-
-        let mut pairs: Vec<(String, String)> = Vec::new();
-        if let Some(arr) = action.get("renames").and_then(|v| v.as_array()) {
-            if arr.is_empty() {
-                bail!("rename_symbol: `renames` must not be empty");
-            }
-            for (i, item) in arr.iter().enumerate() {
-                let old = item
-                    .get("old")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| anyhow!("rename_symbol: renames[{i}] missing `old`"))?;
-                let new = item
-                    .get("new")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| anyhow!("rename_symbol: renames[{i}] missing `new`"))?;
-                let old = strip_semantic_crate_prefix(&crate_name, old);
-                let new = strip_semantic_crate_prefix(&crate_name, new);
-                if old.is_empty() || new.is_empty() {
-                    bail!("rename_symbol: renames[{i}] must have non-empty old/new");
-                }
-                pairs.push((old.to_string(), new.to_string()));
-            }
-        } else {
-            let old = action
-                .get("old_symbol")
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|v| !v.is_empty())
-                .ok_or_else(|| {
-                    anyhow!("rename_symbol missing non-empty `old_symbol` (or provide `renames`)")
-                })?;
-            let new = action
-                .get("new_symbol")
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|v| !v.is_empty())
-                .ok_or_else(|| {
-                    anyhow!("rename_symbol missing non-empty `new_symbol` (or provide `renames`)")
-                })?;
-            let old = strip_semantic_crate_prefix(&crate_name, old);
-            let new = strip_semantic_crate_prefix(&crate_name, new);
-            if old.is_empty() || new.is_empty() {
-                bail!("rename_symbol requires non-empty `old_symbol` and `new_symbol`");
-            }
-            pairs.push((old.to_string(), new.to_string()));
-        }
-
-        // Capture HEAD before touching any file so we can roll back on failure.
-        // Only attempted when the workspace is a git repository.
-        let in_git = workspace.join(".git").exists();
-        let has_cargo = workspace.join("Cargo.toml").exists();
-        let head = if in_git {
-            let out = Command::new("git")
-                .args(["rev-parse", "HEAD"])
-                .current_dir(workspace)
-                .output()
-                .context("git rev-parse HEAD")?;
-            String::from_utf8_lossy(&out.stdout).trim().to_string()
-        } else {
-            String::new()
-        };
+        let pairs = parse_rename_symbol_pairs(action, &crate_name)?;
+        let rename_env = capture_rename_symbol_environment(workspace)?;
 
         let report =
             crate::rename_semantic::rename_symbols_via_semantic_spans(workspace, &idx, &pairs)?;
@@ -1927,47 +1858,7 @@ fn handle_symbols_prepare_rename_action(workspace: &Path, action: &Value) -> Res
         // its pre-rename state via `git checkout <head> -- <file>...` and
         // surface the compiler output so the agent can diagnose the problem.
         // Skipped when the workspace has no Cargo.toml (e.g. unit-test fixtures).
-        if has_cargo {
-            let check_out = Command::new("cargo")
-                .args(["check", "--workspace"])
-                .current_dir(workspace)
-                .output()
-                .context("cargo check --workspace")?;
-
-            if !check_out.status.success() {
-                // Roll back touched files only — leave the rest of the tree alone.
-                if in_git && !head.is_empty() {
-                    let mut restore_args =
-                        vec!["checkout".to_string(), head.clone(), "--".to_string()];
-                    for f in &report.touched_files {
-                        restore_args.push(f.to_string_lossy().into_owned());
-                    }
-                    let restore_args_ref: Vec<&str> =
-                        restore_args.iter().map(String::as_str).collect();
-                    let _ = Command::new("git")
-                        .args(&restore_args_ref)
-                        .current_dir(workspace)
-                        .output();
-                }
-
-                let stderr = String::from_utf8_lossy(&check_out.stderr);
-                let stdout = String::from_utf8_lossy(&check_out.stdout);
-                let compiler_output = format!("{stdout}{stderr}");
-
-                // Persist errors as an artifact so the agent (or a human) can
-                // inspect the full compiler output without having to re-run.
-                let errors_path = workspace.join("state/rename_errors.txt");
-                if let Some(p) = errors_path.parent() {
-                    let _ = fs::create_dir_all(p);
-                }
-                let _ = fs::write(&errors_path, &compiler_output);
-
-                bail!(
-                    "rename_symbol: cargo check failed after rename — rolled back {} file(s) to {head}. Errors written to state/rename_errors.txt.\n{compiler_output}",
-                    report.touched_files.len()
-                );
-            }
-        }
+        run_post_rename_cargo_check(workspace, &rename_env, &report)?;
 
         Ok((
             false,
@@ -1976,10 +1867,151 @@ fn handle_symbols_prepare_rename_action(workspace: &Path, action: &Value) -> Res
                 pairs.len(),
                 report.replacements,
                 report.touched_files.len(),
-                if has_cargo { "ok" } else { "skipped" },
+                if rename_env.has_cargo { "ok" } else { "skipped" },
             ),
         ))
     }
+
+struct RenameSymbolEnvironment {
+    in_git: bool,
+    has_cargo: bool,
+    head: String,
+}
+
+fn parse_rename_symbol_pairs(action: &Value, crate_name: &str) -> Result<Vec<(String, String)>> {
+    if action.get("path").is_some()
+        || action.get("line").is_some()
+        || action.get("column").is_some()
+        || action.get("old_name").is_some()
+        || action.get("new_name").is_some()
+    {
+        bail!("rename_symbol v2 uses `old_symbol`/`new_symbol` (or `renames`) and rustc graph spans; line/column payloads are deprecated");
+    }
+
+    let mut pairs: Vec<(String, String)> = Vec::new();
+    if let Some(arr) = action.get("renames").and_then(|v| v.as_array()) {
+        if arr.is_empty() {
+            bail!("rename_symbol: `renames` must not be empty");
+        }
+        for (i, item) in arr.iter().enumerate() {
+            let old = item
+                .get("old")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("rename_symbol: renames[{i}] missing `old`"))?;
+            let new = item
+                .get("new")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("rename_symbol: renames[{i}] missing `new`"))?;
+            let old = strip_semantic_crate_prefix(crate_name, old);
+            let new = strip_semantic_crate_prefix(crate_name, new);
+            if old.is_empty() || new.is_empty() {
+                bail!("rename_symbol: renames[{i}] must have non-empty old/new");
+            }
+            pairs.push((old.to_string(), new.to_string()));
+        }
+    } else {
+        let old = action
+            .get("old_symbol")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .ok_or_else(|| {
+                anyhow!("rename_symbol missing non-empty `old_symbol` (or provide `renames`)")
+            })?;
+        let new = action
+            .get("new_symbol")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .ok_or_else(|| {
+                anyhow!("rename_symbol missing non-empty `new_symbol` (or provide `renames`)")
+            })?;
+        let old = strip_semantic_crate_prefix(crate_name, old);
+        let new = strip_semantic_crate_prefix(crate_name, new);
+        if old.is_empty() || new.is_empty() {
+            bail!("rename_symbol requires non-empty `old_symbol` and `new_symbol`");
+        }
+        pairs.push((old.to_string(), new.to_string()));
+    }
+
+    Ok(pairs)
+}
+
+fn capture_rename_symbol_environment(workspace: &Path) -> Result<RenameSymbolEnvironment> {
+    let in_git = workspace.join(".git").exists();
+    let has_cargo = workspace.join("Cargo.toml").exists();
+    let head = if in_git {
+        let out = Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(workspace)
+            .output()
+            .context("git rev-parse HEAD")?;
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    } else {
+        String::new()
+    };
+    Ok(RenameSymbolEnvironment {
+        in_git,
+        has_cargo,
+        head,
+    })
+}
+
+fn run_post_rename_cargo_check(
+    workspace: &Path,
+    rename_env: &RenameSymbolEnvironment,
+    report: &crate::rename_semantic::RenameReport,
+) -> Result<()> {
+    if !rename_env.has_cargo {
+        return Ok(());
+    }
+
+    let check_out = Command::new("cargo")
+        .args(["check", "--workspace"])
+        .current_dir(workspace)
+        .output()
+        .context("cargo check --workspace")?;
+
+    if check_out.status.success() {
+        return Ok(());
+    }
+
+    if rename_env.in_git && !rename_env.head.is_empty() {
+        let mut restore_args = vec![
+            "checkout".to_string(),
+            rename_env.head.clone(),
+            "--".to_string(),
+        ];
+        for f in &report.touched_files {
+            restore_args.push(f.to_string_lossy().into_owned());
+        }
+        let restore_args_ref: Vec<&str> = restore_args.iter().map(String::as_str).collect();
+        let _ = Command::new("git")
+            .args(&restore_args_ref)
+            .current_dir(workspace)
+            .output();
+    }
+
+    let stderr = String::from_utf8_lossy(&check_out.stderr);
+    let stdout = String::from_utf8_lossy(&check_out.stdout);
+    let compiler_output = format!("{stdout}{stderr}");
+    persist_rename_symbol_errors(workspace, &compiler_output);
+
+    bail!(
+        "rename_symbol: cargo check failed after rename — rolled back {} file(s) to {}. Errors written to state/rename_errors.txt.\n{}",
+        report.touched_files.len(),
+        rename_env.head,
+        compiler_output,
+    );
+}
+
+fn persist_rename_symbol_errors(workspace: &Path, compiler_output: &str) {
+    let errors_path = workspace.join("state/rename_errors.txt");
+    if let Some(parent) = errors_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = fs::write(&errors_path, compiler_output);
+}
 
 /// Validate that a just-written JSON state file conforms to its canonical schema.
 /// Returns `Some(rejection_message)` if the file violates the schema, `None` if valid
