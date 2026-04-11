@@ -4775,37 +4775,52 @@ fn exec_run_command(workspace: &Path, cmd: &str, cwd: &str) -> Result<(bool, Str
             .output()
             .with_context(|| ctx_spawn(cmd))?;
 
-        let mut combined = String::from_utf8_lossy(&output.stdout).into_owned();
-        if !output.stderr.is_empty() {
-            if !combined.is_empty() {
-                combined.push('\n');
-            }
-            combined.push_str(&String::from_utf8_lossy(&output.stderr));
-        }
-        if combined.trim().is_empty() && !output.status.success() {
-            if cmd.contains("rg ") || cmd.contains("grep ") {
-                combined = format!("no matches (exit={})", output.status.code().unwrap_or(-1));
-                if cmd.contains("/tmp/runtime.trace") {
-                    combined.push_str("\ntrace probe returned no matches; file may be stale, missing, or the pattern may not be present yet");
-                }
-            }
-        }
-        if cmd.contains("/tmp/runtime.trace") && (cmd.contains("rg ") || cmd.contains("grep ")) {
-            let trace = PathBuf::from("/tmp/runtime.trace");
-            match std::fs::metadata(&trace) {
-                Ok(meta) => {
-                    combined.push_str(&format!(
-                        "\ntrace_path=/tmp/runtime.trace trace_size={}B",
-                        meta.len()
-                    ));
-                }
-                Err(_) => {
-                    combined.push_str("\ntrace_path=/tmp/runtime.trace trace_missing=true");
-                }
-            }
-        }
+        let mut combined = combine_command_output(&output, cmd);
+        append_trace_probe_info(&mut combined, cmd);
 
         Ok((output.status.success(), combined))
+    }
+}
+
+fn combine_command_output(output: &std::process::Output, cmd: &str) -> String {
+    let mut combined = String::from_utf8_lossy(&output.stdout).into_owned();
+
+    if !output.stderr.is_empty() {
+        if !combined.is_empty() {
+            combined.push('\n');
+        }
+        combined.push_str(&String::from_utf8_lossy(&output.stderr));
+    }
+
+    if combined.trim().is_empty() && !output.status.success() {
+        if cmd.contains("rg ") || cmd.contains("grep ") {
+            combined = format!(
+                "no matches (exit={})",
+                output.status.code().unwrap_or(-1)
+            );
+            if cmd.contains("/tmp/runtime.trace") {
+                combined.push_str("\ntrace probe returned no matches; file may be stale, missing, or the pattern may not be present yet");
+            }
+        }
+    }
+
+    combined
+}
+
+fn append_trace_probe_info(combined: &mut String, cmd: &str) {
+    if cmd.contains("/tmp/runtime.trace") && (cmd.contains("rg ") || cmd.contains("grep ")) {
+        let trace = PathBuf::from("/tmp/runtime.trace");
+        match std::fs::metadata(&trace) {
+            Ok(meta) => {
+                combined.push_str(&format!(
+                    "\ntrace_path=/tmp/runtime.trace trace_size={}B",
+                    meta.len()
+                ));
+            }
+            Err(_) => {
+                combined.push_str("\ntrace_path=/tmp/runtime.trace trace_missing=true");
+            }
+        }
     }
 }
 
