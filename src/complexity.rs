@@ -42,14 +42,7 @@ fn process_crate(
         if blocks == 0 && stmts == 0 {
             continue;
         }
-        let entry = json!({
-            "symbol": s.symbol,
-            "file": shorten_display_path(&s.file),
-            "line": s.line,
-            "mir_blocks": blocks,
-            "mir_stmts": stmts,
-            "complexity_proxy": blocks,
-        });
+        let entry = build_complexity_entry(&s, blocks, stmts);
         items.push(entry.clone());
         global.push(json!({
             "crate": crate_name,
@@ -70,6 +63,21 @@ fn process_crate(
         "status": "ok",
         "metric": "mir_blocks_proxy",
         "top": top,
+    })
+}
+
+fn build_complexity_entry(
+    s: &crate::semantic::SymbolSummary,
+    blocks: usize,
+    stmts: usize,
+) -> serde_json::Value {
+    json!({
+        "symbol": s.symbol,
+        "file": shorten_display_path(&s.file),
+        "line": s.line,
+        "mir_blocks": blocks,
+        "mir_stmts": stmts,
+        "complexity_proxy": blocks,
     })
 }
 
