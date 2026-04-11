@@ -234,23 +234,20 @@ fn main() -> Result<()> {
         pruned,
     } = apply_generated_issues(issues, new_issues, issue_scores, top, prune);
 
-    let summary = json!({
-        "ok": true,
-        "issues_path": issues_path.to_string_lossy(),
-        "added": added_ids.len(),
-        "added_ids": added_ids,
-        "updated": updated_ids.len(),
-        "updated_ids": updated_ids,
-        "total": issues.len(),
-        "all_crates": all_crates,
-        "per_crate_candidates": per_crate_candidates,
-        "per_crate_generated": per_crate_added,
-        "dry_run": dry_run,
-        "print": print,
-        "top": top,
-        "prune": prune,
-        "pruned": pruned
-    });
+    let summary = build_ticket_summary(
+        &issues_path,
+        &added_ids,
+        &updated_ids,
+        issues.len(),
+        all_crates,
+        per_crate_candidates,
+        per_crate_added,
+        dry_run,
+        print,
+        top,
+        prune,
+        pruned,
+    );
     emit_or_write_ticket_summary(
         &issues_path,
         &root,
@@ -260,6 +257,39 @@ fn main() -> Result<()> {
         print,
     )?;
     Ok(())
+}
+
+fn build_ticket_summary(
+    issues_path: &Path,
+    added_ids: &[String],
+    updated_ids: &[String],
+    total: usize,
+    all_crates: bool,
+    per_crate_candidates: BTreeMap<String, Value>,
+    per_crate_added: BTreeMap<String, usize>,
+    dry_run: bool,
+    print: bool,
+    top: usize,
+    prune: bool,
+    pruned: usize,
+) -> Value {
+    json!({
+        "ok": true,
+        "issues_path": issues_path.to_string_lossy(),
+        "added": added_ids.len(),
+        "added_ids": added_ids,
+        "updated": updated_ids.len(),
+        "updated_ids": updated_ids,
+        "total": total,
+        "all_crates": all_crates,
+        "per_crate_candidates": per_crate_candidates,
+        "per_crate_generated": per_crate_added,
+        "dry_run": dry_run,
+        "print": print,
+        "top": top,
+        "prune": prune,
+        "pruned": pruned
+    })
 }
 
 fn selected_crates(workspace: &str, all_crates: bool, crate_name: &str) -> Vec<String> {
