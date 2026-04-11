@@ -848,54 +848,68 @@ fn map_schema_error(err: &jsonschema::error::ValidationError, action: &Value) ->
     let path = path_from_error(err);
     match &err.kind {
         ValidationErrorKind::Required { property } => {
-            let property = property.as_str().unwrap_or("unknown");
-            if path.is_empty() {
-                format!("missing field: {property}")
-            } else {
-                format!("{path}.{property} missing")
-            }
+            missing_required_field_message(&path, property.as_str().unwrap_or("unknown"))
         }
-        ValidationErrorKind::Type { kind } => {
-            let field = if path.is_empty() { "action".to_string() } else { path };
-            format!(
-                "field type mismatch: {field} (expected {})",
-                type_kind_label(kind)
-            )
-        }
+        ValidationErrorKind::Type { kind } => format!(
+            "field type mismatch: {} (expected {})",
+            schema_error_field(&path),
+            type_kind_label(kind)
+        ),
         ValidationErrorKind::MinLength { .. } => {
-            let field = if path.is_empty() { "action".to_string() } else { path };
-            format!("missing field: {field}")
+            format!("missing field: {}", schema_error_field(&path))
         }
         ValidationErrorKind::MinItems { .. } | ValidationErrorKind::MaxItems { .. } => {
             "predicted_next_actions must contain 2-3 entries".to_string()
         }
-        ValidationErrorKind::Enum { .. } => {
-            if path == "op" {
-                format!("unknown plan op: {}", stringify_instance(&err.instance))
-            } else if path == "action" || path.ends_with(".action") {
-                format!("unsupported action: {}", stringify_instance(&err.instance))
-            } else {
-                format!("enum mismatch: {path}")
-            }
-        }
+        ValidationErrorKind::Enum { .. } => enum_schema_error_message(&path, &err.instance),
         ValidationErrorKind::OneOfNotValid | ValidationErrorKind::AnyOf => {
-            let action_val = action.get("action").and_then(|v| v.as_str());
-            if let Some(action_val) = action_val {
-                if is_known_action(action_val) {
-                    if let Some(missing) = first_missing_field_for_action(action, action_val) {
-                        return missing;
-                    }
-                    return format!("action schema mismatch: {action_val}");
-                }
-                return format!("unsupported action: {action_val}");
-            }
-            "unsupported action: missing or unknown action".to_string()
+            action_schema_mismatch_message(action)
         }
         ValidationErrorKind::AdditionalProperties { unexpected } => {
             format!("unexpected fields: {}", unexpected.join(", "))
         }
         other => format!("schema violation: {other:?}"),
     }
+}
+
+fn schema_error_field(path: &str) -> String {
+    if path.is_empty() {
+        "action".to_string()
+    } else {
+        path.to_string()
+    }
+}
+
+fn missing_required_field_message(path: &str, property: &str) -> String {
+    if path.is_empty() {
+        format!("missing field: {property}")
+    } else {
+        format!("{path}.{property} missing")
+    }
+}
+
+fn enum_schema_error_message(path: &str, instance: &Cow<'_, Value>) -> String {
+    if path == "op" {
+        format!("unknown plan op: {}", stringify_instance(instance))
+    } else if path == "action" || path.ends_with(".action") {
+        format!("unsupported action: {}", stringify_instance(instance))
+    } else {
+        format!("enum mismatch: {path}")
+    }
+}
+
+fn action_schema_mismatch_message(action: &Value) -> String {
+    let action_val = action.get("action").and_then(|v| v.as_str());
+    if let Some(action_val) = action_val {
+        if is_known_action(action_val) {
+            if let Some(missing) = first_missing_field_for_action(action, action_val) {
+                return missing;
+            }
+            return format!("action schema mismatch: {action_val}");
+        }
+        return format!("unsupported action: {action_val}");
+    }
+    "unsupported action: missing or unknown action".to_string()
 }
 
 fn find_action_schema<'a>(value: &'a Value, action: &str) -> Option<&'a Value> {
