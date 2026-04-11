@@ -4579,23 +4579,7 @@ fn exec_run_command(workspace: &Path, cmd: &str, cwd: &str) -> Result<(bool, Str
     // - short commands → capture output (blocking)
 
     if matches!(kind, RunCommandKind::CargoTest) {
-        let timeout_secs = env::var("CANON_CARGO_TEST_TIMEOUT_SECS")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
-            .unwrap_or(20 * 60);
-        let wrapped_cmd = format!("timeout -s TERM {}s {}", timeout_secs, cmd);
-        let (pid, log_path) = spawn_detached_with_log(&wrapped_cmd, &cwd_path)?;
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        let summary_line =
-            summarize_cargo_test_log(&log_path).unwrap_or_else(|| "(no test result yet)".to_string());
-        let summary = format!(
-            "output_log: {}\nsummary: {}",
-            log_path.display(),
-            summary_line
-        );
-        let _ = pid;
-        let _ = timeout_secs;
-        return Ok((true, summary));
+        return exec_run_command_cargo_test(cmd, &cwd_path);
     }
 
     if matches!(kind, RunCommandKind::LongRunning) {
@@ -4650,6 +4634,26 @@ fn exec_run_command(workspace: &Path, cmd: &str, cwd: &str) -> Result<(bool, Str
 
         Ok((output.status.success(), combined))
     }
+}
+
+fn exec_run_command_cargo_test(cmd: &str, cwd_path: &Path) -> Result<(bool, String)> {
+    let timeout_secs = env::var("CANON_CARGO_TEST_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(20 * 60);
+    let wrapped_cmd = format!("timeout -s TERM {}s {}", timeout_secs, cmd);
+    let (pid, log_path) = spawn_detached_with_log(&wrapped_cmd, cwd_path)?;
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let summary_line =
+        summarize_cargo_test_log(&log_path).unwrap_or_else(|| "(no test result yet)".to_string());
+    let summary = format!(
+        "output_log: {}\nsummary: {}",
+        log_path.display(),
+        summary_line
+    );
+    let _ = pid;
+    let _ = timeout_secs;
+    Ok((true, summary))
 }
 
 fn tail_file_lines(path: &Path, max_lines: usize) -> Option<String> {
