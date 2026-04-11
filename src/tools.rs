@@ -3814,6 +3814,140 @@ fn capture_plan_schema(action: &Value) {
     }
 }
 
+fn apply_plan_bundle_status(
+    obj: &mut serde_json::Map<String, Value>,
+    updates: &serde_json::Map<String, Value>,
+) {
+    if let Some(status) = updates.get("status").and_then(|v| v.as_str()) {
+        obj.insert("status".to_string(), Value::String(status.to_string()));
+    }
+}
+
+fn apply_plan_bundle_task_patch(
+    existing: &mut serde_json::Map<String, Value>,
+    task_obj: &serde_json::Map<String, Value>,
+    id: &str,
+) -> Result<()> {
+    ensure_reopened_task_has_regression_linkage(existing, task_obj, id)?;
+    for (key, value) in task_obj {
+        if key != "id" {
+            existing.insert(key.to_string(), value.clone());
+        }
+    }
+    Ok(())
+}
+
+fn apply_plan_bundle_task_updates(
+    obj: &mut serde_json::Map<String, Value>,
+    updates: &serde_json::Map<String, Value>,
+) -> Result<()> {
+    let Some(tasks) = updates.get("tasks").and_then(|v| v.as_array()) else {
+        return Ok(());
+    };
+    let tasks_obj = obj
+        .get_mut("tasks")
+        .and_then(|v| v.as_array_mut())
+        .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+    for task in tasks {
+        let task_obj = task
+            .as_object()
+            .ok_or_else(|| anyhow!("plan update tasks must be objects"))?;
+        let id = task_obj
+            .get("id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("plan update task missing id"))?;
+        let Some(existing) = tasks_obj
+            .iter_mut()
+            .find(|t| t.get("id").and_then(|v| v.as_str()) == Some(id))
+            .and_then(|t| t.as_object_mut())
+        else {
+            bail!("plan task not found: {id}");
+        };
+        apply_plan_bundle_task_patch(existing, task_obj, id)?;
+    }
+    Ok(())
+}
+
+fn plan_dag_edges_mut(
+    obj: &mut serde_json::Map<String, Value>,
+) -> Result<&mut Vec<Value>> {
+    obj.get_mut("dag")
+        .and_then(|v| v.as_object_mut())
+        .ok_or_else(|| anyhow!("PLAN.json missing dag object"))?
+        .get_mut("edges")
+        .and_then(|v| v.as_array_mut())
+        .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))
+}
+
+fn apply_plan_bundle_remove_edges(
+    obj: &mut serde_json::Map<String, Value>,
+    updates: &serde_json::Map<String, Value>,
+) -> Result<()> {
+    let Some(edges) = updates.get("remove_edges").and_then(|v| v.as_array()) else {
+        return Ok(());
+    };
+    let edges_obj = plan_dag_edges_mut(obj)?;
+    for edge in edges {
+        let from = edge.get("from").and_then(|v| v.as_str());
+        let to = edge.get("to").and_then(|v| v.as_str());
+        if let (Some(from), Some(to)) = (from, to) {
+            edges_obj.retain(|e| {
+                let e_from = e.get("from").and_then(|v| v.as_str());
+                let e_to = e.get("to").and_then(|v| v.as_str());
+                !(e_from == Some(from) && e_to == Some(to))
+            });
+        }
+    }
+    Ok(())
+}
+
+fn apply_plan_bundle_add_edges(
+    obj: &mut serde_json::Map<String, Value>,
+    updates: &serde_json::Map<String, Value>,
+) -> Result<()> {
+    let Some(edges) = updates.get("add_edges").and_then(|v| v.as_array()) else {
+        return Ok(());
+    };
+    let ids = {
+        let tasks = obj
+            .get("tasks")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+        collect_task_ids(tasks)
+    };
+    let edges_obj = plan_dag_edges_mut(obj)?;
+    for edge in edges {
+        let from = edge
+            .get("from")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("plan add_edge missing from"))?;
+        let to = edge
+            .get("to")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("plan add_edge missing to"))?;
+        if !ids.contains(from) || !ids.contains(to) {
+            bail!("plan edge refers to unknown task id");
+        }
+        if edges_obj.iter().any(|e| {
+            e.get("from").and_then(|v| v.as_str()) == Some(from)
+                && e.get("to").and_then(|v| v.as_str()) == Some(to)
+        }) {
+            continue;
+        }
+        let mut edge_obj = serde_json::Map::new();
+        edge_obj.insert("from".to_string(), Value::String(from.to_string()));
+        edge_obj.insert("to".to_string(), Value::String(to.to_string()));
+        edges_obj.push(Value::Object(edge_obj));
+    }
+    let edges_snapshot = edges_obj.clone();
+    let tasks = obj
+        .get("tasks")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+    ensure_dag(tasks, &edges_snapshot)?;
+    Ok(())
+}
+
 fn handle_plan_update_bundle(workspace: &Path, action: &Value) -> Result<(bool, String)> {
     let updates = action
         .get("updates")
@@ -3825,106 +3959,10 @@ fn handle_plan_update_bundle(workspace: &Path, action: &Value) -> Result<(bool, 
         .as_object_mut()
         .ok_or_else(|| anyhow!("PLAN.json must be a JSON object"))?;
 
-    if let Some(status) = updates.get("status").and_then(|v| v.as_str()) {
-        obj.insert("status".to_string(), Value::String(status.to_string()));
-    }
-
-    if let Some(tasks) = updates.get("tasks").and_then(|v| v.as_array()) {
-        let tasks_obj = obj
-            .get_mut("tasks")
-            .and_then(|v| v.as_array_mut())
-            .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
-        for task in tasks {
-            let task_obj = task
-                .as_object()
-                .ok_or_else(|| anyhow!("plan update tasks must be objects"))?;
-            let id = task_obj
-                .get("id")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("plan update task missing id"))?;
-            let Some(existing) = tasks_obj
-                .iter_mut()
-                .find(|t| t.get("id").and_then(|v| v.as_str()) == Some(id))
-                .and_then(|t| t.as_object_mut())
-            else {
-                bail!("plan task not found: {id}");
-            };
-            ensure_reopened_task_has_regression_linkage(existing, task_obj, id)?;
-            for (key, value) in task_obj {
-                if key != "id" {
-                    existing.insert(key.to_string(), value.clone());
-                }
-            }
-        }
-    }
-
-    if let Some(edges) = updates.get("remove_edges").and_then(|v| v.as_array()) {
-        let dag = obj
-            .get_mut("dag")
-            .and_then(|v| v.as_object_mut())
-            .ok_or_else(|| anyhow!("PLAN.json missing dag object"))?;
-        let edges_obj = dag
-            .get_mut("edges")
-            .and_then(|v| v.as_array_mut())
-            .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))?;
-        for edge in edges {
-            let from = edge.get("from").and_then(|v| v.as_str());
-            let to = edge.get("to").and_then(|v| v.as_str());
-            if let (Some(from), Some(to)) = (from, to) {
-                edges_obj.retain(|e| {
-                    let e_from = e.get("from").and_then(|v| v.as_str());
-                    let e_to = e.get("to").and_then(|v| v.as_str());
-                    !(e_from == Some(from) && e_to == Some(to))
-                });
-            }
-        }
-    }
-
-    if let Some(edges) = updates.get("add_edges").and_then(|v| v.as_array()) {
-        let ids = {
-            let tasks = obj
-                .get("tasks")
-                .and_then(|v| v.as_array())
-                .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
-            collect_task_ids(tasks)
-        };
-        let dag = obj
-            .get_mut("dag")
-            .and_then(|v| v.as_object_mut())
-            .ok_or_else(|| anyhow!("PLAN.json missing dag object"))?;
-        let edges_obj = dag
-            .get_mut("edges")
-            .and_then(|v| v.as_array_mut())
-            .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))?;
-        for edge in edges {
-            let from = edge
-                .get("from")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("plan add_edge missing from"))?;
-            let to = edge
-                .get("to")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("plan add_edge missing to"))?;
-            if !ids.contains(from) || !ids.contains(to) {
-                bail!("plan edge refers to unknown task id");
-            }
-            if edges_obj.iter().any(|e| e.get("from").and_then(|v| v.as_str()) == Some(from)
-                && e.get("to").and_then(|v| v.as_str()) == Some(to))
-            {
-                continue;
-            }
-            let mut edge_obj = serde_json::Map::new();
-            edge_obj.insert("from".to_string(), Value::String(from.to_string()));
-            edge_obj.insert("to".to_string(), Value::String(to.to_string()));
-            edges_obj.push(Value::Object(edge_obj));
-        }
-        let edges_snapshot = edges_obj.clone();
-        let tasks = obj
-            .get("tasks")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
-        ensure_dag(tasks, &edges_snapshot)?;
-    }
+    apply_plan_bundle_status(obj, updates);
+    apply_plan_bundle_task_updates(obj, updates)?;
+    apply_plan_bundle_remove_edges(obj, updates)?;
+    apply_plan_bundle_add_edges(obj, updates)?;
 
     std::fs::write(&plan_path, serde_json::to_string_pretty(&plan)?)?;
     // Emit control-plane log for plan mutation (update bundle)
