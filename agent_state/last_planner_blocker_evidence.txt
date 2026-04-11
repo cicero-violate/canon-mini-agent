@@ -1,1 +1,1 @@
-Current-cycle read_file PLAN.json lines 1-305 shows top-level `status: "blocked"`; lines 123-141 show `T6_skip_protocol_op_and_continue_rename` remains blocked; lines 216-305 show the remaining visible tail tasks are all marked `done`, leaving no authoritative ready task to dispatch.
+read_file /tmp/canon-mini-agent-372300-1775889443776.log shows: `error: package ID specification `canon_mini_agent` did not match any packages` and `help: a package with a similar name exists: `canon-mini-agent``.
