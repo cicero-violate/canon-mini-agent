@@ -2998,28 +2998,35 @@ fn write_graph_symbol_preview_file(
     Ok(out_path)
 }
 
-fn handle_graph_reports_action(
-    role: &str,
-    step: usize,
+fn parse_graph_reports_action_input(
     action_kind: &str,
     workspace: &Path,
     action: &Value,
-) -> Result<(bool, String)> {
+) -> Result<(String, Option<String>, PathBuf)> {
     let crate_name = action
         .get("crate")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow!("{action_kind} missing 'crate'"))?;
-    let tlog = action.get("tlog").and_then(|v| v.as_str());
+        .ok_or_else(|| anyhow!("{action_kind} missing 'crate'"))?
+        .to_string();
+    let tlog = action
+        .get("tlog")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     let out_dir = action
         .get("out_dir")
         .and_then(|v| v.as_str())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(|| default_graph_out_dir(workspace, crate_name));
-    let artifact_crate = ensure_graph_artifact(workspace, crate_name, role, step)?;
-    let out_dir_str = out_dir.to_string_lossy();
-    let crate_dir = report_crate_dir(&out_dir, crate_name);
+        .unwrap_or_else(|| default_graph_out_dir(workspace, &crate_name));
+    Ok((crate_name, tlog, out_dir))
+}
+
+fn build_graph_reports_command(
+    artifact_crate: &str,
+    out_dir_str: &str,
+    tlog: Option<&str>,
+) -> String {
     let mut cmd = format!(
         "cargo run -p canon-tools-analysis --bin graph_reports -- --workspace {} --crate {} --out {} --artifact",
         crate::constants::workspace(), artifact_crate, out_dir_str
@@ -3027,30 +3034,37 @@ fn handle_graph_reports_action(
     if let Some(path) = tlog {
         cmd.push_str(&format!(" --tlog {path}"));
     }
-    eprintln!("[{role}] step={} {action_kind} cmd={cmd}", step);
-    let (success, out) = exec_graph_command(workspace, &cmd)?;
-    let label = if success {
-        format!("{action_kind} ok")
-    } else {
-        format!("{action_kind} failed")
-    };
-    if !success {
-        log_error_event(
-            role,
-            action_kind,
-            Some(step),
-            &format!("{action_kind} failed for crate {crate_name}"),
-            Some(json!({
-                "stage": action_kind,
-                "crate": crate_name,
-                "artifact_crate": artifact_crate,
-                "cmd": cmd,
-                "out_dir": out_dir_str.to_string(),
-                "tlog": tlog,
-            })),
-        );
-    }
-    let (report_path, report_label) = if action_kind == "graph_dataflow" {
+    cmd
+}
+
+fn log_graph_reports_failure(
+    role: &str,
+    step: usize,
+    action_kind: &str,
+    crate_name: &str,
+    artifact_crate: &str,
+    cmd: &str,
+    out_dir_str: &str,
+    tlog: Option<&str>,
+) {
+    log_error_event(
+        role,
+        action_kind,
+        Some(step),
+        &format!("{action_kind} failed for crate {crate_name}"),
+        Some(json!({
+            "stage": action_kind,
+            "crate": crate_name,
+            "artifact_crate": artifact_crate,
+            "cmd": cmd,
+            "out_dir": out_dir_str.to_string(),
+            "tlog": tlog,
+        })),
+    );
+}
+
+fn graph_report_path(crate_dir: &Path, action_kind: &str) -> (PathBuf, &'static str) {
+    if action_kind == "graph_dataflow" {
         (
             crate_dir
                 .join("metrics")
@@ -3069,9 +3083,17 @@ fn handle_graph_reports_action(
                 "reachability_report.json",
             )
         }
-    };
+    }
+}
+
+fn build_graph_reports_summary(
+    label: &str,
+    out_dir_str: &str,
+    report_path: &Path,
+    report_label: &str,
+) -> Result<String> {
     let report_preview = if report_path.exists() {
-        read_json_report(&report_path, MAX_SNIPPET)?
+        read_json_report(report_path, MAX_SNIPPET)?
     } else {
         String::new()
     };
@@ -3086,6 +3108,42 @@ fn handle_graph_reports_action(
     } else {
         summary.push_str(&format!("\nreport_note: {} not found", report_label));
     }
+    Ok(summary)
+}
+
+fn handle_graph_reports_action(
+    role: &str,
+    step: usize,
+    action_kind: &str,
+    workspace: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
+    let (crate_name, tlog, out_dir) = parse_graph_reports_action_input(action_kind, workspace, action)?;
+    let artifact_crate = ensure_graph_artifact(workspace, &crate_name, role, step)?;
+    let out_dir_str = out_dir.to_string_lossy().to_string();
+    let crate_dir = report_crate_dir(&out_dir, &crate_name);
+    let cmd = build_graph_reports_command(&artifact_crate, &out_dir_str, tlog.as_deref());
+    eprintln!("[{role}] step={} {action_kind} cmd={cmd}", step);
+    let (success, out) = exec_graph_command(workspace, &cmd)?;
+    let label = if success {
+        format!("{action_kind} ok")
+    } else {
+        format!("{action_kind} failed")
+    };
+    if !success {
+        log_graph_reports_failure(
+            role,
+            step,
+            action_kind,
+            &crate_name,
+            &artifact_crate,
+            &cmd,
+            &out_dir_str,
+            tlog.as_deref(),
+        );
+    }
+    let (report_path, report_label) = graph_report_path(&crate_dir, action_kind);
+    let summary = build_graph_reports_summary(&label, &out_dir_str, &report_path, report_label)?;
     Ok((
         false,
         format!("{summary}\n\nfull_output:\n{}", truncate(&out, MAX_SNIPPET)),
