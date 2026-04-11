@@ -651,6 +651,8 @@ fn solo_rules() -> Vec<String> {
         "- You may modify any in-workspace files when justified by evidence; use the `plan` action for PLAN.json edits.".to_string(),
         format!("- Never operate outside {ws}."),
         "- Never emit destructive commands (rm -rf, git reset --hard, git clean -f, etc.).".to_string(),
+        "- Actively probe the codebase with semantic tools every cycle: use symbol_refs to find all call sites, symbol_window to inspect function bodies, symbol_neighborhood to map a symbol's local context, symbol_path to trace call chains, and semantic_map to orient yourself within a crate. Do not rely on read_file alone for Rust source investigation.".to_string(),
+        "- Issue discovery is a core solo responsibility: when you encounter a logic gap, missing guard, incorrect heuristic, stale artifact, or spec deviation — open an issue immediately via the `issue` action with kind, location, evidence, and priority. Do not defer issue creation to a later cycle.".to_string(),
     ];
     rules.extend(load_role_overrides(AgentPromptKind::Solo));
     rules
@@ -948,7 +950,7 @@ pub(crate) fn single_role_solo_prompt(
     if !rename_candidates.trim().is_empty() {
         sections.push_str(&format!("\n\nPending rename tasks (from state/rename_candidates.json):\n{rename_candidates}\nFor each candidate: use `symbols_prepare_rename` to select it, then `rename_symbol` to apply. Work through them in score-descending order."));
     }
-    sections.push_str("\n\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nUse the `issue` action to record discovered problems for later attention.");
+    sections.push_str("\n\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nIssue discovery is a primary solo responsibility. When you observe a logic gap, missing guard, incorrect heuristic, stale artifact, or spec deviation — open an issue immediately with the `issue` action (fields: id, title, kind, description, location, evidence[], priority). Do not defer; record it in the same cycle you find it.\nFor all Rust source investigation use semantic tools first: symbol_refs (call sites), symbol_window (function body), symbol_neighborhood (local context), symbol_path (call chain), semantic_map (crate outline). Reach for read_file only when you need line numbers immediately before a patch.");
     sections
 }
 
