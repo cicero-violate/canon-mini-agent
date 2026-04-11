@@ -2345,118 +2345,15 @@ fn handle_rustc_action(
 
     // Preferred path: use the canonical `state/rustc/<crate>/graph.json` artifact (canon-rustc-v2).
     // This avoids relying on `-Zunpretty` output, and works even when the project uses a non-standard rustc wrapper.
-    let graph_result = crate::semantic::SemanticIndex::load(workspace, crate_name);
-    if let Ok(idx) = graph_result {
-        let crate_norm = crate_name.replace('-', "_");
-        let graph_path = workspace
-            .join("state/rustc")
-            .join(&crate_norm)
-            .join("graph.json");
-        let symbol_raw = action.get("symbol").and_then(|v| v.as_str()).unwrap_or("").trim();
-        let symbol = if symbol_raw.is_empty() {
-            None
-        } else {
-            Some(strip_semantic_crate_prefix(&crate_norm, symbol_raw).to_string())
-        };
-        let extra_trimmed = extra.trim();
-        let filter = parse_rustc_graph_filter(extra_trimmed);
-        let out = if action_kind == "rustc_hir" {
-            // Best-effort HIR view: semantic_map is derived from HIR spans recorded in the graph.
-            let map = if let Some(sym) = symbol.as_deref() {
-                // Focused view: show the enclosing symbol body as the most actionable "HIR-like" signal.
-                // (The graph is span-backed; a full HIR dump isn't available without -Zunpretty.)
-                match idx.symbol_window(sym) {
-                    Ok(body) => body,
-                    Err(e) => format!("symbol_window failed for {sym}: {e}"),
-                }
-            } else {
-                idx.semantic_map(filter.as_deref(), false)
-            };
-            format!(
-                "rustc_hir ok (graph):\nsource: {}\nmode: {}\nsymbol: {}\nfilter: {}\n\n{}",
-                graph_path.display(),
-                mode,
-                symbol.as_deref().unwrap_or(""),
-                filter.as_deref().unwrap_or(""),
-                map.trim_end()
-            )
-        } else {
-            if let Some(sym) = symbol.as_deref() {
-                // Focused MIR view: emit a single symbol summary with rank for planning comparisons.
-                let canonical = idx.canonical_symbol_key(sym)?;
-                let all = idx.symbol_summaries();
-                let mut mir_items: Vec<&crate::semantic::SymbolSummary> = all
-                    .iter()
-                    .filter(|s| s.mir_fingerprint.is_some())
-                    .collect();
-                mir_items.sort_by(|a, b| b.mir_blocks.unwrap_or(0).cmp(&a.mir_blocks.unwrap_or(0)));
-                let total = mir_items.len().max(1);
-                let rank = mir_items
-                    .iter()
-                    .position(|s| s.symbol == canonical)
-                    .map(|i| i + 1);
-                let summary = all.iter().find(|s| s.symbol == canonical);
-                let mut body = String::new();
-                if let Some(s) = summary {
-                    let fp = s.mir_fingerprint.clone().unwrap_or_else(|| "none".to_string());
-                    let blocks = s.mir_blocks.unwrap_or(0);
-                    let stmts = s.mir_stmts.unwrap_or(0);
-                    body.push_str(&format!(
-                        "symbol: {sym} -> {canonical}\nfile: {}:{}\nmir: fingerprint={fp} blocks={blocks} stmts={stmts}\nrank_by_blocks: {}/{}\ncalls: in={} out={}",
-                        crate::semantic::shorten_display_path(&s.file),
-                        s.line,
-                        rank.unwrap_or(0),
-                        total,
-                        s.call_in,
-                        s.call_out
-                    ));
-                } else {
-                    body.push_str(&format!("symbol: {sym} -> {canonical}\nmir: none\n"));
-                }
-                format!(
-                    "rustc_mir ok (graph):\nsource: {}\nmode: {}\n\n{}",
-                    graph_path.display(),
-                    mode,
-                    body.trim_end()
-                )
-            } else {
-                // Broad MIR view: list symbols that have MIR metadata in the graph.
-                let mut summaries = idx.symbol_summaries();
-                if let Some(prefix) = filter.as_deref().filter(|s| !s.is_empty()) {
-                    summaries.retain(|s| s.symbol.starts_with(prefix));
-                }
-                summaries.retain(|s| s.mir_fingerprint.is_some());
-                let mut body = String::new();
-                for s in summaries {
-                    let fp = s.mir_fingerprint.unwrap_or_default();
-                    let blocks = s.mir_blocks.unwrap_or(0);
-                    let stmts = s.mir_stmts.unwrap_or(0);
-                    body.push_str(&format!(
-                        "{}:{} {}  mir(fp={}, blocks={}, stmts={})\n",
-                        crate::semantic::shorten_display_path(&s.file),
-                        s.line,
-                        s.symbol,
-                        fp,
-                        blocks,
-                        stmts
-                    ));
-                }
-                if body.trim().is_empty() {
-                    body.push_str("(no MIR metadata entries found in graph)\n");
-                }
-                format!(
-                    "rustc_mir ok (graph):\nsource: {}\nmode: {}\nfilter: {}\n\n{}",
-                    graph_path.display(),
-                    mode,
-                    filter.as_deref().unwrap_or(""),
-                    body.trim_end()
-                )
-            }
-        };
+    if let Ok(out) = graph_backed_rustc_action_output(workspace, action_kind, crate_name, mode, extra, action) {
         eprintln!(
             "[{role}] step={} {action_kind} graph={} output_bytes={}",
             step,
-            graph_path.display(),
+            workspace
+                .join("state/rustc")
+                .join(crate_name.replace('-', "_"))
+                .join("graph.json")
+                .display(),
             out.len()
         );
         return Ok((false, truncate(&out, MAX_SNIPPET).to_string()));
@@ -2515,6 +2412,174 @@ fn fallback_rustc_action(
             )
         ),
     ))
+}
+
+fn graph_backed_rustc_action_output(
+    workspace: &Path,
+    action_kind: &str,
+    crate_name: &str,
+    mode: &str,
+    extra: &str,
+    action: &Value,
+) -> Result<String> {
+    let idx = crate::semantic::SemanticIndex::load(workspace, crate_name)?;
+    let crate_norm = crate_name.replace('-', "_");
+    let graph_path = workspace
+        .join("state/rustc")
+        .join(&crate_norm)
+        .join("graph.json");
+    let symbol = rustc_action_symbol(action, &crate_norm);
+    let filter = parse_rustc_graph_filter(extra.trim());
+    if action_kind == "rustc_hir" {
+        return Ok(format_graph_backed_hir_output(
+            &idx,
+            &graph_path,
+            mode,
+            symbol.as_deref(),
+            filter.as_deref(),
+        ));
+    }
+    Ok(format_graph_backed_mir_output(
+        &idx,
+        &graph_path,
+        mode,
+        symbol.as_deref(),
+        filter.as_deref(),
+    )?)
+}
+
+fn rustc_action_symbol(action: &Value, crate_norm: &str) -> Option<String> {
+    let symbol_raw = action.get("symbol").and_then(|v| v.as_str()).unwrap_or("").trim();
+    if symbol_raw.is_empty() {
+        None
+    } else {
+        Some(strip_semantic_crate_prefix(crate_norm, symbol_raw).to_string())
+    }
+}
+
+fn format_graph_backed_hir_output(
+    idx: &crate::semantic::SemanticIndex,
+    graph_path: &Path,
+    mode: &str,
+    symbol: Option<&str>,
+    filter: Option<&str>,
+) -> String {
+    let map = if let Some(sym) = symbol {
+        match idx.symbol_window(sym) {
+            Ok(body) => body,
+            Err(e) => format!("symbol_window failed for {sym}: {e}"),
+        }
+    } else {
+        idx.semantic_map(filter, false)
+    };
+    format!(
+        "rustc_hir ok (graph):\nsource: {}\nmode: {}\nsymbol: {}\nfilter: {}\n\n{}",
+        graph_path.display(),
+        mode,
+        symbol.unwrap_or(""),
+        filter.unwrap_or(""),
+        map.trim_end()
+    )
+}
+
+fn format_graph_backed_mir_output(
+    idx: &crate::semantic::SemanticIndex,
+    graph_path: &Path,
+    mode: &str,
+    symbol: Option<&str>,
+    filter: Option<&str>,
+) -> Result<String> {
+    if let Some(sym) = symbol {
+        return format_graph_backed_mir_symbol_output(idx, graph_path, mode, sym);
+    }
+    Ok(format_graph_backed_mir_listing_output(
+        idx,
+        graph_path,
+        mode,
+        filter,
+    ))
+}
+
+fn format_graph_backed_mir_symbol_output(
+    idx: &crate::semantic::SemanticIndex,
+    graph_path: &Path,
+    mode: &str,
+    sym: &str,
+) -> Result<String> {
+    let canonical = idx.canonical_symbol_key(sym)?;
+    let all = idx.symbol_summaries();
+    let mut mir_items: Vec<&crate::semantic::SymbolSummary> = all
+        .iter()
+        .filter(|s| s.mir_fingerprint.is_some())
+        .collect();
+    mir_items.sort_by(|a, b| b.mir_blocks.unwrap_or(0).cmp(&a.mir_blocks.unwrap_or(0)));
+    let total = mir_items.len().max(1);
+    let rank = mir_items
+        .iter()
+        .position(|s| s.symbol == canonical)
+        .map(|i| i + 1);
+    let summary = all.iter().find(|s| s.symbol == canonical);
+    let mut body = String::new();
+    if let Some(s) = summary {
+        let fp = s.mir_fingerprint.clone().unwrap_or_else(|| "none".to_string());
+        let blocks = s.mir_blocks.unwrap_or(0);
+        let stmts = s.mir_stmts.unwrap_or(0);
+        body.push_str(&format!(
+            "symbol: {sym} -> {canonical}\nfile: {}:{}\nmir: fingerprint={fp} blocks={blocks} stmts={stmts}\nrank_by_blocks: {}/{}\ncalls: in={} out={}",
+            crate::semantic::shorten_display_path(&s.file),
+            s.line,
+            rank.unwrap_or(0),
+            total,
+            s.call_in,
+            s.call_out
+        ));
+    } else {
+        body.push_str(&format!("symbol: {sym} -> {canonical}\nmir: none\n"));
+    }
+    Ok(format!(
+        "rustc_mir ok (graph):\nsource: {}\nmode: {}\n\n{}",
+        graph_path.display(),
+        mode,
+        body.trim_end()
+    ))
+}
+
+fn format_graph_backed_mir_listing_output(
+    idx: &crate::semantic::SemanticIndex,
+    graph_path: &Path,
+    mode: &str,
+    filter: Option<&str>,
+) -> String {
+    let mut summaries = idx.symbol_summaries();
+    if let Some(prefix) = filter.filter(|s| !s.is_empty()) {
+        summaries.retain(|s| s.symbol.starts_with(prefix));
+    }
+    summaries.retain(|s| s.mir_fingerprint.is_some());
+    let mut body = String::new();
+    for s in summaries {
+        let fp = s.mir_fingerprint.unwrap_or_default();
+        let blocks = s.mir_blocks.unwrap_or(0);
+        let stmts = s.mir_stmts.unwrap_or(0);
+        body.push_str(&format!(
+            "{}:{} {}  mir(fp={}, blocks={}, stmts={})\n",
+            crate::semantic::shorten_display_path(&s.file),
+            s.line,
+            s.symbol,
+            fp,
+            blocks,
+            stmts
+        ));
+    }
+    if body.trim().is_empty() {
+        body.push_str("(no MIR metadata entries found in graph)\n");
+    }
+    format!(
+        "rustc_mir ok (graph):\nsource: {}\nmode: {}\nfilter: {}\n\n{}",
+        graph_path.display(),
+        mode,
+        filter.unwrap_or(""),
+        body.trim_end()
+    )
 }
 
 fn parse_rustc_graph_filter(extra: &str) -> Option<String> {
