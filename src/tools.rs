@@ -1762,7 +1762,7 @@ fn handle_symbols_rename_candidates_action(workspace: &Path, action: &Value) -> 
 
     let identity_surface_names = rename_candidate_identity_surface_names();
     let identity_surface_files = rename_candidate_identity_surface_files();
-    let mut candidates = collect_rename_candidates(
+    let candidates = collect_rename_candidates(
         &symbols_file,
         &prefixes_by_stem,
         &identity_surface_names,
