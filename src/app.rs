@@ -1658,36 +1658,44 @@ fn looks_like_diff(raw: &str) -> bool {
 
 fn guardrail_action_from_raw(raw: &str, role: &str) -> Option<Value> {
     if raw.contains("assistant reaction-only terminal frame:") {
-        let path = if role == "diagnostics" {
-            "<workspace-local log/state artifacts discovered during diagnostics>"
-        } else {
-            "canon-utils"
-        };
-        return Some(json!({
-            "action": "list_dir",
-            "observation": "Received reaction-only response; forcing a concrete discovery action.",
-            "rationale": "Reaction-only responses are invalid; gather fresh evidence instead.",
-            "path": path
-        }));
+        return Some(guardrail_reaction_only_action(role));
     }
     if looks_like_diff(raw) {
-        let (from, to, msg_type, status) = default_message_route(role);
-        return Some(json!({
-            "action": "message",
-            "from": from,
-            "to": to,
-            "type": msg_type,
-            "status": status,
-            "observation": "Model responded with diff-only text; wrapping as message payload.",
-            "rationale": "Diff output must be wrapped in a valid message action.",
-            "payload": {
-                "summary": "diff-only output captured",
-                "diff_excerpt": truncate(raw, 1500),
-                "expected_format": expected_message_format(from, to, msg_type, status)
-            }
-        }));
+        return Some(guardrail_diff_message_action(raw, role));
     }
     None
+}
+
+fn guardrail_reaction_only_action(role: &str) -> Value {
+    let path = if role == "diagnostics" {
+        "<workspace-local log/state artifacts discovered during diagnostics>"
+    } else {
+        "canon-utils"
+    };
+    json!({
+        "action": "list_dir",
+        "observation": "Received reaction-only response; forcing a concrete discovery action.",
+        "rationale": "Reaction-only responses are invalid; gather fresh evidence instead.",
+        "path": path
+    })
+}
+
+fn guardrail_diff_message_action(raw: &str, role: &str) -> Value {
+    let (from, to, msg_type, status) = default_message_route(role);
+    json!({
+        "action": "message",
+        "from": from,
+        "to": to,
+        "type": msg_type,
+        "status": status,
+        "observation": "Model responded with diff-only text; wrapping as message payload.",
+        "rationale": "Diff output must be wrapped in a valid message action.",
+        "payload": {
+            "summary": "diff-only output captured",
+            "diff_excerpt": truncate(raw, 1500),
+            "expected_format": expected_message_format(from, to, msg_type, status)
+        }
+    })
 }
 
 fn apply_error_result(
