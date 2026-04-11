@@ -114,6 +114,18 @@ Example:
 Example:
   {"action":"cargo_test","crate":"canon-runtime","test":"some_test_name","rationale":"Run the exact failing test using the harness-style command."}
 
+## `cargo_fmt` — run cargo fmt (default: --check)
+
+Examples:
+  {"action":"cargo_fmt","fix":false,"rationale":"Verify formatting without modifying files."}
+  {"action":"cargo_fmt","fix":true,"rationale":"Auto-format the workspace."}
+
+## `cargo_clippy` — run cargo clippy -D warnings (optionally scoped to a crate)
+
+Examples:
+  {"action":"cargo_clippy","rationale":"Lint the workspace with clippy."}
+  {"action":"cargo_clippy","crate":"canon-mini-agent","rationale":"Lint only the target crate."}
+
 ## `plan` — create/update/delete tasks and DAG edges in PLAN.json
 
 Examples:
