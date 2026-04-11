@@ -629,7 +629,7 @@ pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str,
     });
     format!(
         "Invalid action rejected.\naction_result:\n{}\nReturn exactly one action as a single JSON object in a ```json code block. No prose outside it.\nFor any mutating retry (`apply_patch`, `plan`, `objectives`, `issue`, or `rename_symbol`), include a non-empty `question` field stating the decision-boundary premise.",
-        feedback.to_string()
+        serde_json::to_string_pretty(&feedback).unwrap_or_else(|_| feedback.to_string())
     )
 }
 
