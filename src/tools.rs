@@ -3803,9 +3803,28 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
     let op = PlanOp::parse(op_raw)?;
     let plan_path = workspace.join(MASTER_PLAN_FILE);
     let mut plan = load_or_init_plan(&plan_path)?;
-    let obj = plan
-        .as_object_mut()
-        .ok_or_else(|| anyhow!("PLAN.json must be a JSON object"))?;
+    match op {
+        PlanOp::ReplacePlan => {
+            plan = build_replacement_plan(action)?;
+        }
+        _ => {
+            let obj = plan
+                .as_object_mut()
+                .ok_or_else(|| anyhow!("PLAN.json must be a JSON object"))?;
+            if let Some(result) = dispatch_plan_op(op, obj, action)? {
+                return Ok(result);
+            }
+        }
+    }
+
+    persist_plan_action_update(role, action, op_raw, &plan_path, &plan)
+}
+
+fn dispatch_plan_op(
+    op: PlanOp,
+    obj: &mut serde_json::Map<String, Value>,
+    action: &Value,
+) -> Result<Option<(bool, String)>> {
     match op {
         PlanOp::CreateTask => {
             handle_plan_create_task(obj, action)?;
@@ -3818,7 +3837,7 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
         }
         PlanOp::AddEdge => {
             if let Some(result) = handle_plan_add_edge(obj, action)? {
-                return Ok(result);
+                return Ok(Some(result));
             }
         }
         PlanOp::RemoveEdge => {
@@ -3830,12 +3849,9 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
         PlanOp::SetTaskStatus => {
             handle_plan_set_task_status(obj, action)?;
         }
-        PlanOp::ReplacePlan => {
-            plan = build_replacement_plan(action)?;
-        }
+        PlanOp::ReplacePlan => unreachable!("replace_plan is handled before object mutation dispatch"),
     }
-
-    persist_plan_action_update(role, action, op_raw, &plan_path, &plan)
+    Ok(None)
 }
 
 fn persist_plan_action_update(
