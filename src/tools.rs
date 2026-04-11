@@ -3396,94 +3396,15 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
             handle_plan_delete_task(obj, action)?;
         }
         PlanOp::AddEdge => {
-            let ids = {
-                let tasks = obj
-                    .get("tasks")
-                    .and_then(|v| v.as_array())
-                    .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
-                collect_task_ids(tasks)
-            };
-            let from = action
-                .get("from")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("plan add_edge missing from"))?;
-            let to = action
-                .get("to")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("plan add_edge missing to"))?;
-            if !ids.contains(from) || !ids.contains(to) {
-                bail!("plan edge refers to unknown task id");
+            if let Some(result) = handle_plan_add_edge(obj, action)? {
+                return Ok(result);
             }
-            let dag = obj
-                .get_mut("dag")
-                .and_then(|v| v.as_object_mut())
-                .ok_or_else(|| anyhow!("PLAN.json missing dag object"))?;
-            let edges = dag
-                .get_mut("edges")
-                .and_then(|v| v.as_array_mut())
-                .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))?;
-            if edges.iter().any(|e| e.get("from").and_then(|v| v.as_str()) == Some(from)
-                && e.get("to").and_then(|v| v.as_str()) == Some(to))
-            {
-                return Ok((false, "plan edge already exists".to_string()));
-            }
-            let mut edge = serde_json::Map::new();
-            edge.insert("from".to_string(), Value::String(from.to_string()));
-            edge.insert("to".to_string(), Value::String(to.to_string()));
-            edges.push(Value::Object(edge));
-            let edges_snapshot = edges.clone();
-            let _ = edges;
-            let tasks = obj
-                .get("tasks")
-                .and_then(|v| v.as_array())
-                .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
-            ensure_dag(tasks, &edges_snapshot)?;
         }
         PlanOp::RemoveEdge => {
-            let dag = obj
-                .get_mut("dag")
-                .and_then(|v| v.as_object_mut())
-                .ok_or_else(|| anyhow!("PLAN.json missing dag object"))?;
-            let edges = dag
-                .get_mut("edges")
-                .and_then(|v| v.as_array_mut())
-                .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))?;
-            let from = action
-                .get("from")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("plan remove_edge missing from"))?;
-            let to = action
-                .get("to")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("plan remove_edge missing to"))?;
-            edges.retain(|e| {
-                let e_from = e.get("from").and_then(|v| v.as_str());
-                let e_to = e.get("to").and_then(|v| v.as_str());
-                !(e_from == Some(from) && e_to == Some(to))
-            });
+            handle_plan_remove_edge(obj, action)?;
         }
         PlanOp::SetPlanStatus => {
-            let status = action
-                .get("status")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("plan set_plan_status missing status"))?;
-            // Invariant: cannot mark plan done if any task is not done
-            if status == "done" {
-                let tasks = obj
-                    .get("tasks")
-                    .and_then(|v| v.as_array())
-                    .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
-                let any_incomplete = tasks.iter().any(|t| {
-                    t.get("status")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.trim() != "done")
-                        .unwrap_or(true)
-                });
-                if any_incomplete {
-                    bail!("plan status cannot be set to done while tasks remain incomplete");
-                }
-            }
-            obj.insert("status".to_string(), Value::String(status.to_string()));
+            handle_plan_set_plan_status(obj, action)?;
         }
         PlanOp::SetTaskStatus => {
             handle_plan_set_task_status(obj, action)?;
@@ -3549,6 +3470,111 @@ fn handle_plan_fast_paths(
         return Ok(Some(handle_plan_update_bundle(workspace, action)?));
     }
     Ok(None)
+}
+
+fn handle_plan_add_edge(
+    obj: &mut serde_json::Map<String, Value>,
+    action: &Value,
+) -> Result<Option<(bool, String)>> {
+    let ids = {
+        let tasks = obj
+            .get("tasks")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+        collect_task_ids(tasks)
+    };
+    let from = action
+        .get("from")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("plan add_edge missing from"))?;
+    let to = action
+        .get("to")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("plan add_edge missing to"))?;
+    if !ids.contains(from) || !ids.contains(to) {
+        bail!("plan edge refers to unknown task id");
+    }
+    let dag = obj
+        .get_mut("dag")
+        .and_then(|v| v.as_object_mut())
+        .ok_or_else(|| anyhow!("PLAN.json missing dag object"))?;
+    let edges = dag
+        .get_mut("edges")
+        .and_then(|v| v.as_array_mut())
+        .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))?;
+    if edges.iter().any(|e| {
+        e.get("from").and_then(|v| v.as_str()) == Some(from)
+            && e.get("to").and_then(|v| v.as_str()) == Some(to)
+    }) {
+        return Ok(Some((false, "plan edge already exists".to_string())));
+    }
+    let mut edge = serde_json::Map::new();
+    edge.insert("from".to_string(), Value::String(from.to_string()));
+    edge.insert("to".to_string(), Value::String(to.to_string()));
+    edges.push(Value::Object(edge));
+    let edges_snapshot = edges.clone();
+    let _ = edges;
+    let tasks = obj
+        .get("tasks")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+    ensure_dag(tasks, &edges_snapshot)?;
+    Ok(None)
+}
+
+fn handle_plan_remove_edge(
+    obj: &mut serde_json::Map<String, Value>,
+    action: &Value,
+) -> Result<()> {
+    let dag = obj
+        .get_mut("dag")
+        .and_then(|v| v.as_object_mut())
+        .ok_or_else(|| anyhow!("PLAN.json missing dag object"))?;
+    let edges = dag
+        .get_mut("edges")
+        .and_then(|v| v.as_array_mut())
+        .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))?;
+    let from = action
+        .get("from")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("plan remove_edge missing from"))?;
+    let to = action
+        .get("to")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("plan remove_edge missing to"))?;
+    edges.retain(|e| {
+        let e_from = e.get("from").and_then(|v| v.as_str());
+        let e_to = e.get("to").and_then(|v| v.as_str());
+        !(e_from == Some(from) && e_to == Some(to))
+    });
+    Ok(())
+}
+
+fn handle_plan_set_plan_status(
+    obj: &mut serde_json::Map<String, Value>,
+    action: &Value,
+) -> Result<()> {
+    let status = action
+        .get("status")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("plan set_plan_status missing status"))?;
+    if status == "done" {
+        let tasks = obj
+            .get("tasks")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+        let any_incomplete = tasks.iter().any(|t| {
+            t.get("status")
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim() != "done")
+                .unwrap_or(true)
+        });
+        if any_incomplete {
+            bail!("plan status cannot be set to done while tasks remain incomplete");
+        }
+    }
+    obj.insert("status".to_string(), Value::String(status.to_string()));
+    Ok(())
 }
 
 fn extract_plan_op(action: &Value) -> &str {
