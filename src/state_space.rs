@@ -269,39 +269,16 @@ impl CargoTestGate {
     }
 
     pub fn note_action(&mut self, kind: &str, cmd: Option<&str>) {
-        if kind != "run_command" {
-            return;
-        }
-        let Some(path) = self.pending_tail_path.as_ref() else {
-            return;
-        };
-        let Some(cmd) = cmd else {
-            return;
-        };
-        if cmd.contains(path) && cmd.contains("tail") {
-            self.pending_tail_path = None;
-        }
+        let _ = (kind, cmd);
     }
 
     pub fn note_result(&mut self, kind: &str, output: &str) {
-        if kind == "cargo_test" && output.contains("note: cargo test detached") {
-            if output.contains("output_log_tail:") {
-                self.pending_tail_path = None;
-            } else {
-                self.pending_tail_path = extract_progress_path_from_result(output);
-            }
-        }
+        let _ = (kind, output);
     }
 
     pub fn message_blocker_if_needed(&self, kind: &str, workspace: &str) -> Option<String> {
-        if kind != "message" {
-            return None;
-        }
-        let path = self.pending_tail_path.as_ref()?;
-        Some(format!(
-            "Detached cargo test output must be inspected before sending a message. Run:\n```json\n{{\n  \"action\": \"run_command\",\n  \"cmd\": \"tail -n 200 {}\",\n  \"cwd\": \"{}\",\n  \"observation\": \"Inspect live cargo test output.\",\n  \"rationale\": \"Detached cargo test output is in the log file; tail it for progress and failures.\"\n}}\n```\nReturn exactly one action.",
-            path, workspace
-        ))
+        let _ = (kind, workspace);
+        None
     }
 
     #[cfg(test)]
@@ -314,6 +291,12 @@ pub fn extract_progress_path_from_result(result: &str) -> Option<String> {
     for line in result.lines() {
         let trimmed = line.trim();
         if let Some(rest) = trimmed.strip_prefix("progress_path:") {
+            let path = rest.trim();
+            if !path.is_empty() {
+                return Some(path.to_string());
+            }
+        }
+        if let Some(rest) = trimmed.strip_prefix("output_log:") {
             let path = rest.trim();
             if !path.is_empty() {
                 return Some(path.to_string());

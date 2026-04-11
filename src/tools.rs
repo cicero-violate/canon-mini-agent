@@ -701,14 +701,23 @@ fn handle_plan_sorted_view_action(workspace: &Path) -> Result<(bool, String)> {
 }
 
 fn extract_output_log_path(out: &str) -> Option<PathBuf> {
-    let needle = "output_log=";
-    let idx = out.find(needle)?;
-    let rest = &out[idx + needle.len()..];
-    let path = rest.split_whitespace().next()?;
-    if path.is_empty() {
-        return None;
+    for line in out.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("output_log:") {
+            let path = rest.trim();
+            if !path.is_empty() {
+                return Some(PathBuf::from(path));
+            }
+        }
+        if let Some(idx) = trimmed.find("output_log=") {
+            let rest = trimmed[idx + "output_log=".len()..].trim();
+            let path = rest.split_whitespace().next().unwrap_or("");
+            if !path.is_empty() {
+                return Some(PathBuf::from(path));
+            }
+        }
     }
-    Some(PathBuf::from(path))
+    None
 }
 
 fn parse_cargo_test_failures(out: &str) -> Value {
@@ -2802,14 +2811,27 @@ fn handle_cargo_test_action(
         format!("cargo test -p {} -- --nocapture", crate_name)
     };
     eprintln!("[{role}] step={} cargo_test cmd={}", step, cmd);
-    let (success, out) = exec_run_command(workspace, &cmd, crate::constants::workspace())?;
-    let label = if success {
-        "cargo_test ok"
+    let (spawn_ok, out) = exec_run_command(workspace, &cmd, crate::constants::workspace())?;
+    let log_path = extract_output_log_path(&out);
+    let summary_line = log_path
+        .as_ref()
+        .and_then(|p| summarize_cargo_test_log(p))
+        .or_else(|| cargo_test_totals_summary(&out).lines().next().map(|s| s.to_string()));
+    let label = if let Some(summary) = summary_line.as_deref() {
+        if summary.contains("test result: ok.") {
+            "cargo_test ok"
+        } else if summary.contains("test result: FAILED") {
+            "cargo_test failed"
+        } else {
+            "cargo_test running"
+        }
+    } else if spawn_ok {
+        "cargo_test running"
     } else {
         "cargo_test failed"
     };
     eprintln!("[{role}] step={} {label} output_bytes={}", step, out.len());
-    if !success {
+    if !spawn_ok {
         log_error_event(
             role,
             "cargo_test",
@@ -2825,18 +2847,6 @@ fn handle_cargo_test_action(
     }
     let failures_json = parse_cargo_test_failures(&out);
     let mut summary = format!("{label}");
-    let mut progress_path: Option<String> = None;
-    if let Some(line) = out.lines().find(|line| line.contains("output_log=")) {
-        if let Some(idx) = line.find("output_log=") {
-            let mut path = line[idx + "output_log=".len()..].trim();
-            if let Some(end) = path.find(' ') {
-                path = &path[..end];
-            }
-            if !path.is_empty() {
-                progress_path = Some(path.to_string());
-            }
-        }
-    }
     if let Some(arr) = failures_json.get("failed_tests").and_then(|v| v.as_array()) {
         if !arr.is_empty() {
             summary.push_str("\nfailed_tests:");
@@ -2874,20 +2884,13 @@ fn handle_cargo_test_action(
             }
         }
     }
-    if let Some(path) = progress_path.as_ref() {
-        summary.push_str(&format!("\noutput_log: {}", path));
-        summary.push_str(&format!("\nprogress_path: {}", path));
-        if out.contains("detached cargo test") {
-            std::thread::sleep(std::time::Duration::from_millis(500));
-            if let Some(summary_line) = summarize_cargo_test_log(Path::new(path)) {
-                summary.push_str(&format!("\nsummary: {summary_line}"));
-            }
-        }
+    if let Some(path) = log_path.as_ref() {
+        summary.push_str(&format!("\noutput_log: {}", path.display()));
     }
-    Ok((
-        false,
-        format!("{summary}\n\nfull_output:\n{}", truncate(&out, MAX_SNIPPET)),
-    ))
+    if let Some(line) = summary_line.as_deref() {
+        summary.push_str(&format!("\nsummary: {line}"));
+    }
+    Ok((false, summary))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -3733,40 +3736,12 @@ fn summarize_cargo_test_log(path: &Path) -> Option<String> {
     if contents.trim().is_empty() {
         return None;
     }
-    let mut passed = 0usize;
-    let mut failed = 0usize;
-    for line in contents.lines() {
-        let line = line.trim_start();
-        if line.starts_with("test ") {
-            if line.ends_with("... ok") {
-                passed += 1;
-            } else if line.ends_with("... FAILED") {
-                failed += 1;
-            }
-        }
-    }
     for line in contents.lines() {
         if let Some(idx) = line.find("test result:") {
-            let tail = line[idx..].trim();
-            if failed == 0 {
-                return Some(format!(
-                    "all tests passed (counted: passed={passed} failed={failed}). last: {tail}"
-                ));
-            }
-            return Some(format!(
-                "tests failed (counted: passed={passed} failed={failed}). last: {tail}"
-            ));
+            return Some(line[idx..].trim().to_string());
         }
     }
-    if failed == 0 {
-        Some(format!(
-            "all tests passed (counted: passed={passed} failed={failed})"
-        ))
-    } else {
-        Some(format!(
-            "tests failed (counted: passed={passed} failed={failed})"
-        ))
-    }
+    None
 }
 
 fn exec_run_command(workspace: &Path, cmd: &str, cwd: &str) -> Result<(bool, String)> {
@@ -3790,18 +3765,15 @@ fn exec_run_command(workspace: &Path, cmd: &str, cwd: &str) -> Result<(bool, Str
         let wrapped_cmd = format!("timeout -s TERM {}s {}", timeout_secs, cmd);
         let (pid, log_path) = spawn_detached_with_log(&wrapped_cmd, &cwd_path)?;
         std::thread::sleep(std::time::Duration::from_millis(500));
-        let summary_line = summarize_cargo_test_log(&log_path);
-        let mut summary = format!(
-            "detached cargo test pid={} output_log={} timeout_secs={}",
-            pid,
+        let summary_line =
+            summarize_cargo_test_log(&log_path).unwrap_or_else(|| "(no test result yet)".to_string());
+        let summary = format!(
+            "output_log: {}\nsummary: {}",
             log_path.display(),
-            timeout_secs
+            summary_line
         );
-        summary.push_str(&format!("\noutput_log: {}", log_path.display()));
-        summary.push_str(&format!("\nprogress_path: {}", log_path.display()));
-        if let Some(summary_line) = summary_line {
-            summary.push_str(&format!("\nsummary: {summary_line}"));
-        }
+        let _ = pid;
+        let _ = timeout_secs;
         return Ok((true, summary));
     }
 

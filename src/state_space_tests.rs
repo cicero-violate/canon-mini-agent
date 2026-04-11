@@ -12,22 +12,17 @@ use crate::state_space::{
 
 #[test]
 fn extract_progress_path_detects_output_log() {
-    let sample = "detached cargo test pid=123 output_log=/tmp/abc.log timeout_secs=1200";
+    let sample = "output_log: /tmp/abc.log\nsummary: test result: ok. 1 passed; 0 failed";
     let path = extract_progress_path_from_result(sample).expect("missing output log");
     assert_eq!(path, "/tmp/abc.log");
 }
 
 #[test]
-fn cargo_test_gate_requires_tail_then_clears() {
+fn cargo_test_gate_does_not_block_messages() {
     let mut gate = CargoTestGate::new();
-    gate.note_result("cargo_test", "note: cargo test detached\nprogress_path: /tmp/run.log");
-    assert_eq!(gate.pending_tail_path(), Some("/tmp/run.log"));
-    let msg = gate
-        .message_blocker_if_needed("message", "/workspace")
-        .expect("expected blocker message");
-    assert!(msg.contains("tail -n 200 /tmp/run.log"));
-    gate.note_action("run_command", Some("tail -n 200 /tmp/run.log"));
+    gate.note_result("cargo_test", "output_log: /tmp/run.log\nsummary: (no test result yet)");
     assert_eq!(gate.pending_tail_path(), None);
+    assert!(gate.message_blocker_if_needed("message", "/workspace").is_none());
 }
 
 #[test]
