@@ -3788,22 +3788,7 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
             handle_plan_set_task_status(obj, action)?;
         }
         PlanOp::ReplacePlan => {
-            let mut next_plan = action
-                .get("plan")
-                .cloned()
-                .ok_or_else(|| anyhow!("plan replace_plan missing plan object"))?;
-            normalize_plan_object(&mut next_plan)?;
-            let tasks = next_plan
-                .get("tasks")
-                .and_then(|v| v.as_array())
-                .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
-            let edges = next_plan
-                .get("dag")
-                .and_then(|v| v.get("edges"))
-                .and_then(|v| v.as_array())
-                .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))?;
-            ensure_dag(tasks, edges)?;
-            plan = next_plan;
+            plan = build_replacement_plan(action)?;
         }
     }
 
@@ -3831,6 +3816,25 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
         false,
         format!("plan ok\nplan_path: {}", plan_path.display()),
     ))
+}
+
+fn build_replacement_plan(action: &Value) -> Result<Value> {
+    let mut next_plan = action
+        .get("plan")
+        .cloned()
+        .ok_or_else(|| anyhow!("plan replace_plan missing plan object"))?;
+    normalize_plan_object(&mut next_plan)?;
+    let tasks = next_plan
+        .get("tasks")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+    let edges = next_plan
+        .get("dag")
+        .and_then(|v| v.get("edges"))
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))?;
+    ensure_dag(tasks, edges)?;
+    Ok(next_plan)
 }
 
 fn handle_plan_fast_paths(
