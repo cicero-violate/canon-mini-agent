@@ -1269,57 +1269,88 @@ pub(crate) enum MessageValidationMode {
     Strict,
 }
 
-pub(crate) fn validate_message_action(action: &Value, mode: MessageValidationMode) -> Result<()> {
-    let obj = action
-        .as_object()
-        .ok_or_else(|| anyhow!("action payload must be a JSON object"))?;
+fn require_non_empty_message_field(
+    obj: &serde_json::Map<String, Value>,
+    field: &str,
+) -> Result<()> {
+    obj.get(field)
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| anyhow!("message missing non-empty '{field}'"))?;
+    Ok(())
+}
+
+fn validate_message_required_fields(obj: &serde_json::Map<String, Value>) -> Result<()> {
     for field in ["from", "to", "type", "status"] {
-        obj.get(field)
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .ok_or_else(|| anyhow!("message missing non-empty '{field}'"))?;
+        require_non_empty_message_field(obj, field)?;
     }
     obj.get("payload")
         .and_then(|v| v.as_object())
         .ok_or_else(|| anyhow!("message missing object payload"))?;
+    Ok(())
+}
+
+fn validate_blocker_message_payload(msg: ProtocolMessage) -> Result<()> {
+    if !(matches!(msg.msg_type, MessageType::Blocker)
+        || matches!(msg.status, MessageStatus::Blocked))
+    {
+        return Ok(());
+    }
+    match msg.payload {
+        MessagePayload::Blocker(payload) => {
+            if payload.blocker.trim().is_empty()
+                || payload.evidence.trim().is_empty()
+                || payload.required_action.trim().is_empty()
+            {
+                bail!("blocker payload fields must be non-empty strings");
+            }
+            Ok(())
+        }
+        _ => bail!(
+            "blocker messages must include payload fields: blocker, evidence, required_action"
+        ),
+    }
+}
+
+fn validate_optional_message_severity(obj: &serde_json::Map<String, Value>) -> Result<()> {
+    let Some(severity) = obj.get("severity").and_then(|v| v.as_str()) else {
+        return Ok(());
+    };
+    let _ = serde_json::from_value::<crate::protocol::Severity>(Value::String(
+        severity.to_string(),
+    ))
+    .map_err(|_| anyhow!("message severity must be one of: info|warn|error|critical"))?;
+    Ok(())
+}
+
+fn validate_optional_message_role(
+    obj: &serde_json::Map<String, Value>,
+    field: &str,
+) -> Result<()> {
+    let Some(role) = obj.get(field) else {
+        return Ok(());
+    };
+    let _ = serde_json::from_value::<Role>(role.clone()).map_err(|_| {
+        anyhow!("{field} must be one of: executor|planner|verifier|diagnostics|solo")
+    })?;
+    Ok(())
+}
+
+pub(crate) fn validate_message_action(action: &Value, mode: MessageValidationMode) -> Result<()> {
+    let obj = action
+        .as_object()
+        .ok_or_else(|| anyhow!("action payload must be a JSON object"))?;
+    validate_message_required_fields(obj)?;
     if matches!(mode, MessageValidationMode::Basic) {
         return Ok(());
     }
     let msg: ProtocolMessage = serde_json::from_value(action.clone())
         .map_err(|e| anyhow!("message schema invalid: {e}"))?;
-    if matches!(msg.msg_type, MessageType::Blocker) || matches!(msg.status, MessageStatus::Blocked)
-    {
-        match msg.payload {
-            MessagePayload::Blocker(payload) => {
-                if payload.blocker.trim().is_empty()
-                    || payload.evidence.trim().is_empty()
-                    || payload.required_action.trim().is_empty()
-                {
-                    bail!("blocker payload fields must be non-empty strings");
-                }
-            }
-            _ => bail!(
-                "blocker messages must include payload fields: blocker, evidence, required_action"
-            ),
-        }
-    }
-    if let Some(severity) = obj.get("severity").and_then(|v| v.as_str()) {
-        let _ = serde_json::from_value::<crate::protocol::Severity>(Value::String(
-            severity.to_string(),
-        ))
-        .map_err(|_| anyhow!("message severity must be one of: info|warn|error|critical"))?;
-    }
-    if let Some(from_role) = obj.get("from_role") {
-        let _ = serde_json::from_value::<Role>(from_role.clone()).map_err(|_| {
-            anyhow!("from_role must be one of: executor|planner|verifier|diagnostics|solo")
-        })?;
-    }
-    if let Some(to_role) = obj.get("to_role") {
-        let _ = serde_json::from_value::<Role>(to_role.clone()).map_err(|_| {
-            anyhow!("to_role must be one of: executor|planner|verifier|diagnostics|solo")
-        })?;
-    }
+    validate_blocker_message_payload(msg)?;
+    validate_optional_message_severity(obj)?;
+    validate_optional_message_role(obj, "from_role")?;
+    validate_optional_message_role(obj, "to_role")?;
     Ok(())
 }
 
