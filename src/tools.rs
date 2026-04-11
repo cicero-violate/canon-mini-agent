@@ -3325,14 +3325,8 @@ fn validate_plan_action_shape(action: &Value, normalized_op: &str) -> Result<()>
 fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(bool, String)> {
     let op_raw = extract_plan_op(action);
     preflight_plan_action(role, action, op_raw)?;
-    if op_raw == "sorted_view" {
-        return handle_plan_sorted_view_action(workspace);
-    }
-    if op_raw == "update" {
-        if action.get("updates").is_none() && action.get("plan").is_some() {
-            return handle_plan_replace_bundle(workspace, action);
-        }
-        return handle_plan_update_bundle(workspace, action);
+    if let Some(result) = handle_plan_fast_paths(workspace, action, op_raw)? {
+        return Ok(result);
     }
     validate_plan_action_shape(action, op_raw)?;
     let op = PlanOp::parse(op_raw)?;
@@ -3488,6 +3482,23 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
         false,
         format!("plan ok\nplan_path: {}", plan_path.display()),
     ))
+}
+
+fn handle_plan_fast_paths(
+    workspace: &Path,
+    action: &Value,
+    op_raw: &str,
+) -> Result<Option<(bool, String)>> {
+    if op_raw == "sorted_view" {
+        return Ok(Some(handle_plan_sorted_view_action(workspace)?));
+    }
+    if op_raw == "update" {
+        if action.get("updates").is_none() && action.get("plan").is_some() {
+            return Ok(Some(handle_plan_replace_bundle(workspace, action)?));
+        }
+        return Ok(Some(handle_plan_update_bundle(workspace, action)?));
+    }
+    Ok(None)
 }
 
 fn extract_plan_op(action: &Value) -> &str {
