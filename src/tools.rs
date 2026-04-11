@@ -1905,17 +1905,7 @@ fn handle_symbols_prepare_rename_action(workspace: &Path, action: &Value) -> Res
     let candidates_file: RenameCandidatesFile =
         serde_json::from_str(&candidates_text).context("parse rename candidates json")?;
     let selected = selected_rename_candidate(&candidates_file, index, candidates_path_raw)?;
-    let rename_action = json!({
-        "action": "rename_symbol",
-        "old_symbol": selected.name,
-        "new_symbol": format!("{}_renamed", selected.name),
-        "question": "Does this selected candidate represent the exact symbol to rename across the crate without changing intended behavior?",
-        "rationale": "Apply a span-backed rename candidate deterministically and validate impacts immediately after.",
-        "predicted_next_actions": [
-            {"action": "cargo_test", "intent": "Run focused tests for the touched area after rename."},
-            {"action": "run_command", "intent": "Run cargo check to verify workspace compile health."}
-        ]
-    });
+    let rename_action = build_prepared_rename_action(&selected);
     let payload = PreparedRenameActionFile {
         version: 1,
         source_candidates_path: candidates_path_raw.to_string(),
@@ -1939,6 +1929,20 @@ fn handle_symbols_prepare_rename_action(workspace: &Path, action: &Value) -> Res
             out_raw, payload.selected_index, payload.selected_candidate.name
         ),
     ))
+}
+
+fn build_prepared_rename_action(selected: &RenameCandidate) -> Value {
+    json!({
+        "action": "rename_symbol",
+        "old_symbol": selected.name,
+        "new_symbol": format!("{}_renamed", selected.name),
+        "question": "Does this selected candidate represent the exact symbol to rename across the crate without changing intended behavior?",
+        "rationale": "Apply a span-backed rename candidate deterministically and validate impacts immediately after.",
+        "predicted_next_actions": [
+            {"action": "cargo_test", "intent": "Run focused tests for the touched area after rename."},
+            {"action": "run_command", "intent": "Run cargo check to verify workspace compile health."}
+        ]
+    })
 }
 
 fn selected_rename_candidate(
