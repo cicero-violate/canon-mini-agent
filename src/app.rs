@@ -853,6 +853,60 @@ fn register_submitted_executor_turn(
     dispatch_state.lane_submit_in_flight.insert(lane_id, false);
 }
 
+fn timed_out_executor_submit_lanes(
+    dispatch_state: &DispatchState,
+    now: u64,
+    pending_submit_timeout_ms: u64,
+) -> Vec<usize> {
+    let mut timed_out = Vec::new();
+    for (lane_id, pending) in dispatch_state.executor_submit_inflight.iter() {
+        if executor_submit_timed_out(pending.started_ms, now, pending_submit_timeout_ms) {
+            timed_out.push(*lane_id);
+        }
+    }
+    timed_out
+}
+
+fn recover_timed_out_executor_submit_lane(
+    ctx: &OrchestratorContext<'_>,
+    dispatch_state: &mut DispatchState,
+    lane_id: usize,
+) {
+    if let Some(pending) = dispatch_state.executor_submit_inflight.remove(&lane_id) {
+        eprintln!(
+            "[orchestrate] pending submit timeout: lane={} command_id={}",
+            ctx.lanes[lane_id].label,
+            pending.command_id
+        );
+        log_error_event(
+            "executor",
+            "orchestrate",
+            None,
+            &format!(
+                "pending submit timeout: lane={} command_id={}",
+                ctx.lanes[lane_id].label,
+                pending.command_id
+            ),
+            Some(json!({
+                "stage": "executor_submit_timeout",
+                "lane": ctx.lanes[lane_id].label,
+                "command_id": pending.command_id,
+            })),
+        );
+        append_orchestration_trace(
+            "executor_submit_timeout",
+            json!({
+                "lane_name": ctx.lanes[lane_id].label,
+                "command_id": pending.command_id,
+            }),
+        );
+    }
+    dispatch_state.lane_submit_in_flight.insert(lane_id, false);
+    let lane = dispatch_lane_mut(dispatch_state, lane_id);
+    lane.in_progress_by = None;
+    lane.pending = true;
+}
+
 fn sweep_timed_out_executor_submits(
     ctx: &OrchestratorContext<'_>,
     dispatch_state: &mut DispatchState,
@@ -862,46 +916,9 @@ fn sweep_timed_out_executor_submits(
     if dispatch_state.executor_submit_inflight.is_empty() {
         return;
     }
-    let mut timed_out = Vec::new();
-    for (lane_id, pending) in dispatch_state.executor_submit_inflight.iter() {
-        if executor_submit_timed_out(pending.started_ms, now, pending_submit_timeout_ms) {
-            timed_out.push(*lane_id);
-        }
-    }
+    let timed_out = timed_out_executor_submit_lanes(dispatch_state, now, pending_submit_timeout_ms);
     for lane_id in timed_out {
-        if let Some(pending) = dispatch_state.executor_submit_inflight.remove(&lane_id) {
-            eprintln!(
-                "[orchestrate] pending submit timeout: lane={} command_id={}",
-                ctx.lanes[lane_id].label,
-                pending.command_id
-            );
-            log_error_event(
-                "executor",
-                "orchestrate",
-                None,
-                &format!(
-                    "pending submit timeout: lane={} command_id={}",
-                    ctx.lanes[lane_id].label,
-                    pending.command_id
-                ),
-                Some(json!({
-                    "stage": "executor_submit_timeout",
-                    "lane": ctx.lanes[lane_id].label,
-                    "command_id": pending.command_id,
-                })),
-            );
-            append_orchestration_trace(
-                "executor_submit_timeout",
-                json!({
-                    "lane_name": ctx.lanes[lane_id].label,
-                    "command_id": pending.command_id,
-                }),
-            );
-        }
-        dispatch_state.lane_submit_in_flight.insert(lane_id, false);
-        let lane = dispatch_lane_mut(dispatch_state, lane_id);
-        lane.in_progress_by = None;
-        lane.pending = true;
+        recover_timed_out_executor_submit_lane(ctx, dispatch_state, lane_id);
     }
 }
 
