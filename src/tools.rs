@@ -715,7 +715,12 @@ fn build_plan_sorted_graph_state(
     for edge in edges {
         let from = edge.get("from").and_then(|v| v.as_str()).unwrap_or("");
         let to = edge.get("to").and_then(|v| v.as_str()).unwrap_or("");
-        ensure_plan_edge_endpoints_present(from, to)?;
+        if from.is_empty() || to.is_empty() {
+            bail!(format!(
+                "plan edge missing from/to; candidate edge: {}",
+                serde_json::to_string(edge).unwrap_or_else(|_| "<invalid edge json>".to_string())
+            ));
+        }
         insert_plan_edge_adjacency(&mut adj, from, to);
         increment_plan_edge_indegree(&mut indegree, to);
     }
