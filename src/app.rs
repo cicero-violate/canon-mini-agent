@@ -1950,30 +1950,47 @@ fn validate_action_or_feedback(
             }),
         );
         if let Some(prompt) = corrective_invalid_action_prompt(action, &err_text, role) {
-            return Err(InvalidActionFeedback {
-                err_text: err_text.clone(),
-                feedback: format!(
-                    "{}\n\n{}",
-                    build_invalid_action_feedback(Some(action), &err_text, role),
-                    prompt
-                ),
-            });
+            return Err(invalid_action_feedback_with_prompt(action, &err_text, role, &prompt));
         }
         if err_text.contains("cargo_test missing 'crate'") {
-            return Err(InvalidActionFeedback {
-                err_text: err_text.clone(),
-                feedback: format!(
-                    "Invalid action: {e}\nCorrective action required: `cargo_test` must include a `crate` field.\nUse this exact format and fill in the crate name:\n```json\n{{\n  \"action\": \"cargo_test\",\n  \"crate\": \"canon-runtime\",\n  \"observation\": \"Running canon-runtime test suite after latest changes.\",\n  \"rationale\": \"Validate that canon-runtime tests pass for the updated parser logic.\"\n}}\n```\nFor any mutating retry (`apply_patch`, `plan`, `objectives`, `issue`, or `rename_symbol`), include a non-empty `question` field stating the decision-boundary premise.\nReturn exactly one action."
-                ),
-            });
+            return Err(cargo_test_missing_crate_feedback(&err_text));
         }
-        return Err(InvalidActionFeedback {
-            err_text: err_text.clone(),
-            feedback: build_invalid_action_feedback(Some(action), &err_text, role),
-        });
+        return Err(invalid_action_feedback(action, &err_text, role));
     }
 
     Ok(())
+}
+
+fn invalid_action_feedback(action: &Value, err_text: &str, role: &str) -> InvalidActionFeedback {
+    InvalidActionFeedback {
+        err_text: err_text.to_string(),
+        feedback: build_invalid_action_feedback(Some(action), err_text, role),
+    }
+}
+
+fn invalid_action_feedback_with_prompt(
+    action: &Value,
+    err_text: &str,
+    role: &str,
+    prompt: &str,
+) -> InvalidActionFeedback {
+    InvalidActionFeedback {
+        err_text: err_text.to_string(),
+        feedback: format!(
+            "{}\n\n{}",
+            build_invalid_action_feedback(Some(action), err_text, role),
+            prompt
+        ),
+    }
+}
+
+fn cargo_test_missing_crate_feedback(err_text: &str) -> InvalidActionFeedback {
+    InvalidActionFeedback {
+        err_text: err_text.to_string(),
+        feedback: format!(
+            "Invalid action: {err_text}\nCorrective action required: `cargo_test` must include a `crate` field.\nUse this exact format and fill in the crate name:\n```json\n{{\n  \"action\": \"cargo_test\",\n  \"crate\": \"canon-runtime\",\n  \"observation\": \"Running canon-runtime test suite after latest changes.\",\n  \"rationale\": \"Validate that canon-runtime tests pass for the updated parser logic.\"\n}}\n```\nFor any mutating retry (`apply_patch`, `plan`, `objectives`, `issue`, or `rename_symbol`), include a non-empty `question` field stating the decision-boundary premise.\nReturn exactly one action."
+        ),
+    }
 }
 
 fn build_agent_prompt(
