@@ -2907,27 +2907,7 @@ fn handle_executor_completion(
             })),
         );
     }
-    if let Ok(mut actions) = parse_actions(&exec_result) {
-        if actions.first().and_then(|a| a.get("action")).and_then(|v| v.as_str()) == Some("message") {
-            dispatch_state.lane_steps_used.insert(submitted.lane, 0);
-            if let Some(action) = actions.pop() {
-                log_action_result(&submitted.actor, &lane_cfg.endpoint, "executor", 1, &submitted.command_id, &action, true, &exec_result);
-                let to_role = action.get("to").and_then(|v| v.as_str()).unwrap_or("");
-                if to_role.eq_ignore_ascii_case("planner") {
-                    persist_planner_message(&action);
-                    dispatch_state.planner_pending = true;
-                } else {
-                    // Generic wakeup for other targets (verifier, diagnostics, etc.)
-                    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
-                    let _ = std::fs::create_dir_all(agent_state_dir);
-                    let to_key = to_role.to_lowercase().replace(|c: char| !c.is_ascii_alphanumeric(), "_");
-                    let msg_path = agent_state_dir.join(format!("last_message_to_{to_key}.json"));
-                    let _ = std::fs::write(&msg_path, serde_json::to_string_pretty(&action).unwrap_or_default());
-                    let _ = std::fs::write(agent_state_dir.join(format!("wakeup_{to_key}.flag")), "handoff");
-                }
-            }
-        }
-    }
+    handle_executor_completion_message_action(dispatch_state, &submitted, lane_cfg, &exec_result);
     let mut submitted = submitted;
     if submitted.tab_id != tab_id {
         eprintln!(
@@ -2985,6 +2965,59 @@ fn handle_executor_completion(
         (submitted_clone, turn_id, result)
     });
     true
+}
+
+fn handle_executor_completion_message_action(
+    dispatch_state: &mut DispatchState,
+    submitted: &SubmittedExecutorTurn,
+    lane_cfg: &LaneConfig,
+    exec_result: &str,
+) {
+    let Ok(mut actions) = parse_actions(exec_result) else {
+        return;
+    };
+    if actions.first().and_then(|a| a.get("action")).and_then(|v| v.as_str()) != Some("message") {
+        return;
+    }
+
+    dispatch_state.lane_steps_used.insert(submitted.lane, 0);
+    let Some(action) = actions.pop() else {
+        return;
+    };
+
+    log_action_result(
+        &submitted.actor,
+        &lane_cfg.endpoint,
+        "executor",
+        1,
+        &submitted.command_id,
+        &action,
+        true,
+        exec_result,
+    );
+    persist_executor_completion_message(dispatch_state, &action);
+}
+
+fn persist_executor_completion_message(dispatch_state: &mut DispatchState, action: &Value) {
+    let to_role = action.get("to").and_then(|v| v.as_str()).unwrap_or("");
+    if to_role.eq_ignore_ascii_case("planner") {
+        persist_planner_message(action);
+        dispatch_state.planner_pending = true;
+        return;
+    }
+
+    // Generic wakeup for other targets (verifier, diagnostics, etc.)
+    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
+    let _ = std::fs::create_dir_all(agent_state_dir);
+    let to_key = to_role
+        .to_lowercase()
+        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+    let msg_path = agent_state_dir.join(format!("last_message_to_{to_key}.json"));
+    let _ = std::fs::write(
+        &msg_path,
+        serde_json::to_string_pretty(action).unwrap_or_default(),
+    );
+    let _ = std::fs::write(agent_state_dir.join(format!("wakeup_{to_key}.flag")), "handoff");
 }
 
 fn plan_has_incomplete_tasks(plan_text: &str) -> bool {
