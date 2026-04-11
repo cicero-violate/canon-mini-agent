@@ -1633,33 +1633,10 @@ fn split_prefix_and_stem(name: &str) -> Option<(&'static str, String)> {
 }
 
 fn handle_symbols_rename_candidates_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
-    let symbols_path_raw = action
-        .get("symbols_path")
-        .and_then(|v| v.as_str())
-        .unwrap_or("state/symbols.json");
-    let out_raw = action
-        .get("out")
-        .and_then(|v| v.as_str())
-        .unwrap_or("state/rename_candidates.json");
-    let symbols_path = safe_join(workspace, symbols_path_raw)?;
-    let out_path = safe_join(workspace, out_raw)?;
-    let symbols_text = fs::read_to_string(&symbols_path)
-        .with_context(|| format!("read {}", symbols_path.display()))?;
-    let symbols_file: SymbolsIndexFile =
-        serde_json::from_str(&symbols_text).context("parse symbols index json")?;
-
-    let mut prefixes_by_stem: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
-        std::collections::BTreeMap::new();
-    for sym in &symbols_file.symbols {
-        if sym.kind == "function" {
-            if let Some((prefix, stem)) = split_prefix_and_stem(&sym.name) {
-                prefixes_by_stem
-                    .entry(stem)
-                    .or_default()
-                    .insert(prefix.to_string());
-            }
-        }
-    }
+    let (symbols_path_raw, out_raw, symbols_path, out_path) =
+        parse_symbols_rename_candidates_paths(workspace, action)?;
+    let symbols_file = load_symbols_index_file(&symbols_path)?;
+    let prefixes_by_stem = build_function_prefixes_by_stem(&symbols_file);
 
     let identity_surface_names: BTreeSet<&'static str> =
         ["id", "endpoint_id", "lane_id"].into_iter().collect();
@@ -1721,28 +1698,95 @@ fn handle_symbols_rename_candidates_action(workspace: &Path, action: &Value) -> 
         if reasons.is_empty() {
             continue;
         }
-        let mut score = 10u32;
-        for reason in &reasons {
-            if reason.contains("inconsistent verb prefix") {
-                score += 30;
-            } else if reason.contains("ambiguous/generic") {
-                score += 20;
-            } else if reason.contains("very short") {
-                score += 10;
-            } else {
-                score += 5;
-            }
-        }
         candidates.push(RenameCandidate {
             name: sym.name.clone(),
             kind: sym.kind.clone(),
             file: sym.file.clone(),
             span: sym.span.clone(),
-            score,
+            score: score_rename_candidate_reasons(&reasons),
             reasons,
         });
     }
 
+    sort_and_dedup_rename_candidates(&mut candidates);
+    let payload = RenameCandidatesFile {
+        version: 1,
+        source_symbols_path: symbols_path_raw.clone(),
+        candidates,
+    };
+    write_rename_candidates_payload(&out_path, &payload)?;
+    Ok((
+        false,
+        format!(
+            "symbols_rename_candidates ok: output={} candidates={}",
+            out_raw,
+            payload.candidates.len()
+        ),
+    ))
+}
+
+fn parse_symbols_rename_candidates_paths(
+    workspace: &Path,
+    action: &Value,
+) -> Result<(String, String, PathBuf, PathBuf)> {
+    let symbols_path_raw = action
+        .get("symbols_path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("state/symbols.json")
+        .to_string();
+    let out_raw = action
+        .get("out")
+        .and_then(|v| v.as_str())
+        .unwrap_or("state/rename_candidates.json")
+        .to_string();
+    let symbols_path = safe_join(workspace, &symbols_path_raw)?;
+    let out_path = safe_join(workspace, &out_raw)?;
+    Ok((symbols_path_raw, out_raw, symbols_path, out_path))
+}
+
+fn load_symbols_index_file(symbols_path: &Path) -> Result<SymbolsIndexFile> {
+    let symbols_text = fs::read_to_string(symbols_path)
+        .with_context(|| format!("read {}", symbols_path.display()))?;
+    serde_json::from_str(&symbols_text).context("parse symbols index json")
+}
+
+fn build_function_prefixes_by_stem(
+    symbols_file: &SymbolsIndexFile,
+) -> std::collections::BTreeMap<String, std::collections::BTreeSet<String>> {
+    let mut prefixes_by_stem: std::collections::BTreeMap<
+        String,
+        std::collections::BTreeSet<String>,
+    > = std::collections::BTreeMap::new();
+    for sym in &symbols_file.symbols {
+        if sym.kind == "function" {
+            if let Some((prefix, stem)) = split_prefix_and_stem(&sym.name) {
+                prefixes_by_stem
+                    .entry(stem)
+                    .or_default()
+                    .insert(prefix.to_string());
+            }
+        }
+    }
+    prefixes_by_stem
+}
+
+fn score_rename_candidate_reasons(reasons: &[String]) -> u32 {
+    let mut score = 10u32;
+    for reason in reasons {
+        if reason.contains("inconsistent verb prefix") {
+            score += 30;
+        } else if reason.contains("ambiguous/generic") {
+            score += 20;
+        } else if reason.contains("very short") {
+            score += 10;
+        } else {
+            score += 5;
+        }
+    }
+    score
+}
+
+fn sort_and_dedup_rename_candidates(candidates: &mut Vec<RenameCandidate>) {
     candidates.sort_by(|a, b| {
         (
             std::cmp::Reverse(a.score),
@@ -1766,29 +1810,22 @@ fn handle_symbols_rename_candidates_action(workspace: &Path, action: &Value) -> 
             && a.name == b.name
             && a.kind == b.kind
     });
+}
 
-    let payload = RenameCandidatesFile {
-        version: 1,
-        source_symbols_path: symbols_path_raw.to_string(),
-        candidates,
-    };
+fn write_rename_candidates_payload(
+    out_path: &Path,
+    payload: &RenameCandidatesFile,
+) -> Result<()> {
     if let Some(parent) = out_path.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("create rename candidates output dir {}", parent.display()))?;
     }
     fs::write(
-        &out_path,
-        serde_json::to_string_pretty(&payload).context("serialize rename candidates json")?,
+        out_path,
+        serde_json::to_string_pretty(payload).context("serialize rename candidates json")?,
     )
     .with_context(|| format!("write {}", out_path.display()))?;
-    Ok((
-        false,
-        format!(
-            "symbols_rename_candidates ok: output={} candidates={}",
-            out_raw,
-            payload.candidates.len()
-        ),
-    ))
+    Ok(())
 }
 
 fn handle_symbols_prepare_rename_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
