@@ -1769,21 +1769,7 @@ fn handle_symbols_rename_candidates_action(workspace: &Path, action: &Value) -> 
         &identity_surface_files,
     );
 
-    sort_and_dedup_rename_candidates(&mut candidates);
-    let payload = RenameCandidatesFile {
-        version: 1,
-        source_symbols_path: symbols_path_raw.clone(),
-        candidates,
-    };
-    write_rename_candidates_payload(&out_path, &payload)?;
-    Ok((
-        false,
-        format!(
-            "symbols_rename_candidates ok: output={} candidates={}",
-            out_raw,
-            payload.candidates.len()
-        ),
-    ))
+    finalize_rename_candidates_output(candidates, &symbols_path_raw, &out_raw, &out_path)
 }
 
 fn parse_symbols_rename_candidates_paths(
@@ -1961,6 +1947,30 @@ fn other_prefixes(
         .filter(|p| p.as_str() != prefix)
         .cloned()
         .collect()
+}
+
+fn finalize_rename_candidates_output(
+    mut candidates: Vec<RenameCandidate>,
+    symbols_path_raw: &str,
+    out_raw: &str,
+    out_path: &Path,
+) -> Result<(bool, String)> {
+    sort_and_dedup_rename_candidates(&mut candidates);
+    let payload = RenameCandidatesFile {
+        version: 1,
+        source_symbols_path: symbols_path_raw.to_string(),
+        candidates,
+    };
+    write_rename_candidates_payload(out_path, &payload)?;
+    Ok((false, rename_candidates_success_message(out_raw, &payload)))
+}
+
+fn rename_candidates_success_message(out_raw: &str, payload: &RenameCandidatesFile) -> String {
+    format!(
+        "symbols_rename_candidates ok: output={} candidates={}",
+        out_raw,
+        payload.candidates.len()
+    )
 }
 
 fn score_rename_candidate_reasons(reasons: &[String]) -> u32 {
