@@ -1671,35 +1671,90 @@ fn parse_action_from_raw(
     };
 
     let actions = match parse_actions(raw) {
-        Ok(a) => a,
+        Ok(actions) => actions,
         Err(e) => {
-            if allow_guardrail {
-                if let Some(guard_action) = guardrail_action_from_raw(raw, role) {
-                    log("llm_guardrail_action", json!({
-                        "error": e.to_string(), "raw": truncate(raw, MAX_SNIPPET), "action": guard_action,
-                    }));
-                    return Ok(guard_action);
-                }
-            }
-            eprintln!(
-                "[{role}] step={} parse_error: {e}\n[{role}] step={} parse_error_raw: {}",
+            return handle_parse_actions_error(
+                role,
                 step,
-                step,
-                truncate(raw, MAX_SNIPPET)
+                raw,
+                allow_guardrail,
+                &log,
+                &trace,
+                &e.to_string(),
             );
-            log("llm_parse_error", json!({ "error": e.to_string(), "raw": truncate(raw, MAX_SNIPPET) }));
-            trace("parse_error");
-            return Err(InvalidActionFeedback {
-                err_text: e.to_string(),
-                feedback: build_invalid_action_feedback(None, &e.to_string(), role),
-            });
         }
     };
 
+    let mut action = extract_single_action(role, step, raw, actions, &log, &trace)?;
+    let raw_action = action.clone();
+
+    normalize_action_or_feedback(role, raw, &raw_action, &mut action, &log)?;
+
+    if allow_auto_fill_message {
+        auto_fill_message_fields(&mut action, role);
+    }
+
+    validate_action_or_feedback(role, raw, &action, &log)?;
+
+    Ok(action)
+}
+
+fn handle_parse_actions_error(
+    role: &str,
+    step: usize,
+    raw: &str,
+    allow_guardrail: bool,
+    log: &impl Fn(&str, Value),
+    trace: &impl Fn(&str),
+    err_text: &str,
+) -> Result<Value, InvalidActionFeedback> {
+    if allow_guardrail {
+        if let Some(guard_action) = guardrail_action_from_raw(raw, role) {
+            log(
+                "llm_guardrail_action",
+                json!({
+                    "error": err_text,
+                    "raw": truncate(raw, MAX_SNIPPET),
+                    "action": guard_action,
+                }),
+            );
+            return Ok(guard_action);
+        }
+    }
+
+    eprintln!(
+        "[{role}] step={} parse_error: {}\n[{role}] step={} parse_error_raw: {}",
+        step,
+        err_text,
+        step,
+        truncate(raw, MAX_SNIPPET)
+    );
+    log(
+        "llm_parse_error",
+        json!({ "error": err_text, "raw": truncate(raw, MAX_SNIPPET) }),
+    );
+    trace("parse_error");
+    Err(InvalidActionFeedback {
+        err_text: err_text.to_string(),
+        feedback: build_invalid_action_feedback(None, err_text, role),
+    })
+}
+
+fn extract_single_action(
+    role: &str,
+    step: usize,
+    raw: &str,
+    actions: Vec<Value>,
+    log: &impl Fn(&str, Value),
+    trace: &impl Fn(&str),
+) -> Result<Value, InvalidActionFeedback> {
     if actions.len() != 1 {
         let msg = format!("Got {} actions — emit exactly one action per turn.", actions.len());
         eprintln!("[{role}] step={} {msg}", step);
-        log("llm_invalid_action_count", json!({ "action_count": actions.len(), "raw": truncate(raw, MAX_SNIPPET) }));
+        log(
+            "llm_invalid_action_count",
+            json!({ "action_count": actions.len(), "raw": truncate(raw, MAX_SNIPPET) }),
+        );
         trace("invalid_action_count");
         return Err(InvalidActionFeedback {
             err_text: msg.clone(),
@@ -1707,37 +1762,61 @@ fn parse_action_from_raw(
         });
     }
 
-    let mut action = actions[0].clone();
-    let raw_action = action.clone();
-    if let Err(e) = normalize_action(&mut action) {
-        log("llm_invalid_action", json!({
-            "stage": "normalize_action", "error": e.to_string(), "raw": truncate(raw, MAX_SNIPPET),
-        }));
+    Ok(actions.into_iter().next().expect("validated single action"))
+}
+
+fn normalize_action_or_feedback(
+    role: &str,
+    raw: &str,
+    raw_action: &Value,
+    action: &mut Value,
+    log: &impl Fn(&str, Value),
+) -> Result<(), InvalidActionFeedback> {
+    if let Err(e) = normalize_action(action) {
+        let err_text = e.to_string();
+        log(
+            "llm_invalid_action",
+            json!({
+                "stage": "normalize_action",
+                "error": err_text,
+                "raw": truncate(raw, MAX_SNIPPET),
+            }),
+        );
         return Err(InvalidActionFeedback {
-            err_text: e.to_string(),
+            err_text: err_text.clone(),
             feedback: format!(
                 "{}\nFor any mutating retry (`apply_patch`, `plan`, `objectives`, `issue`, or `rename_symbol`), include a non-empty `question` field stating the decision-boundary premise. Return exactly one action.",
-                build_invalid_action_feedback(Some(&raw_action), &e.to_string(), role)
+                build_invalid_action_feedback(Some(raw_action), &err_text, role)
             ),
         });
     }
 
-    if allow_auto_fill_message {
-        auto_fill_message_fields(&mut action, role);
-    }
+    Ok(())
+}
 
-    if let Err(e) = validate_action(&action) {
-        log("llm_invalid_action", json!({
-            "stage": "validate_action", "error": e.to_string(),
-            "raw": truncate(raw, MAX_SNIPPET), "action": action.clone(),
-        }));
+fn validate_action_or_feedback(
+    role: &str,
+    raw: &str,
+    action: &Value,
+    log: &impl Fn(&str, Value),
+) -> Result<(), InvalidActionFeedback> {
+    if let Err(e) = validate_action(action) {
         let err_text = e.to_string();
-        if let Some(prompt) = corrective_invalid_action_prompt(&action, &err_text, role) {
+        log(
+            "llm_invalid_action",
+            json!({
+                "stage": "validate_action",
+                "error": err_text,
+                "raw": truncate(raw, MAX_SNIPPET),
+                "action": action.clone(),
+            }),
+        );
+        if let Some(prompt) = corrective_invalid_action_prompt(action, &err_text, role) {
             return Err(InvalidActionFeedback {
                 err_text: err_text.clone(),
                 feedback: format!(
                     "{}\n\n{}",
-                    build_invalid_action_feedback(Some(&action), &err_text, role),
+                    build_invalid_action_feedback(Some(action), &err_text, role),
                     prompt
                 ),
             });
@@ -1752,11 +1831,11 @@ fn parse_action_from_raw(
         }
         return Err(InvalidActionFeedback {
             err_text: err_text.clone(),
-            feedback: build_invalid_action_feedback(Some(&action), &err_text, role),
+            feedback: build_invalid_action_feedback(Some(action), &err_text, role),
         });
     }
 
-    Ok(action)
+    Ok(())
 }
 
 fn build_agent_prompt(
