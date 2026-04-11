@@ -432,39 +432,66 @@ fn push_missing_message_required_fields(
     }
 }
 
-fn example_action_for(kind: &str, role: &str, raw_action: Option<&Value>) -> Value {
+fn example_simple_action(kind: &str) -> Option<Value> {
     match kind {
-        "run_command" => example_action_with_string_field(
+        "run_command" => Some(example_action_with_string_field(
             "run_command",
             "cmd",
             "rg -n \"pattern\" src/",
             "Search for the relevant code.",
             "Locate the target before patching.",
-        ),
-        "read_file" => example_action_with_string_field(
+        )),
+        "read_file" => Some(example_action_with_string_field(
             "read_file",
             "path",
             "src/lib.rs",
             "Read the file for context.",
             "Need context before editing.",
-        ),
-        "symbols_index" => json!({
+        )),
+        "list_dir" => Some(example_action_with_string_field(
+            "list_dir",
+            "path",
+            ".",
+            "List workspace files.",
+            "Locate the target before acting.",
+        )),
+        "apply_patch" => Some(example_action_with_string_field(
+            "apply_patch",
+            "patch",
+            "*** Begin Patch\n*** Update File: path/to/file.rs\n@@\n- old\n+ new\n*** End Patch",
+            "Apply the requested change.",
+            "Implement the edit directly.",
+        )),
+        "python" => Some(example_action_with_string_field(
+            "python",
+            "code",
+            "print('analysis')",
+            "Run structured analysis.",
+            "Use Python for parsing tasks.",
+        )),
+        _ => None,
+    }
+}
+
+fn example_symbol_workflow_action(kind: &str) -> Option<Value> {
+    match kind {
+        "symbols_index" => Some(json!({
             "action": "symbols_index",
             "path": "src",
             "out": "state/symbols.json",
             "observation": "Build deterministic symbol inventory.",
             "rationale": "Need a unique sorted symbols catalog before rename/refactor planning.",
             "predicted_next_actions": example_predicted_next_actions()
-        }),
-        "symbols_rename_candidates" => json!({
+        })),
+        "symbols_rename_candidates" => Some(json!({
             "action": "symbols_rename_candidates",
             "symbols_path": "state/symbols.json",
             "out": "state/rename_candidates.json",
             "observation": "Derive deterministic rename candidates from symbol inventory.",
             "rationale": "Prioritize naming cleanup before direct symbol mutation.",
             "predicted_next_actions": example_predicted_next_actions()
-        }),
-        "symbols_prepare_rename" => json!({
+        })),
+        "symbols_prepare_rename" => Some(json!({
             "action": "symbols_prepare_rename",
             "candidates_path": "state/rename_candidates.json",
             "index": 0,
@@ -472,8 +499,8 @@ fn example_action_for(kind: &str, role: &str, raw_action: Option<&Value>) -> Val
             "observation": "Select the top rename candidate.",
             "rationale": "Prepare a concrete rename_symbol payload before mutation.",
             "predicted_next_actions": example_predicted_next_actions()
-        }),
-        "rename_symbol" => json!({
+        })),
+        "rename_symbol" => Some(json!({
             "action": "rename_symbol",
             "old_symbol": "tools::handle_plan_action",
             "new_symbol": "tools::handle_master_plan_action",
@@ -481,28 +508,20 @@ fn example_action_for(kind: &str, role: &str, raw_action: Option<&Value>) -> Val
             "observation": "Span-backed rename should update all references consistently.",
             "rationale": "Perform a deterministic symbol rename using rustc graph spans.",
             "predicted_next_actions": example_predicted_next_actions()
-        }),
-        "list_dir" => example_action_with_string_field(
-            "list_dir",
-            "path",
-            ".",
-            "List workspace files.",
-            "Locate the target before acting.",
-        ),
-        "apply_patch" => example_action_with_string_field(
-            "apply_patch",
-            "patch",
-            "*** Begin Patch\n*** Update File: path/to/file.rs\n@@\n- old\n+ new\n*** End Patch",
-            "Apply the requested change.",
-            "Implement the edit directly.",
-        ),
-        "python" => example_action_with_string_field(
-            "python",
-            "code",
-            "print('analysis')",
-            "Run structured analysis.",
-            "Use Python for parsing tasks.",
-        ),
+        })),
+        _ => None,
+    }
+}
+
+fn example_action_for(kind: &str, role: &str, raw_action: Option<&Value>) -> Value {
+    if let Some(action) = example_simple_action(kind) {
+        return action;
+    }
+    if let Some(action) = example_symbol_workflow_action(kind) {
+        return action;
+    }
+
+    match kind {
         "cargo_test" => example_action_with_string_fields(
             "cargo_test",
             &[("crate", "canon-mini-agent"), ("test", "optional_test_name")],
