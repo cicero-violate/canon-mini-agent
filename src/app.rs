@@ -272,6 +272,10 @@ fn build_blocker_payload(
 }
 
 fn build_verifier_blocker_ack(fields: &BlockerFields) -> Value {
+    verifier_blocker_ack_message(fields)
+}
+
+fn verifier_blocker_ack_message(fields: &BlockerFields) -> Value {
     json!({
         "action": "message",
         "from": "verifier",
