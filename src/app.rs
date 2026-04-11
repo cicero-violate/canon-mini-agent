@@ -1620,31 +1620,8 @@ fn save_checkpoint(
     verifier_summary: &[String],
     verifier_pending_results: &VecDeque<(SubmittedExecutorTurn, u64, String)>,
 ) -> Result<()> {
-    let mut lane_snapshots = Vec::new();
-    for lane in lanes {
-        if let Some(state) = dispatch_state.lanes.get(&lane.index) {
-            lane_snapshots.push(CheckpointLane {
-                lane_id: lane.index,
-                lane_label: lane.label.clone(),
-                plan_text: state.plan_text.clone(),
-                pending: state.pending,
-                in_progress_by: state.in_progress_by.clone(),
-                latest_verifier_result: state.latest_verifier_result.clone(),
-            });
-        }
-    }
-    let mut resume_items = Vec::new();
-    for (submitted, _turn_id, final_exec_result) in verifier_pending_results.iter() {
-        resume_items.push(ResumeVerifierItem {
-            lane_id: submitted.lane,
-            lane_label: submitted.lane_label.clone(),
-            lane_plan_file: lanes
-                .get(submitted.lane)
-                .map(|lane| lane.plan_file.clone())
-                .unwrap_or_default(),
-            final_exec_result: final_exec_result.clone(),
-        });
-    }
+    let lane_snapshots = build_checkpoint_lane_snapshots(dispatch_state, lanes);
+    let resume_items = build_resume_verifier_items(lanes, verifier_pending_results);
     let checkpoint = OrchestratorCheckpoint {
         workspace: workspace.to_string_lossy().into_owned(),
         created_ms: now_ms(),
@@ -1667,6 +1644,45 @@ fn save_checkpoint(
     std::fs::write(&tmp_path, serde_json::to_string_pretty(&checkpoint)?)?;
     std::fs::rename(tmp_path, path)?;
     Ok(())
+}
+
+fn build_checkpoint_lane_snapshots(
+    dispatch_state: &DispatchState,
+    lanes: &[LaneConfig],
+) -> Vec<CheckpointLane> {
+    let mut lane_snapshots = Vec::new();
+    for lane in lanes {
+        if let Some(state) = dispatch_state.lanes.get(&lane.index) {
+            lane_snapshots.push(CheckpointLane {
+                lane_id: lane.index,
+                lane_label: lane.label.clone(),
+                plan_text: state.plan_text.clone(),
+                pending: state.pending,
+                in_progress_by: state.in_progress_by.clone(),
+                latest_verifier_result: state.latest_verifier_result.clone(),
+            });
+        }
+    }
+    lane_snapshots
+}
+
+fn build_resume_verifier_items(
+    lanes: &[LaneConfig],
+    verifier_pending_results: &VecDeque<(SubmittedExecutorTurn, u64, String)>,
+) -> Vec<ResumeVerifierItem> {
+    let mut resume_items = Vec::new();
+    for (submitted, _turn_id, final_exec_result) in verifier_pending_results.iter() {
+        resume_items.push(ResumeVerifierItem {
+            lane_id: submitted.lane,
+            lane_label: submitted.lane_label.clone(),
+            lane_plan_file: lanes
+                .get(submitted.lane)
+                .map(|lane| lane.plan_file.clone())
+                .unwrap_or_default(),
+            final_exec_result: final_exec_result.clone(),
+        });
+    }
+    resume_items
 }
 
 fn load_checkpoint(workspace: &Path) -> Option<OrchestratorCheckpoint> {
