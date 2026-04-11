@@ -779,49 +779,10 @@ pub fn auto_fill_message_fields(action: &mut Value, role: &str) -> bool {
     let default_type = defaults.msg_type;
     let default_status = defaults.status;
     let mut changed = false;
-    if obj
-        .get("from")
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .is_none()
-    {
-        obj.insert("from".to_string(), Value::String(default_from.to_string()));
-        changed = true;
-    }
-    if obj
-        .get("to")
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .is_none()
-    {
-        obj.insert("to".to_string(), Value::String(default_to.to_string()));
-        changed = true;
-    }
-    if obj
-        .get("type")
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .is_none()
-    {
-        obj.insert("type".to_string(), Value::String(default_type.to_string()));
-        changed = true;
-    }
-    if obj
-        .get("status")
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .is_none()
-    {
-        obj.insert(
-            "status".to_string(),
-            Value::String(default_status.to_string()),
-        );
-        changed = true;
-    }
+    changed |= ensure_object_string_field(obj, "from", default_from);
+    changed |= ensure_object_string_field(obj, "to", default_to);
+    changed |= ensure_object_string_field(obj, "type", default_type);
+    changed |= ensure_object_string_field(obj, "status", default_status);
     if obj.get("payload").and_then(|v| v.as_object()).is_none() {
         obj.insert("payload".to_string(), json!({}));
         changed = true;
@@ -849,12 +810,7 @@ pub fn auto_fill_message_fields(action: &mut Value, role: &str) -> bool {
     let is_blocker = type_val.eq_ignore_ascii_case("blocker")
         || status_val.eq_ignore_ascii_case("blocked");
 
-    if obj
-        .get("predicted_next_actions")
-        .and_then(|v| v.as_array())
-        .filter(|items| (2..=3).contains(&items.len()))
-        .is_none()
-    {
+    if missing_predicted_next_actions(obj) {
         obj.insert(
             "predicted_next_actions".to_string(),
             example_predicted_next_actions(),
@@ -863,82 +819,65 @@ pub fn auto_fill_message_fields(action: &mut Value, role: &str) -> bool {
     }
 
     if let Some(payload) = obj.get_mut("payload").and_then(|v| v.as_object_mut()) {
-        if payload
-            .get("summary")
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .is_none()
-        {
-            payload.insert(
-                "summary".to_string(),
-                Value::String("auto-filled message fields".to_string()),
-            );
-            changed = true;
-        }
-        if payload
-            .get("expected_format")
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .is_none()
-        {
-            payload.insert(
-                "expected_format".to_string(),
-                Value::String(expected_message_format(
-                    &from_val,
-                    &to_val,
-                    &type_val,
-                    &status_val,
-                )),
-            );
-            changed = true;
-        }
+        changed |= ensure_object_string_field(payload, "summary", "auto-filled message fields");
+        changed |= ensure_object_string_field(
+            payload,
+            "expected_format",
+            &expected_message_format(&from_val, &to_val, &type_val, &status_val),
+        );
         if is_blocker {
-            for (field, value) in [
-                ("blocker", "auto-filled blocker details"),
-                ("evidence", "auto-filled blocker evidence"),
-                ("required_action", "auto-filled required action"),
-            ] {
-                if payload
-                    .get(field)
-                    .and_then(|v| v.as_str())
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .is_none()
-                {
-                    payload.insert(field.to_string(), Value::String(value.to_string()));
-                    changed = true;
-                }
-            }
+            changed |= ensure_blocker_payload_fields(payload);
         }
     }
 
-    if obj
-        .get("observation")
+    changed |= ensure_object_string_field(
+        obj,
+        "observation",
+        "Auto-filled missing message fields.",
+    );
+    changed |= ensure_object_string_field(
+        obj,
+        "rationale",
+        "Repair invalid message schema to continue execution.",
+    );
+    changed
+}
+
+fn object_string_present(obj: &serde_json::Map<String, Value>, field: &str) -> bool {
+    obj.get(field)
         .and_then(|v| v.as_str())
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .is_none()
-    {
-        obj.insert(
-            "observation".to_string(),
-            Value::String("Auto-filled missing message fields.".to_string()),
-        );
-        changed = true;
+        .is_some()
+}
+
+fn ensure_object_string_field(
+    obj: &mut serde_json::Map<String, Value>,
+    field: &str,
+    value: &str,
+) -> bool {
+    if object_string_present(obj, field) {
+        return false;
     }
-    if obj
-        .get("rationale")
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
+    obj.insert(field.to_string(), Value::String(value.to_string()));
+    true
+}
+
+fn missing_predicted_next_actions(obj: &serde_json::Map<String, Value>) -> bool {
+    obj.get("predicted_next_actions")
+        .and_then(|v| v.as_array())
+        .filter(|items| (2..=3).contains(&items.len()))
         .is_none()
-    {
-        obj.insert(
-            "rationale".to_string(),
-            Value::String("Repair invalid message schema to continue execution.".to_string()),
-        );
-        changed = true;
+}
+
+fn ensure_blocker_payload_fields(payload: &mut serde_json::Map<String, Value>) -> bool {
+    let mut changed = false;
+    for (field, value) in [
+        ("blocker", "auto-filled blocker details"),
+        ("evidence", "auto-filled blocker evidence"),
+        ("required_action", "auto-filled required action"),
+    ] {
+        changed |= ensure_object_string_field(payload, field, value);
     }
     changed
 }
