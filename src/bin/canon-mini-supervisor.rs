@@ -133,7 +133,7 @@ fn send_sigint(child: &Child) {
         .status();
 }
 
-fn wait_for_exit(mut child: Child, timeout: Duration) {
+fn wait_for_exit(child: &mut Child, timeout: Duration) {
     let start = SystemTime::now();
     loop {
         match child.try_wait() {
@@ -453,7 +453,7 @@ fn main() -> Result<()> {
                     "shutdown requested; waiting for child",
                     None,
                 );
-                wait_for_exit(child, Duration::from_secs(10));
+                wait_for_exit(&mut child, Duration::from_secs(10));
                 return Ok(());
             }
             if let Some(status) = child.try_wait().context("wait child")? {
@@ -474,97 +474,158 @@ fn main() -> Result<()> {
                     break;
                 }
             }
-            if !no_watch {
-                if let Some(updated) = has_updated(&root, &current)? {
-                    let should_record = pending_update
-                        .as_ref()
-                        .map(|prev| prev.mtime < updated.mtime)
-                        .unwrap_or(true);
-                    if should_record {
-                        eprintln!(
-                            "[canon-mini-supervisor] binary updated; deferring restart until idle from {}",
-                            updated.path.display()
-                        );
-                        log_error_event(
-                            "supervisor",
-                            "supervisor_main",
-                            None,
-                            &format!(
-                                "binary updated; deferring restart until idle from {}",
-                                updated.path.display()
-                            ),
-                            None,
-                        );
-                        pending_update = Some(updated);
-                    }
-                }
-                if let Some(updated) = pending_update.as_ref() {
-                    let mode = read_orchestrator_mode(&orchestrator_mode_flag);
-                    if mode.as_deref() != Some("orchestrate") {
-                        eprintln!(
-                            "[canon-mini-supervisor] binary updated in single-role; restarting from {}",
-                            updated.path.display()
-                        );
-                        log_error_event(
-                            "supervisor",
-                            "supervisor_main",
-                            None,
-                            &format!(
-                                "binary updated in single-role; restarting from {}",
-                                updated.path.display()
-                            ),
-                            None,
-                        );
-                        stage_commit_push_before_restart(&root, "single-role-update", prefer_release);
-                        send_sigint(&child);
-                        wait_for_exit(child, Duration::from_secs(10));
-                        eprintln!("[canon-mini-supervisor] restarting...");
-                        break;
-                    }
-                    let idle_marker_is_fresh = file_mtime_if_exists(&idle_marker)
-                        .map(|mtime| mtime >= child_started_at && mtime >= updated.mtime)
-                        .unwrap_or(false);
-                    if idle_marker_is_fresh {
-                        eprintln!(
-                            "[canon-mini-supervisor] idle marker observed; restarting from {}",
-                            updated.path.display()
-                        );
-                        log_error_event(
-                            "supervisor",
-                            "supervisor_main",
-                            None,
-                            &format!(
-                                "idle marker observed; restarting from {}",
-                                updated.path.display()
-                            ),
-                            None,
-                        );
-                        stage_commit_push_before_restart(&root, "orchestrate-idle-update", prefer_release);
-                        send_sigint(&child);
-                        wait_for_exit(child, Duration::from_secs(10));
-                        eprintln!("[canon-mini-supervisor] restarting...");
-                        break;
-                    } else if idle_marker.exists() {
-                        eprintln!(
-                            "[canon-mini-supervisor] ignoring stale idle marker while update is pending from {}",
-                            updated.path.display()
-                        );
-                        log_error_event(
-                            "supervisor",
-                            "supervisor_main",
-                            None,
-                            &format!(
-                                "ignoring stale idle marker while update is pending from {}",
-                                updated.path.display()
-                            ),
-                            None,
-                        );
-                    }
-                }
+            if should_restart_for_pending_update(
+                no_watch,
+                &root,
+                &current,
+                &mut pending_update,
+                &orchestrator_mode_flag,
+                &idle_marker,
+                child_started_at,
+                prefer_release,
+                &mut child,
+            )? {
+                break;
             }
         }
         thread::sleep(Duration::from_millis(1000));
     }
+}
+
+fn should_restart_for_pending_update(
+    no_watch: bool,
+    root: &Path,
+    current: &BinaryCandidate,
+    pending_update: &mut Option<BinaryCandidate>,
+    orchestrator_mode_flag: &Path,
+    idle_marker: &Path,
+    child_started_at: SystemTime,
+    prefer_release: bool,
+    child: &mut Child,
+) -> Result<bool> {
+    if no_watch {
+        return Ok(false);
+    }
+    record_pending_update(root, current, pending_update)?;
+    maybe_restart_for_pending_update(
+        root,
+        pending_update.as_ref(),
+        orchestrator_mode_flag,
+        idle_marker,
+        child_started_at,
+        prefer_release,
+        child,
+    )
+}
+
+fn record_pending_update(
+    root: &Path,
+    current: &BinaryCandidate,
+    pending_update: &mut Option<BinaryCandidate>,
+) -> Result<()> {
+    if let Some(updated) = has_updated(root, current)? {
+        let should_record = pending_update
+            .as_ref()
+            .map(|prev| prev.mtime < updated.mtime)
+            .unwrap_or(true);
+        if should_record {
+            eprintln!(
+                "[canon-mini-supervisor] binary updated; deferring restart until idle from {}",
+                updated.path.display()
+            );
+            log_error_event(
+                "supervisor",
+                "supervisor_main",
+                None,
+                &format!(
+                    "binary updated; deferring restart until idle from {}",
+                    updated.path.display()
+                ),
+                None,
+            );
+            *pending_update = Some(updated);
+        }
+    }
+    Ok(())
+}
+
+fn maybe_restart_for_pending_update(
+    root: &Path,
+    pending_update: Option<&BinaryCandidate>,
+    orchestrator_mode_flag: &Path,
+    idle_marker: &Path,
+    child_started_at: SystemTime,
+    prefer_release: bool,
+    child: &mut Child,
+) -> Result<bool> {
+    let Some(updated) = pending_update else {
+        return Ok(false);
+    };
+    let mode = read_orchestrator_mode(orchestrator_mode_flag);
+    if mode.as_deref() != Some("orchestrate") {
+        eprintln!(
+            "[canon-mini-supervisor] binary updated in single-role; restarting from {}",
+            updated.path.display()
+        );
+        log_error_event(
+            "supervisor",
+            "supervisor_main",
+            None,
+            &format!(
+                "binary updated in single-role; restarting from {}",
+                updated.path.display()
+            ),
+            None,
+        );
+        stage_commit_push_before_restart(root, "single-role-update", prefer_release);
+        send_sigint(child);
+        wait_for_exit(child, Duration::from_secs(10));
+        eprintln!("[canon-mini-supervisor] restarting...");
+        return Ok(true);
+    }
+
+    let idle_marker_is_fresh = file_mtime_if_exists(idle_marker)
+        .map(|mtime| mtime >= child_started_at && mtime >= updated.mtime)
+        .unwrap_or(false);
+    if idle_marker_is_fresh {
+        eprintln!(
+            "[canon-mini-supervisor] idle marker observed; restarting from {}",
+            updated.path.display()
+        );
+        log_error_event(
+            "supervisor",
+            "supervisor_main",
+            None,
+            &format!(
+                "idle marker observed; restarting from {}",
+                updated.path.display()
+            ),
+            None,
+        );
+        stage_commit_push_before_restart(root, "orchestrate-idle-update", prefer_release);
+        send_sigint(child);
+        wait_for_exit(child, Duration::from_secs(10));
+        eprintln!("[canon-mini-supervisor] restarting...");
+        return Ok(true);
+    }
+
+    if idle_marker.exists() {
+        eprintln!(
+            "[canon-mini-supervisor] ignoring stale idle marker while update is pending from {}",
+            updated.path.display()
+        );
+        log_error_event(
+            "supervisor",
+            "supervisor_main",
+            None,
+            &format!(
+                "ignoring stale idle marker while update is pending from {}",
+                updated.path.display()
+            ),
+            None,
+        );
+    }
+    Ok(false)
 }
 
 struct SupervisorArgs {
