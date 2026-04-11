@@ -92,10 +92,10 @@ pub fn format_message_schema(
 
 #[allow(dead_code)]
 const GRAPH_TOOL_TEMPLATES: [&str; 4] = [
-    "```json\n{\n  \"action\": \"graph_call\",\n  \"crate\": \"canon-runtime\",\n  \"out_dir\": \"\",\n  \"observation\": \"Generate call graph.\",\n  \"rationale\": \"Inspect call graph output.\"\n}\n```",
-    "```json\n{\n  \"action\": \"graph_cfg\",\n  \"crate\": \"canon-runtime\",\n  \"out_dir\": \"\",\n  \"observation\": \"Generate CFG graph.\",\n  \"rationale\": \"Inspect CFG output.\"\n}\n```",
-    "```json\n{\n  \"action\": \"graph_dataflow\",\n  \"crate\": \"canon-runtime\",\n  \"tlog\": \"\",\n  \"out_dir\": \"\",\n  \"observation\": \"Generate dataflow report.\",\n  \"rationale\": \"Inspect dataflow metrics.\"\n}\n```",
-    "```json\n{\n  \"action\": \"graph_reachability\",\n  \"crate\": \"canon-runtime\",\n  \"tlog\": \"\",\n  \"out_dir\": \"\",\n  \"observation\": \"Generate reachability report.\",\n  \"rationale\": \"Inspect reachability metrics.\"\n}\n```",
+    "```json\n{\n  \"action\": \"graph_call\",\n  \"crate\": \"canon_mini_agent\",\n  \"out_dir\": \"\",\n  \"observation\": \"Generate call graph.\",\n  \"rationale\": \"Inspect call graph output.\"\n}\n```",
+    "```json\n{\n  \"action\": \"graph_cfg\",\n  \"crate\": \"canon_mini_agent\",\n  \"out_dir\": \"\",\n  \"observation\": \"Generate CFG graph.\",\n  \"rationale\": \"Inspect CFG output.\"\n}\n```",
+    "```json\n{\n  \"action\": \"graph_dataflow\",\n  \"crate\": \"canon_mini_agent\",\n  \"tlog\": \"\",\n  \"out_dir\": \"\",\n  \"observation\": \"Generate dataflow report.\",\n  \"rationale\": \"Inspect dataflow metrics.\"\n}\n```",
+    "```json\n{\n  \"action\": \"graph_reachability\",\n  \"crate\": \"canon_mini_agent\",\n  \"tlog\": \"\",\n  \"out_dir\": \"\",\n  \"observation\": \"Generate reachability report.\",\n  \"rationale\": \"Inspect reachability metrics.\"\n}\n```",
 ];
 
 fn blocker_message_example_template() -> &'static str {

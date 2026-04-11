@@ -112,7 +112,7 @@ Example:
 ## `cargo_test` — run a targeted cargo test (harness-style)
 
 Example:
-  {"action":"cargo_test","crate":"canon-runtime","test":"some_test_name","rationale":"Run the exact failing test using the harness-style command."}
+  {"action":"cargo_test","crate":"canon-mini-agent","test":"some_test_name","rationale":"Run the exact failing test using the harness-style command."}
 
 ## `cargo_fmt` — run cargo fmt (default: --check)
 
