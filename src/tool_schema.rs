@@ -399,6 +399,9 @@ pub enum ToolAction {
         #[serde(rename = "crate")]
         crate_name: String,
         mode: String,
+        /// Optional symbol path to focus the output on one item (e.g. "tools::handle_objectives_action").
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        symbol: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         extra: Option<String>,
     },
@@ -408,6 +411,9 @@ pub enum ToolAction {
         #[serde(rename = "crate")]
         crate_name: String,
         mode: String,
+        /// Optional symbol path to focus the output on one item (e.g. "tools::handle_objectives_action").
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        symbol: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         extra: Option<String>,
     },
