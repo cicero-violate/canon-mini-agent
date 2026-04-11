@@ -113,44 +113,8 @@ fn build_issues_for_symbols(
     added_here: &mut usize,
 ) {
     for s in symbols.into_iter().take(limit) {
-        let (id, title, description, priority_rank, score) = if kind == "branch" {
-            (
-                stable_id("auto_branch_reduce", crate_name, &s.symbol),
-                format!("Reduce branch complexity: {}", s.symbol),
-                format!(
-                    "MIR suggests high branch complexity (blocks={:?}, stmts={:?}).\n\
-\n\
-Goal: reduce MIR basic blocks while preserving behavior.\n\
-Suggested first actions:\n\
-  - {{\"action\":\"symbol_window\",\"crate\":\"{crate_name}\",\"symbol\":\"{}\"}}\n\
-  - {{\"action\":\"rustc_mir\",\"crate\":\"{crate_name}\",\"mode\":\"mir\",\"extra\":\"{}\"}}",
-                    s.mir_blocks,
-                    s.mir_stmts,
-                    s.symbol,
-                    s.symbol
-                ),
-                1u32,
-                s.mir_blocks.unwrap_or(0) as i64,
-            )
-        } else {
-            (
-                stable_id("auto_refactor_split", crate_name, &s.symbol),
-                format!("Mechanical refactor: split/DRY {}", s.symbol),
-                format!(
-                    "MIR suggests a large function (blocks={:?}, stmts={:?}).\n\
-\n\
-Goal: split into helpers / reduce duplication without changing behavior.\n\
-Suggested first actions:\n\
-  - {{\"action\":\"symbol_window\",\"crate\":\"{crate_name}\",\"symbol\":\"{}\"}}\n\
-  - {{\"action\":\"cargo_test\",\"intent\":\"Run focused tests after refactor.\"}}",
-                    s.mir_blocks,
-                    s.mir_stmts,
-                    s.symbol
-                ),
-                2u32,
-                s.mir_stmts.unwrap_or(0) as i64,
-            )
-        };
+        let (id, title, description, priority_rank, score) =
+            build_issue_details(crate_name, s, kind);
 
         let evidence = vec![
             format!("crate={crate_name}"),
@@ -176,6 +140,51 @@ Suggested first actions:\n\
 
         issue_scores.push((id.clone(), priority_rank, score));
         *added_here += 1;
+    }
+}
+
+fn build_issue_details(
+    crate_name: &str,
+    s: &canon_mini_agent::SymbolSummary,
+    kind: &str,
+) -> (String, String, String, u32, i64) {
+    if kind == "branch" {
+        (
+            stable_id("auto_branch_reduce", crate_name, &s.symbol),
+            format!("Reduce branch complexity: {}", s.symbol),
+            format!(
+                "MIR suggests high branch complexity (blocks={:?}, stmts={:?}).\n\
+\n\
+Goal: reduce MIR basic blocks while preserving behavior.\n\
+Suggested first actions:\n\
+  - {{\"action\":\"symbol_window\",\"crate\":\"{crate_name}\",\"symbol\":\"{}\"}}\n\
+  - {{\"action\":\"rustc_mir\",\"crate\":\"{crate_name}\",\"mode\":\"mir\",\"extra\":\"{}\"}}",
+                s.mir_blocks,
+                s.mir_stmts,
+                s.symbol,
+                s.symbol
+            ),
+            1u32,
+            s.mir_blocks.unwrap_or(0) as i64,
+        )
+    } else {
+        (
+            stable_id("auto_refactor_split", crate_name, &s.symbol),
+            format!("Mechanical refactor: split/DRY {}", s.symbol),
+            format!(
+                "MIR suggests a large function (blocks={:?}, stmts={:?}).\n\
+\n\
+Goal: split into helpers / reduce duplication without changing behavior.\n\
+Suggested first actions:\n\
+  - {{\"action\":\"symbol_window\",\"crate\":\"{crate_name}\",\"symbol\":\"{}\"}}\n\
+  - {{\"action\":\"cargo_test\",\"intent\":\"Run focused tests after refactor.\"}}",
+                s.mir_blocks,
+                s.mir_stmts,
+                s.symbol
+            ),
+            2u32,
+            s.mir_stmts.unwrap_or(0) as i64,
+        )
     }
 }
 
