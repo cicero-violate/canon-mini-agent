@@ -821,31 +821,14 @@ fn parse_cargo_test_failures(out: &str) -> Value {
 
     for line in scan.lines() {
         let trimmed = line.trim();
-        if let Some(idx) = trimmed.find(".rs:") {
-            let path = &trimmed[..idx + 3];
-            let rest = &trimmed[idx + 3..];
-            let mut it = rest.splitn(3, ':');
-            let line_no = it.next().unwrap_or("");
-            let col_no = it.next().unwrap_or("");
-            if !line_no.is_empty() && !col_no.is_empty() {
-                locations.insert(format!("{}:{}:{}", path, line_no, col_no));
-            }
-        }
-        if let Some(stripped) = trimmed.strip_prefix("test ") {
-            if let Some(name) = stripped.strip_suffix(" ... FAILED") {
-                failed_tests.insert(name.trim().to_string());
-            }
-            collect_stalled_test_name(&mut stalled_tests, stripped);
-        }
-        if rerun_hint.is_none() && trimmed.contains("To rerun") {
-            rerun_hint = Some(trimmed.to_string());
-        }
-        if trimmed.contains("panicked at")
-            || trimmed.contains("FAILED")
-            || trimmed.contains("has been running for over")
-        {
-            failure_block.push(trimmed.to_string());
-        }
+        parse_cargo_test_failure_line(
+            trimmed,
+            &mut locations,
+            &mut failed_tests,
+            &mut stalled_tests,
+            &mut failure_block,
+            &mut rerun_hint,
+        );
     }
 
     let mut payload = serde_json::Map::new();
@@ -888,6 +871,41 @@ fn parse_cargo_test_failures(out: &str) -> Value {
         );
     }
     Value::Object(payload)
+}
+
+fn parse_cargo_test_failure_line(
+    trimmed: &str,
+    locations: &mut BTreeSet<String>,
+    failed_tests: &mut BTreeSet<String>,
+    stalled_tests: &mut BTreeSet<String>,
+    failure_block: &mut Vec<String>,
+    rerun_hint: &mut Option<String>,
+) {
+    if let Some(idx) = trimmed.find(".rs:") {
+        let path = &trimmed[..idx + 3];
+        let rest = &trimmed[idx + 3..];
+        let mut it = rest.splitn(3, ':');
+        let line_no = it.next().unwrap_or("");
+        let col_no = it.next().unwrap_or("");
+        if !line_no.is_empty() && !col_no.is_empty() {
+            locations.insert(format!("{}:{}:{}", path, line_no, col_no));
+        }
+    }
+    if let Some(stripped) = trimmed.strip_prefix("test ") {
+        if let Some(name) = stripped.strip_suffix(" ... FAILED") {
+            failed_tests.insert(name.trim().to_string());
+        }
+        collect_stalled_test_name(stalled_tests, stripped);
+    }
+    if rerun_hint.is_none() && trimmed.contains("To rerun") {
+        *rerun_hint = Some(trimmed.to_string());
+    }
+    if trimmed.contains("panicked at")
+        || trimmed.contains("FAILED")
+        || trimmed.contains("has been running for over")
+    {
+        failure_block.push(trimmed.to_string());
+    }
 }
 
 fn load_cargo_test_failure_scan(out: &str) -> (Option<PathBuf>, String) {
