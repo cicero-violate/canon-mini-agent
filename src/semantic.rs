@@ -534,6 +534,17 @@ impl SemanticIndex {
     // occurrences
     // -----------------------------------------------------------------------
 
+    /// Return the canonical fully-qualified graph key for `symbol`, or an error if not
+    /// found or ambiguous.  Useful for deriving the new FQN in conflict checks.
+    pub fn canonical_symbol_key(&self, symbol: &str) -> Result<String> {
+        self.resolve_symbol_key(symbol).map(|s| s.to_string())
+    }
+
+    /// Return `true` if `symbol` is an exact key in the graph (no fuzzy suffix matching).
+    pub fn has_symbol(&self, symbol: &str) -> bool {
+        self.graph.nodes.contains_key(symbol)
+    }
+
     pub fn symbol_occurrences(&self, symbol: &str) -> Result<Vec<SymbolOccurrence>> {
         let key = self.resolve_symbol_key(symbol)?;
         let node = self.graph.nodes.get(key).context("symbol key not present")?;
