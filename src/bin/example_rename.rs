@@ -97,6 +97,22 @@ fn main() -> Result<()> {
         anyhow::bail!("cargo check failed; rollback applied");
     }
 
+    // Cargo check passed — restore the renamed files to the pre-rename state so
+    // the integration test is idempotent and leaves the tree clean.
+    let mut restore_args = vec!["checkout", &head, "--"];
+    let touched_strs: Vec<String> = report
+        .touched_files
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    for s in &touched_strs {
+        restore_args.push(s.as_str());
+    }
+    let (code, restore_out) = git(&workspace, &restore_args)?;
+    if code != 0 {
+        eprintln!("note: git restore after successful check failed (non-fatal):\n{restore_out}");
+    }
+
     if had_local_changes {
         let (code, pop_out) = git(&workspace, &["stash", "pop"])?;
         if code != 0 {
@@ -106,6 +122,6 @@ fn main() -> Result<()> {
         }
     }
 
-    println!("cargo check ok; checkpoint saved at branch `example_rename_checkpoint` ({head})");
+    println!("cargo check ok; files restored; checkpoint saved at branch `example_rename_checkpoint` ({head})");
     Ok(())
 }
