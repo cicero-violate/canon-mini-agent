@@ -4832,14 +4832,10 @@ fn exec_run_command(workspace: &Path, cmd: &str, cwd: &str) -> Result<(bool, Str
     // - long-running commands → spawn (non-blocking)
     // - short commands → capture output (blocking)
 
-    if matches!(kind, RunCommandKind::CargoTest) {
-        return exec_run_command_cargo_test(cmd, &cwd_path);
-    }
-
-    if matches!(kind, RunCommandKind::LongRunning) {
-        exec_run_command_spawn(cmd, &cwd_path)
-    } else {
-        exec_run_command_capture(cmd, &cwd_path)
+    match kind {
+        RunCommandKind::CargoTest => exec_run_command_cargo_test(cmd, &cwd_path),
+        RunCommandKind::LongRunning => exec_run_command_spawn(cmd, &cwd_path),
+        RunCommandKind::Blocking => exec_run_command_capture(cmd, &cwd_path),
     }
 }
 
