@@ -4514,7 +4514,17 @@ fn summarize_cargo_test_log(path: &Path) -> Option<String> {
     None
 }
 
-fn exec_run_command(workspace: &Path, cmd: &str, cwd: &str) -> Result<(bool, String)> {
+enum RunCommandKind {
+    CargoTest,
+    LongRunning,
+    Blocking,
+}
+
+fn prepare_exec_run_command(
+    workspace: &Path,
+    cmd: &str,
+    cwd: &str,
+) -> Result<(PathBuf, RunCommandKind)> {
     let cwd_path = PathBuf::from(cwd);
     if !cwd_path.is_absolute() {
         bail!("run_command cwd must be absolute: {cwd}");
@@ -4523,11 +4533,23 @@ fn exec_run_command(workspace: &Path, cmd: &str, cwd: &str) -> Result<(bool, Str
         bail!("run_command cwd escapes workspace: {cwd}");
     }
     ensure_safe_command(cmd)?;
+    let kind = if looks_like_cargo_test(cmd) {
+        RunCommandKind::CargoTest
+    } else if looks_like_long_running_command(cmd) {
+        RunCommandKind::LongRunning
+    } else {
+        RunCommandKind::Blocking
+    };
+    Ok((cwd_path, kind))
+}
+
+fn exec_run_command(workspace: &Path, cmd: &str, cwd: &str) -> Result<(bool, String)> {
+    let (cwd_path, kind) = prepare_exec_run_command(workspace, cmd, cwd)?;
     // Hybrid execution model:
     // - long-running commands → spawn (non-blocking)
     // - short commands → capture output (blocking)
 
-    if looks_like_cargo_test(cmd) {
+    if matches!(kind, RunCommandKind::CargoTest) {
         let timeout_secs = env::var("CANON_CARGO_TEST_TIMEOUT_SECS")
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
@@ -4547,9 +4569,7 @@ fn exec_run_command(workspace: &Path, cmd: &str, cwd: &str) -> Result<(bool, Str
         return Ok((true, summary));
     }
 
-    let is_long_running = looks_like_long_running_command(cmd);
-
-    if is_long_running {
+    if matches!(kind, RunCommandKind::LongRunning) {
         let child = Command::new("/bin/bash")
             .arg("-c")
             .arg(cmd)
