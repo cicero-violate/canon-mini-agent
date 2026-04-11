@@ -333,21 +333,12 @@ fn write_livelock_report(
     planner_pending: bool,
     diagnostics_pending: bool,
 ) {
-    let report = json!({
-        "timestamp_ms": now_ms(),
-        "stall_cycles": stall_cycles,
-        "watched_files": watched_paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
-        "pending_at_detection": {
-            "planner_pending": planner_pending,
-            "diagnostics_pending": diagnostics_pending,
-        },
-        "message": format!(
-            "Orchestrator detected {} consecutive cycles where work was dispatched but \
-             no watched file changed. Pending flags cleared. Write a wakeup_*.flag or \
-             restart to resume.",
-            stall_cycles
-        ),
-    });
+    let report = build_livelock_report(
+        stall_cycles,
+        watched_paths,
+        planner_pending,
+        diagnostics_pending,
+    );
     let report_path = agent_state_dir.join("livelock_report.json");
     if let Ok(text) = serde_json::to_string_pretty(&report) {
         let _ = std::fs::write(&report_path, text);
@@ -373,6 +364,29 @@ fn write_livelock_report(
             "diagnostics_pending": diagnostics_pending,
         })),
     );
+}
+
+fn build_livelock_report(
+    stall_cycles: u32,
+    watched_paths: &[&Path],
+    planner_pending: bool,
+    diagnostics_pending: bool,
+) -> Value {
+    json!({
+        "timestamp_ms": now_ms(),
+        "stall_cycles": stall_cycles,
+        "watched_files": watched_paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
+        "pending_at_detection": {
+            "planner_pending": planner_pending,
+            "diagnostics_pending": diagnostics_pending,
+        },
+        "message": format!(
+            "Orchestrator detected {} consecutive cycles where work was dispatched but \
+             no watched file changed. Pending flags cleared. Write a wakeup_*.flag or \
+             restart to resume.",
+            stall_cycles
+        ),
+    })
 }
 
 async fn run_planner_phase(
