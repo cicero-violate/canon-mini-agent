@@ -38,6 +38,8 @@ const MIN_FAILURE_OCCURRENCES: usize = 2;
 const MIN_BIGRAM_OCCURRENCES: usize = 4;
 /// Minimum times a trigram must recur before it becomes a success-sequence candidate.
 const MIN_TRIGRAM_OCCURRENCES: usize = 3;
+/// Minimum consecutive same-path read_file calls (without apply_patch) to flag as a stall.
+const MIN_STALL_READS: usize = 3;
 /// Max candidates kept in the pending/promoted pool per category.
 const MAX_CANDIDATES_PER_KIND: usize = 8;
 
@@ -285,8 +287,9 @@ fn synthesize_candidates(workspace: &Path) -> Result<()> {
 
     let failure_candidates = detect_failure_candidates(&entries);
     let sequence_candidates = detect_success_sequences(&entries);
+    let stall_candidates = detect_stall_patterns(&entries);
 
-    if failure_candidates.is_empty() && sequence_candidates.is_empty() {
+    if failure_candidates.is_empty() && sequence_candidates.is_empty() && stall_candidates.is_empty() {
         return Ok(());
     }
 
@@ -302,6 +305,7 @@ fn synthesize_candidates(workspace: &Path) -> Result<()> {
 
     merge_candidates_into_file(&mut cfile, failure_candidates);
     merge_candidates_into_file(&mut cfile, sequence_candidates);
+    merge_candidates_into_file(&mut cfile, stall_candidates);
 
     // Prune excess pending candidates per kind (keep highest-occurrence ones).
     prune_excess_pending(&mut cfile);
@@ -651,7 +655,7 @@ fn merge_candidates_into_file(cfile: &mut LessonsCandidatesFile, new_ones: Vec<L
 fn prune_excess_pending(cfile: &mut LessonsCandidatesFile) {
     // Keep at most MAX_CANDIDATES_PER_KIND pending candidates per kind,
     // retaining the highest-occurrence ones.
-    for kind in &["failure_pattern", "success_sequence"] {
+    for kind in &["failure_pattern", "success_sequence", "stall_pattern"] {
         let mut indices: Vec<usize> = cfile
             .candidates
             .iter()
@@ -706,6 +710,18 @@ fn merge_candidate_into_artifact(artifact: &mut LessonsArtifact, c: &LessonsCand
                 .to_string();
             if !artifact.required_actions.iter().any(|e| e.text == text) {
                 artifact.required_actions.push(LessonEntry::pending(text));
+            }
+        }
+        "stall_pattern" => {
+            // Surface the stall as a failure and its fix as a prompt rule.
+            if !artifact.failures.iter().any(|e| e.text == c.description) {
+                artifact.failures.push(LessonEntry::pending(c.description.clone()));
+            }
+            let fix = c.system_change_hint.as_ref().or(c.fix_or_note.as_ref());
+            if let Some(fix) = fix {
+                if !artifact.fixes.iter().any(|e| &e.text == fix) {
+                    artifact.fixes.push(LessonEntry::pending(fix.clone()));
+                }
             }
         }
         _ => {}
@@ -964,6 +980,241 @@ fn build_success_cluster_counts(
         }
     }
     clusters
+}
+
+// ── Stall pattern detection ───────────────────────────────────────────────────
+
+/// Detects read-loop stalls: a role reading the same file ≥ MIN_STALL_READS times
+/// in a single "patch-free window" (i.e., no apply_patch between the reads).
+///
+/// Any apply_patch result resets the window for that role.  Only consecutive reads
+/// of the **same path**, within the same window, count toward a stall.
+fn detect_stall_patterns(entries: &[Value]) -> Vec<LessonsCandidate> {
+    // (role, path) → per-window run state
+    #[derive(Default, Clone)]
+    struct RunState {
+        count: usize,
+        task_ids: BTreeSet<String>,
+        objective_ids: BTreeSet<String>,
+        intents: BTreeSet<String>,
+    }
+
+    // (role, path) → accumulated stall state (worst window seen)
+    let mut stalls: HashMap<(String, String), RunState> = HashMap::new();
+    // (role, path) → current window run
+    let mut runs: HashMap<(String, String), RunState> = HashMap::new();
+
+    for entry in entries {
+        if entry.get("kind").and_then(|v| v.as_str()) != Some("tool") {
+            continue;
+        }
+        if entry.get("phase").and_then(|v| v.as_str()) != Some("result") {
+            continue;
+        }
+        if !entry.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
+            continue;
+        }
+
+        let action = entry.get("action").and_then(|v| v.as_str()).unwrap_or("");
+        let role = entry.get("actor").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+        if action == "apply_patch" {
+            // Patch: close out all windows for this role.
+            runs.retain(|(r, _), _| r != &role);
+            continue;
+        }
+
+        if action != "read_file" {
+            continue;
+        }
+
+        let path = entry.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        if path.is_empty() {
+            continue;
+        }
+
+        // Any other path read for the same role resets that role's window for OTHER paths.
+        // (We track per-(role,path) so different paths don't interfere.)
+        let key = (role.clone(), path.clone());
+        let run = runs.entry(key.clone()).or_default();
+        run.count += 1;
+        run.task_ids.insert(entry.get("task_id").and_then(|v| v.as_str()).unwrap_or("").to_string());
+        run.objective_ids.insert(entry.get("objective_id").and_then(|v| v.as_str()).unwrap_or("").to_string());
+        run.intents.insert(entry.get("intent").and_then(|v| v.as_str()).unwrap_or("").to_string());
+
+        if run.count >= MIN_STALL_READS {
+            let stall = stalls.entry(key).or_default();
+            if run.count > stall.count {
+                *stall = run.clone();
+            }
+        }
+    }
+
+    stalls
+        .into_iter()
+        .map(|((role, path), state)| {
+            let count = state.count;
+            let hint = format!(
+                "- Do not call read_file on a path already in context. \
+                 `{path}` was read {count} times without apply_patch — \
+                 its content is already available. Act on it: apply_patch or message."
+            );
+            let direction = format!(
+                "How can the system prevent `read_file` stalls on `{path}` \
+                 for the `{role}` role? The agent re-read this file {count} times \
+                 without making any patch, wasting turns."
+            );
+            LessonsCandidate {
+                id: stable_id("stall", &format!("{role}:{path}")),
+                kind: "stall_pattern".to_string(),
+                description: format!(
+                    "read_file stall [{role}]: `{path}` read {count} times without apply_patch"
+                ),
+                occurrences: count,
+                fix_or_note: Some(hint.clone()),
+                task_ids: state.task_ids.into_iter().filter(|s| !s.is_empty()).collect(),
+                objective_ids: state.objective_ids.into_iter().filter(|s| !s.is_empty()).collect(),
+                roles: vec![role],
+                intents: state.intents.into_iter().filter(|s| !s.is_empty()).collect(),
+                system_direction: Some(direction),
+                system_lever: Some("prompt_rule".to_string()),
+                system_change_hint: Some(hint),
+                status: CandidateStatus::Pending,
+            }
+        })
+        .collect()
+}
+
+// ── Lesson applicator ─────────────────────────────────────────────────────────
+
+/// Applies promoted lessons with `system_lever == "prompt_rule"` to `ROLES.json`.
+///
+/// Reads `lessons_candidates.json`, finds candidates that are promoted + prompt_rule,
+/// and appends their `system_change_hint` text to the appropriate role arrays in
+/// `ROLES.json` (which `load_role_overrides` reads every prompt cycle).
+///
+/// Idempotent: rules already present in ROLES.json are not duplicated.
+/// Returns the number of newly added rules.
+pub fn apply_promoted_lessons(workspace: &Path) -> usize {
+    match try_apply_promoted_lessons(workspace) {
+        Ok(n) => {
+            if n > 0 {
+                eprintln!("[lessons] applied {n} promoted prompt-rule(s) to ROLES.json");
+            }
+            n
+        }
+        Err(e) => {
+            eprintln!("[lessons] apply_promoted_lessons error: {e:#}");
+            0
+        }
+    }
+}
+
+fn try_apply_promoted_lessons(workspace: &Path) -> Result<usize> {
+    let cfile = load_candidates(workspace);
+
+    // Collect qualifying candidates: promoted + prompt_rule lever + has a hint.
+    let qualifying: Vec<&LessonsCandidate> = cfile
+        .candidates
+        .iter()
+        .filter(|c| {
+            c.status == CandidateStatus::Promoted
+                && c.system_lever.as_deref() == Some("prompt_rule")
+                && c.system_change_hint.is_some()
+        })
+        .collect();
+
+    if qualifying.is_empty() {
+        return Ok(0);
+    }
+
+    let mut roles_val = load_roles_json(workspace);
+    let roles_obj = roles_val
+        .as_object_mut()
+        .ok_or_else(|| anyhow::anyhow!("ROLES.json root must be a JSON object"))?;
+
+    // Ensure there's a "roles" sub-object.
+    let roles_inner = roles_obj
+        .entry("roles")
+        .or_insert_with(|| serde_json::json!({}))
+        .as_object_mut()
+        .ok_or_else(|| anyhow::anyhow!("ROLES.json .roles must be an object"))?
+        .clone();
+
+    // We'll rebuild it.
+    let mut updated_inner = roles_inner;
+    let mut added = 0usize;
+
+    for candidate in qualifying {
+        let hint = candidate.system_change_hint.as_deref().unwrap_or("");
+        // Ensure the rule starts with "- " so it matches the format in executor/solo_rules.
+        let rule = if hint.starts_with("- ") {
+            hint.to_string()
+        } else {
+            format!("- {hint}")
+        };
+
+        // Determine target roles: use the candidate's roles list, defaulting to
+        // executor + solo if unspecified (stall patterns affect both).
+        let target_roles: Vec<&str> = if candidate.roles.is_empty() {
+            vec!["executor", "solo"]
+        } else {
+            candidate.roles.iter().map(|s| s.as_str()).collect()
+        };
+
+        for role_name in target_roles {
+            let arr = updated_inner
+                .entry(role_name)
+                .or_insert_with(|| serde_json::json!([]))
+                .as_array_mut()
+                .ok_or_else(|| anyhow::anyhow!("ROLES.json .roles.{role_name} must be an array"))?;
+
+            let already_present = arr.iter().any(|v| v.as_str() == Some(&rule));
+            if !already_present {
+                arr.push(serde_json::Value::String(rule.clone()));
+                added += 1;
+            }
+        }
+    }
+
+    // Write back only if something changed.
+    if added > 0 {
+        // Rebuild the full JSON value with the updated inner object.
+        let full = roles_obj
+            .iter()
+            .map(|(k, v)| {
+                if k == "roles" {
+                    (k.clone(), serde_json::Value::Object(
+                        updated_inner.iter().map(|(rk, rv)| (rk.clone(), rv.clone())).collect()
+                    ))
+                } else {
+                    (k.clone(), v.clone())
+                }
+            })
+            .collect::<serde_json::Map<_, _>>();
+        save_roles_json(workspace, &serde_json::Value::Object(full))?;
+    }
+
+    Ok(added)
+}
+
+fn roles_json_path(workspace: &Path) -> std::path::PathBuf {
+    workspace.join("ROLES.json")
+}
+
+fn load_roles_json(workspace: &Path) -> serde_json::Value {
+    let path = roles_json_path(workspace);
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_else(|| serde_json::json!({"roles": {}}))
+}
+
+fn save_roles_json(workspace: &Path, val: &serde_json::Value) -> Result<()> {
+    let path = roles_json_path(workspace);
+    let text = serde_json::to_string_pretty(val)?;
+    std::fs::write(&path, text)?;
+    Ok(())
 }
 
 fn success_automation_question<'a>(
