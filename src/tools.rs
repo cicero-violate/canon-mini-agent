@@ -1746,8 +1746,29 @@ fn handle_symbols_index_action(workspace: &Path, action: &Value) -> Result<(bool
         .unwrap_or("state/symbols.json");
     let scan_root = safe_join(workspace, path_raw)?;
     let out_path = safe_join(workspace, out_raw)?;
+    let payload = build_symbols_index_payload(workspace, &scan_root)?;
+    if let Some(parent) = out_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("create symbols output dir {}", parent.display()))?;
+    }
+    fs::write(
+        &out_path,
+        serde_json::to_string_pretty(&payload).context("serialize symbols index")?,
+    )
+    .with_context(|| format!("write {}", out_path.display()))?;
+    Ok((
+        false,
+        format!(
+            "symbols_index ok: output={} symbols={}",
+            out_raw,
+            payload.symbols.len()
+        ),
+    ))
+}
+
+fn build_symbols_index_payload(workspace: &Path, scan_root: &Path) -> Result<SymbolsIndexFile> {
     let mut files = Vec::new();
-    collect_rust_files(&scan_root, &mut files)?;
+    collect_rust_files(scan_root, &mut files)?;
     files.sort();
 
     let mut symbols = Vec::new();
@@ -1779,27 +1800,10 @@ fn handle_symbols_index_action(workspace: &Path, action: &Value) -> Result<(bool
             && a.name == b.name
     });
 
-    let payload = SymbolsIndexFile {
+    Ok(SymbolsIndexFile {
         version: 1,
         symbols,
-    };
-    if let Some(parent) = out_path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("create symbols output dir {}", parent.display()))?;
-    }
-    fs::write(
-        &out_path,
-        serde_json::to_string_pretty(&payload).context("serialize symbols index")?,
-    )
-    .with_context(|| format!("write {}", out_path.display()))?;
-    Ok((
-        false,
-        format!(
-            "symbols_index ok: output={} symbols={}",
-            out_raw,
-            payload.symbols.len()
-        ),
-    ))
+    })
 }
 
 fn ambiguous_name_reasons(name: &str) -> Vec<String> {
