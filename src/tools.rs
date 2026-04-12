@@ -6598,6 +6598,7 @@ mod tests {
         let action = json!({
             "crate": "canon_mini_agent",
             "mode": "hir-tree",
+            "symbol": "app::foo",
             "extra": ""
         });
         let (_done, out_hir) =

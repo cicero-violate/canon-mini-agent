@@ -1,1 +1,1 @@
-Multiple consecutive cycles show identical inability to read `/workspace/ai_sandbox/canon-mini-agent/src/*` or execute cargo commands, with no successful counterexample and no new capability introduced in the latest handoff.
+auto-filled blocker evidence
