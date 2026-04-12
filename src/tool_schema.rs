@@ -140,6 +140,15 @@ pub struct ActionBase {
     pub observation: Option<String>,
     #[schemars(length(min = 1))]
     pub rationale: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(length(min = 1))]
+    pub task_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(length(min = 1))]
+    pub objective_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(length(min = 1))]
+    pub intent: Option<String>,
     pub predicted_next_actions: Vec<PredictedNextAction>,
 }
 
@@ -319,8 +328,6 @@ pub enum ToolAction {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         op: Option<ObjectivesOp>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        objective_id: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
         status: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         objective: Option<serde_json::Value>,
@@ -377,8 +384,6 @@ pub enum ToolAction {
         #[serde(flatten)]
         base: ActionBase,
         op: PlanOp,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        task_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         status: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -730,7 +735,7 @@ pub fn tool_protocol_schema_split_text() -> String {
         "Each action has its own schema; choose the schema that matches the `action` field.\n",
     );
     out.push_str(
-        "Common fields appear in every action: `rationale` (non-empty), `predicted_next_actions` (2-3 items), and optional `observation`.\n\n",
+        "Common fields appear in every action: `rationale` (non-empty), `predicted_next_actions` (2-3 items), optional `observation`, and optional provenance fields `task_id`, `objective_id`, `intent`.\n\n",
     );
 
     let actions = build_tool_actions_list();

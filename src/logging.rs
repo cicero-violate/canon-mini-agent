@@ -201,9 +201,6 @@ pub(crate) fn compact_log_record(
     insert_opt("command_id", command_id.map(|v| json!(v)));
     insert_opt("op", op);
     insert_opt("ok", ok.map(|v| json!(v)));
-    // Inject the currently active plan task id so every entry is attributable.
-    let tid = crate::constants::active_task_id();
-    insert_opt("task_id", if tid.is_empty() { None } else { Some(json!(tid)) });
     insert_opt(
         "observation",
         observation.map(|v| json!(truncate(&v, MAX_SNIPPET))),
@@ -280,6 +277,9 @@ fn inject_action_fields(record: &mut Value, action: &Value) {
     insert_if_missing("action", action.get("action").cloned());
     insert_if_missing("path", action.get("path").cloned());
     insert_if_missing("line", action.get("line").cloned());
+    insert_if_missing("task_id", action.get("task_id").cloned());
+    insert_if_missing("objective_id", action.get("objective_id").cloned());
+    insert_if_missing("intent", action.get("intent").cloned());
     // Ensure message actions preserve routing + payload metadata
     if action.get("action").and_then(|v| v.as_str()) == Some("message") {
         insert_if_missing("from", action.get("from").cloned());
@@ -304,6 +304,9 @@ fn append_secondary_action_log(role: &str, action: &Value) -> Result<()> {
     append_secondary_action_field(&mut record, action, "type");
     append_secondary_action_field(&mut record, action, "status");
     append_secondary_action_field(&mut record, action, "payload");
+    append_secondary_action_field(&mut record, action, "task_id");
+    append_secondary_action_field(&mut record, action, "objective_id");
+    append_secondary_action_field(&mut record, action, "intent");
     append_secondary_action_field(&mut record, action, "observation");
     append_secondary_action_field(&mut record, action, "rationale");
     append_secondary_action_field(&mut record, action, "question");
@@ -343,6 +346,9 @@ fn secondary_llm_response(action: &Value) -> Option<Value> {
             "action"
                 | "path"
                 | "line"
+                | "task_id"
+                | "objective_id"
+                | "intent"
                 | "observation"
                 | "rationale"
                 | "question"

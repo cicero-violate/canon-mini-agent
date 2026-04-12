@@ -1417,6 +1417,90 @@ pub(crate) fn action_observation(action: &Value) -> Option<&str> {
         .filter(|s| !s.is_empty())
 }
 
+pub(crate) fn action_task_id(action: &Value) -> Option<&str> {
+    action
+        .get("task_id")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+}
+
+pub(crate) fn action_objective_id(action: &Value) -> Option<&str> {
+    action
+        .get("objective_id")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+}
+
+pub(crate) fn action_intent(action: &Value) -> Option<&str> {
+    action
+        .get("intent")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+}
+
+fn action_requires_provenance(action: &Value) -> bool {
+    let kind = action.get("action").and_then(|v| v.as_str()).unwrap_or("");
+    match kind {
+        "apply_patch" | "rename_symbol" | "run_command" | "python" | "cargo_test" | "cargo_clippy" => true,
+        "cargo_fmt" => true,
+        "plan" => action.get("op").and_then(|v| v.as_str()) != Some("sorted_view"),
+        "objectives" => !matches!(
+            action.get("op").and_then(|v| v.as_str()),
+            Some("read") | Some("sorted_view")
+        ),
+        "issue" => action.get("op").and_then(|v| v.as_str()) != Some("read"),
+        _ => false,
+    }
+}
+
+fn plan_task_objective_id(task_id: &str) -> Option<String> {
+    let plan_path = std::path::Path::new(workspace()).join(MASTER_PLAN_FILE);
+    let raw = std::fs::read_to_string(plan_path).ok()?;
+    let value: Value = serde_json::from_str(&raw).ok()?;
+    value
+        .get("tasks")
+        .and_then(|v| v.as_array())
+        .and_then(|tasks| {
+            tasks.iter().find(|task| task.get("id").and_then(|v| v.as_str()) == Some(task_id))
+        })
+        .and_then(|task| task.get("objective_id"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+}
+
+fn validate_action_provenance(action: &Value) -> Result<()> {
+    if !action_requires_provenance(action) {
+        return Ok(());
+    }
+
+    let task_id = action_task_id(action)
+        .ok_or_else(|| anyhow!("mutating or verification actions must include non-empty task_id"))?;
+    let objective_id = action_objective_id(action)
+        .ok_or_else(|| anyhow!("mutating or verification actions must include non-empty objective_id"))?;
+    let _intent = action_intent(action)
+        .ok_or_else(|| anyhow!("mutating or verification actions must include non-empty intent"))?;
+
+    let active_task_id = crate::constants::active_task_id();
+    if !active_task_id.is_empty() && task_id != active_task_id {
+        bail!(
+            "active plan task is '{active_task_id}' — mutating or verification actions must name that task in task_id"
+        );
+    }
+
+    if let Some(expected_objective_id) = plan_task_objective_id(task_id) {
+        if expected_objective_id.trim() != objective_id {
+            bail!(
+                "task '{task_id}' is linked to objective_id '{expected_objective_id}' in PLAN.json — action objective_id must match"
+            );
+        }
+    }
+
+    Ok(())
+}
+
 fn default_rationale(kind: &str) -> &'static str {
     match kind {
         "list_dir" => "Inspect the workspace before making assumptions.",
@@ -1568,6 +1652,7 @@ pub(crate) fn normalize_action(action: &mut Value) -> Result<()> {
 
 pub(crate) fn validate_action(action: &Value) -> Result<()> {
     validate_tool_action(action)?;
+    validate_action_provenance(action)?;
     if action.get("action").and_then(|v| v.as_str()) == Some("plan") {
         let rationale = action
             .get("rationale")
@@ -1667,6 +1752,9 @@ pub(crate) fn action_result_prompt(
     agent_type: &str,
     result: &str,
     last_action: Option<&str>,
+    task_id: Option<&str>,
+    objective_id: Option<&str>,
+    intent: Option<&str>,
     steps_used: Option<usize>,
     predicted_next_actions: Option<&str>,
 ) -> String {
@@ -1706,9 +1794,17 @@ pub(crate) fn action_result_prompt(
             format!("\nBefore your next action, answer this internally: {q}\n")
         })
         .unwrap_or_default();
+    let provenance_block = {
+        let task = task_id.unwrap_or("(none)");
+        let objective = objective_id.unwrap_or("(none)");
+        let intent_text = intent.unwrap_or("(none)");
+        format!(
+            "Action provenance:\n- task_id: {task}\n- objective_id: {objective}\n- intent: {intent_text}\n\n"
+        )
+    };
 
     format!(
-        "TAB_ID: {tab_label}\nTURN_ID: {turn_label}\nAGENT_TYPE: {agent_type}\n\n{limit_line}Action result:\n{}\n\n{predicted_line}{}{}\nEmit exactly one action. Think through the decision internally; reveal chain-of-thought.",
+        "TAB_ID: {tab_label}\nTURN_ID: {turn_label}\nAGENT_TYPE: {agent_type}\n\n{limit_line}{provenance_block}Action result:\n{}\n\n{predicted_line}{}{}\nEmit exactly one action. Think through the decision internally; reveal chain-of-thought.",
         truncate(result, MAX_SNIPPET),
         next_action_hint_text(result, last_action),
         mutating_question,

@@ -71,14 +71,18 @@ fn read_file_example_action(predicted_next_actions: &Value) -> Value {
 }
 
 fn symbols_index_example_action(predicted_next_actions: &Value) -> Value {
-    json!({
-        "action": "symbols_index",
-        "path": "src",
-        "out": "state/symbols.json",
-        "observation": "Build deterministic symbol inventory.",
-        "rationale": "Need a unique sorted symbols catalog before rename/refactor planning.",
-        "predicted_next_actions": predicted_next_actions
-    })
+    with_extra_fields(
+        example_action_base(
+            "symbols_index",
+            "Build deterministic symbol inventory.",
+            "Need a unique sorted symbols catalog before rename/refactor planning.",
+            predicted_next_actions,
+        ),
+        [
+            ("path", json!("src")),
+            ("out", json!("state/symbols.json")),
+        ],
+    )
 }
 
 fn symbols_rename_candidates_example_action(predicted_next_actions: &Value) -> Value {

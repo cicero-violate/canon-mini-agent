@@ -23,7 +23,8 @@ use crate::logging::{
     log_action_result, log_error_event, log_message_event, make_command_id, now_ms,
 };
 use crate::prompts::{
-    action_observation, action_rationale, action_result_prompt, diagnostics_cycle_prompt,
+    action_intent, action_objective_id, action_observation, action_rationale, action_result_prompt,
+    action_task_id, diagnostics_cycle_prompt,
     diagnostics_python_reads_event_logs, executor_cycle_prompt, is_explicit_idle_action,
     normalize_action, parse_actions, planner_cycle_prompt, single_role_solo_prompt, system_instructions,
     truncate, validate_action, verifier_cycle_prompt, AgentPromptKind,
@@ -2084,6 +2085,23 @@ fn cargo_test_missing_crate_feedback(err_text: &str) -> InvalidActionFeedback {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+struct ActionProvenance {
+    task_id: Option<String>,
+    objective_id: Option<String>,
+    intent: Option<String>,
+}
+
+impl ActionProvenance {
+    fn from_action(action: &Value) -> Self {
+        Self {
+            task_id: action_task_id(action).map(str::to_string),
+            objective_id: action_objective_id(action).map(str::to_string),
+            intent: action_intent(action).map(str::to_string),
+        }
+    }
+}
+
 fn build_agent_prompt(
     role: &str,
     send_system_prompt: bool,
@@ -2094,6 +2112,7 @@ fn build_agent_prompt(
     last_tab_id: Option<u32>,
     last_turn_id: Option<u64>,
     last_action: Option<&str>,
+    last_provenance: &ActionProvenance,
     total_steps: usize,
     last_predicted_next_actions: Option<&str>,
 ) -> (String, String) {
@@ -2122,6 +2141,9 @@ fn build_agent_prompt(
                 agent_type.as_str(),
                 &result,
                 last_action,
+                last_provenance.task_id.as_deref(),
+                last_provenance.objective_id.as_deref(),
+                last_provenance.intent.as_deref(),
                 if role.starts_with("executor") {
                     Some(total_steps)
                 } else {
@@ -2565,6 +2587,9 @@ async fn continue_executor_completion(
                 agent_type.as_str(),
                 &invalid.feedback,
                 Some("invalid_action"),
+                None,
+                None,
+                None,
                 Some(submitted.steps_used),
                 None,
             );
@@ -2613,6 +2638,7 @@ async fn continue_executor_completion(
     );
 
     let agent_type = role.to_uppercase();
+    let provenance = ActionProvenance::from_action(&action);
     run_agent(
         role,
         prompt_kind,
@@ -2623,6 +2649,9 @@ async fn continue_executor_completion(
             agent_type.as_str(),
             &out,
             action.get("action").and_then(|v| v.as_str()),
+            provenance.task_id.as_deref(),
+            provenance.objective_id.as_deref(),
+            provenance.intent.as_deref(),
             Some(submitted.steps_used),
             None,
         ),
@@ -2669,6 +2698,7 @@ async fn run_agent(
     let mut last_tab_id: Option<u32> = None;
     let mut last_turn_id: Option<u64> = None;
     let mut last_action: Option<String> = None;
+    let mut last_provenance = ActionProvenance::default();
     let mut last_predicted_next_actions: Option<String> = None;
     let mut error_streak: usize = 0;
     #[allow(unused_assignments)]
@@ -2724,6 +2754,7 @@ async fn run_agent(
             last_tab_id,
             last_turn_id,
             last_action.as_deref(),
+            &last_provenance,
             total_steps,
             last_predicted_next_actions.as_deref(),
         );
@@ -2871,6 +2902,7 @@ async fn run_agent(
         error_streak = 0;
         eprintln!("[{role}] step={} action={}", step + 1, kind);
         last_action = Some(kind.clone());
+        last_provenance = ActionProvenance::from_action(&action);
         last_predicted_next_actions = action
             .get("predicted_next_actions")
             .and_then(|v| serde_json::to_string(v).ok());
@@ -4480,6 +4512,7 @@ mod tests {
     use super::{
         action_retry_fingerprint, executor_step_limit_feedback, has_actionable_objectives,
         plan_has_incomplete_tasks, should_reject_solo_self_complete, verifier_confirmed_with_plan_text,
+        ActionProvenance,
     };
     use serde_json::json;
 
@@ -4495,6 +4528,7 @@ mod tests {
             None,
             None,
             None,
+            &ActionProvenance::default(),
             0,
             None,
         );
@@ -4511,6 +4545,7 @@ mod tests {
             None,
             None,
             Some("read_file"),
+            &ActionProvenance::default(),
             1,
             None,
         );
@@ -4530,6 +4565,7 @@ mod tests {
             None,
             None,
             None,
+            &ActionProvenance::default(),
             1,
             None,
         );

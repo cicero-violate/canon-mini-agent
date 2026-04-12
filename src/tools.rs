@@ -4178,7 +4178,6 @@ fn validate_plan_create_task_shape(action: &Value, normalized_op: &str) -> Resul
         action,
         normalized_op,
         &[
-            ("task_id", "use task.id inside task object"),
             ("status", "set status inside task object"),
             ("from", "edge fields are only for add_edge/remove_edge"),
             ("to", "edge fields are only for add_edge/remove_edge"),
@@ -4193,7 +4192,6 @@ fn validate_plan_update_task_shape(action: &Value, normalized_op: &str) -> Resul
         action,
         normalized_op,
         &[
-            ("task_id", "task id belongs inside task object for update_task"),
             ("status", "set status inside task object or use set_task_status"),
             ("from", "edge fields are only for add_edge/remove_edge"),
             ("to", "edge fields are only for add_edge/remove_edge"),
@@ -4224,7 +4222,6 @@ fn validate_plan_edge_shape(action: &Value, normalized_op: &str) -> Result<()> {
         normalized_op,
         &[
             ("task", "task object is not used for edge operations"),
-            ("task_id", "task_id is not used for edge operations"),
             ("status", "status is not used for edge operations"),
             ("plan", "use replace_plan to write a full plan object"),
         ],
@@ -4237,7 +4234,6 @@ fn validate_plan_set_plan_status_shape(action: &Value, normalized_op: &str) -> R
         action,
         normalized_op,
         &[
-            ("task_id", "set_plan_status changes PLAN.status only"),
             ("task", "set_plan_status changes PLAN.status only"),
             ("from", "edge fields are only for add_edge/remove_edge"),
             ("to", "edge fields are only for add_edge/remove_edge"),
@@ -4267,7 +4263,6 @@ fn validate_plan_replace_plan_shape(action: &Value, normalized_op: &str) -> Resu
         normalized_op,
         &[
             ("task", "replace_plan uses plan object"),
-            ("task_id", "replace_plan uses plan object"),
             ("status", "replace_plan uses plan object"),
             ("from", "replace_plan uses plan object"),
             ("to", "replace_plan uses plan object"),
