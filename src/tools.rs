@@ -27,6 +27,18 @@ use crate::tool_schema::{
     plan_set_plan_status_action_example, plan_set_task_status_action_example,
 };
 
+/// Return a human-readable type name for a JSON value (used in validation error messages).
+fn value_type_name(v: &Value) -> &'static str {
+    match v {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
+}
+
 /// Extract the first file path touched by the patch (*** Update File: / *** Add File:).
 fn patch_first_file(patch: &str) -> Option<&str> {
     for line in patch.lines() {
@@ -391,6 +403,23 @@ fn handle_objectives_create_objective(
     let objective_val = action
         .get("objective")
         .ok_or_else(|| anyhow!("objectives create_objective missing objective"))?;
+
+    // Pre-check: validate that array fields are actually arrays before serde deserialization.
+    // serde reports "invalid type: string, expected a sequence" which doesn't name the field.
+    if let Some(obj) = objective_val.as_object() {
+        for field in &["verification", "success_criteria"] {
+            if let Some(v) = obj.get(*field) {
+                if !v.is_array() {
+                    bail!(
+                        "invalid objective payload: field '{}' must be an array, got {}",
+                        field,
+                        value_type_name(v)
+                    );
+                }
+            }
+        }
+    }
+
     let mut file = parse_objectives_file_strict(raw)?;
     let objective: crate::objectives::Objective = serde_json::from_value(objective_val.clone())
         .map_err(|e| anyhow!("invalid objective payload: {e}"))?;
@@ -427,7 +456,7 @@ fn handle_objectives_update_objective(
     let updates = action
         .get("updates")
         .and_then(|v| v.as_object())
-        .ok_or_else(|| anyhow!("objectives update_objective missing updates object"))?;
+        .ok_or_else(|| anyhow!("objectives update_objective missing updates object. Required schema: {{\"op\":\"update_objective\",\"objective_id\":\"<id>\",\"updates\":{{\"title\":\"<title>\",\"status\":\"<status>\"}}}}"))?;
     let mut file = parse_objectives_file_strict(raw)?;
     log_objective_attempt("update_objective", Some(objective_id), &file.objectives);
     let mut found = false;
@@ -557,6 +586,46 @@ fn create_issue(action: &Value, path: &Path, raw: &str) -> Result<(bool, String)
     let issue_val = action
         .get("issue")
         .ok_or_else(|| anyhow!("issue create missing 'issue' field"))?;
+
+    // Pre-check: collect all missing required string fields before serde attempts deserialization.
+    // serde only reports the first missing field; this lists them all so the LLM can fix in one shot.
+    if let Some(obj) = issue_val.as_object() {
+        let required_string_fields = ["id", "title", "status", "priority"];
+        let missing: Vec<&str> = required_string_fields
+            .iter()
+            .copied()
+            .filter(|&field| {
+                obj.get(field)
+                    .map(|v| v.as_str().map(|s| s.trim().is_empty()).unwrap_or(true))
+                    .unwrap_or(true)
+            })
+            .collect();
+        if !missing.is_empty() {
+            bail!(
+                "invalid issue payload: missing required fields: {}. Required: {{\"id\":\"<id>\",\"title\":\"<title>\",\"status\":\"open\",\"priority\":\"medium\",\"kind\":\"<kind>\",\"description\":\"<description>\"}}",
+                missing.join(", ")
+            );
+        }
+        // Pre-check: field type validation — ensure string fields are not wrong types.
+        let string_fields = ["id", "title", "status", "priority", "kind", "description", "location", "discovered_by"];
+        for field in &string_fields {
+            if let Some(v) = obj.get(*field) {
+                if !v.is_string() && !v.is_null() {
+                    bail!(
+                        "invalid issue payload: field '{}' must be a string, got {}",
+                        field,
+                        value_type_name(v)
+                    );
+                }
+            }
+        }
+    } else if !issue_val.is_null() {
+        bail!(
+            "invalid issue payload: expected an object, got {}",
+            value_type_name(issue_val)
+        );
+    }
+
     let mut file = parse_issues_file_allow_empty(raw)?;
     let issue: Issue = serde_json::from_value(issue_val.clone())
         .map_err(|e| anyhow!("invalid issue payload: {e}"))?;
@@ -2756,7 +2825,28 @@ fn handle_apply_patch_success(
     if let Some(result) = verify_apply_patch_crate(role, step, workspace, patch) {
         return Ok(result);
     }
-    Ok((false, "apply_patch ok".to_string()))
+    // Enrich the success result with the post-patch file content so the agent can
+    // verify the change without a separate read_file round-trip.
+    let post_patch_snippet = patch_first_file(patch)
+        .and_then(|rel| safe_join(workspace, rel).ok())
+        .and_then(|abs| std::fs::read_to_string(&abs).ok())
+        .map(|content| {
+            let lines: Vec<String> = content
+                .lines()
+                .take(80)
+                .enumerate()
+                .map(|(i, l)| format!("{}: {}", i + 1, l))
+                .collect();
+            let truncated = if content.lines().count() > 80 {
+                "\n... (truncated at 80 lines)"
+            } else {
+                ""
+            };
+            let rel = patch_first_file(patch).unwrap_or("patched file");
+            format!("\nPost-patch content of {rel} (first 80 lines):\n{}{}", lines.join("\n"), truncated)
+        })
+        .unwrap_or_default();
+    Ok((false, format!("apply_patch ok{post_patch_snippet}")))
 }
 
 fn handle_apply_patch_failure(
@@ -4540,7 +4630,7 @@ fn handle_plan_update_task(
     let task = action
         .get("task")
         .and_then(|v| v.as_object())
-        .ok_or_else(|| anyhow!("plan update_task missing task object"))?;
+        .ok_or_else(|| anyhow!("plan update_task missing task object. Required schema: {{\"op\":\"update_task\",\"task\":{{\"id\":\"<id>\",\"status\":\"<status>\"}}}}"))?;
     let id = task
         .get("id")
         .and_then(|v| v.as_str())
@@ -5411,7 +5501,26 @@ fn handle_symbol_window_action(workspace: &Path, action: &Value) -> Result<(bool
         return Err(anyhow!("symbol_window requires a non-empty `symbol`"));
     }
     let out = idx.symbol_window(symbol)?;
-    Ok((false, out))
+    // Enrich with MIR data if available — eliminates the need for a follow-up rustc_mir call.
+    let mir_suffix = idx
+        .canonical_symbol_key(symbol)
+        .ok()
+        .and_then(|canonical| {
+            idx.symbol_summaries()
+                .into_iter()
+                .find(|s| s.symbol == canonical)
+                .filter(|s| s.mir_fingerprint.is_some())
+                .map(|s| {
+                    format!(
+                        "\nmir: fingerprint={} blocks={} stmts={}",
+                        s.mir_fingerprint.unwrap_or_default(),
+                        s.mir_blocks.unwrap_or(0),
+                        s.mir_stmts.unwrap_or(0),
+                    )
+                })
+        })
+        .unwrap_or_default();
+    Ok((false, format!("{out}{mir_suffix}")))
 }
 
 fn handle_symbol_refs_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
