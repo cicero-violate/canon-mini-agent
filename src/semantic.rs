@@ -10,7 +10,7 @@
 
 use anyhow::{bail, Context, Result};
 use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::Path;
@@ -99,6 +99,13 @@ pub struct SymbolSummary {
     pub mir_stmts: Option<usize>,
     pub call_in: usize,
     pub call_out: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct SemanticTriple {
+    pub from: String,
+    pub relation: String,
+    pub to: String,
 }
 
 impl SemanticIndex {
@@ -193,20 +200,20 @@ impl SemanticIndex {
             out.push_str("# note: `expand_bodies` is ignored for triple output\n");
         }
 
-        let mut triples = self.collect_semantic_map_triples(filter_path);
+        let mut triples = self.semantic_triples(filter_path);
         triples.sort_by(|a, b| {
-            a.0.cmp(&b.0)
-                .then(a.1.cmp(&b.1))
-                .then(a.2.cmp(&b.2))
+            a.from.cmp(&b.from)
+                .then(a.relation.cmp(&b.relation))
+                .then(a.to.cmp(&b.to))
         });
 
-        for (from, relation, to) in triples {
+        for triple in triples {
             out.push('(');
-            out.push_str(&from);
+            out.push_str(&triple.from);
             out.push_str(", ");
-            out.push_str(&relation);
+            out.push_str(&triple.relation);
             out.push_str(", ");
-            out.push_str(&to);
+            out.push_str(&triple.to);
             out.push(')');
             out.push('\n');
         }
@@ -536,10 +543,10 @@ impl SemanticIndex {
         out
     }
 
-    fn collect_semantic_map_triples(
+    pub fn semantic_triples(
         &self,
         filter_path: Option<&str>,
-    ) -> Vec<(String, String, String)> {
+    ) -> Vec<SemanticTriple> {
         self.graph
             .edges
             .iter()
@@ -551,7 +558,11 @@ impl SemanticIndex {
                         return None;
                     }
                 }
-                Some((from, edge_relation(edge).to_string(), to))
+                Some(SemanticTriple {
+                    from,
+                    relation: edge_relation(edge).to_string(),
+                    to,
+                })
             })
             .collect()
     }

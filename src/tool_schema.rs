@@ -979,7 +979,12 @@ fn enum_schema_error_message(path: &str, instance: &Cow<'_, Value>) -> String {
     if path == "op" {
         format!("unknown plan op: {}", stringify_instance(instance))
     } else if path == "action" || path.ends_with(".action") {
-        format!("unsupported action: {}", stringify_instance(instance))
+        let action = stringify_instance(instance);
+        if action == "symbol_search" {
+            "unsupported action: symbol_search (use symbol_refs, symbol_window, symbol_path, symbol_neighborhood, or semantic_map)".to_string()
+        } else {
+            format!("unsupported action: {action}")
+        }
     } else {
         format!("enum mismatch: {path}")
     }
@@ -993,6 +998,9 @@ fn action_schema_mismatch_message(action: &Value) -> String {
                 return missing;
             }
             return format!("action schema mismatch: {action_val}");
+        }
+        if action_val == "symbol_search" {
+            return "unsupported action: symbol_search (use symbol_refs, symbol_window, symbol_path, symbol_neighborhood, or semantic_map)".to_string();
         }
         return format!("unsupported action: {action_val}");
     }

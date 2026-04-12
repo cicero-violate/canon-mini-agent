@@ -3,6 +3,7 @@ use canon_mini_agent::{set_agent_state_dir, set_workspace};
 use canon_mini_agent::logging::init_log_paths;
 use canon_mini_agent::logging::log_error_event;
 use canon_mini_agent::complexity::write_complexity_report;
+use canon_mini_agent::SemanticIndex;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -311,6 +312,11 @@ fn checkpoint_build_succeeded(root: &Path, reason: &str) -> bool {
             eprintln!(
                 "[canon-mini-supervisor] pre-restart: cargo build passed ({reason})"
             );
+            if let Err(err) = export_semantic_maps_jsonl(root) {
+                eprintln!(
+                    "[canon-mini-supervisor] semantic_map jsonl export failed ({reason}): {err:#}"
+                );
+            }
             true
         }
         Ok(false) => {
@@ -326,6 +332,47 @@ fn checkpoint_build_succeeded(root: &Path, reason: &str) -> bool {
             false
         }
     }
+}
+
+fn export_semantic_maps_jsonl(root: &Path) -> Result<()> {
+    let crates = SemanticIndex::available_crates(root);
+    if crates.is_empty() {
+        eprintln!(
+            "[canon-mini-supervisor] semantic_map jsonl export skipped (no crates in state/rustc/index.json)"
+        );
+        return Ok(());
+    }
+
+    let out_dir = root.join("state").join("reports").join("semantic_map");
+    fs::create_dir_all(&out_dir)
+        .with_context(|| format!("create dir {}", out_dir.display()))?;
+
+    for crate_name in crates {
+        let idx = SemanticIndex::load(root, &crate_name)
+            .with_context(|| format!("load semantic index for {crate_name}"))?;
+        let mut triples = idx.semantic_triples(None);
+        triples.sort_by(|a, b| {
+            a.from
+                .cmp(&b.from)
+                .then(a.relation.cmp(&b.relation))
+                .then(a.to.cmp(&b.to))
+        });
+
+        let out_path = out_dir.join(format!("{crate_name}.jsonl"));
+        let mut file = fs::File::create(&out_path)
+            .with_context(|| format!("create {}", out_path.display()))?;
+        for triple in triples {
+            serde_json::to_writer(&mut file, &triple)
+                .with_context(|| format!("write {}", out_path.display()))?;
+            file.write_all(b"\n")
+                .with_context(|| format!("newline {}", out_path.display()))?;
+        }
+        eprintln!(
+            "[canon-mini-supervisor] semantic_map jsonl: {}",
+            out_path.display()
+        );
+    }
+    Ok(())
 }
 
 fn stage_git_checkpoint(root: &Path, reason: &str) -> bool {

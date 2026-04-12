@@ -585,10 +585,9 @@ Notes:
 ## `semantic_map` — rustc-backed semantic graph triples: one `(from, relation, to)` line per edge
 
 Examples:
-  {"action":"semantic_map","crate":"canon_mini_agent","rationale":"Get compiler-backed semantic triples before exploring files."}
+  {"action":"semantic_map","crate":"canon_mini_agent","rationale":"Get compiler-backed semantic triples before exploring specific symbols."}
   {"action":"semantic_map","crate":"canon_mini_agent","filter":"tools","rationale":"Restrict triples to edges touching the tools module."}
-  {"action":"semantic_map","crate":"canon_mini_agent","filter":"tools","expand_bodies":true,"rationale":"Compatibility call; expand_bodies is ignored in triple mode."}
-Notes: returns one triple per line as `(from, relation, to)`. Symbol paths are module-relative (e.g. `tools::my_fn`). Crate-qualified prefixes like `canon_mini_agent::tools` or `crate::tools` are accepted and stripped. `filter` keeps triples whose source or target matches the prefix.
+Notes: returns one triple per line as `(from, relation, to)`. Symbol paths are module-relative (e.g. `tools::my_fn`). Crate-qualified prefixes like `canon_mini_agent::tools` or `crate::tools` are accepted and stripped. `filter` keeps triples whose source or target matches the prefix. `expand_bodies` is accepted for compatibility but ignored.
 
 ## `symbol_window` — extract the full definition body of a symbol (byte-precise, via def span)
 
@@ -673,3 +672,4 @@ Rules:
 - For issue: only op=read.
 - Items must omit rationale, predicted_next_actions, and observation.
 - On per-item error the item is labeled [batch N/M: ERROR] and execution continues.
+
