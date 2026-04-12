@@ -1067,27 +1067,40 @@ pub(crate) fn single_role_solo_prompt(
     let mut sections = format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed.\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}"
     );
-    if !objectives.trim().is_empty() {
-        sections.push_str(&format!("\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}"));
-    }
-    if !lessons_text.trim().is_empty() {
-        sections.push_str(&format!("\n\nLessons artifact:\n{lessons_text}"));
-    }
-    if !invariants.trim().is_empty() {
-        sections.push_str(&format!("\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}"));
-    }
-    if !violations.trim().is_empty() {
-        sections.push_str(&format!("\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}"));
-    }
-    if !diagnostics.trim().is_empty() {
-        sections.push_str(&format!("\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}"));
-    }
-    if !cargo_test_failures.trim().is_empty() {
-        sections.push_str(&format!("\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}"));
-    }
-    if !rename_candidates.trim().is_empty() {
-        sections.push_str(&format!("\n\nPending rename tasks (from state/rename_candidates.json):\n{rename_candidates}\nFor each candidate: use `symbols_prepare_rename` to select it, then `rename_symbol` to apply. Work through them in score-descending order."));
-    }
+    append_optional_prompt_section(
+        &mut sections,
+        &format!("Objectives (from {OBJECTIVES_FILE}):"),
+        objectives,
+    );
+    append_optional_prompt_section(&mut sections, "Lessons artifact:", lessons_text);
+    append_optional_prompt_section(
+        &mut sections,
+        &format!("Invariants (from {INVARIANTS_FILE}):"),
+        invariants,
+    );
+    append_optional_prompt_section(
+        &mut sections,
+        &format!("Violations (from {VIOLATIONS_FILE}):"),
+        violations,
+    );
+    append_optional_prompt_section(
+        &mut sections,
+        &format!("Diagnostics report (from {diagnostics_path}):"),
+        diagnostics,
+    );
+    append_optional_prompt_section(
+        &mut sections,
+        "Latest cargo test failures (from cargo_test_failures.json):",
+        cargo_test_failures,
+    );
+    let rename_section = format!(
+        "{rename_candidates}\nFor each candidate: use `symbols_prepare_rename` to select it, then `rename_symbol` to apply. Work through them in score-descending order."
+    );
+    append_optional_prompt_section(
+        &mut sections,
+        "Pending rename tasks (from state/rename_candidates.json):",
+        &rename_section,
+    );
     sections.push_str("\n\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nIssue discovery is a primary solo responsibility. When you observe a logic gap, missing guard, incorrect heuristic, stale artifact, or spec deviation — open an issue immediately with the `issue` action (fields: id, title, kind, description, location, evidence[], priority). Do not defer; record it in the same cycle you find it.\nFor all Rust source investigation use semantic tools first: symbol_refs (call sites), symbol_window (function body), symbol_neighborhood (local context), symbol_path (call chain), semantic_map (crate outline). Reach for read_file only when you need line numbers immediately before a patch.");
     sections
 }
