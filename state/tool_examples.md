@@ -498,17 +498,23 @@ Notes: `symbol` is module-relative; crate-qualified prefixes like `canon_mini_ag
 
 Ops:
   read_candidates — list pending patterns detected from the action log
-  promote — accept a candidate into lessons.json
+  promote — accept a candidate into lessons.json (entry status: pending)
   reject  — discard a candidate permanently
-  read    — view current lessons.json
+  encode  — mark a lessons.json entry as encoded into system source (removes it from prompt)
+  read    — view current lessons.json including entry statuses
   write   — write a custom LessonsArtifact directly
+
+Entry status lifecycle:
+  pending → the lesson is injected into the planner prompt at runtime only
+  encoded → the lesson has been hardcoded into system source; excluded from prompt
 
 Examples:
   {"action":"lessons","op":"read_candidates","rationale":"See what patterns have been detected since the last synthesis run."}
   {"action":"lessons","op":"promote","candidate_id":"failure_abc123def","rationale":"This failure pattern is real and recurring — promote to lessons."}
   {"action":"lessons","op":"promote","candidate_id":"all","rationale":"All pending candidates are valid — bulk promote."}
   {"action":"lessons","op":"reject","candidate_id":"seq2_xyz","rationale":"This sequence is coincidental, not a reliable workflow pattern."}
-  {"action":"lessons","op":"write","lessons":{"summary":"...","failures":["..."],"fixes":["..."],"required_actions":["..."]},"rationale":"Write a hand-crafted lessons artifact from this cycle's findings."}
+  {"action":"lessons","op":"encode","entry_text":"issue create: nest all fields under an `issue` key...","rationale":"Added this check to schema_fix_hint() in src/lessons.rs — no longer needed in prompt."}
+  {"action":"lessons","op":"write","lessons":{"summary":"...","failures":[{"text":"...","status":"pending"}],"fixes":[],"required_actions":[]},"rationale":"Write a hand-crafted lessons artifact from this cycle's findings."}
 
 ## `batch` — execute up to 8 non-mutating actions in one turn; results returned as labeled sections
 

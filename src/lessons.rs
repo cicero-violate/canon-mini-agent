@@ -349,8 +349,16 @@ fn detect_failure_candidates(entries: &[Value]) -> Vec<LessonsCandidate> {
 // ── Success sequence detection ────────────────────────────────────────────────
 
 fn detect_success_sequences(entries: &[Value]) -> Vec<LessonsCandidate> {
-    // Collect a flat list of successful tool action names in order.
-    let successes: Vec<String> = entries
+    let successes = collect_successful_actions(entries);
+    let (bigrams, trigrams) = count_success_sequences(&successes);
+    let mut results = build_success_sequence_candidates(bigrams, trigrams);
+
+    results.sort_by(|a, b| b.occurrences.cmp(&a.occurrences));
+    results
+}
+
+fn collect_successful_actions(entries: &[Value]) -> Vec<String> {
+    entries
         .iter()
         .filter(|e| {
             e.get("kind").and_then(|v| v.as_str()) == Some("tool")
@@ -358,67 +366,87 @@ fn detect_success_sequences(entries: &[Value]) -> Vec<LessonsCandidate> {
                 && e.get("ok").and_then(|v| v.as_bool()).unwrap_or(false)
         })
         .filter_map(|e| e.get("action").and_then(|v| v.as_str()).map(str::to_string))
-        .collect();
+        .collect()
+}
 
+fn count_success_sequences(
+    successes: &[String],
+) -> (
+    HashMap<(String, String), usize>,
+    HashMap<(String, String, String), usize>,
+) {
     let mut bigrams: HashMap<(String, String), usize> = HashMap::new();
     let mut trigrams: HashMap<(String, String, String), usize> = HashMap::new();
 
     for window in successes.windows(2) {
         let a = window[0].clone();
         let b = window[1].clone();
-        // Skip same-action repetitions (read_file, read_file) — not a useful pattern.
         if a == b {
             continue;
         }
         *bigrams.entry((a, b)).or_default() += 1;
     }
+
     for window in successes.windows(3) {
         let a = window[0].clone();
         let b = window[1].clone();
         let c = window[2].clone();
-        // Skip trivial or degenerate sequences.
         if a == b || b == c {
             continue;
         }
         *trigrams.entry((a, b, c)).or_default() += 1;
     }
 
+    (bigrams, trigrams)
+}
+
+fn build_success_sequence_candidates(
+    bigrams: HashMap<(String, String), usize>,
+    trigrams: HashMap<(String, String, String), usize>,
+) -> Vec<LessonsCandidate> {
     let mut results: Vec<LessonsCandidate> = Vec::new();
 
     for ((a, b), count) in bigrams {
         if count < MIN_BIGRAM_OCCURRENCES {
             continue;
         }
-        let key = format!("{a}→{b}");
-        let note = sequence_workflow_note(&a, &b, None);
-        results.push(LessonsCandidate {
-            id: stable_id("seq2", &key),
-            kind: "success_sequence".to_string(),
-            description: format!("Action sequence: {a} → {b} ({count} occurrences)"),
-            occurrences: count,
-            fix_or_note: note,
-            status: CandidateStatus::Pending,
-        });
+        results.push(build_bigram_candidate(a, b, count));
     }
 
     for ((a, b, c), count) in trigrams {
         if count < MIN_TRIGRAM_OCCURRENCES {
             continue;
         }
-        let key = format!("{a}→{b}→{c}");
-        let note = sequence_workflow_note(&a, &b, Some(&c));
-        results.push(LessonsCandidate {
-            id: stable_id("seq3", &key),
-            kind: "success_sequence".to_string(),
-            description: format!("Action sequence: {a} → {b} → {c} ({count} occurrences)"),
-            occurrences: count,
-            fix_or_note: note,
-            status: CandidateStatus::Pending,
-        });
+        results.push(build_trigram_candidate(a, b, c, count));
     }
 
-    results.sort_by(|a, b| b.occurrences.cmp(&a.occurrences));
     results
+}
+
+fn build_bigram_candidate(a: String, b: String, count: usize) -> LessonsCandidate {
+    let key = format!("{a}→{b}");
+    let note = sequence_workflow_note(&a, &b, None);
+    LessonsCandidate {
+        id: stable_id("seq2", &key),
+        kind: "success_sequence".to_string(),
+        description: format!("Action sequence: {a} → {b} ({count} occurrences)"),
+        occurrences: count,
+        fix_or_note: note,
+        status: CandidateStatus::Pending,
+    }
+}
+
+fn build_trigram_candidate(a: String, b: String, c: String, count: usize) -> LessonsCandidate {
+    let key = format!("{a}→{b}→{c}");
+    let note = sequence_workflow_note(&a, &b, Some(&c));
+    LessonsCandidate {
+        id: stable_id("seq3", &key),
+        kind: "success_sequence".to_string(),
+        description: format!("Action sequence: {a} → {b} → {c} ({count} occurrences)"),
+        occurrences: count,
+        fix_or_note: note,
+        status: CandidateStatus::Pending,
+    }
 }
 
 // ── Merge helpers ─────────────────────────────────────────────────────────────
