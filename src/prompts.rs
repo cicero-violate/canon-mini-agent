@@ -194,7 +194,7 @@ fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
 
 const READ_FILE_FOOTER: &str = "   With \"line\":N the output starts at line N and shows up to 1000 lines.\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.\n   ⚠ read_file output is prefixed with line numbers (\"42: code here\"). Strip the \"N: \" prefix when\n     writing patch lines — patch lines must contain ONLY the raw source text, never \"42: code here\".\n     WRONG:  -42: fn old() {}   RIGHT:  -fn old() {}";
 
-const READ_FILE_EXECUTOR_FOOTER: &str = "   With \"line\":N the output starts at line N and shows up to 1000 lines.\n   ⚠ Always read a file before patching it. Never patch from memory.\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.\n   ⚠ read_file output is prefixed with line numbers (\"42: code here\"). Strip the \"N: \" prefix when\n     writing patch lines — patch lines must contain ONLY the raw source text, never \"42: code here\".\n     WRONG:  -42: fn old() {}   RIGHT:  -fn old() {}";
+const READ_FILE_EXECUTOR_FOOTER: &str = "   With \"line\":N the output starts at line N and shows up to 1000 lines.\n   ⚠ Read a file ONCE before patching it. Never patch from memory.\n   ⚠ If this path already appeared in a read_file result this session, its content is already in your context — DO NOT read it again. Act on what you have: apply_patch or message.\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.\n   ⚠ read_file output is prefixed with line numbers (\"42: code here\"). Strip the \"N: \" prefix when\n     writing patch lines — patch lines must contain ONLY the raw source text, never \"42: code here\".\n     WRONG:  -42: fn old() {}   RIGHT:  -fn old() {}";
 
 const RUN_COMMAND_FOOTER: &str =
     "   ⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE.";
@@ -413,7 +413,7 @@ fn read_file_tool_prompt(kind: AgentPromptKind) -> String {
     match kind {
         AgentPromptKind::Executor | AgentPromptKind::Solo => {
             format!(
-                "   {{\"action\":\"read_file\",\"path\":\"src/app.rs\",\"rationale\":\"Read the file before editing it.\"}}\n   {{\"action\":\"read_file\",\"path\":\"src/app.rs\",\"line\":120,\"rationale\":\"Read the relevant section before editing it.\"}}\n{READ_FILE_EXECUTOR_FOOTER}"
+                "   {{\"action\":\"read_file\",\"path\":\"src/TARGET.rs\",\"rationale\":\"Read the target file once before patching it.\"}}\n   {{\"action\":\"read_file\",\"path\":\"src/TARGET.rs\",\"line\":120,\"rationale\":\"Jump to a specific section — use line:N only for content NOT already in your context.\"}}\n{READ_FILE_EXECUTOR_FOOTER}"
             )
         }
         AgentPromptKind::Planner => {
@@ -699,7 +699,7 @@ fn diagnostics_rules() -> Vec<String> {
 fn executor_rules() -> Vec<String> {
     let ws = crate::constants::workspace();
     let mut rules = vec![
-        "- Always read a file before patching it.".to_string(),
+        "- Always read a file before patching it — but read each file ONCE. If a read_file result for that path already appears in this session's context, its content is available — do NOT read it again. Calling read_file on an already-seen path is a stall: emit apply_patch or message instead.".to_string(),
         "- For Rust source navigation prefer semantic tools over raw file access: semantic_map (semantic triples) → symbol_window (function body) → symbol_neighborhood / symbol_refs (call sites / references) → symbol_path (call chain). Use read_file only for non-Rust files or immediately before patching a Rust file to get line-numbered output.".to_string(),
         "- Use list_dir only to check whether a path exists or to enumerate non-source artifacts; use semantic_map to explore Rust semantic structure. Do not invent `symbol_search`; use `symbol_refs` or `symbol_window` instead.".to_string(),
         "- Only list_dir paths that exist under WORKSPACE; do not assume `canon-utils` exists unless WORKSPACE is `/workspace/ai_sandbox/canon`.".to_string(),
@@ -723,7 +723,7 @@ fn executor_rules() -> Vec<String> {
 fn solo_rules() -> Vec<String> {
     let ws = crate::constants::workspace();
     let mut rules = vec![
-        "- Always read a file before patching it.".to_string(),
+        "- Always read a file before patching it — but read each file ONCE. If a read_file result for that path already appears in this session's context, its content is available — do NOT read it again. Calling read_file on an already-seen path is a stall: emit apply_patch or message instead.".to_string(),
         "- For Rust source navigation prefer semantic tools over raw file access: semantic_map (semantic triples) → symbol_window (function body) → symbol_neighborhood / symbol_refs (call sites / references) → symbol_path (call chain). Use read_file only for non-Rust files or immediately before patching a Rust file to get line-numbered output.".to_string(),
         "- Use list_dir only to check whether a path exists or to enumerate non-source artifacts; use semantic_map to explore Rust semantic structure. Do not invent `symbol_search`; use `symbol_refs` or `symbol_window` instead.".to_string(),
         "- Use run_command for cargo builds, tests, and shell discovery.".to_string(),
