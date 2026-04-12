@@ -6,6 +6,7 @@
 //!   symbol_window       — precise source extraction for a single symbol (def span)
 //!   symbol_refs         — all reference sites for a symbol
 //!   symbol_path         — semantic-graph BFS path between two symbols
+//!   execution_path      — unified semantic+cfg BFS path between two endpoints
 //!   symbol_neighborhood — immediate callers + callees of a symbol
 
 use anyhow::{bail, Context, Result};
@@ -180,6 +181,37 @@ impl SemanticIndex {
 
     pub fn bridge_edge_count(&self) -> usize {
         self.graph.bridge_edges.len()
+    }
+
+    /// BFS shortest path across semantic edges, CFG edges, and bridge edges.
+    /// Endpoints may be semantic symbols or raw `cfg::...` node ids.
+    pub fn execution_path(&self, from: &str, to: &str, expand_bodies: bool) -> Result<String> {
+        let from_key = self.resolve_execution_endpoint(from)?;
+        let to_key = self.resolve_execution_endpoint(to)?;
+        if from_key == to_key {
+            return Ok(format!("`{from}` is the same as `{to}`."));
+        }
+
+        let adj = self.unified_adjacency();
+        let prev = self.bfs_prev_map_owned(&adj, &from_key, &to_key);
+        if !prev.contains_key(to_key.as_str()) {
+            return Ok(format!(
+                "No unified execution path found from `{from}` to `{to}`."
+            ));
+        }
+
+        let path = self.reconstruct_path_owned(&prev, &from_key, &to_key);
+        let mut out = format!(
+            "Execution path from `{from}` → `{to}` ({} hops):\n",
+            path.len() - 1
+        );
+        for (idx, (node_id, via_relation)) in path.iter().enumerate() {
+            if idx > 0 {
+                out.push_str(&format!("    --{}--> \n", via_relation.as_deref().unwrap_or("")));
+            }
+            self.push_execution_path_entry(&mut out, node_id, expand_bodies);
+        }
+        Ok(out)
     }
 
     /// Extract a stable summary for each symbol with a definition span.
@@ -543,6 +575,13 @@ impl SemanticIndex {
         Ok(self.graph.nodes.get(key).unwrap())
     }
 
+    fn resolve_execution_endpoint(&self, endpoint: &str) -> Result<String> {
+        if self.graph.cfg_nodes.contains_key(endpoint) {
+            return Ok(endpoint.to_string());
+        }
+        Ok(self.resolve_node_key(endpoint)?.to_string())
+    }
+
     fn resolve_node_key(&self, symbol: &str) -> Result<&str> {
         if let Some((key, _node)) = self.graph.nodes.get_key_value(symbol) {
             return Ok(key.as_str());
@@ -707,12 +746,59 @@ impl SemanticIndex {
         out.push_str(&format!("  {}\n", self.edge_endpoint_path(sym)));
     }
 
+    fn push_execution_path_entry(&self, out: &mut String, node_id: &str, expand_bodies: bool) {
+        if self.graph.nodes.contains_key(node_id) {
+            self.push_symbol_path_entry(out, node_id, expand_bodies);
+            return;
+        }
+        if let Some(cfg) = self.graph.cfg_nodes.get(node_id) {
+            let owner = self.edge_endpoint_path(&cfg.owner);
+            out.push_str(&format!(
+                "  {} [owner={} block={} term={} cleanup={}]\n",
+                node_id,
+                owner,
+                cfg.block,
+                if cfg.terminator.is_empty() {
+                    "unknown"
+                } else {
+                    cfg.terminator.as_str()
+                },
+                cfg.is_cleanup
+            ));
+            if expand_bodies && self.graph.nodes.contains_key(cfg.owner.as_str()) {
+                self.push_expanded_symbol_body(out, cfg.owner.as_str(), true);
+            }
+            return;
+        }
+        out.push_str(&format!("  {}\n", node_id));
+    }
+
     fn semantic_adjacency(&self) -> HashMap<&str, Vec<(&str, &str)>> {
         let mut adj: HashMap<&str, Vec<(&str, &str)>> = HashMap::new();
         for edge in &self.graph.edges {
             adj.entry(&edge.from)
                 .or_default()
                 .push((&edge.to, edge_relation(edge)));
+        }
+        adj
+    }
+
+    fn unified_adjacency(&self) -> HashMap<String, Vec<(String, String)>> {
+        let mut adj: HashMap<String, Vec<(String, String)>> = HashMap::new();
+        for edge in &self.graph.edges {
+            adj.entry(edge.from.clone())
+                .or_default()
+                .push((edge.to.clone(), edge_relation(edge).to_string()));
+        }
+        for edge in &self.graph.cfg_edges {
+            adj.entry(edge.from.clone())
+                .or_default()
+                .push((edge.to.clone(), edge.relation.clone()));
+        }
+        for edge in &self.graph.bridge_edges {
+            adj.entry(edge.from.clone())
+                .or_default()
+                .push((edge.to.clone(), edge.relation.clone()));
         }
         adj
     }
@@ -746,6 +832,59 @@ impl SemanticIndex {
         }
 
         prev
+    }
+
+    fn bfs_prev_map_owned(
+        &self,
+        adj: &HashMap<String, Vec<(String, String)>>,
+        from_key: &str,
+        to_key: &str,
+    ) -> HashMap<String, (String, String)> {
+        let mut visited: HashSet<String> = HashSet::new();
+        let mut prev: HashMap<String, (String, String)> = HashMap::new();
+        let mut queue: VecDeque<String> = VecDeque::new();
+
+        visited.insert(from_key.to_string());
+        queue.push_back(from_key.to_string());
+
+        'bfs: while let Some(cur) = queue.pop_front() {
+            if let Some(neighbors) = adj.get(&cur) {
+                for (nb, relation) in neighbors {
+                    if visited.insert(nb.clone()) {
+                        prev.insert(nb.clone(), (cur.clone(), relation.clone()));
+                        if nb == to_key {
+                            break 'bfs;
+                        }
+                        queue.push_back(nb.clone());
+                    }
+                }
+            }
+        }
+        prev
+    }
+
+    fn reconstruct_path_owned(
+        &self,
+        prev: &HashMap<String, (String, String)>,
+        from_key: &str,
+        to_key: &str,
+    ) -> Vec<(String, Option<String>)> {
+        let mut path: Vec<(String, Option<String>)> = Vec::new();
+        let mut cur = to_key.to_string();
+        loop {
+            let via_relation = if cur == from_key {
+                None
+            } else {
+                Some(prev[&cur].1.clone())
+            };
+            path.push((cur.clone(), via_relation));
+            if cur == from_key {
+                break;
+            }
+            cur = prev[&cur].0.clone();
+        }
+        path.reverse();
+        path
     }
 
     fn enclosing_symbol_for_span<'a>(&'a self, span: &SourceSpan) -> Option<&'a str> {

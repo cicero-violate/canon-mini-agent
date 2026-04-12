@@ -5759,6 +5759,38 @@ fn handle_symbol_path_action(workspace: &Path, action: &Value) -> Result<(bool, 
     Ok((false, out))
 }
 
+fn handle_execution_path_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+    let idx = load_semantic(workspace, action)?;
+    let crate_name = semantic_crate_name(action);
+    let from = action
+        .get("from")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("execution_path requires a `from` field"))?;
+    let to = action
+        .get("to")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("execution_path requires a `to` field"))?;
+    let from = if from.starts_with("cfg::") {
+        from
+    } else {
+        strip_semantic_crate_prefix(&crate_name, from)
+    };
+    let to = if to.starts_with("cfg::") {
+        to
+    } else {
+        strip_semantic_crate_prefix(&crate_name, to)
+    };
+    if from.is_empty() || to.is_empty() {
+        return Err(anyhow!("execution_path requires non-empty `from` and `to`"));
+    }
+    let expand = action
+        .get("expand_bodies")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let out = idx.execution_path(from, to, expand)?;
+    Ok((false, out))
+}
+
 fn handle_symbol_neighborhood_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
     let idx = load_semantic(workspace, action)?;
     let crate_name = semantic_crate_name(action);
@@ -6003,6 +6035,7 @@ fn execute_batch_item(
         "symbol_window" => handle_symbol_window_action(workspace, item),
         "symbol_refs" => handle_symbol_refs_action(workspace, item),
         "symbol_path" => handle_symbol_path_action(workspace, item),
+        "execution_path" => handle_execution_path_action(workspace, item),
         "symbol_neighborhood" => handle_symbol_neighborhood_action(workspace, item),
         other => Ok((false, format!("unknown batchable action '{other}'"))),
     }
@@ -6138,6 +6171,7 @@ fn execute_action(
         "symbol_window" => handle_symbol_window_action(workspace, action),
         "symbol_refs" => handle_symbol_refs_action(workspace, action),
         "symbol_path" => handle_symbol_path_action(workspace, action),
+        "execution_path" => handle_execution_path_action(workspace, action),
         "symbol_neighborhood" => handle_symbol_neighborhood_action(workspace, action),
         "lessons" => crate::lessons::handle_lessons_action(workspace, action),
         "batch" => handle_batch_action(role, step, workspace, action),
