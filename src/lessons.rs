@@ -1481,6 +1481,125 @@ mod tests {
         assert_eq!(updated.candidates[0].status, CandidateStatus::Rejected);
     }
 
+    fn read_file_entry(path: &str, role: &str) -> Value {
+        serde_json::json!({
+            "kind": "tool",
+            "phase": "result",
+            "action": "read_file",
+            "ok": true,
+            "path": path,
+            "actor": role,
+        })
+    }
+
+    fn apply_patch_entry(role: &str) -> Value {
+        serde_json::json!({
+            "kind": "tool",
+            "phase": "result",
+            "action": "apply_patch",
+            "ok": true,
+            "actor": role,
+        })
+    }
+
+    #[test]
+    fn stall_detected_at_threshold() {
+        let entries = vec![
+            read_file_entry("src/app.rs", "solo"),
+            read_file_entry("src/app.rs", "solo"),
+            read_file_entry("src/app.rs", "solo"),
+        ];
+        let candidates = detect_stall_patterns(&entries);
+        assert_eq!(candidates.len(), 1);
+        let c = &candidates[0];
+        assert_eq!(c.kind, "stall_pattern");
+        assert!(c.description.contains("app.rs"));
+        assert_eq!(c.occurrences, 3);
+        assert_eq!(c.system_lever.as_deref(), Some("prompt_rule"));
+    }
+
+    #[test]
+    fn stall_not_detected_below_threshold() {
+        let entries = vec![
+            read_file_entry("src/app.rs", "solo"),
+            read_file_entry("src/app.rs", "solo"),
+        ];
+        let candidates = detect_stall_patterns(&entries);
+        assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn apply_patch_resets_stall_window() {
+        let entries = vec![
+            read_file_entry("src/app.rs", "solo"),
+            read_file_entry("src/app.rs", "solo"),
+            apply_patch_entry("solo"),
+            // Fresh window starts — these two don't trigger the threshold.
+            read_file_entry("src/app.rs", "solo"),
+            read_file_entry("src/app.rs", "solo"),
+        ];
+        let candidates = detect_stall_patterns(&entries);
+        assert!(candidates.is_empty(), "apply_patch should reset the window");
+    }
+
+    #[test]
+    fn different_roles_tracked_independently() {
+        let entries = vec![
+            read_file_entry("src/app.rs", "executor"),
+            read_file_entry("src/app.rs", "executor"),
+            read_file_entry("src/app.rs", "executor"),
+            // solo also stalls on a different file
+            read_file_entry("src/lib.rs", "solo"),
+            read_file_entry("src/lib.rs", "solo"),
+            read_file_entry("src/lib.rs", "solo"),
+        ];
+        let candidates = detect_stall_patterns(&entries);
+        assert_eq!(candidates.len(), 2);
+    }
+
+    #[test]
+    fn apply_promoted_lessons_writes_roles_json() {
+        let workspace = tempdir();
+        std::fs::create_dir_all(workspace.join("agent_state")).unwrap();
+
+        // Write a candidate that is promoted + prompt_rule.
+        let cfile = LessonsCandidatesFile {
+            version: 2,
+            last_synthesized_ms: 0,
+            candidates: vec![LessonsCandidate {
+                id: "stall_test".to_string(),
+                kind: "stall_pattern".to_string(),
+                description: "read stall".to_string(),
+                occurrences: 3,
+                fix_or_note: None,
+                task_ids: Vec::new(),
+                objective_ids: Vec::new(),
+                roles: vec!["executor".to_string()],
+                intents: Vec::new(),
+                system_direction: None,
+                system_lever: Some("prompt_rule".to_string()),
+                system_change_hint: Some("- Do not re-read a file already in context.".to_string()),
+                status: CandidateStatus::Promoted,
+            }],
+        };
+        save_candidates(&workspace, &cfile).unwrap();
+
+        let added = apply_promoted_lessons(&workspace);
+        assert_eq!(added, 1, "should add one rule");
+
+        // Verify ROLES.json was created with the rule.
+        let roles = load_roles_json(&workspace);
+        let executor_rules = roles["roles"]["executor"].as_array().unwrap();
+        assert!(
+            executor_rules.iter().any(|v| v.as_str() == Some("- Do not re-read a file already in context.")),
+            "rule should be in executor array"
+        );
+
+        // Idempotent: calling again should add 0 new rules.
+        let added2 = apply_promoted_lessons(&workspace);
+        assert_eq!(added2, 0, "second call should be idempotent");
+    }
+
     fn tempdir() -> std::path::PathBuf {
         let unique = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
