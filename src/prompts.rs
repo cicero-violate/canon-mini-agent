@@ -807,16 +807,31 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
     out.push_str("\n\n");
     out.push_str(&prompt_workspace(kind));
     out.push_str("\n\n");
-    out.push_str(&crate::issues::read_top_open_issues(
+    // Truncate issues section to avoid prompt overflow
+    let issues = crate::issues::read_top_open_issues(
         std::path::Path::new(workspace()),
         3,
-    ));
+    );
+    out.push_str(&truncate_section(&issues, 1500));
     out.push_str("\n\n");
     out.push_str("Tool protocol schemas (schemars):\n");
-    out.push_str(&crate::tool_schema::tool_protocol_schema_split_text());
+    // Truncate tool schema to bounded size to prevent prompt explosion
+    let schema = crate::tool_schema::tool_protocol_schema_split_text();
+    out.push_str(&truncate_section(&schema, 4000));
     out.push_str("\nFull syntax examples with notes: state/tool_examples.md — use read_file when you need a reminder.\n\n");
     out.push_str(&prompt_tail(kind));
     out
+}
+
+// Helper: truncate large prompt sections deterministically
+fn truncate_section(input: &str, max_len: usize) -> String {
+    if input.len() <= max_len {
+        input.to_string()
+    } else {
+        let mut s = input[..max_len].to_string();
+        s.push_str("\n... [truncated]");
+        s
+    }
 }
 
 pub(crate) fn planner_cycle_prompt(
