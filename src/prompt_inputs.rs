@@ -988,18 +988,7 @@ fn executor_diff(workspace: &Path, max_lines: usize) -> String {
         return executor_diff_unavailable("git diff --name-only failed");
     }
     let text = String::from_utf8_lossy(&output.stdout);
-    let files: Vec<&str> = text
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .filter(|line| {
-            !line.starts_with("PLAN.json")
-                && !line.starts_with("PLAN.md")
-                && !line.starts_with("PLANS/")
-                && *line != "VIOLATIONS.json"
-                && *line != "DIAGNOSTICS.json"
-        })
-        .collect();
+    let files = executor_diff_files(&text);
     if files.is_empty() {
         return "(no executor diff)".to_string();
     }
@@ -1020,6 +1009,26 @@ fn executor_diff(workspace: &Path, max_lines: usize) -> String {
     if diff_text.trim().is_empty() {
         return "(no executor diff)".to_string();
     }
+    render_executor_diff(&diff_text, max_lines)
+}
+
+fn executor_diff_files<'a>(text: &'a str) -> Vec<&'a str> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .filter(|line| !is_executor_diff_excluded(line))
+        .collect()
+}
+
+fn is_executor_diff_excluded(line: &str) -> bool {
+    line.starts_with("PLAN.json")
+        || line.starts_with("PLAN.md")
+        || line.starts_with("PLANS/")
+        || line == "VIOLATIONS.json"
+        || line == "DIAGNOSTICS.json"
+}
+
+fn render_executor_diff(diff_text: &str, max_lines: usize) -> String {
     let mut out = String::new();
     for (idx, line) in diff_text.lines().enumerate() {
         if idx >= max_lines {

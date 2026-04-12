@@ -25,30 +25,36 @@ fn predicted_next_actions(action: &Value) -> Vec<Value> {
     }
     let kind = action.get("action").and_then(|v| v.as_str()).unwrap_or("");
     match kind {
-        "apply_patch" => vec![json!({"action": "cargo_test", "intent": "Verify the patch compiles and tests pass."})],
+        "apply_patch" => cargo_test_prediction("Verify the patch compiles and tests pass."),
         "symbols_index" => {
-            let out = action.get("out").and_then(|v| v.as_str()).unwrap_or("state/symbols.json");
+            let out = out_or_default(action, "state/symbols.json");
             build_read_file_prediction(out, "Inspect generated symbols inventory.")
         }
         "symbols_rename_candidates" => {
-            let out = action
-                .get("out")
-                .and_then(|v| v.as_str())
-                .unwrap_or("state/rename_candidates.json");
+            let out = out_or_default(action, "state/rename_candidates.json");
             build_read_file_prediction(out, "Inspect generated rename candidates.")
         }
         "symbols_prepare_rename" => {
-            let out = action
-                .get("out")
-                .and_then(|v| v.as_str())
-                .unwrap_or("state/next_rename_action.json");
+            let out = out_or_default(action, "state/next_rename_action.json");
             build_read_file_prediction(out, "Inspect prepared rename action JSON.")
         }
-        "rename_symbol" => vec![json!({"action": "cargo_test", "intent": "Run tests after rename to ensure no regressions."})],
-        "run_command" => vec![json!({"action": "message", "intent": "Summarize command output and decide next step."})],
-        "read_file" => vec![json!({"action": "message", "intent": "Summarize findings and choose the next concrete action."})],
+        "rename_symbol" => cargo_test_prediction("Run tests after rename to ensure no regressions."),
+        "run_command" => message_prediction("Summarize command output and decide next step."),
+        "read_file" => message_prediction("Summarize findings and choose the next concrete action."),
         _ => Vec::new(),
     }
+}
+
+fn out_or_default<'a>(action: &'a Value, default: &'a str) -> &'a str {
+    action.get("out").and_then(|v| v.as_str()).unwrap_or(default)
+}
+
+fn cargo_test_prediction(intent: &str) -> Vec<Value> {
+    vec![json!({"action": "cargo_test", "intent": intent})]
+}
+
+fn message_prediction(intent: &str) -> Vec<Value> {
+    vec![json!({"action": "message", "intent": intent})]
 }
 
 fn build_read_file_prediction(path: &str, intent: &str) -> Vec<Value> {
