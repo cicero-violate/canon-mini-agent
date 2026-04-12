@@ -20,7 +20,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::prompt_inputs::LessonsArtifact;
+use crate::prompt_inputs::{LessonEntry, LessonEntryStatus, LessonsArtifact};
 
 // ── File paths ────────────────────────────────────────────────────────────────
 
@@ -432,23 +432,19 @@ fn prune_excess_pending(cfile: &mut LessonsCandidatesFile) {
 fn merge_candidate_into_artifact(artifact: &mut LessonsArtifact, c: &LessonsCandidate) {
     match c.kind.as_str() {
         "failure_pattern" => {
-            if !artifact.failures.contains(&c.description) {
-                artifact.failures.push(c.description.clone());
+            if !artifact.failures.iter().any(|e| e.text == c.description) {
+                artifact.failures.push(LessonEntry::pending(c.description.clone()));
             }
             if let Some(fix) = &c.fix_or_note {
-                if !artifact.fixes.contains(fix) {
-                    artifact.fixes.push(fix.clone());
+                if !artifact.fixes.iter().any(|e| &e.text == fix) {
+                    artifact.fixes.push(LessonEntry::pending(fix.clone()));
                 }
             }
         }
         "success_sequence" => {
-            let entry = c
-                .fix_or_note
-                .as_deref()
-                .unwrap_or(&c.description)
-                .to_string();
-            if !artifact.required_actions.contains(&entry) {
-                artifact.required_actions.push(entry);
+            let text = c.fix_or_note.as_deref().unwrap_or(&c.description).to_string();
+            if !artifact.required_actions.iter().any(|e| e.text == text) {
+                artifact.required_actions.push(LessonEntry::pending(text));
             }
         }
         _ => {}

@@ -278,6 +278,31 @@ fn stage_commit_push_before_restart(root: &Path, reason: &str, prefer_release: b
     eprintln!(
         "[canon-mini-supervisor] pre-restart checkpoint start ({reason})"
     );
+    if !checkpoint_build_succeeded(root, reason) {
+        return;
+    }
+
+    // IMPORTANT: `cargo build` (with rustc wrapper) generates the latest state/rustc/*/graph.json.
+    // Refresh the top auto-generated refactor tickets *after* the build, before staging/committing.
+    // Use the same build kind preference as the watched binary.
+    run_ticket_refresh(root, preferred_build_kind(prefer_release));
+
+    if !stage_git_checkpoint(root, reason) {
+        return;
+    }
+
+    commit_and_push_checkpoint(root, reason);
+}
+
+fn preferred_build_kind(prefer_release: bool) -> BuildKind {
+    if prefer_release {
+        BuildKind::Release
+    } else {
+        BuildKind::Debug
+    }
+}
+
+fn checkpoint_build_succeeded(root: &Path, reason: &str) -> bool {
     eprintln!(
         "[canon-mini-supervisor] pre-restart: running `cargo build --workspace` ({reason})"
     );
@@ -286,39 +311,30 @@ fn stage_commit_push_before_restart(root: &Path, reason: &str, prefer_release: b
             eprintln!(
                 "[canon-mini-supervisor] pre-restart: cargo build passed ({reason})"
             );
+            true
         }
         Ok(false) => {
             eprintln!(
                 "[canon-mini-supervisor] pre-restart cargo build failed; skipping git add/commit/push ({reason})"
             );
-            return;
+            false
         }
         Err(err) => {
             eprintln!(
                 "[canon-mini-supervisor] pre-restart cargo build errored; skipping git add/commit/push ({reason}): {err:#}"
             );
-            return;
+            false
         }
     }
+}
 
-    // IMPORTANT: `cargo build` (with rustc wrapper) generates the latest state/rustc/*/graph.json.
-    // Refresh the top auto-generated refactor tickets *after* the build, before staging/committing.
-    // Use the same build kind preference as the watched binary.
-    run_ticket_refresh(
-        root,
-        if prefer_release {
-            BuildKind::Release
-        } else {
-            BuildKind::Debug
-        },
-    );
-
+fn stage_git_checkpoint(root: &Path, reason: &str) -> bool {
     eprintln!(
         "[canon-mini-supervisor] pre-restart: running `git add -A` ({reason})"
     );
     if let Err(err) = run_cmd(root, "git", &["add", "-A"]) {
         eprintln!("[canon-mini-supervisor] git add failed ({reason}): {err:#}");
-        return;
+        return false;
     }
     eprintln!(
         "[canon-mini-supervisor] pre-restart: git add completed ({reason})"
@@ -329,16 +345,20 @@ fn stage_commit_push_before_restart(root: &Path, reason: &str, prefer_release: b
         Ok(false) => true,
         Err(err) => {
             eprintln!("[canon-mini-supervisor] git diff --cached failed ({reason}): {err:#}");
-            return;
+            return false;
         }
     };
     if !has_changes {
         eprintln!(
             "[canon-mini-supervisor] no staged changes after successful build; skipping commit/push ({reason})"
         );
-        return;
+        return false;
     }
 
+    true
+}
+
+fn commit_and_push_checkpoint(root: &Path, reason: &str) {
     let commit_msg = format!("supervisor pre-restart checkpoint ({reason})");
     eprintln!(
         "[canon-mini-supervisor] pre-restart: running `git commit -m \"{}\"` ({reason})",

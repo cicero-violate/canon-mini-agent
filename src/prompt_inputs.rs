@@ -70,16 +70,125 @@ pub struct SingleRoleContext<'a> {
 
 const LESSONS_FILE: &str = "agent_state/lessons.json";
 
+/// Lifecycle of an individual lesson entry.
+///
+/// `Pending`  — the lesson lives only in `lessons.json` and is injected into the
+///              planner/solo prompt at runtime.  The agent is still acting on it
+///              from text rather than from code.
+///
+/// `Encoded`  — the lesson has been hardcoded into the system source (a validation
+///              rule, a schema-fix hint, a prompt constant, etc.).  It is excluded
+///              from the rendered prompt because the system already embodies it.
+#[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum LessonEntryStatus {
+    #[default]
+    Pending,
+    Encoded,
+}
+
+impl<'de> serde::Deserialize<'de> for LessonEntryStatus {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        match s.as_str() {
+            "encoded" => Ok(LessonEntryStatus::Encoded),
+            _ => Ok(LessonEntryStatus::Pending),
+        }
+    }
+}
+
+/// A single lesson item — text plus its encoding lifecycle status.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct LessonEntry {
+    pub text: String,
+    #[serde(default)]
+    pub status: LessonEntryStatus,
+}
+
+impl LessonEntry {
+    pub fn pending(text: impl Into<String>) -> Self {
+        LessonEntry { text: text.into(), status: LessonEntryStatus::Pending }
+    }
+    pub fn is_pending(&self) -> bool {
+        self.status == LessonEntryStatus::Pending
+    }
+}
+
+/// Deserialize `LessonEntry` from either a plain string (old format) or a
+/// `{"text": "...", "status": "..."}` object (new format).
+impl<'de> serde::Deserialize<'de> for LessonEntry {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct EntryVisitor;
+        impl<'de> serde::de::Visitor<'de> for EntryVisitor {
+            type Value = LessonEntry;
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "a string or {{\"text\":\"...\",\"status\":\"...\"}} object")
+            }
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<LessonEntry, E> {
+                Ok(LessonEntry::pending(v))
+            }
+            fn visit_string<E: serde::de::Error>(self, v: String) -> Result<LessonEntry, E> {
+                Ok(LessonEntry::pending(v))
+            }
+            fn visit_map<M: serde::de::MapAccess<'de>>(
+                self,
+                mut map: M,
+            ) -> Result<LessonEntry, M::Error> {
+                let mut text: Option<String> = None;
+                let mut status = LessonEntryStatus::Pending;
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "text" => text = Some(map.next_value()?),
+                        "status" => status = map.next_value()?,
+                        _ => {
+                            let _ = map.next_value::<serde_json::Value>()?;
+                        }
+                    }
+                }
+                Ok(LessonEntry {
+                    text: text.unwrap_or_default(),
+                    status,
+                })
+            }
+        }
+        d.deserialize_any(EntryVisitor)
+    }
+}
+
+const ENCODING_INSTRUCTIONS: &str = "\
+To encode a lesson permanently into the system source (so it no longer needs\n\
+to live in this prompt):\n\
+  failure_pattern / fix entries  →  add to `schema_fix_hint()` or\n\
+      `sequence_workflow_note()` in src/lessons.rs, or add a validation rule\n\
+      to `first_missing_field_for_action()` in src/tool_schema.rs.\n\
+  success_sequence / required_action entries  →  add to the relevant agent\n\
+      prompt constant in src/prompts.rs, or add a runtime enforcement check\n\
+      in src/app.rs (see `enforce_diagnostics_python` as a model).\n\
+After encoding, call `lessons encode` with the entry text to mark its status\n\
+as `encoded`.  Encoded entries are excluded from the rendered prompt because\n\
+the system already embodies them structurally.";
+
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct LessonsArtifact {
     #[serde(default)]
     pub summary: String,
+    /// Recurring failure patterns observed in action logs.
     #[serde(default)]
-    pub failures: Vec<String>,
+    pub failures: Vec<LessonEntry>,
+    /// Concrete fixes / schema corrections for each failure pattern.
     #[serde(default)]
-    pub fixes: Vec<String>,
+    pub fixes: Vec<LessonEntry>,
+    /// Forward-looking workflow instructions derived from success sequences.
     #[serde(default)]
-    pub required_actions: Vec<String>,
+    pub required_actions: Vec<LessonEntry>,
+    /// How to graduate a lesson from runtime-prompt injection to system source.
+    /// Set automatically; do not edit manually.
+    #[serde(default = "default_encoding_instructions")]
+    pub encoding_instructions: String,
+}
+
+fn default_encoding_instructions() -> String {
+    ENCODING_INSTRUCTIONS.to_string()
 }
 
 pub fn read_text_or_empty(path: impl AsRef<Path>) -> String {
@@ -90,20 +199,22 @@ pub fn read_required_text(path: impl AsRef<Path>, name: &str) -> Result<String> 
     std::fs::read_to_string(path.as_ref()).with_context(|| format!("failed to read {name}"))
 }
 
-fn render_lessons_list(title: &str, items: &[String]) -> Option<String> {
-    let filtered: Vec<&str> = items
+fn render_lessons_list(title: &str, items: &[LessonEntry]) -> Option<String> {
+    // Only show pending entries — encoded ones are already in the system source.
+    let pending: Vec<&str> = items
         .iter()
-        .map(|item| item.trim())
-        .filter(|item| !item.is_empty())
+        .filter(|e| e.is_pending())
+        .map(|e| e.text.trim())
+        .filter(|t| !t.is_empty())
         .collect();
-    if filtered.is_empty() {
+    if pending.is_empty() {
         return None;
     }
     Some(format!(
         "{title}:\n{}",
-        filtered
+        pending
             .iter()
-            .map(|item| format!("- {item}"))
+            .map(|t| format!("- {t}"))
             .collect::<Vec<_>>()
             .join("\n")
     ))

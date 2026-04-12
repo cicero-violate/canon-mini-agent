@@ -494,6 +494,22 @@ Example (with bodies):
   {"action":"symbol_neighborhood","crate":"canon_mini_agent","symbol":"tools::execute_logged_action","expand_bodies":true,"rationale":"Read every caller and callee body before refactoring."}
 Notes: `symbol` is module-relative; crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped. Returns all direct callers and callees from the static call graph.
 
+## `lessons` — review and promote detected action patterns into the lessons artifact injected into every planner prompt
+
+Ops:
+  read_candidates — list pending patterns detected from the action log
+  promote — accept a candidate into lessons.json
+  reject  — discard a candidate permanently
+  read    — view current lessons.json
+  write   — write a custom LessonsArtifact directly
+
+Examples:
+  {"action":"lessons","op":"read_candidates","rationale":"See what patterns have been detected since the last synthesis run."}
+  {"action":"lessons","op":"promote","candidate_id":"failure_abc123def","rationale":"This failure pattern is real and recurring — promote to lessons."}
+  {"action":"lessons","op":"promote","candidate_id":"all","rationale":"All pending candidates are valid — bulk promote."}
+  {"action":"lessons","op":"reject","candidate_id":"seq2_xyz","rationale":"This sequence is coincidental, not a reliable workflow pattern."}
+  {"action":"lessons","op":"write","lessons":{"summary":"...","failures":["..."],"fixes":["..."],"required_actions":["..."]},"rationale":"Write a hand-crafted lessons artifact from this cycle's findings."}
+
 ## `batch` — execute up to 8 non-mutating actions in one turn; results returned as labeled sections
 
 Example (read multiple files before patching):
