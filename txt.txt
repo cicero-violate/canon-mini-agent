@@ -1,11 +1,11 @@
-TAB_ID: 433977034
-TURN_ID: 79
+TAB_ID: 433977058
+TURN_ID: 11
 AGENT_TYPE: VERIFIER
 
 Action provenance:
-- task_id: inspect_existing_mir_dup_follow_on_tasks_after_19c3_resolution
-- objective_id: obj_reduce_branch_complexity_tools_handle_symbols_index_action
-- intent: Use semantic_map once for Rust source exploration, as requested, before any deeper MIR-duplication follow-on analysis.
+- task_id: unknown
+- objective_id: unknown
+- intent: Build a structural outline of the crate to locate canon-step prediction helpers and related functions.
 
 Action result:
 src/action_examples.rs
@@ -81,110 +81,110 @@ src/app.rs
    1602  fn blocker_escalation_prompt  fn(&str, &str, &str) -> std::string::String
    1613  struct ShutdownSignal  { flag, notify }
    1618  static SHUTDOWN_SIGNAL  fn() -> std::sync::OnceLock<app::ShutdownSignal>
-   1620  fn init_shutdown_signal  fn() -> app::ShutdownSignal
-   1629  fn shutdown_signal  fn() -> std::option::Option<app::ShutdownSignal>
-   1634  struct CheckpointLane  { lane_id, lane_label, plan_text, pending, in_progress_by, latest_verifier_result }
-   1644  struct ResumeVerifierItem  { lane_id, lane_label, lane_plan_file, final_exec_result }
-   1652  struct OrchestratorCheckpoint  { workspace, created_ms, phase, phase_lane, planner_pending, diagnostics_pending, diagnostics_text, last_plan_text, last_executor_diff, last_solo_plan_text, last_solo_executor_diff, lanes, verifier_summary, verifier_pending_results }
-   1672  fn checkpoint_path  fn(&std::path::Path) -> std::path::PathBuf
-   1676  fn cycle_idle_marker_path  fn() -> std::path::PathBuf
-   1680  fn orchestrator_mode_flag_path  fn() -> std::path::PathBuf
-   1684  fn save_checkpoint  fn(&std::path::Path, &str, std::option::Option<usize>, &app::DispatchState, &[prompt_inputs::LaneConfig], &[std::string::String], &std::collections::VecDeque<(app::SubmittedExecutorTurn, u64, std::string::String)>) -> std::result::Result<(), anyhow::Error>
-   1721  fn build_checkpoint_lane_snapshots  fn(&app::DispatchState, &[prompt_inputs::LaneConfig]) -> std::vec::Vec<app::CheckpointLane>
-   1741  fn build_resume_verifier_items  fn(&[prompt_inputs::LaneConfig], &std::collections::VecDeque<(app::SubmittedExecutorTurn, u64, std::string::String)>) -> std::vec::Vec<app::ResumeVerifierItem>
-   1760  fn load_checkpoint  fn(&std::path::Path) -> std::option::Option<app::OrchestratorCheckpoint>
-   1775  fn looks_like_diff  fn(&str) -> bool
-   1782  fn guardrail_action_from_raw  fn(&str, &str) -> std::option::Option<serde_json::Value>
-   1792  fn guardrail_reaction_only_action  fn(&str) -> serde_json::Value
-   1806  fn guardrail_diff_message_action  fn(&str, &str) -> serde_json::Value
-   1820  fn guardrail_diff_message_payload  fn(&str, &str, &str, &str, &str) -> serde_json::Value
-   1834  fn apply_error_result  fn(&str, &str, &mut usize, &mut std::option::Option<std::string::String>, &mut std::option::Option<std::string::String>, &str, std::string::String) -> ()
-   1855  struct InvalidActionFeedback  { err_text, feedback }
-   1860  fn parse_action_from_raw  fn(&str, &canon_llm::config::LlmEndpoint, &str, usize, &str, &str, bool, bool, std::option::Option<(&str, u32)>) -> std::result::Result<serde_json::Value, app::InvalidActionFeedback>
-   1918  fn handle_parse_actions_error  fn(&str, usize, &str, bool, &impl Fn(&str, Value), &impl Fn(&str), &str) -> std::result::Result<serde_json::Value, app::InvalidActionFeedback>
-   1950  fn maybe_guardrail_parse_action  fn(&str, &str, bool, &impl Fn(&str, Value), &str) -> std::option::Option<serde_json::Value>
-   1972  fn extract_single_action  fn(&str, usize, &str, std::vec::Vec<serde_json::Value>, &impl Fn(&str, Value), &impl Fn(&str)) -> std::result::Result<serde_json::Value, app::InvalidActionFeedback>
-   1997  fn normalize_action_or_feedback  fn(&str, &str, &serde_json::Value, &mut serde_json::Value, &impl Fn(&str, Value)) -> std::result::Result<(), app::InvalidActionFeedback>
-   2026  fn validate_action_or_feedback  fn(&str, &str, &serde_json::Value, &impl Fn(&str, Value)) -> std::result::Result<(), app::InvalidActionFeedback>
-   2039  fn handle_invalid_action_error  fn(&str, &str, &serde_json::Value, &impl Fn(&str, Value), &str) -> app::InvalidActionFeedback
-   2064  fn invalid_action_feedback  fn(&serde_json::Value, &str, &str) -> app::InvalidActionFeedback
-   2071  fn invalid_action_feedback_with_prompt  fn(&serde_json::Value, &str, &str, &str) -> app::InvalidActionFeedback
-   2087  fn cargo_test_missing_crate_feedback  fn(&str) -> app::InvalidActionFeedback
-   2104  fn from_action  fn(&serde_json::Value) -> app::ActionProvenance
-   2113  fn build_agent_prompt  fn(&str, bool, usize, &str, &str, std::option::Option<&str>, std::option::Option<u32>, std::option::Option<u64>, std::option::Option<&str>, &app::ActionProvenance, usize, std::option::Option<&str>) -> (std::string::String, std::string::String)
-   2166  fn enforce_executor_step_limit  fn(&str, usize, &mut usize, &mut std::option::Option<std::string::String>) -> bool
-   2181  fn executor_step_limit_feedback  fn() -> std::string::String
-   2187  fn enforce_diagnostics_python  fn(&str, &str, &serde_json::Value, &mut bool) -> std::option::Option<std::string::String>
-   2210  fn take_inbound_message  fn(&str) -> std::option::Option<std::string::String>
-   2224  fn append_inbound_to_prompt  fn(&mut std::string::String, &str) -> ()
-   2230  fn inject_inbound_message  fn(&mut std::string::String, &str) -> ()
-   2236  fn extract_message_action  fn(&str) -> std::option::Option<std::string::String>
-   2251  fn is_reaction_only_response  fn(&str) -> bool
-   2268  fn apply_wake_flags  fn(&std::path::Path, &mut app::DispatchState, &mut std::option::Option<std::string::String>) -> ()
-   2311  fn collect_wake_flag_inputs  fn(&std::path::Path) -> (std::vec::Vec<state_space::WakeFlagInput>, std::collections::HashMap<&str, std::path::PathBuf>)
-   2347  fn try_parse_blocker  fn(&str) -> std::option::Option<(std::string::String, std::string::String, serde_json::Value)>
-   2360  fn persist_planner_message  fn(&serde_json::Value) -> ()
-   2372  struct LlmResponseContext  { role, endpoint, prompt_kind, submit_only }
-   2379  fn full_exchange_path  fn(&str, &str) -> std::path::PathBuf
-   2391  fn write_full_exchange  fn(&str, &str, &serde_json::Value) -> ()
-   2402  fn log_request  fn(&app::LlmResponseContext<'_>, usize, &str, &str, &str) -> ()
-   2438  fn log_response  fn(&app::LlmResponseContext<'_>, usize, &str, &str) -> ()
-   2472  fn handle_submit_ack  fn(&app::LlmResponseContext<'_>, usize, &str, &str) -> std::option::Option<std::string::String>
-   2510  fn log_error  fn(&app::LlmResponseContext<'_>, usize, &str, &str) -> ()
-   2524  fn handle_reaction_only  fn(&app::LlmResponseContext<'_>, usize, &str, &str, &mut usize, &mut usize, &mut std::option::Option<std::string::String>) -> bool
-   2562  fn continue_executor_completion  fn(&app::SubmittedExecutorTurn, u32, &str, u64, &canon_llm::config::LlmEndpoint, &canon_llm::ws_server::WsBridge, &std::path::Path, &std::sync::Arc<tokio::sync::Mutex<canon_llm::tab_management::TabSlotTable>>) -> {async fn body of app::continue_executor_completion()}
-   2683  fn run_agent  fn(&str, &str, &str, std::string::String, &canon_llm::config::LlmEndpoint, &canon_llm::ws_server::WsBridge, &std::path::Path, &std::sync::Arc<tokio::sync::Mutex<canon_llm::tab_management::TabSlotTable>>, bool, bool, bool, usize) -> {async fn body of app::run_agent()}
-   3034  fn write_post_restart_result  fn(&str, &str, &str, usize) -> ()
-   3048  fn take_post_restart_result  fn(&str) -> std::option::Option<(std::string::String, std::string::String, usize)>
-   3070  fn inject_post_restart_result  fn(&mut std::string::String, &str) -> ()
-   3084  fn find_endpoint  fn(&[canon_llm::config::LlmEndpoint], &str) -> std::result::Result<&canon_llm::config::LlmEndpoint, anyhow::Error>
-   3091  fn build_endpoints  fn() -> std::vec::Vec<canon_llm::config::LlmEndpoint>
-   3106  struct DispatchLaneState  { plan_text, pending, in_progress_by, latest_verifier_result }
-   3114  struct PendingSubmitState  { job, started_ms, command_id, endpoint_id, tabs }
-   3123  struct DeferredExecutorCompletion  { submitted, turn_id, tab_id, exec_result }
-   3151  fn new_dispatch_state  fn(&[prompt_inputs::LaneConfig]) -> app::DispatchState
-   3188  fn lane_in_flight  fn(&app::DispatchState, usize) -> bool
-   3191  fn lane_submit_active  fn(&app::DispatchState, usize) -> bool
-   3194  fn lane_next_submit_ms  fn(&app::DispatchState, usize) -> u64
-   3197  fn lane_steps_used  fn(&app::DispatchState, usize) -> usize
-   3200  fn lane_active_tab  fn(&app::DispatchState, usize) -> std::option::Option<u32>
-   3206  struct SubmittedExecutorTurn  { tab_id, lane, lane_label, command_id, actor, endpoint_id, tabs, steps_used }
-   3218  struct PendingExecutorSubmit  { executor_name, executor_display, lane_index, label, latest_verify_result, executor_role, endpoint_id, tabs }
-   3231  fn parse_submit_ack  fn(&str) -> std::option::Option<(u32, u64, std::option::Option<std::string::String>)>
-   3242  fn append_executor_completion_log  fn(&app::SubmittedExecutorTurn, usize, u64, u32, &str) -> std::result::Result<(), anyhow::Error>
-   3319  fn parse_completed_turn  fn(&serde_json::Value) -> std::option::Option<(u32, u64, std::string::String, std::option::Option<std::string::String>)>
-   3331  fn handle_executor_completion  fn(app::SubmittedExecutorTurn, u32, u64, std::string::String, &mut app::DispatchState, &[prompt_inputs::LaneConfig], &canon_llm::ws_server::WsBridge, &std::path::PathBuf, &mut tokio::task::JoinSet<(app::SubmittedExecutorTurn, u64, std::result::Result<std::string::String, anyhow::Error>)>, &mut std::collections::VecDeque<(app::SubmittedExecutorTurn, u64, std::string::String)>) -> bool
-   3392  fn record_executor_completion_observation  fn(&app::SubmittedExecutorTurn, &str, u64, u32, &str) -> ()
-   3405  fn trace_executor_completion_processed  fn(&str, u64, u32) -> ()
-   3416  fn log_executor_completion_observation_error  fn(&app::SubmittedExecutorTurn, &str, u64, u32, &impl std::fmt::Display) -> ()
-   3442  fn maybe_defer_executor_completion  fn(&mut app::DispatchState, &app::SubmittedExecutorTurn, u64, u32, &str, &str) -> bool
-   3474  fn maybe_rebind_executor_completion_tab  fn(&mut app::DispatchState, &mut app::SubmittedExecutorTurn, u32, u64, &str) -> ()
-   3502  fn spawn_executor_completion_continuation  fn(&mut app::DispatchState, &app::SubmittedExecutorTurn, &prompt_inputs::LaneConfig, u32, u64, &str, &canon_llm::ws_server::WsBridge, &std::path::PathBuf, &mut tokio::task::JoinSet<(app::SubmittedExecutorTurn, u64, std::result::Result<std::string::String, anyhow::Error>)>) -> ()
-   3538  fn handle_executor_completion_message_action  fn(&mut app::DispatchState, &app::SubmittedExecutorTurn, &prompt_inputs::LaneConfig, &str) -> ()
-   3569  fn persist_executor_completion_message  fn(&mut app::DispatchState, &serde_json::Value) -> ()
-   3607  fn plan_has_incomplete_tasks  fn(&str) -> bool
-   3625  fn preferred_objectives_path  fn(&std::path::Path) -> std::path::PathBuf
-   3635  fn objective_status_normalized  fn(&objectives::Objective) -> std::option::Option<std::string::String>
-   3642  fn objective_requires_plan_work  fn(&objectives::Objective) -> bool
-   3652  fn has_actionable_objectives  fn(&str) -> bool
-   3659  fn should_reject_solo_self_complete  fn(&serde_json::Value, &str, &str) -> bool
-   3671  fn action_retry_fingerprint  fn(&serde_json::Value) -> std::string::String
-   3687  fn verifier_confirmed_with_plan_text  fn(&str, &str) -> bool
-   3699  fn verifier_confirmed  fn(&str) -> bool
-   3705  fn dispatch_lane_mut  fn(&mut app::DispatchState, usize) -> &mut app::DispatchLaneState
-   3709  fn claim_next_lane  fn(&mut app::DispatchState, &prompt_inputs::LaneConfig) -> std::option::Option<(usize, std::string::String)>
-   3720  fn claim_executor_submit  fn(&mut app::Dispatch
+   1620  fn shutdown_signal_cell  fn() -> &std::sync::OnceLock<app::ShutdownSignal>
+   1624  fn init_shutdown_signal  fn() -> app::ShutdownSignal
+   1633  fn shutdown_signal  fn() -> std::option::Option<app::ShutdownSignal>
+   1638  struct CheckpointLane  { lane_id, lane_label, plan_text, pending, in_progress_by, latest_verifier_result }
+   1648  struct ResumeVerifierItem  { lane_id, lane_label, lane_plan_file, final_exec_result }
+   1656  struct OrchestratorCheckpoint  { workspace, created_ms, phase, phase_lane, planner_pending, diagnostics_pending, diagnostics_text, last_plan_text, last_executor_diff, last_solo_plan_text, last_solo_executor_diff, lanes, verifier_summary, verifier_pending_results }
+   1676  fn checkpoint_path  fn(&std::path::Path) -> std::path::PathBuf
+   1680  fn cycle_idle_marker_path  fn() -> std::path::PathBuf
+   1684  fn orchestrator_mode_flag_path  fn() -> std::path::PathBuf
+   1688  fn save_checkpoint  fn(&std::path::Path, &str, std::option::Option<usize>, &app::DispatchState, &[prompt_inputs::LaneConfig], &[std::string::String], &std::collections::VecDeque<(app::SubmittedExecutorTurn, u64, std::string::String)>) -> std::result::Result<(), anyhow::Error>
+   1725  fn build_checkpoint_lane_snapshots  fn(&app::DispatchState, &[prompt_inputs::LaneConfig]) -> std::vec::Vec<app::CheckpointLane>
+   1745  fn build_resume_verifier_items  fn(&[prompt_inputs::LaneConfig], &std::collections::VecDeque<(app::SubmittedExecutorTurn, u64, std::string::String)>) -> std::vec::Vec<app::ResumeVerifierItem>
+   1764  fn load_checkpoint  fn(&std::path::Path) -> std::option::Option<app::OrchestratorCheckpoint>
+   1779  fn looks_like_diff  fn(&str) -> bool
+   1786  fn guardrail_action_from_raw  fn(&str, &str) -> std::option::Option<serde_json::Value>
+   1796  fn guardrail_reaction_only_action  fn(&str) -> serde_json::Value
+   1810  fn guardrail_diff_message_action  fn(&str, &str) -> serde_json::Value
+   1824  fn guardrail_diff_message_payload  fn(&str, &str, &str, &str, &str) -> serde_json::Value
+   1838  fn apply_error_result  fn(&str, &str, &mut usize, &mut std::option::Option<std::string::String>, &mut std::option::Option<std::string::String>, &str, std::string::String) -> ()
+   1859  struct InvalidActionFeedback  { err_text, feedback }
+   1864  fn parse_action_from_raw  fn(&str, &canon_llm::config::LlmEndpoint, &str, usize, &str, &str, bool, bool, std::option::Option<(&str, u32)>) -> std::result::Result<serde_json::Value, app::InvalidActionFeedback>
+   1922  fn handle_parse_actions_error  fn(&str, usize, &str, bool, &impl Fn(&str, Value), &impl Fn(&str), &str) -> std::result::Result<serde_json::Value, app::InvalidActionFeedback>
+   1954  fn maybe_guardrail_parse_action  fn(&str, &str, bool, &impl Fn(&str, Value), &str) -> std::option::Option<serde_json::Value>
+   1976  fn extract_single_action  fn(&str, usize, &str, std::vec::Vec<serde_json::Value>, &impl Fn(&str, Value), &impl Fn(&str)) -> std::result::Result<serde_json::Value, app::InvalidActionFeedback>
+   2001  fn normalize_action_or_feedback  fn(&str, &str, &serde_json::Value, &mut serde_json::Value, &impl Fn(&str, Value)) -> std::result::Result<(), app::InvalidActionFeedback>
+   2030  fn validate_action_or_feedback  fn(&str, &str, &serde_json::Value, &impl Fn(&str, Value)) -> std::result::Result<(), app::InvalidActionFeedback>
+   2043  fn handle_invalid_action_error  fn(&str, &str, &serde_json::Value, &impl Fn(&str, Value), &str) -> app::InvalidActionFeedback
+   2068  fn invalid_action_feedback  fn(&serde_json::Value, &str, &str) -> app::InvalidActionFeedback
+   2075  fn invalid_action_feedback_with_prompt  fn(&serde_json::Value, &str, &str, &str) -> app::InvalidActionFeedback
+   2091  fn cargo_test_missing_crate_feedback  fn(&str) -> app::InvalidActionFeedback
+   2108  fn from_action  fn(&serde_json::Value) -> app::ActionProvenance
+   2117  fn build_agent_prompt  fn(&str, bool, usize, &str, &str, std::option::Option<&str>, std::option::Option<u32>, std::option::Option<u64>, std::option::Option<&str>, &app::ActionProvenance, usize, std::option::Option<&str>) -> (std::string::String, std::string::String)
+   2170  fn enforce_executor_step_limit  fn(&str, usize, &mut usize, &mut std::option::Option<std::string::String>) -> bool
+   2185  fn executor_step_limit_feedback  fn() -> std::string::String
+   2191  fn enforce_diagnostics_python  fn(&str, &str, &serde_json::Value, &mut bool) -> std::option::Option<std::string::String>
+   2214  fn take_inbound_message  fn(&str) -> std::option::Option<std::string::String>
+   2228  fn append_inbound_to_prompt  fn(&mut std::string::String, &str) -> ()
+   2234  fn inject_inbound_message  fn(&mut std::string::String, &str) -> ()
+   2240  fn extract_message_action  fn(&str) -> std::option::Option<std::string::String>
+   2255  fn is_reaction_only_response  fn(&str) -> bool
+   2272  fn apply_wake_flags  fn(&std::path::Path, &mut app::DispatchState, &mut std::option::Option<std::string::String>) -> ()
+   2315  fn collect_wake_flag_inputs  fn(&std::path::Path) -> (std::vec::Vec<state_space::WakeFlagInput>, std::collections::HashMap<&str, std::path::PathBuf>)
+   2351  fn try_parse_blocker  fn(&str) -> std::option::Option<(std::string::String, std::string::String, serde_json::Value)>
+   2364  fn persist_planner_message  fn(&serde_json::Value) -> ()
+   2376  struct LlmResponseContext  { role, endpoint, prompt_kind, submit_only }
+   2383  fn full_exchange_path  fn(&str, &str) -> std::path::PathBuf
+   2395  fn write_full_exchange  fn(&str, &str, &serde_json::Value) -> ()
+   2406  fn log_request  fn(&app::LlmResponseContext<'_>, usize, &str, &str, &str) -> ()
+   2442  fn log_response  fn(&app::LlmResponseContext<'_>, usize, &str, &str) -> ()
+   2476  fn handle_submit_ack  fn(&app::LlmResponseContext<'_>, usize, &str, &str) -> std::option::Option<std::string::String>
+   2514  fn log_error  fn(&app::LlmResponseContext<'_>, usize, &str, &str) -> ()
+   2528  fn handle_reaction_only  fn(&app::LlmResponseContext<'_>, usize, &str, &str, &mut usize, &mut usize, &mut std::option::Option<std::string::String>) -> bool
+   2566  fn continue_executor_completion  fn(&app::SubmittedExecutorTurn, u32, &str, u64, &canon_llm::config::LlmEndpoint, &canon_llm::ws_server::WsBridge, &std::path::Path, &std::sync::Arc<tokio::sync::Mutex<canon_llm::tab_management::TabSlotTable>>) -> {async fn body of app::continue_executor_completion()}
+   2687  fn run_agent  fn(&str, &str, &str, std::string::String, &canon_llm::config::LlmEndpoint, &canon_llm::ws_server::WsBridge, &std::path::Path, &std::sync::Arc<tokio::sync::Mutex<canon_llm::tab_management::TabSlotTable>>, bool, bool, bool, usize) -> {async fn body of app::run_agent()}
+   3038  fn write_post_restart_result  fn(&str, &str, &str, usize) -> ()
+   3052  fn take_post_restart_result  fn(&str) -> std::option::Option<(std::string::String, std::string::String, usize)>
+   3074  fn inject_post_restart_result  fn(&mut std::string::String, &str) -> ()
+   3088  fn find_endpoint  fn(&[canon_llm::config::LlmEndpoint], &str) -> std::result::Result<&canon_llm::config::LlmEndpoint, anyhow::Error>
+   3095  fn build_endpoints  fn() -> std::vec::Vec<canon_llm::config::LlmEndpoint>
+   3110  struct DispatchLaneState  { plan_text, pending, in_progress_by, latest_verifier_result }
+   3118  struct PendingSubmitState  { job, started_ms, command_id, endpoint_id, tabs }
+   3127  struct DeferredExecutorCompletion  { submitted, turn_id, tab_id, exec_result }
+   3155  fn new_dispatch_state  fn(&[prompt_inputs::LaneConfig]) -> app::DispatchState
+   3192  fn lane_in_flight  fn(&app::DispatchState, usize) -> bool
+   3195  fn lane_submit_active  fn(&app::DispatchState, usize) -> bool
+   3198  fn lane_next_submit_ms  fn(&app::DispatchState, usize) -> u64
+   3201  fn lane_steps_used  fn(&app::DispatchState, usize) -> usize
+   3204  fn lane_active_tab  fn(&app::DispatchState, usize) -> std::option::Option<u32>
+   3210  struct SubmittedExecutorTurn  { tab_id, lane, lane_label, command_id, actor, endpoint_id, tabs, steps_used }
+   3222  struct PendingExecutorSubmit  { executor_name, executor_display, lane_index, label, latest_verify_result, executor_role, endpoint_id, tabs }
+   3235  fn parse_submit_ack  fn(&str) -> std::option::Option<(u32, u64, std::option::Option<std::string::String>)>
+   3246  fn append_executor_completion_log  fn(&app::SubmittedExecutorTurn, usize, u64, u32, &str) -> std::result::Result<(), anyhow::Error>
+   3323  fn parse_completed_turn  fn(&serde_json::Value) -> std::option::Option<(u32, u64, std::string::String, std::option::Option<std::string::String>)>
+   3335  fn handle_executor_completion  fn(app::SubmittedExecutorTurn, u32, u64, std::string::String, &mut app::DispatchState, &[prompt_inputs::LaneConfig], &canon_llm::ws_server::WsBridge, &std::path::PathBuf, &mut tokio::task::JoinSet<(app::SubmittedExecutorTurn, u64, std::result::Result<std::string::String, anyhow::Error>)>, &mut std::collections::VecDeque<(app::SubmittedExecutorTurn, u64, std::string::String)>) -> bool
+   3396  fn record_executor_completion_observation  fn(&app::SubmittedExecutorTurn, &str, u64, u32, &str) -> ()
+   3409  fn trace_executor_completion_processed  fn(&str, u64, u32) -> ()
+   3420  fn log_executor_completion_observation_error  fn(&app::SubmittedExecutorTurn, &str, u64, u32, &impl std::fmt::Display) -> ()
+   3446  fn maybe_defer_executor_completion  fn(&mut app::DispatchState, &app::SubmittedExecutorTurn, u64, u32, &str, &str) -> bool
+   3478  fn maybe_rebind_executor_completion_tab  fn(&mut app::DispatchState, &mut app::SubmittedExecutorTurn, u32, u64, &str) -> ()
+   3506  fn spawn_executor_completion_continuation  fn(&mut app::DispatchState, &app::SubmittedExecutorTurn, &prompt_inputs::LaneConfig, u32, u64, &str, &canon_llm::ws_server::WsBridge, &std::path::PathBuf, &mut tokio::task::JoinSet<(app::SubmittedExecutorTurn, u64, std::result::Result<std::string::String, anyhow::Error>)>) -> ()
+   3542  fn handle_executor_completion_message_action  fn(&mut app::DispatchState, &app::SubmittedExecutorTurn, &prompt_inputs::LaneConfig, &str) -> ()
+   3573  fn persist_executor_completion_message  fn(&mut app::DispatchState, &serde_json::Value) -> ()
+   3611  fn plan_has_incomplete_tasks  fn(&str) -> bool
+   3629  fn preferred_objectives_path  fn(&std::path::Path) -> std::path::PathBuf
+   3639  fn objective_status_normalized  fn(&objectives::Objective) -> std::option::Option<std::string::String>
+   3646  fn objective_requires_plan_work  fn(&objectives::Objective) -> bool
+   3656  fn has_actionable_objectives  fn(&str) -> bool
+   3663  fn should_reject_solo_self_complete  fn(&serde_json::Value, &str, &str) -> bool
+   3675  fn action_retry_fingerprint  fn(&serde_json::Value) -> std::string::String
+   3691  fn verifier_confirmed_with_plan_text  fn(&str, &str) -> bool
+   3703  fn verifier_confirmed  fn(&str) -> bool
+   3709  fn dispatch_lane_mut  fn(&mut app::DispatchState, usize) -> &mut app::DispatchLaneState
+   3713  fn claim_next_lane  fn(&mut app::DispatchState, &prompt_inputs::LaneConfig) -> std::option::Option<(u
 
 Predicted next actions from your last turn:
 ```json
 [
   {
-    "action": "message",
-    "intent": "Report the semantic_map findings and decide whether a READY follow-on MIR-duplication task should be dispatched."
+    "action": "symbol_window",
+    "intent": "Inspect the body of prediction_output_from_stdin and its helper chain in detail."
   },
   {
-    "action": "plan",
-    "intent": "Create the next MIR-duplication task only if semantic_map context confirms no existing READY task already covers the next issue."
+    "action": "message",
+    "intent": "Dispatch executor with refined understanding of helper boundaries if simplification is warranted."
   }
 ]
 ```
