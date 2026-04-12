@@ -186,42 +186,34 @@ pub(crate) fn compact_log_record(
     record.insert("kind".to_string(), json!(kind));
     record.insert("phase".to_string(), json!(phase));
 
-    if let Some(value) = actor.and_then(|value| compact_json(json!(value))) {
-        record.insert("actor".to_string(), value);
-    }
-    if let Some(value) = lane.and_then(|value| compact_json(json!(value))) {
-        record.insert("lane".to_string(), value);
-    }
-    if let Some(value) = endpoint_id.and_then(|value| compact_json(json!(value))) {
-        record.insert("endpoint_id".to_string(), value);
-    }
-    if let Some(value) = step.and_then(|value| compact_json(json!(value))) {
-        record.insert("step".to_string(), value);
-    }
-    if let Some(value) = turn_id.and_then(|value| compact_json(json!(value))) {
-        record.insert("turn_id".to_string(), value);
-    }
-    if let Some(value) = command_id.and_then(|value| compact_json(json!(value))) {
-        record.insert("command_id".to_string(), value);
-    }
-    if let Some(value) = op.and_then(compact_json) {
-        record.insert("op".to_string(), value);
-    }
-    if let Some(value) = ok.and_then(|value| compact_json(json!(value))) {
-        record.insert("ok".to_string(), value);
-    }
-    if let Some(value) = observation.and_then(|value| compact_json(json!(truncate(&value, MAX_SNIPPET)))) {
-        record.insert("observation".to_string(), value);
-    }
-    if let Some(value) = rationale.and_then(|value| compact_json(json!(truncate(&value, MAX_SNIPPET)))) {
-        record.insert("rationale".to_string(), value);
-    }
-    if let Some(value) = text.and_then(|value| compact_json(json!(truncate(&value, MAX_SNIPPET)))) {
-        record.insert("text".to_string(), value);
-    }
-    if let Some(value) = meta.and_then(compact_json) {
-        record.insert("meta".to_string(), value);
-    }
+    // helper to reduce repeated Option->compact_json->insert pattern
+    let mut insert_opt = |key: &str, value: Option<Value>| {
+        if let Some(v) = value.and_then(compact_json) {
+            record.insert(key.to_string(), v);
+        }
+    };
+
+    insert_opt("actor", actor.map(|v| json!(v)));
+    insert_opt("lane", lane.map(|v| json!(v)));
+    insert_opt("endpoint_id", endpoint_id.map(|v| json!(v)));
+    insert_opt("step", step.map(|v| json!(v)));
+    insert_opt("turn_id", turn_id.map(|v| json!(v)));
+    insert_opt("command_id", command_id.map(|v| json!(v)));
+    insert_opt("op", op);
+    insert_opt("ok", ok.map(|v| json!(v)));
+    insert_opt(
+        "observation",
+        observation.map(|v| json!(truncate(&v, MAX_SNIPPET))),
+    );
+    insert_opt(
+        "rationale",
+        rationale.map(|v| json!(truncate(&v, MAX_SNIPPET))),
+    );
+    insert_opt(
+        "text",
+        text.map(|v| json!(truncate(&v, MAX_SNIPPET))),
+    );
+    insert_opt("meta", meta);
 
     Value::Object(record)
 }
