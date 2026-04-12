@@ -636,6 +636,7 @@ async fn run_solo_phase(
                 }
             }
             crate::lessons::maybe_synthesize_lessons(ctx.workspace);
+            crate::lessons::apply_promoted_lessons(ctx.workspace);
             true
         }
         Err(err) => {
@@ -712,6 +713,7 @@ async fn run_diagnostics_phase(
             dispatch_state.planner_pending =
                 decide_post_diagnostics(diagnostics_changed, verifier_changed);
             crate::lessons::maybe_synthesize_lessons(ctx.workspace);
+            crate::lessons::apply_promoted_lessons(ctx.workspace);
             true
         }
         Err(err) => {
