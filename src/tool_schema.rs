@@ -45,6 +45,7 @@ pub enum PredictedActionName {
     SymbolWindow,
     SymbolRefs,
     SymbolPath,
+    ExecutionPath,
     SymbolNeighborhood,
     Batch,
     Lessons,
@@ -209,6 +210,7 @@ pub enum BatchableActionName {
     SymbolWindow,
     SymbolRefs,
     SymbolPath,
+    ExecutionPath,
     SymbolNeighborhood,
     SymbolsIndex,
     SymbolsRenameCandidates,
@@ -518,6 +520,18 @@ pub enum ToolAction {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         expand_bodies: bool,
     },
+    /// BFS shortest path across semantic nodes, CFG blocks, and bridge edges.
+    ExecutionPath {
+        #[serde(flatten)]
+        base: ActionBase,
+        #[serde(rename = "crate")]
+        crate_name: String,
+        from: String,
+        to: String,
+        /// When true, inlines the owner symbol body for semantic hops and CFG-owned blocks.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        expand_bodies: bool,
+    },
     /// Immediate callers and callees of a symbol in the call graph.
     /// Set `expand_bodies` to true to inline the source body of each caller and callee.
     SymbolNeighborhood {
@@ -745,6 +759,13 @@ fn build_tool_actions_list() -> Vec<(&'static str, &'static str, Option<&'static
             "BFS shortest semantic-graph path between two symbols; set expand_bodies:true to inline the source body of each hop",
             Some(
                 "Example:\n  {\"action\":\"symbol_path\",\"crate\":\"canon_mini_agent\",\"from\":\"app::run_agent\",\"to\":\"tools::handle_apply_patch_action\",\"rationale\":\"Trace the shortest semantic route between two symbols.\"}\nExample (with bodies):\n  {\"action\":\"symbol_path\",\"crate\":\"canon_mini_agent\",\"from\":\"app::run_agent\",\"to\":\"tools::handle_apply_patch_action\",\"expand_bodies\":true,\"rationale\":\"Read every symbol body along the semantic path before changing a handler signature.\"}\nNotes: `from`/`to` are module-relative; crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped. Traverses all semantic edges and labels each hop with its relation; returns the shortest path with file:line annotations.",
+            ),
+        ),
+        (
+            "execution_path",
+            "BFS shortest unified path across semantic nodes, CFG blocks, and bridge edges",
+            Some(
+                "Example:\n  {\"action\":\"execution_path\",\"crate\":\"canon_mini_agent\",\"from\":\"app::run_agent\",\"to\":\"tools::handle_apply_patch_action\",\"rationale\":\"Trace the shortest execution-aware route between two symbols.\"}\nExample (to a raw CFG block):\n  {\"action\":\"execution_path\",\"crate\":\"canon_mini_agent\",\"from\":\"app::run_agent\",\"to\":\"cfg::app::run_agent::bb3\",\"rationale\":\"Reach a specific MIR basic block from the owning entry point.\"}\nNotes: `from`/`to` may be module-relative symbols or raw `cfg::...` node ids. Traverses semantic edges, CFG edges, and bridge edges (`Entry`, `BelongsTo`, `Call`). Returns the shortest path with relation labels.",
             ),
         ),
         (
