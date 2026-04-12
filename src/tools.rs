@@ -567,7 +567,7 @@ fn create_issue(action: &Value, path: &Path, raw: &str) -> Result<(bool, String)
         bail!("issue id already exists: {}", issue.id);
     }
     file.issues.push(issue);
-    write_issues_file(path, &file)?;
+    write_issues_file(path, &mut file)?;
     Ok((false, "issue create ok".to_string()))
 }
 
@@ -589,7 +589,7 @@ fn update_issue(action: &Value, path: &Path, raw: &str) -> Result<(bool, String)
         }
     }
     *issue = serde_json::from_value(value)?;
-    write_issues_file(path, &file)?;
+    write_issues_file(path, &mut file)?;
     Ok((false, "issue update ok".to_string()))
 }
 
@@ -604,7 +604,7 @@ fn delete_issue(action: &Value, path: &Path, raw: &str) -> Result<(bool, String)
     if file.issues.len() == before {
         bail!("issue not found: {issue_id}");
     }
-    write_issues_file(path, &file)?;
+    write_issues_file(path, &mut file)?;
     Ok((false, "issue delete ok".to_string()))
 }
 
@@ -620,7 +620,7 @@ fn set_issue_status(action: &Value, path: &Path, raw: &str) -> Result<(bool, Str
     let mut file = parse_issues_file_required(raw)?;
     let issue = find_issue_mut(&mut file, issue_id)?;
     issue.status = status.to_string();
-    write_issues_file(path, &file)?;
+    write_issues_file(path, &mut file)?;
     Ok((false, "issue set_status ok".to_string()))
 }
 
@@ -644,7 +644,8 @@ fn find_issue_mut<'a>(file: &'a mut IssuesFile, issue_id: &str) -> Result<&'a mu
     Ok(issue)
 }
 
-fn write_issues_file(path: &Path, file: &IssuesFile) -> Result<()> {
+fn write_issues_file(path: &Path, file: &mut IssuesFile) -> Result<()> {
+    crate::issues::rescore_all(file);
     std::fs::write(path, serde_json::to_string_pretty(file)?)?;
     Ok(())
 }

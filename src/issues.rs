@@ -146,22 +146,21 @@ pub fn read_open_issues(workspace: &Path) -> String {
     if file.issues.is_empty() {
         return "(no open issues)".to_string();
     }
-    // Sort: high → medium → low, then by id.
-    let priority_rank = |p: &str| match p.trim().to_lowercase().as_str() {
-        "high" => 0,
-        "medium" => 1,
-        _ => 2,
-    };
+    // Rescore on read so scores are always fresh even for old/unscored issues.
+    rescore_all(&mut file);
+    // Sort by score descending, then id for stability.
     file.issues.sort_by(|a, b| {
-        priority_rank(&a.priority)
-            .cmp(&priority_rank(&b.priority))
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| a.id.cmp(&b.id))
     });
     serde_json::to_string_pretty(&file).unwrap_or(raw)
 }
 
 /// Read ISSUES.json and return a small human-readable summary of the top open issues.
-/// Used for system-prompt priming; keep it short.
+/// Issues are ranked by normalized score [0.0, 1.0]; score is shown in the output
+/// so the LLM can calibrate effort against impact.
 pub fn read_top_open_issues(workspace: &Path, limit: usize) -> String {
     let path = workspace.join(ISSUES_FILE);
     let raw = std::fs::read_to_string(&path).unwrap_or_default();
@@ -175,14 +174,13 @@ pub fn read_top_open_issues(workspace: &Path, limit: usize) -> String {
     if file.issues.is_empty() {
         return "(no open issues)".to_string();
     }
-    let priority_rank = |p: &str| match p.trim().to_lowercase().as_str() {
-        "high" => 0,
-        "medium" => 1,
-        _ => 2,
-    };
+    // Rescore on read so scores are always fresh.
+    rescore_all(&mut file);
+    // Sort by score descending, then id for stability.
     file.issues.sort_by(|a, b| {
-        priority_rank(&a.priority)
-            .cmp(&priority_rank(&b.priority))
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| a.id.cmp(&b.id))
     });
     let mut out = String::new();
@@ -194,8 +192,8 @@ pub fn read_top_open_issues(workspace: &Path, limit: usize) -> String {
             format!(" ({})", issue.location.trim())
         };
         out.push_str(&format!(
-            "- [{}] {}: {}{}\n",
-            issue.priority.trim(),
+            "- [score:{:.2}] {}: {}{}\n",
+            issue.score,
             issue.id,
             issue.title.trim(),
             loc

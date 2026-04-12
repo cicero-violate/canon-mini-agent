@@ -1105,7 +1105,10 @@ pub(crate) fn single_role_solo_prompt(
             &rename_section,
         );
     }
-    sections.push_str("\n\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nIssue discovery is a primary solo responsibility. When you observe a logic gap, missing guard, incorrect heuristic, stale artifact, or spec deviation — open an issue immediately with the `issue` action (fields: id, title, kind, description, location, evidence[], priority). Do not defer; record it in the same cycle you find it.\nFor all Rust source investigation use semantic tools first: symbol_refs (call sites), symbol_window (function body), symbol_neighborhood (local context), symbol_path (call chain), semantic_map (crate outline). Reach for read_file only when you need line numbers immediately before a patch.");
+    if !sections.ends_with("\n\n") {
+        sections.push_str("\n\n");
+    }
+    sections.push_str("Use the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nIssue discovery is a primary solo responsibility. When you observe a logic gap, missing guard, incorrect heuristic, stale artifact, or spec deviation — open an issue immediately with the `issue` action (fields: id, title, kind, description, location, evidence[], priority). Do not defer; record it in the same cycle you find it.\nFor all Rust source investigation use semantic tools first: symbol_refs (call sites), symbol_window (function body), symbol_neighborhood (local context), symbol_path (call chain), semantic_map (crate outline). Reach for read_file only when you need line numbers immediately before a patch.");
     sections
 }
 
