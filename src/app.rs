@@ -1167,28 +1167,20 @@ fn log_late_submit_ack(
     tab_id: u32,
     turn_id: u64,
 ) {
-    eprintln!(
-        "[orchestrate] submit ack without pending submit (late ack — registering turn): lane={} tab_id={} turn_id={}",
-        ctx.lanes[lane_id].label,
-        tab_id,
-        turn_id
-    );
-    log_error_event(
-        "executor",
-        "orchestrate",
-        None,
-        &format!(
+    let lane_label = &ctx.lanes[lane_id].label;
+    log_submit_ack_event(
+        format!(
             "submit ack without pending submit (late ack — registering turn): lane={} tab_id={} turn_id={}",
-            ctx.lanes[lane_id].label,
+            lane_label,
             tab_id,
             turn_id
         ),
-        Some(json!({
+        json!({
             "stage": "executor_submit_ack_late",
-            "lane": ctx.lanes[lane_id].label,
+            "lane": lane_label,
             "tab_id": tab_id,
             "turn_id": turn_id,
-        })),
+        }),
     );
 }
 
@@ -1228,28 +1220,20 @@ fn log_submit_ack_timeout(
     tab_id: u32,
     turn_id: u64,
 ) {
-    eprintln!(
-        "[orchestrate] submit ack arrived after timeout: lane={} tab_id={} turn_id={}",
-        ctx.lanes[lane_id].label,
-        tab_id,
-        turn_id
-    );
-    log_error_event(
-        "executor",
-        "orchestrate",
-        None,
-        &format!(
+    let lane_label = &ctx.lanes[lane_id].label;
+    log_submit_ack_event(
+        format!(
             "submit ack arrived after timeout: lane={} tab_id={} turn_id={}",
-            ctx.lanes[lane_id].label,
+            lane_label,
             tab_id,
             turn_id
         ),
-        Some(json!({
+        json!({
             "stage": "executor_submit_ack_timeout",
-            "lane": ctx.lanes[lane_id].label,
+            "lane": lane_label,
             "tab_id": tab_id,
             "turn_id": turn_id,
-        })),
+        }),
     );
 }
 
@@ -1272,29 +1256,26 @@ fn log_submit_ack_tab_mismatch(
     active_tab: u32,
     tab_id: u32,
 ) {
-    eprintln!(
-        "[orchestrate] submit ack tab mismatch: lane={} active_tab={} ack_tab={} (overwriting active tab)",
-        ctx.lanes[lane_id].label,
-        active_tab,
-        tab_id
-    );
-    log_error_event(
-        "executor",
-        "orchestrate",
-        None,
-        &format!(
+    let lane_label = &ctx.lanes[lane_id].label;
+    log_submit_ack_event(
+        format!(
             "submit ack tab mismatch: lane={} active_tab={} ack_tab={} (overwriting active tab)",
-            ctx.lanes[lane_id].label,
+            lane_label,
             active_tab,
             tab_id
         ),
-        Some(json!({
+        json!({
             "stage": "executor_submit_ack_tab_mismatch",
-            "lane": ctx.lanes[lane_id].label,
+            "lane": lane_label,
             "active_tab": active_tab,
             "ack_tab": tab_id,
-        })),
+        }),
     );
+}
+
+fn log_submit_ack_event(message: String, payload: serde_json::Value) {
+    eprintln!("[orchestrate] {message}");
+    log_error_event("executor", "orchestrate", None, &message, Some(payload));
 }
 
 fn handle_executor_submit_ack_result(
