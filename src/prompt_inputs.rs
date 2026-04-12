@@ -277,16 +277,8 @@ pub fn read_rename_candidates_or_empty(workspace: &Path) -> String {
 /// Read state/reports/complexity/latest.json and return the top `limit` hotspots
 /// as compact text for prompt injection. Returns empty string if report is absent.
 pub fn read_complexity_hotspots(workspace: &Path, limit: usize) -> String {
-    let path = workspace
-        .join("state")
-        .join("reports")
-        .join("complexity")
-        .join("latest.json");
-    let raw = match std::fs::read_to_string(&path) {
-        Ok(s) => s,
-        Err(_) => return String::new(),
-    };
-    let Ok(report) = serde_json::from_str::<serde_json::Value>(&raw) else {
+    let path = complexity_report_path(workspace);
+    let Some(report) = load_complexity_report(&path) else {
         return String::new();
     };
     let Some(top) = report.get("global_top").and_then(|v| v.as_array()) else {
@@ -302,26 +294,41 @@ pub fn read_complexity_hotspots(workspace: &Path, limit: usize) -> String {
          Loop: Detect(this report) → Propose(LLM) → Apply(patch/rename) → Verify(build+test)\n",
     );
     for item in top.iter().take(limit.max(1)) {
-        let symbol = item.get("symbol").and_then(|v| v.as_str()).unwrap_or("?");
-        let file = item.get("file").and_then(|v| v.as_str()).unwrap_or("?");
-        let line = item.get("line").and_then(|v| v.as_u64()).unwrap_or(0);
-        let obj_score = item
-            .get("objective_score")
-            .and_then(|v| v.as_str())
-            .unwrap_or("?");
-        let blocks = item
-            .get("mir_blocks")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        let density = item
-            .get("stmt_density")
-            .and_then(|v| v.as_str())
-            .unwrap_or("?");
-        out.push_str(&format!(
-            "  [obj:{obj_score} B:{blocks} R_density:{density}] {symbol} ({file}:{line})\n"
-        ));
+        out.push_str(&format_complexity_hotspot_line(item));
     }
     out
+}
+
+fn complexity_report_path(workspace: &Path) -> std::path::PathBuf {
+    workspace
+        .join("state")
+        .join("reports")
+        .join("complexity")
+        .join("latest.json")
+}
+
+fn load_complexity_report(path: &Path) -> Option<serde_json::Value> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str::<serde_json::Value>(&raw).ok()
+}
+
+fn format_complexity_hotspot_line(item: &serde_json::Value) -> String {
+    let symbol = item.get("symbol").and_then(|v| v.as_str()).unwrap_or("?");
+    let file = item.get("file").and_then(|v| v.as_str()).unwrap_or("?");
+    let line = item.get("line").and_then(|v| v.as_u64()).unwrap_or(0);
+    let obj_score = item
+        .get("objective_score")
+        .and_then(|v| v.as_str())
+        .unwrap_or("?");
+    let blocks = item
+        .get("mir_blocks")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let density = item
+        .get("stmt_density")
+        .and_then(|v| v.as_str())
+        .unwrap_or("?");
+    format!("  [obj:{obj_score} B:{blocks} R_density:{density}] {symbol} ({file}:{line})\n")
 }
 
 pub fn read_lessons_or_empty(workspace: &Path) -> String {
