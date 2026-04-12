@@ -2634,56 +2634,85 @@ fn handle_apply_patch_action(
         return Ok((false, msg));
     }
     match apply_patch(&patch, workspace) {
-        Ok(_) => {
-            if let Some(result) = reject_unvalidated_diagnostics_persistence(
-                role,
-                step,
-                workspace,
-                diagnostics_targeted,
-                previous_diagnostics_text,
-            )? {
-                return Ok(result);
-            }
-            if let Some(result) = validate_schema_guarded_patch_outputs(
-                role,
-                step,
-                workspace,
-                &schema_snapshots,
-            ) {
-                return Ok(result);
-            }
-            eprintln!("[{role}] step={} apply_patch ok", step);
-            if let Some(result) = verify_apply_patch_crate(role, step, workspace, patch) {
-                return Ok(result);
-            }
-            Ok((false, "apply_patch ok".to_string()))
-        }
-        Err(e) => {
-            let err_str = e.to_string();
-            eprintln!("[{role}] step={} apply_patch failed: {err_str}", step);
-            log_error_event(
-                role,
-                "apply_patch",
-                Some(step),
-                &format!("apply_patch failed: {err_str}"),
-                patch_first_file(&patch).map(|path| json!({
-                    "stage": "apply_patch",
-                    "path": path,
-                })),
-            );
-            let read_path = extract_anchor_fail_path(&err_str)
-                .or_else(|| patch_first_file(&patch).map(|s| s.to_string()));
-            let guidance = patch_failure_guidance(read_path.as_deref(), &err_str);
-            let mut msg = format!("apply_patch failed: {err_str}\n\n{guidance}");
-            if let Some(fp) = read_path {
-                if let Ok(content) = auto_read_for_patch_anchor(workspace, &fp, &err_str) {
-                    eprintln!("[{role}] step={} auto_read path={fp}", step);
-                    msg = format!("apply_patch failed: {err_str}\n\n{guidance}\n\n{content}");
-                }
-            }
-            Ok((false, msg))
+        Ok(_) => handle_apply_patch_success(
+            role,
+            step,
+            workspace,
+            patch,
+            diagnostics_targeted,
+            previous_diagnostics_text,
+            &schema_snapshots,
+        ),
+        Err(e) => handle_apply_patch_failure(role, step, workspace, patch, &e.to_string()),
+    }
+}
+
+fn handle_apply_patch_success(
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    patch: &str,
+    diagnostics_targeted: bool,
+    previous_diagnostics_text: Option<String>,
+    schema_snapshots: &[(String, Option<String>)],
+) -> Result<(bool, String)> {
+    if let Some(result) = reject_unvalidated_diagnostics_persistence(
+        role,
+        step,
+        workspace,
+        diagnostics_targeted,
+        previous_diagnostics_text,
+    )? {
+        return Ok(result);
+    }
+    if let Some(result) = validate_schema_guarded_patch_outputs(
+        role,
+        step,
+        workspace,
+        schema_snapshots,
+    ) {
+        return Ok(result);
+    }
+    eprintln!("[{role}] step={} apply_patch ok", step);
+    if let Some(result) = verify_apply_patch_crate(role, step, workspace, patch) {
+        return Ok(result);
+    }
+    Ok((false, "apply_patch ok".to_string()))
+}
+
+fn handle_apply_patch_failure(
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    patch: &str,
+    err_str: &str,
+) -> Result<(bool, String)> {
+    eprintln!("[{role}] step={} apply_patch failed: {err_str}", step);
+    log_apply_patch_failure(role, step, patch, err_str);
+    let read_path = extract_anchor_fail_path(err_str)
+        .or_else(|| patch_first_file(patch).map(|s| s.to_string()));
+    let guidance = patch_failure_guidance(read_path.as_deref(), err_str);
+    let mut msg = format!("apply_patch failed: {err_str}\n\n{guidance}");
+    if let Some(fp) = read_path {
+        if let Ok(content) = auto_read_for_patch_anchor(workspace, &fp, err_str) {
+            eprintln!("[{role}] step={} auto_read path={fp}", step);
+            msg = format!("apply_patch failed: {err_str}\n\n{guidance}\n\n{content}");
         }
     }
+    Ok((false, msg))
+}
+
+fn log_apply_patch_failure(role: &str, step: usize, patch: &str, err_str: &str) {
+    log_error_event(
+        role,
+        "apply_patch",
+        Some(step),
+        &format!("apply_patch failed: {err_str}"),
+        patch_first_file(patch).map(|path| json!({
+            "stage": "apply_patch",
+            "path": path,
+        })),
+    );
 }
 
 fn handle_run_command_action(
