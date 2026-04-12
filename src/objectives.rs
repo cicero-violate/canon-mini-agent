@@ -73,7 +73,15 @@ pub fn read_objectives_compact(path: &Path) -> String {
     for obj in active.iter().take(limit) {
         let status = if obj.status.trim().is_empty() { "active" } else { obj.status.trim() };
         let scope = if obj.scope.trim().is_empty() { String::new() } else { format!("  ({})", obj.scope.trim()) };
-        out.push_str(&format!("[{status}]  {}  —  {}{scope}\n", obj.id, obj.title));
+        // Truncate overly long titles to prevent prompt overflow
+        let max_len = 120usize;
+        let title = obj.title.trim();
+        let truncated = if title.len() > max_len {
+            format!("{}…", &title[..max_len])
+        } else {
+            title.to_string()
+        };
+        out.push_str(&format!("[{status}]  {}  —  {}{scope}\n", obj.id, truncated));
     }
     out.push_str("Full detail: {\"action\":\"objectives\",\"op\":\"read\"}");
     out
