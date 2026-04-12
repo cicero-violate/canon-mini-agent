@@ -180,9 +180,9 @@ fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
         (_, ToolPromptKind::SymbolNeighborhood) => {
             "symbol_neighborhood — [PREFER over manual tracing] immediate callers and callees of a symbol"
         }
-        (_, ToolPromptKind::Message) => "message — send inter-agent protocol message",
+            (_, ToolPromptKind::Message) => "message — send inter-agent protocol message",
+        }
     }
-}
 
 
 const READ_FILE_FOOTER: &str = "   With \"line\":N the output starts at line N and shows up to 1000 lines.\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.\n   ⚠ read_file output is prefixed with line numbers (\"42: code here\"). Strip the \"N: \" prefix when\n     writing patch lines — patch lines must contain ONLY the raw source text, never \"42: code here\".\n     WRONG:  -42: fn old() {}   RIGHT:  -fn old() {}";
@@ -207,9 +207,12 @@ fn read_plan_with_sorted_view_example(rationale: &str) -> String {
     )
 }
 
-fn message_tool_prompt_examples() -> &'static str {
-    "   {\"action\":\"message\",\"from\":\"executor\",\"to\":\"verifier\",\"type\":\"handoff\",\"status\":\"complete\",\"observation\":\"Summarize what happened.\",\"rationale\":\"Execution work is complete and the verifier now has enough evidence to judge it.\",\"predicted_next_actions\":[{\"action\":\"read_file\",\"intent\":\"Inspect the changed source files during verification.\"},{\"action\":\"cargo_test\",\"intent\":\"Run verification tests if the code path needs execution proof.\"}],\"payload\":{\"summary\":\"brief evidence summary\",\"artifacts\":[\"path/to/file.rs\"]}}\n   {\"action\":\"message\",\"from\":\"executor\",\"to\":\"planner\",\"type\":\"blocker\",\"status\":\"blocked\",\"observation\":\"Describe the blocker.\",\"rationale\":\"Explain why progress is impossible.\",\"predicted_next_actions\":[{\"action\":\"read_file\",\"intent\":\"Inspect the blocked source or artifact in more detail.\"},{\"action\":\"run_command\",\"intent\":\"Gather concrete failure evidence for the blocker.\"}],\"payload\":{\"summary\":\"Short blocker summary\",\"blocker\":\"Root cause\",\"evidence\":\"Concrete error text\",\"required_action\":\"What must be done to unblock\",\"severity\":\"error\"}}\n   Allowed roles: executor|planner|verifier|diagnostics|solo. Allowed types: handoff|result|verification|failure|blocker|plan|diagnostics. Allowed status: complete|in_progress|failed|verified|ready|blocked.\n   ⚠ message with status=complete is REJECTED if build or tests fail — fix all errors first."
-}
+    fn message_tool_prompt_examples() -> &'static str {
+        truncate(
+            "   {\"action\":\"message\",\"from\":\"executor\",\"to\":\"verifier\",\"type\":\"handoff\",\"status\":\"complete\",\"observation\":\"Summarize what happened.\",\"rationale\":\"Execution work is complete and the verifier now has enough evidence to judge it.\",\"predicted_next_actions\":[{\"action\":\"read_file\",\"intent\":\"Inspect the changed source files during verification.\"},{\"action\":\"cargo_test\",\"intent\":\"Run verification tests if the code path needs execution proof.\"}],\"payload\":{\"summary\":\"brief evidence summary\",\"artifacts\":[\"path/to/file.rs\"]}}\n   {\"action\":\"message\",\"from\":\"executor\",\"to\":\"planner\",\"type\":\"blocker\",\"status\":\"blocked\",\"observation\":\"Describe the blocker.\",\"rationale\":\"Explain why progress is impossible.\",\"predicted_next_actions\":[{\"action\":\"read_file\",\"intent\":\"Inspect the blocked source or artifact in more detail.\"},{\"action\":\"run_command\",\"intent\":\"Gather concrete failure evidence for the blocker.\"}],\"payload\":{\"summary\":\"Short blocker summary\",\"blocker\":\"Root cause\",\"evidence\":\"Concrete error text\",\"required_action\":\"What must be done to unblock\",\"severity\":\"error\"}}\n   Allowed roles: executor|planner|verifier|diagnostics|solo. Allowed types: handoff|result|verification|failure|blocker|plan|diagnostics. Allowed status: complete|in_progress|failed|verified|ready|blocked.\n   ⚠ message with status=complete is REJECTED if build or tests fail — fix all errors first.",
+            2000,
+        )
+    }
 
 fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
     let ws = crate::constants::workspace();

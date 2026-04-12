@@ -642,6 +642,23 @@ Examples:
   {"action":"lessons","op":"encode","entry_text":"issue create: nest all fields under an `issue` key...","rationale":"Added this check to schema_fix_hint() in src/lessons.rs — no longer needed in prompt."}
   {"action":"lessons","op":"write","lessons":{"summary":"...","failures":[{"text":"...","status":"pending"}],"fixes":[],"required_actions":[]},"rationale":"Write a hand-crafted lessons artifact from this cycle's findings."}
 
+## `violation` — manage VIOLATIONS.json — add, update, resolve, or replace violation entries
+
+Ops:
+  read       — read the current VIOLATIONS.json report
+  upsert     — add or replace a violation by id
+  resolve    — remove a violation by id (mark it fixed)
+  set_status — update report-level status and optional summary
+  replace    — replace the entire ViolationsReport
+
+Violation fields: id (string), title (string), severity (critical|high|medium|low), evidence (string[]), issue (string), impact (string), required_fix (string[]), files (string[]).
+
+Examples:
+  {"action":"violation","op":"read","rationale":"Check current violations before deciding on next steps."}
+  {"action":"violation","op":"upsert","violation":{"id":"PROMPT-OVERFLOW-SOLO","title":"Solo prompt exceeds token limit","severity":"high","evidence":["prompt_bytes=23447"],"issue":"Solo prompt too large","impact":"Model truncates context","required_fix":["Trim injected sections"],"files":[]},"rationale":"Add violation with current evidence."}
+  {"action":"violation","op":"resolve","violation_id":"PROMPT-OVERFLOW-SOLO","rationale":"Prompt size reduced below threshold after trimming."}
+  {"action":"violation","op":"set_status","status":"ok","summary":"All prior violations resolved.","rationale":"No active violations remain."}
+
 ## `batch` — execute up to 8 non-mutating actions in one turn; results returned as labeled sections
 
 Example (read multiple files before patching):
