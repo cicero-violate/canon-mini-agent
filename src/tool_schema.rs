@@ -48,6 +48,7 @@ pub enum PredictedActionName {
     SymbolNeighborhood,
     Batch,
     Lessons,
+    Violation,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -566,6 +567,31 @@ pub enum ToolAction {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         lessons: Option<serde_json::Value>,
     },
+    /// Manage VIOLATIONS.json — add, update, resolve, or replace violation entries.
+    ///
+    /// Ops: read | upsert | resolve | set_status | replace
+    Violation {
+        #[serde(flatten)]
+        base: ActionBase,
+        /// Which operation to perform. Defaults to `read` if omitted.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        op: Option<String>,
+        /// For `upsert`: the full Violation object to add or replace (matched by id).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        violation: Option<serde_json::Value>,
+        /// For `resolve`: the violation id to remove.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        violation_id: Option<String>,
+        /// For `set_status`: the new report-level status string.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        status: Option<String>,
+        /// For `set_status`: optional updated summary string.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        summary: Option<String>,
+        /// For `replace`: a full ViolationsReport object (status, summary, violations).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        report: Option<serde_json::Value>,
+    },
 }
 
 pub fn tool_protocol_schema_json() -> String {
@@ -734,6 +760,13 @@ fn build_tool_actions_list() -> Vec<(&'static str, &'static str, Option<&'static
             "review and promote detected action patterns into the lessons artifact injected into every planner prompt",
             Some(
                 "Ops:\n  read_candidates — list pending patterns detected from the action log\n  promote — accept a candidate into lessons.json (entry status: pending)\n  reject  — discard a candidate permanently\n  encode  — mark a lessons.json entry as encoded into system source (removes it from prompt)\n  read    — view current lessons.json including entry statuses\n  write   — write a custom LessonsArtifact directly\n\nEntry status lifecycle:\n  pending → the lesson is injected into the planner prompt at runtime only\n  encoded → the lesson has been hardcoded into system source; excluded from prompt\n\nExamples:\n  {\"action\":\"lessons\",\"op\":\"read_candidates\",\"rationale\":\"See what patterns have been detected since the last synthesis run.\"}\n  {\"action\":\"lessons\",\"op\":\"promote\",\"candidate_id\":\"failure_abc123def\",\"rationale\":\"This failure pattern is real and recurring — promote to lessons.\"}\n  {\"action\":\"lessons\",\"op\":\"promote\",\"candidate_id\":\"all\",\"rationale\":\"All pending candidates are valid — bulk promote.\"}\n  {\"action\":\"lessons\",\"op\":\"reject\",\"candidate_id\":\"seq2_xyz\",\"rationale\":\"This sequence is coincidental, not a reliable workflow pattern.\"}\n  {\"action\":\"lessons\",\"op\":\"encode\",\"entry_text\":\"issue create: nest all fields under an `issue` key...\",\"rationale\":\"Added this check to schema_fix_hint() in src/lessons.rs — no longer needed in prompt.\"}\n  {\"action\":\"lessons\",\"op\":\"write\",\"lessons\":{\"summary\":\"...\",\"failures\":[{\"text\":\"...\",\"status\":\"pending\"}],\"fixes\":[],\"required_actions\":[]},\"rationale\":\"Write a hand-crafted lessons artifact from this cycle's findings.\"}"
+            ),
+        ),
+        (
+            "violation",
+            "manage VIOLATIONS.json — add, update, resolve, or replace violation entries",
+            Some(
+                "Ops:\n  read       — read the current VIOLATIONS.json report\n  upsert     — add or replace a violation by id\n  resolve    — remove a violation by id (mark it fixed)\n  set_status — update report-level status and optional summary\n  replace    — replace the entire ViolationsReport\n\nViolation fields: id (string), title (string), severity (critical|high|medium|low), evidence (string[]), issue (string), impact (string), required_fix (string[]), files (string[]).\n\nExamples:\n  {\"action\":\"violation\",\"op\":\"read\",\"rationale\":\"Check current violations before deciding on next steps.\"}\n  {\"action\":\"violation\",\"op\":\"upsert\",\"violation\":{\"id\":\"PROMPT-OVERFLOW-SOLO\",\"title\":\"Solo prompt exceeds token limit\",\"severity\":\"high\",\"evidence\":[\"prompt_bytes=23447\"],\"issue\":\"Solo prompt too large\",\"impact\":\"Model truncates context\",\"required_fix\":[\"Trim injected sections\"],\"files\":[]},\"rationale\":\"Add violation with current evidence.\"}\n  {\"action\":\"violation\",\"op\":\"resolve\",\"violation_id\":\"PROMPT-OVERFLOW-SOLO\",\"rationale\":\"Prompt size reduced below threshold after trimming.\"}\n  {\"action\":\"violation\",\"op\":\"set_status\",\"status\":\"ok\",\"summary\":\"All prior violations resolved.\",\"rationale\":\"No active violations remain.\"}"
             ),
         ),
         (
@@ -1091,6 +1124,7 @@ fn is_known_action(action: &str) -> bool {
             | "graph_dataflow"
             | "graph_reachability"
             | "lessons"
+            | "violation"
     )
 }
 
@@ -1132,6 +1166,7 @@ fn first_missing_field_for_action(action: &Value, action_name: &str) -> Option<S
         "cargo_test" => missing_field("crate"),
         "cargo_fmt" | "cargo_clippy" => None,
         "plan" => missing_field_for_plan_action(action),
+        "violation" => missing_field_for_violation_action(action),
         "rustc_hir" | "rustc_mir" | "graph_call" | "graph_cfg" | "graph_dataflow" | "graph_reachability" => {
             missing_field("crate")
         }
@@ -1189,6 +1224,18 @@ fn missing_field_for_plan_action(action: &Value) -> Option<String> {
         }
         "replace_plan" => missing_field_in_action(action, "plan"),
         "sorted_view" => None,
+        _ => None,
+    }
+}
+
+fn missing_field_for_violation_action(action: &Value) -> Option<String> {
+    let op = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
+    match op {
+        "read" => None,
+        "upsert" => missing_field_in_action(action, "violation"),
+        "resolve" => missing_field_in_action(action, "violation_id"),
+        "set_status" => missing_field_in_action(action, "status"),
+        "replace" => missing_field_in_action(action, "report"),
         _ => None,
     }
 }

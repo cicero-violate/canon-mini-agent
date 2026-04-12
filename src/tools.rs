@@ -553,6 +553,87 @@ fn handle_objectives_replace_objectives(
         .map(|_| (false, "objectives replace_objectives ok".to_string()))
 }
 
+fn handle_violation_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+    use crate::reports::{ViolationsReport, Violation};
+    let op_raw = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
+    let path = workspace.join(VIOLATIONS_FILE);
+
+    fn load(path: &Path) -> Result<ViolationsReport> {
+        let raw = fs::read_to_string(path).unwrap_or_default();
+        if raw.trim().is_empty() {
+            return Ok(ViolationsReport { status: "ok".to_string(), summary: String::new(), violations: vec![] });
+        }
+        serde_json::from_str(&raw).map_err(|e| anyhow!("VIOLATIONS.json parse error: {e}"))
+    }
+
+    fn save(path: &Path, report: &ViolationsReport) -> Result<()> {
+        let json = serde_json::to_string_pretty(report)?;
+        fs::write(path, json).map_err(|e| anyhow!("failed to write VIOLATIONS.json: {e}"))
+    }
+
+    match op_raw {
+        "read" => {
+            let report = load(&path)?;
+            Ok((false, serde_json::to_string_pretty(&report)?))
+        }
+        "upsert" => {
+            // Add or replace a violation by id.
+            let v_val = action.get("violation")
+                .ok_or_else(|| anyhow!("violation upsert requires a 'violation' object"))?;
+            let v: Violation = serde_json::from_value(v_val.clone())
+                .map_err(|e| anyhow!("invalid violation payload: {e}"))?;
+            if v.id.trim().is_empty() {
+                bail!("violation.id must be non-empty");
+            }
+            let mut report = load(&path)?;
+            if let Some(existing) = report.violations.iter_mut().find(|x| x.id == v.id) {
+                *existing = v.clone();
+                save(&path, &report)?;
+                Ok((false, format!("violation upsert ok — updated `{}`", v.id)))
+            } else {
+                report.violations.push(v.clone());
+                save(&path, &report)?;
+                Ok((false, format!("violation upsert ok — added `{}`", v.id)))
+            }
+        }
+        "resolve" => {
+            let vid = action.get("violation_id").and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("violation resolve requires 'violation_id'"))?;
+            let mut report = load(&path)?;
+            let before = report.violations.len();
+            report.violations.retain(|v| v.id != vid);
+            if report.violations.len() == before {
+                bail!("violation not found: {vid}");
+            }
+            if report.violations.is_empty() {
+                report.status = "ok".to_string();
+            }
+            save(&path, &report)?;
+            Ok((false, format!("violation resolve ok — removed `{vid}`")))
+        }
+        "set_status" => {
+            let status = action.get("status").and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("violation set_status requires 'status'"))?;
+            let mut report = load(&path)?;
+            report.status = status.to_string();
+            if let Some(s) = action.get("summary").and_then(|v| v.as_str()) {
+                report.summary = s.to_string();
+            }
+            save(&path, &report)?;
+            Ok((false, format!("violation set_status ok — status=`{status}`")))
+        }
+        "replace" => {
+            let rep_val = action.get("report")
+                .ok_or_else(|| anyhow!("violation replace requires a 'report' object"))?;
+            let report: ViolationsReport = serde_json::from_value(rep_val.clone())
+                .map_err(|e| anyhow!("invalid ViolationsReport payload: {e}"))?;
+            save(&path, &report)?;
+            Ok((false, format!("violation replace ok — {} violation(s)", report.violations.len())))
+        }
+        _ => bail!("unknown violation op '{op_raw}' — use: read | upsert | resolve | set_status | replace"),
+    }
+}
+
 fn handle_issue_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
     let op_raw = action
         .get("op")
@@ -1200,20 +1281,28 @@ fn executor_patch_scope_error(touches: &PatchTargetTouches, self_mod: bool) -> O
 }
 
 fn verifier_patch_scope_error(touches: &PatchTargetTouches) -> Option<String> {
+    if touches.touches_violations {
+        return Some(
+            "apply_patch is ALWAYS rejected for VIOLATIONS.json. \
+             Use the `violation` action instead — e.g. \
+             {\"action\":\"violation\",\"op\":\"upsert\",\"violation\":{...}} to add/update or \
+             {\"action\":\"violation\",\"op\":\"resolve\",\"violation_id\":\"<id>\"} to remove. \
+             Retrying apply_patch on VIOLATIONS.json will produce this same error every time."
+                .to_string(),
+        );
+    }
     if touches.touches_spec
         || touches.touches_lane
         || touches.touches_diagnostics
         || touches.touches_other
     {
         Some(
-            "Verifier may only patch `VIOLATIONS.json`. Use the `plan` action for `PLAN.json` updates. Do not modify `SPEC.md`, lane plans, diagnostics, or source files."
+            "Verifier may not patch source files, SPEC.md, lane plans, or diagnostics. Use the `plan` action for PLAN.json updates and the `violation` action for VIOLATIONS.json."
                 .to_string(),
         )
-    } else if touches.touches_violations {
-        None
     } else {
         Some(
-            "Verifier may only patch `VIOLATIONS.json`. Use the `plan` action for `PLAN.json` updates; no other patches are allowed."
+            "Verifier may not use apply_patch here. Use the `violation` action for VIOLATIONS.json and the `plan` action for PLAN.json."
                 .to_string(),
         )
     }
@@ -5878,6 +5967,7 @@ fn is_batch_item_mutating(kind: &str, item: &Value) -> bool {
         "plan" => op != "sorted_view",
         "objectives" => op != "read" && op != "sorted_view",
         "issue" => op != "read",
+        "violation" => op != "read",
         _ => false,
     }
 }
@@ -5897,6 +5987,7 @@ fn execute_batch_item(
         "symbols_prepare_rename" => handle_symbols_prepare_rename_action(workspace, item),
         "objectives" => handle_objectives_action(workspace, item),
         "issue" => handle_issue_action(workspace, item),
+        "violation" => handle_violation_action(workspace, item),
         "plan" => handle_plan_action(role, workspace, item),
         k @ ("rustc_hir" | "rustc_mir") => handle_rustc_action(role, step, k, workspace, item),
         k @ ("graph_call" | "graph_cfg") => {
@@ -6027,6 +6118,7 @@ fn execute_action(
         "rename_symbol" => handle_rename_symbol_action(role, step, workspace, action),
         "objectives" => handle_objectives_action(workspace, action),
         "issue" => handle_issue_action(workspace, action),
+        "violation" => handle_violation_action(workspace, action),
         "apply_patch" => handle_apply_patch_action(role, step, workspace, action),
         "run_command" => handle_run_command_action(role, step, workspace, action),
         "python" => handle_python_action(role, step, workspace, action),

@@ -144,7 +144,7 @@ fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
             "objectives — read/update objectives in PLANS/OBJECTIVES.json"
         }
         (AgentPromptKind::Verifier, ToolPromptKind::ApplyPatch) => {
-            "apply_patch — write `VIOLATIONS.json`"
+            "apply_patch — NOT for VIOLATIONS.json; use the `violation` action instead"
         }
         (AgentPromptKind::Planner, ToolPromptKind::ApplyPatch) => {
             "apply_patch — update lane plans under `PLANS/`"
@@ -432,7 +432,7 @@ fn prompt_intro(kind: AgentPromptKind) -> &'static str {
 fn prompt_mission(kind: AgentPromptKind) -> &'static str {
     match kind {
         AgentPromptKind::Executor => "Your job is to execute the highest-priority READY work described in planner handoff messages and the master plan.\n`SPEC.md` is the canonical contract.\nLane plans are deprecated and should not be relied on for task selection.\nThe verifier judges code against `SPEC.md`.\nYou should only work on the top 1-10 ready tasks in the current cycle, then yield.\nDo not use internal tools.\nDo not reorganize or update `SPEC.md` or plan files yourself.\nMake source changes, run checks, and report evidence in `message.payload`.",
-        AgentPromptKind::Verifier => "Your job is to critically review executor evidence against the codebase and judge whether the implementation satisfies `SPEC.md`.\nExecutor evidence is a hint only. The canonical truth is the codebase versus `SPEC.md`.\nIf violations are found, write `VIOLATIONS.json` with a clear, actionable list using the enums in canon-mini-agent/src/reports.rs.\nBe skeptical — do not trust executor claims at face value.",
+        AgentPromptKind::Verifier => "Your job is to critically review executor evidence against the codebase and judge whether the implementation satisfies `SPEC.md`.\nExecutor evidence is a hint only. The canonical truth is the codebase versus `SPEC.md`.\nIf violations are found, use the `violation` action (op=upsert) to record them in `VIOLATIONS.json`. Use `violation` op=resolve to clear violations that are no longer active. Never use `apply_patch` for VIOLATIONS.json.\nBe skeptical — do not trust executor claims at face value.",
         AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `PLANS/OBJECTIVES.json`, `VIOLATIONS.json`, and `DIAGNOSTICS.json` and derive the master plan plus executor handoff guidance.\nYou own priority, dependency ordering, task allocation, and the ready-work window for each executor.\nOn every cycle, re-evaluate the workspace and update `PLAN.json` via the plan tool.\nAt the end of every planner cycle, review `PLANS/OBJECTIVES.json` and add or update objectives to reflect what was discovered. New objectives must include id, title, status, scope, authority_files, category, level, description, requirement, verification, and success_criteria. Use `apply_patch` to write them.\nDiagnostics are advisory only: do not create, reopen, or reprioritize tasks from diagnostics claims unless the same cycle includes direct current-workspace evidence from `read_file`, `run_command`, or `python`.\nIf diagnostics suggest a problem but direct evidence is missing, plan only evidence-gathering or diagnostics-repair work instead of implementation work.\nDo not use internal tools.\nDo not hand off work; complete the needed planning and execution directly in the current role flow.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
         AgentPromptKind::Diagnostics => "Your job is to scan the active workspace state, analyze `VIOLATIONS.json`, detect root causes, rank them by impact, and write concrete repair targets for the planner in `DIAGNOSTICS.json` using the enums in canon-mini-agent/src/reports.rs.",
         AgentPromptKind::Solo => "Your job is to coordinate planning, execution, and verification in a single role while participating in orchestration.\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nYou may read, patch, and verify any in-workspace files when justified by evidence.\nKeep evidence tight and run checks before claiming completion.\nAt the end of every cycle — before emitting a completion message — review `PLANS/OBJECTIVES.json` and add or update objectives based on what you discovered. New objectives must include id, title, status, scope, authority_files, category, level, description, requirement, verification, and success_criteria. Use `apply_patch` to write them directly.",
@@ -639,7 +639,7 @@ const VERIFIER_RULES: &[&str] = &[
     "- You must run `run_command` (and `cargo_test` when relevant) to validate executor claims; do not accept evidence without running checks yourself.",
     "- Run `cargo build --workspace` before completing the cycle; fix failures before `message` with status=complete.",
     "- Update `PLAN.json` only via the `plan` action; never use `apply_patch` for plan edits.",
-    "- Use `apply_patch` only for `VIOLATIONS.json` (no source or spec edits).",
+    "- Use the `violation` action to manage `VIOLATIONS.json` — ops: read | upsert | resolve | set_status | replace. Never use `apply_patch` for VIOLATIONS.json.",
     "- Reject any claimed completion that violates the canonical law in CANONICAL_LAW.md or the invariants in INVARIANTS.json.",
     "- When using `message`, set:",
     "  - `from`: \"Verifier\"",
