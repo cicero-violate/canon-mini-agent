@@ -201,6 +201,9 @@ pub(crate) fn compact_log_record(
     insert_opt("command_id", command_id.map(|v| json!(v)));
     insert_opt("op", op);
     insert_opt("ok", ok.map(|v| json!(v)));
+    // Inject the currently active plan task id so every entry is attributable.
+    let tid = crate::constants::active_task_id();
+    insert_opt("task_id", if tid.is_empty() { None } else { Some(json!(tid)) });
     insert_opt(
         "observation",
         observation.map(|v| json!(truncate(&v, MAX_SNIPPET))),

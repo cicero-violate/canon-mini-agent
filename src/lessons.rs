@@ -357,7 +357,16 @@ fn detect_success_sequences(entries: &[Value]) -> Vec<LessonsCandidate> {
     results
 }
 
-fn collect_successful_actions(entries: &[Value]) -> Vec<String> {
+/// A successful action with its provenance context from the log entry.
+struct TaggedAction {
+    action: String,
+    /// The plan task id active when this action ran (empty if unknown).
+    task_id: String,
+    /// The agent role that executed this action (executor, planner, solo, …).
+    role: String,
+}
+
+fn collect_successful_actions(entries: &[Value]) -> Vec<TaggedAction> {
     entries
         .iter()
         .filter(|e| {
@@ -365,84 +374,118 @@ fn collect_successful_actions(entries: &[Value]) -> Vec<String> {
                 && e.get("phase").and_then(|v| v.as_str()) == Some("result")
                 && e.get("ok").and_then(|v| v.as_bool()).unwrap_or(false)
         })
-        .filter_map(|e| e.get("action").and_then(|v| v.as_str()).map(str::to_string))
+        .filter_map(|e| {
+            let action = e.get("action").and_then(|v| v.as_str())?.to_string();
+            let task_id = e
+                .get("task_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let role = e
+                .get("actor")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            Some(TaggedAction { action, task_id, role })
+        })
         .collect()
 }
 
 fn count_success_sequences(
-    successes: &[String],
+    successes: &[TaggedAction],
 ) -> (
-    HashMap<(String, String), usize>,
+    // (role, action_a, action_b) → count
     HashMap<(String, String, String), usize>,
+    // (role, action_a, action_b, action_c) → count
+    HashMap<(String, String, String, String), usize>,
 ) {
-    let mut bigrams: HashMap<(String, String), usize> = HashMap::new();
-    let mut trigrams: HashMap<(String, String, String), usize> = HashMap::new();
+    let mut bigrams: HashMap<(String, String, String), usize> = HashMap::new();
+    let mut trigrams: HashMap<(String, String, String, String), usize> = HashMap::new();
 
     for window in successes.windows(2) {
-        let a = window[0].clone();
-        let b = window[1].clone();
-        if a == b {
+        let a = &window[0];
+        let b = &window[1];
+        if a.action == b.action {
             continue;
         }
-        *bigrams.entry((a, b)).or_default() += 1;
+        // Only count sequences within the same role and task context.
+        // If task_id is empty on either side (pre-threading entries), allow the
+        // pair only when both roles match — avoids cross-agent noise.
+        let same_task = !a.task_id.is_empty() && a.task_id == b.task_id;
+        let same_role = a.role == b.role;
+        if !same_task && !same_role {
+            continue;
+        }
+        let role = if same_role { a.role.clone() } else { String::new() };
+        *bigrams.entry((role, a.action.clone(), b.action.clone())).or_default() += 1;
     }
 
     for window in successes.windows(3) {
-        let a = window[0].clone();
-        let b = window[1].clone();
-        let c = window[2].clone();
-        if a == b || b == c {
+        let a = &window[0];
+        let b = &window[1];
+        let c = &window[2];
+        if a.action == b.action || b.action == c.action {
             continue;
         }
-        *trigrams.entry((a, b, c)).or_default() += 1;
+        let same_task = !a.task_id.is_empty() && a.task_id == b.task_id && b.task_id == c.task_id;
+        let same_role = a.role == b.role && b.role == c.role;
+        if !same_task && !same_role {
+            continue;
+        }
+        let role = if same_role { a.role.clone() } else { String::new() };
+        *trigrams
+            .entry((role, a.action.clone(), b.action.clone(), c.action.clone()))
+            .or_default() += 1;
     }
 
     (bigrams, trigrams)
 }
 
 fn build_success_sequence_candidates(
-    bigrams: HashMap<(String, String), usize>,
-    trigrams: HashMap<(String, String, String), usize>,
+    bigrams: HashMap<(String, String, String), usize>,
+    trigrams: HashMap<(String, String, String, String), usize>,
 ) -> Vec<LessonsCandidate> {
     let mut results: Vec<LessonsCandidate> = Vec::new();
 
-    for ((a, b), count) in bigrams {
+    for ((role, a, b), count) in bigrams {
         if count < MIN_BIGRAM_OCCURRENCES {
             continue;
         }
-        results.push(build_bigram_candidate(a, b, count));
+        results.push(build_bigram_candidate(role, a, b, count));
     }
 
-    for ((a, b, c), count) in trigrams {
+    for ((role, a, b, c), count) in trigrams {
         if count < MIN_TRIGRAM_OCCURRENCES {
             continue;
         }
-        results.push(build_trigram_candidate(a, b, c, count));
+        results.push(build_trigram_candidate(role, a, b, c, count));
     }
 
     results
 }
 
-fn build_bigram_candidate(a: String, b: String, count: usize) -> LessonsCandidate {
-    let key = format!("{a}→{b}");
+fn build_bigram_candidate(role: String, a: String, b: String, count: usize) -> LessonsCandidate {
+    let key = format!("{role}:{a}→{b}");
     let note = sequence_workflow_note(&a, &b, None);
+    let role_tag = if role.is_empty() { String::new() } else { format!(" [{role}]") };
     LessonsCandidate {
         id: stable_id("seq2", &key),
         kind: "success_sequence".to_string(),
-        description: format!("Action sequence: {a} → {b} ({count} occurrences)"),
+        description: format!("Action sequence{role_tag}: {a} → {b} ({count} occurrences)"),
         occurrences: count,
         fix_or_note: note,
         status: CandidateStatus::Pending,
     }
 }
 
-fn build_trigram_candidate(a: String, b: String, c: String, count: usize) -> LessonsCandidate {
-    let key = format!("{a}→{b}→{c}");
+fn build_trigram_candidate(role: String, a: String, b: String, c: String, count: usize) -> LessonsCandidate {
+    let key = format!("{role}:{a}→{b}→{c}");
     let note = sequence_workflow_note(&a, &b, Some(&c));
+    let role_tag = if role.is_empty() { String::new() } else { format!(" [{role}]") };
     LessonsCandidate {
         id: stable_id("seq3", &key),
         kind: "success_sequence".to_string(),
-        description: format!("Action sequence: {a} → {b} → {c} ({count} occurrences)"),
+        description: format!("Action sequence{role_tag}: {a} → {b} → {c} ({count} occurrences)"),
         occurrences: count,
         fix_or_note: note,
         status: CandidateStatus::Pending,

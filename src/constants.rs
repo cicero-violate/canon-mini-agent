@@ -29,6 +29,32 @@ pub const ROLE_TIMEOUT_SECS: &[(&str, u64)] = &[
 
 static WORKSPACE_PATH: OnceLock<String> = OnceLock::new();
 
+// ── Active plan task tracking ─────────────────────────────────────────────────
+//
+// Stores the id of the plan task currently marked `in_progress`.
+// Updated by the plan-action handler whenever a task transitions to/from
+// `in_progress`. Read by the logging layer to stamp every action log entry
+// with the task that motivated the work.
+
+static ACTIVE_TASK_ID: OnceLock<std::sync::RwLock<String>> = OnceLock::new();
+
+/// Record the plan task id that is now in progress (or clear it with "").
+pub fn set_active_task_id(id: &str) {
+    let lock = ACTIVE_TASK_ID.get_or_init(|| std::sync::RwLock::new(String::new()));
+    if let Ok(mut guard) = lock.write() {
+        *guard = id.to_string();
+    }
+}
+
+/// Return the currently active plan task id, or an empty string if none is set.
+pub fn active_task_id() -> String {
+    ACTIVE_TASK_ID
+        .get()
+        .and_then(|l| l.read().ok())
+        .map(|g| g.clone())
+        .unwrap_or_default()
+}
+
 /// Set the target workspace path from the --workspace CLI argument.
 /// Must be called once before any call to `workspace()`.
 pub fn set_workspace(path: String) {

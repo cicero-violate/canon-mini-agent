@@ -401,10 +401,7 @@ mod tests {
 }
 
 fn is_done_like_status(status: &str) -> bool {
-    matches!(
-        status.trim().to_ascii_lowercase().as_str(),
-        "done" | "complete" | "completed" | "verified" | "resolved" | "closed" | "wontfix"
-    )
+    crate::issues::is_done_like_status(status)
 }
 
 fn is_ready_status(status: &str) -> bool {

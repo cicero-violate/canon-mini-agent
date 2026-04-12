@@ -4549,6 +4549,13 @@ fn handle_plan_update_task(
             existing.insert(key.to_string(), value.clone());
         }
     }
+    // Track the active task for provenance threading.
+    let new_status = existing.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    if new_status.eq_ignore_ascii_case("in_progress") {
+        crate::constants::set_active_task_id(id);
+    } else if crate::issues::is_done_like_status(new_status) {
+        crate::constants::set_active_task_id("");
+    }
     Ok(())
 }
 
@@ -4579,6 +4586,12 @@ fn handle_plan_set_task_status(
     updated.insert("status".to_string(), Value::String(status.to_string()));
     ensure_reopened_task_has_regression_linkage(existing, &updated, task_id)?;
     existing.insert("status".to_string(), Value::String(status.to_string()));
+    // Track the active task for provenance threading.
+    if status.eq_ignore_ascii_case("in_progress") {
+        crate::constants::set_active_task_id(task_id);
+    } else if crate::issues::is_done_like_status(status) {
+        crate::constants::set_active_task_id("");
+    }
     Ok(())
 }
 

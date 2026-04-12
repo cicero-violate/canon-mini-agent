@@ -48,11 +48,17 @@ fn is_zero_f32(v: &f32) -> bool {
     *v == 0.0
 }
 
-pub fn is_closed(issue: &Issue) -> bool {
+/// Returns true for any status string that represents completion/closure.
+/// Used both for issue filtering and plan task active-task-id tracking.
+pub fn is_done_like_status(status: &str) -> bool {
     matches!(
-        issue.status.trim().to_lowercase().as_str(),
+        status.trim().to_lowercase().as_str(),
         "resolved" | "wontfix" | "done" | "complete" | "completed" | "verified" | "closed"
     )
+}
+
+pub fn is_closed(issue: &Issue) -> bool {
+    is_done_like_status(&issue.status)
 }
 
 /// Compute a normalized [0.0, 1.0] priority score for an issue.
