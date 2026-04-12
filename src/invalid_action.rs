@@ -198,13 +198,21 @@ pub(crate) fn corrective_invalid_action_prompt(
     None
 }
 
+const BASIC_ACTION_FIELDS: &[&str] = &["action", "rationale", "predicted_next_actions"];
+const QUESTION_ACTION_FIELDS: &[&str] = &[
+    "action",
+    "question",
+    "rationale",
+    "predicted_next_actions",
+];
+
 pub(crate) fn invalid_action_expected_fields(kind: &str) -> Vec<&'static str> {
     match kind {
         "run_command" => vec!["action", "cmd", "rationale", "predicted_next_actions"],
         "read_file" => vec!["action", "path", "rationale", "predicted_next_actions"],
-        "symbols_index" => vec!["action", "rationale", "predicted_next_actions"],
-        "symbols_rename_candidates" => vec!["action", "rationale", "predicted_next_actions"],
-        "symbols_prepare_rename" => vec!["action", "rationale", "predicted_next_actions"],
+        "symbols_index" | "symbols_rename_candidates" | "symbols_prepare_rename" | "list_dir" => {
+            BASIC_ACTION_FIELDS.to_vec()
+        }
         "rename_symbol" => vec![
             "action",
             "old_symbol",
@@ -215,10 +223,9 @@ pub(crate) fn invalid_action_expected_fields(kind: &str) -> Vec<&'static str> {
         ],
         "apply_patch" => vec!["action", "patch", "question", "rationale", "predicted_next_actions"],
         "cargo_test" => vec!["action", "crate", "rationale", "predicted_next_actions"],
-        "list_dir" => vec!["action", "rationale", "predicted_next_actions"],
         "python" => vec!["action", "code", "rationale", "predicted_next_actions"],
         "plan" => vec!["action", "op", "question", "rationale", "predicted_next_actions"],
-        "objectives" => vec!["action", "question", "rationale", "predicted_next_actions"],
+        "objectives" | "issue" => QUESTION_ACTION_FIELDS.to_vec(),
         "message" => vec![
             "action",
             "from",
@@ -229,8 +236,7 @@ pub(crate) fn invalid_action_expected_fields(kind: &str) -> Vec<&'static str> {
             "rationale",
             "predicted_next_actions",
         ],
-        "issue" => vec!["action", "op", "question", "rationale", "predicted_next_actions"],
-        _ => vec!["action", "rationale", "predicted_next_actions"],
+        _ => BASIC_ACTION_FIELDS.to_vec(),
     }
 }
 
