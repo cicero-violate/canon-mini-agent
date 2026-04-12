@@ -1617,8 +1617,12 @@ struct ShutdownSignal {
 
 static SHUTDOWN_SIGNAL: OnceLock<ShutdownSignal> = OnceLock::new();
 
+fn shutdown_signal_cell() -> &'static OnceLock<ShutdownSignal> {
+    &SHUTDOWN_SIGNAL
+}
+
 fn init_shutdown_signal() -> ShutdownSignal {
-    SHUTDOWN_SIGNAL
+    shutdown_signal_cell()
         .get_or_init(|| ShutdownSignal {
             flag: Arc::new(AtomicBool::new(false)),
             notify: Arc::new(Notify::new()),
@@ -1627,7 +1631,7 @@ fn init_shutdown_signal() -> ShutdownSignal {
 }
 
 fn shutdown_signal() -> Option<ShutdownSignal> {
-    SHUTDOWN_SIGNAL.get().cloned()
+    shutdown_signal_cell().get().cloned()
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
