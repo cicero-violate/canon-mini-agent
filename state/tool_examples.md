@@ -153,8 +153,22 @@ Examples:
         "null"
       ]
     },
+    "intent": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "mode": {
       "type": "string"
+    },
+    "objective_id": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "observation": {
       "type": [
@@ -174,6 +188,13 @@ Examples:
     },
     "symbol": {
       "description": "Optional symbol path to focus the output on one item (e.g. \"tools::handle_objectives_action\").",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "task_id": {
+      "minLength": 1,
       "type": [
         "string",
         "null"
@@ -211,8 +232,22 @@ Examples:
         "null"
       ]
     },
+    "intent": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "mode": {
       "type": "string"
+    },
+    "objective_id": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "observation": {
       "type": [
@@ -232,6 +267,13 @@ Examples:
     },
     "symbol": {
       "description": "Optional symbol path to focus the output on one item (e.g. \"tools::handle_objectives_action\").",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "task_id": {
+      "minLength": 1,
       "type": [
         "string",
         "null"
@@ -263,6 +305,20 @@ Examples:
     "crate": {
       "type": "string"
     },
+    "intent": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "objective_id": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "observation": {
       "type": [
         "string",
@@ -284,6 +340,13 @@ Examples:
     "rationale": {
       "minLength": 1,
       "type": "string"
+    },
+    "task_id": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
     }
   },
   "required": [
@@ -310,6 +373,20 @@ Examples:
     "crate": {
       "type": "string"
     },
+    "intent": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "objective_id": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "observation": {
       "type": [
         "string",
@@ -331,6 +408,13 @@ Examples:
     "rationale": {
       "minLength": 1,
       "type": "string"
+    },
+    "task_id": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
     }
   },
   "required": [
@@ -357,6 +441,20 @@ Examples:
     "crate": {
       "type": "string"
     },
+    "intent": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "objective_id": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "observation": {
       "type": [
         "string",
@@ -378,6 +476,13 @@ Examples:
     "rationale": {
       "minLength": 1,
       "type": "string"
+    },
+    "task_id": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "tlog": {
       "type": [
@@ -410,6 +515,20 @@ Examples:
     "crate": {
       "type": "string"
     },
+    "intent": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "objective_id": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "observation": {
       "type": [
         "string",
@@ -431,6 +550,13 @@ Examples:
     "rationale": {
       "minLength": 1,
       "type": "string"
+    },
+    "task_id": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "tlog": {
       "type": [

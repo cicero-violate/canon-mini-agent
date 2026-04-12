@@ -6698,8 +6698,8 @@ mod tests {
     }
 
     #[test]
-    fn plan_set_plan_status_rejects_task_id_field() {
-        let tmp = fresh_test_dir("set-plan-status-rejects-task-id");
+    fn plan_set_plan_status_allows_task_id_provenance_field() {
+        let tmp = fresh_test_dir("set-plan-status-allows-task-id");
         std::fs::write(
             tmp.join("PLAN.json"),
             r#"{
@@ -6717,8 +6717,8 @@ mod tests {
             "rationale": "Invalid mixed payload"
         });
 
-        let err = handle_plan_action("solo", &tmp, &action).unwrap_err().to_string();
-        assert!(err.contains("does not accept task_id"));
+        let (_, out) = handle_plan_action("solo", &tmp, &action).expect("set_plan_status should accept provenance task_id");
+        assert!(out.contains("plan ok"));
     }
 
     #[test]

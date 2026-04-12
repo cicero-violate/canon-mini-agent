@@ -464,7 +464,7 @@ fn action_contract(kind: AgentPromptKind) -> String {
         .join("\n");
     let graph_hint = "Graph tools hint: artifacts come from rustc wrapper capture (run `cargo build -p <crate>`). `graph_probe` inspects symbols/coverage; `graph_call`/`graph_cfg` emit CSVs; `graph_dataflow`/`graph_reachability` emit reports.";
     format!(
-        "Each turn you receive either:\n  (a) the initial instruction; or\n  (b) the result of your last action.\n\nBefore choosing your action, think through the following internally:\n  1. What does the current evidence tell me about system state?\n  2. What is the highest-value action I can take right now?\n  3. What are the 2-3 most likely actions after this one?\n\nEmit exactly one action per turn as a single JSON object in a fenced json code block. Think through the decision internally; reveal your chain-of-thought. Only output the JSON action.\nAvailable actions:\n{actions}\n{graph_hint}\nEvery action MUST include:\n- `observation`: what you can see purely from evidence only, as a single string\n- `rationale`: why this is the next best step right now\n- `predicted_next_actions`: ordered array of 2-3 likely follow-on actions, each with an `action` name and `intent` string. This is your decision tree — drives the next turn.\n\nDo NOT include any extra text outside the JSON code block.\nDo NOT echo the tools list or the prompt.\nDo NOT use placeholder action names like `...`; choose a real action from the list."
+        "Each turn you receive either:\n  (a) the initial instruction; or\n  (b) the result of your last action.\n\nBefore choosing your action, think through the following internally:\n  1. What does the current evidence tell me about system state?\n  2. What is the highest-value action I can take right now?\n  3. What are the 2-3 most likely actions after this one?\n\nEmit exactly one action per turn as a single JSON object in a fenced json code block. Think through the decision internally; reveal your chain-of-thought. Only output the JSON action.\nAvailable actions:\n{actions}\n{graph_hint}\nEvery action MUST include:\n- `observation`: what you can see purely from evidence only, as a single string\n- `rationale`: why this is the next best step right now\n- `predicted_next_actions`: ordered array of 2-3 likely follow-on actions, each with an `action` name and `intent` string. This is your decision tree — drives the next turn.\nFor mutating or verification actions, also include:\n- `task_id`: the PLAN task you are advancing\n- `objective_id`: the objective linked to that task\n- `intent`: the concrete purpose of this action within that task\n\nDo NOT include any extra text outside the JSON code block.\nDo NOT echo the tools list or the prompt.\nDo NOT use placeholder action names like `...`; choose a real action from the list."
     )
 }
 
@@ -1865,6 +1865,8 @@ mod tests {
             "action": "plan",
             "op": "set_task_status",
             "task_id": "T26_planner_evidence_enforcement_hook",
+            "objective_id": "obj_planner_evidence_enforcement_hook",
+            "intent": "Mark the planning task in progress before implementing the next verified step.",
             "status": "in_progress",
             "observation": "Diagnostics reported a planner issue.",
             "rationale": "Update the task based on diagnostics-only planning guidance.",
@@ -1882,12 +1884,43 @@ mod tests {
             "action": "plan",
             "op": "set_task_status",
             "task_id": "T26_planner_evidence_enforcement_hook",
+            "objective_id": "obj_planner_evidence_enforcement_hook",
+            "intent": "Advance the verified planner enforcement task after confirming source evidence.",
             "status": "in_progress",
             "observation": "read_file src/app.rs confirmed the planner path and current source evidence supports follow-up work.",
             "rationale": "Diagnostics signal is now backed by same-cycle read_file source evidence, so plan update is justified.",
             "predicted_next_actions": [
                 {"action": "apply_patch", "intent": "implement the validated planner guard"},
                 {"action": "cargo_test", "intent": "verify the guarded behavior"}
+            ]
+        });
+        assert!(validate_action(&action).is_ok());
+    }
+
+    #[test]
+    fn validate_requires_provenance_for_verification_actions() {
+        let action = json!({
+            "action": "cargo_test",
+            "crate": "canon-mini-agent",
+            "rationale": "Verify the current code after the latest change.",
+            "predicted_next_actions": [
+                {"action": "read_file", "intent": "Inspect the failing output if tests fail."},
+                {"action": "apply_patch", "intent": "Patch the verified defect if the test output identifies a code issue."}
+            ]
+        });
+        let err = validate_action(&action).unwrap_err().to_string();
+        assert!(err.contains("task_id"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn validate_allows_read_only_actions_without_provenance() {
+        let action = json!({
+            "action": "read_file",
+            "path": "SPEC.md",
+            "rationale": "Read the contract before changing code.",
+            "predicted_next_actions": [
+                {"action": "read_file", "intent": "Continue reading the relevant section."},
+                {"action": "apply_patch", "intent": "Patch the code after gathering enough context."}
             ]
         });
         assert!(validate_action(&action).is_ok());
