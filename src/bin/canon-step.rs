@@ -26,11 +26,16 @@ fn read_action_input() -> Result<Value> {
 }
 
 fn predicted_next_actions(action: &Value) -> Vec<Value> {
-    if let Some(existing) = existing_predicted_next_actions(action) {
-        return existing;
-    }
-    let kind = action.get("action").and_then(|v| v.as_str()).unwrap_or("");
-    predicted_next_actions_for_kind(kind, action)
+    existing_predicted_next_actions(action)
+        .unwrap_or_else(|| predicted_next_actions_from_kind(action))
+}
+
+fn predicted_next_actions_from_kind(action: &Value) -> Vec<Value> {
+    predicted_next_actions_for_kind(action_kind(action), action)
+}
+
+fn action_kind(action: &Value) -> &str {
+    action.get("action").and_then(|v| v.as_str()).unwrap_or("")
 }
 
 fn predicted_next_actions_for_kind(kind: &str, action: &Value) -> Vec<Value> {
@@ -40,20 +45,19 @@ fn predicted_next_actions_for_kind(kind: &str, action: &Value) -> Vec<Value> {
 }
 
 fn simple_prediction_for_kind(kind: &str) -> Option<Vec<Value>> {
+    simple_prediction_spec(kind)
+        .map(|(action, intent)| simple_action_prediction(action, intent))
+}
+
+fn simple_prediction_spec(kind: &str) -> Option<(&'static str, &'static str)> {
     match kind {
-        "apply_patch" => Some(simple_action_prediction(
-            "cargo_test",
-            "Verify the patch compiles and tests pass.",
-        )),
-        "rename_symbol" => Some(simple_action_prediction(
+        "apply_patch" => Some(("cargo_test", "Verify the patch compiles and tests pass.")),
+        "rename_symbol" => Some((
             "cargo_test",
             "Run tests after rename to ensure no regressions.",
         )),
-        "run_command" => Some(simple_action_prediction(
-            "message",
-            "Summarize command output and decide next step.",
-        )),
-        "read_file" => Some(simple_action_prediction(
+        "run_command" => Some(("message", "Summarize command output and decide next step.")),
+        "read_file" => Some((
             "message",
             "Summarize findings and choose the next concrete action.",
         )),
@@ -62,19 +66,21 @@ fn simple_prediction_for_kind(kind: &str) -> Option<Vec<Value>> {
 }
 
 fn file_prediction_for_kind(kind: &str, action: &Value) -> Option<Vec<Value>> {
+    file_prediction_spec(kind)
+        .map(|(default, intent)| read_file_prediction_for_output(action, default, intent))
+}
+
+fn file_prediction_spec(kind: &str) -> Option<(&'static str, &'static str)> {
     match kind {
-        "symbols_index" => Some(read_file_prediction_for_output(
-            action,
+        "symbols_index" => Some((
             "state/symbols.json",
             "Inspect generated symbols inventory.",
         )),
-        "symbols_rename_candidates" => Some(read_file_prediction_for_output(
-            action,
+        "symbols_rename_candidates" => Some((
             "state/rename_candidates.json",
             "Inspect generated rename candidates.",
         )),
-        "symbols_prepare_rename" => Some(read_file_prediction_for_output(
-            action,
+        "symbols_prepare_rename" => Some((
             "state/next_rename_action.json",
             "Inspect prepared rename action JSON.",
         )),
@@ -121,11 +127,19 @@ fn prediction_output(input: &Value) -> Value {
     })
 }
 
-fn emit_prediction_from_stdin() -> Result<()> {
+fn prediction_output_from_stdin() -> Result<Value> {
     let input = read_action_input()?;
-    let out = prediction_output(&input);
-    println!("{}", serde_json::to_string_pretty(&out)?);
+    Ok(prediction_output(&input))
+}
+
+fn write_prediction_output(output: &Value) -> Result<()> {
+    println!("{}", serde_json::to_string_pretty(output)?);
     Ok(())
+}
+
+fn emit_prediction_from_stdin() -> Result<()> {
+    let output = prediction_output_from_stdin()?;
+    write_prediction_output(&output)
 }
 
 fn main() -> Result<()> {
@@ -135,4 +149,55 @@ fn main() -> Result<()> {
     }
 
     emit_prediction_from_stdin()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn predicted_next_actions_preserves_existing_fast_path() {
+        let input = json!({
+            "predicted_next_actions": [
+                {"action": "message", "intent": "precomputed"}
+            ]
+        });
+
+        let result = predicted_next_actions(&input);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0]["action"], "message");
+        assert_eq!(result[0]["intent"], "precomputed");
+    }
+
+    #[test]
+    fn action_kind_defaults_to_empty_string() {
+        let input = json!({"out": "unused"});
+        assert_eq!(action_kind(&input), "");
+    }
+
+    #[test]
+    fn simple_prediction_spec_preserves_apply_patch_mapping() {
+        assert_eq!(
+            simple_prediction_spec("apply_patch"),
+            Some(("cargo_test", "Verify the patch compiles and tests pass."))
+        );
+    }
+
+    #[test]
+    fn write_prediction_output_serializes_pretty_json() {
+        let output = json!({"predicted_next_actions": []});
+        let encoded = serde_json::to_string_pretty(&output).unwrap();
+        assert!(encoded.contains("predicted_next_actions"));
+    }
+
+    #[test]
+    fn file_prediction_spec_preserves_symbols_index_mapping() {
+        assert_eq!(
+            file_prediction_spec("symbols_index"),
+            Some((
+                "state/symbols.json",
+                "Inspect generated symbols inventory.",
+            ))
+        );
+    }
 }

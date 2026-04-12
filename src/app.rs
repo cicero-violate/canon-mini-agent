@@ -2868,7 +2868,7 @@ async fn run_agent(
             &exchange_id,
             &raw,
             false,
-            false,
+            true,  // always auto-fill message fields so `from` is forced to the actual role
             None,
         ) {
             Ok(action) => action,
