@@ -4289,13 +4289,33 @@ fn handle_plan_add_edge(
     obj: &mut serde_json::Map<String, Value>,
     action: &Value,
 ) -> Result<Option<(bool, String)>> {
-    let ids = {
-        let tasks = obj
-            .get("tasks")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
-        collect_task_ids(tasks)
-    };
+    let tasks = get_tasks_array(obj)?;
+    let ids = collect_task_ids(tasks);
+
+    let (from, to) = extract_edge_endpoints(action)?;
+    validate_edge_ids(&ids, from, to)?;
+
+    let edges = get_edges_array_mut(obj)?;
+    if edge_exists(edges, from, to) {
+        return Ok(Some((false, "plan edge already exists".to_string())));
+    }
+
+    push_edge(edges, from, to);
+    let edges_snapshot = edges.clone();
+    let _ = edges;
+
+    let tasks = get_tasks_array(obj)?;
+    ensure_dag(tasks, &edges_snapshot)?;
+    Ok(None)
+}
+
+fn get_tasks_array(obj: &serde_json::Map<String, Value>) -> Result<&Vec<Value>> {
+    obj.get("tasks")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))
+}
+
+fn extract_edge_endpoints(action: &Value) -> Result<(&str, &str)> {
     let from = action
         .get("from")
         .and_then(|v| v.as_str())
@@ -4304,35 +4324,39 @@ fn handle_plan_add_edge(
         .get("to")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("plan add_edge missing to"))?;
+    Ok((from, to))
+}
+
+fn validate_edge_ids(ids: &std::collections::BTreeSet<String>, from: &str, to: &str) -> Result<()> {
     if !ids.contains(from) || !ids.contains(to) {
         bail!("plan edge refers to unknown task id");
     }
-    let dag = obj
-        .get_mut("dag")
+    Ok(())
+}
+
+fn get_edges_array_mut(
+    obj: &mut serde_json::Map<String, Value>,
+) -> Result<&mut Vec<Value>> {
+    obj.get_mut("dag")
         .and_then(|v| v.as_object_mut())
-        .ok_or_else(|| anyhow!("PLAN.json missing dag object"))?;
-    let edges = dag
+        .ok_or_else(|| anyhow!("PLAN.json missing dag object"))?
         .get_mut("edges")
         .and_then(|v| v.as_array_mut())
-        .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))?;
-    if edges.iter().any(|e| {
+        .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))
+}
+
+fn edge_exists(edges: &Vec<Value>, from: &str, to: &str) -> bool {
+    edges.iter().any(|e| {
         e.get("from").and_then(|v| v.as_str()) == Some(from)
             && e.get("to").and_then(|v| v.as_str()) == Some(to)
-    }) {
-        return Ok(Some((false, "plan edge already exists".to_string())));
-    }
+    })
+}
+
+fn push_edge(edges: &mut Vec<Value>, from: &str, to: &str) {
     let mut edge = serde_json::Map::new();
     edge.insert("from".to_string(), Value::String(from.to_string()));
     edge.insert("to".to_string(), Value::String(to.to_string()));
     edges.push(Value::Object(edge));
-    let edges_snapshot = edges.clone();
-    let _ = edges;
-    let tasks = obj
-        .get("tasks")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
-    ensure_dag(tasks, &edges_snapshot)?;
-    Ok(None)
 }
 
 fn handle_plan_remove_edge(
