@@ -2776,6 +2776,59 @@ fn handle_rustc_action(
     fallback_rustc_action(role, step, action_kind, workspace, crate_name, mode, extra)
 }
 
+fn build_fallback_rustc_command(crate_name: &str, mode: &str, extra: &str) -> String {
+    if extra.trim().is_empty() {
+        format!("cargo rustc -p {crate_name} -- -Zunpretty={mode}")
+    } else {
+        format!("cargo rustc -p {crate_name} -- -Zunpretty={mode} {extra}")
+    }
+}
+
+fn fallback_rustc_action_label(action_kind: &str, success: bool) -> String {
+    if success {
+        format!("{action_kind} ok")
+    } else {
+        format!("{action_kind} failed")
+    }
+}
+
+fn log_fallback_rustc_failure(
+    role: &str,
+    step: usize,
+    action_kind: &str,
+    crate_name: &str,
+    mode: &str,
+    extra: &str,
+    cmd: &str,
+) {
+    log_error_event(
+        role,
+        action_kind,
+        Some(step),
+        &format!("{action_kind} failed for crate {crate_name}"),
+        Some(json!({
+            "stage": action_kind,
+            "crate": crate_name,
+            "mode": mode,
+            "extra": extra,
+            "cmd": cmd,
+        })),
+    );
+}
+
+fn format_fallback_rustc_output(label: &str, out: &str, crate_name: &str) -> String {
+    format!(
+        "{label}:\n{}",
+        truncate(
+            &format!(
+                "{out}\n\nnote: state/rustc/{}/graph.json not available; build with canon-rustc-v2 wrapper to enable graph-backed rustc_hir/rustc_mir output.",
+                crate_name.replace('-', "_")
+            ),
+            MAX_SNIPPET
+        )
+    )
+}
+
 fn fallback_rustc_action(
     role: &str,
     step: usize,
@@ -2785,47 +2838,15 @@ fn fallback_rustc_action(
     mode: &str,
     extra: &str,
 ) -> Result<(bool, String)> {
-    let cmd = if extra.trim().is_empty() {
-        format!("cargo rustc -p {crate_name} -- -Zunpretty={mode}")
-    } else {
-        format!("cargo rustc -p {crate_name} -- -Zunpretty={mode} {extra}")
-    };
+    let cmd = build_fallback_rustc_command(crate_name, mode, extra);
     eprintln!("[{role}] step={} {action_kind} cmd={cmd}", step);
     let (success, out) = exec_run_command(workspace, &cmd, crate::constants::workspace())?;
-    let label = if success {
-        format!("{action_kind} ok")
-    } else {
-        format!("{action_kind} failed")
-    };
+    let label = fallback_rustc_action_label(action_kind, success);
     eprintln!("[{role}] step={} {label} output_bytes={}", step, out.len());
     if !success {
-        log_error_event(
-            role,
-            action_kind,
-            Some(step),
-            &format!("{action_kind} failed for crate {crate_name}"),
-            Some(json!({
-                "stage": action_kind,
-                "crate": crate_name,
-                "mode": mode,
-                "extra": extra,
-                "cmd": cmd,
-            })),
-        );
+        log_fallback_rustc_failure(role, step, action_kind, crate_name, mode, extra, &cmd);
     }
-    Ok((
-        false,
-        format!(
-            "{label}:\n{}",
-            truncate(
-                &format!(
-                    "{out}\n\nnote: state/rustc/{}/graph.json not available; build with canon-rustc-v2 wrapper to enable graph-backed rustc_hir/rustc_mir output.",
-                    crate_name.replace('-', "_")
-                ),
-                MAX_SNIPPET
-            )
-        ),
-    ))
+    Ok((false, format_fallback_rustc_output(&label, &out, crate_name)))
 }
 
 fn graph_backed_rustc_action_output(
