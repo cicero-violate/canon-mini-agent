@@ -31,7 +31,7 @@ use crate::prompts::{
 };
 use crate::invalid_action::{
     auto_fill_message_fields, build_invalid_action_feedback, corrective_invalid_action_prompt,
-    default_message_route, expected_message_format,
+    default_message_route, ensure_action_base_schema, expected_message_format,
 };
 use crate::state_space::{
     allow_diagnostics_run, allow_verifier_run, block_executor_dispatch, check_completion_endpoint,
@@ -1902,6 +1902,12 @@ fn parse_action_from_raw(
         auto_fill_message_fields(&mut action, role);
     }
 
+    // Always run the base-schema autofill so missing provenance fields (rationale,
+    // predicted_next_actions, intent, task_id, objective_id) are populated before
+    // validation.  This breaks the schema-rejection→identical-retry loop without
+    // suppressing real structural errors.
+    ensure_action_base_schema(&mut action);
+
     validate_action_or_feedback(role, raw, &action, &log)?;
 
     Ok(action)
@@ -3503,7 +3509,23 @@ fn handle_executor_completion_message_action(
 
 fn persist_executor_completion_message(dispatch_state: &mut DispatchState, action: &Value) {
     let to_role = action.get("to").and_then(|v| v.as_str()).unwrap_or("");
-    if to_role.eq_ignore_ascii_case("planner") {
+
+    // Self-loop guard: an executor message routed back to "executor" would write
+    // wakeup_executor.flag, wake the executor next cycle, and then complete again
+    // with another self-addressed message — creating an oscillating stall that
+    // permanently resets the convergence counter before it can reach the threshold.
+    // Redirect such messages to the planner so the loop is broken deterministically.
+    let effective_to = if to_role.eq_ignore_ascii_case("executor") {
+        eprintln!(
+            "[orchestrate] executor→executor message detected; redirecting to planner \
+             to break self-wake stall loop"
+        );
+        "planner"
+    } else {
+        to_role
+    };
+
+    if effective_to.eq_ignore_ascii_case("planner") {
         persist_planner_message(action);
         dispatch_state.planner_pending = true;
         return;

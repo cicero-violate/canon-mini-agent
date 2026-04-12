@@ -982,3 +982,49 @@ fn ensure_blocker_payload_fields(payload: &mut serde_json::Map<String, Value>) -
     }
     changed
 }
+
+/// Autofill missing provenance fields on **any** action to stop the schema-rejection loop.
+///
+/// Called after `auto_fill_message_fields` so message-specific logic runs first.
+/// Only fills fields that are absent or empty; never overwrites present values.
+/// Returns `true` if any field was added.
+pub fn ensure_action_base_schema(action: &mut Value) -> bool {
+    let Some(obj) = action.as_object_mut() else {
+        return false;
+    };
+    let mut changed = false;
+
+    // rationale — required, must be non-empty
+    changed |= ensure_object_string_field(obj, "rationale", "Auto-filled to satisfy schema.");
+
+    // predicted_next_actions — required array of 2-3 items
+    if missing_predicted_next_actions(obj) {
+        obj.insert(
+            "predicted_next_actions".to_string(),
+            example_predicted_next_actions(),
+        );
+        changed = true;
+    }
+
+    // intent — optional but must be non-empty when present; autofill if missing
+    changed |= ensure_object_string_field(obj, "intent", "Auto-filled intent.");
+
+    // task_id / objective_id — optional provenance; only inject when completely absent
+    // (empty string is already a schema violation so we leave those for corrective feedback)
+    if !obj.contains_key("task_id") {
+        obj.insert(
+            "task_id".to_string(),
+            Value::String("unknown".to_string()),
+        );
+        changed = true;
+    }
+    if !obj.contains_key("objective_id") {
+        obj.insert(
+            "objective_id".to_string(),
+            Value::String("unknown".to_string()),
+        );
+        changed = true;
+    }
+
+    changed
+}

@@ -1220,19 +1220,32 @@ fn verifier_patch_scope_error(touches: &PatchTargetTouches) -> Option<String> {
 }
 
 fn planner_patch_scope_error(targets: &[&str], touches: &PatchTargetTouches) -> Option<String> {
+    if touches.touches_master_plan {
+        return Some(
+            "apply_patch is ALWAYS rejected for PLAN.json. \
+             Use the `plan` action instead — e.g. \
+             {\"action\":\"plan\",\"op\":\"set_task_status\",\"task_id\":\"<id>\",\"status\":\"ready\",\
+             \"rationale\":\"<why>\",\"predicted_next_actions\":[...]}. \
+             Retrying apply_patch on PLAN.json will produce this same error every time."
+                .to_string(),
+        );
+    }
     if touches.touches_spec
         || touches.touches_violations
         || targets.iter().any(|path| is_src_path(path) || is_tests_path(path))
     {
         Some(
-            "Planner may patch lane plans under `PLANS/<instance>/executor-<id>.json` (or legacy `PLANS/executor-<id>.md`); planner may not patch `src/`, `tests/`, `SPEC.md`, or `VIOLATIONS.json`."
+            "Planner may patch lane plans under `PLANS/<instance>/executor-<id>.json` \
+             (or legacy `PLANS/executor-<id>.md`); planner may not patch `src/`, `tests/`, \
+             `SPEC.md`, or `VIOLATIONS.json`."
                 .to_string(),
         )
     } else if touches.touches_lane || touches.touches_objectives {
         None
     } else {
         Some(
-            "Planner may patch lane plans or `PLANS/OBJECTIVES.json` only. Use the `plan` action for `PLAN.json` updates; no other patches are allowed."
+            "Planner may patch lane plans or `PLANS/OBJECTIVES.json` only. \
+             Use the `plan` action for `PLAN.json` updates; no other patches are allowed."
                 .to_string(),
         )
     }
@@ -4294,7 +4307,41 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
         }
     }
 
-    persist_plan_action_update(role, action, op_raw, &plan_path, &plan)
+    persist_plan_action_update(role, action, op_raw, &plan_path, &plan)?;
+
+    // Planner cycle terminator: a plan op that lands a task in `ready` state is
+    // sufficient to end the planner's turn.  The executor wakeup flag was already
+    // written by persist_plan_action_update; there is no need for a separate
+    // message handoff.  Returning done=true here exits run_agent the same way a
+    // `message` action would, eliminating the redundant handoff step.
+    //
+    // Other roles (verifier, solo) are not affected — their plan actions continue
+    // to return done=false so their own cycle termination logic is unchanged.
+    if role.eq_ignore_ascii_case("planner") && plan_op_produced_ready_task(op_raw, action, &plan) {
+        let task_id = action
+            .get("task_id")
+            .and_then(|v| v.as_str())
+            .or_else(|| {
+                action
+                    .get("task")
+                    .and_then(|t| t.get("id"))
+                    .and_then(|v| v.as_str())
+            })
+            .unwrap_or("(see plan)");
+        eprintln!(
+            "[plan] planner cycle complete via ready task `{task_id}`; no handoff message required"
+        );
+        return Ok((
+            true,
+            format!(
+                "plan ok — ready task `{task_id}` dispatched; executor wakeup written\n\
+                 plan_path: {}",
+                plan_path.display()
+            ),
+        ));
+    }
+
+    Ok((false, format!("plan ok\nplan_path: {}", plan_path.display())))
 }
 
 fn dispatch_plan_op(
@@ -4337,7 +4384,7 @@ fn persist_plan_action_update(
     op_raw: &str,
     plan_path: &Path,
     plan: &Value,
-) -> Result<(bool, String)> {
+) -> Result<()> {
     std::fs::write(plan_path, serde_json::to_string_pretty(plan)?)?;
     // Emit control-plane log for plan mutation
     if let Ok(paths) = crate::logging::append_action_log_record(&crate::logging::compact_log_record(
@@ -4358,10 +4405,62 @@ fn persist_plan_action_update(
     )) {
         let _ = paths;
     }
-    Ok((
-        false,
-        format!("plan ok\nplan_path: {}", plan_path.display()),
-    ))
+    // Option-A dispatch hook: when any plan op results in a task reaching `ready`
+    // state, immediately write wakeup_executor.flag so the orchestrator can
+    // dispatch the executor on the next cycle without waiting for the planner's
+    // message handoff.  This makes PLAN.json the authoritative trigger for
+    // executor dispatch (SPEC.md §7.6).
+    if plan_op_produced_ready_task(op_raw, action, plan) {
+        let flag = std::path::Path::new(crate::constants::agent_state_dir())
+            .join("wakeup_executor.flag");
+        let _ = std::fs::create_dir_all(crate::constants::agent_state_dir());
+        let _ = std::fs::write(&flag, "ready_task");
+        eprintln!(
+            "[plan] ready task detected via op={op_raw}; wrote wakeup_executor.flag"
+        );
+    }
+    Ok(())
+}
+
+/// Return true when the plan mutation just written resulted in at least one task
+/// having `status = "ready"`.  This drives the Option-A executor-dispatch hook.
+fn plan_op_produced_ready_task(op_raw: &str, action: &Value, plan: &Value) -> bool {
+    match op_raw {
+        // Targeted status ops — check the explicit status field in the action.
+        "set_task_status" => action
+            .get("status")
+            .and_then(|v| v.as_str())
+            .map(|s| s.eq_ignore_ascii_case("ready"))
+            .unwrap_or(false),
+        // update_task may carry an inline status.
+        "update_task" => action
+            .get("task")
+            .and_then(|t| t.get("status"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.eq_ignore_ascii_case("ready"))
+            .unwrap_or(false),
+        // create_task — task could be born ready.
+        "create_task" => action
+            .get("task")
+            .and_then(|t| t.get("status"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.eq_ignore_ascii_case("ready"))
+            .unwrap_or(false),
+        // replace_plan — scan the whole plan for any ready task.
+        "replace_plan" => plan
+            .get("tasks")
+            .and_then(|v| v.as_array())
+            .map(|tasks| {
+                tasks.iter().any(|t| {
+                    t.get("status")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.eq_ignore_ascii_case("ready"))
+                        .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false),
+        _ => false,
+    }
 }
 
 fn build_replacement_plan(action: &Value) -> Result<Value> {

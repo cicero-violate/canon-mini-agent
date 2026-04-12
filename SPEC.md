@@ -283,6 +283,16 @@ Additional clarification (from implementation):
 - The orchestrator's own state (`AgentStateDir`) is never the target workspace.
 - Agents are told the active `Workspace` value in every prompt (header line `WORKSPACE: <path>`).
 
+### 4.12 Python-for-JSON Invariant
+
+All agents **must** use the `python` action when reading or writing any `.json` state file at runtime. Shell tools (`cat`, `jq`, `grep`, `sed`, `awk`) must not be used to inspect or mutate JSON state files because they produce no parse-time error on malformed JSON and silently corrupt objects.
+
+Applies to: `PLAN.json`, `PLANS/OBJECTIVES.json`, `ISSUES.json`, `VIOLATIONS.json`, the active diagnostics report, and any other structured JSON artifact under `AgentStateDir` or `Workspace`.
+
+Exceptions: reading raw bytes for hash/size checks via `run_command` is permitted; the restriction is on semantic read/write operations.
+
+Enforcement: agents are instructed via their prompt rules section. Verifier must flag any executor or planner turn that uses shell tools to read/write JSON.
+
 ### 4.10 Solo Completion Plan-Objective Coupling
 - A solo `message` action with `status = complete` is rejected when active actionable objectives still exist and `PLAN.json` has no incomplete tasks.
 - Runtime predicate: reject when `has_actionable_objectives(objectives) == true` and `plan_has_incomplete_tasks(plan) == false`.
@@ -339,6 +349,11 @@ Role emits message{to=Planner}
   -> next orchestration loop iteration: apply_wake_flags() schedules planner
   -> planner prompt injects inbound message via inject_inbound_message()
 ```
+
+**PLAN.json is the authoritative handoff medium (Option A):**
+A planner→executor `message` with `status: ready` is a *notification* that PLAN.json has been updated. It is not independently actionable. The executor **must** confirm the task is marked `ready` in PLAN.json before starting work. If PLAN.json does not reflect `ready` status, the executor must block and notify the planner rather than proceed on message content alone.
+
+Self-loop guard: an executor `message` action with `to: "executor"` is a routing error. The orchestrator redirects such messages to the planner to prevent the stall-counter disarming loop (see §5.5).
 
 ### 5.5 Convergence Guard (Livelock Detection)
 
@@ -438,15 +453,53 @@ Notes:
 ```
 
 ### 7.4 Lane Execution Rules
-- Execute top 1–10 tasks with `status=todo`.
-- Respect dependencies: `∀ edge(from->to): status(from)=done before status(to)!=todo`.
+- Execute top 1–10 tasks with `status=ready` (not `todo` — tasks must be explicitly moved to `ready` by the planner before the executor may start them).
+- Respect dependencies: `∀ edge(from->to): status(from)=done before status(to)=ready`.
 - No reordering beyond dependency graph.
 - After completing work, emit exactly one `message` action to handoff.
+- **Task scoping:** when the executor starts a cycle it is scoped to the `task_id` delivered in the planner handoff. All actions in that cycle must carry the matching `task_id` and `objective_id` in their provenance fields. The executor must not self-select other tasks from PLAN.json outside the current ready window.
 
 ### 7.5 Deterministic Guarantees
 - Same inputs → same task graph.
 - No hidden tasks.
 - No implicit dependencies.
+
+### 7.6 PLAN.json Authoritative Rule (Option A)
+
+**PLAN.json is the single source of truth for executor task selection.**
+
+| Source | Role |
+|--------|------|
+| `PLAN.json` task `status=ready` | Authoritative — executor may only execute tasks listed here as `ready` |
+| Planner→Executor `message` with `status: ready` | Notification only — must reflect PLAN.json state, not override it |
+
+Rules:
+1. The executor may only pick up a task when it is marked `"status": "ready"` in PLAN.json.
+2. A planner handoff `message` is a signal that PLAN.json has been updated; the executor must verify PLAN.json state before acting.
+3. The verifier judges executor progress against PLAN.json, not against message payloads.
+4. No agent may declare a task complete in a message without also updating `PLAN.json` task status to `"done"`.
+
+This eliminates the ambiguity between message-routing state and plan state that caused false blockers, unnecessary plan mutations, and stall-counter livelocks.
+
+### 7.7 Objective → Plan → Task Hierarchy
+
+The system uses a three-level authority chain:
+
+```
+PLANS/OBJECTIVES.json  (objective_id)
+        ↓
+    PLAN.json          (plan tasks — derived from objectives)
+        ↓
+  task_id (per task)   (executor work unit — scoped from plan)
+```
+
+Rules:
+- Every PLAN.json task must trace back to an objective in `PLANS/OBJECTIVES.json` via shared `objective_id`.
+- Every executor action must carry both `objective_id` and `task_id` as provenance fields.
+- The planner must not create plan tasks unrelated to an active objective without first adding the objective.
+- When the executor starts a cycle it receives a `task_id` from the planner handoff. That `task_id` is the scope boundary for all actions in the cycle.
+
+This chain ensures full traceability: any action can be traced back through task → plan → objective.
 
 ## 8. Non-Goals
 - No network access from agents.
