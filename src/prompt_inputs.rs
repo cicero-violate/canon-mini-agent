@@ -274,6 +274,41 @@ pub fn read_rename_candidates_or_empty(workspace: &Path) -> String {
     lines.join("\n")
 }
 
+/// Read state/reports/complexity/latest.json and return the top `limit` hotspots
+/// as compact text for prompt injection. Returns empty string if report is absent.
+pub fn read_complexity_hotspots(workspace: &Path, limit: usize) -> String {
+    let path = workspace
+        .join("state")
+        .join("reports")
+        .join("complexity")
+        .join("latest.json");
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(_) => return String::new(),
+    };
+    let Ok(report) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return String::new();
+    };
+    let Some(top) = report.get("global_top").and_then(|v| v.as_array()) else {
+        return String::new();
+    };
+    if top.is_empty() {
+        return String::new();
+    }
+    let mut out = String::from("Top complexity hotspots (mir_blocks proxy; higher = more branching):\n");
+    for item in top.iter().take(limit.max(1)) {
+        let symbol = item.get("symbol").and_then(|v| v.as_str()).unwrap_or("?");
+        let file = item.get("file").and_then(|v| v.as_str()).unwrap_or("?");
+        let line = item.get("line").and_then(|v| v.as_u64()).unwrap_or(0);
+        let score = item
+            .get("complexity_proxy")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        out.push_str(&format!("  [{score}] {symbol} ({file}:{line})\n"));
+    }
+    out
+}
+
 pub fn read_lessons_or_empty(workspace: &Path) -> String {
     let raw = read_text_or_empty(workspace.join(LESSONS_FILE));
     if raw.trim().is_empty() {
@@ -883,6 +918,11 @@ fn build_executor_role_prompt(ctx: &SingleRoleContext<'_>) -> Result<String> {
 
 fn executor_diff_unavailable(reason: &str) -> String {
     format!("(executor diff unavailable: {reason})")
+}
+
+/// Public wrapper so solo phase can compute plan diffs without duplicating logic.
+pub fn solo_plan_diff(old_text: &str, new_text: &str, max_lines: usize) -> String {
+    plan_diff(old_text, new_text, max_lines)
 }
 
 fn plan_diff(old_text: &str, new_text: &str, max_lines: usize) -> String {

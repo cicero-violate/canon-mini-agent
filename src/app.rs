@@ -496,6 +496,8 @@ async fn run_solo_phase(
     ctx: &OrchestratorContext<'_>,
     solo_bootstrapped: &mut bool,
     cargo_test_failures: &str,
+    last_solo_executor_diff: &mut String,
+    last_solo_plan_text: &mut String,
 ) -> bool {
     let spec = match read_required_text(ctx.workspace.join(SPEC_FILE), SPEC_FILE) {
         Ok(spec) => spec,
@@ -531,6 +533,17 @@ async fn run_solo_phase(
     let objectives_mtime_before = file_modified_ms(&agent_objectives)
         .or_else(|| file_modified_ms(&ctx.workspace.join(OBJECTIVES_FILE)));
     let plan_mtime_before = file_modified_ms(&ctx.workspace.join(MASTER_PLAN_FILE));
+    // Compute diffs and ranked context (symmetric with planner cycle)
+    let executor_diff_inputs = crate::prompt_inputs::load_executor_diff_inputs(
+        ctx.workspace,
+        last_solo_executor_diff,
+        400,
+    );
+    let current_plan_text = read_text_or_empty(ctx.master_plan_path);
+    let plan_diff_text = crate::prompt_inputs::solo_plan_diff(last_solo_plan_text, &current_plan_text, 400);
+    *last_solo_plan_text = current_plan_text;
+    let issues_text = crate::issues::read_open_issues(ctx.workspace);
+    let complexity_hotspots = crate::prompt_inputs::read_complexity_hotspots(ctx.workspace, 8);
     let mut prompt = single_role_solo_prompt(
         &spec,
         &master_plan,
@@ -541,6 +554,10 @@ async fn run_solo_phase(
         &diagnostics,
         cargo_test_failures,
         &crate::prompt_inputs::read_rename_candidates_or_empty(ctx.workspace),
+        &issues_text,
+        &executor_diff_inputs.diff_text,
+        &plan_diff_text,
+        &complexity_hotspots,
     );
     inject_inbound_message(&mut prompt, "solo");
     trace_orchestrator_forwarded("orchestrator", "solo", "solo", None, None, None, None);
@@ -1640,6 +1657,10 @@ struct OrchestratorCheckpoint {
     diagnostics_text: String,
     last_plan_text: String,
     last_executor_diff: String,
+    #[serde(default)]
+    last_solo_plan_text: String,
+    #[serde(default)]
+    last_solo_executor_diff: String,
     lanes: Vec<CheckpointLane>,
     verifier_summary: Vec<String>,
     verifier_pending_results: Vec<ResumeVerifierItem>,
@@ -1678,6 +1699,8 @@ fn save_checkpoint(
         diagnostics_text: dispatch_state.diagnostics_text.clone(),
         last_plan_text: dispatch_state.last_plan_text.clone(),
         last_executor_diff: dispatch_state.last_executor_diff.clone(),
+        last_solo_plan_text: dispatch_state.last_solo_plan_text.clone(),
+        last_solo_executor_diff: dispatch_state.last_solo_executor_diff.clone(),
         lanes: lane_snapshots,
         verifier_summary: verifier_summary.to_vec(),
         verifier_pending_results: resume_items,
@@ -3021,6 +3044,8 @@ struct DispatchState {
     diagnostics_text: String,
     last_plan_text: String,
     last_executor_diff: String,
+    last_solo_plan_text: String,
+    last_solo_executor_diff: String,
     lane_next_submit_at_ms: HashMap<usize, u64>,
     lane_submit_in_flight: HashMap<usize, bool>,
 }
@@ -3054,6 +3079,8 @@ fn new_dispatch_state(lanes: &[LaneConfig]) -> DispatchState {
         diagnostics_text: String::new(),
         last_plan_text: String::new(),
         last_executor_diff: String::new(),
+        last_solo_plan_text: String::new(),
+        last_solo_executor_diff: String::new(),
         lane_next_submit_at_ms,
         lane_submit_in_flight,
     }
@@ -3922,6 +3949,8 @@ pub async fn run() -> Result<()> {
             dispatch_state.diagnostics_text = checkpoint.diagnostics_text;
             dispatch_state.last_plan_text = checkpoint.last_plan_text;
             dispatch_state.last_executor_diff = checkpoint.last_executor_diff;
+            dispatch_state.last_solo_plan_text = checkpoint.last_solo_plan_text;
+            dispatch_state.last_solo_executor_diff = checkpoint.last_solo_executor_diff;
             for lane_snapshot in checkpoint.lanes {
                 if let Some(state) = dispatch_state.lanes.get_mut(&lane_snapshot.lane_id) {
                     state.plan_text = lane_snapshot.plan_text;
@@ -4161,8 +4190,14 @@ pub async fn run() -> Result<()> {
             if phase_gates.solo {
                 current_phase = "solo".to_string();
                 current_phase_lane = None;
-                if run_solo_phase(&orchestrator_ctx, &mut solo_bootstrapped, &cargo_test_failures)
-                    .await
+                if run_solo_phase(
+                    &orchestrator_ctx,
+                    &mut solo_bootstrapped,
+                    &cargo_test_failures,
+                    &mut dispatch_state.last_solo_executor_diff,
+                    &mut dispatch_state.last_solo_plan_text,
+                )
+                .await
                 {
                     cycle_progress = true;
                 } else {

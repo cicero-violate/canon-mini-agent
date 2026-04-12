@@ -1061,19 +1061,44 @@ pub(crate) fn single_role_solo_prompt(
     diagnostics: &str,
     cargo_test_failures: &str,
     rename_candidates: &str,
+    issues_text: &str,
+    executor_diff_text: &str,
+    plan_diff_text: &str,
+    complexity_hotspots: &str,
 ) -> String {
     let workspace = workspace();
     let diagnostics_path = diagnostics_file();
+    let issues_file = crate::constants::ISSUES_FILE;
     let mut sections = format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed.\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}"
+    );
+    append_optional_prompt_section(
+        &mut sections,
+        plan_diff_text,
+        &format!("Plan diff since last cycle (from {MASTER_PLAN_FILE}):"),
+    );
+    append_optional_prompt_section(
+        &mut sections,
+        executor_diff_text,
+        "Workspace diff since last cycle (git diff, excluding plans/diagnostics/violations):",
     );
     append_optional_prompt_section(
         &mut sections,
         objectives,
         &format!("Objectives (from {OBJECTIVES_FILE}):"),
     );
+    append_optional_prompt_section(
+        &mut sections,
+        issues_text,
+        &format!("Open issues ranked by score (from {issues_file}):"),
+    );
     // Lessons section must always be present (even if empty) to satisfy prompt invariants/tests
     sections.push_str(&format!("\n\nLessons artifact:\n{}", lessons_text));
+    append_optional_prompt_section(
+        &mut sections,
+        complexity_hotspots,
+        "Complexity hotspots (supervisor-generated; mir_blocks proxy — higher = more branching):",
+    );
     append_optional_prompt_section(
         &mut sections,
         invariants,
@@ -1153,6 +1178,10 @@ mod prompt_regression_tests {
             "diagnostics",
             "failures",
             "",
+            "",
+            "",
+            "",
+            "",
         );
 
         assert!(!output.contains("Pending rename tasks (from state/rename_candidates.json):"));
@@ -1171,6 +1200,10 @@ mod prompt_regression_tests {
             "diagnostics",
             "failures",
             "candidate1",
+            "",
+            "",
+            "",
+            "",
         );
 
         assert!(output.contains("Pending rename tasks (from state/rename_candidates.json):"));
@@ -1190,6 +1223,10 @@ mod prompt_regression_tests {
             "diagnostics",
             "failures",
             "",
+            "",
+            "",
+            "",
+            "",
         );
         let non_empty_output = single_role_solo_prompt(
             "spec",
@@ -1201,6 +1238,10 @@ mod prompt_regression_tests {
             "diagnostics",
             "failures",
             "candidate1",
+            "",
+            "",
+            "",
+            "",
         );
 
         assert!(empty_output.contains("Latest cargo test failures (from cargo_test_failures.json):\nfailures\n\nUse the `plan` action"));
@@ -1837,6 +1878,10 @@ mod tests {
             "{diagnostics}",
             "{cargo_test_failures}",
             "",
+            "",
+            "",
+            "",
+            "",
         );
         assert!(
             prompt.contains("Use the `plan` action for `PLAN.json` edits"),
@@ -1855,6 +1900,10 @@ mod tests {
             "{violations}",
             "{diagnostics}",
             "{cargo_test_failures}",
+            "",
+            "",
+            "",
+            "",
             "",
         );
         assert!(
