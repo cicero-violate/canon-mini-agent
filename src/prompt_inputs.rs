@@ -400,6 +400,66 @@ fn is_done_like_status(status: &str) -> bool {
     )
 }
 
+fn is_ready_status(status: &str) -> bool {
+    status.trim().to_ascii_lowercase() == "ready"
+}
+
+/// Extract the top-N ready tasks from PLAN.json and format them for the executor prompt.
+///
+/// Returns a formatted string listing each ready task as:
+///   [priority] id: title
+///     → step 1
+///     → step 2 (first two steps only)
+///
+/// Returns "(no ready tasks)" when PLAN.json is missing, empty, or has no ready tasks.
+pub fn read_ready_tasks(workspace: &Path, limit: usize) -> String {
+    let plan_path = workspace.join(crate::constants::MASTER_PLAN_FILE);
+    let raw = match std::fs::read_to_string(&plan_path) {
+        Ok(s) => s,
+        Err(_) => return "(no ready tasks)".to_string(),
+    };
+    if raw.trim().is_empty() {
+        return "(no ready tasks)".to_string();
+    }
+    let Ok(value) = serde_json::from_str::<Value>(&raw) else {
+        return "(no ready tasks)".to_string();
+    };
+    let Some(tasks) = value.get("tasks").and_then(Value::as_array) else {
+        return "(no ready tasks)".to_string();
+    };
+
+    let ready: Vec<&Value> = tasks
+        .iter()
+        .filter(|t| {
+            t.get("status")
+                .and_then(Value::as_str)
+                .map(is_ready_status)
+                .unwrap_or(false)
+        })
+        .take(limit)
+        .collect();
+
+    if ready.is_empty() {
+        return "(no ready tasks)".to_string();
+    }
+
+    let mut out = String::new();
+    for task in &ready {
+        let id = task.get("id").and_then(Value::as_str).unwrap_or("?");
+        let priority = task.get("priority").and_then(Value::as_str).unwrap_or("?");
+        let title = task.get("title").and_then(Value::as_str).unwrap_or("(no title)");
+        out.push_str(&format!("[{priority}] {id}: {title}\n"));
+        if let Some(steps) = task.get("steps").and_then(Value::as_array) {
+            for step in steps.iter().take(2) {
+                if let Some(s) = step.as_str() {
+                    out.push_str(&format!("  → {s}\n"));
+                }
+            }
+        }
+    }
+    out.trim_end().to_string()
+}
+
 pub fn filter_pending_plan_json(raw: &str) -> String {
     if raw.trim().is_empty() {
         return "(no pending plan tasks)".to_string();

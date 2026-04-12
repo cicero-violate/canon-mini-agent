@@ -3628,10 +3628,15 @@ async fn submit_executor_turn(
     command_id: &str,
     response_timeout_secs: u64,
 ) -> Result<String> {
+    let ready_tasks = crate::prompt_inputs::read_ready_tasks(
+        &std::path::PathBuf::from(workspace()),
+        10,
+    );
     let mut exec_prompt = executor_cycle_prompt(
         job.executor_display.as_str(),
         job.label.as_str(),
         &job.latest_verify_result,
+        &ready_tasks,
     );
     inject_inbound_message(&mut exec_prompt, "executor");
     let executor_system = system_instructions(AgentPromptKind::Executor);

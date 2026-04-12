@@ -897,6 +897,7 @@ pub(crate) fn executor_cycle_prompt(
     _executor_name: &str,
     lane_label: &str,
     latest_verify_result: &str,
+    ready_tasks: &str,
 ) -> String {
     let workspace = workspace();
     let diagnostics_file = diagnostics_file();
@@ -910,7 +911,7 @@ pub(crate) fn executor_cycle_prompt(
         latest_verify_result.to_string()
     };
     format!(
-        "TAB_ID: pending\nTURN_ID: pending\nAGENT_TYPE: EXECUTOR\n\nWORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Master plan: {MASTER_PLAN_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics: {diagnostics_file}\n\nLane plans are deprecated. Use planner handoff messages and {MASTER_PLAN_FILE} for task selection.\nLatest verifier result for lane {lane_label}:\n{verify_result}\n\nYou may send a message action to other agents at any time."
+        "TAB_ID: pending\nTURN_ID: pending\nAGENT_TYPE: EXECUTOR\n\nWORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Master plan: {MASTER_PLAN_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics: {diagnostics_file}\n\nREADY TASKS (from {MASTER_PLAN_FILE}, top-10 by plan order):\n{ready_tasks}\n\nLane plans are deprecated. Use planner handoff messages and {MASTER_PLAN_FILE} for task selection.\nLatest verifier result for lane {lane_label}:\n{verify_result}\n\nYou may send a message action to other agents at any time."
     )
 }
 
