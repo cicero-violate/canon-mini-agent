@@ -137,7 +137,7 @@ fn build_lessons_artifact(entries: &[Value]) -> LessonsArtifact {
         return LessonsArtifact::default();
     }
 
-    let mut sorted = sort_failure_groups(failure_map);
+    let sorted = sort_failure_groups(failure_map);
 
     let mut failures: Vec<String> = Vec::new();
     let mut fixes: Vec<String> = Vec::new();
