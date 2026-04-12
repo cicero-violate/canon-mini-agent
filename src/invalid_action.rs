@@ -313,8 +313,8 @@ fn example_plan_action() -> Value {
     })
 }
 
-fn example_message_action(from: &str, to_role: &str, msg_type: &str, status: &str) -> Value {
-    let payload = if msg_type == "blocker" || status == "blocked" {
+fn example_message_payload(msg_type: &str, status: &str) -> Value {
+    if msg_type == "blocker" || status == "blocked" {
         json!({
             "summary": "Short blocker summary",
             "blocker": "Root cause",
@@ -326,7 +326,11 @@ fn example_message_action(from: &str, to_role: &str, msg_type: &str, status: &st
         json!({
             "summary": "Short summary"
         })
-    };
+    }
+}
+
+fn example_message_action(from: &str, to_role: &str, msg_type: &str, status: &str) -> Value {
+    let payload = example_message_payload(msg_type, status);
     json!({
         "action": "message",
         "from": from,
