@@ -1324,9 +1324,11 @@ fn planner_patch_scope_error(targets: &[&str], touches: &PatchTargetTouches) -> 
         || targets.iter().any(|path| is_src_path(path) || is_tests_path(path))
     {
         Some(
-            "Planner may patch lane plans under `PLANS/<instance>/executor-<id>.json` \
-             (or legacy `PLANS/executor-<id>.md`); planner may not patch `src/`, `tests/`, \
-             `SPEC.md`, or `VIOLATIONS.json`."
+            "apply_patch on `src/`, `tests/`, `SPEC.md`, or `VIOLATIONS.json` is rejected for the planner role. \
+             Planner does not write source code. \
+             Use the `plan` action to create or update a task in PLAN.json and mark it `ready` so the executor picks it up. \
+             Example: {\"action\":\"plan\",\"op\":\"create_task\",\"task\":{\"id\":\"<id>\",\"title\":\"<title>\",\
+             \"status\":\"ready\",\"steps\":[\"...\"]},\"rationale\":\"<why>\",\"predicted_next_actions\":[...]}."
                 .to_string(),
         )
     } else if touches.touches_lane || touches.touches_objectives {

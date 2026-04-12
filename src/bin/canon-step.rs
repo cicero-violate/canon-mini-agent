@@ -34,35 +34,51 @@ fn predicted_next_actions(action: &Value) -> Vec<Value> {
 }
 
 fn predicted_next_actions_for_kind(kind: &str, action: &Value) -> Vec<Value> {
+    simple_prediction_for_kind(kind)
+        .or_else(|| file_prediction_for_kind(kind, action))
+        .unwrap_or_default()
+}
+
+fn simple_prediction_for_kind(kind: &str) -> Option<Vec<Value>> {
     match kind {
-        "apply_patch" => {
-            simple_action_prediction("cargo_test", "Verify the patch compiles and tests pass.")
-        }
-        "symbols_index" => read_file_prediction_for_output(
+        "apply_patch" => Some(simple_action_prediction(
+            "cargo_test",
+            "Verify the patch compiles and tests pass.",
+        )),
+        "rename_symbol" => Some(simple_action_prediction(
+            "cargo_test",
+            "Run tests after rename to ensure no regressions.",
+        )),
+        "run_command" => Some(simple_action_prediction(
+            "message",
+            "Summarize command output and decide next step.",
+        )),
+        "read_file" => Some(simple_action_prediction(
+            "message",
+            "Summarize findings and choose the next concrete action.",
+        )),
+        _ => None,
+    }
+}
+
+fn file_prediction_for_kind(kind: &str, action: &Value) -> Option<Vec<Value>> {
+    match kind {
+        "symbols_index" => Some(read_file_prediction_for_output(
             action,
             "state/symbols.json",
             "Inspect generated symbols inventory.",
-        ),
-        "symbols_rename_candidates" => read_file_prediction_for_output(
+        )),
+        "symbols_rename_candidates" => Some(read_file_prediction_for_output(
             action,
             "state/rename_candidates.json",
             "Inspect generated rename candidates.",
-        ),
-        "symbols_prepare_rename" => read_file_prediction_for_output(
+        )),
+        "symbols_prepare_rename" => Some(read_file_prediction_for_output(
             action,
             "state/next_rename_action.json",
             "Inspect prepared rename action JSON.",
-        ),
-        "rename_symbol" => {
-            simple_action_prediction("cargo_test", "Run tests after rename to ensure no regressions.")
-        }
-        "run_command" => {
-            simple_action_prediction("message", "Summarize command output and decide next step.")
-        }
-        "read_file" => {
-            simple_action_prediction("message", "Summarize findings and choose the next concrete action.")
-        }
-        _ => Vec::new(),
+        )),
+        _ => None,
     }
 }
 
@@ -105,14 +121,18 @@ fn prediction_output(input: &Value) -> Value {
     })
 }
 
+fn emit_prediction_from_stdin() -> Result<()> {
+    let input = read_action_input()?;
+    let out = prediction_output(&input);
+    println!("{}", serde_json::to_string_pretty(&out)?);
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     if maybe_print_usage(&args) {
         return Ok(());
     }
 
-    let input = read_action_input()?;
-    let out = prediction_output(&input);
-    println!("{}", serde_json::to_string_pretty(&out)?);
-    Ok(())
+    emit_prediction_from_stdin()
 }
