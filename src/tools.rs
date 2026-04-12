@@ -4539,6 +4539,38 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
         ));
     }
 
+    // Executor completion terminal: executor marks its task done → wake the planner
+    // so it can schedule the next task.  Return done=true to end the executor's turn
+    // without requiring a separate `message` action.
+    if role.starts_with("executor")
+        && op_raw == "set_task_status"
+        && action
+            .get("status")
+            .and_then(|v| v.as_str())
+            .map(|s| s.eq_ignore_ascii_case("done") || s.eq_ignore_ascii_case("complete"))
+            .unwrap_or(false)
+    {
+        let task_id = action
+            .get("task_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("(see plan)");
+        let agent_state = std::path::Path::new(crate::constants::agent_state_dir());
+        let _ = std::fs::create_dir_all(agent_state);
+        let _ = std::fs::write(agent_state.join("wakeup_planner.flag"), "executor_task_done");
+        eprintln!(
+            "[plan] executor marked task `{task_id}` done; planner wakeup written; \
+             no handoff message required"
+        );
+        return Ok((
+            true,
+            format!(
+                "plan ok — task `{task_id}` marked done; planner scheduled\n\
+                 plan_path: {}",
+                plan_path.display()
+            ),
+        ));
+    }
+
     Ok((false, format!("plan ok\nplan_path: {}", plan_path.display())))
 }
 
@@ -4844,8 +4876,21 @@ fn extract_plan_op(action: &Value) -> &str {
 }
 
 fn preflight_plan_action(role: &str, action: &Value, op_raw: &str) -> Result<()> {
-    if op_raw != "sorted_view" && role.starts_with("executor") {
-        bail!("plan action is not allowed for executor roles");
+    // Executors may only use `set_task_status → done/complete` to close the task
+    // they just finished.  Every other plan mutation remains planner-only.
+    if role.starts_with("executor") && op_raw != "sorted_view" {
+        let is_marking_done = op_raw == "set_task_status"
+            && action
+                .get("status")
+                .and_then(|v| v.as_str())
+                .map(|s| s.eq_ignore_ascii_case("done") || s.eq_ignore_ascii_case("complete"))
+                .unwrap_or(false);
+        if !is_marking_done {
+            bail!(
+                "plan action is not allowed for executor roles \
+                 (only `set_task_status → done` is permitted — use it after tests pass)"
+            );
+        }
     }
     if op_raw != "sorted_view" {
         capture_plan_schema(action);

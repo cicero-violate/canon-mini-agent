@@ -984,6 +984,18 @@ fn dispatch_executor_submits(
     if block_executor_dispatch(scheduled_phase) {
         return;
     }
+
+    // No-ready-tasks guard: if PLAN.json has no ready tasks, skip executor dispatch
+    // entirely and wake the planner instead.  This eliminates the idle turn where
+    // the executor discovers no work and sends an empty handoff message back.
+    {
+        let ws = std::path::PathBuf::from(workspace());
+        if crate::prompt_inputs::read_ready_tasks(&ws, 1) == "(no ready tasks)" {
+            dispatch_state.planner_pending = true;
+            return;
+        }
+    }
+
     for lane in ctx.lanes {
         if dispatch_state.lane_submit_active(lane.index)
             || dispatch_state.lane_next_submit_ms(lane.index) > now

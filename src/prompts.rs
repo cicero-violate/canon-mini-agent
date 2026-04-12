@@ -592,12 +592,25 @@ const EXECUTOR_HANDOFF_BULLETS: &[&str] = &[
     "remaining uncertainty or blockers",
 ];
 
-const EXECUTOR_PREFIX: &str = "━━━ EVIDENCE HANDOFF ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nAfter completing each task or sub-task from the planner handoff or master plan, do NOT update `SPEC.md` or `PLAN.json` yourself.\nInstead, use a `message` action and report verifier-facing evidence in `message.payload`:";
+const EXECUTOR_PREFIX: &str = "━━━ TASK COMPLETION PROTOCOL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n\
+When the task is done and tests pass:\n\
+  1. Mark it done: `{\"action\":\"plan\",\"op\":\"set_task_status\",\"task_id\":\"<id>\",\"status\":\"done\",\"rationale\":\"<evidence>\"}`\n\
+  2. Do NOT send a `message` — the planner is woken automatically.\n\n\
+Use `message` ONLY when:\n\
+  • You are blocked by something you cannot resolve (type=blocker, status=blocked)\n\
+  • Work is genuinely incomplete and you cannot determine whether it is correct\n\n\
+When you do send a `message`, include in `message.payload`:";
 
 const EXECUTION_DISCIPLINE_BULLETS: &[&str] = &[
     "Prefer tasks explicitly marked ready / highest priority by the planner.",
     "Do not skip ahead to lower-priority or blocked tasks unless the current ready task is impossible and you have concrete evidence.",
-    "Hard cap: after 5 actions you MUST hand off to the planner via `message` (handoff or blocker). The router enforces this.",
+    "Step budget: target completing each task in steps × 2 actions (minimum 5, absolute ceiling 20). \
+     Count each read_file, apply_patch, run_command, cargo_test, and semantic query as one action. \
+     If you reach the budget without finishing, complete the current sub-step and hand off — do not stall.",
+    "Completion path: when the task is done and tests pass, mark it done with \
+     `plan set_task_status → done` directly — no `message` required. \
+     Use `message` ONLY for (a) genuine blockers you cannot resolve or \
+     (b) partial completions where uncertainty is too high to mark done.",
     "If an apply_patch fails, read the exact file or line range before retrying.",
     "Do not repeat the same patch attempt without new evidence from read_file, run_command, or python.",
     "When touching routing, policy, or control-flow code, favor the authority described in CANONICAL_LAW.md and INVARIANTS.json over local heuristics.",
@@ -677,7 +690,7 @@ const PLANNER_RULES: &[&str] = &[
     "- If the incoming handoff was sent by solo (check `message.from` or context role), finish your planning cycle and send the return `message` to solo so it can resume execution. Do not leave solo waiting.",
     "- PLAN.json is the authoritative source of truth for executor task selection. A handoff message alone is not sufficient — the task MUST be marked `ready` in PLAN.json before the executor will pick it up.",
     "- Always use the `python` action when reading or writing any `.json` state file (PLAN.json, OBJECTIVES.json, ISSUES.json, VIOLATIONS.json, diagnostics). Never use apply_patch or run_command shell pipelines to mutate JSON; use the `plan`, `objectives`, or `issue` actions for their respective files.",
-    "- Executor tasks must only require executor-permitted actions: read_file, apply_patch, run_command, python, message, cargo_fmt, cargo_clippy, and semantic tools. The executor CANNOT use `plan`, `objectives`, `issue`, or `verify` actions — do NOT create tasks that require these for the executor. Reserve tasks using those actions for a planner or verifier cycle instead.",
+    "- Executor tasks must only require executor-permitted actions: read_file, apply_patch, run_command, python, cargo_fmt, cargo_clippy, semantic tools, and `plan set_task_status → done` (to mark its own task complete). The executor CANNOT use `objectives`, `issue`, or `verify` actions, and cannot use any plan op other than set_task_status → done. Reserve those actions for a planner or verifier cycle.",
 ];
 
 fn diagnostics_rules() -> Vec<String> {
@@ -713,7 +726,8 @@ fn executor_rules() -> Vec<String> {
         "- When sending a `message` action, always set `\"from\": \"executor\"`. Never copy `from` values from other roles' messages in your context.".to_string(),
         "- When blocked or complete, send your `message` to `\"planner\"` — not to `diagnostics`, `verifier`, or other roles. The planner coordinates all role dispatch.".to_string(),
         format!("- Never operate outside {ws}."),
-        "- Never modify `SPEC.md`, `PLAN.json`, `VIOLATIONS.json`, or `DIAGNOSTICS.json`.".to_string(),
+        "- Never modify `SPEC.md`, `VIOLATIONS.json`, or `DIAGNOSTICS.json`.".to_string(),
+        "- The ONLY permitted PLAN.json mutation is `plan set_task_status → done` for the task you just completed. All other plan ops (create_task, update_task, add_edge, replace_plan, set_task_status→ready) are planner-only.".to_string(),
         "- Never emit destructive commands (rm -rf, git reset --hard, git clean -f, etc.).".to_string(),
     ];
     rules.extend(load_role_overrides(AgentPromptKind::Executor));
