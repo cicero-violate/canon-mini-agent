@@ -26,12 +26,28 @@ fn read_action_input() -> Result<Value> {
 }
 
 fn predicted_next_actions(action: &Value) -> Vec<Value> {
+    existing_fast_path(action)
+        .unwrap_or_else(|| fallback_prediction(action))
+}
+
+fn existing_fast_path(action: &Value) -> Option<Vec<Value>> {
     existing_predicted_next_actions(action)
-        .unwrap_or_else(|| predicted_next_actions_from_kind(action))
+}
+
+fn fallback_prediction(action: &Value) -> Vec<Value> {
+    predicted_next_actions_from_kind(action)
 }
 
 fn predicted_next_actions_from_kind(action: &Value) -> Vec<Value> {
-    predicted_next_actions_for_kind(action_kind(action), action)
+    predicted_next_actions_for_resolved_kind(action, resolved_action_kind(action))
+}
+
+fn resolved_action_kind(action: &Value) -> &str {
+    action_kind(action)
+}
+
+fn predicted_next_actions_for_resolved_kind(action: &Value, kind: &str) -> Vec<Value> {
+    predicted_next_actions_for_kind(kind, action)
 }
 
 fn action_kind(action: &Value) -> &str {
@@ -66,8 +82,15 @@ fn simple_prediction_spec(kind: &str) -> Option<(&'static str, &'static str)> {
 }
 
 fn file_prediction_for_kind(kind: &str, action: &Value) -> Option<Vec<Value>> {
-    file_prediction_spec(kind)
-        .map(|(default, intent)| read_file_prediction_for_output(action, default, intent))
+    file_prediction_spec(kind).map(|spec| prediction_from_file_spec(action, spec))
+}
+
+fn prediction_from_file_spec(
+    action: &Value,
+    spec: (&'static str, &'static str),
+) -> Vec<Value> {
+    let (default, intent) = spec;
+    read_file_prediction_for_output(action, default, intent)
 }
 
 fn file_prediction_spec(kind: &str) -> Option<(&'static str, &'static str)> {
@@ -100,17 +123,23 @@ fn out_or_default<'a>(action: &'a Value, default: &'a str) -> &'a str {
 }
 
 fn read_file_prediction_for_output(action: &Value, default: &str, intent: &str) -> Vec<Value> {
-    let out = out_or_default(action, default);
-    build_read_file_prediction(out, intent)
+    let path = out_or_default(action, default);
+    single_prediction(json!({"action": "read_file", "path": path, "intent": intent}))
+}
+
+fn single_prediction(prediction: Value) -> Vec<Value> {
+    vec![prediction]
 }
 
 fn simple_action_prediction(action: &str, intent: &str) -> Vec<Value> {
-    vec![json!({"action": action, "intent": intent})]
+    single_prediction(simple_action_prediction_value(action, intent))
 }
 
-fn build_read_file_prediction(path: &str, intent: &str) -> Vec<Value> {
-    vec![json!({"action": "read_file", "path": path, "intent": intent})]
+fn simple_action_prediction_value(action: &str, intent: &str) -> Value {
+    json!({"action": action, "intent": intent})
 }
+
+// build_read_file_prediction removed: logic now inlined into read_file_prediction_for_output
 
 fn maybe_print_usage(args: &[String]) -> bool {
     if has_flag(args, "--help") || has_flag(args, "-h") {
@@ -142,13 +171,16 @@ fn emit_prediction_from_stdin() -> Result<()> {
     write_prediction_output(&output)
 }
 
-fn main() -> Result<()> {
-    let args: Vec<String> = std::env::args().collect();
-    if maybe_print_usage(&args) {
+fn run_with_args(args: &[String]) -> Result<()> {
+    if maybe_print_usage(args) {
         return Ok(());
     }
-
     emit_prediction_from_stdin()
+}
+
+fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+    run_with_args(&args)
 }
 
 #[cfg(test)]
@@ -176,6 +208,18 @@ mod tests {
     }
 
     #[test]
+    fn predicted_next_actions_from_kind_preserves_apply_patch_mapping() {
+        let input = json!({"action": "apply_patch"});
+        let result = predicted_next_actions_from_kind(&input);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0]["action"], "cargo_test");
+        assert_eq!(
+            result[0]["intent"],
+            "Verify the patch compiles and tests pass."
+        );
+    }
+
+    #[test]
     fn simple_prediction_spec_preserves_apply_patch_mapping() {
         assert_eq!(
             simple_prediction_spec("apply_patch"),
@@ -199,5 +243,30 @@ mod tests {
                 "Inspect generated symbols inventory.",
             ))
         );
+    }
+
+    #[test]
+    fn file_prediction_for_kind_preserves_symbols_index_output() {
+        let input = json!({"out": "custom/path.json"});
+        let prediction = file_prediction_for_kind("symbols_index", &input).unwrap();
+        assert_eq!(prediction.len(), 1);
+        assert_eq!(prediction[0]["action"], "read_file");
+        assert_eq!(prediction[0]["path"], "custom/path.json");
+        assert_eq!(prediction[0]["intent"], "Inspect generated symbols inventory.");
+    }
+
+    #[test]
+    fn simple_action_prediction_preserves_action_and_intent() {
+        let prediction = simple_action_prediction("message", "keep behavior");
+        assert_eq!(prediction.len(), 1);
+        assert_eq!(prediction[0]["action"], "message");
+        assert_eq!(prediction[0]["intent"], "keep behavior");
+    }
+
+    #[test]
+    fn simple_action_prediction_value_preserves_action_and_intent() {
+        let prediction = simple_action_prediction_value("cargo_test", "verify");
+        assert_eq!(prediction["action"], "cargo_test");
+        assert_eq!(prediction["intent"], "verify");
     }
 }
