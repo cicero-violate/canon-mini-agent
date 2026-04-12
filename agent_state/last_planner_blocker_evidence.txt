@@ -1,1 +1,1 @@
-auto-filled blocker evidence
+Latest verifier handoff states verification is blocked because `executor_pool` shut down; no executor diff is present; no new build/test evidence is available to advance task routing safely.

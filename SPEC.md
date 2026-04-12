@@ -178,13 +178,16 @@ Action shapes, required fields, and basic field constraints are defined by the T
 - `cargo_test` maps to `cargo test -p <crate> <test> -- --exact --nocapture`.
 - `cargo_fmt` maps to `cargo fmt --check` by default; set `fix:true` to run `cargo fmt` (may modify files).
 - `cargo_clippy` maps to `cargo clippy -- -D warnings` (or `cargo clippy -p <crate> -- -D warnings` when `crate` is provided).
-- `rustc_hir` reads `state/rustc/<crate>/graph.json` (canon-rustc-v2 artifact) and returns a best-effort HIR-derived outline; falls back to `cargo rustc -p <crate> -- -Zunpretty=<mode> <extra>` if the graph is missing.
+- `rustc_hir` reads `state/rustc/<crate>/graph.json` (canon-rustc-v2 artifact). If `symbol` is provided, it returns the focused source body for that symbol via graph-backed def spans; otherwise it returns semantic triples in `(from, relation, to)` form. Falls back to `cargo rustc -p <crate> -- -Zunpretty=<mode> <extra>` if the graph is missing.
 - `rustc_mir` reads `state/rustc/<crate>/graph.json` (canon-rustc-v2 artifact). If `symbol` is provided, it returns a focused per-symbol MIR complexity summary (fingerprint/blocks/stmts, rank); otherwise it lists MIR metadata entries. Falls back to `cargo rustc -p <crate> -- -Zunpretty=<mode> <extra>` if the graph is missing.
+- `semantic_map` reads `state/rustc/<crate>/graph.json` and returns one semantic triple per line as `(from, relation, to)`. `filter` keeps triples whose source or target matches the provided symbol-path prefix. `expand_bodies` is accepted for compatibility but ignored.
+- `symbol_path` computes the BFS shortest path across all semantic relations in `state/rustc/<crate>/graph.json` and labels each hop with its relation.
 - `graph_call` / `graph_cfg` output CSVs plus `callgraph.symbol.txt` / `cfg.symbol.txt` with symbol→symbol edges.
 - `graph_dataflow` / `graph_reachability` output JSON reports under metrics/analysis directories.
 - `rename_symbol` performs a rust-analyzer-syntax-backed Rust identifier rename at the exact `path` + 1-based `line`/`column` token location. Current implementation is file-scoped (`.rs` files only).
 - `apply_patch` runs `cargo check -p <inferred_crate>` after a successful patch; if check passes it then runs `cargo test -p <inferred_crate> -q` and returns the cargo test totals summary (the `test result:` lines).
 - `canon-mini-supervisor` writes `state/reports/complexity/latest.json` on each spawn/restart using a cheap proxy metric from `state/rustc/<crate>/graph.json` (`complexity_proxy = mir_blocks`).
+- After a successful supervisor build, `canon-mini-supervisor` also exports semantic triples to `state/reports/semantic_map/<crate>.jsonl`, one JSON object per line with keys `from`, `relation`, and `to`.
 
 ### 3.2 `message` (Inter-Agent Handoff Protocol)
 ```json
