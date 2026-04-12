@@ -36,19 +36,9 @@ fn example_action_base(
     .collect()
 }
 
-fn with_extra_fields(
+fn with_extra_fields<const N: usize>(
     mut base: serde_json::Map<String, Value>,
-    extra: [(&str, Value); 1],
-) -> Value {
-    for (key, value) in extra {
-        base.insert(key.to_string(), value);
-    }
-    Value::Object(base)
-}
-
-fn with_two_extra_fields(
-    mut base: serde_json::Map<String, Value>,
-    extra: [(&str, Value); 2],
+    extra: [(&str, Value); N],
 ) -> Value {
     for (key, value) in extra {
         base.insert(key.to_string(), value);
@@ -164,7 +154,7 @@ fn python_example_action(predicted_next_actions: &Value) -> Value {
 }
 
 fn cargo_test_example_action(predicted_next_actions: &Value) -> Value {
-    with_two_extra_fields(
+    with_extra_fields(
         example_action_base(
             "cargo_test",
             "Run the targeted test.",
