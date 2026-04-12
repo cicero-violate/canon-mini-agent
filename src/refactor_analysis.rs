@@ -478,7 +478,7 @@ fn shorten_location(file: &str, line: u32) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{branch_reduce_id, call_chain_id, dead_code_id, helper_extract_id,
+    use super::{dead_code_id, helper_extract_id,
                 is_exempt_from_dead_code, priority_from_unreachable, short_name};
 
     #[test]
