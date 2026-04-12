@@ -547,6 +547,25 @@ pub enum ToolAction {
         /// items — those fields belong on the outer `batch` envelope.
         actions: Vec<BatchItem>,
     },
+    /// Review and promote detected action patterns into the lessons artifact.
+    ///
+    /// Ops: read_candidates | promote | reject | encode | read | write
+    Lessons {
+        #[serde(flatten)]
+        base: ActionBase,
+        /// Which operation to perform. Defaults to `read_candidates` if omitted.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        op: Option<String>,
+        /// For `promote`/`reject`: the candidate id to act on, or `"all"` for bulk promote.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_id: Option<String>,
+        /// For `encode`: the exact entry text string from lessons.json to mark as encoded.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        entry_text: Option<String>,
+        /// For `write`: a full LessonsArtifact object (summary, failures, fixes, required_actions).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        lessons: Option<serde_json::Value>,
+    },
 }
 
 pub fn tool_protocol_schema_json() -> String {
