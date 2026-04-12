@@ -6,7 +6,7 @@ use canon_mini_agent::complexity::write_complexity_report;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::{Arc, atomic::{AtomicBool, AtomicU32, Ordering}};
 use std::thread;
 use std::time::{Duration, SystemTime};
@@ -399,67 +399,122 @@ fn main() -> Result<()> {
 
     loop {
         let current = newest_candidate(&root, prefer_release)?;
-        eprintln!(
-            "[canon-mini-supervisor] exec={} root={} watching={}",
-            exe,
-            root.display(),
-            current.path.display()
-        );
-        let report_workspace = workspace_from_args(&filtered_args)
-            .map(PathBuf::from)
-            .unwrap_or_else(|| root.clone());
-        emit_complexity_report_status(&report_workspace);
+        emit_iteration_status_and_report(&exe, &root, &current, &filtered_args);
         let (mut child, mut pending_update, child_started_at) =
             start_supervisor_child(&current, &filtered_args, &child_pid)?;
 
-        loop {
-            thread::sleep(Duration::from_millis(1000));
-            if shutdown.load(Ordering::SeqCst) {
-                eprintln!("[canon-mini-supervisor] shutdown requested; waiting for child");
-                log_error_event(
-                    "supervisor",
-                    "supervisor_main",
-                    None,
-                    "shutdown requested; waiting for child",
-                    None,
-                );
-                wait_for_exit(&mut child, Duration::from_secs(10));
-                return Ok(());
-            }
-            if let Some(status) = child.try_wait().context("wait child")? {
-                eprintln!("[canon-mini-supervisor] child exited: {status}");
-                if status.success() {
-                    eprintln!("[canon-mini-supervisor] child exited cleanly; not restarting");
-                    return Ok(());
-                } else {
-                    eprintln!("[canon-mini-supervisor] restarting due to failure...");
-                    stage_commit_push_before_restart(&root, "failure-restart", prefer_release);
-                    log_error_event(
-                        "supervisor",
-                        "supervisor_main",
-                        None,
-                        &format!("child exited unsuccessfully: {status}"),
-                        None,
-                    );
-                    break;
-                }
-            }
-            if should_restart_for_pending_update(
-                no_watch,
-                &root,
-                &current,
-                &mut pending_update,
-                &orchestrator_mode_flag,
-                &idle_marker,
-                child_started_at,
-                prefer_release,
-                &mut child,
-            )? {
-                break;
-            }
+        if supervise_current_child(
+            shutdown.as_ref(),
+            no_watch,
+            &root,
+            &current,
+            &mut pending_update,
+            &orchestrator_mode_flag,
+            &idle_marker,
+            child_started_at,
+            prefer_release,
+            &mut child,
+        )? {
+            return Ok(());
         }
         thread::sleep(Duration::from_millis(1000));
     }
+}
+
+fn emit_iteration_status_and_report(
+    exe: &str,
+    root: &Path,
+    current: &BinaryCandidate,
+    filtered_args: &[String],
+) {
+    eprintln!(
+        "[canon-mini-supervisor] exec={} root={} watching={}",
+        exe,
+        root.display(),
+        current.path.display()
+    );
+    let report_workspace = workspace_from_args(filtered_args)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| root.to_path_buf());
+    emit_complexity_report_status(&report_workspace);
+}
+
+fn supervise_current_child(
+    shutdown: &AtomicBool,
+    no_watch: bool,
+    root: &Path,
+    current: &BinaryCandidate,
+    pending_update: &mut Option<BinaryCandidate>,
+    orchestrator_mode_flag: &Path,
+    idle_marker: &Path,
+    child_started_at: SystemTime,
+    prefer_release: bool,
+    child: &mut Child,
+) -> Result<bool> {
+    loop {
+        thread::sleep(Duration::from_millis(1000));
+        if handle_shutdown_request(shutdown, child) {
+            return Ok(true);
+        }
+        if handle_child_exit_status(child.try_wait().context("wait child")?, root, prefer_release) {
+            break;
+        }
+        if should_restart_for_pending_update(
+            no_watch,
+            root,
+            current,
+            pending_update,
+            orchestrator_mode_flag,
+            idle_marker,
+            child_started_at,
+            prefer_release,
+            child,
+        )? {
+            break;
+        }
+    }
+    Ok(false)
+}
+
+fn handle_shutdown_request(shutdown: &AtomicBool, child: &mut Child) -> bool {
+    if !shutdown.load(Ordering::SeqCst) {
+        return false;
+    }
+    eprintln!("[canon-mini-supervisor] shutdown requested; waiting for child");
+    log_error_event(
+        "supervisor",
+        "supervisor_main",
+        None,
+        "shutdown requested; waiting for child",
+        None,
+    );
+    wait_for_exit(child, Duration::from_secs(10));
+    true
+}
+
+fn handle_child_exit_status(
+    status: Option<ExitStatus>,
+    root: &Path,
+    prefer_release: bool,
+) -> bool {
+    let Some(status) = status else {
+        return false;
+    };
+    eprintln!("[canon-mini-supervisor] child exited: {status}");
+    if status.success() {
+        eprintln!("[canon-mini-supervisor] child exited cleanly; not restarting");
+        std::process::exit(0);
+    }
+    eprintln!("[canon-mini-supervisor] restarting due to failure...");
+    stage_commit_push_before_restart(root, "failure-restart", prefer_release);
+    log_error_event(
+        "supervisor",
+        "supervisor_main",
+        None,
+        &format!("child exited unsuccessfully: {status}"),
+        None,
+    );
+    true
 }
 
 fn initialize_supervisor_runtime(

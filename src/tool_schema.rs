@@ -47,6 +47,7 @@ pub enum PredictedActionName {
     SymbolPath,
     SymbolNeighborhood,
     Batch,
+    Lessons,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -705,6 +706,13 @@ fn build_tool_actions_list() -> Vec<(&'static str, &'static str, Option<&'static
             ),
         ),
         (
+            "lessons",
+            "review and promote detected action patterns into the lessons artifact injected into every planner prompt",
+            Some(
+                "Ops:\n  read_candidates — list pending patterns detected from the action log\n  promote — accept a candidate into lessons.json\n  reject  — discard a candidate permanently\n  read    — view current lessons.json\n  write   — write a custom LessonsArtifact directly\n\nExamples:\n  {\"action\":\"lessons\",\"op\":\"read_candidates\",\"rationale\":\"See what patterns have been detected since the last synthesis run.\"}\n  {\"action\":\"lessons\",\"op\":\"promote\",\"candidate_id\":\"failure_abc123def\",\"rationale\":\"This failure pattern is real and recurring — promote to lessons.\"}\n  {\"action\":\"lessons\",\"op\":\"promote\",\"candidate_id\":\"all\",\"rationale\":\"All pending candidates are valid — bulk promote.\"}\n  {\"action\":\"lessons\",\"op\":\"reject\",\"candidate_id\":\"seq2_xyz\",\"rationale\":\"This sequence is coincidental, not a reliable workflow pattern.\"}\n  {\"action\":\"lessons\",\"op\":\"write\",\"lessons\":{\"summary\":\"...\",\"failures\":[\"...\"],\"fixes\":[\"...\"],\"required_actions\":[\"...\"]},\"rationale\":\"Write a hand-crafted lessons artifact from this cycle's findings.\"}"
+            ),
+        ),
+        (
             "batch",
             "execute up to 8 non-mutating actions in one turn; results returned as labeled sections",
             Some(
@@ -1058,6 +1066,7 @@ fn is_known_action(action: &str) -> bool {
             | "graph_cfg"
             | "graph_dataflow"
             | "graph_reachability"
+            | "lessons"
     )
 }
 

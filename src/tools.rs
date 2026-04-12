@@ -5620,6 +5620,7 @@ fn execute_action(
         "symbol_refs" => handle_symbol_refs_action(workspace, action),
         "symbol_path" => handle_symbol_path_action(workspace, action),
         "symbol_neighborhood" => handle_symbol_neighborhood_action(workspace, action),
+        "lessons" => crate::lessons::handle_lessons_action(workspace, action),
         "batch" => handle_batch_action(role, step, workspace, action),
         other => Ok((
             false,
