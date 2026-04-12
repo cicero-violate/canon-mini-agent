@@ -880,7 +880,21 @@ pub fn auto_fill_message_fields(action: &mut Value, role: &str) -> bool {
     let default_type = defaults.msg_type;
     let default_status = defaults.status;
     let mut changed = false;
-    changed |= ensure_object_string_field(obj, "from", default_from);
+    // Always force `from` to the actual running role — never trust the model to
+    // self-report its identity.  Models copy `"from": "planner"` from context
+    // messages and emit it verbatim even when running as executor.
+    let actual_from = default_from; // default_from is derived from role via MessageRoute
+    if obj.get("from").and_then(|v| v.as_str()) != Some(actual_from) {
+        if let Some(wrong) = obj.get("from").and_then(|v| v.as_str()) {
+            if !wrong.eq_ignore_ascii_case(actual_from) {
+                eprintln!(
+                    "[{role}] auto_fill_message_fields: correcting `from` field `{wrong}` → `{actual_from}`"
+                );
+            }
+        }
+        obj.insert("from".to_string(), Value::String(actual_from.to_string()));
+        changed = true;
+    }
     changed |= ensure_object_string_field(obj, "to", default_to);
     changed |= ensure_object_string_field(obj, "type", default_type);
     changed |= ensure_object_string_field(obj, "status", default_status);

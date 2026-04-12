@@ -696,6 +696,8 @@ fn executor_rules() -> Vec<String> {
         "- Always use the `python` action when reading or inspecting any `.json` state file (PLAN.json, OBJECTIVES.json, ISSUES.json, VIOLATIONS.json, diagnostics). Never use shell tools (cat, jq, grep) to read JSON — use python.".to_string(),
         "- Your work is scoped to the task_id provided in the planner handoff. Execute that specific task; do not pick up other PLAN.json tasks unless the planner explicitly includes them in the ready window.".to_string(),
         "- Each action you emit must include `task_id` and `objective_id` fields matching the current task. Never omit these provenance fields.".to_string(),
+        "- When sending a `message` action, always set `\"from\": \"executor\"`. Never copy `from` values from other roles' messages in your context.".to_string(),
+        "- When blocked or complete, send your `message` to `\"planner\"` — not to `diagnostics`, `verifier`, or other roles. The planner coordinates all role dispatch.".to_string(),
         format!("- Never operate outside {ws}."),
         "- Never modify `SPEC.md`, `PLAN.json`, `VIOLATIONS.json`, or `DIAGNOSTICS.json`.".to_string(),
         "- Never emit destructive commands (rm -rf, git reset --hard, git clean -f, etc.).".to_string(),
