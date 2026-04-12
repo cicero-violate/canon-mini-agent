@@ -86,9 +86,9 @@ This is non-optional. An agent that completes a cycle without reviewing objectiv
 You work inside the canon workspace at /workspace/ai_sandbox/canon-mini-agent. Use the full tool suite to plan, execute, and verify changes.
 
 Top open issues:
-- [medium] ISS-OBJECTIVES-DUPLICATE-BOOKKEEPING-RECURRENCE: Duplicate completed objective records can recur in PLANS/OBJECTIVES.json during bookkeeping updates (PLANS/OBJECTIVES.json)
-- [medium] auto_branch_reduce_canon_mini_agent_4e82363d82680850: Reduce branch complexity: tools::handle_batch_action (/workspace/ai_sandbox/canon-mini-agent/src/tools.rs:5623)
-- [medium] auto_branch_reduce_canon_step_be6d0df2d17f51d6: Reduce branch complexity: predicted_next_actions (/workspace/ai_sandbox/canon-mini-agent/src/bin/canon-step.rs:22)
+- [score:0.52] auto_branch_reduce_canon_step_be6d0df2d17f51d6: Reduce branch complexity: predicted_next_actions (/workspace/ai_sandbox/canon-mini-agent/src/bin/canon-step.rs:22)
+- [score:0.33] ISS-OBJECTIVES-DUPLICATE-BOOKKEEPING-RECURRENCE: Duplicate completed objective records can recur in PLANS/OBJECTIVES.json during bookkeeping updates (PLANS/OBJECTIVES.json)
+- [score:0.28] auto_branch_reduce_canon_mini_agent_b2c4d85ff3c92626: Reduce branch complexity: prompt_inputs::executor_diff (/workspace/ai_sandbox/canon-mini-agent/src/prompt_inputs.rs:981)
 
 
 Tool protocol schemas (schemars):
@@ -1796,9 +1796,9 @@ Execution discipline:
 - Issue discovery is a core solo responsibility: when you encounter a logic gap, missing guard, incorrect heuristic, stale artifact, or spec deviation — open an issue immediately via the `issue` action with kind, location, evidence, and priority. Do not defer issue creation to a later cycle.
 - If blocked, send the blocker to the Planner.
 Before acting, answer these questions internally:
-- Does the runtime itself write or control the thing I am about to modify?
 - What is the narrowest change that achieves the goal — is my action wider than necessary?
 - What is the worst case if I skip this action entirely this turn?
+- Am I acting on a direct file read from this turn, or on a memory of a prior read?
 
 - Emit exactly one action per turn. Think through the decision internally; reveal chain-of-thought. Only output the JSON action.
 - Every mutating action (`apply_patch`, `plan`, `objectives`, `issue`) MUST include a `question` field: the single decision-boundary question this action answers. If answered differently, a different action would be taken.
@@ -1806,33 +1806,96 @@ Before acting, answer these questions internally:
 - Before emitting a completion message, review `PLANS/OBJECTIVES.json`. Add new objectives for anything you discovered this cycle that is not yet captured. Update the status of existing objectives that changed. Use `apply_patch` to write changes.
 - Output format: exactly one JSON object in a fenced json code block. No prose outside it.
 
-TAB_ID: 433976737
-TURN_ID: 7
+TAB_ID: 433976743
+TURN_ID: 23
 AGENT_TYPE: SOLO
 
 Action result:
-objectives update_objective ok
+Invalid action rejected.
+action_result:
+{
+  "action_schema": {
+    "description": "Extract the full definition body of a symbol using byte-precise def span.",
+    "properties": {
+      "action": {
+        "enum": [
+          "symbol_window"
+        ],
+        "type": "string"
+      },
+      "crate": {
+        "type": "string"
+      },
+      "observation": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "predicted_next_actions": {
+        "items": {
+          "$ref": "#/definitions/PredictedNextAction"
+        },
+        "type": "array"
+      },
+      "rationale": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "symbol": {
+        "description": "Fully-qualified symbol path (e.g. \"canon_mini_agent::tools::execute_logged_action\").",
+        "type": "string"
+      }
+    },
+    "required": [
+      "action",
+      "crate",
+      "predicted_next_actions",
+      "rationale",
+      "symbol"
+    ],
+    "type": "object"
+  },
+  "error_type": "invalid_action",
+  "example_action": {
+    "action": "message",
+    "from": "executor",
+    "observation": "Summarize what happened.",
+    "payload": {
+      "summary": "Short summary"
+    },
+    "predicted_next_actions": [
+      {
+        "action": "read_file",
+        "intent": "Inspect the relevant source before making changes."
+      },
+      {
+        "action": "run_command",
+        "intent": "Verify the current workspace state after the read."
+      }
+    ],
+    "rationale": "Explain why this is the next step.",
+    "status": "complete",
+    "to": "verifier",
+    "type": "handoff"
+  },
+  "expected_fields": [
+    "action",
+    "rationale",
+    "predicted_next_actions"
+  ],
+  "expected_format": null,
+  "reason": "action schema invalid: {\"action\":\"symbol_window\",\"crate\":\"canon_step\",\"rationale\":\"Inspect the full function body of canon_step::predicted_next_actions to identify precise branching clusters and safe helper extraction boundaries before making any code changes.\",\"symbol\":\"predicted_next_actions\"} is not valid under any of the schemas listed in the 'oneOf' keyword",
+  "schema_diff": [
+    "missing field: predicted_next_actions"
+  ]
+}
+Return exactly one action as a single JSON object in a ```json code block. No prose outside it.
+For any mutating retry (`apply_patch`, `plan`, `objectives`, `issue`, or `rename_symbol`), include a non-empty `question` field stating the decision-boundary premise.
 
 Predicted next actions from your last turn:
-```json
-[
-  {
-    "action": "semantic_map",
-    "intent": "Inspect the next highest-value hotspot after the objective bookkeeping retry succeeds."
-  },
-  {
-    "action": "symbol_window",
-    "intent": "Open the next hotspot body identified by semantic inspection to find the narrowest safe refactor seam."
-  },
-  {
-    "action": "issue",
-    "intent": "Record a bookkeeping issue if the corrected objective update still fails for a non-schema reason."
-  }
-]
-```
+None.
 Compare these against the actual result above before choosing your next action.
 
-next_action_hint: reuse recent action `objectives` or choose one of: message, list_dir, read_file, symbols_index, symbols_rename_candidates, symbols_prepare_rename, rename_symbol, objectives, issue, apply_patch, run_command, python, cargo_test, cargo_fmt, cargo_clippy, plan, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, stage_graph, semantic_map, symbol_window, symbol_refs, symbol_path, symbol_neighborhood, batch, lessons.
-Before your next action, answer this internally: Is there a guard or protocol rule that prevents this action from taking effect even if it executes?
-
+next_action_hint: choose one of: message, list_dir, read_file, symbols_index, symbols_rename_candidates, symbols_prepare_rename, rename_symbol, objectives, issue, apply_patch, run_command, python, cargo_test, cargo_fmt, cargo_clippy, plan, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, stage_graph, semantic_map, symbol_window, symbol_refs, symbol_path, symbol_neighborhood, batch, lessons.
 Emit exactly one action. Think through the decision internally; reveal chain-of-thought.
