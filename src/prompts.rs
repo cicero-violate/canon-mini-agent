@@ -1069,30 +1069,30 @@ pub(crate) fn single_role_solo_prompt(
     );
     append_optional_prompt_section(
         &mut sections,
-        &format!("Objectives (from {OBJECTIVES_FILE}):"),
         objectives,
+        &format!("Objectives (from {OBJECTIVES_FILE}):"),
     );
     // Lessons section must always be present (even if empty) to satisfy prompt invariants/tests
     sections.push_str(&format!("\n\nLessons artifact:\n{}", lessons_text));
     append_optional_prompt_section(
         &mut sections,
-        &format!("Invariants (from {INVARIANTS_FILE}):"),
         invariants,
+        &format!("Invariants (from {INVARIANTS_FILE}):"),
     );
     append_optional_prompt_section(
         &mut sections,
-        &format!("Violations (from {VIOLATIONS_FILE}):"),
         violations,
+        &format!("Violations (from {VIOLATIONS_FILE}):"),
     );
     append_optional_prompt_section(
         &mut sections,
-        &format!("Diagnostics report (from {diagnostics_path}):"),
         diagnostics,
+        &format!("Diagnostics report (from {diagnostics_path}):"),
     );
     append_optional_prompt_section(
         &mut sections,
-        "Latest cargo test failures (from cargo_test_failures.json):",
         cargo_test_failures,
+        "Latest cargo test failures (from cargo_test_failures.json):",
     );
     // Only include rename section when candidates are non-empty
     if !rename_candidates.trim().is_empty() {
@@ -1101,8 +1101,8 @@ pub(crate) fn single_role_solo_prompt(
         );
         append_optional_prompt_section(
             &mut sections,
-            "Pending rename tasks (from state/rename_candidates.json):",
             &rename_section,
+            "Pending rename tasks (from state/rename_candidates.json):",
         );
     }
     if !sections.ends_with("\n\n") {
