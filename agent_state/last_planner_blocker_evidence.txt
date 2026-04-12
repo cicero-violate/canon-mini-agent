@@ -1,1 +1,1 @@
-Current-turn read_file of PLAN.json shows tasks at lines 13-40 with `task_id` fields `resolve_tool_usage_contradiction` and `repair_planner_action_schema_construction`; current-cycle plan executions returned `plan task not found: resolve_tool_usage_contradiction` and `plan task not found: repair_planner_action_schema_construction`.
+Same-cycle executor attempts produced `plan action is not allowed for executor roles`. No evidence of `task not found` was produced because mutation could not be executed.

@@ -664,6 +664,7 @@ const PLANNER_RULES: &[&str] = &[
     "- If the incoming handoff was sent by solo (check `message.from` or context role), finish your planning cycle and send the return `message` to solo so it can resume execution. Do not leave solo waiting.",
     "- PLAN.json is the authoritative source of truth for executor task selection. A handoff message alone is not sufficient — the task MUST be marked `ready` in PLAN.json before the executor will pick it up.",
     "- Always use the `python` action when reading or writing any `.json` state file (PLAN.json, OBJECTIVES.json, ISSUES.json, VIOLATIONS.json, diagnostics). Never use apply_patch or run_command shell pipelines to mutate JSON; use the `plan`, `objectives`, or `issue` actions for their respective files.",
+    "- Executor tasks must only require executor-permitted actions: read_file, apply_patch, run_command, python, message, cargo_fmt, cargo_clippy, and semantic tools. The executor CANNOT use `plan`, `objectives`, `issue`, or `verify` actions — do NOT create tasks that require these for the executor. Reserve tasks using those actions for a planner or verifier cycle instead.",
 ];
 
 fn diagnostics_rules() -> Vec<String> {

@@ -6092,6 +6092,13 @@ fn persist_inbound_message(role: &str, step: usize, action: &Value, full_message
     if is_redundant_solo_self_complete {
         return;
     }
+    // Self-loop guard: any role sending a message to itself creates a wake-flag loop
+    // identical to the executor→executor bug fixed in persist_executor_completion_message.
+    // Suppress the wakeup flag but still write the message file for audit trail.
+    let normalized_role = role
+        .trim()
+        .to_lowercase()
+        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let _ = std::fs::create_dir_all(agent_state_dir);
     let path = agent_state_dir.join(format!("last_message_to_{to}.json"));
@@ -6107,6 +6114,12 @@ fn persist_inbound_message(role: &str, step: usize, action: &Value, full_message
             &format!("failed to persist inbound message for {}: {}", to, err),
             Some(json!({ "path": path.to_string_lossy(), "to": to })),
         );
+    }
+    if normalized_role == to {
+        eprintln!(
+            "[{role}] step={step} self-addressed message to `{to}` — wakeup flag suppressed to break self-loop"
+        );
+        return;
     }
     let wake_path = agent_state_dir.join(format!("wakeup_{to}.flag"));
     let _ = std::fs::write(wake_path, "handoff");
