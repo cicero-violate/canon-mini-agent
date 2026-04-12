@@ -347,7 +347,24 @@ impl SemanticIndex {
             return Ok(format!("No call-graph path found from `{from}` to `{to}`."));
         }
 
-        // Reconstruct path.
+        let path = self.reconstruct_path(&prev, from_key, to_key);
+
+        let mut out = format!(
+            "Call path from `{from}` → `{to}` ({} hops):\n",
+            path.len() - 1
+        );
+        for sym in &path {
+            self.push_symbol_path_entry(&mut out, sym, expand_bodies);
+        }
+        Ok(out)
+    }
+
+    fn reconstruct_path<'a>(
+        &'a self,
+        prev: &HashMap<&'a str, &'a str>,
+        from_key: &'a str,
+        to_key: &'a str,
+    ) -> Vec<&'a str> {
         let mut path: Vec<&str> = Vec::new();
         let mut cur = to_key;
         loop {
@@ -358,15 +375,7 @@ impl SemanticIndex {
             cur = prev[cur];
         }
         path.reverse();
-
-        let mut out = format!(
-            "Call path from `{from}` → `{to}` ({} hops):\n",
-            path.len() - 1
-        );
-        for sym in &path {
-            self.push_symbol_path_entry(&mut out, sym, expand_bodies);
-        }
-        Ok(out)
+        path
     }
 
     // -----------------------------------------------------------------------
