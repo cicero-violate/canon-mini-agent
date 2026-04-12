@@ -130,7 +130,50 @@ struct FailureGroup {
 }
 
 fn build_lessons_artifact(entries: &[Value]) -> LessonsArtifact {
-    // Collect (action_name, error_pattern) -> FailureGroup
+    let (failure_map, total_failures, scanned_tool_results) =
+        collect_failure_groups(entries);
+
+    if failure_map.is_empty() {
+        return LessonsArtifact::default();
+    }
+
+    let mut sorted = sort_failure_groups(failure_map);
+
+    let mut failures: Vec<String> = Vec::new();
+    let mut fixes: Vec<String> = Vec::new();
+    let mut required_actions: Vec<String> = Vec::new();
+    let mut seen_actions_with_schema_lesson: std::collections::HashSet<String> = Default::default();
+
+    populate_failure_sections(
+        &sorted,
+        &mut failures,
+        &mut fixes,
+        &mut required_actions,
+        &mut seen_actions_with_schema_lesson,
+    );
+
+    // Deduplicate fixes and required_actions (keep insertion order, drop exact dupes).
+    let fixes = dedup_vec(fixes);
+    let required_actions = dedup_vec(required_actions);
+
+    // Build summary.
+    let top_actions = compute_top_actions(&sorted);
+    let summary = format!(
+        "{total_failures} failures in last {scanned_tool_results} tool calls. Top failure sources: {}.",
+        top_actions.join(", ")
+    );
+
+    LessonsArtifact {
+        summary,
+        failures,
+        fixes,
+        required_actions,
+    }
+}
+
+fn collect_failure_groups(
+    entries: &[Value],
+) -> (HashMap<(String, String), FailureGroup>, usize, usize) {
     let mut failure_map: HashMap<(String, String), FailureGroup> = HashMap::new();
     let mut total_failures = 0usize;
     let mut scanned_tool_results = 0usize;
@@ -162,20 +205,25 @@ fn build_lessons_artifact(entries: &[Value]) -> LessonsArtifact {
         group.example = pattern;
     }
 
-    if failure_map.is_empty() {
-        return LessonsArtifact::default();
-    }
+    (failure_map, total_failures, scanned_tool_results)
+}
 
-    // Sort by frequency descending, then action name for stability.
-    let mut sorted: Vec<((String, String), FailureGroup)> = failure_map.into_iter().collect();
+fn sort_failure_groups(
+    failure_map: HashMap<(String, String), FailureGroup>,
+) -> Vec<((String, String), FailureGroup)> {
+    let mut sorted: Vec<_> = failure_map.into_iter().collect();
     sorted.sort_by(|a, b| b.1.count.cmp(&a.1.count).then(a.0.0.cmp(&b.0.0)));
+    sorted
+}
 
-    let mut failures: Vec<String> = Vec::new();
-    let mut fixes: Vec<String> = Vec::new();
-    let mut required_actions: Vec<String> = Vec::new();
-    let mut seen_actions_with_schema_lesson: std::collections::HashSet<String> = Default::default();
-
-    for ((action, pattern), group) in &sorted {
+fn populate_failure_sections(
+    sorted: &Vec<((String, String), FailureGroup)>,
+    failures: &mut Vec<String>,
+    fixes: &mut Vec<String>,
+    required_actions: &mut Vec<String>,
+    seen_actions_with_schema_lesson: &mut std::collections::HashSet<String>,
+) {
+    for ((action, pattern), group) in sorted {
         if group.count < MIN_OCCURRENCES {
             continue;
         }
@@ -189,49 +237,33 @@ fn build_lessons_artifact(entries: &[Value]) -> LessonsArtifact {
         };
         failures.push(format!("`{action}` action: {pattern} ({count_label})"));
 
-        // Add a schema fix hint for known error types.
-        if let Some(fix) = schema_fix_hint(action, &pattern) {
+        if let Some(fix) = schema_fix_hint(action, pattern) {
             if fixes.len() < MAX_PER_CATEGORY {
                 fixes.push(fix);
             }
         }
 
-        // Add a "verify schema" required_action once per action type.
         if seen_actions_with_schema_lesson.insert(action.clone()) && is_schema_error(pattern) {
             required_actions.push(format!(
                 "Before emitting a `{action}` action, verify the payload schema against tool_examples (check required fields and nesting)"
             ));
         }
     }
+}
 
-    // Deduplicate fixes and required_actions (keep insertion order, drop exact dupes).
-    let fixes = dedup_vec(fixes);
-    let required_actions = dedup_vec(required_actions);
-
-    // Build summary.
-    let top_actions: Vec<String> = {
-        let mut by_action: HashMap<String, usize> = HashMap::new();
-        for ((action, _), group) in &sorted {
-            *by_action.entry(action.clone()).or_default() += group.count;
-        }
-        let mut v: Vec<(String, usize)> = by_action.into_iter().collect();
-        v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
-        v.into_iter()
-            .take(4)
-            .map(|(a, c)| format!("{a} ({c})"))
-            .collect()
-    };
-    let summary = format!(
-        "{total_failures} failures in last {scanned_tool_results} tool calls. Top failure sources: {}.",
-        top_actions.join(", ")
-    );
-
-    LessonsArtifact {
-        summary,
-        failures,
-        fixes,
-        required_actions,
+fn compute_top_actions(
+    sorted: &Vec<((String, String), FailureGroup)>,
+) -> Vec<String> {
+    let mut by_action: HashMap<String, usize> = HashMap::new();
+    for ((action, _), group) in sorted {
+        *by_action.entry(action.clone()).or_default() += group.count;
     }
+    let mut v: Vec<_> = by_action.into_iter().collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    v.into_iter()
+        .take(4)
+        .map(|(a, c)| format!("{a} ({c})"))
+        .collect()
 }
 
 fn is_schema_error(pattern: &str) -> bool {
