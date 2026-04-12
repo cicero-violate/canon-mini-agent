@@ -46,9 +46,7 @@ fn parse_invariants_md(text: &str) -> InvariantsReport {
     let mut current_title: Option<String> = None;
     let mut current_clauses: Vec<String> = Vec::new();
     let mut current_desc: Vec<String> = Vec::new();
-    let mut in_principles = false;
-    let mut in_math = false;
-    let mut in_meta = false;
+    let mut section = InvariantSection::Body;
 
     fn push_current_invariant(
         title_opt: &mut Option<String>,
@@ -71,10 +69,34 @@ fn parse_invariants_md(text: &str) -> InvariantsReport {
         }
     }
 
-    fn reset_flags(in_principles: &mut bool, in_math: &mut bool, in_meta: &mut bool) {
-        *in_principles = false;
-        *in_math = false;
-        *in_meta = false;
+    fn handle_invariant_h2_heading(
+        title: &str,
+        current_title: &mut Option<String>,
+        current_clauses: &mut Vec<String>,
+        current_desc: &mut Vec<String>,
+        invariants: &mut Vec<Invariant>,
+        meta: &mut Vec<String>,
+        section: &mut InvariantSection,
+    ) -> bool {
+        if title.eq_ignore_ascii_case("math") {
+            push_current_invariant(current_title, current_clauses, current_desc, invariants);
+            *section = InvariantSection::Math;
+            return true;
+        }
+        if title.starts_with("Additional Exhaustive") {
+            push_current_invariant(current_title, current_clauses, current_desc, invariants);
+            *section = InvariantSection::Body;
+            return true;
+        }
+        if title.starts_with("Meta-Level") || title.starts_with("Insight") || title.starts_with("Final") {
+            push_current_invariant(current_title, current_clauses, current_desc, invariants);
+            *section = InvariantSection::Meta;
+            if !title.is_empty() {
+                meta.push(title.to_string());
+            }
+            return true;
+        }
+        false
     }
 
     for raw in text.lines() {
@@ -84,31 +106,22 @@ fn parse_invariants_md(text: &str) -> InvariantsReport {
         }
         if line.starts_with("## ") {
             let title = line.trim_start_matches("## ").trim();
-            if title.eq_ignore_ascii_case("math") {
-                push_current_invariant(&mut current_title, &mut current_clauses, &mut current_desc, &mut invariants);
-                reset_flags(&mut in_principles, &mut in_math, &mut in_meta);
-                in_math = true;
-                continue;
-            }
-            if title.starts_with("Additional Exhaustive") {
-                push_current_invariant(&mut current_title, &mut current_clauses, &mut current_desc, &mut invariants);
-                reset_flags(&mut in_principles, &mut in_math, &mut in_meta);
-                continue;
-            }
-            if title.starts_with("Meta-Level") || title.starts_with("Insight") || title.starts_with("Final") {
-                push_current_invariant(&mut current_title, &mut current_clauses, &mut current_desc, &mut invariants);
-                reset_flags(&mut in_principles, &mut in_math, &mut in_meta);
-                in_meta = true;
-                if !title.is_empty() {
-                    meta.push(title.to_string());
-                }
+            if handle_invariant_h2_heading(
+                title,
+                &mut current_title,
+                &mut current_clauses,
+                &mut current_desc,
+                &mut invariants,
+                &mut meta,
+                &mut section,
+            ) {
                 continue;
             }
         }
         if line.starts_with("### ") {
             push_current_invariant(&mut current_title, &mut current_clauses, &mut current_desc, &mut invariants);
             current_title = Some(line.trim_start_matches("### ").trim().to_string());
-            reset_flags(&mut in_principles, &mut in_math, &mut in_meta);
+            section = InvariantSection::Body;
             continue;
         }
         if line.ends_with("invariant") && !line.starts_with("-") && !line.starts_with("*") {
@@ -124,27 +137,26 @@ fn parse_invariants_md(text: &str) -> InvariantsReport {
             continue;
         }
         if line.starts_with("A closed-loop invariant system means") {
-            in_principles = true;
-            in_math = false;
-            in_meta = false;
+            section = InvariantSection::Principles;
             continue;
         }
-        if in_math {
-            math.push(strip_bullet(line));
-            continue;
-        }
-        if in_meta {
-            meta.push(strip_bullet(line));
-            continue;
-        }
-        if in_principles {
-            principles.push(strip_bullet(line));
-            continue;
-        }
-        if line.starts_with("- ") || line.starts_with("* ") {
-            current_clauses.push(strip_bullet(line));
-        } else if let Some(_) = current_title {
-            current_desc.push(line.to_string());
+        match section {
+            InvariantSection::Math => {
+                math.push(strip_bullet(line));
+            }
+            InvariantSection::Meta => {
+                meta.push(strip_bullet(line));
+            }
+            InvariantSection::Principles => {
+                principles.push(strip_bullet(line));
+            }
+            InvariantSection::Body => {
+                if line.starts_with("- ") || line.starts_with("* ") {
+                    current_clauses.push(strip_bullet(line));
+                } else if current_title.is_some() {
+                    current_desc.push(line.to_string());
+                }
+            }
         }
     }
     push_current_invariant(&mut current_title, &mut current_clauses, &mut current_desc, &mut invariants);
@@ -156,6 +168,14 @@ fn parse_invariants_md(text: &str) -> InvariantsReport {
         math,
         meta,
     }
+}
+
+#[derive(Clone, Copy)]
+enum InvariantSection {
+    Body,
+    Principles,
+    Math,
+    Meta,
 }
 
 fn parse_objectives_md(text: &str) -> ObjectivesReport {
