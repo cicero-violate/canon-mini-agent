@@ -759,21 +759,7 @@ fn collect_message_schema_diff(
     let Some(obj) = obj else {
         return;
     };
-    let get_str = |field: &str| obj.get(field).and_then(|v| v.as_str());
-    let mut msg_type: Option<String> = None;
-    let mut msg_status: Option<String> = None;
-    for field in ["from", "to", "type", "status"] {
-        if let Some(val) = get_str(field) {
-            if val != val.to_lowercase() {
-                add_unique_schema_diff(schema_diff, format!("role casing invalid: {field}={val}"));
-            }
-            if field == "type" {
-                msg_type = Some(val.to_string());
-            } else if field == "status" {
-                msg_status = Some(val.to_string());
-            }
-        }
-    }
+    let (msg_type, msg_status) = collect_message_route_fields(schema_diff, obj);
     if let (Some(msg_type), Some(msg_status)) = (msg_type.as_deref(), msg_status.as_deref()) {
         let type_is_blocker = msg_type.eq_ignore_ascii_case("blocker");
         let status_is_blocked = msg_status.eq_ignore_ascii_case("blocked");
@@ -784,13 +770,50 @@ fn collect_message_schema_diff(
             );
         }
         *expected_format = Some(expected_message_format(
-            get_str("from").unwrap_or("executor"),
-            get_str("to").unwrap_or("verifier"),
+            message_field_str(obj, "from").unwrap_or("executor"),
+            message_field_str(obj, "to").unwrap_or("verifier"),
             msg_type,
             msg_status,
         ));
     }
     let payload = obj.get("payload").and_then(|v| v.as_object());
+    validate_message_payload_summary(schema_diff, payload);
+    validate_blocker_payload_placement(schema_diff, obj);
+    validate_blocker_payload_fields(schema_diff, payload, msg_type.as_deref(), msg_status.as_deref());
+}
+
+fn message_field_str<'a>(
+    obj: &'a serde_json::Map<String, Value>,
+    field: &str,
+) -> Option<&'a str> {
+    obj.get(field).and_then(|v| v.as_str())
+}
+
+fn collect_message_route_fields(
+    schema_diff: &mut Vec<String>,
+    obj: &serde_json::Map<String, Value>,
+) -> (Option<String>, Option<String>) {
+    let mut msg_type: Option<String> = None;
+    let mut msg_status: Option<String> = None;
+    for field in ["from", "to", "type", "status"] {
+        if let Some(val) = message_field_str(obj, field) {
+            if val != val.to_lowercase() {
+                add_unique_schema_diff(schema_diff, format!("role casing invalid: {field}={val}"));
+            }
+            if field == "type" {
+                msg_type = Some(val.to_string());
+            } else if field == "status" {
+                msg_status = Some(val.to_string());
+            }
+        }
+    }
+    (msg_type, msg_status)
+}
+
+fn validate_message_payload_summary(
+    schema_diff: &mut Vec<String>,
+    payload: Option<&serde_json::Map<String, Value>>,
+) {
     if payload
         .and_then(|p| p.get("summary"))
         .and_then(|v| v.as_str())
@@ -800,6 +823,12 @@ fn collect_message_schema_diff(
     {
         add_unique_schema_diff(schema_diff, "payload.summary missing".to_string());
     }
+}
+
+fn validate_blocker_payload_placement(
+    schema_diff: &mut Vec<String>,
+    obj: &serde_json::Map<String, Value>,
+) {
     if obj.contains_key("blocker")
         || obj.contains_key("evidence")
         || obj.contains_key("required_action")
@@ -809,12 +838,18 @@ fn collect_message_schema_diff(
             "blocker fields must be inside payload: blocker/evidence/required_action".to_string(),
         );
     }
+}
+
+fn validate_blocker_payload_fields(
+    schema_diff: &mut Vec<String>,
+    payload: Option<&serde_json::Map<String, Value>>,
+    msg_type: Option<&str>,
+    msg_status: Option<&str>,
+) {
     let is_blocker = msg_type
-        .as_deref()
         .map(|v| v.eq_ignore_ascii_case("blocker"))
         .unwrap_or(false)
         || msg_status
-            .as_deref()
             .map(|v| v.eq_ignore_ascii_case("blocked"))
             .unwrap_or(false);
     if is_blocker {
