@@ -21,8 +21,16 @@ use std::path::Path;
 
 #[derive(Debug, Deserialize)]
 struct CrateGraph {
+    #[serde(default)]
     nodes: HashMap<String, GraphNode>,
+    #[serde(default)]
     edges: Vec<GraphEdge>,
+    #[serde(default)]
+    cfg_nodes: HashMap<String, CfgNode>,
+    #[serde(default)]
+    cfg_edges: Vec<CfgEdge>,
+    #[serde(default)]
+    bridge_edges: Vec<BridgeEdge>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -74,6 +82,31 @@ struct MirInfo {
 #[derive(Debug, Clone, Deserialize)]
 struct GraphEdge {
     #[serde(default, alias = "kind")]
+    relation: String,
+    from: String,
+    to: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct CfgNode {
+    #[serde(default)]
+    owner: String,
+    block: usize,
+    #[serde(default)]
+    is_cleanup: bool,
+    #[serde(default)]
+    terminator: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct CfgEdge {
+    relation: String,
+    from: String,
+    to: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct BridgeEdge {
     relation: String,
     from: String,
     to: String,
@@ -135,6 +168,18 @@ impl SemanticIndex {
             .as_object()
             .map(|m| m.keys().cloned().collect())
             .unwrap_or_default()
+    }
+
+    pub fn cfg_node_count(&self) -> usize {
+        self.graph.cfg_nodes.len()
+    }
+
+    pub fn cfg_edge_count(&self) -> usize {
+        self.graph.cfg_edges.len()
+    }
+
+    pub fn bridge_edge_count(&self) -> usize {
+        self.graph.bridge_edges.len()
     }
 
     /// Extract a stable summary for each symbol with a definition span.
@@ -878,6 +923,9 @@ mod tests {
             graph: CrateGraph {
                 nodes,
                 edges: Vec::new(),
+                cfg_nodes: HashMap::new(),
+                cfg_edges: Vec::new(),
+                bridge_edges: Vec::new(),
             },
         };
         let out = idx
@@ -951,6 +999,9 @@ mod tests {
                     from: "canon_mini_agent::app::continue_executor_completion".to_string(),
                     to: "canon_mini_agent::engine::process_action_and_execute".to_string(),
                 }],
+                cfg_nodes: HashMap::new(),
+                cfg_edges: Vec::new(),
+                bridge_edges: Vec::new(),
             },
         };
 
@@ -1011,6 +1062,9 @@ mod tests {
                     from: "app".to_string(),
                     to: "app::run".to_string(),
                 }],
+                cfg_nodes: HashMap::new(),
+                cfg_edges: Vec::new(),
+                bridge_edges: Vec::new(),
             },
         };
 
@@ -1078,6 +1132,9 @@ mod tests {
             graph: CrateGraph {
                 nodes,
                 edges: Vec::new(),
+                cfg_nodes: HashMap::new(),
+                cfg_edges: Vec::new(),
+                bridge_edges: Vec::new(),
             },
         };
         let out = idx
