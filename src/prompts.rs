@@ -890,7 +890,7 @@ fn append_optional_prompt_section(output: &mut String, body: &str, heading: &str
     if body.trim().is_empty() {
         return;
     }
-    output.push_str(&format!("\n\n{heading}:\n{body}"));
+    output.push_str(&format!("\n\n{heading}\n{body}"));
 }
 
 pub(crate) fn executor_cycle_prompt(
