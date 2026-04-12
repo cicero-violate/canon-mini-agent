@@ -543,7 +543,7 @@ async fn run_solo_phase(
     let current_plan_text = read_text_or_empty(ctx.master_plan_path);
     let plan_diff_text = crate::prompt_inputs::solo_plan_diff(last_solo_plan_text, &current_plan_text, 400);
     *last_solo_plan_text = current_plan_text;
-    let issues_text = crate::issues::read_top_open_issues(ctx.workspace, 10);
+    let issues_text = crate::issues::read_top_open_issues(ctx.workspace, 5);
     let complexity_hotspots = crate::prompt_inputs::read_complexity_hotspots(ctx.workspace, 8);
     let mut prompt = single_role_solo_prompt(
         &spec,
