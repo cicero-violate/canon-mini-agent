@@ -213,107 +213,162 @@ pub fn analyze(workspace: &Path, crate_name: &str) -> Result<InterAnalysis> {
 /// creating the issue is the Propose step that routes work to the LLM/planner.
 pub fn generate_hotspot_issues(workspace: &Path, top_n: usize) -> Result<usize> {
     let issues_path = workspace.join(ISSUES_FILE);
-    let raw = std::fs::read_to_string(&issues_path).unwrap_or_default();
-    let mut file: IssuesFile = if raw.trim().is_empty() {
+    let (mut file, existing_ids, open_locations) = load_issue_file_with_indexes(&issues_path);
+
+    let mut created = 0;
+
+    for (crate_name, analysis) in collect_crate_analyses(workspace) {
+        created += append_hotspot_issues(
+            &mut file,
+            &analysis,
+            &crate_name,
+            &existing_ids,
+            &open_locations,
+            top_n,
+        );
+        created += append_duplicate_issues(&mut file, &analysis, &existing_ids);
+    }
+
+    persist_if_created(&issues_path, &mut file, created)?;
+
+    Ok(created)
+}
+
+fn load_issue_file_with_indexes(issues_path: &Path) -> (IssuesFile, HashSet<String>, HashSet<String>) {
+    let raw = std::fs::read_to_string(issues_path).unwrap_or_default();
+    let file: IssuesFile = if raw.trim().is_empty() {
         IssuesFile::default()
     } else {
         serde_json::from_str(&raw).unwrap_or_default()
     };
-
-    // Index existing open issues to avoid duplicates
-    let existing_ids: HashSet<String> = file.issues.iter().map(|i| i.id.clone()).collect();
-    let open_locations: HashSet<String> = file
+    let existing_ids = file.issues.iter().map(|i| i.id.clone()).collect();
+    let open_locations = file
         .issues
         .iter()
         .filter(|i| !is_closed(i))
         .map(|i| i.location.clone())
         .collect();
+    (file, existing_ids, open_locations)
+}
 
+fn collect_crate_analyses(workspace: &Path) -> Vec<(String, InterAnalysis)> {
+    SemanticIndex::available_crates(workspace)
+        .into_iter()
+        .filter_map(|crate_name| analyze(workspace, &crate_name).ok().map(|analysis| (crate_name, analysis)))
+        .collect()
+}
+
+fn append_hotspot_issues(
+    file: &mut IssuesFile,
+    analysis: &InterAnalysis,
+    crate_name: &str,
+    existing_ids: &HashSet<String>,
+    open_locations: &HashSet<String>,
+    top_n: usize,
+) -> usize {
     let mut created = 0;
-
-    for crate_name in SemanticIndex::available_crates(workspace) {
-        let Ok(analysis) = analyze(workspace, &crate_name) else {
-            continue;
-        };
-
-        // Top-N by inter_objective score
-        for entry in analysis.entries.iter().take(top_n) {
-            // Skip trivial entries
-            if entry.inter_objective < 0.20 {
-                continue;
-            }
-
-            let loc = shorten_file(&entry.file);
-            let loc_key = format!("{loc}:{}", entry.line);
-
-            // Skip if already tracked at this location
-            if open_locations.iter().any(|l| l.contains(&loc_key)) {
-                continue;
-            }
-
-            let id = inter_issue_id(&crate_name, &entry.symbol);
-            if existing_ids.contains(&id) {
-                continue;
-            }
-
-            let (title, kind, description, evidence) = build_issue_fields(entry, &crate_name);
-            let priority = priority_from_score(entry.inter_objective);
-
-            file.issues.push(Issue {
-                id,
-                title,
-                status: "open".to_string(),
-                priority: priority.to_string(),
-                kind,
-                description,
-                location: loc_key,
-                evidence,
-                discovered_by: "inter_complexity_analyzer".to_string(),
-                score: 0.0, // rescore_all will fill this
-            });
-            created += 1;
-        }
-
-        // Separate issue per MIR-duplicate group
-        for group in &analysis.duplicate_groups {
-            if group.len() < 2 {
-                continue;
-            }
-            let id = mir_dup_issue_id(group);
-            if existing_ids.contains(&id) {
-                continue;
-            }
-            file.issues.push(Issue {
-                id,
-                title: format!(
-                    "MIR-identical functions: {} candidates for deduplication",
-                    group.len()
-                ),
-                status: "open".to_string(),
-                priority: "medium".to_string(),
-                kind: "redundancy".to_string(),
-                description: format!(
-                    "These {} functions share an identical MIR fingerprint and are \
-                     functionally equivalent. All but one can be replaced with a shared \
-                     helper, eliminating R directly.\n\nSymbols: {}",
-                    group.len(),
-                    group.join(", ")
-                ),
-                location: String::new(),
-                evidence: vec![format!("MIR fingerprint shared by: {}", group.join(", "))],
-                discovered_by: "inter_complexity_analyzer".to_string(),
-                score: 0.0,
-            });
+    for entry in analysis.entries.iter().take(top_n) {
+        if let Some(issue) = build_hotspot_issue(entry, crate_name, existing_ids, open_locations) {
+            file.issues.push(issue);
             created += 1;
         }
     }
+    created
+}
 
+fn build_hotspot_issue(
+    entry: &InterEntry,
+    crate_name: &str,
+    existing_ids: &HashSet<String>,
+    open_locations: &HashSet<String>,
+) -> Option<Issue> {
+    if entry.inter_objective < 0.20 {
+        return None;
+    }
+
+    let location = hotspot_location(entry);
+    if open_locations.iter().any(|l| l.contains(&location)) {
+        return None;
+    }
+
+    let id = inter_issue_id(crate_name, &entry.symbol);
+    if existing_ids.contains(&id) {
+        return None;
+    }
+
+    let (title, kind, description, evidence) = build_issue_fields(entry, crate_name);
+    let priority = priority_from_score(entry.inter_objective);
+    Some(Issue {
+        id,
+        title,
+        status: "open".to_string(),
+        priority: priority.to_string(),
+        kind,
+        description,
+        location,
+        evidence,
+        discovered_by: "inter_complexity_analyzer".to_string(),
+        score: 0.0,
+    })
+}
+
+fn hotspot_location(entry: &InterEntry) -> String {
+    let loc = shorten_file(&entry.file);
+    format!("{loc}:{}", entry.line)
+}
+
+fn append_duplicate_issues(
+    file: &mut IssuesFile,
+    analysis: &InterAnalysis,
+    existing_ids: &HashSet<String>,
+) -> usize {
+    let mut created = 0;
+    for group in &analysis.duplicate_groups {
+        if let Some(issue) = build_duplicate_issue(group, existing_ids) {
+            file.issues.push(issue);
+            created += 1;
+        }
+    }
+    created
+}
+
+fn build_duplicate_issue(group: &[String], existing_ids: &HashSet<String>) -> Option<Issue> {
+    if group.len() < 2 {
+        return None;
+    }
+    let id = mir_dup_issue_id(group);
+    if existing_ids.contains(&id) {
+        return None;
+    }
+    Some(Issue {
+        id,
+        title: format!(
+            "MIR-identical functions: {} candidates for deduplication",
+            group.len()
+        ),
+        status: "open".to_string(),
+        priority: "medium".to_string(),
+        kind: "redundancy".to_string(),
+        description: format!(
+            "These {} functions share an identical MIR fingerprint and are \
+             functionally equivalent. All but one can be replaced with a shared \
+             helper, eliminating R directly.\n\nSymbols: {}",
+            group.len(),
+            group.join(", ")
+        ),
+        location: String::new(),
+        evidence: vec![format!("MIR fingerprint shared by: {}", group.join(", "))],
+        discovered_by: "inter_complexity_analyzer".to_string(),
+        score: 0.0,
+    })
+}
+
+fn persist_if_created(issues_path: &Path, file: &mut IssuesFile, created: usize) -> Result<()> {
     if created > 0 {
-        rescore_all(&mut file);
-        std::fs::write(&issues_path, serde_json::to_string_pretty(&file)?)?;
+        rescore_all(file);
+        std::fs::write(issues_path, serde_json::to_string_pretty(file)?)?;
     }
-
-    Ok(created)
+    Ok(())
 }
 
 /// Serialize the inter-analysis into a JSON value for embedding in the complexity report.
