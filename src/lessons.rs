@@ -104,10 +104,11 @@ pub fn handle_lessons_action(workspace: &Path, action: &Value) -> Result<(bool, 
         "read_candidates" => op_read_candidates(workspace),
         "promote" => op_promote(workspace, action),
         "reject" => op_reject(workspace, action),
+        "encode" => op_encode(workspace, action),
         "read" => op_read_lessons(workspace),
         "write" => op_write_lessons(workspace, action),
         other => anyhow::bail!(
-            "unknown lessons op '{other}' — use: read_candidates | promote | reject | read | write"
+            "unknown lessons op '{other}' — use: read_candidates | promote | reject | encode | read | write"
         ),
     }
 }
@@ -187,6 +188,45 @@ fn op_reject(workspace: &Path, action: &Value) -> Result<(bool, String)> {
     }
     save_candidates(workspace, &cfile)?;
     Ok((false, format!("lessons reject: candidate '{candidate_id}' marked rejected")))
+}
+
+/// Mark a lesson entry as `encoded` — meaning it has been hardcoded into the
+/// system source and no longer needs to live in the prompt.
+///
+/// Required field: `entry_text` — the exact `text` value of the entry to encode.
+/// Optional field: `encoded_at` — a short note of where it was encoded
+///                 (e.g., `"src/lessons.rs:schema_fix_hint"`).
+fn op_encode(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+    let entry_text = action
+        .get("entry_text")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("lessons encode requires 'entry_text' — the exact text of the entry to mark encoded"))?;
+
+    let mut artifact = load_lessons(workspace);
+    let mut found = false;
+
+    for list in [
+        &mut artifact.failures,
+        &mut artifact.fixes,
+        &mut artifact.required_actions,
+    ] {
+        for entry in list.iter_mut() {
+            if entry.text == entry_text {
+                entry.status = LessonEntryStatus::Encoded;
+                found = true;
+            }
+        }
+    }
+
+    if !found {
+        anyhow::bail!(
+            "lessons encode: no entry with text {:?} found in lessons.json — use lessons op=read to list entries",
+            entry_text
+        );
+    }
+
+    save_lessons(workspace, &artifact)?;
+    Ok((false, format!("lessons encode: entry marked as encoded and removed from prompt injection")))
 }
 
 fn op_read_lessons(workspace: &Path) -> Result<(bool, String)> {
@@ -764,8 +804,8 @@ mod tests {
         assert!(msg.contains("promoted"), "promote should report success");
 
         let artifact = load_lessons(&workspace);
-        assert!(artifact.failures.iter().any(|f| f.contains("test failure")));
-        assert!(artifact.fixes.iter().any(|f| f.contains("the fix")));
+        assert!(artifact.failures.iter().any(|f| f.text.contains("test failure")));
+        assert!(artifact.fixes.iter().any(|f| f.text.contains("the fix")));
 
         let updated = load_candidates(&workspace);
         let c = updated.candidates.iter().find(|c| c.id == "test_id_001").unwrap();
