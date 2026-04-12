@@ -1130,7 +1130,8 @@ pub(crate) fn single_role_solo_prompt(
     let diagnostics_path = diagnostics_file();
     let issues_file = crate::constants::ISSUES_FILE;
     let mut sections = format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed.\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}"
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed.\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{}",
+        truncate_section(master_plan, 8000)
     );
     append_optional_prompt_section(
         &mut sections,
@@ -1144,16 +1145,19 @@ pub(crate) fn single_role_solo_prompt(
     );
     append_optional_prompt_section(
         &mut sections,
-        objectives,
+        &truncate_section(objectives, 3000),
         &format!("Objectives (from {OBJECTIVES_FILE}):"),
     );
     append_optional_prompt_section(
         &mut sections,
-        issues_text,
+        &truncate_section(issues_text, 2000),
         &format!("Open issues ranked by score (from {issues_file}):"),
     );
     // Lessons section must always be present (even if empty) to satisfy prompt invariants/tests
-    sections.push_str(&format!("\n\nLessons artifact:\n{}", lessons_text));
+    sections.push_str(&format!(
+        "\n\nLessons artifact:\n{}",
+        truncate_section(lessons_text, 2000)
+    ));
     append_optional_prompt_section(
         &mut sections,
         complexity_hotspots,
@@ -1161,17 +1165,17 @@ pub(crate) fn single_role_solo_prompt(
     );
     append_optional_prompt_section(
         &mut sections,
-        invariants,
+        &truncate_section(invariants, 2000),
         &format!("Invariants (from {INVARIANTS_FILE}):"),
     );
     append_optional_prompt_section(
         &mut sections,
-        violations,
+        &truncate_section(violations, 2000),
         &format!("Violations (from {VIOLATIONS_FILE}):"),
     );
     append_optional_prompt_section(
         &mut sections,
-        diagnostics,
+        &truncate_section(diagnostics, 2000),
         &format!("Diagnostics report (from {diagnostics_path}):"),
     );
     append_optional_prompt_section(
