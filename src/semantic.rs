@@ -1004,7 +1004,8 @@ fn shorten_path(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        expand_symbol_window_span, CrateGraph, GraphEdge, GraphNode, SemanticIndex, SourceSpan,
+        expand_symbol_window_span, BridgeEdge, CfgNode, CrateGraph, GraphEdge, GraphNode,
+        SemanticIndex, SourceSpan,
     };
     use std::collections::HashMap;
     use std::fs;
