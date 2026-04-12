@@ -4317,19 +4317,19 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
     //
     // Other roles (verifier, solo) are not affected — their plan actions continue
     // to return done=false so their own cycle termination logic is unchanged.
-    if role.eq_ignore_ascii_case("planner") && plan_op_produced_ready_task(op_raw, action, &plan) {
+    // Planner cycle terminator: only fire on set_task_status→ready, which is the
+    // atomic "I am done mutating, mark this task executable" primitive.  Other ops
+    // (create_task, update_task, replace_plan) are mid-sequence and may be followed
+    // by edge additions or further mutations — terminating on those would cut the
+    // cycle short.
+    if role.eq_ignore_ascii_case("planner") && plan_op_is_terminal_ready(op_raw, action) {
         let task_id = action
             .get("task_id")
             .and_then(|v| v.as_str())
-            .or_else(|| {
-                action
-                    .get("task")
-                    .and_then(|t| t.get("id"))
-                    .and_then(|v| v.as_str())
-            })
             .unwrap_or("(see plan)");
         eprintln!(
-            "[plan] planner cycle complete via ready task `{task_id}`; no handoff message required"
+            "[plan] planner cycle complete via set_task_status→ready `{task_id}`; \
+             no handoff message required"
         );
         return Ok((
             true,
@@ -4423,30 +4423,23 @@ fn persist_plan_action_update(
 }
 
 /// Return true when the plan mutation just written resulted in at least one task
-/// having `status = "ready"`.  This drives the Option-A executor-dispatch hook.
+/// having `status = "ready"`.  Used to decide whether to write wakeup_executor.flag.
+/// Covers all ops that can produce a ready task so the executor is always woken.
 fn plan_op_produced_ready_task(op_raw: &str, action: &Value, plan: &Value) -> bool {
     match op_raw {
-        // Targeted status ops — check the explicit status field in the action.
-        "set_task_status" => action
+        "set_task_status" | "update_task" => action
             .get("status")
+            .or_else(|| action.get("task").and_then(|t| t.get("status")))
             .and_then(|v| v.as_str())
             .map(|s| s.eq_ignore_ascii_case("ready"))
             .unwrap_or(false),
-        // update_task may carry an inline status.
-        "update_task" => action
-            .get("task")
-            .and_then(|t| t.get("status"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.eq_ignore_ascii_case("ready"))
-            .unwrap_or(false),
-        // create_task — task could be born ready.
         "create_task" => action
             .get("task")
             .and_then(|t| t.get("status"))
             .and_then(|v| v.as_str())
             .map(|s| s.eq_ignore_ascii_case("ready"))
             .unwrap_or(false),
-        // replace_plan — scan the whole plan for any ready task.
+        // replace_plan — scan the written plan for any ready task.
         "replace_plan" => plan
             .get("tasks")
             .and_then(|v| v.as_array())
@@ -4461,6 +4454,22 @@ fn plan_op_produced_ready_task(op_raw: &str, action: &Value, plan: &Value) -> bo
             .unwrap_or(false),
         _ => false,
     }
+}
+
+/// Return true when this plan op is the unambiguous terminal "mark ready" primitive
+/// that should end the planner's cycle.  Only `set_task_status` qualifies — it is
+/// the atomic "I am done with mutations, flip this task to ready" operation.
+///
+/// `create_task`, `update_task`, and `replace_plan` are mid-sequence ops: the planner
+/// typically follows them with edge additions, further mutations, or a message, so
+/// terminating early would cut the cycle before that work is done.
+fn plan_op_is_terminal_ready(op_raw: &str, action: &Value) -> bool {
+    op_raw == "set_task_status"
+        && action
+            .get("status")
+            .and_then(|v| v.as_str())
+            .map(|s| s.eq_ignore_ascii_case("ready"))
+            .unwrap_or(false)
 }
 
 fn build_replacement_plan(action: &Value) -> Result<Value> {
