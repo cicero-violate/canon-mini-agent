@@ -3374,9 +3374,11 @@ fn handle_executor_completion(
     }
 
     record_executor_completion_observation(&submitted, lane_name, turn_id, tab_id, &exec_result);
-    handle_executor_completion_message_action(dispatch_state, &submitted, lane_cfg, &exec_result);
     let mut submitted = submitted;
     maybe_rebind_executor_completion_tab(dispatch_state, &mut submitted, tab_id, turn_id, lane_name);
+    if handle_executor_completion_message_action(dispatch_state, &submitted, lane_cfg, &exec_result) {
+        return true;
+    }
     eprintln!(
         "[orchestrate] executor turn requires tool execution: lane={} turn_id={}",
         lane_name,
@@ -3556,17 +3558,17 @@ fn handle_executor_completion_message_action(
     submitted: &SubmittedExecutorTurn,
     lane_cfg: &LaneConfig,
     exec_result: &str,
-) {
+) -> bool {
     let Ok(mut actions) = parse_actions(exec_result) else {
-        return;
+        return false;
     };
     if actions.first().and_then(|a| a.get("action")).and_then(|v| v.as_str()) != Some("message") {
-        return;
+        return false;
     }
 
     dispatch_state.lane_steps_used.insert(submitted.lane, 0);
     let Some(action) = actions.pop() else {
-        return;
+        return false;
     };
 
     log_action_result(
@@ -3580,6 +3582,7 @@ fn handle_executor_completion_message_action(
         exec_result,
     );
     persist_executor_completion_message(dispatch_state, &action);
+    true
 }
 
 fn persist_executor_completion_message(dispatch_state: &mut DispatchState, action: &Value) {
