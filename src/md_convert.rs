@@ -50,10 +50,12 @@ fn parse_invariants_md(text: &str) -> InvariantsReport {
     let mut in_math = false;
     let mut in_meta = false;
 
-    let push_current = |title_opt: &mut Option<String>,
-                            clauses: &mut Vec<String>,
-                            desc: &mut Vec<String>,
-                            out: &mut Vec<Invariant>| {
+    fn push_current_invariant(
+        title_opt: &mut Option<String>,
+        clauses: &mut Vec<String>,
+        desc: &mut Vec<String>,
+        out: &mut Vec<Invariant>,
+    ) {
         if let Some(title) = title_opt.take() {
             let description = desc.join(" ").trim().to_string();
             let invariant = Invariant {
@@ -67,7 +69,13 @@ fn parse_invariants_md(text: &str) -> InvariantsReport {
             out.push(invariant);
             desc.clear();
         }
-    };
+    }
+
+    fn reset_flags(in_principles: &mut bool, in_math: &mut bool, in_meta: &mut bool) {
+        *in_principles = false;
+        *in_math = false;
+        *in_meta = false;
+    }
 
     for raw in text.lines() {
         let line = raw.trim();
@@ -77,24 +85,20 @@ fn parse_invariants_md(text: &str) -> InvariantsReport {
         if line.starts_with("## ") {
             let title = line.trim_start_matches("## ").trim();
             if title.eq_ignore_ascii_case("math") {
-                push_current(&mut current_title, &mut current_clauses, &mut current_desc, &mut invariants);
+                push_current_invariant(&mut current_title, &mut current_clauses, &mut current_desc, &mut invariants);
+                reset_flags(&mut in_principles, &mut in_math, &mut in_meta);
                 in_math = true;
-                in_principles = false;
-                in_meta = false;
                 continue;
             }
             if title.starts_with("Additional Exhaustive") {
-                push_current(&mut current_title, &mut current_clauses, &mut current_desc, &mut invariants);
-                in_math = false;
-                in_principles = false;
-                in_meta = false;
+                push_current_invariant(&mut current_title, &mut current_clauses, &mut current_desc, &mut invariants);
+                reset_flags(&mut in_principles, &mut in_math, &mut in_meta);
                 continue;
             }
             if title.starts_with("Meta-Level") || title.starts_with("Insight") || title.starts_with("Final") {
-                push_current(&mut current_title, &mut current_clauses, &mut current_desc, &mut invariants);
+                push_current_invariant(&mut current_title, &mut current_clauses, &mut current_desc, &mut invariants);
+                reset_flags(&mut in_principles, &mut in_math, &mut in_meta);
                 in_meta = true;
-                in_math = false;
-                in_principles = false;
                 if !title.is_empty() {
                     meta.push(title.to_string());
                 }
@@ -102,11 +106,9 @@ fn parse_invariants_md(text: &str) -> InvariantsReport {
             }
         }
         if line.starts_with("### ") {
-            push_current(&mut current_title, &mut current_clauses, &mut current_desc, &mut invariants);
+            push_current_invariant(&mut current_title, &mut current_clauses, &mut current_desc, &mut invariants);
             current_title = Some(line.trim_start_matches("### ").trim().to_string());
-            in_principles = false;
-            in_math = false;
-            in_meta = false;
+            reset_flags(&mut in_principles, &mut in_math, &mut in_meta);
             continue;
         }
         if line.ends_with("invariant") && !line.starts_with("-") && !line.starts_with("*") {
@@ -145,7 +147,7 @@ fn parse_invariants_md(text: &str) -> InvariantsReport {
             current_desc.push(line.to_string());
         }
     }
-    push_current(&mut current_title, &mut current_clauses, &mut current_desc, &mut invariants);
+    push_current_invariant(&mut current_title, &mut current_clauses, &mut current_desc, &mut invariants);
 
     InvariantsReport {
         version: 1,
