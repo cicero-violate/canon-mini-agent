@@ -2787,6 +2787,33 @@ fn format_patch_crate_failure(label: &str, out: &str) -> String {
     )
 }
 
+fn verification_rebind_note(workspace: &Path, crate_name: &str, plan: &Option<crate::semantic::ExecutionPathPlan>, check_out: &str, test_out: &str) -> String {
+    let Some(rebound) = verification_rebind(workspace, crate_name, plan.as_ref(), check_out, test_out) else {
+        return String::new();
+    };
+    let mut note = String::from("\n\nRebound failure target:\n");
+    if let Some(symbol) = rebound.get("symbol").and_then(|v| v.as_str()) {
+        note.push_str(&format!("symbol: {symbol}\n"));
+    }
+    if let (Some(file), Some(line)) = (
+        rebound.get("file").and_then(|v| v.as_str()),
+        rebound.get("line").and_then(|v| v.as_u64()),
+    ) {
+        note.push_str(&format!(
+            "location: {}:{line}\n",
+            crate::semantic::shorten_display_path(file)
+        ));
+    }
+    let rebound_path = execution_plan_rebound_path(workspace, crate_name);
+    if rebound_path.exists() {
+        note.push_str(&format!(
+            "rebound_plan: {}\n",
+            crate::semantic::shorten_display_path(&rebound_path.display().to_string())
+        ));
+    }
+    note
+}
+
 fn summarize_patch_crate_test_output(test_ok: bool, test_out: &str) -> String {
     let test_summary = cargo_test_totals_summary(test_out);
     if test_ok && !test_summary.trim().is_empty() {
@@ -2827,7 +2854,9 @@ fn verify_apply_patch_crate(
             false,
             "",
         );
-        return Some((false, format_patch_crate_failure(check_label, &check_out)));
+        let mut out = format_patch_crate_failure(check_label, &check_out);
+        out.push_str(&verification_rebind_note(workspace, &krate, &plan, &check_out, ""));
+        return Some((false, out));
     }
 
     let (test_ok, test_out, test_label) = run_patch_crate_verification_command(
@@ -2855,9 +2884,14 @@ fn verify_apply_patch_crate(
     Some((
         false,
         format!(
-            "apply_patch ok\n\n{check_label}:\n{}\n\n{test_label}:\n{}",
+            "apply_patch ok\n\n{check_label}:\n{}\n\n{test_label}:\n{}{}",
             truncate(&check_out, MAX_SNIPPET),
-            test_display
+            test_display,
+            if test_ok {
+                String::new()
+            } else {
+                verification_rebind_note(workspace, &krate, &plan, &check_out, &test_out)
+            }
         ),
     ))
 }
@@ -2866,7 +2900,7 @@ fn log_execution_learning(
     workspace: &Path,
     crate_name: &str,
     patch: &str,
-    plan: &Option<Value>,
+    plan: &Option<crate::semantic::ExecutionPathPlan>,
     check_ok: bool,
     check_out: &str,
     test_ok: bool,
@@ -2878,8 +2912,8 @@ fn log_execution_learning(
         .collect::<Vec<_>>();
     let top_target = plan
         .as_ref()
-        .and_then(|value| value.get("top_target"))
-        .cloned();
+        .and_then(|value| serde_json::to_value(&value.top_target).ok())
+        .and_then(|value| if value.is_null() { None } else { Some(value) });
     let top_target_file = top_target
         .as_ref()
         .and_then(|value| value.get("file"))
@@ -2890,14 +2924,14 @@ fn log_execution_learning(
     let rebound = if check_ok && test_ok {
         None
     } else {
-        verification_rebind(workspace, crate_name, check_out, test_out)
+        verification_rebind(workspace, crate_name, plan.as_ref(), check_out, test_out)
     };
     let record = json!({
         "ts_ms": now_ms(),
         "crate": crate_name,
-        "path_fingerprint": plan.as_ref().and_then(|value| value.get("path_fingerprint")).and_then(|value| value.as_str()),
-        "from": plan.as_ref().and_then(|value| value.get("from")).and_then(|value| value.as_str()),
-        "to": plan.as_ref().and_then(|value| value.get("to")).and_then(|value| value.as_str()),
+        "path_fingerprint": plan.as_ref().map(|value| value.path_fingerprint.clone()),
+        "from": plan.as_ref().map(|value| value.from.clone()),
+        "to": plan.as_ref().map(|value| value.to.clone()),
         "top_target": top_target,
         "matched_top_target_file": matched_top_target,
         "patch_paths": patch_paths,
@@ -5743,10 +5777,97 @@ fn persist_execution_path_plan(
     Ok(())
 }
 
-fn load_execution_plan(workspace: &Path, crate_name: &str) -> Option<Value> {
+fn execution_plan_rebound_path(workspace: &Path, crate_name: &str) -> PathBuf {
+    execution_reports_dir(workspace).join(format!("{crate_name}.rebound.json"))
+}
+
+fn persist_rebound_execution_plan(
+    workspace: &Path,
+    crate_name: &str,
+    plan: &crate::semantic::ExecutionPathPlan,
+) -> Result<()> {
+    let out_path = execution_plan_rebound_path(workspace, crate_name);
+    fs::write(&out_path, serde_json::to_vec_pretty(plan)?)
+        .with_context(|| format!("write {}", out_path.display()))
+}
+
+fn load_execution_plan(
+    workspace: &Path,
+    crate_name: &str,
+) -> Option<crate::semantic::ExecutionPathPlan> {
     let path = execution_plan_latest_path(workspace, crate_name);
     let raw = fs::read_to_string(path).ok()?;
     serde_json::from_str(&raw).ok()
+}
+
+#[derive(Default)]
+struct LearningBiasStats {
+    success_by_symbol: std::collections::HashMap<String, usize>,
+    failure_by_symbol: std::collections::HashMap<String, usize>,
+}
+
+fn load_learning_bias_stats(workspace: &Path, crate_name: &str) -> LearningBiasStats {
+    let raw = match fs::read_to_string(execution_learning_path(workspace)) {
+        Ok(raw) => raw,
+        Err(_) => return LearningBiasStats::default(),
+    };
+    let mut stats = LearningBiasStats::default();
+    for line in raw.lines().filter(|line| !line.trim().is_empty()) {
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        if value.get("crate").and_then(|v| v.as_str()) != Some(crate_name) {
+            continue;
+        }
+        let Some(symbol) = value
+            .get("top_target")
+            .and_then(|v| v.get("symbol"))
+            .and_then(|v| v.as_str())
+        else {
+            continue;
+        };
+        let verified = value
+            .get("verification")
+            .and_then(|v| v.get("verified"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let counter = if verified {
+            &mut stats.success_by_symbol
+        } else {
+            &mut stats.failure_by_symbol
+        };
+        *counter.entry(symbol.to_string()).or_insert(0) += 1;
+    }
+    stats
+}
+
+fn apply_learning_bias_to_plan(
+    plan: &mut crate::semantic::ExecutionPathPlan,
+    stats: &LearningBiasStats,
+) {
+    for target in &mut plan.targets {
+        let successes = *stats.success_by_symbol.get(&target.symbol).unwrap_or(&0) as i32;
+        let failures = *stats.failure_by_symbol.get(&target.symbol).unwrap_or(&0) as i32;
+        if successes > 0 {
+            target.score -= successes * 5;
+            target
+                .reasons
+                .push(format!("learned success x{successes}"));
+        }
+        if failures > 0 {
+            target.score += failures * 8;
+            target
+                .reasons
+                .push(format!("learned failure x{failures}"));
+        }
+    }
+    plan.targets
+        .sort_by(|a, b| a.score.cmp(&b.score).then(a.symbol.cmp(&b.symbol)));
+    plan.top_target = plan.targets.first().cloned();
+    plan.apply_patch_template = plan
+        .top_target
+        .as_ref()
+        .and_then(crate::semantic::build_apply_patch_template_public);
 }
 
 fn append_execution_learning_record(workspace: &Path, record: &Value) -> Result<()> {
@@ -5783,6 +5904,7 @@ fn parse_failure_location(out: &str) -> Option<(String, u32, u32)> {
 fn verification_rebind(
     workspace: &Path,
     crate_name: &str,
+    plan: Option<&crate::semantic::ExecutionPathPlan>,
     check_out: &str,
     test_out: &str,
 ) -> Option<Value> {
@@ -5792,15 +5914,22 @@ fn verification_rebind(
         parse_failure_location(test_out).map(|loc| (loc, "cargo_test"))
     }?;
     let ((file, line, col), source) = failure_output;
-    let symbol = crate::semantic::SemanticIndex::load(workspace, crate_name)
-        .ok()
-        .and_then(|idx| idx.symbol_at_file_line(&file, line));
+    let idx = crate::semantic::SemanticIndex::load(workspace, crate_name).ok()?;
+    let symbol = idx.symbol_at_file_line(&file, line);
+    let rebound_plan = plan
+        .and_then(|plan| symbol.as_deref().and_then(|sym| idx.execution_path_plan(&plan.from, sym).ok()));
+    if let Some(rebound_plan) = &rebound_plan {
+        let _ = persist_rebound_execution_plan(workspace, crate_name, rebound_plan);
+    }
     Some(json!({
         "source": source,
         "file": file,
         "line": line,
         "col": col,
         "symbol": symbol,
+        "rebound_path_fingerprint": rebound_plan.as_ref().map(|plan| plan.path_fingerprint.clone()),
+        "rebound_from": rebound_plan.as_ref().map(|plan| plan.from.clone()),
+        "rebound_to": rebound_plan.as_ref().map(|plan| plan.to.clone()),
     }))
 }
 
@@ -5966,9 +6095,11 @@ fn handle_execution_path_action(workspace: &Path, action: &Value) -> Result<(boo
         .get("expand_bodies")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let plan = idx.execution_path_plan(from, to)?;
+    let mut plan = idx.execution_path_plan(from, to)?;
+    let stats = load_learning_bias_stats(workspace, &crate_name);
+    apply_learning_bias_to_plan(&mut plan, &stats);
     persist_execution_path_plan(workspace, &crate_name, &plan)?;
-    let out = idx.execution_path(from, to, expand)?;
+    let out = idx.render_execution_path_plan(&plan, expand);
     Ok((false, out))
 }
 
@@ -6722,6 +6853,45 @@ mod tests {
                 .and_then(|v| v.as_str()),
             Some("app::validate")
         );
+        assert!(parsed.get("apply_patch_template").is_some());
+    }
+
+    #[test]
+    fn execution_path_applies_learning_bias_from_prior_success() {
+        let tmp = fresh_test_dir("execution-path-learning-bias");
+        let file = tmp.join("src").join("lib.rs");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        let src = "fn validate() {}\n";
+        std::fs::write(&file, src).unwrap();
+        write_minimal_graph_with_def_and_mir(
+            &tmp,
+            "canon_mini_agent",
+            "app::validate",
+            &file,
+            src,
+            "validate",
+        );
+        let reports_dir = tmp.join("state").join("reports");
+        std::fs::create_dir_all(&reports_dir).unwrap();
+        std::fs::write(
+            reports_dir.join("execution_learning.jsonl"),
+            concat!(
+                "{\"crate\":\"canon_mini_agent\",\"top_target\":{\"symbol\":\"app::validate\"},",
+                "\"verification\":{\"verified\":true}}\n"
+            ),
+        )
+        .unwrap();
+        let action = json!({
+            "action": "execution_path",
+            "crate": "canon_mini_agent",
+            "from": "app::validate",
+            "to": "app::validate",
+            "rationale": "Prefer symbols that succeeded on similar prior patches."
+        });
+
+        let (_done, out) = handle_execution_path_action(&tmp, &action).unwrap();
+
+        assert!(out.contains("learned success x1"), "unexpected: {out}");
     }
 
     #[test]

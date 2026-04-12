@@ -143,7 +143,7 @@ pub struct SemanticTriple {
     pub to: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionPathNode {
     pub id: String,
     pub via_relation: Option<String>,
@@ -158,7 +158,7 @@ pub struct ExecutionPathNode {
     pub terminator: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionPatchTarget {
     pub symbol: String,
     pub score: i32,
@@ -170,7 +170,7 @@ pub struct ExecutionPatchTarget {
     pub context_window: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionPathPlan {
     pub from: String,
     pub to: String,
@@ -178,6 +178,7 @@ pub struct ExecutionPathPlan {
     pub path: Vec<ExecutionPathNode>,
     pub targets: Vec<ExecutionPatchTarget>,
     pub top_target: Option<ExecutionPatchTarget>,
+    pub apply_patch_template: Option<String>,
 }
 
 impl SemanticIndex {
@@ -243,7 +244,10 @@ impl SemanticIndex {
                 path_fingerprint,
                 path,
                 targets,
-                top_target,
+                top_target: top_target.clone(),
+                apply_patch_template: top_target
+                    .as_ref()
+                    .and_then(build_apply_patch_template),
             });
         }
 
@@ -267,11 +271,14 @@ impl SemanticIndex {
             path_fingerprint,
             path,
             targets,
-            top_target,
+            top_target: top_target.clone(),
+            apply_patch_template: top_target
+                .as_ref()
+                .and_then(build_apply_patch_template),
         })
     }
 
-    fn render_execution_path_plan(
+    pub fn render_execution_path_plan(
         &self,
         plan: &ExecutionPathPlan,
         expand_bodies: bool,
@@ -974,6 +981,14 @@ impl SemanticIndex {
                 out.push_str(&format!("    context_window_lines={}..={}\n", start, end));
             }
         }
+        if let Some(template) = top_target.as_ref().and_then(build_apply_patch_template) {
+            out.push_str("  apply_patch template:\n");
+            for line in template.lines() {
+                out.push_str("    ");
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
     }
 
     fn rank_execution_patch_targets_from_nodes(
@@ -1370,6 +1385,35 @@ fn stable_hash(input: &str) -> u64 {
     hasher.finish()
 }
 
+fn build_apply_patch_template(target: &ExecutionPatchTarget) -> Option<String> {
+    let file = target.file.as_ref()?;
+    let context = target.context_window.as_ref()?;
+    if context.trim().is_empty() {
+        return None;
+    }
+    let mut template = String::new();
+    template.push_str("*** Begin Patch\n");
+    template.push_str(&format!("*** Update File: {}\n", shorten_path(file)));
+    template.push_str("@@\n");
+    for line in context.lines() {
+        if let Some((_line_no, text)) = line.split_once(": ") {
+            template.push(' ');
+            template.push_str(text);
+            template.push('\n');
+        }
+    }
+    template.push_str("-// TODO: replace with current behavior\n");
+    template.push_str("+// TODO: minimal path-local fix here\n");
+    template.push_str("*** End Patch");
+    Some(template)
+}
+
+pub fn build_apply_patch_template_public(
+    target: &ExecutionPatchTarget,
+) -> Option<String> {
+    build_apply_patch_template(target)
+}
+
 fn read_context_window(file: &str, line: u32, before: usize, after: usize) -> (u32, u32, String) {
     let Ok(source) = fs::read_to_string(file) else {
         return (line, line, String::new());
@@ -1763,6 +1807,7 @@ mod tests {
         assert!(out.contains("Repair plan:"));
         assert!(out.contains("\"top_target\""));
         assert!(out.contains("\"symbol\": \"app::validate\""));
+        assert!(out.contains("\"apply_patch_template\""));
     }
 
     #[test]
