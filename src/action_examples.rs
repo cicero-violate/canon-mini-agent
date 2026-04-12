@@ -17,24 +17,65 @@ fn predicted_next_action(action: &str, intent: &str) -> Value {
     json!({"action": action, "intent": intent})
 }
 
+fn example_action_base(
+    action: &str,
+    observation: &str,
+    rationale: &str,
+    predicted_next_actions: &Value,
+) -> serde_json::Map<String, Value> {
+    let mut map = serde_json::Map::new();
+    map.insert("action".to_string(), json!(action));
+    map.insert("observation".to_string(), json!(observation));
+    map.insert("rationale".to_string(), json!(rationale));
+    map.insert(
+        "predicted_next_actions".to_string(),
+        predicted_next_actions.clone(),
+    );
+    map
+}
+
+fn with_extra_fields(
+    mut base: serde_json::Map<String, Value>,
+    extra: [(&str, Value); 1],
+) -> Value {
+    for (key, value) in extra {
+        base.insert(key.to_string(), value);
+    }
+    Value::Object(base)
+}
+
+fn with_two_extra_fields(
+    mut base: serde_json::Map<String, Value>,
+    extra: [(&str, Value); 2],
+) -> Value {
+    for (key, value) in extra {
+        base.insert(key.to_string(), value);
+    }
+    Value::Object(base)
+}
+
 fn run_command_example_action(predicted_next_actions: &Value) -> Value {
-    json!({
-        "action": "run_command",
-        "cmd": "rg -n \"pattern\" src/",
-        "observation": "Search for the relevant code.",
-        "rationale": "Locate the target before patching.",
-        "predicted_next_actions": predicted_next_actions
-    })
+    with_extra_fields(
+        example_action_base(
+            "run_command",
+            "Search for the relevant code.",
+            "Locate the target before patching.",
+            predicted_next_actions,
+        ),
+        [("cmd", json!("rg -n \"pattern\" src/"))],
+    )
 }
 
 fn read_file_example_action(predicted_next_actions: &Value) -> Value {
-    json!({
-        "action": "read_file",
-        "path": "src/lib.rs",
-        "observation": "Read the file for context.",
-        "rationale": "Need context before editing.",
-        "predicted_next_actions": predicted_next_actions
-    })
+    with_extra_fields(
+        example_action_base(
+            "read_file",
+            "Read the file for context.",
+            "Need context before editing.",
+            predicted_next_actions,
+        ),
+        [("path", json!("src/lib.rs"))],
+    )
 }
 
 fn symbols_index_example_action(predicted_next_actions: &Value) -> Value {
@@ -87,13 +128,15 @@ fn rename_symbol_example_action(predicted_next_actions: &Value) -> Value {
 }
 
 fn list_dir_example_action(predicted_next_actions: &Value) -> Value {
-    json!({
-        "action": "list_dir",
-        "path": ".",
-        "observation": "List workspace files.",
-        "rationale": "Locate the target before acting.",
-        "predicted_next_actions": predicted_next_actions
-    })
+    with_extra_fields(
+        example_action_base(
+            "list_dir",
+            "List workspace files.",
+            "Locate the target before acting.",
+            predicted_next_actions,
+        ),
+        [("path", json!("."))],
+    )
 }
 
 fn apply_patch_example_action(predicted_next_actions: &Value) -> Value {
@@ -107,24 +150,30 @@ fn apply_patch_example_action(predicted_next_actions: &Value) -> Value {
 }
 
 fn python_example_action(predicted_next_actions: &Value) -> Value {
-    json!({
-        "action": "python",
-        "code": "print('analysis')",
-        "observation": "Run structured analysis.",
-        "rationale": "Use Python for parsing tasks.",
-        "predicted_next_actions": predicted_next_actions
-    })
+    with_extra_fields(
+        example_action_base(
+            "python",
+            "Run structured analysis.",
+            "Use Python for parsing tasks.",
+            predicted_next_actions,
+        ),
+        [("code", json!("print('analysis')"))],
+    )
 }
 
 fn cargo_test_example_action(predicted_next_actions: &Value) -> Value {
-    json!({
-        "action": "cargo_test",
-        "crate": "canon-mini-agent",
-        "test": "optional_test_name",
-        "observation": "Run the targeted test.",
-        "rationale": "Verify the change.",
-        "predicted_next_actions": predicted_next_actions
-    })
+    with_two_extra_fields(
+        example_action_base(
+            "cargo_test",
+            "Run the targeted test.",
+            "Verify the change.",
+            predicted_next_actions,
+        ),
+        [
+            ("crate", json!("canon-mini-agent")),
+            ("test", json!("optional_test_name")),
+        ],
+    )
 }
 
 fn plan_example_action(predicted_next_actions: &Value) -> Value {
