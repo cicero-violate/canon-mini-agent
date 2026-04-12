@@ -651,43 +651,10 @@ fn collect_general_action_schema_diff(
     kind: &str,
 ) {
     if let Some(obj) = obj {
-        if let Some(value) = obj.get("action") {
-            if !value.is_string()
-                && !schema_diff
-                    .iter()
-                    .any(|s| s.starts_with("field type mismatch: action"))
-            {
-                add_unique_schema_diff(
-                    schema_diff,
-                    "field type mismatch: action (expected string)".to_string(),
-                );
-            }
-        }
-        if let Some(rationale) = obj.get("rationale") {
-            if let Some(text) = rationale.as_str() {
-                if text.trim().is_empty() && !schema_diff.iter().any(|s| s == "missing field: rationale") {
-                    add_unique_schema_diff(schema_diff, "missing field: rationale".to_string());
-                }
-            } else {
-                add_unique_schema_diff(
-                    schema_diff,
-                    "field type mismatch: rationale (expected string)".to_string(),
-                );
-            }
-        }
+        push_type_mismatch_if_present(schema_diff, obj.get("action"), "action");
+        push_missing_or_invalid_rationale(schema_diff, obj.get("rationale"));
     }
-    if let Some(observation) = action.get("observation") {
-        if !observation.is_string()
-            && !schema_diff
-                .iter()
-                .any(|s| s.starts_with("field type mismatch: observation"))
-        {
-            add_unique_schema_diff(
-                schema_diff,
-                "field type mismatch: observation (expected string)".to_string(),
-            );
-        }
-    }
+    push_type_mismatch_if_present(schema_diff, action.get("observation"), "observation");
     if kind == "apply_patch" {
         if let Some(patch) = action.get("patch").and_then(|v| v.as_str()) {
             if let Some(msg) = crate::tools::patch_scope_error(role, patch) {
@@ -695,19 +662,7 @@ fn collect_general_action_schema_diff(
             }
         }
     }
-    if obj
-        .and_then(|o| o.get("action"))
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .is_none()
-    {
-        add_unique_schema_diff(schema_diff, "missing field: action".to_string());
-        add_unique_schema_diff(
-            schema_diff,
-            "unsupported action: missing or unknown action".to_string(),
-        );
-    }
+    push_missing_or_unknown_action(schema_diff, obj);
     if matches!(kind, "run_command" | "read_file" | "apply_patch" | "python" | "cargo_test") {
         let field = match kind {
             "run_command" => "cmd",
@@ -718,6 +673,48 @@ fn collect_general_action_schema_diff(
             _ => "",
         };
         push_missing_string_object_field(schema_diff, obj, field);
+    }
+}
+
+fn push_type_mismatch_if_present(
+    schema_diff: &mut Vec<String>,
+    value: Option<&Value>,
+    field: &str,
+) {
+    if let Some(value) = value {
+        if !value.is_string() {
+            add_unique_schema_diff(
+                schema_diff,
+                format!("field type mismatch: {field} (expected string)"),
+            );
+        }
+    }
+}
+
+fn push_missing_or_invalid_rationale(schema_diff: &mut Vec<String>, rationale: Option<&Value>) {
+    match rationale.and_then(|value| value.as_str()) {
+        Some(text) if !text.trim().is_empty() => {}
+        Some(_) => add_unique_schema_diff(schema_diff, "missing field: rationale".to_string()),
+        None => push_type_mismatch_if_present(schema_diff, rationale, "rationale"),
+    }
+}
+
+fn push_missing_or_unknown_action(
+    schema_diff: &mut Vec<String>,
+    obj: Option<&serde_json::Map<String, Value>>,
+) {
+    let has_action = obj
+        .and_then(|o| o.get("action"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .is_some();
+    if !has_action {
+        add_unique_schema_diff(schema_diff, "missing field: action".to_string());
+        add_unique_schema_diff(
+            schema_diff,
+            "unsupported action: missing or unknown action".to_string(),
+        );
     }
 }
 
