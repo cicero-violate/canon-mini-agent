@@ -185,30 +185,33 @@ impl SemanticIndex {
     // semantic_map
     // -----------------------------------------------------------------------
 
-    /// Repomap-style outline: one line per symbol sorted by file + line.
-    /// Format: `<file>:<line> <kind> <path> [sig] [fields: f1, f2]`
+    /// Triple-style semantic graph view.
+    /// Format: `(<from>, <relation>, <to>)`
     pub fn semantic_map(&self, filter_path: Option<&str>, expand_bodies: bool) -> String {
-        let mut by_file = self.collect_semantic_map_entries(filter_path);
-
-        let mut files: Vec<String> = by_file.keys().cloned().collect();
-        files.sort();
-
         let mut out = String::new();
-        for file in &files {
-            let entries = by_file.get_mut(file).unwrap();
-            entries.sort_by_key(|(line, _, _)| *line);
+        if expand_bodies {
+            out.push_str("# note: `expand_bodies` is ignored for triple output\n");
+        }
 
-            // Use a short relative path for display.
-            let display_file = shorten_path(file);
-            out.push_str(&display_file);
+        let mut triples = self.collect_semantic_map_triples(filter_path);
+        triples.sort_by(|a, b| {
+            a.0.cmp(&b.0)
+                .then(a.1.cmp(&b.1))
+                .then(a.2.cmp(&b.2))
+        });
+
+        for (from, relation, to) in triples {
+            out.push('(');
+            out.push_str(&from);
+            out.push_str(", ");
+            out.push_str(&relation);
+            out.push_str(", ");
+            out.push_str(&to);
+            out.push(')');
             out.push('\n');
-
-            for (line, path, node) in entries.iter() {
-                self.push_semantic_map_entry(&mut out, *line, path, node, expand_bodies);
-            }
         }
         if out.is_empty() {
-            "No symbols found.".to_string()
+            "No triples found.".to_string()
         } else {
             out
         }
@@ -533,74 +536,24 @@ impl SemanticIndex {
         out
     }
 
-    fn collect_semantic_map_entries<'a>(
-        &'a self,
-        filter_path: Option<&str>,
-    ) -> HashMap<String, Vec<(u32, &'a str, &'a GraphNode)>> {
-        let mut by_file: HashMap<String, Vec<(u32, &str, &GraphNode)>> = HashMap::new();
-        for (node_key, node) in &self.graph.nodes {
-            let path = self.node_path(node_key, node);
-            if self.should_skip_semantic_map_node(path, node, filter_path) {
-                continue;
-            }
-            let Some(def) = &node.def else { continue };
-            by_file
-                .entry(def.file.clone())
-                .or_default()
-                .push((def.line, path, node));
-        }
-        by_file
-    }
-
-    fn should_skip_semantic_map_node(
+    fn collect_semantic_map_triples(
         &self,
-        path: &str,
-        node: &GraphNode,
         filter_path: Option<&str>,
-    ) -> bool {
-        if node.kind == "unknown" {
-            return true;
-        }
-        if let Some(fp) = filter_path {
-            if !path.starts_with(fp) {
-                return true;
-            }
-        }
-        node.def.is_none()
-    }
-
-    fn push_semantic_map_entry(
-        &self,
-        out: &mut String,
-        line: u32,
-        path: &str,
-        node: &GraphNode,
-        expand_bodies: bool,
-    ) {
-        let short_name = path.rsplit("::").next().unwrap_or(path);
-        let mut entry = format!("  {:>5}  {} {}", line, node.kind, short_name);
-        if let Some(sig) = &node.signature {
-            entry.push_str(&format!("  {sig}"));
-        }
-        if !node.fields.is_empty() {
-            entry.push_str(&format!("  {{ {} }}", node.fields.join(", ")));
-        }
-        out.push_str(&entry);
-        out.push('\n');
-        self.push_semantic_map_body(out, path, expand_bodies);
-    }
-
-    fn push_semantic_map_body(&self, out: &mut String, path: &str, expand_bodies: bool) {
-        if !expand_bodies {
-            return;
-        }
-        if let Ok(body) = self.symbol_window(path) {
-            for body_line in body.lines() {
-                out.push_str("    ");
-                out.push_str(body_line);
-                out.push('\n');
-            }
-        }
+    ) -> Vec<(String, String, String)> {
+        self.graph
+            .edges
+            .iter()
+            .filter_map(|edge| {
+                let from = self.edge_endpoint_path(&edge.from);
+                let to = self.edge_endpoint_path(&edge.to);
+                if let Some(fp) = filter_path {
+                    if !from.starts_with(fp) && !to.starts_with(fp) {
+                        return None;
+                    }
+                }
+                Some((from, edge_relation(edge).to_string(), to))
+            })
+            .collect()
     }
 
     fn direct_call_neighbors<'a>(&'a self, symbol_key: &str) -> (Vec<&'a str>, Vec<&'a str>) {
@@ -768,12 +721,16 @@ impl SemanticIndex {
 }
 
 fn edge_is_call(edge: &GraphEdge) -> bool {
-    let relation = if edge.relation.is_empty() {
+    let relation = edge_relation(edge);
+    relation.eq_ignore_ascii_case("call") || relation.eq_ignore_ascii_case("calls")
+}
+
+fn edge_relation(edge: &GraphEdge) -> &str {
+    if edge.relation.is_empty() {
         ""
     } else {
         edge.relation.as_str()
-    };
-    relation.eq_ignore_ascii_case("call") || relation.eq_ignore_ascii_case("calls")
+    }
 }
 
 fn expand_symbol_window_span(source: &str, start_offset: usize, end_offset: usize) -> Option<(usize, usize)> {

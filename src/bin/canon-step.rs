@@ -140,18 +140,14 @@ fn prediction_output(input: &Value) -> Value {
     })
 }
 
-fn prediction_output_from_stdin() -> Result<Value> {
-    let input = read_action_input()?;
-    Ok(prediction_output(&input))
-}
-
 fn write_prediction_output(output: &Value) -> Result<()> {
     println!("{}", serde_json::to_string_pretty(output)?);
     Ok(())
 }
 
 fn emit_prediction_from_stdin() -> Result<()> {
-    let output = prediction_output_from_stdin()?;
+    let input = read_action_input()?;
+    let output = prediction_output(&input);
     write_prediction_output(&output)
 }
 
