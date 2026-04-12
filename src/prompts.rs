@@ -974,6 +974,51 @@ pub(crate) fn single_role_diagnostics_prompt(
     )
 }
 
+fn append_single_role_planner_sections(
+    sections: &mut String,
+    objectives: &str,
+    issues: &str,
+    issues_file: &str,
+    lessons_text: &str,
+    invariants: &str,
+    violations: &str,
+    diagnostics: &str,
+    diagnostics_path: &str,
+    cargo_test_failures: &str,
+) {
+    append_optional_prompt_section(
+        sections,
+        objectives,
+        &format!("Objectives (from {OBJECTIVES_FILE}):"),
+    );
+    append_optional_prompt_section(
+        sections,
+        issues,
+        &format!("Open issues (from {issues_file}):"),
+    );
+    append_optional_prompt_section(sections, lessons_text, "Lessons artifact:");
+    append_optional_prompt_section(
+        sections,
+        invariants,
+        &format!("Invariants (from {INVARIANTS_FILE}):"),
+    );
+    append_optional_prompt_section(
+        sections,
+        violations,
+        &format!("Violations (from {VIOLATIONS_FILE}):"),
+    );
+    append_optional_prompt_section(
+        sections,
+        diagnostics,
+        &format!("Diagnostics report (from {diagnostics_path}):"),
+    );
+    append_optional_prompt_section(
+        sections,
+        cargo_test_failures,
+        "Latest cargo test failures (from cargo_test_failures.json):",
+    );
+}
+
 pub(crate) fn single_role_planner_prompt(
     _primary_input: &str,
     objectives: &str,
@@ -990,27 +1035,18 @@ pub(crate) fn single_role_planner_prompt(
     let mut sections = format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed."
     );
-    if !objectives.trim().is_empty() {
-        sections.push_str(&format!("\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}"));
-    }
-    if !issues.trim().is_empty() {
-        sections.push_str(&format!("\n\nOpen issues (from {issues_file}):\n{issues}"));
-    }
-    if !lessons_text.trim().is_empty() {
-        sections.push_str(&format!("\n\nLessons artifact:\n{lessons_text}"));
-    }
-    if !invariants.trim().is_empty() {
-        sections.push_str(&format!("\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}"));
-    }
-    if !violations.trim().is_empty() {
-        sections.push_str(&format!("\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}"));
-    }
-    if !diagnostics.trim().is_empty() {
-        sections.push_str(&format!("\n\nDiagnostics report (from {diagnostics_path}):\n{diagnostics}"));
-    }
-    if !cargo_test_failures.trim().is_empty() {
-        sections.push_str(&format!("\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}"));
-    }
+    append_single_role_planner_sections(
+        &mut sections,
+        objectives,
+        issues,
+        issues_file,
+        lessons_text,
+        invariants,
+        violations,
+        diagnostics,
+        &diagnostics_path,
+        cargo_test_failures,
+    );
     sections.push_str(&format!("\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nDo not create or reprioritize tasks from diagnostics alone.\nBefore accepting any diagnostics claim, read the implicated source files or gather equivalent current-cycle evidence.\nTreat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\nIf diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow."));
     sections
 }
