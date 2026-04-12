@@ -305,17 +305,40 @@ fn sort_objectives_for_view(file: &mut crate::objectives::ObjectivesFile, includ
 }
 
 fn parse_objectives_file_strict(raw: &str) -> Result<crate::objectives::ObjectivesFile> {
-    serde_json::from_str(raw).map_err(|e| anyhow!("failed to parse OBJECTIVES.json: {e}"))
+    let file: crate::objectives::ObjectivesFile =
+        serde_json::from_str(raw).map_err(|e| anyhow!("failed to parse OBJECTIVES.json: {e}"))?;
+    validate_unique_objective_ids(&file)?;
+    Ok(file)
 }
 
 fn parse_objectives_file_or_default(raw: &str) -> crate::objectives::ObjectivesFile {
     serde_json::from_str(raw).unwrap_or_default()
 }
 
+fn validate_unique_objective_ids(file: &crate::objectives::ObjectivesFile) -> Result<()> {
+    let mut seen: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    for objective in &file.objectives {
+        let canonical = objective.id.trim().to_ascii_lowercase();
+        if canonical.is_empty() {
+            bail!("objective.id must be non-empty");
+        }
+        if let Some(existing) = seen.get(&canonical) {
+            bail!(
+                "duplicate objective id in OBJECTIVES.json: '{}' conflicts with '{}'",
+                objective.id,
+                existing
+            );
+        }
+        seen.insert(canonical, objective.id.clone());
+    }
+    Ok(())
+}
+
 fn write_objectives_file(
     path: &Path,
     file: &crate::objectives::ObjectivesFile,
 ) -> Result<(bool, String)> {
+    validate_unique_objective_ids(file)?;
     std::fs::write(path, serde_json::to_string_pretty(file)?)?;
     Ok((false, "objectives write ok".to_string()))
 }
@@ -443,8 +466,8 @@ fn handle_objectives_create_objective(
     file.objectives.push(objective);
     let created_id = file.objectives.last().map(|obj| obj.id.as_str());
     log_objective_success("create_objective", created_id, &file.objectives);
-    std::fs::write(path, serde_json::to_string_pretty(&file)?)?;
-    Ok((false, "objectives create_objective ok".to_string()))
+    write_objectives_file(path, &file)
+        .map(|_| (false, "objectives create_objective ok".to_string()))
 }
 
 fn handle_objectives_update_objective(
@@ -477,8 +500,8 @@ fn handle_objectives_update_objective(
         return log_objective_not_found_and_bail("update_objective", objective_id, &file.objectives);
     }
     log_objective_success("update_objective", Some(objective_id), &file.objectives);
-    std::fs::write(path, serde_json::to_string_pretty(&file)?)?;
-    Ok((false, "objectives update_objective ok".to_string()))
+    write_objectives_file(path, &file)
+        .map(|_| (false, "objectives update_objective ok".to_string()))
 }
 
 fn handle_objectives_delete_objective(
@@ -496,8 +519,8 @@ fn handle_objectives_delete_objective(
         return log_objective_not_found_and_bail("delete_objective", objective_id, &file.objectives);
     }
     log_objective_success("delete_objective", Some(objective_id), &file.objectives);
-    std::fs::write(path, serde_json::to_string_pretty(&file)?)?;
-    Ok((false, "objectives delete_objective ok".to_string()))
+    write_objectives_file(path, &file)
+        .map(|_| (false, "objectives delete_objective ok".to_string()))
 }
 
 fn handle_objectives_set_status(
@@ -524,8 +547,8 @@ fn handle_objectives_set_status(
         return log_objective_not_found_and_bail("set_status", objective_id, &file.objectives);
     }
     log_objective_success("set_status", Some(objective_id), &file.objectives);
-    std::fs::write(path, serde_json::to_string_pretty(&file)?)?;
-    Ok((false, "objectives set_status ok".to_string()))
+    write_objectives_file(path, &file)
+        .map(|_| (false, "objectives set_status ok".to_string()))
 }
 
 fn handle_objectives_replace_objectives(
