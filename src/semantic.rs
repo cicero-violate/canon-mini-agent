@@ -165,6 +165,16 @@ impl SemanticIndex {
         out
     }
 
+    /// Return all `call` edges as (caller, callee) pairs.
+    pub fn call_edges(&self) -> Vec<(String, String)> {
+        self.graph
+            .edges
+            .iter()
+            .filter(|e| e.kind == "call")
+            .map(|e| (e.from.clone(), e.to.clone()))
+            .collect()
+    }
+
     // -----------------------------------------------------------------------
     // semantic_map
     // -----------------------------------------------------------------------

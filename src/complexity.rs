@@ -195,7 +195,19 @@ pub fn write_complexity_report(workspace: &Path) -> Result<Option<PathBuf>> {
     global.sort_by(sort_by_objective_desc);
     let global_top = global.into_iter().take(100).collect::<Vec<_>>();
 
-    let report = build_complexity_report(per_crate, global_top);
+    // Inter-function analysis: transitive B, MIR duplicate R, D_det
+    let mut inter_sections = serde_json::json!({});
+    for crate_name in SemanticIndex::available_crates(workspace) {
+        if let Ok(analysis) = crate::inter_complexity::analyze(workspace, &crate_name) {
+            inter_sections[&crate_name] =
+                crate::inter_complexity::to_report_value(&analysis, 20);
+        }
+    }
+
+    let report = build_complexity_report(per_crate, global_top, inter_sections);
+
+    // Auto-generate issues for top hotspots (Detect → Propose step)
+    let _ = crate::inter_complexity::generate_hotspot_issues(workspace, 5);
 
     let dir = reports_dir(workspace);
     let latest = persist_complexity_report(&dir, &report)?;
@@ -206,19 +218,27 @@ pub fn write_complexity_report(workspace: &Path) -> Result<Option<PathBuf>> {
 fn build_complexity_report(
     per_crate: Vec<serde_json::Value>,
     global_top: Vec<serde_json::Value>,
+    inter: serde_json::Value,
 ) -> serde_json::Value {
     json!({
         "version": 2,
         "objective": "min(B) + min(R)  s.t. correctness invariant",
-        "scoring": {
-            "objective_score": "0.6 * B_norm + 0.4 * R_norm  ∈ [0, 1]  (higher = higher-value reduction target)",
+        "intra_scoring": {
+            "objective_score": "0.6·B_norm + 0.4·R_norm  ∈ [0,1]  (higher = higher-value target)",
             "B_norm": "mir_blocks / max_mir_blocks  (branching proxy)",
             "R_norm": "stmt_density / max_stmt_density  (redundancy proxy: dense logic per branch)",
             "stmt_density": "mir_stmts / mir_blocks"
         },
-        "execution_model": "Detect(complexity_report) → Propose(LLM) → Apply(patch/rename) → Verify(build+test)",
+        "inter_scoring": {
+            "inter_objective": "0.40·B_transitive_norm + 0.30·R_body + 0.30·(1−D_det)",
+            "B_transitive": "B(F) + mean(B(callee)) — depth-1 branching propagation",
+            "R_body": "1.0 if MIR fingerprint matches another function (exact duplicate)",
+            "D_det": "1.0 − B_norm  (determinism proxy)"
+        },
+        "execution_model": "Detect(this_report) → Propose(LLM/issues) → Apply(patch/rename) → Verify(build+test)",
         "generated_at_ms": crate::logging::now_ms(),
         "global_top": global_top,
+        "inter": inter,
         "per_crate": per_crate,
     })
 }
