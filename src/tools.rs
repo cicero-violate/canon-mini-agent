@@ -1625,34 +1625,55 @@ fn symbol_kind_from_name_owner(owner_kind: SyntaxKind) -> Option<&'static str> {
 }
 
 fn collect_rust_files(root: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
-    if root.is_file() {
-        if is_rust_file(root) {
-            out.push(root.to_path_buf());
-        }
+    if collect_rust_file_root(root, out) {
         return Ok(());
     }
+    let entries = sorted_dir_entries(root)?;
+    for entry in entries {
+        collect_rust_dir_entry(entry, out)?;
+    }
+    Ok(())
+}
+
+fn collect_rust_file_root(root: &Path, out: &mut Vec<PathBuf>) -> bool {
+    if !root.is_file() {
+        return false;
+    }
+    if is_rust_file(root) {
+        out.push(root.to_path_buf());
+    }
+    true
+}
+
+fn sorted_dir_entries(root: &Path) -> Result<Vec<fs::DirEntry>> {
     let mut entries = Vec::new();
     for entry in fs::read_dir(root).with_context(|| format!("read_dir {}", root.display()))? {
         entries.push(entry?);
     }
     entries.sort_by(|a, b| a.path().cmp(&b.path()));
-    for entry in entries {
-        let path = entry.path();
-        let file_type = entry.file_type()?;
-        if file_type.is_dir() {
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if is_ignored_dir(name.as_ref()) {
-                continue;
-            }
-            collect_rust_files(&path, out)?;
-            continue;
+    Ok(entries)
+}
+
+fn collect_rust_dir_entry(entry: fs::DirEntry, out: &mut Vec<PathBuf>) -> Result<()> {
+    let path = entry.path();
+    let file_type = entry.file_type()?;
+    if file_type.is_dir() {
+        if is_ignored_dir_entry(&entry) {
+            return Ok(());
         }
-        if file_type.is_file() && is_rust_file(&path) {
-            out.push(path);
-        }
+        collect_rust_files(&path, out)?;
+        return Ok(());
+    }
+    if file_type.is_file() && is_rust_file(&path) {
+        out.push(path);
     }
     Ok(())
+}
+
+fn is_ignored_dir_entry(entry: &fs::DirEntry) -> bool {
+    let name = entry.file_name();
+    let name = name.to_string_lossy();
+    is_ignored_dir(name.as_ref())
 }
 
 fn is_rust_file(path: &Path) -> bool {
