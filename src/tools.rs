@@ -4505,6 +4505,8 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
         }
     }
 
+    sync_plan_ready_window(&mut plan)?;
+
     persist_plan_action_update(role, action, op_raw, &plan_path, &plan)?;
 
     // Planner cycle terminator: a plan op that lands a task in `ready` state is
@@ -4572,6 +4574,36 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
     }
 
     Ok((false, format!("plan ok\nplan_path: {}", plan_path.display())))
+}
+
+fn sync_plan_ready_window(plan: &mut Value) -> Result<()> {
+    let obj = plan
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("PLAN.json must be a JSON object"))?;
+    let tasks = obj
+        .get("tasks")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| anyhow!("PLAN.json missing tasks array"))?;
+
+    let ready_window = tasks
+        .iter()
+        .filter_map(|task| {
+            let is_ready = task
+                .get("status")
+                .and_then(|v| v.as_str())
+                .map(|s| s.eq_ignore_ascii_case("ready"))
+                .unwrap_or(false);
+            if !is_ready {
+                return None;
+            }
+            task.get("id")
+                .and_then(|v| v.as_str())
+                .map(|id| Value::String(id.to_string()))
+        })
+        .collect();
+
+    obj.insert("ready_window".to_string(), Value::Array(ready_window));
+    Ok(())
 }
 
 fn dispatch_plan_op(
