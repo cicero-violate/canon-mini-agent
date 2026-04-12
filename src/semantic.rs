@@ -1216,6 +1216,123 @@ mod tests {
     }
 
     #[test]
+    fn execution_path_traverses_cfg_and_bridge_edges() {
+        let mut nodes = HashMap::new();
+        nodes.insert(
+            "app::run".to_string(),
+            GraphNode {
+                def_id: String::new(),
+                path: "app::run".to_string(),
+                kind: "fn".to_string(),
+                def: None,
+                refs: Vec::new(),
+                signature: None,
+                mir: None,
+                fields: Vec::new(),
+            },
+        );
+        nodes.insert(
+            "dep::callee".to_string(),
+            GraphNode {
+                def_id: String::new(),
+                path: "dep::callee".to_string(),
+                kind: "fn".to_string(),
+                def: None,
+                refs: Vec::new(),
+                signature: None,
+                mir: None,
+                fields: Vec::new(),
+            },
+        );
+        let mut cfg_nodes = HashMap::new();
+        cfg_nodes.insert(
+            "cfg::app::run::bb0".to_string(),
+            CfgNode {
+                owner: "app::run".to_string(),
+                block: 0,
+                is_cleanup: false,
+                terminator: "Call".to_string(),
+            },
+        );
+
+        let idx = SemanticIndex {
+            graph: CrateGraph {
+                nodes,
+                edges: Vec::new(),
+                cfg_nodes,
+                cfg_edges: Vec::new(),
+                bridge_edges: vec![
+                    BridgeEdge {
+                        relation: "Entry".to_string(),
+                        from: "app::run".to_string(),
+                        to: "cfg::app::run::bb0".to_string(),
+                    },
+                    BridgeEdge {
+                        relation: "Call".to_string(),
+                        from: "cfg::app::run::bb0".to_string(),
+                        to: "dep::callee".to_string(),
+                    },
+                ],
+            },
+        };
+
+        let out = idx
+            .execution_path("app::run", "dep::callee", false)
+            .expect("execution path should succeed");
+        assert!(out.contains("Execution path from `app::run`"));
+        assert!(out.contains("--Entry-->"));
+        assert!(out.contains("--Call-->"));
+        assert!(out.contains("cfg::app::run::bb0"));
+        assert!(out.contains("dep::callee"));
+    }
+
+    #[test]
+    fn execution_path_accepts_raw_cfg_endpoint() {
+        let mut nodes = HashMap::new();
+        nodes.insert(
+            "app::run".to_string(),
+            GraphNode {
+                def_id: String::new(),
+                path: "app::run".to_string(),
+                kind: "fn".to_string(),
+                def: None,
+                refs: Vec::new(),
+                signature: None,
+                mir: None,
+                fields: Vec::new(),
+            },
+        );
+        let mut cfg_nodes = HashMap::new();
+        cfg_nodes.insert(
+            "cfg::app::run::bb0".to_string(),
+            CfgNode {
+                owner: "app::run".to_string(),
+                block: 0,
+                is_cleanup: false,
+                terminator: "Call".to_string(),
+            },
+        );
+        let idx = SemanticIndex {
+            graph: CrateGraph {
+                nodes,
+                edges: Vec::new(),
+                cfg_nodes,
+                cfg_edges: Vec::new(),
+                bridge_edges: vec![BridgeEdge {
+                    relation: "Entry".to_string(),
+                    from: "app::run".to_string(),
+                    to: "cfg::app::run::bb0".to_string(),
+                }],
+            },
+        };
+
+        let out = idx
+            .execution_path("app::run", "cfg::app::run::bb0", false)
+            .expect("execution path should accept raw cfg id");
+        assert!(out.contains("cfg::app::run::bb0"));
+    }
+
+    #[test]
     fn neighborhood_infers_callers_from_refs_when_call_edges_absent() {
         let caller_src = "fn drive() {\n    run_planner_phase();\n}\n";
         let target_src = "fn run_planner_phase() {}\n";

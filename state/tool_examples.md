@@ -611,6 +611,14 @@ Example (with bodies):
   {"action":"symbol_path","crate":"canon_mini_agent","from":"app::run_agent","to":"tools::handle_apply_patch_action","expand_bodies":true,"rationale":"Read every symbol body along the semantic path before changing a handler signature."}
 Notes: `from`/`to` are module-relative; crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped. Traverses all semantic edges and labels each hop with its relation; returns the shortest path with file:line annotations.
 
+## `execution_path` — BFS shortest unified path across semantic nodes, CFG blocks, and bridge edges
+
+Example:
+  {"action":"execution_path","crate":"canon_mini_agent","from":"app::run_agent","to":"tools::handle_apply_patch_action","rationale":"Trace the shortest execution-aware route between two symbols."}
+Example (to a raw CFG block):
+  {"action":"execution_path","crate":"canon_mini_agent","from":"app::run_agent","to":"cfg::app::run_agent::bb3","rationale":"Reach a specific MIR basic block from the owning entry point."}
+Notes: `from`/`to` may be module-relative symbols or raw `cfg::...` node ids. Traverses semantic edges, CFG edges, and bridge edges (`Entry`, `BelongsTo`, `Call`). Returns the shortest path with relation labels.
+
 ## `symbol_neighborhood` — immediate callers and callees of a symbol; set expand_bodies:true to inline the source body of each caller and callee
 
 Example:

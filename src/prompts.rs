@@ -44,6 +44,7 @@ pub(crate) enum ToolPromptKind {
     SymbolWindow,
     SymbolRefs,
     SymbolPath,
+    ExecutionPath,
     SymbolNeighborhood,
     Message,
 }
@@ -62,6 +63,7 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
             ToolPromptKind::SymbolWindow,
             ToolPromptKind::SymbolRefs,
             ToolPromptKind::SymbolPath,
+            ToolPromptKind::ExecutionPath,
             ToolPromptKind::SymbolNeighborhood,
             ToolPromptKind::SymbolsIndex,
             ToolPromptKind::SymbolsRenameCandidates,
@@ -83,6 +85,7 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
             ToolPromptKind::SymbolWindow,
             ToolPromptKind::SymbolRefs,
             ToolPromptKind::SymbolPath,
+            ToolPromptKind::ExecutionPath,
             ToolPromptKind::SymbolNeighborhood,
             ToolPromptKind::SymbolsIndex,
             ToolPromptKind::SymbolsRenameCandidates,
@@ -104,6 +107,7 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
             ToolPromptKind::SymbolWindow,
             ToolPromptKind::SymbolRefs,
             ToolPromptKind::SymbolPath,
+            ToolPromptKind::ExecutionPath,
             ToolPromptKind::SymbolNeighborhood,
             ToolPromptKind::SymbolsIndex,
             ToolPromptKind::SymbolsRenameCandidates,
@@ -176,6 +180,9 @@ fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
         }
         (_, ToolPromptKind::SymbolPath) => {
             "symbol_path — [PREFER over manual tracing] BFS shortest semantic-graph path between two symbols"
+        }
+        (_, ToolPromptKind::ExecutionPath) => {
+            "execution_path — [PREFER for control flow] BFS shortest unified path across semantic nodes, CFG blocks, and bridge edges"
         }
         (_, ToolPromptKind::SymbolNeighborhood) => {
             "symbol_neighborhood — [PREFER over manual tracing] immediate callers and callees of a symbol"
@@ -262,6 +269,9 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
         }
         (_, ToolPromptKind::SymbolPath) => {
             "   {\"action\":\"symbol_path\",\"crate\":\"canon_mini_agent\",\"from\":\"app::run_agent\",\"to\":\"tools::handle_apply_patch_action\",\"rationale\":\"Find the shortest semantic path between two symbols to understand how they are connected.\"}\n   Notes: `from`/`to` are module-relative; crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped. BFS over all semantic edges; returns the shortest path with relation labels and file:line annotations.".to_string()
+        }
+        (_, ToolPromptKind::ExecutionPath) => {
+            "   {\"action\":\"execution_path\",\"crate\":\"canon_mini_agent\",\"from\":\"app::run_agent\",\"to\":\"tools::handle_apply_patch_action\",\"rationale\":\"Trace the shortest execution-aware path between two symbols.\"}\n   Notes: `from`/`to` may be module-relative symbols or raw `cfg::...` node ids. Traverses semantic edges, CFG edges, and bridge edges (`Entry`, `BelongsTo`, `Call`); returns relation-labeled hops.".to_string()
         }
         (_, ToolPromptKind::SymbolNeighborhood) => {
             "   {\"action\":\"symbol_neighborhood\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"rationale\":\"See all callers and callees of a symbol to understand its role before changing it.\"}\n   Notes: `symbol` is module-relative; crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped. Returns all immediate callers and callees from the static call graph.".to_string()
