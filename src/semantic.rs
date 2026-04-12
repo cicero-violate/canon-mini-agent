@@ -14,6 +14,7 @@ use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::path::Path;
 
 // ---------------------------------------------------------------------------
@@ -53,7 +54,7 @@ struct GraphNode {
     fields: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct SourceSpan {
     file: String,
     line: u32,
@@ -88,7 +89,7 @@ struct GraphEdge {
     to: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct CfgNode {
     #[serde(default)]
     owner: String,
@@ -142,6 +143,43 @@ pub struct SemanticTriple {
     pub to: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ExecutionPathNode {
+    pub id: String,
+    pub via_relation: Option<String>,
+    pub layer: String,
+    pub display: String,
+    pub class: String,
+    pub kind: Option<String>,
+    pub file: Option<String>,
+    pub line: Option<u32>,
+    pub owner: Option<String>,
+    pub block: Option<usize>,
+    pub terminator: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ExecutionPatchTarget {
+    pub symbol: String,
+    pub score: i32,
+    pub reasons: Vec<String>,
+    pub file: Option<String>,
+    pub line: Option<u32>,
+    pub context_start: Option<u32>,
+    pub context_end: Option<u32>,
+    pub context_window: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ExecutionPathPlan {
+    pub from: String,
+    pub to: String,
+    pub path_fingerprint: String,
+    pub path: Vec<ExecutionPathNode>,
+    pub targets: Vec<ExecutionPatchTarget>,
+    pub top_target: Option<ExecutionPatchTarget>,
+}
+
 impl SemanticIndex {
     /// Load the graph for `crate_name` from the standard artifact location.
     pub fn load(workspace: &Path, crate_name: &str) -> Result<Self> {
@@ -186,33 +224,79 @@ impl SemanticIndex {
     /// BFS shortest path across semantic edges, CFG edges, and bridge edges.
     /// Endpoints may be semantic symbols or raw `cfg::...` node ids.
     pub fn execution_path(&self, from: &str, to: &str, expand_bodies: bool) -> Result<String> {
+        let plan = self.execution_path_plan(from, to)?;
+        Ok(self.render_execution_path_plan(&plan, expand_bodies))
+    }
+
+    pub fn execution_path_plan(&self, from: &str, to: &str) -> Result<ExecutionPathPlan> {
         let from_key = self.resolve_execution_endpoint(from)?;
         let to_key = self.resolve_execution_endpoint(to)?;
         if from_key == to_key {
-            return Ok(format!("`{from}` is the same as `{to}`."));
+            let node = self.execution_path_node(&from_key, None);
+            let path = vec![node];
+            let path_fingerprint = self.execution_path_fingerprint(&path);
+            let targets = self.rank_execution_patch_targets_from_nodes(&path);
+            let top_target = targets.first().cloned();
+            return Ok(ExecutionPathPlan {
+                from: from.to_string(),
+                to: to.to_string(),
+                path_fingerprint,
+                path,
+                targets,
+                top_target,
+            });
         }
 
         let adj = self.unified_adjacency();
         let prev = self.bfs_prev_map_owned(&adj, &from_key, &to_key);
         if !prev.contains_key(to_key.as_str()) {
-            return Ok(format!(
-                "No unified execution path found from `{from}` to `{to}`."
-            ));
+            bail!("No unified execution path found from `{from}` to `{to}`.");
         }
 
-        let path = self.reconstruct_path_owned(&prev, &from_key, &to_key);
+        let raw_path = self.reconstruct_path_owned(&prev, &from_key, &to_key);
+        let path: Vec<ExecutionPathNode> = raw_path
+            .iter()
+            .map(|(node_id, via_relation)| self.execution_path_node(node_id, via_relation.clone()))
+            .collect();
+        let path_fingerprint = self.execution_path_fingerprint(&path);
+        let targets = self.rank_execution_patch_targets_from_nodes(&path);
+        let top_target = targets.first().cloned();
+        Ok(ExecutionPathPlan {
+            from: from.to_string(),
+            to: to.to_string(),
+            path_fingerprint,
+            path,
+            targets,
+            top_target,
+        })
+    }
+
+    fn render_execution_path_plan(
+        &self,
+        plan: &ExecutionPathPlan,
+        expand_bodies: bool,
+    ) -> String {
         let mut out = format!(
             "Execution path from `{from}` → `{to}` ({} hops):\n",
-            path.len() - 1
+            plan.path.len().saturating_sub(1),
+            from = plan.from,
+            to = plan.to
         );
-        for (idx, (node_id, via_relation)) in path.iter().enumerate() {
+        for (idx, node) in plan.path.iter().enumerate() {
             if idx > 0 {
-                out.push_str(&format!("    --{}--> \n", via_relation.as_deref().unwrap_or("")));
+                out.push_str(&format!(
+                    "    --{}--> \n",
+                    node.via_relation.as_deref().unwrap_or("")
+                ));
             }
-            self.push_execution_path_entry(&mut out, node_id, expand_bodies);
+            self.push_execution_path_entry(&mut out, &node.id, expand_bodies);
         }
-        self.push_execution_patch_targets(&mut out, &path);
-        Ok(out)
+        self.push_execution_patch_targets(&mut out, &plan.targets, &plan.top_target);
+        out.push_str("\nRepair plan:\n```json\n");
+        let json = serde_json::to_string_pretty(plan).expect("serialize execution plan");
+        out.push_str(&json);
+        out.push_str("\n```\n");
+        out
     }
 
     /// Extract a stable summary for each symbol with a definition span.
@@ -775,6 +859,56 @@ impl SemanticIndex {
         out.push_str(&format!("  {}\n", node_id));
     }
 
+    fn execution_path_node(
+        &self,
+        node_id: &str,
+        via_relation: Option<String>,
+    ) -> ExecutionPathNode {
+        if let Some(node) = self.graph.nodes.get(node_id) {
+            return ExecutionPathNode {
+                id: node_id.to_string(),
+                via_relation,
+                layer: "semantic".to_string(),
+                display: self.node_path(node_id, node).to_string(),
+                class: classify_semantic_node(node).to_string(),
+                kind: Some(node.kind.clone()),
+                file: node.def.as_ref().map(|d| d.file.clone()),
+                line: node.def.as_ref().map(|d| d.line),
+                owner: None,
+                block: None,
+                terminator: None,
+            };
+        }
+        if let Some(cfg) = self.graph.cfg_nodes.get(node_id) {
+            return ExecutionPathNode {
+                id: node_id.to_string(),
+                via_relation,
+                layer: "cfg".to_string(),
+                display: node_id.to_string(),
+                class: classify_cfg_block(&cfg.terminator).to_string(),
+                kind: None,
+                file: None,
+                line: None,
+                owner: Some(self.edge_endpoint_path(&cfg.owner)),
+                block: Some(cfg.block),
+                terminator: Some(cfg.terminator.clone()),
+            };
+        }
+        ExecutionPathNode {
+            id: node_id.to_string(),
+            via_relation,
+            layer: "unknown".to_string(),
+            display: node_id.to_string(),
+            class: "unknown".to_string(),
+            kind: None,
+            file: None,
+            line: None,
+            owner: None,
+            block: None,
+            terminator: None,
+        }
+    }
+
     fn push_annotated_semantic_entry(&self, out: &mut String, sym: &str, expand_bodies: bool) {
         if let Some(node) = self.graph.nodes.get(sym) {
             let class = classify_semantic_node(node);
@@ -812,9 +946,9 @@ impl SemanticIndex {
     fn push_execution_patch_targets(
         &self,
         out: &mut String,
-        path: &[(String, Option<String>)],
+        targets: &[ExecutionPatchTarget],
+        top_target: &Option<ExecutionPatchTarget>,
     ) {
-        let targets = self.rank_execution_patch_targets(path);
         if targets.is_empty() {
             return;
         }
@@ -826,16 +960,26 @@ impl SemanticIndex {
                 target.score,
                 target.reasons.join(", ")
             ));
-            if let Some((file, line)) = &target.location {
+            if let (Some(file), Some(line)) = (&target.file, target.line) {
                 out.push_str(&format!("    source={}:{}\n", shorten_path(file), line));
+            }
+        }
+        if let Some(top) = top_target {
+            out.push_str("  apply_patch target:\n");
+            out.push_str(&format!("    symbol={}\n", top.symbol));
+            if let (Some(file), Some(line)) = (&top.file, top.line) {
+                out.push_str(&format!("    file={} line={}\n", shorten_path(file), line));
+            }
+            if let (Some(start), Some(end)) = (top.context_start, top.context_end) {
+                out.push_str(&format!("    context_window_lines={}..={}\n", start, end));
             }
         }
     }
 
-    fn rank_execution_patch_targets(
+    fn rank_execution_patch_targets_from_nodes(
         &self,
-        path: &[(String, Option<String>)],
-    ) -> Vec<PatchTarget> {
+        path: &[ExecutionPathNode],
+    ) -> Vec<ExecutionPatchTarget> {
         let mut seen = HashSet::new();
         let summaries: HashMap<String, SymbolSummary> = self
             .symbol_summaries()
@@ -843,8 +987,8 @@ impl SemanticIndex {
             .map(|s| (s.symbol.clone(), s))
             .collect();
         let mut branchy_owners = HashSet::new();
-        for (node_id, _) in path {
-            if let Some(cfg) = self.graph.cfg_nodes.get(node_id) {
+        for node in path {
+            if let Some(cfg) = self.graph.cfg_nodes.get(&node.id) {
                 if is_branch_terminator(&cfg.terminator) || is_validation_terminator(&cfg.terminator)
                 {
                     branchy_owners.insert(cfg.owner.clone());
@@ -853,7 +997,8 @@ impl SemanticIndex {
         }
 
         let mut out = Vec::new();
-        for (node_id, _) in path {
+        for hop in path {
+            let node_id = hop.id.as_str();
             let Some(node) = self.graph.nodes.get(node_id) else { continue };
             let symbol = self.node_path(node_id, node).to_string();
             if !seen.insert(symbol.clone()) {
@@ -890,16 +1035,64 @@ impl SemanticIndex {
                 score -= 10;
                 reasons.push("validation-ish name".to_string());
             }
-            let location = node.def.as_ref().map(|d| (d.file.clone(), d.line));
-            out.push(PatchTarget {
+            let (file, line, context_start, context_end, context_window) = node
+                .def
+                .as_ref()
+                .map(|d| {
+                    let (start, end, window) = read_context_window(&d.file, d.line, 3, 8);
+                    (
+                        Some(d.file.clone()),
+                        Some(d.line),
+                        Some(start),
+                        Some(end),
+                        Some(window),
+                    )
+                })
+                .unwrap_or((None, None, None, None, None));
+            out.push(ExecutionPatchTarget {
                 symbol,
                 score,
                 reasons,
-                location,
+                file,
+                line,
+                context_start,
+                context_end,
+                context_window,
             });
         }
         out.sort_by(|a, b| a.score.cmp(&b.score).then(a.symbol.cmp(&b.symbol)));
         out
+    }
+
+    fn execution_path_fingerprint(&self, path: &[ExecutionPathNode]) -> String {
+        let joined = path
+            .iter()
+            .map(|node| match &node.via_relation {
+                Some(rel) => format!("{rel}:{}", node.id),
+                None => node.id.clone(),
+            })
+            .collect::<Vec<_>>()
+            .join(" -> ");
+        format!("{:016x}", stable_hash(&joined))
+    }
+
+    pub fn symbol_at_file_line(&self, file: &str, line: u32) -> Option<String> {
+        let mut best: Option<(String, u32)> = None;
+        for (node_id, node) in &self.graph.nodes {
+            let Some(def) = node.def.as_ref() else { continue };
+            if def.file != file || def.line > line {
+                continue;
+            }
+            let width = def.end_offset.saturating_sub(def.start_offset);
+            match &best {
+                None => best = Some((self.node_path(node_id, node).to_string(), width)),
+                Some((_, best_width)) if width < *best_width => {
+                    best = Some((self.node_path(node_id, node).to_string(), width));
+                }
+                _ => {}
+            }
+        }
+        best.map(|(symbol, _)| symbol)
     }
 
     fn semantic_adjacency(&self) -> HashMap<&str, Vec<(&str, &str)>> {
@@ -1067,14 +1260,6 @@ fn edge_relation(edge: &GraphEdge) -> &str {
     }
 }
 
-#[derive(Debug, Clone)]
-struct PatchTarget {
-    symbol: String,
-    score: i32,
-    reasons: Vec<String>,
-    location: Option<(String, u32)>,
-}
-
 fn classify_semantic_node(node: &GraphNode) -> &'static str {
     match node.kind.as_str() {
         "fn" => "call",
@@ -1179,11 +1364,36 @@ fn shorten_path(path: &str) -> String {
     shorten_display_path(path)
 }
 
+fn stable_hash(input: &str) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    input.hash(&mut hasher);
+    hasher.finish()
+}
+
+fn read_context_window(file: &str, line: u32, before: usize, after: usize) -> (u32, u32, String) {
+    let Ok(source) = fs::read_to_string(file) else {
+        return (line, line, String::new());
+    };
+    let lines: Vec<&str> = source.lines().collect();
+    if lines.is_empty() {
+        return (line, line, String::new());
+    }
+    let idx = line.saturating_sub(1) as usize;
+    let start = idx.saturating_sub(before);
+    let end = usize::min(idx.saturating_add(after), lines.len().saturating_sub(1));
+    let mut window = String::new();
+    for (offset, text) in lines[start..=end].iter().enumerate() {
+        let line_no = start + offset + 1;
+        window.push_str(&format!("{line_no}: {text}\n"));
+    }
+    ((start + 1) as u32, (end + 1) as u32, window)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         expand_symbol_window_span, BridgeEdge, CfgNode, CrateGraph, GraphEdge, GraphNode,
-        SemanticIndex, SourceSpan,
+        MirInfo, SemanticIndex, SourceSpan,
     };
     use std::collections::HashMap;
     use std::fs;
@@ -1509,6 +1719,50 @@ mod tests {
             .execution_path("app::run", "cfg::app::run::bb0", false)
             .expect("execution path should accept raw cfg id");
         assert!(out.contains("cfg::app::run::bb0"));
+    }
+
+    #[test]
+    fn execution_path_emits_repair_plan_block() {
+        let mut nodes = HashMap::new();
+        nodes.insert(
+            "app::validate".to_string(),
+            GraphNode {
+                def_id: String::new(),
+                path: "app::validate".to_string(),
+                kind: "fn".to_string(),
+                def: Some(SourceSpan {
+                    file: "/tmp/app.rs".to_string(),
+                    line: 12,
+                    col: 1,
+                    start_offset: 0,
+                    end_offset: 10,
+                }),
+                refs: Vec::new(),
+                signature: None,
+                mir: Some(MirInfo {
+                    fingerprint: "fp".to_string(),
+                    blocks: 1,
+                    stmts: 1,
+                }),
+                fields: Vec::new(),
+            },
+        );
+        let idx = SemanticIndex {
+            graph: CrateGraph {
+                nodes,
+                edges: Vec::new(),
+                cfg_nodes: HashMap::new(),
+                cfg_edges: Vec::new(),
+                bridge_edges: Vec::new(),
+            },
+        };
+
+        let out = idx
+            .execution_path("app::validate", "app::validate", false)
+            .expect("execution path should succeed");
+        assert!(out.contains("Repair plan:"));
+        assert!(out.contains("\"top_target\""));
+        assert!(out.contains("\"symbol\": \"app::validate\""));
     }
 
     #[test]

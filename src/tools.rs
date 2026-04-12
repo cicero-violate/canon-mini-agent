@@ -2815,7 +2815,18 @@ fn verify_apply_patch_crate(
         "cargo check failed",
     );
 
+    let plan = load_execution_plan(workspace, &krate);
     if !check_ok {
+        log_execution_learning(
+            workspace,
+            &krate,
+            patch,
+            &plan,
+            check_ok,
+            &check_out,
+            false,
+            "",
+        );
         return Some((false, format_patch_crate_failure(check_label, &check_out)));
     }
 
@@ -2830,6 +2841,16 @@ fn verify_apply_patch_crate(
     );
 
     let test_display = summarize_patch_crate_test_output(test_ok, &test_out);
+    log_execution_learning(
+        workspace,
+        &krate,
+        patch,
+        &plan,
+        check_ok,
+        &check_out,
+        test_ok,
+        &test_out,
+    );
 
     Some((
         false,
@@ -2839,6 +2860,58 @@ fn verify_apply_patch_crate(
             test_display
         ),
     ))
+}
+
+fn log_execution_learning(
+    workspace: &Path,
+    crate_name: &str,
+    patch: &str,
+    plan: &Option<Value>,
+    check_ok: bool,
+    check_out: &str,
+    test_ok: bool,
+    test_out: &str,
+) {
+    let patch_paths = patch_targets(patch)
+        .into_iter()
+        .map(|path| path.to_string())
+        .collect::<Vec<_>>();
+    let top_target = plan
+        .as_ref()
+        .and_then(|value| value.get("top_target"))
+        .cloned();
+    let top_target_file = top_target
+        .as_ref()
+        .and_then(|value| value.get("file"))
+        .and_then(|value| value.as_str());
+    let matched_top_target = top_target_file
+        .map(|file| patch_paths.iter().any(|path| path == file))
+        .unwrap_or(false);
+    let rebound = if check_ok && test_ok {
+        None
+    } else {
+        verification_rebind(workspace, crate_name, check_out, test_out)
+    };
+    let record = json!({
+        "ts_ms": now_ms(),
+        "crate": crate_name,
+        "path_fingerprint": plan.as_ref().and_then(|value| value.get("path_fingerprint")).and_then(|value| value.as_str()),
+        "from": plan.as_ref().and_then(|value| value.get("from")).and_then(|value| value.as_str()),
+        "to": plan.as_ref().and_then(|value| value.get("to")).and_then(|value| value.as_str()),
+        "top_target": top_target,
+        "matched_top_target_file": matched_top_target,
+        "patch_paths": patch_paths,
+        "patch_kind": "apply_patch",
+        "verification": {
+            "cargo_check_ok": check_ok,
+            "cargo_test_ok": test_ok,
+            "verified": check_ok && test_ok,
+        },
+        "rebound_failure": rebound,
+        "check_excerpt": truncate(check_out, MAX_SNIPPET),
+        "test_excerpt": truncate(test_out, MAX_SNIPPET),
+    });
+    let _ = append_execution_learning_record(workspace, &record);
 }
 
 fn append_python_failure_guidance(out: &mut String, cwd: &str, workspace: &Path) {
@@ -5625,6 +5698,112 @@ fn safe_join(workspace: &Path, relative: &str) -> Result<PathBuf> {
     Ok(workspace.join(p))
 }
 
+fn execution_reports_dir(workspace: &Path) -> PathBuf {
+    workspace.join("state").join("reports").join("execution_path")
+}
+
+fn execution_plan_latest_path(workspace: &Path, crate_name: &str) -> PathBuf {
+    execution_reports_dir(workspace).join(format!("{crate_name}.latest.json"))
+}
+
+fn execution_plan_history_path(workspace: &Path, crate_name: &str) -> PathBuf {
+    execution_reports_dir(workspace).join(format!("{crate_name}.jsonl"))
+}
+
+fn execution_learning_path(workspace: &Path) -> PathBuf {
+    workspace
+        .join("state")
+        .join("reports")
+        .join("execution_learning.jsonl")
+}
+
+fn persist_execution_path_plan(
+    workspace: &Path,
+    crate_name: &str,
+    plan: &crate::semantic::ExecutionPathPlan,
+) -> Result<()> {
+    let out_dir = execution_reports_dir(workspace);
+    fs::create_dir_all(&out_dir)
+        .with_context(|| format!("create dir {}", out_dir.display()))?;
+    let latest_path = execution_plan_latest_path(workspace, crate_name);
+    fs::write(&latest_path, serde_json::to_vec_pretty(plan)?)
+        .with_context(|| format!("write {}", latest_path.display()))?;
+
+    let history_path = execution_plan_history_path(workspace, crate_name);
+    let mut history = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&history_path)
+        .with_context(|| format!("open {}", history_path.display()))?;
+    serde_json::to_writer(&mut history, plan)
+        .with_context(|| format!("write {}", history_path.display()))?;
+    history
+        .write_all(b"\n")
+        .with_context(|| format!("newline {}", history_path.display()))?;
+    Ok(())
+}
+
+fn load_execution_plan(workspace: &Path, crate_name: &str) -> Option<Value> {
+    let path = execution_plan_latest_path(workspace, crate_name);
+    let raw = fs::read_to_string(path).ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
+fn append_execution_learning_record(workspace: &Path, record: &Value) -> Result<()> {
+    let path = execution_learning_path(workspace);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).with_context(|| format!("create dir {}", parent.display()))?;
+    }
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .with_context(|| format!("open {}", path.display()))?;
+    serde_json::to_writer(&mut file, record).with_context(|| format!("write {}", path.display()))?;
+    file.write_all(b"\n")
+        .with_context(|| format!("newline {}", path.display()))?;
+    Ok(())
+}
+
+fn parse_failure_location(out: &str) -> Option<(String, u32, u32)> {
+    for line in out.lines() {
+        let trimmed = line.trim();
+        let candidate = trimmed.strip_prefix("--> ").unwrap_or(trimmed);
+        let mut parts = candidate.rsplitn(3, ':');
+        let col = parts.next()?.parse::<u32>().ok()?;
+        let line_no = parts.next()?.parse::<u32>().ok()?;
+        let file = parts.next()?.to_string();
+        if file.ends_with(".rs") {
+            return Some((file, line_no, col));
+        }
+    }
+    None
+}
+
+fn verification_rebind(
+    workspace: &Path,
+    crate_name: &str,
+    check_out: &str,
+    test_out: &str,
+) -> Option<Value> {
+    let failure_output = if let Some(loc) = parse_failure_location(check_out) {
+        Some((loc, "cargo_check"))
+    } else {
+        parse_failure_location(test_out).map(|loc| (loc, "cargo_test"))
+    }?;
+    let ((file, line, col), source) = failure_output;
+    let symbol = crate::semantic::SemanticIndex::load(workspace, crate_name)
+        .ok()
+        .and_then(|idx| idx.symbol_at_file_line(&file, line));
+    Some(json!({
+        "source": source,
+        "file": file,
+        "line": line,
+        "col": col,
+        "symbol": symbol,
+    }))
+}
+
 // ---------------------------------------------------------------------------
 // Semantic navigation handlers (backed by rustc graph.json)
 // ---------------------------------------------------------------------------
@@ -5787,6 +5966,8 @@ fn handle_execution_path_action(workspace: &Path, action: &Value) -> Result<(boo
         .get("expand_bodies")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
+    let plan = idx.execution_path_plan(from, to)?;
+    persist_execution_path_plan(workspace, &crate_name, &plan)?;
     let out = idx.execution_path(from, to, expand)?;
     Ok((false, out))
 }
@@ -6325,6 +6506,7 @@ pub(crate) fn execute_logged_action(
 #[cfg(test)]
 mod tests {
     use super::handle_apply_patch_action;
+    use super::handle_execution_path_action;
     use super::handle_objectives_action;
     use super::handle_plan_action;
     use super::handle_rename_symbol_action;
@@ -6497,6 +6679,49 @@ mod tests {
         assert!(out.contains("apply_patch ok"), "unexpected: {out}");
         let persisted = std::fs::read_to_string(tmp.join("DIAGNOSTICS.json")).unwrap();
         assert!(persisted.contains("critical_failure"));
+    }
+
+    #[test]
+    fn execution_path_persists_latest_plan_artifact() {
+        let tmp = fresh_test_dir("execution-path-artifact");
+        let file = tmp.join("src").join("lib.rs");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        let src = "fn validate() {}\n";
+        std::fs::write(&file, src).unwrap();
+        write_minimal_graph_with_def_and_mir(
+            &tmp,
+            "canon_mini_agent",
+            "app::validate",
+            &file,
+            src,
+            "validate",
+        );
+        let action = json!({
+            "action": "execution_path",
+            "crate": "canon_mini_agent",
+            "from": "app::validate",
+            "to": "app::validate",
+            "rationale": "Persist a repair plan for the selected symbol."
+        });
+
+        let (_done, out) = handle_execution_path_action(&tmp, &action).unwrap();
+
+        assert!(out.contains("Repair plan:"), "unexpected: {out}");
+        let latest = tmp
+            .join("state")
+            .join("reports")
+            .join("execution_path")
+            .join("canon_mini_agent.latest.json");
+        assert!(latest.exists(), "missing {}", latest.display());
+        let parsed: Value = serde_json::from_str(&std::fs::read_to_string(&latest).unwrap()).unwrap();
+        assert_eq!(parsed.get("from").and_then(|v| v.as_str()), Some("app::validate"));
+        assert_eq!(
+            parsed
+                .get("top_target")
+                .and_then(|v| v.get("symbol"))
+                .and_then(|v| v.as_str()),
+            Some("app::validate")
+        );
     }
 
     #[test]
