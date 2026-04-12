@@ -2559,6 +2559,39 @@ fn validate_schema_guarded_patch_outputs(
     None
 }
 
+fn run_patch_crate_verification_command(
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    display_cmd: &str,
+    cmd: &str,
+    ok_label: &'static str,
+    fail_label: &'static str,
+) -> (bool, String, &'static str) {
+    eprintln!("[{role}] step={} {display_cmd}", step);
+    let (ok, out) = exec_run_command(workspace, cmd, crate::constants::workspace())
+        .unwrap_or_else(|e| (false, e.to_string()));
+    let label = if ok { ok_label } else { fail_label };
+    eprintln!("[{role}] step={} {label}", step);
+    (ok, out, label)
+}
+
+fn format_patch_crate_failure(label: &str, out: &str) -> String {
+    format!(
+        "apply_patch ok\n\n{label}:\n{}",
+        truncate(out, MAX_SNIPPET)
+    )
+}
+
+fn summarize_patch_crate_test_output(test_ok: bool, test_out: &str) -> String {
+    let test_summary = cargo_test_totals_summary(test_out);
+    if test_ok && !test_summary.trim().is_empty() {
+        test_summary
+    } else {
+        truncate(test_out, MAX_SNIPPET).to_string()
+    }
+}
+
 fn verify_apply_patch_crate(
     role: &str,
     step: usize,
@@ -2568,44 +2601,31 @@ fn verify_apply_patch_crate(
     let crate_for_patch = patch_first_file(patch).and_then(|f| infer_crate_for_patch(workspace, f));
     let krate = crate_for_patch?;
 
-    eprintln!("[{role}] step={} cargo check -p {krate}", step);
-    let (check_ok, check_out) = exec_run_command(
+    let (check_ok, check_out, check_label) = run_patch_crate_verification_command(
+        role,
+        step,
         workspace,
         &format!("cargo check -p {krate}"),
-        crate::constants::workspace(),
-    )
-    .unwrap_or_else(|e| (false, e.to_string()));
-
-    let check_label = if check_ok { "cargo check ok" } else { "cargo check failed" };
-    eprintln!("[{role}] step={} {check_label}", step);
+        &format!("cargo check -p {krate}"),
+        "cargo check ok",
+        "cargo check failed",
+    );
 
     if !check_ok {
-        return Some((
-            false,
-            format!(
-                "apply_patch ok\n\n{check_label}:\n{}",
-                truncate(&check_out, MAX_SNIPPET)
-            ),
-        ));
+        return Some((false, format_patch_crate_failure(check_label, &check_out)));
     }
 
-    eprintln!("[{role}] step={} cargo test -p {krate}", step);
-    let (test_ok, test_out) = exec_run_command(
+    let (test_ok, test_out, test_label) = run_patch_crate_verification_command(
+        role,
+        step,
         workspace,
+        &format!("cargo test -p {krate}"),
         &format!("cargo test -p {krate} -q"),
-        crate::constants::workspace(),
-    )
-    .unwrap_or_else(|e| (false, e.to_string()));
+        "cargo test ok",
+        "cargo test failed",
+    );
 
-    let test_label = if test_ok { "cargo test ok" } else { "cargo test failed" };
-    eprintln!("[{role}] step={} {test_label}", step);
-
-    let test_summary = cargo_test_totals_summary(&test_out);
-    let test_display = if test_ok && !test_summary.trim().is_empty() {
-        test_summary
-    } else {
-        truncate(&test_out, MAX_SNIPPET).to_string()
-    };
+    let test_display = summarize_patch_crate_test_output(test_ok, &test_out);
 
     Some((
         false,
