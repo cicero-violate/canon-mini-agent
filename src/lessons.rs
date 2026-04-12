@@ -758,12 +758,20 @@ fn lessons_path(workspace: &Path) -> std::path::PathBuf {
     workspace.join(LESSONS_FILE)
 }
 
-fn load_candidates(workspace: &Path) -> LessonsCandidatesFile {
-    let path = candidates_path(workspace);
-    std::fs::read_to_string(&path)
+fn load_json_file_or_else<T, F>(path: &Path, default: F) -> T
+where
+    T: serde::de::DeserializeOwned,
+    F: FnOnce() -> T,
+{
+    std::fs::read_to_string(path)
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok())
-        .unwrap_or_default()
+        .unwrap_or_else(default)
+}
+
+fn load_candidates(workspace: &Path) -> LessonsCandidatesFile {
+    let path = candidates_path(workspace);
+    load_json_file_or_else(&path, LessonsCandidatesFile::default)
 }
 
 fn save_candidates(workspace: &Path, cfile: &LessonsCandidatesFile) -> Result<()> {
@@ -778,10 +786,7 @@ fn save_candidates(workspace: &Path, cfile: &LessonsCandidatesFile) -> Result<()
 
 fn load_lessons(workspace: &Path) -> LessonsArtifact {
     let path = lessons_path(workspace);
-    std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|raw| serde_json::from_str(&raw).ok())
-        .unwrap_or_default()
+    load_json_file_or_else(&path, LessonsArtifact::default)
 }
 
 fn save_lessons(workspace: &Path, artifact: &LessonsArtifact) -> Result<()> {
