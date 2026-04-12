@@ -23,6 +23,10 @@ pub struct Issue {
     pub status: String,
     /// high | medium | low
     pub priority: String,
+    /// Normalized priority score in [0.0, 1.0]. Auto-computed; do not set manually.
+    /// Combines severity, recurrence, hot-path heuristic, and loop-velocity impact.
+    #[serde(default, skip_serializing_if = "is_zero_f32")]
+    pub score: f32,
     /// bug | logic | invariant_violation | performance | stale_state
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub kind: String,
@@ -40,11 +44,91 @@ pub struct Issue {
     pub discovered_by: String,
 }
 
+fn is_zero_f32(v: &f32) -> bool {
+    *v == 0.0
+}
+
 pub fn is_closed(issue: &Issue) -> bool {
     matches!(
         issue.status.trim().to_lowercase().as_str(),
         "resolved" | "wontfix" | "done" | "complete" | "completed" | "verified" | "closed"
     )
+}
+
+/// Compute a normalized [0.0, 1.0] priority score for an issue.
+///
+/// Weights:
+///   severity      0.20 — priority string mapped to float
+///   recurrence    0.20 — sibling issues with the same ID prefix (saturates at 3)
+///   hot_path      0.25 — location/title mentions a per-turn code path
+///   loop_velocity 0.35 — how much fixing this speeds up the agent's issue-close rate
+pub fn compute_issue_score(issue: &Issue, all_issues: &[Issue]) -> f32 {
+    // Severity from priority string
+    let severity: f32 = match issue.priority.trim().to_lowercase().as_str() {
+        "critical" => 1.0,
+        "high" => 0.75,
+        "medium" => 0.5,
+        "low" => 0.25,
+        _ => 0.5,
+    };
+
+    // Recurrence: count other issues that share the same leading token in their ID.
+    // e.g. "ISS-DUPLICATE-1" and "ISS-DUPLICATE-2" are siblings.
+    let base = issue.id.split('-').next().unwrap_or(&issue.id);
+    let sibling_count = all_issues
+        .iter()
+        .filter(|i| i.id != issue.id && i.id.starts_with(base))
+        .count();
+    let recurrence = (sibling_count as f32 / 3.0).min(1.0);
+
+    // Hot-path heuristic: is this in code that executes every agent turn?
+    let combined = format!(
+        "{} {} {}",
+        issue.title.to_lowercase(),
+        issue.description.to_lowercase(),
+        issue.location.to_lowercase()
+    );
+    let hot_path_keywords = [
+        "predicted_next_actions",
+        "handle_batch",
+        "canon-step",
+        "canon_step",
+        "every turn",
+        "every cycle",
+        "state_space",
+        "dispatch",
+    ];
+    let hot_path: f32 = if hot_path_keywords.iter().any(|kw| combined.contains(kw)) {
+        1.0
+    } else {
+        0.0
+    };
+
+    // Loop-velocity: how much does fixing this unblock the agent's self-improvement loop?
+    let velocity: f32 = match issue.kind.trim().to_lowercase().as_str() {
+        "bug" | "invariant_violation" => 1.0,
+        "stale_state" | "logic" => 0.65,
+        "performance" => 0.5,
+        _ => {
+            if issue.id.starts_with("auto_branch_reduce") || issue.id.starts_with("auto_refactor") {
+                0.25
+            } else {
+                0.4
+            }
+        }
+    };
+
+    let score = 0.20 * severity + 0.20 * recurrence + 0.25 * hot_path + 0.35 * velocity;
+    score.clamp(0.0, 1.0)
+}
+
+/// Recompute scores for every issue in the file.
+/// Call this before writing so stored scores stay consistent.
+pub fn rescore_all(file: &mut IssuesFile) {
+    let snapshot = file.issues.clone();
+    for issue in &mut file.issues {
+        issue.score = compute_issue_score(issue, &snapshot);
+    }
 }
 
 /// Read ISSUES.json and return the text of open/in-progress issues only.
