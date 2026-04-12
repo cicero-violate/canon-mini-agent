@@ -220,26 +220,36 @@ fn build_complexity_report(
     global_top: Vec<serde_json::Value>,
     inter: serde_json::Value,
 ) -> serde_json::Value {
+    let intra_scoring = complexity_intra_scoring();
+    let inter_scoring = complexity_inter_scoring();
     json!({
         "version": 2,
         "objective": "min(B) + min(R)  s.t. correctness invariant",
-        "intra_scoring": {
-            "objective_score": "0.6·B_norm + 0.4·R_norm  ∈ [0,1]  (higher = higher-value target)",
-            "B_norm": "mir_blocks / max_mir_blocks  (branching proxy)",
-            "R_norm": "stmt_density / max_stmt_density  (redundancy proxy: dense logic per branch)",
-            "stmt_density": "mir_stmts / mir_blocks"
-        },
-        "inter_scoring": {
-            "inter_objective": "0.40·B_transitive_norm + 0.30·R_body + 0.30·(1−D_det)",
-            "B_transitive": "B(F) + mean(B(callee)) — depth-1 branching propagation",
-            "R_body": "1.0 if MIR fingerprint matches another function (exact duplicate)",
-            "D_det": "1.0 − B_norm  (determinism proxy)"
-        },
+        "intra_scoring": intra_scoring,
+        "inter_scoring": inter_scoring,
         "execution_model": "Detect(this_report) → Propose(LLM/issues) → Apply(patch/rename) → Verify(build+test)",
         "generated_at_ms": crate::logging::now_ms(),
         "global_top": global_top,
         "inter": inter,
         "per_crate": per_crate,
+    })
+}
+
+fn complexity_intra_scoring() -> serde_json::Value {
+    json!({
+        "objective_score": "0.6·B_norm + 0.4·R_norm  ∈ [0,1]  (higher = higher-value target)",
+        "B_norm": "mir_blocks / max_mir_blocks  (branching proxy)",
+        "R_norm": "stmt_density / max_stmt_density  (redundancy proxy: dense logic per branch)",
+        "stmt_density": "mir_stmts / mir_blocks"
+    })
+}
+
+fn complexity_inter_scoring() -> serde_json::Value {
+    json!({
+        "inter_objective": "0.40·B_transitive_norm + 0.30·R_body + 0.30·(1−D_det)",
+        "B_transitive": "B(F) + mean(B(callee)) — depth-1 branching propagation",
+        "R_body": "1.0 if MIR fingerprint matches another function (exact duplicate)",
+        "D_det": "1.0 − B_norm  (determinism proxy)"
     })
 }
 
