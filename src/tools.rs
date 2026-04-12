@@ -4702,22 +4702,17 @@ fn handle_plan_create_task(
     if tasks.iter().any(|t| t.get("id").and_then(|v| v.as_str()) == Some(id)) {
         bail!("plan task already exists: {id}");
     }
-    let mut new_task = serde_json::Map::new();
+    // Copy all fields from the task object so nothing is silently dropped
+    // (e.g. objective_id, issue_refs, priority, steps, title).
+    // `id` and `status` are always written from their canonical sources so
+    // they cannot be omitted even if absent in the incoming task object.
+    let mut new_task = task.clone();
     new_task.insert("id".to_string(), Value::String(id.to_string()));
-    if let Some(title) = task.get("title").and_then(|v| v.as_str()) {
-        new_task.insert("title".to_string(), Value::String(title.to_string()));
-    }
     let status = task
         .get("status")
         .and_then(|v| v.as_str())
         .unwrap_or("todo");
     new_task.insert("status".to_string(), Value::String(status.to_string()));
-    if let Some(priority) = task.get("priority") {
-        new_task.insert("priority".to_string(), priority.clone());
-    }
-    if let Some(steps) = task.get("steps") {
-        new_task.insert("steps".to_string(), steps.clone());
-    }
     tasks.push(Value::Object(new_task));
     Ok(())
 }
