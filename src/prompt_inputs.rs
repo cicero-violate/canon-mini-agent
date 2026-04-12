@@ -274,6 +274,51 @@ pub fn read_rename_candidates_or_empty(workspace: &Path) -> String {
     lines.join("\n")
 }
 
+/// Read `agent_state/loop_context.json` written by the supervisor's bounded repair
+/// loop and return a focused hint for injection into the solo/planner prompt.
+/// Returns empty string when the agent is not running under loop control.
+pub fn read_loop_context_hint(state_dir: &Path) -> String {
+    let path = state_dir.join("loop_context.json");
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return String::new();
+    };
+    let Ok(ctx) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return String::new();
+    };
+    let iteration = ctx.get("iteration").and_then(|v| v.as_u64()).unwrap_or(1);
+    let max = ctx.get("max_iterations").and_then(|v| v.as_u64()).unwrap_or(1);
+    let symbol = ctx.get("target_symbol").and_then(|v| v.as_str()).unwrap_or("");
+    let file = ctx.get("target_file").and_then(|v| v.as_str()).unwrap_or("");
+    let line = ctx.get("target_line").and_then(|v| v.as_u64()).unwrap_or(0);
+    let patch_kind = ctx.get("patch_kind").and_then(|v| v.as_str()).unwrap_or("General");
+    let score = ctx.get("score").and_then(|v| v.as_i64()).unwrap_or(0);
+    let tests_passing = ctx.get("tests_passing").and_then(|v| v.as_bool()).unwrap_or(false);
+
+    if symbol.is_empty() {
+        return String::new();
+    }
+
+    let mut out = format!(
+        "\n## Repair Loop Context (iteration {iteration}/{max})\n\
+         Top repair target (score={score}, kind={patch_kind}):\n\
+         - symbol: `{symbol}`\n\
+         - location: {file}:{line}\n"
+    );
+    if tests_passing {
+        out.push_str("- prior iteration: tests PASSING (loop may be verifying)\n");
+    } else {
+        out.push_str("- prior iteration: tests FAILING — focus repair on this symbol\n");
+    }
+    if let Some(reasons) = ctx.get("reasons").and_then(|v| v.as_array()) {
+        let rs: Vec<&str> = reasons.iter().filter_map(|r| r.as_str()).collect();
+        if !rs.is_empty() {
+            out.push_str(&format!("- scoring signals: {}\n", rs.join(", ")));
+        }
+    }
+    out.push_str("Focus your next patch on this symbol unless a more critical failure is evident.\n");
+    out
+}
+
 /// Read state/reports/complexity/latest.json and return the top `limit` hotspots
 /// as compact text for prompt injection. Returns empty string if report is absent.
 pub fn read_complexity_hotspots(workspace: &Path, limit: usize) -> String {

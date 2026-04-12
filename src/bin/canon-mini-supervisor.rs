@@ -453,6 +453,7 @@ fn main() -> Result<()> {
         exe,
         prefer_release,
         no_watch,
+        loop_max,
         filtered_args,
     } = parse_supervisor_args();
     let start_dir = std::env::current_dir().context("current_dir")?;
@@ -461,6 +462,23 @@ fn main() -> Result<()> {
     let shutdown = Arc::new(AtomicBool::new(false));
     let child_pid = Arc::new(AtomicU32::new(0));
     initialize_supervisor_runtime(&filtered_args, &shutdown, &child_pid)?;
+
+    // Bounded repair loop mode: run up to N agent iterations then stop.
+    if let Some(max_iterations) = loop_max {
+        let workspace = workspace_from_args(&filtered_args)
+            .map(PathBuf::from)
+            .unwrap_or_else(|| root.clone());
+        return run_repair_loop(
+            &root,
+            &workspace,
+            max_iterations,
+            &filtered_args,
+            prefer_release,
+            &shutdown,
+            &child_pid,
+        );
+    }
+
     let idle_marker = cycle_idle_marker_path(&filtered_args);
     let orchestrator_mode_flag = orchestrator_mode_flag_path(&filtered_args);
 
@@ -774,6 +792,9 @@ struct SupervisorArgs {
     exe: String,
     prefer_release: bool,
     no_watch: bool,
+    /// When Some(n), run the bounded repair loop for up to n iterations instead
+    /// of the normal indefinite-watch supervisor mode.
+    loop_max: Option<u32>,
     filtered_args: Vec<String>,
 }
 
@@ -782,6 +803,7 @@ fn parse_supervisor_args() -> SupervisorArgs {
     let exe = args.remove(0);
     let mut prefer_release = false;
     let mut no_watch = false;
+    let mut loop_max: Option<u32> = None;
     let mut filtered_args = Vec::new();
     let mut i = 0usize;
     while i < args.len() {
@@ -796,6 +818,15 @@ fn parse_supervisor_args() -> SupervisorArgs {
             i += 1;
             continue;
         }
+        if arg == "--loop" {
+            if i + 1 < args.len() {
+                loop_max = args[i + 1].parse::<u32>().ok();
+                i += 2;
+            } else {
+                i += 1;
+            }
+            continue;
+        }
         if arg == "--" {
             filtered_args.extend_from_slice(&args[i + 1..]);
             break;
@@ -807,7 +838,264 @@ fn parse_supervisor_args() -> SupervisorArgs {
         exe,
         prefer_release,
         no_watch,
+        loop_max,
         filtered_args,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Gap 3: Bounded iterative repair loop
+// ---------------------------------------------------------------------------
+
+/// Write `agent_state/loop_context.json` so the agent's solo prompt knows which
+/// symbol to focus on in this iteration.
+fn write_loop_context(
+    state_dir: &Path,
+    target: &canon_mini_agent::SemanticIndex,
+    workspace: &Path,
+    violation_symbols: &[String],
+    iteration: u32,
+    max_iterations: u32,
+    tests_passing: bool,
+) {
+    let vs: Vec<&str> = violation_symbols.iter().map(|s| s.as_str()).collect();
+    let top = target.top_repair_targets(&vs, 1);
+    let ctx = if let Some(t) = top.first() {
+        serde_json::json!({
+            "iteration": iteration,
+            "max_iterations": max_iterations,
+            "tests_passing": tests_passing,
+            "target_symbol": t.symbol,
+            "target_file": t.file.as_deref().unwrap_or(""),
+            "target_line": t.line.unwrap_or(0),
+            "score": t.score,
+            "patch_kind": t.patch_kind.as_ref().map(|k| format!("{k:?}")).unwrap_or_else(|| "General".into()),
+            "reasons": t.reasons,
+        })
+    } else {
+        serde_json::json!({
+            "iteration": iteration,
+            "max_iterations": max_iterations,
+            "tests_passing": tests_passing,
+            "note": "no repair targets found in semantic index",
+        })
+    };
+    let out = state_dir.join("loop_context.json");
+    if let Ok(body) = serde_json::to_string_pretty(&ctx) {
+        let _ = std::fs::write(&out, body);
+        eprintln!(
+            "[canon-mini-supervisor] loop_context written: {}",
+            out.display()
+        );
+    }
+    let _ = workspace; // workspace available for future multi-crate expansion
+}
+
+/// Run `cargo test --workspace` and return whether all tests pass.
+fn check_test_gate(root: &Path) -> bool {
+    eprintln!("[canon-mini-supervisor] loop: running cargo test --workspace");
+    match run_cmd(root, "cargo", &["test", "--workspace"]) {
+        Ok(true) => {
+            eprintln!("[canon-mini-supervisor] loop: tests PASSING");
+            true
+        }
+        Ok(false) => {
+            eprintln!("[canon-mini-supervisor] loop: tests FAILING");
+            false
+        }
+        Err(err) => {
+            eprintln!("[canon-mini-supervisor] loop: cargo test errored: {err:#}");
+            false
+        }
+    }
+}
+
+/// Read VIOLATIONS.json and extract symbol paths from violation evidence/location fields.
+fn load_violation_symbols(workspace: &Path) -> Vec<String> {
+    let path = workspace.join("VIOLATIONS.json");
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return Vec::new();
+    };
+    let mut symbols = Vec::new();
+    if let Some(violations) = val.get("violations").and_then(|v| v.as_array()) {
+        for v in violations {
+            // Collect any strings in `files` that look like symbol paths (contain `::`)
+            if let Some(files) = v.get("files").and_then(|f| f.as_array()) {
+                for f in files {
+                    if let Some(s) = f.as_str() {
+                        if s.contains("::") {
+                            symbols.push(s.to_string());
+                        }
+                    }
+                }
+            }
+            // Also scan evidence lines for `symbol::path` patterns
+            if let Some(evidence) = v.get("evidence").and_then(|e| e.as_array()) {
+                for line in evidence {
+                    if let Some(s) = line.as_str() {
+                        for word in s.split_whitespace() {
+                            let clean = word.trim_matches(|c: char| !c.is_alphanumeric() && c != ':' && c != '_');
+                            if clean.contains("::") && !clean.contains('/') {
+                                symbols.push(clean.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    symbols.sort();
+    symbols.dedup();
+    symbols
+}
+
+/// Load the SemanticIndex for the primary crate in the workspace.
+/// Returns the first available crate's index, preferring the one with most nodes.
+fn load_primary_semantic_index(workspace: &Path) -> Option<canon_mini_agent::SemanticIndex> {
+    let mut crates = canon_mini_agent::SemanticIndex::available_crates(workspace);
+    if crates.is_empty() {
+        eprintln!("[canon-mini-supervisor] loop: no crates in state/rustc/index.json; skipping semantic scoring");
+        return None;
+    }
+    // Sort by name length descending as a proxy for "most specific" (non-trivial) crate.
+    crates.sort_by(|a, b| b.len().cmp(&a.len()));
+    for crate_name in &crates {
+        match canon_mini_agent::SemanticIndex::load(workspace, crate_name) {
+            Ok(idx) => {
+                eprintln!("[canon-mini-supervisor] loop: loaded semantic index for {crate_name}");
+                return Some(idx);
+            }
+            Err(err) => {
+                eprintln!(
+                    "[canon-mini-supervisor] loop: could not load {crate_name}: {err:#}"
+                );
+            }
+        }
+    }
+    None
+}
+
+/// Bounded repair loop: run the agent for up to `max_iterations` cycles, stopping
+/// early when `cargo test --workspace` passes cleanly.
+///
+/// Each iteration:
+///  1. Load the semantic graph and score targets (Gap 2).
+///  2. Classify the top target's required patch kind (Gap 1).
+///  3. Write `agent_state/loop_context.json` with the target — the agent's solo
+///     prompt will pick this up and focus the repair.
+///  4. Spawn the agent child and wait for it to exit.
+///  5. Check the cargo test gate.  If passing, return Ok.
+///  6. Otherwise commit a checkpoint and continue to the next iteration.
+fn run_repair_loop(
+    root: &Path,
+    workspace: &Path,
+    max_iterations: u32,
+    filtered_args: &[String],
+    prefer_release: bool,
+    shutdown: &AtomicBool,
+    child_pid: &AtomicU32,
+) -> Result<()> {
+    eprintln!(
+        "[canon-mini-supervisor] repair loop starting (max={max_iterations})"
+    );
+
+    let state_dir = agent_state_dir_from_args(filtered_args);
+    let mut tests_passing = false;
+
+    for iteration in 1..=max_iterations {
+        if shutdown.load(Ordering::SeqCst) {
+            eprintln!("[canon-mini-supervisor] loop: shutdown requested; stopping");
+            break;
+        }
+
+        eprintln!(
+            "[canon-mini-supervisor] loop: iteration {iteration}/{max_iterations}"
+        );
+
+        // Refresh semantic graph (cargo build regenerates state/rustc/*/graph.json).
+        if !checkpoint_build_succeeded(root, &format!("loop-iter-{iteration}")) {
+            eprintln!("[canon-mini-supervisor] loop: build failed; aborting loop");
+            break;
+        }
+
+        // Load violation symbols and semantic index for scoring.
+        let violation_symbols = load_violation_symbols(workspace);
+        let maybe_idx = load_primary_semantic_index(workspace);
+
+        if let Some(ref idx) = maybe_idx {
+            write_loop_context(
+                &state_dir,
+                idx,
+                workspace,
+                &violation_symbols,
+                iteration,
+                max_iterations,
+                tests_passing,
+            );
+        }
+
+        // Spawn agent child and wait for it to exit.
+        let current = newest_candidate(root, prefer_release)?;
+        eprintln!(
+            "[canon-mini-supervisor] loop: spawning agent from {}",
+            current.path.display()
+        );
+        let mut child = spawn_child(&current, filtered_args)?;
+        child_pid.store(child.id(), Ordering::SeqCst);
+
+        loop {
+            thread::sleep(Duration::from_millis(1000));
+            if shutdown.load(Ordering::SeqCst) {
+                send_sigint(&child);
+                wait_for_exit(&mut child, Duration::from_secs(10));
+                eprintln!("[canon-mini-supervisor] loop: shutdown; stopping");
+                return Ok(());
+            }
+            match child.try_wait().context("wait child")? {
+                Some(status) => {
+                    eprintln!("[canon-mini-supervisor] loop: agent exited: {status}");
+                    break;
+                }
+                None => continue,
+            }
+        }
+        child_pid.store(0, Ordering::SeqCst);
+
+        // Check test gate.
+        tests_passing = check_test_gate(root);
+        if tests_passing {
+            eprintln!(
+                "[canon-mini-supervisor] loop: tests passing after iteration {iteration}; done"
+            );
+            // Clean up loop context so the agent doesn't see stale data on next normal run.
+            let _ = std::fs::remove_file(state_dir.join("loop_context.json"));
+            stage_commit_push_before_restart(root, &format!("loop-success-{iteration}"), prefer_release);
+            return Ok(());
+        }
+
+        eprintln!(
+            "[canon-mini-supervisor] loop: tests still failing after iteration {iteration}"
+        );
+        stage_commit_push_before_restart(
+            root,
+            &format!("loop-iter-{iteration}"),
+            prefer_release,
+        );
+    }
+
+    // Loop exhausted without passing tests.
+    let _ = std::fs::remove_file(state_dir.join("loop_context.json"));
+    if tests_passing {
+        eprintln!("[canon-mini-supervisor] repair loop completed successfully");
+        Ok(())
+    } else {
+        eprintln!(
+            "[canon-mini-supervisor] repair loop exhausted {max_iterations} iterations without passing tests"
+        );
+        Ok(()) // Return Ok — not a hard error; caller decides how to proceed.
     }
 }
 

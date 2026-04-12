@@ -158,6 +158,24 @@ pub struct ExecutionPathNode {
     pub terminator: Option<String>,
 }
 
+/// Structural classification of the transformation a patch should apply.
+/// Derived from CFG topology at the target's entry block.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum PatchKind {
+    /// Entry block starts with a condition check (guard clause pattern).
+    Guard,
+    /// Entry block terminates with SwitchInt — match/if-let rewrite needed.
+    MatchArm,
+    /// Entry block terminates with Assert — bounds or safety check fix.
+    BoundsCheck,
+    /// Entry block terminates with Call — fix at the call site.
+    CallSiteFix,
+    /// Single basic block, trivially linear — full rewrite candidate.
+    PureFunctionRewrite,
+    /// Multi-block, no dominant structural signal.
+    General,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionPatchTarget {
     pub symbol: String,
@@ -168,6 +186,9 @@ pub struct ExecutionPatchTarget {
     pub context_start: Option<u32>,
     pub context_end: Option<u32>,
     pub context_window: Option<String>,
+    /// CFG-derived classification of what kind of patch this target needs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub patch_kind: Option<PatchKind>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1064,6 +1085,7 @@ impl SemanticIndex {
                     )
                 })
                 .unwrap_or((None, None, None, None, None));
+            let patch_kind = self.classify_patch_kind(node_id);
             out.push(ExecutionPatchTarget {
                 symbol,
                 score,
@@ -1073,6 +1095,7 @@ impl SemanticIndex {
                 context_start,
                 context_end,
                 context_window,
+                patch_kind: Some(patch_kind),
             });
         }
         out.sort_by(|a, b| a.score.cmp(&b.score).then(a.symbol.cmp(&b.symbol)));
@@ -1089,6 +1112,263 @@ impl SemanticIndex {
             .collect::<Vec<_>>()
             .join(" -> ");
         format!("{:016x}", stable_hash(&joined))
+    }
+
+    // -----------------------------------------------------------------------
+    // Gap 1: Semantic patch type classification
+    // -----------------------------------------------------------------------
+
+    /// Classify what structural transformation a patch on `symbol_key` should apply,
+    /// by inspecting the function's CFG entry block terminator.
+    pub fn classify_patch_kind(&self, symbol_key: &str) -> PatchKind {
+        // Find the Entry bridge edge: relation=Entry, from=symbol_key → to=entry_bb_id
+        let entry_bb_id = self
+            .graph
+            .bridge_edges
+            .iter()
+            .find(|e| e.relation == "Entry" && e.from == symbol_key)
+            .map(|e| e.to.as_str());
+
+        let Some(entry_bb_id) = entry_bb_id else {
+            return PatchKind::General;
+        };
+
+        let Some(cfg_node) = self.graph.cfg_nodes.get(entry_bb_id) else {
+            return PatchKind::General;
+        };
+
+        // Single basic block (no non-cleanup successors): trivially rewriteable.
+        let non_cleanup_count = self
+            .graph
+            .bridge_edges
+            .iter()
+            .filter(|e| e.relation == "BelongsTo" && e.to == symbol_key)
+            .filter(|e| {
+                self.graph
+                    .cfg_nodes
+                    .get(e.from.as_str())
+                    .map(|n| !n.is_cleanup)
+                    .unwrap_or(false)
+            })
+            .count();
+
+        if non_cleanup_count <= 1 {
+            return PatchKind::PureFunctionRewrite;
+        }
+
+        match cfg_node.terminator.as_str() {
+            "SwitchInt" => {
+                // Check symbol name to distinguish guard from match arm.
+                let path = self
+                    .graph
+                    .nodes
+                    .get(symbol_key)
+                    .map(|n| n.path.as_str())
+                    .unwrap_or(symbol_key);
+                if looks_like_validation_symbol(path) {
+                    PatchKind::Guard
+                } else {
+                    PatchKind::MatchArm
+                }
+            }
+            "Assert" => PatchKind::BoundsCheck,
+            "Call" | "TailCall" => PatchKind::CallSiteFix,
+            _ => {
+                // Fallback: check symbol name.
+                let path = self
+                    .graph
+                    .nodes
+                    .get(symbol_key)
+                    .map(|n| n.path.as_str())
+                    .unwrap_or(symbol_key);
+                if looks_like_validation_symbol(path) {
+                    PatchKind::Guard
+                } else {
+                    PatchKind::General
+                }
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Gap 2: Execution-critical weighting
+    // -----------------------------------------------------------------------
+
+    /// CFG dominance score for `symbol_key` ∈ [0.0, 1.0].
+    ///
+    /// Measures the fraction of the function's basic blocks that are on the
+    /// "happy path" (non-cleanup). A high score means most of the function body
+    /// is unavoidable on normal execution; a low score means most of the function
+    /// is error/unwind handling.
+    pub fn cfg_dominance_score(&self, symbol_key: &str) -> f32 {
+        let mut total = 0usize;
+        let mut non_cleanup = 0usize;
+        for edge in &self.graph.bridge_edges {
+            if edge.relation != "BelongsTo" || edge.to != symbol_key {
+                continue;
+            }
+            if let Some(cfg_node) = self.graph.cfg_nodes.get(edge.from.as_str()) {
+                total += 1;
+                if !cfg_node.is_cleanup {
+                    non_cleanup += 1;
+                }
+            }
+        }
+        if total == 0 {
+            return 0.0;
+        }
+        non_cleanup as f32 / total as f32
+    }
+
+    /// Path frequency score for `symbol_key` ∈ [0.0, 1.0].
+    ///
+    /// Derived from how many reference sites exist for this symbol relative to the
+    /// most-referenced symbol in the graph. A symbol called from many places has a
+    /// higher blast-radius and is more execution-critical.
+    fn path_frequency_score(&self, symbol_key: &str, max_refs: usize) -> f32 {
+        if max_refs == 0 {
+            return 0.0;
+        }
+        let refs = self
+            .graph
+            .nodes
+            .get(symbol_key)
+            .map(|n| n.refs.len())
+            .unwrap_or(0);
+        (refs as f32 / max_refs as f32).clamp(0.0, 1.0)
+    }
+
+    /// Failure proximity score for `symbol_key` ∈ [0.0, 1.0].
+    ///
+    /// Computes the minimum BFS hop count from `symbol_key` to any violation site
+    /// (via forward `Calls` edges), then maps to `1 / (1 + hops)`.  A symbol that
+    /// directly calls into a known-failing callee scores close to 1.0; an unreachable
+    /// symbol scores 0.0.
+    pub fn failure_proximity_score(&self, symbol_key: &str, violation_symbols: &[&str]) -> f32 {
+        if violation_symbols.is_empty() {
+            return 0.0;
+        }
+
+        // Build forward call adjacency (caller → [callees]).
+        let mut forward_adj: HashMap<&str, Vec<&str>> = HashMap::new();
+        for edge in &self.graph.edges {
+            if !edge_is_call(edge) {
+                continue;
+            }
+            forward_adj
+                .entry(edge.from.as_str())
+                .or_default()
+                .push(edge.to.as_str());
+        }
+
+        // Resolve violation symbol keys.
+        let mut violation_keys: Vec<&str> = Vec::new();
+        for &sym in violation_symbols {
+            if let Ok(key) = self.resolve_node_key(sym) {
+                violation_keys.push(key);
+            }
+        }
+        if violation_keys.is_empty() {
+            return 0.0;
+        }
+
+        // BFS forward from symbol_key, looking for any violation site.
+        let Ok(start_key) = self.resolve_node_key(symbol_key) else {
+            return 0.0;
+        };
+
+        let mut visited: HashSet<&str> = HashSet::new();
+        let mut queue: VecDeque<(&str, u32)> = VecDeque::new();
+        visited.insert(start_key);
+        queue.push_back((start_key, 0));
+        const MAX_DEPTH: u32 = 8;
+
+        while let Some((cur, depth)) = queue.pop_front() {
+            if violation_keys.contains(&cur) {
+                return 1.0 / (1.0 + depth as f32);
+            }
+            if depth >= MAX_DEPTH {
+                continue;
+            }
+            if let Some(callees) = forward_adj.get(cur) {
+                for &callee in callees {
+                    if visited.insert(callee) {
+                        queue.push_back((callee, depth + 1));
+                    }
+                }
+            }
+        }
+        0.0
+    }
+
+    /// Return the top `limit` repair targets across all local `fn` symbols,
+    /// scored by execution-criticality: dominance + frequency + failure proximity.
+    ///
+    /// `violation_symbols` are symbol paths extracted from VIOLATIONS.json that
+    /// name the functions where known failures occur.
+    pub fn top_repair_targets(
+        &self,
+        violation_symbols: &[&str],
+        limit: usize,
+    ) -> Vec<ExecutionPatchTarget> {
+        let max_refs = self
+            .graph
+            .nodes
+            .values()
+            .map(|n| n.refs.len())
+            .max()
+            .unwrap_or(1)
+            .max(1);
+
+        let mut targets: Vec<ExecutionPatchTarget> = self
+            .graph
+            .nodes
+            .iter()
+            .filter(|(_, n)| n.kind == "fn" && n.def.is_some())
+            .map(|(key, node)| {
+                let symbol = self.node_path(key, node).to_string();
+                let dom = self.cfg_dominance_score(key);
+                let freq = self.path_frequency_score(key, max_refs);
+                let prox = self.failure_proximity_score(&symbol, violation_symbols);
+                let patch_kind = self.classify_patch_kind(key);
+
+                // Composite score: dominance(30) + frequency(20) + proximity(50).
+                let score = ((dom * 30.0) + (freq * 20.0) + (prox * 50.0)).round() as i32;
+
+                let mut reasons = Vec::new();
+                if dom > 0.8 {
+                    reasons.push(format!("dom={:.2}", dom));
+                }
+                if freq > 0.1 {
+                    reasons.push(format!("freq={:.2}", freq));
+                }
+                if prox > 0.0 {
+                    reasons.push(format!("prox={:.2}", prox));
+                }
+                reasons.push(format!("kind={:?}", patch_kind));
+
+                let def = node.def.as_ref().unwrap();
+                let (context_start, context_end, context_window) =
+                    read_context_window(&def.file, def.line, 3, 8);
+
+                ExecutionPatchTarget {
+                    symbol,
+                    score,
+                    reasons,
+                    file: Some(def.file.clone()),
+                    line: Some(def.line),
+                    context_start: Some(context_start),
+                    context_end: Some(context_end),
+                    context_window: Some(context_window),
+                    patch_kind: Some(patch_kind),
+                }
+            })
+            .collect();
+
+        // Sort descending by score, then by symbol for stability.
+        targets.sort_by(|a, b| b.score.cmp(&a.score).then(a.symbol.cmp(&b.symbol)));
+        targets.truncate(limit);
+        targets
     }
 
     pub fn symbol_at_file_line(&self, file: &str, line: u32) -> Option<String> {
@@ -1385,6 +1665,26 @@ fn stable_hash(input: &str) -> u64 {
     hasher.finish()
 }
 
+/// Return (remove_hint, add_hint) comments that describe the expected transformation
+/// shape for a given `PatchKind`. These are injected into the apply_patch template so
+/// the LLM knows what structural change to make — not just "fix something here".
+fn patch_kind_hints(kind: Option<&PatchKind>) -> (&'static str, &'static str) {
+    match kind {
+        Some(PatchKind::Guard) =>
+            ("// old: missing or incorrect guard condition", "// new: add/fix guard — e.g. `if !cond { return Err(...); }`"),
+        Some(PatchKind::MatchArm) =>
+            ("// old: incomplete or wrong match arm", "// new: add/fix match arm — e.g. `Some(x) => ...,`"),
+        Some(PatchKind::BoundsCheck) =>
+            ("// old: missing or incorrect bounds/safety assertion", "// new: fix assertion — e.g. `assert!(idx < len, \"...\");`"),
+        Some(PatchKind::CallSiteFix) =>
+            ("// old: wrong arguments or missing call at this site", "// new: fix call — e.g. update argument type/count"),
+        Some(PatchKind::PureFunctionRewrite) =>
+            ("// old: current (incorrect) implementation", "// new: corrected implementation"),
+        Some(PatchKind::General) | None =>
+            ("// TODO: replace with current behavior", "// TODO: minimal path-local fix here"),
+    }
+}
+
 fn build_apply_patch_template(target: &ExecutionPatchTarget) -> Option<String> {
     let file = target.file.as_ref()?;
     let context = target.context_window.as_ref()?;
@@ -1402,8 +1702,9 @@ fn build_apply_patch_template(target: &ExecutionPatchTarget) -> Option<String> {
             template.push('\n');
         }
     }
-    template.push_str("-// TODO: replace with current behavior\n");
-    template.push_str("+// TODO: minimal path-local fix here\n");
+    let (remove_hint, add_hint) = patch_kind_hints(target.patch_kind.as_ref());
+    template.push_str(&format!("-{}\n", remove_hint));
+    template.push_str(&format!("+{}\n", add_hint));
     template.push_str("*** End Patch");
     Some(template)
 }

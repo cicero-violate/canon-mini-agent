@@ -546,6 +546,9 @@ async fn run_solo_phase(
     *last_solo_plan_text = current_plan_text;
     let issues_text = crate::issues::read_top_open_issues(ctx.workspace, 5);
     let complexity_hotspots = crate::prompt_inputs::read_complexity_hotspots(ctx.workspace, 8);
+    let loop_context_hint = crate::prompt_inputs::read_loop_context_hint(
+        std::path::Path::new(crate::constants::agent_state_dir()),
+    );
     let mut prompt = single_role_solo_prompt(
         &spec,
         &master_plan,
@@ -560,6 +563,7 @@ async fn run_solo_phase(
         &executor_diff_inputs.diff_text,
         &plan_diff_text,
         &complexity_hotspots,
+        &loop_context_hint,
     );
     inject_inbound_message(&mut prompt, "solo");
     inject_post_restart_result(&mut prompt, "solo");

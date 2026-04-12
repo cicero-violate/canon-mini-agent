@@ -1138,6 +1138,7 @@ pub(crate) fn single_role_solo_prompt(
     executor_diff_text: &str,
     plan_diff_text: &str,
     complexity_hotspots: &str,
+    loop_context_hint: &str,
 ) -> String {
     let workspace = workspace();
     let diagnostics_path = diagnostics_file();
@@ -1171,6 +1172,11 @@ pub(crate) fn single_role_solo_prompt(
         "\n\nLessons artifact:\n{}",
         truncate_section(lessons_text, 2000)
     ));
+    append_optional_prompt_section(
+        &mut sections,
+        loop_context_hint,
+        "Repair loop context (supervisor-directed; focus on this target first):",
+    );
     append_optional_prompt_section(
         &mut sections,
         complexity_hotspots,
@@ -1259,6 +1265,7 @@ mod prompt_regression_tests {
             "",
             "",
             "",
+            "",
         );
 
         assert!(!output.contains("Pending rename tasks (from state/rename_candidates.json):"));
@@ -1277,6 +1284,7 @@ mod prompt_regression_tests {
             "diagnostics",
             "failures",
             "candidate1",
+            "",
             "",
             "",
             "",
@@ -1304,6 +1312,7 @@ mod prompt_regression_tests {
             "",
             "",
             "",
+            "",
         );
         let non_empty_output = single_role_solo_prompt(
             "spec",
@@ -1315,6 +1324,7 @@ mod prompt_regression_tests {
             "diagnostics",
             "failures",
             "candidate1",
+            "",
             "",
             "",
             "",
@@ -2088,6 +2098,7 @@ mod tests {
             "",
             "",
             "",
+            "",
         );
         assert!(
             prompt.contains("Use the `plan` action for `PLAN.json` edits"),
@@ -2106,6 +2117,7 @@ mod tests {
             "{violations}",
             "{diagnostics}",
             "{cargo_test_failures}",
+            "",
             "",
             "",
             "",
