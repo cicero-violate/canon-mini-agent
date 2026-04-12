@@ -603,13 +603,13 @@ Example (with bodies):
   {"action":"symbol_refs","crate":"canon_mini_agent","symbol":"app::run_agent","expand_bodies":true,"rationale":"Read every caller body to understand the call contract before refactoring."}
 Notes: `symbol` is module-relative; crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped. Covers every identifier span recorded by the HIR visitor during compilation. expand_bodies finds the tightest enclosing symbol in the graph and inlines its source.
 
-## `symbol_path` — BFS shortest call-graph path between two symbols; set expand_bodies:true to inline the source body of each hop
+## `symbol_path` — BFS shortest semantic-graph path between two symbols; set expand_bodies:true to inline the source body of each hop
 
 Example:
-  {"action":"symbol_path","crate":"canon_mini_agent","from":"app::run_agent","to":"tools::handle_apply_patch_action","rationale":"Trace how a high-level entry point reaches a specific handler."}
+  {"action":"symbol_path","crate":"canon_mini_agent","from":"app::run_agent","to":"tools::handle_apply_patch_action","rationale":"Trace the shortest semantic route between two symbols."}
 Example (with bodies):
-  {"action":"symbol_path","crate":"canon_mini_agent","from":"app::run_agent","to":"tools::handle_apply_patch_action","expand_bodies":true,"rationale":"Read every function along the call chain before changing a handler signature."}
-Notes: `from`/`to` are module-relative; crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped. Uses static call edges only; returns path with file:line annotations.
+  {"action":"symbol_path","crate":"canon_mini_agent","from":"app::run_agent","to":"tools::handle_apply_patch_action","expand_bodies":true,"rationale":"Read every symbol body along the semantic path before changing a handler signature."}
+Notes: `from`/`to` are module-relative; crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped. Traverses all semantic edges and labels each hop with its relation; returns the shortest path with file:line annotations.
 
 ## `symbol_neighborhood` — immediate callers and callees of a symbol; set expand_bodies:true to inline the source body of each caller and callee
 
