@@ -174,13 +174,17 @@ pub fn decide_active_blocker(
 }
 
 pub fn allow_verifier_run(scheduled_phase: Option<&str>) -> bool {
-    !matches!(scheduled_phase, Some(phase) if phase != "verifier")
+    allow_named_phase_run(scheduled_phase, "verifier")
 }
 
 /// Returns true when planner is allowed to run this cycle.
 /// Planner is blocked if another phase (not planner) owns the schedule.
 pub fn allow_planner_run(scheduled_phase: Option<&str>) -> bool {
-    !matches!(scheduled_phase, Some(phase) if phase != "planner")
+    allow_named_phase_run(scheduled_phase, "planner")
+}
+
+fn allow_named_phase_run(scheduled_phase: Option<&str>, allowed_phase: &str) -> bool {
+    !matches!(scheduled_phase, Some(phase) if phase != allowed_phase)
 }
 
 /// Returns true when executor dispatch should be frozen because a resume phase

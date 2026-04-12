@@ -26,28 +26,12 @@ fn read_action_input() -> Result<Value> {
 }
 
 fn predicted_next_actions(action: &Value) -> Vec<Value> {
-    existing_fast_path(action)
-        .unwrap_or_else(|| fallback_prediction(action))
-}
-
-fn existing_fast_path(action: &Value) -> Option<Vec<Value>> {
     existing_predicted_next_actions(action)
-}
-
-fn fallback_prediction(action: &Value) -> Vec<Value> {
-    predicted_next_actions_from_kind(action)
+        .unwrap_or_else(|| predicted_next_actions_from_kind(action))
 }
 
 fn predicted_next_actions_from_kind(action: &Value) -> Vec<Value> {
-    predicted_next_actions_for_resolved_kind(action, resolved_action_kind(action))
-}
-
-fn resolved_action_kind(action: &Value) -> &str {
-    action_kind(action)
-}
-
-fn predicted_next_actions_for_resolved_kind(action: &Value, kind: &str) -> Vec<Value> {
-    predicted_next_actions_for_kind(kind, action)
+    predicted_next_actions_for_kind(action_kind(action), action)
 }
 
 fn action_kind(action: &Value) -> &str {
