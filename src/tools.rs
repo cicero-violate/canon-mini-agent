@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail, Context, Result};
 use canon_llm::config::LlmEndpoint;
 use canon_tools_patch::apply_patch;
-use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind};
+use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind, SyntaxToken};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
@@ -1701,41 +1701,46 @@ fn extract_decl_symbols(workspace: &Path, file_path: &Path, text: &str) -> Vec<S
         .descendants_with_tokens()
         .filter_map(|e| e.into_token())
     {
-        if token.kind() != SyntaxKind::IDENT {
-            continue;
+        if let Some(entry) = symbol_entry_from_token(text, &starts, &file_rel, token) {
+            out.push(entry);
         }
-        let Some(name_node) = token.parent() else {
-            continue;
-        };
-        if name_node.kind() != SyntaxKind::NAME {
-            continue;
-        }
-        let Some(owner) = name_node.parent() else {
-            continue;
-        };
-        let Some(kind) = symbol_kind_from_name_owner(owner.kind()) else {
-            continue;
-        };
-        let range = token.text_range();
-        let start = u32::from(range.start()) as usize;
-        let end = u32::from(range.end()) as usize;
-        let (line, column) = offset_to_line_col(text, &starts, start);
-        let (end_line, end_column) = offset_to_line_col(text, &starts, end);
-        out.push(SymbolEntry {
-            name: token.text().to_string(),
-            kind: kind.to_string(),
-            file: file_rel.clone(),
-            span: SymbolSpan {
-                start,
-                end,
-                line,
-                column,
-                end_line,
-                end_column,
-            },
-        });
     }
     out
+}
+
+fn symbol_entry_from_token(
+    text: &str,
+    starts: &[usize],
+    file_rel: &str,
+    token: SyntaxToken,
+) -> Option<SymbolEntry> {
+    if token.kind() != SyntaxKind::IDENT {
+        return None;
+    }
+    let name_node = token.parent()?;
+    if name_node.kind() != SyntaxKind::NAME {
+        return None;
+    }
+    let owner = name_node.parent()?;
+    let kind = symbol_kind_from_name_owner(owner.kind())?;
+    let range = token.text_range();
+    let start = u32::from(range.start()) as usize;
+    let end = u32::from(range.end()) as usize;
+    let (line, column) = offset_to_line_col(text, starts, start);
+    let (end_line, end_column) = offset_to_line_col(text, starts, end);
+    Some(SymbolEntry {
+        name: token.text().to_string(),
+        kind: kind.to_string(),
+        file: file_rel.to_string(),
+        span: SymbolSpan {
+            start,
+            end,
+            line,
+            column,
+            end_line,
+            end_column,
+        },
+    })
 }
 
 fn handle_symbols_index_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
