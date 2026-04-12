@@ -2589,6 +2589,34 @@ fn verify_apply_patch_crate(
     ))
 }
 
+fn append_python_failure_guidance(out: &mut String, cwd: &str, workspace: &Path) {
+    let lowered = out.to_lowercase();
+    let mut context = String::new();
+    if !PathBuf::from(cwd).starts_with(workspace) && !cwd.starts_with("/tmp") {
+        context.push_str(&format!(
+            "python cwd escapes workspace; set cwd to {} or /tmp.\n",
+            crate::constants::workspace()
+        ));
+    }
+    if !context.is_empty() {
+        out.push('\n');
+        out.push_str(context.trim_end());
+    }
+    if lowered.contains("permission denied") || lowered.contains("errno 13") {
+        out.push_str(
+            &format!("\npython write denied: verify the target path is under {ws} and set cwd={ws}; if still blocked, use apply_patch for `src/`, `PLAN.json`, or lane plan edits.", ws = crate::constants::workspace()),
+        );
+    }
+}
+
+fn python_action_label(success: bool) -> &'static str {
+    if success {
+        "python ok"
+    } else {
+        "python failed"
+    }
+}
+
 fn handle_apply_patch_action(
     role: &str,
     step: usize,
@@ -2713,29 +2741,9 @@ fn handle_python_action(
     eprintln!("[{role}] step={} python bytes={}", step, code.len());
     let (success, mut out) = exec_python(workspace, code, cwd)?;
     if !success {
-        let lowered = out.to_lowercase();
-        let mut context = String::new();
-        if !PathBuf::from(cwd).starts_with(workspace) && !cwd.starts_with("/tmp") {
-            context.push_str(&format!(
-                "python cwd escapes workspace; set cwd to {} or /tmp.\n",
-                crate::constants::workspace()
-            ));
-        }
-        if !context.is_empty() {
-            out.push('\n');
-            out.push_str(context.trim_end());
-        }
-        if lowered.contains("permission denied") || lowered.contains("errno 13") {
-            out.push_str(
-                &format!("\npython write denied: verify the target path is under {ws} and set cwd={ws}; if still blocked, use apply_patch for `src/`, `PLAN.json`, or lane plan edits.", ws = crate::constants::workspace()),
-            );
-        }
+        append_python_failure_guidance(&mut out, cwd, workspace);
     }
-    let label = if success {
-        "python ok"
-    } else {
-        "python failed"
-    };
+    let label = python_action_label(success);
     eprintln!("[{role}] step={} {label} output_bytes={}", step, out.len());
     if !success {
         log_error_event(
