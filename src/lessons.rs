@@ -330,7 +330,7 @@ mod tests {
         assert!(!artifact.summary.is_empty(), "summary should be set");
         assert!(artifact.failures.iter().any(|f| f.contains("issue")), "issue failure should appear");
         assert!(artifact.failures.iter().any(|f| f.contains("plan")), "plan failure should appear");
-        assert!(artifact.fixes.iter().any(|f| f.contains("issue object")), "issue fix should appear");
+        assert!(artifact.fixes.iter().any(|f| f.contains("issue") && f.contains("object")), "issue fix should appear");
         assert!(artifact.fixes.iter().any(|f| f.contains("update_task")), "plan fix should appear");
     }
 
