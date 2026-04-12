@@ -696,6 +696,7 @@ const PLANNER_RULES: &[&str] = &[
 fn diagnostics_rules() -> Vec<String> {
     let mut rules = vec![
         "- Use the `python` action for structured analysis of project state and any available logs.".to_string(),
+        "- Emit schema-valid actions only: every `python` action MUST include a non-empty `code` field; every `issue` `set_status` action MUST include the exact `issue_id`; every diagnostics report write MUST include evidence entries with current-source validation markers such as `read_file <path>:<lines>`, `validated against current source`, or equivalent cited source validation.".to_string(),
         "- Write ranked findings to DIAGNOSTICS.json AND open or update issues in ISSUES.json for every significant finding. Use the `issue` action (op=create or op=update) with kind, location, evidence, and priority. Issues carry provenance that the planner trusts; raw DIAGNOSTICS.json entries are supporting context only.".to_string(),
         "- For each ranked failure you report: if no matching ISSUES.json entry exists, create one with `issue` op=create. If one exists but is stale, update it with `issue` op=update and fresh evidence. If a prior issue is now resolved, close it with `issue` op=set_status status=resolved.".to_string(),
         "- Rank issues by impact on correctness, convergence, and repairability.".to_string(),
