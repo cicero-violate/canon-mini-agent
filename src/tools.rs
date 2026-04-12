@@ -3628,29 +3628,57 @@ fn handle_graph_reports_action(
     let cmd = build_graph_reports_command(&artifact_crate, &out_dir_str, tlog.as_deref());
     eprintln!("[{role}] step={} {action_kind} cmd={cmd}", step);
     let (success, out) = exec_graph_command(workspace, &cmd)?;
-    let label = if success {
-        format!("{action_kind} ok")
-    } else {
-        format!("{action_kind} failed")
-    };
-    if !success {
-        log_graph_reports_failure(
-            role,
-            step,
-            action_kind,
-            &crate_name,
-            &artifact_crate,
-            &cmd,
-            &out_dir_str,
-            tlog.as_deref(),
-        );
-    }
+    let label = graph_reports_action_label(action_kind, success);
+    maybe_log_graph_reports_failure(
+        success,
+        role,
+        step,
+        action_kind,
+        &crate_name,
+        &artifact_crate,
+        &cmd,
+        &out_dir_str,
+        tlog.as_deref(),
+    );
     let (report_path, report_label) = graph_report_path(&crate_dir, action_kind);
     let summary = build_graph_reports_summary(&label, &out_dir_str, &report_path, report_label)?;
     Ok((
         false,
         format!("{summary}\n\nfull_output:\n{}", truncate(&out, MAX_SNIPPET)),
     ))
+}
+
+fn graph_reports_action_label(action_kind: &str, success: bool) -> String {
+    if success {
+        format!("{action_kind} ok")
+    } else {
+        format!("{action_kind} failed")
+    }
+}
+
+fn maybe_log_graph_reports_failure(
+    success: bool,
+    role: &str,
+    step: usize,
+    action_kind: &str,
+    crate_name: &str,
+    artifact_crate: &str,
+    cmd: &str,
+    out_dir_str: &str,
+    tlog: Option<&str>,
+) {
+    if !success {
+        log_graph_reports_failure(
+            role,
+            step,
+            action_kind,
+            crate_name,
+            artifact_crate,
+            cmd,
+            out_dir_str,
+            tlog,
+        );
+    }
 }
 
 fn build_cargo_test_command(crate_name: &str, test_name: Option<&str>) -> String {
