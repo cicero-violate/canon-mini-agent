@@ -3194,17 +3194,24 @@ fn new_dispatch_state(lanes: &[LaneConfig]) -> DispatchState {
 }
 
 impl DispatchState {
+    fn lane_value_or_default<T: Copy + Default>(
+        map: &std::collections::HashMap<usize, T>,
+        lane_id: usize,
+    ) -> T {
+        map.get(&lane_id).copied().unwrap_or_default()
+    }
+
     fn lane_in_flight(&self, lane_id: usize) -> bool {
-        *self.lane_prompt_in_flight.get(&lane_id).unwrap_or(&false)
+        Self::lane_value_or_default(&self.lane_prompt_in_flight, lane_id)
     }
     fn lane_submit_active(&self, lane_id: usize) -> bool {
-        *self.lane_submit_in_flight.get(&lane_id).unwrap_or(&false)
+        Self::lane_value_or_default(&self.lane_submit_in_flight, lane_id)
     }
     fn lane_next_submit_ms(&self, lane_id: usize) -> u64 {
-        *self.lane_next_submit_at_ms.get(&lane_id).unwrap_or(&0)
+        Self::lane_value_or_default(&self.lane_next_submit_at_ms, lane_id)
     }
     fn lane_steps_used(&self, lane_id: usize) -> usize {
-        *self.lane_steps_used.get(&lane_id).unwrap_or(&0)
+        Self::lane_value_or_default(&self.lane_steps_used, lane_id)
     }
     fn lane_active_tab(&self, lane_id: usize) -> Option<u32> {
         self.lane_active_tab.get(&lane_id).copied()
