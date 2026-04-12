@@ -910,6 +910,20 @@ fn check_test_gate(root: &Path) -> bool {
     }
 }
 
+/// Extract `symbol::path` tokens from a free-form string.
+fn extract_symbol_tokens(text: &str) -> Vec<String> {
+    text.split_whitespace()
+        .filter_map(|word| {
+            let clean = word.trim_matches(|c: char| !c.is_alphanumeric() && c != ':' && c != '_');
+            if clean.contains("::") && !clean.contains('/') {
+                Some(clean.to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 /// Read VIOLATIONS.json and extract symbol paths from violation evidence/location fields.
 fn load_violation_symbols(workspace: &Path) -> Vec<String> {
     let path = workspace.join("VIOLATIONS.json");
@@ -922,7 +936,6 @@ fn load_violation_symbols(workspace: &Path) -> Vec<String> {
     let mut symbols = Vec::new();
     if let Some(violations) = val.get("violations").and_then(|v| v.as_array()) {
         for v in violations {
-            // Collect any strings in `files` that look like symbol paths (contain `::`)
             if let Some(files) = v.get("files").and_then(|f| f.as_array()) {
                 for f in files {
                     if let Some(s) = f.as_str() {
@@ -932,16 +945,10 @@ fn load_violation_symbols(workspace: &Path) -> Vec<String> {
                     }
                 }
             }
-            // Also scan evidence lines for `symbol::path` patterns
             if let Some(evidence) = v.get("evidence").and_then(|e| e.as_array()) {
                 for line in evidence {
                     if let Some(s) = line.as_str() {
-                        for word in s.split_whitespace() {
-                            let clean = word.trim_matches(|c: char| !c.is_alphanumeric() && c != ':' && c != '_');
-                            if clean.contains("::") && !clean.contains('/') {
-                                symbols.push(clean.to_string());
-                            }
-                        }
+                        symbols.extend(extract_symbol_tokens(s));
                     }
                 }
             }
@@ -950,6 +957,109 @@ fn load_violation_symbols(workspace: &Path) -> Vec<String> {
     symbols.sort();
     symbols.dedup();
     symbols
+}
+
+/// A file + line number extracted from an issue location string.
+struct FileLocation {
+    file: String,
+    line: u32,
+}
+
+/// Read ISSUES.json and return:
+/// - symbol paths extracted directly from evidence strings (`::` tokens)
+/// - file locations from `location` fields for semantic resolution
+///
+/// Only open issues are considered; resolved issues are skipped.
+fn load_issue_failure_signals(workspace: &Path) -> (Vec<String>, Vec<FileLocation>) {
+    let path = workspace.join("ISSUES.json");
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return (Vec::new(), Vec::new());
+    };
+    let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return (Vec::new(), Vec::new());
+    };
+    let mut symbols: Vec<String> = Vec::new();
+    let mut locations: Vec<FileLocation> = Vec::new();
+
+    let Some(issues) = val.get("issues").and_then(|v| v.as_array()) else {
+        return (symbols, locations);
+    };
+
+    for issue in issues {
+        let status = issue.get("status").and_then(|v| v.as_str()).unwrap_or("open");
+        if status == "resolved" {
+            continue;
+        }
+
+        // Parse `location` field: semicolon-separated entries like "src/tools.rs:3553-3562"
+        if let Some(loc_str) = issue.get("location").and_then(|v| v.as_str()) {
+            for part in loc_str.split(';') {
+                let part = part.trim();
+                // Extract file:line — take the first colon-separated number as the line.
+                // Format examples: "src/tools.rs:3553-3562", "src/bin/canon-exec.rs:6"
+                if let Some(colon_pos) = part.rfind(':') {
+                    let file = part[..colon_pos].trim().to_string();
+                    let line_part = part[colon_pos + 1..].trim();
+                    // Take only the start line (before any `-`).
+                    let line_str = line_part.split('-').next().unwrap_or("0");
+                    if let Ok(line) = line_str.parse::<u32>() {
+                        if line > 0 && !file.is_empty() {
+                            locations.push(FileLocation { file, line });
+                        }
+                    }
+                }
+                // Also extract any `::` symbol tokens embedded in location strings.
+                symbols.extend(extract_symbol_tokens(part));
+            }
+        }
+
+        // Scan evidence strings for `::` symbol tokens.
+        if let Some(evidence) = issue.get("evidence").and_then(|e| e.as_array()) {
+            for entry in evidence {
+                if let Some(s) = entry.as_str() {
+                    symbols.extend(extract_symbol_tokens(s));
+                }
+            }
+        }
+
+        // Scan description for `::` tokens (inter-complexity issues embed symbol names).
+        if let Some(desc) = issue.get("description").and_then(|v| v.as_str()) {
+            symbols.extend(extract_symbol_tokens(desc));
+        }
+    }
+
+    symbols.sort();
+    symbols.dedup();
+    (symbols, locations)
+}
+
+/// Resolve file-location pairs to symbol paths using the semantic index.
+fn resolve_file_locations(
+    idx: &canon_mini_agent::SemanticIndex,
+    workspace: &Path,
+    locations: &[FileLocation],
+) -> Vec<String> {
+    let ws = workspace.to_string_lossy();
+    let ws_prefix = if ws.ends_with('/') {
+        ws.into_owned()
+    } else {
+        format!("{}/", ws)
+    };
+    let mut resolved = Vec::new();
+    for loc in locations {
+        // Resolve relative paths against the workspace root.
+        let abs_file = if loc.file.starts_with('/') {
+            loc.file.clone()
+        } else {
+            format!("{}{}", ws_prefix, loc.file)
+        };
+        if let Some(symbol) = idx.symbol_at_file_line(&abs_file, loc.line) {
+            resolved.push(symbol);
+        }
+    }
+    resolved.sort();
+    resolved.dedup();
+    resolved
 }
 
 /// Load the SemanticIndex for the primary crate in the workspace.
@@ -1021,16 +1131,28 @@ fn run_repair_loop(
             break;
         }
 
-        // Load violation symbols and semantic index for scoring.
-        let violation_symbols = load_violation_symbols(workspace);
+        // Load failure signals from VIOLATIONS.json and ISSUES.json, then merge.
+        let mut failure_symbols = load_violation_symbols(workspace);
+        let (issue_symbols, issue_locations) = load_issue_failure_signals(workspace);
+        failure_symbols.extend(issue_symbols);
         let maybe_idx = load_primary_semantic_index(workspace);
+        if let Some(ref idx) = maybe_idx {
+            let resolved = resolve_file_locations(idx, workspace, &issue_locations);
+            failure_symbols.extend(resolved);
+        }
+        failure_symbols.sort();
+        failure_symbols.dedup();
+        eprintln!(
+            "[canon-mini-supervisor] loop: {} failure signal(s) loaded",
+            failure_symbols.len()
+        );
 
         if let Some(ref idx) = maybe_idx {
             write_loop_context(
                 &state_dir,
                 idx,
                 workspace,
-                &violation_symbols,
+                &failure_symbols,
                 iteration,
                 max_iterations,
                 tests_passing,

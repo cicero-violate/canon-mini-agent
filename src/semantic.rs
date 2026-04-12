@@ -134,6 +134,9 @@ pub struct SymbolSummary {
     pub mir_stmts: Option<usize>,
     pub call_in: usize,
     pub call_out: usize,
+    /// Number of identifier reference sites recorded for this symbol (HIR-level).
+    /// Zero means the symbol is never mentioned in source — a strong dead-code signal.
+    pub ref_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -361,6 +364,7 @@ impl SemanticIndex {
                 mir_stmts,
                 call_in: *call_in.get(node_key.as_str()).unwrap_or(&0),
                 call_out: *call_out.get(node_key.as_str()).unwrap_or(&0),
+                ref_count: node.refs.len(),
             });
         }
 
@@ -1112,6 +1116,88 @@ impl SemanticIndex {
             .collect::<Vec<_>>()
             .join(" -> ");
         format!("{:016x}", stable_hash(&joined))
+    }
+
+    // -----------------------------------------------------------------------
+    // Refactor analysis primitives
+    // -----------------------------------------------------------------------
+
+    /// Count non-cleanup basic blocks in `symbol_key`'s CFG that are unreachable
+    /// from the function's entry block.  Any value > 0 means dead branches exist.
+    pub fn unreachable_block_count(&self, symbol_key: &str) -> usize {
+        // Collect all non-cleanup blocks belonging to this function.
+        let all_blocks: HashSet<&str> = self
+            .graph
+            .bridge_edges
+            .iter()
+            .filter(|e| e.relation == "BelongsTo" && e.to == symbol_key)
+            .filter(|e| {
+                self.graph
+                    .cfg_nodes
+                    .get(e.from.as_str())
+                    .map(|n| !n.is_cleanup)
+                    .unwrap_or(false)
+            })
+            .map(|e| e.from.as_str())
+            .collect();
+
+        if all_blocks.is_empty() {
+            return 0;
+        }
+
+        let entry_bb_id = self
+            .graph
+            .bridge_edges
+            .iter()
+            .find(|e| e.relation == "Entry" && e.from == symbol_key)
+            .map(|e| e.to.as_str());
+
+        let Some(entry_bb) = entry_bb_id else {
+            return 0;
+        };
+
+        // Build adjacency restricted to this function's blocks.
+        let mut cfg_adj: HashMap<&str, Vec<&str>> = HashMap::new();
+        for edge in &self.graph.cfg_edges {
+            if all_blocks.contains(edge.from.as_str()) {
+                cfg_adj
+                    .entry(edge.from.as_str())
+                    .or_default()
+                    .push(edge.to.as_str());
+            }
+        }
+
+        // BFS from entry.
+        let mut visited: HashSet<&str> = HashSet::new();
+        let mut queue: VecDeque<&str> = VecDeque::new();
+        visited.insert(entry_bb);
+        queue.push_back(entry_bb);
+        while let Some(cur) = queue.pop_front() {
+            if let Some(succs) = cfg_adj.get(cur) {
+                for &succ in succs {
+                    if all_blocks.contains(succ) && visited.insert(succ) {
+                        queue.push_back(succ);
+                    }
+                }
+            }
+        }
+
+        all_blocks.len().saturating_sub(visited.len())
+    }
+
+    /// Return the direct callees of `symbol_key` as a sorted, deduplicated list
+    /// of symbol paths.  Used for helper-extraction overlap analysis.
+    pub fn direct_callee_paths(&self, symbol_key: &str) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .graph
+            .edges
+            .iter()
+            .filter(|e| edge_is_call(e) && e.from == symbol_key)
+            .map(|e| self.edge_endpoint_path(&e.to))
+            .collect();
+        out.sort();
+        out.dedup();
+        out
     }
 
     // -----------------------------------------------------------------------
