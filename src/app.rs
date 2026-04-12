@@ -434,6 +434,7 @@ async fn run_planner_phase(
         &inputs.cargo_test_failures,
     );
     inject_inbound_message(&mut planner_prompt, "planner");
+    inject_post_restart_result(&mut planner_prompt, "planner");
     trace_orchestrator_forwarded("orchestrator", "planner", "planner", None, None, None, None);
     let planner_system = system_instructions(AgentPromptKind::Planner);
     let result = run_agent(
@@ -561,6 +562,7 @@ async fn run_solo_phase(
         &complexity_hotspots,
     );
     inject_inbound_message(&mut prompt, "solo");
+    inject_post_restart_result(&mut prompt, "solo");
     trace_orchestrator_forwarded("orchestrator", "solo", "solo", None, None, None, None);
     let solo_system = system_instructions(AgentPromptKind::Solo);
     let result = run_agent(
@@ -3015,10 +3017,67 @@ async fn run_agent(
                     repeated_failed_action_count = 0;
                     repeated_failed_action_fingerprint = None;
                 }
+                // Persist the last action result so it can be re-injected into the
+                // initial prompt if the supervisor restarts the process mid-cycle
+                // (e.g. after apply_patch triggers a binary rebuild).  The file is
+                // consumed once on startup and then deleted.
+                write_post_restart_result(role, kind.as_str(), &out, step + 1);
                 last_result = Some(out);
             }
         }
         step += 1;
+    }
+}
+
+/// Write the last completed action result to a state file so it survives a
+/// supervisor-triggered restart.  Only the most recent action is kept (overwrites).
+fn write_post_restart_result(role: &str, action: &str, result: &str, step: usize) {
+    let path = std::path::Path::new(crate::constants::agent_state_dir())
+        .join("post_restart_result.json");
+    let payload = serde_json::json!({
+        "role": role,
+        "action": action,
+        "result": result,
+        "step": step,
+    });
+    let _ = std::fs::write(&path, serde_json::to_string_pretty(&payload).unwrap_or_default());
+}
+
+/// Read and consume the post-restart result file.  Returns `Some((action, result, step))`
+/// if the file exists and was written by `role`, then deletes the file.
+fn take_post_restart_result(role: &str) -> Option<(String, String, usize)> {
+    let path = std::path::Path::new(crate::constants::agent_state_dir())
+        .join("post_restart_result.json");
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let saved_role = v.get("role").and_then(|r| r.as_str()).unwrap_or("");
+    // Normalise: executor[executor_pool] → executor
+    let role_key = if role.starts_with("executor") { "executor" } else { role };
+    let saved_key = if saved_role.starts_with("executor") { "executor" } else { saved_role };
+    if role_key != saved_key {
+        return None;
+    }
+    let action = v.get("action").and_then(|a| a.as_str()).unwrap_or("(unknown)").to_string();
+    let result = v.get("result").and_then(|r| r.as_str()).unwrap_or("").to_string();
+    let step = v.get("step").and_then(|s| s.as_u64()).unwrap_or(0) as usize;
+    // Consume — delete so it isn't re-injected on a second restart
+    let _ = std::fs::remove_file(&path);
+    Some((action, result, step))
+}
+
+/// If a post-restart result exists for this role, append it to the prompt so the
+/// agent continues from where it left off rather than re-running checks.
+fn inject_post_restart_result(prompt: &mut String, role: &str) {
+    if let Some((action, result, step)) = take_post_restart_result(role) {
+        eprintln!(
+            "[{role}] post-restart: injecting prior action result (action={action} step={step})"
+        );
+        prompt.push_str(&format!(
+            "\n\n---\nRESTART CONTEXT: The agent process was restarted (likely because a source \
+             build updated the binary). Your last completed action before restart was:\n\
+             Action: `{action}` (step {step})\nResult:\n{result}\n\
+             Continue from where you left off — do NOT re-run checks that already passed above.\n---\n"
+        ));
     }
 }
 
@@ -3694,6 +3753,7 @@ async fn submit_executor_turn(
         &ready_tasks,
     );
     inject_inbound_message(&mut exec_prompt, "executor");
+    inject_post_restart_result(&mut exec_prompt, "executor");
     let executor_system = system_instructions(AgentPromptKind::Executor);
     let role_schema = if send_system_prompt {
         executor_system
