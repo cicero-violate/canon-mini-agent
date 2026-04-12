@@ -402,33 +402,11 @@ fn build_issue_fields(
     entry: &InterEntry,
     crate_name: &str,
 ) -> (String, String, String, Vec<String>) {
-    let short_sym = entry.symbol.rsplit("::").next().unwrap_or(&entry.symbol);
+    let short_sym = issue_short_symbol(entry);
     let file = shorten_file(&entry.file);
-
-    let title = if entry.r_body > 0.0 {
-        format!(
-            "Reduce inter-function complexity + eliminate duplicate: {}",
-            short_sym
-        )
-    } else {
-        format!("Reduce inter-function complexity: {}", short_sym)
-    };
-
-    let kind = if entry.r_body > 0.0 {
-        "redundancy".to_string()
-    } else {
-        "performance".to_string()
-    };
-
-    let dup_note = if entry.r_body > 0.0 {
-        format!(
-            "\n\nThis function has MIR-identical siblings: {}. \
-             Consolidate into a shared helper to eliminate R directly.",
-            entry.duplicate_of.join(", ")
-        )
-    } else {
-        String::new()
-    };
+    let title = issue_title(entry, short_sym);
+    let kind = issue_kind(entry);
+    let dup_note = duplicate_note(entry);
 
     let description = format!(
         "Inter-function objective score {score:.3} in crate `{crate_name}` \
@@ -450,6 +428,51 @@ fn build_issue_fields(
         dup_note = dup_note,
     );
 
+    let evidence = build_issue_evidence(entry, &file);
+
+    (title, kind, description, evidence)
+}
+
+fn issue_short_symbol<'a>(entry: &'a InterEntry) -> &'a str {
+    entry.symbol.rsplit("::").next().unwrap_or(&entry.symbol)
+}
+
+fn has_duplicates(entry: &InterEntry) -> bool {
+    entry.r_body > 0.0
+}
+
+fn issue_title(entry: &InterEntry, short_sym: &str) -> String {
+    if has_duplicates(entry) {
+        format!(
+            "Reduce inter-function complexity + eliminate duplicate: {}",
+            short_sym
+        )
+    } else {
+        format!("Reduce inter-function complexity: {}", short_sym)
+    }
+}
+
+fn issue_kind(entry: &InterEntry) -> String {
+    if has_duplicates(entry) {
+        "redundancy".to_string()
+    } else {
+        "performance".to_string()
+    }
+}
+
+fn duplicate_note(entry: &InterEntry) -> String {
+    if has_duplicates(entry) {
+        format!(
+            "\n\nThis function has MIR-identical siblings: {}. \
+             Consolidate into a shared helper to eliminate R directly.",
+            entry.duplicate_of.join(", ")
+        )
+    } else {
+        String::new()
+    }
+}
+
+fn build_issue_evidence(entry: &InterEntry, file: &str) -> Vec<String> {
     let mut evidence = vec![
         format!("inter_objective={:.3}", entry.inter_objective),
         format!("b_direct={} b_transitive={:.1}", entry.b_direct, entry.b_transitive),
@@ -460,8 +483,7 @@ fn build_issue_fields(
     if !entry.duplicate_of.is_empty() {
         evidence.push(format!("MIR duplicates: {}", entry.duplicate_of.join(", ")));
     }
-
-    (title, kind, description, evidence)
+    evidence
 }
 
 // ---------------------------------------------------------------------------
