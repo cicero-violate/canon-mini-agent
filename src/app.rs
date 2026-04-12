@@ -4613,9 +4613,10 @@ mod tests {
     use super::{
         action_retry_fingerprint, executor_step_limit_feedback, has_actionable_objectives,
         plan_has_incomplete_tasks, should_reject_solo_self_complete, verifier_confirmed_with_plan_text,
-        ActionProvenance,
+        ActionProvenance, DispatchState,
     };
     use serde_json::json;
+    use std::collections::{HashMap, VecDeque};
 
     #[test]
     fn build_agent_prompt_includes_role_schema_on_nonzero_steps_when_enabled() {
@@ -4782,6 +4783,62 @@ mod tests {
           ]
         }"#;
         assert!(!should_reject_solo_self_complete(&action, objectives, plan));
+    }
+
+    #[test]
+    fn dispatch_state_accessor_subset_uses_shared_default_helper() {
+        let mut bool_map = HashMap::new();
+        bool_map.insert(7usize, true);
+        assert!(DispatchState::lane_value_or_default(&bool_map, 7));
+        assert!(!DispatchState::lane_value_or_default(&bool_map, 8));
+
+        let mut ms_map = HashMap::new();
+        ms_map.insert(7usize, 42u64);
+        assert_eq!(DispatchState::lane_value_or_default(&ms_map, 7), 42);
+        assert_eq!(DispatchState::lane_value_or_default(&ms_map, 8), 0);
+
+        let mut steps_map = HashMap::new();
+        steps_map.insert(7usize, 3usize);
+        assert_eq!(DispatchState::lane_value_or_default(&steps_map, 7), 3);
+        assert_eq!(DispatchState::lane_value_or_default(&steps_map, 8), 0);
+
+        let mut state = DispatchState {
+            lanes: HashMap::new(),
+            submitted_turns: HashMap::new(),
+            executor_submit_inflight: HashMap::new(),
+            tab_id_to_lane: HashMap::new(),
+            lane_active_tab: HashMap::new(),
+            lane_prompt_in_flight: HashMap::new(),
+            deferred_completions: HashMap::<usize, VecDeque<_>>::new(),
+            lane_steps_used: HashMap::new(),
+            diagnostics_pending: false,
+            planner_pending: false,
+            diagnostics_text: String::new(),
+            last_plan_text: String::new(),
+            last_executor_diff: String::new(),
+            last_solo_plan_text: String::new(),
+            last_solo_executor_diff: String::new(),
+            lane_next_submit_at_ms: HashMap::new(),
+            lane_submit_in_flight: HashMap::new(),
+        };
+
+        assert!(!state.lane_in_flight(7));
+        assert!(!state.lane_submit_active(7));
+        assert_eq!(state.lane_next_submit_ms(7), 0);
+        assert_eq!(state.lane_steps_used(7), 0);
+        assert_eq!(state.lane_active_tab(7), None);
+
+        state.lane_prompt_in_flight.insert(7, true);
+        state.lane_submit_in_flight.insert(7, true);
+        state.lane_next_submit_at_ms.insert(7, 42);
+        state.lane_steps_used.insert(7, 3);
+        state.lane_active_tab.insert(7, 99);
+
+        assert!(state.lane_in_flight(7));
+        assert!(state.lane_submit_active(7));
+        assert_eq!(state.lane_next_submit_ms(7), 42);
+        assert_eq!(state.lane_steps_used(7), 3);
+        assert_eq!(state.lane_active_tab(7), Some(99));
     }
 
     #[test]
