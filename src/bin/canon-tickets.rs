@@ -116,31 +116,49 @@ fn build_issues_for_symbols(
         let (id, title, description, priority_rank, score) =
             build_issue_details(crate_name, s, kind);
 
-        let evidence = vec![
-            format!("crate={crate_name}"),
-            format!("file={} line={}", s.file, s.line),
-            format!(
-                "mir: fingerprint={:?} blocks={:?} stmts={:?}",
-                s.mir_fingerprint, s.mir_blocks, s.mir_stmts
-            ),
-            format!("call_graph: callers={} callees={}", s.call_in, s.call_out),
-        ];
-
-        new_issues.push(json!({
-            "id": id,
-            "title": title,
-            "status": "open",
-            "priority": if priority_rank == 1 { "medium" } else { "low" },
-            "kind": "performance",
-            "description": description,
-            "location": format!("{}:{}", s.file, s.line),
-            "evidence": evidence,
-            "discovered_by": "tickets",
-        }));
+        let evidence = build_issue_evidence(crate_name, s);
+        push_generated_issue(new_issues, &id, &title, &description, priority_rank, s, evidence);
 
         issue_scores.push((id.clone(), priority_rank, score));
         *added_here += 1;
     }
+}
+
+fn build_issue_evidence(
+    crate_name: &str,
+    s: &canon_mini_agent::SymbolSummary,
+) -> Vec<String> {
+    vec![
+        format!("crate={crate_name}"),
+        format!("file={} line={}", s.file, s.line),
+        format!(
+            "mir: fingerprint={:?} blocks={:?} stmts={:?}",
+            s.mir_fingerprint, s.mir_blocks, s.mir_stmts
+        ),
+        format!("call_graph: callers={} callees={}", s.call_in, s.call_out),
+    ]
+}
+
+fn push_generated_issue(
+    new_issues: &mut Vec<Value>,
+    id: &str,
+    title: &str,
+    description: &str,
+    priority_rank: u32,
+    s: &canon_mini_agent::SymbolSummary,
+    evidence: Vec<String>,
+) {
+    new_issues.push(json!({
+        "id": id,
+        "title": title,
+        "status": "open",
+        "priority": if priority_rank == 1 { "medium" } else { "low" },
+        "kind": "performance",
+        "description": description,
+        "location": format!("{}:{}", s.file, s.line),
+        "evidence": evidence,
+        "discovered_by": "tickets",
+    }));
 }
 
 fn build_issue_details(

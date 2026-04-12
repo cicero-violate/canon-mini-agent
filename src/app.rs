@@ -611,6 +611,7 @@ async fn run_solo_phase(
                     return false;
                 }
             }
+            crate::lessons::maybe_synthesize_lessons(ctx.workspace);
             true
         }
         Err(err) => {
