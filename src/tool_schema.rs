@@ -468,19 +468,18 @@ pub enum ToolAction {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         out: Option<String>,
     },
-    /// Repomap-style symbol outline for a crate (backed by rustc graph.json).
-    /// Set `expand_bodies` to true to inline the full source body of each symbol.
-    /// Most useful when combined with `filter` to scope to a single file or module.
+    /// Triple-style semantic graph view for a crate (backed by rustc graph.json).
+    /// Emits one `(from, relation, to)` line per edge.
     SemanticMap {
         #[serde(flatten)]
         base: ActionBase,
         #[serde(rename = "crate")]
         crate_name: String,
         /// Optional symbol-path prefix to restrict output (e.g. "canon_mini_agent::tools").
+        /// Keeps triples whose source or target matches the prefix.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         filter: Option<String>,
-        /// When true, inlines the full source body of each symbol after its outline entry.
-        /// Best used with `filter` to avoid enormous output.
+        /// Retained for backward compatibility; ignored in triple mode.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         expand_bodies: bool,
     },
@@ -722,9 +721,9 @@ fn build_tool_actions_list() -> Vec<(&'static str, &'static str, Option<&'static
         ),
         (
             "semantic_map",
-            "rustc-backed repomap: symbol outline by file (kind, name, signature); set expand_bodies:true (with filter) to inline all bodies in a module",
+            "rustc-backed semantic graph triples: one `(from, relation, to)` line per edge",
             Some(
-                "Examples:\n  {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"rationale\":\"Get a compiler-backed symbol outline before exploring files.\"}\n  {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"filter\":\"tools\",\"rationale\":\"Restrict to the tools module.\"}\n  {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"filter\":\"tools\",\"expand_bodies\":true,\"rationale\":\"Read every symbol body in the tools module in one pass.\"}\nNotes: symbol paths are module-relative (e.g. `tools::my_fn`). Crate-qualified prefixes like `canon_mini_agent::tools` or `crate::tools` are accepted and stripped. `filter` is an optional path prefix; use `expand_bodies` with `filter` to avoid oversized output.",
+                "Examples:\n  {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"rationale\":\"Get compiler-backed semantic triples before exploring specific symbols.\"}\n  {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"filter\":\"tools\",\"rationale\":\"Restrict triples to edges touching the tools module.\"}\nNotes: returns one triple per line as `(from, relation, to)`. Symbol paths are module-relative (e.g. `tools::my_fn`). Crate-qualified prefixes like `canon_mini_agent::tools` or `crate::tools` are accepted and stripped. `filter` keeps triples whose source or target matches the prefix. `expand_bodies` is accepted for compatibility but ignored.",
             ),
         ),
         (

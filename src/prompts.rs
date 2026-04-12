@@ -166,7 +166,7 @@ fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
             "stage_graph — emit a synthetic OODA-style stage graph artifact"
         }
         (_, ToolPromptKind::SemanticMap) => {
-            "semantic_map — [PREFER over list_dir] rustc-backed crate outline: symbol kind, name, signature by file"
+            "semantic_map — [PREFER over list_dir] rustc-backed semantic triples: (from, relation, to)"
         }
         (_, ToolPromptKind::SymbolWindow) => {
             "symbol_window — [PREFER over read_file] extract full definition body of a symbol (byte-precise, no line-number noise)"
@@ -252,7 +252,7 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
         (_, ToolPromptKind::Plan) => plan_tool_prompt(kind),
 
         (_, ToolPromptKind::SemanticMap) => {
-            "   {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"rationale\":\"Get a rustc-backed symbol outline to understand the codebase structure before reading individual files.\"}\n   {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"filter\":\"tools\",\"rationale\":\"Restrict the outline to the tools module to see all symbols in that area.\"}\n   Notes: `crate` is the crate name (underscores). Symbol paths use module-relative format (e.g. `tools::my_fn`); crate-qualified prefixes like `canon_mini_agent::tools` or `crate::tools` are accepted and stripped. Optional `filter` restricts to a symbol-path prefix.".to_string()
+            "   {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"rationale\":\"Get rustc-backed semantic triples before drilling into specific symbols.\"}\n   {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"filter\":\"tools\",\"rationale\":\"Restrict triples to edges touching the tools module.\"}\n   Notes: returns one triple per line as `(from, relation, to)`. Symbol paths are module-relative (e.g. `tools::my_fn`); crate-qualified prefixes like `canon_mini_agent::tools` or `crate::tools` are accepted and stripped. Optional `filter` keeps triples whose source or target matches the prefix. `expand_bodies` is ignored in triple mode.".to_string()
         }
         (_, ToolPromptKind::SymbolWindow) => {
             "   {\"action\":\"symbol_window\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"rationale\":\"Extract the full definition of a specific function before editing it.\"}\n   Notes: `symbol` uses module-relative path (e.g. `tools::my_fn`); crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped; accepts unambiguous short name as suffix.".to_string()

@@ -582,13 +582,13 @@ Example:
 Notes:
 - `out` defaults to `state/orchestrator/stage_graph.json`.
 
-## `semantic_map` — rustc-backed repomap: symbol outline by file (kind, name, signature); set expand_bodies:true (with filter) to inline all bodies in a module
+## `semantic_map` — rustc-backed semantic graph triples: one `(from, relation, to)` line per edge
 
 Examples:
-  {"action":"semantic_map","crate":"canon_mini_agent","rationale":"Get a compiler-backed symbol outline before exploring files."}
-  {"action":"semantic_map","crate":"canon_mini_agent","filter":"tools","rationale":"Restrict to the tools module."}
-  {"action":"semantic_map","crate":"canon_mini_agent","filter":"tools","expand_bodies":true,"rationale":"Read every symbol body in the tools module in one pass."}
-Notes: symbol paths are module-relative (e.g. `tools::my_fn`). Crate-qualified prefixes like `canon_mini_agent::tools` or `crate::tools` are accepted and stripped. `filter` is an optional path prefix; use `expand_bodies` with `filter` to avoid oversized output.
+  {"action":"semantic_map","crate":"canon_mini_agent","rationale":"Get compiler-backed semantic triples before exploring files."}
+  {"action":"semantic_map","crate":"canon_mini_agent","filter":"tools","rationale":"Restrict triples to edges touching the tools module."}
+  {"action":"semantic_map","crate":"canon_mini_agent","filter":"tools","expand_bodies":true,"rationale":"Compatibility call; expand_bodies is ignored in triple mode."}
+Notes: returns one triple per line as `(from, relation, to)`. Symbol paths are module-relative (e.g. `tools::my_fn`). Crate-qualified prefixes like `canon_mini_agent::tools` or `crate::tools` are accepted and stripped. `filter` keeps triples whose source or target matches the prefix.
 
 ## `symbol_window` — extract the full definition body of a symbol (byte-precise, via def span)
 
@@ -673,4 +673,3 @@ Rules:
 - For issue: only op=read.
 - Items must omit rationale, predicted_next_actions, and observation.
 - On per-item error the item is labeled [batch N/M: ERROR] and execution continues.
-
