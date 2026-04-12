@@ -211,6 +211,7 @@ impl SemanticIndex {
             }
             self.push_execution_path_entry(&mut out, node_id, expand_bodies);
         }
+        self.push_execution_patch_targets(&mut out, &path);
         Ok(out)
     }
 
@@ -748,14 +749,15 @@ impl SemanticIndex {
 
     fn push_execution_path_entry(&self, out: &mut String, node_id: &str, expand_bodies: bool) {
         if self.graph.nodes.contains_key(node_id) {
-            self.push_symbol_path_entry(out, node_id, expand_bodies);
+            self.push_annotated_semantic_entry(out, node_id, expand_bodies);
             return;
         }
         if let Some(cfg) = self.graph.cfg_nodes.get(node_id) {
             let owner = self.edge_endpoint_path(&cfg.owner);
             out.push_str(&format!(
-                "  {} [owner={} block={} term={} cleanup={}]\n",
+                "  {} [class={} owner={} block={} term={} cleanup={}]\n",
                 node_id,
+                classify_cfg_block(&cfg.terminator),
                 owner,
                 cfg.block,
                 if cfg.terminator.is_empty() {
@@ -771,6 +773,133 @@ impl SemanticIndex {
             return;
         }
         out.push_str(&format!("  {}\n", node_id));
+    }
+
+    fn push_annotated_semantic_entry(&self, out: &mut String, sym: &str, expand_bodies: bool) {
+        if let Some(node) = self.graph.nodes.get(sym) {
+            let class = classify_semantic_node(node);
+            if let Some(def) = &node.def {
+                out.push_str(&format!(
+                    "  {} [class={} kind={}] ({}:{})\n",
+                    self.node_path(sym, node),
+                    class,
+                    node.kind,
+                    shorten_path(&def.file),
+                    def.line
+                ));
+                if expand_bodies {
+                    if let Ok(body) = self.symbol_window(sym) {
+                        for line in body.lines() {
+                            out.push_str("    ");
+                            out.push_str(line);
+                            out.push('\n');
+                        }
+                    }
+                }
+                return;
+            }
+            out.push_str(&format!(
+                "  {} [class={} kind={}]\n",
+                self.node_path(sym, node),
+                class,
+                node.kind
+            ));
+            return;
+        }
+        out.push_str(&format!("  {}\n", self.edge_endpoint_path(sym)));
+    }
+
+    fn push_execution_patch_targets(
+        &self,
+        out: &mut String,
+        path: &[(String, Option<String>)],
+    ) {
+        let targets = self.rank_execution_patch_targets(path);
+        if targets.is_empty() {
+            return;
+        }
+        out.push_str("\nPatch targets:\n");
+        for target in targets.iter().take(5) {
+            out.push_str(&format!(
+                "  {} score={} why={}\n",
+                target.symbol,
+                target.score,
+                target.reasons.join(", ")
+            ));
+            if let Some((file, line)) = &target.location {
+                out.push_str(&format!("    source={}:{}\n", shorten_path(file), line));
+            }
+        }
+    }
+
+    fn rank_execution_patch_targets(
+        &self,
+        path: &[(String, Option<String>)],
+    ) -> Vec<PatchTarget> {
+        let mut seen = HashSet::new();
+        let summaries: HashMap<String, SymbolSummary> = self
+            .symbol_summaries()
+            .into_iter()
+            .map(|s| (s.symbol.clone(), s))
+            .collect();
+        let mut branchy_owners = HashSet::new();
+        for (node_id, _) in path {
+            if let Some(cfg) = self.graph.cfg_nodes.get(node_id) {
+                if is_branch_terminator(&cfg.terminator) || is_validation_terminator(&cfg.terminator)
+                {
+                    branchy_owners.insert(cfg.owner.clone());
+                }
+            }
+        }
+
+        let mut out = Vec::new();
+        for (node_id, _) in path {
+            let Some(node) = self.graph.nodes.get(node_id) else { continue };
+            let symbol = self.node_path(node_id, node).to_string();
+            if !seen.insert(symbol.clone()) {
+                continue;
+            }
+            let mut score = 100i32;
+            let mut reasons = Vec::new();
+            if node.kind == "fn" {
+                score -= 20;
+                reasons.push("local fn".to_string());
+            } else {
+                score += 10;
+                reasons.push(format!("non-fn kind={}", node.kind));
+            }
+            if let Some(summary) = summaries.get(&symbol) {
+                if summary.call_out == 0 {
+                    score -= 15;
+                    reasons.push("leaf".to_string());
+                }
+                if summary.call_in <= 2 {
+                    score -= 5;
+                    reasons.push("small blast radius".to_string());
+                }
+                if summary.mir_blocks.unwrap_or(0) <= 3 {
+                    score -= 5;
+                    reasons.push("small MIR".to_string());
+                }
+            }
+            if branchy_owners.contains(node_id) || branchy_owners.contains(&symbol) {
+                score -= 10;
+                reasons.push("branch/validation owner".to_string());
+            }
+            if looks_like_validation_symbol(&symbol) {
+                score -= 10;
+                reasons.push("validation-ish name".to_string());
+            }
+            let location = node.def.as_ref().map(|d| (d.file.clone(), d.line));
+            out.push(PatchTarget {
+                symbol,
+                score,
+                reasons,
+                location,
+            });
+        }
+        out.sort_by(|a, b| a.score.cmp(&b.score).then(a.symbol.cmp(&b.symbol)));
+        out
     }
 
     fn semantic_adjacency(&self) -> HashMap<&str, Vec<(&str, &str)>> {
@@ -936,6 +1065,55 @@ fn edge_relation(edge: &GraphEdge) -> &str {
     } else {
         edge.relation.as_str()
     }
+}
+
+#[derive(Debug, Clone)]
+struct PatchTarget {
+    symbol: String,
+    score: i32,
+    reasons: Vec<String>,
+    location: Option<(String, u32)>,
+}
+
+fn classify_semantic_node(node: &GraphNode) -> &'static str {
+    match node.kind.as_str() {
+        "fn" => "call",
+        "struct" | "enum" | "union" => "data",
+        "trait" => "interface",
+        "impl" => "implementation",
+        _ => "semantic",
+    }
+}
+
+fn classify_cfg_block(terminator: &str) -> &'static str {
+    if is_branch_terminator(terminator) {
+        "branch"
+    } else if terminator.eq_ignore_ascii_case("return") {
+        "return"
+    } else if terminator.eq_ignore_ascii_case("call") || terminator.eq_ignore_ascii_case("tailcall")
+    {
+        "call"
+    } else {
+        "cfg"
+    }
+}
+
+fn is_branch_terminator(terminator: &str) -> bool {
+    matches!(
+        terminator,
+        "SwitchInt" | "Assert" | "FalseEdge" | "FalseUnwind"
+    )
+}
+
+fn is_validation_terminator(terminator: &str) -> bool {
+    matches!(terminator, "Assert" | "SwitchInt")
+}
+
+fn looks_like_validation_symbol(symbol: &str) -> bool {
+    let lower = symbol.to_ascii_lowercase();
+    ["check", "validate", "guard", "assert", "verify", "parse", "ensure"]
+        .iter()
+        .any(|needle| lower.contains(needle))
 }
 
 fn expand_symbol_window_span(source: &str, start_offset: usize, end_offset: usize) -> Option<(usize, usize)> {
