@@ -1209,10 +1209,7 @@ fn roles_json_path(workspace: &Path) -> std::path::PathBuf {
 
 fn load_roles_json(workspace: &Path) -> serde_json::Value {
     let path = roles_json_path(workspace);
-    std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|raw| serde_json::from_str(&raw).ok())
-        .unwrap_or_else(|| serde_json::json!({"roles": {}}))
+    load_json_file_or_else(&path, || serde_json::json!({"roles": {}}))
 }
 
 fn save_roles_json(workspace: &Path, val: &serde_json::Value) -> Result<()> {
