@@ -229,69 +229,16 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
         (_, ToolPromptKind::SymbolsPrepareRename) => {
             "   {\"action\":\"symbols_prepare_rename\",\"candidates_path\":\"state/rename_candidates.json\",\"index\":0,\"out\":\"state/next_rename_action.json\",\"rationale\":\"Select one deterministic candidate and prepare a ready rename_symbol action payload.\"}\n   Notes: `candidates_path` defaults to `state/rename_candidates.json`; `index` defaults to 0; `out` defaults to `state/next_rename_action.json`.".to_string()
         }
-        (AgentPromptKind::Executor | AgentPromptKind::Solo, ToolPromptKind::RenameSymbol) => {
-            "   {\"action\":\"rename_symbol\",\"old_symbol\":\"tools::handle_plan_action\",\"new_symbol\":\"tools::handle_master_plan_action\",\"question\":\"Is this the exact symbol to rename across the crate?\",\"rationale\":\"Perform a span-backed rename so all references update consistently.\",\"predicted_next_actions\":[{\"action\":\"cargo_test\",\"intent\":\"Run focused tests after rename.\"}]}\n   Notes: symbol paths are module-relative (e.g. `tools::my_fn`); crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped; uses `state/rustc/<crate>/graph.json` spans. cargo check runs automatically — on failure the rename is rolled back via git and errors are written to state/rename_errors.txt.".to_string()
-        }
-        (AgentPromptKind::Planner | AgentPromptKind::Verifier | AgentPromptKind::Diagnostics, ToolPromptKind::RenameSymbol) => {
-            "   {\"action\":\"rename_symbol\",\"old_symbol\":\"tools::handle_plan_action\",\"new_symbol\":\"tools::handle_master_plan_action\",\"question\":\"Is this the exact symbol to rename across the crate?\",\"rationale\":\"Apply a span-backed rename only when source evidence confirms it is required.\",\"predicted_next_actions\":[{\"action\":\"cargo_test\",\"intent\":\"Run focused tests after rename.\"}]}\n   Notes: symbol paths are module-relative (e.g. `tools::my_fn`); crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped; uses `state/rustc/<crate>/graph.json` spans. cargo check runs automatically — on failure the rename is rolled back via git and errors are written to state/rename_errors.txt.".to_string()
-        }
+        (_, ToolPromptKind::RenameSymbol) => rename_symbol_tool_prompt(kind),
         (_, ToolPromptKind::Objectives) => {
             "   {\"action\":\"objectives\",\"op\":\"read\",\"rationale\":\"Load only non-completed objectives for planning/verification.\"}\n   {\"action\":\"objectives\",\"op\":\"read\",\"include_done\":true,\"rationale\":\"Load all objectives, including completed.\"}\n   {\"action\":\"objectives\",\"op\":\"create_objective\",\"objective\":{\"id\":\"obj_new\",\"title\":\"New objective\",\"status\":\"active\",\"scope\":\"...\",\"authority_files\":[\"src/foo.rs\"],\"category\":\"quality\",\"level\":\"low\",\"description\":\"...\",\"requirement\":[],\"verification\":[],\"success_criteria\":[]},\"rationale\":\"Record a new objective.\"}\n   {\"action\":\"objectives\",\"op\":\"set_status\",\"objective_id\":\"obj_new\",\"status\":\"done\",\"rationale\":\"Mark objective complete.\"}\n   {\"action\":\"objectives\",\"op\":\"update_objective\",\"objective_id\":\"obj_new\",\"updates\":{\"scope\":\"updated scope\"},\"rationale\":\"Update objective fields.\"}\n   {\"action\":\"objectives\",\"op\":\"delete_objective\",\"objective_id\":\"obj_new\",\"rationale\":\"Remove obsolete objective.\"}\n   {\"action\":\"objectives\",\"op\":\"replace_objectives\",\"objectives\":[],\"rationale\":\"Replace objectives list.\"}\n   {\"action\":\"objectives\",\"op\":\"sorted_view\",\"rationale\":\"View objectives sorted by status.\"}".to_string()
         }
 
-        (AgentPromptKind::Executor | AgentPromptKind::Solo, ToolPromptKind::ApplyPatch) => {
-            "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: path/to/new.rs\\n+line one\\n+line two\\n*** End Patch\",\"rationale\":\"Apply the concrete code change after reading the target context.\"}\n\n   To UPDATE an existing file, each @@ hunk needs 3 unchanged context lines around the change:\n   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Update File: src/lib.rs\\n@@\\n fn before_before() {}\\n fn before() {}\\n fn target() {\\n-    old_body();\\n+    new_body();\\n }\\n fn after() {}\\n*** End Patch\",\"rationale\":\"Update the file using exact surrounding context from the read.\"}\n\n   To REPLACE most or all of a file use Delete + Add, never a giant @@ block:\n   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Delete File: PLANS/executor-b.json\\n*** Add File: PLANS/executor-b.json\\n+# new content\\n+line two\\n*** End Patch\",\"rationale\":\"Full-file replacement is safer than a giant hunk with many - lines.\"}\n\n   WRONG — removing many lines with @@ causes anchor-miss failures:\n   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Update File: PLANS/executor-b.json\\n@@\\n-line one\\n-line two\\n-line three\\n+replacement\\n*** End Patch\",\"rationale\":\"Bad: too many - lines from memory, anchor will miss if file differs by even one char.\"}\n\n   Rules:\n   - Every @@ hunk must have AT LEAST 3 unchanged context lines (space-prefixed) around the edit.\n   - Never use @@ with only 1 context line — the patcher will fail to locate the anchor.\n   - ALL - lines must be copied CHARACTER-FOR-CHARACTER from read_file output (minus the \\\"N: \\\" prefix). Never write - lines from memory.\n   - If replacing more than ~10 lines, use *** Delete File + *** Add File instead of a large @@ hunk.\n   - *** Add File for new files, *** Update File for existing files.\n   - NEVER use absolute paths inside the patch string.".to_string()
-        }
-        (AgentPromptKind::Planner, ToolPromptKind::ApplyPatch) => {
-            "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Update File: PLANS/default/executor-1.json\\n@@\\n line_before_before\\n line_before\\n-  \\\"status\\\": \\\"blocked\\\"\\n+  \\\"status\\\": \\\"ready\\\"\\n line_after\\n line_after_after\\n*** End Patch\",\"rationale\":\"Update a lane plan entry after updating PLAN.json via the plan tool.\"}".to_string()
-        }
-        (AgentPromptKind::Verifier, ToolPromptKind::ApplyPatch) => {
-            format!(
-                "   {{\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: VIOLATIONS.json\\n+{{\\n+  \\\"status\\\": \\\"failed\\\",\\n+  \\\"summary\\\": \\\"Short summary\\\",\\n+  \\\"violations\\\": [\\n+    {{\\n+      \\\"id\\\": \\\"V1\\\",\\n+      \\\"title\\\": \\\"Control flow gated by executor-local state\\\",\\n+      \\\"severity\\\": \\\"critical\\\",\\n+      \\\"evidence\\\": [\\\"executor.rs:56-61 dispatch_in_progress gate\\\"],\\n+      \\\"issue\\\": \\\"Route dispatch suppressed before semantic evaluation\\\",\\n+      \\\"impact\\\": \\\"RouteTick does not guarantee dispatch\\\",\\n+      \\\"required_fix\\\": [\\\"Remove dispatch_in_progress gating\\\"],\\n+      \\\"files\\\": [\\\"canon-utils/canon-route/src/executor.rs\\\"]\\n+    }}\\n+  ]\\n+}}\\n*** End Patch\",\"rationale\":\"Record spec violations discovered during verification.\"}}\n\n   {}",
-                plan_set_task_status_action_example(
-                    "T4",
-                    "done",
-                    "Mark the verified task as done in PLAN.json."
-                )
-            )
-        }
-        (AgentPromptKind::Diagnostics, ToolPromptKind::ApplyPatch) => {
-            "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: PLANS/default/diagnostics-default.json\\n+{\\n+  \\\"status\\\": \\\"critical_failure\\\",\\n+  \\\"inputs_scanned\\\": [\\\"<workspace-local log/state paths discovered during diagnostics>\\\", \\\"VIOLATIONS.json\\\"],\\n+  \\\"ranked_failures\\\": [\\n+    {\\n+      \\\"id\\\": \\\"D1\\\",\\n+      \\\"impact\\\": \\\"critical\\\",\\n+      \\\"signal\\\": \\\"Primary runtime or agent observability artifacts are missing expected progress signals\\\",\\n+      \\\"evidence\\\": [\\\"<concrete evidence from files that exist in the active workspace AND VERIFIED against current source via read_file>\\\"],\\n+      \\\"root_cause\\\": \\\"<workspace-specific root cause derived ONLY from verified current source and observed state>\\\",\\n+      \\\"repair_targets\\\": [\\\"<workspace-specific source locations>\\\"]\\n+    }\\n+  ],\\n+  \\\"planner_handoff\\\": [\\\"Diagnostics MUST NOT emit failures without direct source verification; stale signals must be suppressed.\\\"]\\n+}\\n*** End Patch\",\"rationale\":\"Write diagnostics report only after validating signals against current source; suppress stale or unverified diagnostics.\"}".to_string()
-        }
+        (_, ToolPromptKind::ApplyPatch) => apply_patch_tool_prompt(kind),
 
-        (AgentPromptKind::Executor | AgentPromptKind::Solo, ToolPromptKind::RunCommand) => {
-            format!("   {{\"action\":\"run_command\",\"cmd\":\"cargo check -p canon-mini-agent\",\"cwd\":\"{ws}\",\"rationale\":\"Validate the target crate after a change.\"}}\n   {{\"action\":\"run_command\",\"cmd\":\"rg -n 'fn foo' src\",\"cwd\":\"{ws}\",\"rationale\":\"Search the codebase for the relevant symbol before editing.\"}}\n{RUN_COMMAND_FOOTER}")
-        }
-        (AgentPromptKind::Planner, ToolPromptKind::RunCommand) => {
-            format!("   {{\"action\":\"run_command\",\"cmd\":\"rg -n 'fn foo' src\",\"cwd\":\"{ws}\",\"rationale\":\"Search for implementation details needed to expand the plan accurately.\"}}\n{RUN_COMMAND_FOOTER}")
-        }
-        (AgentPromptKind::Verifier, ToolPromptKind::RunCommand) => {
-            format!("   {{\"action\":\"run_command\",\"cmd\":\"cargo check -p canon-mini-agent\",\"cwd\":\"{ws}\",\"rationale\":\"Validate the crate implicated by the completed task.\"}}\n   {{\"action\":\"run_command\",\"cmd\":\"cargo test -q --workspace\",\"cwd\":\"{ws}\",\"rationale\":\"Verify the claimed completion does not break workspace tests.\"}}\n   {{\"action\":\"run_command\",\"cmd\":\"rg -n 'fn foo' src\",\"cwd\":\"{ws}\",\"rationale\":\"Find the implementation or call sites mentioned by the completed task.\"}}\n{RUN_COMMAND_FOOTER}")
-        }
-        (AgentPromptKind::Diagnostics, ToolPromptKind::RunCommand) => {
-            format!("   {{\"action\":\"run_command\",\"cmd\":\"rg -n \\\"invariant|panic|TODO|unreachable!|assert!\\\" src state\",\"cwd\":\"{ws}\",\"rationale\":\"Search the active workspace code and state directories for likely failure markers.\"}}\n   {{\"action\":\"run_command\",\"cmd\":\"cargo check --workspace\",\"cwd\":\"{ws}\",\"rationale\":\"Detect compiler-visible inconsistencies that belong in diagnostics.\"}}\n{RUN_COMMAND_FOOTER}")
-        }
+        (_, ToolPromptKind::RunCommand) => run_command_tool_prompt(kind, ws),
 
-        (AgentPromptKind::Executor | AgentPromptKind::Solo, ToolPromptKind::Python) => {
-            format!(
-                "   {{\"action\":\"python\",\"code\":\"from pathlib import Path\\nprint(len(list(Path('src').glob('**/*.rs'))))\",\"cwd\":\"{ws}\",\"rationale\":\"Use Python for structured workspace analysis.\"}}\n{PYTHON_FOOTER}"
-            )
-        }
-        (AgentPromptKind::Planner, ToolPromptKind::Python) => {
-            format!(
-                "   {{\"action\":\"python\",\"code\":\"from pathlib import Path\\nprint(sum(1 for _ in Path('src').glob('**/*.rs')))\",\"cwd\":\"{ws}\",\"rationale\":\"Use Python to gather structured planning context from the workspace.\"}}\n{PYTHON_FOOTER}"
-            )
-        }
-        (AgentPromptKind::Verifier, ToolPromptKind::Python) => {
-            format!(
-                "   {{\"action\":\"python\",\"code\":\"from pathlib import Path\\nprint(Path('SPEC.md').exists())\",\"cwd\":\"{ws}\",\"rationale\":\"Use Python when structured verification logic is easier than shell commands.\"}}\n{PYTHON_FOOTER}"
-            )
-        }
-        (AgentPromptKind::Diagnostics, ToolPromptKind::Python) => {
-            format!(
-                "   {{\"action\":\"python\",\"code\":\"from pathlib import Path\\nfor root in [Path('state'), Path('log'), Path('logs'), Path('src')]:\\n    if root.exists():\\n        print(root)\\n        for path in sorted(root.rglob('*')):\\n            if path.is_file():\\n                print(path)\",\"cwd\":\"{ws}\",\"rationale\":\"Analyze workspace-local state, log, and source artifacts to find failure signals and inconsistencies.\"}}\n{PYTHON_FOOTER}"
-            )
-        }
+        (_, ToolPromptKind::Python) => python_tool_prompt(kind, ws),
         (AgentPromptKind::Executor, ToolPromptKind::CargoTest)
         | (AgentPromptKind::Solo, ToolPromptKind::CargoTest)
         | (AgentPromptKind::Planner, ToolPromptKind::CargoTest)
@@ -299,36 +246,7 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
         | (AgentPromptKind::Diagnostics, ToolPromptKind::CargoTest) => {
             format!("   {}", cargo_test_action_example())
         }
-        (AgentPromptKind::Executor, ToolPromptKind::Plan) => {
-            read_plan_with_sorted_view_example("Read the master plan; executors should not edit it.")
-        }
-        (AgentPromptKind::Solo, ToolPromptKind::Plan) => {
-            format!(
-                "   {}\n{}",
-                plan_set_task_status_action_example(
-                    "T1",
-                    "in_progress",
-                    "Update one PLAN task while running solo."
-                ),
-                plan_sorted_view_example()
-            )
-        }
-        (AgentPromptKind::Planner, ToolPromptKind::Plan) => {
-            format!(
-                "   {{\"action\":\"plan\",\"op\":\"create_task\",\"task\":{{\"id\":\"T4\",\"title\":\"Add plan DAG\",\"status\":\"todo\",\"priority\":3}},\"rationale\":\"Add a new task to PLAN.json without manual patching.\"}}\n{}",
-                plan_sorted_view_example()
-            )
-        }
-        (AgentPromptKind::Verifier, ToolPromptKind::Plan) => {
-            read_plan_with_sorted_view_example(
-                "Read the current plan before judging whether claimed work matches recorded state.",
-            )
-        }
-        (AgentPromptKind::Diagnostics, ToolPromptKind::Plan) => {
-            read_plan_with_sorted_view_example(
-                "Read the master plan to correlate diagnostics findings with planned work and blocked tasks.",
-            )
-        }
+        (_, ToolPromptKind::Plan) => plan_tool_prompt(kind),
 
         (_, ToolPromptKind::SemanticMap) => {
             "   {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"rationale\":\"Get a rustc-backed symbol outline to understand the codebase structure before reading individual files.\"}\n   {\"action\":\"semantic_map\",\"crate\":\"canon_mini_agent\",\"filter\":\"tools\",\"rationale\":\"Restrict the outline to the tools module to see all symbols in that area.\"}\n   Notes: `crate` is the crate name (underscores). Symbol paths use module-relative format (e.g. `tools::my_fn`); crate-qualified prefixes like `canon_mini_agent::tools` or `crate::tools` are accepted and stripped. Optional `filter` restricts to a symbol-path prefix.".to_string()
@@ -347,6 +265,116 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
         }
         (_, ToolPromptKind::Message) => {
             message_tool_prompt_examples().to_string()
+        }
+    }
+}
+
+fn rename_symbol_tool_prompt(kind: AgentPromptKind) -> String {
+    match kind {
+        AgentPromptKind::Executor | AgentPromptKind::Solo => {
+            "   {\"action\":\"rename_symbol\",\"old_symbol\":\"tools::handle_plan_action\",\"new_symbol\":\"tools::handle_master_plan_action\",\"question\":\"Is this the exact symbol to rename across the crate?\",\"rationale\":\"Perform a span-backed rename so all references update consistently.\",\"predicted_next_actions\":[{\"action\":\"cargo_test\",\"intent\":\"Run focused tests after rename.\"}]}\n   Notes: symbol paths are module-relative (e.g. `tools::my_fn`); crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped; uses `state/rustc/<crate>/graph.json` spans. cargo check runs automatically — on failure the rename is rolled back via git and errors are written to state/rename_errors.txt.".to_string()
+        }
+        AgentPromptKind::Planner | AgentPromptKind::Verifier | AgentPromptKind::Diagnostics => {
+            "   {\"action\":\"rename_symbol\",\"old_symbol\":\"tools::handle_plan_action\",\"new_symbol\":\"tools::handle_master_plan_action\",\"question\":\"Is this the exact symbol to rename across the crate?\",\"rationale\":\"Apply a span-backed rename only when source evidence confirms it is required.\",\"predicted_next_actions\":[{\"action\":\"cargo_test\",\"intent\":\"Run focused tests after rename.\"}]}\n   Notes: symbol paths are module-relative (e.g. `tools::my_fn`); crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped; uses `state/rustc/<crate>/graph.json` spans. cargo check runs automatically — on failure the rename is rolled back via git and errors are written to state/rename_errors.txt.".to_string()
+        }
+    }
+}
+
+fn apply_patch_tool_prompt(kind: AgentPromptKind) -> String {
+    match kind {
+        AgentPromptKind::Executor | AgentPromptKind::Solo => {
+            "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: path/to/new.rs\\n+line one\\n+line two\\n*** End Patch\",\"rationale\":\"Apply the concrete code change after reading the target context.\"}\n\n   To UPDATE an existing file, each @@ hunk needs 3 unchanged context lines around the change:\n   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Update File: src/lib.rs\\n@@\\n fn before_before() {}\\n fn before() {}\\n fn target() {\\n-    old_body();\\n+    new_body();\\n }\\n fn after() {}\\n*** End Patch\",\"rationale\":\"Update the file using exact surrounding context from the read.\"}\n\n   To REPLACE most or all of a file use Delete + Add, never a giant @@ block:\n   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Delete File: PLANS/executor-b.json\\n*** Add File: PLANS/executor-b.json\\n+# new content\\n+line two\\n*** End Patch\",\"rationale\":\"Full-file replacement is safer than a giant hunk with many - lines.\"}\n\n   WRONG — removing many lines with @@ causes anchor-miss failures:\n   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Update File: PLANS/executor-b.json\\n@@\\n-line one\\n-line two\\n-line three\\n+replacement\\n*** End Patch\",\"rationale\":\"Bad: too many - lines from memory, anchor will miss if file differs by even one char.\"}\n\n   Rules:\n   - Every @@ hunk must have AT LEAST 3 unchanged context lines (space-prefixed) around the edit.\n   - Never use @@ with only 1 context line — the patcher will fail to locate the anchor.\n   - ALL - lines must be copied CHARACTER-FOR-CHARACTER from read_file output (minus the \\\"N: \\\" prefix). Never write - lines from memory.\n   - If replacing more than ~10 lines, use *** Delete File + *** Add File instead of a large @@ hunk.\n   - *** Add File for new files, *** Update File for existing files.\n   - NEVER use absolute paths inside the patch string.".to_string()
+        }
+        AgentPromptKind::Planner => {
+            "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Update File: PLANS/default/executor-1.json\\n@@\\n line_before_before\\n line_before\\n-  \\\"status\\\": \\\"blocked\\\"\\n+  \\\"status\\\": \\\"ready\\\"\\n line_after\\n line_after_after\\n*** End Patch\",\"rationale\":\"Update a lane plan entry after updating PLAN.json via the plan tool.\"}".to_string()
+        }
+        AgentPromptKind::Verifier => format!(
+            "   {{\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: VIOLATIONS.json\\n+{{\\n+  \\\"status\\\": \\\"failed\\\",\\n+  \\\"summary\\\": \\\"Short summary\\\",\\n+  \\\"violations\\\": [\\n+    {{\\n+      \\\"id\\\": \\\"V1\\\",\\n+      \\\"title\\\": \\\"Control flow gated by executor-local state\\\",\\n+      \\\"severity\\\": \\\"critical\\\",\\n+      \\\"evidence\\\": [\\\"executor.rs:56-61 dispatch_in_progress gate\\\"],\\n+      \\\"issue\\\": \\\"Route dispatch suppressed before semantic evaluation\\\",\\n+      \\\"impact\\\": \\\"RouteTick does not guarantee dispatch\\\",\\n+      \\\"required_fix\\\": [\\\"Remove dispatch_in_progress gating\\\"],\\n+      \\\"files\\\": [\\\"canon-utils/canon-route/src/executor.rs\\\"]\\n+    }}\\n+  ]\\n+}}\\n*** End Patch\",\"rationale\":\"Record spec violations discovered during verification.\"}}\n\n   {}",
+            plan_set_task_status_action_example(
+                "T4",
+                "done",
+                "Mark the verified task as done in PLAN.json."
+            )
+        ),
+        AgentPromptKind::Diagnostics => {
+            "   {\"action\":\"apply_patch\",\"patch\":\"*** Begin Patch\\n*** Add File: PLANS/default/diagnostics-default.json\\n+{\\n+  \\\"status\\\": \\\"critical_failure\\\",\\n+  \\\"inputs_scanned\\\": [\\\"<workspace-local log/state paths discovered during diagnostics>\\\", \\\"VIOLATIONS.json\\\"],\\n+  \\\"ranked_failures\\\": [\\n+    {\\n+      \\\"id\\\": \\\"D1\\\",\\n+      \\\"impact\\\": \\\"critical\\\",\\n+      \\\"signal\\\": \\\"Primary runtime or agent observability artifacts are missing expected progress signals\\\",\\n+      \\\"evidence\\\": [\\\"<concrete evidence from files that exist in the active workspace AND VERIFIED against current source via read_file>\\\"],\\n+      \\\"root_cause\\\": \\\"<workspace-specific root cause derived ONLY from verified current source and observed state>\\\",\\n+      \\\"repair_targets\\\": [\\\"<workspace-specific source locations>\\\"]\\n+    }\\n+  ],\\n+  \\\"planner_handoff\\\": [\\\"Diagnostics MUST NOT emit failures without direct source verification; stale signals must be suppressed.\\\"]\\n+}\\n*** End Patch\",\"rationale\":\"Write diagnostics report only after validating signals against current source; suppress stale or unverified diagnostics.\"}".to_string()
+        }
+    }
+}
+
+fn run_command_tool_prompt(kind: AgentPromptKind, ws: &str) -> String {
+    match kind {
+        AgentPromptKind::Executor | AgentPromptKind::Solo => {
+            format!("   {{\"action\":\"run_command\",\"cmd\":\"cargo check -p canon-mini-agent\",\"cwd\":\"{ws}\",\"rationale\":\"Validate the target crate after a change.\"}}\n   {{\"action\":\"run_command\",\"cmd\":\"rg -n 'fn foo' src\",\"cwd\":\"{ws}\",\"rationale\":\"Search the codebase for the relevant symbol before editing.\"}}\n{RUN_COMMAND_FOOTER}")
+        }
+        AgentPromptKind::Planner => {
+            format!("   {{\"action\":\"run_command\",\"cmd\":\"rg -n 'fn foo' src\",\"cwd\":\"{ws}\",\"rationale\":\"Search for implementation details needed to expand the plan accurately.\"}}\n{RUN_COMMAND_FOOTER}")
+        }
+        AgentPromptKind::Verifier => {
+            format!("   {{\"action\":\"run_command\",\"cmd\":\"cargo check -p canon-mini-agent\",\"cwd\":\"{ws}\",\"rationale\":\"Validate the crate implicated by the completed task.\"}}\n   {{\"action\":\"run_command\",\"cmd\":\"cargo test -q --workspace\",\"cwd\":\"{ws}\",\"rationale\":\"Verify the claimed completion does not break workspace tests.\"}}\n   {{\"action\":\"run_command\",\"cmd\":\"rg -n 'fn foo' src\",\"cwd\":\"{ws}\",\"rationale\":\"Find the implementation or call sites mentioned by the completed task.\"}}\n{RUN_COMMAND_FOOTER}")
+        }
+        AgentPromptKind::Diagnostics => {
+            format!("   {{\"action\":\"run_command\",\"cmd\":\"rg -n \\\"invariant|panic|TODO|unreachable!|assert!\\\" src state\",\"cwd\":\"{ws}\",\"rationale\":\"Search the active workspace code and state directories for likely failure markers.\"}}\n   {{\"action\":\"run_command\",\"cmd\":\"cargo check --workspace\",\"cwd\":\"{ws}\",\"rationale\":\"Detect compiler-visible inconsistencies that belong in diagnostics.\"}}\n{RUN_COMMAND_FOOTER}")
+        }
+    }
+}
+
+fn python_tool_prompt(kind: AgentPromptKind, ws: &str) -> String {
+    match kind {
+        AgentPromptKind::Executor | AgentPromptKind::Solo => {
+            format!(
+                "   {{\"action\":\"python\",\"code\":\"from pathlib import Path\\nprint(len(list(Path('src').glob('**/*.rs'))))\",\"cwd\":\"{ws}\",\"rationale\":\"Use Python for structured workspace analysis.\"}}\n{PYTHON_FOOTER}"
+            )
+        }
+        AgentPromptKind::Planner => {
+            format!(
+                "   {{\"action\":\"python\",\"code\":\"from pathlib import Path\\nprint(sum(1 for _ in Path('src').glob('**/*.rs')))\",\"cwd\":\"{ws}\",\"rationale\":\"Use Python to gather structured planning context from the workspace.\"}}\n{PYTHON_FOOTER}"
+            )
+        }
+        AgentPromptKind::Verifier => {
+            format!(
+                "   {{\"action\":\"python\",\"code\":\"from pathlib import Path\\nprint(Path('SPEC.md').exists())\",\"cwd\":\"{ws}\",\"rationale\":\"Use Python when structured verification logic is easier than shell commands.\"}}\n{PYTHON_FOOTER}"
+            )
+        }
+        AgentPromptKind::Diagnostics => {
+            format!(
+                "   {{\"action\":\"python\",\"code\":\"from pathlib import Path\\nfor root in [Path('state'), Path('log'), Path('logs'), Path('src')]:\\n    if root.exists():\\n        print(root)\\n        for path in sorted(root.rglob('*')):\\n            if path.is_file():\\n                print(path)\",\"cwd\":\"{ws}\",\"rationale\":\"Analyze workspace-local state, log, and source artifacts to find failure signals and inconsistencies.\"}}\n{PYTHON_FOOTER}"
+            )
+        }
+    }
+}
+
+fn plan_tool_prompt(kind: AgentPromptKind) -> String {
+    match kind {
+        AgentPromptKind::Executor => {
+            read_plan_with_sorted_view_example("Read the master plan; executors should not edit it.")
+        }
+        AgentPromptKind::Solo => {
+            format!(
+                "   {}\n{}",
+                plan_set_task_status_action_example(
+                    "T1",
+                    "in_progress",
+                    "Update one PLAN task while running solo."
+                ),
+                plan_sorted_view_example()
+            )
+        }
+        AgentPromptKind::Planner => {
+            format!(
+                "   {{\"action\":\"plan\",\"op\":\"create_task\",\"task\":{{\"id\":\"T4\",\"title\":\"Add plan DAG\",\"status\":\"todo\",\"priority\":3}},\"rationale\":\"Add a new task to PLAN.json without manual patching.\"}}\n{}",
+                plan_sorted_view_example()
+            )
+        }
+        AgentPromptKind::Verifier => {
+            read_plan_with_sorted_view_example(
+                "Read the current plan before judging whether claimed work matches recorded state.",
+            )
+        }
+        AgentPromptKind::Diagnostics => {
+            read_plan_with_sorted_view_example(
+                "Read the master plan to correlate diagnostics findings with planned work and blocked tasks.",
+            )
         }
     }
 }

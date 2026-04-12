@@ -38,6 +38,10 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
+    run_route(&args)
+}
+
+fn run_route(args: &[String]) -> Result<()> {
     let role = take_flag_value(&args, "--role").context("missing --role")?;
     let input = read_input_json()?;
 
@@ -48,7 +52,6 @@ fn main() -> Result<()> {
     emit_message(from, to, msg_type, status, payload)?;
     Ok(())
 }
-
 fn handle_help(args: &[String]) -> bool {
     if has_flag(args, "--help") || has_flag(args, "-h") {
         eprint!("{}", usage());
