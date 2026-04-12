@@ -1075,43 +1075,40 @@ fn first_missing_field_for_action(action: &Value, action_name: &str) -> Option<S
     if action.get("predicted_next_actions").is_none() {
         return Some("missing field: predicted_next_actions".to_string());
     }
-    match action_name {
-        "message" => {
-            for field in ["from", "to", "type", "status", "payload"] {
-                if let Some(missing) = missing_field(field) {
-                    return Some(missing);
-                }
+    fn require_fields<'a>(missing_field: &impl Fn(&str) -> Option<String>, fields: &[&'a str]) -> Option<String> {
+        for field in fields {
+            if let Some(m) = missing_field(field) {
+                return Some(m);
             }
+        }
+        None
+    }
+
+    fn require_one_of(action: &Value, missing_field: &impl Fn(&str) -> Option<String>) -> Option<String> {
+        let has_bulk = action
+            .get("renames")
+            .and_then(|v| v.as_array())
+            .is_some_and(|arr| !arr.is_empty());
+        if has_bulk {
             None
+        } else {
+            missing_field("old_symbol").or_else(|| missing_field("new_symbol"))
         }
-        "list_dir" => missing_field("path"),
-        "read_file" => missing_field("path"),
-        "symbols_index" => None,
-        "symbols_rename_candidates" => None,
-        "symbols_prepare_rename" => None,
-        "rename_symbol" => {
-            // Manual guards not expressible in schemars 0.8: require either
-            // (old_symbol + new_symbol) OR a non-empty `renames` array.
-            let has_bulk = action
-                .get("renames")
-                .and_then(|v| v.as_array())
-                .is_some_and(|arr| !arr.is_empty());
-            if has_bulk {
-                None
-            } else {
-                missing_field("old_symbol").or_else(|| missing_field("new_symbol"))
-            }
-        }
+    }
+
+    match action_name {
+        "message" => require_fields(&missing_field, &["from", "to", "type", "status", "payload"]),
+        "list_dir" | "read_file" => missing_field("path"),
+        "symbols_index" | "symbols_rename_candidates" | "symbols_prepare_rename" => None,
+        "rename_symbol" => require_one_of(action, &missing_field),
         "objectives" => missing_field_for_objectives_action(action),
         "apply_patch" => missing_field("patch"),
         "run_command" => missing_field("cmd"),
         "python" => missing_field("code"),
         "cargo_test" => missing_field("crate"),
-        "cargo_fmt" => None,
-        "cargo_clippy" => None,
+        "cargo_fmt" | "cargo_clippy" => None,
         "plan" => missing_field_for_plan_action(action),
-        "rustc_hir" | "rustc_mir" => missing_field("crate"),
-        "graph_call" | "graph_cfg" | "graph_dataflow" | "graph_reachability" => {
+        "rustc_hir" | "rustc_mir" | "graph_call" | "graph_cfg" | "graph_dataflow" | "graph_reachability" => {
             missing_field("crate")
         }
         _ => None,
