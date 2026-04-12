@@ -650,6 +650,17 @@ fn write_issues_file(path: &Path, file: &IssuesFile) -> Result<()> {
 }
 
 fn handle_plan_sorted_view_action(workspace: &Path) -> Result<(bool, String)> {
+    let (obj, tasks, edges) = load_plan_components(workspace)?;
+    let task_map = build_task_map(&tasks);
+    let order = topo_sort_plan(&task_map, &edges)?;
+    let ordered_tasks = collect_ordered_tasks(&task_map, &order);
+    let rendered = render_plan_sorted_view_output(&obj, order, ordered_tasks, &edges)?;
+    Ok((false, rendered))
+}
+
+fn load_plan_components(
+    workspace: &Path,
+) -> Result<(serde_json::Map<String, Value>, Vec<Value>, Vec<Value>)> {
     let plan_path = workspace.join(MASTER_PLAN_FILE);
     let plan = load_or_init_plan(&plan_path)?;
     let obj = plan
@@ -666,36 +677,48 @@ fn handle_plan_sorted_view_action(workspace: &Path) -> Result<(bool, String)> {
         .and_then(|v| v.as_array())
         .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))?;
     ensure_dag(tasks, edges)?;
+    Ok((obj.clone(), tasks.clone(), edges.clone()))
+}
 
-    let mut task_map: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
+fn build_task_map(tasks: &[Value]) -> std::collections::HashMap<String, Value> {
+    let mut task_map = std::collections::HashMap::new();
     for task in tasks {
         if let Some(id) = task.get("id").and_then(|v| v.as_str()) {
             task_map.insert(id.to_string(), task.clone());
         }
     }
+    task_map
+}
 
-    let (mut indegree, adj) = build_plan_sorted_graph_state(&task_map, edges)?;
-
+fn topo_sort_plan(
+    task_map: &std::collections::HashMap<String, Value>,
+    edges: &[Value],
+) -> Result<Vec<String>> {
+    let (mut indegree, adj) = build_plan_sorted_graph_state(task_map, edges)?;
     let mut ready: BTreeSet<String> = indegree
         .iter()
         .filter(|(_, &deg)| deg == 0)
         .map(|(id, _)| id.clone())
         .collect();
-    let mut order: Vec<String> = Vec::new();
+    let mut order = Vec::new();
     while let Some(id) = take_next_ready_plan_node(&mut ready) {
         order.push(id.clone());
         drain_plan_sorted_successors(&adj, &id, &mut indegree, &mut ready);
     }
+    Ok(order)
+}
 
-    let mut ordered_tasks: Vec<Value> = Vec::new();
-    for id in &order {
+fn collect_ordered_tasks(
+    task_map: &std::collections::HashMap<String, Value>,
+    order: &[String],
+) -> Vec<Value> {
+    let mut ordered = Vec::new();
+    for id in order {
         if let Some(task) = task_map.get(id) {
-            ordered_tasks.push(task.clone());
+            ordered.push(task.clone());
         }
     }
-
-    let rendered = render_plan_sorted_view_output(obj, order, ordered_tasks, edges)?;
-    Ok((false, rendered))
+    ordered
 }
 
 fn build_plan_sorted_graph_state(
