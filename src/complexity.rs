@@ -8,6 +8,16 @@ fn reports_dir(workspace: &Path) -> PathBuf {
     workspace.join("state").join("reports").join("complexity")
 }
 
+fn sort_by_objective_desc(a: &serde_json::Value, b: &serde_json::Value) -> std::cmp::Ordering {
+    let score = |v: &serde_json::Value| {
+        v.get("objective_score")
+            .and_then(|x| x.as_f64())
+            .unwrap_or(0.0)
+            .to_bits()
+    };
+    score(b).cmp(&score(a))
+}
+
 fn sort_by_complexity_desc(a: &serde_json::Value, b: &serde_json::Value) -> std::cmp::Ordering {
     b.get("complexity_proxy")
         .and_then(|v| v.as_u64())
@@ -17,6 +27,67 @@ fn sort_by_complexity_desc(a: &serde_json::Value, b: &serde_json::Value) -> std:
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0),
         )
+}
+
+/// Compute normalized [0.0, 1.0] objective scores for all items in-place.
+///
+/// Implements: objective = min(B) + min(R)  s.t. correctness invariant
+///   B_norm  = mir_blocks / max_mir_blocks          (branching proxy, weight 0.6)
+///   R_norm  = stmt_density / max_stmt_density      (redundancy proxy, weight 0.4)
+///   stmt_density = mir_stmts / max(mir_blocks, 1)  (dense logic per branch → redundancy signal)
+///   objective_score = 0.6 * B_norm + 0.4 * R_norm
+///
+/// Higher score = higher-value reduction target.
+fn apply_objective_scores(items: &mut Vec<serde_json::Value>) {
+    let max_blocks = items
+        .iter()
+        .filter_map(|v| v.get("mir_blocks").and_then(|x| x.as_f64()))
+        .fold(0.0_f64, f64::max);
+    let max_density = items
+        .iter()
+        .filter_map(|v| {
+            let blocks = v.get("mir_blocks").and_then(|x| x.as_f64()).unwrap_or(0.0);
+            let stmts = v.get("mir_stmts").and_then(|x| x.as_f64()).unwrap_or(0.0);
+            if blocks > 0.0 {
+                Some(stmts / blocks)
+            } else {
+                None
+            }
+        })
+        .fold(0.0_f64, f64::max);
+
+    for item in items.iter_mut() {
+        let blocks = item
+            .get("mir_blocks")
+            .and_then(|x| x.as_f64())
+            .unwrap_or(0.0);
+        let stmts = item
+            .get("mir_stmts")
+            .and_then(|x| x.as_f64())
+            .unwrap_or(0.0);
+        let b_norm = if max_blocks > 0.0 {
+            blocks / max_blocks
+        } else {
+            0.0
+        };
+        let density = if blocks > 0.0 { stmts / blocks } else { 0.0 };
+        let r_norm = if max_density > 0.0 {
+            density / max_density
+        } else {
+            0.0
+        };
+        let score = (0.6 * b_norm + 0.4 * r_norm).clamp(0.0, 1.0);
+        if let Some(map) = item.as_object_mut() {
+            map.insert(
+                "stmt_density".to_string(),
+                serde_json::json!(format!("{density:.2}")),
+            );
+            map.insert(
+                "objective_score".to_string(),
+                serde_json::json!(format!("{score:.3}")),
+            );
+        }
+    }
 }
 
 fn process_crate(
@@ -37,13 +108,14 @@ fn process_crate(
 
     let mut items = collect_complexity_items(&idx, crate_name, global);
 
-    items.sort_by(sort_by_complexity_desc);
+    apply_objective_scores(&mut items);
+    items.sort_by(sort_by_objective_desc);
     let top = items.into_iter().take(50).collect::<Vec<_>>();
 
     json!({
         "crate": crate_name,
         "status": "ok",
-        "metric": "mir_blocks_proxy",
+        "metric": "objective_score(B*0.6+R*0.4)",
         "top": top,
     })
 }
@@ -119,7 +191,8 @@ pub fn write_complexity_report(workspace: &Path) -> Result<Option<PathBuf>> {
         per_crate.push(entry);
     }
 
-    global.sort_by(sort_by_complexity_desc);
+    apply_objective_scores(&mut global);
+    global.sort_by(sort_by_objective_desc);
     let global_top = global.into_iter().take(100).collect::<Vec<_>>();
 
     let report = build_complexity_report(per_crate, global_top);
@@ -135,12 +208,18 @@ fn build_complexity_report(
     global_top: Vec<serde_json::Value>,
 ) -> serde_json::Value {
     json!({
-        "version": 1,
-        "metric": "mir_blocks_proxy",
+        "version": 2,
+        "objective": "min(B) + min(R)  s.t. correctness invariant",
+        "scoring": {
+            "objective_score": "0.6 * B_norm + 0.4 * R_norm  ∈ [0, 1]  (higher = higher-value reduction target)",
+            "B_norm": "mir_blocks / max_mir_blocks  (branching proxy)",
+            "R_norm": "stmt_density / max_stmt_density  (redundancy proxy: dense logic per branch)",
+            "stmt_density": "mir_stmts / mir_blocks"
+        },
+        "execution_model": "Detect(complexity_report) → Propose(LLM) → Apply(patch/rename) → Verify(build+test)",
         "generated_at_ms": crate::logging::now_ms(),
         "global_top": global_top,
         "per_crate": per_crate,
-        "note": "Proxy report: complexity_proxy=mir_blocks. Upgrade canon-rustc-v2 to record true CFG-based cyclomatic complexity for accuracy.",
     })
 }
 
