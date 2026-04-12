@@ -172,70 +172,28 @@ fn parse_objectives_md(text: &str) -> ObjectivesReport {
             continue;
         }
         if line.starts_with("## ") {
-            let title = line.trim_start_matches("## ").trim();
-            if title.contains("Goal") {
-                section = ObjectiveSection::Goal;
-                finalize_current_objective(&mut objectives, &mut current);
-                continue;
-            }
-            if title.contains("Instrumentation") {
-                section = ObjectiveSection::Instrumentation;
-                finalize_current_objective(&mut objectives, &mut current);
-                continue;
-            }
-            if title.contains("Definition of Done") {
-                section = ObjectiveSection::DefinitionDone;
-                finalize_current_objective(&mut objectives, &mut current);
-                continue;
-            }
-            if title.contains("Non-Goals") {
-                section = ObjectiveSection::NonGoals;
-                finalize_current_objective(&mut objectives, &mut current);
-                continue;
-            }
-            if title.contains("Objective") || title.starts_with("OBJ-") {
-                finalize_current_objective(&mut objectives, &mut current);
-                current = Some(ObjectiveBuilder::new(title));
-                section = ObjectiveSection::None;
+            if handle_objectives_h2_heading(
+                line,
+                &mut objectives,
+                &mut current,
+                &mut section,
+            ) {
                 continue;
             }
         }
         if line.starts_with("### ") {
-            let title = line.trim_start_matches("### ").trim().to_lowercase();
-            section = match title.as_str() {
-                "requirement" => ObjectiveSection::Requirement,
-                "verification" => ObjectiveSection::Verification,
-                "success criteria" => ObjectiveSection::SuccessCriteria,
-                _ => ObjectiveSection::None,
-            };
+            section = objective_h3_section(line);
             continue;
         }
-        match section {
-            ObjectiveSection::Goal => goal.push(strip_bullet(line)),
-            ObjectiveSection::Instrumentation => instrumentation.push(strip_bullet(line)),
-            ObjectiveSection::DefinitionDone => definition_of_done.push(strip_bullet(line)),
-            ObjectiveSection::NonGoals => non_goals.push(strip_bullet(line)),
-            ObjectiveSection::Requirement => {
-                if let Some(obj) = current.as_mut() {
-                    obj.requirement.push(strip_bullet(line));
-                }
-            }
-            ObjectiveSection::Verification => {
-                if let Some(obj) = current.as_mut() {
-                    obj.verification.push(strip_bullet(line));
-                }
-            }
-            ObjectiveSection::SuccessCriteria => {
-                if let Some(obj) = current.as_mut() {
-                    obj.success_criteria.push(strip_bullet(line));
-                }
-            }
-            ObjectiveSection::None => {
-                if let Some(obj) = current.as_mut() {
-                    obj.description.push(line.to_string());
-                }
-            }
-        }
+        push_objective_section_line(
+            line,
+            section,
+            &mut current,
+            &mut goal,
+            &mut instrumentation,
+            &mut definition_of_done,
+            &mut non_goals,
+        );
     }
     finalize_current_objective(&mut objectives, &mut current);
 
@@ -246,6 +204,97 @@ fn parse_objectives_md(text: &str) -> ObjectivesReport {
         instrumentation,
         definition_of_done,
         non_goals,
+    }
+}
+
+fn handle_objectives_h2_heading(
+    line: &str,
+    objectives: &mut Vec<Objective>,
+    current: &mut Option<ObjectiveBuilder>,
+    section: &mut ObjectiveSection,
+) -> bool {
+    let title = line.trim_start_matches("## ").trim();
+    if let Some(next_section) = objective_h2_section(title) {
+        *section = next_section;
+        finalize_current_objective(objectives, current);
+        return true;
+    }
+    if title.contains("Objective") || title.starts_with("OBJ-") {
+        finalize_current_objective(objectives, current);
+        *current = Some(ObjectiveBuilder::new(title));
+        *section = ObjectiveSection::None;
+        return true;
+    }
+    false
+}
+
+fn objective_h2_section(title: &str) -> Option<ObjectiveSection> {
+    if title.contains("Goal") {
+        Some(ObjectiveSection::Goal)
+    } else if title.contains("Instrumentation") {
+        Some(ObjectiveSection::Instrumentation)
+    } else if title.contains("Definition of Done") {
+        Some(ObjectiveSection::DefinitionDone)
+    } else if title.contains("Non-Goals") {
+        Some(ObjectiveSection::NonGoals)
+    } else {
+        None
+    }
+}
+
+fn objective_h3_section(line: &str) -> ObjectiveSection {
+    let title = line.trim_start_matches("### ").trim().to_lowercase();
+    match title.as_str() {
+        "requirement" => ObjectiveSection::Requirement,
+        "verification" => ObjectiveSection::Verification,
+        "success criteria" => ObjectiveSection::SuccessCriteria,
+        _ => ObjectiveSection::None,
+    }
+}
+
+fn push_objective_section_line(
+    line: &str,
+    section: ObjectiveSection,
+    current: &mut Option<ObjectiveBuilder>,
+    goal: &mut Vec<String>,
+    instrumentation: &mut Vec<String>,
+    definition_of_done: &mut Vec<String>,
+    non_goals: &mut Vec<String>,
+) {
+    match section {
+        ObjectiveSection::Goal => goal.push(strip_bullet(line)),
+        ObjectiveSection::Instrumentation => instrumentation.push(strip_bullet(line)),
+        ObjectiveSection::DefinitionDone => definition_of_done.push(strip_bullet(line)),
+        ObjectiveSection::NonGoals => non_goals.push(strip_bullet(line)),
+        ObjectiveSection::Requirement => push_current_objective_line(current, line, ObjectiveField::Requirement),
+        ObjectiveSection::Verification => push_current_objective_line(current, line, ObjectiveField::Verification),
+        ObjectiveSection::SuccessCriteria => {
+            push_current_objective_line(current, line, ObjectiveField::SuccessCriteria)
+        }
+        ObjectiveSection::None => push_current_objective_line(current, line, ObjectiveField::Description),
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ObjectiveField {
+    Description,
+    Requirement,
+    Verification,
+    SuccessCriteria,
+}
+
+fn push_current_objective_line(
+    current: &mut Option<ObjectiveBuilder>,
+    line: &str,
+    field: ObjectiveField,
+) {
+    if let Some(obj) = current.as_mut() {
+        match field {
+            ObjectiveField::Description => obj.description.push(line.to_string()),
+            ObjectiveField::Requirement => obj.requirement.push(strip_bullet(line)),
+            ObjectiveField::Verification => obj.verification.push(strip_bullet(line)),
+            ObjectiveField::SuccessCriteria => obj.success_criteria.push(strip_bullet(line)),
+        }
     }
 }
 
