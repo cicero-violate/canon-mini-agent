@@ -68,7 +68,9 @@ pub fn read_objectives_compact(path: &Path) -> String {
         return String::new();
     }
     let mut out = String::new();
-    for obj in &active {
+    // Limit to top-N objectives to prevent prompt overflow
+    let limit = 20usize;
+    for obj in active.iter().take(limit) {
         let status = if obj.status.trim().is_empty() { "active" } else { obj.status.trim() };
         let scope = if obj.scope.trim().is_empty() { String::new() } else { format!("  ({})", obj.scope.trim()) };
         out.push_str(&format!("[{status}]  {}  —  {}{scope}\n", obj.id, obj.title));

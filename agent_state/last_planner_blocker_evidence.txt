@@ -1,1 +1,1 @@
-Latest action result: "Planner may patch lane plans or `PLANS/OBJECTIVES.json` only. Use the `plan` action for `PLAN.json` updates; no other patches are allowed."
+PLAN.json unchanged with no READY tasks; last recorded error: 'mutating or verification actions must include non-empty intent'.
