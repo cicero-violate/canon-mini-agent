@@ -27,6 +27,10 @@ struct CrateGraph {
 
 #[derive(Debug, Deserialize)]
 struct GraphNode {
+    #[serde(default)]
+    def_id: String,
+    #[serde(default)]
+    path: String,
     kind: String,
     #[serde(default)]
     def: Option<SourceSpan>,
@@ -69,7 +73,8 @@ struct MirInfo {
 
 #[derive(Debug, Clone, Deserialize)]
 struct GraphEdge {
-    kind: String,
+    #[serde(default, alias = "kind")]
+    relation: String,
     from: String,
     to: String,
 }
@@ -130,7 +135,7 @@ impl SemanticIndex {
         let mut call_in: HashMap<&str, usize> = HashMap::new();
         let mut call_out: HashMap<&str, usize> = HashMap::new();
         for edge in &self.graph.edges {
-            if edge.kind != "call" {
+            if !edge_is_call(edge) {
                 continue;
             }
             *call_out.entry(edge.from.as_str()).or_insert(0) += 1;
@@ -138,7 +143,7 @@ impl SemanticIndex {
         }
 
         let mut out = Vec::new();
-        for (symbol, node) in &self.graph.nodes {
+        for (node_key, node) in &self.graph.nodes {
             if node.kind == "unknown" {
                 continue;
             }
@@ -147,8 +152,9 @@ impl SemanticIndex {
                 Some(m) => (Some(m.fingerprint.clone()), Some(m.blocks), Some(m.stmts)),
                 None => (None, None, None),
             };
+            let symbol = self.node_path(node_key, node).to_string();
             out.push(SymbolSummary {
-                symbol: symbol.clone(),
+                symbol,
                 kind: node.kind.clone(),
                 file: def.file.clone(),
                 line: def.line,
@@ -156,8 +162,8 @@ impl SemanticIndex {
                 mir_fingerprint,
                 mir_blocks,
                 mir_stmts,
-                call_in: *call_in.get(symbol.as_str()).unwrap_or(&0),
-                call_out: *call_out.get(symbol.as_str()).unwrap_or(&0),
+                call_in: *call_in.get(node_key.as_str()).unwrap_or(&0),
+                call_out: *call_out.get(node_key.as_str()).unwrap_or(&0),
             });
         }
 
@@ -170,8 +176,8 @@ impl SemanticIndex {
         self.graph
             .edges
             .iter()
-            .filter(|e| e.kind == "call")
-            .map(|e| (e.from.clone(), e.to.clone()))
+            .filter(|e| edge_is_call(e))
+            .map(|e| (self.edge_endpoint_path(&e.from), self.edge_endpoint_path(&e.to)))
             .collect()
     }
 
@@ -215,7 +221,8 @@ impl SemanticIndex {
     /// Extract the full definition body of a symbol from source using byte offsets.
     /// Returns the source text with a header showing file:line.
     pub fn symbol_window(&self, symbol: &str) -> Result<String> {
-        let node = self.find_node(symbol)?;
+        let key = self.resolve_node_key(symbol)?;
+        let node = self.graph.nodes.get(key).unwrap();
         let def = node.def.as_ref().context("symbol has no definition span")?;
 
         let source = fs::read_to_string(&def.file)
@@ -236,7 +243,7 @@ impl SemanticIndex {
         })?;
 
         let display = shorten_path(&def.file);
-        let mut out = format!("// {} — {}:{}\n", symbol, display, def.line);
+        let mut out = format!("// {} — {}:{}\n", self.node_path(key, node), display, def.line);
         out.push_str(text);
         if !out.ends_with('\n') {
             out.push('\n');
@@ -344,8 +351,8 @@ impl SemanticIndex {
     /// Returns the chain with file:line annotations.
     /// If `expand_bodies` is true, inlines the source body of each hop.
     pub fn symbol_path(&self, from: &str, to: &str, expand_bodies: bool) -> Result<String> {
-        let from_key = self.resolve_symbol_key(from)?;
-        let to_key = self.resolve_symbol_key(to)?;
+        let from_key = self.resolve_node_key(from)?;
+        let to_key = self.resolve_node_key(to)?;
         if from_key == to_key {
             return Ok(format!("`{from}` is the same as `{to}`."));
         }
@@ -395,7 +402,7 @@ impl SemanticIndex {
     /// Immediate callers and callees of `symbol` in the call graph.
     /// If `expand_bodies` is true, inlines the source body of each caller and callee.
     pub fn symbol_neighborhood(&self, symbol: &str, expand_bodies: bool) -> Result<String> {
-        let symbol_key = self.resolve_symbol_key(symbol)?;
+        let symbol_key = self.resolve_node_key(symbol)?;
         let node = self.graph.nodes.get(symbol_key).unwrap();
         let (callers, callees) = self.direct_call_neighbors(symbol_key);
         let inferred_callers = self.sorted_deduped_callers_from_refs(symbol_key, &node.refs);
@@ -423,16 +430,18 @@ impl SemanticIndex {
     /// Return the canonical fully-qualified graph key for `symbol`, or an error if not
     /// found or ambiguous.  Useful for deriving the new FQN in conflict checks.
     pub fn canonical_symbol_key(&self, symbol: &str) -> Result<String> {
-        self.resolve_symbol_key(symbol).map(|s| s.to_string())
+        let key = self.resolve_node_key(symbol)?;
+        let node = self.graph.nodes.get(key).unwrap();
+        Ok(self.node_path(key, node).to_string())
     }
 
     /// Return `true` if `symbol` is an exact key in the graph (no fuzzy suffix matching).
     pub fn has_symbol(&self, symbol: &str) -> bool {
-        self.graph.nodes.contains_key(symbol)
+        self.resolve_node_key(symbol).is_ok()
     }
 
     pub fn symbol_occurrences(&self, symbol: &str) -> Result<Vec<SymbolOccurrence>> {
-        let key = self.resolve_symbol_key(symbol)?;
+        let key = self.resolve_node_key(symbol)?;
         let node = self.graph.nodes.get(key).context("symbol key not present")?;
         let mut out = Vec::new();
         for r in &node.refs {
@@ -465,22 +474,36 @@ impl SemanticIndex {
     // -----------------------------------------------------------------------
 
     fn find_node(&self, symbol: &str) -> Result<&GraphNode> {
-        let key = self.resolve_symbol_key(symbol)?;
+        let key = self.resolve_node_key(symbol)?;
         Ok(self.graph.nodes.get(key).unwrap())
     }
 
-    fn resolve_symbol_key(&self, symbol: &str) -> Result<&str> {
+    fn resolve_node_key(&self, symbol: &str) -> Result<&str> {
         if let Some((key, _node)) = self.graph.nodes.get_key_value(symbol) {
             return Ok(key.as_str());
         }
-        // Fuzzy: try suffix match.
+        let mut exact_path_matches: Vec<&str> = self
+            .graph
+            .nodes
+            .iter()
+            .filter(|(_, node)| !node.path.is_empty() && node.path == symbol)
+            .map(|(key, _)| key.as_str())
+            .collect();
+        exact_path_matches.sort_unstable();
+        exact_path_matches.dedup();
+        if exact_path_matches.len() == 1 {
+            return Ok(exact_path_matches[0]);
+        }
+
         let suffix = format!("::{symbol}");
         let matches: Vec<&str> = self
             .graph
             .nodes
-            .keys()
-            .filter(|k| k.as_str() == symbol || k.ends_with(&suffix))
-            .map(String::as_str)
+            .iter()
+            .filter_map(|(key, node)| {
+                let path = self.node_path(key, node);
+                (path == symbol || path.ends_with(&suffix)).then_some(key.as_str())
+            })
             .collect();
         match matches.len() {
             0 => bail!(
@@ -489,7 +512,11 @@ impl SemanticIndex {
             1 => Ok(matches[0]),
             n => bail!(
                 "ambiguous symbol `{symbol}` — {n} matches: {}. Use the fully-qualified path.",
-                matches.join(", ")
+                matches
+                    .iter()
+                    .filter_map(|key| self.graph.nodes.get(*key).map(|node| self.node_path(key, node)))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ),
         }
     }
@@ -511,7 +538,8 @@ impl SemanticIndex {
         filter_path: Option<&str>,
     ) -> HashMap<String, Vec<(u32, &'a str, &'a GraphNode)>> {
         let mut by_file: HashMap<String, Vec<(u32, &str, &GraphNode)>> = HashMap::new();
-        for (path, node) in &self.graph.nodes {
+        for (node_key, node) in &self.graph.nodes {
+            let path = self.node_path(node_key, node);
             if self.should_skip_semantic_map_node(path, node, filter_path) {
                 continue;
             }
@@ -519,7 +547,7 @@ impl SemanticIndex {
             by_file
                 .entry(def.file.clone())
                 .or_default()
-                .push((def.line, path.as_str(), node));
+                .push((def.line, path, node));
         }
         by_file
     }
@@ -580,7 +608,7 @@ impl SemanticIndex {
         let mut callees: Vec<&str> = Vec::new();
 
         for edge in &self.graph.edges {
-            if edge.kind != "call" {
+            if !edge_is_call(edge) {
                 continue;
             }
             if edge.to == symbol_key {
@@ -618,7 +646,7 @@ impl SemanticIndex {
     ) {
         out.push_str(&format!("  {label} ({}):\n", symbols.len()));
         for sym in symbols {
-            out.push_str(&format!("    {sym}\n"));
+            out.push_str(&format!("    {}\n", self.edge_endpoint_path(sym)));
             self.push_expanded_symbol_body(out, sym, expand_bodies);
         }
     }
@@ -641,7 +669,7 @@ impl SemanticIndex {
             if let Some(def) = &node.def {
                 out.push_str(&format!(
                     "  {} ({}:{})\n",
-                    sym,
+                    self.node_path(sym, node),
                     shorten_path(&def.file),
                     def.line
                 ));
@@ -657,13 +685,13 @@ impl SemanticIndex {
                 return;
             }
         }
-        out.push_str(&format!("  {sym}\n"));
+        out.push_str(&format!("  {}\n", self.edge_endpoint_path(sym)));
     }
 
     fn call_adjacency(&self) -> HashMap<&str, Vec<&str>> {
         let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
         for edge in &self.graph.edges {
-            if edge.kind == "call" {
+            if edge_is_call(edge) {
                 adj.entry(&edge.from).or_default().push(&edge.to);
             }
         }
@@ -721,6 +749,31 @@ impl SemanticIndex {
         }
         best.map(|(sym, _)| sym)
     }
+
+    fn node_path<'a>(&'a self, key: &'a str, node: &'a GraphNode) -> &'a str {
+        if node.path.is_empty() {
+            key
+        } else {
+            node.path.as_str()
+        }
+    }
+
+    fn edge_endpoint_path(&self, key: &str) -> String {
+        self.graph
+            .nodes
+            .get(key)
+            .map(|node| self.node_path(key, node).to_string())
+            .unwrap_or_else(|| key.to_string())
+    }
+}
+
+fn edge_is_call(edge: &GraphEdge) -> bool {
+    let relation = if edge.relation.is_empty() {
+        ""
+    } else {
+        edge.relation.as_str()
+    };
+    relation.eq_ignore_ascii_case("call") || relation.eq_ignore_ascii_case("calls")
 }
 
 fn expand_symbol_window_span(source: &str, start_offset: usize, end_offset: usize) -> Option<(usize, usize)> {
@@ -826,6 +879,8 @@ mod tests {
         nodes.insert(
             "engine::process_action_and_execute".to_string(),
             GraphNode {
+                def_id: String::new(),
+                path: "engine::process_action_and_execute".to_string(),
                 kind: "fn".to_string(),
                 def: Some(SourceSpan {
                     file: src_path.to_string_lossy().to_string(),
@@ -886,6 +941,8 @@ mod tests {
         nodes.insert(
             "canon_mini_agent::app::continue_executor_completion".to_string(),
             GraphNode {
+                def_id: String::new(),
+                path: "canon_mini_agent::app::continue_executor_completion".to_string(),
                 kind: "fn".to_string(),
                 def: None,
                 refs: Vec::new(),
@@ -897,6 +954,8 @@ mod tests {
         nodes.insert(
             "canon_mini_agent::engine::process_action_and_execute".to_string(),
             GraphNode {
+                def_id: String::new(),
+                path: "canon_mini_agent::engine::process_action_and_execute".to_string(),
                 kind: "fn".to_string(),
                 def: None,
                 refs: Vec::new(),
@@ -910,7 +969,7 @@ mod tests {
             graph: CrateGraph {
                 nodes,
                 edges: vec![GraphEdge {
-                    kind: "call".to_string(),
+                    relation: "call".to_string(),
                     from: "canon_mini_agent::app::continue_executor_completion".to_string(),
                     to: "canon_mini_agent::engine::process_action_and_execute".to_string(),
                 }],
@@ -946,6 +1005,8 @@ mod tests {
         nodes.insert(
             "app::drive".to_string(),
             GraphNode {
+                def_id: String::new(),
+                path: "app::drive".to_string(),
                 kind: "fn".to_string(),
                 def: Some(SourceSpan {
                     file: "src/app.rs".to_string(),
@@ -963,6 +1024,8 @@ mod tests {
         nodes.insert(
             "app::run_planner_phase".to_string(),
             GraphNode {
+                def_id: String::new(),
+                path: "app::run_planner_phase".to_string(),
                 kind: "fn".to_string(),
                 def: Some(SourceSpan {
                     file: "src/app.rs".to_string(),
