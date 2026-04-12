@@ -19,13 +19,25 @@ Input (stdin): JSON object. Supported shapes:\n\
 Output (stdout): {\"predicted_next_actions\":[...]} where entries are action stubs.\n"
 }
 
+fn read_action_input() -> Result<Value> {
+    let mut raw = String::new();
+    std::io::stdin().read_to_string(&mut raw).context("read stdin")?;
+    serde_json::from_str(&raw).context("stdin is not valid JSON")
+}
+
 fn predicted_next_actions(action: &Value) -> Vec<Value> {
     if let Some(existing) = existing_predicted_next_actions(action) {
         return existing;
     }
     let kind = action.get("action").and_then(|v| v.as_str()).unwrap_or("");
+    predicted_next_actions_for_kind(kind, action)
+}
+
+fn predicted_next_actions_for_kind(kind: &str, action: &Value) -> Vec<Value> {
     match kind {
-        "apply_patch" => simple_action_prediction("cargo_test", "Verify the patch compiles and tests pass."),
+        "apply_patch" => {
+            simple_action_prediction("cargo_test", "Verify the patch compiles and tests pass.")
+        }
         "symbols_index" => read_file_prediction_for_output(
             action,
             "state/symbols.json",
@@ -41,9 +53,15 @@ fn predicted_next_actions(action: &Value) -> Vec<Value> {
             "state/next_rename_action.json",
             "Inspect prepared rename action JSON.",
         ),
-        "rename_symbol" => simple_action_prediction("cargo_test", "Run tests after rename to ensure no regressions."),
-        "run_command" => simple_action_prediction("message", "Summarize command output and decide next step."),
-        "read_file" => simple_action_prediction("message", "Summarize findings and choose the next concrete action."),
+        "rename_symbol" => {
+            simple_action_prediction("cargo_test", "Run tests after rename to ensure no regressions.")
+        }
+        "run_command" => {
+            simple_action_prediction("message", "Summarize command output and decide next step.")
+        }
+        "read_file" => {
+            simple_action_prediction("message", "Summarize findings and choose the next concrete action.")
+        }
         _ => Vec::new(),
     }
 }
@@ -77,12 +95,6 @@ fn main() -> Result<()> {
     if has_flag(&args, "--help") || has_flag(&args, "-h") {
         eprint!("{}", usage());
         return Ok(());
-    }
-
-    fn read_action_input() -> Result<Value> {
-        let mut raw = String::new();
-        std::io::stdin().read_to_string(&mut raw).context("read stdin")?;
-        serde_json::from_str(&raw).context("stdin is not valid JSON")
     }
 
     let input = read_action_input()?;

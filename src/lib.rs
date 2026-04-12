@@ -3,7 +3,7 @@
 pub mod app;
 mod constants;
 mod engine;
-mod lessons;
+pub mod lessons;
 pub mod logging;
 mod md_convert;
 mod action_examples;

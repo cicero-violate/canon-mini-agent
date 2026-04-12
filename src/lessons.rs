@@ -11,7 +11,7 @@
 ///   injected into every planner/solo prompt via `read_lessons_or_empty`.
 ///   Rejected candidates persist with `status: "rejected"` so they are not re-surfaced.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -70,6 +70,27 @@ pub struct LessonsCandidate {
     /// A concrete fix hint or workflow note (if applicable).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fix_or_note: Option<String>,
+    /// Task ids this pattern was observed under.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub task_ids: Vec<String>,
+    /// Objective ids this pattern was observed under.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub objective_ids: Vec<String>,
+    /// Agent roles this pattern was observed under.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub roles: Vec<String>,
+    /// Representative intents attached to actions contributing to this pattern.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub intents: Vec<String>,
+    /// System-facing question about how to prevent or automate this class of behavior.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_direction: Option<String>,
+    /// Suggested system layer to modify instead of training the model to behave differently.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_lever: Option<String>,
+    /// Concrete system change hint, when one is known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_change_hint: Option<String>,
     /// Lifecycle state.
     #[serde(default)]
     pub status: CandidateStatus,
@@ -277,7 +298,7 @@ fn synthesize_candidates(workspace: &Path) -> Result<()> {
     // Merge into the existing candidates file (preserves rejected/promoted status).
     let mut cfile = load_candidates(workspace);
     cfile.last_synthesized_ms = now_ms;
-    cfile.version = 1;
+    cfile.version = 2;
 
     merge_candidates_into_file(&mut cfile, failure_candidates);
     merge_candidates_into_file(&mut cfile, sequence_candidates);
@@ -297,8 +318,7 @@ fn synthesize_candidates(workspace: &Path) -> Result<()> {
 // ── Failure pattern detection ─────────────────────────────────────────────────
 
 fn detect_failure_candidates(entries: &[Value]) -> Vec<LessonsCandidate> {
-    let mut map: HashMap<(String, String), usize> = HashMap::new();
-    let mut fix_map: HashMap<(String, String), Option<String>> = HashMap::new();
+    let mut map: HashMap<(String, String), CandidateAggregate> = HashMap::new();
 
     for entry in entries {
         if entry.get("kind").and_then(|v| v.as_str()) != Some("tool") {
@@ -318,15 +338,31 @@ fn detect_failure_candidates(entries: &[Value]) -> Vec<LessonsCandidate> {
         let text = entry.get("text").and_then(|v| v.as_str()).unwrap_or("");
         let pattern = normalize_error(text);
         let key = (action.clone(), pattern.clone());
-        *map.entry(key.clone()).or_default() += 1;
-        fix_map.entry(key).or_insert_with(|| schema_fix_hint(&action, &pattern));
+        let aggregate = map.entry(key).or_default();
+        aggregate.occurrences += 1;
+        aggregate.roles.insert(
+            entry.get("actor").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        );
+        aggregate.task_ids.insert(
+            entry.get("task_id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        );
+        aggregate.objective_ids.insert(
+            entry.get("objective_id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        );
+        aggregate.intents.insert(
+            entry.get("intent").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        );
+        if aggregate.fix_or_note.is_none() {
+            aggregate.fix_or_note = schema_fix_hint(&action, &pattern);
+        }
     }
 
     let mut results: Vec<LessonsCandidate> = map
         .into_iter()
-        .filter(|(_, count)| *count >= MIN_FAILURE_OCCURRENCES)
-        .map(|((action, pattern), occurrences)| {
-            let fix = fix_map.get(&(action.clone(), pattern.clone())).and_then(|v| v.clone());
+        .filter(|(_, aggregate)| aggregate.occurrences >= MIN_FAILURE_OCCURRENCES)
+        .map(|((action, pattern), aggregate)| {
+            let occurrences = aggregate.occurrences;
+            let fix = aggregate.fix_or_note.clone();
             let description = format!(
                 "`{action}` action: {pattern} ({occurrences} occurrence{})",
                 if occurrences == 1 { "" } else { "s" }
@@ -336,7 +372,14 @@ fn detect_failure_candidates(entries: &[Value]) -> Vec<LessonsCandidate> {
                 kind: "failure_pattern".to_string(),
                 description,
                 occurrences,
-                fix_or_note: fix,
+                fix_or_note: fix.clone(),
+                task_ids: aggregate.task_ids.into_iter().filter(|s| !s.is_empty()).collect(),
+                objective_ids: aggregate.objective_ids.into_iter().filter(|s| !s.is_empty()).collect(),
+                roles: aggregate.roles.into_iter().filter(|s| !s.is_empty()).collect(),
+                intents: aggregate.intents.into_iter().filter(|s| !s.is_empty()).collect(),
+                system_direction: Some(prevention_question(&action, &pattern)),
+                system_lever: Some(prevention_system_lever(&action, &pattern).to_string()),
+                system_change_hint: fix,
                 status: CandidateStatus::Pending,
             }
         })
@@ -362,8 +405,12 @@ struct TaggedAction {
     action: String,
     /// The plan task id active when this action ran (empty if unknown).
     task_id: String,
+    /// The objective id the action claims to advance (empty if unknown).
+    objective_id: String,
     /// The agent role that executed this action (executor, planner, solo, …).
     role: String,
+    /// Intent attached to the action payload (empty if unknown).
+    intent: String,
 }
 
 fn collect_successful_actions(entries: &[Value]) -> Vec<TaggedAction> {
@@ -386,7 +433,17 @@ fn collect_successful_actions(entries: &[Value]) -> Vec<TaggedAction> {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            Some(TaggedAction { action, task_id, role })
+            let objective_id = e
+                .get("objective_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let intent = e
+                .get("intent")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            Some(TaggedAction { action, task_id, objective_id, role, intent })
         })
         .collect()
 }
@@ -394,13 +451,13 @@ fn collect_successful_actions(entries: &[Value]) -> Vec<TaggedAction> {
 fn count_success_sequences(
     successes: &[TaggedAction],
 ) -> (
-    // (role, action_a, action_b) → count
-    HashMap<(String, String, String), usize>,
-    // (role, action_a, action_b, action_c) → count
-    HashMap<(String, String, String, String), usize>,
+    // (role, action_a, action_b) → aggregate
+    HashMap<(String, String, String), CandidateAggregate>,
+    // (role, action_a, action_b, action_c) → aggregate
+    HashMap<(String, String, String, String), CandidateAggregate>,
 ) {
-    let mut bigrams: HashMap<(String, String, String), usize> = HashMap::new();
-    let mut trigrams: HashMap<(String, String, String, String), usize> = HashMap::new();
+    let mut bigrams: HashMap<(String, String, String), CandidateAggregate> = HashMap::new();
+    let mut trigrams: HashMap<(String, String, String, String), CandidateAggregate> = HashMap::new();
 
     for window in successes.windows(2) {
         let a = &window[0];
@@ -417,7 +474,15 @@ fn count_success_sequences(
             continue;
         }
         let role = if same_role { a.role.clone() } else { String::new() };
-        *bigrams.entry((role, a.action.clone(), b.action.clone())).or_default() += 1;
+        let aggregate = bigrams.entry((role, a.action.clone(), b.action.clone())).or_default();
+        aggregate.occurrences += 1;
+        aggregate.roles.insert(a.role.clone());
+        aggregate.task_ids.insert(a.task_id.clone());
+        aggregate.task_ids.insert(b.task_id.clone());
+        aggregate.objective_ids.insert(a.objective_id.clone());
+        aggregate.objective_ids.insert(b.objective_id.clone());
+        aggregate.intents.insert(a.intent.clone());
+        aggregate.intents.insert(b.intent.clone());
     }
 
     for window in successes.windows(3) {
@@ -433,61 +498,114 @@ fn count_success_sequences(
             continue;
         }
         let role = if same_role { a.role.clone() } else { String::new() };
-        *trigrams
+        let aggregate = trigrams
             .entry((role, a.action.clone(), b.action.clone(), c.action.clone()))
-            .or_default() += 1;
+            .or_default();
+        aggregate.occurrences += 1;
+        aggregate.roles.insert(a.role.clone());
+        aggregate.roles.insert(b.role.clone());
+        aggregate.roles.insert(c.role.clone());
+        aggregate.task_ids.insert(a.task_id.clone());
+        aggregate.task_ids.insert(b.task_id.clone());
+        aggregate.task_ids.insert(c.task_id.clone());
+        aggregate.objective_ids.insert(a.objective_id.clone());
+        aggregate.objective_ids.insert(b.objective_id.clone());
+        aggregate.objective_ids.insert(c.objective_id.clone());
+        aggregate.intents.insert(a.intent.clone());
+        aggregate.intents.insert(b.intent.clone());
+        aggregate.intents.insert(c.intent.clone());
     }
 
     (bigrams, trigrams)
 }
 
 fn build_success_sequence_candidates(
-    bigrams: HashMap<(String, String, String), usize>,
-    trigrams: HashMap<(String, String, String, String), usize>,
+    bigrams: HashMap<(String, String, String), CandidateAggregate>,
+    trigrams: HashMap<(String, String, String, String), CandidateAggregate>,
 ) -> Vec<LessonsCandidate> {
     let mut results: Vec<LessonsCandidate> = Vec::new();
+    let success_clusters = build_success_cluster_counts(&bigrams, &trigrams);
 
-    for ((role, a, b), count) in bigrams {
-        if count < MIN_BIGRAM_OCCURRENCES {
+    for ((role, a, b), aggregate) in bigrams {
+        if aggregate.occurrences < MIN_BIGRAM_OCCURRENCES {
             continue;
         }
-        results.push(build_bigram_candidate(role, a, b, count));
+        results.push(build_bigram_candidate(role, a, b, aggregate, &success_clusters));
     }
 
-    for ((role, a, b, c), count) in trigrams {
-        if count < MIN_TRIGRAM_OCCURRENCES {
+    for ((role, a, b, c), aggregate) in trigrams {
+        if aggregate.occurrences < MIN_TRIGRAM_OCCURRENCES {
             continue;
         }
-        results.push(build_trigram_candidate(role, a, b, c, count));
+        results.push(build_trigram_candidate(role, a, b, c, aggregate, &success_clusters));
     }
 
     results
 }
 
-fn build_bigram_candidate(role: String, a: String, b: String, count: usize) -> LessonsCandidate {
+fn build_bigram_candidate(
+    role: String,
+    a: String,
+    b: String,
+    aggregate: CandidateAggregate,
+    success_clusters: &HashMap<String, usize>,
+) -> LessonsCandidate {
     let key = format!("{role}:{a}→{b}");
+    let count = aggregate.occurrences;
     let note = sequence_workflow_note(&a, &b, None);
     let role_tag = if role.is_empty() { String::new() } else { format!(" [{role}]") };
+    let system_direction = success_automation_question(
+        aggregate.task_ids.iter(),
+        aggregate.objective_ids.iter(),
+        success_clusters,
+    );
     LessonsCandidate {
         id: stable_id("seq2", &key),
         kind: "success_sequence".to_string(),
         description: format!("Action sequence{role_tag}: {a} → {b} ({count} occurrences)"),
         occurrences: count,
-        fix_or_note: note,
+        fix_or_note: note.clone(),
+        task_ids: aggregate.task_ids.into_iter().filter(|s| !s.is_empty()).collect(),
+        objective_ids: aggregate.objective_ids.into_iter().filter(|s| !s.is_empty()).collect(),
+        roles: aggregate.roles.into_iter().filter(|s| !s.is_empty()).collect(),
+        intents: aggregate.intents.into_iter().filter(|s| !s.is_empty()).collect(),
+        system_direction,
+        system_lever: Some("runtime_automation".to_string()),
+        system_change_hint: note,
         status: CandidateStatus::Pending,
     }
 }
 
-fn build_trigram_candidate(role: String, a: String, b: String, c: String, count: usize) -> LessonsCandidate {
+fn build_trigram_candidate(
+    role: String,
+    a: String,
+    b: String,
+    c: String,
+    aggregate: CandidateAggregate,
+    success_clusters: &HashMap<String, usize>,
+) -> LessonsCandidate {
     let key = format!("{role}:{a}→{b}→{c}");
+    let count = aggregate.occurrences;
     let note = sequence_workflow_note(&a, &b, Some(&c));
     let role_tag = if role.is_empty() { String::new() } else { format!(" [{role}]") };
+    let system_direction = success_automation_question(
+        aggregate.task_ids.iter(),
+        aggregate.objective_ids.iter(),
+        success_clusters,
+    );
     LessonsCandidate {
         id: stable_id("seq3", &key),
         kind: "success_sequence".to_string(),
         description: format!("Action sequence{role_tag}: {a} → {b} → {c} ({count} occurrences)"),
         occurrences: count,
-        fix_or_note: note,
+        fix_or_note: note.clone(),
+        task_ids: aggregate.task_ids.into_iter().filter(|s| !s.is_empty()).collect(),
+        objective_ids: aggregate.objective_ids.into_iter().filter(|s| !s.is_empty()).collect(),
+        roles: aggregate.roles.into_iter().filter(|s| !s.is_empty()).collect(),
+        intents: aggregate.intents.into_iter().filter(|s| !s.is_empty()).collect(),
+        system_direction,
+        system_lever: Some("runtime_automation".to_string()),
+        system_change_hint: note,
         status: CandidateStatus::Pending,
     }
 }
@@ -502,6 +620,27 @@ fn merge_candidates_into_file(cfile: &mut LessonsCandidatesFile, new_ones: Vec<L
             existing.description = new_c.description;
             if new_c.fix_or_note.is_some() {
                 existing.fix_or_note = new_c.fix_or_note;
+            }
+            if !new_c.task_ids.is_empty() {
+                existing.task_ids = new_c.task_ids;
+            }
+            if !new_c.objective_ids.is_empty() {
+                existing.objective_ids = new_c.objective_ids;
+            }
+            if !new_c.roles.is_empty() {
+                existing.roles = new_c.roles;
+            }
+            if !new_c.intents.is_empty() {
+                existing.intents = new_c.intents;
+            }
+            if new_c.system_direction.is_some() {
+                existing.system_direction = new_c.system_direction;
+            }
+            if new_c.system_lever.is_some() {
+                existing.system_lever = new_c.system_lever;
+            }
+            if new_c.system_change_hint.is_some() {
+                existing.system_change_hint = new_c.system_change_hint;
             }
         } else {
             cfile.candidates.push(new_c);
@@ -546,14 +685,25 @@ fn merge_candidate_into_artifact(artifact: &mut LessonsArtifact, c: &LessonsCand
             if !artifact.failures.iter().any(|e| e.text == c.description) {
                 artifact.failures.push(LessonEntry::pending(c.description.clone()));
             }
-            if let Some(fix) = &c.fix_or_note {
+            let fix = c
+                .system_change_hint
+                .as_ref()
+                .or(c.fix_or_note.as_ref())
+                .or(c.system_direction.as_ref());
+            if let Some(fix) = fix {
                 if !artifact.fixes.iter().any(|e| &e.text == fix) {
                     artifact.fixes.push(LessonEntry::pending(fix.clone()));
                 }
             }
         }
         "success_sequence" => {
-            let text = c.fix_or_note.as_deref().unwrap_or(&c.description).to_string();
+            let text = c
+                .system_direction
+                .as_deref()
+                .or(c.system_change_hint.as_deref())
+                .or(c.fix_or_note.as_deref())
+                .unwrap_or(&c.description)
+                .to_string();
             if !artifact.required_actions.iter().any(|e| e.text == text) {
                 artifact.required_actions.push(LessonEntry::pending(text));
             }
@@ -769,6 +919,79 @@ fn sequence_workflow_note(a: &str, b: &str, c: Option<&str>) -> Option<String> {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+struct CandidateAggregate {
+    occurrences: usize,
+    fix_or_note: Option<String>,
+    task_ids: BTreeSet<String>,
+    objective_ids: BTreeSet<String>,
+    roles: BTreeSet<String>,
+    intents: BTreeSet<String>,
+}
+
+fn prevention_question(action: &str, pattern: &str) -> String {
+    format!(
+        "How can this `{action}` failure pattern be made impossible in the system so `{pattern}` never occurs anymore without relying on the LLM to change?"
+    )
+}
+
+fn prevention_system_lever(action: &str, pattern: &str) -> &'static str {
+    if pattern.contains("missing")
+        || pattern.contains("invalid type")
+        || pattern.contains("does not accept")
+    {
+        "schema_validation"
+    } else if action == "symbol_window" && pattern.contains("not found in graph") {
+        "semantic_preflight"
+    } else if pattern.contains("task not found") || pattern.contains("objective not found") {
+        "runtime_guard"
+    } else {
+        "runtime_validation"
+    }
+}
+
+fn build_success_cluster_counts(
+    bigrams: &HashMap<(String, String, String), CandidateAggregate>,
+    trigrams: &HashMap<(String, String, String, String), CandidateAggregate>,
+) -> HashMap<String, usize> {
+    let mut clusters = HashMap::new();
+    for aggregate in bigrams.values().chain(trigrams.values()) {
+        for task_id in aggregate.task_ids.iter().filter(|s| !s.is_empty()) {
+            *clusters.entry(format!("task:{task_id}")).or_insert(0) += 1;
+        }
+        for objective_id in aggregate.objective_ids.iter().filter(|s| !s.is_empty()) {
+            *clusters.entry(format!("objective:{objective_id}")).or_insert(0) += 1;
+        }
+    }
+    clusters
+}
+
+fn success_automation_question<'a>(
+    task_ids: impl Iterator<Item = &'a String>,
+    objective_ids: impl Iterator<Item = &'a String>,
+    success_clusters: &HashMap<String, usize>,
+) -> Option<String> {
+    let matched_task_ids: Vec<String> = task_ids
+        .filter(|task_id| !task_id.is_empty())
+        .filter(|task_id| success_clusters.get(&format!("task:{task_id}")).copied().unwrap_or(0) >= 2)
+        .cloned()
+        .collect();
+    let matched_objective_ids: Vec<String> = objective_ids
+        .filter(|objective_id| !objective_id.is_empty())
+        .filter(|objective_id| success_clusters.get(&format!("objective:{objective_id}")).copied().unwrap_or(0) >= 2)
+        .cloned()
+        .collect();
+
+    if matched_task_ids.is_empty() && matched_objective_ids.is_empty() {
+        return None;
+    }
+
+    Some(format!(
+        "How can this successful pathway be automated in the system, without forcing the LLM to change, for task_ids {:?} and objective_ids {:?}?",
+        matched_task_ids, matched_objective_ids
+    ))
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -785,6 +1008,28 @@ mod tests {
         })
     }
 
+    fn tool_result_with_provenance(
+        action: &str,
+        ok: bool,
+        text: &str,
+        role: &str,
+        task_id: &str,
+        objective_id: &str,
+        intent: &str,
+    ) -> Value {
+        serde_json::json!({
+            "kind": "tool",
+            "phase": "result",
+            "action": action,
+            "ok": ok,
+            "text": text,
+            "actor": role,
+            "task_id": task_id,
+            "objective_id": objective_id,
+            "intent": intent,
+        })
+    }
+
     #[test]
     fn failure_candidates_detected_above_threshold() {
         let entries = vec![
@@ -798,6 +1043,7 @@ mod tests {
         assert!(candidates.iter().any(|c| c.description.contains("issue")));
         assert!(candidates.iter().any(|c| c.description.contains("plan")));
         assert!(candidates.iter().all(|c| c.kind == "failure_pattern"));
+        assert!(candidates.iter().all(|c| c.system_direction.is_some()));
     }
 
     #[test]
@@ -836,6 +1082,67 @@ mod tests {
     }
 
     #[test]
+    fn success_sequence_candidates_keep_task_objective_provenance_and_emit_generic_automation_question() {
+        let mut entries: Vec<Value> = Vec::new();
+        for _ in 0..4 {
+            entries.push(tool_result_with_provenance(
+                "read_file",
+                true,
+                "ok",
+                "solo",
+                "T1",
+                "obj_alpha",
+                "Read the current file before patching.",
+            ));
+            entries.push(tool_result_with_provenance(
+                "apply_patch",
+                true,
+                "ok",
+                "solo",
+                "T1",
+                "obj_alpha",
+                "Apply the targeted fix for task T1.",
+            ));
+        }
+        for _ in 0..4 {
+            entries.push(tool_result_with_provenance(
+                "symbol_window",
+                true,
+                "ok",
+                "solo",
+                "T1",
+                "obj_alpha",
+                "Inspect the target symbol for task T1.",
+            ));
+            entries.push(tool_result_with_provenance(
+                "read_file",
+                true,
+                "ok",
+                "solo",
+                "T1",
+                "obj_alpha",
+                "Read the exact file block tied to the same task.",
+            ));
+        }
+
+        let candidates = detect_success_sequences(&entries);
+        let candidate = candidates
+            .iter()
+            .find(|c| c.description.contains("read_file") && c.description.contains("apply_patch"))
+            .expect("expected read_file→apply_patch candidate");
+        assert_eq!(candidate.task_ids, vec!["T1".to_string()]);
+        assert_eq!(candidate.objective_ids, vec!["obj_alpha".to_string()]);
+        assert!(
+            candidate
+                .system_direction
+                .as_deref()
+                .unwrap_or("")
+                .contains("without forcing the LLM to change"),
+            "expected generic automation question"
+        );
+    }
+
+    #[test]
     fn same_action_repeated_not_a_sequence() {
         let mut entries = Vec::new();
         for _ in 0..10 {
@@ -861,6 +1168,13 @@ mod tests {
                 description: "test failure (2 occurrences)".to_string(),
                 occurrences: 2,
                 fix_or_note: Some("the fix".to_string()),
+                task_ids: Vec::new(),
+                objective_ids: Vec::new(),
+                roles: Vec::new(),
+                intents: Vec::new(),
+                system_direction: Some("prevent it in the system".to_string()),
+                system_lever: Some("schema_validation".to_string()),
+                system_change_hint: Some("the fix".to_string()),
                 status: CandidateStatus::Pending,
             }],
         };
@@ -897,6 +1211,13 @@ mod tests {
                 description: "noise".to_string(),
                 occurrences: 2,
                 fix_or_note: None,
+                task_ids: Vec::new(),
+                objective_ids: Vec::new(),
+                roles: Vec::new(),
+                intents: Vec::new(),
+                system_direction: None,
+                system_lever: None,
+                system_change_hint: None,
                 status: CandidateStatus::Pending,
             }],
         };
