@@ -191,19 +191,41 @@ pub fn read_top_open_issues(workspace: &Path, limit: usize) -> String {
     });
     let mut out = String::new();
     out.push_str("Top open issues:\n");
+    let title_max_len = 120usize;
+    let location_max_len = 80usize;
+    let byte_budget = 4096usize;
     for issue in file.issues.into_iter().take(limit.max(1)) {
-        let loc = if issue.location.trim().is_empty() {
+        let title = issue.title.trim();
+        let truncated_title = if title.len() > title_max_len {
+            format!("{}…", &title[..title_max_len])
+        } else {
+            title.to_string()
+        };
+        let location = issue.location.trim();
+        let truncated_location = if location.is_empty() {
+            String::new()
+        } else if location.len() > location_max_len {
+            format!("{}…", &location[..location_max_len])
+        } else {
+            location.to_string()
+        };
+        let loc = if truncated_location.is_empty() {
             String::new()
         } else {
-            format!(" ({})", issue.location.trim())
+            format!(" ({})", truncated_location)
         };
-        out.push_str(&format!(
+        let line = format!(
             "- [score:{:.2}] {}: {}{}\n",
             issue.score,
             issue.id,
-            issue.title.trim(),
+            truncated_title,
             loc
-        ));
+        );
+        if out.len() + line.len() > byte_budget {
+            out.push_str("- … additional open issues omitted; use {\"action\":\"issue\",\"op\":\"read\"} for full detail\n");
+            break;
+        }
+        out.push_str(&line);
     }
     out
 }
