@@ -419,7 +419,7 @@ async fn run_planner_phase(
         ctx.diagnostics_path,
         ctx.master_plan_path,
     );
-    let issues_text = crate::issues::read_open_issues(ctx.workspace);
+    let issues_text = crate::issues::read_top_open_issues(ctx.workspace, 10);
     let mut planner_prompt = planner_cycle_prompt(
         &inputs.summary_text,
         &inputs.objectives_text,
@@ -2730,6 +2730,7 @@ async fn run_agent(
         let exchange_id = make_command_id(role, prompt_kind, step + 1);
 
         eprintln!("[{role}] step={} prompt_bytes={}", step + 1, prompt.len());
+        crate::logging::record_prompt_overflow(workspace, role, prompt.len());
         ctx.log_request(step + 1, &exchange_id, &prompt, &role_schema);
 
         let response_timeout_secs = response_timeout_for_role(role);
@@ -3650,6 +3651,11 @@ async fn submit_executor_turn(
         "[{}] step=1 prompt_bytes={}",
         job.executor_role,
         prompt.len()
+    );
+    crate::logging::record_prompt_overflow(
+        &std::path::PathBuf::from(workspace()),
+        &job.executor_role,
+        prompt.len(),
     );
     log_message_event(
         &job.executor_role,

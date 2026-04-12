@@ -13,6 +13,9 @@ pub const CANONICAL_LAW_FILE: &str = "CANONICAL_LAW.md";
 pub const WS_PORT_CANDIDATES: &[u16] = &[9103, 9104, 9105, 9106, 9107, 9108];
 pub const MAX_STEPS: usize = 2000;
 pub const EXECUTOR_STEP_LIMIT: usize = 20;
+/// Prompt size above which a VIOLATIONS.json entry is written.
+/// Prompts this large flood the model with noise context and degrade focus.
+pub const PROMPT_OVERFLOW_BYTES: usize = 80_000;
 pub const MAX_FULL_READ_LINES: usize = 1000;
 pub const MAX_SNIPPET: usize = 20_000;
 pub const DEFAULT_RESPONSE_TIMEOUT_SECS: u64 = 150;

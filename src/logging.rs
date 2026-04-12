@@ -660,6 +660,73 @@ pub(crate) fn append_orchestration_trace(event: &str, payload: Value) {
     }
 }
 
+/// Append a violation to VIOLATIONS.json when a prompt exceeds the overflow threshold.
+///
+/// Only fires when `prompt_bytes > PROMPT_OVERFLOW_BYTES`.  Deduplicates by checking
+/// whether an open violation with the same role already exists — avoids flooding the
+/// violations file with one entry per cycle.
+pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, prompt_bytes: usize) {
+    use crate::constants::PROMPT_OVERFLOW_BYTES;
+    if prompt_bytes <= PROMPT_OVERFLOW_BYTES {
+        return;
+    }
+    let violations_path = workspace.join(crate::constants::VIOLATIONS_FILE);
+    let raw = std::fs::read_to_string(&violations_path).unwrap_or_default();
+
+    let mut report: serde_json::Map<String, Value> = if raw.trim().is_empty() {
+        serde_json::Map::new()
+    } else {
+        serde_json::from_str::<Value>(&raw)
+            .ok()
+            .and_then(|v| v.as_object().cloned())
+            .unwrap_or_default()
+    };
+
+    // Deduplicate: skip if an open overflow violation for this role already exists.
+    let violation_id = format!("PROMPT-OVERFLOW-{}", role.to_uppercase().replace(['[', ']', '/'], "-"));
+    let violations = report
+        .get("violations")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    if violations.iter().any(|v| {
+        v.get("id").and_then(|x| x.as_str()) == Some(&violation_id)
+    }) {
+        return;
+    }
+
+    let new_violation = json!({
+        "id": violation_id,
+        "title": format!("Prompt overflow: {} sent {prompt_bytes} bytes (limit {PROMPT_OVERFLOW_BYTES})", role),
+        "severity": "high",
+        "evidence": [
+            format!("role={role} prompt_bytes={prompt_bytes} threshold={PROMPT_OVERFLOW_BYTES}"),
+            "Large prompts flood the model with noise context and degrade focus on the highest-priority work.",
+            "Check which context sections are over-sized: ISSUES.json (use top-N), OBJECTIVES.json (use compact), complexity report (use hotspots only)."
+        ],
+        "issue": format!("Prompt for role `{role}` exceeds the {PROMPT_OVERFLOW_BYTES}-byte noise threshold at {prompt_bytes} bytes."),
+        "impact": "Model focus degrades; low-signal context crowds out high-priority signals.",
+        "required_fix": [
+            format!("Identify which injected section accounts for the excess (prompt_bytes={prompt_bytes})."),
+            "Trim the over-sized section to a top-N summary or compact format.",
+            "Verify the prompt drops below the threshold after trimming."
+        ]
+    });
+
+    let mut new_violations = violations;
+    new_violations.push(new_violation);
+    report.insert("violations".to_string(), Value::Array(new_violations));
+    report.insert("status".to_string(), json!("failed"));
+    report.entry("summary".to_string()).or_insert(json!(
+        "One or more agent roles are sending prompts that exceed the noise-context threshold."
+    ));
+
+    if let Ok(body) = serde_json::to_string_pretty(&Value::Object(report)) {
+        let _ = std::fs::write(&violations_path, body);
+    }
+    eprintln!("[{role}] PROMPT OVERFLOW: {prompt_bytes} bytes exceeds threshold {PROMPT_OVERFLOW_BYTES}");
+}
+
 pub(crate) fn now_ms() -> u64 {
     let ms = canon_llm::endpoint_worker::tab_manager_now_ms();
     u64::try_from(ms).unwrap_or(u64::MAX)
