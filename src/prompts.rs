@@ -713,54 +713,60 @@ fn executor_handoff() -> String {
 
 fn prompt_tail(kind: AgentPromptKind) -> String {
     match kind {
-        AgentPromptKind::Executor => {
-            let er = executor_rules();
-            let er_refs: Vec<&str> = er.iter().map(|s| s.as_str()).collect();
-            format!(
-                "{}\n\n{}\n\n{}",
-                executor_handoff(),
-                execution_discipline(),
-                rules_section(&er_refs, Some("Planner"))
-            )
-        }
-        AgentPromptKind::Verifier => {
-            let mut rules: Vec<String> = VERIFIER_RULES.iter().map(|s| s.to_string()).collect();
-            rules.extend(load_role_overrides(AgentPromptKind::Verifier));
-            let refs: Vec<&str> = rules.iter().map(|s| s.as_str()).collect();
-            format!(
-                "{}\n\n{}",
-                VERIFIER_PROCESS,
-                rules_section(&refs, Some("Planner"))
-            )
-        }
-        AgentPromptKind::Planner => {
-            let mut rules: Vec<String> = PLANNER_RULES.iter().map(|s| s.to_string()).collect();
-            rules.extend(load_role_overrides(AgentPromptKind::Planner));
-            let refs: Vec<&str> = rules.iter().map(|s| s.as_str()).collect();
-            format!(
-                "{}\n\n{}",
-                PLANNER_PROCESS,
-                rules_section(&refs, Some("Diagnostics"))
-            )
-        }
-        AgentPromptKind::Diagnostics => {
-            let dr = diagnostics_rules();
-            let dr_refs: Vec<&str> = dr.iter().map(|s| s.as_str()).collect();
-            format!(
-                "{}\n\n{}",
-                diagnostics_process(),
-                rules_section(&dr_refs, Some("Planner"))
-            )
-        }
-        AgentPromptKind::Solo => {
-            let sr = solo_rules();
-            let sr_refs: Vec<&str> = sr.iter().map(|s| s.as_str()).collect();
-            format!(
-                "{}\n\n{}",
-                solo_execution_discipline(),
-                rules_section(&sr_refs, Some("Planner"))
-            )
-        }
+        AgentPromptKind::Executor => format_prompt_tail_with_prefix(
+            &executor_handoff(),
+            Some(&execution_discipline()),
+            &executor_rules(),
+            Some("Planner"),
+        ),
+        AgentPromptKind::Verifier => format_prompt_tail_with_prefix(
+            VERIFIER_PROCESS,
+            None,
+            &role_rules_with_overrides(VERIFIER_RULES, AgentPromptKind::Verifier),
+            Some("Planner"),
+        ),
+        AgentPromptKind::Planner => format_prompt_tail_with_prefix(
+            PLANNER_PROCESS,
+            None,
+            &role_rules_with_overrides(PLANNER_RULES, AgentPromptKind::Planner),
+            Some("Diagnostics"),
+        ),
+        AgentPromptKind::Diagnostics => format_prompt_tail_with_prefix(
+            &diagnostics_process(),
+            None,
+            &diagnostics_rules(),
+            Some("Planner"),
+        ),
+        AgentPromptKind::Solo => format_prompt_tail_with_prefix(
+            &solo_execution_discipline(),
+            None,
+            &solo_rules(),
+            Some("Planner"),
+        ),
+    }
+}
+
+fn role_rules_with_overrides(base: &[&str], kind: AgentPromptKind) -> Vec<String> {
+    let mut rules: Vec<String> = base.iter().map(|s| s.to_string()).collect();
+    rules.extend(load_role_overrides(kind));
+    rules
+}
+
+fn format_prompt_tail_with_prefix(
+    prefix: &str,
+    middle: Option<&str>,
+    rules: &[String],
+    blocker_target: Option<&str>,
+) -> String {
+    let refs: Vec<&str> = rules.iter().map(|s| s.as_str()).collect();
+    match middle {
+        Some(middle) => format!(
+            "{}\n\n{}\n\n{}",
+            prefix,
+            middle,
+            rules_section(&refs, blocker_target)
+        ),
+        None => format!("{}\n\n{}", prefix, rules_section(&refs, blocker_target)),
     }
 }
 
