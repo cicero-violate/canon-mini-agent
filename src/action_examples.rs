@@ -23,15 +23,17 @@ fn example_action_base(
     rationale: &str,
     predicted_next_actions: &Value,
 ) -> serde_json::Map<String, Value> {
-    let mut map = serde_json::Map::new();
-    map.insert("action".to_string(), json!(action));
-    map.insert("observation".to_string(), json!(observation));
-    map.insert("rationale".to_string(), json!(rationale));
-    map.insert(
-        "predicted_next_actions".to_string(),
-        predicted_next_actions.clone(),
-    );
-    map
+    [
+        ("action".to_string(), json!(action)),
+        ("observation".to_string(), json!(observation)),
+        ("rationale".to_string(), json!(rationale)),
+        (
+            "predicted_next_actions".to_string(),
+            predicted_next_actions.clone(),
+        ),
+    ]
+    .into_iter()
+    .collect()
 }
 
 fn with_extra_fields(
