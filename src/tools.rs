@@ -1625,7 +1625,7 @@ fn symbol_kind_from_name_owner(owner_kind: SyntaxKind) -> Option<&'static str> {
 
 fn collect_rust_files(root: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
     if root.is_file() {
-        if root.extension().and_then(|e| e.to_str()) == Some("rs") {
+        if is_rust_file(root) {
             out.push(root.to_path_buf());
         }
         return Ok(());
@@ -1641,20 +1641,25 @@ fn collect_rust_files(root: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
         if file_type.is_dir() {
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if matches!(
-                name.as_ref(),
-                ".git" | "target" | "node_modules" | ".idea" | ".vscode"
-            ) {
+            if is_ignored_dir(name.as_ref()) {
                 continue;
             }
             collect_rust_files(&path, out)?;
             continue;
         }
-        if file_type.is_file() && path.extension().and_then(|e| e.to_str()) == Some("rs") {
+        if file_type.is_file() && is_rust_file(&path) {
             out.push(path);
         }
     }
     Ok(())
+}
+
+fn is_rust_file(path: &Path) -> bool {
+    path.extension().and_then(|e| e.to_str()) == Some("rs")
+}
+
+fn is_ignored_dir(name: &str) -> bool {
+    matches!(name, ".git" | "target" | "node_modules" | ".idea" | ".vscode")
 }
 
 fn extract_decl_symbols(workspace: &Path, file_path: &Path, text: &str) -> Vec<SymbolEntry> {
