@@ -295,16 +295,31 @@ pub fn read_complexity_hotspots(workspace: &Path, limit: usize) -> String {
     if top.is_empty() {
         return String::new();
     }
-    let mut out = String::from("Top complexity hotspots (mir_blocks proxy; higher = more branching):\n");
+    // Show the objective formula once so the LLM knows what the score means.
+    let mut out = String::from(
+        "Complexity objective: min(B) + min(R)  →  objective_score = 0.6*B_norm + 0.4*R_norm ∈ [0,1]\n\
+         B_norm=mir_blocks/max  R_norm=stmt_density/max  (higher score = higher-value refactor target)\n\
+         Loop: Detect(this report) → Propose(LLM) → Apply(patch/rename) → Verify(build+test)\n",
+    );
     for item in top.iter().take(limit.max(1)) {
         let symbol = item.get("symbol").and_then(|v| v.as_str()).unwrap_or("?");
         let file = item.get("file").and_then(|v| v.as_str()).unwrap_or("?");
         let line = item.get("line").and_then(|v| v.as_u64()).unwrap_or(0);
-        let score = item
-            .get("complexity_proxy")
+        let obj_score = item
+            .get("objective_score")
+            .and_then(|v| v.as_str())
+            .unwrap_or("?");
+        let blocks = item
+            .get("mir_blocks")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
-        out.push_str(&format!("  [{score}] {symbol} ({file}:{line})\n"));
+        let density = item
+            .get("stmt_density")
+            .and_then(|v| v.as_str())
+            .unwrap_or("?");
+        out.push_str(&format!(
+            "  [obj:{obj_score} B:{blocks} R_density:{density}] {symbol} ({file}:{line})\n"
+        ));
     }
     out
 }
