@@ -175,7 +175,7 @@ fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
             "symbol_refs — [PREFER over grep] all reference sites (file:line:col) for a symbol"
         }
         (_, ToolPromptKind::SymbolPath) => {
-            "symbol_path — [PREFER over manual tracing] BFS shortest call-graph path between two symbols"
+            "symbol_path — [PREFER over manual tracing] BFS shortest semantic-graph path between two symbols"
         }
         (_, ToolPromptKind::SymbolNeighborhood) => {
             "symbol_neighborhood — [PREFER over manual tracing] immediate callers and callees of a symbol"
@@ -261,7 +261,7 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
             "   {\"action\":\"symbol_refs\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"rationale\":\"Find all call sites before renaming or changing the signature.\"}\n   Notes: `symbol` is module-relative; crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped. Returns file:line:col for every identifier reference span recorded during compilation.".to_string()
         }
         (_, ToolPromptKind::SymbolPath) => {
-            "   {\"action\":\"symbol_path\",\"crate\":\"canon_mini_agent\",\"from\":\"app::run_agent\",\"to\":\"tools::handle_apply_patch_action\",\"rationale\":\"Find the call chain between two symbols to understand how they are connected.\"}\n   Notes: `from`/`to` are module-relative; crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped. BFS over call edges; returns the shortest path with file:line annotations.".to_string()
+            "   {\"action\":\"symbol_path\",\"crate\":\"canon_mini_agent\",\"from\":\"app::run_agent\",\"to\":\"tools::handle_apply_patch_action\",\"rationale\":\"Find the shortest semantic path between two symbols to understand how they are connected.\"}\n   Notes: `from`/`to` are module-relative; crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped. BFS over all semantic edges; returns the shortest path with relation labels and file:line annotations.".to_string()
         }
         (_, ToolPromptKind::SymbolNeighborhood) => {
             "   {\"action\":\"symbol_neighborhood\",\"crate\":\"canon_mini_agent\",\"symbol\":\"tools::execute_logged_action\",\"rationale\":\"See all callers and callees of a symbol to understand its role before changing it.\"}\n   Notes: `symbol` is module-relative; crate-qualified prefixes like `canon_mini_agent::...` or `crate::...` are accepted and stripped. Returns all immediate callers and callees from the static call graph.".to_string()

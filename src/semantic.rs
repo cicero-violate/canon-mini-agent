@@ -5,7 +5,7 @@
 //!   semantic_map        — repomap-style symbol outline for the whole crate
 //!   symbol_window       — precise source extraction for a single symbol (def span)
 //!   symbol_refs         — all reference sites for a symbol
-//!   symbol_path         — call-graph BFS path between two symbols
+//!   symbol_path         — semantic-graph BFS path between two symbols
 //!   symbol_neighborhood — immediate callers + callees of a symbol
 
 use anyhow::{bail, Context, Result};
@@ -357,8 +357,8 @@ impl SemanticIndex {
     // symbol_path
     // -----------------------------------------------------------------------
 
-    /// BFS shortest path in the call graph from `from` to `to`.
-    /// Returns the chain with file:line annotations.
+    /// BFS shortest path in the semantic graph from `from` to `to`.
+    /// Returns the chain with relation-labeled hops and file:line annotations.
     /// If `expand_bodies` is true, inlines the source body of each hop.
     pub fn symbol_path(&self, from: &str, to: &str, expand_bodies: bool) -> Result<String> {
         let from_key = self.resolve_node_key(from)?;
@@ -367,20 +367,25 @@ impl SemanticIndex {
             return Ok(format!("`{from}` is the same as `{to}`."));
         }
 
-        let adj = self.call_adjacency();
+        let adj = self.semantic_adjacency();
         let prev = self.bfs_prev_map(&adj, from_key, to_key);
 
         if !prev.contains_key(to_key) {
-            return Ok(format!("No call-graph path found from `{from}` to `{to}`."));
+            return Ok(format!(
+                "No semantic-graph path found from `{from}` to `{to}`."
+            ));
         }
 
         let path = self.reconstruct_path(&prev, from_key, to_key);
 
         let mut out = format!(
-            "Call path from `{from}` → `{to}` ({} hops):\n",
+            "Semantic path from `{from}` → `{to}` ({} hops):\n",
             path.len() - 1
         );
-        for sym in &path {
+        for (idx, (sym, via_relation)) in path.iter().enumerate() {
+            if idx > 0 {
+                out.push_str(&format!("    --{}--> \n", via_relation.unwrap_or("")));
+            }
             self.push_symbol_path_entry(&mut out, sym, expand_bodies);
         }
         Ok(out)
@@ -388,18 +393,23 @@ impl SemanticIndex {
 
     fn reconstruct_path<'a>(
         &'a self,
-        prev: &HashMap<&'a str, &'a str>,
+        prev: &HashMap<&'a str, (&'a str, &'a str)>,
         from_key: &'a str,
         to_key: &'a str,
-    ) -> Vec<&'a str> {
-        let mut path: Vec<&str> = Vec::new();
+    ) -> Vec<(&'a str, Option<&'a str>)> {
+        let mut path: Vec<(&str, Option<&str>)> = Vec::new();
         let mut cur = to_key;
         loop {
-            path.push(cur);
+            let via_relation = if cur == from_key {
+                None
+            } else {
+                Some(prev[cur].1)
+            };
+            path.push((cur, via_relation));
             if cur == from_key {
                 break;
             }
-            cur = prev[cur];
+            cur = prev[cur].0;
         }
         path.reverse();
         path
@@ -652,24 +662,24 @@ impl SemanticIndex {
         out.push_str(&format!("  {}\n", self.edge_endpoint_path(sym)));
     }
 
-    fn call_adjacency(&self) -> HashMap<&str, Vec<&str>> {
-        let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
+    fn semantic_adjacency(&self) -> HashMap<&str, Vec<(&str, &str)>> {
+        let mut adj: HashMap<&str, Vec<(&str, &str)>> = HashMap::new();
         for edge in &self.graph.edges {
-            if edge_is_call(edge) {
-                adj.entry(&edge.from).or_default().push(&edge.to);
-            }
+            adj.entry(&edge.from)
+                .or_default()
+                .push((&edge.to, edge_relation(edge)));
         }
         adj
     }
 
     fn bfs_prev_map<'a>(
         &'a self,
-        adj: &HashMap<&'a str, Vec<&'a str>>,
+        adj: &HashMap<&'a str, Vec<(&'a str, &'a str)>>,
         from_key: &'a str,
         to_key: &'a str,
-    ) -> HashMap<&'a str, &'a str> {
+    ) -> HashMap<&'a str, (&'a str, &'a str)> {
         let mut visited: HashSet<&str> = HashSet::new();
-        let mut prev: HashMap<&str, &str> = HashMap::new();
+        let mut prev: HashMap<&str, (&str, &str)> = HashMap::new();
         let mut queue: VecDeque<&str> = VecDeque::new();
 
         visited.insert(from_key);
@@ -678,9 +688,9 @@ impl SemanticIndex {
         'bfs: loop {
             let Some(cur) = queue.pop_front() else { break };
             if let Some(neighbors) = adj.get(cur) {
-                for &nb in neighbors {
+                for &(nb, relation) in neighbors {
                     if visited.insert(nb) {
-                        prev.insert(nb, cur);
+                        prev.insert(nb, (cur, relation));
                         if nb == to_key {
                             break 'bfs;
                         }
@@ -958,8 +968,58 @@ mod tests {
             )
             .expect("path should resolve suffix symbols");
         assert!(p.contains("1 hops"));
+        assert!(p.contains("--call-->") || p.contains("--Calls-->"));
         assert!(p.contains("canon_mini_agent::app::continue_executor_completion"));
         assert!(p.contains("canon_mini_agent::engine::process_action_and_execute"));
+    }
+
+    #[test]
+    fn symbol_path_traverses_non_call_semantic_edges() {
+        let mut nodes = HashMap::new();
+        nodes.insert(
+            "app".to_string(),
+            GraphNode {
+                def_id: String::new(),
+                path: "app".to_string(),
+                kind: "mod".to_string(),
+                def: None,
+                refs: Vec::new(),
+                signature: None,
+                mir: None,
+                fields: Vec::new(),
+            },
+        );
+        nodes.insert(
+            "app::run".to_string(),
+            GraphNode {
+                def_id: String::new(),
+                path: "app::run".to_string(),
+                kind: "fn".to_string(),
+                def: None,
+                refs: Vec::new(),
+                signature: None,
+                mir: None,
+                fields: Vec::new(),
+            },
+        );
+
+        let idx = SemanticIndex {
+            graph: CrateGraph {
+                nodes,
+                edges: vec![GraphEdge {
+                    relation: "Contains".to_string(),
+                    from: "app".to_string(),
+                    to: "app::run".to_string(),
+                }],
+            },
+        };
+
+        let out = idx
+            .symbol_path("app", "app::run", false)
+            .expect("semantic path should traverse non-call edges");
+        assert!(out.contains("Semantic path from `app`"));
+        assert!(out.contains("--Contains-->"));
+        assert!(out.contains("app::run"));
     }
 
     #[test]
