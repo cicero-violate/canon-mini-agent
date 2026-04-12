@@ -20,24 +20,27 @@ Output (stdout): {\"predicted_next_actions\":[...]} where entries are action stu
 }
 
 fn predicted_next_actions(action: &Value) -> Vec<Value> {
-    if let Some(arr) = action.get("predicted_next_actions").and_then(|v| v.as_array()) {
-        return arr.iter().cloned().collect();
+    if let Some(existing) = existing_predicted_next_actions(action) {
+        return existing;
     }
     let kind = action.get("action").and_then(|v| v.as_str()).unwrap_or("");
     match kind {
         "apply_patch" => simple_action_prediction("cargo_test", "Verify the patch compiles and tests pass."),
-        "symbols_index" => {
-            let out = out_or_default(action, "state/symbols.json");
-            build_read_file_prediction(out, "Inspect generated symbols inventory.")
-        }
-        "symbols_rename_candidates" => {
-            let out = out_or_default(action, "state/rename_candidates.json");
-            build_read_file_prediction(out, "Inspect generated rename candidates.")
-        }
-        "symbols_prepare_rename" => {
-            let out = out_or_default(action, "state/next_rename_action.json");
-            build_read_file_prediction(out, "Inspect prepared rename action JSON.")
-        }
+        "symbols_index" => read_file_prediction_for_output(
+            action,
+            "state/symbols.json",
+            "Inspect generated symbols inventory.",
+        ),
+        "symbols_rename_candidates" => read_file_prediction_for_output(
+            action,
+            "state/rename_candidates.json",
+            "Inspect generated rename candidates.",
+        ),
+        "symbols_prepare_rename" => read_file_prediction_for_output(
+            action,
+            "state/next_rename_action.json",
+            "Inspect prepared rename action JSON.",
+        ),
         "rename_symbol" => simple_action_prediction("cargo_test", "Run tests after rename to ensure no regressions."),
         "run_command" => simple_action_prediction("message", "Summarize command output and decide next step."),
         "read_file" => simple_action_prediction("message", "Summarize findings and choose the next concrete action."),
@@ -45,8 +48,20 @@ fn predicted_next_actions(action: &Value) -> Vec<Value> {
     }
 }
 
+fn existing_predicted_next_actions(action: &Value) -> Option<Vec<Value>> {
+    action
+        .get("predicted_next_actions")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().cloned().collect())
+}
+
 fn out_or_default<'a>(action: &'a Value, default: &'a str) -> &'a str {
     action.get("out").and_then(|v| v.as_str()).unwrap_or(default)
+}
+
+fn read_file_prediction_for_output(action: &Value, default: &str, intent: &str) -> Vec<Value> {
+    let out = out_or_default(action, default);
+    build_read_file_prediction(out, intent)
 }
 
 fn simple_action_prediction(action: &str, intent: &str) -> Vec<Value> {
@@ -64,9 +79,13 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let mut raw = String::new();
-    std::io::stdin().read_to_string(&mut raw).context("read stdin")?;
-    let input: Value = serde_json::from_str(&raw).context("stdin is not valid JSON")?;
+    fn read_action_input() -> Result<Value> {
+        let mut raw = String::new();
+        std::io::stdin().read_to_string(&mut raw).context("read stdin")?;
+        serde_json::from_str(&raw).context("stdin is not valid JSON")
+    }
+
+    let input = read_action_input()?;
 
     let action = input.get("action").unwrap_or(&input);
     let out = json!({

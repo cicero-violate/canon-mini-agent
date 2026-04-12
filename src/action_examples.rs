@@ -1,16 +1,20 @@
 use serde_json::{json, Value};
 
 pub fn example_predicted_next_actions() -> Value {
-    json!([
-        {
-            "action": "read_file",
-            "intent": "Inspect the relevant source before making changes."
-        },
-        {
-            "action": "run_command",
-            "intent": "Verify the current workspace state after the read."
-        }
+    Value::Array(vec![
+        predicted_next_action(
+            "read_file",
+            "Inspect the relevant source before making changes.",
+        ),
+        predicted_next_action(
+            "run_command",
+            "Verify the current workspace state after the read.",
+        ),
     ])
+}
+
+fn predicted_next_action(action: &str, intent: &str) -> Value {
+    json!({"action": action, "intent": intent})
 }
 
 fn run_command_example_action(predicted_next_actions: &Value) -> Value {
