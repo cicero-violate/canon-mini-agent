@@ -364,27 +364,7 @@ impl SemanticIndex {
             path.len() - 1
         );
         for sym in &path {
-            if let Some(node) = self.graph.nodes.get(*sym) {
-                if let Some(def) = &node.def {
-                    out.push_str(&format!(
-                        "  {} ({}:{})\n",
-                        sym,
-                        shorten_path(&def.file),
-                        def.line
-                    ));
-                    if expand_bodies {
-                        if let Ok(body) = self.symbol_window(sym) {
-                            for line in body.lines() {
-                                out.push_str("    ");
-                                out.push_str(line);
-                                out.push('\n');
-                            }
-                        }
-                    }
-                    continue;
-                }
-            }
-            out.push_str(&format!("  {sym}\n"));
+            self.push_symbol_path_entry(&mut out, sym, expand_bodies);
         }
         Ok(out)
     }
@@ -635,6 +615,30 @@ impl SemanticIndex {
                 out.push('\n');
             }
         }
+    }
+
+    fn push_symbol_path_entry(&self, out: &mut String, sym: &str, expand_bodies: bool) {
+        if let Some(node) = self.graph.nodes.get(sym) {
+            if let Some(def) = &node.def {
+                out.push_str(&format!(
+                    "  {} ({}:{})\n",
+                    sym,
+                    shorten_path(&def.file),
+                    def.line
+                ));
+                if expand_bodies {
+                    if let Ok(body) = self.symbol_window(sym) {
+                        for line in body.lines() {
+                            out.push_str("    ");
+                            out.push_str(line);
+                            out.push('\n');
+                        }
+                    }
+                }
+                return;
+            }
+        }
+        out.push_str(&format!("  {sym}\n"));
     }
 
     fn call_adjacency(&self) -> HashMap<&str, Vec<&str>> {
