@@ -90,19 +90,29 @@ fn build_read_file_prediction(path: &str, intent: &str) -> Vec<Value> {
     vec![json!({"action": "read_file", "path": path, "intent": intent})]
 }
 
+fn maybe_print_usage(args: &[String]) -> bool {
+    if has_flag(args, "--help") || has_flag(args, "-h") {
+        eprint!("{}", usage());
+        return true;
+    }
+    false
+}
+
+fn prediction_output(input: &Value) -> Value {
+    let action = input.get("action").unwrap_or(input);
+    json!({
+        "predicted_next_actions": predicted_next_actions(action),
+    })
+}
+
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
-    if has_flag(&args, "--help") || has_flag(&args, "-h") {
-        eprint!("{}", usage());
+    if maybe_print_usage(&args) {
         return Ok(());
     }
 
     let input = read_action_input()?;
-
-    let action = input.get("action").unwrap_or(&input);
-    let out = json!({
-        "predicted_next_actions": predicted_next_actions(action),
-    });
+    let out = prediction_output(&input);
     println!("{}", serde_json::to_string_pretty(&out)?);
     Ok(())
 }

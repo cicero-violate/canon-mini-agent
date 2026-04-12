@@ -1109,6 +1109,8 @@ pub(crate) fn single_role_planner_prompt(
         cargo_test_failures,
     );
     sections.push_str(&format!("\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nOpen issues in `ISSUES.json` (written by diagnostics with evidence) are directly actionable — create plan tasks for them without re-verifying. DIAGNOSTICS.json entries with no matching ISSUES.json entry are hints only.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow."));
+    sections.push_str("\n\nTreat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.");
+    sections.push_str("\nIf diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks.");
     sections
 }
 
