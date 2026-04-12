@@ -849,7 +849,7 @@ impl SingleRoleContext<'_> {
             SingleRoleRead::Diagnostics => {
                 filter_active_diagnostics_json(&read_text_or_empty(self.diagnostics_path))
             }
-            SingleRoleRead::Issues => read_open_issues(self.workspace),
+            SingleRoleRead::Issues => crate::issues::read_top_open_issues(self.workspace, 10),
             SingleRoleRead::MasterPlan => {
                 filter_pending_plan_json(&read_text_or_empty(self.master_plan_path))
             }
