@@ -468,6 +468,12 @@ async fn run_planner_phase(
                 }),
             );
             dispatch_state.last_plan_text = inputs.plan_text;
+
+            // Semantic preflight: demote ready tasks that reference symbols not
+            // found in the workspace graph.  Bounced tasks are reset to
+            // `needs_planning` so the planner corrects them next cycle.
+            crate::plan_preflight::preflight_ready_tasks(ctx.workspace);
+
             for lane in ctx.lanes {
                 let lane_state = dispatch_lane_mut(dispatch_state, lane.index);
                 lane_state.plan_text.clear();
