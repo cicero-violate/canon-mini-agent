@@ -2194,6 +2194,16 @@ struct RenameSymbolEnvironment {
 }
 
 fn parse_rename_symbol_pairs(action: &Value, crate_name: &str) -> Result<Vec<(String, String)>> {
+    reject_legacy_rename_fields(action)?;
+
+    if let Some(arr) = action.get("renames").and_then(|v| v.as_array()) {
+        return parse_bulk_renames(arr, crate_name);
+    }
+
+    parse_single_rename(action, crate_name)
+}
+
+fn reject_legacy_rename_fields(action: &Value) -> Result<()> {
     if action.get("path").is_some()
         || action.get("line").is_some()
         || action.get("column").is_some()
@@ -2202,54 +2212,61 @@ fn parse_rename_symbol_pairs(action: &Value, crate_name: &str) -> Result<Vec<(St
     {
         bail!("rename_symbol v2 uses `old_symbol`/`new_symbol` (or `renames`) and rustc graph spans; line/column payloads are deprecated");
     }
+    Ok(())
+}
 
-    let mut pairs: Vec<(String, String)> = Vec::new();
-    if let Some(arr) = action.get("renames").and_then(|v| v.as_array()) {
-        if arr.is_empty() {
-            bail!("rename_symbol: `renames` must not be empty");
-        }
-        for (i, item) in arr.iter().enumerate() {
-            let old = item
-                .get("old")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("rename_symbol: renames[{i}] missing `old`"))?;
-            let new = item
-                .get("new")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("rename_symbol: renames[{i}] missing `new`"))?;
-            let old = strip_semantic_crate_prefix(crate_name, old);
-            let new = strip_semantic_crate_prefix(crate_name, new);
-            if old.is_empty() || new.is_empty() {
-                bail!("rename_symbol: renames[{i}] must have non-empty old/new");
-            }
-            pairs.push((old.to_string(), new.to_string()));
-        }
-    } else {
-        let old = action
-            .get("old_symbol")
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|v| !v.is_empty())
-            .ok_or_else(|| {
-                anyhow!("rename_symbol missing non-empty `old_symbol` (or provide `renames`)")
-            })?;
-        let new = action
-            .get("new_symbol")
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|v| !v.is_empty())
-            .ok_or_else(|| {
-                anyhow!("rename_symbol missing non-empty `new_symbol` (or provide `renames`)")
-            })?;
-        let old = strip_semantic_crate_prefix(crate_name, old);
-        let new = strip_semantic_crate_prefix(crate_name, new);
-        if old.is_empty() || new.is_empty() {
-            bail!("rename_symbol requires non-empty `old_symbol` and `new_symbol`");
-        }
-        pairs.push((old.to_string(), new.to_string()));
+fn parse_bulk_renames(arr: &[Value], crate_name: &str) -> Result<Vec<(String, String)>> {
+    if arr.is_empty() {
+        bail!("rename_symbol: `renames` must not be empty");
     }
 
+    let mut pairs = Vec::new();
+    for (i, item) in arr.iter().enumerate() {
+        let old = item
+            .get("old")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("rename_symbol: renames[{i}] missing `old`"))?;
+        let new = item
+            .get("new")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("rename_symbol: renames[{i}] missing `new`"))?;
+
+        let (old, new) = normalize_pair(crate_name, old, new)?;
+        pairs.push((old, new));
+    }
     Ok(pairs)
+}
+
+fn parse_single_rename(action: &Value, crate_name: &str) -> Result<Vec<(String, String)>> {
+    let old = action
+        .get("old_symbol")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| {
+            anyhow!("rename_symbol missing non-empty `old_symbol` (or provide `renames`)")
+        })?;
+
+    let new = action
+        .get("new_symbol")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| {
+            anyhow!("rename_symbol missing non-empty `new_symbol` (or provide `renames`)")
+        })?;
+
+    let (old, new) = normalize_pair(crate_name, old, new)?;
+    Ok(vec![(old, new)])
+}
+
+fn normalize_pair(crate_name: &str, old: &str, new: &str) -> Result<(String, String)> {
+    let old = strip_semantic_crate_prefix(crate_name, old);
+    let new = strip_semantic_crate_prefix(crate_name, new);
+    if old.is_empty() || new.is_empty() {
+        bail!("rename_symbol requires non-empty old/new symbols");
+    }
+    Ok((old.to_string(), new.to_string()))
 }
 
 fn capture_rename_symbol_environment(workspace: &Path) -> Result<RenameSymbolEnvironment> {
