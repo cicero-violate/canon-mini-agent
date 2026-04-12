@@ -810,46 +810,80 @@ pub(crate) fn planner_cycle_prompt(
     let mut s = format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics: {diagnostics_file}\n- Issues: {issues_file}\n- Master plan: {MASTER_PLAN_FILE}\n\nPlan diff (from {MASTER_PLAN_FILE}):\n{plan_diff}"
     );
-    append_optional_prompt_section(
+    append_planner_cycle_optional_sections(
         &mut s,
+        objectives_text,
+        lessons_text,
+        invariants_text,
+        violations_text,
+        diagnostics_text,
+        issues_text,
+        executor_diff,
+        cargo_test_failures,
+        summary_text,
+        diagnostics_file,
+        issues_file,
+    );
+    append_planner_cycle_footer(&mut s);
+    s
+}
+
+fn append_planner_cycle_optional_sections(
+    output: &mut String,
+    objectives_text: &str,
+    lessons_text: &str,
+    invariants_text: &str,
+    violations_text: &str,
+    diagnostics_text: &str,
+    issues_text: &str,
+    executor_diff: &str,
+    cargo_test_failures: &str,
+    summary_text: &str,
+    diagnostics_file: &str,
+    issues_file: &str,
+) {
+    append_optional_prompt_section(
+        output,
         executor_diff,
         "Executor diff (workspace changes excluding plans/diagnostics/violations)",
     );
     append_optional_prompt_section(
-        &mut s,
+        output,
         cargo_test_failures,
         "Latest cargo test failures (from cargo_test_failures.json)",
     );
     append_optional_prompt_section(
-        &mut s,
+        output,
         objectives_text,
         &format!("Objectives (from {OBJECTIVES_FILE})"),
     );
     append_optional_prompt_section(
-        &mut s,
+        output,
         issues_text,
         &format!("Open issues (from {issues_file})"),
     );
-    append_optional_prompt_section(&mut s, lessons_text, "Lessons artifact");
+    append_optional_prompt_section(output, lessons_text, "Lessons artifact");
     append_optional_prompt_section(
-        &mut s,
+        output,
         invariants_text,
         &format!("Invariants (from {INVARIANTS_FILE})"),
     );
     append_optional_prompt_section(
-        &mut s,
+        output,
         violations_text,
         &format!("Violations (from {VIOLATIONS_FILE})"),
     );
     append_optional_prompt_section(
-        &mut s,
+        output,
         diagnostics_text,
         &format!("Diagnostics report (from {diagnostics_file})"),
     );
-    append_optional_prompt_section(&mut s, summary_text, "Latest verifier summary");
-    s.push_str("\n\nDiagnostics-derived planning guard:\n- Do not create or reprioritize tasks from diagnostics alone.\n- Before accepting any diagnostics claim, read the implicated source files or gather equivalent current-cycle evidence.\n- Treat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\n- If diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks.");
-    s.push_str(&format!("\n\nBefore completing this cycle, review {OBJECTIVES_FILE} and add or update objectives to capture anything discovered. New objectives require a unique id, title, category, level, and description. Use apply_patch to write them.\n\nYou may send a message action to other agents at any time.  Think hard internally before responding."));
-    s
+    append_optional_prompt_section(output, summary_text, "Latest verifier summary");
+}
+
+fn append_planner_cycle_footer(output: &mut String) {
+    output.push_str("\n\nDiagnostics-derived planning guard:\n- Do not create or reprioritize tasks from diagnostics alone.\n- Before accepting any diagnostics claim, read the implicated source files or gather equivalent current-cycle evidence.\n- Treat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\n- If diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks.");
+    output.push_str(&format!("\n\nBefore completing this cycle, review {OBJECTIVES_FILE} and add or update objectives to capture anything discovered. New objectives require a unique id, title, category, level, and description. Use apply_patch to write them.\n\nYou may send a message action to other agents at any time.  Think hard internally before responding."));
 }
 
 fn append_optional_prompt_section(output: &mut String, body: &str, heading: &str) {
