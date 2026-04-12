@@ -5658,34 +5658,54 @@ fn handle_batch_action(
             .unwrap_or("unknown");
 
         if is_batch_item_mutating(kind, item) {
-            let op_note = match item.get("op").and_then(|v| v.as_str()) {
-                Some(op) => format!(" op={op}"),
-                None => String::new(),
-            };
-            out.push_str(&format!(
-                "[batch {n}/{total}: REJECTED {kind}{op_note}]\n\
-                 mutating action '{kind}{op_note}' is not allowed in batch\n\n"
-            ));
+            append_rejected_batch_item(&mut out, n, total, kind, item);
             continue;
         }
 
-        out.push_str(&format!("[batch {n}/{total}: {kind}]\n"));
-
-        match execute_batch_item(role, step, workspace, kind, item) {
-            Ok((_done, result)) => {
-                out.push_str(&result);
-                if !result.ends_with('\n') {
-                    out.push('\n');
-                }
-            }
-            Err(e) => {
-                out.push_str(&format!("ERROR: {e}\n"));
-            }
-        }
-        out.push('\n');
+        append_batch_item_result(&mut out, role, step, workspace, n, total, kind, item);
     }
 
     Ok((false, out))
+}
+
+fn batch_item_op_note(item: &Value) -> String {
+    match item.get("op").and_then(|v| v.as_str()) {
+        Some(op) => format!(" op={op}"),
+        None => String::new(),
+    }
+}
+
+fn append_rejected_batch_item(out: &mut String, n: usize, total: usize, kind: &str, item: &Value) {
+    let op_note = batch_item_op_note(item);
+    out.push_str(&format!(
+        "[batch {n}/{total}: REJECTED {kind}{op_note}]\n\
+         mutating action '{kind}{op_note}' is not allowed in batch\n\n"
+    ));
+}
+
+fn append_batch_item_result(
+    out: &mut String,
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    n: usize,
+    total: usize,
+    kind: &str,
+    item: &Value,
+) {
+    out.push_str(&format!("[batch {n}/{total}: {kind}]\n"));
+    match execute_batch_item(role, step, workspace, kind, item) {
+        Ok((_done, result)) => append_batch_item_success(out, &result),
+        Err(e) => out.push_str(&format!("ERROR: {e}\n")),
+    }
+    out.push('\n');
+}
+
+fn append_batch_item_success(out: &mut String, result: &str) {
+    out.push_str(result);
+    if !result.ends_with('\n') {
+        out.push('\n');
+    }
 }
 
 fn execute_action(
