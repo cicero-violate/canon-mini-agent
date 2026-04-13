@@ -1211,6 +1211,17 @@ fn dispatch_executor_submits(
                 state.insert("actor_kind".to_string(), "diagnostics".to_string());
                 state.insert("error_class".to_string(), "invalid_schema".to_string());
             }
+            let verifier_verification_failed_count = crate::blockers::count_class_recent(
+                &blockers,
+                "verifier",
+                &crate::error_class::ErrorClass::VerificationFailed,
+                now_ms,
+                5 * 60 * 1000,
+            );
+            if verifier_verification_failed_count >= 1 {
+                state.insert("actor_kind".to_string(), "verifier".to_string());
+                state.insert("error_class".to_string(), "verification_failed".to_string());
+            }
             let block_route_gate = |reason: String| {
                 eprintln!("[invariant_gate] route G_r (BLOCKED): {reason}");
                 crate::blockers::record_action_failure(
