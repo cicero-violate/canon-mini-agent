@@ -451,7 +451,9 @@ async fn run_planner_phase(
             now_ms,
             5 * 60 * 1000, // 5 minute window
         );
-        if planner_blocker_escalated_count >= 3 {
+        // Only inject invariant trigger when entering escalation, not while already blocked.
+        // This prevents a poison-state where planner_pending=true causes perpetual re-blocking.
+        if planner_blocker_escalated_count >= 3 && !dispatch_state.planner_pending {
             state.insert("actor_kind".to_string(), "planner".to_string());
             state.insert("error_class".to_string(), "blocker_escalated".to_string());
         }
