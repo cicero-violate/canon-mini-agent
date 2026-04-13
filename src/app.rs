@@ -1152,6 +1152,21 @@ fn dispatch_executor_submits(
                 state.insert("actor_kind".to_string(), "executor".to_string());
                 state.insert("error_class".to_string(), "invalid_schema".to_string());
             }
+            let missing_target_count = blockers
+                .blockers
+                .iter()
+                .filter(|b| {
+                    now_ms.saturating_sub(b.ts_ms) <= 5 * 60 * 1000
+                        && matches!(
+                            b.error_class,
+                            crate::error_class::ErrorClass::MissingTarget
+                        )
+                })
+                .count();
+            if missing_target_count >= 1 {
+                state.insert("actor_kind".to_string(), "any".to_string());
+                state.insert("error".to_string(), "missing_target".to_string());
+            }
             // Detect orchestrator livelock conditions and surface into invariant state
             let livelock_count = crate::blockers::count_class_recent(
                 &blockers,
