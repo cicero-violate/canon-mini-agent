@@ -1206,6 +1206,12 @@ fn dispatch_executor_submits(
                 });
                 let _ = crate::logging::append_action_log_record(&record);
             };
+            // Evaluate route-gated invariants (e.g., INV-171c039a) before executor dispatch
+            if let Err(reason) = crate::invariants::evaluate_invariant_gate("route", &state, &ws) {
+                block_route_gate(reason);
+                dispatch_state.planner_pending = true;
+                return;
+            }
             let executor_missing_target_count = crate::blockers::count_class_recent(
                 &blockers,
                 "executor",
