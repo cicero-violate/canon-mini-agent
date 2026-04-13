@@ -448,7 +448,7 @@ async fn run_planner_phase(
             "planner",
             &crate::error_class::ErrorClass::BlockerEscalated,
         );
-        if planner_blocker_escalated_count > 0 {
+        if planner_blocker_escalated_count >= 3 {
             state.insert("actor_kind".to_string(), "planner".to_string());
             state.insert("error_class".to_string(), "blocker_escalated".to_string());
         }
