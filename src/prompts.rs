@@ -375,7 +375,7 @@ fn plan_tool_prompt(kind: AgentPromptKind) -> String {
         }
         AgentPromptKind::Planner => {
             format!(
-                "   {{\"action\":\"plan\",\"op\":\"create_task\",\"task\":{{\"id\":\"T4\",\"title\":\"Add plan DAG\",\"status\":\"todo\",\"priority\":3}},\"rationale\":\"Add a new task to PLAN.json without manual patching.\"}}\n{}",
+                "   {{\"action\":\"plan\",\"op\":\"create_task\",\"question\":\"Does the current evidence justify creating a new PLAN task?\",\"task\":{{\"id\":\"T4\",\"title\":\"Add plan DAG\",\"status\":\"todo\",\"priority\":3}},\"rationale\":\"Add a new task to PLAN.json without manual patching.\",\"predicted_next_actions\":[{{\"action\":\"read_file\",\"intent\":\"Inspect the relevant source before making changes.\"}},{{\"action\":\"run_command\",\"intent\":\"Verify the current workspace state after the read.\"}}]}}\n{}",
                 plan_sorted_view_example()
             )
         }
