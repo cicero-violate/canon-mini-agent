@@ -54,6 +54,10 @@ use crate::prompt_inputs::{
     load_verifier_prompt_inputs, read_required_text, read_text_or_empty, LaneConfig,
     OrchestratorContext, PlannerInputs, SingleRoleContext, SingleRoleInputs, VerifierPromptInputs,
 };
+use crate::events::ControlEvent;
+use crate::system_state::{LaneState, SystemState};
+use crate::tlog::Tlog;
+use crate::canonical_writer::CanonicalWriter;
 
 /// Extract a string field from a JSON object, returning `""` on missing/non-string.
 fn jstr<'a>(v: &'a Value, key: &str) -> &'a str {
@@ -434,14 +438,12 @@ fn build_livelock_report(
 
 async fn run_planner_phase(
     ctx: &OrchestratorContext<'_>,
-    dispatch_state: &mut DispatchState,
-    verifier_summary: &[String],
+    writer: &mut CanonicalWriter,
     planner_bootstrapped: &mut bool,
     cargo_test_failures: &str,
 ) -> bool {
     {
-        let mut state = std::collections::HashMap::new();
-        state.insert("planner_pending".to_string(), dispatch_state.planner_pending.to_string());
+        let mut state = writer.state().as_kv_map();
         let blockers = crate::blockers::load_blockers(ctx.workspace);
         let now_ms = crate::logging::now_ms();
         let planner_blocker_escalated_count = crate::blockers::count_class_recent(
@@ -449,11 +451,10 @@ async fn run_planner_phase(
             "planner",
             &crate::error_class::ErrorClass::BlockerEscalated,
             now_ms,
-            5 * 60 * 1000, // 5 minute window
+            5 * 60 * 1000,
         );
         // Only inject invariant trigger when entering escalation, not while already blocked.
-        // This prevents a poison-state where planner_pending=true causes perpetual re-blocking.
-        if planner_blocker_escalated_count >= 3 && !dispatch_state.planner_pending {
+        if planner_blocker_escalated_count >= 3 && !writer.state().planner_pending {
             state.insert("actor_kind".to_string(), "planner".to_string());
             state.insert("error_class".to_string(), "blocker_escalated".to_string());
         }
@@ -476,22 +477,25 @@ async fn run_planner_phase(
                 "ts_ms": crate::logging::now_ms(),
             });
             let _ = crate::logging::append_action_log_record(&record);
-            dispatch_state.planner_pending = true;
+            writer.record_violation("planner", &reason);
+            writer.apply(ControlEvent::PlannerPendingSet { pending: true });
             return false;
         }
     }
 
+    let mut last_executor_diff = writer.state().last_executor_diff.clone();
     let inputs: PlannerInputs = load_planner_inputs(
         ctx.lanes,
         ctx.workspace,
-        verifier_summary,
-        &dispatch_state.last_plan_text,
-        &mut dispatch_state.last_executor_diff,
+        &writer.state().verifier_summary,
+        &writer.state().last_plan_text.clone(),
+        &mut last_executor_diff,
         cargo_test_failures.to_string(),
         ctx.violations_path,
         ctx.diagnostics_path,
         ctx.master_plan_path,
     );
+    writer.apply(ControlEvent::LastExecutorDiffSet { text: last_executor_diff });
     let issues_text = crate::issues::read_top_open_issues(ctx.workspace, 10);
     let mut planner_prompt = planner_cycle_prompt(
         &inputs.summary_text,
@@ -539,23 +543,27 @@ async fn run_planner_phase(
                     "plan_path": MASTER_PLAN_FILE,
                 }),
             );
-            dispatch_state.last_plan_text = inputs.plan_text;
+            writer.apply(ControlEvent::LastPlanTextSet { text: inputs.plan_text });
 
             // Semantic preflight: demote ready tasks that reference symbols not
-            // found in the workspace graph.  Bounced tasks are reset to
-            // `needs_planning` so the planner corrects them next cycle.
+            // found in the workspace graph.
             crate::plan_preflight::preflight_ready_tasks(ctx.workspace);
 
-            for lane in ctx.lanes {
-                let lane_state = dispatch_lane_mut(dispatch_state, lane.index);
-                lane_state.plan_text.clear();
-                if lane_state.in_progress_by.is_none()
-                    && !verifier_confirmed(&lane_state.latest_verifier_result)
-                {
-                    lane_state.pending = true;
+            let lane_ids: Vec<usize> = ctx.lanes.iter().map(|l| l.index).collect();
+            for lane_id in lane_ids {
+                writer.apply(ControlEvent::LanePlanTextSet { lane_id, text: String::new() });
+                let (in_progress, verified) = {
+                    let s = writer.state();
+                    let ls = s.lanes.get(&lane_id);
+                    let in_progress = ls.map(|l| l.in_progress_by.is_some()).unwrap_or(false);
+                    let verified = ls.map(|l| verifier_confirmed(&l.latest_verifier_result)).unwrap_or(false);
+                    (in_progress, verified)
+                };
+                if !in_progress && !verified {
+                    writer.apply(ControlEvent::LanePendingSet { lane_id, pending: true });
                 }
             }
-            dispatch_state.planner_pending = false;
+            writer.apply(ControlEvent::PlannerPendingSet { pending: false });
             true
         }
         Err(err) => {
@@ -574,10 +582,9 @@ async fn run_planner_phase(
 
 async fn run_solo_phase(
     ctx: &OrchestratorContext<'_>,
+    writer: &mut CanonicalWriter,
     solo_bootstrapped: &mut bool,
     cargo_test_failures: &str,
-    last_solo_executor_diff: &mut String,
-    last_solo_plan_text: &mut String,
 ) -> bool {
     let spec = match read_required_text(ctx.workspace.join(SPEC_FILE), SPEC_FILE) {
         Ok(spec) => spec,
@@ -614,14 +621,20 @@ async fn run_solo_phase(
         .or_else(|| file_modified_ms(&ctx.workspace.join(OBJECTIVES_FILE)));
     let plan_mtime_before = file_modified_ms(&ctx.workspace.join(MASTER_PLAN_FILE));
     // Compute diffs and ranked context (symmetric with planner cycle)
+    let mut solo_exec_diff = writer.state().last_solo_executor_diff.clone();
     let executor_diff_inputs = crate::prompt_inputs::load_executor_diff_inputs(
         ctx.workspace,
-        last_solo_executor_diff,
+        &mut solo_exec_diff,
         400,
     );
+    writer.apply(ControlEvent::LastSoloExecutorDiffSet { text: solo_exec_diff });
     let current_plan_text = read_text_or_empty(ctx.master_plan_path);
-    let plan_diff_text = crate::prompt_inputs::solo_plan_diff(last_solo_plan_text, &current_plan_text, 400);
-    *last_solo_plan_text = current_plan_text;
+    let plan_diff_text = crate::prompt_inputs::solo_plan_diff(
+        &writer.state().last_solo_plan_text.clone(),
+        &current_plan_text,
+        400,
+    );
+    writer.apply(ControlEvent::LastSoloPlanTextSet { text: current_plan_text });
     let issues_text = crate::issues::read_top_open_issues(ctx.workspace, 5);
     let complexity_hotspots = crate::prompt_inputs::read_complexity_hotspots(ctx.workspace, 8);
     let loop_context_hint = crate::prompt_inputs::read_loop_context_hint(
@@ -734,15 +747,14 @@ async fn run_solo_phase(
 
 async fn run_diagnostics_phase(
     ctx: &OrchestratorContext<'_>,
-    dispatch_state: &mut DispatchState,
-    verifier_summary: &[String],
+    writer: &mut CanonicalWriter,
     diagnostics_bootstrapped: &mut bool,
     verifier_changed: bool,
     cargo_test_failures: &str,
 ) -> bool {
     {
         let mut state = std::collections::HashMap::new();
-        state.insert("diagnostics_pending".to_string(), dispatch_state.diagnostics_pending.to_string());
+        state.insert("diagnostics_pending".to_string(), writer.state().diagnostics_pending.to_string());
         let blockers = crate::blockers::load_blockers(ctx.workspace);
         let now_ms = crate::logging::now_ms();
         let diagnostics_verification_failed_count = crate::blockers::count_class_recent(
@@ -753,7 +765,7 @@ async fn run_diagnostics_phase(
             5 * 60 * 1000,
         );
         // Only inject when entering failure threshold to avoid livelock
-        if diagnostics_verification_failed_count >= 3 && !dispatch_state.diagnostics_pending {
+        if diagnostics_verification_failed_count >= 3 && !writer.state().diagnostics_pending {
             state.insert("actor_kind".to_string(), "diagnostics".to_string());
             state.insert("error_class".to_string(), "verification_failed".to_string());
         }
@@ -776,11 +788,11 @@ async fn run_diagnostics_phase(
                 "ts_ms": crate::logging::now_ms(),
             });
             let _ = crate::logging::append_action_log_record(&record);
-            dispatch_state.diagnostics_pending = true;
+            writer.apply(ControlEvent::DiagnosticsPendingSet { pending: true });
             return false;
         }
     }
-    let summary_text = lane_summary_text(ctx.lanes, verifier_summary);
+    let summary_text = lane_summary_text(ctx.lanes, &writer.state().verifier_summary);
     let mut prompt = diagnostics_cycle_prompt(&summary_text, cargo_test_failures);
     inject_inbound_message(&mut prompt, "diagnostics");
     trace_orchestrator_forwarded("verifier", "diagnostics", "diagnostics", None, None, None, None);
@@ -826,11 +838,12 @@ async fn run_diagnostics_phase(
                 &reconciled_diagnostics_text,
                 &raw_violations_text,
             );
-            let diagnostics_changed = dispatch_state.diagnostics_text != new_diagnostics_text;
-            dispatch_state.diagnostics_text = new_diagnostics_text;
-            dispatch_state.diagnostics_pending = false;
-            dispatch_state.planner_pending =
-                decide_post_diagnostics(diagnostics_changed, verifier_changed);
+            let diagnostics_changed = writer.state().diagnostics_text != new_diagnostics_text;
+            writer.apply(ControlEvent::DiagnosticsTextSet { text: new_diagnostics_text });
+            writer.apply(ControlEvent::DiagnosticsPendingSet { pending: false });
+            writer.apply(ControlEvent::PlannerPendingSet {
+                pending: decide_post_diagnostics(diagnostics_changed, verifier_changed),
+            });
             crate::lessons::maybe_synthesize_lessons(ctx.workspace);
             crate::lessons::apply_promoted_lessons(ctx.workspace);
             crate::invariants::maybe_synthesize_invariants(ctx.workspace);
@@ -852,33 +865,33 @@ async fn run_diagnostics_phase(
 
 async fn run_verifier_phase(
     ctx: &OrchestratorContext<'_>,
-    dispatch_state: &mut DispatchState,
+    writer: &mut CanonicalWriter,
     verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
-    verifier_summary: &mut [String],
     verifier_joinset: &mut tokio::task::JoinSet<(usize, String)>,
     verifier_bootstrapped: &mut bool,
-    scheduled_phase: &mut Option<String>,
-    current_phase: &mut String,
-    current_phase_lane: &mut Option<usize>,
     cargo_test_failures: &str,
 ) -> (bool, bool) {
     let mut cycle_progress = false;
     let mut verifier_changed = false;
     while let Some((submitted, turn_id, final_exec_result)) = verifier_pending_results.pop_front() {
-        if !allow_verifier_run(scheduled_phase.as_deref()) {
+        if !allow_verifier_run(writer.state().scheduled_phase.as_deref()) {
             verifier_pending_results.push_front((submitted, turn_id, final_exec_result));
             break;
         }
-        *current_phase = "verifier".to_string();
-        *current_phase_lane = Some(submitted.lane);
+        writer.apply(ControlEvent::PhaseSet {
+            phase: "verifier".to_string(),
+            lane: Some(submitted.lane),
+        });
         let lane_plan_file = ctx.lanes[submitted.lane].plan_file.clone();
+        let mut last_executor_diff = writer.state().last_executor_diff.clone();
         let prompt_inputs: VerifierPromptInputs = load_verifier_prompt_inputs(
             ctx.lanes,
             ctx.workspace,
-            verifier_summary,
-            &mut dispatch_state.last_executor_diff,
+            &writer.state().verifier_summary.clone(),
+            &mut last_executor_diff,
             cargo_test_failures.to_string(),
         );
+        writer.apply(ControlEvent::LastExecutorDiffSet { text: last_executor_diff });
         let mut verifier_prompt = verifier_cycle_prompt(
             submitted.lane_label.as_str(),
             &final_exec_result,
@@ -897,7 +910,7 @@ async fn run_verifier_phase(
                     persist_planner_message(&ack);
                     verifier_pending_results.push_front((submitted, turn_id, final_exec_result));
                     let override_phase = verifier_blocker_phase_override(verifier_specific).unwrap();
-                    *scheduled_phase = Some(override_phase.to_string());
+                    writer.apply(ControlEvent::ScheduledPhaseSet { phase: Some(override_phase.to_string()) });
                     continue;
                 }
             }
@@ -958,13 +971,15 @@ async fn run_verifier_phase(
                     cycle_progress = true;
                     continue;
                 }
-                let lane = dispatch_lane_mut(dispatch_state, lane_id);
-                let changed = lane.latest_verifier_result != verify_result;
-                lane.latest_verifier_result = verify_result.clone();
-                lane.in_progress_by = None;
-                lane.pending = !verifier_confirmed(&verify_result);
+                let confirmed = verifier_confirmed(&verify_result);
+                let changed = writer.state().lanes.get(&lane_id)
+                    .map(|l| l.latest_verifier_result.as_str())
+                    .unwrap_or("") != verify_result;
+                writer.apply(ControlEvent::LaneVerifierResultSet { lane_id, result: verify_result.clone() });
+                writer.apply(ControlEvent::LaneInProgressSet { lane_id, actor: None });
+                writer.apply(ControlEvent::LanePendingSet { lane_id, pending: !confirmed });
                 if changed {
-                    verifier_summary[lane_id] = verify_result;
+                    writer.apply(ControlEvent::VerifierSummarySet { lane_id, result: verify_result });
                     verifier_changed = true;
                 }
                 cycle_progress = true;
@@ -985,37 +1000,41 @@ async fn run_verifier_phase(
     (cycle_progress, verifier_changed)
 }
 
-fn requeue_lane_after_submit_recovery(dispatch_state: &mut DispatchState, lane_id: usize) {
-    let lane = dispatch_lane_mut(dispatch_state, lane_id);
-    lane.in_progress_by = None;
-    lane.pending = true;
-    dispatch_state.executor_submit_inflight.remove(&lane_id);
-    dispatch_state.lane_submit_in_flight.insert(lane_id, false);
+fn requeue_lane_after_submit_recovery(
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
+    lane_id: usize,
+) {
+    writer.apply(ControlEvent::LaneInProgressSet { lane_id, actor: None });
+    writer.apply(ControlEvent::LanePendingSet { lane_id, pending: true });
+    rt.executor_submit_inflight.remove(&lane_id);
+    writer.apply(ControlEvent::LaneSubmitInFlightSet { lane_id, in_flight: false });
 }
 
 fn register_submitted_executor_turn(
-    dispatch_state: &mut DispatchState,
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
     lane_id: usize,
     tab_id: u32,
     turn_id: u64,
     submitted_turn: SubmittedExecutorTurn,
 ) {
-    dispatch_state.lane_active_tab.insert(lane_id, tab_id);
-    dispatch_state.tab_id_to_lane.entry(tab_id).or_insert(lane_id);
-    dispatch_state
-        .submitted_turns
-        .insert((tab_id, turn_id), submitted_turn);
-    dispatch_state.lane_next_submit_at_ms.insert(lane_id, now_ms());
-    dispatch_state.lane_submit_in_flight.insert(lane_id, false);
+    writer.apply(ControlEvent::LaneActiveTabSet { lane_id, tab_id });
+    if !writer.state().tab_id_to_lane.contains_key(&tab_id) {
+        writer.apply(ControlEvent::TabIdToLaneSet { tab_id, lane_id });
+    }
+    rt.submitted_turns.insert((tab_id, turn_id), submitted_turn);
+    writer.apply(ControlEvent::LaneNextSubmitAtSet { lane_id, ms: now_ms() });
+    writer.apply(ControlEvent::LaneSubmitInFlightSet { lane_id, in_flight: false });
 }
 
 fn timed_out_executor_submit_lanes(
-    dispatch_state: &DispatchState,
+    rt: &RuntimeState,
     now: u64,
     pending_submit_timeout_ms: u64,
 ) -> Vec<usize> {
     let mut timed_out = Vec::new();
-    for (lane_id, pending) in dispatch_state.executor_submit_inflight.iter() {
+    for (lane_id, pending) in rt.executor_submit_inflight.iter() {
         if executor_submit_timed_out(pending.started_ms, now, pending_submit_timeout_ms) {
             timed_out.push(*lane_id);
         }
@@ -1070,35 +1089,36 @@ fn log_timed_out_executor_submit(
 
 fn recover_timed_out_executor_submit_lane(
     ctx: &OrchestratorContext<'_>,
-    dispatch_state: &mut DispatchState,
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
     lane_id: usize,
 ) {
-    if let Some(pending) = dispatch_state.executor_submit_inflight.remove(&lane_id) {
+    if let Some(pending) = rt.executor_submit_inflight.remove(&lane_id) {
         log_timed_out_executor_submit(ctx, lane_id, pending);
     }
-    dispatch_state.lane_submit_in_flight.insert(lane_id, false);
-    let lane = dispatch_lane_mut(dispatch_state, lane_id);
-    lane.in_progress_by = None;
-    lane.pending = true;
+    writer.apply(ControlEvent::LaneSubmitInFlightSet { lane_id, in_flight: false });
+    writer.apply(ControlEvent::LaneInProgressSet { lane_id, actor: None });
+    writer.apply(ControlEvent::LanePendingSet { lane_id, pending: true });
 }
 
 fn sweep_timed_out_executor_submits(
     ctx: &OrchestratorContext<'_>,
-    dispatch_state: &mut DispatchState,
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
     now: u64,
     pending_submit_timeout_ms: u64,
 ) {
-    if dispatch_state.executor_submit_inflight.is_empty() {
+    if rt.executor_submit_inflight.is_empty() {
         return;
     }
-    let timed_out = timed_out_executor_submit_lanes(dispatch_state, now, pending_submit_timeout_ms);
+    let timed_out = timed_out_executor_submit_lanes(rt, now, pending_submit_timeout_ms);
     for lane_id in timed_out {
-        recover_timed_out_executor_submit_lane(ctx, dispatch_state, lane_id);
+        recover_timed_out_executor_submit_lane(ctx, writer, rt, lane_id);
     }
 }
 
 fn evaluate_executor_route_gates(
-    dispatch_state: &mut DispatchState,
+    writer: &mut CanonicalWriter,
     ready_count: &str,
 ) -> bool {
     let ws = std::path::PathBuf::from(workspace());
@@ -1275,7 +1295,7 @@ fn evaluate_executor_route_gates(
 
     if let Err(reason) = crate::invariants::evaluate_invariant_gate("route", &state, &ws) {
         block_route_gate(reason);
-        dispatch_state.planner_pending = true;
+        writer.apply(ControlEvent::PlannerPendingSet { pending: true });
         return false;
     }
 
@@ -1296,7 +1316,7 @@ fn evaluate_executor_route_gates(
             &ws,
         ) {
             block_route_gate(reason);
-            dispatch_state.planner_pending = true;
+            writer.apply(ControlEvent::PlannerPendingSet { pending: true });
             return false;
         }
     }
@@ -1328,7 +1348,7 @@ fn evaluate_executor_route_gates(
 
     if let Err(reason) = crate::invariants::evaluate_invariant_gate("executor", &state, &ws) {
         block_route_gate(reason);
-        dispatch_state.planner_pending = true;
+        writer.apply(ControlEvent::PlannerPendingSet { pending: true });
         return false;
     }
 
@@ -1337,14 +1357,12 @@ fn evaluate_executor_route_gates(
 
 fn dispatch_executor_submits(
     ctx: &OrchestratorContext<'_>,
-    dispatch_state: &mut DispatchState,
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
     now: u64,
     submit_joinset: &mut tokio::task::JoinSet<(usize, PendingExecutorSubmit, Result<String>)>,
-    scheduled_phase: Option<&str>,
-    current_phase: &mut String,
-    current_phase_lane: &mut Option<usize>,
 ) {
-    if block_executor_dispatch(scheduled_phase) {
+    if block_executor_dispatch(writer.state().scheduled_phase.as_deref()) {
         return;
     }
 
@@ -1356,33 +1374,35 @@ fn dispatch_executor_submits(
         let ready_tasks_text = crate::prompt_inputs::read_ready_tasks(&ws, 1);
         let ready_count = if ready_tasks_text == "(no ready tasks)" { "0" } else { "1+" };
         if ready_count == "0" {
-            dispatch_state.planner_pending = true;
+            writer.apply(ControlEvent::PlannerPendingSet { pending: true });
             return;
         }
         // Route gate G_r: check enforced invariants before dispatching the executor.
         // Currently observational — violations are logged but do not hard-block.
         // Once invariants accumulate enough support, this will become a hard gate.
-        if !evaluate_executor_route_gates(dispatch_state, ready_count) {
+        if !evaluate_executor_route_gates(writer, ready_count) {
             return;
         }
     }
 
     for lane in ctx.lanes {
-        if dispatch_state.lane_submit_active(lane.index)
-            || dispatch_state.lane_next_submit_ms(lane.index) > now
+        if writer.state().lane_submit_active(lane.index)
+            || writer.state().lane_next_submit_ms(lane.index) > now
         {
             continue;
         }
-        if let Some(job) = claim_executor_submit(dispatch_state, lane) {
-            *current_phase = "executor".to_string();
-            *current_phase_lane = Some(lane.index);
+        if let Some(job) = claim_executor_submit(writer, lane) {
+            writer.apply(ControlEvent::PhaseSet {
+                phase: "executor".to_string(),
+                lane: Some(lane.index),
+            });
             let lane_index = lane.index;
             let endpoint = lane.endpoint.clone();
             let bridge = ctx.bridge.clone();
             let tabs = lane.tabs.clone();
             let command_id = make_command_id(&job.executor_role, "executor", 1);
             let response_timeout_secs = response_timeout_for_role(&job.executor_role);
-            dispatch_state.executor_submit_inflight.insert(
+            rt.executor_submit_inflight.insert(
                 lane_index,
                 PendingSubmitState {
                     job: job.clone(),
@@ -1392,7 +1412,7 @@ fn dispatch_executor_submits(
                     tabs: tabs.clone(),
                 },
             );
-            dispatch_state.lane_submit_in_flight.insert(lane_index, true);
+            writer.apply(ControlEvent::LaneSubmitInFlightSet { lane_id: lane_index, in_flight: true });
             submit_joinset.spawn(async move {
                 let result = submit_executor_turn(
                     &job,
@@ -1412,24 +1432,20 @@ fn dispatch_executor_submits(
 
 fn run_executor_phase(
     ctx: &OrchestratorContext<'_>,
-    dispatch_state: &mut DispatchState,
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
     now: u64,
     pending_submit_timeout_ms: u64,
     submit_joinset: &mut tokio::task::JoinSet<(usize, PendingExecutorSubmit, Result<String>)>,
-    scheduled_phase: Option<&str>,
-    current_phase: &mut String,
-    current_phase_lane: &mut Option<usize>,
 ) -> bool {
     let mut cycle_progress = false;
-    sweep_timed_out_executor_submits(ctx, dispatch_state, now, pending_submit_timeout_ms);
+    sweep_timed_out_executor_submits(ctx, writer, rt, now, pending_submit_timeout_ms);
     dispatch_executor_submits(
         ctx,
-        dispatch_state,
+        writer,
+        rt,
         now,
         submit_joinset,
-        scheduled_phase,
-        current_phase,
-        current_phase_lane,
     );
 
     while let Some(joined) = submit_joinset.try_join_next() {
@@ -1437,7 +1453,8 @@ fn run_executor_phase(
             Ok((lane_id, job, result)) => {
                 if handle_executor_submit_join_result(
                     ctx,
-                    dispatch_state,
+                    writer,
+                    rt,
                     lane_id,
                     job,
                     result,
@@ -1464,7 +1481,8 @@ fn run_executor_phase(
 
 fn handle_executor_submit_join_result(
     ctx: &OrchestratorContext<'_>,
-    dispatch_state: &mut DispatchState,
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
     lane_id: usize,
     job: PendingExecutorSubmit,
     result: Result<String>,
@@ -1473,7 +1491,8 @@ fn handle_executor_submit_join_result(
     match result {
         Ok(exec_result) => handle_executor_submit_ack_result(
             ctx,
-            dispatch_state,
+            writer,
+            rt,
             lane_id,
             job,
             exec_result,
@@ -1495,7 +1514,7 @@ fn handle_executor_submit_join_result(
                 Some(json!({ "stage": "executor_submit", "lane": job.executor_name })),
             );
             // Recovery: clear stuck ownership and requeue lane
-            requeue_lane_after_submit_recovery(dispatch_state, job.lane_index);
+            requeue_lane_after_submit_recovery(writer, rt, job.lane_index);
             false
         }
     }
@@ -1522,13 +1541,14 @@ fn log_missing_submit_ack(job: &PendingExecutorSubmit, exec_result: &str) {
 }
 
 fn handle_missing_submit_ack(
-    dispatch_state: &mut DispatchState,
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
     job: &PendingExecutorSubmit,
     exec_result: &str,
 ) -> bool {
     log_missing_submit_ack(job, exec_result);
     // Recovery: clear stuck ownership and requeue lane
-    requeue_lane_after_submit_recovery(dispatch_state, job.lane_index);
+    requeue_lane_after_submit_recovery(writer, rt, job.lane_index);
     false
 }
 
@@ -1557,7 +1577,8 @@ fn log_late_submit_ack(
 
 fn register_late_submit_ack(
     ctx: &OrchestratorContext<'_>,
-    dispatch_state: &mut DispatchState,
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
     lane_id: usize,
     job: &PendingExecutorSubmit,
     tab_id: u32,
@@ -1565,8 +1586,10 @@ fn register_late_submit_ack(
     command_id: Option<String>,
 ) -> bool {
     log_late_submit_ack(ctx, lane_id, tab_id, turn_id);
+    let steps_used = writer.state().lane_steps_used_count(job.lane_index);
     register_submitted_executor_turn(
-        dispatch_state,
+        writer,
+        rt,
         lane_id,
         tab_id,
         turn_id,
@@ -1579,7 +1602,7 @@ fn register_late_submit_ack(
             actor: job.executor_role.clone(),
             endpoint_id: job.endpoint_id.clone(),
             tabs: job.tabs.clone(),
-            steps_used: dispatch_state.lane_steps_used(job.lane_index),
+            steps_used,
         },
     );
     true
@@ -1610,7 +1633,7 @@ fn log_submit_ack_timeout(
 
 fn handle_submit_ack_timeout(
     ctx: &OrchestratorContext<'_>,
-    dispatch_state: &mut DispatchState,
+    writer: &mut CanonicalWriter,
     lane_id: usize,
     tab_id: u32,
     turn_id: u64,
@@ -1626,8 +1649,8 @@ fn handle_submit_ack_timeout(
         ),
         None,
     );
-    dispatch_state.lane_submit_in_flight.insert(lane_id, false);
-    dispatch_state.lane_prompt_in_flight.insert(lane_id, false);
+    writer.apply(ControlEvent::LaneSubmitInFlightSet { lane_id, in_flight: false });
+    writer.apply(ControlEvent::LanePromptInFlightSet { lane_id, in_flight: false });
     false
 }
 
@@ -1661,23 +1684,25 @@ fn log_submit_ack_event(message: String, payload: serde_json::Value) {
 
 fn handle_executor_submit_ack_result(
     ctx: &OrchestratorContext<'_>,
-    dispatch_state: &mut DispatchState,
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
     lane_id: usize,
     job: PendingExecutorSubmit,
     exec_result: String,
     pending_submit_timeout_ms: u64,
 ) -> bool {
     let Some((tab_id, turn_id, command_id)) = parse_submit_ack(&exec_result) else {
-        return handle_missing_submit_ack(dispatch_state, &job, &exec_result);
+        return handle_missing_submit_ack(writer, rt, &job, &exec_result);
     };
 
-    let Some(pending) = dispatch_state.executor_submit_inflight.remove(&lane_id) else {
+    let Some(pending) = rt.executor_submit_inflight.remove(&lane_id) else {
         // The timeout path already removed executor_submit_inflight for
         // this lane, but the submit actually succeeded.  Register the turn
         // so the completion can still be routed back to the LLM.
         return register_late_submit_ack(
             ctx,
-            dispatch_state,
+            writer,
+            rt,
             lane_id,
             &job,
             tab_id,
@@ -1691,17 +1716,19 @@ fn handle_executor_submit_ack_result(
         now_ms(),
         pending_submit_timeout_ms,
     ) {
-        return handle_submit_ack_timeout(ctx, dispatch_state, lane_id, tab_id, turn_id);
+        return handle_submit_ack_timeout(ctx, writer, lane_id, tab_id, turn_id);
     }
 
-    if let Some(active_tab) = dispatch_state.lane_active_tab(lane_id) {
+    if let Some(active_tab) = writer.state().lane_active_tab_id(lane_id) {
         if active_tab != tab_id {
             log_submit_ack_tab_mismatch(ctx, lane_id, active_tab, tab_id);
         }
     }
 
+    let steps_used = writer.state().lane_steps_used_count(job.lane_index);
     register_submitted_executor_turn(
-        dispatch_state,
+        writer,
+        rt,
         lane_id,
         tab_id,
         turn_id,
@@ -1713,7 +1740,7 @@ fn handle_executor_submit_ack_result(
             actor: job.executor_role.clone(),
             endpoint_id: pending.endpoint_id.clone(),
             tabs: pending.tabs.clone(),
-            steps_used: dispatch_state.lane_steps_used(job.lane_index),
+            steps_used,
         },
     );
     true
@@ -1721,7 +1748,8 @@ fn handle_executor_submit_ack_result(
 
 async fn process_completed_turns(
     ctx: &OrchestratorContext<'_>,
-    dispatch_state: &mut DispatchState,
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
     continuation_joinset: &mut tokio::task::JoinSet<(SubmittedExecutorTurn, u64, Result<String>)>,
     verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
 ) -> bool {
@@ -1733,7 +1761,7 @@ async fn process_completed_turns(
             continue;
         };
         let submitted = if let Some(submitted) =
-            dispatch_state.submitted_turns.remove(&(tab_id, turn_id))
+            rt.submitted_turns.remove(&(tab_id, turn_id))
         {
             if check_completion_endpoint(&submitted.endpoint_id, completed_endpoint_id.as_deref())
                 == CompletionEndpointCheck::Mismatch
@@ -1751,7 +1779,7 @@ async fn process_completed_turns(
             }
             submitted
         } else {
-            let lane_id = dispatch_state.tab_id_to_lane.get(&tab_id).copied();
+            let lane_id = writer.state().tab_id_to_lane.get(&tab_id).copied();
             let Some(lane_id) = lane_id else {
                 append_orchestration_trace(
                     "executor_completion_unmatched",
@@ -1779,7 +1807,7 @@ async fn process_completed_turns(
                 continue;
             }
             match check_completion_tab(
-                dispatch_state.lane_active_tab(lane_id),
+                writer.state().lane_active_tab_id(lane_id),
                 tab_id,
             ) {
                 CompletionTabCheck::Mismatch => {
@@ -1787,7 +1815,7 @@ async fn process_completed_turns(
                         "executor_completion_tab_mismatch",
                         json!({
                             "lane_name": ctx.lanes[lane_id].label,
-                            "active_tab": dispatch_state.lane_active_tab(lane_id),
+                            "active_tab": writer.state().lane_active_tab_id(lane_id),
                             "tab_id": tab_id,
                             "turn_id": turn_id,
                         }),
@@ -1795,11 +1823,11 @@ async fn process_completed_turns(
                     continue;
                 }
                 CompletionTabCheck::NoneSet => {
-                    dispatch_state.lane_active_tab.insert(lane_id, tab_id);
+                    writer.apply(ControlEvent::LaneActiveTabSet { lane_id, tab_id });
                 }
                 CompletionTabCheck::Ok => {}
             }
-            let Some(pending) = dispatch_state.executor_submit_inflight.remove(&lane_id) else {
+            let Some(pending) = rt.executor_submit_inflight.remove(&lane_id) else {
                 append_orchestration_trace(
                     "executor_completion_unmatched",
                     json!({
@@ -1810,8 +1838,9 @@ async fn process_completed_turns(
                 );
                 continue;
             };
-            dispatch_state.lane_submit_in_flight.insert(lane_id, false);
-            dispatch_state.lane_next_submit_at_ms.insert(lane_id, now_ms());
+            writer.apply(ControlEvent::LaneSubmitInFlightSet { lane_id, in_flight: false });
+            writer.apply(ControlEvent::LaneNextSubmitAtSet { lane_id, ms: now_ms() });
+            let steps_used = writer.state().lane_steps_used_count(lane_id);
             SubmittedExecutorTurn {
                 tab_id,
                 lane: lane_id,
@@ -1820,16 +1849,17 @@ async fn process_completed_turns(
                 actor: pending.job.executor_role,
                 endpoint_id: pending.endpoint_id,
                 tabs: pending.tabs,
-                steps_used: dispatch_state.lane_steps_used(lane_id),
+                steps_used,
             }
         };
-        dispatch_state.lane_prompt_in_flight.insert(submitted.lane, false);
+        writer.apply(ControlEvent::LanePromptInFlightSet { lane_id: submitted.lane, in_flight: false });
         if handle_executor_completion(
             submitted,
             tab_id,
             turn_id,
             exec_result,
-            dispatch_state,
+            writer,
+            rt,
             ctx.lanes,
             ctx.bridge,
             ctx.workspace,
@@ -1843,7 +1873,7 @@ async fn process_completed_turns(
 }
 
 fn drain_continuations(
-    dispatch_state: &mut DispatchState,
+    writer: &mut CanonicalWriter,
     continuation_joinset: &mut tokio::task::JoinSet<(SubmittedExecutorTurn, u64, Result<String>)>,
     verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
 ) -> bool {
@@ -1852,7 +1882,7 @@ fn drain_continuations(
         match joined {
             Ok((submitted, turn_id, result)) => {
                 cycle_progress |= handle_completed_continuation(
-                    dispatch_state,
+                    writer,
                     verifier_pending_results,
                     submitted,
                     turn_id,
@@ -1875,7 +1905,7 @@ fn drain_continuations(
 }
 
 fn handle_completed_continuation(
-    dispatch_state: &mut DispatchState,
+    writer: &mut CanonicalWriter,
     verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
     submitted: SubmittedExecutorTurn,
     turn_id: u64,
@@ -1883,21 +1913,21 @@ fn handle_completed_continuation(
 ) -> bool {
     match result {
         Ok(final_exec_result) => {
-            dispatch_state.lane_prompt_in_flight.insert(submitted.lane, false);
+            writer.apply(ControlEvent::LanePromptInFlightSet { lane_id: submitted.lane, in_flight: false });
             // Continuations only return once the executor has reached completion,
             // and the returned value is the completion summary (not the raw action JSON).
             verifier_pending_results.push_back((submitted, turn_id, final_exec_result));
         }
         Err(err) => {
             let err_text = format!("{err:#}");
-            recover_failed_continuation(dispatch_state, &submitted, &err_text);
+            recover_failed_continuation(writer, &submitted, &err_text);
         }
     }
     true
 }
 
 fn recover_failed_continuation(
-    dispatch_state: &mut DispatchState,
+    writer: &mut CanonicalWriter,
     submitted: &SubmittedExecutorTurn,
     err_text: &str,
 ) {
@@ -1917,24 +1947,25 @@ fn recover_failed_continuation(
         ),
         Some(json!({ "stage": "executor_continuation", "lane": submitted.lane_label })),
     );
-    dispatch_state.lane_prompt_in_flight.insert(submitted.lane, false);
-    let lane = dispatch_lane_mut(dispatch_state, submitted.lane);
-    lane.in_progress_by = None;
-    lane.pending = true;
+    let lane_id = submitted.lane;
+    writer.apply(ControlEvent::LanePromptInFlightSet { lane_id, in_flight: false });
+    writer.apply(ControlEvent::LaneInProgressSet { lane_id, actor: None });
+    writer.apply(ControlEvent::LanePendingSet { lane_id, pending: true });
 }
 
 fn drain_deferred_completions(
     ctx: &OrchestratorContext<'_>,
-    dispatch_state: &mut DispatchState,
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
     continuation_joinset: &mut tokio::task::JoinSet<(SubmittedExecutorTurn, u64, Result<String>)>,
     verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
 ) -> bool {
     let mut cycle_progress = false;
     for lane_id in 0..ctx.lanes.len() {
-        if dispatch_state.lane_in_flight(lane_id) {
+        if writer.state().lane_in_flight(lane_id) {
             continue;
         }
-        while let Some(deferred) = dispatch_state
+        while let Some(deferred) = rt
             .deferred_completions
             .get_mut(&lane_id)
             .and_then(|queue| queue.pop_front())
@@ -1944,7 +1975,8 @@ fn drain_deferred_completions(
                 deferred.tab_id,
                 deferred.turn_id,
                 deferred.exec_result,
-                dispatch_state,
+                writer,
+                rt,
                 ctx.lanes,
                 ctx.bridge,
                 ctx.workspace,
@@ -1953,7 +1985,7 @@ fn drain_deferred_completions(
             ) {
                 cycle_progress = true;
             }
-            if dispatch_state.lane_in_flight(lane_id) {
+            if writer.state().lane_in_flight(lane_id) {
                 break;
             }
         }
@@ -2073,29 +2105,27 @@ fn orchestrator_mode_flag_path() -> PathBuf {
 
 fn save_checkpoint(
     workspace: &Path,
-    phase: &str,
-    phase_lane: Option<usize>,
-    dispatch_state: &DispatchState,
+    writer: &CanonicalWriter,
     lanes: &[LaneConfig],
-    verifier_summary: &[String],
     verifier_pending_results: &VecDeque<(SubmittedExecutorTurn, u64, String)>,
 ) -> Result<()> {
-    let lane_snapshots = build_checkpoint_lane_snapshots(dispatch_state, lanes);
+    let state = writer.state();
+    let lane_snapshots = build_checkpoint_lane_snapshots(state, lanes);
     let resume_items = build_resume_verifier_items(lanes, verifier_pending_results);
     let checkpoint = OrchestratorCheckpoint {
         workspace: workspace.to_string_lossy().into_owned(),
         created_ms: now_ms(),
-        phase: phase.to_string(),
-        phase_lane,
-        planner_pending: dispatch_state.planner_pending,
-        diagnostics_pending: dispatch_state.diagnostics_pending,
-        diagnostics_text: dispatch_state.diagnostics_text.clone(),
-        last_plan_text: dispatch_state.last_plan_text.clone(),
-        last_executor_diff: dispatch_state.last_executor_diff.clone(),
-        last_solo_plan_text: dispatch_state.last_solo_plan_text.clone(),
-        last_solo_executor_diff: dispatch_state.last_solo_executor_diff.clone(),
+        phase: state.phase.clone(),
+        phase_lane: state.phase_lane,
+        planner_pending: state.planner_pending,
+        diagnostics_pending: state.diagnostics_pending,
+        diagnostics_text: state.diagnostics_text.clone(),
+        last_plan_text: state.last_plan_text.clone(),
+        last_executor_diff: state.last_executor_diff.clone(),
+        last_solo_plan_text: state.last_solo_plan_text.clone(),
+        last_solo_executor_diff: state.last_solo_executor_diff.clone(),
         lanes: lane_snapshots,
-        verifier_summary: verifier_summary.to_vec(),
+        verifier_summary: state.verifier_summary.clone(),
         verifier_pending_results: resume_items,
     };
     let path = checkpoint_path(workspace);
@@ -2109,19 +2139,19 @@ fn save_checkpoint(
 }
 
 fn build_checkpoint_lane_snapshots(
-    dispatch_state: &DispatchState,
+    state: &SystemState,
     lanes: &[LaneConfig],
 ) -> Vec<CheckpointLane> {
     let mut lane_snapshots = Vec::new();
     for lane in lanes {
-        if let Some(state) = dispatch_state.lanes.get(&lane.index) {
+        if let Some(ls) = state.lanes.get(&lane.index) {
             lane_snapshots.push(CheckpointLane {
                 lane_id: lane.index,
                 lane_label: lane.label.clone(),
-                plan_text: state.plan_text.clone(),
-                pending: state.pending,
-                in_progress_by: state.in_progress_by.clone(),
-                latest_verifier_result: state.latest_verifier_result.clone(),
+                plan_text: ls.plan_text.clone(),
+                pending: ls.pending,
+                in_progress_by: ls.in_progress_by.clone(),
+                latest_verifier_result: ls.latest_verifier_result.clone(),
             });
         }
     }
@@ -2667,8 +2697,7 @@ fn is_reaction_only_response(raw: &str) -> bool {
 
 fn apply_wake_flags(
     agent_state_dir: &std::path::Path,
-    dispatch_state: &mut DispatchState,
-    scheduled_phase: &mut Option<String>,
+    writer: &mut CanonicalWriter,
 ) {
     let active_blocker = agent_state_dir.join("active_blocker_to_verifier.json").exists();
 
@@ -2679,7 +2708,7 @@ fn apply_wake_flags(
         return;
     };
 
-    *scheduled_phase = Some(role.to_string());
+    writer.apply(ControlEvent::ScheduledPhaseSet { phase: Some(role.to_string()) });
     if let Some(path) = path_map.get(role) {
         eprintln!(
             "[orchestrate] wake_flag_triggered: role={} path={}",
@@ -2689,14 +2718,15 @@ fn apply_wake_flags(
         let _ = std::fs::remove_file(path);
     }
     if decision.planner_pending {
-        dispatch_state.planner_pending = true;
+        writer.apply(ControlEvent::PlannerPendingSet { pending: true });
     }
     if decision.diagnostics_pending {
-        dispatch_state.diagnostics_pending = true;
+        writer.apply(ControlEvent::DiagnosticsPendingSet { pending: true });
     }
     if decision.executor_wake {
-        for lane in dispatch_state.lanes.values_mut() {
-            lane.pending = true;
+        let lane_ids: Vec<usize> = writer.state().lanes.keys().copied().collect();
+        for lane_id in lane_ids {
+            writer.apply(ControlEvent::LanePendingSet { lane_id, pending: true });
             // Do NOT clear in_progress_by here. If the lane already has a submit
             // in flight, clearing ownership causes a double-submit on the next tick
             // (claim_next_lane sees pending=true + in_progress_by=None and spawns a
@@ -3572,13 +3602,9 @@ fn build_endpoints() -> Vec<LlmEndpoint> {
         .collect()
 }
 
-#[derive(Clone, Debug, Default)]
-struct DispatchLaneState {
-    plan_text: String,
-    pending: bool,
-    in_progress_by: Option<String>,
-    latest_verifier_result: String,
-}
+// `DispatchLaneState` is now `LaneState` from `system_state.rs`.
+// This alias keeps any remaining internal references compiling during the migration.
+type DispatchLaneState = LaneState;
 
 #[derive(Clone)]
 struct PendingSubmitState {
@@ -3597,85 +3623,24 @@ struct DeferredExecutorCompletion {
     exec_result: String,
 }
 
-#[derive(Clone)]
-struct DispatchState {
-    lanes: HashMap<usize, DispatchLaneState>,
-    submitted_turns: std::collections::HashMap<(u32, u64), SubmittedExecutorTurn>,
+/// Non-serializable runtime-only state.  Everything serializable now lives in
+/// `SystemState` (owned by `CanonicalWriter`); this struct holds the objects
+/// that contain live OS handles and are therefore not checkpoint-able.
+struct RuntimeState {
+    submitted_turns: HashMap<(u32, u64), SubmittedExecutorTurn>,
     executor_submit_inflight: HashMap<usize, PendingSubmitState>,
-    tab_id_to_lane: HashMap<u32, usize>,
-    lane_active_tab: HashMap<usize, u32>,
-    lane_prompt_in_flight: HashMap<usize, bool>,
     deferred_completions: HashMap<usize, VecDeque<DeferredExecutorCompletion>>,
-    lane_steps_used: HashMap<usize, usize>,
-    diagnostics_pending: bool,
-    planner_pending: bool,
-    diagnostics_text: String,
-    last_plan_text: String,
-    last_executor_diff: String,
-    last_solo_plan_text: String,
-    last_solo_executor_diff: String,
-    lane_next_submit_at_ms: HashMap<usize, u64>,
-    lane_submit_in_flight: HashMap<usize, bool>,
 }
 
-fn new_dispatch_state(lanes: &[LaneConfig]) -> DispatchState {
-    let mut lanes_state = HashMap::new();
-    let mut lane_prompt_in_flight = HashMap::new();
+fn new_runtime_state(lanes: &[LaneConfig]) -> RuntimeState {
     let mut deferred_completions = HashMap::new();
-    let mut lane_next_submit_at_ms = HashMap::new();
-    let mut lane_submit_in_flight = HashMap::new();
-    let mut lane_steps_used = HashMap::new();
     for lane in lanes {
-        lanes_state.insert(lane.index, DispatchLaneState::default());
-        lane_prompt_in_flight.insert(lane.index, false);
         deferred_completions.insert(lane.index, VecDeque::new());
-        lane_next_submit_at_ms.insert(lane.index, 0);
-        lane_submit_in_flight.insert(lane.index, false);
-        lane_steps_used.insert(lane.index, 0);
     }
-    DispatchState {
-        lanes: lanes_state,
-        submitted_turns: std::collections::HashMap::new(),
+    RuntimeState {
+        submitted_turns: HashMap::new(),
         executor_submit_inflight: HashMap::new(),
-        tab_id_to_lane: HashMap::new(),
-        lane_active_tab: HashMap::new(),
-        lane_prompt_in_flight,
         deferred_completions,
-        lane_steps_used,
-        diagnostics_pending: false,
-        planner_pending: false,
-        diagnostics_text: String::new(),
-        last_plan_text: String::new(),
-        last_executor_diff: String::new(),
-        last_solo_plan_text: String::new(),
-        last_solo_executor_diff: String::new(),
-        lane_next_submit_at_ms,
-        lane_submit_in_flight,
-    }
-}
-
-impl DispatchState {
-    fn lane_value_or_default<T: Copy + Default>(
-        map: &std::collections::HashMap<usize, T>,
-        lane_id: usize,
-    ) -> T {
-        map.get(&lane_id).copied().unwrap_or_default()
-    }
-
-    fn lane_in_flight(&self, lane_id: usize) -> bool {
-        Self::lane_value_or_default(&self.lane_prompt_in_flight, lane_id)
-    }
-    fn lane_submit_active(&self, lane_id: usize) -> bool {
-        Self::lane_value_or_default(&self.lane_submit_in_flight, lane_id)
-    }
-    fn lane_next_submit_ms(&self, lane_id: usize) -> u64 {
-        Self::lane_value_or_default(&self.lane_next_submit_at_ms, lane_id)
-    }
-    fn lane_steps_used(&self, lane_id: usize) -> usize {
-        Self::lane_value_or_default(&self.lane_steps_used, lane_id)
-    }
-    fn lane_active_tab(&self, lane_id: usize) -> Option<u32> {
-        self.lane_active_tab.get(&lane_id).copied()
     }
 }
 
@@ -3810,7 +3775,8 @@ fn handle_executor_completion(
     tab_id: u32,
     turn_id: u64,
     exec_result: String,
-    dispatch_state: &mut DispatchState,
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
     lanes: &[LaneConfig],
     bridge: &WsBridge,
     workspace: &PathBuf,
@@ -3818,13 +3784,12 @@ fn handle_executor_completion(
     _verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
 ) -> bool {
     submitted.steps_used = submitted.steps_used.saturating_add(1);
-    dispatch_state
-        .lane_steps_used
-        .insert(submitted.lane, submitted.steps_used);
+    writer.apply(ControlEvent::LaneStepsUsedSet { lane_id: submitted.lane, steps: submitted.steps_used });
     let lane_cfg = &lanes[submitted.lane];
     let lane_name = lane_cfg.label.as_str();
     if maybe_defer_executor_completion(
-        dispatch_state,
+        writer,
+        rt,
         &submitted,
         turn_id,
         tab_id,
@@ -3836,8 +3801,8 @@ fn handle_executor_completion(
 
     record_executor_completion_observation(&submitted, lane_name, turn_id, tab_id, &exec_result);
     let mut submitted = submitted;
-    maybe_rebind_executor_completion_tab(dispatch_state, &mut submitted, tab_id, turn_id, lane_name);
-    if handle_executor_completion_message_action(dispatch_state, &submitted, lane_cfg, &exec_result) {
+    maybe_rebind_executor_completion_tab(writer, &mut submitted, tab_id, turn_id, lane_name);
+    if handle_executor_completion_message_action(writer, &submitted, lane_cfg, &exec_result) {
         return true;
     }
     eprintln!(
@@ -3855,7 +3820,7 @@ fn handle_executor_completion(
         }),
     );
     spawn_executor_completion_continuation(
-        dispatch_state,
+        writer,
         &submitted,
         lane_cfg,
         tab_id,
@@ -3919,18 +3884,18 @@ fn log_executor_completion_observation_error(
 }
 
 fn maybe_defer_executor_completion(
-    dispatch_state: &mut DispatchState,
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
     submitted: &SubmittedExecutorTurn,
     turn_id: u64,
     tab_id: u32,
     exec_result: &str,
     lane_name: &str,
 ) -> bool {
-    if !dispatch_state.lane_in_flight(submitted.lane) {
+    if !writer.state().lane_in_flight(submitted.lane) {
         return false;
     }
-    dispatch_state
-        .deferred_completions
+    rt.deferred_completions
         .entry(submitted.lane)
         .or_default()
         .push_back(DeferredExecutorCompletion {
@@ -3951,7 +3916,7 @@ fn maybe_defer_executor_completion(
 }
 
 fn maybe_rebind_executor_completion_tab(
-    dispatch_state: &mut DispatchState,
+    writer: &mut CanonicalWriter,
     submitted: &mut SubmittedExecutorTurn,
     tab_id: u32,
     turn_id: u64,
@@ -3973,13 +3938,14 @@ fn maybe_rebind_executor_completion_tab(
             "actual_tab": tab_id,
         }),
     );
-    dispatch_state.lane_active_tab.insert(submitted.lane, tab_id);
-    dispatch_state.tab_id_to_lane.insert(tab_id, submitted.lane);
+    let lane_id = submitted.lane;
+    writer.apply(ControlEvent::LaneActiveTabSet { lane_id, tab_id });
+    writer.apply(ControlEvent::TabIdToLaneSet { tab_id, lane_id });
     submitted.tab_id = tab_id;
 }
 
 fn spawn_executor_completion_continuation(
-    dispatch_state: &mut DispatchState,
+    writer: &mut CanonicalWriter,
     submitted: &SubmittedExecutorTurn,
     lane_cfg: &LaneConfig,
     tab_id: u32,
@@ -3995,9 +3961,7 @@ fn spawn_executor_completion_continuation(
     let exec_result = exec_result.to_string();
     let submitted_clone = submitted.clone();
     let tabs = submitted.tabs.clone();
-    dispatch_state
-        .lane_prompt_in_flight
-        .insert(submitted.lane, true);
+    writer.apply(ControlEvent::LanePromptInFlightSet { lane_id: submitted.lane, in_flight: true });
     continuation_joinset.spawn(async move {
         let result = continue_executor_completion(
             &submitted_clone,
@@ -4015,7 +3979,7 @@ fn spawn_executor_completion_continuation(
 }
 
 fn handle_executor_completion_message_action(
-    dispatch_state: &mut DispatchState,
+    writer: &mut CanonicalWriter,
     submitted: &SubmittedExecutorTurn,
     lane_cfg: &LaneConfig,
     exec_result: &str,
@@ -4027,7 +3991,7 @@ fn handle_executor_completion_message_action(
         return false;
     }
 
-    dispatch_state.lane_steps_used.insert(submitted.lane, 0);
+    writer.apply(ControlEvent::LaneStepsUsedSet { lane_id: submitted.lane, steps: 0 });
     let Some(action) = actions.pop() else {
         return false;
     };
@@ -4042,11 +4006,11 @@ fn handle_executor_completion_message_action(
         true,
         exec_result,
     );
-    persist_executor_completion_message(dispatch_state, &action);
+    persist_executor_completion_message(writer, &action);
     true
 }
 
-fn persist_executor_completion_message(dispatch_state: &mut DispatchState, action: &Value) {
+fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Value) {
     let to_role = action.get("to").and_then(|v| v.as_str()).unwrap_or("");
 
     // Self-loop guard: an executor message routed back to "executor" would write
@@ -4066,7 +4030,7 @@ fn persist_executor_completion_message(dispatch_state: &mut DispatchState, actio
 
     if effective_to.eq_ignore_ascii_case("planner") {
         persist_planner_message(action);
-        dispatch_state.planner_pending = true;
+        writer.apply(ControlEvent::PlannerPendingSet { pending: true });
         return;
     }
 
@@ -4182,23 +4146,27 @@ fn verifier_confirmed(reason: &str) -> bool {
     verifier_confirmed_with_plan_text(reason, &plan_text)
 }
 
-fn dispatch_lane_mut<'a>(state: &'a mut DispatchState, lane_id: usize) -> &'a mut DispatchLaneState {
-    state.lanes.entry(lane_id).or_default()
-}
-
-fn claim_next_lane(state: &mut DispatchState, lane: &LaneConfig) -> Option<(usize, String)> {
+fn claim_next_lane(writer: &mut CanonicalWriter, lane: &LaneConfig) -> Option<(usize, String)> {
     let lane_id = lane.index;
-    let lane_state = dispatch_lane_mut(state, lane_id);
-    if lane_state.pending && lane_state.in_progress_by.is_none() {
-        lane_state.pending = false;
-        lane_state.in_progress_by = Some(lane.label.clone());
-        return Some((lane_id, lane_state.latest_verifier_result.clone()));
+    let (pending, in_progress, latest_result) = {
+        let s = writer.state();
+        let ls = s.lanes.get(&lane_id);
+        (
+            ls.map(|l| l.pending).unwrap_or(false),
+            ls.and_then(|l| l.in_progress_by.as_deref()).is_some(),
+            ls.map(|l| l.latest_verifier_result.clone()).unwrap_or_default(),
+        )
+    };
+    if pending && !in_progress {
+        writer.apply(ControlEvent::LanePendingSet { lane_id, pending: false });
+        writer.apply(ControlEvent::LaneInProgressSet { lane_id, actor: Some(lane.label.clone()) });
+        return Some((lane_id, latest_result));
     }
     None
 }
 
-fn claim_executor_submit(state: &mut DispatchState, lane: &LaneConfig) -> Option<PendingExecutorSubmit> {
-    let (lane_id, latest_verify_result) = claim_next_lane(state, lane)?;
+fn claim_executor_submit(writer: &mut CanonicalWriter, lane: &LaneConfig) -> Option<PendingExecutorSubmit> {
+    let (lane_id, latest_verify_result) = claim_next_lane(writer, lane)?;
     let executor_display = format!("executor {}", lane.label);
     let executor_role = format!("executor[{}]", lane.label);
     Some(PendingExecutorSubmit {
@@ -4534,12 +4502,16 @@ pub async fn run() -> Result<()> {
         let tabs_planner = llm_worker_new_tabs();
         let tabs_solo = llm_worker_new_tabs();
         let tabs_verify = llm_worker_new_tabs();
-        let mut verifier_summary: Vec<String> = vec!["(none yet)".to_string(); lanes.len()];
-        let mut dispatch_state = new_dispatch_state(&lanes);
-        dispatch_state.planner_pending = true;
-        let mut current_phase = "bootstrap".to_string();
-        let mut current_phase_lane: Option<usize> = None;
-        let mut scheduled_phase: Option<String> = None;
+
+        // ── Canonical-writer initialisation ─────────────────────────────
+        let lane_indices: Vec<usize> = lanes.iter().map(|l| l.index).collect();
+        let system_state = SystemState::new(&lane_indices, lanes.len());
+        let tlog_path = PathBuf::from(crate::constants::agent_state_dir()).join("tlog.ndjson");
+        let tlog = Tlog::open(&tlog_path);
+        let mut writer = CanonicalWriter::new(system_state, tlog, workspace.clone());
+        writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+        let mut rt = new_runtime_state(&lanes);
+
         let mut resume_verifier_items: Vec<ResumeVerifierItem> = Vec::new();
         let mut solo_bootstrapped = false;
         if let Some(checkpoint) = load_checkpoint(&workspace) {
@@ -4549,36 +4521,43 @@ pub async fn run() -> Result<()> {
                 checkpoint.phase_lane,
                 now_ms().saturating_sub(checkpoint.created_ms)
             );
-            dispatch_state.planner_pending = checkpoint.planner_pending;
-            dispatch_state.diagnostics_pending = checkpoint.diagnostics_pending;
-            dispatch_state.diagnostics_text = checkpoint.diagnostics_text;
-            dispatch_state.last_plan_text = checkpoint.last_plan_text;
-            dispatch_state.last_executor_diff = checkpoint.last_executor_diff;
-            dispatch_state.last_solo_plan_text = checkpoint.last_solo_plan_text;
-            dispatch_state.last_solo_executor_diff = checkpoint.last_solo_executor_diff;
-            for lane_snapshot in checkpoint.lanes {
-                if let Some(state) = dispatch_state.lanes.get_mut(&lane_snapshot.lane_id) {
-                    state.plan_text = lane_snapshot.plan_text;
-                    state.pending = lane_snapshot.pending;
-                    state.in_progress_by = lane_snapshot.in_progress_by;
-                    state.latest_verifier_result = lane_snapshot.latest_verifier_result;
+            // Restore serializable state directly (init path, not logged individually).
+            {
+                let s = writer.state_mut();
+                s.planner_pending = checkpoint.planner_pending;
+                s.diagnostics_pending = checkpoint.diagnostics_pending;
+                s.diagnostics_text = checkpoint.diagnostics_text;
+                s.last_plan_text = checkpoint.last_plan_text;
+                s.last_executor_diff = checkpoint.last_executor_diff;
+                s.last_solo_plan_text = checkpoint.last_solo_plan_text;
+                s.last_solo_executor_diff = checkpoint.last_solo_executor_diff;
+                for lane_snapshot in checkpoint.lanes {
+                    if let Some(state) = s.lanes.get_mut(&lane_snapshot.lane_id) {
+                        state.plan_text = lane_snapshot.plan_text;
+                        state.pending = lane_snapshot.pending;
+                        state.in_progress_by = lane_snapshot.in_progress_by;
+                        state.latest_verifier_result = lane_snapshot.latest_verifier_result;
+                    }
                 }
-            }
-            if checkpoint.verifier_summary.len() == lanes.len() {
-                verifier_summary = checkpoint.verifier_summary;
+                if checkpoint.verifier_summary.len() == lanes.len() {
+                    s.verifier_summary = checkpoint.verifier_summary;
+                }
+                s.phase = checkpoint.phase.clone();
+                s.phase_lane = checkpoint.phase_lane;
             }
             resume_verifier_items = checkpoint.verifier_pending_results;
-            current_phase = checkpoint.phase;
-            current_phase_lane = checkpoint.phase_lane;
             let resume_decision = decide_resume_phase(
-                &current_phase,
+                &checkpoint.phase,
                 !resume_verifier_items.is_empty(),
-                dispatch_state.planner_pending,
-                dispatch_state.diagnostics_pending,
+                writer.state().planner_pending,
+                writer.state().diagnostics_pending,
             );
-            scheduled_phase = resume_decision.scheduled_phase;
-            dispatch_state.planner_pending = resume_decision.planner_pending;
-            dispatch_state.diagnostics_pending = resume_decision.diagnostics_pending;
+            {
+                let s = writer.state_mut();
+                s.scheduled_phase = resume_decision.scheduled_phase;
+                s.planner_pending = resume_decision.planner_pending;
+                s.diagnostics_pending = resume_decision.diagnostics_pending;
+            }
             // On resume, DO NOT clear executor_submit_inflight.
             // Clearing inflight state while preserving active tabs and submitted_turns
             // causes valid submit_ack events to lose their pending context, triggering
@@ -4586,9 +4565,9 @@ pub async fn run() -> Result<()> {
             // We preserve executor_submit_inflight so late acks remain reconcilable.
             // Keep submitted_turns, tab_id_to_lane, and lane_active_tab intact
             // so late completions and active tabs can still be reconciled.
-            dispatch_state.deferred_completions.clear();
+            rt.deferred_completions.clear();
             for lane in &lanes {
-                dispatch_state.lane_prompt_in_flight.insert(lane.index, false);
+                writer.apply(ControlEvent::LanePromptInFlightSet { lane_id: lane.index, in_flight: false });
                 // Only clear the submit guard for lanes that have no live inflight entry.
                 // If executor_submit_inflight still holds an entry for this lane, the
                 // submit_joinset task is still running and will deliver an ack — clearing
@@ -4596,21 +4575,22 @@ pub async fn run() -> Result<()> {
                 // is in flight, causing a double-submit and the "submit ack without pending
                 // submit" error when the first ack arrives after the inflight map entry has
                 // been overwritten by the second submit.
-                if !dispatch_state.executor_submit_inflight.contains_key(&lane.index) {
-                    dispatch_state.lane_submit_in_flight.insert(lane.index, false);
+                if !rt.executor_submit_inflight.contains_key(&lane.index) {
+                    writer.apply(ControlEvent::LaneSubmitInFlightSet { lane_id: lane.index, in_flight: false });
                 }
             }
-            for (lane_id, lane) in dispatch_state.lanes.iter_mut() {
-                if lane.in_progress_by.is_some() {
-                    let has_active_tab = dispatch_state
-                        .lane_active_tab
-                        .get(lane_id)
-                        .is_some();
-                    // Only reset lanes that truly lost ownership (no active tab)
-                    if !has_active_tab {
-                        lane.in_progress_by = None;
-                        lane.pending = true;
-                    }
+            // Reset lanes that lost ownership (no active tab) so they become pending.
+            let lane_ids: Vec<usize> = writer.state().lanes.keys().copied().collect();
+            for lane_id in lane_ids {
+                let (in_progress, has_active_tab) = {
+                    let s = writer.state();
+                    let in_prog = s.lanes.get(&lane_id).and_then(|l| l.in_progress_by.as_ref()).is_some();
+                    let has_tab = s.lane_active_tab.contains_key(&lane_id);
+                    (in_prog, has_tab)
+                };
+                if in_progress && !has_active_tab {
+                    writer.apply(ControlEvent::LaneInProgressSet { lane_id, actor: None });
+                    writer.apply(ControlEvent::LanePendingSet { lane_id, pending: true });
                 }
             }
         }
@@ -4672,11 +4652,8 @@ pub async fn run() -> Result<()> {
                 eprintln!("[orchestrate] shutdown requested; saving checkpoint");
                 if let Err(err) = save_checkpoint(
                     &workspace,
-                    &current_phase,
-                    current_phase_lane,
-                    &dispatch_state,
+                    &writer,
                     &lanes,
-                    &verifier_summary,
                     &verifier_pending_results,
                 ) {
                     eprintln!("[orchestrate] checkpoint save failed: {err:#}");
@@ -4693,24 +4670,24 @@ pub async fn run() -> Result<()> {
 
             let agent_state_dir =
                 std::path::Path::new(crate::constants::agent_state_dir());
-            apply_wake_flags(agent_state_dir, &mut dispatch_state, &mut scheduled_phase);
+            apply_wake_flags(agent_state_dir, &mut writer);
 
-            if scheduled_phase.is_none() && current_phase == "bootstrap" {
+            if writer.state().scheduled_phase.is_none() && writer.state().phase == "bootstrap" {
                 if let Some(phase) = decide_bootstrap_phase(start_role) {
-                    current_phase = phase;
                     eprintln!(
                         "[orchestrate] bootstrap_start_role: role={} scheduled_phase=None",
-                        current_phase
+                        phase
                     );
-                    if current_phase == "planner" {
-                        dispatch_state.planner_pending = true;
+                    if phase == "planner" {
+                        writer.apply(ControlEvent::PlannerPendingSet { pending: true });
                     }
-                    if current_phase == "diagnostics" {
-                        dispatch_state.diagnostics_pending = true;
+                    if phase == "diagnostics" {
+                        writer.apply(ControlEvent::DiagnosticsPendingSet { pending: true });
                     }
-                    if current_phase == "solo" {
-                        scheduled_phase = Some("solo".to_string());
+                    if phase == "solo" {
+                        writer.apply(ControlEvent::ScheduledPhaseSet { phase: Some("solo".to_string()) });
                     }
+                    writer.apply(ControlEvent::PhaseSet { phase, lane: None });
                 }
             }
 
@@ -4719,23 +4696,23 @@ pub async fn run() -> Result<()> {
             let active_blocker = agent_state_dir.join("active_blocker_to_verifier.json").exists();
             let blocker_decision = decide_active_blocker(
                 active_blocker,
-                dispatch_state.planner_pending,
-                scheduled_phase.as_deref(),
+                writer.state().planner_pending,
+                writer.state().scheduled_phase.as_deref(),
             );
             if active_blocker
-                && (dispatch_state.planner_pending || scheduled_phase.as_deref() == Some("planner"))
+                && (writer.state().planner_pending || writer.state().scheduled_phase.as_deref() == Some("planner"))
             {
                 eprintln!("[orchestrate] planner paused: active blocker to verifier");
             }
-            dispatch_state.planner_pending = blocker_decision.planner_pending;
-            scheduled_phase = blocker_decision.scheduled_phase;
+            writer.apply(ControlEvent::PlannerPendingSet { pending: blocker_decision.planner_pending });
+            writer.apply(ControlEvent::ScheduledPhaseSet { phase: blocker_decision.scheduled_phase });
 
             let phase_gates = decide_phase_gates(
-                dispatch_state.planner_pending,
-                dispatch_state.diagnostics_pending,
+                writer.state().planner_pending,
+                writer.state().diagnostics_pending,
                 !verifier_pending_results.is_empty(),
                 !verifier_joinset.is_empty(),
-                scheduled_phase.as_deref(),
+                writer.state().scheduled_phase.as_deref(),
             );
 
             let orchestrator_ctx = OrchestratorContext {
@@ -4773,16 +4750,14 @@ pub async fn run() -> Result<()> {
                         Some(json!({ "stage": "diagnostics_reconcile_preflight" })),
                     );
                 }
-                dispatch_state.diagnostics_pending = true;
+                writer.apply(ControlEvent::DiagnosticsPendingSet { pending: true });
             }
 
             if phase_gates.planner {
-                current_phase = "planner".to_string();
-                current_phase_lane = None;
+                writer.apply(ControlEvent::PhaseSet { phase: "planner".to_string(), lane: None });
                 if run_planner_phase(
                     &orchestrator_ctx,
-                    &mut dispatch_state,
-                    &verifier_summary,
+                    &mut writer,
                     &mut planner_bootstrapped,
                     &cargo_test_failures,
                 )
@@ -4793,20 +4768,18 @@ pub async fn run() -> Result<()> {
             }
 
             if phase_gates.solo {
-                current_phase = "solo".to_string();
-                current_phase_lane = None;
+                writer.apply(ControlEvent::PhaseSet { phase: "solo".to_string(), lane: None });
                 if run_solo_phase(
                     &orchestrator_ctx,
+                    &mut writer,
                     &mut solo_bootstrapped,
                     &cargo_test_failures,
-                    &mut dispatch_state.last_solo_executor_diff,
-                    &mut dispatch_state.last_solo_plan_text,
                 )
                 .await
                 {
                     cycle_progress = true;
                 } else {
-                    dispatch_state.planner_pending = true;
+                    writer.apply(ControlEvent::PlannerPendingSet { pending: true });
                     cycle_progress = true;
                 }
             }
@@ -4815,13 +4788,11 @@ pub async fn run() -> Result<()> {
             if phase_gates.executor {
                 if run_executor_phase(
                     &orchestrator_ctx,
-                    &mut dispatch_state,
+                    &mut writer,
+                    &mut rt,
                     now,
                     PENDING_SUBMIT_TIMEOUT_MS,
                     &mut submit_joinset,
-                    scheduled_phase.as_deref(),
-                    &mut current_phase,
-                    &mut current_phase_lane,
                 ) {
                     cycle_progress = true;
                 }
@@ -4829,7 +4800,8 @@ pub async fn run() -> Result<()> {
 
             if process_completed_turns(
                 &orchestrator_ctx,
-                &mut dispatch_state,
+                &mut writer,
+                &mut rt,
                 &mut continuation_joinset,
                 &mut verifier_pending_results,
             )
@@ -4839,7 +4811,7 @@ pub async fn run() -> Result<()> {
             }
 
             if drain_continuations(
-                &mut dispatch_state,
+                &mut writer,
                 &mut continuation_joinset,
                 &mut verifier_pending_results,
             ) {
@@ -4848,7 +4820,8 @@ pub async fn run() -> Result<()> {
 
             if drain_deferred_completions(
                 &orchestrator_ctx,
-                &mut dispatch_state,
+                &mut writer,
+                &mut rt,
                 &mut continuation_joinset,
                 &mut verifier_pending_results,
             ) {
@@ -4859,14 +4832,10 @@ pub async fn run() -> Result<()> {
             if !verifier_pending_results.is_empty() || !verifier_joinset.is_empty() {
                 let (phase_progress, phase_changed) = run_verifier_phase(
                     &orchestrator_ctx,
-                    &mut dispatch_state,
+                    &mut writer,
                     &mut verifier_pending_results,
-                    &mut verifier_summary,
                     &mut verifier_joinset,
                     &mut verifier_bootstrapped,
-                    &mut scheduled_phase,
-                    &mut current_phase,
-                    &mut current_phase_lane,
                     &cargo_test_failures,
                 )
                 .await;
@@ -4899,18 +4868,16 @@ pub async fn run() -> Result<()> {
             }
 
             if verifier_changed || stale_diagnostics_pending {
-                dispatch_state.diagnostics_pending = true;
+                writer.apply(ControlEvent::DiagnosticsPendingSet { pending: true });
             }
 
-            if dispatch_state.diagnostics_pending
-                && allow_diagnostics_run(scheduled_phase.as_deref(), !verifier_joinset.is_empty())
+            if writer.state().diagnostics_pending
+                && allow_diagnostics_run(writer.state().scheduled_phase.as_deref(), !verifier_joinset.is_empty())
             {
-                current_phase = "diagnostics".to_string();
-                current_phase_lane = None;
+                writer.apply(ControlEvent::PhaseSet { phase: "diagnostics".to_string(), lane: None });
                 if run_diagnostics_phase(
                     &orchestrator_ctx,
-                    &mut dispatch_state,
-                    &verifier_summary,
+                    &mut writer,
                     &mut diagnostics_bootstrapped,
                     verifier_changed,
                     &cargo_test_failures,
@@ -4921,25 +4888,25 @@ pub async fn run() -> Result<()> {
                 }
             }
 
-            if scheduled_phase.as_deref() == Some("diagnostics") && !dispatch_state.diagnostics_pending {
-                scheduled_phase = None;
+            if writer.state().scheduled_phase.as_deref() == Some("diagnostics") && !writer.state().diagnostics_pending {
+                writer.apply(ControlEvent::ScheduledPhaseSet { phase: None });
             }
 
-            if let Some(phase) = scheduled_phase.as_deref() {
-                let (executor_lane_pending, executor_in_progress) = current_phase_lane
-                    .and_then(|lane_id| dispatch_state.lanes.get(&lane_id))
+            if let Some(phase) = writer.state().scheduled_phase.clone() {
+                let (executor_lane_pending, executor_in_progress) = writer.state().phase_lane
+                    .and_then(|lane_id| writer.state().lanes.get(&lane_id))
                     .map(|lane| (lane.pending, lane.in_progress_by.is_some()))
                     .unwrap_or((false, false));
                 if scheduled_phase_resume_done(
-                    phase,
-                    dispatch_state.planner_pending,
-                    dispatch_state.diagnostics_pending,
+                    &phase,
+                    writer.state().planner_pending,
+                    writer.state().diagnostics_pending,
                     verifier_pending_results.len(),
                     verifier_joinset.is_empty(),
                     executor_lane_pending,
                     executor_in_progress,
                 ) {
-                    scheduled_phase = None;
+                    writer.apply(ControlEvent::ScheduledPhaseSet { phase: None });
                 }
             }
 
@@ -4962,7 +4929,7 @@ pub async fn run() -> Result<()> {
                         "plan_path": MASTER_PLAN_FILE,
                     }),
                 );
-                dispatch_state.planner_pending = true;
+                writer.apply(ControlEvent::PlannerPendingSet { pending: true });
                 cycle_progress = true;
             }
 
@@ -4980,7 +4947,7 @@ pub async fn run() -> Result<()> {
                         "plan_path": MASTER_PLAN_FILE,
                     }),
                 );
-                dispatch_state.planner_pending = true;
+                writer.apply(ControlEvent::PlannerPendingSet { pending: true });
                 cycle_progress = true;
             }
 
@@ -4992,9 +4959,9 @@ pub async fn run() -> Result<()> {
             // being negotiated (executor_submit_inflight / lane_submit_in_flight).
             // In those cases the files will change once the result arrives; counting
             // the cycle as a stall would be a false positive.
-            let executor_inflight = !dispatch_state.submitted_turns.is_empty()
-                || !dispatch_state.executor_submit_inflight.is_empty()
-                || dispatch_state.lane_submit_in_flight.values().any(|&v| v);
+            let executor_inflight = !rt.submitted_turns.is_empty()
+                || !rt.executor_submit_inflight.is_empty()
+                || writer.state().lane_submit_in_flight.values().any(|&v| v);
             let state_hash_after = cycle_state_hash(&convergence_watched);
             if cycle_progress && state_hash_before == state_hash_after && !executor_inflight {
                 stall_count += 1;
@@ -5008,11 +4975,11 @@ pub async fn run() -> Result<()> {
                         agent_state_dir,
                         stall_count,
                         &convergence_watched,
-                        dispatch_state.planner_pending,
-                        dispatch_state.diagnostics_pending,
+                        writer.state().planner_pending,
+                        writer.state().diagnostics_pending,
                     );
-                    dispatch_state.planner_pending = false;
-                    dispatch_state.diagnostics_pending = false;
+                    writer.apply(ControlEvent::PlannerPendingSet { pending: false });
+                    writer.apply(ControlEvent::DiagnosticsPendingSet { pending: false });
                     stall_count = 0;
                     cycle_progress = false;
                 }
@@ -5074,10 +5041,10 @@ mod tests {
     use super::{
         action_retry_fingerprint, executor_step_limit_feedback, has_actionable_objectives,
         plan_has_incomplete_tasks, should_reject_solo_self_complete, verifier_confirmed_with_plan_text,
-        ActionProvenance, DispatchState,
+        ActionProvenance,
     };
+    use crate::system_state::SystemState;
     use serde_json::json;
-    use std::collections::{HashMap, VecDeque};
 
     #[test]
     fn route_gate_source_injects_inv_171c039a_tuple_before_evaluation() {
@@ -5274,47 +5241,21 @@ mod tests {
     }
 
     #[test]
-    fn dispatch_state_accessor_subset_uses_shared_default_helper() {
-        let mut bool_map = HashMap::new();
-        bool_map.insert(7usize, true);
-        assert!(DispatchState::lane_value_or_default(&bool_map, 7));
-        assert!(!DispatchState::lane_value_or_default(&bool_map, 8));
-
-        let mut ms_map = HashMap::new();
-        ms_map.insert(7usize, 42u64);
-        assert_eq!(DispatchState::lane_value_or_default(&ms_map, 7), 42);
-        assert_eq!(DispatchState::lane_value_or_default(&ms_map, 8), 0);
-
-        let mut steps_map = HashMap::new();
-        steps_map.insert(7usize, 3usize);
-        assert_eq!(DispatchState::lane_value_or_default(&steps_map, 7), 3);
-        assert_eq!(DispatchState::lane_value_or_default(&steps_map, 8), 0);
-
-        let mut state = DispatchState {
-            lanes: HashMap::new(),
-            submitted_turns: HashMap::new(),
-            executor_submit_inflight: HashMap::new(),
-            tab_id_to_lane: HashMap::new(),
-            lane_active_tab: HashMap::new(),
-            lane_prompt_in_flight: HashMap::new(),
-            deferred_completions: HashMap::<usize, VecDeque<_>>::new(),
-            lane_steps_used: HashMap::new(),
-            diagnostics_pending: false,
-            planner_pending: false,
-            diagnostics_text: String::new(),
-            last_plan_text: String::new(),
-            last_executor_diff: String::new(),
-            last_solo_plan_text: String::new(),
-            last_solo_executor_diff: String::new(),
-            lane_next_submit_at_ms: HashMap::new(),
-            lane_submit_in_flight: HashMap::new(),
-        };
+    fn system_state_lane_accessors_return_correct_defaults_and_values() {
+        let mut state = SystemState::new(&[7], 1);
 
         assert!(!state.lane_in_flight(7));
         assert!(!state.lane_submit_active(7));
         assert_eq!(state.lane_next_submit_ms(7), 0);
-        assert_eq!(state.lane_steps_used(7), 0);
-        assert_eq!(state.lane_active_tab(7), None);
+        assert_eq!(state.lane_steps_used_count(7), 0);
+        assert_eq!(state.lane_active_tab_id(7), None);
+
+        // Defaults for absent lanes
+        assert!(!state.lane_in_flight(99));
+        assert!(!state.lane_submit_active(99));
+        assert_eq!(state.lane_next_submit_ms(99), 0);
+        assert_eq!(state.lane_steps_used_count(99), 0);
+        assert_eq!(state.lane_active_tab_id(99), None);
 
         state.lane_prompt_in_flight.insert(7, true);
         state.lane_submit_in_flight.insert(7, true);
@@ -5325,8 +5266,8 @@ mod tests {
         assert!(state.lane_in_flight(7));
         assert!(state.lane_submit_active(7));
         assert_eq!(state.lane_next_submit_ms(7), 42);
-        assert_eq!(state.lane_steps_used(7), 3);
-        assert_eq!(state.lane_active_tab(7), Some(99));
+        assert_eq!(state.lane_steps_used_count(7), 3);
+        assert_eq!(state.lane_active_tab_id(7), Some(99));
     }
 
     #[test]

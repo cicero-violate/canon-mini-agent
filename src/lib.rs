@@ -29,6 +29,11 @@ pub mod rename_semantic;
 mod rename_example_target;
 mod rename_example_caller;
 pub mod state_space;
+// Canonical writer infrastructure
+pub mod events;
+pub mod tlog;
+pub mod system_state;
+pub mod canonical_writer;
 
 // Keep the `constants` module private, but expose the few setters used by auxiliary binaries
 // (e.g. `canon-mini-supervisor`) to configure the workspace and state-dir.
