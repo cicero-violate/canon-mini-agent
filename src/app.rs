@@ -973,6 +973,17 @@ fn log_timed_out_executor_submit(
             "command_id": pending.command_id,
         }),
     );
+    crate::blockers::record_action_failure(
+        ctx.workspace.as_path(),
+        "executor",
+        "executor_submit_timeout",
+        &format!(
+            "executor submit timed out: lane={} command_id={}",
+            ctx.lanes[lane_id].label,
+            pending.command_id
+        ),
+        None,
+    );
 }
 
 fn recover_timed_out_executor_submit_lane(
@@ -1309,6 +1320,16 @@ fn handle_submit_ack_timeout(
     turn_id: u64,
 ) -> bool {
     log_submit_ack_timeout(ctx, lane_id, tab_id, turn_id);
+    crate::blockers::record_action_failure(
+        ctx.workspace.as_path(),
+        "executor",
+        "submit_ack_timeout",
+        &format!(
+            "submit ack timed out: lane={} tab_id={} turn_id={}",
+            ctx.lanes[lane_id].label, tab_id, turn_id
+        ),
+        None,
+    );
     dispatch_state.lane_submit_in_flight.insert(lane_id, false);
     dispatch_state.lane_prompt_in_flight.insert(lane_id, false);
     false
@@ -2947,6 +2968,13 @@ async fn run_agent(
             &mut error_streak,
             &mut last_error,
         ) {
+            crate::blockers::record_action_failure(
+                workspace,
+                role,
+                "reaction_only",
+                "LLM returned prose without a JSON action block",
+                None,
+            );
             if !should_force_blocker(reaction_only_streak) {
                 continue;
             }
@@ -3048,6 +3076,13 @@ async fn run_agent(
         let action_fingerprint = action_retry_fingerprint(&action);
 
         if repeated_failed_action_fingerprint.as_deref() == Some(action_fingerprint.as_str()) {
+            crate::blockers::record_action_failure(
+                workspace,
+                role,
+                "repeated_failed_action",
+                &format!("identical action payload failed repeatedly: {}", &action_fingerprint),
+                action.get("task_id").and_then(|v| v.as_str()),
+            );
             apply_error_result(
                 role,
                 &task_context,
@@ -3107,6 +3142,13 @@ async fn run_agent(
         if is_explicit_idle_action(&action) {
             idle_streak += 1;
             if idle_streak >= 3 {
+                crate::blockers::record_action_failure(
+                    workspace,
+                    role,
+                    "idle_streak",
+                    "agent stuck: 3 consecutive explicit idle actions with no progress",
+                    None,
+                );
                 bail!("[{role}] stuck: no progress in 3 steps (repeated explicit idle commands)");
             }
         } else {

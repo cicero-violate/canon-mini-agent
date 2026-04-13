@@ -137,6 +137,9 @@ pub fn classify_result(action_kind: &str, result_text: &str, ok: bool) -> ErrorC
         "solo_completion_gate" => return ErrorClass::VerificationFailed,
         "diagnostics_evidence_gate" => return ErrorClass::VerificationFailed,
         "handoff_delivery" => return ErrorClass::InvalidRoute,
+        "reaction_only" => return ErrorClass::ReactionOnly,
+        "executor_submit_timeout" | "submit_ack_timeout" => return ErrorClass::LlmTimeout,
+        "repeated_failed_action" | "idle_streak" => return ErrorClass::InvalidSchema,
         "cargo_test" | "cargo_clippy" | "run_command" => {
             if text.contains("error[e") || text.contains("compilation failed") || text.contains("test failed") {
                 return ErrorClass::CompileError;
