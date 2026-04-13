@@ -1086,6 +1086,19 @@ fn dispatch_executor_submits(
         {
             let mut state = std::collections::HashMap::new();
             state.insert("ready_tasks".to_string(), ready_count.to_string());
+            let blockers = crate::blockers::load_blockers(&ws);
+            let now_ms = crate::logging::now_ms();
+            let solo_invalid_schema_count = crate::blockers::count_class_recent(
+                &blockers,
+                "solo",
+                &crate::error_class::ErrorClass::InvalidSchema,
+                now_ms,
+                5 * 60 * 1000, // 5 minute window
+            );
+            if solo_invalid_schema_count >= 3 {
+                state.insert("actor_kind".to_string(), "solo".to_string());
+                state.insert("error_class".to_string(), "invalid_schema".to_string());
+            }
             if let Err(reason) = crate::invariants::evaluate_invariant_gate("executor", &state, &ws) {
                 eprintln!("[invariant_gate] route G_r (BLOCKED): {reason}");
                 // Record failure for invariant synthesis
