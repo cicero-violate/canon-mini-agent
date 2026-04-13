@@ -962,6 +962,7 @@ fn append_planner_cycle_optional_sections(
 
 fn append_planner_cycle_footer(output: &mut String) {
     output.push_str("\n\nIssue-driven planning:\n- Open issues in `ISSUES.json` (written by diagnostics with evidence) are directly actionable — create plan tasks for them without re-verifying.\n- DIAGNOSTICS.json entries with no matching ISSUES.json entry are unverified hints; treat them as evidence-gathering candidates only.\n- If an issue has been resolved (status=resolved/closed), skip it.\n- When diagnostics repeatedly emit stale findings without updating issues, that staleness is itself an issue to be fixed.");
+    output.push_str("\n- When plan actions are derived from diagnostics, cite same-cycle source validation in both `observation` and `rationale` before mutating `PLAN.json` (for example current-cycle `read_file`, `run_command`, `python`, or other verified source evidence).");
     output.push_str(&format!(
         "\n\nBefore completing this cycle, review {OBJECTIVES_FILE} and add or update objectives \
          to capture anything discovered. New objectives require a unique id, title, category, \
