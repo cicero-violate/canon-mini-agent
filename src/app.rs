@@ -2646,6 +2646,13 @@ async fn continue_executor_completion(
     ) {
         Ok(action) => action,
         Err(invalid) => {
+            crate::blockers::record_action_failure(
+                workspace,
+                role,
+                "schema_validation",
+                &invalid.err_text,
+                None,
+            );
             let agent_type = role.to_uppercase();
             let retry_prompt = action_result_prompt(
                 Some(active_tab_id),
@@ -2864,6 +2871,13 @@ async fn run_agent(
             Err(e) => {
                 eprintln!("[{role}] step={} llm_error: {e}", step + 1);
                 ctx.log_error(step + 1, &exchange_id, &e.to_string());
+                crate::blockers::record_action_failure(
+                    workspace,
+                    role,
+                    "llm_request",
+                    &e.to_string(),
+                    None,
+                );
                 apply_error_result(
                     role,
                     &task_context,
@@ -2931,6 +2945,13 @@ async fn run_agent(
         ) {
             Ok(action) => action,
             Err(invalid) => {
+                crate::blockers::record_action_failure(
+                    workspace,
+                    role,
+                    "schema_validation",
+                    &invalid.err_text,
+                    None,
+                );
                 apply_error_result(
                     role,
                     &task_context,

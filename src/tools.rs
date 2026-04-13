@@ -6588,13 +6588,22 @@ fn execute_action(
         "lessons" => crate::lessons::handle_lessons_action(workspace, action),
         "invariants" => crate::invariants::handle_invariants_action(workspace, action),
         "batch" => handle_batch_action(role, step, workspace, action),
-        other => Ok((
-            false,
-            format!(
-                "unsupported action '{other}' — use one of: {}",
-                crate::tool_schema::predicted_action_name_list().join(", ")
-            ),
-        )),
+        other => {
+            crate::blockers::record_action_failure(
+                workspace,
+                role,
+                other,
+                &format!("unsupported action '{other}'"),
+                None,
+            );
+            Ok((
+                false,
+                format!(
+                    "unsupported action '{other}' — use one of: {}",
+                    crate::tool_schema::predicted_action_name_list().join(", ")
+                ),
+            ))
+        }
     }
     })
 }

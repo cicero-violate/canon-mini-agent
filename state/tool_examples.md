@@ -649,6 +649,26 @@ Examples:
   {"action":"lessons","op":"encode","entry_text":"issue create: nest all fields under an `issue` key...","rationale":"Added this check to schema_fix_hint() in src/lessons.rs — no longer needed in prompt."}
   {"action":"lessons","op":"write","lessons":{"summary":"...","failures":[{"text":"...","status":"pending"}],"fixes":[],"required_actions":[]},"rationale":"Write a hand-crafted lessons artifact from this cycle's findings."}
 
+## `invariants` — review and enforce dynamically discovered system invariants; gates route/planner/executor dispatch on enforced invariants
+
+Ops:
+  read    — view active invariants in enforced_invariants.json (discovered, promoted, enforced)
+  promote — upgrade a Discovered invariant to Promoted so it is checked by gates (id or "all")
+  enforce — upgrade a Promoted invariant to Enforced; the gate becomes hard-blocking
+  collapse — mark an invariant Collapsed when its root cause has been structurally eliminated
+
+Invariant status lifecycle:
+  discovered → synthesized from blockers.json/action log; support_count < threshold
+  promoted   → support_count >= threshold; gate checks it but does not block yet
+  enforced   → gate hard-blocks transitions that match the invariant's state_conditions
+  collapsed  → root cause structurally fixed; invariant retired (preserved for history)
+
+Examples:
+  {"action":"invariants","op":"read","rationale":"Review which invariants are accumulating support or awaiting enforcement."}
+  {"action":"invariants","op":"promote","id":"INV-a1b2c3d4","rationale":"This pattern has strong support and the predicate is correct — promote it."}
+  {"action":"invariants","op":"enforce","id":"INV-a1b2c3d4","rationale":"Verified safe to hard-block: executor dispatched with no ready tasks is always wrong."}
+  {"action":"invariants","op":"collapse","id":"INV-a1b2c3d4","rationale":"Root cause eliminated in src/app.rs:1016 — no-ready-tasks guard now structurally prevents this.","rationale":"Invariant no longer needed."}
+
 ## `violation` — manage VIOLATIONS.json — add, update, resolve, or replace violation entries
 
 Ops:
