@@ -1097,6 +1097,196 @@ fn sweep_timed_out_executor_submits(
     }
 }
 
+fn evaluate_executor_route_gates(
+    dispatch_state: &mut DispatchState,
+    ready_count: &str,
+) -> bool {
+    let ws = std::path::PathBuf::from(workspace());
+    let blockers = crate::blockers::load_blockers(&ws);
+    let now_ms = crate::logging::now_ms();
+
+    let mut state = std::collections::HashMap::new();
+    state.insert("ready_tasks".to_string(), ready_count.to_string());
+
+    let solo_invalid_schema_count = crate::blockers::count_class_recent(
+        &blockers,
+        "solo",
+        &crate::error_class::ErrorClass::InvalidSchema,
+        now_ms,
+        5 * 60 * 1000,
+    );
+    if solo_invalid_schema_count >= 3 {
+        state.insert("actor_kind".to_string(), "solo".to_string());
+        state.insert("error_class".to_string(), "invalid_schema".to_string());
+    }
+
+    let executor_invalid_schema_count = crate::blockers::count_class_recent(
+        &blockers,
+        "executor",
+        &crate::error_class::ErrorClass::InvalidSchema,
+        now_ms,
+        5 * 60 * 1000,
+    );
+    if executor_invalid_schema_count >= 3 {
+        state.insert("actor_kind".to_string(), "executor".to_string());
+        state.insert("error_class".to_string(), "invalid_schema".to_string());
+    }
+
+    let unauthorized_plan_op_count = crate::blockers::count_class_recent(
+        &blockers,
+        "executor",
+        &crate::error_class::ErrorClass::UnauthorizedPlanOp,
+        now_ms,
+        5 * 60 * 1000,
+    );
+    if unauthorized_plan_op_count >= 1 {
+        state.insert("actor_kind".to_string(), "executor".to_string());
+        state.insert("error_class".to_string(), "unauthorized_plan_op".to_string());
+    }
+
+    let executor_llm_timeout_count = crate::blockers::count_class_recent(
+        &blockers,
+        "executor",
+        &crate::error_class::ErrorClass::LlmTimeout,
+        now_ms,
+        5 * 60 * 1000,
+    );
+    if executor_llm_timeout_count >= 1 {
+        state.insert("actor_kind".to_string(), "executor".to_string());
+        state.insert("error_class".to_string(), "llm_timeout".to_string());
+    }
+
+    let orchestrator_invalid_route_count = crate::blockers::count_class_recent(
+        &blockers,
+        "orchestrator",
+        &crate::error_class::ErrorClass::InvalidRoute,
+        now_ms,
+        60 * 1000,
+    );
+    if orchestrator_invalid_route_count >= 3 {
+        state.insert("actor_kind".to_string(), "orchestrator".to_string());
+        state.insert("error_class".to_string(), "invalid_route".to_string());
+    }
+
+    let diagnostics_blocker_escalated_count = crate::blockers::count_class_recent(
+        &blockers,
+        "diagnostics",
+        &crate::error_class::ErrorClass::BlockerEscalated,
+        now_ms,
+        5 * 60 * 1000,
+    );
+    if diagnostics_blocker_escalated_count >= 1 {
+        state.insert("actor_kind".to_string(), "diagnostics".to_string());
+        state.insert("error_class".to_string(), "blocker_escalated".to_string());
+    }
+
+    let diagnostics_invalid_schema_count = crate::blockers::count_class_recent(
+        &blockers,
+        "diagnostics",
+        &crate::error_class::ErrorClass::InvalidSchema,
+        now_ms,
+        5 * 60 * 1000,
+    );
+    if diagnostics_invalid_schema_count >= 3 {
+        state.insert("actor_kind".to_string(), "diagnostics".to_string());
+        state.insert("error_class".to_string(), "invalid_schema".to_string());
+    }
+
+    let verifier_verification_failed_count = crate::blockers::count_class_recent(
+        &blockers,
+        "verifier",
+        &crate::error_class::ErrorClass::VerificationFailed,
+        now_ms,
+        5 * 60 * 1000,
+    );
+    if verifier_verification_failed_count >= 1 {
+        state.insert("actor_kind".to_string(), "verifier".to_string());
+        state.insert("error_class".to_string(), "verification_failed".to_string());
+    }
+
+    let block_route_gate = |reason: String| {
+        eprintln!("[invariant_gate] route G_r (BLOCKED): {reason}");
+        crate::blockers::record_action_failure(
+            &ws,
+            "orchestrator",
+            "route_dispatch",
+            &reason,
+            None,
+        );
+        let record = serde_json::json!({
+            "kind": "invariant_gate",
+            "phase": "route",
+            "gate": "G_r",
+            "proposed_role": "executor",
+            "blocked": true,
+            "reason": reason,
+            "ts_ms": crate::logging::now_ms(),
+        });
+        let _ = crate::logging::append_action_log_record(&record);
+    };
+
+    if let Err(reason) = crate::invariants::evaluate_invariant_gate("route", &state, &ws) {
+        block_route_gate(reason);
+        dispatch_state.planner_pending = true;
+        return false;
+    }
+
+    let executor_missing_target_count = crate::blockers::count_class_recent(
+        &blockers,
+        "executor",
+        &crate::error_class::ErrorClass::MissingTarget,
+        now_ms,
+        5 * 60 * 1000,
+    );
+    if executor_missing_target_count >= 1 {
+        let mut executor_missing_target_state = state.clone();
+        executor_missing_target_state.insert("actor_kind".to_string(), "executor".to_string());
+        executor_missing_target_state.insert("error".to_string(), "missing_target".to_string());
+        if let Err(reason) = crate::invariants::evaluate_invariant_gate(
+            "executor",
+            &executor_missing_target_state,
+            &ws,
+        ) {
+            block_route_gate(reason);
+            dispatch_state.planner_pending = true;
+            return false;
+        }
+    }
+
+    let missing_target_count = blockers
+        .blockers
+        .iter()
+        .filter(|b| {
+            now_ms.saturating_sub(b.ts_ms) <= 5 * 60 * 1000
+                && matches!(b.error_class, crate::error_class::ErrorClass::MissingTarget)
+        })
+        .count();
+    if missing_target_count >= 1 {
+        state.insert("actor_kind".to_string(), "any".to_string());
+        state.insert("error".to_string(), "missing_target".to_string());
+    }
+
+    let livelock_count = crate::blockers::count_class_recent(
+        &blockers,
+        "orchestrator",
+        &crate::error_class::ErrorClass::LivelockDetected,
+        now_ms,
+        5 * 60 * 1000,
+    );
+    if livelock_count >= 1 {
+        state.insert("actor_kind".to_string(), "orchestrator".to_string());
+        state.insert("error_class".to_string(), "livelock_detected".to_string());
+    }
+
+    if let Err(reason) = crate::invariants::evaluate_invariant_gate("executor", &state, &ws) {
+        block_route_gate(reason);
+        dispatch_state.planner_pending = true;
+        return false;
+    }
+
+    true
+}
+
 fn dispatch_executor_submits(
     ctx: &OrchestratorContext<'_>,
     dispatch_state: &mut DispatchState,
@@ -1121,188 +1311,11 @@ fn dispatch_executor_submits(
             dispatch_state.planner_pending = true;
             return;
         }
-
         // Route gate G_r: check enforced invariants before dispatching the executor.
         // Currently observational — violations are logged but do not hard-block.
         // Once invariants accumulate enough support, this will become a hard gate.
-        {
-            let mut state = std::collections::HashMap::new();
-            state.insert("ready_tasks".to_string(), ready_count.to_string());
-            let blockers = crate::blockers::load_blockers(&ws);
-            let now_ms = crate::logging::now_ms();
-            let solo_invalid_schema_count = crate::blockers::count_class_recent(
-                &blockers,
-                "solo",
-                &crate::error_class::ErrorClass::InvalidSchema,
-                now_ms,
-                5 * 60 * 1000, // 5 minute window
-            );
-            if solo_invalid_schema_count >= 3 {
-                state.insert("actor_kind".to_string(), "solo".to_string());
-                state.insert("error_class".to_string(), "invalid_schema".to_string());
-            }
-            let executor_invalid_schema_count = crate::blockers::count_class_recent(
-                &blockers,
-                "executor",
-                &crate::error_class::ErrorClass::InvalidSchema,
-                now_ms,
-                5 * 60 * 1000, // 5 minute window
-            );
-            if executor_invalid_schema_count >= 3 {
-                state.insert("actor_kind".to_string(), "executor".to_string());
-                state.insert("error_class".to_string(), "invalid_schema".to_string());
-            }
-            // Inject UnauthorizedPlanOp state for executor
-            let unauthorized_plan_op_count = crate::blockers::count_class_recent(
-                &blockers,
-                "executor",
-                &crate::error_class::ErrorClass::UnauthorizedPlanOp,
-                now_ms,
-                5 * 60 * 1000,
-            );
-            if unauthorized_plan_op_count >= 1 {
-                state.insert("actor_kind".to_string(), "executor".to_string());
-                state.insert("error_class".to_string(), "unauthorized_plan_op".to_string());
-            }
-            let executor_llm_timeout_count = crate::blockers::count_class_recent(
-                &blockers,
-                "executor",
-                &crate::error_class::ErrorClass::LlmTimeout,
-                now_ms,
-                5 * 60 * 1000,
-            );
-            if executor_llm_timeout_count >= 1 {
-                state.insert("actor_kind".to_string(), "executor".to_string());
-                state.insert("error_class".to_string(), "llm_timeout".to_string());
-            }
-            // Avoid turning a single historical InvalidRoute blocker into a self-sustaining
-            // route-gate hard block. Only surface InvalidRoute into the route gate when the
-            // current blocker stream shows active repeated churn in a short window.
-            let orchestrator_invalid_route_count = crate::blockers::count_class_recent(
-                &blockers,
-                "orchestrator",
-                &crate::error_class::ErrorClass::InvalidRoute,
-                now_ms,
-                60 * 1000,
-            );
-            if orchestrator_invalid_route_count >= 3 {
-                state.insert("actor_kind".to_string(), "orchestrator".to_string());
-                state.insert("error_class".to_string(), "invalid_route".to_string());
-            }
-            let diagnostics_blocker_escalated_count = crate::blockers::count_class_recent(
-                &blockers,
-                "diagnostics",
-                &crate::error_class::ErrorClass::BlockerEscalated,
-                now_ms,
-                5 * 60 * 1000,
-            );
-            if diagnostics_blocker_escalated_count >= 1 {
-                state.insert("actor_kind".to_string(), "diagnostics".to_string());
-                state.insert("error_class".to_string(), "blocker_escalated".to_string());
-            }
-            let diagnostics_invalid_schema_count = crate::blockers::count_class_recent(
-                &blockers,
-                "diagnostics",
-                &crate::error_class::ErrorClass::InvalidSchema,
-                now_ms,
-                5 * 60 * 1000,
-            );
-            if diagnostics_invalid_schema_count >= 3 {
-                state.insert("actor_kind".to_string(), "diagnostics".to_string());
-                state.insert("error_class".to_string(), "invalid_schema".to_string());
-            }
-            let verifier_verification_failed_count = crate::blockers::count_class_recent(
-                &blockers,
-                "verifier",
-                &crate::error_class::ErrorClass::VerificationFailed,
-                now_ms,
-                5 * 60 * 1000,
-            );
-            if verifier_verification_failed_count >= 1 {
-                state.insert("actor_kind".to_string(), "verifier".to_string());
-                state.insert("error_class".to_string(), "verification_failed".to_string());
-            }
-            let block_route_gate = |reason: String| {
-                eprintln!("[invariant_gate] route G_r (BLOCKED): {reason}");
-                crate::blockers::record_action_failure(
-                    &ws,
-                    "orchestrator",
-                    "route_dispatch",
-                    &reason,
-                    None,
-                );
-                let record = serde_json::json!({
-                    "kind": "invariant_gate",
-                    "phase": "route",
-                    "gate": "G_r",
-                    "proposed_role": "executor",
-                    "blocked": true,
-                    "reason": reason,
-                    "ts_ms": crate::logging::now_ms(),
-                });
-                let _ = crate::logging::append_action_log_record(&record);
-            };
-            // Evaluate route-gated invariants (e.g., INV-171c039a) before executor dispatch
-            if let Err(reason) = crate::invariants::evaluate_invariant_gate("route", &state, &ws) {
-                block_route_gate(reason);
-                dispatch_state.planner_pending = true;
-                return;
-            }
-            let executor_missing_target_count = crate::blockers::count_class_recent(
-                &blockers,
-                "executor",
-                &crate::error_class::ErrorClass::MissingTarget,
-                now_ms,
-                5 * 60 * 1000,
-            );
-            if executor_missing_target_count >= 1 {
-                let mut executor_missing_target_state = state.clone();
-                executor_missing_target_state
-                    .insert("actor_kind".to_string(), "executor".to_string());
-                executor_missing_target_state
-                    .insert("error".to_string(), "missing_target".to_string());
-                if let Err(reason) = crate::invariants::evaluate_invariant_gate(
-                    "executor",
-                    &executor_missing_target_state,
-                    &ws,
-                ) {
-                    block_route_gate(reason);
-                    dispatch_state.planner_pending = true;
-                    return;
-                }
-            }
-            let missing_target_count = blockers
-                .blockers
-                .iter()
-                .filter(|b| {
-                    now_ms.saturating_sub(b.ts_ms) <= 5 * 60 * 1000
-                        && matches!(
-                            b.error_class,
-                            crate::error_class::ErrorClass::MissingTarget
-                        )
-                })
-                .count();
-            if missing_target_count >= 1 {
-                state.insert("actor_kind".to_string(), "any".to_string());
-                state.insert("error".to_string(), "missing_target".to_string());
-            }
-            // Detect orchestrator livelock conditions and surface into invariant state
-            let livelock_count = crate::blockers::count_class_recent(
-                &blockers,
-                "orchestrator",
-                &crate::error_class::ErrorClass::LivelockDetected,
-                now_ms,
-                5 * 60 * 1000,
-            );
-            if livelock_count >= 1 {
-                state.insert("actor_kind".to_string(), "orchestrator".to_string());
-                state.insert("error_class".to_string(), "livelock_detected".to_string());
-            }
-            if let Err(reason) = crate::invariants::evaluate_invariant_gate("executor", &state, &ws) {
-                block_route_gate(reason);
-                dispatch_state.planner_pending = true;
-                return;
-            }
+        if !evaluate_executor_route_gates(dispatch_state, ready_count) {
+            return;
         }
     }
 
