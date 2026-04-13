@@ -3,10 +3,14 @@ use serde_json::Value;
 use std::io::Read;
 use std::path::PathBuf;
 
-fn take_flag_value(args: &[String], name: &str) -> Option<String> {
+fn find_flag_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.windows(2)
         .find(|w| w[0] == name)
-        .map(|w| w[1].clone())
+        .map(|w| w[1].as_str())
+}
+
+fn take_flag_value(args: &[String], name: &str) -> Option<String> {
+    find_flag_value(args, name).map(str::to_owned)
 }
 
 fn has_flag(args: &[String], name: &str) -> bool {
@@ -41,11 +45,7 @@ async fn main() -> Result<()> {
     let state_dir = take_flag_value(&args, "--state-dir");
     let check_on_done = has_flag(&args, "--check-on-done");
 
-    canon_mini_agent::set_workspace(workspace.clone());
-    if let Some(dir) = state_dir {
-        canon_mini_agent::set_agent_state_dir(dir);
-    }
-    canon_mini_agent::logging::init_log_paths("capability");
+    configure_runtime(&workspace, state_dir);
 
     let mut raw = String::new();
     std::io::stdin().read_to_string(&mut raw).context("read stdin")?;
@@ -66,4 +66,12 @@ async fn main() -> Result<()> {
     });
     println!("{}", serde_json::to_string_pretty(&out)?);
     Ok(())
+}
+
+fn configure_runtime(workspace: &str, state_dir: Option<String>) {
+    canon_mini_agent::set_workspace(workspace.to_string());
+    if let Some(dir) = state_dir {
+        canon_mini_agent::set_agent_state_dir(dir);
+    }
+    canon_mini_agent::logging::init_log_paths("capability");
 }

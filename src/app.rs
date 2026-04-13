@@ -161,16 +161,15 @@ fn trace_message_forwarded(
     submit_only: bool,
     prompt_bytes: usize,
 ) {
-    append_orchestration_trace(
+    trace_message_common(
+        role,
+        prompt_kind,
+        step,
+        endpoint_id,
+        submit_only,
+        prompt_bytes,
         "llm_message_forwarded",
-        json!({
-            "role": role,
-            "prompt_kind": prompt_kind,
-            "step": step,
-            "endpoint_id": endpoint_id,
-            "submit_only": submit_only,
-            "prompt_bytes": prompt_bytes,
-        }),
+        "prompt_bytes",
     );
 }
 
@@ -182,17 +181,37 @@ fn trace_message_received(
     submit_only: bool,
     response_bytes: usize,
 ) {
-    append_orchestration_trace(
+    trace_message_common(
+        role,
+        prompt_kind,
+        step,
+        endpoint_id,
+        submit_only,
+        response_bytes,
         "llm_message_received",
-        json!({
-            "role": role,
-            "prompt_kind": prompt_kind,
-            "step": step,
-            "endpoint_id": endpoint_id,
-            "submit_only": submit_only,
-            "response_bytes": response_bytes,
-        }),
+        "response_bytes",
     );
+}
+
+fn trace_message_common(
+    role: &str,
+    prompt_kind: &str,
+    step: usize,
+    endpoint_id: &str,
+    submit_only: bool,
+    bytes: usize,
+    event_name: &str,
+    bytes_field: &str,
+) {
+    let mut payload = serde_json::Map::new();
+    payload.insert("role".to_string(), Value::String(role.to_string()));
+    payload.insert("prompt_kind".to_string(), Value::String(prompt_kind.to_string()));
+    payload.insert("step".to_string(), Value::Number(step.into()));
+    payload.insert("endpoint_id".to_string(), Value::String(endpoint_id.to_string()));
+    payload.insert("submit_only".to_string(), Value::Bool(submit_only));
+    payload.insert(bytes_field.to_string(), Value::Number(bytes.into()));
+
+    append_orchestration_trace(event_name, Value::Object(payload));
 }
 
 fn trace_orchestrator_forwarded(

@@ -2,10 +2,14 @@ use anyhow::Result;
 use canon_mini_agent::{lessons::maybe_synthesize_lessons, set_agent_state_dir, set_workspace};
 use std::path::{Path, PathBuf};
 
-fn parse_flag_value(args: &[String], flag: &str) -> Option<String> {
+fn find_flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     args.windows(2)
         .find(|window| window[0] == flag)
-        .map(|window| window[1].clone())
+        .map(|window| window[1].as_str())
+}
+
+fn parse_flag_value(args: &[String], flag: &str) -> Option<String> {
+    find_flag_value(args, flag).map(str::to_owned)
 }
 
 fn usage() -> &'static str {

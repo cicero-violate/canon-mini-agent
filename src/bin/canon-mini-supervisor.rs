@@ -194,6 +194,10 @@ fn agent_state_dir_from_args(args: &[String]) -> PathBuf {
     PathBuf::from("/workspace/ai_sandbox/canon-mini-agent/agent_state")
 }
 
+fn agent_state_flag_path(args: &[String], filename: &str) -> PathBuf {
+    agent_state_dir_from_args(args).join(filename)
+}
+
 fn workspace_from_args(args: &[String]) -> Option<String> {
     let mut i = 0usize;
     while i + 1 < args.len() {
@@ -206,11 +210,11 @@ fn workspace_from_args(args: &[String]) -> Option<String> {
 }
 
 fn cycle_idle_marker_path(args: &[String]) -> PathBuf {
-    agent_state_dir_from_args(args).join("orchestrator_cycle_idle.flag")
+    agent_state_flag_path(args, "orchestrator_cycle_idle.flag")
 }
 
 fn orchestrator_mode_flag_path(args: &[String]) -> PathBuf {
-    agent_state_dir_from_args(args).join("orchestrator_mode.flag")
+    agent_state_flag_path(args, "orchestrator_mode.flag")
 }
 
 fn read_orchestrator_mode(path: &Path) -> Option<String> {
