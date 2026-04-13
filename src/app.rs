@@ -383,6 +383,15 @@ fn write_livelock_report(
         stall_cycles,
         report_path.display()
     );
+    if let Some(workspace) = agent_state_dir.parent() {
+        crate::blockers::record_action_failure(
+            workspace,
+            "orchestrator",
+            "livelock",
+            &format!("livelock after {stall_cycles} consecutive no-change cycles"),
+            None,
+        );
+    }
     log_error_event(
         "orchestrate",
         "livelock_detected",
@@ -2232,11 +2241,19 @@ fn enforce_executor_step_limit(
     total_steps: usize,
     error_streak: &mut usize,
     last_result: &mut Option<String>,
+    workspace: &std::path::Path,
 ) -> bool {
     if role.starts_with("executor") && executor_step_limit_exceeded(total_steps, EXECUTOR_STEP_LIMIT)
     {
         *error_streak = error_streak.saturating_add(1);
         *last_result = Some(executor_step_limit_feedback());
+        crate::blockers::record_action_failure(
+            workspace,
+            role,
+            "step_limit",
+            &format!("executor reached step limit ({EXECUTOR_STEP_LIMIT})"),
+            None,
+        );
         return true;
     }
     false
@@ -2823,6 +2840,13 @@ async fn run_agent(
             && executor_step_limit_exceeded(total_steps, EXECUTOR_STEP_LIMIT)
         {
             last_result = Some(executor_step_limit_feedback());
+            crate::blockers::record_action_failure(
+                workspace,
+                role,
+                "step_limit",
+                &format!("executor reached step limit ({EXECUTOR_STEP_LIMIT})"),
+                None,
+            );
         }
 
         let (role_schema, prompt) = build_agent_prompt(
@@ -2981,12 +3005,19 @@ async fn run_agent(
             cargo_test_gate.note_action(&kind, cmd);
         }
         if kind != "message"
-            && enforce_executor_step_limit(role, total_steps, &mut error_streak, &mut last_result)
+            && enforce_executor_step_limit(role, total_steps, &mut error_streak, &mut last_result, workspace)
         {
             step += 1;
             continue;
         }
         if let Some(msg) = cargo_test_gate.message_blocker_if_needed(&kind, crate::constants::workspace()) {
+            crate::blockers::record_action_failure(
+                workspace,
+                role,
+                "build_gate",
+                &msg,
+                None,
+            );
             error_streak = error_streak.saturating_add(1);
             last_result = Some(msg);
             step += 1;
@@ -3034,6 +3065,13 @@ async fn run_agent(
             let objectives_text = read_text_or_empty(preferred_objectives_path(workspace));
             let plan_text = read_text_or_empty(workspace.join(MASTER_PLAN_FILE));
             if should_reject_solo_self_complete(&action, &objectives_text, &plan_text) {
+                crate::blockers::record_action_failure(
+                    workspace,
+                    role,
+                    "solo_completion_gate",
+                    "solo attempted self-complete with active objectives and no incomplete plan tasks",
+                    None,
+                );
                 apply_error_result(
                     role,
                     &task_context,
@@ -3054,6 +3092,13 @@ async fn run_agent(
             &action,
             &mut diagnostics_eventlog_python_done,
         ) {
+            crate::blockers::record_action_failure(
+                workspace,
+                role,
+                "diagnostics_evidence_gate",
+                &msg,
+                None,
+            );
             last_result = Some(msg);
             step += 1;
             continue;

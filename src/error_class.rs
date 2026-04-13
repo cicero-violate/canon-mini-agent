@@ -126,6 +126,12 @@ pub fn classify_result(action_kind: &str, result_text: &str, ok: bool) -> ErrorC
     match action_kind {
         "plan_preflight" => return ErrorClass::PlanPreflightFailed,
         "route_dispatch" => return ErrorClass::InvalidRoute,
+        "step_limit" => return ErrorClass::StepLimitExceeded,
+        "livelock" => return ErrorClass::LivelockDetected,
+        "build_gate" => return ErrorClass::CompileError,
+        "solo_completion_gate" => return ErrorClass::VerificationFailed,
+        "diagnostics_evidence_gate" => return ErrorClass::VerificationFailed,
+        "handoff_delivery" => return ErrorClass::InvalidRoute,
         "cargo_test" | "cargo_clippy" | "run_command" => {
             if text.contains("error[e") || text.contains("compilation failed") || text.contains("test failed") {
                 return ErrorClass::CompileError;

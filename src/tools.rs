@@ -6664,6 +6664,15 @@ fn persist_inbound_message(role: &str, step: usize, action: &Value, full_message
             &format!("failed to persist inbound message for {}: {}", to, err),
             Some(json!({ "path": path.to_string_lossy(), "to": to })),
         );
+        if let Some(workspace) = agent_state_dir.parent() {
+            crate::blockers::record_action_failure(
+                workspace,
+                role,
+                "handoff_delivery",
+                &format!("failed to write message file for {to}: {err}"),
+                None,
+            );
+        }
     }
     if normalized_role == to {
         eprintln!(
@@ -6672,7 +6681,18 @@ fn persist_inbound_message(role: &str, step: usize, action: &Value, full_message
         return;
     }
     let wake_path = agent_state_dir.join(format!("wakeup_{to}.flag"));
-    let _ = std::fs::write(wake_path, "handoff");
+    if let Err(err) = std::fs::write(&wake_path, "handoff") {
+        eprintln!("[{role}] step={step} failed to write wakeup flag for {to}: {err}");
+        if let Some(workspace) = agent_state_dir.parent() {
+            crate::blockers::record_action_failure(
+                workspace,
+                role,
+                "handoff_delivery",
+                &format!("failed to write wakeup flag for {to}: {err}"),
+                None,
+            );
+        }
+    }
 }
 
 pub(crate) fn execute_logged_action(
