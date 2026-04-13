@@ -664,6 +664,7 @@ async fn run_solo_phase(
             }
             crate::lessons::maybe_synthesize_lessons(ctx.workspace);
             crate::lessons::apply_promoted_lessons(ctx.workspace);
+            crate::invariants::maybe_synthesize_invariants(ctx.workspace);
             true
         }
         Err(err) => {
