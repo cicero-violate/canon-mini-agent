@@ -1,1 +1,1 @@
-auto-filled blocker evidence
+Same-cycle source reads showed `src/app.rs::evaluate_executor_route_gates` injects `actor_kind=orchestrator` and `error_class=invalid_route` once recent invalid_route blocker count reaches threshold; `src/blockers.rs::count_class_recent` counts all recent matching blockers without deduplication; `src/blockers.rs::record_action_failure` appends a new orchestrator `route_dispatch` invalid_route blocker on each gate failure; `agent_state/blockers.json` shows a dense burst of repeated orchestrator invalid_route records for INV-171c039a.
