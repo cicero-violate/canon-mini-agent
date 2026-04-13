@@ -1271,7 +1271,7 @@ fn dispatch_executor_submits(
             );
             if livelock_count >= 1 {
                 state.insert("actor_kind".to_string(), "orchestrator".to_string());
-                state.insert("error_class".to_string(), "livelock".to_string());
+                state.insert("error_class".to_string(), "livelock_detected".to_string());
             }
             if let Err(reason) = crate::invariants::evaluate_invariant_gate("executor", &state, &ws) {
                 block_route_gate(reason);
