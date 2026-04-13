@@ -52,6 +52,8 @@ pub enum ErrorClass {
     VerificationFailed,
     /// A network / LLM endpoint call timed out or returned a connection error.
     LlmTimeout,
+    /// The orchestrator detected a livelock: consecutive cycles with no watched-file state change.
+    LivelockDetected,
     /// Anything that does not fit the above classes.
     Unknown,
 }
@@ -72,6 +74,7 @@ impl ErrorClass {
             ErrorClass::UnauthorizedPlanOp => "unauthorized_plan_op",
             ErrorClass::VerificationFailed => "verification_failed",
             ErrorClass::LlmTimeout => "llm_timeout",
+            ErrorClass::LivelockDetected => "livelock_detected",
             ErrorClass::Unknown => "unknown",
         }
     }
@@ -103,6 +106,8 @@ impl ErrorClass {
                 "verification produced a result that contradicts the expected system state",
             ErrorClass::LlmTimeout =>
                 "LLM endpoint call timed out or returned a connection error",
+            ErrorClass::LivelockDetected =>
+                "orchestrator detected livelock: no watched-file state change after consecutive cycles",
             ErrorClass::Unknown =>
                 "unclassified bad outcome",
         }
