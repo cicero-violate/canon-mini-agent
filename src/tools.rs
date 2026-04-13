@@ -1607,6 +1607,22 @@ fn handle_message_action(role: &str, step: usize, action: &Value) -> Result<(boo
 
     sync_verifier_blocker_state(role, to_role, msg_type, status, summary, &payload, agent_state_dir);
     persist_inbound_message(role, step, action, &full_message);
+
+    // Capture blocker messages as first-class artifact for invariant synthesis.
+    if msg_type == "blocker" && status == "blocked" {
+        let task_id = action.get("task_id").and_then(|v| v.as_str());
+        let objective_id = action.get("objective_id")
+            .or_else(|| payload.get("objective_id"))
+            .and_then(|v| v.as_str());
+        crate::blockers::record_blocker_message(
+            std::path::Path::new(crate::constants::workspace()),
+            role,
+            summary,
+            task_id,
+            objective_id,
+        );
+    }
+
     Ok((
         true,
         format!("{summary}\n\nmessage_action:\n{full_message}"),
@@ -6570,6 +6586,7 @@ fn execute_action(
         "execution_path" => handle_execution_path_action(workspace, action),
         "symbol_neighborhood" => handle_symbol_neighborhood_action(workspace, action),
         "lessons" => crate::lessons::handle_lessons_action(workspace, action),
+        "invariants" => crate::invariants::handle_invariants_action(workspace, action),
         "batch" => handle_batch_action(role, step, workspace, action),
         other => Ok((
             false,
@@ -6675,7 +6692,17 @@ pub(crate) fn execute_logged_action(
             Ok((done, out))
         }
         Err(e) => {
-            let err_text = if action.get("action").and_then(|v| v.as_str()) == Some("plan") {
+            // Classify and record the failure as a blocker artifact.
+            let action_kind = action.get("action").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let task_id = action.get("task_id").and_then(|v| v.as_str());
+            crate::blockers::record_action_failure(
+                workspace,
+                role,
+                action_kind,
+                &e.to_string(),
+                task_id,
+            );
+            let err_text = if action_kind == "plan" {
                 format!(
                     "Error executing action: {e}\n\nPlan tool examples:\n{}\n{}\n{{\"action\":\"plan\",\"op\":\"update_task\",\"task\":{{\"id\":\"T4\",\"status\":\"done\"}},\"rationale\":\"Update a task by id using task payload.\"}}\n\nTo mark a task done, use update_task or set_task_status. set_plan_status changes only PLAN.status.",
                     plan_set_task_status_action_example(

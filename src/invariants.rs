@@ -176,6 +176,122 @@ pub fn evaluate_invariant_gate(
     Ok(())
 }
 
+/// Dispatch an `invariants` tool action from the diagnostics/solo role.
+///
+/// Supported ops:
+/// - `read`    — return current enforced_invariants.json (pending + promoted)
+/// - `promote` — upgrade Discovered → Promoted for a given id (or "all")
+/// - `enforce` — upgrade Promoted → Enforced; gate becomes hard-blocking
+/// - `collapse` — mark Enforced/Promoted → Collapsed (root cause structurally fixed)
+pub fn handle_invariants_action(workspace: &Path, action: &serde_json::Value) -> anyhow::Result<(bool, String)> {
+    let op = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
+    match op {
+        "read" => op_read(workspace),
+        "promote" => op_promote(workspace, action),
+        "enforce" => op_enforce(workspace, action),
+        "collapse" => op_collapse(workspace, action),
+        other => anyhow::bail!(
+            "unknown invariants op '{other}' — use: read | promote | enforce | collapse"
+        ),
+    }
+}
+
+fn op_read(workspace: &Path) -> anyhow::Result<(bool, String)> {
+    let file = load_invariants(workspace);
+    if file.invariants.is_empty() {
+        return Ok((false, "(enforced_invariants.json is empty — synthesis runs after the next checkpoint)".to_string()));
+    }
+    let visible: Vec<&DiscoveredInvariant> = file.invariants.iter()
+        .filter(|i| i.status != InvariantStatus::Collapsed)
+        .collect();
+    if visible.is_empty() {
+        return Ok((false, "(all invariants have been collapsed — system is structurally clean)".to_string()));
+    }
+    let out = serde_json::to_string_pretty(&visible)?;
+    Ok((false, format!("enforced_invariants ({} active):\n{out}", visible.len())))
+}
+
+fn op_promote(workspace: &Path, action: &serde_json::Value) -> anyhow::Result<(bool, String)> {
+    let id = action.get("id").and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("invariants promote requires 'id' field (invariant id or \"all\")"))?;
+    let mut file = load_invariants(workspace);
+    let promote_all = id == "all";
+    let mut count = 0usize;
+    for inv in file.invariants.iter_mut() {
+        if inv.status != InvariantStatus::Discovered { continue; }
+        if !promote_all && inv.id != id { continue; }
+        inv.status = InvariantStatus::Promoted;
+        if inv.gates.is_empty() {
+            inv.gates = default_gates_for_conditions(&inv.state_conditions);
+        }
+        count += 1;
+    }
+    if count == 0 {
+        return Ok((false, format!("no Discovered invariants matched id='{id}'")));
+    }
+    save_invariants(workspace, &file)?;
+    Ok((false, format!("promoted {count} invariant(s) to Promoted")))
+}
+
+fn op_enforce(workspace: &Path, action: &serde_json::Value) -> anyhow::Result<(bool, String)> {
+    let id = action.get("id").and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("invariants enforce requires 'id' field"))?;
+    let mut file = load_invariants(workspace);
+    let mut count = 0usize;
+    for inv in file.invariants.iter_mut() {
+        if inv.id != id { continue; }
+        if inv.status == InvariantStatus::Collapsed {
+            return Ok((false, format!("invariant {id} is already Collapsed — use promote first if you want to re-enforce")));
+        }
+        inv.status = InvariantStatus::Enforced;
+        if inv.gates.is_empty() {
+            inv.gates = default_gates_for_conditions(&inv.state_conditions);
+        }
+        count += 1;
+    }
+    if count == 0 {
+        return Ok((false, format!("no invariant found with id='{id}'")));
+    }
+    save_invariants(workspace, &file)?;
+    // Log to action log so synthesis can track the enforcement event.
+    let record = serde_json::json!({
+        "kind": "invariant_lifecycle",
+        "phase": "enforce",
+        "invariant_id": id,
+        "actor": "diagnostics",
+        "ts_ms": crate::logging::now_ms(),
+    });
+    let _ = crate::logging::append_action_log_record(&record);
+    Ok((false, format!("invariant {id} set to Enforced — gate is now hard-blocking")))
+}
+
+fn op_collapse(workspace: &Path, action: &serde_json::Value) -> anyhow::Result<(bool, String)> {
+    let id = action.get("id").and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("invariants collapse requires 'id' field"))?;
+    let rationale = action.get("rationale").and_then(|v| v.as_str()).unwrap_or("root cause structurally eliminated");
+    let mut file = load_invariants(workspace);
+    let mut count = 0usize;
+    for inv in file.invariants.iter_mut() {
+        if inv.id != id { continue; }
+        inv.status = InvariantStatus::Collapsed;
+        count += 1;
+    }
+    if count == 0 {
+        return Ok((false, format!("no invariant found with id='{id}'")));
+    }
+    save_invariants(workspace, &file)?;
+    let record = serde_json::json!({
+        "kind": "invariant_lifecycle",
+        "phase": "collapse",
+        "invariant_id": id,
+        "rationale": rationale,
+        "actor": "diagnostics",
+        "ts_ms": crate::logging::now_ms(),
+    });
+    let _ = crate::logging::append_action_log_record(&record);
+    Ok((false, format!("invariant {id} marked Collapsed — {rationale}")))
+}
+
 /// Read `enforced_invariants.json` for display or further processing.
 pub fn read_enforced_invariants(workspace: &Path) -> String {
     let path = invariants_path(workspace);
@@ -351,29 +467,80 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
 // ── Synthesis implementation ──────────────────────────────────────────────────
 
 fn try_synthesize_invariants(workspace: &Path) -> Result<()> {
+    // Primary input: classified blockers (structured, no heuristics needed).
+    let blocker_prints = fingerprints_from_blockers(workspace);
+
+    // Secondary input: action log for failure patterns not yet captured in blockers.
     let log_path = Path::new(crate::constants::agent_state_dir()).join(ACTION_LOG_SUBPATH);
-    if !log_path.exists() {
-        return Ok(());
-    }
+    let log_prints = if log_path.exists() {
+        let entries = read_tail_entries(log_path.as_path(), MAX_LINES_TO_SCAN);
+        extract_failure_fingerprints(&entries)
+    } else {
+        vec![]
+    };
 
-    let entries = read_tail_entries(log_path.as_path(), MAX_LINES_TO_SCAN);
-    if entries.is_empty() {
-        return Ok(());
-    }
+    let mut all_prints = blocker_prints;
+    all_prints.extend(log_prints);
 
-    let discovered = extract_failure_fingerprints(&entries);
-    if discovered.is_empty() {
+    if all_prints.is_empty() {
         return Ok(());
     }
 
     let mut file = load_invariants(workspace);
-    merge_fingerprints(&mut file, discovered);
+    merge_fingerprints(&mut file, all_prints);
     promote_by_threshold(&mut file);
+    // Enforce gate for any invariant that was explicitly set to Enforced.
+    update_gate_enforcement(&mut file);
     prune_excess(&mut file);
 
     file.last_synthesized_ms = crate::logging::now_ms();
     save_invariants(workspace, &file)?;
     Ok(())
+}
+
+/// Convert classified blocker records directly into fingerprints — no text heuristics.
+fn fingerprints_from_blockers(workspace: &Path) -> Vec<Fingerprint> {
+    let file = crate::blockers::load_blockers(workspace);
+    file.blockers.iter().map(|b| {
+        let actor_kind = actor_kind_from_role(&b.actor);
+        Fingerprint {
+            conditions: vec![
+                crate::invariants::StateCondition {
+                    key: "actor_kind".to_string(),
+                    value: actor_kind.to_string(),
+                },
+                crate::invariants::StateCondition {
+                    key: "error_class".to_string(),
+                    value: b.error_class.as_key().to_string(),
+                },
+            ],
+            predicate_text: format!(
+                "Role `{actor_kind}` repeatedly encounters `{}`: {}",
+                b.error_class.as_key(),
+                b.error_class.description()
+            ),
+            ts_ms: b.ts_ms,
+        }
+    }).collect()
+}
+
+fn actor_kind_from_role(role: &str) -> &'static str {
+    if role.starts_with("executor") { "executor" }
+    else if role.starts_with("planner") { "planner" }
+    else if role.starts_with("verifier") { "verifier" }
+    else if role.starts_with("diagnostics") { "diagnostics" }
+    else if role.starts_with("solo") { "solo" }
+    else { "unknown" }
+}
+
+/// Called after op_enforce: ensures the in-memory Enforced status is stable.
+/// (Gate hardening happens in app.rs based on status == Enforced.)
+fn update_gate_enforcement(file: &mut EnforcedInvariantsFile) {
+    for inv in file.invariants.iter_mut() {
+        if inv.status == InvariantStatus::Enforced && inv.gates.is_empty() {
+            inv.gates = default_gates_for_conditions(&inv.state_conditions);
+        }
+    }
 }
 
 // ── Fingerprint extraction ────────────────────────────────────────────────────
@@ -687,12 +854,7 @@ fn prune_excess(file: &mut EnforcedInvariantsFile) {
 // ── File I/O ──────────────────────────────────────────────────────────────────
 
 fn invariants_path(workspace: &Path) -> std::path::PathBuf {
-    let _ = workspace; // path is under agent_state, not workspace
-    Path::new(crate::constants::agent_state_dir()).join(
-        ENFORCED_INVARIANTS_FILE
-            .strip_prefix("agent_state/")
-            .unwrap_or(ENFORCED_INVARIANTS_FILE),
-    )
+    workspace.join(ENFORCED_INVARIANTS_FILE)
 }
 
 fn load_invariants(workspace: &Path) -> EnforcedInvariantsFile {
@@ -933,5 +1095,79 @@ mod tests {
         assert!(fps.iter().any(|f| {
             f.conditions.iter().any(|c| c.key == "action" && c.value == "plan_preflight")
         }));
+    }
+
+    #[test]
+    fn generate_invariant_issues_creates_meta_issues_on_empty_workspace() {
+        let tmp = make_workspace();
+        // Create a minimal ISSUES.json so the generator can load it.
+        let issues_path = tmp.join("ISSUES.json");
+        std::fs::write(&issues_path, r#"{"version":0,"issues":[]}"#).unwrap();
+
+        let created = generate_invariant_issues(tmp.as_path()).unwrap();
+
+        // Expect 2 meta-issues: action surface + prompt injection.
+        assert_eq!(created, 2, "expected 2 meta-issues on empty workspace");
+
+        let raw = std::fs::read_to_string(&issues_path).unwrap();
+        let file: IssuesFile = serde_json::from_str(&raw).unwrap();
+        let ids: Vec<&str> = file.issues.iter().map(|i| i.id.as_str()).collect();
+        assert!(ids.contains(&"inv_action_surface_missing"), "action surface issue missing");
+        assert!(ids.contains(&"inv_enforced_not_in_prompts"), "prompt injection issue missing");
+        // Scores should be > 0 after rescore_all.
+        for issue in &file.issues {
+            assert!(issue.score > 0.0, "score should be non-zero after rescore");
+        }
+    }
+
+    #[test]
+    fn generate_invariant_issues_idempotent() {
+        let tmp = make_workspace();
+        let issues_path = tmp.join("ISSUES.json");
+        std::fs::write(&issues_path, r#"{"version":0,"issues":[]}"#).unwrap();
+
+        let first = generate_invariant_issues(tmp.as_path()).unwrap();
+        let second = generate_invariant_issues(tmp.as_path()).unwrap();
+
+        assert_eq!(first, 2);
+        assert_eq!(second, 0, "second call should create no new issues (idempotent)");
+    }
+
+    #[test]
+    fn generate_invariant_issues_creates_per_promoted_issue() {
+        let tmp = make_workspace();
+        let issues_path = tmp.join("ISSUES.json");
+        std::fs::write(&issues_path, r#"{"version":0,"issues":[]}"#).unwrap();
+
+        // Write a promoted invariant into enforced_invariants.json.
+        let inv_file = EnforcedInvariantsFile {
+            version: 1,
+            last_synthesized_ms: 0,
+            invariants: vec![DiscoveredInvariant {
+                id: "INV-aabbccdd".to_string(),
+                predicate_text: "executor must not run when no tasks are ready".to_string(),
+                state_conditions: vec![
+                    StateCondition { key: "proposed_role".to_string(), value: "executor".to_string() },
+                    StateCondition { key: "ready_tasks".to_string(), value: "0".to_string() },
+                ],
+                support_count: 5,
+                status: InvariantStatus::Promoted,
+                gates: vec!["route".to_string()],
+                first_seen_ms: 0,
+                last_seen_ms: 1,
+            }],
+        };
+        save_invariants(tmp.as_path(), &inv_file).unwrap();
+
+        let created = generate_invariant_issues(tmp.as_path()).unwrap();
+
+        // 2 meta + 1 per-promoted = 3
+        assert_eq!(created, 3);
+        let raw = std::fs::read_to_string(&issues_path).unwrap();
+        let file: IssuesFile = serde_json::from_str(&raw).unwrap();
+        assert!(
+            file.issues.iter().any(|i| i.id.contains("inv_aabbccdd")),
+            "per-promoted issue not found"
+        );
     }
 }

@@ -22,6 +22,8 @@ pub mod complexity;
 pub mod inter_complexity;
 pub mod plan_preflight;
 pub mod refactor_analysis;
+pub mod error_class;
+pub mod blockers;
 pub mod invariants;
 pub mod rename_semantic;
 mod rename_example_target;
