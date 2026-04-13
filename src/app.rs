@@ -740,6 +740,46 @@ async fn run_diagnostics_phase(
     verifier_changed: bool,
     cargo_test_failures: &str,
 ) -> bool {
+    {
+        let mut state = std::collections::HashMap::new();
+        state.insert("diagnostics_pending".to_string(), dispatch_state.diagnostics_pending.to_string());
+        let blockers = crate::blockers::load_blockers(ctx.workspace);
+        let now_ms = crate::logging::now_ms();
+        let diagnostics_verification_failed_count = crate::blockers::count_class_recent(
+            &blockers,
+            "diagnostics",
+            &crate::error_class::ErrorClass::VerificationFailed,
+            now_ms,
+            5 * 60 * 1000,
+        );
+        // Only inject when entering failure threshold to avoid livelock
+        if diagnostics_verification_failed_count >= 3 && !dispatch_state.diagnostics_pending {
+            state.insert("actor_kind".to_string(), "diagnostics".to_string());
+            state.insert("error_class".to_string(), "verification_failed".to_string());
+        }
+        if let Err(reason) = crate::invariants::evaluate_invariant_gate("diagnostics", &state, ctx.workspace) {
+            eprintln!("[invariant_gate] diagnostics G_d (BLOCKED): {reason}");
+            crate::blockers::record_action_failure(
+                ctx.workspace,
+                "orchestrator",
+                "diagnostics_dispatch",
+                &reason,
+                None,
+            );
+            let record = serde_json::json!({
+                "kind": "invariant_gate",
+                "phase": "diagnostics",
+                "gate": "G_d",
+                "proposed_role": "diagnostics",
+                "blocked": true,
+                "reason": reason,
+                "ts_ms": crate::logging::now_ms(),
+            });
+            let _ = crate::logging::append_action_log_record(&record);
+            dispatch_state.diagnostics_pending = true;
+            return false;
+        }
+    }
     let summary_text = lane_summary_text(ctx.lanes, verifier_summary);
     let mut prompt = diagnostics_cycle_prompt(&summary_text, cargo_test_failures);
     inject_inbound_message(&mut prompt, "diagnostics");
