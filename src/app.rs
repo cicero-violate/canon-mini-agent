@@ -1164,6 +1164,49 @@ fn dispatch_executor_submits(
                 state.insert("actor_kind".to_string(), "executor".to_string());
                 state.insert("error_class".to_string(), "unauthorized_plan_op".to_string());
             }
+            let block_route_gate = |reason: String| {
+                eprintln!("[invariant_gate] route G_r (BLOCKED): {reason}");
+                crate::blockers::record_action_failure(
+                    &ws,
+                    "orchestrator",
+                    "route_dispatch",
+                    &reason,
+                    None,
+                );
+                let record = serde_json::json!({
+                    "kind": "invariant_gate",
+                    "phase": "route",
+                    "gate": "G_r",
+                    "proposed_role": "executor",
+                    "blocked": true,
+                    "reason": reason,
+                    "ts_ms": crate::logging::now_ms(),
+                });
+                let _ = crate::logging::append_action_log_record(&record);
+            };
+            let executor_missing_target_count = crate::blockers::count_class_recent(
+                &blockers,
+                "executor",
+                &crate::error_class::ErrorClass::MissingTarget,
+                now_ms,
+                5 * 60 * 1000,
+            );
+            if executor_missing_target_count >= 1 {
+                let mut executor_missing_target_state = state.clone();
+                executor_missing_target_state
+                    .insert("actor_kind".to_string(), "executor".to_string());
+                executor_missing_target_state
+                    .insert("error".to_string(), "missing_target".to_string());
+                if let Err(reason) = crate::invariants::evaluate_invariant_gate(
+                    "executor",
+                    &executor_missing_target_state,
+                    &ws,
+                ) {
+                    block_route_gate(reason);
+                    dispatch_state.planner_pending = true;
+                    return;
+                }
+            }
             let missing_target_count = blockers
                 .blockers
                 .iter()
@@ -1192,27 +1235,7 @@ fn dispatch_executor_submits(
                 state.insert("error_class".to_string(), "livelock".to_string());
             }
             if let Err(reason) = crate::invariants::evaluate_invariant_gate("executor", &state, &ws) {
-                eprintln!("[invariant_gate] route G_r (BLOCKED): {reason}");
-                // Record failure for invariant synthesis
-                crate::blockers::record_action_failure(
-                    &ws,
-                    "orchestrator",
-                    "route_dispatch",
-                    &reason,
-                    None,
-                );
-                // Log the gate hit with blocking=true
-                let record = serde_json::json!({
-                    "kind": "invariant_gate",
-                    "phase": "route",
-                    "gate": "G_r",
-                    "proposed_role": "executor",
-                    "blocked": true,
-                    "reason": reason,
-                    "ts_ms": crate::logging::now_ms(),
-                });
-                let _ = crate::logging::append_action_log_record(&record);
-                // HARD BLOCK: prevent executor dispatch when invariant gate fails
+                block_route_gate(reason);
                 dispatch_state.planner_pending = true;
                 return;
             }
