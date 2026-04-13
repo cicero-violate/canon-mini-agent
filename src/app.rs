@@ -442,6 +442,16 @@ async fn run_planner_phase(
     {
         let mut state = std::collections::HashMap::new();
         state.insert("planner_pending".to_string(), dispatch_state.planner_pending.to_string());
+        let blockers = crate::blockers::load_blockers(ctx.workspace);
+        let planner_blocker_escalated_count = crate::blockers::count_class(
+            &blockers,
+            "planner",
+            &crate::error_class::ErrorClass::BlockerEscalated,
+        );
+        if planner_blocker_escalated_count > 0 {
+            state.insert("actor_kind".to_string(), "planner".to_string());
+            state.insert("error_class".to_string(), "blocker_escalated".to_string());
+        }
         if let Err(reason) = crate::invariants::evaluate_invariant_gate("planner", &state, ctx.workspace) {
             eprintln!("[invariant_gate] planner G_p (BLOCKED): {reason}");
             crate::blockers::record_action_failure(
