@@ -1180,6 +1180,18 @@ fn evaluate_executor_route_gates(
         state.insert("error".to_string(), "step_limit_exceeded".to_string());
     }
 
+    let executor_verification_failed_count = crate::blockers::count_class_recent(
+        &blockers,
+        "executor",
+        &crate::error_class::ErrorClass::VerificationFailed,
+        now_ms,
+        5 * 60 * 1000,
+    );
+    if executor_verification_failed_count >= 1 {
+        state.insert("actor_kind".to_string(), "executor".to_string());
+        state.insert("error_class".to_string(), "verification_failed".to_string());
+    }
+
     let orchestrator_invalid_route_count = crate::blockers::count_class_recent(
         &blockers,
         "orchestrator",
