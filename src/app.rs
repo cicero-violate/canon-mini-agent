@@ -1175,14 +1175,17 @@ fn dispatch_executor_submits(
                 state.insert("actor_kind".to_string(), "executor".to_string());
                 state.insert("error_class".to_string(), "llm_timeout".to_string());
             }
+            // Avoid turning a single historical InvalidRoute blocker into a self-sustaining
+            // route-gate hard block. Only surface InvalidRoute into the route gate when the
+            // current blocker stream shows active repeated churn in a short window.
             let orchestrator_invalid_route_count = crate::blockers::count_class_recent(
                 &blockers,
                 "orchestrator",
                 &crate::error_class::ErrorClass::InvalidRoute,
                 now_ms,
-                5 * 60 * 1000,
+                60 * 1000,
             );
-            if orchestrator_invalid_route_count >= 1 {
+            if orchestrator_invalid_route_count >= 3 {
                 state.insert("actor_kind".to_string(), "orchestrator".to_string());
                 state.insert("error_class".to_string(), "invalid_route".to_string());
             }
