@@ -742,6 +742,7 @@ async fn run_diagnostics_phase(
                 decide_post_diagnostics(diagnostics_changed, verifier_changed);
             crate::lessons::maybe_synthesize_lessons(ctx.workspace);
             crate::lessons::apply_promoted_lessons(ctx.workspace);
+            crate::invariants::maybe_synthesize_invariants(ctx.workspace);
             true
         }
         Err(err) => {
@@ -1012,9 +1013,33 @@ fn dispatch_executor_submits(
     // the executor discovers no work and sends an empty handoff message back.
     {
         let ws = std::path::PathBuf::from(workspace());
-        if crate::prompt_inputs::read_ready_tasks(&ws, 1) == "(no ready tasks)" {
+        let ready_tasks_text = crate::prompt_inputs::read_ready_tasks(&ws, 1);
+        let ready_count = if ready_tasks_text == "(no ready tasks)" { "0" } else { "1+" };
+        if ready_count == "0" {
             dispatch_state.planner_pending = true;
             return;
+        }
+
+        // Route gate G_r: check enforced invariants before dispatching the executor.
+        // Currently observational — violations are logged but do not hard-block.
+        // Once invariants accumulate enough support, this will become a hard gate.
+        {
+            let mut state = std::collections::HashMap::new();
+            state.insert("ready_tasks".to_string(), ready_count.to_string());
+            if let Err(reason) = crate::invariants::evaluate_invariant_gate("executor", &state, &ws) {
+                eprintln!("[invariant_gate] route G_r: {reason}");
+                // Log the gate hit to the action log so synthesis can track it.
+                let record = serde_json::json!({
+                    "kind": "invariant_gate",
+                    "phase": "route",
+                    "gate": "G_r",
+                    "proposed_role": "executor",
+                    "blocked": false,
+                    "reason": reason,
+                    "ts_ms": crate::logging::now_ms(),
+                });
+                let _ = crate::logging::append_action_log_record(&record);
+            }
         }
     }
 
