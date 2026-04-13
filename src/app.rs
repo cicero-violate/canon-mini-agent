@@ -1141,6 +1141,18 @@ fn dispatch_executor_submits(
                 state.insert("actor_kind".to_string(), "solo".to_string());
                 state.insert("error_class".to_string(), "invalid_schema".to_string());
             }
+            // Detect orchestrator livelock conditions and surface into invariant state
+            let livelock_count = crate::blockers::count_class_recent(
+                &blockers,
+                "orchestrator",
+                &crate::error_class::ErrorClass::LivelockDetected,
+                now_ms,
+                5 * 60 * 1000,
+            );
+            if livelock_count >= 1 {
+                state.insert("actor_kind".to_string(), "orchestrator".to_string());
+                state.insert("error_class".to_string(), "livelock".to_string());
+            }
             if let Err(reason) = crate::invariants::evaluate_invariant_gate("executor", &state, &ws) {
                 eprintln!("[invariant_gate] route G_r (BLOCKED): {reason}");
                 // Record failure for invariant synthesis
