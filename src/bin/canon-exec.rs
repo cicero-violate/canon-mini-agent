@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use canon_mini_agent::has_flag;
 use serde_json::Value;
 use std::io::Read;
 use std::path::PathBuf;
@@ -11,10 +12,6 @@ fn find_flag_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 
 fn take_flag_value(args: &[String], name: &str) -> Option<String> {
     find_flag_value(args, name).map(str::to_owned)
-}
-
-fn has_flag(args: &[String], name: &str) -> bool {
-    args.iter().any(|a| a == name)
 }
 
 fn usage() -> &'static str {

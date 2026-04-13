@@ -38,6 +38,10 @@ pub fn set_agent_state_dir(path: String) {
     constants::set_agent_state_dir(path);
 }
 
+pub fn has_flag(args: &[String], name: &str) -> bool {
+    args.iter().any(|a| a == name)
+}
+
 pub use crate::tools::execute_action_capability;
 pub use crate::semantic::{SemanticIndex, SemanticTriple, SymbolSummary};
 

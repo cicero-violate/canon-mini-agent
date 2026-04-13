@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use canon_mini_agent::has_flag;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -13,10 +14,6 @@ fn take_flag_value(args: &[String], name: &str) -> Option<String> {
         i += 1;
     }
     None
-}
-
-fn has_flag(args: &[String], name: &str) -> bool {
-    args.iter().any(|a| a == name)
 }
 
 fn parse_usize_flag(args: &[String], name: &str, default_value: usize) -> Result<usize> {
