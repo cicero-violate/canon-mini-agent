@@ -47,12 +47,26 @@ pub fn preflight_ready_tasks(workspace: &Path) -> Vec<PreflightBounce> {
                 );
                 for b in &bounces {
                     eprintln!("[plan_preflight] task={} missing={:?}", b.task_id, b.missing_symbols);
+                    crate::blockers::record_action_failure(
+                        workspace,
+                        "orchestrator",
+                        "plan_preflight",
+                        &b.note,
+                        Some(&b.task_id),
+                    );
                 }
             }
             bounces
         }
         Err(e) => {
             eprintln!("[plan_preflight] error: {e:#}");
+            crate::blockers::record_action_failure(
+                workspace,
+                "orchestrator",
+                "plan_preflight",
+                &e.to_string(),
+                None,
+            );
             vec![]
         }
     }

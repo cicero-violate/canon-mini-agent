@@ -1028,7 +1028,15 @@ fn dispatch_executor_submits(
             state.insert("ready_tasks".to_string(), ready_count.to_string());
             if let Err(reason) = crate::invariants::evaluate_invariant_gate("executor", &state, &ws) {
                 eprintln!("[invariant_gate] route G_r: {reason}");
-                // Log the gate hit to the action log so synthesis can track it.
+                // Classify and record so synthesis accumulates InvalidRoute support counts.
+                crate::blockers::record_action_failure(
+                    &ws,
+                    "orchestrator",
+                    "route_dispatch",
+                    &reason,
+                    None,
+                );
+                // Also log the gate hit to the action log so synthesis can track it.
                 let record = serde_json::json!({
                     "kind": "invariant_gate",
                     "phase": "route",

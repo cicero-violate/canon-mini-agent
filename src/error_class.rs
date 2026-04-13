@@ -120,6 +120,7 @@ pub fn classify_result(action_kind: &str, result_text: &str, ok: bool) -> ErrorC
     let text = result_text.to_lowercase();
     match action_kind {
         "plan_preflight" => return ErrorClass::PlanPreflightFailed,
+        "route_dispatch" => return ErrorClass::InvalidRoute,
         "cargo_test" | "cargo_clippy" | "run_command" => {
             if text.contains("error[e") || text.contains("compilation failed") || text.contains("test failed") {
                 return ErrorClass::CompileError;
