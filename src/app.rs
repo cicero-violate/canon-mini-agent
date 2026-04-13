@@ -1152,6 +1152,18 @@ fn dispatch_executor_submits(
                 state.insert("actor_kind".to_string(), "executor".to_string());
                 state.insert("error_class".to_string(), "invalid_schema".to_string());
             }
+            // Inject UnauthorizedPlanOp state for executor
+            let unauthorized_plan_op_count = crate::blockers::count_class_recent(
+                &blockers,
+                "executor",
+                &crate::error_class::ErrorClass::UnauthorizedPlanOp,
+                now_ms,
+                5 * 60 * 1000,
+            );
+            if unauthorized_plan_op_count >= 1 {
+                state.insert("actor_kind".to_string(), "executor".to_string());
+                state.insert("error_class".to_string(), "unauthorized_plan_op".to_string());
+            }
             let missing_target_count = blockers
                 .blockers
                 .iter()
