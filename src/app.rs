@@ -1047,8 +1047,8 @@ fn dispatch_executor_submits(
             let mut state = std::collections::HashMap::new();
             state.insert("ready_tasks".to_string(), ready_count.to_string());
             if let Err(reason) = crate::invariants::evaluate_invariant_gate("executor", &state, &ws) {
-                eprintln!("[invariant_gate] route G_r: {reason}");
-                // Classify and record so synthesis accumulates InvalidRoute support counts.
+                eprintln!("[invariant_gate] route G_r (BLOCKED): {reason}");
+                // Record failure for invariant synthesis
                 crate::blockers::record_action_failure(
                     &ws,
                     "orchestrator",
@@ -1056,17 +1056,20 @@ fn dispatch_executor_submits(
                     &reason,
                     None,
                 );
-                // Also log the gate hit to the action log so synthesis can track it.
+                // Log the gate hit with blocking=true
                 let record = serde_json::json!({
                     "kind": "invariant_gate",
                     "phase": "route",
                     "gate": "G_r",
                     "proposed_role": "executor",
-                    "blocked": false,
+                    "blocked": true,
                     "reason": reason,
                     "ts_ms": crate::logging::now_ms(),
                 });
                 let _ = crate::logging::append_action_log_record(&record);
+                // HARD BLOCK: prevent executor dispatch when invariant gate fails
+                dispatch_state.planner_pending = true;
+                return;
             }
         }
     }
