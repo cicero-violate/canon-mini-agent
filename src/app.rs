@@ -439,6 +439,33 @@ async fn run_planner_phase(
     planner_bootstrapped: &mut bool,
     cargo_test_failures: &str,
 ) -> bool {
+    {
+        let mut state = std::collections::HashMap::new();
+        state.insert("planner_pending".to_string(), dispatch_state.planner_pending.to_string());
+        if let Err(reason) = crate::invariants::evaluate_invariant_gate("planner", &state, ctx.workspace) {
+            eprintln!("[invariant_gate] planner G_p (BLOCKED): {reason}");
+            crate::blockers::record_action_failure(
+                ctx.workspace,
+                "orchestrator",
+                "planner_dispatch",
+                &reason,
+                None,
+            );
+            let record = serde_json::json!({
+                "kind": "invariant_gate",
+                "phase": "planner",
+                "gate": "G_p",
+                "proposed_role": "planner",
+                "blocked": true,
+                "reason": reason,
+                "ts_ms": crate::logging::now_ms(),
+            });
+            let _ = crate::logging::append_action_log_record(&record);
+            dispatch_state.planner_pending = true;
+            return false;
+        }
+    }
+
     let inputs: PlannerInputs = load_planner_inputs(
         ctx.lanes,
         ctx.workspace,
