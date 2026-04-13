@@ -1175,7 +1175,6 @@ fn evaluate_executor_route_gates(
             b.actor.starts_with("orchestrator")
                 && matches!(b.error_class, crate::error_class::ErrorClass::InvalidRoute)
                 && now_ms.saturating_sub(b.ts_ms) <= 60 * 1000
-                && b.action_kind != "route_dispatch"
         })
         .count();
     if orchestrator_invalid_route_count >= 3 {
