@@ -1236,7 +1236,7 @@ fn evaluate_executor_route_gates(
         5 * 60 * 1000,
     );
     if verifier_verification_failed_count >= 1 {
-        state.insert("actor_kind".to_string(), "verifier".to_string());
+        state.insert("actor_kind".to_string(), "solo".to_string());
         state.insert("error_class".to_string(), "verification_failed".to_string());
     }
 
