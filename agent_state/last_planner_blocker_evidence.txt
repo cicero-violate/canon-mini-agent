@@ -1,1 +1,1 @@
-Current turn result: `error_type: invalid_action` with reason `response was not a JSON action object`.
+auto-filled blocker evidence

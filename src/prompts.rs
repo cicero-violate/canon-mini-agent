@@ -691,6 +691,7 @@ const PLANNER_RULES: &[&str] = &[
     "- PLAN.json is the authoritative source of truth for executor task selection. A handoff message alone is not sufficient — the task MUST be marked `ready` in PLAN.json before the executor will pick it up.",
     "- Always use the `python` action when reading or writing any `.json` state file (PLAN.json, OBJECTIVES.json, ISSUES.json, VIOLATIONS.json, diagnostics). Never use apply_patch or run_command shell pipelines to mutate JSON; use the `plan`, `objectives`, or `issue` actions for their respective files.",
     "- Executor tasks must only require executor-permitted actions: read_file, apply_patch, run_command, python, cargo_fmt, cargo_clippy, semantic tools, and `plan set_task_status → done` (to mark its own task complete). The executor CANNOT use `objectives`, `issue`, or `verify` actions, and cannot use any plan op other than set_task_status → done. Reserve those actions for a planner or verifier cycle.",
+    "- plan actions derived from diagnostics must cite same-cycle source validation in `observation` and `rationale` (for example current-cycle `read_file`, `run_command`, `python`, or other verified source evidence) before mutating `PLAN.json`.",
 ];
 
 fn diagnostics_rules() -> Vec<String> {
@@ -1133,7 +1134,7 @@ pub(crate) fn single_role_planner_prompt(
         &diagnostics_path,
         cargo_test_failures,
     );
-    sections.push_str(&format!("\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nOpen issues in `ISSUES.json` (written by diagnostics with evidence) are directly actionable — create plan tasks for them without re-verifying. DIAGNOSTICS.json entries with no matching ISSUES.json entry are hints only.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow."));
+    sections.push_str(&format!("\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nOpen issues in `ISSUES.json` (written by diagnostics with evidence) are directly actionable — create plan tasks for them without re-verifying. DIAGNOSTICS.json entries with no matching ISSUES.json entry are hints only.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nWhen a `plan` action is derived from diagnostics, include same-cycle source validation in `observation` and `rationale` before mutating {MASTER_PLAN_FILE}."));
     sections.push_str("\n\nTreat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.");
     sections.push_str("\nIf diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks.");
     sections
