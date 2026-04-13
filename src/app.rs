@@ -2206,7 +2206,7 @@ fn enforce_diagnostics_python(
         *diagnostics_eventlog_python_done = true;
         return None;
     }
-    if matches!(kind, "apply_patch" | "message") {
+    if matches!(kind, "apply_patch" | "message" | "issue" | "lessons") {
         return Some(format!(
             "Before writing diagnostics or finishing, run a `python` action earlier in this diagnostics cycle that discovers and analyzes workspace-local log/state artifacts under {} to find errors, inconsistencies, invariant violations, repeated failure patterns, and concrete repair targets. The scan may occur before read_file steps; it does not need to be the immediately previous action.",
             workspace()
