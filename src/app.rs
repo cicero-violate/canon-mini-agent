@@ -60,16 +60,18 @@ fn jstr<'a>(v: &'a Value, key: &str) -> &'a str {
     v.get(key).and_then(|v| v.as_str()).unwrap_or("")
 }
 
-fn ws_port_arg(args: &[String]) -> Option<&str> {
+fn find_flag_arg<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     args.windows(2)
-        .find(|w| w[0] == "--port")
+        .find(|w| w[0] == flag)
         .map(|w| w[1].as_str())
 }
 
+fn ws_port_arg(args: &[String]) -> Option<&str> {
+    find_flag_arg(args, "--port")
+}
+
 fn instance_arg(args: &[String]) -> Option<&str> {
-    args.windows(2)
-        .find(|w| w[0] == "--instance")
-        .map(|w| w[1].as_str())
+    find_flag_arg(args, "--instance")
 }
 
 fn ws_port_is_available(port: u16) -> bool {

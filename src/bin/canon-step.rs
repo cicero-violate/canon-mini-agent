@@ -20,14 +20,9 @@ Output (stdout): {\"predicted_next_actions\":[...]} where entries are action stu
 }
 
 fn read_action_input() -> Result<Value> {
-    let raw = read_stdin_string()?;
-    serde_json::from_str(&raw).context("stdin is not valid JSON")
-}
-
-fn read_stdin_string() -> Result<String> {
     let mut raw = String::new();
     std::io::stdin().read_to_string(&mut raw).context("read stdin")?;
-    Ok(raw)
+    serde_json::from_str(&raw).context("stdin is not valid JSON")
 }
 
 fn predicted_next_actions(action: &Value) -> Vec<Value> {
