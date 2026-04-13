@@ -29,12 +29,14 @@
 ///   T'(s→s')     = T(s→s') · I_p(s')    (transition filtered by invariant predicate)
 ///   A'            = {a ∈ A | I(result(a)) = 1}  (only valid actions exist)
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+use crate::issues::{is_closed, rescore_all, Issue, IssuesFile};
 
 // ── File paths ────────────────────────────────────────────────────────────────
 
@@ -185,6 +187,165 @@ pub fn read_enforced_invariants(workspace: &Path) -> String {
         Ok(s) => s,
         Err(e) => format!("(error reading enforced_invariants.json: {e})"),
     }
+}
+
+/// Auto-populate ISSUES.json with invariant lifecycle issues.
+///
+/// Called from the same checkpoint hook as `generate_hotspot_issues` and
+/// `generate_all_refactor_issues`.  Generates three classes of issues:
+///
+/// 1. **Structural meta-issues** — permanent until the feature is implemented:
+///    - `inv_action_surface_missing`: no `invariants` action in tools.rs
+///    - `inv_prompt_injection_missing`: enforced_invariants.json not in prompts
+///
+/// 2. **Per-promoted-invariant issues** — one per `Promoted` or `Enforced`
+///    invariant whose gate is still observational (`blocked=false`).
+///    These drive planner tasks to flip specific gates to hard-blocking.
+///
+/// Returns the number of new issues created.
+pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
+    let issues_path = workspace.join(crate::constants::ISSUES_FILE);
+    let raw = std::fs::read_to_string(&issues_path).unwrap_or_default();
+    let mut file: IssuesFile = if raw.trim().is_empty() {
+        IssuesFile::default()
+    } else {
+        serde_json::from_str(&raw).unwrap_or_default()
+    };
+
+    let existing_ids: HashSet<String> = file.issues.iter().map(|i| i.id.clone()).collect();
+
+    let inv_file = load_invariants(workspace);
+    let mut created = 0usize;
+
+    // ── Meta-issue 1: action surface ────────────────────────────────────────
+    // Present until someone adds `"invariants" => handle_invariants_action` to
+    // the tools.rs dispatch table and wires the ops read|promote|collapse|enforce.
+    const ACTION_SURFACE_ID: &str = "inv_action_surface_missing";
+    if !existing_ids.contains(ACTION_SURFACE_ID) {
+        file.issues.push(Issue {
+            id: ACTION_SURFACE_ID.to_string(),
+            title: "Invariant lifecycle has no action surface — diagnostics cannot review, enforce, or collapse invariants".to_string(),
+            status: "open".to_string(),
+            priority: "critical".to_string(),
+            kind: "invariant_violation".to_string(),
+            description: concat!(
+                "src/invariants.rs populates agent_state/enforced_invariants.json and auto-promotes ",
+                "patterns at support_count >= MIN_INVARIANT_SUPPORT, but the diagnostics agent has no ",
+                "action surface to review, promote, enforce, or collapse invariants. ",
+                "The route gate G_r is observational only (blocked=false) — it logs violations but never ",
+                "returns early. The lessons system is the model: `lessons` action with ops ",
+                "read_candidates|promote|reject|encode|read|write feeds into ROLES.json via apply_promoted_lessons. ",
+                "Invariants need the same closure: add `invariants` action (ops: read|promote|collapse|enforce) ",
+                "to src/tools.rs dispatch + implement handle_invariants_action in src/invariants.rs. ",
+                "Wire enforced_invariants.json into diagnostics and planner prompts via src/prompt_inputs.rs. ",
+                "Impact: without this the invariant collapse pipeline (TO-DO.txt Phase 4-5) cannot complete."
+            ).to_string(),
+            location: "src/tools.rs; src/invariants.rs; src/app.rs:1011-1050; src/prompt_inputs.rs".to_string(),
+            evidence: vec![
+                "src/invariants.rs:evaluate_invariant_gate returns Err but app.rs route gate has blocked=false — never hard-blocks".to_string(),
+                "src/tools.rs dispatch table has no 'invariants' branch (compare: 'lessons' => handle_lessons_action)".to_string(),
+                "src/prompt_inputs.rs:load_planner_inputs injects static INVARIANTS.json but not enforced_invariants.json".to_string(),
+                "src/invariants.rs:read_enforced_invariants is public but called from no prompt path".to_string(),
+            ],
+            discovered_by: "invariants_analyzer".to_string(),
+            score: 0.0,
+        });
+        created += 1;
+    }
+
+    // ── Meta-issue 2: prompt injection ──────────────────────────────────────
+    // Present until enforced_invariants.json is added to load_planner_inputs
+    // and diagnostics_cycle_prompt.
+    const PROMPT_INJECTION_ID: &str = "inv_enforced_not_in_prompts";
+    if !existing_ids.contains(PROMPT_INJECTION_ID) {
+        file.issues.push(Issue {
+            id: PROMPT_INJECTION_ID.to_string(),
+            title: "enforced_invariants.json not injected into diagnostics or planner prompts".to_string(),
+            status: "open".to_string(),
+            priority: "high".to_string(),
+            kind: "invariant_violation".to_string(),
+            description: concat!(
+                "agent_state/enforced_invariants.json is written by maybe_synthesize_invariants on every ",
+                "checkpoint cycle but is invisible to all roles. Diagnostics cannot see which invariants are ",
+                "accumulating support and cannot decide which to escalate. ",
+                "Fix: add read_enforced_invariants(workspace) call to load_planner_inputs in src/prompt_inputs.rs ",
+                "and inject the result into the diagnostics prompt via diagnostics_cycle_prompt in src/prompts.rs. ",
+                "Add an EnforcedInvariants variant to SingleRoleRead so solo/planner can also access it. ",
+                "Impact: invariant system is silent — no feedback loop to the decision-making agent."
+            ).to_string(),
+            location: "src/prompt_inputs.rs; src/prompts.rs; src/invariants.rs:read_enforced_invariants".to_string(),
+            evidence: vec![
+                "src/prompt_inputs.rs:load_planner_inputs loads INVARIANTS_FILE (static) but not enforced_invariants.json".to_string(),
+                "src/prompt_inputs.rs:SingleRoleRead enum has Invariants variant but no EnforcedInvariants variant".to_string(),
+                "src/invariants.rs:read_enforced_invariants exists as pub fn but is never called from any prompt path".to_string(),
+            ],
+            discovered_by: "invariants_analyzer".to_string(),
+            score: 0.0,
+        });
+        created += 1;
+    }
+
+    // ── Per-promoted-invariant issues ────────────────────────────────────────
+    // One issue per Promoted invariant whose gate is not yet enforced.
+    // These give the planner concrete tasks: "evaluate INV-xxx for gate enforcement".
+    for inv in &inv_file.invariants {
+        if inv.status != InvariantStatus::Promoted {
+            continue;
+        }
+        let issue_id = format!("inv_gate_unenforced_{}", inv.id.to_lowercase().replace('-', "_"));
+        // Skip if already present as any status (don't re-open a wontfix).
+        if existing_ids.contains(&issue_id) {
+            continue;
+        }
+        // Also skip if there's already an open issue at the same location/id prefix.
+        let already_tracked = file.issues.iter()
+            .filter(|i| !is_closed(i))
+            .any(|i| i.id.starts_with(&format!("inv_gate_unenforced_{}", inv.id.to_lowercase().replace('-', "_"))));
+        if already_tracked {
+            continue;
+        }
+
+        let gates_str = if inv.gates.is_empty() {
+            "route".to_string()
+        } else {
+            inv.gates.join(", ")
+        };
+
+        file.issues.push(Issue {
+            id: issue_id,
+            title: format!("Promoted invariant {} gate not yet enforced (support={})", inv.id, inv.support_count),
+            status: "open".to_string(),
+            priority: "high".to_string(),
+            kind: "invariant_violation".to_string(),
+            description: format!(
+                "Invariant `{}` has been auto-promoted (support_count={} >= threshold) but its gate(s) [{}] \
+                 are still observational (blocked=false). The invariant predicate: \"{}\". \
+                 Diagnostics should review this invariant and, if the predicate is correct, call \
+                 `invariants op=enforce id={}` to flip the gate to hard-blocking. \
+                 If the root cause has been structurally fixed, call `invariants op=collapse id={}`.",
+                inv.id, inv.support_count, gates_str, inv.predicate_text, inv.id, inv.id
+            ),
+            location: format!("agent_state/enforced_invariants.json; src/app.rs:1011-1050"),
+            evidence: vec![
+                format!("invariant id={} support_count={} status=promoted", inv.id, inv.support_count),
+                format!("first_seen_ms={} last_seen_ms={}", inv.first_seen_ms, inv.last_seen_ms),
+                format!("predicate: {}", inv.predicate_text),
+                format!("state_conditions: {}", inv.state_conditions.iter()
+                    .map(|c| format!("{}={}", c.key, c.value))
+                    .collect::<Vec<_>>().join(", ")),
+            ],
+            discovered_by: "invariants_analyzer".to_string(),
+            score: 0.0,
+        });
+        created += 1;
+    }
+
+    if created > 0 {
+        rescore_all(&mut file);
+        std::fs::write(&issues_path, serde_json::to_string_pretty(&file)?)?;
+    }
+
+    Ok(created)
 }
 
 // ── Synthesis implementation ──────────────────────────────────────────────────

@@ -210,6 +210,8 @@ pub fn write_complexity_report(workspace: &Path) -> Result<Option<PathBuf>> {
     let _ = crate::inter_complexity::generate_hotspot_issues(workspace, 5);
     // Auto-generate structural refactor issues (dead code, branch reduction, helper extraction, call chains)
     let _ = crate::refactor_analysis::generate_all_refactor_issues(workspace);
+    // Auto-generate invariant lifecycle issues (action surface gap, prompt injection gap, per-promoted gates)
+    let _ = crate::invariants::generate_invariant_issues(workspace);
 
     let dir = reports_dir(workspace);
     let latest = persist_complexity_report(&dir, &report)?;
