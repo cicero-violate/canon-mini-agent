@@ -158,6 +158,26 @@ pub fn count_class(
         .count()
 }
 
+/// Count how many times a given (actor_kind, error_class) pair appears within a
+/// recent time window. Runtime gates can use this to react to active blocker
+/// patterns without turning old blocker history into permanent poison state.
+pub fn count_class_recent(
+    file: &BlockersFile,
+    actor_kind: &str,
+    class: &ErrorClass,
+    now_ms: u64,
+    window_ms: u64,
+) -> usize {
+    file.blockers
+        .iter()
+        .filter(|b| {
+            b.actor.starts_with(actor_kind)
+                && &b.error_class == class
+                && now_ms.saturating_sub(b.ts_ms) <= window_ms
+        })
+        .count()
+}
+
 // ── I/O internals ─────────────────────────────────────────────────────────────
 
 fn blockers_path(workspace: &Path) -> std::path::PathBuf {
