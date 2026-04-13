@@ -1,208 +1,459 @@
-TAB_ID: 433977155
-TURN_ID: 33
-AGENT_TYPE: SOLO
+## Math Model
 
-Action provenance:
-- task_id: repair_objectives_duplicate_bookkeeping_recurrence
-- objective_id: obj_18_automatic_objective_evolution
-- intent: Trace the concrete runtime path from the objectives entrypoint into the update helper so I can locate where duplicate completed-objective records may be introduced.
-
-Action result:
-Execution path from `tools::handle_objectives_action` → `tools::handle_objectives_update_objective` (1 hops):
-  tools::handle_objectives_action [class=call kind=fn] (src/tools.rs:370)
-    // tools::handle_objectives_action — src/tools.rs:370
-    fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
-        let op_raw = action
-            .get("op")
-            .and_then(|v| v.as_str())
-            .or_else(|| action.get("operation").and_then(|v| v.as_str()))
-            .unwrap_or("read");
-        let include_done = action
-            .get("include_done")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let path = workspace.join(OBJECTIVES_FILE);
-        let raw = fs::read_to_string(&path).unwrap_or_default();
-        if raw.trim().is_empty() && op_raw == "read" {
-            return Ok((false, "(no objectives)".to_string()));
-        }
-    
-        match op_raw {
-            "read" => handle_objectives_read(&raw, include_done),
-            "sorted_view" => handle_objectives_sorted_view(&raw, include_done),
-            "create_objective" => handle_objectives_create_objective(action, &path, &raw),
-            "update_objective" => handle_objectives_update_objective(action, &path, &raw),
-            "delete_objective" => handle_objectives_delete_objective(action, &path, &raw),
-            "set_status" => handle_objectives_set_status(action, &path, &raw),
-            "replace_objectives" => handle_objectives_replace_objectives(action, &path, &raw),
-            _ => bail!("unknown objectives op: {op_raw}"),
-        }
-    }
-    // MIR: 67 blocks, 28 stmts, fingerprint=429dc5e499bf53e9af0d534a2d1b7142350dd0d6ba353221f48d7da64409a6f6
-    --Calls--> 
-  tools::handle_objectives_update_objective [class=call kind=fn] (src/tools.rs:450)
-    // tools::handle_objectives_update_objective — src/tools.rs:450
-    fn handle_objectives_update_objective(
-        action: &Value,
-        path: &Path,
-        raw: &str,
-    ) -> Result<(bool, String)> {
-        let objective_id = objective_id_from_action(action, "update_objective")?;
-        let updates = action
-            .get("updates")
-            .and_then(|v| v.as_object())
-            .ok_or_else(|| anyhow!("objectives update_objective missing updates object. Required schema: {{\"op\":\"update_objective\",\"objective_id\":\"<id>\",\"updates\":{{\"title\":\"<title>\",\"status\":\"<status>\"}}}}"))?;
-        let mut file = parse_objectives_file_strict(raw)?;
-        log_objective_attempt("update_objective", Some(objective_id), &file.objectives);
-        let mut found = false;
-        for obj in file.objectives.iter_mut() {
-            if objective_id_matches(&obj.id, objective_id) {
-                let mut value = serde_json::to_value(obj.clone())?;
-                if let Some(map) = value.as_object_mut() {
-                    for (k, v) in updates {
-                        map.insert(k.clone(), v.clone());
-                    }
-                }
-                *obj = serde_json::from_value(value)?;
-                found = true;
-                break;
-            }
-        }
-        if !found {
-            return log_objective_not_found_and_bail("update_objective", objective_id, &file.objectives);
-        }
-        log_objective_success("update_objective", Some(objective_id), &file.objectives);
-        std::fs::write(path, serde_json::to_string_pretty(&file)?)?;
-        Ok((false, "objectives update_objective ok".to_string()))
-    }
-    // MIR: 70 blocks, 64 stmts, fingerprint=7ed751ad3ba3f75f33cd750b682511773f1b456d74ee2529ecfe9117e70354d8
-
-Patch targets:
-  tools::handle_objectives_action score=75 why=local fn, small blast radius
-    source=src/tools.rs:370
-  tools::handle_objectives_update_objective score=75 why=local fn, small blast radius
-    source=src/tools.rs:450
-  apply_patch target:
-    symbol=tools::handle_objectives_action
-    file=src/tools.rs line=370
-    context_window_lines=367..=378
-  apply_patch template:
-    *** Begin Patch
-    *** Update File: src/tools.rs
-    @@
-         Ok((false, serde_json::to_string_pretty(&file).unwrap_or(raw.to_string())))
-     }
-     
-     fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
-         let op_raw = action
-             .get("op")
-             .and_then(|v| v.as_str())
-             .or_else(|| action.get("operation").and_then(|v| v.as_str()))
-             .unwrap_or("read");
-         let include_done = action
-             .get("include_done")
-             .and_then(|v| v.as_bool())
-    -// old: wrong arguments or missing call at this site
-    +// new: fix call — e.g. update argument type/count
-    *** End Patch
-
-Repair plan:
-```json
-{
-  "from": "tools::handle_objectives_action",
-  "to": "tools::handle_objectives_update_objective",
-  "path_fingerprint": "cbbecca10fef338e",
-  "path": [
-    {
-      "id": "0:1548",
-      "via_relation": null,
-      "layer": "semantic",
-      "display": "tools::handle_objectives_action",
-      "class": "call",
-      "kind": "fn",
-      "file": "/workspace/ai_sandbox/canon-mini-agent/src/tools.rs",
-      "line": 370,
-      "owner": null,
-      "block": null,
-      "terminator": null
-    },
-    {
-      "id": "0:1558",
-      "via_relation": "Calls",
-      "layer": "semantic",
-      "display": "tools::handle_objectives_update_objective",
-      "class": "call",
-      "kind": "fn",
-      "file": "/workspace/ai_sandbox/canon-mini-agent/src/tools.rs",
-      "line": 450,
-      "owner": null,
-      "block": null,
-      "terminator": null
-    }
-  ],
-  "targets": [
-    {
-      "symbol": "tools::handle_objectives_action",
-      "score": 75,
-      "reasons": [
-        "local fn",
-        "small blast radius"
-      ],
-      "file": "/workspace/ai_sandbox/canon-mini-agent/src/tools.rs",
-      "line": 370,
-      "context_start": 367,
-      "context_end": 378,
-      "context_window": "367:     Ok((false, serde_json::to_string_pretty(&file).unwrap_or(raw.to_string())))\n368: }\n369: \n370: fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {\n371:     let op_raw = action\n372:         .get(\"op\")\n373:         .and_then(|v| v.as_str())\n374:         .or_else(|| action.get(\"operation\").and_then(|v| v.as_str()))\n375:         .unwrap_or(\"read\");\n376:     let include_done = action\n377:         .get(\"include_done\")\n378:         .and_then(|v| v.as_bool())\n",
-      "patch_kind": "CallSiteFix"
-    },
-    {
-      "symbol": "tools::handle_objectives_update_objective",
-      "score": 75,
-      "reasons": [
-        "local fn",
-        "small blast radius"
-      ],
-      "file": "/workspace/ai_sandbox/canon-mini-agent/src/tools.rs",
-      "line": 450,
-      "context_start": 447,
-      "context_end": 458,
-      "context_window": "447:     Ok((false, \"objectives create_objective ok\".to_string()))\n448: }\n449: \n450: fn handle_objectives_update_objective(\n451:     action: &Value,\n452:     path: &Path,\n453:     raw: &str,\n454: ) -> Result<(bool, String)> {\n455:     let objective_id = objective_id_from_action(action, \"update_objective\")?;\n456:     let updates = action\n457:         .get(\"updates\")\n458:         .and_then(|v| v.as_object())\n",
-      "patch_kind": "CallSiteFix"
-    }
-  ],
-  "top_target": {
-    "symbol": "tools::handle_objectives_action",
-    "score": 75,
-    "reasons": [
-      "local fn",
-      "small blast radius"
-    ],
-    "file": "/workspace/ai_sandbox/canon-mini-agent/src/tools.rs",
-    "line": 370,
-    "context_start": 367,
-    "context_end": 378,
-    "context_window": "367:     Ok((false, serde_json::to_string_pretty(&file).unwrap_or(raw.to_string())))\n368: }\n369: \n370: fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {\n371:     let op_raw = action\n372:         .get(\"op\")\n373:         .and_then(|v| v.as_str())\n374:         .or_else(|| action.get(\"operation\").and_then(|v| v.as_str()))\n375:         .unwrap_or(\"read\");\n376:     let include_done = action\n377:         .get(\"include_done\")\n378:         .and_then(|v| v.as_bool())\n",
-    "patch_kind": "CallSiteFix"
-  },
-  "apply_patch_template": "*** Begin Patch\n*** Update File: src/tools.rs\n@@\n     Ok((false, serde_json::to_string_pretty(&file).unwrap_or(raw.to_string())))\n }\n \n fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {\n     let op_raw = action\n         .get(\"op\")\n         .and_then(|v| v.as_str())\n         .or_else(|| action.get(\"operation\").and_then(|v| v.as_str()))\n         .unwrap_or(\"read\");\n     let include_done = action\n         .get(\"include_done\")\n         .and_then(|v| v.as_bool())\n-// old: wrong arguments or missing call at this site\n+// new: fix call — e.g. update argument type/count\n*** End Patch"
-}
-```
-
-
-Predicted next actions from your last turn:
-```json
 [
-  {
-    "action": "symbol_window",
-    "intent": "Inspect the first write-capable helper identified on the traced execution path."
-  },
-  {
-    "action": "read_file",
-    "intent": "Read the exact line-numbered Rust slice only if a patch becomes necessary after the execution path isolates the duplicate-write site."
-  }
+G_{next} = \max(\text{Dedup}, \text{Semantic Canonicalization}, \text{Intent Compression}, \text{Invariant Collapse})
 ]
-```
-Compare these against the actual result above before choosing your next action.
 
-next_action_hint: reuse recent action `execution_path` or choose one of: message, list_dir, read_file, symbols_index, symbols_rename_candidates, symbols_prepare_rename, rename_symbol, objectives, issue, apply_patch, run_command, python, cargo_test, cargo_fmt, cargo_clippy, plan, rustc_hir, rustc_mir, graph_call, graph_cfg, graph_dataflow, graph_reachability, stage_graph, semantic_map, symbol_window, symbol_refs, symbol_path, execution_path, symbol_neighborhood, batch, lessons, violation.
-Emit exactly one action. Think through the decision internally; reveal chain-of-thought.
+### Variables
+
+* (D_{dup}): duplication factor
+* (S_{sem}): semantic equivalence classes
+* (I_{intent}): intent space size
+* (C_f): control-flow states
+* (V_{inv}): invariant constraints
+
+---
+
+## Equations
+
+1. **Semantic Canonicalization**
+   [
+   S_{sem}' = \frac{\text{All Representations}}{\text{Canonical Forms}}
+   ]
+   → unify equivalent logic into one meaning
+
+2. **Intent Compression**
+   [
+   I_{intent}' = \frac{I_{intent}}{\text{Reusable Action Primitives}}
+   ]
+   → reduce planning space
+
+3. **Invariant Collapse**
+   [
+   C_f' = C_f ;\cap; V_{inv}
+   ]
+   → remove illegal states entirely
+
+4. **Total Reduction**
+   [
+   \text{State Space} = D_{dup} \cdot S_{sem} \cdot I_{intent} \cdot C_f
+   ]
+   → minimize all axes, not just duplication
+
+---
+
+## Ranking
+
+| Technique                 | Score    |
+| ------------------------- | -------- |
+| MIR Deduplication         | 9.2      |
+| Semantic Canonicalization | 9.6      |
+| Intent Compression        | 9.7      |
+| Invariant Collapse        | **10.0** |
+
+---
+
+## English
+
+MIR deduplication removes **identical structure**.
+Better systems remove **entire categories of possibility**.
+
+* **Semantic Canonicalization**
+  Different code → same meaning → single representation
+
+* **Intent Compression**
+  Many actions → few reusable primitives
+
+* **Invariant Collapse (best)**
+  Illegal states never exist → zero branching into them
+
+This shifts from:
+
+* cleaning the graph
+  to:
+* **shrinking reality itself**
+
+---
+
+## Final
+
+[
+\max(I,E,C,A,R,P,S,D,T,K,X,B,L,F) = D, E, S
+]
+
+Best move:
+
+* eliminate states, not just merge them
+
+**Conclusion:**
+Deduplication is structural optimization.
+Invariant collapse is **ontological optimization**.
+
+## Math Model
+
+[
+\text{State Space}' = \text{State Space} \cap V_{inv}
+]
+
+### Variables
+
+* (S): total possible states
+* (V_{inv}): invariant-valid states
+* (I(s)): invariant predicate (true/false)
+* (A): actions
+* (T): transitions
+
+---
+
+## Equations
+
+1. **Invariant Gate**
+   [
+   I(s) \in {0,1}
+   ]
+   → state allowed or rejected
+
+2. **Transition Filtering**
+   [
+   T'(s \rightarrow s') = T(s \rightarrow s') \cdot I(s')
+   ]
+   → illegal transitions never execute
+
+3. **Action Constraint**
+   [
+   A' = {a \in A \mid I(\text{result}(a)) = 1}
+   ]
+   → only valid actions exist
+
+4. **Canonical Collapse**
+   [
+   s_1 \sim s_2 ;\text{if}; \forall I,; I(s_1)=I(s_2)
+   ]
+   → merge states by invariant equivalence
+
+---
+
+## How It Works
+
+1. **Define invariants (hard rules)**
+
+* example:
+
+  * no_actionable_failure ⇒ cannot repair
+  * missing_target ⇒ must plan
+  * validation_blocked ⇒ cannot verify
+
+2. **Move invariants to runtime (not post-check)**
+
+* enforce at:
+
+  * route selection
+  * planner output
+  * action execution
+
+3. **Reject invalid states early**
+
+* instead of:
+
+  * generate → verify → fail
+* do:
+
+  * **never generate invalid path**
+
+4. **Collapse equivalent states**
+
+* if two states produce same invariant results → treat as one
+
+---
+
+## Implementation (Concrete)
+
+### Step 1 — Encode invariants
+
+* central engine (you already have: `ConstraintState`)
+* each invariant = pure function:
+  [
+  I: s \rightarrow {0,1}
+  ]
+
+---
+
+### Step 2 — Gate routing
+
+* replace:
+
+  * heuristic routing
+* with:
+  [
+  \text{Route} = \arg\max (I(s_{next}))
+  ]
+
+---
+
+### Step 3 — Constrain planner
+
+* planner must output:
+  [
+  \forall a,; I(\text{result}(a)) = 1
+  ]
+* reject plans violating invariants immediately
+
+---
+
+### Step 4 — Enforce at writer (you already do partially)
+
+* invalid transition:
+  [
+  T(s \rightarrow s') = 0
+  ]
+  → emit violation, do not append
+
+---
+
+### Step 5 — State hashing (optional but powerful)
+
+[
+\text{Hash}(s) = \text{Hash}(V_{inv}(s))
+]
+→ identical invariant states collapse automatically
+
+---
+
+## English
+
+Right now:
+
+* system explores → then filters bad paths
+
+Target:
+
+* **bad paths cannot exist at all**
+
+This is done by:
+
+* turning invariants into **gates on every transition**
+* forcing planner + router + executor to obey them **before acting**
+
+Result:
+
+* fewer branches
+* faster loops
+* deterministic behavior
+
+---
+
+## Final
+
+[
+\max(I,E,C,A,R,P,S,D,T,K,X,B,L,F) = D, E, S
+]
+
+Effect:
+
+* **zero wasted execution**
+* **minimal branching**
+* **maximum convergence speed**
+
+**Conclusion:**
+You don’t clean the tree.
+You **prevent the tree from growing wrong branches.**
+
+## Variables
+
+* (M): canon-mini-agent
+* (W_c): canonical writer
+* (G_r): route gate
+* (G_p): planner gate
+* (G_e): executor gate
+* (I(s)): invariant predicate on state (s)
+
+## Equations
+
+[
+W_c = 0,\quad \text{so } T'(s \to s') \neq \text{writer-enforced}
+]
+→ in mini-agent, invariant collapse must happen **before write**, not at append-time
+[
+A'={a \mid G_r(a)\land G_p(a)\land G_e(a)}
+]
+→ only allow actions that survive route, plan, and execution gates
+[
+\text{State Space}' = S \cap I(s)
+]
+→ shrink search space upstream
+
+## English
+
+Yes, the concept applies to **canon-mini-agent**, but not via a canonical writer, because you do not have (W_c).
+So the correct implementation is: **route policy gate → planner schema gate → executor preflight gate → verifier**, with optional rejection before state/log write.
+That means: encode invariants as pure functions, run them on proposed actions/results, and refuse invalid routes/plans early.
+Best order: **1)** canonical state snapshot, **2)** invariant engine, **3)** action schema/intent typing, **4)** pre-execution guard, **5)** only then persist.
+[
+\max(I,E,C,A,R,P,S,D,T,K,X,B,L,F)=D
+]
+Good here means **deterministic upstream rejection**, even without a canonical writer.
+
+## Variables
+
+* (I_d): discovered invariants
+* (I_p): promoted (enforced) invariants
+* (S): states
+* (T): transitions
+* (F(s,a)): failure signal
+* (\sigma): support count
+* (\theta): promotion threshold
+
+---
+
+## Equations
+
+1. **Invariant Detection**
+   [
+   I_d: ; \forall (s,a),; F(s,a) \Rightarrow \text{pattern}(s,a)
+   ]
+   → detect repeated failure patterns
+
+2. **Support Accumulation**
+   [
+   \sigma(I_d) = \sum \mathbf{1}_{\text{pattern observed}}
+   ]
+   → count how often it occurs
+
+3. **Promotion Rule**
+   [
+   I_p = { I_d \mid \sigma(I_d) \ge \theta }
+   ]
+   → only stable patterns become rules
+
+4. **Runtime Enforcement**
+   [
+   T'(s \rightarrow s') = T(s \rightarrow s') \cdot I_p(s')
+   ]
+   → block invalid transitions
+
+5. **Refactor Mapping**
+   [
+   \text{Code Change} = \arg\min ; \text{violations}(I_p)
+   ]
+   → rewrite code to satisfy invariants structurally
+
+---
+
+## How to Do It
+
+### Phase 1 — Discovery (already close to your system)
+
+* log failures:
+
+  * missing target
+  * invalid route
+  * verification fail
+* extract fingerprints:
+
+  * state + action + outcome
+* group identical failures → candidate (I_d)
+
+---
+
+### Phase 2 — Promotion
+
+* require:
+
+  * repeated occurrences
+  * consistent context
+* example:
+
+  * “missing_target → must plan”
+* move to (I_p) (hard rule)
+
+---
+
+### Phase 3 — Enforcement (mini-agent)
+
+* inject into:
+
+  * route selection → block illegal routes
+  * planner → reject invalid plans
+  * executor → preflight check
+
+(no writer needed)
+
+---
+
+### Phase 4 — Refactor (critical step)
+
+**Goal: remove the cause, not just block it**
+
+1. Locate origin:
+   [
+   \text{Origin} = \arg\max ; \text{violation frequency by function/module}
+   ]
+
+2. Apply structural change:
+
+* reduce branching
+* enforce preconditions
+* move validation upstream
+* merge equivalent paths
+
+3. Encode invariant in code:
+
+* not just runtime rule
+* but:
+
+  * type constraints
+  * function contracts
+  * control-flow restructuring
+
+---
+
+### Phase 5 — Collapse Back
+
+After refactor:
+[
+\sigma(I_d) \rightarrow 0
+]
+
+* invariant becomes **implicitly satisfied**
+* can:
+
+  * keep as safety
+  * or downgrade/remove
+
+---
+
+## English
+
+You use invariant discovery as a **learning layer**:
+
+* observe repeated failures
+* convert them into rules
+* enforce them early
+
+Then the key step:
+
+* **rewrite the system so the rule is naturally true**
+
+This turns:
+
+* runtime blocking → structural correctness
+
+---
+
+## Final
+
+[
+\max(I,E,C,A,R,P,S,D,T,K,X,B,L,F) = C, D, L
+]
+
+Flow:
+
+1. detect pattern
+2. promote invariant
+3. enforce upstream
+4. refactor code
+5. eliminate need for invariant
+
+**Conclusion:**
+Invariant discovery is temporary scaffolding.
+Refactoring makes the system **not need it anymore**.
