@@ -4,14 +4,9 @@ use std::io::Read;
 use std::path::PathBuf;
 
 fn take_flag_value(args: &[String], name: &str) -> Option<String> {
-    let mut i = 0usize;
-    while i + 1 < args.len() {
-        if args[i] == name {
-            return Some(args[i + 1].clone());
-        }
-        i += 1;
-    }
-    None
+    args.windows(2)
+        .find(|w| w[0] == name)
+        .map(|w| w[1].clone())
 }
 
 fn has_flag(args: &[String], name: &str) -> bool {
@@ -72,4 +67,3 @@ async fn main() -> Result<()> {
     println!("{}", serde_json::to_string_pretty(&out)?);
     Ok(())
 }
-

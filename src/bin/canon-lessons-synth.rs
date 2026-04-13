@@ -26,6 +26,14 @@ fn canonical_or_original(path: PathBuf) -> PathBuf {
     path.canonicalize().unwrap_or(path)
 }
 
+fn resolve_path_flag(args: &[String], flag: &str, default: PathBuf) -> PathBuf {
+    canonical_or_original(
+        parse_flag_value(args, flag)
+            .map(PathBuf::from)
+            .unwrap_or(default),
+    )
+}
+
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
@@ -34,14 +42,8 @@ fn main() -> Result<()> {
     }
 
     let cwd = std::env::current_dir()?;
-    let workspace = parse_flag_value(&args, "--workspace")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| cwd.clone());
-    let workspace = canonical_or_original(workspace);
-    let state_dir = parse_flag_value(&args, "--state-dir")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| workspace.join("agent_state"));
-    let state_dir = canonical_or_original(state_dir);
+    let workspace = resolve_path_flag(&args, "--workspace", cwd.clone());
+    let state_dir = resolve_path_flag(&args, "--state-dir", workspace.join("agent_state"));
 
     set_workspace(workspace.to_string_lossy().into_owned());
     set_agent_state_dir(state_dir.to_string_lossy().into_owned());

@@ -560,27 +560,27 @@ fn handle_objectives_replace_objectives(
         .map(|_| (false, "objectives replace_objectives ok".to_string()))
 }
 
+fn load_violations(path: &Path) -> Result<crate::reports::ViolationsReport> {
+    let raw = fs::read_to_string(path).unwrap_or_default();
+    if raw.trim().is_empty() {
+        return Ok(crate::reports::ViolationsReport { status: "ok".to_string(), summary: String::new(), violations: vec![] });
+    }
+    serde_json::from_str(&raw).map_err(|e| anyhow!("VIOLATIONS.json parse error: {e}"))
+}
+
+fn save_violations(path: &Path, report: &crate::reports::ViolationsReport) -> Result<()> {
+    let json = serde_json::to_string_pretty(report)?;
+    fs::write(path, json).map_err(|e| anyhow!("failed to write VIOLATIONS.json: {e}"))
+}
+
 fn handle_violation_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
     use crate::reports::{ViolationsReport, Violation};
     let op_raw = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
     let path = workspace.join(VIOLATIONS_FILE);
 
-    fn load(path: &Path) -> Result<ViolationsReport> {
-        let raw = fs::read_to_string(path).unwrap_or_default();
-        if raw.trim().is_empty() {
-            return Ok(ViolationsReport { status: "ok".to_string(), summary: String::new(), violations: vec![] });
-        }
-        serde_json::from_str(&raw).map_err(|e| anyhow!("VIOLATIONS.json parse error: {e}"))
-    }
-
-    fn save(path: &Path, report: &ViolationsReport) -> Result<()> {
-        let json = serde_json::to_string_pretty(report)?;
-        fs::write(path, json).map_err(|e| anyhow!("failed to write VIOLATIONS.json: {e}"))
-    }
-
     match op_raw {
         "read" => {
-            let report = load(&path)?;
+            let report = load_violations(&path)?;
             Ok((false, serde_json::to_string_pretty(&report)?))
         }
         "upsert" => {
@@ -592,21 +592,21 @@ fn handle_violation_action(workspace: &Path, action: &Value) -> Result<(bool, St
             if v.id.trim().is_empty() {
                 bail!("violation.id must be non-empty");
             }
-            let mut report = load(&path)?;
+            let mut report = load_violations(&path)?;
             if let Some(existing) = report.violations.iter_mut().find(|x| x.id == v.id) {
                 *existing = v.clone();
-                save(&path, &report)?;
+                save_violations(&path, &report)?;
                 Ok((false, format!("violation upsert ok — updated `{}`", v.id)))
             } else {
                 report.violations.push(v.clone());
-                save(&path, &report)?;
+                save_violations(&path, &report)?;
                 Ok((false, format!("violation upsert ok — added `{}`", v.id)))
             }
         }
         "resolve" => {
             let vid = action.get("violation_id").and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("violation resolve requires 'violation_id'"))?;
-            let mut report = load(&path)?;
+            let mut report = load_violations(&path)?;
             let before = report.violations.len();
             report.violations.retain(|v| v.id != vid);
             if report.violations.len() == before {
@@ -615,18 +615,18 @@ fn handle_violation_action(workspace: &Path, action: &Value) -> Result<(bool, St
             if report.violations.is_empty() {
                 report.status = "ok".to_string();
             }
-            save(&path, &report)?;
+            save_violations(&path, &report)?;
             Ok((false, format!("violation resolve ok — removed `{vid}`")))
         }
         "set_status" => {
             let status = action.get("status").and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("violation set_status requires 'status'"))?;
-            let mut report = load(&path)?;
+            let mut report = load_violations(&path)?;
             report.status = status.to_string();
             if let Some(s) = action.get("summary").and_then(|v| v.as_str()) {
                 report.summary = s.to_string();
             }
-            save(&path, &report)?;
+            save_violations(&path, &report)?;
             Ok((false, format!("violation set_status ok — status=`{status}`")))
         }
         "replace" => {
@@ -634,7 +634,7 @@ fn handle_violation_action(workspace: &Path, action: &Value) -> Result<(bool, St
                 .ok_or_else(|| anyhow!("violation replace requires a 'report' object"))?;
             let report: ViolationsReport = serde_json::from_value(rep_val.clone())
                 .map_err(|e| anyhow!("invalid ViolationsReport payload: {e}"))?;
-            save(&path, &report)?;
+            save_violations(&path, &report)?;
             Ok((false, format!("violation replace ok — {} violation(s)", report.violations.len())))
         }
         _ => bail!("unknown violation op '{op_raw}' — use: read | upsert | resolve | set_status | replace"),
