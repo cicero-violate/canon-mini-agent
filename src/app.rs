@@ -1141,6 +1141,17 @@ fn dispatch_executor_submits(
                 state.insert("actor_kind".to_string(), "solo".to_string());
                 state.insert("error_class".to_string(), "invalid_schema".to_string());
             }
+            let executor_invalid_schema_count = crate::blockers::count_class_recent(
+                &blockers,
+                "executor",
+                &crate::error_class::ErrorClass::InvalidSchema,
+                now_ms,
+                5 * 60 * 1000, // 5 minute window
+            );
+            if executor_invalid_schema_count >= 3 {
+                state.insert("actor_kind".to_string(), "executor".to_string());
+                state.insert("error_class".to_string(), "invalid_schema".to_string());
+            }
             // Detect orchestrator livelock conditions and surface into invariant state
             let livelock_count = crate::blockers::count_class_recent(
                 &blockers,
