@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use crate::events::ControlEvent;
 
 /// Serializable state for a single executor lane.
-/// Replaces `DispatchLaneState` from `app.rs`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LaneState {
     pub pending: bool,
@@ -207,7 +206,7 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
             s.lane_active_tab.insert(*lane_id, *tab_id);
         }
         ControlEvent::TabIdToLaneSet { tab_id, lane_id } => {
-            s.tab_id_to_lane.entry(*tab_id).or_insert(*lane_id);
+            s.tab_id_to_lane.insert(*tab_id, *lane_id);
         }
         ControlEvent::LaneNextSubmitAtSet { lane_id, ms } => {
             s.lane_next_submit_at_ms.insert(*lane_id, *ms);
@@ -236,7 +235,7 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
             // Mirror the four companion field updates that `register_submitted_executor_turn`
             // used to perform directly on `DispatchState`.
             s.lane_active_tab.insert(*lane_id, *tab_id);
-            s.tab_id_to_lane.entry(*tab_id).or_insert(*lane_id);
+            s.tab_id_to_lane.insert(*tab_id, *lane_id);
             s.lane_next_submit_at_ms
                 .insert(*lane_id, crate::logging::now_ms());
             s.lane_submit_in_flight.insert(*lane_id, false);

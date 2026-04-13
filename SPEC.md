@@ -115,6 +115,44 @@ The system is a deterministic event-driven loop with explicit roles.
 - `ActionResult`: `{ complete: bool, output: string }`.
 - `RunConfig`: timeouts, tool availability, and patch scope policy.
 
+### 1.5 Canonical Writer Infrastructure
+
+The orchestrator state machine is implemented as a **Canonical Writer** — a single deterministic gate for all serializable state mutations:
+
+```
+W(s_t, e) → s_{t+1}
+```
+
+Every state transition is represented as a typed `ControlEvent` variant, appended to the total-ordered log before the state transition executes. The gate is enforced by `CanonicalWriter::apply` in `src/canonical_writer.rs`.
+
+**Components:**
+
+| Component | Type | Role |
+|-----------|------|------|
+| `CanonicalWriter` | `src/canonical_writer.rs` | Single mutation gate: `apply(ControlEvent)` → logs then transitions |
+| `SystemState` | `src/system_state.rs` | All serializable orchestrator state (phase, lanes, pending flags, diffs) |
+| `RuntimeState` | `src/app.rs` | Non-serializable runtime-only state (tab handles, in-flight join sets) |
+| `ControlEvent` | `src/events.rs` | Typed enum of all valid state transitions (23 variants) |
+| `EffectEvent` | `src/events.rs` | Side-effect record (invariant violations, checkpoints) |
+| `Tlog` | `src/tlog.rs` | Append-only NDJSON event log at `AgentStateDir/tlog.ndjson` |
+
+**Invariant gate:** Before emitting a `ControlEvent`, callers invoke `evaluate_invariant_gate` (`src/invariants.rs`). On violation the caller calls `writer.record_violation(...)` — which appends to the tlog without advancing state — and aborts the transition.
+
+**`RuntimeState` fields** (never serialized, never checkpointed):
+- `submitted_turns: HashMap<(u32, u64), SubmittedExecutorTurn>` — active executor turns keyed by `(tab_id, turn_id)`
+- `executor_submit_inflight: HashMap<usize, PendingSubmitState>` — in-flight submit tasks per lane
+- `deferred_completions: HashMap<usize, VecDeque<DeferredExecutorCompletion>>` — completions queued while another is processing
+
+**`SystemState` key fields** (all serialized to checkpoint):
+- `phase`, `phase_lane`, `scheduled_phase` — orchestration phase tracking
+- `planner_pending`, `diagnostics_pending` — pending flags
+- `lanes: HashMap<usize, LaneState>` — per-lane `{pending, in_progress_by, latest_verifier_result, plan_text}`
+- `verifier_summary: Vec<String>` — per-lane verifier result summaries
+- `lane_active_tab`, `tab_id_to_lane`, `lane_steps_used`, `lane_next_submit_at_ms`, `lane_submit_in_flight`, `lane_prompt_in_flight` — executor dispatch bookkeeping
+- `submitted_turn_ids: HashMap<String, SubmittedTurnRecord>` — serializable record of in-flight executor turns
+
+**`apply_control_event`** (`src/system_state.rs`) is a pure function with no side effects. It is the only function permitted to construct `s_{t+1}` from `s_t`. All runtime code calls it exclusively through `CanonicalWriter::apply`.
+
 ### 1.2 Role State (per agent)
 - `prompt_kind: PromptKind`
 - `step: u64` (monotonic, starts at 1 per role cycle)
@@ -131,6 +169,7 @@ Canonical file paths are absolute under `Workspace` (see `src/constants.rs:3-11`
 - `LanePlan`: `PLANS/<instance>/executor-<id>.json` (preferred) or legacy `PLANS/executor-<id>.md` (see `src/tools.rs:49-63`)
 - `Violations`: `VIOLATIONS.json`
 - `Diagnostics`: runtime-configured instance-scoped path `PLANS/<instance>/diagnostics-<instance>.json`; legacy `DIAGNOSTICS.json` is still accepted for migration/read compatibility
+- `Tlog`: `AgentStateDir/tlog.ndjson` — total-ordered NDJSON event log written by `CanonicalWriter`; one JSON record per line with fields `seq`, `ts_ms`, `event`. Authoritative replay source for all state transitions.
 
 ### 1.4 Workspace Resolution Rule
 Every `path` field in every action is resolved as follows:
@@ -348,7 +387,7 @@ The orchestrator uses wakeup flags and `planner_pending` / `diagnostics_pending`
 ```
 Role emits message{to=Planner}
   -> persist_inbound_message() writes last_message_to_planner.json + wakeup_planner.flag
-  -> dispatch_state.planner_pending = true
+  -> writer.apply(ControlEvent::PlannerPendingSet { pending: true })   [logged to tlog]
   -> next orchestration loop iteration: apply_wake_flags() schedules planner
   -> planner prompt injects inbound message via inject_inbound_message()
 ```
@@ -368,9 +407,9 @@ If `cycle_progress = true` (work was dispatched) but all five hashes are unchang
 - The stall counter resets and the orchestrator enters the normal idle path.
 - Resuming requires a manual `wakeup_*.flag` write or process restart.
 
-The stall counter is **not** incremented when executor turns are in flight (`submitted_turns`, `executor_submit_inflight`, or any `lane_submit_in_flight` non-empty). In-flight executor work legitimately produces no file change until the browser tab returns a result; counting those cycles as stalls would be a false positive.
+The stall counter is **not** incremented when executor turns are in flight (`rt.submitted_turns`, `rt.executor_submit_inflight`, or any `writer.state().lane_submit_in_flight` value non-empty). In-flight executor work legitimately produces no file change until the browser tab returns a result; counting those cycles as stalls would be a false positive.
 
-Implementation: `cycle_state_hash`, `write_livelock_report` in `src/app.rs`; constant `STALL_CYCLE_THRESHOLD = 5`.
+Implementation: `cycle_state_hash`, `write_livelock_report` in `src/app.rs`; constant `STALL_CYCLE_THRESHOLD = 5`. Livelock detection reads inflight state from `RuntimeState` (`rt`) and serializable state from `writer.state()`.
 
 **Diagnostics report schema note:** The canonical `DiagnosticsReport` shape (defined in `src/reports.rs`) contains `status`, `inputs_scanned`, `ranked_failures`, and `planner_handoff`. The runtime reconciliation function (`reconcile_diagnostics_report` in `src/prompt_inputs.rs`) uses a typed round-trip through `DiagnosticsReport` so no unrecognised fields can be introduced — extra fields cannot survive re-serialisation of the struct.
 
@@ -531,8 +570,9 @@ In self-modification mode only:
 
 **I13 — No permission escalation:** Executor must not patch `src/tools.rs::patch_scope_error` or any other scope-guard logic in a way that expands role permissions beyond SPEC.md §4. Any such patch requires verifier sign-off with explicit SPEC.md §4 justification.
 
-**I14 — Checkpoint compatibility:** Changes to `OrchestratorCheckpoint` fields must use `#[serde(default)]` for additions. Removing or renaming fields requires a version bump or checkpoint discard on load. The `workspace` field must always be populated on save and validated on load.
-Checkpoint `phase` values include `planner`, `executor`, `verifier`, `diagnostics`, and `solo`.
+**I14 — Checkpoint and tlog compatibility:** Changes to `OrchestratorCheckpoint` fields must use `#[serde(default)]` for additions. Removing or renaming fields requires a version bump or checkpoint discard on load. The `workspace` field must always be populated on save and validated on load. Checkpoint `phase` values include `planner`, `executor`, `verifier`, `diagnostics`, and `solo`.
+
+Changes to `SystemState` fields follow the same rule: additions must use `#[serde(default)]`. The tlog (`AgentStateDir/tlog.ndjson`) is append-only and may contain entries from prior `SystemState` schemas; readers must tolerate unknown `ControlEvent` variants gracefully. Changes to `ControlEvent` variants are additive only — existing variants must not be renamed or removed while a tlog from that schema may be in service.
 
 ### 9.4 Safety Properties (Why It's Safe)
 - **No mid-run corruption:** The running orchestrator binary is already loaded into memory. Patching `src/` files does not affect the current process — changes take effect only on the next `cargo build` + process restart.

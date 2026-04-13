@@ -55,7 +55,7 @@ use crate::prompt_inputs::{
     OrchestratorContext, PlannerInputs, SingleRoleContext, SingleRoleInputs, VerifierPromptInputs,
 };
 use crate::events::ControlEvent;
-use crate::system_state::{LaneState, SystemState};
+use crate::system_state::SystemState;
 use crate::tlog::Tlog;
 use crate::canonical_writer::CanonicalWriter;
 
@@ -3602,9 +3602,6 @@ fn build_endpoints() -> Vec<LlmEndpoint> {
         .collect()
 }
 
-// `DispatchLaneState` is now `LaneState` from `system_state.rs`.
-// This alias keeps any remaining internal references compiling during the migration.
-type DispatchLaneState = LaneState;
 
 #[derive(Clone)]
 struct PendingSubmitState {

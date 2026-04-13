@@ -1,1 +1,1 @@
-auto-filled blocker evidence
+The requested work requires authoritative mutation of PLAN.json via `plan` plus issue/objective bookkeeping updates, but no canon runtime executor is available here to apply those changes truthfully.
