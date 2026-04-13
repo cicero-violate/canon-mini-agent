@@ -7,5 +7,27 @@
 # To disable wrapper for a single invocation: RUSTC_WORKSPACE_WRAPPER="" cargo build
 rustc-wrapper = "/workspace/ai_sandbox/canon-rustc-v2/target/debug/canon-rustc-v2"
 
+rustflags = [
+"-Dwarnings",
+"-Dunused",
+"-Dunused-attributes",
+"-Dunused-imports",
+"-Dunused-variables",
+# "-Fdead-code",
+"-Dclippy::allow_attributes",
+"-Dclippy::allow_attributes_without_reason"
+]
+
+[target.'cfg(all())']
+rustflags = [
+  "-Dwarnings",
+  # "-Fdead-code",
+  "-Dclippy::allow_attributes",
+  "-Dclippy::allow_attributes_without_reason"
+]
+
+
 [env]
 CANON_RUSTC_V2_ARTIFACT_DIR = "/workspace/ai_sandbox/canon-mini-agent/state/rustc"
+RUST_BACKTRACE = "full"
+
