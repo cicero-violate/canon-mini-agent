@@ -687,6 +687,8 @@ fn fingerprint_tool_failure(
         "verifier"
     } else if actor.starts_with("diagnostics") {
         "diagnostics"
+    } else if actor.starts_with("orchestrator") {
+        "orchestrator"
     } else {
         "unknown"
     };
