@@ -845,7 +845,15 @@ pub fn load_planner_inputs(
     let summary_text = lane_summary_text(lanes, verifier_summary);
     let executor_diff_text = load_executor_diff_inputs(workspace, last_executor_diff, 400).diff_text;
     let lessons_text = read_lessons_or_empty(workspace);
-    let objectives_text = crate::objectives::read_objectives_compact(&workspace.join(OBJECTIVES_FILE));
+    let objectives_full = crate::objectives::read_objectives_compact(&workspace.join(OBJECTIVES_FILE));
+    // Hard cap to prevent planner prompt overflow (top-N / truncation strategy)
+    let objectives_text = if objectives_full.len() > 8000 {
+        let mut truncated = objectives_full.chars().take(8000).collect::<String>();
+        truncated.push_str("\n... (objectives truncated for prompt size)");
+        truncated
+    } else {
+        objectives_full
+    };
     let invariants_text = filter_invariants_json(&read_text_or_empty(workspace.join(INVARIANTS_FILE)));
     let raw_violations_text = read_text_or_empty(violations_path);
     let violations_text = filter_active_violations_json(&raw_violations_text);
