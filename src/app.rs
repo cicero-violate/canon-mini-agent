@@ -4994,6 +4994,33 @@ mod tests {
     use std::collections::{HashMap, VecDeque};
 
     #[test]
+    fn route_gate_source_injects_inv_171c039a_tuple_before_evaluation() {
+        let source = include_str!("app.rs");
+        let invalid_route_count = source
+            .find("let orchestrator_invalid_route_count = crate::blockers::count_class_recent(")
+            .expect("missing orchestrator invalid_route count wiring");
+        let actor_kind_insert = source[invalid_route_count..]
+            .find("state.insert(\"actor_kind\".to_string(), \"orchestrator\".to_string());")
+            .map(|offset| invalid_route_count + offset)
+            .expect("missing orchestrator actor_kind injection");
+        let error_class_insert = source[actor_kind_insert..]
+            .find("state.insert(\"error_class\".to_string(), \"invalid_route\".to_string());")
+            .map(|offset| actor_kind_insert + offset)
+            .expect("missing invalid_route error_class injection");
+        let route_eval = source[error_class_insert..]
+            .find("crate::invariants::evaluate_invariant_gate(\"route\", &state, &ws)")
+            .map(|offset| error_class_insert + offset)
+            .expect("missing route-gate invariant evaluation");
+
+        assert!(
+            invalid_route_count < actor_kind_insert
+                && actor_kind_insert < error_class_insert
+                && error_class_insert < route_eval,
+            "INV-171c039a wiring must inject the exact orchestrator invalid_route tuple before route-gate evaluation"
+        );
+    }
+
+    #[test]
     fn build_agent_prompt_includes_role_schema_on_nonzero_steps_when_enabled() {
         let (schema0, prompt0) = super::build_agent_prompt(
             "planner",
