@@ -482,20 +482,44 @@ fn main() -> Result<()> {
     let idle_marker = cycle_idle_marker_path(&filtered_args);
     let orchestrator_mode_flag = orchestrator_mode_flag_path(&filtered_args);
 
+    run_supervisor_loop(
+        &exe,
+        &root,
+        &filtered_args,
+        shutdown.as_ref(),
+        &child_pid,
+        no_watch,
+        &orchestrator_mode_flag,
+        &idle_marker,
+        prefer_release,
+    )
+}
+
+fn run_supervisor_loop(
+    exe: &str,
+    root: &Path,
+    filtered_args: &[String],
+    shutdown: &AtomicBool,
+    child_pid: &Arc<AtomicU32>,
+    no_watch: bool,
+    orchestrator_mode_flag: &Path,
+    idle_marker: &Path,
+    prefer_release: bool,
+) -> Result<()> {
     loop {
-        let current = newest_candidate(&root, prefer_release)?;
-        emit_iteration_status_and_report(&exe, &root, &current, &filtered_args);
+        let current = newest_candidate(root, prefer_release)?;
+        emit_iteration_status_and_report(exe, root, &current, filtered_args);
         let (mut child, mut pending_update, child_started_at) =
-            start_supervisor_child(&current, &filtered_args, &child_pid)?;
+            start_supervisor_child(&current, filtered_args, child_pid)?;
 
         if supervise_current_child(
-            shutdown.as_ref(),
+            shutdown,
             no_watch,
-            &root,
+            root,
             &current,
             &mut pending_update,
-            &orchestrator_mode_flag,
-            &idle_marker,
+            orchestrator_mode_flag,
+            idle_marker,
             child_started_at,
             prefer_release,
             &mut child,
@@ -1088,6 +1112,51 @@ fn load_primary_semantic_index(workspace: &Path) -> Option<canon_mini_agent::Sem
     None
 }
 
+fn collect_failure_signals(
+    workspace: &Path,
+    maybe_idx: Option<&canon_mini_agent::SemanticIndex>,
+) -> Vec<String> {
+    let mut failure_symbols = load_violation_symbols(workspace);
+    let (issue_symbols, issue_locations) = load_issue_failure_signals(workspace);
+    failure_symbols.extend(issue_symbols);
+    if let Some(idx) = maybe_idx {
+        let resolved = resolve_file_locations(idx, workspace, &issue_locations);
+        failure_symbols.extend(resolved);
+    }
+    failure_symbols.sort();
+    failure_symbols.dedup();
+    failure_symbols
+}
+
+fn run_child_until_exit(
+    current: &BinaryCandidate,
+    filtered_args: &[String],
+    shutdown: &AtomicBool,
+    child_pid: &AtomicU32,
+) -> Result<bool> {
+    let mut child = spawn_child(current, filtered_args)?;
+    child_pid.store(child.id(), Ordering::SeqCst);
+
+    loop {
+        thread::sleep(Duration::from_millis(1000));
+        if shutdown.load(Ordering::SeqCst) {
+            send_sigint(&child);
+            wait_for_exit(&mut child, Duration::from_secs(10));
+            eprintln!("[canon-mini-supervisor] loop: shutdown; stopping");
+            child_pid.store(0, Ordering::SeqCst);
+            return Ok(true);
+        }
+        match child.try_wait().context("wait child")? {
+            Some(status) => {
+                eprintln!("[canon-mini-supervisor] loop: agent exited: {status}");
+                child_pid.store(0, Ordering::SeqCst);
+                return Ok(false);
+            }
+            None => continue,
+        }
+    }
+}
+
 /// Bounded repair loop: run the agent for up to `max_iterations` cycles, stopping
 /// early when `cargo test --workspace` passes cleanly.
 ///
@@ -1131,17 +1200,8 @@ fn run_repair_loop(
             break;
         }
 
-        // Load failure signals from VIOLATIONS.json and ISSUES.json, then merge.
-        let mut failure_symbols = load_violation_symbols(workspace);
-        let (issue_symbols, issue_locations) = load_issue_failure_signals(workspace);
-        failure_symbols.extend(issue_symbols);
         let maybe_idx = load_primary_semantic_index(workspace);
-        if let Some(ref idx) = maybe_idx {
-            let resolved = resolve_file_locations(idx, workspace, &issue_locations);
-            failure_symbols.extend(resolved);
-        }
-        failure_symbols.sort();
-        failure_symbols.dedup();
+        let failure_symbols = collect_failure_signals(workspace, maybe_idx.as_ref());
         eprintln!(
             "[canon-mini-supervisor] loop: {} failure signal(s) loaded",
             failure_symbols.len()
@@ -1165,26 +1225,9 @@ fn run_repair_loop(
             "[canon-mini-supervisor] loop: spawning agent from {}",
             current.path.display()
         );
-        let mut child = spawn_child(&current, filtered_args)?;
-        child_pid.store(child.id(), Ordering::SeqCst);
-
-        loop {
-            thread::sleep(Duration::from_millis(1000));
-            if shutdown.load(Ordering::SeqCst) {
-                send_sigint(&child);
-                wait_for_exit(&mut child, Duration::from_secs(10));
-                eprintln!("[canon-mini-supervisor] loop: shutdown; stopping");
-                return Ok(());
-            }
-            match child.try_wait().context("wait child")? {
-                Some(status) => {
-                    eprintln!("[canon-mini-supervisor] loop: agent exited: {status}");
-                    break;
-                }
-                None => continue,
-            }
+        if run_child_until_exit(&current, filtered_args, shutdown, child_pid)? {
+            return Ok(());
         }
-        child_pid.store(0, Ordering::SeqCst);
 
         // Check test gate.
         tests_passing = check_test_gate(root);

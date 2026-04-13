@@ -1269,17 +1269,17 @@ fn classify_patch_targets(targets: &[&str]) -> PatchTargetTouches {
 
 fn executor_patch_scope_error(touches: &PatchTargetTouches, self_mod: bool) -> Option<String> {
     let spec_blocked = touches.touches_spec && !self_mod;
-    let src_blocked = (touches.touches_src || touches.touches_tests) && !self_mod;
+    let tests_blocked = touches.touches_tests && !self_mod;
     if spec_blocked
         || touches.touches_master_plan
         || touches.touches_lane
         || touches.touches_violations
         || touches.touches_diagnostics
-        || src_blocked
+        || tests_blocked
         || touches.touches_other
     {
         Some(
-            "Executor may not patch plan files, violations, diagnostics, invariants, objectives, or normal-mode source files. Execute code/tests only and report evidence in `message.payload`."
+            "Executor may not patch plan files, violations, diagnostics, invariants, objectives, tests outside self-modification mode, or out-of-scope files. Execute code/tests only and report evidence in `message.payload`."
                 .to_string(),
         )
     } else {

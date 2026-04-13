@@ -85,17 +85,26 @@ fn emit_message(
     status: String,
     payload: Value,
 ) -> Result<()> {
-    let msg = json!({
+    let msg = build_message_json(from, to, msg_type, status, payload);
+    println!("{}", serde_json::to_string_pretty(&msg)?);
+    Ok(())
+}
+
+fn build_message_json(
+    from: String,
+    to: String,
+    msg_type: String,
+    status: String,
+    payload: Value,
+) -> Value {
+    json!({
         "action": "message",
         "from": from,
         "to": to,
         "type": msg_type,
         "status": status,
         "payload": payload
-    });
-
-    println!("{}", serde_json::to_string_pretty(&msg)?);
-    Ok(())
+    })
 }
 
 fn build_route_payload(input: Value) -> Value {
