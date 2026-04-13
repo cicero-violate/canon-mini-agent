@@ -20,18 +20,30 @@ Output (stdout): {\"predicted_next_actions\":[...]} where entries are action stu
 }
 
 fn read_action_input() -> Result<Value> {
-    let mut raw = String::new();
-    std::io::stdin().read_to_string(&mut raw).context("read stdin")?;
+    let raw = read_stdin_string()?;
     serde_json::from_str(&raw).context("stdin is not valid JSON")
 }
 
+fn read_stdin_string() -> Result<String> {
+    let mut raw = String::new();
+    std::io::stdin().read_to_string(&mut raw).context("read stdin")?;
+    Ok(raw)
+}
+
 fn predicted_next_actions(action: &Value) -> Vec<Value> {
-    existing_predicted_next_actions(action)
-        .unwrap_or_else(|| predicted_next_actions_from_kind(action))
+    forward_prediction((existing_predicted_next_actions(action), action), |(existing, action)| {
+        existing.unwrap_or_else(|| predicted_next_actions_from_kind(action))
+    })
+}
+
+fn forward_prediction<T, U>(input: T, build: impl FnOnce(T) -> U) -> U {
+    build(input)
 }
 
 fn predicted_next_actions_from_kind(action: &Value) -> Vec<Value> {
-    predicted_next_actions_for_kind(action_kind(action), action)
+    forward_prediction((action_kind(action), action), |(kind, action)| {
+        predicted_next_actions_for_kind(kind, action)
+    })
 }
 
 fn action_kind(action: &Value) -> &str {
@@ -45,8 +57,11 @@ fn predicted_next_actions_for_kind(kind: &str, action: &Value) -> Vec<Value> {
 }
 
 fn simple_prediction_for_kind(kind: &str) -> Option<Vec<Value>> {
-    simple_prediction_spec(kind)
-        .map(|(action, intent)| simple_action_prediction(action, intent))
+    simple_prediction_spec(kind).map(|spec| {
+        forward_prediction(spec, |(action, intent)| {
+            single_prediction(simple_action_prediction_value(action, intent))
+        })
+    })
 }
 
 fn simple_prediction_spec(kind: &str) -> Option<(&'static str, &'static str)> {
@@ -66,7 +81,9 @@ fn simple_prediction_spec(kind: &str) -> Option<(&'static str, &'static str)> {
 }
 
 fn file_prediction_for_kind(kind: &str, action: &Value) -> Option<Vec<Value>> {
-    file_prediction_spec(kind).map(|spec| prediction_from_file_spec(action, spec))
+    forward_prediction((file_prediction_spec(kind), action), |(spec, action)| {
+        spec.map(|spec| prediction_from_file_spec(action, spec))
+    })
 }
 
 fn prediction_from_file_spec(
@@ -116,7 +133,9 @@ fn single_prediction(prediction: Value) -> Vec<Value> {
 }
 
 fn simple_action_prediction(action: &str, intent: &str) -> Vec<Value> {
-    single_prediction(simple_action_prediction_value(action, intent))
+    forward_prediction((action, intent), |(action, intent)| {
+        single_prediction(simple_action_prediction_value(action, intent))
+    })
 }
 
 fn simple_action_prediction_value(action: &str, intent: &str) -> Value {
@@ -233,6 +252,16 @@ mod tests {
         assert_eq!(prediction[0]["action"], "read_file");
         assert_eq!(prediction[0]["path"], "custom/path.json");
         assert_eq!(prediction[0]["intent"], "Inspect generated symbols inventory.");
+    }
+
+    #[test]
+    fn predicted_next_actions_falls_back_to_file_prediction_for_symbols_index() {
+        let input = json!({"action": "symbols_index", "out": "custom/path.json"});
+        let result = predicted_next_actions(&input);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0]["action"], "read_file");
+        assert_eq!(result[0]["path"], "custom/path.json");
+        assert_eq!(result[0]["intent"], "Inspect generated symbols inventory.");
     }
 
     #[test]

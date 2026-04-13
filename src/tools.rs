@@ -351,22 +351,6 @@ fn objective_id_from_action<'a>(action: &'a Value, op_name: &str) -> Result<&'a 
         .ok_or_else(|| anyhow!("objectives {op_name} missing objective_id"))
 }
 
-fn log_objective_attempt(
-    op: &str,
-    objective_id: Option<&str>,
-    objectives: &[crate::objectives::Objective],
-) {
-    log_objective_operation_context(op, "attempt", objective_id, objectives);
-}
-
-fn log_objective_success(
-    op: &str,
-    objective_id: Option<&str>,
-    objectives: &[crate::objectives::Objective],
-) {
-    log_objective_operation_context(op, "success", objective_id, objectives);
-}
-
 fn log_objective_not_found_and_bail(
     op: &str,
     objective_id: &str,
@@ -449,7 +433,7 @@ fn handle_objectives_create_objective(
     if objective.id.trim().is_empty() {
         bail!("objective.id must be non-empty");
     }
-    log_objective_attempt("create_objective", Some(&objective.id), &file.objectives);
+    log_objective_operation_context("create_objective", "attempt", Some(&objective.id), &file.objectives);
     if file
         .objectives
         .iter()
@@ -465,7 +449,7 @@ fn handle_objectives_create_objective(
     }
     file.objectives.push(objective);
     let created_id = file.objectives.last().map(|obj| obj.id.as_str());
-    log_objective_success("create_objective", created_id, &file.objectives);
+    log_objective_operation_context("create_objective", "success", created_id, &file.objectives);
     write_objectives_file(path, &file)
         .map(|_| (false, "objectives create_objective ok".to_string()))
 }
@@ -481,7 +465,7 @@ fn handle_objectives_update_objective(
         .and_then(|v| v.as_object())
         .ok_or_else(|| anyhow!("objectives update_objective missing updates object. Required schema: {{\"op\":\"update_objective\",\"objective_id\":\"<id>\",\"updates\":{{\"title\":\"<title>\",\"status\":\"<status>\"}}}}"))?;
     let mut file = parse_objectives_file_strict(raw)?;
-    log_objective_attempt("update_objective", Some(objective_id), &file.objectives);
+    log_objective_operation_context("update_objective", "attempt", Some(objective_id), &file.objectives);
     let mut found = false;
     for obj in file.objectives.iter_mut() {
         if objective_id_matches(&obj.id, objective_id) {
@@ -499,7 +483,7 @@ fn handle_objectives_update_objective(
     if !found {
         return log_objective_not_found_and_bail("update_objective", objective_id, &file.objectives);
     }
-    log_objective_success("update_objective", Some(objective_id), &file.objectives);
+    log_objective_operation_context("update_objective", "success", Some(objective_id), &file.objectives);
     write_objectives_file(path, &file)
         .map(|_| (false, "objectives update_objective ok".to_string()))
 }
@@ -511,14 +495,14 @@ fn handle_objectives_delete_objective(
 ) -> Result<(bool, String)> {
     let objective_id = objective_id_from_action(action, "delete_objective")?;
     let mut file = parse_objectives_file_or_default(raw);
-    log_objective_attempt("delete_objective", Some(objective_id), &file.objectives);
+    log_objective_operation_context("delete_objective", "attempt", Some(objective_id), &file.objectives);
     let before = file.objectives.len();
     file.objectives
         .retain(|obj| !objective_id_matches(&obj.id, objective_id));
     if file.objectives.len() == before {
         return log_objective_not_found_and_bail("delete_objective", objective_id, &file.objectives);
     }
-    log_objective_success("delete_objective", Some(objective_id), &file.objectives);
+    log_objective_operation_context("delete_objective", "success", Some(objective_id), &file.objectives);
     write_objectives_file(path, &file)
         .map(|_| (false, "objectives delete_objective ok".to_string()))
 }
@@ -534,7 +518,7 @@ fn handle_objectives_set_status(
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("objectives set_status missing status"))?;
     let mut file = parse_objectives_file_or_default(raw);
-    log_objective_attempt("set_status", Some(objective_id), &file.objectives);
+    log_objective_operation_context("set_status", "attempt", Some(objective_id), &file.objectives);
     let mut found = false;
     for obj in file.objectives.iter_mut() {
         if objective_id_matches(&obj.id, objective_id) {
@@ -546,7 +530,7 @@ fn handle_objectives_set_status(
     if !found {
         return log_objective_not_found_and_bail("set_status", objective_id, &file.objectives);
     }
-    log_objective_success("set_status", Some(objective_id), &file.objectives);
+    log_objective_operation_context("set_status", "success", Some(objective_id), &file.objectives);
     write_objectives_file(path, &file)
         .map(|_| (false, "objectives set_status ok".to_string()))
 }
