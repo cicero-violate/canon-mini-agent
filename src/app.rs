@@ -1168,16 +1168,26 @@ fn evaluate_executor_route_gates(
         state.insert("error".to_string(), "step_limit_exceeded".to_string());
     }
 
-    let orchestrator_invalid_route_count = blockers
+    let orchestrator_invalid_route_count = crate::blockers::count_class_recent(
+        &blockers,
+        "orchestrator",
+        &crate::error_class::ErrorClass::InvalidRoute,
+        now_ms,
+        60 * 1000,
+    );
+    let orchestrator_route_dispatch_invalid_route_count = blockers
         .blockers
         .iter()
         .filter(|b| {
             b.actor.starts_with("orchestrator")
                 && matches!(b.error_class, crate::error_class::ErrorClass::InvalidRoute)
                 && now_ms.saturating_sub(b.ts_ms) <= 60 * 1000
+                && b.action_kind == "route_dispatch"
         })
         .count();
-    if orchestrator_invalid_route_count >= 3 {
+    let orchestrator_non_route_dispatch_invalid_route_count = orchestrator_invalid_route_count
+        .saturating_sub(orchestrator_route_dispatch_invalid_route_count);
+    if orchestrator_non_route_dispatch_invalid_route_count >= 3 {
         state.insert("actor_kind".to_string(), "orchestrator".to_string());
         state.insert("error_class".to_string(), "invalid_route".to_string());
     }
