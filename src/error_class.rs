@@ -54,6 +54,8 @@ pub enum ErrorClass {
     LlmTimeout,
     /// The orchestrator detected a livelock: consecutive cycles with no watched-file state change.
     LivelockDetected,
+    /// LLM returned a response but no extractable JSON action block (prose-only reply).
+    ReactionOnly,
     /// Anything that does not fit the above classes.
     Unknown,
 }
@@ -75,6 +77,7 @@ impl ErrorClass {
             ErrorClass::VerificationFailed => "verification_failed",
             ErrorClass::LlmTimeout => "llm_timeout",
             ErrorClass::LivelockDetected => "livelock_detected",
+            ErrorClass::ReactionOnly => "reaction_only",
             ErrorClass::Unknown => "unknown",
         }
     }
@@ -108,6 +111,8 @@ impl ErrorClass {
                 "LLM endpoint call timed out or returned a connection error",
             ErrorClass::LivelockDetected =>
                 "orchestrator detected livelock: no watched-file state change after consecutive cycles",
+            ErrorClass::ReactionOnly =>
+                "LLM returned a prose-only response with no extractable JSON action block",
             ErrorClass::Unknown =>
                 "unclassified bad outcome",
         }
