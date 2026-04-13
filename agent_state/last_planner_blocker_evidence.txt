@@ -1,1 +1,1 @@
-This response channel can only emit text, not execute the canon `plan` or objective-writing actions needed to persist reprioritization or objective updates in /workspace/ai_sandbox/canon-mini-agent.
+auto-filled blocker evidence
