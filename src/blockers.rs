@@ -17,11 +17,13 @@
 ///     → invariant synthesis reads blockers.json
 ///     → groups by (actor_kind, error_class)
 ///     → promotes to invariant when support_count ≥ threshold
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
+use crate::canonical_writer::CanonicalWriter;
+use crate::events::EffectEvent;
 use crate::error_class::ErrorClass;
 
 // ── File path ─────────────────────────────────────────────────────────────────
@@ -72,14 +74,36 @@ pub struct BlockersFile {
 /// Uses a file-level mutex to be safe under concurrent executor lanes.
 /// Silently drops I/O errors to keep the hot path clean.
 pub fn append_blocker(workspace: &Path, record: BlockerRecord) {
-    if let Err(e) = try_append_blocker(workspace, record) {
+    if let Err(e) = try_append_blocker_with_writer(workspace, None, record) {
         eprintln!("[blockers] append error: {e:#}");
     }
+}
+
+/// Append a blocker record to `agent_state/blockers.json` using the canonical
+/// writer when available.
+pub fn append_blocker_with_writer(
+    workspace: &Path,
+    writer: Option<&mut CanonicalWriter>,
+    record: BlockerRecord,
+) -> Result<()> {
+    try_append_blocker_with_writer(workspace, writer, record)
 }
 
 /// Convenience: build and append from a `message{type=blocker}` action.
 pub fn record_blocker_message(
     workspace: &Path,
+    role: &str,
+    summary: &str,
+    task_id: Option<&str>,
+    objective_id: Option<&str>,
+) {
+    record_blocker_message_with_writer(workspace, None, role, summary, task_id, objective_id);
+}
+
+/// Convenience: build and append from a `message{type=blocker}` action.
+pub fn record_blocker_message_with_writer(
+    workspace: &Path,
+    writer: Option<&mut CanonicalWriter>,
     role: &str,
     summary: &str,
     task_id: Option<&str>,
@@ -98,12 +122,26 @@ pub fn record_blocker_message(
         source: "blocker_message".to_string(),
         ts_ms: ts,
     };
-    append_blocker(workspace, record);
+    if let Err(err) = append_blocker_with_writer(workspace, writer, record) {
+        eprintln!("[blockers] append blocker message error: {err:#}");
+    }
 }
 
 /// Convenience: build and append from an `ok=false` action result.
 pub fn record_action_failure(
     workspace: &Path,
+    role: &str,
+    action_kind: &str,
+    result_text: &str,
+    task_id: Option<&str>,
+) {
+    record_action_failure_with_writer(workspace, None, role, action_kind, result_text, task_id);
+}
+
+/// Convenience: build and append from an `ok=false` action result.
+pub fn record_action_failure_with_writer(
+    workspace: &Path,
+    writer: Option<&mut CanonicalWriter>,
     role: &str,
     action_kind: &str,
     result_text: &str,
@@ -130,7 +168,9 @@ pub fn record_action_failure(
         source: "action_result".to_string(),
         ts_ms: ts,
     };
-    append_blocker(workspace, record);
+    if let Err(err) = append_blocker_with_writer(workspace, writer, record) {
+        eprintln!("[blockers] append action failure error: {err:#}");
+    }
 }
 
 /// Load the blockers file. Returns empty default if absent or unreadable.
@@ -180,7 +220,98 @@ fn blockers_path(workspace: &Path) -> std::path::PathBuf {
     workspace.join(BLOCKERS_FILE)
 }
 
-fn try_append_blocker(workspace: &Path, record: BlockerRecord) -> Result<()> {
+fn blocker_signature(record: &BlockerRecord) -> String {
+    let canonical = serde_json::json!({
+        "id": record.id,
+        "error_class": record.error_class.as_key(),
+        "actor": record.actor,
+        "task_id": record.task_id,
+        "objective_id": record.objective_id,
+        "summary": record.summary,
+        "action_kind": record.action_kind,
+        "source": record.source,
+        "ts_ms": record.ts_ms,
+    });
+    let text = serde_json::to_string(&canonical).unwrap_or_else(|_| canonical.to_string());
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in text.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
+}
+
+fn snapshot_file(path: &PathBuf) -> Result<Option<Vec<u8>>> {
+    if path.exists() {
+        Ok(Some(std::fs::read(path)?))
+    } else {
+        Ok(None)
+    }
+}
+
+fn restore_file(path: &PathBuf, snapshot: &Option<Vec<u8>>) -> Result<()> {
+    if let Some(bytes) = snapshot {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, bytes)?;
+    } else if path.exists() {
+        std::fs::remove_file(path)?;
+    }
+    Ok(())
+}
+
+fn emit_blocker_artifact_effect(
+    writer: &mut CanonicalWriter,
+    requested: bool,
+    target: &str,
+    subject: &str,
+    signature: &str,
+) {
+    let effect = if requested {
+        EffectEvent::WorkspaceArtifactWriteRequested {
+            artifact: "blockers.json".to_string(),
+            op: "append".to_string(),
+            target: target.to_string(),
+            subject: subject.to_string(),
+            signature: signature.to_string(),
+        }
+    } else {
+        EffectEvent::WorkspaceArtifactWriteApplied {
+            artifact: "blockers.json".to_string(),
+            op: "append".to_string(),
+            target: target.to_string(),
+            subject: subject.to_string(),
+            signature: signature.to_string(),
+        }
+    };
+    writer.record_effect(effect);
+}
+
+fn try_emit_blocker_artifact_effect(
+    writer: &mut CanonicalWriter,
+    requested: bool,
+    target: &str,
+    subject: &str,
+    signature: &str,
+) -> Result<()> {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        emit_blocker_artifact_effect(writer, requested, target, subject, signature);
+    }));
+    if result.is_err() {
+        anyhow::bail!(
+            "canonical effect append failed for blockers.json append {}",
+            subject
+        );
+    }
+    Ok(())
+}
+
+fn try_append_blocker_with_writer(
+    workspace: &Path,
+    mut writer: Option<&mut CanonicalWriter>,
+    record: BlockerRecord,
+) -> Result<()> {
     static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
     let lock = LOCK.get_or_init(|| std::sync::Mutex::new(()));
     let _guard = lock
@@ -190,6 +321,17 @@ fn try_append_blocker(workspace: &Path, record: BlockerRecord) -> Result<()> {
     let path = blockers_path(workspace);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
+    }
+    let snapshot = if writer.is_some() {
+        Some(snapshot_file(&path)?)
+    } else {
+        None
+    };
+    let target = path.to_string_lossy().to_string();
+    let subject = record.id.clone();
+    let signature = blocker_signature(&record);
+    if let Some(writer_ref) = writer.as_deref_mut() {
+        try_emit_blocker_artifact_effect(writer_ref, true, &target, &subject, &signature)?;
     }
 
     let raw = std::fs::read_to_string(&path).unwrap_or_default();
@@ -213,7 +355,22 @@ fn try_append_blocker(workspace: &Path, record: BlockerRecord) -> Result<()> {
         file.blockers.drain(0..drain_count);
     }
 
-    std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
+    if let Err(err) = std::fs::write(&path, serde_json::to_string_pretty(&file)?) {
+        if let Some(snapshot) = snapshot.as_ref() {
+            let _ = restore_file(&path, snapshot);
+        }
+        return Err(err.into());
+    }
+    if let Some(writer_ref) = writer.as_deref_mut() {
+        if let Err(err) =
+            try_emit_blocker_artifact_effect(writer_ref, false, &target, &subject, &signature)
+        {
+            if let Some(snapshot) = snapshot.as_ref() {
+                let _ = restore_file(&path, snapshot);
+            }
+            return Err(err);
+        }
+    }
     Ok(())
 }
 
@@ -293,7 +450,7 @@ mod tests {
                 ts_ms: i as u64,
             };
             // Use the internal fn directly to bypass the Unknown filter.
-            try_append_blocker(&ws, record).unwrap();
+            append_blocker(&ws, record);
         }
         let file = load_blockers(&ws);
         assert_eq!(file.blockers.len(), MAX_BLOCKER_RECORDS);

@@ -1862,7 +1862,12 @@ fn exec_read_file(
     }
 }
 
-fn handle_message_action(role: &str, step: usize, action: &Value) -> Result<(bool, String)> {
+fn handle_message_action(
+    role: &str,
+    step: usize,
+    action: &Value,
+    mut writer: Option<&mut CanonicalWriter>,
+) -> Result<(bool, String)> {
     let status = action.get("status").and_then(|v| v.as_str()).unwrap_or("");
     let payload = action
         .get("payload")
@@ -1902,8 +1907,9 @@ fn handle_message_action(role: &str, step: usize, action: &Value) -> Result<(boo
             .get("objective_id")
             .or_else(|| payload.get("objective_id"))
             .and_then(|v| v.as_str());
-        crate::blockers::record_blocker_message(
+        crate::blockers::record_blocker_message_with_writer(
             std::path::Path::new(crate::constants::workspace()),
+            writer.as_deref_mut(),
             role,
             summary,
             task_id,
@@ -6977,7 +6983,7 @@ fn execute_action(
     action: &Value,
     workspace: &Path,
     check_on_done: bool,
-    writer: Option<&mut CanonicalWriter>,
+    mut writer: Option<&mut CanonicalWriter>,
 ) -> Result<(bool, String)> {
     let _ = check_on_done;
     let kind = action
@@ -6986,7 +6992,7 @@ fn execute_action(
         .unwrap_or("unknown")
         .to_string();
     tokio::task::block_in_place(|| match kind.as_str() {
-        "message" => handle_message_action(role, step, action),
+        "message" => handle_message_action(role, step, action, writer.as_deref_mut()),
         "list_dir" => handle_list_dir_action(workspace, action),
         "read_file" => handle_read_file_action(role, step, workspace, action),
         "symbols_index" => handle_symbols_index_action(workspace, action),
@@ -7021,8 +7027,9 @@ fn execute_action(
         "invariants" => crate::invariants::handle_invariants_action(workspace, action),
         "batch" => handle_batch_action(role, step, workspace, action),
         other => {
-            crate::blockers::record_action_failure(
+            crate::blockers::record_action_failure_with_writer(
                 workspace,
+                writer.as_deref_mut(),
                 role,
                 other,
                 &format!("unsupported action '{other}'"),
@@ -7135,10 +7142,17 @@ pub(crate) fn execute_logged_action(
     command_id: &str,
     action: &Value,
     check_on_done: bool,
-    writer: Option<&mut CanonicalWriter>,
+    mut writer: Option<&mut CanonicalWriter>,
 ) -> Result<(bool, String)> {
     log_action_event(role, endpoint, prompt_kind, step, command_id, action);
-    match execute_action(role, step, action, workspace, check_on_done, writer) {
+    match execute_action(
+        role,
+        step,
+        action,
+        workspace,
+        check_on_done,
+        writer.as_deref_mut(),
+    ) {
         Ok((done, out)) => {
             log_action_result(
                 role,
@@ -7159,8 +7173,9 @@ pub(crate) fn execute_logged_action(
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown");
             let task_id = action.get("task_id").and_then(|v| v.as_str());
-            crate::blockers::record_action_failure(
+            crate::blockers::record_action_failure_with_writer(
                 workspace,
+                writer.as_deref_mut(),
                 role,
                 action_kind,
                 &e.to_string(),

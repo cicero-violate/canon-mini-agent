@@ -474,8 +474,9 @@ async fn run_planner_phase(
             crate::invariants::evaluate_invariant_gate("planner", &state, ctx.workspace)
         {
             eprintln!("[invariant_gate] planner G_p (BLOCKED): {reason}");
-            crate::blockers::record_action_failure(
+            crate::blockers::record_action_failure_with_writer(
                 ctx.workspace,
+                Some(writer),
                 "orchestrator",
                 "planner_dispatch",
                 &reason,
@@ -826,8 +827,9 @@ async fn run_diagnostics_phase(
             crate::invariants::evaluate_invariant_gate("diagnostics", &state, ctx.workspace)
         {
             eprintln!("[invariant_gate] diagnostics G_d (BLOCKED): {reason}");
-            crate::blockers::record_action_failure(
+            crate::blockers::record_action_failure_with_writer(
                 ctx.workspace,
+                Some(writer),
                 "orchestrator",
                 "diagnostics_dispatch",
                 &reason,
@@ -5180,8 +5182,9 @@ pub async fn run() -> Result<()> {
                     || writer.state().scheduled_phase.as_deref() == Some("planner"))
             {
                 eprintln!("[orchestrate] planner paused: active blocker to verifier");
-                crate::blockers::record_action_failure(
+                crate::blockers::record_action_failure_with_writer(
                     workspace.as_path(),
+                    Some(&mut writer),
                     "orchestrate",
                     "runtime_control_bypass",
                     "runtime-only control influence: active_blocker_to_verifier.json suppressed planner dispatch",
