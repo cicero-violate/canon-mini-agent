@@ -304,6 +304,7 @@ fn example_plan_action() -> Value {
     json!({
         "action": "plan",
         "op": "create_task",
+        "question": "Should this work item be added to PLAN.json now?",
         "task": {
             "id": "T4",
             "title": "Add plan DAG",

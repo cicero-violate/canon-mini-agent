@@ -98,6 +98,7 @@ pub fn non_message_example_action(kind: &str) -> Option<Value> {
         "plan" => json!({
             "action": "plan",
             "op": "create_task",
+            "question": "Should this work item be added to PLAN.json now?",
             "task": {
                 "id": "T4",
                 "title": "Add plan DAG",
