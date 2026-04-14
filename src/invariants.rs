@@ -86,12 +86,20 @@ pub struct StateCondition {
 }
 
 /// Raw evidence attached to a discovered invariant.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct EvidenceDerivation {
+    pub rule_type: String,
+    pub observed_facts: Vec<String>,
+    pub matched_conditions: Vec<StateCondition>,
+}
+
+/// Raw evidence attached to a discovered invariant.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InvariantEvidenceSample {
     pub source: String,
     pub ts_ms: u64,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub matching_rule: String,
+    #[serde(default)]
+    pub derivation: EvidenceDerivation,
     pub raw: Value,
 }
 
@@ -593,7 +601,11 @@ fn fingerprints_from_blockers(workspace: &Path) -> Vec<Fingerprint> {
                 evidence: InvariantEvidenceSample {
                     source: "agent_state/blockers.json".to_string(),
                     ts_ms: b.ts_ms,
-                    matching_rule: String::new(),
+                    derivation: EvidenceDerivation {
+                        rule_type: "blocker_error_class".to_string(),
+                        observed_facts: Vec::new(),
+                        matched_conditions: Vec::new(),
+                    },
                     raw,
                 },
             }
@@ -678,7 +690,11 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
                 evidence: InvariantEvidenceSample {
                     source: "agent_state/default/actions.jsonl".to_string(),
                     ts_ms,
-                    matching_rule: String::new(),
+                    derivation: EvidenceDerivation {
+                        rule_type: "action_log_failure".to_string(),
+                        observed_facts: Vec::new(),
+                        matched_conditions: Vec::new(),
+                    },
                     raw: entry.clone(),
                 },
             });
@@ -700,7 +716,11 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
                     evidence: InvariantEvidenceSample {
                         source: "agent_state/default/actions.jsonl".to_string(),
                         ts_ms,
-                        matching_rule: String::new(),
+                        derivation: EvidenceDerivation {
+                            rule_type: "action_log_failure".to_string(),
+                            observed_facts: Vec::new(),
+                            matched_conditions: Vec::new(),
+                        },
                         raw: entry.clone(),
                     },
                 });
@@ -736,7 +756,11 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
                 evidence: InvariantEvidenceSample {
                     source: "agent_state/default/actions.jsonl".to_string(),
                     ts_ms,
-                    matching_rule: String::new(),
+                    derivation: EvidenceDerivation {
+                        rule_type: "action_log_failure".to_string(),
+                        observed_facts: Vec::new(),
+                        matched_conditions: Vec::new(),
+                    },
                     raw: entry.clone(),
                 },
             });
@@ -765,7 +789,11 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
                     evidence: InvariantEvidenceSample {
                         source: "agent_state/default/actions.jsonl".to_string(),
                         ts_ms,
-                        matching_rule: String::new(),
+                        derivation: EvidenceDerivation {
+                            rule_type: "action_log_failure".to_string(),
+                            observed_facts: Vec::new(),
+                            matched_conditions: Vec::new(),
+                        },
                         raw: entry.clone(),
                     },
                 });
@@ -786,7 +814,11 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
                 evidence: InvariantEvidenceSample {
                     source: "agent_state/default/actions.jsonl".to_string(),
                     ts_ms,
-                    matching_rule: String::new(),
+                    derivation: EvidenceDerivation {
+                        rule_type: "action_log_failure".to_string(),
+                        observed_facts: Vec::new(),
+                        matched_conditions: Vec::new(),
+                    },
                     raw: entry.clone(),
                 },
             });
@@ -853,16 +885,20 @@ fn fingerprint_tool_failure(
         evidence: InvariantEvidenceSample {
             source: "agent_state/default/actions.jsonl".to_string(),
             ts_ms,
-            matching_rule: String::new(),
+            derivation: EvidenceDerivation {
+                rule_type: "action_log_failure".to_string(),
+                observed_facts: Vec::new(),
+                matched_conditions: Vec::new(),
+            },
             raw: entry.clone(),
         },
     })
 }
 
-fn derive_matching_rule(fp: &Fingerprint) -> String {
+fn derive_evidence_derivation(fp: &Fingerprint) -> EvidenceDerivation {
     let raw = &fp.evidence.raw;
     let source = fp.evidence.source.as_str();
-    let mut parts = Vec::new();
+    let mut observed_facts = Vec::new();
 
     if source.ends_with("blockers.json") {
         let actor = raw.get("actor").and_then(|v| v.as_str()).unwrap_or("unknown");
@@ -870,9 +906,18 @@ fn derive_matching_rule(fp: &Fingerprint) -> String {
             .get("error_class")
             .and_then(|v| v.as_str())
             .unwrap_or("unknown");
-        parts.push(format!(
-            "semantic blocker match: actor={actor} error_class={error_class}"
-        ));
+        observed_facts.push(format!("actor={actor}"));
+        observed_facts.push(format!("error_class={error_class}"));
+        if let Some(summary) = raw.get("summary").and_then(|v| v.as_str()) {
+            let excerpt = summary
+                .split_whitespace()
+                .take(12)
+                .collect::<Vec<_>>()
+                .join(" ");
+            if !excerpt.is_empty() {
+                observed_facts.push(format!("summary={excerpt}"));
+            }
+        }
     } else {
         let actor = raw.get("actor").and_then(|v| v.as_str()).unwrap_or("unknown");
         let action = raw
@@ -883,9 +928,10 @@ fn derive_matching_rule(fp: &Fingerprint) -> String {
         let phase = raw.get("phase").and_then(|v| v.as_str()).unwrap_or("unknown");
         let ok = raw.get("ok").and_then(|v| v.as_bool());
         let status = ok.map(|v| if v { "ok=true" } else { "ok=false" }).unwrap_or("ok=unknown");
-        parts.push(format!(
-            "semantic action-log match: actor={actor} action={action} phase={phase} {status}"
-        ));
+        observed_facts.push(format!("actor={actor}"));
+        observed_facts.push(format!("action={action}"));
+        observed_facts.push(format!("phase={phase}"));
+        observed_facts.push(status.to_string());
 
         if let Some(text) = raw.get("text").and_then(|v| v.as_str()) {
             let excerpt = text
@@ -894,7 +940,7 @@ fn derive_matching_rule(fp: &Fingerprint) -> String {
                 .collect::<Vec<_>>()
                 .join(" ");
             if !excerpt.is_empty() {
-                parts.push(format!("excerpt={excerpt}"));
+                observed_facts.push(format!("excerpt={excerpt}"));
             }
         } else if let Some(summary) = raw.get("summary").and_then(|v| v.as_str()) {
             let excerpt = summary
@@ -903,27 +949,25 @@ fn derive_matching_rule(fp: &Fingerprint) -> String {
                 .collect::<Vec<_>>()
                 .join(" ");
             if !excerpt.is_empty() {
-                parts.push(format!("summary={excerpt}"));
+                observed_facts.push(format!("summary={excerpt}"));
             }
         }
     }
 
-    let cond_text = fp
-        .conditions
-        .iter()
-        .map(|c| format!("{}={}", c.key, c.value))
-        .collect::<Vec<_>>()
-        .join(", ");
-    if !cond_text.is_empty() {
-        parts.push(format!("matches invariant conditions: {cond_text}"));
+    EvidenceDerivation {
+        rule_type: if source.ends_with("blockers.json") {
+            "blocker_error_class".to_string()
+        } else {
+            "action_log_failure".to_string()
+        },
+        observed_facts,
+        matched_conditions: fp.conditions.clone(),
     }
-
-    parts.join("; ")
 }
 
-fn with_matching_rule(fp: &Fingerprint) -> InvariantEvidenceSample {
+fn with_derivation(fp: &Fingerprint) -> InvariantEvidenceSample {
     let mut sample = fp.evidence.clone();
-    sample.matching_rule = derive_matching_rule(fp);
+    sample.derivation = derive_evidence_derivation(fp);
     sample
 }
 
@@ -1013,7 +1057,7 @@ fn collect_evidence_samples(fps: &[Fingerprint]) -> Vec<InvariantEvidenceSample>
         if !seen.insert(key) {
             continue;
         }
-        out.push(with_matching_rule(fp));
+        out.push(with_derivation(fp));
         if out.len() >= MAX_EVIDENCE_SAMPLES {
             break;
         }
@@ -1667,10 +1711,20 @@ mod tests {
                 .iter()
                 .any(|c| c.key == "action" && c.value == "plan_preflight")
         }));
-        let rule = derive_matching_rule(&fps[0]);
-        assert!(rule.contains("semantic action-log match"));
-        assert!(rule.contains("plan_preflight"));
-        assert!(rule.contains("matches invariant conditions"));
+        let derivation = derive_evidence_derivation(&fps[0]);
+        assert_eq!(derivation.rule_type, "action_log_failure");
+        assert!(derivation
+            .observed_facts
+            .iter()
+            .any(|fact| fact == "actor=orchestrator"));
+        assert!(derivation
+            .observed_facts
+            .iter()
+            .any(|fact| fact == "action=plan_preflight"));
+        assert!(derivation
+            .matched_conditions
+            .iter()
+            .any(|c| c.key == "action" && c.value == "plan_preflight"));
     }
 
     #[test]
@@ -1691,7 +1745,7 @@ mod tests {
             evidence: InvariantEvidenceSample {
                 source: "agent_state/blockers.json".to_string(),
                 ts_ms: 1,
-                matching_rule: String::new(),
+                derivation: EvidenceDerivation::default(),
                 raw: json!({
                     "id": "blk-planner-invalid_schema-1",
                     "error_class": "invalid_schema",
@@ -1703,11 +1757,24 @@ mod tests {
                 }),
             },
         };
-        let rule = derive_matching_rule(&fp);
-        assert!(rule.contains("semantic blocker match"));
-        assert!(rule.contains("actor=planner"));
-        assert!(rule.contains("error_class=invalid_schema"));
-        assert!(rule.contains("matches invariant conditions"));
+        let derivation = derive_evidence_derivation(&fp);
+        assert_eq!(derivation.rule_type, "blocker_error_class");
+        assert!(derivation
+            .observed_facts
+            .iter()
+            .any(|fact| fact == "actor=planner"));
+        assert!(derivation
+            .observed_facts
+            .iter()
+            .any(|fact| fact == "error_class=invalid_schema"));
+        assert!(derivation
+            .observed_facts
+            .iter()
+            .any(|fact| fact == "summary=action schema invalid: missing required fields"));
+        assert!(derivation
+            .matched_conditions
+            .iter()
+            .any(|c| c.key == "actor_kind" && c.value == "planner"));
     }
 
     #[test]
