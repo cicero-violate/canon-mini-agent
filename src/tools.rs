@@ -1,5 +1,5 @@
 use anyhow::{anyhow, bail, Context, Result};
-use canon_llm::config::LlmEndpoint;
+use crate::llm_runtime::config::LlmEndpoint;
 use canon_tools_patch::apply_patch;
 use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind, SyntaxToken};
 use serde::{Deserialize, Serialize};

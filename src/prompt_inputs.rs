@@ -1,5 +1,5 @@
 use anyhow::{bail, Context, Result};
-use canon_llm::{config::LlmEndpoint, tab_management::TabManagerHandle, ws_server::WsBridge};
+use crate::llm_runtime::{config::LlmEndpoint, tab_management::TabManagerHandle, ws_server::WsBridge};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};

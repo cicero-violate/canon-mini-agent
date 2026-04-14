@@ -1,5 +1,5 @@
 use anyhow::Result;
-use canon_llm::config::LlmEndpoint;
+use crate::llm_runtime::config::LlmEndpoint;
 use serde_json::{json, Value};
 use std::path::Path;
 

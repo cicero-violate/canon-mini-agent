@@ -37,16 +37,6 @@ fn finish_probe(
     })
 }
 
-fn file_modified_ms(path: &Path) -> Option<u128> {
-    std::fs::metadata(path)
-        .ok()?
-        .modified()
-        .ok()?
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()
-        .map(|dur| dur.as_millis())
-}
-
 fn plan_has_incomplete_tasks(plan_text: &str) -> bool {
     let Ok(value) = serde_json::from_str::<Value>(plan_text) else {
         return true;
@@ -105,24 +95,28 @@ pub fn probe_planner_objective_review(
     diagnostics_path: &Path,
 ) -> Result<OrchestratorProbeResult> {
     let (mut writer, tlog_path, initial) = new_probe_writer(workspace);
-    let objectives_mtime_before = file_modified_ms(objectives_path);
-    let plan_mtime_before = file_modified_ms(plan_path);
-    let diagnostics_mtime_before = file_modified_ms(diagnostics_path);
 
-    std::thread::sleep(std::time::Duration::from_millis(2));
+    // Read bytes before any writes so we can detect changes by content, not mtime.
+    // Mtime-based detection is unreliable on tmpfs/overlayfs (granularity > 2ms).
+    let objectives_bytes_before = std::fs::read(objectives_path).unwrap_or_default();
+    let plan_bytes_before = std::fs::read(plan_path).unwrap_or_default();
+    let diagnostics_bytes_before = std::fs::read(diagnostics_path).unwrap_or_default();
+
     let mut plan_text = std::fs::read_to_string(plan_path).unwrap_or_default();
     if plan_text.trim().is_empty() {
         plan_text = "{\"version\":2,\"tasks\":[]}".to_string();
     }
     plan_text.push('\n');
-    std::fs::write(plan_path, plan_text)?;
+    std::fs::write(plan_path, &plan_text)?;
 
-    let objectives_mtime_after = file_modified_ms(objectives_path);
-    let plan_mtime_after = file_modified_ms(plan_path);
-    let diagnostics_mtime_after = file_modified_ms(diagnostics_path);
-    let objective_review_required = plan_mtime_before != plan_mtime_after
-        || diagnostics_mtime_before != diagnostics_mtime_after;
-    let objectives_updated = objectives_mtime_before != objectives_mtime_after;
+    let objectives_bytes_after = std::fs::read(objectives_path).unwrap_or_default();
+    let plan_bytes_after = std::fs::read(plan_path).unwrap_or_default();
+    let diagnostics_bytes_after = std::fs::read(diagnostics_path).unwrap_or_default();
+
+    let objective_review_required = plan_bytes_before != plan_bytes_after
+        || diagnostics_bytes_before != diagnostics_bytes_after;
+    let objectives_updated = objectives_bytes_before != objectives_bytes_after;
+
     if objective_review_required && !objectives_updated {
         writer.apply(ControlEvent::PlannerObjectiveReviewQueued);
     }

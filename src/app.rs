@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail, Context, Result};
-use canon_llm::{
+use crate::llm_runtime::{
     config::LlmEndpoint,
-    endpoint_worker::{
+    worker::{
         llm_worker_new_tabs, llm_worker_send_request_timeout,
         llm_worker_send_request_with_req_id_timeout,
     },
@@ -4800,11 +4800,9 @@ pub async fn run() -> Result<()> {
         DEFAULT_RESPONSE_TIMEOUT_SECS,
         DEFAULT_LLM_RETRY_COUNT,
         DEFAULT_LLM_RETRY_DELAY_SECS,
-        Arc::new(OnceLock::new()),
+        Arc::<OnceLock<()>>::new(OnceLock::new()),
     );
-    eprintln!("[canon-mini-agent] waiting for Chrome extension on ws://127.0.0.1:{ws_port}");
-    bridge.wait_for_connection().await;
-    eprintln!("[canon-mini-agent] Chrome extension connected");
+    eprintln!("[canon-mini-agent] backend ready (chromium ws://127.0.0.1:{ws_port})");
 
     let tabs = llm_worker_new_tabs();
 

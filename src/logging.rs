@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use canon_llm::config::LlmEndpoint;
+use crate::llm_runtime::config::LlmEndpoint;
 use serde_json::{json, Value};
 use std::io::Write;
 use std::path::PathBuf;
@@ -202,7 +202,7 @@ pub(crate) fn compact_log_record(
     let mut record = serde_json::Map::new();
     record.insert(
         "ts_ms".to_string(),
-        json!(canon_llm::endpoint_worker::tab_manager_now_ms()),
+        json!(crate::llm_runtime::tab_management::tab_manager_now_ms()),
     );
     record.insert("kind".to_string(), json!(kind));
     record.insert("phase".to_string(), json!(phase));
@@ -335,7 +335,7 @@ fn append_secondary_action_log(role: &str, action: &Value) -> Result<()> {
     record.insert("agent_role".to_string(), Value::String(role.to_string()));
     record.insert(
         "timestamp".to_string(),
-        json!(canon_llm::endpoint_worker::tab_manager_now_ms()),
+        json!(crate::llm_runtime::tab_management::tab_manager_now_ms()),
     );
     if record.is_empty() {
         return Ok(());
@@ -765,7 +765,7 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
 }
 
 pub(crate) fn now_ms() -> u64 {
-    let ms = canon_llm::endpoint_worker::tab_manager_now_ms();
+    let ms = crate::llm_runtime::tab_management::tab_manager_now_ms();
     u64::try_from(ms).unwrap_or(u64::MAX)
 }
 

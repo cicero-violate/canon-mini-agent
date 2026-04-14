@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+pub mod llm_runtime;
 mod action_examples;
 pub mod app;
 pub mod blockers;
