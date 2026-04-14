@@ -3113,8 +3113,77 @@ fn run_patch_crate_verification_command(
     (ok, out, label)
 }
 
-fn format_patch_crate_failure(label: &str, out: &str) -> String {
-    format!("apply_patch ok\n\n{label}:\n{}", truncate(out, MAX_SNIPPET))
+fn format_chained_action_entry(
+    index: usize,
+    action: &str,
+    status: &str,
+    intent: &str,
+    command: Option<&str>,
+    result: &str,
+) -> String {
+    let mut entry = format!(
+        "{index}. action: {action}\n   status: {status}\n   intent: {intent}\n"
+    );
+    if let Some(cmd) = command {
+        entry.push_str(&format!("   command: {cmd}\n"));
+    }
+    entry.push_str("   result:\n");
+    for line in result.lines() {
+        entry.push_str("     ");
+        entry.push_str(line);
+        entry.push('\n');
+    }
+    entry.trim_end().to_string()
+}
+
+fn format_apply_patch_action_chain(
+    check_label: &str,
+    check_cmd: &str,
+    check_out: &str,
+    test_label: Option<&str>,
+    test_cmd: Option<&str>,
+    test_out: Option<&str>,
+    extra_note: Option<&str>,
+) -> String {
+    let mut sections = vec![
+        "apply_patch ok".to_string(),
+        "Chained action transcript:"
+            .to_string(),
+        format_chained_action_entry(
+            1,
+            "apply_patch",
+            "ok",
+            "Apply the requested source mutation.",
+            None,
+            "Patch applied successfully.",
+        ),
+        format_chained_action_entry(
+            2,
+            "run_command",
+            if check_label.ends_with("ok") { "ok" } else { "failed" },
+            "Auto-verify the patched crate compiles after the edit.",
+            Some(check_cmd),
+            truncate(check_out, MAX_SNIPPET),
+        ),
+    ];
+
+    if let (Some(test_label), Some(test_cmd), Some(test_out)) = (test_label, test_cmd, test_out) {
+        sections.push(format_chained_action_entry(
+            3,
+            "run_command",
+            if test_label.ends_with("ok") { "ok" } else { "failed" },
+            "Auto-verify the patched crate tests after the edit.",
+            Some(test_cmd),
+            test_out,
+        ));
+    }
+
+    if let Some(note) = extra_note.filter(|n| !n.trim().is_empty()) {
+        sections.push("Notes:".to_string());
+        sections.push(note.trim().to_string());
+    }
+
+    sections.join("\n\n")
 }
 
 fn verification_rebind_note(
@@ -3173,13 +3242,14 @@ fn verify_apply_patch_crate(
     }
     let crate_for_patch = patch_first_file(patch).and_then(|f| infer_crate_for_patch(workspace, f));
     let krate = crate_for_patch?;
+    let check_cmd = format!("cargo check -p {krate}");
 
     let (check_ok, check_out, check_label) = run_patch_crate_verification_command(
         role,
         step,
         workspace,
-        &format!("cargo check -p {krate}"),
-        &format!("cargo check -p {krate}"),
+        &check_cmd,
+        &check_cmd,
         "cargo check ok",
         "cargo check failed",
     );
@@ -3189,19 +3259,27 @@ fn verify_apply_patch_crate(
         log_execution_learning(
             workspace, &krate, patch, &plan, check_ok, &check_out, false, "",
         );
-        let mut out = format_patch_crate_failure(check_label, &check_out);
-        out.push_str(&verification_rebind_note(
-            workspace, &krate, &plan, &check_out, "",
-        ));
+        let rebind_note = verification_rebind_note(workspace, &krate, &plan, &check_out, "");
+        let out = format_apply_patch_action_chain(
+            check_label,
+            &check_cmd,
+            &check_out,
+            None,
+            None,
+            None,
+            Some(&rebind_note),
+        );
         return Some((false, out));
     }
+
+    let test_cmd = format!("cargo test -p {krate} -q");
 
     let (test_ok, test_out, test_label) = run_patch_crate_verification_command(
         role,
         step,
         workspace,
         &format!("cargo test -p {krate}"),
-        &format!("cargo test -p {krate} -q"),
+        &test_cmd,
         "cargo test ok",
         "cargo test failed",
     );
@@ -3211,17 +3289,28 @@ fn verify_apply_patch_crate(
         workspace, &krate, patch, &plan, check_ok, &check_out, test_ok, &test_out,
     );
 
+    let rebind_note = if test_ok {
+        None
+    } else {
+        Some(verification_rebind_note(
+            workspace,
+            &krate,
+            &plan,
+            &check_out,
+            &test_out,
+        ))
+    };
+
     Some((
         false,
-        format!(
-            "apply_patch ok\n\n{check_label}:\n{}\n\n{test_label}:\n{}{}",
-            truncate(&check_out, MAX_SNIPPET),
-            test_display,
-            if test_ok {
-                String::new()
-            } else {
-                verification_rebind_note(workspace, &krate, &plan, &check_out, &test_out)
-            }
+        format_apply_patch_action_chain(
+            check_label,
+            &check_cmd,
+            &check_out,
+            Some(test_label),
+            Some(&test_cmd),
+            Some(&test_display),
+            rebind_note.as_deref(),
         ),
     ))
 }
