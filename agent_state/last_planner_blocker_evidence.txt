@@ -1,1 +1,1 @@
-invariant gate blocked role `route`: Role `diagnostics` repeatedly encounters `blocker_escalated`: LLM role explicitly declared itself blocked and cannot proceed [id=INV-05518346]
+invariant gate blocked role `executor`: Role `orchestrator` repeatedly encounters `livelock_detected`: orchestrator detected livelock: no watched-file state change after consecutive cycles [id=INV-61cc3cc7]

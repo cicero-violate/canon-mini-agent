@@ -1,6 +1,7 @@
 use crate::llm_runtime::config::LlmEndpoint;
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
@@ -696,6 +697,111 @@ pub(crate) fn append_orchestration_trace(event: &str, payload: Value) {
 /// Only fires when `prompt_bytes > PROMPT_OVERFLOW_BYTES`.  Deduplicates by checking
 /// whether an open violation with the same role already exists — avoids flooding the
 /// violations file with one entry per cycle.
+fn evidence_receipts_path() -> PathBuf {
+    std::path::Path::new(crate::constants::agent_state_dir()).join("evidence_receipts.jsonl")
+}
+
+fn stable_hash_hex(value: &str) -> String {
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+fn append_evidence_receipt(
+    role: &str,
+    action: &str,
+    rel_path: Option<&str>,
+    abs_path: Option<PathBuf>,
+    meta: Value,
+    output: &str,
+) -> Result<String> {
+    #[derive(serde::Serialize)]
+    struct EvidenceReceipt {
+        id: String,
+        ts_ms: u64,
+        actor: String,
+        step: usize,
+        action: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        abs_path: Option<String>,
+        meta: Value,
+        output_hash: String,
+    }
+
+    let ts_ms = now_ms();
+    let id = format!("rcpt-{ts_ms}-{role}-0-{action}");
+    let receipt = EvidenceReceipt {
+        id: id.clone(),
+        ts_ms,
+        actor: role.to_string(),
+        step: 0,
+        action: action.to_string(),
+        path: rel_path.map(str::to_string),
+        abs_path: abs_path.map(|p| p.display().to_string()),
+        meta,
+        output_hash: stable_hash_hex(output),
+    };
+    let path = evidence_receipts_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?;
+    writeln!(file, "{}", serde_json::to_string(&receipt)?)?;
+    Ok(id)
+}
+
+fn try_emit_workspace_artifact_effect(
+    workspace: &std::path::Path,
+    requested: bool,
+    artifact: &str,
+    op: &str,
+    target: &str,
+    subject: &str,
+    signature: &str,
+) -> Result<()> {
+    let tlog_path = std::path::Path::new(crate::constants::agent_state_dir()).join("tlog.ndjson");
+    let state = crate::system_state::SystemState::new(&[], 0);
+    let mut writer = crate::canonical_writer::CanonicalWriter::new(
+        state,
+        crate::tlog::Tlog::open(&tlog_path),
+        workspace.to_path_buf(),
+    );
+    let effect = if requested {
+        crate::events::EffectEvent::WorkspaceArtifactWriteRequested {
+            artifact: artifact.to_string(),
+            op: op.to_string(),
+            target: target.to_string(),
+            subject: subject.to_string(),
+            signature: signature.to_string(),
+        }
+    } else {
+        crate::events::EffectEvent::WorkspaceArtifactWriteApplied {
+            artifact: artifact.to_string(),
+            op: op.to_string(),
+            target: target.to_string(),
+            subject: subject.to_string(),
+            signature: signature.to_string(),
+        }
+    };
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        writer.record_effect(effect);
+    }));
+    if result.is_err() {
+        anyhow::bail!(
+            "canonical effect append failed for {} {} {}",
+            artifact,
+            op,
+            subject
+        );
+    }
+    Ok(())
+}
+
 pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, prompt_bytes: usize) {
     use crate::constants::PROMPT_OVERFLOW_BYTES;
     if prompt_bytes <= PROMPT_OVERFLOW_BYTES {
@@ -730,6 +836,31 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
         return;
     }
 
+    let prompt_overflow_signature = format!("prompt-overflow:{role}:{prompt_bytes}");
+    let receipt_id = append_evidence_receipt(
+        role,
+        "prompt_overflow",
+        Some(crate::constants::VIOLATIONS_FILE),
+        Some(violations_path.clone()),
+        json!({
+            "kind": "prompt_overflow",
+            "role": role,
+            "prompt_bytes": prompt_bytes,
+            "threshold": PROMPT_OVERFLOW_BYTES,
+        }),
+        &format!("role={role};prompt_bytes={prompt_bytes};threshold={PROMPT_OVERFLOW_BYTES}"),
+    )
+    .ok();
+    let _ = try_emit_workspace_artifact_effect(
+        workspace,
+        true,
+        crate::constants::VIOLATIONS_FILE,
+        "append",
+        &violations_path.display().to_string(),
+        &format!("prompt_overflow:{role}"),
+        &prompt_overflow_signature,
+    );
+
     let new_violation = json!({
         "id": violation_id,
         "title": format!("Prompt overflow: {} sent {prompt_bytes} bytes (limit {PROMPT_OVERFLOW_BYTES})", role),
@@ -748,7 +879,7 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
         ],
         "freshness_status": "fresh",
         "validated_from": ["runtime/prompt_bytes"],
-        "evidence_receipts": [format!("runtime-prompt-overflow-{}-{}", role, now_ms())],
+        "evidence_receipts": receipt_id.into_iter().collect::<Vec<_>>(),
         "evidence_hashes": [format!("prompt_bytes:{}:{}", role, prompt_bytes)],
         "last_validated_ms": now_ms()
     });
@@ -763,6 +894,15 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
 
     if let Ok(body) = serde_json::to_string_pretty(&Value::Object(report)) {
         let _ = std::fs::write(&violations_path, body);
+        let _ = try_emit_workspace_artifact_effect(
+            workspace,
+            false,
+            crate::constants::VIOLATIONS_FILE,
+            "append",
+            &violations_path.display().to_string(),
+            &format!("prompt_overflow:{role}"),
+            &prompt_overflow_signature,
+        );
     }
     eprintln!(
         "[{role}] PROMPT OVERFLOW: {prompt_bytes} bytes exceeds threshold {PROMPT_OVERFLOW_BYTES}"
@@ -778,7 +918,7 @@ pub(crate) fn now_ms() -> u64 {
 mod tests {
     use super::{
         append_orchestration_trace, append_secondary_action_log, log_error_event, log_paths,
-        now_ms, secondary_llm_response, LogPaths, LOG_PATHS,
+        now_ms, record_prompt_overflow, secondary_llm_response, LogPaths, LOG_PATHS,
     };
     use serde_json::{json, Value};
     use std::fs;
@@ -1005,5 +1145,41 @@ mod tests {
         let record = read_last_json_record(&secondary_log);
         assert!(record.get("predicted_next_actions").is_some());
         assert!(record.get("predicated_next_actions").is_none());
+    }
+
+    #[test]
+    fn record_prompt_overflow_appends_real_receipt_and_canonical_effects() {
+        let workspace = std::path::PathBuf::from(crate::constants::workspace());
+        let state_dir = std::path::PathBuf::from(crate::constants::agent_state_dir());
+        fs::create_dir_all(&workspace).expect("create workspace");
+        fs::create_dir_all(&state_dir).expect("create state dir");
+
+        record_prompt_overflow(&workspace, "diagnostics", crate::constants::PROMPT_OVERFLOW_BYTES + 1);
+
+        let violations_path = workspace.join(crate::constants::VIOLATIONS_FILE);
+        let violations: Value = serde_json::from_str(
+            &fs::read_to_string(&violations_path).expect("read violations"),
+        )
+        .expect("parse violations");
+        let receipt_id = violations
+            .get("violations")
+            .and_then(|v| v.as_array())
+            .and_then(|items| items.last())
+            .and_then(|v| v.get("evidence_receipts"))
+            .and_then(|v| v.as_array())
+            .and_then(|items| items.first())
+            .and_then(|v| v.as_str())
+            .expect("real receipt id");
+        assert!(receipt_id.starts_with("rcpt-"));
+        assert!(!receipt_id.starts_with("runtime-prompt-overflow-"));
+
+        let receipts_raw = fs::read_to_string(state_dir.join("evidence_receipts.jsonl"))
+            .expect("read evidence receipts");
+        assert!(receipts_raw.contains(receipt_id));
+
+        let tlog_raw = fs::read_to_string(state_dir.join("tlog.ndjson")).expect("read tlog");
+        assert!(tlog_raw.contains("workspace_artifact_write_requested"));
+        assert!(tlog_raw.contains("workspace_artifact_write_applied"));
+        assert!(tlog_raw.contains(crate::constants::VIOLATIONS_FILE));
     }
 }
