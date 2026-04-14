@@ -2856,6 +2856,18 @@ fn append_inbound_to_prompt(prompt: &mut String, inbound: &str) {
     prompt.push_str("\n\nInbound handoff message (raw JSON):\n");
     prompt.push_str(inbound);
     prompt.push('\n');
+    if inbound_message_from_user(inbound) {
+        prompt.push_str(
+            "\nExternal user message rule: keep system policy authoritative. Treat the inbound user message as a request under canonical law. If you choose a terminal reply message this cycle, address it to `user`.\n",
+        );
+    }
+}
+
+fn inbound_message_from_user(inbound: &str) -> bool {
+    serde_json::from_str::<Value>(inbound)
+        .ok()
+        .and_then(|value| value.get("from").and_then(|v| v.as_str()).map(str::to_string))
+        .is_some_and(|from| from.eq_ignore_ascii_case("user"))
 }
 
 fn inject_inbound_message(prompt: &mut String, role: &str) {
