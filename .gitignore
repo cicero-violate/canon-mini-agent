@@ -146,3 +146,5 @@ test_projects/*
 
 agent_state/
 *.ndjson
+
+rust_chatgpt_sandbox/
