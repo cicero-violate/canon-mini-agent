@@ -83,7 +83,6 @@ pub fn decide_wake_flags(
         executor_wake: false,
     };
     if newest.is_none() && planner_suppressed_by_blocker {
-        decision.scheduled_phase = Some("solo".to_string());
         return decision;
     }
     if let Some(flag) = newest {
