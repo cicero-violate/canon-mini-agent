@@ -2738,6 +2738,10 @@ fn build_agent_prompt(
     }
 }
 
+fn should_send_system_prompt(send_system_prompt: bool, endpoint_stateful: bool, step: usize) -> bool {
+    send_system_prompt && (!endpoint_stateful || step == 0)
+}
+
 fn enforce_executor_step_limit(
     role: &str,
     total_steps: usize,
@@ -3430,9 +3434,11 @@ async fn run_agent(
             );
         }
 
+        let send_system_this_turn =
+            should_send_system_prompt(send_system_prompt, endpoint.stateful, step);
         let (role_schema, prompt) = build_agent_prompt(
             role,
-            send_system_prompt,
+            send_system_this_turn,
             step,
             &initial_prompt,
             system_instructions,
@@ -5612,6 +5618,14 @@ mod tests {
             schema_disabled.trim().is_empty(),
             "role_schema must be empty when disabled"
         );
+    }
+
+    #[test]
+    fn stateful_endpoints_only_send_system_prompt_on_first_step() {
+        assert!(super::should_send_system_prompt(true, true, 0));
+        assert!(!super::should_send_system_prompt(true, true, 1));
+        assert!(super::should_send_system_prompt(true, false, 1));
+        assert!(!super::should_send_system_prompt(false, true, 0));
     }
 
     #[test]
