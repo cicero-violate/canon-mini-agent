@@ -172,7 +172,7 @@ pub fn decide_active_blocker(
         return ActiveBlockerDecision {
             planner_pending: false,
             scheduled_phase: if scheduled_phase == Some("planner") {
-                Some("solo".to_string())
+                None
             } else {
                 scheduled_phase.map(|s| s.to_string())
             },
