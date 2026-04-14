@@ -3106,7 +3106,7 @@ fn route_gate_blocker_message(reason: &str) -> Value {
     };
     json!({
         "action": "message",
-        "from": "orchestrator",
+        "from": "executor",
         "to": "planner",
         "type": "blocker",
         "status": "blocked",

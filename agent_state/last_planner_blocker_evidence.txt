@@ -1,1 +1,1 @@
-Action result returned `message schema invalid: unknown variant 'orchestrator', expected one of 'user', 'executor', 'planner', 'verifier', 'diagnostics', 'solo'`.
+Invariant INV-10b73fb9 triggered by repeated LLM timeout; planner lacks access to plan/python tools to perform required corrective actions.
