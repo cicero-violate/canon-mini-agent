@@ -1,1 +1,1 @@
-invariant gate blocked role `route`: Role `diagnostics` repeatedly encounters `blocker_escalated`: LLM role explicitly declared itself blocked and cannot proceed [id=INV-05518346]
+Action result returned `message schema invalid: unknown variant 'orchestrator', expected one of 'user', 'executor', 'planner', 'verifier', 'diagnostics', 'solo'`.

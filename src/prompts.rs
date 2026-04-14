@@ -3,7 +3,7 @@ use serde_json::Value;
 
 use crate::constants::{
     diagnostics_file, workspace, CANONICAL_LAW_FILE, EXECUTOR_STEP_LIMIT, INVARIANTS_FILE,
-    MASTER_PLAN_FILE, MAX_SNIPPET, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
+    MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
 };
 use crate::protocol::{MessagePayload, MessageStatus, MessageType, ProtocolMessage, Role};
 use crate::tool_schema::{
@@ -2469,6 +2469,79 @@ fn next_action_hint_text(result: &str, last_action: Option<&str>) -> String {
     }
 }
 
+fn action_result_sections(result: &str) -> Vec<(String, String, usize, usize, usize, bool)> {
+    let trimmed = result.trim();
+    if trimmed.is_empty() {
+        return vec![(
+            "Action result".to_string(),
+            "(empty)".to_string(),
+            32,
+            512,
+            1,
+            true,
+        )];
+    }
+
+    let mut sections = Vec::new();
+    let mut transcript_index = 0usize;
+    for chunk in trimmed
+        .split("\n\n")
+        .map(str::trim)
+        .filter(|chunk| !chunk.is_empty())
+    {
+        let heading = if chunk == "Chained action transcript:" {
+            "Action result chain".to_string()
+        } else if chunk == "Notes:" {
+            "Action result notes".to_string()
+        } else if chunk.starts_with('[') {
+            transcript_index += 1;
+            format!("Action result {}", transcript_index)
+        } else if sections.is_empty() {
+            "Action result summary".to_string()
+        } else {
+            format!("Action result detail {}", sections.len())
+        };
+
+        let reserve = if heading == "Action result summary" {
+            256
+        } else {
+            192
+        };
+        let cap = if heading == "Action result summary" {
+            4096
+        } else {
+            8192
+        };
+        let weight = if heading == "Action result summary" {
+            3
+        } else {
+            2
+        };
+        sections.push((heading, chunk.to_string(), reserve, cap, weight, true));
+    }
+
+    sections
+}
+
+pub(crate) fn render_action_result_sections(prefix: &str, result: &str, suffix: &str) -> String {
+    let owned = action_result_sections(result);
+    let items = owned
+        .iter()
+        .map(
+            |(heading, body, reserve, cap, weight, always_include)| PromptItem {
+                name: heading.as_str(),
+                heading: heading.as_str(),
+                body: body.as_str(),
+                reserve: *reserve,
+                cap: *cap,
+                weight: *weight,
+                always_include: *always_include,
+            },
+        )
+        .collect::<Vec<_>>();
+    render_budgeted_prompt(prefix, &items, suffix)
+}
+
 pub(crate) fn action_result_prompt(
     tab_id: Option<u32>,
     turn_id: Option<u64>,
@@ -2526,12 +2599,15 @@ pub(crate) fn action_result_prompt(
         )
     };
 
-    format!(
-        "TAB_ID: {tab_label}\nTURN_ID: {turn_label}\nAGENT_TYPE: {agent_type}\n\n{limit_line}{provenance_block}Action result:\n{}\n\n{predicted_line}{}{}\nEmit exactly one action. Think through the decision internally; reveal chain-of-thought.",
-        truncate(result, MAX_SNIPPET),
+    let prefix = format!(
+        "TAB_ID: {tab_label}\nTURN_ID: {turn_label}\nAGENT_TYPE: {agent_type}\n\n{limit_line}{provenance_block}"
+    );
+    let suffix = format!(
+        "\n\n{predicted_line}{}{}\nEmit exactly one action. Think through the decision internally; reveal chain-of-thought.",
         next_action_hint_text(result, last_action),
         mutating_question,
-    )
+    );
+    render_action_result_sections(&prefix, result, &suffix)
 }
 
 #[cfg(test)]

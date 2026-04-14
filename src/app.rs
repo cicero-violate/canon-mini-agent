@@ -46,8 +46,9 @@ use crate::prompt_inputs::{
 use crate::prompts::{
     action_intent, action_objective_id, action_observation, action_rationale, action_result_prompt,
     action_task_id, diagnostics_cycle_prompt, executor_cycle_prompt, is_explicit_idle_action,
-    normalize_action, parse_actions, planner_cycle_prompt, single_role_solo_prompt,
-    system_instructions, truncate, validate_action, verifier_cycle_prompt, AgentPromptKind,
+    normalize_action, parse_actions, planner_cycle_prompt, render_action_result_sections,
+    single_role_solo_prompt, system_instructions, truncate, validate_action,
+    verifier_cycle_prompt, AgentPromptKind,
 };
 use crate::state_space::{
     allow_diagnostics_run, allow_verifier_run, block_executor_dispatch, check_completion_endpoint,
@@ -3981,11 +3982,10 @@ fn restart_resume_banner(role: &str, resume: &PostRestartResult) -> String {
         .turn_id
         .map(|v| v.to_string())
         .unwrap_or_else(|| "pending".to_string());
-    let mut out = format!(
+    let prefix = format!(
         "TAB_ID: {tab_id}\nTURN_ID: {turn_id}\nAGENT_TYPE: {agent_type}\n\nSYSTEM RESTART RESUME\n\
          Resume role: {}\nRestart kind: {}\nEndpoint: {}\nLast completed action: `{}` (step {})\n\
-         Continue from the last completed action result below. Do not resend the bootstrap prompt.\n\
-         Result:\n{}\n",
+         Continue from the last completed action result below. Do not resend the bootstrap prompt.\n",
         resume.role,
         resume.restart_kind,
         if resume.endpoint_id.is_empty() {
@@ -3995,10 +3995,9 @@ fn restart_resume_banner(role: &str, resume: &PostRestartResult) -> String {
         },
         resume.action,
         resume.step,
-        resume.result
     );
-    out.push_str("\nReturn to the same conversation and continue from this result.");
-    out
+    let suffix = "\n\nReturn to the same conversation and continue from this result.";
+    render_action_result_sections(&prefix, &resume.result, suffix)
 }
 
 /// Build a continuation prompt for a resumed session instead of the full bootstrap prompt.
