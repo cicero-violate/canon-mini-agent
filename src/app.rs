@@ -5529,15 +5529,7 @@ pub async fn run() -> Result<()> {
                         "plan_path": MASTER_PLAN_FILE,
                     }),
                 );
-                crate::blockers::record_action_failure(
-                    workspace.as_path(),
-                    "orchestrate",
-                    "runtime_control_bypass",
-                    "runtime-only control influence: planner was re-pended because plan/diagnostics mtimes changed without objectives update",
-                    None,
-                );
-                writer.apply(ControlEvent::PlannerObjectiveReviewQueued);
-                cycle_progress = true;
+                /* replace this branch with the narrowed canonical-content/state guard */
             }
 
             let has_objective_work = has_actionable_objectives(&objectives_text);
