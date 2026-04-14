@@ -5230,7 +5230,12 @@ pub async fn run() -> Result<()> {
                 writer.state().planner_pending,
                 writer.state().scheduled_phase.as_deref(),
             );
+            let planner_suppression_changes_state = blocker_decision.planner_pending
+                != writer.state().planner_pending
+                || blocker_decision.scheduled_phase.as_deref()
+                    != writer.state().scheduled_phase.as_deref();
             if active_blocker
+                && planner_suppression_changes_state
                 && (writer.state().planner_pending
                     || writer.state().scheduled_phase.as_deref() == Some("planner"))
             {
