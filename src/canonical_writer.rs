@@ -150,22 +150,18 @@ mod tests {
             actor: "executor-0".to_string(),
             endpoint_id: "ep".to_string(),
         });
-        writer.apply(ControlEvent::ExecutorTurnRegistered {
-            tab_id: 9,
-            turn_id: 13,
-            lane_id: 0,
-            lane_label: "executor-0".to_string(),
-            actor: "executor-0".to_string(),
-            endpoint_id: "ep".to_string(),
-        });
         writer.apply(ControlEvent::ExecutorCompletionTabRebound {
             lane_id: 0,
             from_tab_id: 9,
             to_tab_id: 10,
         });
-        writer.apply(ControlEvent::ExecutorTurnDeregistered {
-            tab_id: 9,
-            turn_id: 12,
+        writer.apply(ControlEvent::ExecutorTurnRegistered {
+            tab_id: 10,
+            turn_id: 13,
+            lane_id: 0,
+            lane_label: "executor-0".to_string(),
+            actor: "executor-0".to_string(),
+            endpoint_id: "ep".to_string(),
         });
         writer.apply(ControlEvent::ExecutorTurnDeregistered {
             tab_id: 10,
