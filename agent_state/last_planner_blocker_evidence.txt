@@ -1,1 +1,1 @@
-auto-filled blocker evidence
+Same-cycle python read confirms `ISSUES.json` keeps `route_gate_invalid_route_livelock_cluster` open with description stating it is the active executor-dispatch stop, while `PLAN.json` still shows ready tasks that cannot be truthfully advanced and `PROMPT-OVERFLOW-PLANNER` also remains open.
