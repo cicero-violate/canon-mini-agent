@@ -5603,8 +5603,9 @@ pub async fn run() -> Result<()> {
 mod tests {
     use super::{
         action_retry_fingerprint, executor_step_limit_feedback, has_actionable_objectives,
-        invariant_id_from_reason, plan_has_incomplete_tasks, route_gate_blocker_message,
-        should_reject_solo_self_complete, verifier_confirmed_with_plan_text, ActionProvenance,
+        inbound_message_from_user, invariant_id_from_reason, plan_has_incomplete_tasks,
+        route_gate_blocker_message, should_reject_solo_self_complete,
+        verifier_confirmed_with_plan_text, ActionProvenance,
     };
     use crate::system_state::SystemState;
     use serde_json::json;
@@ -5672,6 +5673,18 @@ mod tests {
             payload.get("evidence").and_then(|v| v.as_str()),
             Some(reason)
         );
+    }
+
+    #[test]
+    fn inbound_message_from_user_detects_external_user_sender() {
+        let inbound = r#"{"action":"message","from":"user","to":"solo","type":"handoff","status":"ready","payload":{"summary":"hello"}}"#;
+        assert!(inbound_message_from_user(inbound));
+    }
+
+    #[test]
+    fn inbound_message_from_user_rejects_non_user_sender() {
+        let inbound = r#"{"action":"message","from":"planner","to":"solo","type":"handoff","status":"ready","payload":{"summary":"hello"}}"#;
+        assert!(!inbound_message_from_user(inbound));
     }
 
     #[test]

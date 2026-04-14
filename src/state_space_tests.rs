@@ -459,7 +459,7 @@ fn decide_phase_gates_combines_pending_and_schedule_rules() {
         decide_phase_gates(false, false, false, false, Some("solo")),
         PhaseGates {
             planner: false,
-            executor: false,
+            executor: true,
             verifier: false,
             diagnostics: false,
             solo: true,
