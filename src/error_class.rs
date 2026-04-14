@@ -28,6 +28,16 @@ use serde::{Deserialize, Serialize};
 pub enum ErrorClass {
     /// A canonical state mutation bypassed `CanonicalWriter::apply`.
     SecondMutationPath,
+    /// Runtime-only state influenced control flow without canonical representation.
+    RuntimeControlBypass,
+    /// A recovery/reconciliation path changed behavior without an explicit canonical event.
+    UncanonicalizedRecoveryPath,
+    /// Runtime state diverged from checkpoint/canonical state beyond the allowed recovery window.
+    CheckpointRuntimeDivergence,
+    /// An effect changed canonical behavior without a corresponding `ControlEvent`.
+    EffectfulStateAdvanceWithoutControlEvent,
+    /// A single `ControlEvent` encodes multiple logically distinct transitions.
+    AmbiguousControlEvent,
     /// A file, symbol, or target referenced in a task does not exist.
     MissingTarget,
     /// An action emitted by an LLM role failed schema validation.
@@ -66,6 +76,13 @@ impl ErrorClass {
     pub fn as_key(&self) -> &'static str {
         match self {
             ErrorClass::SecondMutationPath => "second_mutation_path",
+            ErrorClass::RuntimeControlBypass => "runtime_control_bypass",
+            ErrorClass::UncanonicalizedRecoveryPath => "uncanonicalized_recovery_path",
+            ErrorClass::CheckpointRuntimeDivergence => "checkpoint_runtime_divergence",
+            ErrorClass::EffectfulStateAdvanceWithoutControlEvent => {
+                "effectful_state_advance_without_control_event"
+            }
+            ErrorClass::AmbiguousControlEvent => "ambiguous_control_event",
             ErrorClass::MissingTarget => "missing_target",
             ErrorClass::InvalidSchema => "invalid_schema",
             ErrorClass::StepLimitExceeded => "step_limit_exceeded",
@@ -89,6 +106,16 @@ impl ErrorClass {
         match self {
             ErrorClass::SecondMutationPath =>
                 "canonical state changed through a path other than CanonicalWriter::apply",
+            ErrorClass::RuntimeControlBypass =>
+                "runtime-only state influenced control flow without canonical representation",
+            ErrorClass::UncanonicalizedRecoveryPath =>
+                "a recovery path changed behavior without an explicit canonical event",
+            ErrorClass::CheckpointRuntimeDivergence =>
+                "runtime state diverged from checkpoint or canonical state beyond the allowed recovery window",
+            ErrorClass::EffectfulStateAdvanceWithoutControlEvent =>
+                "an effect changed canonical behavior without a corresponding control event",
+            ErrorClass::AmbiguousControlEvent =>
+                "a control event encoded multiple logically distinct transitions",
             ErrorClass::MissingTarget =>
                 "action referenced a target (file/symbol) that does not exist",
             ErrorClass::InvalidSchema =>
@@ -134,6 +161,13 @@ pub fn classify_result(action_kind: &str, result_text: &str, ok: bool) -> ErrorC
     let text = result_text.to_lowercase();
     match action_kind {
         "canonical_state_bypass" => return ErrorClass::SecondMutationPath,
+        "runtime_control_bypass" => return ErrorClass::RuntimeControlBypass,
+        "uncanonicalized_recovery" => return ErrorClass::UncanonicalizedRecoveryPath,
+        "checkpoint_runtime_divergence" => return ErrorClass::CheckpointRuntimeDivergence,
+        "effectful_state_advance" => {
+            return ErrorClass::EffectfulStateAdvanceWithoutControlEvent;
+        }
+        "ambiguous_control_event" => return ErrorClass::AmbiguousControlEvent,
         "plan_preflight" => return ErrorClass::PlanPreflightFailed,
         "route_dispatch" => return ErrorClass::InvalidRoute,
         "step_limit" => return ErrorClass::StepLimitExceeded,
@@ -196,6 +230,35 @@ pub fn classify_result(action_kind: &str, result_text: &str, ok: bool) -> ErrorC
     {
         return ErrorClass::SecondMutationPath;
     }
+    if text.contains("runtime control bypass")
+        || text.contains("runtime-only control influence")
+        || text.contains("runtime-only state influenced control")
+    {
+        return ErrorClass::RuntimeControlBypass;
+    }
+    if text.contains("uncanonicalized recovery")
+        || text.contains("recovery path without canonical event")
+        || text.contains("reconciliation path without canonical event")
+    {
+        return ErrorClass::UncanonicalizedRecoveryPath;
+    }
+    if text.contains("checkpoint/runtime divergence")
+        || text.contains("checkpoint runtime divergence")
+        || text.contains("runtime diverged from checkpoint")
+    {
+        return ErrorClass::CheckpointRuntimeDivergence;
+    }
+    if text.contains("effectful state advance without control event")
+        || text.contains("effect advanced state without controlevent")
+        || text.contains("effect advanced state without control event")
+    {
+        return ErrorClass::EffectfulStateAdvanceWithoutControlEvent;
+    }
+    if text.contains("ambiguous control event")
+        || text.contains("control event encoded multiple transitions")
+    {
+        return ErrorClass::AmbiguousControlEvent;
+    }
     if text.contains("not found")
         || text.contains("no such file")
         || text.contains("missing_target")
@@ -240,6 +303,34 @@ pub fn classify_blocker_summary(summary: &str) -> ErrorClass {
     if text.contains("second mutation path") || text.contains("canonical state bypass") {
         return ErrorClass::SecondMutationPath;
     }
+    if text.contains("runtime control bypass")
+        || text.contains("runtime-only control influence")
+        || text.contains("runtime-only state influenced control")
+    {
+        return ErrorClass::RuntimeControlBypass;
+    }
+    if text.contains("uncanonicalized recovery")
+        || text.contains("recovery path without canonical event")
+        || text.contains("reconciliation path without canonical event")
+    {
+        return ErrorClass::UncanonicalizedRecoveryPath;
+    }
+    if text.contains("checkpoint/runtime divergence")
+        || text.contains("checkpoint runtime divergence")
+        || text.contains("runtime diverged from checkpoint")
+    {
+        return ErrorClass::CheckpointRuntimeDivergence;
+    }
+    if text.contains("effectful state advance without control event")
+        || text.contains("effect advanced state without control event")
+    {
+        return ErrorClass::EffectfulStateAdvanceWithoutControlEvent;
+    }
+    if text.contains("ambiguous control event")
+        || text.contains("control event encoded multiple transitions")
+    {
+        return ErrorClass::AmbiguousControlEvent;
+    }
     if text.contains("outside workspace") || text.contains("permission") {
         return ErrorClass::PermissionDenied;
     }
@@ -279,6 +370,34 @@ mod tests {
     }
 
     #[test]
+    fn classify_runtime_control_bypass_explicitly() {
+        let class = classify_result(
+            "runtime_control_bypass",
+            "runtime-only control influence detected in route selection",
+            false,
+        );
+        assert_eq!(class, ErrorClass::RuntimeControlBypass);
+    }
+
+    #[test]
+    fn classify_uncanonicalized_recovery_path_explicitly() {
+        let class = classify_result(
+            "uncanonicalized_recovery",
+            "recovery path without canonical event detected",
+            false,
+        );
+        assert_eq!(class, ErrorClass::UncanonicalizedRecoveryPath);
+    }
+
+    #[test]
+    fn classify_blocker_ambiguous_control_event() {
+        let class = classify_blocker_summary(
+            "blocked by ambiguous control event because one control event encoded multiple transitions",
+        );
+        assert_eq!(class, ErrorClass::AmbiguousControlEvent);
+    }
+
+    #[test]
     fn classify_missing_target_no_such_file() {
         let class = classify_result("read_file", "No such file or directory: src/foo.rs", false);
         assert_eq!(class, ErrorClass::MissingTarget);
@@ -313,5 +432,9 @@ mod tests {
     fn error_class_key_is_stable() {
         assert_eq!(ErrorClass::MissingTarget.as_key(), "missing_target");
         assert_eq!(ErrorClass::BlockerEscalated.as_key(), "blocker_escalated");
+        assert_eq!(
+            ErrorClass::RuntimeControlBypass.as_key(),
+            "runtime_control_bypass"
+        );
     }
 }
