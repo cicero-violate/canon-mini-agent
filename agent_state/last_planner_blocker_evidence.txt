@@ -1,1 +1,1 @@
-Inbound executor blocker unchanged: `invariant gate blocked role route ... diagnostics blocker_escalated [INV-05518346]`. No successful diagnostics mutation after prior `evidence_receipts` failure.
+invariant gate blocked role `route`: Role `diagnostics` repeatedly encounters `blocker_escalated`: LLM role explicitly declared itself blocked and cannot proceed [id=INV-05518346]
