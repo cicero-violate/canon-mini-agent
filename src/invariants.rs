@@ -578,7 +578,7 @@ fn actor_kind_from_role(role: &str) -> &'static str {
         "verifier"
     } else if role.starts_with("diagnostics") {
         "diagnostics"
-    } else if role.starts_with("orchestrator") {
+    } else if role.starts_with("orchestrator") || role.starts_with("orchestrate") {
         "orchestrator"
     } else if role.starts_with("solo") {
         "solo"
