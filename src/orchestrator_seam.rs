@@ -101,7 +101,7 @@ pub fn probe_planner_objective_review(
     let plan_bytes_before = std::fs::read(plan_path).unwrap_or_default();
     let diagnostics_bytes_before = std::fs::read(diagnostics_path).unwrap_or_default();
 
-    if !plan_path.exists() {
+    if !plan_path.exists() || plan_bytes_before.is_empty() {
         std::fs::write(plan_path, "{\"version\":2,\"tasks\":[]}\n")?;
     }
 
