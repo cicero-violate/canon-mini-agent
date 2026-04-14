@@ -838,6 +838,46 @@ pub fn tool_protocol_schema_split_text() -> String {
     out
 }
 
+pub fn selected_tool_protocol_schema_text(actions: &[&str]) -> String {
+    let schema = schema_for!(ToolAction);
+    let value = serde_json::to_value(&schema).unwrap_or_else(|_| Value::Object(Default::default()));
+    let mut out = String::new();
+    out.push_str(
+        "Only the schemas below are in scope for this turn. Emit exactly one action whose `action` field matches one of these entries.\n",
+    );
+    out.push_str(
+        "Common fields appear in every action: `rationale` (non-empty), `predicted_next_actions` (2-3 items), optional `observation`, and optional provenance fields `task_id`, `objective_id`, `intent`.\n\n",
+    );
+
+    let actions_meta = build_tool_actions_list();
+    let mut rendered_any = false;
+    let mut seen = std::collections::BTreeSet::new();
+    for action in actions {
+        if !seen.insert(*action) {
+            continue;
+        }
+        let Some((_, desc, _notes)) = actions_meta.iter().find(|(name, _, _)| name == action) else {
+            continue;
+        };
+        let schema = find_action_schema(&value, action)
+            .and_then(|v| serde_json::to_string_pretty(v).ok())
+            .unwrap_or_else(|| "{}".to_string());
+        out.push_str(&format!(
+            "Action: `{action}` — {desc}\n```json\n{schema}\n```\n\n"
+        ));
+        rendered_any = true;
+    }
+
+    if !rendered_any {
+        return String::new();
+    }
+
+    out.push_str(
+        "For syntax reminders and longer examples, read `state/tool_examples.md` with `read_file`.\n",
+    );
+    out
+}
+
 /// Write per-action syntax examples to `state/tool_examples.md`.
 /// Called once at agent-loop startup so the file is always fresh.
 pub fn write_tool_examples(workspace: &std::path::Path) {

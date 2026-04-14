@@ -8,7 +8,8 @@ use crate::constants::{
 use crate::protocol::{MessagePayload, MessageStatus, MessageType, ProtocolMessage, Role};
 use crate::tool_schema::{
     cargo_test_action_example, plan_set_task_status_action_example,
-    plan_sorted_view_action_example, validate_tool_action,
+    plan_sorted_view_action_example, selected_tool_protocol_schema_text,
+    validate_tool_action,
 };
 
 pub(crate) fn truncate(s: &str, max: usize) -> &str {
@@ -224,6 +225,130 @@ pub(crate) enum ToolPromptKind {
 
 fn available_actions(_kind: AgentPromptKind) -> Vec<String> {
     crate::tool_schema::predicted_action_name_list()
+}
+
+fn role_default_schema_actions(kind: AgentPromptKind) -> &'static [&'static str] {
+    match kind {
+        AgentPromptKind::Executor => &[
+            "read_file",
+            "apply_patch",
+            "run_command",
+            "cargo_test",
+            "python",
+            "message",
+            "semantic_map",
+            "symbol_window",
+            "symbol_refs",
+            "execution_path",
+            "batch",
+        ],
+        AgentPromptKind::Verifier => &[
+            "read_file",
+            "cargo_test",
+            "python",
+            "violation",
+            "message",
+            "semantic_map",
+            "symbol_window",
+            "symbol_refs",
+            "execution_path",
+            "batch",
+        ],
+        AgentPromptKind::Planner => &[
+            "plan",
+            "objectives",
+            "issue",
+            "read_file",
+            "apply_patch",
+            "python",
+            "run_command",
+            "message",
+            "semantic_map",
+            "symbol_window",
+            "symbol_refs",
+            "execution_path",
+            "batch",
+        ],
+        AgentPromptKind::Diagnostics => &[
+            "issue",
+            "violation",
+            "apply_patch",
+            "python",
+            "read_file",
+            "list_dir",
+            "run_command",
+            "message",
+            "semantic_map",
+            "symbol_window",
+            "symbol_refs",
+            "execution_path",
+            "batch",
+        ],
+        AgentPromptKind::Solo => &[
+            "plan",
+            "objectives",
+            "issue",
+            "violation",
+            "read_file",
+            "apply_patch",
+            "run_command",
+            "cargo_test",
+            "python",
+            "message",
+            "semantic_map",
+            "symbol_window",
+            "symbol_refs",
+            "execution_path",
+            "batch",
+        ],
+    }
+}
+
+fn agent_kind_from_agent_type(agent_type: &str) -> AgentPromptKind {
+    match agent_type {
+        "EXECUTOR" => AgentPromptKind::Executor,
+        "VERIFIER" => AgentPromptKind::Verifier,
+        "PLANNER" => AgentPromptKind::Planner,
+        "DIAGNOSTICS" => AgentPromptKind::Diagnostics,
+        _ => AgentPromptKind::Solo,
+    }
+}
+
+fn parse_predicted_action_names(predicted_next_actions: Option<&str>) -> Vec<String> {
+    let Some(raw) = predicted_next_actions else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_json::from_str::<Value>(raw) else {
+        return Vec::new();
+    };
+    value
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|item| item.get("action").and_then(|v| v.as_str()))
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn targeted_schema_block(kind: AgentPromptKind, predicted_next_actions: Option<&str>) -> String {
+    let mut actions: Vec<String> = role_default_schema_actions(kind)
+        .iter()
+        .map(|action| (*action).to_string())
+        .collect();
+
+    for action in parse_predicted_action_names(predicted_next_actions) {
+        if !actions.contains(&action) {
+            actions.insert(0, action);
+        }
+    }
+
+    let action_refs: Vec<&str> = actions.iter().map(|action| action.as_str()).collect();
+    let schema_text = selected_tool_protocol_schema_text(&action_refs);
+    if schema_text.is_empty() {
+        String::new()
+    } else {
+        format!("Schemas in scope for this turn:\n{schema_text}\n")
+    }
 }
 
 fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
@@ -1054,7 +1179,7 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
     let workspace_text = prompt_workspace(kind);
     let status_snapshot = canonical_status_snapshot().to_string();
     let issues = crate::issues::read_top_open_issues(std::path::Path::new(workspace()), 3);
-    let tool_schema = crate::tool_schema::tool_protocol_schema_split_text();
+    let tool_schema = selected_tool_protocol_schema_text(role_default_schema_actions(kind));
     let tail = prompt_tail(kind);
     let prefix = format!(
         "{}\n\n{}\n\nCanonical law:\n{}\n\n{}\n\n{}\n\n",
@@ -1080,8 +1205,8 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
             name: "tool_schema",
             heading: schema_heading,
             body: &tool_schema,
-            reserve: 4000,
-            cap: 4000,
+            reserve: 20000,
+            cap: 20000,
             weight: 4,
             always_include: false,
         },
@@ -2554,6 +2679,10 @@ pub(crate) fn action_result_prompt(
     steps_used: Option<usize>,
     predicted_next_actions: Option<&str>,
 ) -> String {
+    let schema_block = targeted_schema_block(
+        agent_kind_from_agent_type(agent_type),
+        predicted_next_actions,
+    );
     let tab_label = tab_id
         .map(|v| v.to_string())
         .unwrap_or_else(|| "unknown".to_string());
@@ -2603,7 +2732,7 @@ pub(crate) fn action_result_prompt(
         "TAB_ID: {tab_label}\nTURN_ID: {turn_label}\nAGENT_TYPE: {agent_type}\n\n{limit_line}{provenance_block}"
     );
     let suffix = format!(
-        "\n\n{predicted_line}{}{}\nEmit exactly one action. Think through the decision internally; reveal chain-of-thought.",
+        "\n\n{predicted_line}{schema_block}{}{}\nEmit exactly one action. Think through the decision internally; reveal chain-of-thought.",
         next_action_hint_text(result, last_action),
         mutating_question,
     );
