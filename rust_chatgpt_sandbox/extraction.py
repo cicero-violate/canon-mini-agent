@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 import base64
-import importlib.util
 import json
 import os
 import shutil
-import sys
 import time
 import urllib.request
 from pathlib import Path
@@ -16,23 +14,20 @@ HOME = Path.home()
 RUST_TAR = MNT / "rust-nightly-x86_64-unknown-linux-gnu.tar.gz"
 AUTONOMOUS_TAR = MNT / "autonomous_agent_upgrade.tar.gz"
 CANON_TAR = MNT / "canon-mini-agent.tar.gz"
-README_PATH = MNT / "README.md"
 
-RUST_SANDBOX = MNT / "rust-sandbox"
+RUST_SANDBOX = HOME / "rust-sandbox"
 RUST_BIN = RUST_SANDBOX / "bin"
 RUSTC_PATH = RUST_BIN / "rustc"
 CARGO_PATH = RUST_BIN / "cargo"
-HOME_RUST_SANDBOX = HOME / "rust-sandbox"
-
-AUTONOMOUS_DIR = HOME / "autonomous_agent_upgrade"
-CANON_DIR = MNT / "canon-mini-agent-extracted" / "canon-mini-agent"
-CANON_WORKSPACE_ROOT = MNT / "canon-mini-agent-extracted"
-CANON_WORKSPACE_TOML = CANON_WORKSPACE_ROOT / "Cargo.toml"
-AGENT_MAIN = AUTONOMOUS_DIR / "main.py"
 
 CARGO_HOME = MNT / ".cargo"
 CARGO_CONFIG = CARGO_HOME / "config.toml"
 CARGO_CREDENTIALS = CARGO_HOME / "credentials.toml"
+
+AUTONOMOUS_DIR = HOME / "autonomous_agent_upgrade"
+CANON_ROOT = MNT / "canon-mini-agent-extracted"
+CANON_DIR = CANON_ROOT / "canon-mini-agent"
+WORKSPACE_ROOT_CARGO = CANON_ROOT / "Cargo.toml"
 
 DEFAULT_REGISTRY_URL = (
     "sparse+https://packages.applied-caas-gateway1.internal.api.openai.org/"
@@ -62,7 +57,8 @@ def ensure_terminal_server():
     try:
         with urllib.request.urlopen(BASE + "/healthcheck", timeout=5) as r:
             body = r.read().decode(errors="ignore")
-            health["ok"] = r.status == 200 and '"status": "ok"' in body
+            normalized = body.replace(" ", "")
+            health["ok"] = r.status == 200 and '"status":"ok"' in normalized
             health["response"] = body
             if health["ok"]:
                 return health
@@ -77,7 +73,8 @@ def ensure_terminal_server():
     try:
         with urllib.request.urlopen(BASE + "/healthcheck", timeout=5) as r:
             body = r.read().decode(errors="ignore")
-            health["ok"] = r.status == 200 and '"status": "ok"' in body
+            normalized = body.replace(" ", "")
+            health["ok"] = r.status == 200 and '"status":"ok"' in normalized
             health["response"] = body
             health["error"] = None
     except Exception as e:
@@ -85,30 +82,37 @@ def ensure_terminal_server():
     return health
 
 
-def start_bash():
+def terminal_open(cmd, cwd, env=None, user=""):
     return int(
         post_json(
             "/open",
             {
-                "cmd": ["/bin/bash"],
-                "env": {},
-                "cwd": str(HOME),
-                "user": "",
+                "cmd": cmd,
+                "env": env or {},
+                "cwd": str(cwd),
+                "user": user,
             },
         ).decode()
     )
 
 
-def run_and_wait(pid, cmd, marker, timeout=1800):
-    post_raw(f"/write/{pid}", (cmd + "\n").encode())
+def terminal_read(pid, num_bytes=32768):
+    return post_raw(f"/read/{pid}", str(num_bytes).encode()).decode(errors="ignore")
+
+
+def terminal_write(pid, data):
+    payload = data.encode() if isinstance(data, str) else data
+    return post_raw(f"/write/{pid}", payload)
+
+
+def run_in_shell(pid, cmd, marker, timeout=1800):
+    terminal_write(pid, cmd + "\n")
     output = ""
     start = time.time()
     while time.time() - start < timeout:
-        chunk = post_raw(f"/read/{pid}", b"32768").decode(errors="ignore")
+        chunk = terminal_read(pid)
         output += chunk
-        if marker and marker in output:
-            return True, output
-        if not marker:
+        if marker in output:
             return True, output
         time.sleep(1)
     return False, output
@@ -156,10 +160,7 @@ retry = 2
     credentials_written = False
     if username and password:
         token = base64.b64encode(f"{username}:{password}".encode()).decode()
-        credentials = (
-            "[registries.artifactory]\n"
-            f'token = "Basic {token}"\n'
-        )
+        credentials = "[registries.artifactory]\n" f'token = "Basic {token}"\n'
         CARGO_CREDENTIALS.write_text(credentials)
         credentials_written = True
 
@@ -171,94 +172,73 @@ retry = 2
     }
 
 
-def extract_tar(tar_path: Path, dest: Path):
+def reset_dir(path: Path):
+    if path.exists() or path.is_symlink():
+        if path.is_symlink() or path.is_file():
+            path.unlink()
+        else:
+            shutil.rmtree(path)
+
+
+def extract_tar(tar_path: Path, dest: Path, clean=False):
     if not tar_path.exists():
         return {"ok": False, "error": f"missing tarball: {tar_path}"}
+    if clean:
+        reset_dir(dest)
     dest.mkdir(parents=True, exist_ok=True)
     shutil.unpack_archive(str(tar_path), str(dest))
     return {"ok": True, "dest": str(dest)}
 
 
 def ensure_canon_workspace_root():
-    CANON_WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
-    workspace_toml = """
-[workspace]
-members = [
-    "canon-mini-agent",
-    "canon/canon-utils/canon-tools-patch",
-]
-resolver = "2"
-
-[workspace.dependencies]
-anyhow = "1"
-thiserror = "1"
-""".strip() + "\n"
-    CANON_WORKSPACE_TOML.write_text(workspace_toml)
-    return {
-        "path": str(CANON_WORKSPACE_TOML),
-        "written": True,
-    }
+    CANON_ROOT.mkdir(parents=True, exist_ok=True)
+    WORKSPACE_ROOT_CARGO.write_text(
+        "[workspace]\n"
+        'members = ["canon-mini-agent"]\n'
+        'resolver = "2"\n\n'
+        "[workspace.dependencies]\n"
+        'anyhow = "1"\n'
+        'thiserror = "1"\n'
+    )
+    return {"ok": True, "path": str(WORKSPACE_ROOT_CARGO)}
 
 
-def install_rust(pid):
-    sandbox_root = RUST_SANDBOX
-    if sandbox_root.exists():
-        shutil.rmtree(sandbox_root)
-    sandbox_root.mkdir(parents=True, exist_ok=True)
+def install_rust(shell_pid):
+    reset_dir(RUST_SANDBOX)
+    RUST_SANDBOX.mkdir(parents=True, exist_ok=True)
 
     temp_root = MNT / "rust-nightly-install"
-    if temp_root.exists():
-        shutil.rmtree(temp_root)
+    reset_dir(temp_root)
     temp_root.mkdir(parents=True, exist_ok=True)
 
-    ok_extract, extract_out = run_and_wait(
-        pid,
+    ok_extract, extract_out = run_in_shell(
+        shell_pid,
         f"rm -rf {temp_root}/* && tar -xzf {RUST_TAR} -C {temp_root} && echo __EXTRACT_DONE__",
         "__EXTRACT_DONE__",
+        timeout=1800,
     )
     if not ok_extract:
         return {"ok": False, "stage": "extract", "output": extract_out[-4000:]}
 
-    install_cmd = (
-        f"cd {temp_root}/*nightly* && "
-        f"./install.sh --prefix={sandbox_root} --disable-ldconfig "
-        f"--components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu && "
-        f"echo __INSTALL_DONE__"
-    )
-    ok_install, install_out = run_and_wait(pid, install_cmd, "__INSTALL_DONE__", timeout=1800)
-    if not ok_install:
-        return {"ok": False, "stage": "install", "output": install_out[-4000:]}
+    install_output = {}
+    for component in ["rustc", "cargo", "rust-std-x86_64-unknown-linux-gnu"]:
+        install_cmd = (
+            f"cd {temp_root}/*nightly* && "
+            f"./install.sh --prefix={RUST_SANDBOX} --disable-ldconfig "
+            f"--components={component} && echo __INSTALL_DONE__"
+        )
+        ok_install, component_out = run_in_shell(
+            shell_pid, install_cmd, "__INSTALL_DONE__", timeout=1800
+        )
+        install_output[component] = component_out[-1000:]
+        if not ok_install:
+            return {
+                "ok": False,
+                "stage": f"install:{component}",
+                "output": component_out[-4000:],
+            }
 
-    HOME_RUST_SANDBOX.parent.mkdir(parents=True, exist_ok=True)
-    if HOME_RUST_SANDBOX.exists() or HOME_RUST_SANDBOX.is_symlink():
-        if HOME_RUST_SANDBOX.is_symlink() or HOME_RUST_SANDBOX.is_file():
-            HOME_RUST_SANDBOX.unlink()
-        else:
-            shutil.rmtree(HOME_RUST_SANDBOX)
-    HOME_RUST_SANDBOX.symlink_to(RUST_SANDBOX, target_is_directory=True)
-
-    return {"ok": True, "extract_output": extract_out[-1000:], "install_output": install_out[-1000:]}
-
-
-def import_main(path: Path):
-    result = {"loaded": False, "error": None}
-    if not path.exists():
-        result["error"] = f"main.py not found: {path}"
-        return result
-    try:
-        if str(path.parent) not in sys.path:
-            sys.path.insert(0, str(path.parent))
-        spec = importlib.util.spec_from_file_location("autonomous_agent_main", str(path))
-        if spec is None or spec.loader is None:
-            result["error"] = "failed to create import spec"
-            return result
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        result["loaded"] = True
-        return result
-    except Exception as e:
-        result["error"] = str(e)
-        return result
+    return {"ok": True, "extract_output": extract_out[-1000:], "install_output": install_output}
 
 
 def binary_version(path: Path):
@@ -274,17 +254,31 @@ def binary_version(path: Path):
     return {"exists": True, "executable": executable, "version": version}
 
 
-def maybe_build_probe(pid):
-    if not CANON_DIR.exists() or not CARGO_PATH.exists():
-        return {"ran": False, "reason": "workspace or cargo missing"}
-    env = f"export PATH={RUST_BIN}:$PATH; export CARGO_HOME={CARGO_HOME};"
-    cmd = f"cd {CANON_DIR} && {env} cargo build --workspace && echo __BUILD_DONE__"
-    ok, out = run_and_wait(pid, cmd, "__BUILD_DONE__", timeout=3600)
+def rust_env():
     return {
-        "ran": True,
-        "success": ok,
-        "output_sample": out[-4000:],
+        "PATH": f"{RUST_BIN}:/usr/bin:/bin",
+        "CARGO_HOME": str(CARGO_HOME),
     }
+
+
+def start_background_job(cmd, cwd):
+    pid = terminal_open(cmd=cmd, cwd=cwd, env=rust_env())
+    time.sleep(2)
+    sample = terminal_read(pid, 4096)
+    return {"pid": pid, "output_sample": sample[:2000]}
+
+
+def smoke_test(shell_pid):
+    test_src = HOME / "rust_toolchain_smoke_test.rs"
+    test_bin = HOME / "rust_toolchain_smoke_test"
+    test_src.write_text('fn main() { println!("ok"); }\n')
+    cmd = (
+        f"export PATH={RUST_BIN}:$PATH; "
+        f"export CARGO_HOME={CARGO_HOME}; "
+        f"cd {HOME} && {RUSTC_PATH} {test_src.name} -o {test_bin.name} && ./{test_bin.name} && echo __SMOKE_DONE__"
+    )
+    ok, out = run_in_shell(shell_pid, cmd, "__SMOKE_DONE__", timeout=300)
+    return {"ok": ok, "output": out[-2000:]}
 
 
 def main():
@@ -294,20 +288,23 @@ def main():
         "rustc_version": None,
         "rustc_path": str(RUSTC_PATH),
         "cargo_path": str(CARGO_PATH),
-        "main_py_path": str(AGENT_MAIN),
-        "main_loaded": False,
+        "home_rust_sandbox_bin": str(RUST_BIN),
+        "canon_project_path": str(CANON_DIR),
+        "workspace_root_cargo": str(WORKSPACE_ROOT_CARGO),
     }
 
-    pid = start_bash()
-    report["pty_pid"] = pid
+    if not report["terminal_server"].get("ok"):
+        print(json.dumps(report, indent=2))
+        return
 
-    rust_install = install_rust(pid)
-    report["rust_install"] = rust_install
+    shell_pid = terminal_open(cmd=["/bin/bash"], cwd=HOME, env={})
+    report["pty_pid"] = shell_pid
 
-    report["autonomous_extract"] = extract_tar(AUTONOMOUS_TAR, HOME)
-    report["canon_extract"] = extract_tar(CANON_TAR, MNT / "canon-mini-agent-extracted")
-    report["canon_workspace_root"] = ensure_canon_workspace_root()
+    report["rust_install"] = install_rust(shell_pid)
     report["cargo_config"] = configure_cargo()
+    report["autonomous_extract"] = extract_tar(AUTONOMOUS_TAR, AUTONOMOUS_DIR, clean=True)
+    report["canon_extract"] = extract_tar(CANON_TAR, CANON_ROOT, clean=True)
+    report["workspace_root"] = ensure_canon_workspace_root()
 
     rustc_info = binary_version(RUSTC_PATH)
     cargo_info = binary_version(CARGO_PATH)
@@ -316,20 +313,25 @@ def main():
     report["rustc_version"] = rustc_info["version"]
     report["cargo_version"] = cargo_info["version"]
 
-    main_import = import_main(AGENT_MAIN)
-    report["main_import"] = main_import
-    report["main_loaded"] = main_import["loaded"]
+    report["smoke_test"] = smoke_test(shell_pid)
 
-    report["home_rust_sandbox"] = str(HOME_RUST_SANDBOX)
-    report["canon_project_path"] = str(CANON_DIR)
-    report["build_probe"] = maybe_build_probe(pid)
+    report["build_session"] = start_background_job(
+        [str(CARGO_PATH), "build", "--workspace"],
+        CANON_ROOT,
+    )
+    report["test_session"] = start_background_job(
+        [str(CARGO_PATH), "test", "--workspace"],
+        CANON_ROOT,
+    )
 
     report["extraction_status"] = bool(
-        rust_install.get("ok") and
-        report["autonomous_extract"].get("ok") and
-        report["canon_extract"].get("ok") and
-        rustc_info["executable"] and
-        cargo_info["executable"]
+        report["rust_install"].get("ok")
+        and report["autonomous_extract"].get("ok")
+        and report["canon_extract"].get("ok")
+        and report["workspace_root"].get("ok")
+        and rustc_info["executable"]
+        and cargo_info["executable"]
+        and report["smoke_test"].get("ok")
     )
 
     print(json.dumps(report, indent=2))
