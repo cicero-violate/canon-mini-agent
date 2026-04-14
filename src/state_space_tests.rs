@@ -398,7 +398,7 @@ fn active_blocker_clears_planner_ownership_when_needed() {
         decide_active_blocker(true, true, Some("planner")),
         ActiveBlockerDecision {
             planner_pending: false,
-            scheduled_phase: Some("solo".to_string()),
+            scheduled_phase: None,
         }
     );
     assert_eq!(
