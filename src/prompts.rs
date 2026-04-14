@@ -351,25 +351,14 @@ fn parse_predicted_action_names(predicted_next_actions: Option<&str>) -> Vec<Str
         .collect()
 }
 
-fn targeted_schema_block(kind: AgentPromptKind, predicted_next_actions: Option<&str>) -> String {
-    let mut actions: Vec<String> = role_default_schema_actions(kind)
-        .iter()
-        .map(|action| (*action).to_string())
-        .collect();
-
-    for action in parse_predicted_action_names(predicted_next_actions) {
-        if !actions.contains(&action) {
-            actions.insert(0, action);
-        }
+fn targeted_schema_block(_kind: AgentPromptKind, predicted_next_actions: Option<&str>) -> String {
+    let actions = parse_predicted_action_names(predicted_next_actions);
+    if actions.is_empty() {
+        return String::new();
     }
 
     let action_refs: Vec<&str> = actions.iter().map(|action| action.as_str()).collect();
-    let schema_text = selected_tool_protocol_schema_text(&action_refs);
-    if schema_text.is_empty() {
-        String::new()
-    } else {
-        format!("Schemas in scope for this turn:\n{schema_text}\n")
-    }
+    selected_tool_protocol_schema_text(&action_refs)
 }
 
 fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
@@ -1200,14 +1189,12 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
     let workspace_text = prompt_workspace(kind);
     let status_snapshot = canonical_status_snapshot().to_string();
     let issues = crate::issues::read_top_open_issues(std::path::Path::new(workspace()), 3);
-    let tool_schema = selected_tool_protocol_schema_text(role_default_schema_actions(kind));
     let tail = prompt_tail(kind);
     let prefix = format!(
         "{}\n\n{}\n\nCanonical law:\n{}\n\n{}\n\n{}\n\n",
         intro, mission, canonical_law, workspace_text, status_snapshot
     );
     let issues_heading = "Open issues (top 3 from ISSUES.json)";
-    let schema_heading = "Tool protocol schemas (schemars):";
     let suffix = format!(
         "\nFull syntax examples with notes: state/tool_examples.md — use read_file when you need a reminder.\n\n{}",
         tail
@@ -1220,15 +1207,6 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
             reserve: 1500,
             cap: 1500,
             weight: 2,
-            always_include: false,
-        },
-        PromptItem {
-            name: "tool_schema",
-            heading: schema_heading,
-            body: &tool_schema,
-            reserve: 20000,
-            cap: 20000,
-            weight: 4,
             always_include: false,
         },
     ];
