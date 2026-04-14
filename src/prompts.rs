@@ -1165,11 +1165,10 @@ pub(crate) fn single_role_solo_prompt(
     loop_context_hint: &str,
 ) -> String {
     let workspace = workspace();
-    let diagnostics_path = diagnostics_file();
     let issues_file = crate::constants::ISSUES_FILE;
     let mut sections = format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed.\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{}",
-        truncate_section(master_plan, 8000)
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSolo role: bounded execution kernel. Take one grounded next step under canonical law, using the smallest evidence slice needed. Prefer direct execution, targeted inspection, or a terminal reply to `user`; do not behave like planner/diagnostics/verifier.\n\nSpec: {SPEC_FILE} — use read_file only for sections you need.\n\nMaster plan focus (from {MASTER_PLAN_FILE}):\n{}",
+        truncate_section(master_plan, 3000)
     );
     append_optional_prompt_section(
         &mut sections,
@@ -1183,7 +1182,7 @@ pub(crate) fn single_role_solo_prompt(
     );
     append_optional_prompt_section(
         &mut sections,
-        &truncate_section(objectives, 3000),
+        &truncate_section(objectives, 1200),
         &format!("Objectives (from {OBJECTIVES_FILE}):"),
     );
     append_optional_prompt_section(
@@ -1194,7 +1193,7 @@ pub(crate) fn single_role_solo_prompt(
     // Lessons section must always be present (even if empty) to satisfy prompt invariants/tests
     sections.push_str(&format!(
         "\n\nLessons artifact:\n{}",
-        truncate_section(lessons_text, 2000)
+        truncate_section(lessons_text, 800)
     ));
     append_optional_prompt_section(
         &mut sections,
@@ -1203,28 +1202,28 @@ pub(crate) fn single_role_solo_prompt(
     );
     append_optional_prompt_section(
         &mut sections,
-        complexity_hotspots,
-        "Complexity hotspots (supervisor-generated; mir_blocks proxy — higher = more branching):",
-    );
-    append_optional_prompt_section(
-        &mut sections,
-        &truncate_section(invariants, 2000),
-        &format!("Invariants (from {INVARIANTS_FILE}):"),
-    );
-    append_optional_prompt_section(
-        &mut sections,
-        &truncate_section(violations, 2000),
+        &truncate_section(violations, 800),
         &format!("Violations (from {VIOLATIONS_FILE}):"),
-    );
-    append_optional_prompt_section(
-        &mut sections,
-        &truncate_section(diagnostics, 2000),
-        &format!("Diagnostics report (from {diagnostics_path}):"),
     );
     append_optional_prompt_section(
         &mut sections,
         cargo_test_failures,
         "Latest cargo test failures (from cargo_test_failures.json):",
+    );
+    append_optional_prompt_section(
+        &mut sections,
+        &truncate_section(diagnostics, 800),
+        "Diagnostics slice (current high-signal excerpt):",
+    );
+    append_optional_prompt_section(
+        &mut sections,
+        &truncate_section(invariants, 600),
+        &format!("Invariants (from {INVARIANTS_FILE}):"),
+    );
+    append_optional_prompt_section(
+        &mut sections,
+        complexity_hotspots,
+        "Complexity hotspots (supervisor-generated; use only when directly relevant):",
     );
     // Only include rename section when candidates are non-empty
     if !rename_candidates.trim().is_empty() {
@@ -1240,7 +1239,7 @@ pub(crate) fn single_role_solo_prompt(
     if !sections.ends_with("\n\n") {
         sections.push_str("\n\n");
     }
-    sections.push_str("Use the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nIssue discovery is a primary solo responsibility. When you observe a logic gap, missing guard, incorrect heuristic, stale artifact, or spec deviation — open an issue immediately with the `issue` action (fields: id, title, kind, description, location, evidence[], priority). Do not defer; record it in the same cycle you find it.\nFor all Rust source investigation use semantic tools first: symbol_refs (call sites), symbol_window (function body), symbol_neighborhood (local context), symbol_path (call chain), semantic_map (semantic triples). Reach for read_file only when you need line numbers immediately before a patch. Do not invent `symbol_search`; use `symbol_refs` or `symbol_window` instead.\n\nLessons review (do after main work each cycle):\n- Use `lessons` op=read_candidates to inspect patterns synthesized from your action log.\n- Promote candidates that reflect real, recurring patterns you want to remember (op=promote with candidate_id).\n- Reject candidates that are coincidental or already obvious (op=reject).\n- Promoted lessons appear in lessons.json and are injected into every future prompt.\n- Use `lessons` op=encode once a lesson has been hardcoded into system source, so it no longer occupies prompt space.");
+    sections.push_str("Use the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nUse the `issue` action only when the current step uncovers direct implementation evidence for a new or stale logic gap.\nFor Rust source investigation, use semantic tools first: symbol_refs, symbol_window, symbol_neighborhood, symbol_path, semantic_map. Reach for read_file only when you need exact lines before a patch.\nEmit exactly one action. Optimize for the next correct move, not broad analysis.");
     sections
 }
 

@@ -2852,6 +2852,41 @@ fn take_inbound_message(role: &str) -> Option<String> {
     Some(trimmed)
 }
 
+fn take_external_user_message(role: &str) -> Option<String> {
+    let role_key = role
+        .trim()
+        .to_lowercase()
+        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
+    let path = agent_state_dir.join(format!("external_user_message_to_{role_key}.json"));
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let trimmed = raw.trim().to_string();
+    if trimmed.is_empty() {
+        let _ = std::fs::remove_file(&path);
+        return None;
+    }
+    let _ = std::fs::remove_file(&path);
+    Some(trimmed)
+}
+
+fn append_external_user_message_to_prompt(prompt: &mut String, inbound: &str) {
+    let parsed = serde_json::from_str::<Value>(inbound).ok();
+    let message = parsed
+        .as_ref()
+        .and_then(|value| value.get("message"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(inbound.trim());
+
+    prompt.push_str("\n\nExternal user request:\n");
+    prompt.push_str(message);
+    prompt.push('\n');
+    prompt.push_str(
+        "\nRespond under canonical law and current system policy. If you choose a terminal reply message this cycle, address it to `user`.\n",
+    );
+}
+
 fn append_inbound_to_prompt(prompt: &mut String, inbound: &str) {
     prompt.push_str("\n\nInbound handoff message (raw JSON):\n");
     prompt.push_str(inbound);
@@ -2871,6 +2906,10 @@ fn inbound_message_from_user(inbound: &str) -> bool {
 }
 
 fn inject_inbound_message(prompt: &mut String, role: &str) {
+    if let Some(inbound) = take_external_user_message(role) {
+        append_external_user_message_to_prompt(prompt, &inbound);
+        return;
+    }
     if let Some(inbound) = take_inbound_message(role) {
         append_inbound_to_prompt(prompt, &inbound);
     }

@@ -1,9 +1,10 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use canon_mini_agent::{set_agent_state_dir, set_workspace};
 use canon_mini_agent::logging::init_log_paths;
 use canon_mini_agent::logging::log_error_event;
 use canon_mini_agent::complexity::write_complexity_report;
 use canon_mini_agent::SemanticIndex;
+use serde_json::json;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -453,13 +454,18 @@ fn commit_and_push_checkpoint(root: &Path, reason: &str) {
 }
 
 fn main() -> Result<()> {
+    let supervisor_args = parse_supervisor_args();
+    if maybe_handle_user_chat_mode(&supervisor_args)? {
+        return Ok(());
+    }
     let SupervisorArgs {
         exe,
         prefer_release,
         no_watch,
         loop_max,
         filtered_args,
-    } = parse_supervisor_args();
+        ..
+    } = supervisor_args;
     let start_dir = std::env::current_dir().context("current_dir")?;
     let root = find_workspace_root(&start_dir)
         .ok_or_else(|| anyhow!("unable to locate workspace root with target/"))?;
@@ -823,7 +829,108 @@ struct SupervisorArgs {
     /// When Some(n), run the bounded repair loop for up to n iterations instead
     /// of the normal indefinite-watch supervisor mode.
     loop_max: Option<u32>,
+    user_message: Option<String>,
+    user_message_file: Option<String>,
+    read_user_reply: bool,
+    user_to_role: String,
     filtered_args: Vec<String>,
+}
+
+fn take_flag_value(args: &[String], flag: &str) -> Option<String> {
+    args.windows(2)
+        .find(|w| w[0] == flag)
+        .map(|w| w[1].clone())
+}
+
+fn has_flag(args: &[String], flag: &str) -> bool {
+    args.iter().any(|arg| arg == flag)
+}
+
+fn sanitize_role(role: &str) -> String {
+    role.trim()
+        .to_lowercase()
+        .replace(|c: char| !c.is_ascii_alphanumeric(), "_")
+}
+
+fn read_user_message_cli(args: &SupervisorArgs) -> Result<Option<String>> {
+    if let Some(message) = &args.user_message {
+        let trimmed = message.trim().to_string();
+        if trimmed.is_empty() {
+            bail!("--message cannot be empty");
+        }
+        return Ok(Some(trimmed));
+    }
+    if let Some(path) = &args.user_message_file {
+        let text = fs::read_to_string(path)
+            .with_context(|| format!("read --message-file {}", path))?;
+        let trimmed = text.trim().to_string();
+        if trimmed.is_empty() {
+            bail!("--message-file contained only whitespace");
+        }
+        return Ok(Some(trimmed));
+    }
+    Ok(None)
+}
+
+fn write_external_user_message(state_dir: &Path, to_role: &str, message: &str) -> Result<PathBuf> {
+    fs::create_dir_all(state_dir)
+        .with_context(|| format!("create state dir {}", state_dir.display()))?;
+    let to_key = sanitize_role(to_role);
+    let action = json!({
+        "kind": "external_user_message",
+        "from": "user",
+        "to": to_key,
+        "message": message,
+        "reply_to": "user"
+    });
+    let msg_path = state_dir.join(format!("external_user_message_to_{}.json", to_key));
+    fs::write(&msg_path, serde_json::to_string_pretty(&action)?)
+        .with_context(|| format!("write {}", msg_path.display()))?;
+    let wake_path = state_dir.join(format!("wakeup_{}.flag", to_key));
+    fs::write(&wake_path, "user_message")
+        .with_context(|| format!("write {}", wake_path.display()))?;
+    Ok(msg_path)
+}
+
+fn read_external_user_reply(state_dir: &Path) -> Result<Option<String>> {
+    let reply_path = state_dir.join("last_message_to_user.json");
+    match fs::read_to_string(&reply_path) {
+        Ok(text) => Ok(Some(text)),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(err).with_context(|| format!("read {}", reply_path.display())),
+    }
+}
+
+fn maybe_handle_user_chat_mode(args: &SupervisorArgs) -> Result<bool> {
+    let message = read_user_message_cli(args)?;
+    if !args.read_user_reply && message.is_none() {
+        return Ok(false);
+    }
+
+    let state_dir = agent_state_dir_from_args(&args.filtered_args);
+    if args.read_user_reply {
+        match read_external_user_reply(&state_dir)? {
+            Some(reply) => println!("{}", reply),
+            None => println!("{{}}"),
+        }
+        return Ok(true);
+    }
+
+    let msg_path = write_external_user_message(
+        &state_dir,
+        &args.user_to_role,
+        &message.expect("checked above"),
+    )?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({
+            "ok": true,
+            "delivered_to": sanitize_role(&args.user_to_role),
+            "message_path": msg_path,
+            "wakeup_flag": state_dir.join(format!("wakeup_{}.flag", sanitize_role(&args.user_to_role))),
+        }))?
+    );
+    Ok(true)
 }
 
 fn parse_supervisor_args() -> SupervisorArgs {
@@ -832,6 +939,10 @@ fn parse_supervisor_args() -> SupervisorArgs {
     let mut prefer_release = false;
     let mut no_watch = false;
     let mut loop_max: Option<u32> = None;
+    let user_message = take_flag_value(&args, "--message");
+    let user_message_file = take_flag_value(&args, "--message-file");
+    let read_user_reply = has_flag(&args, "--read-reply");
+    let user_to_role = take_flag_value(&args, "--to").unwrap_or_else(|| "solo".to_string());
     let mut filtered_args = Vec::new();
     let mut i = 0usize;
     while i < args.len() {
@@ -855,6 +966,14 @@ fn parse_supervisor_args() -> SupervisorArgs {
             }
             continue;
         }
+        if matches!(arg.as_str(), "--message" | "--message-file" | "--to") {
+            i += if i + 1 < args.len() { 2 } else { 1 };
+            continue;
+        }
+        if arg == "--read-reply" {
+            i += 1;
+            continue;
+        }
         if arg == "--" {
             filtered_args.extend_from_slice(&args[i + 1..]);
             break;
@@ -867,6 +986,10 @@ fn parse_supervisor_args() -> SupervisorArgs {
         prefer_release,
         no_watch,
         loop_max,
+        user_message,
+        user_message_file,
+        read_user_reply,
+        user_to_role,
         filtered_args,
     }
 }
