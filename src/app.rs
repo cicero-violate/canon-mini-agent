@@ -5674,9 +5674,9 @@ pub async fn run() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        action_retry_fingerprint, executor_step_limit_feedback, has_actionable_objectives,
-        inbound_message_from_user, invariant_id_from_reason, plan_has_incomplete_tasks,
-        route_gate_blocker_message, should_reject_solo_self_complete,
+        action_retry_fingerprint, enforce_diagnostics_python, executor_step_limit_feedback,
+        has_actionable_objectives, inbound_message_from_user, invariant_id_from_reason,
+        plan_has_incomplete_tasks, route_gate_blocker_message, should_reject_solo_self_complete,
         verifier_confirmed_with_plan_text, ActionProvenance,
     };
     use crate::system_state::SystemState;
@@ -5757,6 +5757,38 @@ mod tests {
     fn inbound_message_from_user_rejects_non_user_sender() {
         let inbound = r#"{"action":"message","from":"planner","to":"solo","type":"handoff","status":"ready","payload":{"summary":"hello"}}"#;
         assert!(!inbound_message_from_user(inbound));
+    }
+
+    #[test]
+    fn diagnostics_requires_python_before_message_or_mutation() {
+        let action = json!({
+            "action": "message",
+            "from": "diagnostics",
+            "to": "planner",
+            "type": "blocker",
+            "status": "blocked",
+            "payload": {
+                "summary": "blocked",
+                "blocker": "No executable diagnostics channel to invoke receipt generation or read evidence artifacts."
+            }
+        });
+        let mut done = false;
+        let msg = enforce_diagnostics_python("diagnostics", "message", &action, &mut done)
+            .expect("diagnostics should be forced into python evidence read first");
+        assert!(msg.contains("must begin with a `python` action"));
+        assert!(!done);
+    }
+
+    #[test]
+    fn diagnostics_accepts_first_python_when_it_reads_workspace_logs() {
+        let action = json!({
+            "action": "python",
+            "code": "from pathlib import Path\nws = Path('/workspace/ai_sandbox/canon-mini-agent')\nprint((ws / 'agent_state').exists())\nfor p in ws.joinpath('agent_state').rglob('*.json*'): print(p)"
+        });
+        let mut done = false;
+        let msg = enforce_diagnostics_python("diagnostics", "python", &action, &mut done);
+        assert!(msg.is_none(), "workspace log discovery python should be accepted");
+        assert!(done, "accepted diagnostics python should satisfy the first-step gate");
     }
 
     #[test]
