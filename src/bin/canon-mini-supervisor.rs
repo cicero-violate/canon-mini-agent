@@ -199,6 +199,18 @@ fn agent_state_flag_path(args: &[String], filename: &str) -> PathBuf {
     agent_state_dir_from_args(args).join(filename)
 }
 
+fn rust_patch_verification_flag_path(state_dir: &Path) -> PathBuf {
+    state_dir.join("rust_patch_verification_requested.flag")
+}
+
+fn rust_patch_verification_requested(state_dir: &Path) -> bool {
+    rust_patch_verification_flag_path(state_dir).exists()
+}
+
+fn clear_rust_patch_verification_request(state_dir: &Path) {
+    let _ = fs::remove_file(rust_patch_verification_flag_path(state_dir));
+}
+
 fn workspace_from_args(args: &[String]) -> Option<String> {
     let mut i = 0usize;
     while i + 1 < args.len() {
@@ -280,11 +292,16 @@ fn run_ticket_refresh(root: &Path, kind: BuildKind) {
     }
 }
 
-fn stage_commit_push_before_restart(root: &Path, reason: &str, prefer_release: bool) {
+fn stage_commit_push_before_restart(
+    root: &Path,
+    state_dir: &Path,
+    reason: &str,
+    prefer_release: bool,
+) {
     eprintln!(
         "[canon-mini-supervisor] pre-restart checkpoint start ({reason})"
     );
-    if !checkpoint_build_succeeded(root, reason) {
+    if !checkpoint_build_succeeded(root, state_dir, reason) {
         return;
     }
 
@@ -308,7 +325,13 @@ fn preferred_build_kind(prefer_release: bool) -> BuildKind {
     }
 }
 
-fn checkpoint_build_succeeded(root: &Path, reason: &str) -> bool {
+fn checkpoint_build_succeeded(root: &Path, state_dir: &Path, reason: &str) -> bool {
+    if !rust_patch_verification_requested(state_dir) {
+        eprintln!(
+            "[canon-mini-supervisor] pre-restart: skipping `cargo build --workspace` ({reason}); no Rust apply_patch verification requested"
+        );
+        return true;
+    }
     eprintln!(
         "[canon-mini-supervisor] pre-restart: running `cargo build --workspace` ({reason})"
     );
@@ -328,12 +351,14 @@ fn checkpoint_build_succeeded(root: &Path, reason: &str) -> bool {
             eprintln!(
                 "[canon-mini-supervisor] pre-restart cargo build failed; skipping git add/commit/push ({reason})"
             );
+            clear_rust_patch_verification_request(state_dir);
             false
         }
         Err(err) => {
             eprintln!(
                 "[canon-mini-supervisor] pre-restart cargo build errored; skipping git add/commit/push ({reason}): {err:#}"
             );
+            clear_rust_patch_verification_request(state_dir);
             false
         }
     }
@@ -625,7 +650,8 @@ fn handle_child_exit_status(
         std::process::exit(0);
     }
     eprintln!("[canon-mini-supervisor] restarting due to failure...");
-    stage_commit_push_before_restart(root, "failure-restart", prefer_release);
+    let state_dir = root.join("agent_state");
+    stage_commit_push_before_restart(root, &state_dir, "failure-restart", prefer_release);
     log_error_event(
         "supervisor",
         "supervisor_main",
@@ -771,7 +797,8 @@ fn maybe_restart_for_pending_update(
             ),
             None,
         );
-        stage_commit_push_before_restart(root, "single-role-update", prefer_release);
+        let state_dir = root.join("agent_state");
+        stage_commit_push_before_restart(root, &state_dir, "single-role-update", prefer_release);
         send_sigint(child);
         wait_for_exit(child, Duration::from_secs(10));
         eprintln!("[canon-mini-supervisor] restarting...");
@@ -796,7 +823,8 @@ fn maybe_restart_for_pending_update(
             ),
             None,
         );
-        stage_commit_push_before_restart(root, "orchestrate-idle-update", prefer_release);
+        let state_dir = root.join("agent_state");
+        stage_commit_push_before_restart(root, &state_dir, "orchestrate-idle-update", prefer_release);
         send_sigint(child);
         wait_for_exit(child, Duration::from_secs(10));
         eprintln!("[canon-mini-supervisor] restarting...");
@@ -1042,10 +1070,16 @@ fn write_loop_context(
     let _ = workspace; // workspace available for future multi-crate expansion
 }
 
-/// Run `cargo test --workspace` and return whether all tests pass.
-fn check_test_gate(root: &Path) -> bool {
+/// Run `cargo test --workspace` only when a Rust apply_patch requested verification.
+fn check_test_gate(root: &Path, state_dir: &Path, prior_value: bool) -> bool {
+    if !rust_patch_verification_requested(state_dir) {
+        eprintln!(
+            "[canon-mini-supervisor] loop: skipping cargo test gate; no Rust apply_patch verification requested"
+        );
+        return prior_value;
+    }
     eprintln!("[canon-mini-supervisor] loop: running cargo test --workspace");
-    match run_cmd(root, "cargo", &["test", "--workspace"]) {
+    let result = match run_cmd(root, "cargo", &["test", "--workspace"]) {
         Ok(true) => {
             eprintln!("[canon-mini-supervisor] loop: tests PASSING");
             true
@@ -1058,7 +1092,9 @@ fn check_test_gate(root: &Path) -> bool {
             eprintln!("[canon-mini-supervisor] loop: cargo test errored: {err:#}");
             false
         }
-    }
+    };
+    clear_rust_patch_verification_request(state_dir);
+    result
 }
 
 /// Extract `symbol::path` tokens from a free-form string.
@@ -1322,7 +1358,7 @@ fn run_repair_loop(
         );
 
         // Refresh semantic graph (cargo build regenerates state/rustc/*/graph.json).
-        if !checkpoint_build_succeeded(root, &format!("loop-iter-{iteration}")) {
+        if !checkpoint_build_succeeded(root, &state_dir, &format!("loop-iter-{iteration}")) {
             eprintln!("[canon-mini-supervisor] loop: build failed; aborting loop");
             break;
         }
@@ -1357,14 +1393,19 @@ fn run_repair_loop(
         }
 
         // Check test gate.
-        tests_passing = check_test_gate(root);
+        tests_passing = check_test_gate(root, &state_dir, tests_passing);
         if tests_passing {
             eprintln!(
                 "[canon-mini-supervisor] loop: tests passing after iteration {iteration}; done"
             );
             // Clean up loop context so the agent doesn't see stale data on next normal run.
             let _ = std::fs::remove_file(state_dir.join("loop_context.json"));
-            stage_commit_push_before_restart(root, &format!("loop-success-{iteration}"), prefer_release);
+            stage_commit_push_before_restart(
+                root,
+                &state_dir,
+                &format!("loop-success-{iteration}"),
+                prefer_release,
+            );
             return Ok(());
         }
 
@@ -1373,6 +1414,7 @@ fn run_repair_loop(
         );
         stage_commit_push_before_restart(
             root,
+            &state_dir,
             &format!("loop-iter-{iteration}"),
             prefer_release,
         );

@@ -1405,6 +1405,10 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
 
     let block_route_gate = |reason: String| {
         eprintln!("[invariant_gate] route G_r (BLOCKED): {reason}");
+        let blocker_message = route_gate_blocker_message(&reason);
+        if !persist_planner_blocker_message(&blocker_message) {
+            return;
+        }
         crate::blockers::record_action_failure(
             &ws,
             "orchestrator",
@@ -1422,8 +1426,6 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
             "ts_ms": crate::logging::now_ms(),
         });
         let _ = crate::logging::append_action_log_record(&record);
-        let blocker_message = route_gate_blocker_message(&reason);
-        let _ = persist_planner_blocker_message(&blocker_message);
     };
 
     if let Err(reason) = crate::invariants::evaluate_invariant_gate("route", &state, &ws) {
