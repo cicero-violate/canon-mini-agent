@@ -1,1 +1,1 @@
-invariant gate blocked role `executor`: Role `orchestrator` repeatedly encounters `livelock_detected`: orchestrator detected livelock: no watched-file state change after consecutive cycles [id=INV-61cc3cc7]
+Current-turn evidence still shows active prompt-overflow violations in `VIOLATIONS.json`, the critical livelock finding in `PLANS/default/diagnostics-default.json`, and an inbound diagnostics blocker stating this response channel cannot execute the canon `python`, `read_file`, `issue`, or report-write actions required for authoritative refresh.

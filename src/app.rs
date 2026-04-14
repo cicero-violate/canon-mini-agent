@@ -2820,11 +2820,30 @@ fn executor_step_limit_feedback() -> String {
 
 fn enforce_diagnostics_python(
     role: &str,
-    _kind: &str,
-    _action: &Value,
+    kind: &str,
+    action: &Value,
     diagnostics_eventlog_python_done: &mut bool,
 ) -> Option<String> {
-    let _ = (role, diagnostics_eventlog_python_done);
+    if role != "diagnostics" {
+        return None;
+    }
+
+    if !*diagnostics_eventlog_python_done {
+        if kind != "python" {
+            return Some(
+                "Diagnostics is tool-capable in this runtime and must begin with a `python` action that reads workspace-local state/log artifacts before any `message`, `issue`, `violation`, or patch action. Do not claim the tool surface is unavailable; use it.".to_string(),
+            );
+        }
+
+        if !crate::prompts::diagnostics_python_reads_event_logs(action) {
+            return Some(
+                "The first diagnostics action must be a `python` read over workspace-local state/log artifacts (for example `agent_state/*`, `VIOLATIONS.json`, `ISSUES.json`, or discovered `state/`/`log` paths) so evidence receipts and freshness checks exist before authoritative mutation.".to_string(),
+            );
+        }
+
+        *diagnostics_eventlog_python_done = true;
+    }
+
     None
 }
 
