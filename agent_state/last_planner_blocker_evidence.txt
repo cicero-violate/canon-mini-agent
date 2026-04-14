@@ -1,1 +1,1 @@
-This environment only allows text responses and cannot perform required planner actions such as `plan` or `read_file` against /workspace/ai_sandbox/canon-mini-agent.
+chromium: extension not connected, cannot open tab

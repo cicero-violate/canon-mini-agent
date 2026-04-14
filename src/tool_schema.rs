@@ -612,7 +612,7 @@ pub enum ToolAction {
 
 pub fn tool_protocol_schema_json() -> String {
     let schema = schema_for!(ToolAction);
-    serde_json::to_string_pretty(&schema).unwrap_or_else(|_| "{}".to_string())
+    serde_json::to_string(&schema).unwrap_or_else(|_| "{}".to_string())
 }
 
 fn build_tool_actions_list() -> Vec<(&'static str, &'static str, Option<&'static str>)> {
@@ -823,7 +823,7 @@ pub fn tool_protocol_schema_split_text() -> String {
     let actions = build_tool_actions_list();
     for (action, desc, _notes) in &actions {
         let schema = find_action_schema(&value, action)
-            .and_then(|v| serde_json::to_string_pretty(v).ok())
+            .and_then(|v| serde_json::to_string(v).ok())
             .unwrap_or_else(|| "{}".to_string());
         out.push_str(&format!(
             "Action: `{action}` — {desc}\n```json\n{schema}\n```\n\n"
@@ -831,7 +831,7 @@ pub fn tool_protocol_schema_split_text() -> String {
     }
 
     if let Some(defs) = value.get("definitions") {
-        if let Ok(defs_json) = serde_json::to_string_pretty(defs) {
+        if let Ok(defs_json) = serde_json::to_string(defs) {
             out.push_str("Shared definitions (referenced via `$ref`):\n```json\n");
             out.push_str(&defs_json);
             out.push_str("\n```\n");
@@ -845,7 +845,7 @@ pub fn tool_protocol_schema_split_text() -> String {
 fn action_schema_text(action: &str) -> Option<String> {
     let schema = schema_for!(ToolAction);
     let value = serde_json::to_value(&schema).ok()?;
-    find_action_schema(&value, action).and_then(|v| serde_json::to_string_pretty(v).ok())
+    find_action_schema(&value, action).and_then(|v| serde_json::to_string(v).ok())
 }
 
 pub fn predicted_action_schema_text(predicted_next_actions_json: &str) -> String {
@@ -916,7 +916,7 @@ pub fn selected_tool_protocol_schema_text(actions: &[&str]) -> String {
             continue;
         };
         let schema = find_action_schema(&value, action)
-            .and_then(|v| serde_json::to_string_pretty(v).ok())
+            .and_then(|v| serde_json::to_string(v).ok())
             .unwrap_or_else(|| "{}".to_string());
         out.push_str(&format!(
             "Action: `{action}` — {desc}\n```json\n{schema}\n```\n\n"
@@ -957,7 +957,7 @@ fn write_tool_examples_inner(workspace: &std::path::Path) -> anyhow::Result<()> 
             out.push_str("\n\n");
         } else {
             let schema = find_action_schema(&value, action)
-                .and_then(|v| serde_json::to_string_pretty(v).ok())
+                .and_then(|v| serde_json::to_string(v).ok())
                 .unwrap_or_else(|| "{}".to_string());
             out.push_str(&format!("```json\n{schema}\n```\n\n"));
         }

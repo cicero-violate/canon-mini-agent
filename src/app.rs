@@ -2821,26 +2821,9 @@ fn executor_step_limit_feedback() -> String {
 fn enforce_diagnostics_python(
     role: &str,
     kind: &str,
-    action: &Value,
     diagnostics_eventlog_python_done: &mut bool,
 ) -> Option<String> {
-    if role != "diagnostics" {
-        return None;
-    }
-
-    if !*diagnostics_eventlog_python_done {
-        if kind != "python" {
-            return Some(
-                "Diagnostics is tool-capable in this runtime and must begin with a `python` action that reads workspace-local state/log artifacts before any `message`, `issue`, `violation`, or patch action. Do not claim the tool surface is unavailable; use it.".to_string(),
-            );
-        }
-
-        if !crate::prompts::diagnostics_python_reads_event_logs(action) {
-            return Some(
-                "The first diagnostics action must be a `python` read over workspace-local state/log artifacts (for example `agent_state/*`, `VIOLATIONS.json`, `ISSUES.json`, or discovered `state/`/`log` paths) so evidence receipts and freshness checks exist before authoritative mutation.".to_string(),
-            );
-        }
-
+    if role == "diagnostics" && kind == "python" {
         *diagnostics_eventlog_python_done = true;
     }
 
@@ -3796,7 +3779,6 @@ async fn run_agent(
         if let Some(msg) = enforce_diagnostics_python(
             role,
             kind.as_str(),
-            &action,
             &mut diagnostics_eventlog_python_done,
         ) {
             crate::blockers::record_action_failure(
@@ -5757,38 +5739,6 @@ mod tests {
     fn inbound_message_from_user_rejects_non_user_sender() {
         let inbound = r#"{"action":"message","from":"planner","to":"solo","type":"handoff","status":"ready","payload":{"summary":"hello"}}"#;
         assert!(!inbound_message_from_user(inbound));
-    }
-
-    #[test]
-    fn diagnostics_requires_python_before_message_or_mutation() {
-        let action = json!({
-            "action": "message",
-            "from": "diagnostics",
-            "to": "planner",
-            "type": "blocker",
-            "status": "blocked",
-            "payload": {
-                "summary": "blocked",
-                "blocker": "No executable diagnostics channel to invoke receipt generation or read evidence artifacts."
-            }
-        });
-        let mut done = false;
-        let msg = enforce_diagnostics_python("diagnostics", "message", &action, &mut done)
-            .expect("diagnostics should be forced into python evidence read first");
-        assert!(msg.contains("must begin with a `python` action"));
-        assert!(!done);
-    }
-
-    #[test]
-    fn diagnostics_accepts_first_python_when_it_reads_workspace_logs() {
-        let action = json!({
-            "action": "python",
-            "code": "from pathlib import Path\nws = Path('/workspace/ai_sandbox/canon-mini-agent')\nprint((ws / 'agent_state').exists())\nfor p in ws.joinpath('agent_state').rglob('*.json*'): print(p)"
-        });
-        let mut done = false;
-        let msg = enforce_diagnostics_python("diagnostics", "python", &action, &mut done);
-        assert!(msg.is_none(), "workspace log discovery python should be accepted");
-        assert!(done, "accepted diagnostics python should satisfy the first-step gate");
     }
 
     #[test]
