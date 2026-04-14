@@ -23,6 +23,7 @@ pub mod refactor_analysis;
 mod rename_example_caller;
 mod rename_example_target;
 pub mod rename_semantic;
+pub mod orchestrator_seam;
 mod reports;
 mod semantic;
 pub mod state_space;
