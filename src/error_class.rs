@@ -283,6 +283,15 @@ pub fn classify_result(action_kind: &str, result_text: &str, ok: bool) -> ErrorC
 /// This is a best-effort heuristic; the LLM's free-text summary is the input.
 pub fn classify_blocker_summary(summary: &str) -> ErrorClass {
     let text = summary.to_lowercase();
+    if text.contains("tool unavailable")
+        || text.contains("tools unavailable")
+        || text.contains("workspace tools unavailable")
+        || text.contains("toolchain unavailable")
+        || text.contains("unavailable in this chat environment")
+        || text.contains("cannot proceed without the required canon toolchain")
+    {
+        return ErrorClass::PermissionDenied;
+    }
     if text.contains("step limit") || text.contains("budget") || text.contains("too many steps") {
         return ErrorClass::StepLimitExceeded;
     }
