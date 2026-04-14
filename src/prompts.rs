@@ -1592,7 +1592,7 @@ pub(crate) fn single_role_solo_prompt(
         "Workspace diff since last cycle (git diff, excluding plans/diagnostics/violations)".to_string();
     let objectives_heading = format!("Objectives (from {OBJECTIVES_FILE})");
     let issues_heading = format!("Open issues ranked by score (from {issues_file})");
-    let lessons_heading = "Lessons artifact".to_string();
+    let lessons_heading = "Lessons artifact:".to_string();
     let loop_context_heading =
         "Repair loop context (supervisor-directed; focus on this target first)".to_string();
     let violations_heading = format!("Violations (from {VIOLATIONS_FILE})");
