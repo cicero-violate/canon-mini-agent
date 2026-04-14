@@ -7551,6 +7551,7 @@ mod tests {
     use super::handle_execution_path_action;
     use super::handle_objectives_action;
     use super::handle_plan_action;
+    use super::handle_read_file_action;
     use super::handle_rename_symbol_action;
     use super::handle_stage_graph_action;
     use super::handle_symbols_index_action;
@@ -7680,6 +7681,19 @@ mod tests {
         assert!(out.contains("derived cache view"));
         let persisted = std::fs::read_to_string(tmp.join("DIAGNOSTICS.json")).unwrap();
         assert_eq!(persisted, "{\"status\":\"healthy\",\"ranked_failures\":[]}");
+    }
+
+    #[test]
+    fn read_file_result_surfaces_evidence_receipt_id() {
+        let tmp = fresh_test_dir("read-file-receipt");
+        let target = tmp.join("sample.txt");
+        std::fs::write(&target, "alpha\nbeta\n").unwrap();
+
+        let action = json!({"path": "sample.txt"});
+        let (_done, out) = handle_read_file_action("diagnostics", 1, &tmp, &action).unwrap();
+
+        assert!(out.contains("Evidence receipt: rcpt-"), "unexpected: {out}");
+        assert!(out.contains("alpha"), "unexpected: {out}");
     }
 
     #[test]

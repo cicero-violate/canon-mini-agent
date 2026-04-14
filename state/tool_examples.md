@@ -64,12 +64,13 @@ Notes:
 
 Examples:
   {"action":"issue","op":"read","rationale":"Check open issues before starting work."}
-  {"action":"issue","op":"create","issue":{"id":"ISS-001","title":"Retry loop does not fire for submit-only turns","status":"open","priority":"high","kind":"bug","description":"...","location":"src/ws_server.rs:554","evidence":["frames/inbound.jsonl fc=91 only presence frames after fc=76 heartbeat"],"discovered_by":"solo"},"rationale":"Record the stall bug for later fix."}
-  {"action":"issue","op":"set_status","issue_id":"ISS-001","status":"resolved","rationale":"Issue was fixed by removing the pending check."}
-  {"action":"issue","op":"update","issue_id":"ISS-001","updates":{"priority":"medium","description":"Updated description"},"rationale":"Revise issue details."}
+  {"action":"issue","op":"create","evidence_receipts":["rcpt-123-diagnostics-1-read_file"],"issue":{"id":"ISS-001","title":"Retry loop does not fire for submit-only turns","status":"open","priority":"high","kind":"bug","description":"...","location":"src/ws_server.rs:554","evidence":["frames/inbound.jsonl fc=91 only presence frames after fc=76 heartbeat"],"discovered_by":"solo"},"rationale":"Record the stall bug for later fix using the current-cycle read receipt."}
+  {"action":"issue","op":"set_status","issue_id":"ISS-001","status":"resolved","evidence_receipts":["rcpt-124-diagnostics-2-python"],"rationale":"Issue was fixed by removing the pending check."}
+  {"action":"issue","op":"update","issue_id":"ISS-001","evidence_receipts":["rcpt-125-diagnostics-3-read_file"],"updates":{"priority":"medium","description":"Updated description"},"rationale":"Revise issue details."}
 Allowed status: open | in_progress | resolved | wontfix
 Allowed priority: high | medium | low
 Allowed kind: bug | logic | invariant_violation | performance | stale_state
+⚠ Mutating issue ops (`create`, `update`, `set_status`) require non-empty `evidence_receipts` copied from a successful current-cycle `read_file`, `python`, or `run_command` result.
 
 ## `objectives` — read/update objectives in PLANS/OBJECTIVES.json
 
@@ -108,6 +109,7 @@ Examples:
 Example:
   {"action":"python","code":"from pathlib import Path\nprint(len(list(Path('src').glob('**/*.rs'))))","cwd":"/workspace/ai_sandbox/canon-mini-agent","rationale":"Use Python for structured workspace analysis."}
 ⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE.
+⚠ Successful `python` results now return an `Evidence receipt:` line; copy that `rcpt-*` id into later mutating `issue`/`violation` actions.
 
 ## `cargo_test` — run a targeted cargo test (harness-style)
 
@@ -682,9 +684,10 @@ Violation fields: id (string), title (string), severity (critical|high|medium|lo
 
 Examples:
   {"action":"violation","op":"read","rationale":"Check current violations before deciding on next steps."}
-  {"action":"violation","op":"upsert","violation":{"id":"PROMPT-OVERFLOW-SOLO","title":"Solo prompt exceeds token limit","severity":"high","evidence":["prompt_bytes=23447"],"issue":"Solo prompt too large","impact":"Model truncates context","required_fix":["Trim injected sections"],"files":[]},"rationale":"Add violation with current evidence."}
-  {"action":"violation","op":"resolve","violation_id":"PROMPT-OVERFLOW-SOLO","rationale":"Prompt size reduced below threshold after trimming."}
-  {"action":"violation","op":"set_status","status":"ok","summary":"All prior violations resolved.","rationale":"No active violations remain."}
+  {"action":"violation","op":"upsert","evidence_receipts":["rcpt-123-diagnostics-1-read_file"],"violation":{"id":"PROMPT-OVERFLOW-SOLO","title":"Solo prompt exceeds token limit","severity":"high","evidence":["prompt_bytes=23447"],"issue":"Solo prompt too large","impact":"Model truncates context","required_fix":["Trim injected sections"],"files":[]},"rationale":"Add violation with current evidence."}
+  {"action":"violation","op":"resolve","violation_id":"PROMPT-OVERFLOW-SOLO","evidence_receipts":["rcpt-124-diagnostics-2-python"],"rationale":"Prompt size reduced below threshold after trimming."}
+  {"action":"violation","op":"set_status","status":"ok","summary":"All prior violations resolved.","evidence_receipts":["rcpt-125-diagnostics-3-run_command"],"rationale":"No active violations remain."}
+⚠ Mutating violation ops (`upsert`, `resolve`, `set_status`, `replace`) require non-empty `evidence_receipts` copied from a successful current-cycle `read_file`, `python`, or `run_command` result.
 
 ## `batch` — execute up to 8 non-mutating actions in one turn; results returned as labeled sections
 
