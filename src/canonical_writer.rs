@@ -132,6 +132,34 @@ mod tests {
         });
         writer.apply(ControlEvent::LanePendingSet {
             lane_id: 0,
+            pending: false,
+        });
+        writer.apply(ControlEvent::LaneInProgressSet {
+            lane_id: 0,
+            actor: Some("executor-0".to_string()),
+        });
+        writer.apply(ControlEvent::LaneActiveTabSet {
+            lane_id: 0,
+            tab_id: 9,
+        });
+        writer.apply(ControlEvent::ExecutorTurnRegistered {
+            tab_id: 9,
+            turn_id: 12,
+            lane_id: 0,
+            lane_label: "executor-0".to_string(),
+            actor: "executor-0".to_string(),
+            endpoint_id: "ep".to_string(),
+        });
+        writer.apply(ControlEvent::ExecutorTurnDeregistered {
+            tab_id: 9,
+            turn_id: 12,
+        });
+        writer.apply(ControlEvent::LaneInProgressSet {
+            lane_id: 0,
+            actor: None,
+        });
+        writer.apply(ControlEvent::LanePendingSet {
+            lane_id: 0,
             pending: true,
         });
 
@@ -141,6 +169,10 @@ mod tests {
         assert_eq!(
             replayed.lanes.get(&0).map(|lane| lane.pending),
             writer.state().lanes.get(&0).map(|lane| lane.pending)
+        );
+        assert_eq!(
+            replayed.submitted_turn_ids,
+            writer.state().submitted_turn_ids
         );
     }
 

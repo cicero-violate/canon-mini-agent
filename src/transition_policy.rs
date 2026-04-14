@@ -285,6 +285,18 @@ pub fn validate_transition(state: &SystemState, event: &ControlEvent) -> Result<
                     "illegal transition: executor turn registration requires lane {lane_id} to be in progress"
                 ));
             }
+            if lane_submit_in_flight(state, *lane_id) {
+                return Err(format!(
+                    "illegal transition: executor turn registration requires submit-in-flight to be cleared for lane {lane_id}"
+                ));
+            }
+            if let Some(active_tab) = state.lane_active_tab.get(lane_id) {
+                if active_tab != tab_id {
+                    return Err(format!(
+                        "illegal transition: executor turn registration for lane {lane_id} must use active tab {active_tab}, got {tab_id}"
+                    ));
+                }
+            }
         }
         ControlEvent::ExecutorTurnDeregistered { tab_id, turn_id } => {
             let key = format!("{tab_id}:{turn_id}");
@@ -345,7 +357,8 @@ mod tests {
 
     #[test]
     fn lane_claim_requires_pending_to_clear_first() {
-        let state = SystemState::new(&[0], 1);
+        let mut state = SystemState::new(&[0], 1);
+        state.lanes.get_mut(&0).unwrap().pending = true;
         let err = validate_transition(
             &state,
             &ControlEvent::LaneInProgressSet {
@@ -430,5 +443,50 @@ mod tests {
             },
         )
         .expect("prompt continuation can begin with active tab on in-progress lane");
+    }
+
+    #[test]
+    fn legal_submitted_turn_registration_requires_matching_active_tab() {
+        let mut state = SystemState::new(&[0], 1);
+        state.lanes.get_mut(&0).unwrap().pending = false;
+        state.lanes.get_mut(&0).unwrap().in_progress_by = Some("executor-0".to_string());
+        state.lane_active_tab.insert(0, 9);
+        state.lane_submit_in_flight.insert(0, false);
+
+        validate_transition(
+            &state,
+            &ControlEvent::ExecutorTurnRegistered {
+                tab_id: 9,
+                turn_id: 12,
+                lane_id: 0,
+                lane_label: "executor-0".to_string(),
+                actor: "executor-0".to_string(),
+                endpoint_id: "ep".to_string(),
+            },
+        )
+        .expect("turn registration should be legal on matching active tab");
+    }
+
+    #[test]
+    fn submitted_turn_registration_rejects_mismatched_active_tab() {
+        let mut state = SystemState::new(&[0], 1);
+        state.lanes.get_mut(&0).unwrap().pending = false;
+        state.lanes.get_mut(&0).unwrap().in_progress_by = Some("executor-0".to_string());
+        state.lane_active_tab.insert(0, 9);
+        state.lane_submit_in_flight.insert(0, false);
+
+        let err = validate_transition(
+            &state,
+            &ControlEvent::ExecutorTurnRegistered {
+                tab_id: 7,
+                turn_id: 12,
+                lane_id: 0,
+                lane_label: "executor-0".to_string(),
+                actor: "executor-0".to_string(),
+                endpoint_id: "ep".to_string(),
+            },
+        )
+        .expect_err("turn registration must use the active tab");
+        assert!(err.contains("must use active tab"));
     }
 }

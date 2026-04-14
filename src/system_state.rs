@@ -12,7 +12,7 @@ pub struct LaneState {
 }
 
 /// Serializable record stored in the tlog for each submitted executor turn.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubmittedTurnRecord {
     pub lane_id: usize,
     pub lane_label: String,

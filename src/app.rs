@@ -1095,19 +1095,15 @@ fn register_submitted_executor_turn(
     turn_id: u64,
     submitted_turn: SubmittedExecutorTurn,
 ) {
-    writer.apply(ControlEvent::LaneActiveTabSet { lane_id, tab_id });
-    if !writer.state().tab_id_to_lane.contains_key(&tab_id) {
-        writer.apply(ControlEvent::TabIdToLaneSet { tab_id, lane_id });
-    }
+    writer.apply(ControlEvent::ExecutorTurnRegistered {
+        tab_id,
+        turn_id,
+        lane_id,
+        lane_label: submitted_turn.lane_label.clone(),
+        actor: submitted_turn.actor.clone(),
+        endpoint_id: submitted_turn.endpoint_id.clone(),
+    });
     rt.submitted_turns.insert((tab_id, turn_id), submitted_turn);
-    writer.apply(ControlEvent::LaneNextSubmitAtSet {
-        lane_id,
-        ms: now_ms(),
-    });
-    writer.apply(ControlEvent::LaneSubmitInFlightSet {
-        lane_id,
-        in_flight: false,
-    });
 }
 
 fn timed_out_executor_submit_lanes(
@@ -1840,6 +1836,7 @@ async fn process_completed_turns(
             continue;
         };
         let submitted = if let Some(submitted) = rt.submitted_turns.remove(&(tab_id, turn_id)) {
+            writer.apply(ControlEvent::ExecutorTurnDeregistered { tab_id, turn_id });
             if check_completion_endpoint(&submitted.endpoint_id, completed_endpoint_id.as_deref())
                 == CompletionEndpointCheck::Mismatch
             {
