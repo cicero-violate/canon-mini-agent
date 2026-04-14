@@ -351,31 +351,27 @@ fn parse_predicted_action_names(predicted_next_actions: Option<&str>) -> Vec<Str
         .collect()
 }
 
-fn predicted_actions_need_evidence_receipt_generator(actions: &[String]) -> bool {
-    actions.iter().any(|action| action == "issue" || action == "violation")
-}
-
-fn augment_predicted_action_names(kind: AgentPromptKind, actions: &mut Vec<String>) {
-    if kind == AgentPromptKind::Diagnostics
-        && predicted_actions_need_evidence_receipt_generator(actions)
-    {
-        for helper in ["python", "read_file", "run_command"] {
-            if !actions.iter().any(|action| action == helper) {
-                actions.push(helper.to_string());
-            }
+fn dedup_action_names_preserve_order(actions: Vec<String>) -> Vec<String> {
+    let mut out = Vec::new();
+    for action in actions {
+        if !out.iter().any(|existing| existing == &action) {
+            out.push(action);
         }
     }
+    out
 }
 
-fn targeted_schema_block(kind: AgentPromptKind, predicted_next_actions: Option<&str>) -> String {
-    let mut actions = parse_predicted_action_names(predicted_next_actions);
-    augment_predicted_action_names(kind, &mut actions);
+fn predicted_action_schema_block(predicted_next_actions: Option<&str>) -> String {
+    let actions = dedup_action_names_preserve_order(parse_predicted_action_names(
+        predicted_next_actions,
+    ));
     if actions.is_empty() {
         return String::new();
     }
 
     let action_refs: Vec<&str> = actions.iter().map(|action| action.as_str()).collect();
-    selected_tool_protocol_schema_text(&action_refs)
+    let rendered = selected_tool_protocol_schema_text(&action_refs);
+    format!("Derived schemas for predicted next actions:\n{rendered}")
 }
 
 fn default_schema_block(kind: AgentPromptKind) -> String {
@@ -2699,10 +2695,8 @@ pub(crate) fn action_result_prompt(
     steps_used: Option<usize>,
     predicted_next_actions: Option<&str>,
 ) -> String {
-    let schema_block = targeted_schema_block(
-        agent_kind_from_agent_type(agent_type),
-        predicted_next_actions,
-    );
+    let _kind = agent_kind_from_agent_type(agent_type);
+    let schema_block = predicted_action_schema_block(predicted_next_actions);
     let tab_label = tab_id
         .map(|v| v.to_string())
         .unwrap_or_else(|| "unknown".to_string());
@@ -2721,14 +2715,8 @@ pub(crate) fn action_result_prompt(
                 .ok()
                 .and_then(|v| serde_json::to_string_pretty(&v).ok())
                 .unwrap_or_else(|| p.to_string());
-            let derived_schema = crate::tool_schema::predicted_action_schema_text(p);
-            let schema_block = if derived_schema.trim().is_empty() {
-                String::new()
-            } else {
-                format!("{derived_schema}\n")
-            };
             format!(
-                "Predicted next actions from your last turn:\n```json\n{pretty}\n```\nCompare these against the actual result above before choosing your next action.\n\n{schema_block}"
+                "Predicted next actions from your last turn:\n```json\n{pretty}\n```\nCompare these against the actual result above before choosing your next action.\n\n"
             )
         }
         _ => {
@@ -2757,8 +2745,13 @@ pub(crate) fn action_result_prompt(
     let prefix = format!(
         "TAB_ID: {tab_label}\nTURN_ID: {turn_label}\nAGENT_TYPE: {agent_type}\n\n{limit_line}{provenance_block}"
     );
+    let schema_section = if schema_block.is_empty() {
+        String::new()
+    } else {
+        format!("\n{schema_block}\n")
+    };
     let suffix = format!(
-        "\n\n{predicted_line}{schema_block}{}{}\nEmit exactly one action. Think through the decision internally; reveal chain-of-thought.",
+        "\n\n{predicted_line}{schema_section}{}{}\nEmit exactly one action. Think through the decision internally; reveal chain-of-thought.",
         next_action_hint_text(result, last_action),
         mutating_question,
     );
@@ -2988,31 +2981,59 @@ mod tests {
     }
 
     #[test]
-    fn diagnostics_targeted_schema_adds_receipt_generators_for_mutations() {
+    fn predicted_action_schema_block_renders_only_predicted_actions() {
         let predicted = r#"[
             {"action":"issue","intent":"update stale issue"},
             {"action":"violation","intent":"refresh violations"},
             {"action":"message","intent":"report blocker if needed"}
         ]"#;
-        let schema = targeted_schema_block(AgentPromptKind::Diagnostics, Some(predicted));
+        let schema = predicted_action_schema_block(Some(predicted));
         assert!(schema.contains("Action: `issue`"));
         assert!(schema.contains("Action: `violation`"));
-        assert!(schema.contains("Action: `python`"));
-        assert!(schema.contains("Action: `read_file`"));
-        assert!(schema.contains("Action: `run_command`"));
-    }
-
-    #[test]
-    fn planner_targeted_schema_does_not_gain_diagnostics_receipt_helpers() {
-        let predicted = r#"[
-            {"action":"issue","intent":"record structural issue"},
-            {"action":"message","intent":"handoff blocker"}
-        ]"#;
-        let schema = targeted_schema_block(AgentPromptKind::Planner, Some(predicted));
-        assert!(schema.contains("Action: `issue`"));
+        assert!(schema.contains("Action: `message`"));
         assert!(!schema.contains("Action: `python`"));
         assert!(!schema.contains("Action: `read_file`"));
         assert!(!schema.contains("Action: `run_command`"));
+    }
+
+    #[test]
+    fn predicted_action_schema_block_dedups_repeated_actions_preserving_order() {
+        let predicted = r#"[
+            {"action":"issue","intent":"first issue action"},
+            {"action":"issue","intent":"repeated issue action"},
+            {"action":"message","intent":"handoff blocker"},
+            {"action":"issue","intent":"repeated again"}
+        ]"#;
+        let schema = predicted_action_schema_block(Some(predicted));
+        assert!(schema.contains("Action: `issue`"));
+        assert!(schema.contains("Action: `message`"));
+        assert_eq!(schema.matches("Action: `issue`").count(), 1);
+        assert_eq!(schema.matches("Action: `message`").count(), 1);
+    }
+
+    #[test]
+    fn action_result_prompt_does_not_duplicate_predicted_action_schemas() {
+        let predicted = r#"[
+            {"action":"issue","intent":"update stale issue"},
+            {"action":"violation","intent":"refresh violations"},
+            {"action":"message","intent":"report blocker if needed"}
+        ]"#;
+        let prompt = action_result_prompt(
+            Some(1),
+            Some(2),
+            "DIAGNOSTICS",
+            "python ok:\nEvidence receipt: rcpt-123\n{}",
+            Some("python"),
+            Some("T1"),
+            Some("obj_15_automated_learning_loop"),
+            Some("Inspect diagnostics state"),
+            None,
+            Some(predicted),
+        );
+        assert!(prompt.contains("Derived schemas for predicted next actions:"));
+        assert_eq!(prompt.matches("Action: `issue`").count(), 1);
+        assert_eq!(prompt.matches("Action: `violation`").count(), 1);
+        assert_eq!(prompt.matches("Action: `message`").count(), 1);
     }
 
     #[test]
