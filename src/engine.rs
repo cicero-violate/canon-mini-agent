@@ -1,4 +1,5 @@
 use anyhow::Result;
+use crate::canonical_writer::CanonicalWriter;
 use crate::llm_runtime::config::LlmEndpoint;
 use serde_json::{json, Value};
 use std::path::Path;
@@ -15,6 +16,7 @@ pub(crate) fn process_action_and_execute(
     command_id: &str,
     action: &Value,
     check_on_done: bool,
+    writer: Option<&mut CanonicalWriter>,
 ) -> Result<(bool, String)> {
     if let Err(log_err) = append_llm_completion_log(role, endpoint, step, command_id, action) {
         eprintln!("[{role}] step={} completion_log_error: {log_err}", step);
@@ -35,5 +37,6 @@ pub(crate) fn process_action_and_execute(
         command_id,
         action,
         check_on_done,
+        writer,
     )
 }

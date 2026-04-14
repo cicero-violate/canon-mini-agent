@@ -549,6 +549,7 @@ async fn run_planner_phase(
         ctx.bridge,
         ctx.workspace,
         ctx.tabs_planner,
+        Some(writer),
         false,
         false,
         send_system_prompt,
@@ -717,6 +718,7 @@ async fn run_solo_phase(
         ctx.bridge,
         ctx.workspace,
         ctx.tabs_solo,
+        Some(writer),
         false,
         true,
         send_system_prompt,
@@ -874,6 +876,7 @@ async fn run_diagnostics_phase(
         ctx.bridge,
         ctx.workspace,
         ctx.tabs_diagnostics,
+        Some(writer),
         false,
         false,
         if restart_resume.is_some() {
@@ -1023,20 +1026,21 @@ async fn run_verifier_phase(
         };
         *verifier_bootstrapped = true;
         verifier_joinset.spawn(async move {
-            let verify_result = match run_agent(
-                "verifier",
-                "verifier",
-                &verifier_system,
-                verifier_prompt,
-                &verifier_ep,
-                &bridge,
-                &workspace,
-                &tabs_verify,
-                false,
-                false,
-                send_system_prompt,
-                0,
-            )
+        let verify_result = match run_agent(
+            "verifier",
+            "verifier",
+            &verifier_system,
+            verifier_prompt,
+            &verifier_ep,
+            &bridge,
+            &workspace,
+            &tabs_verify,
+            None,
+            false,
+            false,
+            send_system_prompt,
+            0,
+        )
             .await
             {
                 Ok(result) => result,
@@ -3304,6 +3308,7 @@ async fn continue_executor_completion(
                 bridge,
                 workspace,
                 tabs,
+                None,
                 false,
                 true,
                 true,
@@ -3323,6 +3328,7 @@ async fn continue_executor_completion(
         command_id,
         &action,
         true,
+        None,
     )?;
     if done {
         return Ok(out);
@@ -3361,6 +3367,7 @@ async fn continue_executor_completion(
         bridge,
         workspace,
         tabs,
+        None,
         false,
         true,
         true,
@@ -3383,6 +3390,7 @@ async fn run_agent(
     bridge: &WsBridge,
     workspace: &Path,
     tabs: &TabManagerHandle,
+    mut writer: Option<&mut CanonicalWriter>,
     submit_only: bool,
     check_on_done: bool,
     send_system_prompt: bool,
@@ -3758,6 +3766,7 @@ async fn run_agent(
             &command_id,
             &action,
             check_on_done,
+            writer.as_deref_mut(),
         )?;
 
         match step_result {
@@ -5574,6 +5583,7 @@ pub async fn run() -> Result<()> {
             &bridge,
             &workspace,
             &tabs,
+            None,
             submit_only,
             inputs.role == "executor",
             true,

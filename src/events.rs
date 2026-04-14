@@ -133,6 +133,20 @@ pub enum EffectEvent {
     CheckpointLoaded {
         phase: String,
     },
+    WorkspaceArtifactWriteRequested {
+        artifact: String,
+        op: String,
+        target: String,
+        subject: String,
+        signature: String,
+    },
+    WorkspaceArtifactWriteApplied {
+        artifact: String,
+        op: String,
+        target: String,
+        subject: String,
+        signature: String,
+    },
 }
 
 /// Envelope that wraps either a `ControlEvent` or an `EffectEvent`.

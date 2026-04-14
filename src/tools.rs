@@ -1,4 +1,5 @@
 use anyhow::{anyhow, bail, Context, Result};
+use crate::canonical_writer::CanonicalWriter;
 use crate::llm_runtime::config::LlmEndpoint;
 use canon_tools_patch::apply_patch;
 use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind, SyntaxToken};
@@ -61,10 +62,97 @@ fn patch_targets<'a>(patch: &'a str) -> Vec<&'a str> {
         .filter_map(|line| {
             line.strip_prefix("*** Update File:")
                 .or_else(|| line.strip_prefix("*** Add File:"))
+                .or_else(|| line.strip_prefix("*** Delete File:"))
+                .or_else(|| line.strip_prefix("*** Move to:"))
         })
         .map(str::trim)
         .filter(|path| !path.is_empty())
         .collect()
+}
+
+fn fnv1a64(text: &str) -> String {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in text.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
+}
+
+fn artifact_write_signature(parts: &[&str]) -> String {
+    fnv1a64(&parts.join("\u{1f}"))
+}
+
+fn file_snapshot(path: &Path) -> Result<Option<Vec<u8>>> {
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(err.into()),
+    }
+}
+
+fn restore_file_snapshot(path: &Path, snapshot: &Option<Vec<u8>>) -> Result<()> {
+    if let Some(bytes) = snapshot {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, bytes)?;
+    } else if path.exists() {
+        std::fs::remove_file(path)?;
+    }
+    Ok(())
+}
+
+fn emit_workspace_artifact_effect(
+    writer: &mut CanonicalWriter,
+    requested: bool,
+    artifact: &str,
+    op: &str,
+    target: &str,
+    subject: &str,
+    signature: &str,
+) {
+    let effect = if requested {
+        crate::events::EffectEvent::WorkspaceArtifactWriteRequested {
+            artifact: artifact.to_string(),
+            op: op.to_string(),
+            target: target.to_string(),
+            subject: subject.to_string(),
+            signature: signature.to_string(),
+        }
+    } else {
+        crate::events::EffectEvent::WorkspaceArtifactWriteApplied {
+            artifact: artifact.to_string(),
+            op: op.to_string(),
+            target: target.to_string(),
+            subject: subject.to_string(),
+            signature: signature.to_string(),
+        }
+    };
+    writer.record_effect(effect);
+}
+
+fn try_emit_workspace_artifact_effect(
+    writer: &mut CanonicalWriter,
+    requested: bool,
+    artifact: &str,
+    op: &str,
+    target: &str,
+    subject: &str,
+    signature: &str,
+) -> Result<()> {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        emit_workspace_artifact_effect(writer, requested, artifact, op, target, subject, signature);
+    }));
+    if result.is_err() {
+        bail!(
+            "canonical effect append failed for {} {} {}",
+            artifact,
+            op,
+            subject
+        );
+    }
+    Ok(())
 }
 
 fn is_lane_plan(path: &str) -> bool {
@@ -616,12 +704,51 @@ fn load_violations(path: &Path) -> Result<crate::reports::ViolationsReport> {
     serde_json::from_str(&raw).map_err(|e| anyhow!("VIOLATIONS.json parse error: {e}"))
 }
 
-fn save_violations(path: &Path, report: &crate::reports::ViolationsReport) -> Result<()> {
+fn save_violations(
+    path: &Path,
+    report: &crate::reports::ViolationsReport,
+    mut writer: Option<&mut CanonicalWriter>,
+    op: &str,
+    subject: &str,
+) -> Result<()> {
     let json = serde_json::to_string_pretty(report)?;
-    fs::write(path, json).map_err(|e| anyhow!("failed to write VIOLATIONS.json: {e}"))
+    let signature = artifact_write_signature(&["VIOLATIONS.json", op, subject, &json.len().to_string()]);
+    let target = path.to_string_lossy().into_owned();
+    if let Some(writer) = writer.as_mut() {
+        try_emit_workspace_artifact_effect(
+            writer,
+            true,
+            "VIOLATIONS.json",
+            op,
+            &target,
+            subject,
+            &signature,
+        )?;
+    }
+    let snapshot = file_snapshot(path)?;
+    fs::write(path, json).map_err(|e| anyhow!("failed to write VIOLATIONS.json: {e}"))?;
+    if let Some(writer) = writer.as_mut() {
+        if let Err(err) = try_emit_workspace_artifact_effect(
+            writer,
+            false,
+            "VIOLATIONS.json",
+            op,
+            &target,
+            subject,
+            &signature,
+        ) {
+            restore_file_snapshot(path, &snapshot)?;
+            return Err(err);
+        }
+    }
+    Ok(())
 }
 
-fn handle_violation_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+fn handle_violation_action(
+    mut writer: Option<&mut CanonicalWriter>,
+    workspace: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
     use crate::reports::{Violation, ViolationsReport};
     let op_raw = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
     let path = workspace.join(VIOLATIONS_FILE);
@@ -644,11 +771,11 @@ fn handle_violation_action(workspace: &Path, action: &Value) -> Result<(bool, St
             let mut report = load_violations(&path)?;
             if let Some(existing) = report.violations.iter_mut().find(|x| x.id == v.id) {
                 *existing = v.clone();
-                save_violations(&path, &report)?;
+                save_violations(&path, &report, writer.as_deref_mut(), "upsert", &v.id)?;
                 Ok((false, format!("violation upsert ok — updated `{}`", v.id)))
             } else {
                 report.violations.push(v.clone());
-                save_violations(&path, &report)?;
+                save_violations(&path, &report, writer.as_deref_mut(), "upsert", &v.id)?;
                 Ok((false, format!("violation upsert ok — added `{}`", v.id)))
             }
         }
@@ -666,7 +793,7 @@ fn handle_violation_action(workspace: &Path, action: &Value) -> Result<(bool, St
             if report.violations.is_empty() {
                 report.status = "ok".to_string();
             }
-            save_violations(&path, &report)?;
+            save_violations(&path, &report, writer.as_deref_mut(), "resolve", vid)?;
             Ok((false, format!("violation resolve ok — removed `{vid}`")))
         }
         "set_status" => {
@@ -679,7 +806,13 @@ fn handle_violation_action(workspace: &Path, action: &Value) -> Result<(bool, St
             if let Some(s) = action.get("summary").and_then(|v| v.as_str()) {
                 report.summary = s.to_string();
             }
-            save_violations(&path, &report)?;
+            save_violations(
+                &path,
+                &report,
+                writer.as_deref_mut(),
+                "set_status",
+                status,
+            )?;
             Ok((
                 false,
                 format!("violation set_status ok — status=`{status}`"),
@@ -691,7 +824,7 @@ fn handle_violation_action(workspace: &Path, action: &Value) -> Result<(bool, St
                 .ok_or_else(|| anyhow!("violation replace requires a 'report' object"))?;
             let report: ViolationsReport = serde_json::from_value(rep_val.clone())
                 .map_err(|e| anyhow!("invalid ViolationsReport payload: {e}"))?;
-            save_violations(&path, &report)?;
+            save_violations(&path, &report, writer.as_deref_mut(), "replace", "report")?;
             Ok((
                 false,
                 format!(
@@ -706,16 +839,20 @@ fn handle_violation_action(workspace: &Path, action: &Value) -> Result<(bool, St
     }
 }
 
-fn handle_issue_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+fn handle_issue_action(
+    mut writer: Option<&mut CanonicalWriter>,
+    workspace: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
     let op_raw = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
     let path = workspace.join(ISSUES_FILE);
     let raw = fs::read_to_string(&path).unwrap_or_default();
     match op_raw {
         "read" => read_open_issues(&raw),
-        "create" => create_issue(action, &path, &raw),
-        "update" => update_issue(action, &path, &raw),
-        "delete" => delete_issue(action, &path, &raw),
-        "set_status" => set_issue_status(action, &path, &raw),
+        "create" => create_issue(action, &path, &raw, writer.as_deref_mut()),
+        "update" => update_issue(action, &path, &raw, writer.as_deref_mut()),
+        "delete" => delete_issue(action, &path, &raw, writer.as_deref_mut()),
+        "set_status" => set_issue_status(action, &path, &raw, writer.as_deref_mut()),
         _ => {
             bail!("unknown issue op '{op_raw}' — use read | create | update | delete | set_status")
         }
@@ -737,7 +874,12 @@ fn read_open_issues(raw: &str) -> Result<(bool, String)> {
     ))
 }
 
-fn create_issue(action: &Value, path: &Path, raw: &str) -> Result<(bool, String)> {
+fn create_issue(
+    action: &Value,
+    path: &Path,
+    raw: &str,
+    writer: Option<&mut CanonicalWriter>,
+) -> Result<(bool, String)> {
     let issue_val = action
         .get("issue")
         .ok_or_else(|| anyhow!("issue create missing 'issue' field"))?;
@@ -796,16 +938,22 @@ fn create_issue(action: &Value, path: &Path, raw: &str) -> Result<(bool, String)
     if issue.id.trim().is_empty() {
         bail!("issue.id must be non-empty");
     }
-    if file.issues.iter().any(|i| i.id == issue.id) {
-        bail!("issue id already exists: {}", issue.id);
+    let issue_id = issue.id.clone();
+    if file.issues.iter().any(|i| i.id == issue_id) {
+        bail!("issue id already exists: {}", issue_id);
     }
     file.issues.push(issue);
-    write_issues_file(path, &mut file)?;
+    write_issues_file(path, &mut file, writer, "create", &issue_id)?;
     queue_diagnostics_reconciliation();
     Ok((false, "issue create ok".to_string()))
 }
 
-fn update_issue(action: &Value, path: &Path, raw: &str) -> Result<(bool, String)> {
+fn update_issue(
+    action: &Value,
+    path: &Path,
+    raw: &str,
+    writer: Option<&mut CanonicalWriter>,
+) -> Result<(bool, String)> {
     let issue_id = action
         .get("issue_id")
         .and_then(|v| v.as_str())
@@ -823,12 +971,17 @@ fn update_issue(action: &Value, path: &Path, raw: &str) -> Result<(bool, String)
         }
     }
     *issue = serde_json::from_value(value)?;
-    write_issues_file(path, &mut file)?;
+    write_issues_file(path, &mut file, writer, "update", issue_id)?;
     queue_diagnostics_reconciliation();
     Ok((false, "issue update ok".to_string()))
 }
 
-fn delete_issue(action: &Value, path: &Path, raw: &str) -> Result<(bool, String)> {
+fn delete_issue(
+    action: &Value,
+    path: &Path,
+    raw: &str,
+    writer: Option<&mut CanonicalWriter>,
+) -> Result<(bool, String)> {
     let issue_id = action
         .get("issue_id")
         .and_then(|v| v.as_str())
@@ -839,12 +992,17 @@ fn delete_issue(action: &Value, path: &Path, raw: &str) -> Result<(bool, String)
     if file.issues.len() == before {
         bail!("issue not found: {issue_id}");
     }
-    write_issues_file(path, &mut file)?;
+    write_issues_file(path, &mut file, writer, "delete", issue_id)?;
     queue_diagnostics_reconciliation();
     Ok((false, "issue delete ok".to_string()))
 }
 
-fn set_issue_status(action: &Value, path: &Path, raw: &str) -> Result<(bool, String)> {
+fn set_issue_status(
+    action: &Value,
+    path: &Path,
+    raw: &str,
+    writer: Option<&mut CanonicalWriter>,
+) -> Result<(bool, String)> {
     let issue_id = action
         .get("issue_id")
         .and_then(|v| v.as_str())
@@ -856,7 +1014,7 @@ fn set_issue_status(action: &Value, path: &Path, raw: &str) -> Result<(bool, Str
     let mut file = parse_issues_file_required(raw)?;
     let issue = find_issue_mut(&mut file, issue_id)?;
     issue.status = status.to_string();
-    write_issues_file(path, &mut file)?;
+    write_issues_file(path, &mut file, writer, "set_status", issue_id)?;
     queue_diagnostics_reconciliation();
     Ok((false, "issue set_status ok".to_string()))
 }
@@ -887,9 +1045,44 @@ fn find_issue_mut<'a>(file: &'a mut IssuesFile, issue_id: &str) -> Result<&'a mu
     Ok(issue)
 }
 
-fn write_issues_file(path: &Path, file: &mut IssuesFile) -> Result<()> {
+fn write_issues_file(
+    path: &Path,
+    file: &mut IssuesFile,
+    mut writer: Option<&mut CanonicalWriter>,
+    op: &str,
+    subject: &str,
+) -> Result<()> {
     crate::issues::rescore_all(file);
-    std::fs::write(path, serde_json::to_string_pretty(file)?)?;
+    let raw = serde_json::to_string_pretty(file)?;
+    let signature = artifact_write_signature(&["ISSUES.json", op, subject, &raw.len().to_string()]);
+    let target = path.to_string_lossy().into_owned();
+    if let Some(writer) = writer.as_mut() {
+        try_emit_workspace_artifact_effect(
+            writer,
+            true,
+            "ISSUES.json",
+            op,
+            &target,
+            subject,
+            &signature,
+        )?;
+    }
+    let snapshot = file_snapshot(path)?;
+    std::fs::write(path, raw).map_err(|e| anyhow!("failed to write ISSUES.json: {e}"))?;
+    if let Some(writer) = writer.as_mut() {
+        if let Err(err) = try_emit_workspace_artifact_effect(
+            writer,
+            false,
+            "ISSUES.json",
+            op,
+            &target,
+            subject,
+            &signature,
+        ) {
+            restore_file_snapshot(path, &snapshot)?;
+            return Err(err);
+        }
+    }
     Ok(())
 }
 
@@ -3084,6 +3277,7 @@ fn python_action_label(success: bool) -> &'static str {
 fn handle_apply_patch_action(
     role: &str,
     step: usize,
+    mut writer: Option<&mut CanonicalWriter>,
     workspace: &Path,
     action: &Value,
 ) -> Result<(bool, String)> {
@@ -3098,8 +3292,28 @@ fn handle_apply_patch_action(
     if let Some(msg) = patch_scope_error(role, &patch) {
         return Ok((false, msg));
     }
+    let patch_targets = patch_targets(patch);
+    let patch_signature = artifact_write_signature(&[
+        "apply_patch",
+        role,
+        &step.to_string(),
+        &patch_targets.join(","),
+        &patch.len().to_string(),
+    ]);
+    if let Some(writer) = writer.as_mut() {
+        try_emit_workspace_artifact_effect(
+            writer,
+            true,
+            "apply_patch",
+            "apply",
+            patch_targets.first().copied().unwrap_or("(unknown)"),
+            role,
+            &patch_signature,
+        )?;
+    }
+    let snapshots = snapshot_patch_targets(workspace, &patch_targets)?;
     match apply_patch(&patch, workspace) {
-        Ok(_) => handle_apply_patch_success(
+        Ok(affected) => handle_apply_patch_success(
             role,
             step,
             workspace,
@@ -3107,6 +3321,10 @@ fn handle_apply_patch_action(
             diagnostics_targeted,
             previous_diagnostics_text,
             &schema_snapshots,
+            &mut writer,
+            &snapshots,
+            &affected,
+            &patch_signature,
         ),
         Err(e) => handle_apply_patch_failure(role, step, workspace, patch, &e.to_string()),
     }
@@ -3120,6 +3338,10 @@ fn handle_apply_patch_success(
     diagnostics_targeted: bool,
     previous_diagnostics_text: Option<String>,
     schema_snapshots: &[(String, Option<String>)],
+    writer: &mut Option<&mut CanonicalWriter>,
+    snapshots: &std::collections::BTreeMap<PathBuf, Option<Vec<u8>>>,
+    affected: &canon_tools_patch::AffectedPaths,
+    patch_signature: &str,
 ) -> Result<(bool, String)> {
     if let Some(result) = reject_unvalidated_diagnostics_persistence(
         role,
@@ -3137,7 +3359,46 @@ fn handle_apply_patch_success(
     }
     eprintln!("[{role}] step={} apply_patch ok", step);
     if let Some(result) = verify_apply_patch_crate(role, step, workspace, patch) {
+        if let Some(writer) = writer.as_mut() {
+            let target = affected
+                .modified
+                .first()
+                .or_else(|| affected.added.first())
+                .or_else(|| affected.deleted.first())
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "(unknown)".to_string());
+            try_emit_workspace_artifact_effect(
+                writer,
+                false,
+                "apply_patch",
+                "apply",
+                &target,
+                role,
+                patch_signature,
+            )?;
+        }
         return Ok(result);
+    }
+    if let Some(writer) = writer.as_mut() {
+        let target = affected
+            .modified
+            .first()
+            .or_else(|| affected.added.first())
+            .or_else(|| affected.deleted.first())
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "(unknown)".to_string());
+        if let Err(err) = try_emit_workspace_artifact_effect(
+            writer,
+            false,
+            "apply_patch",
+            "apply",
+            &target,
+            role,
+            patch_signature,
+        ) {
+            restore_patch_snapshots(snapshots)?;
+            return Err(err);
+        }
     }
     // Enrich the success result with the post-patch file content so the agent can
     // verify the change without a separate read_file round-trip.
@@ -3165,6 +3426,27 @@ fn handle_apply_patch_success(
         })
         .unwrap_or_default();
     Ok((false, format!("apply_patch ok{post_patch_snippet}")))
+}
+
+fn snapshot_patch_targets(
+    workspace: &Path,
+    targets: &[&str],
+) -> Result<std::collections::BTreeMap<PathBuf, Option<Vec<u8>>>> {
+    let mut snapshots = std::collections::BTreeMap::new();
+    for target in targets {
+        let path = safe_join(workspace, target)?;
+        snapshots.insert(path.clone(), file_snapshot(&path)?);
+    }
+    Ok(snapshots)
+}
+
+fn restore_patch_snapshots(
+    snapshots: &std::collections::BTreeMap<PathBuf, Option<Vec<u8>>>,
+) -> Result<()> {
+    for (path, snapshot) in snapshots.iter().rev() {
+        restore_file_snapshot(path, snapshot)?;
+    }
+    Ok(())
 }
 
 fn handle_apply_patch_failure(
@@ -6569,8 +6851,8 @@ fn execute_batch_item(
         "symbols_rename_candidates" => handle_symbols_rename_candidates_action(workspace, item),
         "symbols_prepare_rename" => handle_symbols_prepare_rename_action(workspace, item),
         "objectives" => handle_objectives_action(workspace, item),
-        "issue" => handle_issue_action(workspace, item),
-        "violation" => handle_violation_action(workspace, item),
+        "issue" => handle_issue_action(None, workspace, item),
+        "violation" => handle_violation_action(None, workspace, item),
         "plan" => handle_plan_action(role, workspace, item),
         k @ ("rustc_hir" | "rustc_mir") => handle_rustc_action(role, step, k, workspace, item),
         k @ ("graph_call" | "graph_cfg") => {
@@ -6687,6 +6969,7 @@ fn execute_action(
     action: &Value,
     workspace: &Path,
     check_on_done: bool,
+    writer: Option<&mut CanonicalWriter>,
 ) -> Result<(bool, String)> {
     let _ = check_on_done;
     let kind = action
@@ -6703,9 +6986,9 @@ fn execute_action(
         "symbols_prepare_rename" => handle_symbols_prepare_rename_action(workspace, action),
         "rename_symbol" => handle_rename_symbol_action(role, step, workspace, action),
         "objectives" => handle_objectives_action(workspace, action),
-        "issue" => handle_issue_action(workspace, action),
-        "violation" => handle_violation_action(workspace, action),
-        "apply_patch" => handle_apply_patch_action(role, step, workspace, action),
+        "issue" => handle_issue_action(writer, workspace, action),
+        "violation" => handle_violation_action(writer, workspace, action),
+        "apply_patch" => handle_apply_patch_action(role, step, writer, workspace, action),
         "run_command" => handle_run_command_action(role, step, workspace, action),
         "python" => handle_python_action(role, step, workspace, action),
         k @ ("rustc_hir" | "rustc_mir") => handle_rustc_action(role, step, k, workspace, action),
@@ -6758,7 +7041,7 @@ pub fn execute_action_capability(
     workspace: &Path,
     check_on_done: bool,
 ) -> Result<(bool, String)> {
-    execute_action(role, step, action, workspace, check_on_done)
+    execute_action(role, step, action, workspace, check_on_done, None)
 }
 
 fn persist_inbound_message(role: &str, step: usize, action: &Value, full_message: &str) {
@@ -6844,9 +7127,10 @@ pub(crate) fn execute_logged_action(
     command_id: &str,
     action: &Value,
     check_on_done: bool,
+    writer: Option<&mut CanonicalWriter>,
 ) -> Result<(bool, String)> {
     log_action_event(role, endpoint, prompt_kind, step, command_id, action);
-    match execute_action(role, step, action, workspace, check_on_done) {
+    match execute_action(role, step, action, workspace, check_on_done, writer) {
         Ok((done, out)) => {
             log_action_result(
                 role,
@@ -7046,7 +7330,8 @@ mod tests {
             "patch": "*** Begin Patch\n*** Delete File: DIAGNOSTICS.json\n*** Add File: DIAGNOSTICS.json\n+{\n+  \"status\": \"critical_failure\",\n+  \"summary\": \"stale issue\",\n+  \"ranked_failures\": [\n+    {\n+      \"id\": \"D1\",\n+      \"evidence\": [\"old report without source validation\"]\n+    }\n+  ]\n+}\n*** End Patch"
         });
 
-        let (_done, out) = handle_apply_patch_action("diagnostics", 1, &tmp, &action).unwrap();
+        let (_done, out) =
+            handle_apply_patch_action("diagnostics", 1, None, &tmp, &action).unwrap();
 
         assert!(
             out.contains("ranked_failures require current-source validation before persistence")
@@ -7096,7 +7381,8 @@ mod tests {
             "patch": "*** Begin Patch\n*** Delete File: DIAGNOSTICS.json\n*** Add File: DIAGNOSTICS.json\n+{\n+  \"status\": \"critical_failure\",\n+  \"inputs_scanned\": [\"agent_state/default/log.jsonl\"],\n+  \"ranked_failures\": [\n+    {\n+      \"id\": \"D1\",\n+      \"impact\": \"high\",\n+      \"signal\": \"read_file src/app.rs verified against current source\",\n+      \"evidence\": [\"read_file src/app.rs:1-50 — confirmed missing check\"],\n+      \"root_cause\": \"missing validation\",\n+      \"repair_targets\": [\"src/app.rs\"]\n+    }\n+  ],\n+  \"planner_handoff\": [\"Fix missing validation in src/app.rs\"]\n+}\n*** End Patch"
         });
 
-        let (_done, out) = handle_apply_patch_action("diagnostics", 1, &tmp, &action).unwrap();
+        let (_done, out) =
+            handle_apply_patch_action("diagnostics", 1, None, &tmp, &action).unwrap();
 
         assert!(out.contains("apply_patch ok"), "unexpected: {out}");
         let persisted = std::fs::read_to_string(tmp.join("DIAGNOSTICS.json")).unwrap();
