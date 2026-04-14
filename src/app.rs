@@ -1249,6 +1249,7 @@ fn sweep_timed_out_executor_submits(
 }
 
 fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str) -> bool {
+    // noop: restart trigger for verification cycle
     let ws = std::path::PathBuf::from(workspace());
     let blockers = crate::blockers::load_blockers(&ws);
     let now_ms = crate::logging::now_ms();
