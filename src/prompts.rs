@@ -1130,7 +1130,7 @@ pub(crate) fn planner_cycle_prompt(
     );
     let objectives_heading = format!("Objectives (from {OBJECTIVES_FILE})");
     let issues_heading = format!("Open issues (from {issues_file})");
-    let lessons_heading = "Lessons artifact".to_string();
+    let lessons_heading = "Lessons artifact:".to_string();
     let invariants_heading = format!("Invariants (from {INVARIANTS_FILE})");
     let violations_heading = format!("Violations (from {VIOLATIONS_FILE})");
     let diagnostics_heading = format!("Diagnostics report (from {diagnostics_file})");
@@ -1468,7 +1468,7 @@ pub(crate) fn single_role_planner_prompt(
     );
     let objectives_heading = format!("Objectives (from {OBJECTIVES_FILE})");
     let issues_heading = format!("Open issues (from {issues_file})");
-    let lessons_heading = "Lessons artifact".to_string();
+    let lessons_heading = "Lessons artifact:".to_string();
     let invariants_heading = format!("Invariants (from {INVARIANTS_FILE})");
     let violations_heading = format!("Violations (from {VIOLATIONS_FILE})");
     let diagnostics_heading = format!("Diagnostics report (from {diagnostics_path})");
