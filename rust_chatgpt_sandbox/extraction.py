@@ -20,14 +20,16 @@ RUST_BIN = RUST_SANDBOX / "bin"
 RUSTC_PATH = RUST_BIN / "rustc"
 CARGO_PATH = RUST_BIN / "cargo"
 
-CARGO_HOME = MNT / ".cargo"
+CARGO_HOME = HOME / ".cargo"
 CARGO_CONFIG = CARGO_HOME / "config.toml"
 CARGO_CREDENTIALS = CARGO_HOME / "credentials.toml"
 
 AUTONOMOUS_DIR = HOME / "autonomous_agent_upgrade"
-CANON_ROOT = MNT / "canon-mini-agent-extracted"
+CANON_ROOT = HOME / "canon-mini-agent-extracted"
 CANON_DIR = CANON_ROOT / "canon-mini-agent"
 WORKSPACE_ROOT_CARGO = CANON_ROOT / "Cargo.toml"
+BUILD_LOG = HOME / "build.log"
+TEST_LOG = HOME / "test.log"
 
 DEFAULT_REGISTRY_URL = (
     "sparse+https://packages.applied-caas-gateway1.internal.api.openai.org/"
@@ -50,6 +52,10 @@ def post_raw(path, data_bytes):
     req = urllib.request.Request(BASE + path, data=data_bytes, method="POST")
     with urllib.request.urlopen(req, timeout=10) as r:
         return r.read()
+
+
+def shell_quote(value):
+    return str(value).replace("'", "'\"'\"'")
 
 
 def ensure_terminal_server():
@@ -180,6 +186,11 @@ def reset_dir(path: Path):
             shutil.rmtree(path)
 
 
+def remove_if_exists(path: Path):
+    if path.exists() or path.is_symlink():
+        path.unlink()
+
+
 def extract_tar(tar_path: Path, dest: Path, clean=False):
     if not tar_path.exists():
         return {"ok": False, "error": f"missing tarball: {tar_path}"}
@@ -207,7 +218,7 @@ def install_rust(shell_pid):
     reset_dir(RUST_SANDBOX)
     RUST_SANDBOX.mkdir(parents=True, exist_ok=True)
 
-    temp_root = MNT / "rust-nightly-install"
+    temp_root = HOME / "rust-nightly-install"
     reset_dir(temp_root)
     temp_root.mkdir(parents=True, exist_ok=True)
 
@@ -261,11 +272,22 @@ def rust_env():
     }
 
 
-def start_background_job(cmd, cwd):
-    pid = terminal_open(cmd=cmd, cwd=cwd, env=rust_env())
+def start_background_job(command, cwd, log_path: Path):
+    remove_if_exists(log_path)
+    bash_command = (
+        f"cd '{shell_quote(cwd)}' && "
+        f"export PATH='{shell_quote(RUST_BIN)}':$PATH && "
+        f"export CARGO_HOME='{shell_quote(CARGO_HOME)}' && "
+        f"{command} 2>&1 | tee '{shell_quote(log_path)}'"
+    )
+    pid = terminal_open(
+        cmd=["/bin/bash", "-lc", bash_command],
+        cwd=cwd,
+        env=rust_env(),
+    )
     time.sleep(2)
     sample = terminal_read(pid, 4096)
-    return {"pid": pid, "output_sample": sample[:2000]}
+    return {"pid": pid, "output_sample": sample[:2000], "log_path": str(log_path)}
 
 
 def smoke_test(shell_pid):
@@ -291,6 +313,8 @@ def main():
         "home_rust_sandbox_bin": str(RUST_BIN),
         "canon_project_path": str(CANON_DIR),
         "workspace_root_cargo": str(WORKSPACE_ROOT_CARGO),
+        "build_log": str(BUILD_LOG),
+        "test_log": str(TEST_LOG),
     }
 
     if not report["terminal_server"].get("ok"):
@@ -316,12 +340,14 @@ def main():
     report["smoke_test"] = smoke_test(shell_pid)
 
     report["build_session"] = start_background_job(
-        [str(CARGO_PATH), "build", "--workspace"],
+        "cargo build --workspace",
         CANON_ROOT,
+        BUILD_LOG,
     )
     report["test_session"] = start_background_job(
-        [str(CARGO_PATH), "test", "--workspace"],
+        "cargo test --workspace",
         CANON_ROOT,
+        TEST_LOG,
     )
 
     report["extraction_status"] = bool(
