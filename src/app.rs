@@ -540,7 +540,7 @@ async fn run_planner_phase(
         ctx.tabs_planner,
         false,
         false,
-        true,
+        !*planner_bootstrapped,
         0,
     )
     .await;
@@ -697,7 +697,7 @@ async fn run_solo_phase(
         ctx.tabs_solo,
         false,
         true,
-        true,
+        !*solo_bootstrapped,
         0,
     )
     .await;
@@ -847,7 +847,7 @@ async fn run_diagnostics_phase(
         ctx.tabs_diagnostics,
         false,
         false,
-        true,
+        !*diagnostics_bootstrapped,
         0,
     )
     .await;
@@ -978,8 +978,9 @@ async fn run_verifier_phase(
         let verifier_ep = ctx.verifier_ep.clone();
         let bridge = ctx.bridge.clone();
         let workspace = ctx.workspace.to_path_buf();
-        *verifier_bootstrapped = true;
         let tabs_verify = ctx.tabs_verify.clone();
+        let send_system_prompt = !*verifier_bootstrapped;
+        *verifier_bootstrapped = true;
         verifier_joinset.spawn(async move {
             let verify_result = match run_agent(
                 "verifier",
@@ -992,7 +993,7 @@ async fn run_verifier_phase(
                 &tabs_verify,
                 false,
                 false,
-                true,
+                send_system_prompt,
                 0,
             )
             .await

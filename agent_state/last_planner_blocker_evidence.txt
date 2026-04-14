@@ -1,1 +1,1 @@
-Diagnostics reports synchronized same-cycle evidence for `planner_master_plan_mutation_contract_is_incomplete` (`plan edge missing from/to`), `plan_task_invalid_target_path_inv_47232c36`, `route_gate_invalid_route_livelock_cluster`, runtime-control-bypass churn, submit-ack timeout, and promoted invariant backlog; however this chat does not provide the canon planner runtime or workspace toolchain needed to read/write `/workspace/ai_sandbox/canon-mini-agent` or execute the `plan` action against PLAN.json.
+auto-filled blocker evidence
