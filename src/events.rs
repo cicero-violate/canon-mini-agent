@@ -18,9 +18,13 @@ pub enum ControlEvent {
     PlannerPendingSet {
         pending: bool,
     },
+    PlannerObjectiveReviewQueued,
+    PlannerObjectivePlanGapQueued,
     DiagnosticsPendingSet {
         pending: bool,
     },
+    DiagnosticsVerifierFollowupQueued,
+    DiagnosticsReconciliationQueued,
     DiagnosticsTextSet {
         text: String,
     },

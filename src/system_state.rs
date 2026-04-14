@@ -39,7 +39,11 @@ pub struct SystemState {
 
     // Planner / diagnostics control flags
     pub planner_pending: bool,
+    #[serde(default)]
+    pub planner_pending_reason: Option<String>,
     pub diagnostics_pending: bool,
+    #[serde(default)]
+    pub diagnostics_pending_reason: Option<String>,
     pub diagnostics_text: String,
 
     // Rolling diff/plan state fed back into prompts
@@ -157,9 +161,31 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
         }
         ControlEvent::PlannerPendingSet { pending } => {
             s.planner_pending = *pending;
+            if !pending {
+                s.planner_pending_reason = None;
+            }
+        }
+        ControlEvent::PlannerObjectiveReviewQueued => {
+            s.planner_pending = true;
+            s.planner_pending_reason = Some("objective_review".to_string());
+        }
+        ControlEvent::PlannerObjectivePlanGapQueued => {
+            s.planner_pending = true;
+            s.planner_pending_reason = Some("objective_plan_gap".to_string());
         }
         ControlEvent::DiagnosticsPendingSet { pending } => {
             s.diagnostics_pending = *pending;
+            if !pending {
+                s.diagnostics_pending_reason = None;
+            }
+        }
+        ControlEvent::DiagnosticsVerifierFollowupQueued => {
+            s.diagnostics_pending = true;
+            s.diagnostics_pending_reason = Some("verifier_followup".to_string());
+        }
+        ControlEvent::DiagnosticsReconciliationQueued => {
+            s.diagnostics_pending = true;
+            s.diagnostics_pending_reason = Some("reconciliation".to_string());
         }
         ControlEvent::DiagnosticsTextSet { text } => {
             s.diagnostics_text = text.clone();
@@ -271,6 +297,18 @@ pub fn validate_system_state(s: &SystemState) -> Result<(), String> {
     if s.phase.trim().is_empty() {
         return Err("system state invariant failed: phase must be non-empty".to_string());
     }
+    if !s.planner_pending && s.planner_pending_reason.is_some() {
+        return Err(
+            "system state invariant failed: planner_pending_reason requires planner_pending"
+                .to_string(),
+        );
+    }
+    if !s.diagnostics_pending && s.diagnostics_pending_reason.is_some() {
+        return Err(
+            "system state invariant failed: diagnostics_pending_reason requires diagnostics_pending"
+                .to_string(),
+        );
+    }
 
     for lane_id in s.lanes.keys() {
         if !s.lane_prompt_in_flight.contains_key(lane_id) {
@@ -357,6 +395,35 @@ pub fn replay_event_log(initial: SystemState, events: &[Event]) -> Result<System
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explicit_pending_queue_events_record_reason_and_clear_on_false() {
+        let mut state = SystemState::new(&[0], 1);
+        state = apply_control_event(state, &ControlEvent::PlannerObjectiveReviewQueued);
+        assert!(state.planner_pending);
+        assert_eq!(
+            state.planner_pending_reason.as_deref(),
+            Some("objective_review")
+        );
+
+        state = apply_control_event(
+            state,
+            &ControlEvent::DiagnosticsReconciliationQueued,
+        );
+        assert!(state.diagnostics_pending);
+        assert_eq!(
+            state.diagnostics_pending_reason.as_deref(),
+            Some("reconciliation")
+        );
+
+        state = apply_control_event(state, &ControlEvent::PlannerPendingSet { pending: false });
+        state = apply_control_event(
+            state,
+            &ControlEvent::DiagnosticsPendingSet { pending: false },
+        );
+        assert!(state.planner_pending_reason.is_none());
+        assert!(state.diagnostics_pending_reason.is_none());
+    }
 
     #[test]
     fn validate_system_state_rejects_submitted_turn_without_tab_mapping() {

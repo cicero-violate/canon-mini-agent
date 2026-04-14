@@ -1164,12 +1164,37 @@ mod tests {
                 value: "uncanonicalized_recovery_path".to_string(),
             },
         ];
+        let ambiguous_conditions = vec![
+            StateCondition {
+                key: "actor_kind".to_string(),
+                value: "orchestrator".to_string(),
+            },
+            StateCondition {
+                key: "error_class".to_string(),
+                value: "ambiguous_control_event".to_string(),
+            },
+        ];
+        let effectful_conditions = vec![
+            StateCondition {
+                key: "actor_kind".to_string(),
+                value: "orchestrator".to_string(),
+            },
+            StateCondition {
+                key: "error_class".to_string(),
+                value: "effectful_state_advance_without_control_event".to_string(),
+            },
+        ];
 
         let route_gates = default_gates_for_conditions(&route_conditions);
         let executor_gates = default_gates_for_conditions(&executor_conditions);
+        let ambiguous_gates = default_gates_for_conditions(&ambiguous_conditions);
+        let effectful_gates = default_gates_for_conditions(&effectful_conditions);
 
         assert!(route_gates.contains(&"route".to_string()));
         assert!(executor_gates.contains(&"executor".to_string()));
+        assert!(ambiguous_gates.contains(&"route".to_string()));
+        assert!(effectful_gates.contains(&"route".to_string()));
+        assert!(effectful_gates.contains(&"planner".to_string()));
     }
 
     #[test]
@@ -1267,6 +1292,98 @@ mod tests {
         assert!(
             result.is_err(),
             "executor gate should block uncanonicalized recovery path"
+        );
+    }
+
+    #[test]
+    fn synthesize_ambiguous_control_event_from_blockers_and_block_route() {
+        let tmp = make_workspace();
+        std::fs::create_dir_all(tmp.join("agent_state")).unwrap();
+        for summary in [
+            "ambiguous control event: planner wakeup encoded both objective review and plan gap",
+            "ambiguous control event: diagnostics wakeup encoded both verifier followup and reconciliation rerun",
+            "ambiguous control event: one control event encoded multiple scheduler reasons",
+        ] {
+            crate::blockers::record_action_failure(
+                &tmp,
+                "orchestrate",
+                "ambiguous_control_event",
+                summary,
+                None,
+            );
+        }
+
+        maybe_synthesize_invariants(&tmp);
+        let file = load_invariants(&tmp);
+        let inv = file
+            .invariants
+            .iter()
+            .find(|inv| {
+                inv.state_conditions
+                    .iter()
+                    .any(|c| c.key == "error_class" && c.value == "ambiguous_control_event")
+            })
+            .expect("ambiguous_control_event invariant should be synthesized");
+        assert_eq!(inv.status, InvariantStatus::Promoted);
+        assert!(inv.gates.contains(&"route".to_string()));
+
+        let mut state = HashMap::new();
+        state.insert("actor_kind".to_string(), "orchestrator".to_string());
+        state.insert(
+            "error_class".to_string(),
+            "ambiguous_control_event".to_string(),
+        );
+        let result = evaluate_invariant_gate("route", &state, &tmp);
+        assert!(result.is_err(), "route gate should block ambiguous control event");
+    }
+
+    #[test]
+    fn synthesize_effectful_state_advance_from_blockers_and_block_route_and_planner() {
+        let tmp = make_workspace();
+        std::fs::create_dir_all(tmp.join("agent_state")).unwrap();
+        for summary in [
+            "effectful state advance without control event: diagnostics reconciliation rewrote diagnostics output before canonical diagnostics-text transition",
+            "effectful state advance without control event: checkpoint persisted externally visible state before canonical transition",
+            "effectful state advance without control event: side effect changed planner-visible output before control event",
+        ] {
+            crate::blockers::record_action_failure(
+                &tmp,
+                "orchestrate",
+                "effectful_state_advance",
+                summary,
+                None,
+            );
+        }
+
+        maybe_synthesize_invariants(&tmp);
+        let file = load_invariants(&tmp);
+        let inv = file
+            .invariants
+            .iter()
+            .find(|inv| inv.state_conditions.iter().any(|c| {
+                c.key == "error_class"
+                    && c.value == "effectful_state_advance_without_control_event"
+            }))
+            .expect("effectful_state_advance invariant should be synthesized");
+        assert_eq!(inv.status, InvariantStatus::Promoted);
+        assert!(inv.gates.contains(&"route".to_string()));
+        assert!(inv.gates.contains(&"planner".to_string()));
+
+        let mut state = HashMap::new();
+        state.insert("actor_kind".to_string(), "orchestrator".to_string());
+        state.insert(
+            "error_class".to_string(),
+            "effectful_state_advance_without_control_event".to_string(),
+        );
+        let route_result = evaluate_invariant_gate("route", &state, &tmp);
+        assert!(
+            route_result.is_err(),
+            "route gate should block effectful state advance without control event"
+        );
+        let planner_result = evaluate_invariant_gate("planner", &state, &tmp);
+        assert!(
+            planner_result.is_err(),
+            "planner gate should block effectful state advance without control event"
         );
     }
 

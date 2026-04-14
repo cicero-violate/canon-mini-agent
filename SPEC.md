@@ -187,6 +187,12 @@ Required loophole classes:
 - generic `ControlEvent` variants that encode two logically distinct transitions and should be split
 - prompt/orchestrator decisions that depend on runtime-only facts not represented canonically
 
+Current loophole-closure status:
+- several high-signal planner/diagnostics scheduler ambiguities have been split into explicit canonical queue events
+- some branches are now detectable but are not all replaced by dedicated canonical `ControlEvent`s yet
+- blocker -> invariant -> gate coverage for ambiguity/effectful loophole classes is still being completed
+- full orchestration-loop integration tests for these loophole classes still do not exist yet
+
 At the end of any loophole-closure pass, the system must list the remaining runtime-only behaviors that are intentionally ephemeral and explain why they are permitted to stay outside canonical replay.
 
 ### 1.2 Role State (per agent)

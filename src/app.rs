@@ -53,9 +53,8 @@ use crate::prompts::{
 use crate::state_space::{
     allow_diagnostics_run, allow_verifier_run, block_executor_dispatch, check_completion_endpoint,
     check_completion_tab, decide_active_blocker, decide_bootstrap_phase, decide_phase_gates,
-    decide_post_diagnostics, decide_resume_phase, decide_wake_flags,
-    diagnostics_pending_reason_count, executor_step_limit_exceeded, executor_submit_timed_out,
-    is_verifier_specific_blocker, planner_pending_reason_count, scheduled_phase_resume_done,
+    decide_post_diagnostics, decide_resume_phase, decide_wake_flags, executor_step_limit_exceeded,
+    executor_submit_timed_out, is_verifier_specific_blocker, scheduled_phase_resume_done,
     should_force_blocker, verifier_blocker_phase_override, CargoTestGate, CompletionEndpointCheck,
     CompletionTabCheck, WakeFlagInput,
 };
@@ -5141,7 +5140,7 @@ pub async fn run() -> Result<()> {
                         None,
                     );
                 }
-                writer.apply(ControlEvent::DiagnosticsPendingSet { pending: true });
+                writer.apply(ControlEvent::DiagnosticsReconciliationQueued);
             }
 
             if phase_gates.planner {
@@ -5279,17 +5278,11 @@ pub async fn run() -> Result<()> {
                 }
             }
 
-            if diagnostics_pending_reason_count(verifier_changed, stale_diagnostics_pending) > 1 {
-                crate::blockers::record_action_failure(
-                    workspace.as_path(),
-                    "orchestrate",
-                    "ambiguous_control_event",
-                    "ambiguous control event: one DiagnosticsPendingSet encoded both verifier-driven and reconciliation-driven diagnostics reruns",
-                    None,
-                );
+            if verifier_changed {
+                writer.apply(ControlEvent::DiagnosticsVerifierFollowupQueued);
             }
-            if verifier_changed || stale_diagnostics_pending {
-                writer.apply(ControlEvent::DiagnosticsPendingSet { pending: true });
+            if stale_diagnostics_pending {
+                writer.apply(ControlEvent::DiagnosticsReconciliationQueued);
             }
 
             if writer.state().diagnostics_pending
@@ -5367,7 +5360,7 @@ pub async fn run() -> Result<()> {
                     "runtime-only control influence: planner was re-pended because plan/diagnostics mtimes changed without objectives update",
                     None,
                 );
-                writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+                writer.apply(ControlEvent::PlannerObjectiveReviewQueued);
                 cycle_progress = true;
             }
 
@@ -5375,21 +5368,6 @@ pub async fn run() -> Result<()> {
             let plan_text = read_text_or_empty(&master_plan_path);
             let has_objective_work = has_actionable_objectives(&objectives_text);
             let has_plan_work = plan_has_incomplete_tasks(&plan_text);
-            if planner_pending_reason_count(
-                objective_review_required,
-                objectives_updated,
-                has_objective_work,
-                has_plan_work,
-            ) > 1
-            {
-                crate::blockers::record_action_failure(
-                    workspace.as_path(),
-                    "orchestrate",
-                    "ambiguous_control_event",
-                    "ambiguous control event: one PlannerPendingSet encoded both objective-review enforcement and objective-plan gap enforcement",
-                    None,
-                );
-            }
             if has_objective_work && !has_plan_work {
                 append_orchestration_trace(
                     "objective_plan_enforcement_signal",
@@ -5400,7 +5378,7 @@ pub async fn run() -> Result<()> {
                         "plan_path": MASTER_PLAN_FILE,
                     }),
                 );
-                writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+                writer.apply(ControlEvent::PlannerObjectivePlanGapQueued);
                 cycle_progress = true;
             }
 
