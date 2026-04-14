@@ -2950,6 +2950,27 @@ mod tests {
     }
 
     #[test]
+    fn executor_system_instructions_include_tool_schema_block() {
+        let prompt = system_instructions(AgentPromptKind::Executor);
+        assert!(
+            prompt.contains("Tool schemas in scope for this role:"),
+            "executor system prompt should include an introductory schema block"
+        );
+        assert!(
+            prompt.contains("Action: `read_file`"),
+            "executor system prompt should include the read_file schema"
+        );
+        assert!(
+            prompt.contains("Action: `apply_patch`"),
+            "executor system prompt should include the apply_patch schema"
+        );
+        assert!(
+            prompt.contains("Action: `python`"),
+            "executor system prompt should include the python schema"
+        );
+    }
+
+    #[test]
     fn verifier_requires_plan_action_for_master_plan_edits() {
         let rules = VERIFIER_RULES.join("\n");
         assert!(
