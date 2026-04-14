@@ -102,12 +102,10 @@ pub fn probe_planner_objective_review(
     let plan_bytes_before = std::fs::read(plan_path).unwrap_or_default();
     let diagnostics_bytes_before = std::fs::read(diagnostics_path).unwrap_or_default();
 
-    let mut plan_text = std::fs::read_to_string(plan_path).unwrap_or_default();
+    let plan_text = std::fs::read_to_string(plan_path).unwrap_or_default();
     if plan_text.trim().is_empty() {
-        plan_text = "{\"version\":2,\"tasks\":[]}".to_string();
+        std::fs::write(plan_path, "{\"version\":2,\"tasks\":[]}\n")?;
     }
-    plan_text.push('\n');
-    std::fs::write(plan_path, &plan_text)?;
 
     let objectives_bytes_after = std::fs::read(objectives_path).unwrap_or_default();
     let plan_bytes_after = std::fs::read(plan_path).unwrap_or_default();
