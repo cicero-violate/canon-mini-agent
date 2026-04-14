@@ -2573,7 +2573,6 @@ fn derive_next_action_hint(result: &str, last_action: Option<&str>) -> NextActio
 }
 
 fn next_action_hint_text(result: &str, last_action: Option<&str>) -> String {
-    let all_actions = crate::tool_schema::predicted_action_name_list().join(", ");
     match derive_next_action_hint(result, last_action) {
         NextActionHint::GraphFollowups => {
             "next_action_hint: run graph_call, graph_cfg, graph_reachability".to_string()
@@ -2582,13 +2581,13 @@ fn next_action_hint_text(result: &str, last_action: Option<&str>) -> String {
             "next_action_hint: use apply_patch to update workspace files (`src/` or lane plans) if python cannot write.".to_string()
         }
         NextActionHint::ReuseRecent { action } => {
-            format!("next_action_hint: reuse recent action `{action}` or choose one of: {all_actions}.")
+            format!("next_action_hint: reuse recent action `{action}` or choose the narrowest valid next step from your predicted actions.")
         }
         NextActionHint::ChooseAction { last_action } => {
             if let Some(action) = last_action {
-                format!("next_action_hint: choose one of: {all_actions}. recent action: {action}.")
+                format!("next_action_hint: choose the narrowest valid next step from your predicted actions. recent action: {action}.")
             } else {
-                format!("next_action_hint: choose one of: {all_actions}.")
+                "next_action_hint: choose the narrowest valid next step from your predicted actions.".to_string()
             }
         }
     }
@@ -2701,8 +2700,14 @@ pub(crate) fn action_result_prompt(
                 .ok()
                 .and_then(|v| serde_json::to_string_pretty(&v).ok())
                 .unwrap_or_else(|| p.to_string());
+            let derived_schema = crate::tool_schema::predicted_action_schema_text(p);
+            let schema_block = if derived_schema.trim().is_empty() {
+                String::new()
+            } else {
+                format!("{derived_schema}\n")
+            };
             format!(
-                "Predicted next actions from your last turn:\n```json\n{pretty}\n```\nCompare these against the actual result above before choosing your next action.\n\n"
+                "Predicted next actions from your last turn:\n```json\n{pretty}\n```\nCompare these against the actual result above before choosing your next action.\n\n{schema_block}"
             )
         }
         _ => {

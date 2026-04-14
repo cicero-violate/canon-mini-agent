@@ -838,6 +838,58 @@ pub fn tool_protocol_schema_split_text() -> String {
     out
 }
 
+fn action_schema_text(action: &str) -> Option<String> {
+    let schema = schema_for!(ToolAction);
+    let value = serde_json::to_value(&schema).ok()?;
+    find_action_schema(&value, action).and_then(|v| serde_json::to_string_pretty(v).ok())
+}
+
+pub fn predicted_action_schema_text(predicted_next_actions_json: &str) -> String {
+    let parsed = match serde_json::from_str::<Value>(predicted_next_actions_json) {
+        Ok(value) => value,
+        Err(_) => return String::new(),
+    };
+    let Some(actions) = parsed.as_array() else {
+        return String::new();
+    };
+
+    let mut ordered = Vec::new();
+    for item in actions {
+        let Some(name) = item.get("action").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        if !ordered.iter().any(|existing: &String| existing == name) {
+            ordered.push(name.to_string());
+        }
+    }
+    if ordered.is_empty() {
+        return String::new();
+    }
+
+    let descriptions = build_tool_actions_list()
+        .into_iter()
+        .map(|(name, desc, notes)| (name.to_string(), (desc.to_string(), notes.map(str::to_string))))
+        .collect::<std::collections::BTreeMap<_, _>>();
+
+    let mut out = String::from("Derived schemas for predicted next actions:\n");
+    for name in ordered {
+        let schema = action_schema_text(&name).unwrap_or_else(|| "{}".to_string());
+        let (desc, notes) = descriptions
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(|| ("(no description available)".to_string(), None));
+        out.push_str(&format!("Action: `{name}` — {desc}\n```json\n{schema}\n```\n"));
+        if let Some(notes) = notes {
+            out.push_str(&notes);
+            if !notes.ends_with('\n') {
+                out.push('\n');
+            }
+        }
+        out.push('\n');
+    }
+    out
+}
+
 pub fn selected_tool_protocol_schema_text(actions: &[&str]) -> String {
     let schema = schema_for!(ToolAction);
     let value = serde_json::to_value(&schema).unwrap_or_else(|_| Value::Object(Default::default()));
