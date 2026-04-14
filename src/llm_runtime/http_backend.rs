@@ -28,6 +28,7 @@ impl LlmBackend for HttpBackend {
         &self,
         _endpoint_id: &str,
         _urls: &[String],
+        _stateful: bool,
         prompt: &str,
         system_schema: &str,
         submit_only: bool,

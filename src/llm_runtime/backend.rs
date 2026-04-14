@@ -8,6 +8,7 @@ pub trait LlmBackend: Send + Sync {
         &self,
         endpoint_id: &str,
         urls: &[String],
+        stateful: bool,
         prompt: &str,
         system_schema: &str,
         submit_only: bool,

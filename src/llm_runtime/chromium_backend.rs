@@ -76,6 +76,12 @@ struct State {
     /// URL → queue of pre-opened tabIds (TAB_READY with no reqId).
     preopened: HashMap<String, VecDeque<u32>>,
 
+    /// endpoint_id → tabId for stateful endpoints.
+    endpoint_tabs: HashMap<String, u32>,
+
+    /// tabId → endpoint_id owner for stateful endpoints.
+    tab_owners: HashMap<u32, String>,
+
     /// TURN frames queued while the extension socket is down.
     replay_queue: Vec<Value>,
 
@@ -99,6 +105,8 @@ impl State {
             pending_open: HashMap::new(),
             tab_urls: HashMap::new(),
             preopened: HashMap::new(),
+            endpoint_tabs: HashMap::new(),
+            tab_owners: HashMap::new(),
             replay_queue: Vec::new(),
             frame_counter: 0,
         }
@@ -168,6 +176,22 @@ impl ChromiumBackend {
         Some(tab_id)
     }
 
+    async fn pop_matching_url_tab(&self, urls: &[String]) -> Option<u32> {
+        let mut st = self.state.lock().await;
+        for url in urls {
+            let Some(queue) = st.preopened.get_mut(url) else {
+                continue;
+            };
+            let Some(tab_id) = queue.pop_front() else {
+                continue;
+            };
+            let claim_url = st.tab_urls.get(&tab_id).cloned().unwrap_or_else(|| url.clone());
+            st.send_msg(json!({ "type": "CLAIM_TAB", "tabId": tab_id, "url": claim_url }));
+            return Some(tab_id);
+        }
+        None
+    }
+
     /// Open a new tab at `url` via the extension and wait for it to be ready.
     async fn open_tab(&self, url: &str, timeout_secs: u64) -> Result<u32> {
         let req_id = self.next_req_id.fetch_add(1, Ordering::SeqCst);
@@ -193,7 +217,13 @@ impl ChromiumBackend {
 
     /// Acquire a tab for the given endpoint URLs.
     /// Tries the preopened pool first; opens a new tab if the pool is empty.
-    async fn acquire_tab(&self, urls: &[String], timeout_secs: u64) -> Result<u32> {
+    async fn acquire_tab(
+        &self,
+        endpoint_id: &str,
+        urls: &[String],
+        timeout_secs: u64,
+        stateful: bool,
+    ) -> Result<u32> {
         // Wait for extension to connect first (up to timeout).
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
         loop {
@@ -209,8 +239,29 @@ impl ChromiumBackend {
         // Give TAB_READY messages a moment to arrive after connection.
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
+        if stateful {
+            let mut st = self.state.lock().await;
+            if let Some(tab_id) = st.endpoint_tabs.get(endpoint_id).copied() {
+                if let Some(url) = st.tab_urls.get(&tab_id).cloned() {
+                    st.send_msg(json!({ "type": "CLAIM_TAB", "tabId": tab_id, "url": url }));
+                    return Ok(tab_id);
+                }
+                st.endpoint_tabs.remove(endpoint_id);
+                st.tab_owners.remove(&tab_id);
+            }
+        }
+
         // Check pool first.
-        if let Some(tab_id) = self.pop_any_tab().await {
+        if let Some(tab_id) = if stateful {
+            self.pop_matching_url_tab(urls).await
+        } else {
+            self.pop_any_tab().await
+        } {
+            if stateful {
+                let mut st = self.state.lock().await;
+                st.endpoint_tabs.insert(endpoint_id.to_string(), tab_id);
+                st.tab_owners.insert(tab_id, endpoint_id.to_string());
+            }
             return Ok(tab_id);
         }
 
@@ -221,11 +272,25 @@ impl ChromiumBackend {
             .as_secs()
             .max(10);
         eprintln!("[chromium] no tab available, opening {url}");
-        self.open_tab(url, remaining).await
+        let tab_id = self.open_tab(url, remaining).await?;
+        if stateful {
+            let mut st = self.state.lock().await;
+            st.endpoint_tabs.insert(endpoint_id.to_string(), tab_id);
+            st.tab_owners.insert(tab_id, endpoint_id.to_string());
+        }
+        Ok(tab_id)
     }
 
     /// Send a TURN to the extension and wait for the full assembled response.
-    async fn do_send(&self, tab_id: u32, url: &str, prompt: &str, timeout_secs: u64) -> Result<LlmResponse> {
+    async fn do_send(
+        &self,
+        endpoint_id: &str,
+        tab_id: u32,
+        url: &str,
+        prompt: &str,
+        timeout_secs: u64,
+        stateful: bool,
+    ) -> Result<LlmResponse> {
         let turn_id = self.next_turn_id.fetch_add(1, Ordering::SeqCst);
         let (ack_tx, ack_rx) = oneshot::channel::<()>();
         let (resp_tx, resp_rx) = oneshot::channel::<String>();
@@ -262,9 +327,7 @@ impl ChromiumBackend {
                 st.pending_ack.remove(&(tab_id, turn_id));
                 st.pending_resp.remove(&(tab_id, turn_id));
                 st.pending_turn_id.remove(&tab_id);
-                // Return tab to pool so the next request can reuse it.
-                let tab_url = st.tab_urls.get(&tab_id).cloned().unwrap_or_default();
-                st.preopened.entry(tab_url).or_default().push_back(tab_id);
+                release_tab_locked(&mut st, endpoint_id, tab_id, stateful);
                 anyhow::bail!("chromium: timeout waiting for SUBMIT_ACK (tab={tab_id} turn={turn_id})");
             }
         }
@@ -275,16 +338,14 @@ impl ChromiumBackend {
             Ok(Ok(raw)) => {
                 let mut st = self.state.lock().await;
                 st.pending_turn_id.remove(&tab_id);
-                let tab_url = st.tab_urls.get(&tab_id).cloned().unwrap_or_default();
-                st.preopened.entry(tab_url).or_default().push_back(tab_id);
+                release_tab_locked(&mut st, endpoint_id, tab_id, stateful);
                 Ok(LlmResponse { raw, tab_id: Some(tab_id), turn_id: Some(turn_id) })
             }
             _ => {
                 let mut st = self.state.lock().await;
                 st.pending_resp.remove(&(tab_id, turn_id));
                 st.pending_turn_id.remove(&tab_id);
-                let tab_url = st.tab_urls.get(&tab_id).cloned().unwrap_or_default();
-                st.preopened.entry(tab_url).or_default().push_back(tab_id);
+                release_tab_locked(&mut st, endpoint_id, tab_id, stateful);
                 anyhow::bail!("chromium: timeout waiting for response (tab={tab_id} turn={turn_id})");
             }
         }
@@ -295,8 +356,9 @@ impl ChromiumBackend {
 impl LlmBackend for ChromiumBackend {
     async fn send(
         &self,
-        _endpoint_id: &str,
+        endpoint_id: &str,
         urls: &[String],
+        stateful: bool,
         prompt: &str,
         system_schema: &str,
         submit_only: bool,
@@ -313,7 +375,10 @@ impl LlmBackend for ChromiumBackend {
         if submit_only {
             let turn_id = self.next_turn_id.fetch_add(1, Ordering::SeqCst);
             // For submit-only, try to use an existing tab but don't block if none.
-            let tab_id = self.pop_any_tab().await.unwrap_or(0) as u32;
+            let tab_id = self
+                .acquire_tab(endpoint_id, urls, timeout, stateful)
+                .await
+                .unwrap_or(0) as u32;
             {
                 let mut st = self.state.lock().await;
                 let frame = json!({ "type": "TURN", "tabId": tab_id, "text": full_prompt, "turnId": turn_id });
@@ -328,7 +393,7 @@ impl LlmBackend for ChromiumBackend {
             });
         }
 
-        let tab_id = self.acquire_tab(urls, timeout).await?;
+        let tab_id = self.acquire_tab(endpoint_id, urls, timeout, stateful).await?;
         let url = {
             let st = self.state.lock().await;
             st.tab_urls.get(&tab_id).cloned().unwrap_or_else(|| {
@@ -336,7 +401,7 @@ impl LlmBackend for ChromiumBackend {
             })
         };
 
-        self.do_send(tab_id, &url, &full_prompt, timeout).await
+        self.do_send(endpoint_id, tab_id, &url, &full_prompt, timeout, stateful).await
     }
 }
 
@@ -491,6 +556,9 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
             let mut st = state.lock().await;
             st.tab_urls.remove(&tab_id);
             st.assemblers.remove(&tab_id);
+            if let Some(endpoint_id) = st.tab_owners.remove(&tab_id) {
+                st.endpoint_tabs.remove(&endpoint_id);
+            }
             for q in st.preopened.values_mut() {
                 q.retain(|id| *id != tab_id);
             }
@@ -562,6 +630,10 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
             }
             let turn_id = expected_turn_id;
 
+            if let Some(tx) = st.pending_ack.remove(&(tab_id, turn_id)) {
+                let _ = tx.send(());
+            }
+
             let assembled = if let Some(asm) = st.assemblers.get_mut(&tab_id) {
                 asm.push(&chunk)
             } else {
@@ -583,4 +655,14 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
 
         _ => {}
     }
+}
+
+fn release_tab_locked(st: &mut State, endpoint_id: &str, tab_id: u32, stateful: bool) {
+    if stateful {
+        st.endpoint_tabs.insert(endpoint_id.to_string(), tab_id);
+        st.tab_owners.insert(tab_id, endpoint_id.to_string());
+        return;
+    }
+    let tab_url = st.tab_urls.get(&tab_id).cloned().unwrap_or_default();
+    st.preopened.entry(tab_url).or_default().push_back(tab_id);
 }
