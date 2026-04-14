@@ -1,4 +1,5 @@
 tar -czf canon-mini-agent.tar.gz -C /workspace/ai_sandbox \
+canon-mini-agent/state/rustc \
 canon-mini-agent/tests \
 canon-mini-agent/Cargo.toml \
 canon-mini-agent/src \
