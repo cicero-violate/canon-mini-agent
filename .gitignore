@@ -141,3 +141,8 @@ state/event_runtime.lock
 
 .claude/*
 test_projects/*
+
+**.ndjsonagent_state/*.ndjson
+
+agent_state/
+*.ndjson

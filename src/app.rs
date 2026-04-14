@@ -2,36 +2,53 @@ use anyhow::{anyhow, bail, Context, Result};
 use canon_llm::{
     config::LlmEndpoint,
     endpoint_worker::{
-        llm_worker_new_tabs, llm_worker_send_request_timeout, llm_worker_send_request_with_req_id_timeout,
+        llm_worker_new_tabs, llm_worker_send_request_timeout,
+        llm_worker_send_request_with_req_id_timeout,
     },
     tab_management::TabManagerHandle,
     ws_server,
     ws_server::WsBridge,
 };
-use serde_json::{json, Value};
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, OnceLock,
+};
 use tokio::sync::Notify;
 
+use crate::canonical_writer::CanonicalWriter;
+use crate::constants::{
+    set_agent_state_dir, set_workspace, workspace, DEFAULT_AGENT_STATE_DIR,
+    DEFAULT_LLM_RETRY_COUNT, DEFAULT_LLM_RETRY_DELAY_SECS, DEFAULT_RESPONSE_TIMEOUT_SECS,
+    DIAGNOSTICS_FILE_PATH, ENDPOINT_SPECS, EXECUTOR_STEP_LIMIT, INVARIANTS_FILE, ISSUES_FILE,
+    MASTER_PLAN_FILE, MAX_SNIPPET, MAX_STEPS, OBJECTIVES_FILE, ROLE_TIMEOUT_SECS, SPEC_FILE,
+    VIOLATIONS_FILE, WS_PORT_CANDIDATES,
+};
 use crate::engine::process_action_and_execute;
-use crate::tools::write_stage_graph;
-use crate::tool_schema::write_tool_examples;
+use crate::events::ControlEvent;
+use crate::invalid_action::{
+    auto_fill_message_fields, build_invalid_action_feedback, corrective_invalid_action_prompt,
+    default_message_route, ensure_action_base_schema, expected_message_format,
+};
 use crate::logging::{
     append_action_log_record, append_orchestration_trace, compact_log_record, init_log_paths,
     log_action_result, log_error_event, log_message_event, make_command_id, now_ms,
 };
+use crate::md_convert::ensure_objectives_and_invariants_json;
+use crate::prompt_inputs::{
+    build_single_role_prompt, lane_summary_text, load_planner_inputs, load_single_role_inputs,
+    load_verifier_prompt_inputs, read_required_text, read_text_or_empty, LaneConfig,
+    OrchestratorContext, PlannerInputs, SingleRoleContext, SingleRoleInputs, VerifierPromptInputs,
+};
 use crate::prompts::{
     action_intent, action_objective_id, action_observation, action_rationale, action_result_prompt,
-    action_task_id, diagnostics_cycle_prompt,
-    diagnostics_python_reads_event_logs, executor_cycle_prompt, is_explicit_idle_action,
-    normalize_action, parse_actions, planner_cycle_prompt, single_role_solo_prompt, system_instructions,
-    truncate, validate_action, verifier_cycle_prompt, AgentPromptKind,
-};
-use crate::invalid_action::{
-    auto_fill_message_fields, build_invalid_action_feedback, corrective_invalid_action_prompt,
-    default_message_route, ensure_action_base_schema, expected_message_format,
+    action_task_id, diagnostics_cycle_prompt, diagnostics_python_reads_event_logs,
+    executor_cycle_prompt, is_explicit_idle_action, normalize_action, parse_actions,
+    planner_cycle_prompt, single_role_solo_prompt, system_instructions, truncate, validate_action,
+    verifier_cycle_prompt, AgentPromptKind,
 };
 use crate::state_space::{
     allow_diagnostics_run, allow_verifier_run, block_executor_dispatch, check_completion_endpoint,
@@ -41,23 +58,10 @@ use crate::state_space::{
     should_force_blocker, verifier_blocker_phase_override, CargoTestGate, CompletionEndpointCheck,
     CompletionTabCheck, WakeFlagInput,
 };
-use crate::constants::{
-    DEFAULT_AGENT_STATE_DIR, DEFAULT_LLM_RETRY_COUNT, DEFAULT_LLM_RETRY_DELAY_SECS,
-    DEFAULT_RESPONSE_TIMEOUT_SECS, DIAGNOSTICS_FILE_PATH, ENDPOINT_SPECS, EXECUTOR_STEP_LIMIT,
-    INVARIANTS_FILE, ISSUES_FILE, MASTER_PLAN_FILE, MAX_SNIPPET, MAX_STEPS, OBJECTIVES_FILE,
-    ROLE_TIMEOUT_SECS, SPEC_FILE, VIOLATIONS_FILE, WS_PORT_CANDIDATES, set_agent_state_dir,
-    set_workspace, workspace,
-};
-use crate::md_convert::ensure_objectives_and_invariants_json;
-use crate::prompt_inputs::{
-    build_single_role_prompt, lane_summary_text, load_planner_inputs, load_single_role_inputs,
-    load_verifier_prompt_inputs, read_required_text, read_text_or_empty, LaneConfig,
-    OrchestratorContext, PlannerInputs, SingleRoleContext, SingleRoleInputs, VerifierPromptInputs,
-};
-use crate::events::ControlEvent;
 use crate::system_state::SystemState;
 use crate::tlog::Tlog;
-use crate::canonical_writer::CanonicalWriter;
+use crate::tool_schema::write_tool_examples;
+use crate::tools::write_stage_graph;
 
 /// Extract a string field from a JSON object, returning `""` on missing/non-string.
 fn jstr<'a>(v: &'a Value, key: &str) -> &'a str {
@@ -209,9 +213,15 @@ fn trace_message_common(
 ) {
     let mut payload = serde_json::Map::new();
     payload.insert("role".to_string(), Value::String(role.to_string()));
-    payload.insert("prompt_kind".to_string(), Value::String(prompt_kind.to_string()));
+    payload.insert(
+        "prompt_kind".to_string(),
+        Value::String(prompt_kind.to_string()),
+    );
     payload.insert("step".to_string(), Value::Number(step.into()));
-    payload.insert("endpoint_id".to_string(), Value::String(endpoint_id.to_string()));
+    payload.insert(
+        "endpoint_id".to_string(),
+        Value::String(endpoint_id.to_string()),
+    );
     payload.insert("submit_only".to_string(), Value::Bool(submit_only));
     payload.insert(bytes_field.to_string(), Value::Number(bytes.into()));
 
@@ -232,7 +242,10 @@ fn trace_orchestrator_forwarded(
     payload.insert("to".to_string(), Value::String(to.to_string()));
     payload.insert("phase".to_string(), Value::String(phase.to_string()));
     if let Some(lane_name) = lane_name {
-        payload.insert("lane_name".to_string(), Value::String(lane_name.to_string()));
+        payload.insert(
+            "lane_name".to_string(),
+            Value::String(lane_name.to_string()),
+        );
     }
     if let Some(lane_plan_file) = lane_plan_file {
         payload.insert(
@@ -352,8 +365,8 @@ fn file_modified_ms(path: &Path) -> Option<u128> {
 /// Missing files contribute a fixed sentinel so a file appearing or disappearing
 /// also changes the hash.
 fn cycle_state_hash(paths: &[&Path]) -> u64 {
-    use std::hash::{Hash, Hasher};
     use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
     let mut hasher = DefaultHasher::new();
     for path in paths {
         match std::fs::read(path) {
@@ -458,7 +471,9 @@ async fn run_planner_phase(
             state.insert("actor_kind".to_string(), "planner".to_string());
             state.insert("error_class".to_string(), "blocker_escalated".to_string());
         }
-        if let Err(reason) = crate::invariants::evaluate_invariant_gate("planner", &state, ctx.workspace) {
+        if let Err(reason) =
+            crate::invariants::evaluate_invariant_gate("planner", &state, ctx.workspace)
+        {
             eprintln!("[invariant_gate] planner G_p (BLOCKED): {reason}");
             crate::blockers::record_action_failure(
                 ctx.workspace,
@@ -495,7 +510,9 @@ async fn run_planner_phase(
         ctx.diagnostics_path,
         ctx.master_plan_path,
     );
-    writer.apply(ControlEvent::LastExecutorDiffSet { text: last_executor_diff });
+    writer.apply(ControlEvent::LastExecutorDiffSet {
+        text: last_executor_diff,
+    });
     let issues_text = crate::issues::read_top_open_issues(ctx.workspace, 10);
     let mut planner_prompt = planner_cycle_prompt(
         &inputs.summary_text,
@@ -543,7 +560,9 @@ async fn run_planner_phase(
                     "plan_path": MASTER_PLAN_FILE,
                 }),
             );
-            writer.apply(ControlEvent::LastPlanTextSet { text: inputs.plan_text });
+            writer.apply(ControlEvent::LastPlanTextSet {
+                text: inputs.plan_text,
+            });
 
             // Semantic preflight: demote ready tasks that reference symbols not
             // found in the workspace graph.
@@ -551,16 +570,24 @@ async fn run_planner_phase(
 
             let lane_ids: Vec<usize> = ctx.lanes.iter().map(|l| l.index).collect();
             for lane_id in lane_ids {
-                writer.apply(ControlEvent::LanePlanTextSet { lane_id, text: String::new() });
+                writer.apply(ControlEvent::LanePlanTextSet {
+                    lane_id,
+                    text: String::new(),
+                });
                 let (in_progress, verified) = {
                     let s = writer.state();
                     let ls = s.lanes.get(&lane_id);
                     let in_progress = ls.map(|l| l.in_progress_by.is_some()).unwrap_or(false);
-                    let verified = ls.map(|l| verifier_confirmed(&l.latest_verifier_result)).unwrap_or(false);
+                    let verified = ls
+                        .map(|l| verifier_confirmed(&l.latest_verifier_result))
+                        .unwrap_or(false);
                     (in_progress, verified)
                 };
                 if !in_progress && !verified {
-                    writer.apply(ControlEvent::LanePendingSet { lane_id, pending: true });
+                    writer.apply(ControlEvent::LanePendingSet {
+                        lane_id,
+                        pending: true,
+                    });
                 }
             }
             writer.apply(ControlEvent::PlannerPendingSet { pending: false });
@@ -600,9 +627,8 @@ async fn run_solo_phase(
             return false;
         }
     };
-    let master_plan = crate::prompt_inputs::filter_pending_plan_json(&read_text_or_empty(
-        ctx.master_plan_path,
-    ));
+    let master_plan =
+        crate::prompt_inputs::filter_pending_plan_json(&read_text_or_empty(ctx.master_plan_path));
     let agent_root = crate::constants::agent_state_dir().trim_end_matches("/agent_state");
     let agent_objectives = Path::new(agent_root).join(OBJECTIVES_FILE);
     let objectives = if agent_objectives.exists() {
@@ -622,24 +648,25 @@ async fn run_solo_phase(
     let plan_mtime_before = file_modified_ms(&ctx.workspace.join(MASTER_PLAN_FILE));
     // Compute diffs and ranked context (symmetric with planner cycle)
     let mut solo_exec_diff = writer.state().last_solo_executor_diff.clone();
-    let executor_diff_inputs = crate::prompt_inputs::load_executor_diff_inputs(
-        ctx.workspace,
-        &mut solo_exec_diff,
-        400,
-    );
-    writer.apply(ControlEvent::LastSoloExecutorDiffSet { text: solo_exec_diff });
+    let executor_diff_inputs =
+        crate::prompt_inputs::load_executor_diff_inputs(ctx.workspace, &mut solo_exec_diff, 400);
+    writer.apply(ControlEvent::LastSoloExecutorDiffSet {
+        text: solo_exec_diff,
+    });
     let current_plan_text = read_text_or_empty(ctx.master_plan_path);
     let plan_diff_text = crate::prompt_inputs::solo_plan_diff(
         &writer.state().last_solo_plan_text.clone(),
         &current_plan_text,
         400,
     );
-    writer.apply(ControlEvent::LastSoloPlanTextSet { text: current_plan_text });
+    writer.apply(ControlEvent::LastSoloPlanTextSet {
+        text: current_plan_text,
+    });
     let issues_text = crate::issues::read_top_open_issues(ctx.workspace, 5);
     let complexity_hotspots = crate::prompt_inputs::read_complexity_hotspots(ctx.workspace, 8);
-    let loop_context_hint = crate::prompt_inputs::read_loop_context_hint(
-        std::path::Path::new(crate::constants::agent_state_dir()),
-    );
+    let loop_context_hint = crate::prompt_inputs::read_loop_context_hint(std::path::Path::new(
+        crate::constants::agent_state_dir(),
+    ));
     let mut prompt = single_role_solo_prompt(
         &spec,
         &master_plan,
@@ -754,7 +781,10 @@ async fn run_diagnostics_phase(
 ) -> bool {
     {
         let mut state = std::collections::HashMap::new();
-        state.insert("diagnostics_pending".to_string(), writer.state().diagnostics_pending.to_string());
+        state.insert(
+            "diagnostics_pending".to_string(),
+            writer.state().diagnostics_pending.to_string(),
+        );
         let blockers = crate::blockers::load_blockers(ctx.workspace);
         let now_ms = crate::logging::now_ms();
         let diagnostics_verification_failed_count = crate::blockers::count_class_recent(
@@ -769,7 +799,9 @@ async fn run_diagnostics_phase(
             state.insert("actor_kind".to_string(), "diagnostics".to_string());
             state.insert("error_class".to_string(), "verification_failed".to_string());
         }
-        if let Err(reason) = crate::invariants::evaluate_invariant_gate("diagnostics", &state, ctx.workspace) {
+        if let Err(reason) =
+            crate::invariants::evaluate_invariant_gate("diagnostics", &state, ctx.workspace)
+        {
             eprintln!("[invariant_gate] diagnostics G_d (BLOCKED): {reason}");
             crate::blockers::record_action_failure(
                 ctx.workspace,
@@ -795,7 +827,15 @@ async fn run_diagnostics_phase(
     let summary_text = lane_summary_text(ctx.lanes, &writer.state().verifier_summary);
     let mut prompt = diagnostics_cycle_prompt(&summary_text, cargo_test_failures);
     inject_inbound_message(&mut prompt, "diagnostics");
-    trace_orchestrator_forwarded("verifier", "diagnostics", "diagnostics", None, None, None, None);
+    trace_orchestrator_forwarded(
+        "verifier",
+        "diagnostics",
+        "diagnostics",
+        None,
+        None,
+        None,
+        None,
+    );
     let diagnostics_system = system_instructions(AgentPromptKind::Diagnostics);
     let result = run_agent(
         "diagnostics",
@@ -823,7 +863,8 @@ async fn run_diagnostics_phase(
                 &raw_violations_text,
             );
             if reconciled_diagnostics_text != raw_diagnostics_text {
-                if let Err(err) = std::fs::write(ctx.diagnostics_path, &reconciled_diagnostics_text) {
+                if let Err(err) = std::fs::write(ctx.diagnostics_path, &reconciled_diagnostics_text)
+                {
                     log_error_event(
                         "diagnostics",
                         "orchestrate",
@@ -839,7 +880,9 @@ async fn run_diagnostics_phase(
                 &raw_violations_text,
             );
             let diagnostics_changed = writer.state().diagnostics_text != new_diagnostics_text;
-            writer.apply(ControlEvent::DiagnosticsTextSet { text: new_diagnostics_text });
+            writer.apply(ControlEvent::DiagnosticsTextSet {
+                text: new_diagnostics_text,
+            });
             writer.apply(ControlEvent::DiagnosticsPendingSet { pending: false });
             writer.apply(ControlEvent::PlannerPendingSet {
                 pending: decide_post_diagnostics(diagnostics_changed, verifier_changed),
@@ -891,7 +934,9 @@ async fn run_verifier_phase(
             &mut last_executor_diff,
             cargo_test_failures.to_string(),
         );
-        writer.apply(ControlEvent::LastExecutorDiffSet { text: last_executor_diff });
+        writer.apply(ControlEvent::LastExecutorDiffSet {
+            text: last_executor_diff,
+        });
         let mut verifier_prompt = verifier_cycle_prompt(
             submitted.lane_label.as_str(),
             &final_exec_result,
@@ -909,8 +954,11 @@ async fn run_verifier_phase(
                     let ack = build_verifier_blocker_ack(&fields);
                     persist_planner_message(&ack);
                     verifier_pending_results.push_front((submitted, turn_id, final_exec_result));
-                    let override_phase = verifier_blocker_phase_override(verifier_specific).unwrap();
-                    writer.apply(ControlEvent::ScheduledPhaseSet { phase: Some(override_phase.to_string()) });
+                    let override_phase =
+                        verifier_blocker_phase_override(verifier_specific).unwrap();
+                    writer.apply(ControlEvent::ScheduledPhaseSet {
+                        phase: Some(override_phase.to_string()),
+                    });
                     continue;
                 }
             }
@@ -964,7 +1012,10 @@ async fn run_verifier_phase(
     while let Some(joined) = verifier_joinset.try_join_next() {
         match joined {
             Ok((lane_id, verify_result)) => {
-                if verify_result.trim().eq_ignore_ascii_case("shutdown requested") {
+                if verify_result
+                    .trim()
+                    .eq_ignore_ascii_case("shutdown requested")
+                {
                     eprintln!(
                         "[orchestrate] verifier shutdown marker received; preserving previous verifier result"
                     );
@@ -972,14 +1023,30 @@ async fn run_verifier_phase(
                     continue;
                 }
                 let confirmed = verifier_confirmed(&verify_result);
-                let changed = writer.state().lanes.get(&lane_id)
+                let changed = writer
+                    .state()
+                    .lanes
+                    .get(&lane_id)
                     .map(|l| l.latest_verifier_result.as_str())
-                    .unwrap_or("") != verify_result;
-                writer.apply(ControlEvent::LaneVerifierResultSet { lane_id, result: verify_result.clone() });
-                writer.apply(ControlEvent::LaneInProgressSet { lane_id, actor: None });
-                writer.apply(ControlEvent::LanePendingSet { lane_id, pending: !confirmed });
+                    .unwrap_or("")
+                    != verify_result;
+                writer.apply(ControlEvent::LaneVerifierResultSet {
+                    lane_id,
+                    result: verify_result.clone(),
+                });
+                writer.apply(ControlEvent::LaneInProgressSet {
+                    lane_id,
+                    actor: None,
+                });
+                writer.apply(ControlEvent::LanePendingSet {
+                    lane_id,
+                    pending: !confirmed,
+                });
                 if changed {
-                    writer.apply(ControlEvent::VerifierSummarySet { lane_id, result: verify_result });
+                    writer.apply(ControlEvent::VerifierSummarySet {
+                        lane_id,
+                        result: verify_result,
+                    });
                     verifier_changed = true;
                 }
                 cycle_progress = true;
@@ -1005,10 +1072,19 @@ fn requeue_lane_after_submit_recovery(
     rt: &mut RuntimeState,
     lane_id: usize,
 ) {
-    writer.apply(ControlEvent::LaneInProgressSet { lane_id, actor: None });
-    writer.apply(ControlEvent::LanePendingSet { lane_id, pending: true });
+    writer.apply(ControlEvent::LaneInProgressSet {
+        lane_id,
+        actor: None,
+    });
+    writer.apply(ControlEvent::LanePendingSet {
+        lane_id,
+        pending: true,
+    });
     rt.executor_submit_inflight.remove(&lane_id);
-    writer.apply(ControlEvent::LaneSubmitInFlightSet { lane_id, in_flight: false });
+    writer.apply(ControlEvent::LaneSubmitInFlightSet {
+        lane_id,
+        in_flight: false,
+    });
 }
 
 fn register_submitted_executor_turn(
@@ -1024,8 +1100,14 @@ fn register_submitted_executor_turn(
         writer.apply(ControlEvent::TabIdToLaneSet { tab_id, lane_id });
     }
     rt.submitted_turns.insert((tab_id, turn_id), submitted_turn);
-    writer.apply(ControlEvent::LaneNextSubmitAtSet { lane_id, ms: now_ms() });
-    writer.apply(ControlEvent::LaneSubmitInFlightSet { lane_id, in_flight: false });
+    writer.apply(ControlEvent::LaneNextSubmitAtSet {
+        lane_id,
+        ms: now_ms(),
+    });
+    writer.apply(ControlEvent::LaneSubmitInFlightSet {
+        lane_id,
+        in_flight: false,
+    });
 }
 
 fn timed_out_executor_submit_lanes(
@@ -1049,8 +1131,7 @@ fn log_timed_out_executor_submit(
 ) {
     eprintln!(
         "[orchestrate] pending submit timeout: lane={} command_id={}",
-        ctx.lanes[lane_id].label,
-        pending.command_id
+        ctx.lanes[lane_id].label, pending.command_id
     );
     log_error_event(
         "executor",
@@ -1058,8 +1139,7 @@ fn log_timed_out_executor_submit(
         None,
         &format!(
             "pending submit timeout: lane={} command_id={}",
-            ctx.lanes[lane_id].label,
-            pending.command_id
+            ctx.lanes[lane_id].label, pending.command_id
         ),
         Some(json!({
             "stage": "executor_submit_timeout",
@@ -1080,8 +1160,7 @@ fn log_timed_out_executor_submit(
         "executor_submit_timeout",
         &format!(
             "executor submit timed out: lane={} command_id={}",
-            ctx.lanes[lane_id].label,
-            pending.command_id
+            ctx.lanes[lane_id].label, pending.command_id
         ),
         None,
     );
@@ -1096,9 +1175,18 @@ fn recover_timed_out_executor_submit_lane(
     if let Some(pending) = rt.executor_submit_inflight.remove(&lane_id) {
         log_timed_out_executor_submit(ctx, lane_id, pending);
     }
-    writer.apply(ControlEvent::LaneSubmitInFlightSet { lane_id, in_flight: false });
-    writer.apply(ControlEvent::LaneInProgressSet { lane_id, actor: None });
-    writer.apply(ControlEvent::LanePendingSet { lane_id, pending: true });
+    writer.apply(ControlEvent::LaneSubmitInFlightSet {
+        lane_id,
+        in_flight: false,
+    });
+    writer.apply(ControlEvent::LaneInProgressSet {
+        lane_id,
+        actor: None,
+    });
+    writer.apply(ControlEvent::LanePendingSet {
+        lane_id,
+        pending: true,
+    });
 }
 
 fn sweep_timed_out_executor_submits(
@@ -1117,10 +1205,7 @@ fn sweep_timed_out_executor_submits(
     }
 }
 
-fn evaluate_executor_route_gates(
-    writer: &mut CanonicalWriter,
-    ready_count: &str,
-) -> bool {
+fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str) -> bool {
     let ws = std::path::PathBuf::from(workspace());
     let blockers = crate::blockers::load_blockers(&ws);
     let now_ms = crate::logging::now_ms();
@@ -1173,7 +1258,10 @@ fn evaluate_executor_route_gates(
     );
     if unauthorized_plan_op_count >= 1 {
         state.insert("actor_kind".to_string(), "executor".to_string());
-        state.insert("error_class".to_string(), "unauthorized_plan_op".to_string());
+        state.insert(
+            "error_class".to_string(),
+            "unauthorized_plan_op".to_string(),
+        );
     }
 
     let executor_llm_timeout_count = crate::blockers::count_class_recent(
@@ -1291,6 +1379,8 @@ fn evaluate_executor_route_gates(
             "ts_ms": crate::logging::now_ms(),
         });
         let _ = crate::logging::append_action_log_record(&record);
+        let blocker_message = route_gate_blocker_message(&reason);
+        let _ = persist_planner_blocker_message(&blocker_message);
     };
 
     if let Err(reason) = crate::invariants::evaluate_invariant_gate("route", &state, &ws) {
@@ -1372,7 +1462,11 @@ fn dispatch_executor_submits(
     {
         let ws = std::path::PathBuf::from(workspace());
         let ready_tasks_text = crate::prompt_inputs::read_ready_tasks(&ws, 1);
-        let ready_count = if ready_tasks_text == "(no ready tasks)" { "0" } else { "1+" };
+        let ready_count = if ready_tasks_text == "(no ready tasks)" {
+            "0"
+        } else {
+            "1+"
+        };
         if ready_count == "0" {
             writer.apply(ControlEvent::PlannerPendingSet { pending: true });
             return;
@@ -1412,7 +1506,10 @@ fn dispatch_executor_submits(
                     tabs: tabs.clone(),
                 },
             );
-            writer.apply(ControlEvent::LaneSubmitInFlightSet { lane_id: lane_index, in_flight: true });
+            writer.apply(ControlEvent::LaneSubmitInFlightSet {
+                lane_id: lane_index,
+                in_flight: true,
+            });
             submit_joinset.spawn(async move {
                 let result = submit_executor_turn(
                     &job,
@@ -1440,13 +1537,7 @@ fn run_executor_phase(
 ) -> bool {
     let mut cycle_progress = false;
     sweep_timed_out_executor_submits(ctx, writer, rt, now, pending_submit_timeout_ms);
-    dispatch_executor_submits(
-        ctx,
-        writer,
-        rt,
-        now,
-        submit_joinset,
-    );
+    dispatch_executor_submits(ctx, writer, rt, now, submit_joinset);
 
     while let Some(joined) = submit_joinset.try_join_next() {
         match joined {
@@ -1552,12 +1643,7 @@ fn handle_missing_submit_ack(
     false
 }
 
-fn log_late_submit_ack(
-    ctx: &OrchestratorContext<'_>,
-    lane_id: usize,
-    tab_id: u32,
-    turn_id: u64,
-) {
+fn log_late_submit_ack(ctx: &OrchestratorContext<'_>, lane_id: usize, tab_id: u32, turn_id: u64) {
     let lane_label = &ctx.lanes[lane_id].label;
     log_submit_ack_event(
         format!(
@@ -1618,9 +1704,7 @@ fn log_submit_ack_timeout(
     log_submit_ack_event(
         format!(
             "submit ack arrived after timeout: lane={} tab_id={} turn_id={}",
-            lane_label,
-            tab_id,
-            turn_id
+            lane_label, tab_id, turn_id
         ),
         json!({
             "stage": "executor_submit_ack_timeout",
@@ -1649,8 +1733,14 @@ fn handle_submit_ack_timeout(
         ),
         None,
     );
-    writer.apply(ControlEvent::LaneSubmitInFlightSet { lane_id, in_flight: false });
-    writer.apply(ControlEvent::LanePromptInFlightSet { lane_id, in_flight: false });
+    writer.apply(ControlEvent::LaneSubmitInFlightSet {
+        lane_id,
+        in_flight: false,
+    });
+    writer.apply(ControlEvent::LanePromptInFlightSet {
+        lane_id,
+        in_flight: false,
+    });
     false
 }
 
@@ -1664,9 +1754,7 @@ fn log_submit_ack_tab_mismatch(
     log_submit_ack_event(
         format!(
             "submit ack tab mismatch: lane={} active_tab={} ack_tab={} (overwriting active tab)",
-            lane_label,
-            active_tab,
-            tab_id
+            lane_label, active_tab, tab_id
         ),
         json!({
             "stage": "executor_submit_ack_tab_mismatch",
@@ -1700,22 +1788,11 @@ fn handle_executor_submit_ack_result(
         // this lane, but the submit actually succeeded.  Register the turn
         // so the completion can still be routed back to the LLM.
         return register_late_submit_ack(
-            ctx,
-            writer,
-            rt,
-            lane_id,
-            &job,
-            tab_id,
-            turn_id,
-            command_id,
+            ctx, writer, rt, lane_id, &job, tab_id, turn_id, command_id,
         );
     };
 
-    if executor_submit_timed_out(
-        pending.started_ms,
-        now_ms(),
-        pending_submit_timeout_ms,
-    ) {
+    if executor_submit_timed_out(pending.started_ms, now_ms(), pending_submit_timeout_ms) {
         return handle_submit_ack_timeout(ctx, writer, lane_id, tab_id, turn_id);
     }
 
@@ -1757,12 +1834,12 @@ async fn process_completed_turns(
     let completed_turns = ctx.bridge.take_completed_turns().await;
     for item in completed_turns {
         append_orchestration_trace("llm_message_received", item.clone());
-        let Some((tab_id, turn_id, exec_result, completed_endpoint_id)) = parse_completed_turn(&item) else {
+        let Some((tab_id, turn_id, exec_result, completed_endpoint_id)) =
+            parse_completed_turn(&item)
+        else {
             continue;
         };
-        let submitted = if let Some(submitted) =
-            rt.submitted_turns.remove(&(tab_id, turn_id))
-        {
+        let submitted = if let Some(submitted) = rt.submitted_turns.remove(&(tab_id, turn_id)) {
             if check_completion_endpoint(&submitted.endpoint_id, completed_endpoint_id.as_deref())
                 == CompletionEndpointCheck::Mismatch
             {
@@ -1791,8 +1868,10 @@ async fn process_completed_turns(
                 );
                 continue;
             };
-            if check_completion_endpoint(&ctx.lanes[lane_id].endpoint.id, completed_endpoint_id.as_deref())
-                == CompletionEndpointCheck::Mismatch
+            if check_completion_endpoint(
+                &ctx.lanes[lane_id].endpoint.id,
+                completed_endpoint_id.as_deref(),
+            ) == CompletionEndpointCheck::Mismatch
             {
                 append_orchestration_trace(
                     "executor_completion_endpoint_mismatch",
@@ -1806,10 +1885,7 @@ async fn process_completed_turns(
                 );
                 continue;
             }
-            match check_completion_tab(
-                writer.state().lane_active_tab_id(lane_id),
-                tab_id,
-            ) {
+            match check_completion_tab(writer.state().lane_active_tab_id(lane_id), tab_id) {
                 CompletionTabCheck::Mismatch => {
                     append_orchestration_trace(
                         "executor_completion_tab_mismatch",
@@ -1838,8 +1914,14 @@ async fn process_completed_turns(
                 );
                 continue;
             };
-            writer.apply(ControlEvent::LaneSubmitInFlightSet { lane_id, in_flight: false });
-            writer.apply(ControlEvent::LaneNextSubmitAtSet { lane_id, ms: now_ms() });
+            writer.apply(ControlEvent::LaneSubmitInFlightSet {
+                lane_id,
+                in_flight: false,
+            });
+            writer.apply(ControlEvent::LaneNextSubmitAtSet {
+                lane_id,
+                ms: now_ms(),
+            });
             let steps_used = writer.state().lane_steps_used_count(lane_id);
             SubmittedExecutorTurn {
                 tab_id,
@@ -1852,7 +1934,10 @@ async fn process_completed_turns(
                 steps_used,
             }
         };
-        writer.apply(ControlEvent::LanePromptInFlightSet { lane_id: submitted.lane, in_flight: false });
+        writer.apply(ControlEvent::LanePromptInFlightSet {
+            lane_id: submitted.lane,
+            in_flight: false,
+        });
         if handle_executor_completion(
             submitted,
             tab_id,
@@ -1913,7 +1998,10 @@ fn handle_completed_continuation(
 ) -> bool {
     match result {
         Ok(final_exec_result) => {
-            writer.apply(ControlEvent::LanePromptInFlightSet { lane_id: submitted.lane, in_flight: false });
+            writer.apply(ControlEvent::LanePromptInFlightSet {
+                lane_id: submitted.lane,
+                in_flight: false,
+            });
             // Continuations only return once the executor has reached completion,
             // and the returned value is the completion summary (not the raw action JSON).
             verifier_pending_results.push_back((submitted, turn_id, final_exec_result));
@@ -1933,8 +2021,7 @@ fn recover_failed_continuation(
 ) {
     eprintln!(
         "[orchestrate] executor continuation error: lane={} err={}",
-        submitted.lane_label,
-        err_text
+        submitted.lane_label, err_text
     );
     log_error_event(
         "executor",
@@ -1942,15 +2029,23 @@ fn recover_failed_continuation(
         None,
         &format!(
             "executor continuation error: lane={} err={}",
-            submitted.lane_label,
-            err_text
+            submitted.lane_label, err_text
         ),
         Some(json!({ "stage": "executor_continuation", "lane": submitted.lane_label })),
     );
     let lane_id = submitted.lane;
-    writer.apply(ControlEvent::LanePromptInFlightSet { lane_id, in_flight: false });
-    writer.apply(ControlEvent::LaneInProgressSet { lane_id, actor: None });
-    writer.apply(ControlEvent::LanePendingSet { lane_id, pending: true });
+    writer.apply(ControlEvent::LanePromptInFlightSet {
+        lane_id,
+        in_flight: false,
+    });
+    writer.apply(ControlEvent::LaneInProgressSet {
+        lane_id,
+        actor: None,
+    });
+    writer.apply(ControlEvent::LanePendingSet {
+        lane_id,
+        pending: true,
+    });
 }
 
 fn drain_deferred_completions(
@@ -2344,7 +2439,8 @@ fn handle_parse_actions_error(
     trace: &impl Fn(&str),
     err_text: &str,
 ) -> Result<Value, InvalidActionFeedback> {
-    if let Some(guard_action) = maybe_guardrail_parse_action(role, raw, allow_guardrail, log, err_text)
+    if let Some(guard_action) =
+        maybe_guardrail_parse_action(role, raw, allow_guardrail, log, err_text)
     {
         return Ok(guard_action);
     }
@@ -2398,7 +2494,10 @@ fn extract_single_action(
     trace: &impl Fn(&str),
 ) -> Result<Value, InvalidActionFeedback> {
     if actions.len() != 1 {
-        let msg = format!("Got {} actions — emit exactly one action per turn.", actions.len());
+        let msg = format!(
+            "Got {} actions — emit exactly one action per turn.",
+            actions.len()
+        );
         eprintln!("[{role}] step={} {msg}", step);
         log(
             "llm_invalid_action_count",
@@ -2450,7 +2549,13 @@ fn validate_action_or_feedback(
     log: &impl Fn(&str, Value),
 ) -> Result<(), InvalidActionFeedback> {
     if let Err(e) = validate_action(action) {
-        return Err(handle_invalid_action_error(role, raw, action, log, &e.to_string()));
+        return Err(handle_invalid_action_error(
+            role,
+            raw,
+            action,
+            log,
+            &e.to_string(),
+        ));
     }
 
     Ok(())
@@ -2590,7 +2695,8 @@ fn enforce_executor_step_limit(
     last_result: &mut Option<String>,
     workspace: &std::path::Path,
 ) -> bool {
-    if role.starts_with("executor") && executor_step_limit_exceeded(total_steps, EXECUTOR_STEP_LIMIT)
+    if role.starts_with("executor")
+        && executor_step_limit_exceeded(total_steps, EXECUTOR_STEP_LIMIT)
     {
         *error_streak = error_streak.saturating_add(1);
         *last_result = Some(executor_step_limit_feedback());
@@ -2636,9 +2742,11 @@ fn enforce_diagnostics_python(
     None
 }
 
-
 fn take_inbound_message(role: &str) -> Option<String> {
-    let role_key = role.trim().to_lowercase().replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+    let role_key = role
+        .trim()
+        .to_lowercase()
+        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let path = agent_state_dir.join(format!("last_message_to_{role_key}.json"));
     let raw = std::fs::read_to_string(&path).ok()?;
@@ -2695,11 +2803,10 @@ fn is_reaction_only_response(raw: &str) -> bool {
     false
 }
 
-fn apply_wake_flags(
-    agent_state_dir: &std::path::Path,
-    writer: &mut CanonicalWriter,
-) {
-    let active_blocker = agent_state_dir.join("active_blocker_to_verifier.json").exists();
+fn apply_wake_flags(agent_state_dir: &std::path::Path, writer: &mut CanonicalWriter) {
+    let active_blocker = agent_state_dir
+        .join("active_blocker_to_verifier.json")
+        .exists();
 
     let (inputs, path_map) = collect_wake_flag_inputs(agent_state_dir);
 
@@ -2708,7 +2815,9 @@ fn apply_wake_flags(
         return;
     };
 
-    writer.apply(ControlEvent::ScheduledPhaseSet { phase: Some(role.to_string()) });
+    writer.apply(ControlEvent::ScheduledPhaseSet {
+        phase: Some(role.to_string()),
+    });
     if let Some(path) = path_map.get(role) {
         eprintln!(
             "[orchestrate] wake_flag_triggered: role={} path={}",
@@ -2726,7 +2835,10 @@ fn apply_wake_flags(
     if decision.executor_wake {
         let lane_ids: Vec<usize> = writer.state().lanes.keys().copied().collect();
         for lane_id in lane_ids {
-            writer.apply(ControlEvent::LanePendingSet { lane_id, pending: true });
+            writer.apply(ControlEvent::LanePendingSet {
+                lane_id,
+                pending: true,
+            });
             // Do NOT clear in_progress_by here. If the lane already has a submit
             // in flight, clearing ownership causes a double-submit on the next tick
             // (claim_next_lane sees pending=true + in_progress_by=None and spawns a
@@ -2748,7 +2860,10 @@ fn collect_wake_flag_inputs(
         ("planner", agent_state_dir.join("wakeup_planner.flag")),
         ("solo", agent_state_dir.join("wakeup_solo.flag")),
         ("verifier", agent_state_dir.join("wakeup_verifier.flag")),
-        ("diagnostics", agent_state_dir.join("wakeup_diagnostics.flag")),
+        (
+            "diagnostics",
+            agent_state_dir.join("wakeup_diagnostics.flag"),
+        ),
         ("executor", agent_state_dir.join("wakeup_executor.flag")),
     ];
 
@@ -2788,8 +2903,7 @@ fn try_parse_blocker(raw: &str) -> Option<(String, String, Value)> {
 }
 
 fn persist_planner_message(action: &Value) {
-    let agent_state_dir =
-        std::path::Path::new(crate::constants::agent_state_dir());
+    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let _ = std::fs::create_dir_all(agent_state_dir);
     let planner_path = agent_state_dir.join("last_message_to_planner.json");
     let _ = std::fs::write(
@@ -2797,6 +2911,83 @@ fn persist_planner_message(action: &Value) {
         serde_json::to_string_pretty(action).unwrap_or_default(),
     );
     let _ = std::fs::write(agent_state_dir.join("wakeup_planner.flag"), "handoff");
+}
+
+fn persist_planner_blocker_message(action: &Value) -> bool {
+    let evidence = action
+        .get("payload")
+        .and_then(|payload| payload.get("evidence"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
+    let _ = std::fs::create_dir_all(agent_state_dir);
+    if !evidence.is_empty() {
+        let evidence_path = agent_state_dir.join("last_planner_blocker_evidence.txt");
+        if let Ok(prev) = std::fs::read_to_string(&evidence_path) {
+            if prev.trim() == evidence {
+                return false;
+            }
+        }
+        let _ = std::fs::write(&evidence_path, &evidence);
+    }
+    persist_planner_message(action);
+    true
+}
+
+fn invariant_id_from_reason(reason: &str) -> Option<&str> {
+    let start = reason.find("[id=")? + 4;
+    let end = reason[start..].find(']')? + start;
+    let id = reason[start..end].trim();
+    if id.is_empty() {
+        None
+    } else {
+        Some(id)
+    }
+}
+
+fn route_gate_blocker_message(reason: &str) -> Value {
+    let summary = match invariant_id_from_reason(reason) {
+        Some(id) => format!("Executor dispatch blocked by enforced invariant {id}"),
+        None => "Executor dispatch blocked by enforced route invariant".to_string(),
+    };
+    let blocker = if reason.contains("does not exist") {
+        "Plan references a path that does not exist yet"
+    } else {
+        "Executor dispatch blocked by an enforced invariant"
+    };
+    let required_action = if reason.contains("does not exist") {
+        "Revise the plan so the target is created before it is referenced, or retarget the action to an existing path"
+    } else {
+        "Revise the plan or workspace state so the blocked invariant no longer fires"
+    };
+    json!({
+        "action": "message",
+        "from": "orchestrator",
+        "to": "planner",
+        "type": "blocker",
+        "status": "blocked",
+        "observation": "Executor routing is blocked by an enforced invariant; planner must repair the plan before more executor work is dispatched.",
+        "rationale": "Returning a structured blocker to the planner is more actionable than repeating route-gate stderr lines.",
+        "predicted_next_actions": [
+            {
+                "action": "read_file",
+                "intent": "Inspect the current plan and relevant artifacts to locate the invalid path reference."
+            },
+            {
+                "action": "message",
+                "intent": "Report a repaired handoff or a narrower blocker after updating the plan."
+            }
+        ],
+        "payload": build_blocker_payload(
+            &summary,
+            blocker,
+            reason,
+            required_action,
+            "error",
+        ),
+    })
 }
 
 struct LlmResponseContext<'a> {
@@ -2899,12 +3090,7 @@ impl<'a> LlmResponseContext<'a> {
         );
     }
 
-    fn handle_submit_ack(
-        &self,
-        step: usize,
-        exchange_id: &str,
-        raw: &str,
-    ) -> Option<String> {
+    fn handle_submit_ack(&self, step: usize, exchange_id: &str, raw: &str) -> Option<String> {
         if !self.submit_only {
             return None;
         }
@@ -2980,9 +3166,7 @@ impl<'a> LlmResponseContext<'a> {
             *last_error = Some("reaction_only_response".to_string());
             eprintln!(
                 "[{}] step={} reaction_only_response retry {}",
-                self.role,
-                step,
-                *reaction_only_streak
+                self.role, step, *reaction_only_streak
             );
         }
         true
@@ -3326,7 +3510,7 @@ async fn run_agent(
             &exchange_id,
             &raw,
             false,
-            true,  // always auto-fill message fields so `from` is forced to the actual role
+            true, // always auto-fill message fields so `from` is forced to the actual role
             None,
         ) {
             Ok(action) => action,
@@ -3352,26 +3536,32 @@ async fn run_agent(
             }
         };
 
-        let kind = action.get("action").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+        let kind = action
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string();
 
         if kind == "run_command" {
             let cmd = action.get("cmd").and_then(|v| v.as_str());
             cargo_test_gate.note_action(&kind, cmd);
         }
         if kind != "message"
-            && enforce_executor_step_limit(role, total_steps, &mut error_streak, &mut last_result, workspace)
+            && enforce_executor_step_limit(
+                role,
+                total_steps,
+                &mut error_streak,
+                &mut last_result,
+                workspace,
+            )
         {
             step += 1;
             continue;
         }
-        if let Some(msg) = cargo_test_gate.message_blocker_if_needed(&kind, crate::constants::workspace()) {
-            crate::blockers::record_action_failure(
-                workspace,
-                role,
-                "build_gate",
-                &msg,
-                None,
-            );
+        if let Some(msg) =
+            cargo_test_gate.message_blocker_if_needed(&kind, crate::constants::workspace())
+        {
+            crate::blockers::record_action_failure(workspace, role, "build_gate", &msg, None);
             error_streak = error_streak.saturating_add(1);
             last_result = Some(msg);
             step += 1;
@@ -3406,7 +3596,10 @@ async fn run_agent(
                 workspace,
                 role,
                 "repeated_failed_action",
-                &format!("identical action payload failed repeatedly: {}", &action_fingerprint),
+                &format!(
+                    "identical action payload failed repeatedly: {}",
+                    &action_fingerprint
+                ),
                 action.get("task_id").and_then(|v| v.as_str()),
             );
             apply_error_result(
@@ -3504,7 +3697,8 @@ async fn run_agent(
                         .as_deref()
                         .is_some_and(|f| f == action_fingerprint)
                     {
-                        repeated_failed_action_count = repeated_failed_action_count.saturating_add(1);
+                        repeated_failed_action_count =
+                            repeated_failed_action_count.saturating_add(1);
                     } else {
                         last_failed_action_fingerprint = Some(action_fingerprint.clone());
                         repeated_failed_action_count = 1;
@@ -3532,33 +3726,52 @@ async fn run_agent(
 /// Write the last completed action result to a state file so it survives a
 /// supervisor-triggered restart.  Only the most recent action is kept (overwrites).
 fn write_post_restart_result(role: &str, action: &str, result: &str, step: usize) {
-    let path = std::path::Path::new(crate::constants::agent_state_dir())
-        .join("post_restart_result.json");
+    let path =
+        std::path::Path::new(crate::constants::agent_state_dir()).join("post_restart_result.json");
     let payload = serde_json::json!({
         "role": role,
         "action": action,
         "result": result,
         "step": step,
     });
-    let _ = std::fs::write(&path, serde_json::to_string_pretty(&payload).unwrap_or_default());
+    let _ = std::fs::write(
+        &path,
+        serde_json::to_string_pretty(&payload).unwrap_or_default(),
+    );
 }
 
 /// Read and consume the post-restart result file.  Returns `Some((action, result, step))`
 /// if the file exists and was written by `role`, then deletes the file.
 fn take_post_restart_result(role: &str) -> Option<(String, String, usize)> {
-    let path = std::path::Path::new(crate::constants::agent_state_dir())
-        .join("post_restart_result.json");
+    let path =
+        std::path::Path::new(crate::constants::agent_state_dir()).join("post_restart_result.json");
     let raw = std::fs::read_to_string(&path).ok()?;
     let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
     let saved_role = v.get("role").and_then(|r| r.as_str()).unwrap_or("");
     // Normalise: executor[executor_pool] → executor
-    let role_key = if role.starts_with("executor") { "executor" } else { role };
-    let saved_key = if saved_role.starts_with("executor") { "executor" } else { saved_role };
+    let role_key = if role.starts_with("executor") {
+        "executor"
+    } else {
+        role
+    };
+    let saved_key = if saved_role.starts_with("executor") {
+        "executor"
+    } else {
+        saved_role
+    };
     if role_key != saved_key {
         return None;
     }
-    let action = v.get("action").and_then(|a| a.as_str()).unwrap_or("(unknown)").to_string();
-    let result = v.get("result").and_then(|r| r.as_str()).unwrap_or("").to_string();
+    let action = v
+        .get("action")
+        .and_then(|a| a.as_str())
+        .unwrap_or("(unknown)")
+        .to_string();
+    let result = v
+        .get("result")
+        .and_then(|r| r.as_str())
+        .unwrap_or("")
+        .to_string();
     let step = v.get("step").and_then(|s| s.as_u64()).unwrap_or(0) as usize;
     // Consume — delete so it isn't re-injected on a second restart
     let _ = std::fs::remove_file(&path);
@@ -3601,7 +3814,6 @@ fn build_endpoints() -> Vec<LlmEndpoint> {
         })
         .collect()
 }
-
 
 #[derive(Clone)]
 struct PendingSubmitState {
@@ -3674,7 +3886,10 @@ fn parse_submit_ack(raw: &str) -> Option<(u32, u64, Option<String>)> {
     }
     let tab_id = v.get("tab_id").and_then(|x| x.as_u64())? as u32;
     let turn_id = v.get("turn_id").and_then(|x| x.as_u64())?;
-    let command_id = v.get("command_id").and_then(|x| x.as_str()).map(str::to_string);
+    let command_id = v
+        .get("command_id")
+        .and_then(|x| x.as_str())
+        .map(str::to_string);
     Some((tab_id, turn_id, command_id))
 }
 
@@ -3703,7 +3918,10 @@ fn append_executor_completion_log(
     let parsed_command = parsed
         .as_ref()
         .map(|action| {
-            let kind = action.get("action").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let kind = action
+                .get("action")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
             match kind {
                 "run_command" => jstr(action, "cmd").to_string(),
                 "python" => "python".to_string(),
@@ -3766,7 +3984,6 @@ fn parse_completed_turn(value: &Value) -> Option<(u32, u64, String, Option<Strin
     Some((tab_id, turn_id, text, endpoint_id))
 }
 
-
 fn handle_executor_completion(
     mut submitted: SubmittedExecutorTurn,
     tab_id: u32,
@@ -3781,7 +3998,10 @@ fn handle_executor_completion(
     _verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
 ) -> bool {
     submitted.steps_used = submitted.steps_used.saturating_add(1);
-    writer.apply(ControlEvent::LaneStepsUsedSet { lane_id: submitted.lane, steps: submitted.steps_used });
+    writer.apply(ControlEvent::LaneStepsUsedSet {
+        lane_id: submitted.lane,
+        steps: submitted.steps_used,
+    });
     let lane_cfg = &lanes[submitted.lane];
     let lane_name = lane_cfg.label.as_str();
     if maybe_defer_executor_completion(
@@ -3804,8 +4024,7 @@ fn handle_executor_completion(
     }
     eprintln!(
         "[orchestrate] executor turn requires tool execution: lane={} turn_id={}",
-        lane_name,
-        turn_id
+        lane_name, turn_id
     );
     append_orchestration_trace(
         "executor_completion_requires_tool",
@@ -3958,7 +4177,10 @@ fn spawn_executor_completion_continuation(
     let exec_result = exec_result.to_string();
     let submitted_clone = submitted.clone();
     let tabs = submitted.tabs.clone();
-    writer.apply(ControlEvent::LanePromptInFlightSet { lane_id: submitted.lane, in_flight: true });
+    writer.apply(ControlEvent::LanePromptInFlightSet {
+        lane_id: submitted.lane,
+        in_flight: true,
+    });
     continuation_joinset.spawn(async move {
         let result = continue_executor_completion(
             &submitted_clone,
@@ -3984,11 +4206,19 @@ fn handle_executor_completion_message_action(
     let Ok(mut actions) = parse_actions(exec_result) else {
         return false;
     };
-    if actions.first().and_then(|a| a.get("action")).and_then(|v| v.as_str()) != Some("message") {
+    if actions
+        .first()
+        .and_then(|a| a.get("action"))
+        .and_then(|v| v.as_str())
+        != Some("message")
+    {
         return false;
     }
 
-    writer.apply(ControlEvent::LaneStepsUsedSet { lane_id: submitted.lane, steps: 0 });
+    writer.apply(ControlEvent::LaneStepsUsedSet {
+        lane_id: submitted.lane,
+        steps: 0,
+    });
     let Some(action) = actions.pop() else {
         return false;
     };
@@ -4042,7 +4272,10 @@ fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Va
         &msg_path,
         serde_json::to_string_pretty(action).unwrap_or_default(),
     );
-    let _ = std::fs::write(agent_state_dir.join(format!("wakeup_{to_key}.flag")), "handoff");
+    let _ = std::fs::write(
+        agent_state_dir.join(format!("wakeup_{to_key}.flag")),
+        "handoff",
+    );
 }
 
 fn plan_has_incomplete_tasks(plan_text: &str) -> bool {
@@ -4091,13 +4324,18 @@ fn objective_requires_plan_work(objective: &crate::objectives::Objective) -> boo
 }
 
 fn has_actionable_objectives(objectives_text: &str) -> bool {
-    let Ok(file) = serde_json::from_str::<crate::objectives::ObjectivesFile>(objectives_text) else {
+    let Ok(file) = serde_json::from_str::<crate::objectives::ObjectivesFile>(objectives_text)
+    else {
         return false;
     };
     file.objectives.iter().any(objective_requires_plan_work)
 }
 
-fn should_reject_solo_self_complete(action: &Value, objectives_text: &str, plan_text: &str) -> bool {
+fn should_reject_solo_self_complete(
+    action: &Value,
+    objectives_text: &str,
+    plan_text: &str,
+) -> bool {
     let is_complete_message = action.get("action").and_then(|v| v.as_str()) == Some("message")
         && action
             .get("status")
@@ -4151,18 +4389,28 @@ fn claim_next_lane(writer: &mut CanonicalWriter, lane: &LaneConfig) -> Option<(u
         (
             ls.map(|l| l.pending).unwrap_or(false),
             ls.and_then(|l| l.in_progress_by.as_deref()).is_some(),
-            ls.map(|l| l.latest_verifier_result.clone()).unwrap_or_default(),
+            ls.map(|l| l.latest_verifier_result.clone())
+                .unwrap_or_default(),
         )
     };
     if pending && !in_progress {
-        writer.apply(ControlEvent::LanePendingSet { lane_id, pending: false });
-        writer.apply(ControlEvent::LaneInProgressSet { lane_id, actor: Some(lane.label.clone()) });
+        writer.apply(ControlEvent::LanePendingSet {
+            lane_id,
+            pending: false,
+        });
+        writer.apply(ControlEvent::LaneInProgressSet {
+            lane_id,
+            actor: Some(lane.label.clone()),
+        });
         return Some((lane_id, latest_result));
     }
     None
 }
 
-fn claim_executor_submit(writer: &mut CanonicalWriter, lane: &LaneConfig) -> Option<PendingExecutorSubmit> {
+fn claim_executor_submit(
+    writer: &mut CanonicalWriter,
+    lane: &LaneConfig,
+) -> Option<PendingExecutorSubmit> {
     let (lane_id, latest_verify_result) = claim_next_lane(writer, lane)?;
     let executor_display = format!("executor {}", lane.label);
     let executor_role = format!("executor[{}]", lane.label);
@@ -4187,10 +4435,8 @@ async fn submit_executor_turn(
     command_id: &str,
     response_timeout_secs: u64,
 ) -> Result<String> {
-    let ready_tasks = crate::prompt_inputs::read_ready_tasks(
-        &std::path::PathBuf::from(workspace()),
-        10,
-    );
+    let ready_tasks =
+        crate::prompt_inputs::read_ready_tasks(&std::path::PathBuf::from(workspace()), 10);
     let mut exec_prompt = executor_cycle_prompt(
         job.executor_display.as_str(),
         job.label.as_str(),
@@ -4311,7 +4557,10 @@ pub async fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
 
     // Resolve target workspace early so all subsystems see the same value.
-    let workspace_override = args.windows(2).find(|w| w[0] == "--workspace").map(|w| w[1].clone());
+    let workspace_override = args
+        .windows(2)
+        .find(|w| w[0] == "--workspace")
+        .map(|w| w[1].clone());
     if let Some(ref path) = workspace_override {
         let p = std::path::Path::new(path);
         if !p.is_absolute() {
@@ -4329,7 +4578,10 @@ pub async fn run() -> Result<()> {
     }
 
     // Resolve agent state directory (canon-mini-agent's own runtime state).
-    let state_dir_override = args.windows(2).find(|w| w[0] == "--state-dir").map(|w| w[1].clone());
+    let state_dir_override = args
+        .windows(2)
+        .find(|w| w[0] == "--state-dir")
+        .map(|w| w[1].clone());
     if let Some(ref path) = state_dir_override {
         let p = std::path::Path::new(path);
         if !p.is_absolute() {
@@ -4338,7 +4590,10 @@ pub async fn run() -> Result<()> {
         set_agent_state_dir(path.clone());
         eprintln!("[canon-mini-agent] state_dir={path} (--state-dir)");
     } else {
-        eprintln!("[canon-mini-agent] state_dir={} (default)", DEFAULT_AGENT_STATE_DIR);
+        eprintln!(
+            "[canon-mini-agent] state_dir={} (default)",
+            DEFAULT_AGENT_STATE_DIR
+        );
     }
 
     let orchestrate = args.iter().any(|a| a == "--orchestrate");
@@ -4347,7 +4602,10 @@ pub async fn run() -> Result<()> {
         .find(|w| w[0] == "--start")
         .map(|w| w[1].as_str())
         .unwrap_or("executor");
-    if !matches!(start_role, "executor" | "verifier" | "planner" | "diagnostics" | "solo") {
+    if !matches!(
+        start_role,
+        "executor" | "verifier" | "planner" | "diagnostics" | "solo"
+    ) {
         bail!("invalid --start value: {start_role} (expected executor|verifier|planner|diagnostics|solo)");
     }
     let role_arg = args
@@ -4373,7 +4631,9 @@ pub async fn run() -> Result<()> {
             "planner" => is_planner = true,
             "verifier" => is_verifier = true,
             "diagnostics" => is_diagnostics = true,
-            _ => bail!("invalid --role value: {role} (expected executor|planner|verifier|diagnostics)"),
+            _ => bail!(
+                "invalid --role value: {role} (expected executor|planner|verifier|diagnostics)"
+            ),
         }
     }
     let (ws_port, ws_port_explicit) = choose_ws_port(&args)?;
@@ -4382,8 +4642,7 @@ pub async fn run() -> Result<()> {
     } else {
         eprintln!(
             "[canon-mini-agent] ws_port={} (auto-selected from {:?})",
-            ws_port,
-            WS_PORT_CANDIDATES
+            ws_port, WS_PORT_CANDIDATES
         );
     }
 
@@ -4485,7 +4744,11 @@ pub async fn run() -> Result<()> {
         let solo_mode = start_role == "solo";
         let _ = std::fs::write(
             orchestrator_mode_flag_path(),
-            if solo_mode { "single\n" } else { "orchestrate\n" },
+            if solo_mode {
+                "single\n"
+            } else {
+                "orchestrate\n"
+            },
         );
 
         eprintln!("[orchestrate] start_role={start_role}");
@@ -4564,7 +4827,10 @@ pub async fn run() -> Result<()> {
             // so late completions and active tabs can still be reconciled.
             rt.deferred_completions.clear();
             for lane in &lanes {
-                writer.apply(ControlEvent::LanePromptInFlightSet { lane_id: lane.index, in_flight: false });
+                writer.apply(ControlEvent::LanePromptInFlightSet {
+                    lane_id: lane.index,
+                    in_flight: false,
+                });
                 // Only clear the submit guard for lanes that have no live inflight entry.
                 // If executor_submit_inflight still holds an entry for this lane, the
                 // submit_joinset task is still running and will deliver an ack — clearing
@@ -4573,7 +4839,10 @@ pub async fn run() -> Result<()> {
                 // submit" error when the first ack arrives after the inflight map entry has
                 // been overwritten by the second submit.
                 if !rt.executor_submit_inflight.contains_key(&lane.index) {
-                    writer.apply(ControlEvent::LaneSubmitInFlightSet { lane_id: lane.index, in_flight: false });
+                    writer.apply(ControlEvent::LaneSubmitInFlightSet {
+                        lane_id: lane.index,
+                        in_flight: false,
+                    });
                 }
             }
             // Reset lanes that lost ownership (no active tab) so they become pending.
@@ -4581,25 +4850,43 @@ pub async fn run() -> Result<()> {
             for lane_id in lane_ids {
                 let (in_progress, has_active_tab) = {
                     let s = writer.state();
-                    let in_prog = s.lanes.get(&lane_id).and_then(|l| l.in_progress_by.as_ref()).is_some();
+                    let in_prog = s
+                        .lanes
+                        .get(&lane_id)
+                        .and_then(|l| l.in_progress_by.as_ref())
+                        .is_some();
                     let has_tab = s.lane_active_tab.contains_key(&lane_id);
                     (in_prog, has_tab)
                 };
                 if in_progress && !has_active_tab {
-                    writer.apply(ControlEvent::LaneInProgressSet { lane_id, actor: None });
-                    writer.apply(ControlEvent::LanePendingSet { lane_id, pending: true });
+                    writer.apply(ControlEvent::LaneInProgressSet {
+                        lane_id,
+                        actor: None,
+                    });
+                    writer.apply(ControlEvent::LanePendingSet {
+                        lane_id,
+                        pending: true,
+                    });
                 }
             }
         }
         let mut planner_bootstrapped = false;
         let mut diagnostics_bootstrapped = false;
         let mut verifier_bootstrapped = false;
-        let mut submit_joinset: tokio::task::JoinSet<(usize, PendingExecutorSubmit, Result<String>)> =
+        let mut submit_joinset: tokio::task::JoinSet<(
+            usize,
+            PendingExecutorSubmit,
+            Result<String>,
+        )> = tokio::task::JoinSet::new();
+        let mut continuation_joinset: tokio::task::JoinSet<(
+            SubmittedExecutorTurn,
+            u64,
+            Result<String>,
+        )> = tokio::task::JoinSet::new();
+        let mut verifier_joinset: tokio::task::JoinSet<(usize, String)> =
             tokio::task::JoinSet::new();
-        let mut continuation_joinset: tokio::task::JoinSet<(SubmittedExecutorTurn, u64, Result<String>)> =
-            tokio::task::JoinSet::new();
-        let mut verifier_joinset: tokio::task::JoinSet<(usize, String)> = tokio::task::JoinSet::new();
-        let mut verifier_pending_results: VecDeque<(SubmittedExecutorTurn, u64, String)> = VecDeque::new();
+        let mut verifier_pending_results: VecDeque<(SubmittedExecutorTurn, u64, String)> =
+            VecDeque::new();
 
         if !resume_verifier_items.is_empty() {
             eprintln!(
@@ -4647,12 +4934,9 @@ pub async fn run() -> Result<()> {
             let state_hash_before = cycle_state_hash(&convergence_watched);
             if shutdown.flag.load(Ordering::SeqCst) {
                 eprintln!("[orchestrate] shutdown requested; saving checkpoint");
-                if let Err(err) = save_checkpoint(
-                    &workspace,
-                    &writer,
-                    &lanes,
-                    &verifier_pending_results,
-                ) {
+                if let Err(err) =
+                    save_checkpoint(&workspace, &writer, &lanes, &verifier_pending_results)
+                {
                     eprintln!("[orchestrate] checkpoint save failed: {err:#}");
                     log_error_event(
                         "orchestrate",
@@ -4665,8 +4949,7 @@ pub async fn run() -> Result<()> {
                 return Ok(());
             }
 
-            let agent_state_dir =
-                std::path::Path::new(crate::constants::agent_state_dir());
+            let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
             apply_wake_flags(agent_state_dir, &mut writer);
 
             if writer.state().scheduled_phase.is_none() && writer.state().phase == "bootstrap" {
@@ -4682,27 +4965,35 @@ pub async fn run() -> Result<()> {
                         writer.apply(ControlEvent::DiagnosticsPendingSet { pending: true });
                     }
                     if phase == "solo" {
-                        writer.apply(ControlEvent::ScheduledPhaseSet { phase: Some("solo".to_string()) });
+                        writer.apply(ControlEvent::ScheduledPhaseSet {
+                            phase: Some("solo".to_string()),
+                        });
                     }
                     writer.apply(ControlEvent::PhaseSet { phase, lane: None });
                 }
             }
 
-            let agent_state_dir =
-                std::path::Path::new(crate::constants::agent_state_dir());
-            let active_blocker = agent_state_dir.join("active_blocker_to_verifier.json").exists();
+            let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
+            let active_blocker = agent_state_dir
+                .join("active_blocker_to_verifier.json")
+                .exists();
             let blocker_decision = decide_active_blocker(
                 active_blocker,
                 writer.state().planner_pending,
                 writer.state().scheduled_phase.as_deref(),
             );
             if active_blocker
-                && (writer.state().planner_pending || writer.state().scheduled_phase.as_deref() == Some("planner"))
+                && (writer.state().planner_pending
+                    || writer.state().scheduled_phase.as_deref() == Some("planner"))
             {
                 eprintln!("[orchestrate] planner paused: active blocker to verifier");
             }
-            writer.apply(ControlEvent::PlannerPendingSet { pending: blocker_decision.planner_pending });
-            writer.apply(ControlEvent::ScheduledPhaseSet { phase: blocker_decision.scheduled_phase });
+            writer.apply(ControlEvent::PlannerPendingSet {
+                pending: blocker_decision.planner_pending,
+            });
+            writer.apply(ControlEvent::ScheduledPhaseSet {
+                phase: blocker_decision.scheduled_phase,
+            });
 
             let phase_gates = decide_phase_gates(
                 writer.state().planner_pending,
@@ -4751,7 +5042,10 @@ pub async fn run() -> Result<()> {
             }
 
             if phase_gates.planner {
-                writer.apply(ControlEvent::PhaseSet { phase: "planner".to_string(), lane: None });
+                writer.apply(ControlEvent::PhaseSet {
+                    phase: "planner".to_string(),
+                    lane: None,
+                });
                 if run_planner_phase(
                     &orchestrator_ctx,
                     &mut writer,
@@ -4765,7 +5059,10 @@ pub async fn run() -> Result<()> {
             }
 
             if phase_gates.solo {
-                writer.apply(ControlEvent::PhaseSet { phase: "solo".to_string(), lane: None });
+                writer.apply(ControlEvent::PhaseSet {
+                    phase: "solo".to_string(),
+                    lane: None,
+                });
                 if run_solo_phase(
                     &orchestrator_ctx,
                     &mut writer,
@@ -4869,9 +5166,15 @@ pub async fn run() -> Result<()> {
             }
 
             if writer.state().diagnostics_pending
-                && allow_diagnostics_run(writer.state().scheduled_phase.as_deref(), !verifier_joinset.is_empty())
+                && allow_diagnostics_run(
+                    writer.state().scheduled_phase.as_deref(),
+                    !verifier_joinset.is_empty(),
+                )
             {
-                writer.apply(ControlEvent::PhaseSet { phase: "diagnostics".to_string(), lane: None });
+                writer.apply(ControlEvent::PhaseSet {
+                    phase: "diagnostics".to_string(),
+                    lane: None,
+                });
                 if run_diagnostics_phase(
                     &orchestrator_ctx,
                     &mut writer,
@@ -4885,12 +5188,16 @@ pub async fn run() -> Result<()> {
                 }
             }
 
-            if writer.state().scheduled_phase.as_deref() == Some("diagnostics") && !writer.state().diagnostics_pending {
+            if writer.state().scheduled_phase.as_deref() == Some("diagnostics")
+                && !writer.state().diagnostics_pending
+            {
                 writer.apply(ControlEvent::ScheduledPhaseSet { phase: None });
             }
 
             if let Some(phase) = writer.state().scheduled_phase.clone() {
-                let (executor_lane_pending, executor_in_progress) = writer.state().phase_lane
+                let (executor_lane_pending, executor_in_progress) = writer
+                    .state()
+                    .phase_lane
                     .and_then(|lane_id| writer.state().lanes.get(&lane_id))
                     .map(|lane| (lane.pending, lane.in_progress_by.is_some()))
                     .unwrap_or((false, false));
@@ -4999,18 +5306,28 @@ pub async fn run() -> Result<()> {
             violations_path: &violations_path,
             diagnostics_path: &diagnostics_path,
         };
-        let (inputs, endpoint) =
-            load_single_role_setup(&single_role_ctx, &endpoints, is_verifier, is_diagnostics, is_planner)?;
+        let (inputs, endpoint) = load_single_role_setup(
+            &single_role_ctx,
+            &endpoints,
+            is_verifier,
+            is_diagnostics,
+            is_planner,
+        )?;
         let instructions = system_instructions(inputs.prompt_kind);
         eprintln!(
             "[canon-mini-agent] role={} input loaded ({} bytes)",
             inputs.role,
             inputs.primary_input.len()
         );
-        eprintln!("[canon-mini-agent] endpoint id={} url={}", endpoint.id, endpoint.pick_url(0));
+        eprintln!(
+            "[canon-mini-agent] endpoint id={} url={}",
+            endpoint.id,
+            endpoint.pick_url(0)
+        );
 
         let cargo_test_failures = load_cargo_test_failures(&workspace);
-        let initial_prompt = build_single_role_prompt(&single_role_ctx, &inputs, &cargo_test_failures)?;
+        let initial_prompt =
+            build_single_role_prompt(&single_role_ctx, &inputs, &cargo_test_failures)?;
 
         let submit_only = inputs.role == "executor";
         let reason = run_agent(
@@ -5018,7 +5335,11 @@ pub async fn run() -> Result<()> {
             canonical_role_label(inputs.role.as_str()),
             &instructions,
             initial_prompt,
-            if inputs.role == "executor" { &lanes[0].endpoint } else { &endpoint },
+            if inputs.role == "executor" {
+                &lanes[0].endpoint
+            } else {
+                &endpoint
+            },
             &bridge,
             &workspace,
             &tabs,
@@ -5026,7 +5347,8 @@ pub async fn run() -> Result<()> {
             inputs.role == "executor",
             true,
             0,
-        ).await?;
+        )
+        .await?;
         let _ = std::fs::write(cycle_idle_marker_path(), "idle\n");
         println!("message: {reason}");
         Ok(())
@@ -5037,8 +5359,8 @@ pub async fn run() -> Result<()> {
 mod tests {
     use super::{
         action_retry_fingerprint, executor_step_limit_feedback, has_actionable_objectives,
-        plan_has_incomplete_tasks, should_reject_solo_self_complete, verifier_confirmed_with_plan_text,
-        ActionProvenance,
+        invariant_id_from_reason, plan_has_incomplete_tasks, route_gate_blocker_message,
+        should_reject_solo_self_complete, verifier_confirmed_with_plan_text, ActionProvenance,
     };
     use crate::system_state::SystemState;
     use serde_json::json;
@@ -5067,6 +5389,44 @@ mod tests {
                 && actor_kind_insert < error_class_insert
                 && error_class_insert < route_eval,
             "INV-171c039a wiring must inject the exact orchestrator invalid_route tuple before route-gate evaluation"
+        );
+    }
+
+    #[test]
+    fn invariant_id_is_extracted_from_gate_reason() {
+        let reason = "invariant gate blocked role `executor`: Action targeted a path that does not exist — plan is referencing a target that has not been created yet [id=INV-47232c36]";
+        assert_eq!(invariant_id_from_reason(reason), Some("INV-47232c36"));
+    }
+
+    #[test]
+    fn route_gate_blocker_message_is_structured_for_planner_repair() {
+        let reason = "invariant gate blocked role `executor`: Action targeted a path that does not exist — plan is referencing a target that has not been created yet [id=INV-47232c36]";
+        let message = route_gate_blocker_message(reason);
+        assert_eq!(
+            message.get("action").and_then(|v| v.as_str()),
+            Some("message")
+        );
+        assert_eq!(message.get("to").and_then(|v| v.as_str()), Some("planner"));
+        assert_eq!(
+            message.get("type").and_then(|v| v.as_str()),
+            Some("blocker")
+        );
+        assert_eq!(
+            message.get("status").and_then(|v| v.as_str()),
+            Some("blocked")
+        );
+        let payload = message.get("payload").expect("payload");
+        assert_eq!(
+            payload.get("summary").and_then(|v| v.as_str()),
+            Some("Executor dispatch blocked by enforced invariant INV-47232c36")
+        );
+        assert_eq!(
+            payload.get("blocker").and_then(|v| v.as_str()),
+            Some("Plan references a path that does not exist yet")
+        );
+        assert_eq!(
+            payload.get("evidence").and_then(|v| v.as_str()),
+            Some(reason)
         );
     }
 
