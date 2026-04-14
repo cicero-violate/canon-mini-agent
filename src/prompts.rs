@@ -361,6 +361,10 @@ fn targeted_schema_block(_kind: AgentPromptKind, predicted_next_actions: Option<
     selected_tool_protocol_schema_text(&action_refs)
 }
 
+fn default_schema_block(kind: AgentPromptKind) -> String {
+    selected_tool_protocol_schema_text(role_default_schema_actions(kind))
+}
+
 fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
     match kind {
         AgentPromptKind::Diagnostics => &[
@@ -1195,8 +1199,9 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
         intro, mission, canonical_law, workspace_text, status_snapshot
     );
     let issues_heading = "Open issues (top 3 from ISSUES.json)";
+    let schema_block = default_schema_block(kind);
     let suffix = format!(
-        "\nFull syntax examples with notes: state/tool_examples.md — use read_file when you need a reminder.\n\n{}",
+        "\nTool schemas in scope for this role:\n\n{schema_block}\n\nFull syntax examples with notes: state/tool_examples.md — use read_file when you need a reminder.\n\n{}",
         tail
     );
     let items = [
@@ -2907,6 +2912,40 @@ mod tests {
         assert!(
             rules.contains("promote top open issues into `PLANS/OBJECTIVES.json` and `PLAN.json`"),
             "planner rules must require promoting issues into objectives/plan"
+        );
+    }
+
+    #[test]
+    fn planner_system_instructions_include_tool_schema_block() {
+        let prompt = system_instructions(AgentPromptKind::Planner);
+        assert!(
+            prompt.contains("Tool schemas in scope for this role:"),
+            "planner system prompt should include an introductory schema block"
+        );
+        assert!(
+            prompt.contains("Action: `plan`"),
+            "planner system prompt should include the plan schema"
+        );
+        assert!(
+            prompt.contains("Action: `issue`"),
+            "planner system prompt should include the issue schema"
+        );
+    }
+
+    #[test]
+    fn diagnostics_system_instructions_include_tool_schema_block() {
+        let prompt = system_instructions(AgentPromptKind::Diagnostics);
+        assert!(
+            prompt.contains("Tool schemas in scope for this role:"),
+            "diagnostics system prompt should include an introductory schema block"
+        );
+        assert!(
+            prompt.contains("Action: `python`"),
+            "diagnostics system prompt should include the python schema"
+        );
+        assert!(
+            prompt.contains("Action: `issue`"),
+            "diagnostics system prompt should include the issue schema"
         );
     }
 
