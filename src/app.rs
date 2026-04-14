@@ -53,8 +53,9 @@ use crate::prompts::{
 use crate::state_space::{
     allow_diagnostics_run, allow_verifier_run, block_executor_dispatch, check_completion_endpoint,
     check_completion_tab, decide_active_blocker, decide_bootstrap_phase, decide_phase_gates,
-    decide_post_diagnostics, decide_resume_phase, decide_wake_flags, executor_step_limit_exceeded,
-    executor_submit_timed_out, is_verifier_specific_blocker, scheduled_phase_resume_done,
+    decide_post_diagnostics, decide_resume_phase, decide_wake_flags,
+    diagnostics_pending_reason_count, executor_step_limit_exceeded, executor_submit_timed_out,
+    is_verifier_specific_blocker, planner_pending_reason_count, scheduled_phase_resume_done,
     should_force_blocker, verifier_blocker_phase_override, CargoTestGate, CompletionEndpointCheck,
     CompletionTabCheck, WakeFlagInput,
 };
@@ -5132,6 +5133,13 @@ pub async fn run() -> Result<()> {
                         "runtime-only control influence: diagnostics were scheduled from preflight reconciliation rather than canonical diagnostics evidence",
                         None,
                     );
+                    crate::blockers::record_action_failure(
+                        workspace.as_path(),
+                        "orchestrate",
+                        "effectful_state_advance",
+                        "effectful state advance without control event: preflight diagnostics reconciliation rewrote diagnostics output before a canonical diagnostics-text transition",
+                        None,
+                    );
                 }
                 writer.apply(ControlEvent::DiagnosticsPendingSet { pending: true });
             }
@@ -5261,9 +5269,25 @@ pub async fn run() -> Result<()> {
                         "runtime-only control influence: diagnostics phase was re-pended because reconciled diagnostics text diverged from on-disk diagnostics text",
                         None,
                     );
+                    crate::blockers::record_action_failure(
+                        workspace.as_path(),
+                        "orchestrate",
+                        "effectful_state_advance",
+                        "effectful state advance without control event: post-verifier diagnostics reconciliation rewrote diagnostics output before a canonical diagnostics-text transition",
+                        None,
+                    );
                 }
             }
 
+            if diagnostics_pending_reason_count(verifier_changed, stale_diagnostics_pending) > 1 {
+                crate::blockers::record_action_failure(
+                    workspace.as_path(),
+                    "orchestrate",
+                    "ambiguous_control_event",
+                    "ambiguous control event: one DiagnosticsPendingSet encoded both verifier-driven and reconciliation-driven diagnostics reruns",
+                    None,
+                );
+            }
             if verifier_changed || stale_diagnostics_pending {
                 writer.apply(ControlEvent::DiagnosticsPendingSet { pending: true });
             }
@@ -5351,6 +5375,21 @@ pub async fn run() -> Result<()> {
             let plan_text = read_text_or_empty(&master_plan_path);
             let has_objective_work = has_actionable_objectives(&objectives_text);
             let has_plan_work = plan_has_incomplete_tasks(&plan_text);
+            if planner_pending_reason_count(
+                objective_review_required,
+                objectives_updated,
+                has_objective_work,
+                has_plan_work,
+            ) > 1
+            {
+                crate::blockers::record_action_failure(
+                    workspace.as_path(),
+                    "orchestrate",
+                    "ambiguous_control_event",
+                    "ambiguous control event: one PlannerPendingSet encoded both objective-review enforcement and objective-plan gap enforcement",
+                    None,
+                );
+            }
             if has_objective_work && !has_plan_work {
                 append_orchestration_trace(
                     "objective_plan_enforcement_signal",

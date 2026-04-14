@@ -274,6 +274,23 @@ pub fn decide_post_diagnostics(diagnostics_changed: bool, verifier_changed: bool
     diagnostics_changed || verifier_changed
 }
 
+pub fn diagnostics_pending_reason_count(
+    verifier_changed: bool,
+    stale_diagnostics_pending: bool,
+) -> usize {
+    usize::from(verifier_changed) + usize::from(stale_diagnostics_pending)
+}
+
+pub fn planner_pending_reason_count(
+    objective_review_required: bool,
+    objectives_updated: bool,
+    has_objective_work: bool,
+    has_plan_work: bool,
+) -> usize {
+    usize::from(objective_review_required && !objectives_updated)
+        + usize::from(has_objective_work && !has_plan_work)
+}
+
 impl CargoTestGate {
     pub fn new() -> Self {
         Self {
