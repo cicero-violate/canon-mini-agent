@@ -70,6 +70,25 @@ fn patch_targets<'a>(patch: &'a str) -> Vec<&'a str> {
         .collect()
 }
 
+fn patch_targets_include_rust_sources(paths: &[&str]) -> bool {
+    paths.iter().any(|path| path.ends_with(".rs"))
+}
+
+fn rust_patch_verification_flag_path() -> PathBuf {
+    Path::new(crate::constants::agent_state_dir()).join("rust_patch_verification_requested.flag")
+}
+
+fn request_rust_patch_verification_if_needed(patch_targets: &[&str]) {
+    if !patch_targets_include_rust_sources(patch_targets) {
+        return;
+    }
+    let flag_path = rust_patch_verification_flag_path();
+    if let Some(parent) = flag_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = fs::write(flag_path, b"requested\n");
+}
+
 fn fnv1a64(text: &str) -> String {
     let mut hash: u64 = 0xcbf29ce484222325;
     for byte in text.as_bytes() {
@@ -3149,6 +3168,10 @@ fn verify_apply_patch_crate(
     workspace: &Path,
     patch: &str,
 ) -> Option<(bool, String)> {
+    let patch_targets = patch_targets(patch);
+    if !patch_targets_include_rust_sources(&patch_targets) {
+        return None;
+    }
     let crate_for_patch = patch_first_file(patch).and_then(|f| infer_crate_for_patch(workspace, f));
     let krate = crate_for_patch?;
 
@@ -3304,6 +3327,7 @@ fn handle_apply_patch_action(
         return Ok((false, msg));
     }
     let patch_targets = patch_targets(patch);
+    request_rust_patch_verification_if_needed(&patch_targets);
     let patch_signature = artifact_write_signature(&[
         "apply_patch",
         role,
