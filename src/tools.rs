@@ -2969,23 +2969,27 @@ fn validate_state_file_schema(file_path: &str, content: &str) -> Option<String> 
     None
 }
 
-fn apply_patch_diagnostics_targeted(role: &str, patch: &str) -> bool {
+fn apply_patch_diagnostics_target_path(role: &str, patch: &str) -> Option<String> {
     if role != "diagnostics" {
-        return false;
-    }
-    let current_diagnostics_file = diagnostics_file();
-    let legacy_diagnostics_file = "DIAGNOSTICS.json";
-    patch_targets(patch)
-        .into_iter()
-        .any(|path| path == current_diagnostics_file || path == legacy_diagnostics_file)
-}
-
-fn previous_diagnostics_patch_text(workspace: &Path, diagnostics_targeted: bool) -> Option<String> {
-    if !diagnostics_targeted {
         return None;
     }
     let current_diagnostics_file = diagnostics_file();
-    Some(fs::read_to_string(workspace.join(current_diagnostics_file)).unwrap_or_default())
+    let legacy_diagnostics_file = "DIAGNOSTICS.json";
+    patch_targets(patch).into_iter().find_map(|path| {
+        if path == current_diagnostics_file || path == legacy_diagnostics_file {
+            Some(path.to_string())
+        } else {
+            None
+        }
+    })
+}
+
+fn previous_diagnostics_patch_text(
+    workspace: &Path,
+    diagnostics_target_path: Option<&str>,
+) -> Option<String> {
+    let diagnostics_target_path = diagnostics_target_path?;
+    Some(fs::read_to_string(workspace.join(diagnostics_target_path)).unwrap_or_default())
 }
 
 fn schema_guard_snapshots_for_patch(
@@ -3009,13 +3013,13 @@ fn reject_unvalidated_diagnostics_persistence(
     step: usize,
     workspace: &Path,
     diagnostics_targeted: bool,
+    diagnostics_target_path: Option<&str>,
     previous_diagnostics_text: Option<String>,
 ) -> Result<Option<(bool, String)>> {
     if !diagnostics_targeted {
         return Ok(None);
     }
-    let current_diagnostics_file = diagnostics_file();
-    let diagnostics_path = workspace.join(current_diagnostics_file);
+    let diagnostics_path = workspace.join(diagnostics_target_path.unwrap_or(diagnostics_file()));
     let new_diagnostics_text = fs::read_to_string(&diagnostics_path).unwrap_or_default();
     let raw_violations_text =
         fs::read_to_string(workspace.join(VIOLATIONS_FILE)).unwrap_or_default();
@@ -3037,7 +3041,7 @@ fn reject_unvalidated_diagnostics_persistence(
         &rejection_msg,
         Some(json!({
             "stage": "diagnostics_emission_validation",
-            "path": current_diagnostics_file,
+            "path": diagnostics_path.to_string_lossy(),
         })),
     );
     Ok(Some((false, rejection_msg)))
@@ -3285,9 +3289,10 @@ fn handle_apply_patch_action(
         .get("patch")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("apply_patch missing 'patch'"))?;
-    let diagnostics_targeted = apply_patch_diagnostics_targeted(role, patch);
+    let diagnostics_target_path = apply_patch_diagnostics_target_path(role, patch);
+    let diagnostics_targeted = diagnostics_target_path.is_some();
     let previous_diagnostics_text =
-        previous_diagnostics_patch_text(workspace, diagnostics_targeted);
+        previous_diagnostics_patch_text(workspace, diagnostics_target_path.as_deref());
     let schema_snapshots = schema_guard_snapshots_for_patch(workspace, patch);
     if let Some(msg) = patch_scope_error(role, &patch) {
         return Ok((false, msg));
@@ -3319,6 +3324,7 @@ fn handle_apply_patch_action(
             workspace,
             patch,
             diagnostics_targeted,
+            diagnostics_target_path.as_deref(),
             previous_diagnostics_text,
             &schema_snapshots,
             &mut writer,
@@ -3336,6 +3342,7 @@ fn handle_apply_patch_success(
     workspace: &Path,
     patch: &str,
     diagnostics_targeted: bool,
+    diagnostics_target_path: Option<&str>,
     previous_diagnostics_text: Option<String>,
     schema_snapshots: &[(String, Option<String>)],
     writer: &mut Option<&mut CanonicalWriter>,
@@ -3348,6 +3355,7 @@ fn handle_apply_patch_success(
         step,
         workspace,
         diagnostics_targeted,
+        diagnostics_target_path,
         previous_diagnostics_text,
     )? {
         return Ok(result);
