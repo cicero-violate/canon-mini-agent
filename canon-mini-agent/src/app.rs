@@ -45,9 +45,10 @@ use crate::prompt_inputs::{
 };
 use crate::prompts::{
     action_intent, action_objective_id, action_observation, action_rationale, action_result_prompt,
-    action_task_id, diagnostics_cycle_prompt, executor_cycle_prompt, is_explicit_idle_action,
-    normalize_action, parse_actions, planner_cycle_prompt, single_role_solo_prompt,
-    system_instructions, truncate, validate_action, verifier_cycle_prompt, AgentPromptKind,
+    action_task_id, diagnostics_cycle_prompt, diagnostics_python_reads_event_logs,
+    executor_cycle_prompt, is_explicit_idle_action, normalize_action, parse_actions,
+    planner_cycle_prompt, single_role_solo_prompt, system_instructions, truncate, validate_action,
+    verifier_cycle_prompt, AgentPromptKind,
 };
 use crate::state_space::{
     allow_diagnostics_run, allow_verifier_run, block_executor_dispatch, check_completion_endpoint,
@@ -2773,11 +2774,25 @@ fn executor_step_limit_feedback() -> String {
 
 fn enforce_diagnostics_python(
     role: &str,
-    _kind: &str,
-    _action: &Value,
+    kind: &str,
+    action: &Value,
     diagnostics_eventlog_python_done: &mut bool,
 ) -> Option<String> {
-    let _ = (role, diagnostics_eventlog_python_done);
+    if role != "diagnostics" || *diagnostics_eventlog_python_done {
+        return None;
+    }
+    if diagnostics_python_reads_event_logs(action) {
+        *diagnostics_eventlog_python_done = true;
+        return None;
+    }
+    // Broaden guard: before diagnostics Python scan completes, ONLY allow
+    // read-only or scan-establishing actions. Block everything else.
+    if !matches!(kind, "python" | "read_file") {
+        return Some(format!(
+            "Before writing diagnostics or finishing, run a `python` action earlier in this diagnostics cycle that discovers and analyzes workspace-local log/state artifacts under {} to find errors, inconsistencies, invariant violations, repeated failure patterns, and concrete repair targets. The scan may occur before read_file steps; it does not need to be the immediately previous action.",
+            workspace()
+        ));
+    }
     None
 }
 
