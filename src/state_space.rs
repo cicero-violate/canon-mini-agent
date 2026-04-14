@@ -203,7 +203,7 @@ fn allow_named_phase_run(scheduled_phase: Option<&str>, allowed_phase: &str) -> 
 pub fn block_executor_dispatch(scheduled_phase: Option<&str>) -> bool {
     matches!(
         scheduled_phase,
-        Some("planner") | Some("verifier") | Some("diagnostics") | Some("solo")
+        Some("planner") | Some("verifier") | Some("diagnostics")
     )
 }
 
