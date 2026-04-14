@@ -707,13 +707,9 @@ fn parse_violations_report(raw: &str) -> Option<ViolationsReport> {
         return None;
     }
     let mut report = serde_json::from_str::<ViolationsReport>(raw).ok()?;
-    report.violations.retain(|violation| {
-        match violation.freshness_status.trim().to_ascii_lowercase().as_str() {
-            "fresh" => true,
-            "stale" | "unknown" => false,
-            _ => violation.last_validated_ms > 0,
-        }
-    });
+    report
+        .violations
+        .retain(crate::reports::violation_is_fresh);
     Some(report)
 }
 
