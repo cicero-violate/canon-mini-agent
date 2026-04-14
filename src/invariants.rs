@@ -593,7 +593,7 @@ fn fingerprints_from_blockers(workspace: &Path) -> Vec<Fingerprint> {
                 evidence: InvariantEvidenceSample {
                     source: "agent_state/blockers.json".to_string(),
                     ts_ms: b.ts_ms,
-                    matching_rule: "blocker error_class grouped by actor_kind".to_string(),
+                    matching_rule: String::new(),
                     raw,
                 },
             }
@@ -678,7 +678,7 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
                 evidence: InvariantEvidenceSample {
                     source: "agent_state/default/actions.jsonl".to_string(),
                     ts_ms,
-                    matching_rule: "plan_preflight failure with ok=false".to_string(),
+                    matching_rule: String::new(),
                     raw: entry.clone(),
                 },
             });
@@ -700,7 +700,7 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
                     evidence: InvariantEvidenceSample {
                         source: "agent_state/default/actions.jsonl".to_string(),
                         ts_ms,
-                        matching_rule: "forced executor handoff / step limit exceeded".to_string(),
+                        matching_rule: String::new(),
                         raw: entry.clone(),
                     },
                 });
@@ -736,7 +736,7 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
                 evidence: InvariantEvidenceSample {
                     source: "agent_state/default/actions.jsonl".to_string(),
                     ts_ms,
-                    matching_rule: "read_file failed with ok=false".to_string(),
+                    matching_rule: String::new(),
                     raw: entry.clone(),
                 },
             });
@@ -765,7 +765,7 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
                     evidence: InvariantEvidenceSample {
                         source: "agent_state/default/actions.jsonl".to_string(),
                         ts_ms,
-                        matching_rule: "invalid action schema rejection in result phase".to_string(),
+                        matching_rule: String::new(),
                         raw: entry.clone(),
                     },
                 });
@@ -786,7 +786,7 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
                 evidence: InvariantEvidenceSample {
                     source: "agent_state/default/actions.jsonl".to_string(),
                     ts_ms,
-                    matching_rule: "missing target or nonexistent path evidence".to_string(),
+                    matching_rule: String::new(),
                     raw: entry.clone(),
                 },
             });
@@ -853,10 +853,78 @@ fn fingerprint_tool_failure(
         evidence: InvariantEvidenceSample {
             source: "agent_state/default/actions.jsonl".to_string(),
             ts_ms,
-            matching_rule: format!("tool failure categorized as `{error_kind}`"),
+            matching_rule: String::new(),
             raw: entry.clone(),
         },
     })
+}
+
+fn derive_matching_rule(fp: &Fingerprint) -> String {
+    let raw = &fp.evidence.raw;
+    let source = fp.evidence.source.as_str();
+    let mut parts = Vec::new();
+
+    if source.ends_with("blockers.json") {
+        let actor = raw.get("actor").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let error_class = raw
+            .get("error_class")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        parts.push(format!(
+            "semantic blocker match: actor={actor} error_class={error_class}"
+        ));
+    } else {
+        let actor = raw.get("actor").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let action = raw
+            .get("action")
+            .or_else(|| raw.get("op").and_then(|v| v.get("name")))
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        let phase = raw.get("phase").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let ok = raw.get("ok").and_then(|v| v.as_bool());
+        let status = ok.map(|v| if v { "ok=true" } else { "ok=false" }).unwrap_or("ok=unknown");
+        parts.push(format!(
+            "semantic action-log match: actor={actor} action={action} phase={phase} {status}"
+        ));
+
+        if let Some(text) = raw.get("text").and_then(|v| v.as_str()) {
+            let excerpt = text
+                .split_whitespace()
+                .take(12)
+                .collect::<Vec<_>>()
+                .join(" ");
+            if !excerpt.is_empty() {
+                parts.push(format!("excerpt={excerpt}"));
+            }
+        } else if let Some(summary) = raw.get("summary").and_then(|v| v.as_str()) {
+            let excerpt = summary
+                .split_whitespace()
+                .take(12)
+                .collect::<Vec<_>>()
+                .join(" ");
+            if !excerpt.is_empty() {
+                parts.push(format!("summary={excerpt}"));
+            }
+        }
+    }
+
+    let cond_text = fp
+        .conditions
+        .iter()
+        .map(|c| format!("{}={}", c.key, c.value))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if !cond_text.is_empty() {
+        parts.push(format!("matches invariant conditions: {cond_text}"));
+    }
+
+    parts.join("; ")
+}
+
+fn with_matching_rule(fp: &Fingerprint) -> InvariantEvidenceSample {
+    let mut sample = fp.evidence.clone();
+    sample.matching_rule = derive_matching_rule(fp);
+    sample
 }
 
 // ── Fingerprint → ID ──────────────────────────────────────────────────────────
@@ -945,7 +1013,7 @@ fn collect_evidence_samples(fps: &[Fingerprint]) -> Vec<InvariantEvidenceSample>
         if !seen.insert(key) {
             continue;
         }
-        out.push(fp.evidence.clone());
+        out.push(with_matching_rule(fp));
         if out.len() >= MAX_EVIDENCE_SAMPLES {
             break;
         }
@@ -1599,6 +1667,47 @@ mod tests {
                 .iter()
                 .any(|c| c.key == "action" && c.value == "plan_preflight")
         }));
+        let rule = derive_matching_rule(&fps[0]);
+        assert!(rule.contains("semantic action-log match"));
+        assert!(rule.contains("plan_preflight"));
+        assert!(rule.contains("matches invariant conditions"));
+    }
+
+    #[test]
+    fn semantic_matching_rule_uses_raw_sample_fields() {
+        let fp = Fingerprint {
+            conditions: vec![
+                StateCondition {
+                    key: "actor_kind".to_string(),
+                    value: "planner".to_string(),
+                },
+                StateCondition {
+                    key: "error_class".to_string(),
+                    value: "invalid_schema".to_string(),
+                },
+            ],
+            predicate_text: "Role `planner` repeatedly encounters `invalid_schema`".to_string(),
+            ts_ms: 1,
+            evidence: InvariantEvidenceSample {
+                source: "agent_state/blockers.json".to_string(),
+                ts_ms: 1,
+                matching_rule: String::new(),
+                raw: json!({
+                    "id": "blk-planner-invalid_schema-1",
+                    "error_class": "invalid_schema",
+                    "actor": "planner",
+                    "summary": "action schema invalid: missing required fields",
+                    "action_kind": "schema_validation",
+                    "source": "action_result",
+                    "ts_ms": 1,
+                }),
+            },
+        };
+        let rule = derive_matching_rule(&fp);
+        assert!(rule.contains("semantic blocker match"));
+        assert!(rule.contains("actor=planner"));
+        assert!(rule.contains("error_class=invalid_schema"));
+        assert!(rule.contains("matches invariant conditions"));
     }
 
     #[test]
