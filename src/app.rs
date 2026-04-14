@@ -3040,14 +3040,15 @@ struct LlmResponseContext<'a> {
     submit_only: bool,
 }
 
-fn full_exchange_path(ts_ms: u64, phase: &str, who: &str, step: usize) -> PathBuf {
+fn full_exchange_path(kind: &str, ts_ms: u64, who: &str, step: usize) -> PathBuf {
     PathBuf::from(crate::constants::agent_state_dir())
         .join("llm_full")
-        .join(format!("{ts_ms:013}_{phase}_{who}_{step:04}.txt"))
+        .join(kind)
+        .join(format!("{ts_ms:013}_{who}_message_{step:04}.txt"))
 }
 
-fn write_full_exchange(ts_ms: u64, phase: &str, who: &str, step: usize, raw: &str) {
-    let path = full_exchange_path(ts_ms, phase, who, step);
+fn write_full_exchange(kind: &str, ts_ms: u64, who: &str, step: usize, raw: &str) {
+    let path = full_exchange_path(kind, ts_ms, who, step);
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -3081,7 +3082,7 @@ impl<'a> LlmResponseContext<'a> {
                 "prompt": truncate(prompt, MAX_SNIPPET),
             }),
         );
-        write_full_exchange(ts_ms, "prompt", who, step, &raw_prompt);
+        write_full_exchange("sent", ts_ms, who, step, &raw_prompt);
         trace_message_forwarded(
             self.role,
             self.prompt_kind,
@@ -3115,7 +3116,7 @@ impl<'a> LlmResponseContext<'a> {
                 "raw": truncate(raw, MAX_SNIPPET),
             }),
         );
-        write_full_exchange(ts_ms, "response", self.role, step, raw);
+        write_full_exchange("received", ts_ms, self.role, step, raw);
     }
 
     fn handle_submit_ack(&self, step: usize, exchange_id: &str, raw: &str) -> Option<String> {
