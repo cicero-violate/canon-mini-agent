@@ -62,8 +62,10 @@ pub fn decide_wake_flags(
     flags: &[WakeFlagInput],
 ) -> WakeDecision {
     let mut newest: Option<&WakeFlagInput> = None;
+    let mut planner_suppressed_by_blocker = false;
     for flag in flags {
         if flag.role == "planner" && active_blocker_to_verifier {
+            planner_suppressed_by_blocker = true;
             continue;
         }
         let replace = match newest {
@@ -80,6 +82,10 @@ pub fn decide_wake_flags(
         diagnostics_pending: false,
         executor_wake: false,
     };
+    if newest.is_none() && planner_suppressed_by_blocker {
+        decision.scheduled_phase = Some("solo".to_string());
+        return decision;
+    }
     if let Some(flag) = newest {
         decision.scheduled_phase = Some(flag.role.to_string());
         match flag.role {
@@ -166,7 +172,7 @@ pub fn decide_active_blocker(
         return ActiveBlockerDecision {
             planner_pending: false,
             scheduled_phase: if scheduled_phase == Some("planner") {
-                None
+                Some("solo".to_string())
             } else {
                 scheduled_phase.map(|s| s.to_string())
             },
