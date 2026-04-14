@@ -1,8 +1,14 @@
+use crate::events::Event;
+use crate::system_state::{replay_event_log, SystemState};
+use anyhow::Result;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use anyhow::Result;
-use crate::events::Event;
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct TlogRecord {
+    event: Event,
+}
 
 /// Total-ordered, append-only log of all system events.
 ///
@@ -53,6 +59,24 @@ impl Tlog {
             .open(&self.path)?;
         writeln!(file, "{}", serde_json::to_string(&record)?)?;
         Ok(())
+    }
+
+    pub fn read_events(path: &Path) -> Result<Vec<Event>> {
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+        let raw = std::fs::read_to_string(path)?;
+        let mut events = Vec::new();
+        for line in raw.lines().filter(|line| !line.trim().is_empty()) {
+            let record: TlogRecord = serde_json::from_str(line)?;
+            events.push(record.event);
+        }
+        Ok(events)
+    }
+
+    pub fn replay(path: &Path, initial: SystemState) -> Result<SystemState> {
+        let events = Self::read_events(path)?;
+        replay_event_log(initial, &events).map_err(anyhow::Error::msg)
     }
 
     /// Current sequence number (total events appended since the file was created).

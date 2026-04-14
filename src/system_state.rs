@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use crate::events::{ControlEvent, Event};
 use serde::{Deserialize, Serialize};
-use crate::events::ControlEvent;
+use std::collections::HashMap;
 
 /// Serializable state for a single executor lane.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -183,10 +183,7 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
             s.lanes.entry(*lane_id).or_default().in_progress_by = actor.clone();
         }
         ControlEvent::LaneVerifierResultSet { lane_id, result } => {
-            s.lanes
-                .entry(*lane_id)
-                .or_default()
-                .latest_verifier_result = result.clone();
+            s.lanes.entry(*lane_id).or_default().latest_verifier_result = result.clone();
         }
         ControlEvent::LanePlanTextSet { lane_id, text } => {
             s.lanes.entry(*lane_id).or_default().plan_text = text.clone();
@@ -246,4 +243,113 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
         }
     }
     s
+}
+
+pub fn validate_system_state(s: &SystemState) -> Result<(), String> {
+    if s.phase.trim().is_empty() {
+        return Err("system state invariant failed: phase must be non-empty".to_string());
+    }
+
+    for lane_id in s.lanes.keys() {
+        if !s.lane_prompt_in_flight.contains_key(lane_id) {
+            return Err(format!(
+                "system state invariant failed: lane_prompt_in_flight missing lane {lane_id}"
+            ));
+        }
+        if !s.lane_submit_in_flight.contains_key(lane_id) {
+            return Err(format!(
+                "system state invariant failed: lane_submit_in_flight missing lane {lane_id}"
+            ));
+        }
+        if !s.lane_next_submit_at_ms.contains_key(lane_id) {
+            return Err(format!(
+                "system state invariant failed: lane_next_submit_at_ms missing lane {lane_id}"
+            ));
+        }
+        if !s.lane_steps_used.contains_key(lane_id) {
+            return Err(format!(
+                "system state invariant failed: lane_steps_used missing lane {lane_id}"
+            ));
+        }
+    }
+
+    for (tab_id, lane_id) in &s.tab_id_to_lane {
+        if !s.lanes.contains_key(lane_id) {
+            return Err(format!(
+                "system state invariant failed: tab_id_to_lane points at unknown lane {lane_id}"
+            ));
+        }
+        if s.lane_active_tab.get(lane_id) != Some(tab_id) {
+            return Err(format!(
+                "system state invariant failed: lane_active_tab/tab_id_to_lane mismatch for lane {lane_id} tab {tab_id}"
+            ));
+        }
+    }
+
+    for (key, submitted) in &s.submitted_turn_ids {
+        let (tab_str, _) = key.split_once(':').ok_or_else(|| {
+            format!(
+                "system state invariant failed: submitted_turn_ids key has invalid format: {key}"
+            )
+        })?;
+        let tab_id: u32 = tab_str.parse().map_err(|_| {
+            format!(
+                "system state invariant failed: submitted_turn_ids key has invalid tab id: {key}"
+            )
+        })?;
+        if !s.lanes.contains_key(&submitted.lane_id) {
+            return Err(format!(
+                "system state invariant failed: submitted turn references unknown lane {}",
+                submitted.lane_id
+            ));
+        }
+        if s.tab_id_to_lane.get(&tab_id) != Some(&submitted.lane_id) {
+            return Err(format!(
+                "system state invariant failed: submitted turn tab {tab_id} is not mapped to lane {}",
+                submitted.lane_id
+            ));
+        }
+        if s.lane_active_tab.get(&submitted.lane_id) != Some(&tab_id) {
+            return Err(format!(
+                "system state invariant failed: submitted turn tab {tab_id} is not active for lane {}",
+                submitted.lane_id
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+pub fn replay_event_log(initial: SystemState, events: &[Event]) -> Result<SystemState, String> {
+    let mut state = initial;
+    validate_system_state(&state)?;
+    for event in events {
+        if let Event::Control { event } = event {
+            state = apply_control_event(state, event);
+            validate_system_state(&state)?;
+        }
+    }
+    Ok(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_system_state_rejects_submitted_turn_without_tab_mapping() {
+        let mut state = SystemState::new(&[0], 1);
+        state.submitted_turn_ids.insert(
+            "7:11".to_string(),
+            SubmittedTurnRecord {
+                lane_id: 0,
+                lane_label: "executor-0".to_string(),
+                actor: "executor".to_string(),
+                endpoint_id: "ep".to_string(),
+            },
+        );
+        let err =
+            validate_system_state(&state).expect_err("must reject inconsistent submitted turn");
+        assert!(err.contains("submitted turn tab 7 is not mapped to lane 0"));
+    }
 }

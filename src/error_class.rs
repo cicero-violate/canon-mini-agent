@@ -20,13 +20,14 @@
 ///     → synthesis groups by (actor_kind, class)
 ///     → invariant promoted when support_count ≥ threshold
 ///     → gate blocks the transition
-
 use serde::{Deserialize, Serialize};
 
 /// Canonical classes of bad outcome observable by the orchestrator.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorClass {
+    /// A canonical state mutation bypassed `CanonicalWriter::apply`.
+    SecondMutationPath,
     /// A file, symbol, or target referenced in a task does not exist.
     MissingTarget,
     /// An action emitted by an LLM role failed schema validation.
@@ -64,6 +65,7 @@ impl ErrorClass {
     /// Stable string key used in state conditions for invariant fingerprinting.
     pub fn as_key(&self) -> &'static str {
         match self {
+            ErrorClass::SecondMutationPath => "second_mutation_path",
             ErrorClass::MissingTarget => "missing_target",
             ErrorClass::InvalidSchema => "invalid_schema",
             ErrorClass::StepLimitExceeded => "step_limit_exceeded",
@@ -85,6 +87,8 @@ impl ErrorClass {
     /// Human-readable description used in invariant `predicate_text`.
     pub fn description(&self) -> &'static str {
         match self {
+            ErrorClass::SecondMutationPath =>
+                "canonical state changed through a path other than CanonicalWriter::apply",
             ErrorClass::MissingTarget =>
                 "action referenced a target (file/symbol) that does not exist",
             ErrorClass::InvalidSchema =>
@@ -129,6 +133,7 @@ pub fn classify_result(action_kind: &str, result_text: &str, ok: bool) -> ErrorC
     }
     let text = result_text.to_lowercase();
     match action_kind {
+        "canonical_state_bypass" => return ErrorClass::SecondMutationPath,
         "plan_preflight" => return ErrorClass::PlanPreflightFailed,
         "route_dispatch" => return ErrorClass::InvalidRoute,
         "step_limit" => return ErrorClass::StepLimitExceeded,
@@ -141,7 +146,10 @@ pub fn classify_result(action_kind: &str, result_text: &str, ok: bool) -> ErrorC
         "executor_submit_timeout" | "submit_ack_timeout" => return ErrorClass::LlmTimeout,
         "repeated_failed_action" | "idle_streak" => return ErrorClass::InvalidSchema,
         "cargo_test" | "cargo_clippy" | "run_command" => {
-            if text.contains("error[e") || text.contains("compilation failed") || text.contains("test failed") {
+            if text.contains("error[e")
+                || text.contains("compilation failed")
+                || text.contains("test failed")
+            {
                 return ErrorClass::CompileError;
             }
         }
@@ -172,16 +180,31 @@ pub fn classify_result(action_kind: &str, result_text: &str, ok: bool) -> ErrorC
     if text.contains("outside") && (text.contains("workspace") || text.contains("permitted")) {
         return ErrorClass::PermissionDenied;
     }
-    if text.contains("step limit") || text.contains("step budget") || text.contains("forced handoff") {
+    if text.contains("step limit")
+        || text.contains("step budget")
+        || text.contains("forced handoff")
+    {
         return ErrorClass::StepLimitExceeded;
     }
-    if text.contains("schema") || text.contains("required field") || text.contains("invalid action") {
+    if text.contains("schema") || text.contains("required field") || text.contains("invalid action")
+    {
         return ErrorClass::InvalidSchema;
     }
-    if text.contains("not found") || text.contains("no such file") || text.contains("missing_target") || text.contains("does not exist") {
+    if text.contains("second mutation path")
+        || text.contains("canonical state bypass")
+        || text.contains("state_mut")
+    {
+        return ErrorClass::SecondMutationPath;
+    }
+    if text.contains("not found")
+        || text.contains("no such file")
+        || text.contains("missing_target")
+        || text.contains("does not exist")
+    {
         return ErrorClass::MissingTarget;
     }
-    if text.contains("timed out") || text.contains("connection refused") || text.contains("timeout") {
+    if text.contains("timed out") || text.contains("connection refused") || text.contains("timeout")
+    {
         return ErrorClass::LlmTimeout;
     }
     if text.contains("permission denied") || text.contains("access denied") {
@@ -200,14 +223,22 @@ pub fn classify_blocker_summary(summary: &str) -> ErrorClass {
     if text.contains("step limit") || text.contains("budget") || text.contains("too many steps") {
         return ErrorClass::StepLimitExceeded;
     }
-    if text.contains("compile") || text.contains("build fail") || text.contains("test fail") || text.contains("cargo") {
+    if text.contains("compile")
+        || text.contains("build fail")
+        || text.contains("test fail")
+        || text.contains("cargo")
+    {
         return ErrorClass::CompileError;
     }
     if text.contains("not found") || text.contains("does not exist") || text.contains("missing") {
         return ErrorClass::MissingTarget;
     }
-    if text.contains("schema") || text.contains("invalid action") || text.contains("required field") {
+    if text.contains("schema") || text.contains("invalid action") || text.contains("required field")
+    {
         return ErrorClass::InvalidSchema;
+    }
+    if text.contains("second mutation path") || text.contains("canonical state bypass") {
+        return ErrorClass::SecondMutationPath;
     }
     if text.contains("outside workspace") || text.contains("permission") {
         return ErrorClass::PermissionDenied;
@@ -229,8 +260,22 @@ mod tests {
 
     #[test]
     fn classify_permission_denied_outside_workspace() {
-        let class = classify_result("apply_patch", "path is outside the permitted workspace", false);
+        let class = classify_result(
+            "apply_patch",
+            "path is outside the permitted workspace",
+            false,
+        );
         assert_eq!(class, ErrorClass::PermissionDenied);
+    }
+
+    #[test]
+    fn classify_second_mutation_path_explicitly() {
+        let class = classify_result(
+            "canonical_state_bypass",
+            "second mutation path detected via state_mut",
+            false,
+        );
+        assert_eq!(class, ErrorClass::SecondMutationPath);
     }
 
     #[test]
@@ -253,7 +298,8 @@ mod tests {
 
     #[test]
     fn classify_blocker_compile() {
-        let class = classify_blocker_summary("blocked because cargo build failed with error[E0308]");
+        let class =
+            classify_blocker_summary("blocked because cargo build failed with error[E0308]");
         assert_eq!(class, ErrorClass::CompileError);
     }
 

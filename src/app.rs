@@ -2200,7 +2200,7 @@ fn orchestrator_mode_flag_path() -> PathBuf {
 
 fn save_checkpoint(
     workspace: &Path,
-    writer: &CanonicalWriter,
+    writer: &mut CanonicalWriter,
     lanes: &[LaneConfig],
     verifier_pending_results: &VecDeque<(SubmittedExecutorTurn, u64, String)>,
 ) -> Result<()> {
@@ -2230,6 +2230,9 @@ fn save_checkpoint(
     let tmp_path = path.with_extension("json.tmp");
     std::fs::write(&tmp_path, serde_json::to_string_pretty(&checkpoint)?)?;
     std::fs::rename(tmp_path, path)?;
+    writer.record_effect(crate::events::EffectEvent::CheckpointSaved {
+        phase: state.phase.clone(),
+    });
     Ok(())
 }
 
@@ -4781,43 +4784,42 @@ pub async fn run() -> Result<()> {
                 checkpoint.phase_lane,
                 now_ms().saturating_sub(checkpoint.created_ms)
             );
-            // Restore serializable state directly (init path, not logged individually).
-            {
-                let s = writer.state_mut();
-                s.planner_pending = checkpoint.planner_pending;
-                s.diagnostics_pending = checkpoint.diagnostics_pending;
-                s.diagnostics_text = checkpoint.diagnostics_text;
-                s.last_plan_text = checkpoint.last_plan_text;
-                s.last_executor_diff = checkpoint.last_executor_diff;
-                s.last_solo_plan_text = checkpoint.last_solo_plan_text;
-                s.last_solo_executor_diff = checkpoint.last_solo_executor_diff;
-                for lane_snapshot in checkpoint.lanes {
-                    if let Some(state) = s.lanes.get_mut(&lane_snapshot.lane_id) {
-                        state.plan_text = lane_snapshot.plan_text;
-                        state.pending = lane_snapshot.pending;
-                        state.in_progress_by = lane_snapshot.in_progress_by;
-                        state.latest_verifier_result = lane_snapshot.latest_verifier_result;
-                    }
+            // Restore serializable state through the explicit checkpoint hydration path.
+            let mut restored = writer.state().clone();
+            restored.planner_pending = checkpoint.planner_pending;
+            restored.diagnostics_pending = checkpoint.diagnostics_pending;
+            restored.diagnostics_text = checkpoint.diagnostics_text.clone();
+            restored.last_plan_text = checkpoint.last_plan_text.clone();
+            restored.last_executor_diff = checkpoint.last_executor_diff.clone();
+            restored.last_solo_plan_text = checkpoint.last_solo_plan_text.clone();
+            restored.last_solo_executor_diff = checkpoint.last_solo_executor_diff.clone();
+            for lane_snapshot in &checkpoint.lanes {
+                if let Some(state) = restored.lanes.get_mut(&lane_snapshot.lane_id) {
+                    state.plan_text = lane_snapshot.plan_text.clone();
+                    state.pending = lane_snapshot.pending;
+                    state.in_progress_by = lane_snapshot.in_progress_by.clone();
+                    state.latest_verifier_result = lane_snapshot.latest_verifier_result.clone();
                 }
-                if checkpoint.verifier_summary.len() == lanes.len() {
-                    s.verifier_summary = checkpoint.verifier_summary;
-                }
-                s.phase = checkpoint.phase.clone();
-                s.phase_lane = checkpoint.phase_lane;
             }
+            if checkpoint.verifier_summary.len() == lanes.len() {
+                restored.verifier_summary = checkpoint.verifier_summary.clone();
+            }
+            restored.phase = checkpoint.phase.clone();
+            restored.phase_lane = checkpoint.phase_lane;
             resume_verifier_items = checkpoint.verifier_pending_results;
             let resume_decision = decide_resume_phase(
                 &checkpoint.phase,
                 !resume_verifier_items.is_empty(),
-                writer.state().planner_pending,
-                writer.state().diagnostics_pending,
+                restored.planner_pending,
+                restored.diagnostics_pending,
             );
-            {
-                let s = writer.state_mut();
-                s.scheduled_phase = resume_decision.scheduled_phase;
-                s.planner_pending = resume_decision.planner_pending;
-                s.diagnostics_pending = resume_decision.diagnostics_pending;
-            }
+            restored.scheduled_phase = resume_decision.scheduled_phase;
+            restored.planner_pending = resume_decision.planner_pending;
+            restored.diagnostics_pending = resume_decision.diagnostics_pending;
+            writer.restore_from_checkpoint(restored);
+            writer.record_effect(crate::events::EffectEvent::CheckpointLoaded {
+                phase: checkpoint.phase.clone(),
+            });
             // On resume, DO NOT clear executor_submit_inflight.
             // Clearing inflight state while preserving active tabs and submitted_turns
             // causes valid submit_ack events to lose their pending context, triggering
@@ -4935,7 +4937,7 @@ pub async fn run() -> Result<()> {
             if shutdown.flag.load(Ordering::SeqCst) {
                 eprintln!("[orchestrate] shutdown requested; saving checkpoint");
                 if let Err(err) =
-                    save_checkpoint(&workspace, &writer, &lanes, &verifier_pending_results)
+                    save_checkpoint(&workspace, &mut writer, &lanes, &verifier_pending_results)
                 {
                     eprintln!("[orchestrate] checkpoint save failed: {err:#}");
                     log_error_event(

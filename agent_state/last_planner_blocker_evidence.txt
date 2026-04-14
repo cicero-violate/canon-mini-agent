@@ -1,1 +1,1 @@
-invariant gate blocked role `route`: Role `solo` repeatedly encounters `verification_failed`: verification produced a result that contradicts the expected system state [id=INV-c2b90a1d]
+This turn's orchestrator handoff cites `INV-05518346`, and the latest executor diff changes `agent_state/last_planner_blocker_evidence.txt` to `Role `diagnostics` repeatedly encounters `blocker_escalated`: LLM role explicitly declared itself blocked and cannot proceed`.
