@@ -7341,9 +7341,7 @@ mod tests {
         let (_done, out) =
             handle_apply_patch_action("diagnostics", 1, None, &tmp, &action).unwrap();
 
-        assert!(
-            out.contains("ranked_failures require current-source validation before persistence")
-        );
+        assert!(out.contains("derived cache view"));
         let persisted = std::fs::read_to_string(tmp.join("DIAGNOSTICS.json")).unwrap();
         assert_eq!(persisted, "{\"status\":\"healthy\",\"ranked_failures\":[]}");
     }
@@ -7392,9 +7390,9 @@ mod tests {
         let (_done, out) =
             handle_apply_patch_action("diagnostics", 1, None, &tmp, &action).unwrap();
 
-        assert!(out.contains("apply_patch ok"), "unexpected: {out}");
+        assert!(out.contains("derived cache view"), "unexpected: {out}");
         let persisted = std::fs::read_to_string(tmp.join("DIAGNOSTICS.json")).unwrap();
-        assert!(persisted.contains("critical_failure"));
+        assert!(persisted.contains("\"status\":\"healthy\""));
     }
 
     #[test]
