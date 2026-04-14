@@ -406,10 +406,7 @@ mod tests {
             Some("objective_review")
         );
 
-        state = apply_control_event(
-            state,
-            &ControlEvent::DiagnosticsReconciliationQueued,
-        );
+        state = apply_control_event(state, &ControlEvent::DiagnosticsReconciliationQueued);
         assert!(state.diagnostics_pending);
         assert_eq!(
             state.diagnostics_pending_reason.as_deref(),

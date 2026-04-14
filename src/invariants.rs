@@ -1334,7 +1334,10 @@ mod tests {
             "ambiguous_control_event".to_string(),
         );
         let result = evaluate_invariant_gate("route", &state, &tmp);
-        assert!(result.is_err(), "route gate should block ambiguous control event");
+        assert!(
+            result.is_err(),
+            "route gate should block ambiguous control event"
+        );
     }
 
     #[test]
@@ -1360,10 +1363,12 @@ mod tests {
         let inv = file
             .invariants
             .iter()
-            .find(|inv| inv.state_conditions.iter().any(|c| {
-                c.key == "error_class"
-                    && c.value == "effectful_state_advance_without_control_event"
-            }))
+            .find(|inv| {
+                inv.state_conditions.iter().any(|c| {
+                    c.key == "error_class"
+                        && c.value == "effectful_state_advance_without_control_event"
+                })
+            })
             .expect("effectful_state_advance invariant should be synthesized");
         assert_eq!(inv.status, InvariantStatus::Promoted);
         assert!(inv.gates.contains(&"route".to_string()));

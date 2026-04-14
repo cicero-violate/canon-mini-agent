@@ -1,1 +1,1 @@
-Diagnostics reports the invalid target is still opaque and route-gate livelock remains the latest exercised dispatch stop; `PLAN.json` still has `ready_window: []`; verifier still reports no implementation surface; and recent planner invalid-schema churn shows speculative plan edits are actively harming convergence.
+Same-cycle diagnostics and verifier evidence confirm opaque target, empty ready_window, and active route-gate blocker.
