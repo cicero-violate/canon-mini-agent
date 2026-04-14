@@ -1207,11 +1207,6 @@ pub(crate) fn single_role_solo_prompt(
     );
     append_optional_prompt_section(
         &mut sections,
-        cargo_test_failures,
-        "Latest cargo test failures (from cargo_test_failures.json):",
-    );
-    append_optional_prompt_section(
-        &mut sections,
         &truncate_section(diagnostics, 800),
         "Diagnostics slice (current high-signal excerpt):",
     );
@@ -1224,6 +1219,11 @@ pub(crate) fn single_role_solo_prompt(
         &mut sections,
         complexity_hotspots,
         "Complexity hotspots (supervisor-generated; use only when directly relevant):",
+    );
+    append_optional_prompt_section(
+        &mut sections,
+        cargo_test_failures,
+        "Latest cargo test failures (from cargo_test_failures.json):",
     );
     // Only include rename section when candidates are non-empty
     if !rename_candidates.trim().is_empty() {
