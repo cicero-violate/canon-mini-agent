@@ -1,1 +1,1 @@
-auto-filled blocker evidence
+invariant gate blocked role `route`: Role `solo` repeatedly encounters `verification_failed`: verification produced a result that contradicts the expected system state [id=INV-c2b90a1d]
