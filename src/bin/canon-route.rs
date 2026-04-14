@@ -59,7 +59,9 @@ fn handle_help(args: &[String]) -> bool {
 
 fn read_input_json() -> Result<Value> {
     let mut raw = String::new();
-    std::io::stdin().read_to_string(&mut raw).context("read stdin")?;
+    std::io::stdin()
+        .read_to_string(&mut raw)
+        .context("read stdin")?;
     let input: Value = serde_json::from_str(&raw).context("stdin is not valid JSON")?;
     Ok(input)
 }
@@ -110,7 +112,8 @@ fn build_route_payload(input: Value) -> Value {
         .and_then(|v| v.as_str())
         .map(str::to_string)
         .or_else(|| {
-            input.get("output")
+            input
+                .get("output")
                 .and_then(|v| v.as_str())
                 .map(|s| s.lines().next().unwrap_or("").trim().to_string())
         })

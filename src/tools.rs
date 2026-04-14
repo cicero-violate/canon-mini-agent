@@ -1,6 +1,6 @@
-use anyhow::{anyhow, bail, Context, Result};
 use crate::canonical_writer::CanonicalWriter;
 use crate::llm_runtime::config::LlmEndpoint;
+use anyhow::{anyhow, bail, Context, Result};
 use canon_tools_patch::apply_patch;
 use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind, SyntaxToken};
 use serde::{Deserialize, Serialize};
@@ -731,7 +731,8 @@ fn save_violations(
     subject: &str,
 ) -> Result<()> {
     let json = serde_json::to_string_pretty(report)?;
-    let signature = artifact_write_signature(&["VIOLATIONS.json", op, subject, &json.len().to_string()]);
+    let signature =
+        artifact_write_signature(&["VIOLATIONS.json", op, subject, &json.len().to_string()]);
     let target = path.to_string_lossy().into_owned();
     if let Some(writer) = writer.as_mut() {
         try_emit_workspace_artifact_effect(
@@ -825,13 +826,7 @@ fn handle_violation_action(
             if let Some(s) = action.get("summary").and_then(|v| v.as_str()) {
                 report.summary = s.to_string();
             }
-            save_violations(
-                &path,
-                &report,
-                writer.as_deref_mut(),
-                "set_status",
-                status,
-            )?;
+            save_violations(&path, &report, writer.as_deref_mut(), "set_status", status)?;
             Ok((
                 false,
                 format!("violation set_status ok — status=`{status}`"),
@@ -1041,7 +1036,10 @@ fn set_issue_status(
 fn queue_diagnostics_reconciliation() {
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let _ = std::fs::create_dir_all(agent_state_dir);
-    let _ = std::fs::write(agent_state_dir.join("wakeup_diagnostics.flag"), "issues_changed");
+    let _ = std::fs::write(
+        agent_state_dir.join("wakeup_diagnostics.flag"),
+        "issues_changed",
+    );
 }
 
 fn parse_issues_file_allow_empty(raw: &str) -> Result<IssuesFile> {
@@ -3048,7 +3046,8 @@ fn reject_unvalidated_diagnostics_persistence(
     let new_diagnostics_text = fs::read_to_string(&diagnostics_path).unwrap_or_default();
     let raw_violations_text =
         fs::read_to_string(workspace.join(VIOLATIONS_FILE)).unwrap_or_default();
-    let derived = crate::prompt_inputs::reconcile_diagnostics_report(workspace, &raw_violations_text);
+    let derived =
+        crate::prompt_inputs::reconcile_diagnostics_report(workspace, &raw_violations_text);
     if new_diagnostics_text == derived {
         return Ok(None);
     }

@@ -25,8 +25,8 @@ use serde_json::{json, Value};
 use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio_tungstenite::accept_async;
@@ -36,11 +36,26 @@ const FRAMES_DIR: &str = "./frames";
 
 fn append_jsonl(filename: &str, value: &Value) {
     let path = format!("{FRAMES_DIR}/{filename}");
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
         if let Ok(line) = serde_json::to_string(value) {
             let _ = writeln!(f, "{line}");
         }
     }
+}
+
+fn append_outbound_event(event_type: &str, payload: Value) {
+    let mut event = serde_json::Map::new();
+    event.insert("type".to_string(), Value::String(event_type.to_string()));
+    if let Value::Object(map) = payload {
+        event.extend(map);
+    } else {
+        event.insert("payload".to_string(), payload);
+    }
+    append_jsonl("all.jsonl", &Value::Object(event));
 }
 
 fn init_frames_dir() {
@@ -185,7 +200,11 @@ impl ChromiumBackend {
             let Some(tab_id) = queue.pop_front() else {
                 continue;
             };
-            let claim_url = st.tab_urls.get(&tab_id).cloned().unwrap_or_else(|| url.clone());
+            let claim_url = st
+                .tab_urls
+                .get(&tab_id)
+                .cloned()
+                .unwrap_or_else(|| url.clone());
             st.send_msg(json!({ "type": "CLAIM_TAB", "tabId": tab_id, "url": claim_url }));
             return Some(tab_id);
         }
@@ -266,7 +285,10 @@ impl ChromiumBackend {
         }
 
         // No tab available — open one at the first URL.
-        let url = urls.first().map(String::as_str).unwrap_or("https://chatgpt.com/");
+        let url = urls
+            .first()
+            .map(String::as_str)
+            .unwrap_or("https://chatgpt.com/");
         let remaining = deadline
             .saturating_duration_since(std::time::Instant::now())
             .as_secs()
@@ -304,21 +326,62 @@ impl ChromiumBackend {
             let site = SiteType::from_url(url);
             st.assemblers
                 .entry(tab_id)
-                .and_modify(|a| { a.set_site(site); a.reset(); })
+                .and_modify(|a| {
+                    a.set_site(site);
+                    a.reset();
+                })
                 .or_insert_with(|| FrameAssembler::new(site));
 
-            let frame = json!({ "type": "TURN", "tabId": tab_id, "text": prompt, "turnId": turn_id });
+            let prompt_bytes = prompt.len();
+            let frame =
+                json!({ "type": "TURN", "tabId": tab_id, "text": prompt, "turnId": turn_id });
+            append_outbound_event(
+                "OUTBOUND_SUBMIT_TRY",
+                json!({
+                    "endpoint_id": endpoint_id,
+                    "tabId": tab_id,
+                    "turnId": turn_id,
+                    "url": url,
+                    "prompt_bytes": prompt_bytes,
+                    "stateful": stateful,
+                    "submit_only": false,
+                }),
+            );
             if !st.send_msg(frame.clone()) {
                 st.replay_queue.push(frame);
+                append_outbound_event(
+                    "OUTBOUND_SUBMIT_QUEUED",
+                    json!({
+                        "endpoint_id": endpoint_id,
+                        "tabId": tab_id,
+                        "turnId": turn_id,
+                        "url": url,
+                        "prompt_bytes": prompt_bytes,
+                        "stateful": stateful,
+                        "submit_only": false,
+                    }),
+                );
+            } else {
+                append_outbound_event(
+                    "OUTBOUND_SUBMIT_SENT",
+                    json!({
+                        "endpoint_id": endpoint_id,
+                        "tabId": tab_id,
+                        "turnId": turn_id,
+                        "url": url,
+                        "prompt_bytes": prompt_bytes,
+                        "stateful": stateful,
+                        "submit_only": false,
+                    }),
+                );
             }
         }
 
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
 
         // Wait for SUBMIT_ACK (15s cap).
-        let ack_deadline = deadline.min(
-            std::time::Instant::now() + std::time::Duration::from_secs(15),
-        );
+        let ack_deadline =
+            deadline.min(std::time::Instant::now() + std::time::Duration::from_secs(15));
         let ack_remaining = ack_deadline.saturating_duration_since(std::time::Instant::now());
         match tokio::time::timeout(ack_remaining, ack_rx).await {
             Ok(Ok(())) => {}
@@ -328,7 +391,20 @@ impl ChromiumBackend {
                 st.pending_resp.remove(&(tab_id, turn_id));
                 st.pending_turn_id.remove(&tab_id);
                 release_tab_locked(&mut st, endpoint_id, tab_id, stateful);
-                anyhow::bail!("chromium: timeout waiting for SUBMIT_ACK (tab={tab_id} turn={turn_id})");
+                append_outbound_event(
+                    "OUTBOUND_SUBMIT_ACK_TIMEOUT",
+                    json!({
+                        "endpoint_id": endpoint_id,
+                        "tabId": tab_id,
+                        "turnId": turn_id,
+                        "url": url,
+                        "stateful": stateful,
+                        "submit_only": false,
+                    }),
+                );
+                anyhow::bail!(
+                    "chromium: timeout waiting for SUBMIT_ACK (tab={tab_id} turn={turn_id})"
+                );
             }
         }
 
@@ -339,14 +415,31 @@ impl ChromiumBackend {
                 let mut st = self.state.lock().await;
                 st.pending_turn_id.remove(&tab_id);
                 release_tab_locked(&mut st, endpoint_id, tab_id, stateful);
-                Ok(LlmResponse { raw, tab_id: Some(tab_id), turn_id: Some(turn_id) })
+                Ok(LlmResponse {
+                    raw,
+                    tab_id: Some(tab_id),
+                    turn_id: Some(turn_id),
+                })
             }
             _ => {
                 let mut st = self.state.lock().await;
                 st.pending_resp.remove(&(tab_id, turn_id));
                 st.pending_turn_id.remove(&tab_id);
                 release_tab_locked(&mut st, endpoint_id, tab_id, stateful);
-                anyhow::bail!("chromium: timeout waiting for response (tab={tab_id} turn={turn_id})");
+                append_outbound_event(
+                    "OUTBOUND_RESPONSE_TIMEOUT",
+                    json!({
+                        "endpoint_id": endpoint_id,
+                        "tabId": tab_id,
+                        "turnId": turn_id,
+                        "url": url,
+                        "stateful": stateful,
+                        "submit_only": false,
+                    }),
+                );
+                anyhow::bail!(
+                    "chromium: timeout waiting for response (tab={tab_id} turn={turn_id})"
+                );
             }
         }
     }
@@ -381,9 +474,48 @@ impl LlmBackend for ChromiumBackend {
                 .unwrap_or(0) as u32;
             {
                 let mut st = self.state.lock().await;
+                let prompt_bytes = full_prompt.len();
+                let url = urls.first().cloned().unwrap_or_default();
                 let frame = json!({ "type": "TURN", "tabId": tab_id, "text": full_prompt, "turnId": turn_id });
+                append_outbound_event(
+                    "OUTBOUND_SUBMIT_TRY",
+                    json!({
+                        "endpoint_id": endpoint_id,
+                        "tabId": tab_id,
+                        "turnId": turn_id,
+                        "url": url,
+                        "prompt_bytes": prompt_bytes,
+                        "stateful": stateful,
+                        "submit_only": true,
+                    }),
+                );
                 if !st.send_msg(frame.clone()) {
                     st.replay_queue.push(frame);
+                    append_outbound_event(
+                        "OUTBOUND_SUBMIT_QUEUED",
+                        json!({
+                            "endpoint_id": endpoint_id,
+                            "tabId": tab_id,
+                            "turnId": turn_id,
+                            "url": url,
+                            "prompt_bytes": prompt_bytes,
+                            "stateful": stateful,
+                            "submit_only": true,
+                        }),
+                    );
+                } else {
+                    append_outbound_event(
+                        "OUTBOUND_SUBMIT_SENT",
+                        json!({
+                            "endpoint_id": endpoint_id,
+                            "tabId": tab_id,
+                            "turnId": turn_id,
+                            "url": url,
+                            "prompt_bytes": prompt_bytes,
+                            "stateful": stateful,
+                            "submit_only": true,
+                        }),
+                    );
                 }
             }
             return Ok(LlmResponse {
@@ -393,15 +525,19 @@ impl LlmBackend for ChromiumBackend {
             });
         }
 
-        let tab_id = self.acquire_tab(endpoint_id, urls, timeout, stateful).await?;
+        let tab_id = self
+            .acquire_tab(endpoint_id, urls, timeout, stateful)
+            .await?;
         let url = {
             let st = self.state.lock().await;
-            st.tab_urls.get(&tab_id).cloned().unwrap_or_else(|| {
-                urls.first().cloned().unwrap_or_default()
-            })
+            st.tab_urls
+                .get(&tab_id)
+                .cloned()
+                .unwrap_or_else(|| urls.first().cloned().unwrap_or_default())
         };
 
-        self.do_send(endpoint_id, tab_id, &url, &full_prompt, timeout, stateful).await
+        self.do_send(endpoint_id, tab_id, &url, &full_prompt, timeout, stateful)
+            .await
     }
 }
 
@@ -500,11 +636,17 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                 Some(id) => id as u32,
                 None => return,
             };
-            let url = msg.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let url = msg
+                .get("url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let mut st = state.lock().await;
             st.tab_urls.insert(tab_id, url.clone());
             let site = SiteType::from_url(&url);
-            st.assemblers.entry(tab_id).or_insert_with(|| FrameAssembler::new(site));
+            st.assemblers
+                .entry(tab_id)
+                .or_insert_with(|| FrameAssembler::new(site));
         }
 
         // A tab is ready (content script loaded).
@@ -513,8 +655,15 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                 Some(id) => id as u32,
                 None => return,
             };
-            let url = msg.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let original_url = msg.get("originalUrl").and_then(|v| v.as_str()).map(str::to_string);
+            let url = msg
+                .get("url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let original_url = msg
+                .get("originalUrl")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
             let req_id = msg.get("reqId").and_then(|v| v.as_u64());
 
             let mut st = state.lock().await;
@@ -580,6 +729,13 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
             if let Some(tx) = st.pending_ack.remove(&(tab_id, turn_id)) {
                 let _ = tx.send(());
             }
+            append_outbound_event(
+                "OUTBOUND_SUBMIT_ACK",
+                json!({
+                    "tabId": tab_id,
+                    "turnId": turn_id,
+                }),
+            );
         }
 
         "INBOUND_MESSAGE" => {
@@ -609,14 +765,17 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
 
             // Log every inbound chunk with full context.
             st.frame_counter += 1;
-            append_jsonl("inbound.jsonl", &json!({
-                "frame_counter": st.frame_counter,
-                "tab_id": tab_id,
-                "inbound_turn_id": inbound_turn_id,
-                "expected_turn_id": expected_turn_id,
-                "chunk": chunk,
-                "payload_raw_len": payload_raw.len(),
-            }));
+            append_jsonl(
+                "inbound.jsonl",
+                &json!({
+                    "frame_counter": st.frame_counter,
+                    "tab_id": tab_id,
+                    "inbound_turn_id": inbound_turn_id,
+                    "expected_turn_id": expected_turn_id,
+                    "chunk": chunk,
+                    "payload_raw_len": payload_raw.len(),
+                }),
+            );
 
             let expected_turn_id = match expected_turn_id {
                 Some(id) => id,
@@ -641,12 +800,15 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
             };
 
             if let Some(text) = assembled {
-                append_jsonl("assembled.jsonl", &json!({
-                    "tab_id": tab_id,
-                    "turn_id": turn_id,
-                    "text_len": text.len(),
-                    "text_preview": &text[..text.len().min(200)],
-                }));
+                append_jsonl(
+                    "assembled.jsonl",
+                    &json!({
+                        "tab_id": tab_id,
+                        "turn_id": turn_id,
+                        "text_len": text.len(),
+                        "text_preview": &text[..text.len().min(200)],
+                    }),
+                );
                 if let Some(tx) = st.pending_resp.remove(&(tab_id, turn_id)) {
                     let _ = tx.send(text);
                 }

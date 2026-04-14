@@ -32,8 +32,7 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    let workspace = take_flag_value(&args, "--workspace")
-        .context("missing --workspace")?;
+    let workspace = take_flag_value(&args, "--workspace").context("missing --workspace")?;
     let role = take_flag_value(&args, "--role").unwrap_or_else(|| "capability".to_string());
     let step: usize = take_flag_value(&args, "--step")
         .context("missing --step")?
@@ -45,7 +44,9 @@ async fn main() -> Result<()> {
     configure_runtime(&workspace, state_dir);
 
     let mut raw = String::new();
-    std::io::stdin().read_to_string(&mut raw).context("read stdin")?;
+    std::io::stdin()
+        .read_to_string(&mut raw)
+        .context("read stdin")?;
     let action: Value = serde_json::from_str(&raw).context("stdin is not valid JSON")?;
 
     let (done, output) = canon_mini_agent::execute_action_capability(

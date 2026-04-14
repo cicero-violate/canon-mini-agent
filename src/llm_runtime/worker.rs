@@ -39,7 +39,15 @@ pub async fn llm_worker_send_request_with_req_id_timeout(
     let req_id = REQ_ID.fetch_add(1, Ordering::SeqCst);
     let resp = bridge
         .backend
-        .send(endpoint_id, _urls, _stateful, prompt, role_schema, submit_only, timeout_secs)
+        .send(
+            endpoint_id,
+            _urls,
+            _stateful,
+            prompt,
+            role_schema,
+            submit_only,
+            timeout_secs,
+        )
         .await?;
     Ok((req_id, resp))
 }

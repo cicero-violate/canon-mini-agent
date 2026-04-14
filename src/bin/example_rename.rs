@@ -39,7 +39,10 @@ fn prepare_workspace(workspace: &std::path::Path) -> Result<ExampleRenameSession
     }
     let head = head_out.trim().to_string();
 
-    let (code, branch_out) = git(workspace, &["branch", "-f", "example_rename_checkpoint", &head])?;
+    let (code, branch_out) = git(
+        workspace,
+        &["branch", "-f", "example_rename_checkpoint", &head],
+    )?;
     if code != 0 {
         anyhow::bail!("failed to create checkpoint branch:\n{branch_out}");
     }
@@ -109,9 +112,7 @@ fn restore_workspace_after_success(
     if session.had_local_changes {
         let (code, pop_out) = git(workspace, &["stash", "pop"])?;
         if code != 0 {
-            eprintln!(
-                "note: stash pop reported conflicts or errors; resolve manually:\n{pop_out}"
-            );
+            eprintln!("note: stash pop reported conflicts or errors; resolve manually:\n{pop_out}");
         }
     }
 

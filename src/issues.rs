@@ -145,7 +145,8 @@ pub fn read_open_issues(workspace: &Path) -> String {
         return "(no open issues)".to_string();
     }
     let file = IssuesFile { version: 0, issues };
-    serde_json::to_string_pretty(&file).unwrap_or_else(|_| "(ISSUES.json is not valid JSON)".to_string())
+    serde_json::to_string_pretty(&file)
+        .unwrap_or_else(|_| "(ISSUES.json is not valid JSON)".to_string())
 }
 
 /// Read ISSUES.json and return the sorted, open/in-progress issues as structured data.

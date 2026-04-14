@@ -21,14 +21,17 @@ Output (stdout): {\"predicted_next_actions\":[...]} where entries are action stu
 
 fn read_action_input() -> Result<Value> {
     let mut raw = String::new();
-    std::io::stdin().read_to_string(&mut raw).context("read stdin")?;
+    std::io::stdin()
+        .read_to_string(&mut raw)
+        .context("read stdin")?;
     serde_json::from_str(&raw).context("stdin is not valid JSON")
 }
 
 fn predicted_next_actions(action: &Value) -> Vec<Value> {
-    forward_prediction((existing_predicted_next_actions(action), action), |(existing, action)| {
-        existing.unwrap_or_else(|| predicted_next_actions_from_kind(action))
-    })
+    forward_prediction(
+        (existing_predicted_next_actions(action), action),
+        |(existing, action)| existing.unwrap_or_else(|| predicted_next_actions_from_kind(action)),
+    )
 }
 
 fn forward_prediction<T, U>(input: T, build: impl FnOnce(T) -> U) -> U {
@@ -81,20 +84,14 @@ fn file_prediction_for_kind(kind: &str, action: &Value) -> Option<Vec<Value>> {
     })
 }
 
-fn prediction_from_file_spec(
-    action: &Value,
-    spec: (&'static str, &'static str),
-) -> Vec<Value> {
+fn prediction_from_file_spec(action: &Value, spec: (&'static str, &'static str)) -> Vec<Value> {
     let (default, intent) = spec;
     read_file_prediction_for_output(action, default, intent)
 }
 
 fn file_prediction_spec(kind: &str) -> Option<(&'static str, &'static str)> {
     match kind {
-        "symbols_index" => Some((
-            "state/symbols.json",
-            "Inspect generated symbols inventory.",
-        )),
+        "symbols_index" => Some(("state/symbols.json", "Inspect generated symbols inventory.")),
         "symbols_rename_candidates" => Some((
             "state/rename_candidates.json",
             "Inspect generated rename candidates.",
@@ -115,7 +112,10 @@ fn existing_predicted_next_actions(action: &Value) -> Option<Vec<Value>> {
 }
 
 fn out_or_default<'a>(action: &'a Value, default: &'a str) -> &'a str {
-    action.get("out").and_then(|v| v.as_str()).unwrap_or(default)
+    action
+        .get("out")
+        .and_then(|v| v.as_str())
+        .unwrap_or(default)
 }
 
 fn read_file_prediction_for_output(action: &Value, default: &str, intent: &str) -> Vec<Value> {
@@ -233,10 +233,7 @@ mod tests {
     fn file_prediction_spec_preserves_symbols_index_mapping() {
         assert_eq!(
             file_prediction_spec("symbols_index"),
-            Some((
-                "state/symbols.json",
-                "Inspect generated symbols inventory.",
-            ))
+            Some(("state/symbols.json", "Inspect generated symbols inventory.",))
         );
     }
 
@@ -247,7 +244,10 @@ mod tests {
         assert_eq!(prediction.len(), 1);
         assert_eq!(prediction[0]["action"], "read_file");
         assert_eq!(prediction[0]["path"], "custom/path.json");
-        assert_eq!(prediction[0]["intent"], "Inspect generated symbols inventory.");
+        assert_eq!(
+            prediction[0]["intent"],
+            "Inspect generated symbols inventory."
+        );
     }
 
     #[test]

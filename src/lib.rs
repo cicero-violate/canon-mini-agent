@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 
-pub mod llm_runtime;
 mod action_examples;
 pub mod app;
 pub mod blockers;
@@ -13,6 +12,7 @@ pub mod invalid_action;
 pub mod invariants;
 mod issues;
 pub mod lessons;
+pub mod llm_runtime;
 pub mod logging;
 mod md_convert;
 mod objectives;

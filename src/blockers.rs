@@ -23,8 +23,8 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::canonical_writer::CanonicalWriter;
-use crate::events::EffectEvent;
 use crate::error_class::ErrorClass;
+use crate::events::EffectEvent;
 
 // ── File path ─────────────────────────────────────────────────────────────────
 

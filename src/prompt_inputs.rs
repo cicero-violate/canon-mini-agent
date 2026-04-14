@@ -1,12 +1,14 @@
+use crate::llm_runtime::{
+    config::LlmEndpoint, tab_management::TabManagerHandle, ws_server::WsBridge,
+};
 use anyhow::{bail, Context, Result};
-use crate::llm_runtime::{config::LlmEndpoint, tab_management::TabManagerHandle, ws_server::WsBridge};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 use crate::constants::{INVARIANTS_FILE, MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE};
-use crate::reports::{DiagnosticsFinding, DiagnosticsReport, Impact, Severity, ViolationsReport};
 use crate::issues::read_ranked_open_issues;
+use crate::reports::{DiagnosticsFinding, DiagnosticsReport, Impact, Severity, ViolationsReport};
 
 use crate::prompts::{
     single_role_diagnostics_prompt, single_role_executor_prompt, single_role_planner_prompt,
@@ -709,7 +711,9 @@ fn parse_violations_report(raw: &str) -> Option<ViolationsReport> {
 
 fn source_validation_state(report: Option<&ViolationsReport>, raw_violations_text: &str) -> String {
     match report {
-        Some(report) if report.status.eq_ignore_ascii_case("verified") && report.violations.is_empty() => {
+        Some(report)
+            if report.status.eq_ignore_ascii_case("verified") && report.violations.is_empty() =>
+        {
             "verified_empty".to_string()
         }
         Some(report) => format!(
@@ -1043,10 +1047,7 @@ fn violations_are_verified_and_empty(raw_violations_text: &str) -> bool {
             .unwrap_or(false)
 }
 
-pub(crate) fn reconcile_diagnostics_report(
-    workspace: &Path,
-    raw_violations_text: &str,
-) -> String {
+pub(crate) fn reconcile_diagnostics_report(workspace: &Path, raw_violations_text: &str) -> String {
     render_diagnostics_report_from_issues(workspace, raw_violations_text)
 }
 

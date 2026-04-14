@@ -115,8 +115,8 @@ fn compute_prompt_budget<'a>(
                 if slack == 0 {
                     continue;
                 }
-                let share = ((remaining as u128 * item.weight as u128) / total_weight as u128)
-                    as usize;
+                let share =
+                    ((remaining as u128 * item.weight as u128) / total_weight as u128) as usize;
                 let extra = share.min(slack);
                 item.budget += extra;
                 assigned += extra;
@@ -154,11 +154,7 @@ fn compute_prompt_budget<'a>(
     }
 }
 
-fn render_budgeted_prompt<'a>(
-    prefix: &str,
-    items: &[PromptItem<'a>],
-    suffix: &str,
-) -> String {
+fn render_budgeted_prompt<'a>(prefix: &str, items: &[PromptItem<'a>], suffix: &str) -> String {
     let active_items = items
         .iter()
         .copied()
@@ -170,7 +166,11 @@ fn render_budgeted_prompt<'a>(
             .iter()
             .map(|item| 3 + item.heading.len())
             .sum::<usize>();
-    let budget = compute_prompt_budget(crate::constants::PROMPT_OVERFLOW_BYTES, framing, &active_items);
+    let budget = compute_prompt_budget(
+        crate::constants::PROMPT_OVERFLOW_BYTES,
+        framing,
+        &active_items,
+    );
     debug_assert!(budget.used <= budget.available);
 
     let mut out = String::with_capacity(prefix.len() + framing + budget.used);
@@ -1134,7 +1134,8 @@ pub(crate) fn planner_cycle_prompt(
     let invariants_heading = format!("Invariants (from {INVARIANTS_FILE})");
     let violations_heading = format!("Violations (from {VIOLATIONS_FILE})");
     let diagnostics_heading = format!("Diagnostics report (from {diagnostics_file})");
-    let cargo_failures_heading = "Latest cargo test failures (from cargo_test_failures.json)".to_string();
+    let cargo_failures_heading =
+        "Latest cargo test failures (from cargo_test_failures.json)".to_string();
     let executor_diff_heading =
         "Executor diff (workspace changes excluding plans/diagnostics/violations)".to_string();
     let summary_heading = "Latest verifier summary".to_string();
@@ -1589,7 +1590,8 @@ pub(crate) fn single_role_solo_prompt(
     );
     let plan_diff_heading = format!("Plan diff since last cycle (from {MASTER_PLAN_FILE})");
     let executor_diff_heading =
-        "Workspace diff since last cycle (git diff, excluding plans/diagnostics/violations)".to_string();
+        "Workspace diff since last cycle (git diff, excluding plans/diagnostics/violations)"
+            .to_string();
     let objectives_heading = format!("Objectives (from {OBJECTIVES_FILE})");
     let issues_heading = format!("Open issues ranked by score (from {issues_file})");
     let lessons_heading = "Lessons artifact:".to_string();

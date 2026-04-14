@@ -53,7 +53,9 @@ fn main() -> Result<()> {
     set_agent_state_dir(state_dir.to_string_lossy().into_owned());
     maybe_synthesize_lessons(Path::new(&workspace));
 
-    let candidates_path = workspace.join("agent_state").join("lessons_candidates.json");
+    let candidates_path = workspace
+        .join("agent_state")
+        .join("lessons_candidates.json");
     println!("{}", candidates_path.display());
     Ok(())
 }

@@ -47,10 +47,9 @@ pub fn spawn(
     _retry_delay_secs: u64,
     _emitter: Arc<OnceLock<()>>,
 ) -> WsBridge {
-    let backend: Arc<dyn LlmBackend> =
-        match std::env::var("CANON_LLM_BACKEND").as_deref() {
-            Ok("http") => Arc::new(HttpBackend::from_env()),
-            _ => Arc::new(ChromiumBackend::spawn(addr.port())),
-        };
+    let backend: Arc<dyn LlmBackend> = match std::env::var("CANON_LLM_BACKEND").as_deref() {
+        Ok("http") => Arc::new(HttpBackend::from_env()),
+        _ => Arc::new(ChromiumBackend::spawn(addr.port())),
+    };
     WsBridge::new(backend, response_timeout_secs)
 }

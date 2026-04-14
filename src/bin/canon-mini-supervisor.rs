@@ -1,15 +1,18 @@
 use anyhow::{anyhow, bail, Context, Result};
-use canon_mini_agent::{set_agent_state_dir, set_workspace};
+use canon_mini_agent::complexity::write_complexity_report;
 use canon_mini_agent::logging::init_log_paths;
 use canon_mini_agent::logging::log_error_event;
-use canon_mini_agent::complexity::write_complexity_report;
 use canon_mini_agent::SemanticIndex;
+use canon_mini_agent::{set_agent_state_dir, set_workspace};
 use serde_json::json;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
-use std::sync::{Arc, atomic::{AtomicBool, AtomicU32, Ordering}};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU32, Ordering},
+    Arc,
+};
 use std::thread;
 use std::time::{Duration, SystemTime};
 
@@ -53,7 +56,9 @@ fn tickets_binary_path(root: &Path, kind: BuildKind) -> PathBuf {
 
 fn candidate_from_path(path: PathBuf, kind: BuildKind) -> Result<BinaryCandidate> {
     let meta = fs::metadata(&path).with_context(|| format!("metadata: {}", path.display()))?;
-    let mtime = meta.modified().with_context(|| format!("mtime: {}", path.display()))?;
+    let mtime = meta
+        .modified()
+        .with_context(|| format!("mtime: {}", path.display()))?;
     Ok(BinaryCandidate { path, kind, mtime })
 }
 
@@ -75,11 +80,8 @@ fn newest_candidate(root: &Path, prefer_release: bool) -> Result<BinaryCandidate
             "release"
         ));
     }
-    candidates.sort_by(|(pref_a, a), (pref_b, b)| {
-        pref_b
-            .cmp(pref_a)
-            .then_with(|| b.mtime.cmp(&a.mtime))
-    });
+    candidates
+        .sort_by(|(pref_a, a), (pref_b, b)| pref_b.cmp(pref_a).then_with(|| b.mtime.cmp(&a.mtime)));
     Ok(candidates[0].1.clone())
 }
 
@@ -89,7 +91,9 @@ fn spawn_child(bin: &BinaryCandidate, args: &[String]) -> Result<Child> {
         .stdin(Stdio::inherit())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = cmd.spawn().with_context(|| format!("spawn {}", bin.path.display()))?;
+    let mut child = cmd
+        .spawn()
+        .with_context(|| format!("spawn {}", bin.path.display()))?;
     if let Some(stdout) = child.stdout.take() {
         thread::spawn(move || {
             let mut reader = std::io::BufReader::new(stdout);
@@ -231,7 +235,9 @@ fn orchestrator_mode_flag_path(args: &[String]) -> PathBuf {
 }
 
 fn read_orchestrator_mode(path: &Path) -> Option<String> {
-    std::fs::read_to_string(path).ok().map(|s| s.trim().to_string())
+    std::fs::read_to_string(path)
+        .ok()
+        .map(|s| s.trim().to_string())
 }
 
 fn file_mtime_if_exists(path: &Path) -> Option<SystemTime> {
@@ -271,10 +277,7 @@ fn run_ticket_refresh(root: &Path, kind: BuildKind) {
         "[canon-mini-supervisor] pre-restart: refreshing refactor tickets via {}",
         bin.display()
     );
-    let status = Command::new(&bin)
-        .args(args)
-        .current_dir(root)
-        .status();
+    let status = Command::new(&bin).args(args).current_dir(root).status();
     match status {
         Ok(st) if st.success() => {
             eprintln!("[canon-mini-supervisor] ticket refresh ok");
@@ -298,9 +301,7 @@ fn stage_commit_push_before_restart(
     reason: &str,
     prefer_release: bool,
 ) {
-    eprintln!(
-        "[canon-mini-supervisor] pre-restart checkpoint start ({reason})"
-    );
+    eprintln!("[canon-mini-supervisor] pre-restart checkpoint start ({reason})");
     if !checkpoint_build_succeeded(root, state_dir, reason) {
         return;
     }
@@ -332,14 +333,10 @@ fn checkpoint_build_succeeded(root: &Path, state_dir: &Path, reason: &str) -> bo
         );
         return true;
     }
-    eprintln!(
-        "[canon-mini-supervisor] pre-restart: running `cargo build --workspace` ({reason})"
-    );
+    eprintln!("[canon-mini-supervisor] pre-restart: running `cargo build --workspace` ({reason})");
     match run_cmd(root, "cargo", &["build", "--workspace"]) {
         Ok(true) => {
-            eprintln!(
-                "[canon-mini-supervisor] pre-restart: cargo build passed ({reason})"
-            );
+            eprintln!("[canon-mini-supervisor] pre-restart: cargo build passed ({reason})");
             if let Err(err) = export_semantic_maps_jsonl(root) {
                 eprintln!(
                     "[canon-mini-supervisor] semantic_map jsonl export failed ({reason}): {err:#}"
@@ -374,8 +371,7 @@ fn export_semantic_maps_jsonl(root: &Path) -> Result<()> {
     }
 
     let out_dir = root.join("state").join("reports").join("semantic_map");
-    fs::create_dir_all(&out_dir)
-        .with_context(|| format!("create dir {}", out_dir.display()))?;
+    fs::create_dir_all(&out_dir).with_context(|| format!("create dir {}", out_dir.display()))?;
 
     for crate_name in crates {
         let idx = SemanticIndex::load(root, &crate_name)
@@ -406,16 +402,12 @@ fn export_semantic_maps_jsonl(root: &Path) -> Result<()> {
 }
 
 fn stage_git_checkpoint(root: &Path, reason: &str) -> bool {
-    eprintln!(
-        "[canon-mini-supervisor] pre-restart: running `git add -A` ({reason})"
-    );
+    eprintln!("[canon-mini-supervisor] pre-restart: running `git add -A` ({reason})");
     if let Err(err) = run_cmd(root, "git", &["add", "-A"]) {
         eprintln!("[canon-mini-supervisor] git add failed ({reason}): {err:#}");
         return false;
     }
-    eprintln!(
-        "[canon-mini-supervisor] pre-restart: git add completed ({reason})"
-    );
+    eprintln!("[canon-mini-supervisor] pre-restart: git add completed ({reason})");
 
     let has_changes = match run_cmd(root, "git", &["diff", "--cached", "--quiet"]) {
         Ok(true) => false,
@@ -443,9 +435,7 @@ fn commit_and_push_checkpoint(root: &Path, reason: &str) {
     );
     match run_cmd(root, "git", &["commit", "-m", &commit_msg]) {
         Ok(true) => {
-            eprintln!(
-                "[canon-mini-supervisor] pre-restart: git commit completed ({reason})"
-            );
+            eprintln!("[canon-mini-supervisor] pre-restart: git commit completed ({reason})");
         }
         Ok(false) => {
             eprintln!("[canon-mini-supervisor] git commit returned non-zero ({reason})");
@@ -457,17 +447,11 @@ fn commit_and_push_checkpoint(root: &Path, reason: &str) {
         }
     }
 
-    eprintln!(
-        "[canon-mini-supervisor] pre-restart: running `git push` ({reason})"
-    );
+    eprintln!("[canon-mini-supervisor] pre-restart: running `git push` ({reason})");
     match run_cmd(root, "git", &["push"]) {
         Ok(true) => {
-            eprintln!(
-                "[canon-mini-supervisor] pre-restart: git push completed ({reason})"
-            );
-            eprintln!(
-                "[canon-mini-supervisor] pre-restart checkpoint done ({reason})"
-            );
+            eprintln!("[canon-mini-supervisor] pre-restart: git push completed ({reason})");
+            eprintln!("[canon-mini-supervisor] pre-restart checkpoint done ({reason})");
         }
         Ok(false) => {
             eprintln!("[canon-mini-supervisor] git push returned non-zero ({reason})");
@@ -600,7 +584,11 @@ fn supervise_current_child(
         if handle_shutdown_request(shutdown, child) {
             return Ok(true);
         }
-        if handle_child_exit_status(child.try_wait().context("wait child")?, root, prefer_release) {
+        if handle_child_exit_status(
+            child.try_wait().context("wait child")?,
+            root,
+            prefer_release,
+        ) {
             break;
         }
         if should_restart_for_pending_update(
@@ -636,11 +624,7 @@ fn handle_shutdown_request(shutdown: &AtomicBool, child: &mut Child) -> bool {
     true
 }
 
-fn handle_child_exit_status(
-    status: Option<ExitStatus>,
-    root: &Path,
-    prefer_release: bool,
-) -> bool {
+fn handle_child_exit_status(status: Option<ExitStatus>, root: &Path, prefer_release: bool) -> bool {
     let Some(status) = status else {
         return false;
     };
@@ -672,7 +656,11 @@ fn initialize_supervisor_runtime(
     if let Some(workspace) = workspace_from_args(filtered_args) {
         set_workspace(workspace);
     }
-    set_agent_state_dir(agent_state_dir_from_args(filtered_args).to_string_lossy().to_string());
+    set_agent_state_dir(
+        agent_state_dir_from_args(filtered_args)
+            .to_string_lossy()
+            .to_string(),
+    );
     init_log_paths("supervisor");
     install_supervisor_ctrlc_handler(shutdown, child_pid)
 }
@@ -824,7 +812,12 @@ fn maybe_restart_for_pending_update(
             None,
         );
         let state_dir = root.join("agent_state");
-        stage_commit_push_before_restart(root, &state_dir, "orchestrate-idle-update", prefer_release);
+        stage_commit_push_before_restart(
+            root,
+            &state_dir,
+            "orchestrate-idle-update",
+            prefer_release,
+        );
         send_sigint(child);
         wait_for_exit(child, Duration::from_secs(10));
         eprintln!("[canon-mini-supervisor] restarting...");
@@ -865,9 +858,7 @@ struct SupervisorArgs {
 }
 
 fn take_flag_value(args: &[String], flag: &str) -> Option<String> {
-    args.windows(2)
-        .find(|w| w[0] == flag)
-        .map(|w| w[1].clone())
+    args.windows(2).find(|w| w[0] == flag).map(|w| w[1].clone())
 }
 
 fn has_flag(args: &[String], flag: &str) -> bool {
@@ -889,8 +880,8 @@ fn read_user_message_cli(args: &SupervisorArgs) -> Result<Option<String>> {
         return Ok(Some(trimmed));
     }
     if let Some(path) = &args.user_message_file {
-        let text = fs::read_to_string(path)
-            .with_context(|| format!("read --message-file {}", path))?;
+        let text =
+            fs::read_to_string(path).with_context(|| format!("read --message-file {}", path))?;
         let trimmed = text.trim().to_string();
         if trimmed.is_empty() {
             bail!("--message-file contained only whitespace");
@@ -1173,7 +1164,10 @@ fn load_issue_failure_signals(workspace: &Path) -> (Vec<String>, Vec<FileLocatio
     };
 
     for issue in issues {
-        let status = issue.get("status").and_then(|v| v.as_str()).unwrap_or("open");
+        let status = issue
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("open");
         if status == "resolved" {
             continue;
         }
@@ -1266,9 +1260,7 @@ fn load_primary_semantic_index(workspace: &Path) -> Option<canon_mini_agent::Sem
                 return Some(idx);
             }
             Err(err) => {
-                eprintln!(
-                    "[canon-mini-supervisor] loop: could not load {crate_name}: {err:#}"
-                );
+                eprintln!("[canon-mini-supervisor] loop: could not load {crate_name}: {err:#}");
             }
         }
     }
@@ -1340,9 +1332,7 @@ fn run_repair_loop(
     shutdown: &AtomicBool,
     child_pid: &AtomicU32,
 ) -> Result<()> {
-    eprintln!(
-        "[canon-mini-supervisor] repair loop starting (max={max_iterations})"
-    );
+    eprintln!("[canon-mini-supervisor] repair loop starting (max={max_iterations})");
 
     let state_dir = agent_state_dir_from_args(filtered_args);
     let mut tests_passing = false;
@@ -1353,9 +1343,7 @@ fn run_repair_loop(
             break;
         }
 
-        eprintln!(
-            "[canon-mini-supervisor] loop: iteration {iteration}/{max_iterations}"
-        );
+        eprintln!("[canon-mini-supervisor] loop: iteration {iteration}/{max_iterations}");
 
         // Refresh semantic graph (cargo build regenerates state/rustc/*/graph.json).
         if !checkpoint_build_succeeded(root, &state_dir, &format!("loop-iter-{iteration}")) {
@@ -1409,9 +1397,7 @@ fn run_repair_loop(
             return Ok(());
         }
 
-        eprintln!(
-            "[canon-mini-supervisor] loop: tests still failing after iteration {iteration}"
-        );
+        eprintln!("[canon-mini-supervisor] loop: tests still failing after iteration {iteration}");
         stage_commit_push_before_restart(
             root,
             &state_dir,
@@ -1443,9 +1429,7 @@ fn emit_complexity_report_status(report_workspace: &Path) {
         }
         Ok(None) => {}
         Err(err) => {
-            eprintln!(
-                "[canon-mini-supervisor] complexity_report failed: {err:#}"
-            );
+            eprintln!("[canon-mini-supervisor] complexity_report failed: {err:#}");
             log_error_event(
                 "supervisor",
                 "complexity_report",

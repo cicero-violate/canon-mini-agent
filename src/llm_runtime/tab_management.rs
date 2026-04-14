@@ -89,11 +89,7 @@ pub async fn tab_manager_mark_tab_in_flight(tabs: &TabManagerHandle, id: u32, in
     meta.in_flight = in_flight;
 }
 
-pub async fn tab_manager_note_success(
-    tabs: &TabManagerHandle,
-    endpoint_id: &str,
-    id: u32,
-) -> u64 {
+pub async fn tab_manager_note_success(tabs: &TabManagerHandle, endpoint_id: &str, id: u32) -> u64 {
     let mut tabs = tabs.lock().await;
     let now = tab_manager_now_ms();
     let current = tabs

@@ -21,7 +21,7 @@ fn parse_usize_flag(args: &[String], name: &str, default_value: usize) -> Result
         None => Ok(default_value),
         Some(v) => v
             .parse::<usize>()
-            .with_context(|| format!("{name} must be an integer")) ,
+            .with_context(|| format!("{name} must be an integer")),
     }
 }
 
@@ -88,11 +88,21 @@ fn sort_and_truncate_issues(
     top: usize,
 ) -> Vec<Value> {
     new_issues.sort_by(|a, b| {
-        let ida = a.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let idb = b.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let ida = a
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let idb = b
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         let (pra, sa) = score_by_id.get(&ida).cloned().unwrap_or((9, 0));
         let (prb, sb) = score_by_id.get(&idb).cloned().unwrap_or((9, 0));
-        pra.cmp(&prb).then_with(|| sb.cmp(&sa)).then_with(|| ida.cmp(&idb))
+        pra.cmp(&prb)
+            .then_with(|| sb.cmp(&sa))
+            .then_with(|| ida.cmp(&idb))
     });
     if top > 0 && new_issues.len() > top {
         new_issues.truncate(top);
@@ -114,17 +124,22 @@ fn build_issues_for_symbols(
             build_issue_details(crate_name, s, kind);
 
         let evidence = build_issue_evidence(crate_name, s);
-        push_generated_issue(new_issues, &id, &title, &description, priority_rank, s, evidence);
+        push_generated_issue(
+            new_issues,
+            &id,
+            &title,
+            &description,
+            priority_rank,
+            s,
+            evidence,
+        );
 
         issue_scores.push((id.clone(), priority_rank, score));
         *added_here += 1;
     }
 }
 
-fn build_issue_evidence(
-    crate_name: &str,
-    s: &canon_mini_agent::SymbolSummary,
-) -> Vec<String> {
+fn build_issue_evidence(crate_name: &str, s: &canon_mini_agent::SymbolSummary) -> Vec<String> {
     vec![
         format!("crate={crate_name}"),
         format!("file={} line={}", s.file, s.line),
@@ -174,10 +189,7 @@ Goal: reduce MIR basic blocks while preserving behavior.\n\
 Suggested first actions:\n\
   - {{\"action\":\"symbol_window\",\"crate\":\"{crate_name}\",\"symbol\":\"{}\"}}\n\
   - {{\"action\":\"rustc_mir\",\"crate\":\"{crate_name}\",\"mode\":\"mir\",\"extra\":\"{}\"}}",
-                s.mir_blocks,
-                s.mir_stmts,
-                s.symbol,
-                s.symbol
+                s.mir_blocks, s.mir_stmts, s.symbol, s.symbol
             ),
             1u32,
             s.mir_blocks.unwrap_or(0) as i64,
@@ -193,9 +205,7 @@ Goal: split into helpers / reduce duplication without changing behavior.\n\
 Suggested first actions:\n\
   - {{\"action\":\"symbol_window\",\"crate\":\"{crate_name}\",\"symbol\":\"{}\"}}\n\
   - {{\"action\":\"cargo_test\",\"intent\":\"Run focused tests after refactor.\"}}",
-                s.mir_blocks,
-                s.mir_stmts,
-                s.symbol
+                s.mir_blocks, s.mir_stmts, s.symbol
             ),
             2u32,
             s.mir_stmts.unwrap_or(0) as i64,
@@ -377,7 +387,8 @@ struct TicketArgs {
 fn parse_ticket_args(args: &[String]) -> Result<TicketArgs> {
     let workspace = take_flag_value(args, "--workspace").context("missing --workspace")?;
     let all_crates = has_flag(args, "--all-crates");
-    let crate_name = take_flag_value(args, "--crate").unwrap_or_else(|| "canon_mini_agent".to_string());
+    let crate_name =
+        take_flag_value(args, "--crate").unwrap_or_else(|| "canon_mini_agent".to_string());
     let limit = parse_usize_flag(args, "--limit", 20)?;
     let min_blocks = parse_usize_flag(args, "--min-blocks", 50)?;
     let min_stmts = parse_usize_flag(args, "--min-stmts", 200)?;
@@ -472,7 +483,9 @@ struct AppliedTicketResults {
     pruned: usize,
 }
 
-fn score_by_issue_id(issue_scores: Vec<(String, u32, i64)>) -> std::collections::HashMap<String, (u32, i64)> {
+fn score_by_issue_id(
+    issue_scores: Vec<(String, u32, i64)>,
+) -> std::collections::HashMap<String, (u32, i64)> {
     let mut score_by_id = std::collections::HashMap::<String, (u32, i64)>::new();
     for (id, pr, score) in issue_scores {
         score_by_id.insert(id, (pr, score));
@@ -525,7 +538,9 @@ fn merge_generated_issues(issues: &mut Vec<Value>, new_issues: Vec<Value>) -> Me
     let mut updated_ids = Vec::new();
     let mut applied_issue_objects = Vec::new();
     for issue in new_issues {
-        let Some(id) = issue.get("id").and_then(|v| v.as_str()) else { continue };
+        let Some(id) = issue.get("id").and_then(|v| v.as_str()) else {
+            continue;
+        };
         if let Some(&pos) = index_by_id.get(id) {
             issues[pos] = issue.clone();
             updated_ids.push(id.to_string());
@@ -559,12 +574,15 @@ fn prune_stale_generated_issues(
         .collect();
     let mut pruned = 0usize;
     issues.retain(|it| {
-        let Some(id) = it.get("id").and_then(|v| v.as_str()) else { return true };
+        let Some(id) = it.get("id").and_then(|v| v.as_str()) else {
+            return true;
+        };
         let discovered_by = it
             .get("discovered_by")
             .and_then(|v| v.as_str())
             .unwrap_or("");
-        let is_auto = id.starts_with("auto_branch_reduce_") || id.starts_with("auto_refactor_split_");
+        let is_auto =
+            id.starts_with("auto_branch_reduce_") || id.starts_with("auto_refactor_split_");
         let is_from_this_generator = discovered_by == "tickets";
         if is_auto && is_from_this_generator && !keep_ids.contains(id) {
             pruned += 1;
@@ -623,8 +641,7 @@ fn emit_or_write_ticket_summary(
     }
 
     if let Some(parent) = issues_path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("create {}", parent.display()))?;
+        std::fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
     }
     let text = serde_json::to_string_pretty(root)?;
     let mut file = std::fs::File::create(issues_path)

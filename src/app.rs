@@ -1,14 +1,14 @@
-use anyhow::{anyhow, bail, Context, Result};
 use crate::llm_runtime::{
     config::LlmEndpoint,
+    tab_management::TabManagerHandle,
     worker::{
         llm_worker_new_tabs, llm_worker_send_request_timeout,
         llm_worker_send_request_with_req_id_timeout,
     },
-    tab_management::TabManagerHandle,
     ws_server,
     ws_server::WsBridge,
 };
+use anyhow::{anyhow, bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, VecDeque};
@@ -1028,21 +1028,21 @@ async fn run_verifier_phase(
         };
         *verifier_bootstrapped = true;
         verifier_joinset.spawn(async move {
-        let verify_result = match run_agent(
-            "verifier",
-            "verifier",
-            &verifier_system,
-            verifier_prompt,
-            &verifier_ep,
-            &bridge,
-            &workspace,
-            &tabs_verify,
-            None,
-            false,
-            false,
-            send_system_prompt,
-            0,
-        )
+            let verify_result = match run_agent(
+                "verifier",
+                "verifier",
+                &verifier_system,
+                verifier_prompt,
+                &verifier_ep,
+                &bridge,
+                &workspace,
+                &tabs_verify,
+                None,
+                false,
+                false,
+                send_system_prompt,
+                0,
+            )
             .await
             {
                 Ok(result) => result,
@@ -2740,9 +2740,7 @@ fn build_agent_prompt(
     last_predicted_next_actions: Option<&str>,
 ) -> (String, String) {
     let agent_type = role_key(role).to_uppercase();
-    let header = format!(
-        "TAB_ID: pending\nTURN_ID: pending\nAGENT_TYPE: {agent_type}\n\n"
-    );
+    let header = format!("TAB_ID: pending\nTURN_ID: pending\nAGENT_TYPE: {agent_type}\n\n");
     if step == 0 {
         (
             if send_system_prompt {
@@ -2781,7 +2779,11 @@ fn build_agent_prompt(
     }
 }
 
-fn should_send_system_prompt(send_system_prompt: bool, endpoint_stateful: bool, step: usize) -> bool {
+fn should_send_system_prompt(
+    send_system_prompt: bool,
+    endpoint_stateful: bool,
+    step: usize,
+) -> bool {
     send_system_prompt && (!endpoint_stateful || step == 0)
 }
 
@@ -2891,7 +2893,12 @@ fn append_inbound_to_prompt(prompt: &mut String, inbound: &str) {
 fn inbound_message_from_user(inbound: &str) -> bool {
     serde_json::from_str::<Value>(inbound)
         .ok()
-        .and_then(|value| value.get("from").and_then(|v| v.as_str()).map(str::to_string))
+        .and_then(|value| {
+            value
+                .get("from")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        })
         .is_some_and(|from| from.eq_ignore_ascii_case("user"))
 }
 
@@ -3925,15 +3932,15 @@ fn peek_post_restart_result(role: &str) -> Option<PostRestartResult> {
     Some(PostRestartResult {
         role: saved_role.to_string(),
         action: v
-        .get("action")
-        .and_then(|a| a.as_str())
-        .unwrap_or("(unknown)")
-        .to_string(),
+            .get("action")
+            .and_then(|a| a.as_str())
+            .unwrap_or("(unknown)")
+            .to_string(),
         result: v
-        .get("result")
-        .and_then(|r| r.as_str())
-        .unwrap_or("")
-        .to_string(),
+            .get("result")
+            .and_then(|r| r.as_str())
+            .unwrap_or("")
+            .to_string(),
         step: v.get("step").and_then(|s| s.as_u64()).unwrap_or(0) as usize,
         tab_id: v.get("tab_id").and_then(|s| s.as_u64()).map(|v| v as u32),
         turn_id: v.get("turn_id").and_then(|s| s.as_u64()),
@@ -5506,8 +5513,7 @@ pub async fn run() -> Result<()> {
             let plan_text = read_text_or_empty(&master_plan_path);
             let diagnostics_text = read_text_or_empty(&diagnostics_path);
             let plan_content_changed = plan_text != writer.state().last_plan_text;
-            let diagnostics_content_changed =
-                diagnostics_text != writer.state().diagnostics_text;
+            let diagnostics_content_changed = diagnostics_text != writer.state().diagnostics_text;
             if objective_review_required
                 && !objectives_updated
                 && (plan_content_changed || diagnostics_content_changed)

@@ -21,9 +21,7 @@ Behavior:\n\
 }
 
 fn take_flag_value(args: &[String], flag: &str) -> Option<String> {
-    args.windows(2)
-        .find(|w| w[0] == flag)
-        .map(|w| w[1].clone())
+    args.windows(2).find(|w| w[0] == flag).map(|w| w[1].clone())
 }
 
 fn has_flag(args: &[String], flag: &str) -> bool {
@@ -41,7 +39,10 @@ fn resolve_state_dir(workspace: &Path, state_dir_flag: Option<String>) -> Result
         .map(PathBuf::from)
         .unwrap_or_else(|| workspace.join("agent_state"));
     if !path.is_absolute() {
-        bail!("--state-dir must be an absolute path, got: {}", path.display());
+        bail!(
+            "--state-dir must be an absolute path, got: {}",
+            path.display()
+        );
     }
     Ok(path)
 }
@@ -55,8 +56,8 @@ fn read_message(args: &[String]) -> Result<String> {
         return Ok(trimmed);
     }
     if let Some(path) = take_flag_value(args, "--message-file") {
-        let text = fs::read_to_string(&path)
-            .with_context(|| format!("read --message-file {}", path))?;
+        let text =
+            fs::read_to_string(&path).with_context(|| format!("read --message-file {}", path))?;
         let trimmed = text.trim().to_string();
         if trimmed.is_empty() {
             bail!("--message-file contained only whitespace");
@@ -112,7 +113,10 @@ fn main() -> Result<()> {
     let workspace = take_flag_value(&args, "--workspace").context("missing --workspace")?;
     let workspace = PathBuf::from(workspace);
     if !workspace.is_absolute() {
-        bail!("--workspace must be an absolute path, got: {}", workspace.display());
+        bail!(
+            "--workspace must be an absolute path, got: {}",
+            workspace.display()
+        );
     }
     let state_dir = resolve_state_dir(&workspace, take_flag_value(&args, "--state-dir"))?;
 

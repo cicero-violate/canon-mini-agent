@@ -12,8 +12,8 @@ pub struct HttpBackend {
 impl HttpBackend {
     pub fn from_env() -> Self {
         let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
-        let model = std::env::var("CANON_LLM_MODEL")
-            .unwrap_or_else(|_| "claude-sonnet-4-6".to_string());
+        let model =
+            std::env::var("CANON_LLM_MODEL").unwrap_or_else(|_| "claude-sonnet-4-6".to_string());
         Self {
             client: reqwest::Client::new(),
             api_key,

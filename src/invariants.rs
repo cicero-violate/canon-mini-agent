@@ -901,7 +901,10 @@ fn derive_evidence_derivation(fp: &Fingerprint) -> EvidenceDerivation {
     let mut observed_facts = Vec::new();
 
     if source.ends_with("blockers.json") {
-        let actor = raw.get("actor").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let actor = raw
+            .get("actor")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
         let error_class = raw
             .get("error_class")
             .and_then(|v| v.as_str())
@@ -919,15 +922,23 @@ fn derive_evidence_derivation(fp: &Fingerprint) -> EvidenceDerivation {
             }
         }
     } else {
-        let actor = raw.get("actor").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let actor = raw
+            .get("actor")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
         let action = raw
             .get("action")
             .or_else(|| raw.get("op").and_then(|v| v.get("name")))
             .and_then(|v| v.as_str())
             .unwrap_or("unknown");
-        let phase = raw.get("phase").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let phase = raw
+            .get("phase")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
         let ok = raw.get("ok").and_then(|v| v.as_bool());
-        let status = ok.map(|v| if v { "ok=true" } else { "ok=false" }).unwrap_or("ok=unknown");
+        let status = ok
+            .map(|v| if v { "ok=true" } else { "ok=false" })
+            .unwrap_or("ok=unknown");
         observed_facts.push(format!("actor={actor}"));
         observed_facts.push(format!("action={action}"));
         observed_facts.push(format!("phase={phase}"));
