@@ -351,8 +351,25 @@ fn parse_predicted_action_names(predicted_next_actions: Option<&str>) -> Vec<Str
         .collect()
 }
 
-fn targeted_schema_block(_kind: AgentPromptKind, predicted_next_actions: Option<&str>) -> String {
-    let actions = parse_predicted_action_names(predicted_next_actions);
+fn predicted_actions_need_evidence_receipt_generator(actions: &[String]) -> bool {
+    actions.iter().any(|action| action == "issue" || action == "violation")
+}
+
+fn augment_predicted_action_names(kind: AgentPromptKind, actions: &mut Vec<String>) {
+    if kind == AgentPromptKind::Diagnostics
+        && predicted_actions_need_evidence_receipt_generator(actions)
+    {
+        for helper in ["python", "read_file", "run_command"] {
+            if !actions.iter().any(|action| action == helper) {
+                actions.push(helper.to_string());
+            }
+        }
+    }
+}
+
+fn targeted_schema_block(kind: AgentPromptKind, predicted_next_actions: Option<&str>) -> String {
+    let mut actions = parse_predicted_action_names(predicted_next_actions);
+    augment_predicted_action_names(kind, &mut actions);
     if actions.is_empty() {
         return String::new();
     }
@@ -2968,6 +2985,34 @@ mod tests {
             prompt.contains("Action: `python`"),
             "executor system prompt should include the python schema"
         );
+    }
+
+    #[test]
+    fn diagnostics_targeted_schema_adds_receipt_generators_for_mutations() {
+        let predicted = r#"[
+            {"action":"issue","intent":"update stale issue"},
+            {"action":"violation","intent":"refresh violations"},
+            {"action":"message","intent":"report blocker if needed"}
+        ]"#;
+        let schema = targeted_schema_block(AgentPromptKind::Diagnostics, Some(predicted));
+        assert!(schema.contains("Action: `issue`"));
+        assert!(schema.contains("Action: `violation`"));
+        assert!(schema.contains("Action: `python`"));
+        assert!(schema.contains("Action: `read_file`"));
+        assert!(schema.contains("Action: `run_command`"));
+    }
+
+    #[test]
+    fn planner_targeted_schema_does_not_gain_diagnostics_receipt_helpers() {
+        let predicted = r#"[
+            {"action":"issue","intent":"record structural issue"},
+            {"action":"message","intent":"handoff blocker"}
+        ]"#;
+        let schema = targeted_schema_block(AgentPromptKind::Planner, Some(predicted));
+        assert!(schema.contains("Action: `issue`"));
+        assert!(!schema.contains("Action: `python`"));
+        assert!(!schema.contains("Action: `read_file`"));
+        assert!(!schema.contains("Action: `run_command`"));
     }
 
     #[test]

@@ -1,1 +1,1 @@
-Latest diagnostics result in the conversation reports successful current-cycle python reads of `VIOLATIONS.json`, `ISSUES.json`, `PLANS/default/diagnostics-default.json`, and mandatory log artifacts, followed immediately by the runtime error `authoritative mutation requires non-empty 'evidence_receipts'` when attempting the authoritative issue update.
+This environment only allows text responses and cannot perform required planner actions such as `plan` or `read_file` against /workspace/ai_sandbox/canon-mini-agent.
