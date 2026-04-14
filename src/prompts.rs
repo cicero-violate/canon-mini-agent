@@ -754,8 +754,9 @@ fn solo_rules() -> Vec<String> {
         "- You may modify any in-workspace files when justified by evidence; use the `plan` action for PLAN.json edits.".to_string(),
         format!("- Never operate outside {ws}."),
         "- Never emit destructive commands (rm -rf, git reset --hard, git clean -f, etc.).".to_string(),
-        "- Actively probe the codebase with semantic tools every cycle: use symbol_refs to find all call sites, symbol_window to inspect function bodies, symbol_neighborhood to map a symbol's local context, symbol_path to trace call chains, and semantic_map to orient yourself within a crate. Do not rely on read_file alone for Rust source investigation.".to_string(),
-        "- Issue discovery is a core solo responsibility: when you encounter a logic gap, missing guard, incorrect heuristic, stale artifact, or spec deviation — open an issue immediately via the `issue` action with kind, location, evidence, and priority. Do not defer issue creation to a later cycle.".to_string(),
+        "- Use semantic tools only when they sharpen the immediate next step. Do not perform broad codebase sweeps unless the current task or failure surface requires them.".to_string(),
+        "- Solo is not the broad issue-discovery lane. Use the `issue` action only when the current step directly exposes a concrete implementation gap with file/symbol/evidence in hand.".to_string(),
+        "- When the inbound request is from `user`, prefer a bounded terminal reply to `user` over broad system analysis unless a concrete execution step is clearly higher value.".to_string(),
     ];
     rules.extend(load_role_overrides(AgentPromptKind::Solo));
     rules
@@ -1239,7 +1240,7 @@ pub(crate) fn single_role_solo_prompt(
     if !sections.ends_with("\n\n") {
         sections.push_str("\n\n");
     }
-    sections.push_str("Use the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nUse the `issue` action only when the current step uncovers direct implementation evidence for a new or stale logic gap.\nFor Rust source investigation, use semantic tools first: symbol_refs, symbol_window, symbol_neighborhood, symbol_path, semantic_map. Reach for read_file only when you need exact lines before a patch.\nEmit exactly one action. Optimize for the next correct move, not broad analysis.");
+    sections.push_str("Use the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nUse the `issue` action only when the current step uncovers direct implementation evidence for a new or stale logic gap.\nFor Rust source investigation, use semantic tools first: symbol_refs, symbol_window, symbol_neighborhood, symbol_path, semantic_map. Reach for read_file only when you need exact lines before a patch.\nOutput contract (strict):\n- Return exactly ONE action\n- Format: a single JSON object in a ```json code block\n- No prose, no markdown explanation outside the JSON block\n- Optimize for the next correct move, not broad analysis\n\nIf replying to the external user, use this shape:\n```json\n{\n  \"action\": \"message\",\n  \"from\": \"solo\",\n  \"to\": \"user\",\n  \"type\": \"terminal\",\n  \"status\": \"ready\",\n  \"observation\": \"State the grounded evidence you are replying from.\",\n  \"rationale\": \"Explain why a direct reply is the highest-value next step.\",\n  \"predicted_next_actions\": [\n    {\"action\": \"read_file\", \"intent\": \"Inspect a named artifact if the user asks for deeper evidence next.\"},\n    {\"action\": \"message\", \"intent\": \"Send a narrower follow-up reply to the user after targeted inspection.\"}\n  ],\n  \"payload\": {\n    \"summary\": \"Short direct answer to the user.\"\n  }\n}\n```\nEmit exactly one action.");
     sections
 }
 
