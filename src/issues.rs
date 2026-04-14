@@ -66,6 +66,17 @@ fn is_zero_u64(v: &u64) -> bool {
 }
 
 pub fn issue_is_fresh(issue: &Issue) -> bool {
+    let has_freshness_metadata = !issue.freshness_status.trim().is_empty()
+        || issue.last_validated_ms > 0
+        || !issue.stale_reason.trim().is_empty()
+        || !issue.validated_from.is_empty()
+        || !issue.evidence_receipts.is_empty()
+        || !issue.evidence_hashes.is_empty();
+
+    if !has_freshness_metadata {
+        return true;
+    }
+
     match issue.freshness_status.trim().to_ascii_lowercase().as_str() {
         "fresh" => return true,
         "stale" | "unknown" => return false,
