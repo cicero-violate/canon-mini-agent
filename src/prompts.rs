@@ -468,6 +468,10 @@ fn prompt_workspace(kind: AgentPromptKind) -> String {
     }
 }
 
+fn canonical_status_snapshot() -> &'static str {
+    "Canonical status snapshot:\n- canonical state changes are gated through the canonical writer\n- replay from `agent_state/tlog.ndjson` is meaningful for canonical state\n- many reconciliation paths are now explicit `ControlEvent`s\n- several loophole-shaped runtime paths are classified and recorded in `agent_state/blockers.json`\n- blockers and invariants can now accumulate around structural failures\n\nOpen guarantees still to close:\n- not every runtime-influenced control decision is canonically represented yet\n- not every reconciliation branch has been split into the right explicit event shape yet\n- not every loophole-class blocker is wired into invariant promotion or route gating yet\n- not every checkpoint/resume inconsistency is bounded and proven safe yet\n- not every intentionally-ephemeral runtime behavior is enumerated and justified yet\n\nLoophole-closure rule:\n- when you encounter runtime behavior that influences control flow or externally visible behavior, either prove it is already represented canonically or add the missing event/policy/invariant/test instead of building new features."
+}
+
 fn action_contract(kind: AgentPromptKind) -> String {
     let actions = available_actions(kind)
         .iter()
@@ -833,6 +837,8 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
     out.push_str(&prompt_canonical_law(kind));
     out.push_str("\n\n");
     out.push_str(&prompt_workspace(kind));
+    out.push_str("\n\n");
+    out.push_str(canonical_status_snapshot());
     out.push_str("\n\n");
     // Truncate issues section to avoid prompt overflow
     let issues = crate::issues::read_top_open_issues(std::path::Path::new(workspace()), 3);

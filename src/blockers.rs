@@ -316,4 +316,40 @@ mod tests {
         assert_eq!(exec_compile, 2);
         assert_eq!(plan_compile, 1);
     }
+
+    #[test]
+    fn record_action_failure_writes_runtime_control_bypass() {
+        let ws = temp_ws();
+        record_action_failure(
+            &ws,
+            "orchestrate",
+            "runtime_control_bypass",
+            "runtime-only control influence: active blocker file suppressed planner dispatch",
+            None,
+        );
+        let file = load_blockers(&ws);
+        assert_eq!(file.blockers.len(), 1);
+        assert_eq!(
+            file.blockers[0].error_class,
+            ErrorClass::RuntimeControlBypass
+        );
+    }
+
+    #[test]
+    fn record_action_failure_writes_uncanonicalized_recovery_path() {
+        let ws = temp_ws();
+        record_action_failure(
+            &ws,
+            "executor",
+            "uncanonicalized_recovery",
+            "recovery path without canonical event: late submit_ack reconstructed turn",
+            None,
+        );
+        let file = load_blockers(&ws);
+        assert_eq!(file.blockers.len(), 1);
+        assert_eq!(
+            file.blockers[0].error_class,
+            ErrorClass::UncanonicalizedRecoveryPath
+        );
+    }
 }

@@ -150,6 +150,13 @@ Hard boundary rules:
 - `executor_submit_inflight: HashMap<usize, PendingSubmitState>` — in-flight submit tasks per lane
 - `deferred_completions: HashMap<usize, VecDeque<DeferredExecutorCompletion>>` — completions queued while another is processing
 
+**Intentionally ephemeral runtime-only behaviors** (must remain bounded and justified):
+- live tab handles / browser session objects — OS resources, not replayable state
+- in-flight join sets and async task handles — execution machinery only; canonical effects must be reflected via `ControlEvent`s or `EffectEvent`s
+- transient submit-ack wait state in `executor_submit_inflight` — permitted only as a bounded reconciliation window until the corresponding canonical submit/completion event lands or the lane is requeued
+- `deferred_completions` queue — permitted only as a short-lived transport buffer while a lane already has prompt work in flight; deferred items must eventually drain back through canonical completion handling
+- `submitted_turns` runtime payload details not mirrored in `submitted_turn_ids` — transport handles and non-serializable tab manager state only; lane/tab ownership and turn identity must still be represented canonically
+
 **`SystemState` key fields** (all serialized to checkpoint):
 - `phase`, `phase_lane`, `scheduled_phase` — orchestration phase tracking
 - `planner_pending`, `diagnostics_pending` — pending flags

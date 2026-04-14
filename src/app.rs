@@ -5067,6 +5067,13 @@ pub async fn run() -> Result<()> {
                     || writer.state().scheduled_phase.as_deref() == Some("planner"))
             {
                 eprintln!("[orchestrate] planner paused: active blocker to verifier");
+                crate::blockers::record_action_failure(
+                    workspace.as_path(),
+                    "orchestrate",
+                    "runtime_control_bypass",
+                    "runtime-only control influence: active_blocker_to_verifier.json suppressed planner dispatch",
+                    None,
+                );
             }
             writer.apply(ControlEvent::PlannerPendingSet {
                 pending: blocker_decision.planner_pending,
@@ -5116,6 +5123,14 @@ pub async fn run() -> Result<()> {
                         None,
                         &format!("failed to persist reconciled diagnostics before scheduling diagnostics: {err:#}"),
                         Some(json!({ "stage": "diagnostics_reconcile_preflight" })),
+                    );
+                } else {
+                    crate::blockers::record_action_failure(
+                        workspace.as_path(),
+                        "orchestrate",
+                        "runtime_control_bypass",
+                        "runtime-only control influence: diagnostics were scheduled from preflight reconciliation rather than canonical diagnostics evidence",
+                        None,
                     );
                 }
                 writer.apply(ControlEvent::DiagnosticsPendingSet { pending: true });

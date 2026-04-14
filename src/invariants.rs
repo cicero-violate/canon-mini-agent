@@ -880,6 +880,23 @@ fn promote_by_threshold(file: &mut EnforcedInvariantsFile) {
 
 fn default_gates_for_conditions(conditions: &[StateCondition]) -> Vec<String> {
     let mut gates = Vec::new();
+    let error_class = conditions
+        .iter()
+        .find(|cond| cond.key == "error_class")
+        .map(|cond| cond.value.as_str());
+
+    match error_class {
+        Some("runtime_control_bypass")
+        | Some("checkpoint_runtime_divergence")
+        | Some("ambiguous_control_event") => gates.push("route".to_string()),
+        Some("uncanonicalized_recovery_path") => gates.push("executor".to_string()),
+        Some("effectful_state_advance_without_control_event") => {
+            gates.push("route".to_string());
+            gates.push("planner".to_string());
+        }
+        _ => {}
+    }
+
     for cond in conditions {
         if cond.key == "actor_kind" {
             match cond.value.as_str() {
@@ -1123,6 +1140,134 @@ mod tests {
         };
         promote_by_threshold(&mut file);
         assert_eq!(file.invariants[0].status, InvariantStatus::Discovered);
+    }
+
+    #[test]
+    fn loophole_error_classes_receive_strong_default_gates() {
+        let route_conditions = vec![
+            StateCondition {
+                key: "actor_kind".to_string(),
+                value: "orchestrator".to_string(),
+            },
+            StateCondition {
+                key: "error_class".to_string(),
+                value: "runtime_control_bypass".to_string(),
+            },
+        ];
+        let executor_conditions = vec![
+            StateCondition {
+                key: "actor_kind".to_string(),
+                value: "executor".to_string(),
+            },
+            StateCondition {
+                key: "error_class".to_string(),
+                value: "uncanonicalized_recovery_path".to_string(),
+            },
+        ];
+
+        let route_gates = default_gates_for_conditions(&route_conditions);
+        let executor_gates = default_gates_for_conditions(&executor_conditions);
+
+        assert!(route_gates.contains(&"route".to_string()));
+        assert!(executor_gates.contains(&"executor".to_string()));
+    }
+
+    #[test]
+    fn synthesize_runtime_control_bypass_from_blockers_and_block_route() {
+        let tmp = make_workspace();
+        std::fs::create_dir_all(tmp.join("agent_state")).unwrap();
+        crate::blockers::record_action_failure(
+            &tmp,
+            "orchestrate",
+            "runtime_control_bypass",
+            "runtime-only control influence: planner was re-pended because plan mtimes changed",
+            None,
+        );
+        crate::blockers::record_action_failure(
+            &tmp,
+            "orchestrate",
+            "runtime_control_bypass",
+            "runtime-only control influence: diagnostics were re-pended because reconciled text diverged",
+            None,
+        );
+        crate::blockers::record_action_failure(
+            &tmp,
+            "orchestrate",
+            "runtime_control_bypass",
+            "runtime-only control influence: active blocker file suppressed planner dispatch",
+            None,
+        );
+
+        maybe_synthesize_invariants(&tmp);
+        let file = load_invariants(&tmp);
+        let inv = file
+            .invariants
+            .iter()
+            .find(|inv| {
+                inv.state_conditions
+                    .iter()
+                    .any(|c| c.key == "error_class" && c.value == "runtime_control_bypass")
+            })
+            .expect("runtime_control_bypass invariant should be synthesized");
+        assert_eq!(inv.status, InvariantStatus::Promoted);
+        assert!(inv.gates.contains(&"route".to_string()));
+
+        let mut state = HashMap::new();
+        state.insert("actor_kind".to_string(), "orchestrator".to_string());
+        state.insert(
+            "error_class".to_string(),
+            "runtime_control_bypass".to_string(),
+        );
+        let result = evaluate_invariant_gate("route", &state, &tmp);
+        assert!(
+            result.is_err(),
+            "route gate should block runtime_control_bypass"
+        );
+    }
+
+    #[test]
+    fn synthesize_uncanonicalized_recovery_from_blockers_and_block_executor() {
+        let tmp = make_workspace();
+        std::fs::create_dir_all(tmp.join("agent_state")).unwrap();
+        for summary in [
+            "recovery path without canonical event: late submit_ack reconstructed turn lane=executor-0 tab_id=7 turn_id=11",
+            "recovery path without canonical event: missing submit_ack forced lane requeue lane=executor-0 output=missing submit_ack",
+            "recovery path without canonical event: executor completion recovered from runtime submit state lane=executor-0 tab_id=7 turn_id=11",
+        ] {
+            crate::blockers::record_action_failure(
+                &tmp,
+                "executor",
+                "uncanonicalized_recovery",
+                summary,
+                None,
+            );
+        }
+
+        maybe_synthesize_invariants(&tmp);
+        let file = load_invariants(&tmp);
+        let inv = file
+            .invariants
+            .iter()
+            .find(|inv| {
+                inv.state_conditions
+                    .iter()
+                    .any(|c| c.key == "error_class" && c.value == "uncanonicalized_recovery_path")
+            })
+            .expect("uncanonicalized_recovery invariant should be synthesized");
+        assert_eq!(inv.status, InvariantStatus::Promoted);
+        assert!(inv.gates.contains(&"executor".to_string()));
+
+        let mut state = HashMap::new();
+        state.insert("actor_kind".to_string(), "executor".to_string());
+        state.insert(
+            "error_class".to_string(),
+            "uncanonicalized_recovery_path".to_string(),
+        );
+        let result = evaluate_invariant_gate("executor", &state, &tmp);
+        assert!(
+            result.is_err(),
+            "executor gate should block uncanonicalized recovery path"
+        );
     }
 
     #[test]
