@@ -2699,6 +2699,10 @@ fn build_agent_prompt(
     total_steps: usize,
     last_predicted_next_actions: Option<&str>,
 ) -> (String, String) {
+    let agent_type = role_key(role).to_uppercase();
+    let header = format!(
+        "TAB_ID: pending\nTURN_ID: pending\nAGENT_TYPE: {agent_type}\n\n"
+    );
     if step == 0 {
         (
             if send_system_prompt {
@@ -2706,11 +2710,10 @@ fn build_agent_prompt(
             } else {
                 String::new()
             },
-            initial_prompt.to_string(),
+            format!("{header}{initial_prompt}"),
         )
     } else {
         let result = last_result.unwrap_or("").to_string();
-        let agent_type = role_key(role).to_uppercase();
         let role_schema = if send_system_prompt {
             system_instructions.to_string()
         } else {
@@ -5564,7 +5567,11 @@ mod tests {
             None,
         );
         assert_eq!(schema0, "SYSTEM");
-        assert_eq!(prompt0, "INIT");
+        assert!(
+            prompt0.starts_with("TAB_ID: pending\nTURN_ID: pending\nAGENT_TYPE: PLANNER\n\n"),
+            "initial prompt must include the identity banner"
+        );
+        assert!(prompt0.ends_with("INIT"));
 
         let (schema1, prompt1) = super::build_agent_prompt(
             "planner",
