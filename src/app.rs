@@ -2303,12 +2303,15 @@ fn save_checkpoint(
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let tmp_path = path.with_extension("json.tmp");
-    std::fs::write(&tmp_path, serde_json::to_string_pretty(&checkpoint)?)?;
-    std::fs::rename(tmp_path, path)?;
+    // Record the canonical checkpoint-save effect before materializing the file.
+    // The log must lead the side effect so replay can observe the save attempt
+    // in the same order the runtime produced it.
     writer.record_effect(crate::events::EffectEvent::CheckpointSaved {
         phase: state.phase.clone(),
     });
+    let tmp_path = path.with_extension("json.tmp");
+    std::fs::write(&tmp_path, serde_json::to_string_pretty(&checkpoint)?)?;
+    std::fs::rename(tmp_path, path)?;
     Ok(())
 }
 

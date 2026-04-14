@@ -38,15 +38,15 @@ impl CanonicalWriter {
     /// Apply a control event: append to tlog, then transition state.
     ///
     /// This is the ONLY function allowed to mutate `SystemState`.
-    /// If the tlog write fails (e.g. disk full) the error is logged but the
-    /// state transition still proceeds — a missing tlog entry is recoverable
-    /// from the checkpoint; a missed state transition is not.
+    /// If the tlog write fails, the process aborts instead of advancing state.
+    /// Replay equivalence is only meaningful if the durable log and state move
+    /// together.
     pub fn apply(&mut self, event: ControlEvent) {
         if let Err(reason) = validate_transition(&self.state, &event) {
             panic!("[canonical_writer] illegal control transition: {reason}");
         }
         if let Err(err) = self.tlog.append(&Event::control(event.clone())) {
-            eprintln!("[canonical_writer] tlog append failed: {err:#}");
+            panic!("[canonical_writer] tlog append failed during apply: {err:#}");
         }
         let next_state = apply_control_event(self.state.clone(), &event);
         if let Err(reason) = validate_system_state(&next_state) {
@@ -63,14 +63,14 @@ impl CanonicalWriter {
             reason: reason.to_string(),
         });
         if let Err(err) = self.tlog.append(&ev) {
-            eprintln!("[canonical_writer] tlog violation append failed: {err:#}");
+            panic!("[canonical_writer] tlog violation append failed: {err:#}");
         }
     }
 
     /// Record an effect event (checkpoint saved/loaded, etc.).
     pub fn record_effect(&mut self, effect: EffectEvent) {
         if let Err(err) = self.tlog.append(&Event::effect(effect)) {
-            eprintln!("[canonical_writer] tlog effect append failed: {err:#}");
+            panic!("[canonical_writer] tlog effect append failed: {err:#}");
         }
     }
 

@@ -193,5 +193,5 @@ pub fn diagnostics_file() -> &'static str {
     DIAGNOSTICS_FILE_PATH
         .get()
         .map(String::as_str)
-        .unwrap_or("DIAGNOSTICS.json")
+        .unwrap_or("PLANS/default/diagnostics-default.json")
 }

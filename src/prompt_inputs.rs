@@ -696,7 +696,7 @@ pub fn filter_active_diagnostics_json(raw: &str) -> String {
         let severity = f.get("severity").and_then(Value::as_str).unwrap_or("?");
         out.push_str(&format!("[{}] [{severity}]  {id}  —  {title}\n", rank + 1));
     }
-    out.push_str("Full detail: {\"action\":\"read_file\",\"path\":\"DIAGNOSTICS.json\"}");
+    out.push_str("Full detail: {\"action\":\"read_file\",\"path\":\"PLANS/default/diagnostics-default.json\"}");
     out
 }
 
