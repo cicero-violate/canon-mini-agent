@@ -5507,14 +5507,23 @@ pub async fn run() -> Result<()> {
             let objective_review_required = plan_mtime_before != plan_mtime_after
                 || diagnostics_mtime_before != diagnostics_mtime_after;
             let objectives_updated = objectives_mtime_before != objectives_mtime_after;
-            if objective_review_required && !objectives_updated {
+            let objectives_text = read_text_or_empty(&workspace.join(OBJECTIVES_FILE));
+            let plan_text = read_text_or_empty(&master_plan_path);
+            let diagnostics_text = read_text_or_empty(&diagnostics_path);
+            let plan_content_changed = plan_text != writer.state().last_plan_text;
+            let diagnostics_content_changed =
+                diagnostics_text != writer.state().diagnostics_text;
+            if objective_review_required
+                && !objectives_updated
+                && (plan_content_changed || diagnostics_content_changed)
+            {
                 append_orchestration_trace(
                     "objective_evolution_enforcement_signal",
                     json!({
                         "required_action": "objective_review_or_update_required",
                         "reason": "plan_or_diagnostics_changed_without_objective_update",
-                        "plan_changed": plan_mtime_before != plan_mtime_after,
-                        "diagnostics_changed": diagnostics_mtime_before != diagnostics_mtime_after,
+                        "plan_changed": plan_content_changed,
+                        "diagnostics_changed": diagnostics_content_changed,
                         "objectives_updated": objectives_updated,
                         "objectives_path": OBJECTIVES_FILE,
                         "plan_path": MASTER_PLAN_FILE,
@@ -5531,8 +5540,6 @@ pub async fn run() -> Result<()> {
                 cycle_progress = true;
             }
 
-            let objectives_text = read_text_or_empty(&workspace.join(OBJECTIVES_FILE));
-            let plan_text = read_text_or_empty(&master_plan_path);
             let has_objective_work = has_actionable_objectives(&objectives_text);
             let has_plan_work = plan_has_incomplete_tasks(&plan_text);
             if has_objective_work && !has_plan_work {
