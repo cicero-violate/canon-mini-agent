@@ -139,10 +139,7 @@ fn collect_complexity_items(
     items
 }
 
-fn build_global_complexity_entry(
-    crate_name: &str,
-    entry: &serde_json::Value,
-) -> serde_json::Value {
+fn build_global_complexity_entry(crate_name: &str, entry: &serde_json::Value) -> serde_json::Value {
     json!({
         "crate": crate_name,
         "symbol": entry.get("symbol"),
@@ -199,8 +196,7 @@ pub fn write_complexity_report(workspace: &Path) -> Result<Option<PathBuf>> {
     let mut inter_sections = serde_json::json!({});
     for crate_name in SemanticIndex::available_crates(workspace) {
         if let Ok(analysis) = crate::inter_complexity::analyze(workspace, &crate_name) {
-            inter_sections[&crate_name] =
-                crate::inter_complexity::to_report_value(&analysis, 20);
+            inter_sections[&crate_name] = crate::inter_complexity::to_report_value(&analysis, 20);
         }
     }
 

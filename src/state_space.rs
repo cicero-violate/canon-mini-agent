@@ -57,7 +57,10 @@ pub fn decide_bootstrap_phase(start_role: &str) -> Option<String> {
     }
 }
 
-pub fn decide_wake_flags(active_blocker_to_verifier: bool, flags: &[WakeFlagInput]) -> WakeDecision {
+pub fn decide_wake_flags(
+    active_blocker_to_verifier: bool,
+    flags: &[WakeFlagInput],
+) -> WakeDecision {
     let mut newest: Option<&WakeFlagInput> = None;
     for flag in flags {
         if flag.role == "planner" && active_blocker_to_verifier {
@@ -122,7 +125,10 @@ pub enum CompletionEndpointCheck {
     Mismatch,
 }
 
-pub fn check_completion_endpoint(expected: &str, completed: Option<&str>) -> CompletionEndpointCheck {
+pub fn check_completion_endpoint(
+    expected: &str,
+    completed: Option<&str>,
+) -> CompletionEndpointCheck {
     match completed {
         Some(endpoint) if endpoint != expected => CompletionEndpointCheck::Mismatch,
         _ => CompletionEndpointCheck::Ok,
@@ -155,8 +161,7 @@ pub fn decide_active_blocker(
     planner_pending: bool,
     scheduled_phase: Option<&str>,
 ) -> ActiveBlockerDecision {
-    if active_blocker_to_verifier
-        && (planner_pending || matches!(scheduled_phase, Some("planner")))
+    if active_blocker_to_verifier && (planner_pending || matches!(scheduled_phase, Some("planner")))
     {
         return ActiveBlockerDecision {
             planner_pending: false,
@@ -200,8 +205,7 @@ pub fn block_executor_dispatch(scheduled_phase: Option<&str>) -> bool {
 /// Diagnostics must not start while verifier tasks are in flight (would race),
 /// and must not run if another phase has exclusive use of the schedule.
 pub fn allow_diagnostics_run(scheduled_phase: Option<&str>, verifier_in_flight: bool) -> bool {
-    !verifier_in_flight
-        && !matches!(scheduled_phase, Some(phase) if phase != "diagnostics")
+    !verifier_in_flight && !matches!(scheduled_phase, Some(phase) if phase != "diagnostics")
 }
 
 /// The full set of phase eligibility decisions for one orchestrator cycle.
@@ -228,7 +232,8 @@ pub fn decide_phase_gates(
         planner: planner_pending && allow_planner_run(scheduled_phase),
         executor: !block_executor_dispatch(scheduled_phase),
         verifier: verifier_queued && allow_verifier_run(scheduled_phase),
-        diagnostics: diagnostics_pending && allow_diagnostics_run(scheduled_phase, verifier_in_flight),
+        diagnostics: diagnostics_pending
+            && allow_diagnostics_run(scheduled_phase, verifier_in_flight),
         solo: matches!(scheduled_phase, Some("solo")),
     }
 }
@@ -243,7 +248,11 @@ pub fn should_force_blocker(streak: usize) -> bool {
 /// (i.e. verifier is the root cause, not just a bystander). Verifier should yield
 /// to planner for blockers that are NOT verifier-specific.
 pub fn is_verifier_specific_blocker(blocker_text: &str, required_action: &str) -> bool {
-    let combined = format!("{} {}", blocker_text.to_lowercase(), required_action.to_lowercase());
+    let combined = format!(
+        "{} {}",
+        blocker_text.to_lowercase(),
+        required_action.to_lowercase()
+    );
     combined.contains("verifier")
 }
 

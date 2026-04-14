@@ -1,1 +1,1 @@
-This turn's orchestrator handoff cites `INV-05518346`, and the latest executor diff changes `agent_state/last_planner_blocker_evidence.txt` to `Role `diagnostics` repeatedly encounters `blocker_escalated`: LLM role explicitly declared itself blocked and cannot proceed`.
+Planner re-scan found `ready_window: []`, the most recent route-dispatch blocker remains `Role `diagnostics` repeatedly encounters `blocker_escalated` [id=INV-05518346]`, and diagnostics' latest follow-up explicitly said no newly surfaced route blocker was observed after gating.

@@ -62,12 +62,7 @@ impl<'a> MessageRoute<'a> {
     }
 }
 
-pub fn expected_message_format(
-    from: &str,
-    to_role: &str,
-    msg_type: &str,
-    status: &str,
-) -> String {
+pub fn expected_message_format(from: &str, to_role: &str, msg_type: &str, status: &str) -> String {
     format!(
         "{{ \"action\": \"message\", \"from\": \"{from}\", \"to\": \"{to_role}\", \"type\": \"{msg_type}\", \"status\": \"{status}\", \"payload\": {{ \"summary\": \"...\" }} }}"
     )
@@ -199,12 +194,8 @@ pub(crate) fn corrective_invalid_action_prompt(
 }
 
 const BASIC_ACTION_FIELDS: &[&str] = &["action", "rationale", "predicted_next_actions"];
-const QUESTION_ACTION_FIELDS: &[&str] = &[
-    "action",
-    "question",
-    "rationale",
-    "predicted_next_actions",
-];
+const QUESTION_ACTION_FIELDS: &[&str] =
+    &["action", "question", "rationale", "predicted_next_actions"];
 
 pub(crate) fn invalid_action_expected_fields(kind: &str) -> Vec<&'static str> {
     match kind {
@@ -221,10 +212,22 @@ pub(crate) fn invalid_action_expected_fields(kind: &str) -> Vec<&'static str> {
             "rationale",
             "predicted_next_actions",
         ],
-        "apply_patch" => vec!["action", "patch", "question", "rationale", "predicted_next_actions"],
+        "apply_patch" => vec![
+            "action",
+            "patch",
+            "question",
+            "rationale",
+            "predicted_next_actions",
+        ],
         "cargo_test" => vec!["action", "crate", "rationale", "predicted_next_actions"],
         "python" => vec!["action", "code", "rationale", "predicted_next_actions"],
-        "plan" => vec!["action", "op", "question", "rationale", "predicted_next_actions"],
+        "plan" => vec![
+            "action",
+            "op",
+            "question",
+            "rationale",
+            "predicted_next_actions",
+        ],
         "objectives" | "issue" => QUESTION_ACTION_FIELDS.to_vec(),
         "message" => vec![
             "action",
@@ -356,7 +359,9 @@ fn push_missing_string_payload_field(
                 .iter()
                 .any(|s| s == &format!("field type mismatch: payload.{field} (expected string)"))
             {
-                schema_diff.push(format!("field type mismatch: payload.{field} (expected string)"));
+                schema_diff.push(format!(
+                    "field type mismatch: payload.{field} (expected string)"
+                ));
             }
             return;
         }
@@ -418,7 +423,10 @@ fn push_missing_message_required_fields(
                 .is_none(),
         };
         if missing {
-            if !schema_diff.iter().any(|s| s == &format!("missing field: {field}")) {
+            if !schema_diff
+                .iter()
+                .any(|s| s == &format!("missing field: {field}"))
+            {
                 schema_diff.push(format!("missing field: {field}"));
             }
         }
@@ -432,9 +440,8 @@ fn push_missing_message_required_fields(
                         .iter()
                         .any(|s| s == "field type mismatch: payload (expected object)")
                     {
-                        schema_diff.push(
-                            "field type mismatch: payload (expected object)".to_string(),
-                        );
+                        schema_diff
+                            .push("field type mismatch: payload (expected object)".to_string());
                     }
                 }
             }
@@ -538,7 +545,9 @@ fn example_symbol_workflow_action(kind: &str) -> Option<Value> {
                 ),
                 (
                     "question",
-                    Value::String("Is this the exact symbol to rename across the crate?".to_string()),
+                    Value::String(
+                        "Is this the exact symbol to rename across the crate?".to_string(),
+                    ),
                 ),
             ],
             "Span-backed rename should update all references consistently.",
@@ -585,20 +594,27 @@ fn example_action_for(kind: &str, role: &str, raw_action: Option<&Value>) -> Val
     match kind {
         "cargo_test" => example_action_with_string_fields(
             "cargo_test",
-            &[("crate", "canon-mini-agent"), ("test", "optional_test_name")],
+            &[
+                ("crate", "canon-mini-agent"),
+                ("test", "optional_test_name"),
+            ],
             "Run the targeted test.",
             "Verify the change.",
         ),
         "plan" => example_plan_action(),
         "message" => {
-            let (from, to_role, msg_type, status) = normalized_message_example_route(raw_action, role);
+            let (from, to_role, msg_type, status) =
+                normalized_message_example_route(raw_action, role);
             example_message_action(&from, &to_role, &msg_type, &status)
         }
         _ => example_message_action("executor", "verifier", "handoff", "complete"),
     }
 }
 
-fn normalized_message_example_route(raw_action: Option<&Value>, role: &str) -> (String, String, String, String) {
+fn normalized_message_example_route(
+    raw_action: Option<&Value>,
+    role: &str,
+) -> (String, String, String, String) {
     raw_action
         .and_then(|action| action.as_object())
         .and_then(MessageRoute::from_action_obj)
@@ -606,7 +622,11 @@ fn normalized_message_example_route(raw_action: Option<&Value>, role: &str) -> (
         .unwrap_or_else(|| MessageRoute::default_for_role(role).into_owned_lowercase())
 }
 
-pub fn build_invalid_action_feedback(raw_action: Option<&Value>, err_text: &str, role: &str) -> String {
+pub fn build_invalid_action_feedback(
+    raw_action: Option<&Value>,
+    err_text: &str,
+    role: &str,
+) -> String {
     let mut schema_diff: Vec<String> = Vec::new();
     let mut expected_fields: Vec<&'static str> = Vec::new();
     let mut expected_format: Option<String> = None;
@@ -663,7 +683,10 @@ fn collect_general_action_schema_diff(
         }
     }
     push_missing_or_unknown_action(schema_diff, obj);
-    if matches!(kind, "run_command" | "read_file" | "apply_patch" | "python" | "cargo_test") {
+    if matches!(
+        kind,
+        "run_command" | "read_file" | "apply_patch" | "python" | "cargo_test"
+    ) {
         let field = match kind {
             "run_command" => "cmd",
             "read_file" => "path",
@@ -733,8 +756,14 @@ fn maybe_push_planner_plan_diagnostics_error(
     if kind != "plan" || !matches!(role, "planner" | "mini_planner") {
         return;
     }
-    let rationale = action.get("rationale").and_then(|v| v.as_str()).unwrap_or("");
-    let observation = action.get("observation").and_then(|v| v.as_str()).unwrap_or("");
+    let rationale = action
+        .get("rationale")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let observation = action
+        .get("observation")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let combined = format!("{observation}\n{rationale}").to_ascii_lowercase();
     let references_diagnostics = combined.contains("diagnostic")
         || combined.contains("stale")
@@ -786,13 +815,15 @@ fn collect_message_schema_diff(
     let payload = obj.get("payload").and_then(|v| v.as_object());
     validate_message_payload_summary(schema_diff, payload);
     validate_blocker_payload_placement(schema_diff, obj);
-    validate_blocker_payload_fields(schema_diff, payload, msg_type.as_deref(), msg_status.as_deref());
+    validate_blocker_payload_fields(
+        schema_diff,
+        payload,
+        msg_type.as_deref(),
+        msg_status.as_deref(),
+    );
 }
 
-fn message_field_str<'a>(
-    obj: &'a serde_json::Map<String, Value>,
-    field: &str,
-) -> Option<&'a str> {
+fn message_field_str<'a>(obj: &'a serde_json::Map<String, Value>, field: &str) -> Option<&'a str> {
     obj.get(field).and_then(|v| v.as_str())
 }
 
@@ -922,8 +953,8 @@ pub fn auto_fill_message_fields(action: &mut Value, role: &str) -> bool {
         .and_then(|v| v.as_str())
         .unwrap_or(default_status)
         .to_string();
-    let is_blocker = type_val.eq_ignore_ascii_case("blocker")
-        || status_val.eq_ignore_ascii_case("blocked");
+    let is_blocker =
+        type_val.eq_ignore_ascii_case("blocker") || status_val.eq_ignore_ascii_case("blocked");
 
     if missing_predicted_next_actions(obj) {
         obj.insert(
@@ -945,11 +976,8 @@ pub fn auto_fill_message_fields(action: &mut Value, role: &str) -> bool {
         }
     }
 
-    changed |= ensure_object_string_field(
-        obj,
-        "observation",
-        "Auto-filled missing message fields.",
-    );
+    changed |=
+        ensure_object_string_field(obj, "observation", "Auto-filled missing message fields.");
     changed |= ensure_object_string_field(
         obj,
         "rationale",
@@ -1026,10 +1054,7 @@ pub fn ensure_action_base_schema(action: &mut Value) -> bool {
     // task_id / objective_id — optional provenance; only inject when completely absent
     // (empty string is already a schema violation so we leave those for corrective feedback)
     if !obj.contains_key("task_id") {
-        obj.insert(
-            "task_id".to_string(),
-            Value::String("unknown".to_string()),
-        );
+        obj.insert("task_id".to_string(), Value::String("unknown".to_string()));
         changed = true;
     }
     if !obj.contains_key("objective_id") {

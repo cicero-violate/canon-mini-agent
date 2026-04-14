@@ -125,6 +125,13 @@ W(s_t, e) → s_{t+1}
 
 Every state transition is represented as a typed `ControlEvent` variant, appended to the total-ordered log before the state transition executes. The gate is enforced by `CanonicalWriter::apply` in `src/canonical_writer.rs`.
 
+Hard boundary rules:
+- Every canonical `SystemState` change during normal runtime must flow through `CanonicalWriter::apply(ControlEvent)`.
+- `CanonicalWriter::apply` validates the post-transition state before committing it.
+- `EffectEvent`s are append-only observability records; they never advance `SystemState`.
+- The only permitted non-`apply` `SystemState` replacement is explicit checkpoint hydration via `CanonicalWriter::restore_from_checkpoint(...)`.
+- A second canonical mutation path is a structural bug (`ErrorClass::SecondMutationPath`).
+
 **Components:**
 
 | Component | Type | Role |
@@ -136,7 +143,7 @@ Every state transition is represented as a typed `ControlEvent` variant, appende
 | `EffectEvent` | `src/events.rs` | Side-effect record (invariant violations, checkpoints) |
 | `Tlog` | `src/tlog.rs` | Append-only NDJSON event log at `AgentStateDir/tlog.ndjson` |
 
-**Invariant gate:** Before emitting a `ControlEvent`, callers invoke `evaluate_invariant_gate` (`src/invariants.rs`). On violation the caller calls `writer.record_violation(...)` — which appends to the tlog without advancing state — and aborts the transition.
+**Invariant gate:** Before emitting a `ControlEvent`, callers invoke `evaluate_invariant_gate` (`src/invariants.rs`). On violation the caller calls `writer.record_violation(...)` — which appends an `EffectEvent::InvariantViolation` to the tlog without advancing state — and aborts the transition.
 
 **`RuntimeState` fields** (never serialized, never checkpointed):
 - `submitted_turns: HashMap<(u32, u64), SubmittedExecutorTurn>` — active executor turns keyed by `(tab_id, turn_id)`
@@ -152,6 +159,10 @@ Every state transition is represented as a typed `ControlEvent` variant, appende
 - `submitted_turn_ids: HashMap<String, SubmittedTurnRecord>` — serializable record of in-flight executor turns
 
 **`apply_control_event`** (`src/system_state.rs`) is a pure function with no side effects. It is the only function permitted to construct `s_{t+1}` from `s_t`. All runtime code calls it exclusively through `CanonicalWriter::apply`.
+
+**State validation:** `validate_system_state(...)` runs at canonical-writer construction, after every `apply(...)`, and before checkpoint restore. Validation covers lane bookkeeping completeness plus consistency between `lane_active_tab`, `tab_id_to_lane`, and `submitted_turn_ids`.
+
+**Replay:** `Tlog::replay(...)` reads `AgentStateDir/tlog.ndjson`, applies only `ControlEvent`s through `replay_event_log(...)`, ignores `EffectEvent`s for state advancement, and must reconstruct the same final `SystemState` as live execution.
 
 ### 1.2 Role State (per agent)
 - `prompt_kind: PromptKind`
@@ -570,9 +581,9 @@ In self-modification mode only:
 
 **I13 — No permission escalation:** Executor must not patch `src/tools.rs::patch_scope_error` or any other scope-guard logic in a way that expands role permissions beyond SPEC.md §4. Any such patch requires verifier sign-off with explicit SPEC.md §4 justification.
 
-**I14 — Checkpoint and tlog compatibility:** Changes to `OrchestratorCheckpoint` fields must use `#[serde(default)]` for additions. Removing or renaming fields requires a version bump or checkpoint discard on load. The `workspace` field must always be populated on save and validated on load. Checkpoint `phase` values include `planner`, `executor`, `verifier`, `diagnostics`, and `solo`.
+**I14 — Checkpoint and tlog compatibility:** Changes to `OrchestratorCheckpoint` fields must use `#[serde(default)]` for additions. Removing or renaming fields requires a version bump or checkpoint discard on load. The `workspace` field must always be populated on save and validated on load. Checkpoint `phase` values include `planner`, `executor`, `verifier`, `diagnostics`, and `solo`. Checkpoint save/load must be logged as `EffectEvent::{CheckpointSaved,CheckpointLoaded}` and checkpoint restore must use the dedicated hydration path rather than direct field mutation.
 
-Changes to `SystemState` fields follow the same rule: additions must use `#[serde(default)]`. The tlog (`AgentStateDir/tlog.ndjson`) is append-only and may contain entries from prior `SystemState` schemas; readers must tolerate unknown `ControlEvent` variants gracefully. Changes to `ControlEvent` variants are additive only — existing variants must not be renamed or removed while a tlog from that schema may be in service.
+Changes to `SystemState` fields follow the same rule: additions must use `#[serde(default)]`. The tlog (`AgentStateDir/tlog.ndjson`) is append-only and may contain entries from prior `SystemState` schemas; readers must tolerate unknown `ControlEvent` variants gracefully. Changes to `ControlEvent` variants are additive only — existing variants must not be renamed or removed while a tlog from that schema may be in service. `EffectEvent`s may be added for observability, but they must remain non-authoritative for replayed state. Any new canonical state field must either be driven by an existing/new `ControlEvent` or remain strictly runtime-only in `RuntimeState`.
 
 ### 9.4 Safety Properties (Why It's Safe)
 - **No mid-run corruption:** The running orchestrator binary is already loaded into memory. Patching `src/` files does not affect the current process — changes take effect only on the next `cargo build` + process restart.

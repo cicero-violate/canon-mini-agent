@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Result};
 use jsonschema::error::{TypeKind, ValidationErrorKind};
 use jsonschema::JSONSchema;
-use schemars::{schema_for, JsonSchema};
 use schemars::schema::SchemaObject;
+use schemars::{schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::borrow::Cow;
@@ -106,23 +106,22 @@ pub fn plan_sorted_view_action_example(rationale: &str) -> String {
 
 pub fn plan_action_examples_block() -> &'static str {
     static TEXT: OnceLock<String> = OnceLock::new();
-    TEXT
-        .get_or_init(|| {
-            format!(
-                "Examples:\n  {}\n  {}\n  {}",
-                plan_set_task_status_action_example(
-                    "T1",
-                    "in_progress",
-                    "Update a single task status in PLAN.json."
-                ),
-                plan_set_plan_status_action_example(
-                    "in_progress",
-                    "Update top-level PLAN.json status."
-                ),
-                plan_sorted_view_action_example("View the current plan in DAG order (read-only).")
-            )
-        })
-        .as_str()
+    TEXT.get_or_init(|| {
+        format!(
+            "Examples:\n  {}\n  {}\n  {}",
+            plan_set_task_status_action_example(
+                "T1",
+                "in_progress",
+                "Update a single task status in PLAN.json."
+            ),
+            plan_set_plan_status_action_example(
+                "in_progress",
+                "Update top-level PLAN.json status."
+            ),
+            plan_sorted_view_action_example("View the current plan in DAG order (read-only).")
+        )
+    })
+    .as_str()
 }
 
 fn extract_enum_strings(schema: &SchemaObject) -> Option<Vec<String>> {
@@ -822,7 +821,9 @@ pub fn tool_protocol_schema_split_text() -> String {
         let schema = find_action_schema(&value, action)
             .and_then(|v| serde_json::to_string_pretty(v).ok())
             .unwrap_or_else(|| "{}".to_string());
-        out.push_str(&format!("Action: `{action}` — {desc}\n```json\n{schema}\n```\n\n"));
+        out.push_str(&format!(
+            "Action: `{action}` — {desc}\n```json\n{schema}\n```\n\n"
+        ));
     }
 
     if let Some(defs) = value.get("definitions") {
@@ -882,7 +883,10 @@ pub(crate) fn validate_tool_action(action: &Value) -> Result<()> {
             details.push(err.to_string());
         }
         let suffix = if details.is_empty() { "" } else { ": " };
-        return Err(anyhow!("action schema invalid{suffix}{}", details.join("; ")));
+        return Err(anyhow!(
+            "action schema invalid{suffix}{}",
+            details.join("; ")
+        ));
     }
     // Manual guards not expressible in schemars 0.8
     if let Some(rationale) = action.get("rationale").and_then(|v| v.as_str()) {
@@ -906,7 +910,9 @@ pub(crate) fn validate_tool_action(action: &Value) -> Result<()> {
             .map(str::trim)
             .unwrap_or("");
         if intent.is_empty() {
-            return Err(anyhow!("predicted_next_actions[{idx}] missing non-empty 'intent'"));
+            return Err(anyhow!(
+                "predicted_next_actions[{idx}] missing non-empty 'intent'"
+            ));
         }
     }
     Ok(())
@@ -1170,7 +1176,10 @@ fn first_missing_field_for_action(action: &Value, action_name: &str) -> Option<S
     if action.get("predicted_next_actions").is_none() {
         return Some("missing field: predicted_next_actions".to_string());
     }
-    fn require_fields<'a>(missing_field: &impl Fn(&str) -> Option<String>, fields: &[&'a str]) -> Option<String> {
+    fn require_fields<'a>(
+        missing_field: &impl Fn(&str) -> Option<String>,
+        fields: &[&'a str],
+    ) -> Option<String> {
         for field in fields {
             if let Some(m) = missing_field(field) {
                 return Some(m);
@@ -1179,7 +1188,10 @@ fn first_missing_field_for_action(action: &Value, action_name: &str) -> Option<S
         None
     }
 
-    fn require_one_of(action: &Value, missing_field: &impl Fn(&str) -> Option<String>) -> Option<String> {
+    fn require_one_of(
+        action: &Value,
+        missing_field: &impl Fn(&str) -> Option<String>,
+    ) -> Option<String> {
         let has_bulk = action
             .get("renames")
             .and_then(|v| v.as_array())
@@ -1204,12 +1216,14 @@ fn first_missing_field_for_action(action: &Value, action_name: &str) -> Option<S
         "cargo_fmt" | "cargo_clippy" => None,
         "plan" => missing_field_for_plan_action(action),
         "violation" => missing_field_for_violation_action(action),
-        "rustc_hir" | "rustc_mir" | "graph_call" | "graph_cfg" | "graph_dataflow" | "graph_reachability" => {
-            missing_field("crate")
-        }
-        "semantic_map" | "symbol_window" | "symbol_refs" | "symbol_path" | "execution_path" | "symbol_neighborhood" => {
-            missing_field("crate")
-        }
+        "rustc_hir" | "rustc_mir" | "graph_call" | "graph_cfg" | "graph_dataflow"
+        | "graph_reachability" => missing_field("crate"),
+        "semantic_map"
+        | "symbol_window"
+        | "symbol_refs"
+        | "symbol_path"
+        | "execution_path"
+        | "symbol_neighborhood" => missing_field("crate"),
         _ => None,
     }
 }
@@ -1234,9 +1248,8 @@ fn missing_field_for_objectives_action(action: &Value) -> Option<String> {
     match op {
         "read" | "sorted_view" => None,
         "create_objective" => missing_field_in_action(action, "objective"),
-        "update_objective" => {
-            missing_objective_id_field(action).or_else(|| missing_field_in_action(action, "updates"))
-        }
+        "update_objective" => missing_objective_id_field(action)
+            .or_else(|| missing_field_in_action(action, "updates")),
         "delete_objective" => missing_objective_id_field(action),
         "set_status" => {
             missing_objective_id_field(action).or_else(|| missing_field_in_action(action, "status"))
@@ -1254,14 +1267,11 @@ fn missing_field_for_plan_action(action: &Value) -> Option<String> {
     match op {
         "create_task" | "update_task" => missing_field_in_action(action, "task"),
         "delete_task" => missing_field_in_action(action, "task_id"),
-        "add_edge" | "remove_edge" => {
-            missing_field_in_action(action, "from").or_else(|| missing_field_in_action(action, "to"))
-        }
+        "add_edge" | "remove_edge" => missing_field_in_action(action, "from")
+            .or_else(|| missing_field_in_action(action, "to")),
         "set_plan_status" => missing_field_in_action(action, "status"),
-        "set_task_status" => {
-            missing_field_in_action(action, "task_id")
-                .or_else(|| missing_field_in_action(action, "status"))
-        }
+        "set_task_status" => missing_field_in_action(action, "task_id")
+            .or_else(|| missing_field_in_action(action, "status")),
         "replace_plan" => missing_field_in_action(action, "plan"),
         "sorted_view" => None,
         _ => None,

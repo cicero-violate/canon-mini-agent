@@ -78,10 +78,7 @@ fn symbols_index_example_action(predicted_next_actions: &Value) -> Value {
             "Need a unique sorted symbols catalog before rename/refactor planning.",
             predicted_next_actions,
         ),
-        [
-            ("path", json!("src")),
-            ("out", json!("state/symbols.json")),
-        ],
+        [("path", json!("src")), ("out", json!("state/symbols.json"))],
     )
 }
 
@@ -194,12 +191,12 @@ pub fn non_message_example_action(kind: &str) -> Option<Value> {
         "run_command" => Some(run_command_example_action(&predicted_next_actions)),
         "read_file" => Some(read_file_example_action(&predicted_next_actions)),
         "symbols_index" => Some(symbols_index_example_action(&predicted_next_actions)),
-        "symbols_rename_candidates" => {
-            Some(symbols_rename_candidates_example_action(&predicted_next_actions))
-        }
-        "symbols_prepare_rename" => {
-            Some(symbols_prepare_rename_example_action(&predicted_next_actions))
-        }
+        "symbols_rename_candidates" => Some(symbols_rename_candidates_example_action(
+            &predicted_next_actions,
+        )),
+        "symbols_prepare_rename" => Some(symbols_prepare_rename_example_action(
+            &predicted_next_actions,
+        )),
         "rename_symbol" => Some(rename_symbol_example_action(&predicted_next_actions)),
         "list_dir" => Some(list_dir_example_action(&predicted_next_actions)),
         "apply_patch" => Some(apply_patch_example_action(&predicted_next_actions)),

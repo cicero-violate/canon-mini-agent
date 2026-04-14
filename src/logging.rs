@@ -35,12 +35,17 @@ pub(crate) fn current_action_log_path_for_tests() -> Option<PathBuf> {
 }
 
 fn log_paths() -> Result<&'static LogPaths> {
-    LOG_PATHS.get().ok_or_else(|| anyhow::anyhow!("log paths not initialized"))
+    LOG_PATHS
+        .get()
+        .ok_or_else(|| anyhow::anyhow!("log paths not initialized"))
 }
 
 fn patch_summary_path(patch: &str) -> Option<&str> {
     for line in patch.lines() {
-        if let Some(rest) = line.strip_prefix("*** Update File:").or_else(|| line.strip_prefix("*** Add File:")) {
+        if let Some(rest) = line
+            .strip_prefix("*** Update File:")
+            .or_else(|| line.strip_prefix("*** Add File:"))
+        {
             return Some(rest.trim());
         }
     }
@@ -48,9 +53,16 @@ fn patch_summary_path(patch: &str) -> Option<&str> {
 }
 
 fn action_command_summary(action: &Value) -> String {
-    let kind = action.get("action").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let kind = action
+        .get("action")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
     match kind {
-        "run_command" => action.get("cmd").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        "run_command" => action
+            .get("cmd")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
         "python" => {
             let code = action.get("code").and_then(|v| v.as_str()).unwrap_or("");
             let first = code.lines().next().unwrap_or("");
@@ -64,7 +76,10 @@ fn action_command_summary(action: &Value) -> String {
                 None => format!("read_file {}", path),
             }
         }
-        "list_dir" => format!("list_dir {}", action.get("path").and_then(|v| v.as_str()).unwrap_or("")),
+        "list_dir" => format!(
+            "list_dir {}",
+            action.get("path").and_then(|v| v.as_str()).unwrap_or("")
+        ),
         "apply_patch" => {
             let patch = action.get("patch").and_then(|v| v.as_str()).unwrap_or("");
             patch_summary_path(patch)
@@ -85,7 +100,9 @@ fn action_command_summary(action: &Value) -> String {
 }
 
 fn parse_action_from_text(text: &str) -> Option<Value> {
-    parse_actions(text).ok().and_then(|actions| actions.into_iter().next())
+    parse_actions(text)
+        .ok()
+        .and_then(|actions| actions.into_iter().next())
 }
 
 fn observation_and_rationale_from_text(text: &str) -> (Option<String>, Option<String>) {
@@ -100,7 +117,8 @@ fn observation_and_rationale_from_text(text: &str) -> (Option<String>, Option<St
 
 fn append_record_to_path(path: &PathBuf, record: &Value) -> Result<()> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent.display()))?;
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
     }
     let mut file = std::fs::OpenOptions::new()
         .create(true)
@@ -138,7 +156,10 @@ fn compact_json(value: Value) -> Option<Value> {
             }
         }
         Value::Array(items) => {
-            let items = items.into_iter().filter_map(compact_json).collect::<Vec<_>>();
+            let items = items
+                .into_iter()
+                .filter_map(compact_json)
+                .collect::<Vec<_>>();
             if items.is_empty() {
                 None
             } else {
@@ -209,10 +230,7 @@ pub(crate) fn compact_log_record(
         "rationale",
         rationale.map(|v| json!(truncate(&v, MAX_SNIPPET))),
     );
-    insert_opt(
-        "text",
-        text.map(|v| json!(truncate(&v, MAX_SNIPPET))),
-    );
+    insert_opt("text", text.map(|v| json!(truncate(&v, MAX_SNIPPET))));
     insert_opt("meta", meta);
 
     Value::Object(record)
@@ -437,7 +455,14 @@ pub(crate) fn log_message_event(
     }
 }
 
-pub(crate) fn append_action_log(role: &str, endpoint: &LlmEndpoint, _prompt_kind: &str, step: usize, command_id: &str, action: &Value) -> Result<()> {
+pub(crate) fn append_action_log(
+    role: &str,
+    endpoint: &LlmEndpoint,
+    _prompt_kind: &str,
+    step: usize,
+    command_id: &str,
+    action: &Value,
+) -> Result<()> {
     let observation = action_observation(action).unwrap_or("");
     let rationale = action_rationale(action).unwrap_or("");
     let text = match (observation.is_empty(), rationale.is_empty()) {
@@ -689,15 +714,19 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
     };
 
     // Deduplicate: skip if an open overflow violation for this role already exists.
-    let violation_id = format!("PROMPT-OVERFLOW-{}", role.to_uppercase().replace(['[', ']', '/'], "-"));
+    let violation_id = format!(
+        "PROMPT-OVERFLOW-{}",
+        role.to_uppercase().replace(['[', ']', '/'], "-")
+    );
     let violations = report
         .get("violations")
         .and_then(|v| v.as_array())
         .cloned()
         .unwrap_or_default();
-    if violations.iter().any(|v| {
-        v.get("id").and_then(|x| x.as_str()) == Some(&violation_id)
-    }) {
+    if violations
+        .iter()
+        .any(|v| v.get("id").and_then(|x| x.as_str()) == Some(&violation_id))
+    {
         return;
     }
 
@@ -730,7 +759,9 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
     if let Ok(body) = serde_json::to_string_pretty(&Value::Object(report)) {
         let _ = std::fs::write(&violations_path, body);
     }
-    eprintln!("[{role}] PROMPT OVERFLOW: {prompt_bytes} bytes exceeds threshold {PROMPT_OVERFLOW_BYTES}");
+    eprintln!(
+        "[{role}] PROMPT OVERFLOW: {prompt_bytes} bytes exceeds threshold {PROMPT_OVERFLOW_BYTES}"
+    );
 }
 
 pub(crate) fn now_ms() -> u64 {
@@ -760,7 +791,9 @@ mod tests {
     fn read_record_with_text(action_log: &std::path::Path, expected_text: &str) -> Value {
         let log_text = fs::read_to_string(action_log).expect("read action log");
         for line in log_text.lines().rev() {
-            let Ok(record) = serde_json::from_str::<Value>(line) else { continue };
+            let Ok(record) = serde_json::from_str::<Value>(line) else {
+                continue;
+            };
             if record.get("text").and_then(|v| v.as_str()) == Some(expected_text) {
                 return record;
             }
@@ -787,10 +820,7 @@ mod tests {
             return paths.action_log.clone();
         }
 
-        let root = std::env::temp_dir().join(format!(
-            "canon-mini-agent-logging-test-{}",
-            now_ms()
-        ));
+        let root = std::env::temp_dir().join(format!("canon-mini-agent-logging-test-{}", now_ms()));
         let action_log = root.join("actions.jsonl");
         let secondary_log = root.join("log.jsonl");
         let _ = LOG_PATHS.set(LogPaths {
@@ -821,7 +851,10 @@ mod tests {
 
         let record = read_record_with_text(&action_log, &marker);
         assert_common_error_shape(&record, "solo", "test_phase", Some(7));
-        assert_eq!(record.get("text").and_then(|v| v.as_str()), Some(marker.as_str()));
+        assert_eq!(
+            record.get("text").and_then(|v| v.as_str()),
+            Some(marker.as_str())
+        );
         assert_eq!(
             record
                 .get("meta")
@@ -876,7 +909,10 @@ mod tests {
             log_error_event(actor, phase, step, &text, Some(meta.clone()));
             let record = read_record_with_text(&action_log, &text);
             assert_common_error_shape(&record, actor, phase, step.map(|v| v as u64));
-            assert_eq!(record.get("text").and_then(|v| v.as_str()), Some(text.as_str()));
+            assert_eq!(
+                record.get("text").and_then(|v| v.as_str()),
+                Some(text.as_str())
+            );
             assert_eq!(record.get("meta"), Some(&meta));
         }
     }
@@ -884,9 +920,8 @@ mod tests {
     #[test]
     fn append_orchestration_trace_before_init_is_silent_and_does_not_create_logs() {
         let unique = now_ms();
-        let probe_root = std::env::temp_dir().join(format!(
-            "canon-mini-agent-preinit-trace-probe-{unique}"
-        ));
+        let probe_root =
+            std::env::temp_dir().join(format!("canon-mini-agent-preinit-trace-probe-{unique}"));
         let action_log = probe_root.join("actions.jsonl");
 
         append_orchestration_trace(
@@ -922,7 +957,10 @@ mod tests {
         let nested = secondary_llm_response(&action).expect("llm_response should exist");
         let obj = nested.as_object().expect("llm_response object");
 
-        assert_eq!(obj.get("crate").and_then(|v| v.as_str()), Some("canon-mini-agent"));
+        assert_eq!(
+            obj.get("crate").and_then(|v| v.as_str()),
+            Some("canon-mini-agent")
+        );
         assert_eq!(
             obj.get("test").and_then(|v| v.as_str()),
             Some("objectives_create_update_read_lifecycle_succeeds")

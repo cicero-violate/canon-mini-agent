@@ -67,10 +67,7 @@ fn remove_nested_spans(replacements: &mut Vec<SpanReplacement>) {
     });
 }
 
-fn normalize_replacements(
-    file_len: usize,
-    replacements: &mut Vec<SpanReplacement>,
-) -> Result<()> {
+fn normalize_replacements(file_len: usize, replacements: &mut Vec<SpanReplacement>) -> Result<()> {
     for r in replacements.iter() {
         if r.span.lo > r.span.hi {
             bail!("invalid span: lo > hi ({} > {})", r.span.lo, r.span.hi);
@@ -103,11 +100,7 @@ fn normalize_replacements(
         let a = &window[0];
         let b = &window[1];
         if a.span.lo == b.span.lo && a.span.hi == b.span.hi && a.replacement != b.replacement {
-            bail!(
-                "conflicting replacements at {}..{}",
-                a.span.lo,
-                a.span.hi
-            );
+            bail!("conflicting replacements at {}..{}", a.span.lo, a.span.hi);
         }
         if a.span.hi > b.span.lo {
             bail!(
@@ -295,7 +288,10 @@ fn rewrite_attr_string_literals(source: &str, old_ident: &str, new_ident: &str) 
 
 fn ensure_under_workspace(workspace: &Path, file: &Path) -> Result<()> {
     if !file.is_absolute() {
-        bail!("expected absolute file path from semantic spans, got: {}", file.display());
+        bail!(
+            "expected absolute file path from semantic spans, got: {}",
+            file.display()
+        );
     }
     let ws = workspace
         .canonicalize()
@@ -341,21 +337,11 @@ fn collect_checked_replacements_for_rename(
     new_symbol: &str,
     per_file: &mut HashMap<PathBuf, Vec<CheckedReplacement>>,
 ) -> Result<()> {
-    let old_ident = old_symbol
-        .rsplit("::")
-        .next()
-        .unwrap_or(old_symbol)
-        .trim();
-    let new_ident = new_symbol
-        .rsplit("::")
-        .next()
-        .unwrap_or(new_symbol)
-        .trim();
+    let old_ident = old_symbol.rsplit("::").next().unwrap_or(old_symbol).trim();
+    let new_ident = new_symbol.rsplit("::").next().unwrap_or(new_symbol).trim();
 
     if !is_valid_rust_identifier(old_ident) || !is_valid_rust_identifier(new_ident) {
-        bail!(
-            "rename requires valid Rust identifier names (old={old_ident}, new={new_ident})"
-        );
+        bail!("rename requires valid Rust identifier names (old={old_ident}, new={new_ident})");
     }
     if old_ident == new_ident {
         bail!("rename old and new identifiers are identical: {old_ident}");
@@ -364,13 +350,12 @@ fn collect_checked_replacements_for_rename(
     let canonical_old = idx
         .canonical_symbol_key(old_symbol)
         .with_context(|| format!("resolve canonical key for {old_symbol}"))?;
-    let new_fqn = canonical_old
-        .rsplit_once("::")
-        .map_or_else(|| new_ident.to_string(), |(prefix, _)| format!("{prefix}::{new_ident}"));
+    let new_fqn = canonical_old.rsplit_once("::").map_or_else(
+        || new_ident.to_string(),
+        |(prefix, _)| format!("{prefix}::{new_ident}"),
+    );
     if idx.has_symbol(&new_fqn) {
-        bail!(
-            "rename conflict: '{new_fqn}' already exists in the graph — choose a different name"
-        );
+        bail!("rename conflict: '{new_fqn}' already exists in the graph — choose a different name");
     }
 
     let occurrences = idx
@@ -389,7 +374,11 @@ fn collect_checked_replacements_for_rename(
     Ok(())
 }
 
-fn verify_expected_spans(original: &str, file: &Path, replacements: &[CheckedReplacement]) -> Result<()> {
+fn verify_expected_spans(
+    original: &str,
+    file: &Path,
+    replacements: &[CheckedReplacement],
+) -> Result<()> {
     for r in replacements {
         let snippet = original
             .get(r.span.lo..r.span.hi)
@@ -407,7 +396,11 @@ fn verify_expected_spans(original: &str, file: &Path, replacements: &[CheckedRep
     Ok(())
 }
 
-fn apply_checked_replacements(original: &str, file: &Path, replacements: &[CheckedReplacement]) -> Result<String> {
+fn apply_checked_replacements(
+    original: &str,
+    file: &Path,
+    replacements: &[CheckedReplacement],
+) -> Result<String> {
     let mut span_replacements: Vec<SpanReplacement> = replacements
         .iter()
         .map(|r| SpanReplacement {
@@ -426,9 +419,9 @@ fn rewrite_attr_pairs(after_spans: String, replacements: &[CheckedReplacement]) 
         .collect();
     attr_pairs.sort_unstable();
     attr_pairs.dedup();
-    attr_pairs
-        .iter()
-        .fold(after_spans, |src, &(old, new)| rewrite_attr_string_literals(&src, old, new))
+    attr_pairs.iter().fold(after_spans, |src, &(old, new)| {
+        rewrite_attr_string_literals(&src, old, new)
+    })
 }
 
 fn rewrite_file_from_checked_replacements(
@@ -436,15 +429,14 @@ fn rewrite_file_from_checked_replacements(
     replacements: Vec<CheckedReplacement>,
     report: &mut RenameReport,
 ) -> Result<()> {
-    let original = std::fs::read_to_string(&file)
-        .with_context(|| format!("read {}", file.display()))?;
+    let original =
+        std::fs::read_to_string(&file).with_context(|| format!("read {}", file.display()))?;
     verify_expected_spans(&original, &file, &replacements)?;
     let after_spans = apply_checked_replacements(&original, &file, &replacements)?;
 
     let updated = rewrite_attr_pairs(after_spans, &replacements);
     if updated != original {
-        std::fs::write(&file, &updated)
-            .with_context(|| format!("write {}", file.display()))?;
+        std::fs::write(&file, &updated).with_context(|| format!("write {}", file.display()))?;
         report.replacements += replacements.len();
         report.touched_files.push(file);
     }
@@ -574,10 +566,19 @@ mod tests {
     fn rewrite_attr_string_literal_basic() {
         let src = "#[serde(rename = \"old_fn\")]\npub fn old_fn() {}\n";
         let result = rewrite_attr_string_literals(src, "old_fn", "new_fn");
-        assert!(result.contains("rename = \"new_fn\""), "attr should be rewritten: {result}");
-        assert!(!result.contains("rename = \"old_fn\""), "old attr value should be gone: {result}");
+        assert!(
+            result.contains("rename = \"new_fn\""),
+            "attr should be rewritten: {result}"
+        );
+        assert!(
+            !result.contains("rename = \"old_fn\""),
+            "old attr value should be gone: {result}"
+        );
         // The identifier itself (not in a string) is untouched by attr rewrite
-        assert!(result.contains("fn old_fn()"), "ident outside attr must not be touched: {result}");
+        assert!(
+            result.contains("fn old_fn()"),
+            "ident outside attr must not be touched: {result}"
+        );
     }
 
     #[test]
@@ -600,8 +601,14 @@ mod tests {
     fn rewrite_attr_string_literal_inner_attr() {
         let src = "#![doc = \"old_fn\"]\npub fn foo() {}\n";
         let result = rewrite_attr_string_literals(src, "old_fn", "new_fn");
-        assert!(result.contains("\"new_fn\""), "inner attr should be rewritten: {result}");
-        assert!(!result.contains("\"old_fn\""), "old value should be gone: {result}");
+        assert!(
+            result.contains("\"new_fn\""),
+            "inner attr should be rewritten: {result}"
+        );
+        assert!(
+            !result.contains("\"old_fn\""),
+            "old value should be gone: {result}"
+        );
     }
 
     #[test]
@@ -632,7 +639,14 @@ mod tests {
     // conflict pre-check tests (round-trip via rename_symbols_via_semantic_spans)
     // -----------------------------------------------------------------------
 
-    fn write_graph_with_two_symbols(workspace: &std::path::Path, sym_a: &str, sym_b: &str, file: &std::path::Path, src: &str, ident_a: &str) {
+    fn write_graph_with_two_symbols(
+        workspace: &std::path::Path,
+        sym_a: &str,
+        sym_b: &str,
+        file: &std::path::Path,
+        src: &str,
+        ident_a: &str,
+    ) {
         // sym_a has refs at every occurrence of ident_a in src; sym_b has no refs.
         let mut refs = Vec::new();
         for (lo, _) in src.match_indices(ident_a) {
@@ -667,14 +681,7 @@ mod tests {
         let src = "fn old_fn() {}\nfn new_fn() {}\n";
         std::fs::write(&file, src).unwrap();
 
-        write_graph_with_two_symbols(
-            &ws,
-            "crate::old_fn",
-            "crate::new_fn",
-            &file,
-            src,
-            "old_fn",
-        );
+        write_graph_with_two_symbols(&ws, "crate::old_fn", "crate::new_fn", &file, src, "old_fn");
 
         let idx = crate::semantic::SemanticIndex::load(&ws, "canon_mini_agent").unwrap();
         let err = super::rename_symbols_via_semantic_spans(
@@ -685,7 +692,10 @@ mod tests {
         .unwrap_err()
         .to_string();
         assert!(err.contains("conflict"), "expected conflict error: {err}");
-        assert!(err.contains("new_fn"), "error should name the conflicting symbol: {err}");
+        assert!(
+            err.contains("new_fn"),
+            "error should name the conflicting symbol: {err}"
+        );
     }
 
     #[test]
@@ -695,7 +705,8 @@ mod tests {
         std::fs::create_dir_all(&src_dir).unwrap();
         let file = src_dir.join("lib.rs");
         // A function with a serde rename attr and a call site.
-        let src = "#[serde(rename = \"old_fn\")]\npub fn old_fn() {}\npub fn caller() { old_fn(); }\n";
+        let src =
+            "#[serde(rename = \"old_fn\")]\npub fn old_fn() {}\npub fn caller() { old_fn(); }\n";
         std::fs::write(&file, src).unwrap();
 
         // Build a graph: old_fn has refs at both `old_fn` identifier occurrences.
@@ -733,8 +744,14 @@ mod tests {
         assert!(report.replacements > 0, "expected at least one replacement");
         let updated = std::fs::read_to_string(&file).unwrap();
         // Span replacement: identifier occurrences renamed
-        assert!(updated.contains("fn new_fn()"), "def should be renamed: {updated}");
-        assert!(updated.contains("new_fn();"), "call site should be renamed: {updated}");
+        assert!(
+            updated.contains("fn new_fn()"),
+            "def should be renamed: {updated}"
+        );
+        assert!(
+            updated.contains("new_fn();"),
+            "call site should be renamed: {updated}"
+        );
         // Attr string rewrite: serde rename value updated
         assert!(
             updated.contains("rename = \"new_fn\""),

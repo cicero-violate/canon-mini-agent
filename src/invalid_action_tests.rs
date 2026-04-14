@@ -1,5 +1,5 @@
-use serde_json::json;
 use crate::invalid_action::build_invalid_action_feedback;
+use serde_json::json;
 
 #[test]
 fn allows_missing_observation_field() {

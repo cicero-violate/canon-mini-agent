@@ -17,7 +17,6 @@
 ///     → invariant synthesis reads blockers.json
 ///     → groups by (actor_kind, error_class)
 ///     → promotes to invariant when support_count ≥ threshold
-
 use std::path::Path;
 
 use anyhow::Result;
@@ -110,13 +109,16 @@ pub fn record_action_failure(
     result_text: &str,
     task_id: Option<&str>,
 ) {
-    let error_class =
-        crate::error_class::classify_result(action_kind, result_text, false);
+    let error_class = crate::error_class::classify_result(action_kind, result_text, false);
     if error_class == ErrorClass::Unknown {
         return; // don't pollute blockers.json with unclassifiable noise
     }
     let ts = crate::logging::now_ms();
-    let summary = result_text.lines().next().unwrap_or(result_text).to_string();
+    let summary = result_text
+        .lines()
+        .next()
+        .unwrap_or(result_text)
+        .to_string();
     let record = BlockerRecord {
         id: format!("blk-{role}-{}-{ts}", error_class.as_key()),
         error_class,
@@ -145,16 +147,10 @@ pub fn load_blockers(workspace: &Path) -> BlockersFile {
 
 /// Count how many times a given (actor_kind, error_class) pair appears in the
 /// blockers file.  Used by invariant synthesis instead of log text scanning.
-pub fn count_class(
-    file: &BlockersFile,
-    actor_kind: &str,
-    class: &ErrorClass,
-) -> usize {
+pub fn count_class(file: &BlockersFile, actor_kind: &str, class: &ErrorClass) -> usize {
     file.blockers
         .iter()
-        .filter(|b| {
-            b.actor.starts_with(actor_kind) && &b.error_class == class
-        })
+        .filter(|b| b.actor.starts_with(actor_kind) && &b.error_class == class)
         .count()
 }
 
@@ -187,7 +183,9 @@ fn blockers_path(workspace: &Path) -> std::path::PathBuf {
 fn try_append_blocker(workspace: &Path, record: BlockerRecord) -> Result<()> {
     static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
     let lock = LOCK.get_or_init(|| std::sync::Mutex::new(()));
-    let _guard = lock.lock().map_err(|_| anyhow::anyhow!("blockers mutex poisoned"))?;
+    let _guard = lock
+        .lock()
+        .map_err(|_| anyhow::anyhow!("blockers mutex poisoned"))?;
 
     let path = blockers_path(workspace);
     if let Some(parent) = path.parent() {
@@ -196,9 +194,15 @@ fn try_append_blocker(workspace: &Path, record: BlockerRecord) -> Result<()> {
 
     let raw = std::fs::read_to_string(&path).unwrap_or_default();
     let mut file: BlockersFile = if raw.trim().is_empty() {
-        BlockersFile { version: 1, ..Default::default() }
+        BlockersFile {
+            version: 1,
+            ..Default::default()
+        }
     } else {
-        serde_json::from_str(&raw).unwrap_or_else(|_| BlockersFile { version: 1, ..Default::default() })
+        serde_json::from_str(&raw).unwrap_or_else(|_| BlockersFile {
+            version: 1,
+            ..Default::default()
+        })
     };
 
     file.blockers.push(record);
@@ -234,7 +238,13 @@ mod tests {
     #[test]
     fn record_blocker_message_writes_file() {
         let ws = temp_ws();
-        record_blocker_message(&ws, "executor_0", "cannot proceed: compile failed", None, None);
+        record_blocker_message(
+            &ws,
+            "executor_0",
+            "cannot proceed: compile failed",
+            None,
+            None,
+        );
         let file = load_blockers(&ws);
         assert_eq!(file.blockers.len(), 1);
         assert_eq!(file.blockers[0].error_class, ErrorClass::CompileError);
@@ -253,7 +263,13 @@ mod tests {
     #[test]
     fn record_action_failure_writes_classified() {
         let ws = temp_ws();
-        record_action_failure(&ws, "executor_0", "apply_patch", "path is outside the permitted workspace", None);
+        record_action_failure(
+            &ws,
+            "executor_0",
+            "apply_patch",
+            "path is outside the permitted workspace",
+            None,
+        );
         let file = load_blockers(&ws);
         assert_eq!(file.blockers.len(), 1);
         assert_eq!(file.blockers[0].error_class, ErrorClass::PermissionDenied);
@@ -282,7 +298,10 @@ mod tests {
         let file = load_blockers(&ws);
         assert_eq!(file.blockers.len(), MAX_BLOCKER_RECORDS);
         // The newest records should be kept.
-        assert_eq!(file.blockers.last().unwrap().ts_ms as usize, MAX_BLOCKER_RECORDS + 9);
+        assert_eq!(
+            file.blockers.last().unwrap().ts_ms as usize,
+            MAX_BLOCKER_RECORDS + 9
+        );
     }
 
     #[test]

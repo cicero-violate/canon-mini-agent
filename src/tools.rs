@@ -17,11 +17,11 @@ use crate::constants::{
     diagnostics_file, is_self_modification_mode, ISSUES_FILE, MASTER_PLAN_FILE,
     MAX_FULL_READ_LINES, MAX_SNIPPET, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
 };
-use crate::issues::{is_closed, IssuesFile, Issue};
-use crate::objectives::filter_incomplete_objectives_json;
+use crate::issues::{is_closed, Issue, IssuesFile};
 use crate::logging::{
     append_orchestration_trace, log_action_event, log_action_result, log_error_event, now_ms,
 };
+use crate::objectives::filter_incomplete_objectives_json;
 use crate::prompts::truncate;
 use crate::tool_schema::{
     plan_set_plan_status_action_example, plan_set_task_status_action_example,
@@ -371,7 +371,10 @@ fn handle_objectives_read(raw: &str, include_done: bool) -> Result<(bool, String
 fn handle_objectives_sorted_view(raw: &str, include_done: bool) -> Result<(bool, String)> {
     let mut file = parse_objectives_file_strict(raw)?;
     sort_objectives_for_view(&mut file, include_done);
-    Ok((false, serde_json::to_string_pretty(&file).unwrap_or(raw.to_string())))
+    Ok((
+        false,
+        serde_json::to_string_pretty(&file).unwrap_or(raw.to_string()),
+    ))
 }
 
 fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
@@ -433,7 +436,12 @@ fn handle_objectives_create_objective(
     if objective.id.trim().is_empty() {
         bail!("objective.id must be non-empty");
     }
-    log_objective_operation_context("create_objective", "attempt", Some(&objective.id), &file.objectives);
+    log_objective_operation_context(
+        "create_objective",
+        "attempt",
+        Some(&objective.id),
+        &file.objectives,
+    );
     if file
         .objectives
         .iter()
@@ -445,7 +453,10 @@ fn handle_objectives_create_objective(
             Some(&objective.id),
             &file.objectives,
         );
-        bail!("{}", objective_already_exists_message(&file.objectives, &objective.id));
+        bail!(
+            "{}",
+            objective_already_exists_message(&file.objectives, &objective.id)
+        );
     }
     file.objectives.push(objective);
     let created_id = file.objectives.last().map(|obj| obj.id.as_str());
@@ -465,7 +476,12 @@ fn handle_objectives_update_objective(
         .and_then(|v| v.as_object())
         .ok_or_else(|| anyhow!("objectives update_objective missing updates object. Required schema: {{\"op\":\"update_objective\",\"objective_id\":\"<id>\",\"updates\":{{\"title\":\"<title>\",\"status\":\"<status>\"}}}}"))?;
     let mut file = parse_objectives_file_strict(raw)?;
-    log_objective_operation_context("update_objective", "attempt", Some(objective_id), &file.objectives);
+    log_objective_operation_context(
+        "update_objective",
+        "attempt",
+        Some(objective_id),
+        &file.objectives,
+    );
     let mut found = false;
     for obj in file.objectives.iter_mut() {
         if objective_id_matches(&obj.id, objective_id) {
@@ -481,9 +497,18 @@ fn handle_objectives_update_objective(
         }
     }
     if !found {
-        return log_objective_not_found_and_bail("update_objective", objective_id, &file.objectives);
+        return log_objective_not_found_and_bail(
+            "update_objective",
+            objective_id,
+            &file.objectives,
+        );
     }
-    log_objective_operation_context("update_objective", "success", Some(objective_id), &file.objectives);
+    log_objective_operation_context(
+        "update_objective",
+        "success",
+        Some(objective_id),
+        &file.objectives,
+    );
     write_objectives_file(path, &file)
         .map(|_| (false, "objectives update_objective ok".to_string()))
 }
@@ -495,30 +520,45 @@ fn handle_objectives_delete_objective(
 ) -> Result<(bool, String)> {
     let objective_id = objective_id_from_action(action, "delete_objective")?;
     let mut file = parse_objectives_file_or_default(raw);
-    log_objective_operation_context("delete_objective", "attempt", Some(objective_id), &file.objectives);
+    log_objective_operation_context(
+        "delete_objective",
+        "attempt",
+        Some(objective_id),
+        &file.objectives,
+    );
     let before = file.objectives.len();
     file.objectives
         .retain(|obj| !objective_id_matches(&obj.id, objective_id));
     if file.objectives.len() == before {
-        return log_objective_not_found_and_bail("delete_objective", objective_id, &file.objectives);
+        return log_objective_not_found_and_bail(
+            "delete_objective",
+            objective_id,
+            &file.objectives,
+        );
     }
-    log_objective_operation_context("delete_objective", "success", Some(objective_id), &file.objectives);
+    log_objective_operation_context(
+        "delete_objective",
+        "success",
+        Some(objective_id),
+        &file.objectives,
+    );
     write_objectives_file(path, &file)
         .map(|_| (false, "objectives delete_objective ok".to_string()))
 }
 
-fn handle_objectives_set_status(
-    action: &Value,
-    path: &Path,
-    raw: &str,
-) -> Result<(bool, String)> {
+fn handle_objectives_set_status(action: &Value, path: &Path, raw: &str) -> Result<(bool, String)> {
     let objective_id = objective_id_from_action(action, "set_status")?;
     let status = action
         .get("status")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("objectives set_status missing status"))?;
     let mut file = parse_objectives_file_or_default(raw);
-    log_objective_operation_context("set_status", "attempt", Some(objective_id), &file.objectives);
+    log_objective_operation_context(
+        "set_status",
+        "attempt",
+        Some(objective_id),
+        &file.objectives,
+    );
     let mut found = false;
     for obj in file.objectives.iter_mut() {
         if objective_id_matches(&obj.id, objective_id) {
@@ -530,9 +570,13 @@ fn handle_objectives_set_status(
     if !found {
         return log_objective_not_found_and_bail("set_status", objective_id, &file.objectives);
     }
-    log_objective_operation_context("set_status", "success", Some(objective_id), &file.objectives);
-    write_objectives_file(path, &file)
-        .map(|_| (false, "objectives set_status ok".to_string()))
+    log_objective_operation_context(
+        "set_status",
+        "success",
+        Some(objective_id),
+        &file.objectives,
+    );
+    write_objectives_file(path, &file).map(|_| (false, "objectives set_status ok".to_string()))
 }
 
 fn handle_objectives_replace_objectives(
@@ -563,7 +607,11 @@ fn handle_objectives_replace_objectives(
 fn load_violations(path: &Path) -> Result<crate::reports::ViolationsReport> {
     let raw = fs::read_to_string(path).unwrap_or_default();
     if raw.trim().is_empty() {
-        return Ok(crate::reports::ViolationsReport { status: "ok".to_string(), summary: String::new(), violations: vec![] });
+        return Ok(crate::reports::ViolationsReport {
+            status: "ok".to_string(),
+            summary: String::new(),
+            violations: vec![],
+        });
     }
     serde_json::from_str(&raw).map_err(|e| anyhow!("VIOLATIONS.json parse error: {e}"))
 }
@@ -574,7 +622,7 @@ fn save_violations(path: &Path, report: &crate::reports::ViolationsReport) -> Re
 }
 
 fn handle_violation_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
-    use crate::reports::{ViolationsReport, Violation};
+    use crate::reports::{Violation, ViolationsReport};
     let op_raw = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
     let path = workspace.join(VIOLATIONS_FILE);
 
@@ -585,7 +633,8 @@ fn handle_violation_action(workspace: &Path, action: &Value) -> Result<(bool, St
         }
         "upsert" => {
             // Add or replace a violation by id.
-            let v_val = action.get("violation")
+            let v_val = action
+                .get("violation")
                 .ok_or_else(|| anyhow!("violation upsert requires a 'violation' object"))?;
             let v: Violation = serde_json::from_value(v_val.clone())
                 .map_err(|e| anyhow!("invalid violation payload: {e}"))?;
@@ -604,7 +653,9 @@ fn handle_violation_action(workspace: &Path, action: &Value) -> Result<(bool, St
             }
         }
         "resolve" => {
-            let vid = action.get("violation_id").and_then(|v| v.as_str())
+            let vid = action
+                .get("violation_id")
+                .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("violation resolve requires 'violation_id'"))?;
             let mut report = load_violations(&path)?;
             let before = report.violations.len();
@@ -619,7 +670,9 @@ fn handle_violation_action(workspace: &Path, action: &Value) -> Result<(bool, St
             Ok((false, format!("violation resolve ok — removed `{vid}`")))
         }
         "set_status" => {
-            let status = action.get("status").and_then(|v| v.as_str())
+            let status = action
+                .get("status")
+                .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("violation set_status requires 'status'"))?;
             let mut report = load_violations(&path)?;
             report.status = status.to_string();
@@ -627,25 +680,34 @@ fn handle_violation_action(workspace: &Path, action: &Value) -> Result<(bool, St
                 report.summary = s.to_string();
             }
             save_violations(&path, &report)?;
-            Ok((false, format!("violation set_status ok — status=`{status}`")))
+            Ok((
+                false,
+                format!("violation set_status ok — status=`{status}`"),
+            ))
         }
         "replace" => {
-            let rep_val = action.get("report")
+            let rep_val = action
+                .get("report")
                 .ok_or_else(|| anyhow!("violation replace requires a 'report' object"))?;
             let report: ViolationsReport = serde_json::from_value(rep_val.clone())
                 .map_err(|e| anyhow!("invalid ViolationsReport payload: {e}"))?;
             save_violations(&path, &report)?;
-            Ok((false, format!("violation replace ok — {} violation(s)", report.violations.len())))
+            Ok((
+                false,
+                format!(
+                    "violation replace ok — {} violation(s)",
+                    report.violations.len()
+                ),
+            ))
         }
-        _ => bail!("unknown violation op '{op_raw}' — use: read | upsert | resolve | set_status | replace"),
+        _ => bail!(
+            "unknown violation op '{op_raw}' — use: read | upsert | resolve | set_status | replace"
+        ),
     }
 }
 
 fn handle_issue_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
-    let op_raw = action
-        .get("op")
-        .and_then(|v| v.as_str())
-        .unwrap_or("read");
+    let op_raw = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
     let path = workspace.join(ISSUES_FILE);
     let raw = fs::read_to_string(&path).unwrap_or_default();
     match op_raw {
@@ -654,7 +716,9 @@ fn handle_issue_action(workspace: &Path, action: &Value) -> Result<(bool, String
         "update" => update_issue(action, &path, &raw),
         "delete" => delete_issue(action, &path, &raw),
         "set_status" => set_issue_status(action, &path, &raw),
-        _ => bail!("unknown issue op '{op_raw}' — use read | create | update | delete | set_status"),
+        _ => {
+            bail!("unknown issue op '{op_raw}' — use read | create | update | delete | set_status")
+        }
     }
 }
 
@@ -667,7 +731,10 @@ fn read_open_issues(raw: &str) -> Result<(bool, String)> {
     if file.issues.is_empty() {
         return Ok((false, "(no open issues)".to_string()));
     }
-    Ok((false, serde_json::to_string_pretty(&file).unwrap_or(raw.to_string())))
+    Ok((
+        false,
+        serde_json::to_string_pretty(&file).unwrap_or(raw.to_string()),
+    ))
 }
 
 fn create_issue(action: &Value, path: &Path, raw: &str) -> Result<(bool, String)> {
@@ -695,7 +762,16 @@ fn create_issue(action: &Value, path: &Path, raw: &str) -> Result<(bool, String)
             );
         }
         // Pre-check: field type validation — ensure string fields are not wrong types.
-        let string_fields = ["id", "title", "status", "priority", "kind", "description", "location", "discovered_by"];
+        let string_fields = [
+            "id",
+            "title",
+            "status",
+            "priority",
+            "kind",
+            "description",
+            "location",
+            "discovered_by",
+        ];
         for field in &string_fields {
             if let Some(v) = obj.get(*field) {
                 if !v.is_string() && !v.is_null() {
@@ -947,10 +1023,7 @@ fn insert_plan_edge_adjacency(
     }
 }
 
-fn increment_plan_edge_indegree(
-    indegree: &mut std::collections::HashMap<String, usize>,
-    to: &str,
-) {
+fn increment_plan_edge_indegree(indegree: &mut std::collections::HashMap<String, usize>, to: &str) {
     if let Some(count) = indegree.get_mut(to) {
         *count += 1;
     }
@@ -1197,7 +1270,11 @@ fn symbol_label(map: &std::collections::HashMap<u32, (String, String)>, raw: &st
     raw.to_string()
 }
 
-pub(crate) fn patch_scope_error_with_mode(role: &str, patch: &str, self_mod: bool) -> Option<String> {
+pub(crate) fn patch_scope_error_with_mode(
+    role: &str,
+    patch: &str,
+    self_mod: bool,
+) -> Option<String> {
     let targets = patch_targets(patch);
     if targets.is_empty() {
         return None;
@@ -1328,7 +1405,9 @@ fn planner_patch_scope_error(targets: &[&str], touches: &PatchTargetTouches) -> 
     }
     if touches.touches_spec
         || touches.touches_violations
-        || targets.iter().any(|path| is_src_path(path) || is_tests_path(path))
+        || targets
+            .iter()
+            .any(|path| is_src_path(path) || is_tests_path(path))
     {
         Some(
             "apply_patch on `src/`, `tests/`, `SPEC.md`, or `VIOLATIONS.json` is rejected for the planner role. \
@@ -1596,22 +1675,28 @@ fn handle_message_action(role: &str, step: usize, action: &Value) -> Result<(boo
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let _ = std::fs::create_dir_all(agent_state_dir);
 
-    if let Some(result) = suppress_redundant_planner_blocker(
-        role,
-        msg_type,
-        &payload,
-        agent_state_dir,
-    ) {
+    if let Some(result) =
+        suppress_redundant_planner_blocker(role, msg_type, &payload, agent_state_dir)
+    {
         return Ok(result);
     }
 
-    sync_verifier_blocker_state(role, to_role, msg_type, status, summary, &payload, agent_state_dir);
+    sync_verifier_blocker_state(
+        role,
+        to_role,
+        msg_type,
+        status,
+        summary,
+        &payload,
+        agent_state_dir,
+    );
     persist_inbound_message(role, step, action, &full_message);
 
     // Capture blocker messages as first-class artifact for invariant synthesis.
     if msg_type == "blocker" && status == "blocked" {
         let task_id = action.get("task_id").and_then(|v| v.as_str());
-        let objective_id = action.get("objective_id")
+        let objective_id = action
+            .get("objective_id")
             .or_else(|| payload.get("objective_id"))
             .and_then(|v| v.as_str());
         crate::blockers::record_blocker_message(
@@ -1877,7 +1962,10 @@ fn is_rust_file(path: &Path) -> bool {
 }
 
 fn is_ignored_dir(name: &str) -> bool {
-    matches!(name, ".git" | "target" | "node_modules" | ".idea" | ".vscode")
+    matches!(
+        name,
+        ".git" | "target" | "node_modules" | ".idea" | ".vscode"
+    )
 }
 
 fn extract_decl_symbols(workspace: &Path, file_path: &Path, text: &str) -> Vec<SymbolEntry> {
@@ -2010,8 +2098,8 @@ fn build_symbols_index_payload(workspace: &Path, scan_root: &Path) -> Result<Sym
 fn ambiguous_name_reasons(name: &str) -> Vec<String> {
     let lower = name.to_ascii_lowercase();
     let vague = [
-        "tmp", "temp", "data", "info", "item", "obj", "val", "foo", "bar", "baz", "util",
-        "helper", "thing", "stuff", "misc",
+        "tmp", "temp", "data", "info", "item", "obj", "val", "foo", "bar", "baz", "util", "helper",
+        "thing", "stuff", "misc",
     ];
     let mut reasons = Vec::new();
     if lower.len() <= 2 {
@@ -2051,7 +2139,10 @@ fn split_prefix_and_stem(name: &str) -> Option<(&'static str, String)> {
     None
 }
 
-fn handle_symbols_rename_candidates_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+fn handle_symbols_rename_candidates_action(
+    workspace: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
     let (symbols_path_raw, out_raw, symbols_path, out_path) =
         parse_symbols_rename_candidates_paths(workspace, action)?;
     let symbols_file = load_symbols_index_file(&symbols_path)?;
@@ -2189,9 +2280,7 @@ fn should_skip_rename_candidate_symbol(
 
     // Exclude conventional status/result enum variants that are semantically
     // meaningful and should not be mechanically renamed.
-    if sym.kind == "enum_variant"
-        && matches!(sym.name.as_str(), "Ok" | "Err" | "Some" | "None")
-    {
+    if sym.kind == "enum_variant" && matches!(sym.name.as_str(), "Ok" | "Err" | "Some" | "None") {
         return true;
     }
 
@@ -2235,10 +2324,7 @@ fn inconsistent_function_prefix_reason(
     ))
 }
 
-fn other_prefixes(
-    prefixes: &std::collections::BTreeSet<String>,
-    prefix: &str,
-) -> Vec<String> {
+fn other_prefixes(prefixes: &std::collections::BTreeSet<String>, prefix: &str) -> Vec<String> {
     prefixes
         .iter()
         .filter(|p| p.as_str() != prefix)
@@ -2312,10 +2398,7 @@ fn sort_and_dedup_rename_candidates(candidates: &mut Vec<RenameCandidate>) {
     });
 }
 
-fn write_rename_candidates_payload(
-    out_path: &Path,
-    payload: &RenameCandidatesFile,
-) -> Result<()> {
+fn write_rename_candidates_payload(out_path: &Path, payload: &RenameCandidatesFile) -> Result<()> {
     if let Some(parent) = out_path.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("create rename candidates output dir {}", parent.display()))?;
@@ -2328,7 +2411,10 @@ fn write_rename_candidates_payload(
     Ok(())
 }
 
-fn handle_symbols_prepare_rename_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+fn handle_symbols_prepare_rename_action(
+    workspace: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
     let candidates_path_raw = action
         .get("candidates_path")
         .and_then(|v| v.as_str())
@@ -2391,7 +2477,10 @@ fn selected_rename_candidate(
     candidates_path_raw: &str,
 ) -> Result<RenameCandidate> {
     if candidates_file.candidates.is_empty() {
-        bail!("symbols_prepare_rename: no candidates in {}", candidates_path_raw);
+        bail!(
+            "symbols_prepare_rename: no candidates in {}",
+            candidates_path_raw
+        );
     }
     if index >= candidates_file.candidates.len() {
         bail!(
@@ -2404,43 +2493,47 @@ fn selected_rename_candidate(
 }
 
 fn handle_rename_symbol_action(
-        role: &str,
-        step: usize,
-        workspace: &Path,
-        action: &Value,
-    ) -> Result<(bool, String)> {
-        let idx = load_semantic(workspace, action)?;
-        let crate_name = semantic_crate_name(action);
-        let pairs = parse_rename_symbol_pairs(action, &crate_name)?;
-        let rename_env = capture_rename_symbol_environment(workspace)?;
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
+    let idx = load_semantic(workspace, action)?;
+    let crate_name = semantic_crate_name(action);
+    let pairs = parse_rename_symbol_pairs(action, &crate_name)?;
+    let rename_env = capture_rename_symbol_environment(workspace)?;
 
-        let report =
-            crate::rename_semantic::rename_symbols_via_semantic_spans(workspace, &idx, &pairs)?;
-        eprintln!(
-            "[{role}] step={} rename_symbol spans pairs={} replacements={} files={}",
-            step,
+    let report =
+        crate::rename_semantic::rename_symbols_via_semantic_spans(workspace, &idx, &pairs)?;
+    eprintln!(
+        "[{role}] step={} rename_symbol spans pairs={} replacements={} files={}",
+        step,
+        pairs.len(),
+        report.replacements,
+        report.touched_files.len()
+    );
+
+    // Post-rename cargo check.  On failure roll back every touched file to
+    // its pre-rename state via `git checkout <head> -- <file>...` and
+    // surface the compiler output so the agent can diagnose the problem.
+    // Skipped when the workspace has no Cargo.toml (e.g. unit-test fixtures).
+    run_post_rename_cargo_check(workspace, &rename_env, &report)?;
+
+    Ok((
+        false,
+        format!(
+            "rename_symbol ok: pairs={} replacements={} touched_files={} cargo_check={}",
             pairs.len(),
             report.replacements,
-            report.touched_files.len()
-        );
-
-        // Post-rename cargo check.  On failure roll back every touched file to
-        // its pre-rename state via `git checkout <head> -- <file>...` and
-        // surface the compiler output so the agent can diagnose the problem.
-        // Skipped when the workspace has no Cargo.toml (e.g. unit-test fixtures).
-        run_post_rename_cargo_check(workspace, &rename_env, &report)?;
-
-        Ok((
-            false,
-            format!(
-                "rename_symbol ok: pairs={} replacements={} touched_files={} cargo_check={}",
-                pairs.len(),
-                report.replacements,
-                report.touched_files.len(),
-                if rename_env.has_cargo { "ok" } else { "skipped" },
-            ),
-        ))
-    }
+            report.touched_files.len(),
+            if rename_env.has_cargo {
+                "ok"
+            } else {
+                "skipped"
+            },
+        ),
+    ))
+}
 
 struct RenameSymbolEnvironment {
     in_git: bool,
@@ -2684,10 +2777,7 @@ fn apply_patch_diagnostics_targeted(role: &str, patch: &str) -> bool {
         .any(|path| path == current_diagnostics_file || path == legacy_diagnostics_file)
 }
 
-fn previous_diagnostics_patch_text(
-    workspace: &Path,
-    diagnostics_targeted: bool,
-) -> Option<String> {
+fn previous_diagnostics_patch_text(workspace: &Path, diagnostics_targeted: bool) -> Option<String> {
     if !diagnostics_targeted {
         return None;
     }
@@ -2724,12 +2814,14 @@ fn reject_unvalidated_diagnostics_persistence(
     let current_diagnostics_file = diagnostics_file();
     let diagnostics_path = workspace.join(current_diagnostics_file);
     let new_diagnostics_text = fs::read_to_string(&diagnostics_path).unwrap_or_default();
-    let raw_violations_text = fs::read_to_string(workspace.join(VIOLATIONS_FILE)).unwrap_or_default();
+    let raw_violations_text =
+        fs::read_to_string(workspace.join(VIOLATIONS_FILE)).unwrap_or_default();
     let sanitized = crate::prompt_inputs::sanitize_diagnostics_for_planner(
         &new_diagnostics_text,
         &raw_violations_text,
     );
-    let introduces_unvalidated_ranked_failures = new_diagnostics_text.contains("\"ranked_failures\"")
+    let introduces_unvalidated_ranked_failures = new_diagnostics_text
+        .contains("\"ranked_failures\"")
         && sanitized.starts_with("(suppressed stale or unverified diagnostics:");
     if !introduces_unvalidated_ranked_failures {
         return Ok(None);
@@ -2804,14 +2896,19 @@ fn run_patch_crate_verification_command(
 }
 
 fn format_patch_crate_failure(label: &str, out: &str) -> String {
-    format!(
-        "apply_patch ok\n\n{label}:\n{}",
-        truncate(out, MAX_SNIPPET)
-    )
+    format!("apply_patch ok\n\n{label}:\n{}", truncate(out, MAX_SNIPPET))
 }
 
-fn verification_rebind_note(workspace: &Path, crate_name: &str, plan: &Option<crate::semantic::ExecutionPathPlan>, check_out: &str, test_out: &str) -> String {
-    let Some(rebound) = verification_rebind(workspace, crate_name, plan.as_ref(), check_out, test_out) else {
+fn verification_rebind_note(
+    workspace: &Path,
+    crate_name: &str,
+    plan: &Option<crate::semantic::ExecutionPathPlan>,
+    check_out: &str,
+    test_out: &str,
+) -> String {
+    let Some(rebound) =
+        verification_rebind(workspace, crate_name, plan.as_ref(), check_out, test_out)
+    else {
         return String::new();
     };
     let mut note = String::from("\n\nRebound failure target:\n");
@@ -2868,17 +2965,12 @@ fn verify_apply_patch_crate(
     let plan = load_execution_plan(workspace, &krate);
     if !check_ok {
         log_execution_learning(
-            workspace,
-            &krate,
-            patch,
-            &plan,
-            check_ok,
-            &check_out,
-            false,
-            "",
+            workspace, &krate, patch, &plan, check_ok, &check_out, false, "",
         );
         let mut out = format_patch_crate_failure(check_label, &check_out);
-        out.push_str(&verification_rebind_note(workspace, &krate, &plan, &check_out, ""));
+        out.push_str(&verification_rebind_note(
+            workspace, &krate, &plan, &check_out, "",
+        ));
         return Some((false, out));
     }
 
@@ -2894,14 +2986,7 @@ fn verify_apply_patch_crate(
 
     let test_display = summarize_patch_crate_test_output(test_ok, &test_out);
     log_execution_learning(
-        workspace,
-        &krate,
-        patch,
-        &plan,
-        check_ok,
-        &check_out,
-        test_ok,
-        &test_out,
+        workspace, &krate, patch, &plan, check_ok, &check_out, test_ok, &test_out,
     );
 
     Some((
@@ -3010,7 +3095,8 @@ fn handle_apply_patch_action(
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("apply_patch missing 'patch'"))?;
     let diagnostics_targeted = apply_patch_diagnostics_targeted(role, patch);
-    let previous_diagnostics_text = previous_diagnostics_patch_text(workspace, diagnostics_targeted);
+    let previous_diagnostics_text =
+        previous_diagnostics_patch_text(workspace, diagnostics_targeted);
     let schema_snapshots = schema_guard_snapshots_for_patch(workspace, patch);
     if let Some(msg) = patch_scope_error(role, &patch) {
         return Ok((false, msg));
@@ -3047,12 +3133,9 @@ fn handle_apply_patch_success(
     )? {
         return Ok(result);
     }
-    if let Some(result) = validate_schema_guarded_patch_outputs(
-        role,
-        step,
-        workspace,
-        schema_snapshots,
-    ) {
+    if let Some(result) =
+        validate_schema_guarded_patch_outputs(role, step, workspace, schema_snapshots)
+    {
         return Ok(result);
     }
     eprintln!("[{role}] step={} apply_patch ok", step);
@@ -3077,7 +3160,11 @@ fn handle_apply_patch_success(
                 ""
             };
             let rel = patch_first_file(patch).unwrap_or("patched file");
-            format!("\nPost-patch content of {rel} (first 80 lines):\n{}{}", lines.join("\n"), truncated)
+            format!(
+                "\nPost-patch content of {rel} (first 80 lines):\n{}{}",
+                lines.join("\n"),
+                truncated
+            )
         })
         .unwrap_or_default();
     Ok((false, format!("apply_patch ok{post_patch_snippet}")))
@@ -3111,10 +3198,12 @@ fn log_apply_patch_failure(role: &str, step: usize, patch: &str, err_str: &str) 
         "apply_patch",
         Some(step),
         &format!("apply_patch failed: {err_str}"),
-        patch_first_file(patch).map(|path| json!({
-            "stage": "apply_patch",
-            "path": path,
-        })),
+        patch_first_file(patch).map(|path| {
+            json!({
+                "stage": "apply_patch",
+                "path": path,
+            })
+        }),
     );
 }
 
@@ -3216,7 +3305,9 @@ fn handle_rustc_action(
 
     // Preferred path: use the canonical `state/rustc/<crate>/graph.json` artifact (canon-rustc-v2).
     // This avoids relying on `-Zunpretty` output, and works even when the project uses a non-standard rustc wrapper.
-    if let Ok(out) = graph_backed_rustc_action_output(workspace, action_kind, crate_name, mode, extra, action) {
+    if let Ok(out) =
+        graph_backed_rustc_action_output(workspace, action_kind, crate_name, mode, extra, action)
+    {
         eprintln!(
             "[{role}] step={} {action_kind} graph={} output_bytes={}",
             step,
@@ -3303,7 +3394,10 @@ fn fallback_rustc_action(
     if !success {
         log_fallback_rustc_failure(role, step, action_kind, crate_name, mode, extra, &cmd);
     }
-    Ok((false, format_fallback_rustc_output(&label, &out, crate_name)))
+    Ok((
+        false,
+        format_fallback_rustc_output(&label, &out, crate_name),
+    ))
 }
 
 fn graph_backed_rustc_action_output(
@@ -3341,7 +3435,11 @@ fn graph_backed_rustc_action_output(
 }
 
 fn rustc_action_symbol(action: &Value, crate_norm: &str) -> Option<String> {
-    let symbol_raw = action.get("symbol").and_then(|v| v.as_str()).unwrap_or("").trim();
+    let symbol_raw = action
+        .get("symbol")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
     if symbol_raw.is_empty() {
         None
     } else {
@@ -3385,10 +3483,7 @@ fn format_graph_backed_mir_output(
         return format_graph_backed_mir_symbol_output(idx, graph_path, mode, sym);
     }
     Ok(format_graph_backed_mir_listing_output(
-        idx,
-        graph_path,
-        mode,
-        filter,
+        idx, graph_path, mode, filter,
     ))
 }
 
@@ -3400,10 +3495,8 @@ fn format_graph_backed_mir_symbol_output(
 ) -> Result<String> {
     let canonical = idx.canonical_symbol_key(sym)?;
     let all = idx.symbol_summaries();
-    let mut mir_items: Vec<&crate::semantic::SymbolSummary> = all
-        .iter()
-        .filter(|s| s.mir_fingerprint.is_some())
-        .collect();
+    let mut mir_items: Vec<&crate::semantic::SymbolSummary> =
+        all.iter().filter(|s| s.mir_fingerprint.is_some()).collect();
     mir_items.sort_by(|a, b| b.mir_blocks.unwrap_or(0).cmp(&a.mir_blocks.unwrap_or(0)));
     let total = mir_items.len().max(1);
     let rank = mir_items
@@ -3413,7 +3506,10 @@ fn format_graph_backed_mir_symbol_output(
     let summary = all.iter().find(|s| s.symbol == canonical);
     let mut body = String::new();
     if let Some(s) = summary {
-        let fp = s.mir_fingerprint.clone().unwrap_or_else(|| "none".to_string());
+        let fp = s
+            .mir_fingerprint
+            .clone()
+            .unwrap_or_else(|| "none".to_string());
         let blocks = s.mir_blocks.unwrap_or(0);
         let stmts = s.mir_stmts.unwrap_or(0);
         body.push_str(&format!(
@@ -3516,8 +3612,7 @@ fn write_state_log(workspace: &Path, tool: &str, content: &str) -> Result<String
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect::<String>();
     let dir = workspace.join("state").join("logs").join(safe_tool);
-    std::fs::create_dir_all(&dir)
-        .with_context(|| format!("create log dir {}", dir.display()))?;
+    std::fs::create_dir_all(&dir).with_context(|| format!("create log dir {}", dir.display()))?;
     let ts = now_ms();
     let path = dir.join(format!("{ts}.log"));
     std::fs::write(&path, content).with_context(|| format!("write log {}", path.display()))?;
@@ -3621,7 +3716,9 @@ fn parse_graph_call_cfg_action_input<'a>(
 fn build_graph_call_cfg_command(artifact_crate: &str, out_dir_str: &str) -> String {
     format!(
         "cargo run -p canon-tools-analysis --bin graph_bin -- --workspace {} --crate {} --out {}",
-        crate::constants::workspace(), artifact_crate, out_dir_str
+        crate::constants::workspace(),
+        artifact_crate,
+        out_dir_str
     )
 }
 
@@ -3996,7 +4093,8 @@ fn handle_graph_reports_action(
     workspace: &Path,
     action: &Value,
 ) -> Result<(bool, String)> {
-    let (crate_name, tlog, out_dir) = parse_graph_reports_action_input(action_kind, workspace, action)?;
+    let (crate_name, tlog, out_dir) =
+        parse_graph_reports_action_input(action_kind, workspace, action)?;
     let artifact_crate = ensure_graph_artifact(workspace, &crate_name, role, step)?;
     let out_dir_str = out_dir.to_string_lossy().to_string();
     let crate_dir = report_crate_dir(&out_dir, &crate_name);
@@ -4068,9 +4166,12 @@ fn build_cargo_test_command(crate_name: &str, test_name: Option<&str>) -> String
 }
 
 fn cargo_test_summary_line(log_path: Option<&Path>, out: &str) -> Option<String> {
-    log_path
-        .and_then(summarize_cargo_test_log)
-        .or_else(|| cargo_test_totals_summary(out).lines().next().map(|s| s.to_string()))
+    log_path.and_then(summarize_cargo_test_log).or_else(|| {
+        cargo_test_totals_summary(out)
+            .lines()
+            .next()
+            .map(|s| s.to_string())
+    })
 }
 
 fn cargo_test_label(summary_line: Option<&str>, spawn_ok: bool) -> &'static str {
@@ -4200,7 +4301,11 @@ fn handle_cargo_fmt_action(
     action: &Value,
 ) -> Result<(bool, String)> {
     let fix = action.get("fix").and_then(|v| v.as_bool()).unwrap_or(false);
-    let cmd = if fix { "cargo fmt" } else { "cargo fmt --check" };
+    let cmd = if fix {
+        "cargo fmt"
+    } else {
+        "cargo fmt --check"
+    };
     let timeout_secs = env::var("CANON_CARGO_FMT_TIMEOUT_SECS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
@@ -4213,8 +4318,15 @@ fn handle_cargo_fmt_action(
         timeout_secs,
     )?;
     let log_rel = write_state_log(workspace, "cargo_fmt", &out)?;
-    let status = if ok { "cargo_fmt ok" } else { "cargo_fmt failed" };
-    let diff_files = out.lines().filter(|l| l.trim_start().starts_with("Diff in ")).count();
+    let status = if ok {
+        "cargo_fmt ok"
+    } else {
+        "cargo_fmt failed"
+    };
+    let diff_files = out
+        .lines()
+        .filter(|l| l.trim_start().starts_with("Diff in "))
+        .count();
     let summary = if ok {
         if fix {
             "formatted".to_string()
@@ -4240,9 +4352,15 @@ fn handle_cargo_clippy_action(
     workspace: &Path,
     action: &Value,
 ) -> Result<(bool, String)> {
-    let crate_name = action.get("crate").and_then(|v| v.as_str()).map(|s| s.trim()).filter(|s| !s.is_empty());
+    let crate_name = action
+        .get("crate")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
     let cmd = if let Some(krate) = crate_name {
-        format!("env RUSTC_WRAPPER= RUSTC_WORKSPACE_WRAPPER= cargo clippy -p {krate} -- -D warnings")
+        format!(
+            "env RUSTC_WRAPPER= RUSTC_WORKSPACE_WRAPPER= cargo clippy -p {krate} -- -D warnings"
+        )
     } else {
         "env RUSTC_WRAPPER= RUSTC_WORKSPACE_WRAPPER= cargo clippy -- -D warnings".to_string()
     };
@@ -4378,17 +4496,15 @@ fn reject_plan_action_field(
     why: &str,
 ) -> Result<()> {
     if plan_action_has_field(action, field) {
-        Err(anyhow!("plan {normalized_op} does not accept {field} ({why})"))
+        Err(anyhow!(
+            "plan {normalized_op} does not accept {field} ({why})"
+        ))
     } else {
         Ok(())
     }
 }
 
-fn require_plan_action_fields(
-    action: &Value,
-    normalized_op: &str,
-    fields: &[&str],
-) -> Result<()> {
+fn require_plan_action_fields(action: &Value, normalized_op: &str, fields: &[&str]) -> Result<()> {
     for field in fields {
         require_plan_action_field(action, normalized_op, field)?;
     }
@@ -4426,7 +4542,10 @@ fn validate_plan_update_task_shape(action: &Value, normalized_op: &str) -> Resul
         action,
         normalized_op,
         &[
-            ("status", "set status inside task object or use set_task_status"),
+            (
+                "status",
+                "set status inside task object or use set_task_status",
+            ),
             ("from", "edge fields are only for add_edge/remove_edge"),
             ("to", "edge fields are only for add_edge/remove_edge"),
             ("plan", "use replace_plan to write a full plan object"),
@@ -4581,7 +4700,10 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
             .unwrap_or("(see plan)");
         let agent_state = std::path::Path::new(crate::constants::agent_state_dir());
         let _ = std::fs::create_dir_all(agent_state);
-        let _ = std::fs::write(agent_state.join("wakeup_planner.flag"), "executor_task_done");
+        let _ = std::fs::write(
+            agent_state.join("wakeup_planner.flag"),
+            "executor_task_done",
+        );
         eprintln!(
             "[plan] executor marked task `{task_id}` done; planner wakeup written; \
              no handoff message required"
@@ -4596,7 +4718,10 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
         ));
     }
 
-    Ok((false, format!("plan ok\nplan_path: {}", plan_path.display())))
+    Ok((
+        false,
+        format!("plan ok\nplan_path: {}", plan_path.display()),
+    ))
 }
 
 fn sync_plan_ready_window(plan: &mut Value) -> Result<()> {
@@ -4658,7 +4783,9 @@ fn dispatch_plan_op(
         PlanOp::SetTaskStatus => {
             handle_plan_set_task_status(obj, action)?;
         }
-        PlanOp::ReplacePlan => unreachable!("replace_plan is handled before object mutation dispatch"),
+        PlanOp::ReplacePlan => {
+            unreachable!("replace_plan is handled before object mutation dispatch")
+        }
     }
     Ok(None)
 }
@@ -4672,22 +4799,27 @@ fn persist_plan_action_update(
 ) -> Result<()> {
     std::fs::write(plan_path, serde_json::to_string_pretty(plan)?)?;
     // Emit control-plane log for plan mutation
-    if let Ok(paths) = crate::logging::append_action_log_record(&crate::logging::compact_log_record(
-        "control",
-        "plan_update",
-        Some(role),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        Some(true),
-        Some("PLAN.json updated via plan action".to_string()),
-        action.get("rationale").and_then(|v| v.as_str()).map(|s| s.to_string()),
-        None,
-        Some(json!({"op": op_raw, "path": MASTER_PLAN_FILE}))
-    )) {
+    if let Ok(paths) =
+        crate::logging::append_action_log_record(&crate::logging::compact_log_record(
+            "control",
+            "plan_update",
+            Some(role),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(true),
+            Some("PLAN.json updated via plan action".to_string()),
+            action
+                .get("rationale")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            None,
+            Some(json!({"op": op_raw, "path": MASTER_PLAN_FILE})),
+        ))
+    {
         let _ = paths;
     }
     // Option-A dispatch hook: when any plan op results in a task reaching `ready`
@@ -4696,13 +4828,11 @@ fn persist_plan_action_update(
     // message handoff.  This makes PLAN.json the authoritative trigger for
     // executor dispatch (SPEC.md §7.6).
     if plan_op_produced_ready_task(op_raw, action, plan) {
-        let flag = std::path::Path::new(crate::constants::agent_state_dir())
-            .join("wakeup_executor.flag");
+        let flag =
+            std::path::Path::new(crate::constants::agent_state_dir()).join("wakeup_executor.flag");
         let _ = std::fs::create_dir_all(crate::constants::agent_state_dir());
         let _ = std::fs::write(&flag, "ready_task");
-        eprintln!(
-            "[plan] ready task detected via op={op_raw}; wrote wakeup_executor.flag"
-        );
+        eprintln!("[plan] ready task detected via op={op_raw}; wrote wakeup_executor.flag");
     }
     Ok(())
 }
@@ -4842,9 +4972,7 @@ fn validate_edge_ids(ids: &std::collections::BTreeSet<String>, from: &str, to: &
     Ok(())
 }
 
-fn get_edges_array_mut(
-    obj: &mut serde_json::Map<String, Value>,
-) -> Result<&mut Vec<Value>> {
+fn get_edges_array_mut(obj: &mut serde_json::Map<String, Value>) -> Result<&mut Vec<Value>> {
     obj.get_mut("dag")
         .and_then(|v| v.as_object_mut())
         .ok_or_else(|| anyhow!("PLAN.json missing dag object"))?
@@ -4867,10 +4995,7 @@ fn push_edge(edges: &mut Vec<Value>, from: &str, to: &str) {
     edges.push(Value::Object(edge));
 }
 
-fn handle_plan_remove_edge(
-    obj: &mut serde_json::Map<String, Value>,
-    action: &Value,
-) -> Result<()> {
+fn handle_plan_remove_edge(obj: &mut serde_json::Map<String, Value>, action: &Value) -> Result<()> {
     let dag = obj
         .get_mut("dag")
         .and_then(|v| v.as_object_mut())
@@ -4963,8 +5088,14 @@ fn validate_planner_diagnostics(role: &str, action: &Value) -> Result<()> {
     if !matches!(role, "planner" | "mini_planner") {
         return Ok(());
     }
-    let rationale = action.get("rationale").and_then(|v| v.as_str()).unwrap_or("");
-    let observation = action.get("observation").and_then(|v| v.as_str()).unwrap_or("");
+    let rationale = action
+        .get("rationale")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let observation = action
+        .get("observation")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let combined = format!("{observation}\n{rationale}").to_ascii_lowercase();
     let references_diagnostics = combined.contains("diagnostic")
         || combined.contains("stale")
@@ -4981,10 +5112,7 @@ fn validate_planner_diagnostics(role: &str, action: &Value) -> Result<()> {
     Ok(())
 }
 
-fn handle_plan_create_task(
-    obj: &mut serde_json::Map<String, Value>,
-    action: &Value,
-) -> Result<()> {
+fn handle_plan_create_task(obj: &mut serde_json::Map<String, Value>, action: &Value) -> Result<()> {
     let tasks = obj
         .get_mut("tasks")
         .and_then(|v| v.as_array_mut())
@@ -4997,7 +5125,10 @@ fn handle_plan_create_task(
         .get("id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("plan task missing id"))?;
-    if tasks.iter().any(|t| t.get("id").and_then(|v| v.as_str()) == Some(id)) {
+    if tasks
+        .iter()
+        .any(|t| t.get("id").and_then(|v| v.as_str()) == Some(id))
+    {
         bail!("plan task already exists: {id}");
     }
     // Copy all fields from the task object so nothing is silently dropped
@@ -5015,10 +5146,7 @@ fn handle_plan_create_task(
     Ok(())
 }
 
-fn handle_plan_update_task(
-    obj: &mut serde_json::Map<String, Value>,
-    action: &Value,
-) -> Result<()> {
+fn handle_plan_update_task(obj: &mut serde_json::Map<String, Value>, action: &Value) -> Result<()> {
     let tasks = obj
         .get_mut("tasks")
         .and_then(|v| v.as_array_mut())
@@ -5045,7 +5173,10 @@ fn handle_plan_update_task(
         }
     }
     // Track the active task for provenance threading.
-    let new_status = existing.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    let new_status = existing
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     if new_status.eq_ignore_ascii_case("in_progress") {
         crate::constants::set_active_task_id(id);
     } else if crate::issues::is_done_like_status(new_status) {
@@ -5090,10 +5221,7 @@ fn handle_plan_set_task_status(
     Ok(())
 }
 
-fn handle_plan_delete_task(
-    obj: &mut serde_json::Map<String, Value>,
-    action: &Value,
-) -> Result<()> {
+fn handle_plan_delete_task(obj: &mut serde_json::Map<String, Value>, action: &Value) -> Result<()> {
     let tasks = obj
         .get_mut("tasks")
         .and_then(|v| v.as_array_mut())
@@ -5121,8 +5249,8 @@ fn handle_plan_delete_task(
 }
 
 fn capture_plan_schema(action: &Value) {
-    let path = std::path::Path::new(crate::constants::agent_state_dir())
-        .join("plan_action_schemas.jsonl");
+    let path =
+        std::path::Path::new(crate::constants::agent_state_dir()).join("plan_action_schemas.jsonl");
     let record = json!({
         "ts_ms": now_ms(),
         "action": action,
@@ -5190,9 +5318,7 @@ fn apply_plan_bundle_task_updates(
     Ok(())
 }
 
-fn plan_dag_edges_mut(
-    obj: &mut serde_json::Map<String, Value>,
-) -> Result<&mut Vec<Value>> {
+fn plan_dag_edges_mut(obj: &mut serde_json::Map<String, Value>) -> Result<&mut Vec<Value>> {
     obj.get_mut("dag")
         .and_then(|v| v.as_object_mut())
         .ok_or_else(|| anyhow!("PLAN.json missing dag object"))?
@@ -5300,9 +5426,12 @@ fn handle_plan_update_bundle(workspace: &Path, action: &Value) -> Result<(bool, 
         None,
         Some(true),
         Some("PLAN.json updated via plan update bundle".to_string()),
-        action.get("rationale").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        action
+            .get("rationale")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
         None,
-        Some(json!({"op": "update_bundle", "path": MASTER_PLAN_FILE}))
+        Some(json!({"op": "update_bundle", "path": MASTER_PLAN_FILE})),
     ));
     Ok((
         false,
@@ -5341,9 +5470,12 @@ fn handle_plan_replace_bundle(workspace: &Path, action: &Value) -> Result<(bool,
         None,
         Some(true),
         Some("PLAN.json replaced via plan action".to_string()),
-        action.get("rationale").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        action
+            .get("rationale")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
         None,
-        Some(json!({"op": "replace_bundle", "path": MASTER_PLAN_FILE}))
+        Some(json!({"op": "replace_bundle", "path": MASTER_PLAN_FILE})),
     ));
     Ok((
         false,
@@ -5376,7 +5508,10 @@ fn normalize_plan_object(plan: &mut Value) -> Result<()> {
         obj.insert("version".to_string(), Value::Number(2.into()));
     }
     if obj.get("status").and_then(|v| v.as_str()).is_none() {
-        obj.insert("status".to_string(), Value::String("in_progress".to_string()));
+        obj.insert(
+            "status".to_string(),
+            Value::String("in_progress".to_string()),
+        );
     }
     if obj.get("tasks").and_then(|v| v.as_array()).is_none() {
         obj.insert("tasks".to_string(), Value::Array(Vec::new()));
@@ -5616,10 +5751,7 @@ fn combine_command_output(output: &std::process::Output, cmd: &str) -> String {
 
     if combined.trim().is_empty() && !output.status.success() {
         if cmd.contains("rg ") || cmd.contains("grep ") {
-            combined = format!(
-                "no matches (exit={})",
-                output.status.code().unwrap_or(-1)
-            );
+            combined = format!("no matches (exit={})", output.status.code().unwrap_or(-1));
             if cmd.contains("/tmp/runtime.trace") {
                 combined.push_str("\ntrace probe returned no matches; file may be stale, missing, or the pattern may not be present yet");
             }
@@ -5833,7 +5965,10 @@ fn safe_join(workspace: &Path, relative: &str) -> Result<PathBuf> {
 }
 
 fn execution_reports_dir(workspace: &Path) -> PathBuf {
-    workspace.join("state").join("reports").join("execution_path")
+    workspace
+        .join("state")
+        .join("reports")
+        .join("execution_path")
 }
 
 fn execution_plan_latest_path(workspace: &Path, crate_name: &str) -> PathBuf {
@@ -5857,8 +5992,7 @@ fn persist_execution_path_plan(
     plan: &crate::semantic::ExecutionPathPlan,
 ) -> Result<()> {
     let out_dir = execution_reports_dir(workspace);
-    fs::create_dir_all(&out_dir)
-        .with_context(|| format!("create dir {}", out_dir.display()))?;
+    fs::create_dir_all(&out_dir).with_context(|| format!("create dir {}", out_dir.display()))?;
     let latest_path = execution_plan_latest_path(workspace, crate_name);
     fs::write(&latest_path, serde_json::to_vec_pretty(plan)?)
         .with_context(|| format!("write {}", latest_path.display()))?;
@@ -5950,15 +6084,11 @@ fn apply_learning_bias_to_plan(
         let failures = *stats.failure_by_symbol.get(&target.symbol).unwrap_or(&0) as i32;
         if successes > 0 {
             target.score -= successes * 5;
-            target
-                .reasons
-                .push(format!("learned success x{successes}"));
+            target.reasons.push(format!("learned success x{successes}"));
         }
         if failures > 0 {
             target.score += failures * 8;
-            target
-                .reasons
-                .push(format!("learned failure x{failures}"));
+            target.reasons.push(format!("learned failure x{failures}"));
         }
     }
     plan.targets
@@ -5980,7 +6110,8 @@ fn append_execution_learning_record(workspace: &Path, record: &Value) -> Result<
         .append(true)
         .open(&path)
         .with_context(|| format!("open {}", path.display()))?;
-    serde_json::to_writer(&mut file, record).with_context(|| format!("write {}", path.display()))?;
+    serde_json::to_writer(&mut file, record)
+        .with_context(|| format!("write {}", path.display()))?;
     file.write_all(b"\n")
         .with_context(|| format!("newline {}", path.display()))?;
     Ok(())
@@ -6016,8 +6147,11 @@ fn verification_rebind(
     let ((file, line, col), source) = failure_output;
     let idx = crate::semantic::SemanticIndex::load(workspace, crate_name).ok()?;
     let symbol = idx.symbol_at_file_line(&file, line);
-    let rebound_plan = plan
-        .and_then(|plan| symbol.as_deref().and_then(|sym| idx.execution_path_plan(&plan.from, sym).ok()));
+    let rebound_plan = plan.and_then(|plan| {
+        symbol
+            .as_deref()
+            .and_then(|sym| idx.execution_path_plan(&plan.from, sym).ok())
+    });
     if let Some(rebound_plan) = &rebound_plan {
         let _ = persist_rebound_execution_plan(workspace, crate_name, rebound_plan);
     }
@@ -6037,12 +6171,18 @@ fn verification_rebind(
 // Semantic navigation handlers (backed by rustc graph.json)
 // ---------------------------------------------------------------------------
 
-fn load_semantic(workspace: &Path, action: &Value) -> anyhow::Result<crate::semantic::SemanticIndex> {
+fn load_semantic(
+    workspace: &Path,
+    action: &Value,
+) -> anyhow::Result<crate::semantic::SemanticIndex> {
     let crate_name = semantic_crate_name(action);
-    crate::semantic::SemanticIndex::load(workspace, &crate_name)
-        .map_err(|e| anyhow!("semantic index not available for crate '{crate_name}': {e}\n\
+    crate::semantic::SemanticIndex::load(workspace, &crate_name).map_err(|e| {
+        anyhow!(
+            "semantic index not available for crate '{crate_name}': {e}\n\
             Run `cargo build` (with canon-rustc-v2 wrapper) to generate the graph, or check \
-            state/rustc/<crate>/graph.json exists."))
+            state/rustc/<crate>/graph.json exists."
+        )
+    })
 }
 
 fn semantic_crate_name(action: &Value) -> String {
@@ -6467,7 +6607,10 @@ fn handle_batch_action(
     };
 
     if items.is_empty() {
-        return Ok((false, "batch: `actions` array must not be empty".to_string()));
+        return Ok((
+            false,
+            "batch: `actions` array must not be empty".to_string(),
+        ));
     }
 
     if items.len() > MAX_BATCH {
@@ -6554,8 +6697,7 @@ fn execute_action(
         .and_then(|v| v.as_str())
         .unwrap_or("unknown")
         .to_string();
-    tokio::task::block_in_place(|| {
-        match kind.as_str() {
+    tokio::task::block_in_place(|| match kind.as_str() {
         "message" => handle_message_action(role, step, action),
         "list_dir" => handle_list_dir_action(workspace, action),
         "read_file" => handle_read_file_action(role, step, workspace, action),
@@ -6570,7 +6712,9 @@ fn execute_action(
         "run_command" => handle_run_command_action(role, step, workspace, action),
         "python" => handle_python_action(role, step, workspace, action),
         k @ ("rustc_hir" | "rustc_mir") => handle_rustc_action(role, step, k, workspace, action),
-        k @ ("graph_call" | "graph_cfg") => handle_graph_call_cfg_action(role, step, k, workspace, action),
+        k @ ("graph_call" | "graph_cfg") => {
+            handle_graph_call_cfg_action(role, step, k, workspace, action)
+        }
         k @ ("graph_dataflow" | "graph_reachability") => {
             handle_graph_reports_action(role, step, k, workspace, action)
         }
@@ -6604,7 +6748,6 @@ fn execute_action(
                 ),
             ))
         }
-    }
     })
 }
 
@@ -6722,7 +6865,10 @@ pub(crate) fn execute_logged_action(
         }
         Err(e) => {
             // Classify and record the failure as a blocker artifact.
-            let action_kind = action.get("action").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let action_kind = action
+                .get("action")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
             let task_id = action.get("task_id").and_then(|v| v.as_str());
             crate::blockers::record_action_failure(
                 workspace,
@@ -6782,9 +6928,9 @@ mod tests {
     use super::handle_plan_action;
     use super::handle_rename_symbol_action;
     use super::handle_stage_graph_action;
+    use super::handle_symbols_index_action;
     use super::handle_symbols_prepare_rename_action;
     use super::handle_symbols_rename_candidates_action;
-    use super::handle_symbols_index_action;
     use crate::logging::init_log_paths;
     use serde_json::json;
     use serde_json::Value;
@@ -6803,11 +6949,7 @@ mod tests {
             let hi = lo + ident.len();
             let prefix = &source[..lo];
             let line = prefix.bytes().filter(|b| *b == b'\n').count() + 1;
-            let col = prefix
-                .bytes()
-                .rev()
-                .take_while(|b| *b != b'\n')
-                .count();
+            let col = prefix.bytes().rev().take_while(|b| *b != b'\n').count();
             refs.push(serde_json::json!({
                 "file": file.display().to_string(),
                 "line": line as u32,
@@ -6856,11 +6998,7 @@ mod tests {
         let hi = lo + ident.len();
         let prefix = &source[..lo];
         let line = prefix.bytes().filter(|b| *b == b'\n').count() + 1;
-        let col = prefix
-            .bytes()
-            .rev()
-            .take_while(|b| *b != b'\n')
-            .count();
+        let col = prefix.bytes().rev().take_while(|b| *b != b'\n').count();
         let def = serde_json::json!({
             "file": file.display().to_string(),
             "line": line as u32,
@@ -6913,7 +7051,9 @@ mod tests {
 
         let (_done, out) = handle_apply_patch_action("diagnostics", 1, &tmp, &action).unwrap();
 
-        assert!(out.contains("ranked_failures require current-source validation before persistence"));
+        assert!(
+            out.contains("ranked_failures require current-source validation before persistence")
+        );
         let persisted = std::fs::read_to_string(tmp.join("DIAGNOSTICS.json")).unwrap();
         assert_eq!(persisted, "{\"status\":\"healthy\",\"ranked_failures\":[]}");
     }
@@ -6929,8 +7069,22 @@ mod tests {
         let path = tmp.join("state/orchestrator/stage_graph.json");
         assert!(path.exists(), "expected stage graph at {}", path.display());
         let parsed: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        assert!(parsed.get("nodes").and_then(|v| v.as_array()).unwrap().len() >= 6);
-        assert!(parsed.get("edges").and_then(|v| v.as_array()).unwrap().len() >= 7);
+        assert!(
+            parsed
+                .get("nodes")
+                .and_then(|v| v.as_array())
+                .unwrap()
+                .len()
+                >= 6
+        );
+        assert!(
+            parsed
+                .get("edges")
+                .and_then(|v| v.as_array())
+                .unwrap()
+                .len()
+                >= 7
+        );
     }
 
     #[test]
@@ -6984,8 +7138,12 @@ mod tests {
             .join("execution_path")
             .join("canon_mini_agent.latest.json");
         assert!(latest.exists(), "missing {}", latest.display());
-        let parsed: Value = serde_json::from_str(&std::fs::read_to_string(&latest).unwrap()).unwrap();
-        assert_eq!(parsed.get("from").and_then(|v| v.as_str()), Some("app::validate"));
+        let parsed: Value =
+            serde_json::from_str(&std::fs::read_to_string(&latest).unwrap()).unwrap();
+        assert_eq!(
+            parsed.get("from").and_then(|v| v.as_str()),
+            Some("app::validate")
+        );
         assert_eq!(
             parsed
                 .get("top_target")
@@ -7143,7 +7301,10 @@ mod tests {
                 name.to_string(),
             );
             if let Some(prev_key) = prev.take() {
-                assert!(prev_key < key, "symbols output should be strictly sorted and unique");
+                assert!(
+                    prev_key < key,
+                    "symbols output should be strictly sorted and unique"
+                );
             }
             prev = Some(key);
         }
@@ -7216,7 +7377,10 @@ mod tests {
         });
         let (_done, out) =
             super::handle_rustc_action("solo", 1, "rustc_mir", &tmp, &action).unwrap();
-        assert!(out.contains("symbol: handle_objectives_action"), "unexpected: {out}");
+        assert!(
+            out.contains("symbol: handle_objectives_action"),
+            "unexpected: {out}"
+        );
         assert!(out.contains("rank_by_blocks:"), "unexpected: {out}");
         assert!(out.contains("fingerprint=fp1"), "unexpected: {out}");
     }
@@ -7258,14 +7422,20 @@ mod tests {
             .and_then(|v| v.as_array())
             .expect("candidates array");
         assert!(!candidates.is_empty());
-        assert!(
-            candidates.iter().any(|c| c.get("name").and_then(|v| v.as_str()) == Some("tmp"))
-        );
+        assert!(candidates
+            .iter()
+            .any(|c| c.get("name").and_then(|v| v.as_str()) == Some("tmp")));
         assert!(candidates.iter().any(|c| {
             c.get("name").and_then(|v| v.as_str()) == Some("get_data")
                 && c.get("reasons")
                     .and_then(|v| v.as_array())
-                    .is_some_and(|arr| arr.iter().any(|r| r.as_str().unwrap_or("").contains("inconsistent verb prefix")))
+                    .is_some_and(|arr| {
+                        arr.iter().any(|r| {
+                            r.as_str()
+                                .unwrap_or("")
+                                .contains("inconsistent verb prefix")
+                        })
+                    })
         }));
     }
 
@@ -7349,7 +7519,9 @@ mod tests {
             "rationale": "Exercise reopened-task enforcement"
         });
 
-        let err = handle_plan_action("solo", &tmp, &action).unwrap_err().to_string();
+        let err = handle_plan_action("solo", &tmp, &action)
+            .unwrap_err()
+            .to_string();
 
         assert!(err.contains("reopened task T1 must include regression-test linkage"));
     }
@@ -7426,7 +7598,9 @@ mod tests {
             "rationale": "Exercise plan/task convergence guard"
         });
 
-        let err = handle_plan_action("solo", &tmp, &action).unwrap_err().to_string();
+        let err = handle_plan_action("solo", &tmp, &action)
+            .unwrap_err()
+            .to_string();
 
         assert!(err.contains("plan status cannot be set to done while tasks remain incomplete"));
         let persisted = std::fs::read_to_string(tmp.join("PLAN.json")).unwrap();
@@ -7497,7 +7671,8 @@ mod tests {
             "rationale": "Invalid mixed payload"
         });
 
-        let (_, out) = handle_plan_action("solo", &tmp, &action).expect("set_plan_status should accept provenance task_id");
+        let (_, out) = handle_plan_action("solo", &tmp, &action)
+            .expect("set_plan_status should accept provenance task_id");
         assert!(out.contains("plan ok"));
     }
 
@@ -7522,7 +7697,9 @@ mod tests {
             "rationale": "Invalid mixed payload"
         });
 
-        let err = handle_plan_action("solo", &tmp, &action).unwrap_err().to_string();
+        let err = handle_plan_action("solo", &tmp, &action)
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("does not accept task"));
     }
 
@@ -7578,7 +7755,9 @@ mod tests {
             }
         });
 
-        let err = handle_objectives_action(&tmp, &action).unwrap_err().to_string();
+        let err = handle_objectives_action(&tmp, &action)
+            .unwrap_err()
+            .to_string();
 
         assert!(err.contains("requested_raw=\"obj_missing\""));
         assert!(err.contains("objective not found:"));
@@ -7670,7 +7849,9 @@ mod tests {
             }
         });
 
-        let err = handle_objectives_action(&tmp, &action).unwrap_err().to_string();
+        let err = handle_objectives_action(&tmp, &action)
+            .unwrap_err()
+            .to_string();
 
         assert!(err.contains("requested_raw=\"`obj_missing`\""));
         assert!(err.contains("requested_id=obj_missing"));
@@ -7726,7 +7907,9 @@ mod tests {
             }
         });
 
-        let err = handle_objectives_action(&tmp, &action).unwrap_err().to_string();
+        let err = handle_objectives_action(&tmp, &action)
+            .unwrap_err()
+            .to_string();
 
         assert!(err.contains("objective id already exists:"));
         assert!(err.contains("requested_raw="));
@@ -7822,7 +8005,10 @@ mod tests {
         )
         .unwrap();
 
-        let log_prefix = format!("objective-update-trace-{}", fresh_test_dir("trace-log-prefix").display());
+        let log_prefix = format!(
+            "objective-update-trace-{}",
+            fresh_test_dir("trace-log-prefix").display()
+        );
         init_log_paths(&log_prefix);
         let action_log = crate::logging::current_action_log_path_for_tests()
             .expect("action log path after init");
@@ -7886,12 +8072,30 @@ mod tests {
             .expect("latest attempt record");
         assert!(attempt.get("text").is_none());
         let attempt_meta = attempt.get("meta").expect("attempt meta");
-        assert_eq!(attempt_meta.get("operation").and_then(|v| v.as_str()), Some("update_objective"));
-        assert_eq!(attempt_meta.get("outcome").and_then(|v| v.as_str()), Some("attempt"));
-        assert_eq!(attempt_meta.get("requested_raw").and_then(|v| v.as_str()), Some("obj_alpha"));
-        assert_eq!(attempt_meta.get("requested_id").and_then(|v| v.as_str()), Some("obj_alpha"));
-        assert_eq!(attempt_meta.get("compared_ids"), Some(&json!(["obj_alpha"])));
-        assert_eq!(attempt_meta.get("compared_normalized_ids"), Some(&json!(["obj_alpha"])));
+        assert_eq!(
+            attempt_meta.get("operation").and_then(|v| v.as_str()),
+            Some("update_objective")
+        );
+        assert_eq!(
+            attempt_meta.get("outcome").and_then(|v| v.as_str()),
+            Some("attempt")
+        );
+        assert_eq!(
+            attempt_meta.get("requested_raw").and_then(|v| v.as_str()),
+            Some("obj_alpha")
+        );
+        assert_eq!(
+            attempt_meta.get("requested_id").and_then(|v| v.as_str()),
+            Some("obj_alpha")
+        );
+        assert_eq!(
+            attempt_meta.get("compared_ids"),
+            Some(&json!(["obj_alpha"]))
+        );
+        assert_eq!(
+            attempt_meta.get("compared_normalized_ids"),
+            Some(&json!(["obj_alpha"]))
+        );
 
         let success = matching_records
             .iter()
@@ -7907,12 +8111,30 @@ mod tests {
             .expect("latest success record");
         assert!(success.get("text").is_none());
         let success_meta = success.get("meta").expect("success meta");
-        assert_eq!(success_meta.get("operation").and_then(|v| v.as_str()), Some("update_objective"));
-        assert_eq!(success_meta.get("outcome").and_then(|v| v.as_str()), Some("success"));
-        assert_eq!(success_meta.get("requested_raw").and_then(|v| v.as_str()), Some("obj_alpha"));
-        assert_eq!(success_meta.get("requested_id").and_then(|v| v.as_str()), Some("obj_alpha"));
-        assert_eq!(success_meta.get("compared_ids"), Some(&json!(["obj_alpha"])));
-        assert_eq!(success_meta.get("compared_normalized_ids"), Some(&json!(["obj_alpha"])));
+        assert_eq!(
+            success_meta.get("operation").and_then(|v| v.as_str()),
+            Some("update_objective")
+        );
+        assert_eq!(
+            success_meta.get("outcome").and_then(|v| v.as_str()),
+            Some("success")
+        );
+        assert_eq!(
+            success_meta.get("requested_raw").and_then(|v| v.as_str()),
+            Some("obj_alpha")
+        );
+        assert_eq!(
+            success_meta.get("requested_id").and_then(|v| v.as_str()),
+            Some("obj_alpha")
+        );
+        assert_eq!(
+            success_meta.get("compared_ids"),
+            Some(&json!(["obj_alpha"]))
+        );
+        assert_eq!(
+            success_meta.get("compared_normalized_ids"),
+            Some(&json!(["obj_alpha"]))
+        );
 
         let persisted = std::fs::read_to_string(tmp.join("PLANS").join("OBJECTIVES.json")).unwrap();
         assert!(persisted.contains("\"scope\": \"updated alpha scope\""));

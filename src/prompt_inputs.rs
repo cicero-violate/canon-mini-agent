@@ -107,7 +107,10 @@ pub struct LessonEntry {
 
 impl LessonEntry {
     pub fn pending(text: impl Into<String>) -> Self {
-        LessonEntry { text: text.into(), status: LessonEntryStatus::Pending }
+        LessonEntry {
+            text: text.into(),
+            status: LessonEntryStatus::Pending,
+        }
     }
     pub fn is_pending(&self) -> bool {
         self.status == LessonEntryStatus::Pending
@@ -122,7 +125,10 @@ impl<'de> serde::Deserialize<'de> for LessonEntry {
         impl<'de> serde::de::Visitor<'de> for EntryVisitor {
             type Value = LessonEntry;
             fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "a string or {{\"text\":\"...\",\"status\":\"...\"}} object")
+                write!(
+                    f,
+                    "a string or {{\"text\":\"...\",\"status\":\"...\"}} object"
+                )
             }
             fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<LessonEntry, E> {
                 Ok(LessonEntry::pending(v))
@@ -259,17 +265,28 @@ pub fn read_rename_candidates_or_empty(workspace: &Path) -> String {
         let name = c.get("name").and_then(|v| v.as_str()).unwrap_or("?");
         let kind = c.get("kind").and_then(|v| v.as_str()).unwrap_or("?");
         let file = c.get("file").and_then(|v| v.as_str()).unwrap_or("?");
-        let line = c.get("span").and_then(|s| s.get("line")).and_then(|v| v.as_u64());
+        let line = c
+            .get("span")
+            .and_then(|s| s.get("line"))
+            .and_then(|v| v.as_u64());
         let score = c.get("score").and_then(|v| v.as_u64()).unwrap_or(0);
-        let reasons = c.get("reasons")
+        let reasons = c
+            .get("reasons")
             .and_then(|r| r.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(", "))
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
             .unwrap_or_default();
         let loc = match line {
             Some(l) => format!("{file}:{l}"),
             None => file.to_string(),
         };
-        lines.push(format!("- [{score}] `{name}` ({kind}) at {loc} — {reasons}"));
+        lines.push(format!(
+            "- [{score}] `{name}` ({kind}) at {loc} — {reasons}"
+        ));
     }
     lines.join("\n")
 }
@@ -286,13 +303,28 @@ pub fn read_loop_context_hint(state_dir: &Path) -> String {
         return String::new();
     };
     let iteration = ctx.get("iteration").and_then(|v| v.as_u64()).unwrap_or(1);
-    let max = ctx.get("max_iterations").and_then(|v| v.as_u64()).unwrap_or(1);
-    let symbol = ctx.get("target_symbol").and_then(|v| v.as_str()).unwrap_or("");
-    let file = ctx.get("target_file").and_then(|v| v.as_str()).unwrap_or("");
+    let max = ctx
+        .get("max_iterations")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(1);
+    let symbol = ctx
+        .get("target_symbol")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let file = ctx
+        .get("target_file")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let line = ctx.get("target_line").and_then(|v| v.as_u64()).unwrap_or(0);
-    let patch_kind = ctx.get("patch_kind").and_then(|v| v.as_str()).unwrap_or("General");
+    let patch_kind = ctx
+        .get("patch_kind")
+        .and_then(|v| v.as_str())
+        .unwrap_or("General");
     let score = ctx.get("score").and_then(|v| v.as_i64()).unwrap_or(0);
-    let tests_passing = ctx.get("tests_passing").and_then(|v| v.as_bool()).unwrap_or(false);
+    let tests_passing = ctx
+        .get("tests_passing")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     if symbol.is_empty() {
         return String::new();
@@ -315,7 +347,9 @@ pub fn read_loop_context_hint(state_dir: &Path) -> String {
             out.push_str(&format!("- scoring signals: {}\n", rs.join(", ")));
         }
     }
-    out.push_str("Focus your next patch on this symbol unless a more critical failure is evident.\n");
+    out.push_str(
+        "Focus your next patch on this symbol unless a more critical failure is evident.\n",
+    );
     out
 }
 
@@ -365,10 +399,7 @@ fn format_complexity_hotspot_line(item: &serde_json::Value) -> String {
         .get("objective_score")
         .and_then(|v| v.as_str())
         .unwrap_or("?");
-    let blocks = item
-        .get("mir_blocks")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
+    let blocks = item.get("mir_blocks").and_then(|v| v.as_u64()).unwrap_or(0);
     let density = item
         .get("stmt_density")
         .and_then(|v| v.as_str())
@@ -496,7 +527,10 @@ pub fn read_ready_tasks(workspace: &Path, limit: usize) -> String {
     for task in &ready {
         let id = task.get("id").and_then(Value::as_str).unwrap_or("?");
         let priority = task.get("priority").and_then(Value::as_str).unwrap_or("?");
-        let title = task.get("title").and_then(Value::as_str).unwrap_or("(no title)");
+        let title = task
+            .get("title")
+            .and_then(Value::as_str)
+            .unwrap_or("(no title)");
         out.push_str(&format!("[{priority}] {id}: {title}\n"));
         if let Some(steps) = task.get("steps").and_then(Value::as_array) {
             for step in steps.iter().take(2) {
@@ -558,13 +592,18 @@ pub fn filter_pending_plan_json(raw: &str) -> String {
                 let from = edge.get("from").and_then(Value::as_str);
                 let to = edge.get("to").and_then(Value::as_str);
                 match (from, to) {
-                    (Some(from), Some(to)) => pending_ids.contains(from) && pending_ids.contains(to),
+                    (Some(from), Some(to)) => {
+                        pending_ids.contains(from) && pending_ids.contains(to)
+                    }
                     _ => false,
                 }
             })
             .cloned()
             .collect();
-        obj.insert("dag".to_string(), serde_json::json!({ "edges": filtered_edges }));
+        obj.insert(
+            "dag".to_string(),
+            serde_json::json!({ "edges": filtered_edges }),
+        );
     }
 
     serde_json::to_string_pretty(&value).unwrap_or_else(|_| raw.to_string())
@@ -586,10 +625,17 @@ pub fn filter_invariants_json(raw: &str) -> String {
     let mut out = String::new();
     for inv in invariants {
         let id = inv.get("id").and_then(Value::as_str).unwrap_or("?");
-        let title = inv.get("title").and_then(Value::as_str).unwrap_or("(no title)");
+        let title = inv
+            .get("title")
+            .and_then(Value::as_str)
+            .unwrap_or("(no title)");
         let level = inv.get("level").and_then(Value::as_str).unwrap_or("?");
         let category = inv.get("category").and_then(Value::as_str).unwrap_or("");
-        let scope = if category.is_empty() { String::new() } else { format!("  ({})", category) };
+        let scope = if category.is_empty() {
+            String::new()
+        } else {
+            format!("  ({})", category)
+        };
         out.push_str(&format!("[{level}]  {id}  —  {title}{scope}\n"));
     }
     out.push_str("Full detail: {\"action\":\"read_file\",\"path\":\"INVARIANTS.json\"}");
@@ -612,7 +658,9 @@ pub fn filter_active_violations_json(raw: &str) -> String {
     let mut out = String::new();
     for v in violations {
         let id = v.get("id").and_then(Value::as_str).unwrap_or("?");
-        let title = v.get("title").and_then(Value::as_str)
+        let title = v
+            .get("title")
+            .and_then(Value::as_str)
             .or_else(|| v.get("description").and_then(Value::as_str))
             .unwrap_or("(no title)");
         let severity = v.get("severity").and_then(Value::as_str).unwrap_or("error");
@@ -638,7 +686,9 @@ pub fn filter_active_diagnostics_json(raw: &str) -> String {
     let mut out = String::new();
     for (rank, f) in failures.iter().enumerate() {
         let id = f.get("id").and_then(Value::as_str).unwrap_or("?");
-        let title = f.get("title").and_then(Value::as_str)
+        let title = f
+            .get("title")
+            .and_then(Value::as_str)
             .or_else(|| f.get("description").and_then(Value::as_str))
             .unwrap_or("(no title)");
         let severity = f.get("severity").and_then(Value::as_str).unwrap_or("?");
@@ -704,11 +754,9 @@ fn diagnostics_have_current_source_validation(failures: &[Value]) -> bool {
                     normalized.contains("read_file")
                         || normalized.contains("verified against current source")
                         || normalized.contains("validated against current source")
-                        || (
-                            normalized.contains("source validation")
-                                && !normalized.contains("without source validation")
-                                && !normalized.contains("no source validation")
-                        )
+                        || (normalized.contains("source validation")
+                            && !normalized.contains("without source validation")
+                            && !normalized.contains("no source validation"))
                 })
             })
             .unwrap_or(false)
@@ -736,7 +784,9 @@ pub(crate) fn reconcile_diagnostics_report(
     }
 
     // Use typed round-trip so no unrecognised fields can be introduced.
-    let Ok(mut report) = serde_json::from_str::<crate::reports::DiagnosticsReport>(raw_diagnostics_text) else {
+    let Ok(mut report) =
+        serde_json::from_str::<crate::reports::DiagnosticsReport>(raw_diagnostics_text)
+    else {
         return raw_diagnostics_text.to_string();
     };
 
@@ -824,7 +874,8 @@ pub fn load_verifier_prompt_inputs(
     cargo_test_failures: String,
 ) -> VerifierPromptInputs {
     let _summary_text = lane_summary_text(lanes, verifier_summary);
-    let executor_diff_text = load_executor_diff_inputs(workspace, last_executor_diff, 400).diff_text;
+    let executor_diff_text =
+        load_executor_diff_inputs(workspace, last_executor_diff, 400).diff_text;
     VerifierPromptInputs {
         executor_diff_text,
         cargo_test_failures,
@@ -843,9 +894,11 @@ pub fn load_planner_inputs(
     master_plan_path: &Path,
 ) -> PlannerInputs {
     let summary_text = lane_summary_text(lanes, verifier_summary);
-    let executor_diff_text = load_executor_diff_inputs(workspace, last_executor_diff, 400).diff_text;
+    let executor_diff_text =
+        load_executor_diff_inputs(workspace, last_executor_diff, 400).diff_text;
     let lessons_text = read_lessons_or_empty(workspace);
-    let objectives_full = crate::objectives::read_objectives_compact(&workspace.join(OBJECTIVES_FILE));
+    let objectives_full =
+        crate::objectives::read_objectives_compact(&workspace.join(OBJECTIVES_FILE));
     // Hard cap to prevent planner prompt overflow (top-N / truncation strategy)
     let objectives_text = if objectives_full.len() > 8000 {
         let mut truncated = objectives_full.chars().take(8000).collect::<String>();
@@ -854,11 +907,13 @@ pub fn load_planner_inputs(
     } else {
         objectives_full
     };
-    let invariants_text = filter_invariants_json(&read_text_or_empty(workspace.join(INVARIANTS_FILE)));
+    let invariants_text =
+        filter_invariants_json(&read_text_or_empty(workspace.join(INVARIANTS_FILE)));
     let raw_violations_text = read_text_or_empty(violations_path);
     let violations_text = filter_active_violations_json(&raw_violations_text);
     let raw_diagnostics_text = read_text_or_empty(diagnostics_path);
-    let diagnostics_text = sanitize_diagnostics_for_planner(&raw_diagnostics_text, &raw_violations_text);
+    let diagnostics_text =
+        sanitize_diagnostics_for_planner(&raw_diagnostics_text, &raw_violations_text);
     let plan_text = read_text_or_empty(master_plan_path);
     let plan_diff_text = plan_diff(last_plan_text, &plan_text, 400);
     PlannerInputs {
@@ -962,15 +1017,9 @@ pub fn build_single_role_prompt(
     cargo_test_failures: &str,
 ) -> Result<String> {
     let prompt = match inputs.prompt_kind {
-        AgentPromptKind::Verifier => {
-            build_verifier_role_prompt(ctx, inputs, cargo_test_failures)?
-        }
-        AgentPromptKind::Diagnostics => {
-            build_diagnostics_role_prompt(ctx, cargo_test_failures)?
-        }
-        AgentPromptKind::Planner => {
-            build_planner_role_prompt(ctx, inputs, cargo_test_failures)?
-        }
+        AgentPromptKind::Verifier => build_verifier_role_prompt(ctx, inputs, cargo_test_failures)?,
+        AgentPromptKind::Diagnostics => build_diagnostics_role_prompt(ctx, cargo_test_failures)?,
+        AgentPromptKind::Planner => build_planner_role_prompt(ctx, inputs, cargo_test_failures)?,
         AgentPromptKind::Executor => build_executor_role_prompt(ctx)?,
         AgentPromptKind::Solo => {
             bail!("solo role is only supported in orchestration mode")
@@ -1363,8 +1412,16 @@ mod diagnostics_filter_tests {
             r#"{"version":1,"objectives":[{"id":"obj_15","title":"OBJ-15","status":"active"}]}"#,
         )
         .unwrap();
-        fs::write(workspace.join("INVARIANTS.json"), r#"{"version":1,"invariants":[]}"#).unwrap();
-        fs::write(workspace.join("VIOLATIONS.json"), r#"{"status":"verified","violations":[]}"#).unwrap();
+        fs::write(
+            workspace.join("INVARIANTS.json"),
+            r#"{"version":1,"invariants":[]}"#,
+        )
+        .unwrap();
+        fs::write(
+            workspace.join("VIOLATIONS.json"),
+            r#"{"status":"verified","violations":[]}"#,
+        )
+        .unwrap();
         fs::write(
             workspace.join("PLANS/default/diagnostics-default.json"),
             r#"{"status":"verified","ranked_failures":[]}"#,

@@ -1,13 +1,13 @@
 use crate::state_space::{
-    decide_bootstrap_phase, decide_resume_phase, extract_progress_path_from_result, CargoTestGate,
-};
-use crate::state_space::{
     allow_diagnostics_run, allow_planner_run, allow_verifier_run, check_completion_endpoint,
     check_completion_tab, decide_active_blocker, decide_phase_gates, decide_post_diagnostics,
     decide_wake_flags, executor_step_limit_exceeded, executor_submit_timed_out,
     is_verifier_specific_blocker, scheduled_phase_resume_done, should_force_blocker,
     verifier_blocker_phase_override, ActiveBlockerDecision, CompletionEndpointCheck,
     CompletionTabCheck, PhaseGates, WakeFlagInput,
+};
+use crate::state_space::{
+    decide_bootstrap_phase, decide_resume_phase, extract_progress_path_from_result, CargoTestGate,
 };
 
 #[test]
@@ -20,9 +20,14 @@ fn extract_progress_path_detects_output_log() {
 #[test]
 fn cargo_test_gate_does_not_block_messages() {
     let mut gate = CargoTestGate::new();
-    gate.note_result("cargo_test", "output_log: /tmp/run.log\nsummary: (no test result yet)");
+    gate.note_result(
+        "cargo_test",
+        "output_log: /tmp/run.log\nsummary: (no test result yet)",
+    );
     assert_eq!(gate.pending_tail_path(), None);
-    assert!(gate.message_blocker_if_needed("message", "/workspace").is_none());
+    assert!(gate
+        .message_blocker_if_needed("message", "/workspace")
+        .is_none());
 }
 
 #[test]
@@ -83,12 +88,18 @@ fn resume_phase_covers_all_documented_branches() {
     assert!(diagnostics.diagnostics_pending);
 
     let verifier_without_items = decide_resume_phase("verifier", false, false, false);
-    assert_eq!(verifier_without_items.scheduled_phase, Some("planner".to_string()));
+    assert_eq!(
+        verifier_without_items.scheduled_phase,
+        Some("planner".to_string())
+    );
     assert!(verifier_without_items.planner_pending);
     assert!(!verifier_without_items.diagnostics_pending);
 
     let verifier_with_items = decide_resume_phase("verifier", true, false, false);
-    assert_eq!(verifier_with_items.scheduled_phase, Some("verifier".to_string()));
+    assert_eq!(
+        verifier_with_items.scheduled_phase,
+        Some("verifier".to_string())
+    );
     assert!(!verifier_with_items.planner_pending);
     assert!(!verifier_with_items.diagnostics_pending);
 
@@ -105,12 +116,18 @@ fn resume_phase_covers_all_documented_branches() {
 
 #[test]
 fn bootstrap_phase_from_start_role() {
-    assert_eq!(decide_bootstrap_phase("planner"), Some("planner".to_string()));
+    assert_eq!(
+        decide_bootstrap_phase("planner"),
+        Some("planner".to_string())
+    );
     assert_eq!(
         decide_bootstrap_phase("diagnostics"),
         Some("diagnostics".to_string())
     );
-    assert_eq!(decide_bootstrap_phase("executor"), Some("executor".to_string()));
+    assert_eq!(
+        decide_bootstrap_phase("executor"),
+        Some("executor".to_string())
+    );
     assert_eq!(decide_bootstrap_phase("solo"), Some("solo".to_string()));
     assert_eq!(decide_bootstrap_phase("unknown"), None);
 }
@@ -118,8 +135,14 @@ fn bootstrap_phase_from_start_role() {
 #[test]
 fn wake_flags_selects_newest_non_blocked() {
     let flags = vec![
-        WakeFlagInput { role: "planner", modified_ms: 10 },
-        WakeFlagInput { role: "executor", modified_ms: 20 },
+        WakeFlagInput {
+            role: "planner",
+            modified_ms: 10,
+        },
+        WakeFlagInput {
+            role: "executor",
+            modified_ms: 20,
+        },
     ];
     let decision = decide_wake_flags(false, &flags);
     assert_eq!(decision.scheduled_phase, Some("executor".to_string()));
@@ -129,8 +152,14 @@ fn wake_flags_selects_newest_non_blocked() {
 #[test]
 fn wake_flags_blocks_planner_when_active_blocker() {
     let flags = vec![
-        WakeFlagInput { role: "planner", modified_ms: 30 },
-        WakeFlagInput { role: "executor", modified_ms: 20 },
+        WakeFlagInput {
+            role: "planner",
+            modified_ms: 30,
+        },
+        WakeFlagInput {
+            role: "executor",
+            modified_ms: 20,
+        },
     ];
     let decision = decide_wake_flags(true, &flags);
     assert_eq!(decision.scheduled_phase, Some("executor".to_string()));
@@ -149,8 +178,14 @@ fn wake_flags_returns_none_when_no_flags_exist() {
 #[test]
 fn wake_flags_sets_planner_pending_when_planner_is_newest() {
     let flags = vec![
-        WakeFlagInput { role: "executor", modified_ms: 10 },
-        WakeFlagInput { role: "planner", modified_ms: 20 },
+        WakeFlagInput {
+            role: "executor",
+            modified_ms: 10,
+        },
+        WakeFlagInput {
+            role: "planner",
+            modified_ms: 20,
+        },
     ];
     let decision = decide_wake_flags(false, &flags);
     assert_eq!(decision.scheduled_phase, Some("planner".to_string()));
@@ -162,8 +197,14 @@ fn wake_flags_sets_planner_pending_when_planner_is_newest() {
 #[test]
 fn wake_flags_sets_diagnostics_pending_when_diagnostics_is_newest() {
     let flags = vec![
-        WakeFlagInput { role: "planner", modified_ms: 10 },
-        WakeFlagInput { role: "diagnostics", modified_ms: 30 },
+        WakeFlagInput {
+            role: "planner",
+            modified_ms: 10,
+        },
+        WakeFlagInput {
+            role: "diagnostics",
+            modified_ms: 30,
+        },
     ];
     let decision = decide_wake_flags(false, &flags);
     assert_eq!(decision.scheduled_phase, Some("diagnostics".to_string()));
@@ -175,9 +216,18 @@ fn wake_flags_sets_diagnostics_pending_when_diagnostics_is_newest() {
 #[test]
 fn wake_flags_ignores_blocked_planner_and_keeps_next_newest_role() {
     let flags = vec![
-        WakeFlagInput { role: "planner", modified_ms: 50 },
-        WakeFlagInput { role: "diagnostics", modified_ms: 40 },
-        WakeFlagInput { role: "executor", modified_ms: 30 },
+        WakeFlagInput {
+            role: "planner",
+            modified_ms: 50,
+        },
+        WakeFlagInput {
+            role: "diagnostics",
+            modified_ms: 40,
+        },
+        WakeFlagInput {
+            role: "executor",
+            modified_ms: 30,
+        },
     ];
     let decision = decide_wake_flags(true, &flags);
     assert_eq!(decision.scheduled_phase, Some("diagnostics".to_string()));
@@ -209,7 +259,10 @@ fn wake_flags_covers_blocker_filtering_and_newest_role_selection() {
         },
     ];
     let planner_decision = decide_wake_flags(false, &planner_newest);
-    assert_eq!(planner_decision.scheduled_phase, Some("planner".to_string()));
+    assert_eq!(
+        planner_decision.scheduled_phase,
+        Some("planner".to_string())
+    );
     assert!(planner_decision.planner_pending);
     assert!(!planner_decision.diagnostics_pending);
     assert!(!planner_decision.executor_wake);
@@ -244,7 +297,10 @@ fn wake_flags_covers_blocker_filtering_and_newest_role_selection() {
         },
     ];
     let executor_decision = decide_wake_flags(false, &executor_newest);
-    assert_eq!(executor_decision.scheduled_phase, Some("executor".to_string()));
+    assert_eq!(
+        executor_decision.scheduled_phase,
+        Some("executor".to_string())
+    );
     assert!(!executor_decision.planner_pending);
     assert!(!executor_decision.diagnostics_pending);
     assert!(executor_decision.executor_wake);
@@ -252,16 +308,46 @@ fn wake_flags_covers_blocker_filtering_and_newest_role_selection() {
 
 #[test]
 fn scheduled_phase_resume_done_all_cases() {
-    assert!(scheduled_phase_resume_done("planner", false, false, 0, true, false, false));
-    assert!(scheduled_phase_resume_done("verifier", false, false, 0, true, false, false));
-    assert!(scheduled_phase_resume_done("diagnostics", false, false, 0, true, false, false));
-    assert!(scheduled_phase_resume_done("executor", false, false, 0, true, false, false));
-    assert!(scheduled_phase_resume_done("solo", false, false, 0, true, false, false));
+    assert!(scheduled_phase_resume_done(
+        "planner", false, false, 0, true, false, false
+    ));
+    assert!(scheduled_phase_resume_done(
+        "verifier", false, false, 0, true, false, false
+    ));
+    assert!(scheduled_phase_resume_done(
+        "diagnostics",
+        false,
+        false,
+        0,
+        true,
+        false,
+        false
+    ));
+    assert!(scheduled_phase_resume_done(
+        "executor", false, false, 0, true, false, false
+    ));
+    assert!(scheduled_phase_resume_done(
+        "solo", false, false, 0, true, false, false
+    ));
 
-    assert!(!scheduled_phase_resume_done("planner", true, false, 0, true, false, false));
-    assert!(!scheduled_phase_resume_done("verifier", false, false, 1, false, false, false));
-    assert!(!scheduled_phase_resume_done("diagnostics", false, true, 0, true, false, false));
-    assert!(!scheduled_phase_resume_done("executor", false, false, 0, true, true, true));
+    assert!(!scheduled_phase_resume_done(
+        "planner", true, false, 0, true, false, false
+    ));
+    assert!(!scheduled_phase_resume_done(
+        "verifier", false, false, 1, false, false, false
+    ));
+    assert!(!scheduled_phase_resume_done(
+        "diagnostics",
+        false,
+        true,
+        0,
+        true,
+        false,
+        false
+    ));
+    assert!(!scheduled_phase_resume_done(
+        "executor", false, false, 0, true, true, true
+    ));
 }
 
 #[test]
@@ -300,7 +386,10 @@ fn completion_endpoint_reports_mismatch_only_for_wrong_endpoint() {
 fn completion_tab_reports_none_match_and_mismatch() {
     assert_eq!(check_completion_tab(None, 7), CompletionTabCheck::NoneSet);
     assert_eq!(check_completion_tab(Some(7), 7), CompletionTabCheck::Ok);
-    assert_eq!(check_completion_tab(Some(8), 7), CompletionTabCheck::Mismatch);
+    assert_eq!(
+        check_completion_tab(Some(8), 7),
+        CompletionTabCheck::Mismatch
+    );
 }
 
 #[test]
@@ -382,8 +471,14 @@ fn decide_phase_gates_combines_pending_and_schedule_rules() {
 fn blocker_threshold_and_verifier_specific_detection_are_stable() {
     assert!(!should_force_blocker(2));
     assert!(should_force_blocker(3));
-    assert!(is_verifier_specific_blocker("Verifier failed schema check", "verifier must retry"));
-    assert!(!is_verifier_specific_blocker("planner blocked", "rewrite plan"));
+    assert!(is_verifier_specific_blocker(
+        "Verifier failed schema check",
+        "verifier must retry"
+    ));
+    assert!(!is_verifier_specific_blocker(
+        "planner blocked",
+        "rewrite plan"
+    ));
 }
 
 #[test]

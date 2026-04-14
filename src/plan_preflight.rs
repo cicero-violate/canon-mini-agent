@@ -13,7 +13,6 @@
 ///    task before re-marking it ready.
 ///
 /// Returns one `PreflightBounce` per demoted task.
-
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -46,7 +45,10 @@ pub fn preflight_ready_tasks(workspace: &Path) -> Vec<PreflightBounce> {
                     bounces.len()
                 );
                 for b in &bounces {
-                    eprintln!("[plan_preflight] task={} missing={:?}", b.task_id, b.missing_symbols);
+                    eprintln!(
+                        "[plan_preflight] task={} missing={:?}",
+                        b.task_id, b.missing_symbols
+                    );
                     crate::blockers::record_action_failure(
                         workspace,
                         "orchestrator",
@@ -92,7 +94,9 @@ fn try_preflight_ready_tasks(workspace: &Path) -> Result<Vec<PreflightBounce>> {
     let indexes: HashMap<String, SemanticIndex> = crate_names
         .iter()
         .filter_map(|cn| {
-            SemanticIndex::load(workspace, cn).ok().map(|idx| (cn.clone(), idx))
+            SemanticIndex::load(workspace, cn)
+                .ok()
+                .map(|idx| (cn.clone(), idx))
         })
         .collect();
 
@@ -100,20 +104,14 @@ fn try_preflight_ready_tasks(workspace: &Path) -> Result<Vec<PreflightBounce>> {
         return Ok(vec![]);
     }
 
-    let Some(tasks) = plan
-        .get_mut("tasks")
-        .and_then(|v| v.as_array_mut())
-    else {
+    let Some(tasks) = plan.get_mut("tasks").and_then(|v| v.as_array_mut()) else {
         return Ok(vec![]);
     };
 
     let mut bounces = Vec::new();
 
     for task in tasks.iter_mut() {
-        let status = task
-            .get("status")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let status = task.get("status").and_then(|v| v.as_str()).unwrap_or("");
         if !status.eq_ignore_ascii_case("ready") {
             continue;
         }
@@ -153,11 +151,18 @@ fn try_preflight_ready_tasks(workspace: &Path) -> Result<Vec<PreflightBounce>> {
         );
 
         if let Some(obj) = task.as_object_mut() {
-            obj.insert("status".to_string(), Value::String("needs_planning".to_string()));
+            obj.insert(
+                "status".to_string(),
+                Value::String("needs_planning".to_string()),
+            );
             obj.insert("preflight_note".to_string(), Value::String(note.clone()));
         }
 
-        bounces.push(PreflightBounce { task_id, missing_symbols: missing, note });
+        bounces.push(PreflightBounce {
+            task_id,
+            missing_symbols: missing,
+            note,
+        });
     }
 
     if !bounces.is_empty() {
@@ -194,10 +199,7 @@ fn collect_task_text(task: &Value) -> String {
 /// - Have its first segment match a known crate name (normalising `-` → `_`)
 /// - Not be a pure language keyword path (`use`, `pub`, `mod`, etc.)
 pub fn extract_workspace_symbol_refs(text: &str, crate_names: &[String]) -> Vec<String> {
-    let normalized_crates: Vec<String> = crate_names
-        .iter()
-        .map(|n| n.replace('-', "_"))
-        .collect();
+    let normalized_crates: Vec<String> = crate_names.iter().map(|n| n.replace('-', "_")).collect();
 
     let mut result = Vec::new();
     let mut token = String::new();
@@ -222,7 +224,10 @@ fn flush_token(token: &str, normalized_crates: &[String], out: &mut Vec<String>)
         return;
     }
     // Must consist entirely of valid path chars.
-    if !token.chars().all(|c| c.is_alphanumeric() || c == '_' || c == ':') {
+    if !token
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '_' || c == ':')
+    {
         return;
     }
     // Collapse consecutive colons to exactly "::".
@@ -231,7 +236,10 @@ fn flush_token(token: &str, normalized_crates: &[String], out: &mut Vec<String>)
     }
     let first_seg = token.split("::").next().unwrap_or("");
     // Skip pure keyword prefixes.
-    if matches!(first_seg, "use" | "pub" | "mod" | "crate" | "super" | "self" | "std" | "core" | "alloc") {
+    if matches!(
+        first_seg,
+        "use" | "pub" | "mod" | "crate" | "super" | "self" | "std" | "core" | "alloc"
+    ) {
         return;
     }
     // Only proceed if the first segment matches a known workspace crate.

@@ -10,7 +10,6 @@
 ///   Promoted candidates are merged into `agent_state/lessons.json`, which is
 ///   injected into every planner/solo prompt via `read_lessons_or_empty`.
 ///   Rejected candidates persist with `status: "rejected"` so they are not re-surfaced.
-
 use std::collections::{BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader};
@@ -141,7 +140,11 @@ pub fn handle_lessons_action(workspace: &Path, action: &Value) -> Result<(bool, 
 fn op_read_candidates(workspace: &Path) -> Result<(bool, String)> {
     let path = candidates_path(workspace);
     if !path.exists() {
-        return Ok((false, "(no lessons candidates yet — synthesis runs after the next diagnostics cycle)".to_string()));
+        return Ok((
+            false,
+            "(no lessons candidates yet — synthesis runs after the next diagnostics cycle)"
+                .to_string(),
+        ));
     }
     let raw = std::fs::read_to_string(&path)?;
     let file: LessonsCandidatesFile = serde_json::from_str(&raw).unwrap_or_default();
@@ -151,17 +154,29 @@ fn op_read_candidates(workspace: &Path) -> Result<(bool, String)> {
         .filter(|c| c.status == CandidateStatus::Pending)
         .collect();
     if pending.is_empty() {
-        return Ok((false, "lessons_candidates: no pending candidates (all have been promoted or rejected)".to_string()));
+        return Ok((
+            false,
+            "lessons_candidates: no pending candidates (all have been promoted or rejected)"
+                .to_string(),
+        ));
     }
     let out = serde_json::to_string_pretty(&pending)?;
-    Ok((false, format!("lessons_candidates pending ({} items):\n{out}", pending.len())))
+    Ok((
+        false,
+        format!(
+            "lessons_candidates pending ({} items):\n{out}",
+            pending.len()
+        ),
+    ))
 }
 
 fn op_promote(workspace: &Path, action: &Value) -> Result<(bool, String)> {
     let candidate_id = action
         .get("candidate_id")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("lessons promote requires 'candidate_id' (id string or \"all\")"))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!("lessons promote requires 'candidate_id' (id string or \"all\")")
+        })?;
 
     let mut cfile = load_candidates(workspace);
     let promote_all = candidate_id == "all";
@@ -183,7 +198,10 @@ fn op_promote(workspace: &Path, action: &Value) -> Result<(bool, String)> {
 
     if promoted_count == 0 {
         if promote_all {
-            return Ok((false, "lessons promote: no pending candidates to promote".to_string()));
+            return Ok((
+                false,
+                "lessons promote: no pending candidates to promote".to_string(),
+            ));
         } else {
             anyhow::bail!("lessons promote: candidate '{candidate_id}' not found or not pending");
         }
@@ -195,7 +213,10 @@ fn op_promote(workspace: &Path, action: &Value) -> Result<(bool, String)> {
     save_candidates(workspace, &cfile)?;
     save_lessons(workspace, &artifact)?;
 
-    Ok((false, format!("lessons promote: {promoted_count} candidate(s) promoted to lessons.json")))
+    Ok((
+        false,
+        format!("lessons promote: {promoted_count} candidate(s) promoted to lessons.json"),
+    ))
 }
 
 fn op_reject(workspace: &Path, action: &Value) -> Result<(bool, String)> {
@@ -210,7 +231,10 @@ fn op_reject(workspace: &Path, action: &Value) -> Result<(bool, String)> {
         anyhow::bail!("lessons reject: candidate '{candidate_id}' not found");
     }
     save_candidates(workspace, &cfile)?;
-    Ok((false, format!("lessons reject: candidate '{candidate_id}' marked rejected")))
+    Ok((
+        false,
+        format!("lessons reject: candidate '{candidate_id}' marked rejected"),
+    ))
 }
 
 /// Mark a lesson entry as `encoded` — meaning it has been hardcoded into the
@@ -249,13 +273,19 @@ fn op_encode(workspace: &Path, action: &Value) -> Result<(bool, String)> {
     }
 
     save_lessons(workspace, &artifact)?;
-    Ok((false, format!("lessons encode: entry marked as encoded and removed from prompt injection")))
+    Ok((
+        false,
+        format!("lessons encode: entry marked as encoded and removed from prompt injection"),
+    ))
 }
 
 fn op_read_lessons(workspace: &Path) -> Result<(bool, String)> {
     let path = lessons_path(workspace);
     if !path.exists() {
-        return Ok((false, "(lessons.json does not exist yet — promote candidates to create it)".to_string()));
+        return Ok((
+            false,
+            "(lessons.json does not exist yet — promote candidates to create it)".to_string(),
+        ));
     }
     let raw = std::fs::read_to_string(&path)?;
     Ok((false, format!("lessons.json:\n{raw}")))
@@ -289,7 +319,10 @@ fn synthesize_candidates(workspace: &Path) -> Result<()> {
     let sequence_candidates = detect_success_sequences(&entries);
     let stall_candidates = detect_stall_patterns(&entries);
 
-    if failure_candidates.is_empty() && sequence_candidates.is_empty() && stall_candidates.is_empty() {
+    if failure_candidates.is_empty()
+        && sequence_candidates.is_empty()
+        && stall_candidates.is_empty()
+    {
         return Ok(());
     }
 
@@ -314,7 +347,11 @@ fn synthesize_candidates(workspace: &Path) -> Result<()> {
     eprintln!(
         "[lessons] candidates synthesized — {} total ({} pending)",
         cfile.candidates.len(),
-        cfile.candidates.iter().filter(|c| c.status == CandidateStatus::Pending).count()
+        cfile
+            .candidates
+            .iter()
+            .filter(|c| c.status == CandidateStatus::Pending)
+            .count()
     );
     Ok(())
 }
@@ -345,16 +382,32 @@ fn detect_failure_candidates(entries: &[Value]) -> Vec<LessonsCandidate> {
         let aggregate = map.entry(key).or_default();
         aggregate.occurrences += 1;
         aggregate.roles.insert(
-            entry.get("actor").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            entry
+                .get("actor")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
         );
         aggregate.task_ids.insert(
-            entry.get("task_id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            entry
+                .get("task_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
         );
         aggregate.objective_ids.insert(
-            entry.get("objective_id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            entry
+                .get("objective_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
         );
         aggregate.intents.insert(
-            entry.get("intent").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            entry
+                .get("intent")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
         );
         if aggregate.fix_or_note.is_none() {
             aggregate.fix_or_note = schema_fix_hint(&action, &pattern);
@@ -377,10 +430,26 @@ fn detect_failure_candidates(entries: &[Value]) -> Vec<LessonsCandidate> {
                 description,
                 occurrences,
                 fix_or_note: fix.clone(),
-                task_ids: aggregate.task_ids.into_iter().filter(|s| !s.is_empty()).collect(),
-                objective_ids: aggregate.objective_ids.into_iter().filter(|s| !s.is_empty()).collect(),
-                roles: aggregate.roles.into_iter().filter(|s| !s.is_empty()).collect(),
-                intents: aggregate.intents.into_iter().filter(|s| !s.is_empty()).collect(),
+                task_ids: aggregate
+                    .task_ids
+                    .into_iter()
+                    .filter(|s| !s.is_empty())
+                    .collect(),
+                objective_ids: aggregate
+                    .objective_ids
+                    .into_iter()
+                    .filter(|s| !s.is_empty())
+                    .collect(),
+                roles: aggregate
+                    .roles
+                    .into_iter()
+                    .filter(|s| !s.is_empty())
+                    .collect(),
+                intents: aggregate
+                    .intents
+                    .into_iter()
+                    .filter(|s| !s.is_empty())
+                    .collect(),
                 system_direction: Some(prevention_question(&action, &pattern)),
                 system_lever: Some(prevention_system_lever(&action, &pattern).to_string()),
                 system_change_hint: fix,
@@ -447,7 +516,13 @@ fn collect_successful_actions(entries: &[Value]) -> Vec<TaggedAction> {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            Some(TaggedAction { action, task_id, objective_id, role, intent })
+            Some(TaggedAction {
+                action,
+                task_id,
+                objective_id,
+                role,
+                intent,
+            })
         })
         .collect()
 }
@@ -461,7 +536,8 @@ fn count_success_sequences(
     HashMap<(String, String, String, String), CandidateAggregate>,
 ) {
     let mut bigrams: HashMap<(String, String, String), CandidateAggregate> = HashMap::new();
-    let mut trigrams: HashMap<(String, String, String, String), CandidateAggregate> = HashMap::new();
+    let mut trigrams: HashMap<(String, String, String, String), CandidateAggregate> =
+        HashMap::new();
 
     for window in successes.windows(2) {
         let a = &window[0];
@@ -477,8 +553,14 @@ fn count_success_sequences(
         if !same_task && !same_role {
             continue;
         }
-        let role = if same_role { a.role.clone() } else { String::new() };
-        let aggregate = bigrams.entry((role, a.action.clone(), b.action.clone())).or_default();
+        let role = if same_role {
+            a.role.clone()
+        } else {
+            String::new()
+        };
+        let aggregate = bigrams
+            .entry((role, a.action.clone(), b.action.clone()))
+            .or_default();
         aggregate.occurrences += 1;
         aggregate.roles.insert(a.role.clone());
         aggregate.task_ids.insert(a.task_id.clone());
@@ -501,7 +583,11 @@ fn count_success_sequences(
         if !same_task && !same_role {
             continue;
         }
-        let role = if same_role { a.role.clone() } else { String::new() };
+        let role = if same_role {
+            a.role.clone()
+        } else {
+            String::new()
+        };
         let aggregate = trigrams
             .entry((role, a.action.clone(), b.action.clone(), c.action.clone()))
             .or_default();
@@ -534,14 +620,27 @@ fn build_success_sequence_candidates(
         if aggregate.occurrences < MIN_BIGRAM_OCCURRENCES {
             continue;
         }
-        results.push(build_bigram_candidate(role, a, b, aggregate, &success_clusters));
+        results.push(build_bigram_candidate(
+            role,
+            a,
+            b,
+            aggregate,
+            &success_clusters,
+        ));
     }
 
     for ((role, a, b, c), aggregate) in trigrams {
         if aggregate.occurrences < MIN_TRIGRAM_OCCURRENCES {
             continue;
         }
-        results.push(build_trigram_candidate(role, a, b, c, aggregate, &success_clusters));
+        results.push(build_trigram_candidate(
+            role,
+            a,
+            b,
+            c,
+            aggregate,
+            &success_clusters,
+        ));
     }
 
     results
@@ -557,7 +656,11 @@ fn build_bigram_candidate(
     let key = format!("{role}:{a}→{b}");
     let count = aggregate.occurrences;
     let note = sequence_workflow_note(&a, &b, None);
-    let role_tag = if role.is_empty() { String::new() } else { format!(" [{role}]") };
+    let role_tag = if role.is_empty() {
+        String::new()
+    } else {
+        format!(" [{role}]")
+    };
     let system_direction = success_automation_question(
         aggregate.task_ids.iter(),
         aggregate.objective_ids.iter(),
@@ -569,10 +672,26 @@ fn build_bigram_candidate(
         description: format!("Action sequence{role_tag}: {a} → {b} ({count} occurrences)"),
         occurrences: count,
         fix_or_note: note.clone(),
-        task_ids: aggregate.task_ids.into_iter().filter(|s| !s.is_empty()).collect(),
-        objective_ids: aggregate.objective_ids.into_iter().filter(|s| !s.is_empty()).collect(),
-        roles: aggregate.roles.into_iter().filter(|s| !s.is_empty()).collect(),
-        intents: aggregate.intents.into_iter().filter(|s| !s.is_empty()).collect(),
+        task_ids: aggregate
+            .task_ids
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect(),
+        objective_ids: aggregate
+            .objective_ids
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect(),
+        roles: aggregate
+            .roles
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect(),
+        intents: aggregate
+            .intents
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect(),
         system_direction,
         system_lever: Some("runtime_automation".to_string()),
         system_change_hint: note,
@@ -591,7 +710,11 @@ fn build_trigram_candidate(
     let key = format!("{role}:{a}→{b}→{c}");
     let count = aggregate.occurrences;
     let note = sequence_workflow_note(&a, &b, Some(&c));
-    let role_tag = if role.is_empty() { String::new() } else { format!(" [{role}]") };
+    let role_tag = if role.is_empty() {
+        String::new()
+    } else {
+        format!(" [{role}]")
+    };
     let system_direction = success_automation_question(
         aggregate.task_ids.iter(),
         aggregate.objective_ids.iter(),
@@ -603,10 +726,26 @@ fn build_trigram_candidate(
         description: format!("Action sequence{role_tag}: {a} → {b} → {c} ({count} occurrences)"),
         occurrences: count,
         fix_or_note: note.clone(),
-        task_ids: aggregate.task_ids.into_iter().filter(|s| !s.is_empty()).collect(),
-        objective_ids: aggregate.objective_ids.into_iter().filter(|s| !s.is_empty()).collect(),
-        roles: aggregate.roles.into_iter().filter(|s| !s.is_empty()).collect(),
-        intents: aggregate.intents.into_iter().filter(|s| !s.is_empty()).collect(),
+        task_ids: aggregate
+            .task_ids
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect(),
+        objective_ids: aggregate
+            .objective_ids
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect(),
+        roles: aggregate
+            .roles
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect(),
+        intents: aggregate
+            .intents
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect(),
         system_direction,
         system_lever: Some("runtime_automation".to_string()),
         system_change_hint: note,
@@ -687,7 +826,9 @@ fn merge_candidate_into_artifact(artifact: &mut LessonsArtifact, c: &LessonsCand
     match c.kind.as_str() {
         "failure_pattern" => {
             if !artifact.failures.iter().any(|e| e.text == c.description) {
-                artifact.failures.push(LessonEntry::pending(c.description.clone()));
+                artifact
+                    .failures
+                    .push(LessonEntry::pending(c.description.clone()));
             }
             let fix = c
                 .system_change_hint
@@ -715,7 +856,9 @@ fn merge_candidate_into_artifact(artifact: &mut LessonsArtifact, c: &LessonsCand
         "stall_pattern" => {
             // Surface the stall as a failure and its fix as a prompt rule.
             if !artifact.failures.iter().any(|e| e.text == c.description) {
-                artifact.failures.push(LessonEntry::pending(c.description.clone()));
+                artifact
+                    .failures
+                    .push(LessonEntry::pending(c.description.clone()));
             }
             let fix = c.system_change_hint.as_ref().or(c.fix_or_note.as_ref());
             if let Some(fix) = fix {
@@ -806,7 +949,10 @@ fn stable_id(prefix: &str, key: &str) -> String {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     key.hash(&mut h);
     prefix.hash(&mut h);
-    format!("{prefix}_{:016x}", <std::collections::hash_map::DefaultHasher as Hasher>::finish(&h))
+    format!(
+        "{prefix}_{:016x}",
+        <std::collections::hash_map::DefaultHasher as Hasher>::finish(&h)
+    )
 }
 
 fn read_tail_entries(path: &Path, max_lines: usize) -> Vec<Value> {
@@ -873,7 +1019,9 @@ fn schema_fix_hint(action: &str, pattern: &str) -> Option<String> {
         "plan" => {
             if pattern.contains("update_task missing task") {
                 Some("plan update_task: wrap fields in a `task` object — `{\"op\":\"update_task\",\"task\":{\"id\":\"<id>\",\"status\":\"<status>\"}}`".into())
-            } else if pattern.contains("create_task") && (pattern.contains("missing task") || pattern.contains("does not accept task_id")) {
+            } else if pattern.contains("create_task")
+                && (pattern.contains("missing task") || pattern.contains("does not accept task_id"))
+            {
                 Some("plan create_task: use `task.id` inside a nested `task` object, not a top-level `task_id` — `{\"op\":\"create_task\",\"task\":{\"id\":\"<id>\",\"description\":\"<desc>\"}}`".into())
             } else if pattern.contains("replace_plan missing plan") {
                 Some("plan replace_plan: requires a top-level `plan` object containing the full plan".into())
@@ -886,7 +1034,9 @@ fn schema_fix_hint(action: &str, pattern: &str) -> Option<String> {
         "issue" => {
             if pattern.contains("missing 'issue' field") {
                 Some("issue create: nest all fields under an `issue` key — `{\"op\":\"create\",\"issue\":{\"id\":\"<id>\",\"title\":\"<t>\",\"status\":\"open\",\"kind\":\"<k>\",\"priority\":\"<p>\",\"description\":\"<d>\"}}`".into())
-            } else if pattern.contains("missing field `id`") || pattern.contains("missing field `status`") {
+            } else if pattern.contains("missing field `id`")
+                || pattern.contains("missing field `status`")
+            {
                 Some("issue: required fields are id, title, status, kind, priority, description — all must be non-empty strings".into())
             } else if pattern.contains("invalid type: boolean") {
                 Some("issue: all field values must be strings — use quoted strings, not bare booleans or numbers".into())
@@ -981,7 +1131,9 @@ fn build_success_cluster_counts(
             *clusters.entry(format!("task:{task_id}")).or_insert(0) += 1;
         }
         for objective_id in aggregate.objective_ids.iter().filter(|s| !s.is_empty()) {
-            *clusters.entry(format!("objective:{objective_id}")).or_insert(0) += 1;
+            *clusters
+                .entry(format!("objective:{objective_id}"))
+                .or_insert(0) += 1;
         }
     }
     clusters
@@ -1021,7 +1173,11 @@ fn detect_stall_patterns(entries: &[Value]) -> Vec<LessonsCandidate> {
         }
 
         let action = entry.get("action").and_then(|v| v.as_str()).unwrap_or("");
-        let role = entry.get("actor").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let role = entry
+            .get("actor")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
 
         if action == "apply_patch" {
             // Patch: close out all windows for this role.
@@ -1033,7 +1189,11 @@ fn detect_stall_patterns(entries: &[Value]) -> Vec<LessonsCandidate> {
             continue;
         }
 
-        let path = entry.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let path = entry
+            .get("path")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         if path.is_empty() {
             continue;
         }
@@ -1043,9 +1203,27 @@ fn detect_stall_patterns(entries: &[Value]) -> Vec<LessonsCandidate> {
         let key = (role.clone(), path.clone());
         let run = runs.entry(key.clone()).or_default();
         run.count += 1;
-        run.task_ids.insert(entry.get("task_id").and_then(|v| v.as_str()).unwrap_or("").to_string());
-        run.objective_ids.insert(entry.get("objective_id").and_then(|v| v.as_str()).unwrap_or("").to_string());
-        run.intents.insert(entry.get("intent").and_then(|v| v.as_str()).unwrap_or("").to_string());
+        run.task_ids.insert(
+            entry
+                .get("task_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        );
+        run.objective_ids.insert(
+            entry
+                .get("objective_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        );
+        run.intents.insert(
+            entry
+                .get("intent")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        );
 
         if run.count >= MIN_STALL_READS {
             let stall = stalls.entry(key).or_default();
@@ -1077,10 +1255,22 @@ fn detect_stall_patterns(entries: &[Value]) -> Vec<LessonsCandidate> {
                 ),
                 occurrences: count,
                 fix_or_note: Some(hint.clone()),
-                task_ids: state.task_ids.into_iter().filter(|s| !s.is_empty()).collect(),
-                objective_ids: state.objective_ids.into_iter().filter(|s| !s.is_empty()).collect(),
+                task_ids: state
+                    .task_ids
+                    .into_iter()
+                    .filter(|s| !s.is_empty())
+                    .collect(),
+                objective_ids: state
+                    .objective_ids
+                    .into_iter()
+                    .filter(|s| !s.is_empty())
+                    .collect(),
                 roles: vec![role],
-                intents: state.intents.into_iter().filter(|s| !s.is_empty()).collect(),
+                intents: state
+                    .intents
+                    .into_iter()
+                    .filter(|s| !s.is_empty())
+                    .collect(),
                 system_direction: Some(direction),
                 system_lever: Some("prompt_rule".to_string()),
                 system_change_hint: Some(hint),
@@ -1189,9 +1379,15 @@ fn try_apply_promoted_lessons(workspace: &Path) -> Result<usize> {
             .iter()
             .map(|(k, v)| {
                 if k == "roles" {
-                    (k.clone(), serde_json::Value::Object(
-                        updated_inner.iter().map(|(rk, rv)| (rk.clone(), rv.clone())).collect()
-                    ))
+                    (
+                        k.clone(),
+                        serde_json::Value::Object(
+                            updated_inner
+                                .iter()
+                                .map(|(rk, rv)| (rk.clone(), rv.clone()))
+                                .collect(),
+                        ),
+                    )
                 } else {
                     (k.clone(), v.clone())
                 }
@@ -1226,12 +1422,24 @@ fn success_automation_question<'a>(
 ) -> Option<String> {
     let matched_task_ids: Vec<String> = task_ids
         .filter(|task_id| !task_id.is_empty())
-        .filter(|task_id| success_clusters.get(&format!("task:{task_id}")).copied().unwrap_or(0) >= 2)
+        .filter(|task_id| {
+            success_clusters
+                .get(&format!("task:{task_id}"))
+                .copied()
+                .unwrap_or(0)
+                >= 2
+        })
         .cloned()
         .collect();
     let matched_objective_ids: Vec<String> = objective_ids
         .filter(|objective_id| !objective_id.is_empty())
-        .filter(|objective_id| success_clusters.get(&format!("objective:{objective_id}")).copied().unwrap_or(0) >= 2)
+        .filter(|objective_id| {
+            success_clusters
+                .get(&format!("objective:{objective_id}"))
+                .copied()
+                .unwrap_or(0)
+                >= 2
+        })
         .cloned()
         .collect();
 
@@ -1286,10 +1494,26 @@ mod tests {
     #[test]
     fn failure_candidates_detected_above_threshold() {
         let entries = vec![
-            tool_result("issue", false, "Error executing action: issue create missing 'issue' field"),
-            tool_result("issue", false, "Error executing action: issue create missing 'issue' field"),
-            tool_result("plan", false, "Error executing action: plan update_task missing task\n..."),
-            tool_result("plan", false, "Error executing action: plan update_task missing task\n..."),
+            tool_result(
+                "issue",
+                false,
+                "Error executing action: issue create missing 'issue' field",
+            ),
+            tool_result(
+                "issue",
+                false,
+                "Error executing action: issue create missing 'issue' field",
+            ),
+            tool_result(
+                "plan",
+                false,
+                "Error executing action: plan update_task missing task\n...",
+            ),
+            tool_result(
+                "plan",
+                false,
+                "Error executing action: plan update_task missing task\n...",
+            ),
             tool_result("plan", true, "plan ok"),
         ];
         let candidates = detect_failure_candidates(&entries);
@@ -1301,21 +1525,38 @@ mod tests {
 
     #[test]
     fn single_occurrence_failures_excluded() {
-        let entries = vec![
-            tool_result("plan", false, "Error executing action: plan task not found: T_foo"),
-        ];
+        let entries = vec![tool_result(
+            "plan",
+            false,
+            "Error executing action: plan task not found: T_foo",
+        )];
         let candidates = detect_failure_candidates(&entries);
-        assert!(candidates.is_empty(), "single-occurrence errors should not become candidates");
+        assert!(
+            candidates.is_empty(),
+            "single-occurrence errors should not become candidates"
+        );
     }
 
     #[test]
     fn different_task_ids_collapse_to_same_candidate() {
         let entries = vec![
-            tool_result("plan", false, "Error executing action: plan task not found: T_foo_bar"),
-            tool_result("plan", false, "Error executing action: plan task not found: T_baz_qux"),
+            tool_result(
+                "plan",
+                false,
+                "Error executing action: plan task not found: T_foo_bar",
+            ),
+            tool_result(
+                "plan",
+                false,
+                "Error executing action: plan task not found: T_baz_qux",
+            ),
         ];
         let candidates = detect_failure_candidates(&entries);
-        assert_eq!(candidates.len(), 1, "different IDs for the same structural error should collapse");
+        assert_eq!(
+            candidates.len(),
+            1,
+            "different IDs for the same structural error should collapse"
+        );
         assert!(candidates[0].description.contains("<id>"));
     }
 
@@ -1328,14 +1569,18 @@ mod tests {
         }
         let candidates = detect_success_sequences(&entries);
         assert!(
-            candidates.iter().any(|c| c.description.contains("semantic_map") && c.description.contains("symbol_window")),
+            candidates
+                .iter()
+                .any(|c| c.description.contains("semantic_map")
+                    && c.description.contains("symbol_window")),
             "semantic_map→symbol_window bigram should be detected"
         );
         assert!(candidates.iter().all(|c| c.kind == "success_sequence"));
     }
 
     #[test]
-    fn success_sequence_candidates_keep_task_objective_provenance_and_emit_generic_automation_question() {
+    fn success_sequence_candidates_keep_task_objective_provenance_and_emit_generic_automation_question(
+    ) {
         let mut entries: Vec<Value> = Vec::new();
         for _ in 0..4 {
             entries.push(tool_result_with_provenance(
@@ -1402,7 +1647,10 @@ mod tests {
             entries.push(tool_result("read_file", true, "ok"));
         }
         let candidates = detect_success_sequences(&entries);
-        assert!(candidates.is_empty(), "same-action repetitions should not produce candidates");
+        assert!(
+            candidates.is_empty(),
+            "same-action repetitions should not produce candidates"
+        );
     }
 
     #[test]
@@ -1442,11 +1690,18 @@ mod tests {
         assert!(msg.contains("promoted"), "promote should report success");
 
         let artifact = load_lessons(&workspace);
-        assert!(artifact.failures.iter().any(|f| f.text.contains("test failure")));
+        assert!(artifact
+            .failures
+            .iter()
+            .any(|f| f.text.contains("test failure")));
         assert!(artifact.fixes.iter().any(|f| f.text.contains("the fix")));
 
         let updated = load_candidates(&workspace);
-        let c = updated.candidates.iter().find(|c| c.id == "test_id_001").unwrap();
+        let c = updated
+            .candidates
+            .iter()
+            .find(|c| c.id == "test_id_001")
+            .unwrap();
         assert_eq!(c.status, CandidateStatus::Promoted);
     }
 
@@ -1476,7 +1731,8 @@ mod tests {
         };
         save_candidates(&workspace, &cfile).unwrap();
 
-        let action = serde_json::json!({"action": "lessons", "op": "reject", "candidate_id": "rej_id"});
+        let action =
+            serde_json::json!({"action": "lessons", "op": "reject", "candidate_id": "rej_id"});
         handle_lessons_action(&workspace, &action).unwrap();
 
         let updated = load_candidates(&workspace);
@@ -1593,7 +1849,9 @@ mod tests {
         let roles = load_roles_json(&workspace);
         let executor_rules = roles["roles"]["executor"].as_array().unwrap();
         assert!(
-            executor_rules.iter().any(|v| v.as_str() == Some("- Do not re-read a file already in context.")),
+            executor_rules
+                .iter()
+                .any(|v| v.as_str() == Some("- Do not re-read a file already in context.")),
             "rule should be in executor array"
         );
 
@@ -1607,7 +1865,11 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let p = std::env::temp_dir().join(format!("canon-lessons-test-{}-{}", std::process::id(), unique));
+        let p = std::env::temp_dir().join(format!(
+            "canon-lessons-test-{}-{}",
+            std::process::id(),
+            unique
+        ));
         std::fs::create_dir_all(&p).unwrap();
         p
     }

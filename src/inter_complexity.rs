@@ -21,9 +21,9 @@
 //! auto-creates entries in ISSUES.json for the top-N hotspots not already tracked,
 //! closing the Detect → Propose step of the execution loop.
 
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
 use std::path::Path;
 
 use anyhow::Result;
@@ -103,7 +103,10 @@ pub fn analyze(workspace: &Path, crate_name: &str) -> Result<InterAnalysis> {
     let mut fp_groups: HashMap<String, Vec<String>> = HashMap::new();
     for s in &summaries {
         if let Some(fp) = &s.mir_fingerprint {
-            fp_groups.entry(fp.clone()).or_default().push(s.symbol.clone());
+            fp_groups
+                .entry(fp.clone())
+                .or_default()
+                .push(s.symbol.clone());
         }
     }
 
@@ -138,12 +141,7 @@ pub fn analyze(workspace: &Path, crate_name: &str) -> Result<InterAnalysis> {
             let siblings: Vec<String> = fp
                 .as_ref()
                 .and_then(|f| fp_groups.get(f))
-                .map(|g| {
-                    g.iter()
-                        .filter(|sym| **sym != s.symbol)
-                        .cloned()
-                        .collect()
-                })
+                .map(|g| g.iter().filter(|sym| **sym != s.symbol).cloned().collect())
                 .unwrap_or_default();
             let r_body = if siblings.is_empty() { 0.0 } else { 1.0 };
 
@@ -180,8 +178,7 @@ pub fn analyze(workspace: &Path, crate_name: &str) -> Result<InterAnalysis> {
             0.0
         };
         entry.inter_objective =
-            (0.40 * bt_norm + 0.30 * entry.r_body + 0.30 * (1.0 - entry.d_det))
-                .clamp(0.0, 1.0);
+            (0.40 * bt_norm + 0.30 * entry.r_body + 0.30 * (1.0 - entry.d_det)).clamp(0.0, 1.0);
     }
 
     entries.sort_by(|a, b| {
@@ -190,10 +187,8 @@ pub fn analyze(workspace: &Path, crate_name: &str) -> Result<InterAnalysis> {
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 
-    let duplicate_groups: Vec<Vec<String>> = fp_groups
-        .into_values()
-        .filter(|g| g.len() >= 2)
-        .collect();
+    let duplicate_groups: Vec<Vec<String>> =
+        fp_groups.into_values().filter(|g| g.len() >= 2).collect();
 
     Ok(InterAnalysis {
         entries,
@@ -234,7 +229,9 @@ pub fn generate_hotspot_issues(workspace: &Path, top_n: usize) -> Result<usize> 
     Ok(created)
 }
 
-fn load_issue_file_with_indexes(issues_path: &Path) -> (IssuesFile, HashSet<String>, HashSet<String>) {
+fn load_issue_file_with_indexes(
+    issues_path: &Path,
+) -> (IssuesFile, HashSet<String>, HashSet<String>) {
     let raw = std::fs::read_to_string(issues_path).unwrap_or_default();
     let file: IssuesFile = if raw.trim().is_empty() {
         IssuesFile::default()
@@ -254,7 +251,11 @@ fn load_issue_file_with_indexes(issues_path: &Path) -> (IssuesFile, HashSet<Stri
 fn collect_crate_analyses(workspace: &Path) -> Vec<(String, InterAnalysis)> {
     SemanticIndex::available_crates(workspace)
         .into_iter()
-        .filter_map(|crate_name| analyze(workspace, &crate_name).ok().map(|analysis| (crate_name, analysis)))
+        .filter_map(|crate_name| {
+            analyze(workspace, &crate_name)
+                .ok()
+                .map(|analysis| (crate_name, analysis))
+        })
         .collect()
 }
 
@@ -530,7 +531,10 @@ fn duplicate_note(entry: &InterEntry) -> String {
 fn build_issue_evidence(entry: &InterEntry, file: &str) -> Vec<String> {
     let mut evidence = vec![
         format!("inter_objective={:.3}", entry.inter_objective),
-        format!("b_direct={} b_transitive={:.1}", entry.b_direct, entry.b_transitive),
+        format!(
+            "b_direct={} b_transitive={:.1}",
+            entry.b_direct, entry.b_transitive
+        ),
         format!("r_body={:.1} d_det={:.3}", entry.r_body, entry.d_det),
         format!("call_out={} call_in={}", entry.call_out, entry.call_in),
         format!("location: {file}:{}", entry.line),

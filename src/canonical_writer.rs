@@ -1,6 +1,7 @@
 use crate::events::{ControlEvent, EffectEvent, Event};
 use crate::system_state::{apply_control_event, validate_system_state, SystemState};
 use crate::tlog::Tlog;
+use crate::transition_policy::validate_transition;
 use std::path::PathBuf;
 
 /// The single gate through which all `SystemState` mutations must pass.
@@ -41,6 +42,9 @@ impl CanonicalWriter {
     /// state transition still proceeds — a missing tlog entry is recoverable
     /// from the checkpoint; a missed state transition is not.
     pub fn apply(&mut self, event: ControlEvent) {
+        if let Err(reason) = validate_transition(&self.state, &event) {
+            panic!("[canonical_writer] illegal control transition: {reason}");
+        }
         if let Err(err) = self.tlog.append(&Event::control(event.clone())) {
             eprintln!("[canonical_writer] tlog append failed: {err:#}");
         }
@@ -138,5 +142,18 @@ mod tests {
             replayed.lanes.get(&0).map(|lane| lane.pending),
             writer.state().lanes.get(&0).map(|lane| lane.pending)
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "illegal control transition")]
+    fn apply_panics_on_illegal_transition() {
+        let dir = tempdir();
+        let tlog_path = dir.join("tlog.ndjson");
+        let initial = SystemState::new(&[0], 1);
+        let mut writer = CanonicalWriter::new(initial, Tlog::open(&tlog_path), dir);
+        writer.apply(ControlEvent::ExecutorTurnDeregistered {
+            tab_id: 7,
+            turn_id: 9,
+        });
     }
 }

@@ -15,9 +15,9 @@
 //!   - Threshold-gated (only real signals above noise floor).
 //!   - Execution model: Detect(this) → Propose(LLM) → Apply(patch) → Verify.
 
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
 use std::path::Path;
 
 use anyhow::Result;
@@ -64,20 +64,28 @@ pub fn generate_all_refactor_issues(workspace: &Path) -> Result<usize> {
         let summaries = idx.symbol_summaries();
 
         created += dead_code_issues(
-            &mut file, &idx, &summaries, crate_name,
-            &existing_ids, &open_locations,
+            &mut file,
+            &idx,
+            &summaries,
+            crate_name,
+            &existing_ids,
+            &open_locations,
         );
         created += branch_reduction_issues(
-            &mut file, &idx, &summaries, crate_name,
-            &existing_ids, &open_locations,
-        );
-        created += helper_extraction_issues(
-            &mut file, &idx, &summaries, crate_name,
+            &mut file,
+            &idx,
+            &summaries,
+            crate_name,
             &existing_ids,
+            &open_locations,
         );
+        created += helper_extraction_issues(&mut file, &idx, &summaries, crate_name, &existing_ids);
         created += call_chain_issues(
-            &mut file, &summaries, crate_name,
-            &existing_ids, &open_locations,
+            &mut file,
+            &summaries,
+            crate_name,
+            &existing_ids,
+            &open_locations,
         );
     }
 
@@ -164,12 +172,22 @@ fn is_exempt_from_dead_code(symbol: &str) -> bool {
     // Entry points and standard trait implementations.
     matches!(
         leaf_lower.as_str(),
-        "main" | "new" | "default" | "drop" | "from" | "into"
-            | "clone" | "fmt" | "eq" | "hash" | "partial_eq"
-            | "serialize" | "deserialize"
+        "main"
+            | "new"
+            | "default"
+            | "drop"
+            | "from"
+            | "into"
+            | "clone"
+            | "fmt"
+            | "eq"
+            | "hash"
+            | "partial_eq"
+            | "serialize"
+            | "deserialize"
     ) || lower.contains("test")
-      || lower.contains("bench")
-      || lower.contains("example")
+        || lower.contains("bench")
+        || lower.contains("example")
 }
 
 // ---------------------------------------------------------------------------
@@ -478,8 +496,10 @@ fn shorten_location(file: &str, line: u32) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{dead_code_id, helper_extract_id,
-                is_exempt_from_dead_code, priority_from_unreachable, short_name};
+    use super::{
+        dead_code_id, helper_extract_id, is_exempt_from_dead_code, priority_from_unreachable,
+        short_name,
+    };
 
     #[test]
     fn issue_ids_are_deterministic() {
@@ -520,7 +540,10 @@ mod tests {
 
     #[test]
     fn short_name_extracts_leaf() {
-        assert_eq!(short_name("tools::handle_apply_patch"), "handle_apply_patch");
+        assert_eq!(
+            short_name("tools::handle_apply_patch"),
+            "handle_apply_patch"
+        );
         assert_eq!(short_name("main"), "main");
     }
 }

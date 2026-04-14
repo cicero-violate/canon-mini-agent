@@ -210,10 +210,7 @@ impl SemanticIndex {
     pub fn load(workspace: &Path, crate_name: &str) -> Result<Self> {
         // Normalize: hyphens → underscores (cargo convention).
         let name = crate_name.replace('-', "_");
-        let graph_path = workspace
-            .join("state/rustc")
-            .join(&name)
-            .join("graph.json");
+        let graph_path = workspace.join("state/rustc").join(&name).join("graph.json");
         let bytes = fs::read(&graph_path)
             .with_context(|| format!("graph not found at {}", graph_path.display()))?;
         let graph: CrateGraph = serde_json::from_slice(&bytes)
@@ -224,7 +221,9 @@ impl SemanticIndex {
     /// Discover available crates from state/rustc/index.json.
     pub fn available_crates(workspace: &Path) -> Vec<String> {
         let index_path = workspace.join("state/rustc/index.json");
-        let Ok(bytes) = fs::read(&index_path) else { return Vec::new() };
+        let Ok(bytes) = fs::read(&index_path) else {
+            return Vec::new();
+        };
         let Ok(index) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
             return Vec::new();
         };
@@ -269,9 +268,7 @@ impl SemanticIndex {
                 path,
                 targets,
                 top_target: top_target.clone(),
-                apply_patch_template: top_target
-                    .as_ref()
-                    .and_then(build_apply_patch_template),
+                apply_patch_template: top_target.as_ref().and_then(build_apply_patch_template),
             });
         }
 
@@ -296,9 +293,7 @@ impl SemanticIndex {
             path,
             targets,
             top_target: top_target.clone(),
-            apply_patch_template: top_target
-                .as_ref()
-                .and_then(build_apply_patch_template),
+            apply_patch_template: top_target.as_ref().and_then(build_apply_patch_template),
         })
     }
 
@@ -368,7 +363,12 @@ impl SemanticIndex {
             });
         }
 
-        out.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)).then(a.symbol.cmp(&b.symbol)));
+        out.sort_by(|a, b| {
+            a.file
+                .cmp(&b.file)
+                .then(a.line.cmp(&b.line))
+                .then(a.symbol.cmp(&b.symbol))
+        });
         out
     }
 
@@ -378,7 +378,12 @@ impl SemanticIndex {
             .edges
             .iter()
             .filter(|e| edge_is_call(e))
-            .map(|e| (self.edge_endpoint_path(&e.from), self.edge_endpoint_path(&e.to)))
+            .map(|e| {
+                (
+                    self.edge_endpoint_path(&e.from),
+                    self.edge_endpoint_path(&e.to),
+                )
+            })
             .collect()
     }
 
@@ -396,7 +401,8 @@ impl SemanticIndex {
 
         let mut triples = self.semantic_triples(filter_path);
         triples.sort_by(|a, b| {
-            a.from.cmp(&b.from)
+            a.from
+                .cmp(&b.from)
                 .then(a.relation.cmp(&b.relation))
                 .then(a.to.cmp(&b.to))
         });
@@ -441,13 +447,19 @@ impl SemanticIndex {
             );
         }
 
-        let (slice_lo, slice_hi) = expand_symbol_window_span(&source, start_offset, end_offset).unwrap_or((start_offset, end_offset));
+        let (slice_lo, slice_hi) = expand_symbol_window_span(&source, start_offset, end_offset)
+            .unwrap_or((start_offset, end_offset));
         let text = source.get(slice_lo..slice_hi).with_context(|| {
             format!("expanded symbol span is not on UTF-8 boundaries (lo={slice_lo} hi={slice_hi})")
         })?;
 
         let display = shorten_path(&def.file);
-        let mut out = format!("// {} — {}:{}\n", self.node_path(key, node), display, def.line);
+        let mut out = format!(
+            "// {} — {}:{}\n",
+            self.node_path(key, node),
+            display,
+            def.line
+        );
         out.push_str(text);
         if !out.ends_with('\n') {
             out.push('\n');
@@ -476,7 +488,12 @@ impl SemanticIndex {
         }
         let mut out = format!("References to `{symbol}` ({} sites):\n", unique.len());
         for s in &unique {
-            out.push_str(&format!("  {}:{}:{}\n", shorten_path(&s.file), s.line, s.col));
+            out.push_str(&format!(
+                "  {}:{}:{}\n",
+                shorten_path(&s.file),
+                s.line,
+                s.col
+            ));
         }
         Ok(out)
     }
@@ -656,7 +673,11 @@ impl SemanticIndex {
 
     pub fn symbol_occurrences(&self, symbol: &str) -> Result<Vec<SymbolOccurrence>> {
         let key = self.resolve_node_key(symbol)?;
-        let node = self.graph.nodes.get(key).context("symbol key not present")?;
+        let node = self
+            .graph
+            .nodes
+            .get(key)
+            .context("symbol key not present")?;
         let mut out = Vec::new();
         for r in &node.refs {
             out.push(SymbolOccurrence {
@@ -678,7 +699,12 @@ impl SemanticIndex {
                 });
             }
         }
-        out.sort_by(|a, b| a.file.cmp(&b.file).then(a.lo.cmp(&b.lo)).then(a.hi.cmp(&b.hi)));
+        out.sort_by(|a, b| {
+            a.file
+                .cmp(&b.file)
+                .then(a.lo.cmp(&b.lo))
+                .then(a.hi.cmp(&b.hi))
+        });
         out.dedup_by(|a, b| a.file == b.file && a.lo == b.lo && a.hi == b.hi);
         Ok(out)
     }
@@ -735,14 +761,22 @@ impl SemanticIndex {
                 "ambiguous symbol `{symbol}` — {n} matches: {}. Use the fully-qualified path.",
                 matches
                     .iter()
-                    .filter_map(|key| self.graph.nodes.get(*key).map(|node| self.node_path(key, node)))
+                    .filter_map(|key| self
+                        .graph
+                        .nodes
+                        .get(*key)
+                        .map(|node| self.node_path(key, node)))
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
         }
     }
 
-    fn infer_callers_from_refs<'a>(&'a self, symbol_key: &str, refs: &'a [SourceSpan]) -> Vec<&'a str> {
+    fn infer_callers_from_refs<'a>(
+        &'a self,
+        symbol_key: &str,
+        refs: &'a [SourceSpan],
+    ) -> Vec<&'a str> {
         let mut out = Vec::new();
         for span in refs {
             if let Some(owner) = self.enclosing_symbol_for_span(span) {
@@ -754,10 +788,7 @@ impl SemanticIndex {
         out
     }
 
-    pub fn semantic_triples(
-        &self,
-        filter_path: Option<&str>,
-    ) -> Vec<SemanticTriple> {
+    pub fn semantic_triples(&self, filter_path: Option<&str>) -> Vec<SemanticTriple> {
         self.graph
             .edges
             .iter()
@@ -1029,7 +1060,8 @@ impl SemanticIndex {
         let mut branchy_owners = HashSet::new();
         for node in path {
             if let Some(cfg) = self.graph.cfg_nodes.get(&node.id) {
-                if is_branch_terminator(&cfg.terminator) || is_validation_terminator(&cfg.terminator)
+                if is_branch_terminator(&cfg.terminator)
+                    || is_validation_terminator(&cfg.terminator)
                 {
                     branchy_owners.insert(cfg.owner.clone());
                 }
@@ -1039,7 +1071,9 @@ impl SemanticIndex {
         let mut out = Vec::new();
         for hop in path {
             let node_id = hop.id.as_str();
-            let Some(node) = self.graph.nodes.get(node_id) else { continue };
+            let Some(node) = self.graph.nodes.get(node_id) else {
+                continue;
+            };
             let symbol = self.node_path(node_id, node).to_string();
             if !seen.insert(symbol.clone()) {
                 continue;
@@ -1460,7 +1494,9 @@ impl SemanticIndex {
     pub fn symbol_at_file_line(&self, file: &str, line: u32) -> Option<String> {
         let mut best: Option<(String, u32)> = None;
         for (node_id, node) in &self.graph.nodes {
-            let Some(def) = node.def.as_ref() else { continue };
+            let Some(def) = node.def.as_ref() else {
+                continue;
+            };
             if def.file != file || def.line > line {
                 continue;
             }
@@ -1593,7 +1629,9 @@ impl SemanticIndex {
     fn enclosing_symbol_for_span<'a>(&'a self, span: &SourceSpan) -> Option<&'a str> {
         let mut best: Option<(&str, u32)> = None;
         for (sym, node) in &self.graph.nodes {
-            let Some(def) = node.def.as_ref() else { continue };
+            let Some(def) = node.def.as_ref() else {
+                continue;
+            };
             if def.file != span.file {
                 continue;
             }
@@ -1677,12 +1715,18 @@ fn is_validation_terminator(terminator: &str) -> bool {
 
 fn looks_like_validation_symbol(symbol: &str) -> bool {
     let lower = symbol.to_ascii_lowercase();
-    ["check", "validate", "guard", "assert", "verify", "parse", "ensure"]
-        .iter()
-        .any(|needle| lower.contains(needle))
+    [
+        "check", "validate", "guard", "assert", "verify", "parse", "ensure",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
 }
 
-fn expand_symbol_window_span(source: &str, start_offset: usize, end_offset: usize) -> Option<(usize, usize)> {
+fn expand_symbol_window_span(
+    source: &str,
+    start_offset: usize,
+    end_offset: usize,
+) -> Option<(usize, usize)> {
     if start_offset > end_offset || end_offset > source.len() {
         return None;
     }
@@ -1756,18 +1800,30 @@ fn stable_hash(input: &str) -> u64 {
 /// the LLM knows what structural change to make — not just "fix something here".
 fn patch_kind_hints(kind: Option<&PatchKind>) -> (&'static str, &'static str) {
     match kind {
-        Some(PatchKind::Guard) =>
-            ("// old: missing or incorrect guard condition", "// new: add/fix guard — e.g. `if !cond { return Err(...); }`"),
-        Some(PatchKind::MatchArm) =>
-            ("// old: incomplete or wrong match arm", "// new: add/fix match arm — e.g. `Some(x) => ...,`"),
-        Some(PatchKind::BoundsCheck) =>
-            ("// old: missing or incorrect bounds/safety assertion", "// new: fix assertion — e.g. `assert!(idx < len, \"...\");`"),
-        Some(PatchKind::CallSiteFix) =>
-            ("// old: wrong arguments or missing call at this site", "// new: fix call — e.g. update argument type/count"),
-        Some(PatchKind::PureFunctionRewrite) =>
-            ("// old: current (incorrect) implementation", "// new: corrected implementation"),
-        Some(PatchKind::General) | None =>
-            ("// TODO: replace with current behavior", "// TODO: minimal path-local fix here"),
+        Some(PatchKind::Guard) => (
+            "// old: missing or incorrect guard condition",
+            "// new: add/fix guard — e.g. `if !cond { return Err(...); }`",
+        ),
+        Some(PatchKind::MatchArm) => (
+            "// old: incomplete or wrong match arm",
+            "// new: add/fix match arm — e.g. `Some(x) => ...,`",
+        ),
+        Some(PatchKind::BoundsCheck) => (
+            "// old: missing or incorrect bounds/safety assertion",
+            "// new: fix assertion — e.g. `assert!(idx < len, \"...\");`",
+        ),
+        Some(PatchKind::CallSiteFix) => (
+            "// old: wrong arguments or missing call at this site",
+            "// new: fix call — e.g. update argument type/count",
+        ),
+        Some(PatchKind::PureFunctionRewrite) => (
+            "// old: current (incorrect) implementation",
+            "// new: corrected implementation",
+        ),
+        Some(PatchKind::General) | None => (
+            "// TODO: replace with current behavior",
+            "// TODO: minimal path-local fix here",
+        ),
     }
 }
 
@@ -1795,9 +1851,7 @@ fn build_apply_patch_template(target: &ExecutionPatchTarget) -> Option<String> {
     Some(template)
 }
 
-pub fn build_apply_patch_template_public(
-    target: &ExecutionPatchTarget,
-) -> Option<String> {
+pub fn build_apply_patch_template_public(target: &ExecutionPatchTarget) -> Option<String> {
     build_apply_patch_template(target)
 }
 
@@ -1823,8 +1877,8 @@ fn read_context_window(file: &str, line: u32, before: usize, after: usize) -> (u
 #[cfg(test)]
 mod tests {
     use super::{
-        expand_symbol_window_span, BridgeEdge, CfgNode, CrateGraph, GraphEdge, GraphNode,
-        MirInfo, SemanticIndex, SourceSpan,
+        expand_symbol_window_span, BridgeEdge, CfgNode, CrateGraph, GraphEdge, GraphNode, MirInfo,
+        SemanticIndex, SourceSpan,
     };
     use std::collections::HashMap;
     use std::fs;
@@ -1834,8 +1888,10 @@ mod tests {
     fn expand_symbol_window_span_returns_full_function_block() {
         let src = "pub(crate) fn process_action_and_execute(\n    role: &str,\n) -> Result<(bool, String)> {\n    let _x = role;\n    Ok((false, String::new()))\n}\n";
         let start_offset = src.find("pub(crate) fn").unwrap();
-        let end_offset = src.find(") -> Result<(bool, String)>").unwrap() + ") -> Result<(bool, String)>".len();
-        let (slice_lo, slice_hi) = expand_symbol_window_span(src, start_offset, end_offset).expect("span should expand");
+        let end_offset =
+            src.find(") -> Result<(bool, String)>").unwrap() + ") -> Result<(bool, String)>".len();
+        let (slice_lo, slice_hi) =
+            expand_symbol_window_span(src, start_offset, end_offset).expect("span should expand");
         let extracted = &src[slice_lo..slice_hi];
         assert!(extracted.starts_with("pub(crate) fn process_action_and_execute("));
         assert!(extracted.contains("Ok((false, String::new()))"));
@@ -1856,7 +1912,8 @@ mod tests {
         fs::write(&src_path, src).unwrap();
 
         let start_offset = src.find("pub(crate) fn").unwrap();
-        let end_offset = src.find(") -> Result<(bool, String)>").unwrap() + ") -> Result<(bool, String)>".len();
+        let end_offset =
+            src.find(") -> Result<(bool, String)>").unwrap() + ") -> Result<(bool, String)>".len();
         let mut nodes = HashMap::new();
         nodes.insert(
             "engine::process_action_and_execute".to_string(),
@@ -1901,7 +1958,8 @@ mod tests {
         let src = "pub struct Widget {\n    pub x: i32,\n}\n";
         let start_offset = src.find("Widget").unwrap();
         let end_offset = start_offset + "Widget".len();
-        let (slice_lo, slice_hi) = expand_symbol_window_span(src, start_offset, end_offset).expect("span should expand");
+        let (slice_lo, slice_hi) =
+            expand_symbol_window_span(src, start_offset, end_offset).expect("span should expand");
         let extracted = &src[slice_lo..slice_hi];
         assert!(extracted.starts_with("pub struct Widget"));
         assert!(extracted.contains("pub x: i32"));
@@ -1913,7 +1971,8 @@ mod tests {
         let src = "pub trait Greeter {\n    fn greet(&self);\n}\n";
         let start_offset = src.find("Greeter").unwrap();
         let end_offset = start_offset + "Greeter".len();
-        let (slice_lo, slice_hi) = expand_symbol_window_span(src, start_offset, end_offset).expect("span should expand");
+        let (slice_lo, slice_hi) =
+            expand_symbol_window_span(src, start_offset, end_offset).expect("span should expand");
         let extracted = &src[slice_lo..slice_hi];
         assert!(extracted.starts_with("pub trait Greeter"));
         assert!(extracted.contains("fn greet(&self);"));

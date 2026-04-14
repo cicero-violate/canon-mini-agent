@@ -216,10 +216,7 @@ pub fn read_top_open_issues(workspace: &Path, limit: usize) -> String {
         };
         let line = format!(
             "- [score:{:.2}] {}: {}{}\n",
-            issue.score,
-            issue.id,
-            truncated_title,
-            loc
+            issue.score, issue.id, truncated_title, loc
         );
         if out.len() + line.len() > byte_budget {
             out.push_str("- … additional open issues omitted; use {\"action\":\"issue\",\"op\":\"read\"} for full detail\n");

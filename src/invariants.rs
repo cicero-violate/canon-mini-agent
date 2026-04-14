@@ -28,7 +28,6 @@
 ///   State Space' = State Space ∩ V_inv
 ///   T'(s→s')     = T(s→s') · I_p(s')    (transition filtered by invariant predicate)
 ///   A'            = {a ∈ A | I(result(a)) = 1}  (only valid actions exist)
-
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
@@ -183,7 +182,10 @@ pub fn evaluate_invariant_gate(
 /// - `promote` — upgrade Discovered → Promoted for a given id (or "all")
 /// - `enforce` — upgrade Promoted → Enforced; gate becomes hard-blocking
 /// - `collapse` — mark Enforced/Promoted → Collapsed (root cause structurally fixed)
-pub fn handle_invariants_action(workspace: &Path, action: &serde_json::Value) -> anyhow::Result<(bool, String)> {
+pub fn handle_invariants_action(
+    workspace: &Path,
+    action: &serde_json::Value,
+) -> anyhow::Result<(bool, String)> {
     let op = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
     match op {
         "read" => op_read(workspace),
@@ -199,27 +201,44 @@ pub fn handle_invariants_action(workspace: &Path, action: &serde_json::Value) ->
 fn op_read(workspace: &Path) -> anyhow::Result<(bool, String)> {
     let file = load_invariants(workspace);
     if file.invariants.is_empty() {
-        return Ok((false, "(enforced_invariants.json is empty — synthesis runs after the next checkpoint)".to_string()));
+        return Ok((
+            false,
+            "(enforced_invariants.json is empty — synthesis runs after the next checkpoint)"
+                .to_string(),
+        ));
     }
-    let visible: Vec<&DiscoveredInvariant> = file.invariants.iter()
+    let visible: Vec<&DiscoveredInvariant> = file
+        .invariants
+        .iter()
         .filter(|i| i.status != InvariantStatus::Collapsed)
         .collect();
     if visible.is_empty() {
-        return Ok((false, "(all invariants have been collapsed — system is structurally clean)".to_string()));
+        return Ok((
+            false,
+            "(all invariants have been collapsed — system is structurally clean)".to_string(),
+        ));
     }
     let out = serde_json::to_string_pretty(&visible)?;
-    Ok((false, format!("enforced_invariants ({} active):\n{out}", visible.len())))
+    Ok((
+        false,
+        format!("enforced_invariants ({} active):\n{out}", visible.len()),
+    ))
 }
 
 fn op_promote(workspace: &Path, action: &serde_json::Value) -> anyhow::Result<(bool, String)> {
-    let id = action.get("id").and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("invariants promote requires 'id' field (invariant id or \"all\")"))?;
+    let id = action.get("id").and_then(|v| v.as_str()).ok_or_else(|| {
+        anyhow::anyhow!("invariants promote requires 'id' field (invariant id or \"all\")")
+    })?;
     let mut file = load_invariants(workspace);
     let promote_all = id == "all";
     let mut count = 0usize;
     for inv in file.invariants.iter_mut() {
-        if inv.status != InvariantStatus::Discovered { continue; }
-        if !promote_all && inv.id != id { continue; }
+        if inv.status != InvariantStatus::Discovered {
+            continue;
+        }
+        if !promote_all && inv.id != id {
+            continue;
+        }
         inv.status = InvariantStatus::Promoted;
         if inv.gates.is_empty() {
             inv.gates = default_gates_for_conditions(&inv.state_conditions);
@@ -234,12 +253,16 @@ fn op_promote(workspace: &Path, action: &serde_json::Value) -> anyhow::Result<(b
 }
 
 fn op_enforce(workspace: &Path, action: &serde_json::Value) -> anyhow::Result<(bool, String)> {
-    let id = action.get("id").and_then(|v| v.as_str())
+    let id = action
+        .get("id")
+        .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("invariants enforce requires 'id' field"))?;
     let mut file = load_invariants(workspace);
     let mut count = 0usize;
     for inv in file.invariants.iter_mut() {
-        if inv.id != id { continue; }
+        if inv.id != id {
+            continue;
+        }
         if inv.status == InvariantStatus::Collapsed {
             return Ok((false, format!("invariant {id} is already Collapsed — use promote first if you want to re-enforce")));
         }
@@ -262,17 +285,27 @@ fn op_enforce(workspace: &Path, action: &serde_json::Value) -> anyhow::Result<(b
         "ts_ms": crate::logging::now_ms(),
     });
     let _ = crate::logging::append_action_log_record(&record);
-    Ok((false, format!("invariant {id} set to Enforced — gate is now hard-blocking")))
+    Ok((
+        false,
+        format!("invariant {id} set to Enforced — gate is now hard-blocking"),
+    ))
 }
 
 fn op_collapse(workspace: &Path, action: &serde_json::Value) -> anyhow::Result<(bool, String)> {
-    let id = action.get("id").and_then(|v| v.as_str())
+    let id = action
+        .get("id")
+        .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("invariants collapse requires 'id' field"))?;
-    let rationale = action.get("rationale").and_then(|v| v.as_str()).unwrap_or("root cause structurally eliminated");
+    let rationale = action
+        .get("rationale")
+        .and_then(|v| v.as_str())
+        .unwrap_or("root cause structurally eliminated");
     let mut file = load_invariants(workspace);
     let mut count = 0usize;
     for inv in file.invariants.iter_mut() {
-        if inv.id != id { continue; }
+        if inv.id != id {
+            continue;
+        }
         inv.status = InvariantStatus::Collapsed;
         count += 1;
     }
@@ -289,7 +322,10 @@ fn op_collapse(workspace: &Path, action: &serde_json::Value) -> anyhow::Result<(
         "ts_ms": crate::logging::now_ms(),
     });
     let _ = crate::logging::append_action_log_record(&record);
-    Ok((false, format!("invariant {id} marked Collapsed — {rationale}")))
+    Ok((
+        false,
+        format!("invariant {id} marked Collapsed — {rationale}"),
+    ))
 }
 
 /// Read `enforced_invariants.json` for display or further processing.
@@ -408,15 +444,21 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
         if inv.status != InvariantStatus::Promoted {
             continue;
         }
-        let issue_id = format!("inv_gate_unenforced_{}", inv.id.to_lowercase().replace('-', "_"));
+        let issue_id = format!(
+            "inv_gate_unenforced_{}",
+            inv.id.to_lowercase().replace('-', "_")
+        );
         // Skip if already present as any status (don't re-open a wontfix).
         if existing_ids.contains(&issue_id) {
             continue;
         }
         // Also skip if there's already an open issue at the same location/id prefix.
-        let already_tracked = file.issues.iter()
-            .filter(|i| !is_closed(i))
-            .any(|i| i.id.starts_with(&format!("inv_gate_unenforced_{}", inv.id.to_lowercase().replace('-', "_"))));
+        let already_tracked = file.issues.iter().filter(|i| !is_closed(i)).any(|i| {
+            i.id.starts_with(&format!(
+                "inv_gate_unenforced_{}",
+                inv.id.to_lowercase().replace('-', "_")
+            ))
+        });
         if already_tracked {
             continue;
         }
@@ -501,37 +543,48 @@ fn try_synthesize_invariants(workspace: &Path) -> Result<()> {
 /// Convert classified blocker records directly into fingerprints — no text heuristics.
 fn fingerprints_from_blockers(workspace: &Path) -> Vec<Fingerprint> {
     let file = crate::blockers::load_blockers(workspace);
-    file.blockers.iter().map(|b| {
-        let actor_kind = actor_kind_from_role(&b.actor);
-        Fingerprint {
-            conditions: vec![
-                crate::invariants::StateCondition {
-                    key: "actor_kind".to_string(),
-                    value: actor_kind.to_string(),
-                },
-                crate::invariants::StateCondition {
-                    key: "error_class".to_string(),
-                    value: b.error_class.as_key().to_string(),
-                },
-            ],
-            predicate_text: format!(
-                "Role `{actor_kind}` repeatedly encounters `{}`: {}",
-                b.error_class.as_key(),
-                b.error_class.description()
-            ),
-            ts_ms: b.ts_ms,
-        }
-    }).collect()
+    file.blockers
+        .iter()
+        .map(|b| {
+            let actor_kind = actor_kind_from_role(&b.actor);
+            Fingerprint {
+                conditions: vec![
+                    crate::invariants::StateCondition {
+                        key: "actor_kind".to_string(),
+                        value: actor_kind.to_string(),
+                    },
+                    crate::invariants::StateCondition {
+                        key: "error_class".to_string(),
+                        value: b.error_class.as_key().to_string(),
+                    },
+                ],
+                predicate_text: format!(
+                    "Role `{actor_kind}` repeatedly encounters `{}`: {}",
+                    b.error_class.as_key(),
+                    b.error_class.description()
+                ),
+                ts_ms: b.ts_ms,
+            }
+        })
+        .collect()
 }
 
 fn actor_kind_from_role(role: &str) -> &'static str {
-    if role.starts_with("executor") { "executor" }
-    else if role.starts_with("planner") { "planner" }
-    else if role.starts_with("verifier") { "verifier" }
-    else if role.starts_with("diagnostics") { "diagnostics" }
-    else if role.starts_with("orchestrator") { "orchestrator" }
-    else if role.starts_with("solo") { "solo" }
-    else { "unknown" }
+    if role.starts_with("executor") {
+        "executor"
+    } else if role.starts_with("planner") {
+        "planner"
+    } else if role.starts_with("verifier") {
+        "verifier"
+    } else if role.starts_with("diagnostics") {
+        "diagnostics"
+    } else if role.starts_with("orchestrator") {
+        "orchestrator"
+    } else if role.starts_with("solo") {
+        "solo"
+    } else {
+        "unknown"
+    }
 }
 
 /// Called after op_enforce: ensures the in-memory Enforced status is stable.
@@ -594,7 +647,10 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
 
         // Pattern 3: forced executor handoffs (step-limit exceeded)
         if action == "message" || text.contains("FORCED HANDOFF") || text.contains("step budget") {
-            if actor.starts_with("executor") && text.contains("forced") || text.contains("step limit") || text.contains("FORCED HANDOFF") {
+            if actor.starts_with("executor") && text.contains("forced")
+                || text.contains("step limit")
+                || text.contains("FORCED HANDOFF")
+            {
                 prints.push(Fingerprint {
                     conditions: vec![
                         StateCondition { key: "actor_kind".to_string(), value: "executor".to_string() },
@@ -611,17 +667,35 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
             let path = entry.get("path").and_then(|v| v.as_str()).unwrap_or("?");
             prints.push(Fingerprint {
                 conditions: vec![
-                    StateCondition { key: "actor_kind".to_string(), value: if actor.starts_with("executor") { "executor".to_string() } else { "solo".to_string() } },
-                    StateCondition { key: "action".to_string(), value: "read_file".to_string() },
-                    StateCondition { key: "ok".to_string(), value: "false".to_string() },
+                    StateCondition {
+                        key: "actor_kind".to_string(),
+                        value: if actor.starts_with("executor") {
+                            "executor".to_string()
+                        } else {
+                            "solo".to_string()
+                        },
+                    },
+                    StateCondition {
+                        key: "action".to_string(),
+                        value: "read_file".to_string(),
+                    },
+                    StateCondition {
+                        key: "ok".to_string(),
+                        value: "false".to_string(),
+                    },
                 ],
-                predicate_text: format!("read_file failed (path may not exist or be outside workspace): {path}"),
+                predicate_text: format!(
+                    "read_file failed (path may not exist or be outside workspace): {path}"
+                ),
                 ts_ms,
             });
         }
 
         // Pattern 5: invalid action schema rejections
-        if text.contains("invalid action") || text.contains("schema violation") || text.contains("required field") {
+        if text.contains("invalid action")
+            || text.contains("schema violation")
+            || text.contains("required field")
+        {
             if phase == "result" && !ok {
                 let actor_kind = if actor.starts_with("executor") {
                     "executor"
@@ -642,7 +716,9 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
         }
 
         // Pattern 6: missing-target / path-does-not-exist errors
-        if text.contains("missing_target") || (text.contains("does not exist") && phase == "result" && !ok) {
+        if text.contains("missing_target")
+            || (text.contains("does not exist") && phase == "result" && !ok)
+        {
             prints.push(Fingerprint {
                 conditions: vec![
                     StateCondition { key: "actor_kind".to_string(), value: if actor.starts_with("executor") { "executor".to_string() } else { "any".to_string() } },
@@ -695,13 +771,20 @@ fn fingerprint_tool_failure(
 
     Some(Fingerprint {
         conditions: vec![
-            StateCondition { key: "actor_kind".to_string(), value: actor_kind.to_string() },
-            StateCondition { key: "action".to_string(), value: action.to_string() },
-            StateCondition { key: "error".to_string(), value: error_kind.to_string() },
+            StateCondition {
+                key: "actor_kind".to_string(),
+                value: actor_kind.to_string(),
+            },
+            StateCondition {
+                key: "action".to_string(),
+                value: action.to_string(),
+            },
+            StateCondition {
+                key: "error".to_string(),
+                value: error_kind.to_string(),
+            },
         ],
-        predicate_text: format!(
-            "Role `{actor_kind}` action `{action}` failed with `{error_kind}`"
-        ),
+        predicate_text: format!("Role `{actor_kind}` action `{action}` failed with `{error_kind}`"),
         ts_ms,
     })
 }
@@ -781,9 +864,7 @@ fn merge_fingerprints(file: &mut EnforcedInvariantsFile, prints: Vec<Fingerprint
 /// Auto-promote invariants whose support_count crosses MIN_INVARIANT_SUPPORT.
 fn promote_by_threshold(file: &mut EnforcedInvariantsFile) {
     for inv in file.invariants.iter_mut() {
-        if inv.status == InvariantStatus::Discovered
-            && inv.support_count >= MIN_INVARIANT_SUPPORT
-        {
+        if inv.status == InvariantStatus::Discovered && inv.support_count >= MIN_INVARIANT_SUPPORT {
             inv.status = InvariantStatus::Promoted;
             // Assign default gates based on conditions.
             if inv.gates.is_empty() {
@@ -863,12 +944,18 @@ fn invariants_path(workspace: &Path) -> std::path::PathBuf {
 fn load_invariants(workspace: &Path) -> EnforcedInvariantsFile {
     let path = invariants_path(workspace);
     if !path.exists() {
-        return EnforcedInvariantsFile { version: 1, ..Default::default() };
+        return EnforcedInvariantsFile {
+            version: 1,
+            ..Default::default()
+        };
     }
     std::fs::read_to_string(&path)
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_else(|| EnforcedInvariantsFile { version: 1, ..Default::default() })
+        .unwrap_or_else(|| EnforcedInvariantsFile {
+            version: 1,
+            ..Default::default()
+        })
 }
 
 fn save_invariants(workspace: &Path, file: &EnforcedInvariantsFile) -> Result<()> {
@@ -955,14 +1042,26 @@ mod tests {
     #[test]
     fn fingerprint_id_is_stable() {
         let conds = vec![
-            StateCondition { key: "actor_kind".to_string(), value: "executor".to_string() },
-            StateCondition { key: "error".to_string(), value: "not_found".to_string() },
+            StateCondition {
+                key: "actor_kind".to_string(),
+                value: "executor".to_string(),
+            },
+            StateCondition {
+                key: "error".to_string(),
+                value: "not_found".to_string(),
+            },
         ];
         let id1 = fingerprint_id(&conds);
         // Reversed order — should produce the same ID because we sort.
         let conds_rev = vec![
-            StateCondition { key: "error".to_string(), value: "not_found".to_string() },
-            StateCondition { key: "actor_kind".to_string(), value: "executor".to_string() },
+            StateCondition {
+                key: "error".to_string(),
+                value: "not_found".to_string(),
+            },
+            StateCondition {
+                key: "actor_kind".to_string(),
+                value: "executor".to_string(),
+            },
         ];
         let id2 = fingerprint_id(&conds_rev);
         assert_eq!(id1, id2);
@@ -971,8 +1070,14 @@ mod tests {
 
     #[test]
     fn different_conditions_produce_different_ids() {
-        let c1 = vec![StateCondition { key: "error".to_string(), value: "timeout".to_string() }];
-        let c2 = vec![StateCondition { key: "error".to_string(), value: "not_found".to_string() }];
+        let c1 = vec![StateCondition {
+            key: "error".to_string(),
+            value: "timeout".to_string(),
+        }];
+        let c2 = vec![StateCondition {
+            key: "error".to_string(),
+            value: "not_found".to_string(),
+        }];
         assert_ne!(fingerprint_id(&c1), fingerprint_id(&c2));
     }
 
@@ -1031,8 +1136,14 @@ mod tests {
                 id: "INV-test".to_string(),
                 predicate_text: "executor must not run when ready_tasks=0".to_string(),
                 state_conditions: vec![
-                    StateCondition { key: "proposed_role".to_string(), value: "executor".to_string() },
-                    StateCondition { key: "ready_tasks".to_string(), value: "0".to_string() },
+                    StateCondition {
+                        key: "proposed_role".to_string(),
+                        value: "executor".to_string(),
+                    },
+                    StateCondition {
+                        key: "ready_tasks".to_string(),
+                        value: "0".to_string(),
+                    },
                 ],
                 support_count: 5,
                 status: InvariantStatus::Promoted,
@@ -1062,8 +1173,14 @@ mod tests {
                 id: "INV-test".to_string(),
                 predicate_text: "executor must not run when ready_tasks=0".to_string(),
                 state_conditions: vec![
-                    StateCondition { key: "proposed_role".to_string(), value: "executor".to_string() },
-                    StateCondition { key: "ready_tasks".to_string(), value: "0".to_string() },
+                    StateCondition {
+                        key: "proposed_role".to_string(),
+                        value: "executor".to_string(),
+                    },
+                    StateCondition {
+                        key: "ready_tasks".to_string(),
+                        value: "0".to_string(),
+                    },
                 ],
                 support_count: 5,
                 status: InvariantStatus::Promoted,
@@ -1096,7 +1213,9 @@ mod tests {
         let fps = extract_failure_fingerprints(&entries);
         assert!(!fps.is_empty());
         assert!(fps.iter().any(|f| {
-            f.conditions.iter().any(|c| c.key == "action" && c.value == "plan_preflight")
+            f.conditions
+                .iter()
+                .any(|c| c.key == "action" && c.value == "plan_preflight")
         }));
     }
 
@@ -1115,8 +1234,14 @@ mod tests {
         let raw = std::fs::read_to_string(&issues_path).unwrap();
         let file: IssuesFile = serde_json::from_str(&raw).unwrap();
         let ids: Vec<&str> = file.issues.iter().map(|i| i.id.as_str()).collect();
-        assert!(ids.contains(&"inv_action_surface_missing"), "action surface issue missing");
-        assert!(ids.contains(&"inv_enforced_not_in_prompts"), "prompt injection issue missing");
+        assert!(
+            ids.contains(&"inv_action_surface_missing"),
+            "action surface issue missing"
+        );
+        assert!(
+            ids.contains(&"inv_enforced_not_in_prompts"),
+            "prompt injection issue missing"
+        );
         // Scores should be > 0 after rescore_all.
         for issue in &file.issues {
             assert!(issue.score > 0.0, "score should be non-zero after rescore");
@@ -1133,7 +1258,10 @@ mod tests {
         let second = generate_invariant_issues(tmp.as_path()).unwrap();
 
         assert_eq!(first, 2);
-        assert_eq!(second, 0, "second call should create no new issues (idempotent)");
+        assert_eq!(
+            second, 0,
+            "second call should create no new issues (idempotent)"
+        );
     }
 
     #[test]
@@ -1150,8 +1278,14 @@ mod tests {
                 id: "INV-aabbccdd".to_string(),
                 predicate_text: "executor must not run when no tasks are ready".to_string(),
                 state_conditions: vec![
-                    StateCondition { key: "proposed_role".to_string(), value: "executor".to_string() },
-                    StateCondition { key: "ready_tasks".to_string(), value: "0".to_string() },
+                    StateCondition {
+                        key: "proposed_role".to_string(),
+                        value: "executor".to_string(),
+                    },
+                    StateCondition {
+                        key: "ready_tasks".to_string(),
+                        value: "0".to_string(),
+                    },
                 ],
                 support_count: 5,
                 status: InvariantStatus::Promoted,

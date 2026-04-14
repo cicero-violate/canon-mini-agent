@@ -63,7 +63,11 @@ pub fn read_objectives_compact(path: &Path) -> String {
     let Ok(file) = serde_json::from_str::<ObjectivesFile>(&raw) else {
         return raw;
     };
-    let active: Vec<&Objective> = file.objectives.iter().filter(|o| !is_completed(o)).collect();
+    let active: Vec<&Objective> = file
+        .objectives
+        .iter()
+        .filter(|o| !is_completed(o))
+        .collect();
     if active.is_empty() {
         return String::new();
     }
@@ -71,8 +75,16 @@ pub fn read_objectives_compact(path: &Path) -> String {
     // Limit to top-N objectives to prevent prompt overflow
     let limit = 20usize;
     for obj in active.iter().take(limit) {
-        let status = if obj.status.trim().is_empty() { "active" } else { obj.status.trim() };
-        let scope = if obj.scope.trim().is_empty() { String::new() } else { format!("  ({})", obj.scope.trim()) };
+        let status = if obj.status.trim().is_empty() {
+            "active"
+        } else {
+            obj.status.trim()
+        };
+        let scope = if obj.scope.trim().is_empty() {
+            String::new()
+        } else {
+            format!("  ({})", obj.scope.trim())
+        };
         // Truncate overly long titles to prevent prompt overflow
         let max_len = 120usize;
         let title = obj.title.trim();
@@ -81,7 +93,10 @@ pub fn read_objectives_compact(path: &Path) -> String {
         } else {
             title.to_string()
         };
-        out.push_str(&format!("[{status}]  {}  —  {}{scope}\n", obj.id, truncated));
+        out.push_str(&format!(
+            "[{status}]  {}  —  {}{scope}\n",
+            obj.id, truncated
+        ));
     }
     out.push_str("Full detail: {\"action\":\"objectives\",\"op\":\"read\"}");
     out

@@ -88,7 +88,10 @@ fn parse_invariants_md(text: &str) -> InvariantsReport {
             *section = InvariantSection::Body;
             return true;
         }
-        if title.starts_with("Meta-Level") || title.starts_with("Insight") || title.starts_with("Final") {
+        if title.starts_with("Meta-Level")
+            || title.starts_with("Insight")
+            || title.starts_with("Final")
+        {
             push_current_invariant(current_title, current_clauses, current_desc, invariants);
             *section = InvariantSection::Meta;
             if !title.is_empty() {
@@ -119,7 +122,12 @@ fn parse_invariants_md(text: &str) -> InvariantsReport {
             }
         }
         if line.starts_with("### ") {
-            push_current_invariant(&mut current_title, &mut current_clauses, &mut current_desc, &mut invariants);
+            push_current_invariant(
+                &mut current_title,
+                &mut current_clauses,
+                &mut current_desc,
+                &mut invariants,
+            );
             current_title = Some(line.trim_start_matches("### ").trim().to_string());
             section = InvariantSection::Body;
             continue;
@@ -159,7 +167,12 @@ fn parse_invariants_md(text: &str) -> InvariantsReport {
             }
         }
     }
-    push_current_invariant(&mut current_title, &mut current_clauses, &mut current_desc, &mut invariants);
+    push_current_invariant(
+        &mut current_title,
+        &mut current_clauses,
+        &mut current_desc,
+        &mut invariants,
+    );
 
     InvariantsReport {
         version: 1,
@@ -194,12 +207,7 @@ fn parse_objectives_md(text: &str) -> ObjectivesReport {
             continue;
         }
         if line.starts_with("## ") {
-            if handle_objectives_h2_heading(
-                line,
-                &mut objectives,
-                &mut current,
-                &mut section,
-            ) {
+            if handle_objectives_h2_heading(line, &mut objectives, &mut current, &mut section) {
                 continue;
             }
         }
@@ -288,12 +296,18 @@ fn push_objective_section_line(
         ObjectiveSection::Instrumentation => instrumentation.push(strip_bullet(line)),
         ObjectiveSection::DefinitionDone => definition_of_done.push(strip_bullet(line)),
         ObjectiveSection::NonGoals => non_goals.push(strip_bullet(line)),
-        ObjectiveSection::Requirement => push_current_objective_line(current, line, ObjectiveField::Requirement),
-        ObjectiveSection::Verification => push_current_objective_line(current, line, ObjectiveField::Verification),
+        ObjectiveSection::Requirement => {
+            push_current_objective_line(current, line, ObjectiveField::Requirement)
+        }
+        ObjectiveSection::Verification => {
+            push_current_objective_line(current, line, ObjectiveField::Verification)
+        }
         ObjectiveSection::SuccessCriteria => {
             push_current_objective_line(current, line, ObjectiveField::SuccessCriteria)
         }
-        ObjectiveSection::None => push_current_objective_line(current, line, ObjectiveField::Description),
+        ObjectiveSection::None => {
+            push_current_objective_line(current, line, ObjectiveField::Description)
+        }
     }
 }
 

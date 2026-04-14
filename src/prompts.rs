@@ -7,8 +7,8 @@ use crate::constants::{
 };
 use crate::protocol::{MessagePayload, MessageStatus, MessageType, ProtocolMessage, Role};
 use crate::tool_schema::{
-    cargo_test_action_example, plan_set_task_status_action_example, plan_sorted_view_action_example,
-    validate_tool_action,
+    cargo_test_action_example, plan_set_task_status_action_example,
+    plan_sorted_view_action_example, validate_tool_action,
 };
 
 pub(crate) fn truncate(s: &str, max: usize) -> &str {
@@ -189,8 +189,7 @@ fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
         }
             (_, ToolPromptKind::Message) => "message — send inter-agent protocol message",
         }
-    }
-
+}
 
 const READ_FILE_FOOTER: &str = "   With \"line\":N the output starts at line N and shows up to 1000 lines.\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.\n   ⚠ read_file output is prefixed with line numbers (\"42: code here\"). Strip the \"N: \" prefix when\n     writing patch lines — patch lines must contain ONLY the raw source text, never \"42: code here\".\n     WRONG:  -42: fn old() {}   RIGHT:  -fn old() {}";
 
@@ -214,12 +213,12 @@ fn read_plan_with_sorted_view_example(rationale: &str) -> String {
     )
 }
 
-    fn message_tool_prompt_examples() -> &'static str {
-        truncate(
+fn message_tool_prompt_examples() -> &'static str {
+    truncate(
             "   {\"action\":\"message\",\"from\":\"executor\",\"to\":\"verifier\",\"type\":\"handoff\",\"status\":\"complete\",\"observation\":\"Summarize what happened.\",\"rationale\":\"Execution work is complete and the verifier now has enough evidence to judge it.\",\"predicted_next_actions\":[{\"action\":\"read_file\",\"intent\":\"Inspect the changed source files during verification.\"},{\"action\":\"cargo_test\",\"intent\":\"Run verification tests if the code path needs execution proof.\"}],\"payload\":{\"summary\":\"brief evidence summary\",\"artifacts\":[\"path/to/file.rs\"]}}\n   {\"action\":\"message\",\"from\":\"executor\",\"to\":\"planner\",\"type\":\"blocker\",\"status\":\"blocked\",\"observation\":\"Describe the blocker.\",\"rationale\":\"Explain why progress is impossible.\",\"predicted_next_actions\":[{\"action\":\"read_file\",\"intent\":\"Inspect the blocked source or artifact in more detail.\"},{\"action\":\"run_command\",\"intent\":\"Gather concrete failure evidence for the blocker.\"}],\"payload\":{\"summary\":\"Short blocker summary\",\"blocker\":\"Root cause\",\"evidence\":\"Concrete error text\",\"required_action\":\"What must be done to unblock\",\"severity\":\"error\"}}\n   Allowed roles: executor|planner|verifier|diagnostics|solo. Allowed types: handoff|result|verification|failure|blocker|plan|diagnostics. Allowed status: complete|in_progress|failed|verified|ready|blocked.\n   ⚠ message with status=complete is REJECTED if build or tests fail — fix all errors first.",
             2000,
         )
-    }
+}
 
 fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
     let ws = crate::constants::workspace();
@@ -836,10 +835,7 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
     out.push_str(&prompt_workspace(kind));
     out.push_str("\n\n");
     // Truncate issues section to avoid prompt overflow
-    let issues = crate::issues::read_top_open_issues(
-        std::path::Path::new(workspace()),
-        3,
-    );
+    let issues = crate::issues::read_top_open_issues(std::path::Path::new(workspace()), 3);
     out.push_str(&truncate_section(&issues, 1500));
     out.push_str("\n\n");
     out.push_str("Tool protocol schemas (schemars):\n");
@@ -1036,10 +1032,14 @@ pub(crate) fn single_role_verifier_prompt(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed."
     );
     if !objectives.trim().is_empty() {
-        sections.push_str(&format!("\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}"));
+        sections.push_str(&format!(
+            "\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}"
+        ));
     }
     if !invariants.trim().is_empty() {
-        sections.push_str(&format!("\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}"));
+        sections.push_str(&format!(
+            "\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}"
+        ));
     }
     if !executor_diff_text.trim().is_empty() {
         sections.push_str(&format!("\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff_text}"));
@@ -1251,13 +1251,19 @@ pub(crate) fn single_role_executor_prompt(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed.\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}"
     );
     if !violations.trim().is_empty() {
-        sections.push_str(&format!("\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}"));
+        sections.push_str(&format!(
+            "\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}"
+        ));
     }
     if !diagnostics.trim().is_empty() {
-        sections.push_str(&format!("\n\nDiagnostics (from {diagnostics_path}):\n{diagnostics}"));
+        sections.push_str(&format!(
+            "\n\nDiagnostics (from {diagnostics_path}):\n{diagnostics}"
+        ));
     }
     if !invariants.trim().is_empty() {
-        sections.push_str(&format!("\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}"));
+        sections.push_str(&format!(
+            "\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}"
+        ));
     }
     sections.push_str("\n\nLane plans are deprecated. Use planner handoff messages and {MASTER_PLAN_FILE} for task selection.\n\nDo not modify spec, plan, violations, or diagnostics.\nDo not use internal tools.\nDo not hand off work; continue execution directly in the current role flow.\nUse `message.payload` to report evidence for verifier review. Emit exactly one action to begin. Think through the decision internally; reveal chain-of-thought.");
     sections
@@ -1548,7 +1554,8 @@ pub(crate) fn action_intent(action: &Value) -> Option<&str> {
 fn action_requires_provenance(action: &Value) -> bool {
     let kind = action.get("action").and_then(|v| v.as_str()).unwrap_or("");
     match kind {
-        "apply_patch" | "rename_symbol" | "run_command" | "python" | "cargo_test" | "cargo_clippy" => true,
+        "apply_patch" | "rename_symbol" | "run_command" | "python" | "cargo_test"
+        | "cargo_clippy" => true,
         "cargo_fmt" => true,
         "plan" => action.get("op").and_then(|v| v.as_str()) != Some("sorted_view"),
         "objectives" => !matches!(
@@ -1568,7 +1575,9 @@ fn plan_task_objective_id(task_id: &str) -> Option<String> {
         .get("tasks")
         .and_then(|v| v.as_array())
         .and_then(|tasks| {
-            tasks.iter().find(|task| task.get("id").and_then(|v| v.as_str()) == Some(task_id))
+            tasks
+                .iter()
+                .find(|task| task.get("id").and_then(|v| v.as_str()) == Some(task_id))
         })
         .and_then(|task| task.get("objective_id"))
         .and_then(|v| v.as_str())
@@ -1580,10 +1589,12 @@ fn validate_action_provenance(action: &Value) -> Result<()> {
         return Ok(());
     }
 
-    let task_id = action_task_id(action)
-        .ok_or_else(|| anyhow!("mutating or verification actions must include non-empty task_id"))?;
-    let objective_id = action_objective_id(action)
-        .ok_or_else(|| anyhow!("mutating or verification actions must include non-empty objective_id"))?;
+    let task_id = action_task_id(action).ok_or_else(|| {
+        anyhow!("mutating or verification actions must include non-empty task_id")
+    })?;
+    let objective_id = action_objective_id(action).ok_or_else(|| {
+        anyhow!("mutating or verification actions must include non-empty objective_id")
+    })?;
     let _intent = action_intent(action)
         .ok_or_else(|| anyhow!("mutating or verification actions must include non-empty intent"))?;
 
@@ -1671,17 +1682,13 @@ fn validate_optional_message_severity(obj: &serde_json::Map<String, Value>) -> R
     let Some(severity) = obj.get("severity").and_then(|v| v.as_str()) else {
         return Ok(());
     };
-    let _ = serde_json::from_value::<crate::protocol::Severity>(Value::String(
-        severity.to_string(),
-    ))
-    .map_err(|_| anyhow!("message severity must be one of: info|warn|error|critical"))?;
+    let _ =
+        serde_json::from_value::<crate::protocol::Severity>(Value::String(severity.to_string()))
+            .map_err(|_| anyhow!("message severity must be one of: info|warn|error|critical"))?;
     Ok(())
 }
 
-fn validate_optional_message_role(
-    obj: &serde_json::Map<String, Value>,
-    field: &str,
-) -> Result<()> {
+fn validate_optional_message_role(obj: &serde_json::Map<String, Value>, field: &str) -> Result<()> {
     let Some(role) = obj.get(field) else {
         return Ok(());
     };
