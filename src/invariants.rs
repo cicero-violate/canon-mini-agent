@@ -50,6 +50,8 @@ const MAX_LINES_TO_SCAN: usize = 4000;
 pub const MIN_INVARIANT_SUPPORT: usize = 3;
 /// Max invariants kept per status tier.
 const MAX_INVARIANTS_PER_STATUS: usize = 50;
+/// Max raw samples kept per invariant.
+const MAX_EVIDENCE_SAMPLES: usize = 3;
 
 // ── Data structures ───────────────────────────────────────────────────────────
 
@@ -83,6 +85,14 @@ pub struct StateCondition {
     pub value: String,
 }
 
+/// Raw evidence attached to a discovered invariant.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InvariantEvidenceSample {
+    pub source: String,
+    pub ts_ms: u64,
+    pub raw: Value,
+}
+
 /// A dynamically discovered invariant.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiscoveredInvariant {
@@ -100,6 +110,9 @@ pub struct DiscoveredInvariant {
     /// Which gate(s) enforce this invariant: "route", "planner", "executor".
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub gates: Vec<String>,
+    /// Raw evidence samples supporting this invariant.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence: Vec<InvariantEvidenceSample>,
     /// Timestamp (ms) of first observation.
     pub first_seen_ms: u64,
     /// Timestamp (ms) of most recent observation.
@@ -546,6 +559,17 @@ fn fingerprints_from_blockers(workspace: &Path) -> Vec<Fingerprint> {
     file.blockers
         .iter()
         .map(|b| {
+            let raw = serde_json::json!({
+                "id": b.id,
+                "error_class": b.error_class,
+                "actor": b.actor,
+                "task_id": b.task_id,
+                "objective_id": b.objective_id,
+                "summary": b.summary,
+                "action_kind": b.action_kind,
+                "source": b.source,
+                "ts_ms": b.ts_ms,
+            });
             let actor_kind = actor_kind_from_role(&b.actor);
             Fingerprint {
                 conditions: vec![
@@ -564,6 +588,11 @@ fn fingerprints_from_blockers(workspace: &Path) -> Vec<Fingerprint> {
                     b.error_class.description()
                 ),
                 ts_ms: b.ts_ms,
+                evidence: InvariantEvidenceSample {
+                    source: "agent_state/blockers.json".to_string(),
+                    ts_ms: b.ts_ms,
+                    raw,
+                },
             }
         })
         .collect()
@@ -605,6 +634,7 @@ struct Fingerprint {
     conditions: Vec<StateCondition>,
     predicate_text: String,
     ts_ms: u64,
+    evidence: InvariantEvidenceSample,
 }
 
 fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
@@ -628,7 +658,7 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
 
         // Pattern 1: explicit tool/result failures
         if phase == "result" && !ok {
-            if let Some(fp) = fingerprint_tool_failure(actor, action, text, ts_ms) {
+            if let Some(fp) = fingerprint_tool_failure(entry, actor, action, text, ts_ms) {
                 prints.push(fp);
             }
         }
@@ -642,6 +672,11 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
                 ],
                 predicate_text: "Planner task referenced a symbol not found in the workspace semantic graph; executor cannot execute it".to_string(),
                 ts_ms,
+                evidence: InvariantEvidenceSample {
+                    source: "agent_state/default/actions.jsonl".to_string(),
+                    ts_ms,
+                    raw: entry.clone(),
+                },
             });
         }
 
@@ -658,6 +693,11 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
                     ],
                     predicate_text: "Executor reached step limit without completing task — task scope is too large or executor is stalling".to_string(),
                     ts_ms,
+                    evidence: InvariantEvidenceSample {
+                        source: "agent_state/default/actions.jsonl".to_string(),
+                        ts_ms,
+                        raw: entry.clone(),
+                    },
                 });
             }
         }
@@ -688,6 +728,11 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
                     "read_file failed (path may not exist or be outside workspace): {path}"
                 ),
                 ts_ms,
+                evidence: InvariantEvidenceSample {
+                    source: "agent_state/default/actions.jsonl".to_string(),
+                    ts_ms,
+                    raw: entry.clone(),
+                },
             });
         }
 
@@ -711,6 +756,11 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
                     ],
                     predicate_text: format!("Role `{actor_kind}` emitted a structurally invalid action — schema gate violation"),
                     ts_ms,
+                    evidence: InvariantEvidenceSample {
+                        source: "agent_state/default/actions.jsonl".to_string(),
+                        ts_ms,
+                        raw: entry.clone(),
+                    },
                 });
             }
         }
@@ -726,6 +776,11 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
                 ],
                 predicate_text: "Action targeted a path that does not exist — plan is referencing a target that has not been created yet".to_string(),
                 ts_ms,
+                evidence: InvariantEvidenceSample {
+                    source: "agent_state/default/actions.jsonl".to_string(),
+                    ts_ms,
+                    raw: entry.clone(),
+                },
             });
         }
     }
@@ -734,6 +789,7 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
 }
 
 fn fingerprint_tool_failure(
+    entry: &Value,
     actor: &str,
     action: &str,
     text: &str,
@@ -786,6 +842,11 @@ fn fingerprint_tool_failure(
         ],
         predicate_text: format!("Role `{actor_kind}` action `{action}` failed with `{error_kind}`"),
         ts_ms,
+        evidence: InvariantEvidenceSample {
+            source: "agent_state/default/actions.jsonl".to_string(),
+            ts_ms,
+            raw: entry.clone(),
+        },
     })
 }
 
@@ -832,6 +893,7 @@ fn merge_fingerprints(file: &mut EnforcedInvariantsFile, prints: Vec<Fingerprint
         let count = fps.len();
         let min_ts = fps.iter().map(|f| f.ts_ms).min().unwrap_or(now);
         let max_ts = fps.iter().map(|f| f.ts_ms).max().unwrap_or(now);
+        let evidence = collect_evidence_samples(&fps);
         let conditions = fps
             .into_iter()
             .next()
@@ -846,6 +908,7 @@ fn merge_fingerprints(file: &mut EnforcedInvariantsFile, prints: Vec<Fingerprint
             if min_ts < existing.first_seen_ms {
                 existing.first_seen_ms = min_ts;
             }
+            merge_evidence(&mut existing.evidence, evidence);
         } else {
             file.invariants.push(DiscoveredInvariant {
                 id,
@@ -854,11 +917,50 @@ fn merge_fingerprints(file: &mut EnforcedInvariantsFile, prints: Vec<Fingerprint
                 support_count: count,
                 status: InvariantStatus::Discovered,
                 gates: Vec::new(),
+                evidence,
                 first_seen_ms: min_ts,
                 last_seen_ms: max_ts,
             });
         }
     }
+}
+
+fn collect_evidence_samples(fps: &[Fingerprint]) -> Vec<InvariantEvidenceSample> {
+    let mut seen = HashSet::new();
+    let mut ordered: Vec<&Fingerprint> = fps.iter().collect();
+    ordered.sort_by_key(|fp| fp.ts_ms);
+
+    let mut out = Vec::new();
+    for fp in ordered {
+        let key = serde_json::to_string(&fp.evidence.raw).unwrap_or_default();
+        if !seen.insert(key) {
+            continue;
+        }
+        out.push(fp.evidence.clone());
+        if out.len() >= MAX_EVIDENCE_SAMPLES {
+            break;
+        }
+    }
+    out
+}
+
+fn merge_evidence(
+    existing: &mut Vec<InvariantEvidenceSample>,
+    incoming: Vec<InvariantEvidenceSample>,
+) {
+    let mut seen = HashSet::new();
+    let mut merged = Vec::new();
+    for sample in existing.iter().chain(incoming.iter()) {
+        let key = serde_json::to_string(&sample.raw).unwrap_or_default();
+        if !seen.insert(key) {
+            continue;
+        }
+        merged.push(sample.clone());
+        if merged.len() >= MAX_EVIDENCE_SAMPLES {
+            break;
+        }
+    }
+    *existing = merged;
 }
 
 /// Auto-promote invariants whose support_count crosses MIN_INVARIANT_SUPPORT.
@@ -1113,6 +1215,7 @@ mod tests {
                 support_count: MIN_INVARIANT_SUPPORT,
                 status: InvariantStatus::Discovered,
                 gates: vec![],
+                evidence: vec![],
                 first_seen_ms: 0,
                 last_seen_ms: 1,
             }],
@@ -1134,6 +1237,7 @@ mod tests {
                 support_count: MIN_INVARIANT_SUPPORT - 1,
                 status: InvariantStatus::Discovered,
                 gates: vec![],
+                evidence: vec![],
                 first_seen_ms: 0,
                 last_seen_ms: 0,
             }],
@@ -1415,6 +1519,7 @@ mod tests {
                 support_count: 5,
                 status: InvariantStatus::Promoted,
                 gates: vec!["route".to_string()],
+                evidence: vec![],
                 first_seen_ms: 0,
                 last_seen_ms: 1,
             }],
@@ -1452,6 +1557,7 @@ mod tests {
                 support_count: 5,
                 status: InvariantStatus::Promoted,
                 gates: vec!["route".to_string()],
+                evidence: vec![],
                 first_seen_ms: 0,
                 last_seen_ms: 1,
             }],
@@ -1557,6 +1663,7 @@ mod tests {
                 support_count: 5,
                 status: InvariantStatus::Promoted,
                 gates: vec!["route".to_string()],
+                evidence: vec![],
                 first_seen_ms: 0,
                 last_seen_ms: 1,
             }],
