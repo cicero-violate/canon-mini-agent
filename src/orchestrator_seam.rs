@@ -74,7 +74,7 @@ pub fn probe_diagnostics_reconciliation(
     let raw_diagnostics_text = std::fs::read_to_string(diagnostics_path).unwrap_or_default();
     let raw_violations_text = std::fs::read_to_string(violations_path).unwrap_or_default();
     let reconciled_diagnostics_text =
-        reconcile_diagnostics_report(&raw_diagnostics_text, &raw_violations_text);
+        reconcile_diagnostics_report(workspace, &raw_violations_text);
     if reconciled_diagnostics_text != raw_diagnostics_text {
         std::fs::write(diagnostics_path, &reconciled_diagnostics_text)?;
         writer.apply(ControlEvent::DiagnosticsReconciliationQueued);

@@ -801,6 +801,7 @@ fn create_issue(action: &Value, path: &Path, raw: &str) -> Result<(bool, String)
     }
     file.issues.push(issue);
     write_issues_file(path, &mut file)?;
+    queue_diagnostics_reconciliation();
     Ok((false, "issue create ok".to_string()))
 }
 
@@ -823,6 +824,7 @@ fn update_issue(action: &Value, path: &Path, raw: &str) -> Result<(bool, String)
     }
     *issue = serde_json::from_value(value)?;
     write_issues_file(path, &mut file)?;
+    queue_diagnostics_reconciliation();
     Ok((false, "issue update ok".to_string()))
 }
 
@@ -838,6 +840,7 @@ fn delete_issue(action: &Value, path: &Path, raw: &str) -> Result<(bool, String)
         bail!("issue not found: {issue_id}");
     }
     write_issues_file(path, &mut file)?;
+    queue_diagnostics_reconciliation();
     Ok((false, "issue delete ok".to_string()))
 }
 
@@ -854,7 +857,14 @@ fn set_issue_status(action: &Value, path: &Path, raw: &str) -> Result<(bool, Str
     let issue = find_issue_mut(&mut file, issue_id)?;
     issue.status = status.to_string();
     write_issues_file(path, &mut file)?;
+    queue_diagnostics_reconciliation();
     Ok((false, "issue set_status ok".to_string()))
+}
+
+fn queue_diagnostics_reconciliation() {
+    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
+    let _ = std::fs::create_dir_all(agent_state_dir);
+    let _ = std::fs::write(agent_state_dir.join("wakeup_diagnostics.flag"), "issues_changed");
 }
 
 fn parse_issues_file_allow_empty(raw: &str) -> Result<IssuesFile> {
@@ -2816,29 +2826,16 @@ fn reject_unvalidated_diagnostics_persistence(
     let new_diagnostics_text = fs::read_to_string(&diagnostics_path).unwrap_or_default();
     let raw_violations_text =
         fs::read_to_string(workspace.join(VIOLATIONS_FILE)).unwrap_or_default();
-    let sanitized = crate::prompt_inputs::sanitize_diagnostics_for_planner(
-        &new_diagnostics_text,
-        &raw_violations_text,
-    );
-    let introduces_unvalidated_ranked_failures = new_diagnostics_text
-        .contains("\"ranked_failures\"")
-        && sanitized.starts_with("(suppressed stale or unverified diagnostics:");
-    if !introduces_unvalidated_ranked_failures {
+    let derived = crate::prompt_inputs::reconcile_diagnostics_report(workspace, &raw_violations_text);
+    if new_diagnostics_text == derived {
         return Ok(None);
     }
     if let Some(previous) = previous_diagnostics_text {
         std::fs::write(&diagnostics_path, previous)?;
     }
-    let detail = serde_json::from_str::<Value>(&new_diagnostics_text)
-        .ok()
-        .and_then(|v| v.get("ranked_failures").and_then(Value::as_array).cloned())
-        .map(|failures| crate::prompt_inputs::describe_missing_source_validation(&failures))
-        .unwrap_or_else(|| "ranked_failures missing current-source validation".to_string());
     let rejection_msg = format!(
-        "apply_patch rejected: ranked_failures require current-source validation before persistence\n\
-         Detail: {detail}\n\
-         Fix: add a read_file evidence entry that cites the specific file and line range \
-         you read, e.g. \"read_file src/app.rs:420-450 — confirmed X\"."
+        "apply_patch rejected: DIAGNOSTICS.json is a derived cache view and must match the rendered diagnostics report from ISSUES.json plus VIOLATIONS.json.\n\
+         Fix: update the underlying issues/violations state instead of editing diagnostics output directly."
     );
     log_error_event(
         role,

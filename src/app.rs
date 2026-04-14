@@ -891,7 +891,7 @@ async fn run_diagnostics_phase(
             let raw_diagnostics_text = read_text_or_empty(ctx.diagnostics_path);
             let raw_violations_text = read_text_or_empty(ctx.violations_path);
             let reconciled_diagnostics_text = crate::prompt_inputs::reconcile_diagnostics_report(
-                &raw_diagnostics_text,
+                ctx.workspace,
                 &raw_violations_text,
             );
             if reconciled_diagnostics_text != raw_diagnostics_text {
@@ -907,10 +907,7 @@ async fn run_diagnostics_phase(
                     return false;
                 }
             }
-            let new_diagnostics_text = crate::prompt_inputs::sanitize_diagnostics_for_planner(
-                &reconciled_diagnostics_text,
-                &raw_violations_text,
-            );
+            let new_diagnostics_text = reconciled_diagnostics_text;
             let diagnostics_changed = writer.state().diagnostics_text != new_diagnostics_text;
             writer.apply(ControlEvent::DiagnosticsTextSet {
                 text: new_diagnostics_text,
@@ -5214,7 +5211,7 @@ pub async fn run() -> Result<()> {
             let raw_diagnostics_text = read_text_or_empty(&diagnostics_path);
             let raw_violations_text = read_text_or_empty(&violations_path);
             let reconciled_diagnostics_text = crate::prompt_inputs::reconcile_diagnostics_report(
-                &raw_diagnostics_text,
+                workspace.as_path(),
                 &raw_violations_text,
             );
             let diagnostics_reconciliation_needed =
@@ -5350,7 +5347,7 @@ pub async fn run() -> Result<()> {
             let raw_diagnostics_text = read_text_or_empty(&diagnostics_path);
             let raw_violations_text = read_text_or_empty(&violations_path);
             let reconciled_diagnostics_text = crate::prompt_inputs::reconcile_diagnostics_report(
-                &raw_diagnostics_text,
+                workspace.as_path(),
                 &raw_violations_text,
             );
             let stale_diagnostics_pending = reconciled_diagnostics_text != raw_diagnostics_text;

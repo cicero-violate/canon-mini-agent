@@ -5,6 +5,8 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 use crate::constants::{INVARIANTS_FILE, MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE};
+use crate::reports::{DiagnosticsFinding, DiagnosticsReport, Impact, Severity, ViolationsReport};
+use crate::issues::read_ranked_open_issues;
 
 use crate::prompts::{
     single_role_diagnostics_prompt, single_role_executor_prompt, single_role_planner_prompt,
@@ -698,6 +700,272 @@ pub fn filter_active_diagnostics_json(raw: &str) -> String {
     out
 }
 
+fn parse_violations_report(raw: &str) -> Option<ViolationsReport> {
+    if raw.trim().is_empty() {
+        return None;
+    }
+    serde_json::from_str::<ViolationsReport>(raw).ok()
+}
+
+fn source_validation_state(report: Option<&ViolationsReport>, raw_violations_text: &str) -> String {
+    match report {
+        Some(report) if report.status.eq_ignore_ascii_case("verified") && report.violations.is_empty() => {
+            "verified_empty".to_string()
+        }
+        Some(report) => format!(
+            "status={},violations={}",
+            report.status,
+            report.violations.len()
+        ),
+        None if raw_violations_text.trim().is_empty() => "missing".to_string(),
+        None => "invalid_json".to_string(),
+    }
+}
+
+fn impact_from_severity(severity: &Severity) -> Impact {
+    match severity {
+        Severity::Critical => Impact::Critical,
+        Severity::High => Impact::High,
+        Severity::Medium => Impact::Medium,
+        Severity::Low => Impact::Low,
+    }
+}
+
+fn impact_from_issue_score(score: f32, priority: &str) -> Impact {
+    match priority.trim().to_lowercase().as_str() {
+        "critical" => Impact::Critical,
+        "high" => Impact::High,
+        "medium" => Impact::Medium,
+        "low" => Impact::Low,
+        _ if score >= 0.85 => Impact::Critical,
+        _ if score >= 0.65 => Impact::High,
+        _ if score >= 0.35 => Impact::Medium,
+        _ => Impact::Low,
+    }
+}
+
+fn is_path_terminator(c: char) -> bool {
+    c.is_whitespace() || matches!(c, ',' | ';' | ')' | ']' | '}' | '"') || c == '\''
+}
+
+fn extract_path_like_target(text: &str) -> Option<String> {
+    for prefix in ["src/", "tests/", "PLANS/", "agent_state/", "state/"] {
+        if let Some(idx) = text.find(prefix) {
+            let tail = &text[idx..];
+            let end = tail.find(is_path_terminator).unwrap_or(tail.len());
+            let candidate = tail[..end].trim_matches(is_path_terminator);
+            if !candidate.is_empty() {
+                return Some(candidate.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn issue_repair_targets(issue: &crate::issues::Issue) -> Vec<String> {
+    let mut targets = Vec::new();
+    let location = issue.location.trim();
+    if !location.is_empty() {
+        targets.push(location.to_string());
+    }
+    for evidence in &issue.evidence {
+        if let Some(path) = extract_path_like_target(evidence) {
+            if !targets.iter().any(|existing| existing == &path) {
+                targets.push(path);
+            }
+        }
+    }
+    if targets.is_empty() {
+        targets.push(format!("ISSUES.json#{}", issue.id));
+    }
+    targets
+}
+
+fn issue_to_finding(issue: &crate::issues::Issue) -> DiagnosticsFinding {
+    let title = issue.title.trim();
+    let description = issue.description.trim();
+    let signal = if title.is_empty() {
+        format!("open issue {} [score:{:.2}]", issue.id, issue.score)
+    } else {
+        format!("{} [score:{:.2}]", title, issue.score)
+    };
+    let evidence = if issue.evidence.is_empty() {
+        vec![format!("ISSUES.json entry {}", issue.id)]
+    } else {
+        issue.evidence.clone()
+    };
+    DiagnosticsFinding {
+        id: issue.id.clone(),
+        impact: impact_from_issue_score(issue.score, &issue.priority),
+        signal,
+        evidence,
+        root_cause: if description.is_empty() {
+            title.to_string()
+        } else {
+            description.to_string()
+        },
+        repair_targets: issue_repair_targets(issue),
+    }
+}
+
+fn violation_to_finding(violation: &crate::reports::Violation) -> DiagnosticsFinding {
+    let title = violation.title.trim();
+    let signal = if title.is_empty() {
+        format!("violation {} [{:?}]", violation.id, violation.severity)
+    } else {
+        format!("{} [{:?}]", title, violation.severity)
+    };
+    let mut repair_targets = violation.files.clone();
+    if repair_targets.is_empty() {
+        repair_targets = violation.required_fix.clone();
+    }
+    if repair_targets.is_empty() {
+        repair_targets.push(format!("VIOLATIONS.json#{}", violation.id));
+    }
+    DiagnosticsFinding {
+        id: violation.id.clone(),
+        impact: impact_from_severity(&violation.severity),
+        signal,
+        evidence: if violation.evidence.is_empty() {
+            vec![format!("VIOLATIONS.json entry {}", violation.id)]
+        } else {
+            violation.evidence.clone()
+        },
+        root_cause: if violation.issue.trim().is_empty() {
+            violation.impact.trim().to_string()
+        } else {
+            violation.issue.trim().to_string()
+        },
+        repair_targets,
+    }
+}
+
+fn derive_planner_handoff(
+    issues: &[DiagnosticsFinding],
+    violations: Option<&ViolationsReport>,
+    validation_state: &str,
+) -> Vec<String> {
+    if !issues.is_empty() {
+        let mut handoff = Vec::new();
+        for finding in issues.iter().take(3) {
+            let target = finding
+                .repair_targets
+                .first()
+                .cloned()
+                .unwrap_or_else(|| finding.id.clone());
+            handoff.push(format!(
+                "Prioritize {} at {}: {}",
+                finding.id, target, finding.signal
+            ));
+        }
+        return handoff;
+    }
+
+    let mut handoff = Vec::new();
+    if let Some(report) = violations {
+        if report.violations.is_empty() {
+            handoff.push(
+                "No open issues and VIOLATIONS.json is verified empty; keep the current plan and continue monitoring source validation.".to_string(),
+            );
+        } else {
+            handoff.push(format!(
+                "No open issues were derived, but VIOLATIONS.json still contains {} violation(s); reconcile source validation before changing the plan.",
+                report.violations.len()
+            ));
+        }
+    } else if validation_state == "missing" {
+        handoff.push(
+            "No open issues were derived and VIOLATIONS.json is missing; continue with plan maintenance, but add source validation if stale state is suspected.".to_string(),
+        );
+    } else {
+        handoff.push(
+            "No open issues were derived; continue watching the rendered diagnostics view for new source validation evidence.".to_string(),
+        );
+    }
+    handoff
+}
+
+pub fn render_diagnostics_report_from_issues(
+    workspace: &Path,
+    raw_violations_text: &str,
+) -> String {
+    let open_issues = read_ranked_open_issues(workspace);
+    let violations_report = parse_violations_report(raw_violations_text);
+    let validation_state = source_validation_state(violations_report.as_ref(), raw_violations_text);
+    let mut ranked_failures: Vec<DiagnosticsFinding> =
+        open_issues.iter().map(issue_to_finding).collect();
+    if let Some(report) = violations_report.as_ref() {
+        ranked_failures.extend(report.violations.iter().map(violation_to_finding));
+    }
+    ranked_failures.sort_by(|a, b| {
+        let impact_rank = |impact: &Impact| match impact {
+            Impact::Critical => 0u8,
+            Impact::High => 1,
+            Impact::Medium => 2,
+            Impact::Low => 3,
+        };
+        impact_rank(&a.impact)
+            .cmp(&impact_rank(&b.impact))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+
+    let is_verified_empty = violations_report
+        .as_ref()
+        .map(|r| r.status.eq_ignore_ascii_case("verified") && r.violations.is_empty())
+        .unwrap_or(false);
+    let has_active_violations = violations_report
+        .as_ref()
+        .map(|r| !r.violations.is_empty())
+        .unwrap_or(false);
+    let has_high_issues = ranked_failures
+        .iter()
+        .any(|finding| matches!(finding.impact.clone(), Impact::Critical | Impact::High));
+    let status = if ranked_failures.is_empty() && is_verified_empty {
+        "verified"
+    } else if has_active_violations || has_high_issues {
+        "critical_failure"
+    } else {
+        "needs_repair"
+    };
+
+    let inputs_scanned = vec![
+        format!("ISSUES.json (open issues: {})", open_issues.len()),
+        match violations_report.as_ref() {
+            Some(report) if report.violations.is_empty() => format!(
+                "VIOLATIONS.json (status: {}, verified empty)",
+                report.status
+            ),
+            Some(report) => format!(
+                "VIOLATIONS.json (status: {}, violations: {})",
+                report.status,
+                report.violations.len()
+            ),
+            None if raw_violations_text.trim().is_empty() => {
+                "VIOLATIONS.json (missing or empty)".to_string()
+            }
+            None => "VIOLATIONS.json (invalid JSON)".to_string(),
+        },
+        format!("source-validation: {validation_state}"),
+    ];
+    let planner_handoff = derive_planner_handoff(
+        &ranked_failures,
+        violations_report.as_ref(),
+        &validation_state,
+    );
+    let report = DiagnosticsReport {
+        status: status.to_string(),
+        inputs_scanned,
+        ranked_failures,
+        planner_handoff,
+    };
+    serde_json::to_string_pretty(&report).unwrap_or_else(|_| {
+        format!(
+            "{{\"status\":\"{}\",\"inputs_scanned\":[\"ISSUES.json\"],\"ranked_failures\":[],\"planner_handoff\":[\"failed to render diagnostics report\"]}}",
+            status
+        )
+    })
+}
+
 /// Returns a human-readable explanation of which failure is missing source
 /// validation and what keywords are accepted, for use in tool result messages.
 pub(crate) fn describe_missing_source_validation(failures: &[Value]) -> String {
@@ -776,29 +1044,10 @@ fn violations_are_verified_and_empty(raw_violations_text: &str) -> bool {
 }
 
 pub(crate) fn reconcile_diagnostics_report(
-    raw_diagnostics_text: &str,
+    workspace: &Path,
     raw_violations_text: &str,
 ) -> String {
-    if !violations_are_verified_and_empty(raw_violations_text) {
-        return raw_diagnostics_text.to_string();
-    }
-
-    // Use typed round-trip so no unrecognised fields can be introduced.
-    let Ok(mut report) =
-        serde_json::from_str::<crate::reports::DiagnosticsReport>(raw_diagnostics_text)
-    else {
-        return raw_diagnostics_text.to_string();
-    };
-
-    report.status = "verified".to_string();
-    report.ranked_failures = Vec::new();
-    report.planner_handoff = vec![
-        "No active diagnostics contradictions remain after verifier reconciliation; \
-         treat prior ranked failures as resolved unless new current-source evidence is recorded."
-            .to_string(),
-    ];
-
-    serde_json::to_string_pretty(&report).unwrap_or_else(|_| raw_diagnostics_text.to_string())
+    render_diagnostics_report_from_issues(workspace, raw_violations_text)
 }
 
 pub(crate) fn sanitize_diagnostics_for_planner(
@@ -890,7 +1139,7 @@ pub fn load_planner_inputs(
     last_executor_diff: &mut String,
     cargo_test_failures: String,
     violations_path: &Path,
-    diagnostics_path: &Path,
+    _diagnostics_path: &Path,
     master_plan_path: &Path,
 ) -> PlannerInputs {
     let summary_text = lane_summary_text(lanes, verifier_summary);
@@ -911,9 +1160,7 @@ pub fn load_planner_inputs(
         filter_invariants_json(&read_text_or_empty(workspace.join(INVARIANTS_FILE)));
     let raw_violations_text = read_text_or_empty(violations_path);
     let violations_text = filter_active_violations_json(&raw_violations_text);
-    let raw_diagnostics_text = read_text_or_empty(diagnostics_path);
-    let diagnostics_text =
-        sanitize_diagnostics_for_planner(&raw_diagnostics_text, &raw_violations_text);
+    let diagnostics_text = render_diagnostics_report_from_issues(workspace, &raw_violations_text);
     let plan_text = read_text_or_empty(master_plan_path);
     let plan_diff_text = plan_diff(last_plan_text, &plan_text, 400);
     PlannerInputs {
@@ -954,9 +1201,10 @@ impl SingleRoleContext<'_> {
             SingleRoleRead::Violations => {
                 filter_active_violations_json(&read_text_or_empty(self.violations_path))
             }
-            SingleRoleRead::Diagnostics => {
-                filter_active_diagnostics_json(&read_text_or_empty(self.diagnostics_path))
-            }
+            SingleRoleRead::Diagnostics => render_diagnostics_report_from_issues(
+                self.workspace,
+                &read_text_or_empty(self.violations_path),
+            ),
             SingleRoleRead::Issues => crate::issues::read_top_open_issues(self.workspace, 10),
             SingleRoleRead::MasterPlan => {
                 filter_pending_plan_json(&read_text_or_empty(self.master_plan_path))
@@ -1063,9 +1311,9 @@ fn build_planner_role_prompt(
     inputs: &SingleRoleInputs,
     cargo_test_failures: &str,
 ) -> Result<String> {
-    let violations = ctx.read(SingleRoleRead::Violations)?;
-    let raw_diagnostics = ctx.read(SingleRoleRead::Diagnostics)?;
-    let diagnostics = sanitize_diagnostics_for_planner(&raw_diagnostics, &violations);
+    let raw_violations = read_text_or_empty(ctx.violations_path);
+    let violations = filter_active_violations_json(&raw_violations);
+    let diagnostics = render_diagnostics_report_from_issues(ctx.workspace, &raw_violations);
     let lessons = ctx.read(SingleRoleRead::Lessons)?;
     let objectives = ctx.read(SingleRoleRead::Objectives)?;
     let issues = ctx.read(SingleRoleRead::Issues)?;
@@ -1085,8 +1333,9 @@ fn build_planner_role_prompt(
 fn build_executor_role_prompt(ctx: &SingleRoleContext<'_>) -> Result<String> {
     let spec = ctx.read(SingleRoleRead::Spec)?;
     let master_plan = ctx.read(SingleRoleRead::MasterPlan)?;
-    let violations = ctx.read(SingleRoleRead::Violations)?;
-    let diagnostics = ctx.read(SingleRoleRead::Diagnostics)?;
+    let raw_violations = read_text_or_empty(ctx.violations_path);
+    let violations = filter_active_violations_json(&raw_violations);
+    let diagnostics = render_diagnostics_report_from_issues(ctx.workspace, &raw_violations);
     let invariants = ctx.read(SingleRoleRead::Invariants)?;
     Ok(single_role_executor_prompt(
         &spec,
@@ -1266,7 +1515,8 @@ fn render_executor_diff(diff_text: &str, max_lines: usize) -> String {
 mod diagnostics_filter_tests {
     use super::{
         filter_active_diagnostics_json, filter_active_violations_json, filter_invariants_json,
-        filter_pending_plan_json, sanitize_diagnostics_for_planner,
+        filter_pending_plan_json, render_diagnostics_report_from_issues,
+        sanitize_diagnostics_for_planner,
     };
 
     const NON_AUTHORITATIVE_VIOLATIONS: &str = r#"{}"#;
@@ -1329,6 +1579,72 @@ mod diagnostics_filter_tests {
         let sanitized = sanitize_diagnostics_for_planner(raw, VERIFIED_EMPTY_VIOLATIONS);
         assert!(sanitized.contains("suppressed stale diagnostics"));
         assert!(sanitized.contains("VIOLATIONS.json is verified with no active violations"));
+    }
+
+    #[test]
+    fn render_diagnostics_report_merges_issues_and_violations() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos();
+        let workspace = std::env::temp_dir().join(format!(
+            "canon-mini-agent-diagnostics-render-{}-{}",
+            std::process::id(),
+            unique
+        ));
+        fs::create_dir_all(&workspace).unwrap();
+        fs::write(
+            workspace.join(crate::constants::ISSUES_FILE),
+            r#"{
+  "version": 1,
+  "issues": [
+    {
+      "id": "ISS-001",
+      "title": "Planner drift",
+      "status": "open",
+      "priority": "high",
+      "kind": "logic",
+      "description": "Planner is reading stale diagnostics.",
+      "location": "src/app.rs:900",
+      "evidence": ["read_file src/app.rs:900-940 — confirmed stale diagnostics flow"]
+    }
+  ]
+}"#,
+        )
+        .unwrap();
+        fs::write(
+            workspace.join(crate::constants::VIOLATIONS_FILE),
+            r#"{
+  "status": "needs_repair",
+  "summary": "active violation present",
+  "violations": [
+    {
+      "id": "V1",
+      "title": "Diagnostics cache drift",
+      "severity": "critical",
+      "evidence": ["read_file VIOLATIONS.json:1-20 — confirmed cache drift"],
+      "issue": "Diagnostics output no longer matches current issues.",
+      "impact": "planner receives stale diagnostics.",
+      "required_fix": ["src/prompt_inputs.rs"],
+      "files": ["src/prompt_inputs.rs"]
+    }
+  ]
+}"#,
+        )
+        .unwrap();
+
+        let rendered = render_diagnostics_report_from_issues(
+            workspace.as_path(),
+            &fs::read_to_string(workspace.join(crate::constants::VIOLATIONS_FILE)).unwrap(),
+        );
+        assert!(rendered.contains("\"status\": \"critical_failure\""));
+        assert!(rendered.contains("\"ISS-001\""));
+        assert!(rendered.contains("\"V1\""));
+        assert!(rendered.contains("source-validation"));
+        assert!(rendered.contains("Planner drift"));
     }
 
     #[test]

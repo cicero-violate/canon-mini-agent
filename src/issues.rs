@@ -140,17 +140,28 @@ pub fn rescore_all(file: &mut IssuesFile) {
 /// Read ISSUES.json and return the text of open/in-progress issues only.
 /// Returns "(no open issues)" when the file is absent or all issues are closed.
 pub fn read_open_issues(workspace: &Path) -> String {
+    let issues = read_ranked_open_issues(workspace);
+    if issues.is_empty() {
+        return "(no open issues)".to_string();
+    }
+    let file = IssuesFile { version: 0, issues };
+    serde_json::to_string_pretty(&file).unwrap_or_else(|_| "(ISSUES.json is not valid JSON)".to_string())
+}
+
+/// Read ISSUES.json and return the sorted, open/in-progress issues as structured data.
+/// Returns an empty vector when the file is absent, invalid, or all issues are closed.
+pub fn read_ranked_open_issues(workspace: &Path) -> Vec<Issue> {
     let path = workspace.join(ISSUES_FILE);
     let raw = std::fs::read_to_string(&path).unwrap_or_default();
     if raw.trim().is_empty() {
-        return "(no open issues)".to_string();
+        return Vec::new();
     }
     let Ok(mut file) = serde_json::from_str::<IssuesFile>(&raw) else {
-        return "(ISSUES.json is not valid JSON)".to_string();
+        return Vec::new();
     };
     file.issues.retain(|i| !is_closed(i));
     if file.issues.is_empty() {
-        return "(no open issues)".to_string();
+        return Vec::new();
     }
     // Rescore on read so scores are always fresh even for old/unscored issues.
     rescore_all(&mut file);
@@ -161,40 +172,23 @@ pub fn read_open_issues(workspace: &Path) -> String {
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| a.id.cmp(&b.id))
     });
-    serde_json::to_string_pretty(&file).unwrap_or(raw)
+    file.issues
 }
 
 /// Read ISSUES.json and return a small human-readable summary of the top open issues.
 /// Issues are ranked by normalized score [0.0, 1.0]; score is shown in the output
 /// so the LLM can calibrate effort against impact.
 pub fn read_top_open_issues(workspace: &Path, limit: usize) -> String {
-    let path = workspace.join(ISSUES_FILE);
-    let raw = std::fs::read_to_string(&path).unwrap_or_default();
-    if raw.trim().is_empty() {
+    let issues = read_ranked_open_issues(workspace);
+    if issues.is_empty() {
         return "(no open issues)".to_string();
     }
-    let Ok(mut file) = serde_json::from_str::<IssuesFile>(&raw) else {
-        return "(ISSUES.json is not valid JSON)".to_string();
-    };
-    file.issues.retain(|i| !is_closed(i));
-    if file.issues.is_empty() {
-        return "(no open issues)".to_string();
-    }
-    // Rescore on read so scores are always fresh.
-    rescore_all(&mut file);
-    // Sort by score descending, then id for stability.
-    file.issues.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.id.cmp(&b.id))
-    });
     let mut out = String::new();
     out.push_str("Top open issues:\n");
     let title_max_len = 120usize;
     let location_max_len = 80usize;
     let byte_budget = 4096usize;
-    for issue in file.issues.into_iter().take(limit.max(1)) {
+    for issue in issues.into_iter().take(limit.max(1)) {
         let title = issue.title.trim();
         let truncated_title = if title.len() > title_max_len {
             format!("{}…", &title[..title_max_len])
