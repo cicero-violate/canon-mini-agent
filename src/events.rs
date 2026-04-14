@@ -100,6 +100,19 @@ pub enum ControlEvent {
         tab_id: u32,
         turn_id: u64,
     },
+    ExecutorCompletionRecovered {
+        tab_id: u32,
+        turn_id: u64,
+        lane_id: usize,
+        lane_label: String,
+        actor: String,
+        endpoint_id: String,
+    },
+    ExecutorCompletionTabRebound {
+        lane_id: usize,
+        from_tab_id: u32,
+        to_tab_id: u32,
+    },
 }
 
 /// Side-effect events: logged for observability, never mutate `SystemState`.

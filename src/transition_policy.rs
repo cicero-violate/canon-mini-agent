@@ -306,6 +306,78 @@ pub fn validate_transition(state: &SystemState, event: &ControlEvent) -> Result<
                 ));
             }
         }
+        ControlEvent::ExecutorCompletionRecovered {
+            tab_id,
+            turn_id,
+            lane_id,
+            ..
+        } => {
+            require_lane(state, *lane_id, "ExecutorCompletionRecovered")?;
+            let key = format!("{tab_id}:{turn_id}");
+            if state.submitted_turn_ids.contains_key(&key) {
+                return Err(format!(
+                    "illegal transition: completion recovery for `{key}` requires the turn to be absent from submitted_turn_ids"
+                ));
+            }
+            if !lane_in_progress(state, *lane_id) {
+                return Err(format!(
+                    "illegal transition: completion recovery requires lane {lane_id} to be in progress"
+                ));
+            }
+            if !lane_submit_in_flight(state, *lane_id) {
+                return Err(format!(
+                    "illegal transition: completion recovery requires lane {lane_id} to still be submit-in-flight"
+                ));
+            }
+            if let Some(active_tab) = state.lane_active_tab.get(lane_id) {
+                if active_tab != tab_id {
+                    return Err(format!(
+                        "illegal transition: completion recovery for lane {lane_id} cannot rebind active tab from {active_tab} to {tab_id}"
+                    ));
+                }
+            }
+            if let Some(existing_lane) = state.tab_id_to_lane.get(tab_id) {
+                if existing_lane != lane_id {
+                    return Err(format!(
+                        "illegal transition: recovered completion tab {tab_id} already mapped to lane {existing_lane}"
+                    ));
+                }
+            }
+        }
+        ControlEvent::ExecutorCompletionTabRebound {
+            lane_id,
+            from_tab_id,
+            to_tab_id,
+        } => {
+            require_lane(state, *lane_id, "ExecutorCompletionTabRebound")?;
+            if from_tab_id == to_tab_id {
+                return Err(format!(
+                    "illegal transition: completion tab rebound for lane {lane_id} requires distinct tabs"
+                ));
+            }
+            if !lane_in_progress(state, *lane_id) {
+                return Err(format!(
+                    "illegal transition: completion tab rebound requires lane {lane_id} to be in progress"
+                ));
+            }
+            if state.lane_active_tab.get(lane_id) != Some(from_tab_id) {
+                return Err(format!(
+                    "illegal transition: completion tab rebound requires lane {lane_id} active tab to be {from_tab_id}"
+                ));
+            }
+            if state.tab_id_to_lane.get(from_tab_id) != Some(lane_id) {
+                return Err(format!(
+                    "illegal transition: completion tab rebound requires prior tab {from_tab_id} to map to lane {lane_id}"
+                ));
+            }
+            if let Some(existing_lane) = state.tab_id_to_lane.get(to_tab_id) {
+                if existing_lane != lane_id {
+                    return Err(format!(
+                        "illegal transition: rebound tab {to_tab_id} already mapped to lane {existing_lane}"
+                    ));
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -488,5 +560,66 @@ mod tests {
         )
         .expect_err("turn registration must use the active tab");
         assert!(err.contains("must use active tab"));
+    }
+
+    #[test]
+    fn completion_recovery_requires_submit_in_flight() {
+        let mut state = SystemState::new(&[0], 1);
+        state.lanes.get_mut(&0).unwrap().pending = false;
+        state.lanes.get_mut(&0).unwrap().in_progress_by = Some("executor-0".to_string());
+
+        let err = validate_transition(
+            &state,
+            &ControlEvent::ExecutorCompletionRecovered {
+                tab_id: 9,
+                turn_id: 12,
+                lane_id: 0,
+                lane_label: "executor-0".to_string(),
+                actor: "executor-0".to_string(),
+                endpoint_id: "ep".to_string(),
+            },
+        )
+        .expect_err("completion recovery must still correspond to a submit in flight");
+        assert!(err.contains("submit-in-flight"));
+    }
+
+    #[test]
+    fn legal_completion_recovery_adopts_missing_tab_binding() {
+        let mut state = SystemState::new(&[0], 1);
+        state.lanes.get_mut(&0).unwrap().pending = false;
+        state.lanes.get_mut(&0).unwrap().in_progress_by = Some("executor-0".to_string());
+        state.lane_submit_in_flight.insert(0, true);
+
+        validate_transition(
+            &state,
+            &ControlEvent::ExecutorCompletionRecovered {
+                tab_id: 9,
+                turn_id: 12,
+                lane_id: 0,
+                lane_label: "executor-0".to_string(),
+                actor: "executor-0".to_string(),
+                endpoint_id: "ep".to_string(),
+            },
+        )
+        .expect("completion recovery should be legal while submit is still in flight");
+    }
+
+    #[test]
+    fn legal_completion_tab_rebound_requires_matching_previous_mapping() {
+        let mut state = SystemState::new(&[0], 1);
+        state.lanes.get_mut(&0).unwrap().pending = false;
+        state.lanes.get_mut(&0).unwrap().in_progress_by = Some("executor-0".to_string());
+        state.lane_active_tab.insert(0, 9);
+        state.tab_id_to_lane.insert(9, 0);
+
+        validate_transition(
+            &state,
+            &ControlEvent::ExecutorCompletionTabRebound {
+                lane_id: 0,
+                from_tab_id: 9,
+                to_tab_id: 11,
+            },
+        )
+        .expect("completion rebound should be legal when the previous tab mapping matches");
     }
 }

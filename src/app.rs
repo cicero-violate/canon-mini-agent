@@ -1895,10 +1895,7 @@ async fn process_completed_turns(
                     );
                     continue;
                 }
-                CompletionTabCheck::NoneSet => {
-                    writer.apply(ControlEvent::LaneActiveTabSet { lane_id, tab_id });
-                }
-                CompletionTabCheck::Ok => {}
+                CompletionTabCheck::NoneSet | CompletionTabCheck::Ok => {}
             }
             let Some(pending) = rt.executor_submit_inflight.remove(&lane_id) else {
                 append_orchestration_trace(
@@ -1911,13 +1908,13 @@ async fn process_completed_turns(
                 );
                 continue;
             };
-            writer.apply(ControlEvent::LaneSubmitInFlightSet {
+            writer.apply(ControlEvent::ExecutorCompletionRecovered {
+                tab_id,
+                turn_id,
                 lane_id,
-                in_flight: false,
-            });
-            writer.apply(ControlEvent::LaneNextSubmitAtSet {
-                lane_id,
-                ms: now_ms(),
+                lane_label: ctx.lanes[lane_id].label.clone(),
+                actor: pending.job.executor_role.clone(),
+                endpoint_id: pending.endpoint_id.clone(),
             });
             let steps_used = writer.state().lane_steps_used_count(lane_id);
             SubmittedExecutorTurn {
@@ -4155,8 +4152,11 @@ fn maybe_rebind_executor_completion_tab(
         }),
     );
     let lane_id = submitted.lane;
-    writer.apply(ControlEvent::LaneActiveTabSet { lane_id, tab_id });
-    writer.apply(ControlEvent::TabIdToLaneSet { tab_id, lane_id });
+    writer.apply(ControlEvent::ExecutorCompletionTabRebound {
+        lane_id,
+        from_tab_id: submitted.tab_id,
+        to_tab_id: tab_id,
+    });
     submitted.tab_id = tab_id;
 }
 

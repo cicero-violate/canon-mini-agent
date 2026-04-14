@@ -241,6 +241,28 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
             let key = format!("{}:{}", tab_id, turn_id);
             s.submitted_turn_ids.remove(&key);
         }
+        ControlEvent::ExecutorCompletionRecovered {
+            tab_id, lane_id, ..
+        } => {
+            if let Some(previous_tab_id) = s.lane_active_tab.insert(*lane_id, *tab_id) {
+                if previous_tab_id != *tab_id {
+                    s.tab_id_to_lane.remove(&previous_tab_id);
+                }
+            }
+            s.tab_id_to_lane.insert(*tab_id, *lane_id);
+            s.lane_next_submit_at_ms
+                .insert(*lane_id, crate::logging::now_ms());
+            s.lane_submit_in_flight.insert(*lane_id, false);
+        }
+        ControlEvent::ExecutorCompletionTabRebound {
+            lane_id,
+            from_tab_id,
+            to_tab_id,
+        } => {
+            s.lane_active_tab.insert(*lane_id, *to_tab_id);
+            s.tab_id_to_lane.remove(from_tab_id);
+            s.tab_id_to_lane.insert(*to_tab_id, *lane_id);
+        }
     }
     s
 }
