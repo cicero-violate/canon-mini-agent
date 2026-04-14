@@ -1908,6 +1908,16 @@ async fn process_completed_turns(
                 );
                 continue;
             };
+            crate::blockers::record_action_failure(
+                ctx.workspace.as_path(),
+                "executor",
+                "uncanonicalized_recovery",
+                &format!(
+                    "recovery path without canonical event: executor completion recovered from runtime submit state lane={} tab_id={} turn_id={}",
+                    ctx.lanes[lane_id].label, tab_id, turn_id
+                ),
+                None,
+            );
             writer.apply(ControlEvent::ExecutorCompletionRecovered {
                 tab_id,
                 turn_id,
@@ -2274,10 +2284,22 @@ fn load_checkpoint(workspace: &Path) -> Option<OrchestratorCheckpoint> {
     let raw = std::fs::read_to_string(path).ok()?;
     let cp: OrchestratorCheckpoint = serde_json::from_str(&raw).ok()?;
     if cp.workspace.is_empty() || cp.workspace != workspace.to_string_lossy().as_ref() {
+        let msg = format!(
+            "checkpoint/runtime divergence: checkpoint workspace mismatch (stored={} current={})",
+            cp.workspace,
+            workspace.display()
+        );
         eprintln!(
             "[orchestrate] checkpoint workspace mismatch (stored={} current={}) — discarding",
             cp.workspace,
             workspace.display()
+        );
+        crate::blockers::record_action_failure(
+            workspace,
+            "orchestrate",
+            "checkpoint_runtime_divergence",
+            &msg,
+            None,
         );
         return None;
     }
@@ -4015,7 +4037,14 @@ fn handle_executor_completion(
 
     record_executor_completion_observation(&submitted, lane_name, turn_id, tab_id, &exec_result);
     let mut submitted = submitted;
-    maybe_rebind_executor_completion_tab(writer, &mut submitted, tab_id, turn_id, lane_name);
+    maybe_rebind_executor_completion_tab(
+        workspace,
+        writer,
+        &mut submitted,
+        tab_id,
+        turn_id,
+        lane_name,
+    );
     if handle_executor_completion_message_action(writer, &submitted, lane_cfg, &exec_result) {
         return true;
     }
@@ -4129,6 +4158,7 @@ fn maybe_defer_executor_completion(
 }
 
 fn maybe_rebind_executor_completion_tab(
+    workspace: &Path,
     writer: &mut CanonicalWriter,
     submitted: &mut SubmittedExecutorTurn,
     tab_id: u32,
@@ -4150,6 +4180,16 @@ fn maybe_rebind_executor_completion_tab(
             "expected_tab": submitted.tab_id,
             "actual_tab": tab_id,
         }),
+    );
+    crate::blockers::record_action_failure(
+        workspace,
+        "executor",
+        "runtime_control_bypass",
+        &format!(
+            "runtime-only control influence: executor completion rebound changed lane={} turn_id={} tab from {} to {}",
+            lane_name, turn_id, submitted.tab_id, tab_id
+        ),
+        None,
     );
     let lane_id = submitted.lane;
     writer.apply(ControlEvent::ExecutorCompletionTabRebound {
@@ -4858,6 +4898,16 @@ pub async fn run() -> Result<()> {
                     (in_prog, has_tab)
                 };
                 if in_progress && !has_active_tab {
+                    crate::blockers::record_action_failure(
+                        workspace.as_path(),
+                        "orchestrate",
+                        "checkpoint_runtime_divergence",
+                        &format!(
+                            "checkpoint/runtime divergence: lane {} resumed in progress without an active tab and was requeued",
+                            lanes[lane_id].label
+                        ),
+                        None,
+                    );
                     writer.apply(ControlEvent::LaneInProgressSet {
                         lane_id,
                         actor: None,
