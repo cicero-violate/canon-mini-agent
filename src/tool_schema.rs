@@ -316,6 +316,8 @@ pub enum ToolAction {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         op: Option<IssueOp>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        evidence_receipts: Option<Vec<String>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         issue_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         status: Option<String>,
@@ -588,6 +590,8 @@ pub enum ToolAction {
         /// Which operation to perform. Defaults to `read` if omitted.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         op: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        evidence_receipts: Option<Vec<String>>,
         /// For `upsert`: the full Violation object to add or replace (matched by id).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         violation: Option<serde_json::Value>,
@@ -664,7 +668,7 @@ fn build_tool_actions_list() -> Vec<(&'static str, &'static str, Option<&'static
             "issue",
             "record/update discovered issues in ISSUES.json for later attention",
             Some(
-                "Examples:\n  {\"action\":\"issue\",\"op\":\"read\",\"rationale\":\"Check open issues before starting work.\"}\n  {\"action\":\"issue\",\"op\":\"create\",\"issue\":{\"id\":\"ISS-001\",\"title\":\"Retry loop does not fire for submit-only turns\",\"status\":\"open\",\"priority\":\"high\",\"kind\":\"bug\",\"description\":\"...\",\"location\":\"src/ws_server.rs:554\",\"evidence\":[\"frames/inbound.jsonl fc=91 only presence frames after fc=76 heartbeat\"],\"discovered_by\":\"solo\"},\"rationale\":\"Record the stall bug for later fix.\"}\n  {\"action\":\"issue\",\"op\":\"set_status\",\"issue_id\":\"ISS-001\",\"status\":\"resolved\",\"rationale\":\"Issue was fixed by removing the pending check.\"}\n  {\"action\":\"issue\",\"op\":\"update\",\"issue_id\":\"ISS-001\",\"updates\":{\"priority\":\"medium\",\"description\":\"Updated description\"},\"rationale\":\"Revise issue details.\"}\nAllowed status: open | in_progress | resolved | wontfix\nAllowed priority: high | medium | low\nAllowed kind: bug | logic | invariant_violation | performance | stale_state",
+                "Examples:\n  {\"action\":\"issue\",\"op\":\"read\",\"rationale\":\"Check open issues before starting work.\"}\n  {\"action\":\"issue\",\"op\":\"create\",\"evidence_receipts\":[\"rcpt-123-diagnostics-1-read_file\"],\"issue\":{\"id\":\"ISS-001\",\"title\":\"Retry loop does not fire for submit-only turns\",\"status\":\"open\",\"priority\":\"high\",\"kind\":\"bug\",\"description\":\"...\",\"location\":\"src/ws_server.rs:554\",\"evidence\":[\"frames/inbound.jsonl fc=91 only presence frames after fc=76 heartbeat\"],\"discovered_by\":\"solo\"},\"rationale\":\"Record the stall bug for later fix using the current-cycle read receipt.\"}\n  {\"action\":\"issue\",\"op\":\"set_status\",\"issue_id\":\"ISS-001\",\"status\":\"resolved\",\"evidence_receipts\":[\"rcpt-124-diagnostics-2-python\"],\"rationale\":\"Issue was fixed by removing the pending check.\"}\n  {\"action\":\"issue\",\"op\":\"update\",\"issue_id\":\"ISS-001\",\"evidence_receipts\":[\"rcpt-125-diagnostics-3-read_file\"],\"updates\":{\"priority\":\"medium\",\"description\":\"Updated description\"},\"rationale\":\"Revise issue details.\"}\nAllowed status: open | in_progress | resolved | wontfix\nAllowed priority: high | medium | low\nAllowed kind: bug | logic | invariant_violation | performance | stale_state\n⚠ Mutating issue ops (`create`, `update`, `set_status`) require non-empty `evidence_receipts` copied from a successful current-cycle `read_file`, `python`, or `run_command` result.",
             ),
         ),
         (
@@ -692,7 +696,7 @@ fn build_tool_actions_list() -> Vec<(&'static str, &'static str, Option<&'static
             "python",
             "run Python analysis inside the workspace",
             Some(
-                "Example:\n  {\"action\":\"python\",\"code\":\"from pathlib import Path\\nprint(len(list(Path('src').glob('**/*.rs'))))\",\"cwd\":\"/workspace/ai_sandbox/canon-mini-agent\",\"rationale\":\"Use Python for structured workspace analysis.\"}\n⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE.",
+                "Example:\n  {\"action\":\"python\",\"code\":\"from pathlib import Path\\nprint(len(list(Path('src').glob('**/*.rs'))))\",\"cwd\":\"/workspace/ai_sandbox/canon-mini-agent\",\"rationale\":\"Use Python for structured workspace analysis.\"}\n⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE.\n⚠ Successful `python` results now return an `Evidence receipt:` line; copy that `rcpt-*` id into later mutating `issue`/`violation` actions.",
             ),
         ),
         (
@@ -792,7 +796,7 @@ fn build_tool_actions_list() -> Vec<(&'static str, &'static str, Option<&'static
             "violation",
             "manage VIOLATIONS.json — add, update, resolve, or replace violation entries",
             Some(
-                "Ops:\n  read       — read the current VIOLATIONS.json report\n  upsert     — add or replace a violation by id\n  resolve    — remove a violation by id (mark it fixed)\n  set_status — update report-level status and optional summary\n  replace    — replace the entire ViolationsReport\n\nViolation fields: id (string), title (string), severity (critical|high|medium|low), evidence (string[]), issue (string), impact (string), required_fix (string[]), files (string[]).\n\nExamples:\n  {\"action\":\"violation\",\"op\":\"read\",\"rationale\":\"Check current violations before deciding on next steps.\"}\n  {\"action\":\"violation\",\"op\":\"upsert\",\"violation\":{\"id\":\"PROMPT-OVERFLOW-SOLO\",\"title\":\"Solo prompt exceeds token limit\",\"severity\":\"high\",\"evidence\":[\"prompt_bytes=23447\"],\"issue\":\"Solo prompt too large\",\"impact\":\"Model truncates context\",\"required_fix\":[\"Trim injected sections\"],\"files\":[]},\"rationale\":\"Add violation with current evidence.\"}\n  {\"action\":\"violation\",\"op\":\"resolve\",\"violation_id\":\"PROMPT-OVERFLOW-SOLO\",\"rationale\":\"Prompt size reduced below threshold after trimming.\"}\n  {\"action\":\"violation\",\"op\":\"set_status\",\"status\":\"ok\",\"summary\":\"All prior violations resolved.\",\"rationale\":\"No active violations remain.\"}"
+                "Ops:\n  read       — read the current VIOLATIONS.json report\n  upsert     — add or replace a violation by id\n  resolve    — remove a violation by id (mark it fixed)\n  set_status — update report-level status and optional summary\n  replace    — replace the entire ViolationsReport\n\nViolation fields: id (string), title (string), severity (critical|high|medium|low), evidence (string[]), issue (string), impact (string), required_fix (string[]), files (string[]).\n\nExamples:\n  {\"action\":\"violation\",\"op\":\"read\",\"rationale\":\"Check current violations before deciding on next steps.\"}\n  {\"action\":\"violation\",\"op\":\"upsert\",\"evidence_receipts\":[\"rcpt-123-diagnostics-1-read_file\"],\"violation\":{\"id\":\"PROMPT-OVERFLOW-SOLO\",\"title\":\"Solo prompt exceeds token limit\",\"severity\":\"high\",\"evidence\":[\"prompt_bytes=23447\"],\"issue\":\"Solo prompt too large\",\"impact\":\"Model truncates context\",\"required_fix\":[\"Trim injected sections\"],\"files\":[]},\"rationale\":\"Add violation with current evidence.\"}\n  {\"action\":\"violation\",\"op\":\"resolve\",\"violation_id\":\"PROMPT-OVERFLOW-SOLO\",\"evidence_receipts\":[\"rcpt-124-diagnostics-2-python\"],\"rationale\":\"Prompt size reduced below threshold after trimming.\"}\n  {\"action\":\"violation\",\"op\":\"set_status\",\"status\":\"ok\",\"summary\":\"All prior violations resolved.\",\"evidence_receipts\":[\"rcpt-125-diagnostics-3-run_command\"],\"rationale\":\"No active violations remain.\"}\n⚠ Mutating violation ops (`upsert`, `resolve`, `set_status`, `replace`) require non-empty `evidence_receipts` copied from a successful current-cycle `read_file`, `python`, or `run_command` result."
             ),
         ),
         (

@@ -945,6 +945,15 @@ fn append_evidence_receipt(
     Ok(id)
 }
 
+fn format_output_with_evidence_receipt(prefix: &str, out: &str, receipt_id: Option<&str>) -> String {
+    match receipt_id {
+        Some(receipt_id) => format!(
+            "{prefix}:\nEvidence receipt: {receipt_id}\n{out}",
+        ),
+        None => format!("{prefix}:\n{out}"),
+    }
+}
+
 fn validate_evidence_lease(action: &Value) -> Result<EvidenceLease> {
     let receipt_ids = action
         .get("evidence_receipts")
@@ -2183,7 +2192,7 @@ fn handle_read_file_action(
         .map(|n| n as usize);
     let start = line_start.or(line);
     let out = exec_read_file(workspace, path, start, line_end)?;
-    let _ = append_evidence_receipt(
+    let receipt_id = append_evidence_receipt(
         role,
         step,
         "read_file",
@@ -2191,13 +2200,21 @@ fn handle_read_file_action(
         Some(workspace.join(path)),
         json!({"line": line, "line_start": line_start, "line_end": line_end}),
         &out,
-    );
+    )
+    .ok();
     eprintln!(
         "[{role}] step={} read_file path={path} bytes={}",
         step,
         out.len()
     );
-    Ok((false, format!("read_file {path}:\n{out}")))
+    Ok((
+        false,
+        format_output_with_evidence_receipt(
+            &format!("read_file {path}"),
+            &out,
+            receipt_id.as_deref(),
+        ),
+    ))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -3786,7 +3803,7 @@ fn handle_run_command_action(
         .unwrap_or(crate::constants::workspace());
     eprintln!("[{role}] step={} run_command cmd={cmd}", step);
     let (success, out) = exec_run_command(workspace, cmd, cwd)?;
-    let _ = append_evidence_receipt(
+    let receipt_id = append_evidence_receipt(
         role,
         step,
         "run_command",
@@ -3794,7 +3811,8 @@ fn handle_run_command_action(
         Some(PathBuf::from(cwd)),
         json!({"cmd": cmd, "success": success}),
         &out,
-    );
+    )
+    .ok();
     let label = if success {
         "run_command ok"
     } else {
@@ -3814,7 +3832,14 @@ fn handle_run_command_action(
             })),
         );
     }
-    Ok((false, format!("{label}:\n{}", truncate(&out, MAX_SNIPPET))))
+    Ok((
+        false,
+        format_output_with_evidence_receipt(
+            label,
+            &truncate(&out, MAX_SNIPPET),
+            receipt_id.as_deref(),
+        ),
+    ))
 }
 
 fn handle_python_action(
@@ -3833,7 +3858,7 @@ fn handle_python_action(
         .unwrap_or(crate::constants::workspace());
     eprintln!("[{role}] step={} python bytes={}", step, code.len());
     let (success, mut out) = exec_python(workspace, code, cwd)?;
-    let _ = append_evidence_receipt(
+    let receipt_id = append_evidence_receipt(
         role,
         step,
         "python",
@@ -3841,7 +3866,8 @@ fn handle_python_action(
         Some(PathBuf::from(cwd)),
         json!({"success": success, "code_hash": stable_hash_hex(code)}),
         &out,
-    );
+    )
+    .ok();
     if !success {
         append_python_failure_guidance(&mut out, cwd, workspace);
     }
@@ -3859,7 +3885,14 @@ fn handle_python_action(
             })),
         );
     }
-    Ok((false, format!("{label}:\n{}", truncate(&out, MAX_SNIPPET))))
+    Ok((
+        false,
+        format_output_with_evidence_receipt(
+            label,
+            &truncate(&out, MAX_SNIPPET),
+            receipt_id.as_deref(),
+        ),
+    ))
 }
 
 fn handle_rustc_action(
