@@ -16,6 +16,179 @@ pub(crate) fn truncate(s: &str, max: usize) -> &str {
     &s[..end]
 }
 
+fn truncate_bytes(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes.min(s.len());
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PromptItem<'a> {
+    name: &'a str,
+    heading: &'a str,
+    body: &'a str,
+    reserve: usize,
+    cap: usize,
+    weight: usize,
+    always_include: bool,
+}
+
+#[derive(Clone, Debug)]
+struct PromptBudgetItem<'a> {
+    name: &'a str,
+    heading: &'a str,
+    body: &'a str,
+    raw_bytes: usize,
+    reserve: usize,
+    cap: usize,
+    weight: usize,
+    budget: usize,
+    always_include: bool,
+}
+
+#[derive(Clone, Debug)]
+struct PromptBudget<'a> {
+    limit: usize,
+    framing: usize,
+    available: usize,
+    used: usize,
+    items: Vec<PromptBudgetItem<'a>>,
+}
+
+fn compute_prompt_budget<'a>(
+    limit: usize,
+    framing: usize,
+    items: &[PromptItem<'a>],
+) -> PromptBudget<'a> {
+    let available = limit.saturating_sub(framing);
+    let mut budget_items = items
+        .iter()
+        .map(|item| {
+            let raw_bytes = item.body.len();
+            let cap = item.cap.min(raw_bytes);
+            let reserve = item.reserve.min(cap);
+            PromptBudgetItem {
+                name: item.name,
+                heading: item.heading,
+                body: item.body,
+                raw_bytes,
+                reserve,
+                cap,
+                weight: item.weight.max(1),
+                budget: reserve,
+                always_include: item.always_include,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let mut used = budget_items.iter().map(|item| item.budget).sum::<usize>();
+    if used > available {
+        let mut overflow = used - available;
+        for item in budget_items.iter_mut().rev() {
+            if overflow == 0 {
+                break;
+            }
+            let reducible = item.budget.min(overflow);
+            item.budget -= reducible;
+            overflow -= reducible;
+        }
+        used = budget_items.iter().map(|item| item.budget).sum::<usize>();
+    }
+
+    let remaining = available.saturating_sub(used);
+    if remaining > 0 {
+        let total_weight = budget_items
+            .iter()
+            .filter(|item| item.budget < item.cap)
+            .map(|item| item.weight)
+            .sum::<usize>();
+
+        if total_weight > 0 {
+            let mut assigned = 0usize;
+            for item in budget_items.iter_mut() {
+                let slack = item.cap.saturating_sub(item.budget);
+                if slack == 0 {
+                    continue;
+                }
+                let share = ((remaining as u128 * item.weight as u128) / total_weight as u128)
+                    as usize;
+                let extra = share.min(slack);
+                item.budget += extra;
+                assigned += extra;
+            }
+
+            let mut leftover = remaining.saturating_sub(assigned);
+            while leftover > 0 {
+                let mut progressed = false;
+                for item in budget_items.iter_mut() {
+                    if leftover == 0 {
+                        break;
+                    }
+                    let slack = item.cap.saturating_sub(item.budget);
+                    if slack == 0 {
+                        continue;
+                    }
+                    item.budget += 1;
+                    leftover -= 1;
+                    progressed = true;
+                }
+                if !progressed {
+                    break;
+                }
+            }
+        }
+        used = budget_items.iter().map(|item| item.budget).sum::<usize>();
+    }
+
+    PromptBudget {
+        limit,
+        framing,
+        available,
+        used,
+        items: budget_items,
+    }
+}
+
+fn render_budgeted_prompt<'a>(
+    prefix: &str,
+    items: &[PromptItem<'a>],
+    suffix: &str,
+) -> String {
+    let active_items = items
+        .iter()
+        .copied()
+        .filter(|item| item.always_include || !item.body.trim().is_empty())
+        .collect::<Vec<_>>();
+    let framing = prefix.len()
+        + suffix.len()
+        + active_items
+            .iter()
+            .map(|item| 3 + item.heading.len())
+            .sum::<usize>();
+    let budget = compute_prompt_budget(crate::constants::PROMPT_OVERFLOW_BYTES, framing, &active_items);
+    debug_assert!(budget.used <= budget.available);
+
+    let mut out = String::with_capacity(prefix.len() + framing + budget.used);
+    out.push_str(prefix);
+    for item in budget.items {
+        if item.budget == 0 && !item.always_include {
+            continue;
+        }
+        out.push_str("\n\n");
+        out.push_str(item.heading);
+        out.push('\n');
+        out.push_str(truncate_bytes(item.body, item.budget));
+    }
+    out.push_str(suffix);
+    debug_assert!(out.len() <= crate::constants::PROMPT_OVERFLOW_BYTES);
+    out
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum AgentPromptKind {
     Executor,
@@ -584,7 +757,52 @@ Provenance fields — include on every new task:\n\
 - `objective_id`: the PLANS/OBJECTIVES.json objective id this task advances (e.g. \"obj_reduce_complexity\"). Omit if no clear match.";
 
 fn diagnostics_process() -> String {
+    let workspace = crate::constants::workspace();
+    let violations = "";
+    let objectives = "";
+    let cargo_test_failures = "";
     let diagnostics_path = diagnostics_file();
+    let _diagnostics_budget_marker = diagnostics_path.len();
+    let prefix = format!(
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nRead files and search the source code for bugs and inconsistencies (use read_file + run_command/ripgrep).\nRun python analysis actions over available workspace-local logs, state, and code evidence.\nDo not assume canon-specific observability names or paths. Discover the actual project-local artifacts first by inspecting files and directories that exist under WORKSPACE. Examples may include state/, log/, logs, runtime logs, jsonl logs, agent logs, or other workspace-defined artifacts.\nInfer the root cause from the evidence and cite detailed sources of errors (file paths, functions, log evidence).\n\nLatest verifier summary:\n(none yet)"
+    );
+    let violations_heading = format!("Violations (from {VIOLATIONS_FILE})");
+    let objectives_heading = format!("Objectives (from {OBJECTIVES_FILE})");
+    let cargo_failures_heading =
+        "Latest cargo test failures (from cargo_test_failures.json)".to_string();
+    let suffix = format!(
+        "\n\nVerify whether objectives in {OBJECTIVES_FILE} are being met and note gaps.\nUse {SPEC_FILE}, {OBJECTIVES_FILE}, and {INVARIANTS_FILE} as the contract, not lane plans.\nInfer failures from code, logs, runtime state, and verifier findings.\nPrefer evidence from workspace-local artifacts that actually exist over assumptions from other projects.\nCross-check proposed ranked failures against the current {VIOLATIONS_FILE} state before writing diagnostics.\nDo not restate verifier-cleared or already-resolved issues unless fresh current-cycle source or runtime evidence reconfirms them.\nIf the mismatch is stale diagnostics state rather than a live implementation bug, record a diagnostics-repair failure instead of reopening the cleared issue.\n\nWrite a ranked diagnostics report to {diagnostics_path}."
+    );
+    let items = [
+        PromptItem {
+            name: "violations",
+            heading: &violations_heading,
+            body: violations,
+            reserve: 1000,
+            cap: 3000,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "objectives",
+            heading: &objectives_heading,
+            body: objectives,
+            reserve: 800,
+            cap: 2500,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "cargo_test_failures",
+            heading: &cargo_failures_heading,
+            body: cargo_test_failures,
+            reserve: 800,
+            cap: 2500,
+            weight: 2,
+            always_include: false,
+        },
+    ];
+    let _ = render_budgeted_prompt(&prefix, &items, &suffix);
     format!("━━━ DIAGNOSTICS PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nGather evidence from the workspace, `VIOLATIONS.json`, and the current codebase.\n\nMandatory log sources — read ALL of these before writing any findings:\n  - agent_state/tlog.ndjson          — total-ordered event log (ControlEvent sequence); reveals state-machine transitions, phase changes, invariant violations\n  - agent_state/enforced_invariants.json — dynamically discovered invariants (discovered/promoted/enforced/collapsed); check for promoted-but-unenforced entries and stale collapsed entries\n  - agent_state/lessons.json         — synthesized behavioral lessons; surface any high-weight recurring lessons as diagnostics findings\n  - agent_state/default/actions.jsonl — full agent action history; tail with python to find recent failures, retry loops, and stall patterns\n\nStep 1 — Render {diagnostics_path} from `ISSUES.json` plus `VIOLATIONS.json` using the enums in canon-mini-agent/src/reports.rs.\nStep 2 — For each ranked failure, propagate it to ISSUES.json using the `issue` action:\n  - op=create if no matching issue exists (include kind, location, evidence, priority).\n  - op=update if a matching issue exists but its evidence is stale.\n  - op=set_status status=resolved if a prior issue is no longer supported by evidence.\n  Issues are the authoritative signal the planner acts on; {diagnostics_path} is a derived cache/output view.\n\nRules:\n- Use the `python` action for structured analysis of project state and any available logs.\n- Rank issues by impact on correctness, convergence, and repairability.\n- Check whether control-flow decisions are consistent with the canonical law in CANONICAL_LAW.md and the invariants in INVARIANTS.json.\n- Before trusting any trace or log file, confirm it was updated in the current cycle (mtime, size change, or fresh producer command).\n- Treat empty `rg` / `grep` results as ambiguous: no match, stale file, or incomplete write are all possible.\n- Prefer the most recently written evidence sources over ad-hoc temp traces when they disagree.\n- Derive observability paths from workspace-local state and log artifacts that actually exist for this project instead of assuming canon-specific defaults.")
 }
 
@@ -830,28 +1048,45 @@ fn format_prompt_tail_with_prefix(
 }
 
 pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
-    let mut out = String::new();
-    out.push_str(prompt_intro(kind));
-    out.push_str("\n\n");
-    out.push_str(prompt_mission(kind));
-    out.push_str("\n\nCanonical law:\n");
-    out.push_str(&prompt_canonical_law(kind));
-    out.push_str("\n\n");
-    out.push_str(&prompt_workspace(kind));
-    out.push_str("\n\n");
-    out.push_str(canonical_status_snapshot());
-    out.push_str("\n\n");
-    // Truncate issues section to avoid prompt overflow
+    let intro = prompt_intro(kind).to_string();
+    let mission = prompt_mission(kind).to_string();
+    let canonical_law = prompt_canonical_law(kind);
+    let workspace_text = prompt_workspace(kind);
+    let status_snapshot = canonical_status_snapshot().to_string();
     let issues = crate::issues::read_top_open_issues(std::path::Path::new(workspace()), 3);
-    out.push_str(&truncate_section(&issues, 1500));
-    out.push_str("\n\n");
-    out.push_str("Tool protocol schemas (schemars):\n");
-    // Truncate tool schema to bounded size to prevent prompt explosion
-    let schema = crate::tool_schema::tool_protocol_schema_split_text();
-    out.push_str(&truncate_section(&schema, 4000));
-    out.push_str("\nFull syntax examples with notes: state/tool_examples.md — use read_file when you need a reminder.\n\n");
-    out.push_str(&prompt_tail(kind));
-    out
+    let tool_schema = crate::tool_schema::tool_protocol_schema_split_text();
+    let tail = prompt_tail(kind);
+    let prefix = format!(
+        "{}\n\n{}\n\nCanonical law:\n{}\n\n{}\n\n{}\n\n",
+        intro, mission, canonical_law, workspace_text, status_snapshot
+    );
+    let issues_heading = "Open issues (top 3 from ISSUES.json)";
+    let schema_heading = "Tool protocol schemas (schemars):";
+    let suffix = format!(
+        "\nFull syntax examples with notes: state/tool_examples.md — use read_file when you need a reminder.\n\n{}",
+        tail
+    );
+    let items = [
+        PromptItem {
+            name: "issues",
+            heading: issues_heading,
+            body: &issues,
+            reserve: 1500,
+            cap: 1500,
+            weight: 2,
+            always_include: false,
+        },
+        PromptItem {
+            name: "tool_schema",
+            heading: schema_heading,
+            body: &tool_schema,
+            reserve: 4000,
+            cap: 4000,
+            weight: 4,
+            always_include: false,
+        },
+    ];
+    render_budgeted_prompt(&prefix, &items, &suffix)
 }
 
 // Helper: truncate large prompt sections deterministically
@@ -880,7 +1115,7 @@ pub(crate) fn planner_cycle_prompt(
     let workspace = workspace();
     let diagnostics_file = diagnostics_file();
     let issues_file = crate::constants::ISSUES_FILE;
-    let mut s = format!(
+    let prefix = format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\n\
          Canonical references:\n\
          - Spec: {SPEC_FILE}\n\
@@ -893,75 +1128,102 @@ pub(crate) fn planner_cycle_prompt(
          PLAN.json EDIT RULE: always use the `plan` action — NEVER apply_patch on {MASTER_PLAN_FILE}.\n\n\
          Current plan state (from {MASTER_PLAN_FILE}) — read-only context, edit via `plan` action:\n{plan_diff}"
     );
-    append_planner_cycle_optional_sections(
-        &mut s,
-        objectives_text,
-        lessons_text,
-        invariants_text,
-        violations_text,
-        diagnostics_text,
-        issues_text,
-        executor_diff,
-        cargo_test_failures,
-        summary_text,
-        diagnostics_file,
-        issues_file,
-    );
-    append_planner_cycle_footer(&mut s);
-    s
-}
-
-fn append_planner_cycle_optional_sections(
-    output: &mut String,
-    objectives_text: &str,
-    lessons_text: &str,
-    invariants_text: &str,
-    violations_text: &str,
-    diagnostics_text: &str,
-    issues_text: &str,
-    executor_diff: &str,
-    cargo_test_failures: &str,
-    summary_text: &str,
-    diagnostics_file: &str,
-    issues_file: &str,
-) {
-    append_optional_prompt_section(
-        output,
-        executor_diff,
-        "Executor diff (workspace changes excluding plans/diagnostics/violations)",
-    );
-    append_optional_prompt_section(
-        output,
-        cargo_test_failures,
-        "Latest cargo test failures (from cargo_test_failures.json)",
-    );
-    append_optional_prompt_section(
-        output,
-        objectives_text,
-        &format!("Objectives (from {OBJECTIVES_FILE})"),
-    );
-    append_optional_prompt_section(
-        output,
-        issues_text,
-        &format!("Open issues (from {issues_file})"),
-    );
-    append_optional_prompt_section(output, lessons_text, "Lessons artifact");
-    append_optional_prompt_section(
-        output,
-        invariants_text,
-        &format!("Invariants (from {INVARIANTS_FILE})"),
-    );
-    append_optional_prompt_section(
-        output,
-        violations_text,
-        &format!("Violations (from {VIOLATIONS_FILE})"),
-    );
-    append_optional_prompt_section(
-        output,
-        diagnostics_text,
-        &format!("Diagnostics report (from {diagnostics_file})"),
-    );
-    append_optional_prompt_section(output, summary_text, "Latest verifier summary");
+    let objectives_heading = format!("Objectives (from {OBJECTIVES_FILE})");
+    let issues_heading = format!("Open issues (from {issues_file})");
+    let lessons_heading = "Lessons artifact".to_string();
+    let invariants_heading = format!("Invariants (from {INVARIANTS_FILE})");
+    let violations_heading = format!("Violations (from {VIOLATIONS_FILE})");
+    let diagnostics_heading = format!("Diagnostics report (from {diagnostics_file})");
+    let cargo_failures_heading = "Latest cargo test failures (from cargo_test_failures.json)".to_string();
+    let executor_diff_heading =
+        "Executor diff (workspace changes excluding plans/diagnostics/violations)".to_string();
+    let summary_heading = "Latest verifier summary".to_string();
+    let mut suffix = String::new();
+    append_planner_cycle_footer(&mut suffix);
+    let items = [
+        PromptItem {
+            name: "executor_diff",
+            heading: &executor_diff_heading,
+            body: executor_diff,
+            reserve: 1200,
+            cap: 4000,
+            weight: 5,
+            always_include: false,
+        },
+        PromptItem {
+            name: "cargo_test_failures",
+            heading: &cargo_failures_heading,
+            body: cargo_test_failures,
+            reserve: 800,
+            cap: 3000,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "objectives",
+            heading: &objectives_heading,
+            body: objectives_text,
+            reserve: 1000,
+            cap: 3000,
+            weight: 5,
+            always_include: false,
+        },
+        PromptItem {
+            name: "issues",
+            heading: &issues_heading,
+            body: issues_text,
+            reserve: 1000,
+            cap: 3000,
+            weight: 5,
+            always_include: false,
+        },
+        PromptItem {
+            name: "lessons",
+            heading: &lessons_heading,
+            body: lessons_text,
+            reserve: 800,
+            cap: 2500,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "invariants",
+            heading: &invariants_heading,
+            body: invariants_text,
+            reserve: 800,
+            cap: 2500,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "violations",
+            heading: &violations_heading,
+            body: violations_text,
+            reserve: 800,
+            cap: 2500,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "diagnostics",
+            heading: &diagnostics_heading,
+            body: diagnostics_text,
+            reserve: 800,
+            cap: 2500,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "summary",
+            heading: &summary_heading,
+            body: summary_text,
+            reserve: 600,
+            cap: 1500,
+            weight: 2,
+            always_include: false,
+        },
+    ];
+    render_budgeted_prompt(&prefix, &items, &suffix)
 }
 
 fn append_planner_cycle_footer(output: &mut String) {
@@ -1035,29 +1297,60 @@ pub(crate) fn single_role_verifier_prompt(
     cargo_test_failures: &str,
 ) -> String {
     let workspace = workspace();
-    let mut sections = format!(
+    let prefix = format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed."
     );
-    if !objectives.trim().is_empty() {
-        sections.push_str(&format!(
-            "\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}"
-        ));
-    }
-    if !invariants.trim().is_empty() {
-        sections.push_str(&format!(
-            "\n\nInvariants (from {INVARIANTS_FILE}):\n{invariants}"
-        ));
-    }
-    if !executor_diff_text.trim().is_empty() {
-        sections.push_str(&format!("\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff_text}"));
-    }
-    if !cargo_test_failures.trim().is_empty() {
-        sections.push_str(&format!("\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}"));
-    }
-    sections.push_str(&format!("\n\nVerify that objectives in {OBJECTIVES_FILE} are completed properly.\nUpdate task status fields in {MASTER_PLAN_FILE} to reflect verified results.\nWrite violations to {VIOLATIONS_FILE} if any are found.\nWhen complete, report verified/unverified/false items in `message.payload`.\nEmit exactly one action to begin. Think through the decision internally; reveal chain-of-thought."));
-    sections
+    let objectives_heading = format!("Objectives (from {OBJECTIVES_FILE})");
+    let invariants_heading = format!("Invariants (from {INVARIANTS_FILE})");
+    let executor_diff_heading =
+        "Executor diff (workspace changes excluding plans/diagnostics/violations)".to_string();
+    let cargo_failures_heading =
+        "Latest cargo test failures (from cargo_test_failures.json)".to_string();
+    let suffix = format!(
+        "\n\nVerify that objectives in {OBJECTIVES_FILE} are completed properly.\nUpdate task status fields in {MASTER_PLAN_FILE} to reflect verified results.\nWrite violations to {VIOLATIONS_FILE} if any are found.\nWhen complete, report verified/unverified/false items in `message.payload`.\nEmit exactly one action to begin. Think through the decision internally; reveal chain-of-thought."
+    );
+    let items = [
+        PromptItem {
+            name: "objectives",
+            heading: &objectives_heading,
+            body: objectives,
+            reserve: 800,
+            cap: 3000,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "invariants",
+            heading: &invariants_heading,
+            body: invariants,
+            reserve: 800,
+            cap: 2500,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "executor_diff",
+            heading: &executor_diff_heading,
+            body: executor_diff_text,
+            reserve: 800,
+            cap: 3000,
+            weight: 3,
+            always_include: false,
+        },
+        PromptItem {
+            name: "cargo_test_failures",
+            heading: &cargo_failures_heading,
+            body: cargo_test_failures,
+            reserve: 800,
+            cap: 2500,
+            weight: 2,
+            always_include: false,
+        },
+    ];
+    render_budgeted_prompt(&prefix, &items, &suffix)
 }
 
+#[allow(unreachable_code)]
 pub(crate) fn single_role_diagnostics_prompt(
     violations: &str,
     objectives: &str,
@@ -1065,6 +1358,47 @@ pub(crate) fn single_role_diagnostics_prompt(
 ) -> String {
     let workspace = workspace();
     let diagnostics_path = diagnostics_file();
+    let _diagnostics_heading_marker = diagnostics_path.len();
+    let prefix = format!(
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nRead files and search the source code for bugs and inconsistencies (use read_file + run_command/ripgrep).\nRun python analysis actions over available workspace-local logs, state, and code evidence.\nDo not assume canon-specific observability names or paths. Discover the actual project-local artifacts first by inspecting files and directories that exist under WORKSPACE. Examples may include state/, log/, logs, runtime logs, jsonl logs, agent logs, or other workspace-defined artifacts.\nInfer the root cause from the evidence and cite detailed sources of errors (file paths, functions, log evidence).\n\nLatest verifier summary:\n(none yet)"
+    );
+    let violations_heading = format!("Violations (from {VIOLATIONS_FILE})");
+    let objectives_heading = format!("Objectives (from {OBJECTIVES_FILE})");
+    let cargo_failures_heading =
+        "Latest cargo test failures (from cargo_test_failures.json)".to_string();
+    let suffix = format!(
+        "\n\nVerify whether objectives in {OBJECTIVES_FILE} are being met and note gaps.\nUse {SPEC_FILE}, {OBJECTIVES_FILE}, and {INVARIANTS_FILE} as the contract, not lane plans.\nInfer failures from code, logs, runtime state, and verifier findings.\nPrefer evidence from workspace-local artifacts that actually exist over assumptions from other projects.\nCross-check proposed ranked failures against the current {VIOLATIONS_FILE} state before writing diagnostics.\nDo not restate verifier-cleared or already-resolved issues unless fresh current-cycle source or runtime evidence reconfirms them.\nIf the mismatch is stale diagnostics state rather than a live implementation bug, record a diagnostics-repair failure instead of reopening the cleared issue.\n\nWrite a ranked diagnostics report to {diagnostics_path}."
+    );
+    let items = [
+        PromptItem {
+            name: "violations",
+            heading: &violations_heading,
+            body: violations,
+            reserve: 1000,
+            cap: 3000,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "objectives",
+            heading: &objectives_heading,
+            body: objectives,
+            reserve: 800,
+            cap: 2500,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "cargo_test_failures",
+            heading: &cargo_failures_heading,
+            body: cargo_test_failures,
+            reserve: 800,
+            cap: 2500,
+            weight: 2,
+            always_include: false,
+        },
+    ];
+    return render_budgeted_prompt(&prefix, &items, &suffix);
     format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nRead files and search the source code for bugs and inconsistencies (use read_file + run_command/ripgrep).\nRun python analysis actions over available workspace-local logs, state, and code evidence.\nDo not assume canon-specific observability names or paths. Discover the actual project-local artifacts first by inspecting files and directories that exist under WORKSPACE. Examples may include state/, log/, logs/, runtime logs, jsonl logs, agent logs, or other workspace-defined artifacts.\nInfer the root cause from the evidence and cite detailed sources of errors (file paths, functions, log evidence).\n\nLatest verifier summary:\n(none yet)\n\nViolations (from {VIOLATIONS_FILE}):\n{violations}\n\nObjectives (from {OBJECTIVES_FILE}):\n{objectives}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nVerify whether objectives in {OBJECTIVES_FILE} are being met and note gaps.\nUse {SPEC_FILE}, {OBJECTIVES_FILE}, and {INVARIANTS_FILE} as the contract, not lane plans.\nInfer failures from code, logs, runtime state, and verifier findings.\nPrefer evidence from workspace-local artifacts that actually exist over assumptions from other projects.\nCross-check proposed ranked failures against the current {VIOLATIONS_FILE} state before writing diagnostics.\nDo not restate verifier-cleared or already-resolved issues unless fresh current-cycle source or runtime evidence reconfirms them.\nIf the mismatch is stale diagnostics state rather than a live implementation bug, record a diagnostics-repair failure instead of reopening the cleared issue.\n\nWrite a ranked diagnostics report to {diagnostics_path}."
     )
@@ -1115,6 +1449,7 @@ fn append_single_role_planner_sections(
     );
 }
 
+#[allow(unreachable_code)]
 pub(crate) fn single_role_planner_prompt(
     _primary_input: &str,
     objectives: &str,
@@ -1128,6 +1463,86 @@ pub(crate) fn single_role_planner_prompt(
     let workspace = workspace();
     let diagnostics_path = diagnostics_file();
     let issues_file = crate::constants::ISSUES_FILE;
+    let prefix = format!(
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed."
+    );
+    let objectives_heading = format!("Objectives (from {OBJECTIVES_FILE})");
+    let issues_heading = format!("Open issues (from {issues_file})");
+    let lessons_heading = "Lessons artifact".to_string();
+    let invariants_heading = format!("Invariants (from {INVARIANTS_FILE})");
+    let violations_heading = format!("Violations (from {VIOLATIONS_FILE})");
+    let diagnostics_heading = format!("Diagnostics report (from {diagnostics_path})");
+    let cargo_failures_heading =
+        "Latest cargo test failures (from cargo_test_failures.json)".to_string();
+    let suffix = format!(
+        "\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nOpen issues in `ISSUES.json` (written by diagnostics with evidence) are directly actionable — create plan tasks for them without re-verifying. `PLANS/default/diagnostics-default.json` entries with no matching ISSUES.json entry are hints only.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nWhen a `plan` action is derived from diagnostics, include same-cycle source validation in `observation` and `rationale` before mutating {MASTER_PLAN_FILE}.\n\nTreat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\nIf diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks."
+    );
+    let items = [
+        PromptItem {
+            name: "objectives",
+            heading: &objectives_heading,
+            body: objectives,
+            reserve: 800,
+            cap: 3000,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "issues",
+            heading: &issues_heading,
+            body: issues,
+            reserve: 800,
+            cap: 3000,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "lessons",
+            heading: &lessons_heading,
+            body: lessons_text,
+            reserve: 800,
+            cap: 2500,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "invariants",
+            heading: &invariants_heading,
+            body: invariants,
+            reserve: 800,
+            cap: 2500,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "violations",
+            heading: &violations_heading,
+            body: violations,
+            reserve: 800,
+            cap: 2500,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "diagnostics",
+            heading: &diagnostics_heading,
+            body: diagnostics,
+            reserve: 800,
+            cap: 2500,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "cargo_test_failures",
+            heading: &cargo_failures_heading,
+            body: cargo_test_failures,
+            reserve: 800,
+            cap: 2500,
+            weight: 2,
+            always_include: false,
+        },
+    ];
+    return render_budgeted_prompt(&prefix, &items, &suffix);
     let mut sections = format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed."
     );
@@ -1149,6 +1564,7 @@ pub(crate) fn single_role_planner_prompt(
     sections
 }
 
+#[allow(unreachable_code)]
 pub(crate) fn single_role_solo_prompt(
     _spec: &str,
     master_plan: &str,
@@ -1167,6 +1583,156 @@ pub(crate) fn single_role_solo_prompt(
 ) -> String {
     let workspace = workspace();
     let issues_file = crate::constants::ISSUES_FILE;
+    let prefix = format!(
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSolo role: bounded execution kernel. Take one grounded next step under canonical law, using the smallest evidence slice needed. Prefer direct execution, targeted inspection, or a terminal reply to `user`; do not behave like planner/diagnostics/verifier.\n\nSpec: {SPEC_FILE} — use read_file only for sections you need.\n\nMaster plan focus (from {MASTER_PLAN_FILE}):\n{}",
+        truncate_section(master_plan, 3000)
+    );
+    let plan_diff_heading = format!("Plan diff since last cycle (from {MASTER_PLAN_FILE})");
+    let executor_diff_heading =
+        "Workspace diff since last cycle (git diff, excluding plans/diagnostics/violations)".to_string();
+    let objectives_heading = format!("Objectives (from {OBJECTIVES_FILE})");
+    let issues_heading = format!("Open issues ranked by score (from {issues_file})");
+    let lessons_heading = "Lessons artifact".to_string();
+    let loop_context_heading =
+        "Repair loop context (supervisor-directed; focus on this target first)".to_string();
+    let violations_heading = format!("Violations (from {VIOLATIONS_FILE})");
+    let diagnostics_heading = "Diagnostics slice (current high-signal excerpt)".to_string();
+    let invariants_heading = format!("Invariants (from {INVARIANTS_FILE})");
+    let complexity_heading =
+        "Complexity hotspots (supervisor-generated; use only when directly relevant)".to_string();
+    let cargo_failures_heading =
+        "Latest cargo test failures (from cargo_test_failures.json):".to_string();
+    let rename_heading = "Pending rename tasks (from state/rename_candidates.json):".to_string();
+    let objectives_body = truncate_section(objectives, 1200);
+    let issues_body = truncate_section(issues_text, 2000);
+    let violations_body = truncate_section(violations, 800);
+    let diagnostics_body = truncate_section(diagnostics, 800);
+    let invariants_body = truncate_section(invariants, 600);
+    let suffix = "\n\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nUse the `issue` action only when the current step uncovers direct implementation evidence for a new or stale logic gap.\nFor Rust source investigation, use semantic tools first: symbol_refs, symbol_window, symbol_neighborhood, symbol_path, semantic_map. Reach for read_file only when you need exact lines before a patch.\nOutput contract (strict):\n- Return exactly ONE action\n- Format: a single JSON object in a ```json code block\n- No prose, no markdown explanation outside the JSON block\n- Optimize for the next correct move, not broad analysis\n\nIf replying to the external user, use this shape:\n```json\n{\n  \"action\": \"message\",\n  \"from\": \"solo\",\n  \"to\": \"user\",\n  \"type\": \"terminal\",\n  \"status\": \"ready\",\n  \"observation\": \"State the grounded evidence you are replying from.\",\n  \"rationale\": \"Explain why a direct reply is the highest-value next step.\",\n  \"predicted_next_actions\": [\n    {\"action\": \"read_file\", \"intent\": \"Inspect a named artifact if the user asks for deeper evidence next.\"},\n    {\"action\": \"message\", \"intent\": \"Send a narrower follow-up reply to the user after targeted inspection.\"}\n  ],\n  \"payload\": {\n    \"summary\": \"Short direct answer to the user.\"\n  }\n}\n```\nEmit exactly one action.";
+    let mut items = vec![
+        PromptItem {
+            name: "plan_diff",
+            heading: &plan_diff_heading,
+            body: plan_diff_text,
+            reserve: 1200,
+            cap: 4000,
+            weight: 5,
+            always_include: false,
+        },
+        PromptItem {
+            name: "executor_diff",
+            heading: &executor_diff_heading,
+            body: executor_diff_text,
+            reserve: 1000,
+            cap: 4000,
+            weight: 5,
+            always_include: false,
+        },
+        PromptItem {
+            name: "objectives",
+            heading: &objectives_heading,
+            body: &objectives_body,
+            reserve: 800,
+            cap: 2000,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "issues",
+            heading: &issues_heading,
+            body: &issues_body,
+            reserve: 800,
+            cap: 2500,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "lessons",
+            heading: &lessons_heading,
+            body: lessons_text,
+            reserve: 800,
+            cap: 1800,
+            weight: 4,
+            always_include: true,
+        },
+        PromptItem {
+            name: "loop_context",
+            heading: &loop_context_heading,
+            body: loop_context_hint,
+            reserve: 600,
+            cap: 2000,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "violations",
+            heading: &violations_heading,
+            body: &violations_body,
+            reserve: 600,
+            cap: 1600,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "diagnostics",
+            heading: &diagnostics_heading,
+            body: &diagnostics_body,
+            reserve: 600,
+            cap: 1600,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "invariants",
+            heading: &invariants_heading,
+            body: &invariants_body,
+            reserve: 600,
+            cap: 1400,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "complexity",
+            heading: &complexity_heading,
+            body: complexity_hotspots,
+            reserve: 600,
+            cap: 1800,
+            weight: 3,
+            always_include: false,
+        },
+        PromptItem {
+            name: "cargo_test_failures",
+            heading: &cargo_failures_heading,
+            body: cargo_test_failures,
+            reserve: 600,
+            cap: 1800,
+            weight: 3,
+            always_include: false,
+        },
+    ];
+    let rename_section = if !rename_candidates.trim().is_empty() {
+        Some(format!(
+            "{rename_candidates}\nFor each candidate: use `symbols_prepare_rename` to select it, then `rename_symbol` to apply. Work through them in score-descending order."
+        ))
+    } else {
+        None
+    };
+    if let Some(rename_section) = rename_section.as_ref() {
+        items.push(PromptItem {
+            name: "rename_candidates",
+            heading: &rename_heading,
+            body: rename_section,
+            reserve: 800,
+            cap: 3000,
+            weight: 4,
+            always_include: false,
+        });
+    }
+    let mut prefix = prefix;
+    if !prefix.ends_with("\n\n") {
+        prefix.push_str("\n\n");
+    }
+    return render_budgeted_prompt(&prefix, &items, suffix);
     let mut sections = format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSolo role: bounded execution kernel. Take one grounded next step under canonical law, using the smallest evidence slice needed. Prefer direct execution, targeted inspection, or a terminal reply to `user`; do not behave like planner/diagnostics/verifier.\n\nSpec: {SPEC_FILE} — use read_file only for sections you need.\n\nMaster plan focus (from {MASTER_PLAN_FILE}):\n{}",
         truncate_section(master_plan, 3000)
@@ -1244,6 +1810,7 @@ pub(crate) fn single_role_solo_prompt(
     sections
 }
 
+#[allow(unreachable_code)]
 pub(crate) fn single_role_executor_prompt(
     _spec: &str,
     master_plan: &str,
@@ -1253,6 +1820,43 @@ pub(crate) fn single_role_executor_prompt(
 ) -> String {
     let workspace = workspace();
     let diagnostics_path = diagnostics_file();
+    let prefix = format!(
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed.\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}"
+    );
+    let violations_heading = format!("Violations (from {VIOLATIONS_FILE})");
+    let diagnostics_heading = format!("Diagnostics (from {diagnostics_path})");
+    let invariants_heading = format!("Invariants (from {INVARIANTS_FILE})");
+    let suffix = "\n\nLane plans are deprecated. Use planner handoff messages and {MASTER_PLAN_FILE} for task selection.\n\nDo not modify spec, plan, violations, or diagnostics.\nDo not use internal tools.\nDo not hand off work; continue execution directly in the current role flow.\nUse `message.payload` to report evidence for verifier review. Emit exactly one action to begin. Think through the decision internally; reveal chain-of-thought.";
+    let items = vec![
+        PromptItem {
+            name: "violations",
+            heading: &violations_heading,
+            body: violations,
+            reserve: 800,
+            cap: 2500,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "diagnostics",
+            heading: &diagnostics_heading,
+            body: diagnostics,
+            reserve: 800,
+            cap: 2500,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "invariants",
+            heading: &invariants_heading,
+            body: invariants,
+            reserve: 800,
+            cap: 2500,
+            weight: 4,
+            always_include: false,
+        },
+    ];
+    return render_budgeted_prompt(&prefix, &items, suffix);
     let mut sections = format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed.\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}"
     );

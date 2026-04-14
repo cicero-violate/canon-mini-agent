@@ -15,21 +15,27 @@ RUST_TAR = MNT / "rust-nightly-x86_64-unknown-linux-gnu.tar.gz"
 AUTONOMOUS_TAR = MNT / "autonomous_agent_upgrade.tar.gz"
 CANON_TAR = MNT / "canon-mini-agent.tar.gz"
 
-RUST_SANDBOX = HOME / "rust-sandbox"
+STATE_ROOT = MNT
+
+RUST_SANDBOX = STATE_ROOT / "rust-sandbox"
 RUST_BIN = RUST_SANDBOX / "bin"
 RUSTC_PATH = RUST_BIN / "rustc"
 CARGO_PATH = RUST_BIN / "cargo"
 
-CARGO_HOME = HOME / ".cargo"
+CARGO_HOME = STATE_ROOT / ".cargo"
 CARGO_CONFIG = CARGO_HOME / "config.toml"
 CARGO_CREDENTIALS = CARGO_HOME / "credentials.toml"
 
-AUTONOMOUS_DIR = HOME / "autonomous_agent_upgrade"
-CANON_ROOT = HOME / "canon-mini-agent-extracted"
+AUTONOMOUS_DIR = STATE_ROOT / "autonomous_agent_upgrade"
+CANON_ROOT = STATE_ROOT / "canon-mini-agent-extracted"
 CANON_DIR = CANON_ROOT / "canon-mini-agent"
 WORKSPACE_ROOT_CARGO = CANON_ROOT / "Cargo.toml"
-BUILD_LOG = HOME / "build.log"
-TEST_LOG = HOME / "test.log"
+BUILD_LOG = STATE_ROOT / "build.log"
+TEST_LOG = STATE_ROOT / "test.log"
+TERMINAL_SERVER_LOG = STATE_ROOT / "terminal-server.log"
+RUST_INSTALL_TEMP = STATE_ROOT / "rust-nightly-install"
+SMOKE_TEST_SRC = STATE_ROOT / "rust_toolchain_smoke_test.rs"
+SMOKE_TEST_BIN = STATE_ROOT / "rust_toolchain_smoke_test"
 
 DEFAULT_REGISTRY_URL = (
     "sparse+https://packages.applied-caas-gateway1.internal.api.openai.org/"
@@ -73,7 +79,7 @@ def ensure_terminal_server():
 
     start_script = Path("/opt/terminal-server/scripts/start-server.sh")
     if start_script.exists():
-        os.system(f"bash {start_script} >/tmp/terminal-server.log 2>&1 &")
+        os.system(f"bash {start_script} >{TERMINAL_SERVER_LOG} 2>&1 &")
         time.sleep(2)
 
     try:
@@ -218,7 +224,7 @@ def install_rust(shell_pid):
     reset_dir(RUST_SANDBOX)
     RUST_SANDBOX.mkdir(parents=True, exist_ok=True)
 
-    temp_root = HOME / "rust-nightly-install"
+    temp_root = RUST_INSTALL_TEMP
     reset_dir(temp_root)
     temp_root.mkdir(parents=True, exist_ok=True)
 
@@ -291,13 +297,15 @@ def start_background_job(command, cwd, log_path: Path):
 
 
 def smoke_test(shell_pid):
-    test_src = HOME / "rust_toolchain_smoke_test.rs"
-    test_bin = HOME / "rust_toolchain_smoke_test"
+    test_src = SMOKE_TEST_SRC
+    test_bin = SMOKE_TEST_BIN
+    remove_if_exists(test_src)
+    remove_if_exists(test_bin)
     test_src.write_text('fn main() { println!("ok"); }\n')
     cmd = (
         f"export PATH={RUST_BIN}:$PATH; "
         f"export CARGO_HOME={CARGO_HOME}; "
-        f"cd {HOME} && {RUSTC_PATH} {test_src.name} -o {test_bin.name} && ./{test_bin.name} && echo __SMOKE_DONE__"
+        f"cd {STATE_ROOT} && {RUSTC_PATH} {test_src.name} -o {test_bin.name} && ./{test_bin.name} && echo __SMOKE_DONE__"
     )
     ok, out = run_in_shell(shell_pid, cmd, "__SMOKE_DONE__", timeout=300)
     return {"ok": ok, "output": out[-2000:]}
@@ -308,9 +316,10 @@ def main():
         "terminal_server": ensure_terminal_server(),
         "extraction_status": False,
         "rustc_version": None,
+        "state_root": str(STATE_ROOT),
         "rustc_path": str(RUSTC_PATH),
         "cargo_path": str(CARGO_PATH),
-        "home_rust_sandbox_bin": str(RUST_BIN),
+        "rust_sandbox_bin": str(RUST_BIN),
         "canon_project_path": str(CANON_DIR),
         "workspace_root_cargo": str(WORKSPACE_ROOT_CARGO),
         "build_log": str(BUILD_LOG),
@@ -321,7 +330,7 @@ def main():
         print(json.dumps(report, indent=2))
         return
 
-    shell_pid = terminal_open(cmd=["/bin/bash"], cwd=HOME, env={})
+    shell_pid = terminal_open(cmd=["/bin/bash"], cwd=STATE_ROOT, env={})
     report["pty_pid"] = shell_pid
 
     report["rust_install"] = install_rust(shell_pid)
