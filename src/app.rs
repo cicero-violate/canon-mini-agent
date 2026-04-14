@@ -5734,7 +5734,7 @@ mod tests {
 
     #[test]
     fn restart_resume_prompt_is_a_short_continuation_prompt() {
-        let resume = PostRestartResult {
+        let resume = super::PostRestartResult {
             role: "planner".to_string(),
             action: "read_file".to_string(),
             result: "file contents".to_string(),
