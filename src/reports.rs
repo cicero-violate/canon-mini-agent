@@ -41,6 +41,37 @@ fn is_zero_u64(v: &u64) -> bool {
     *v == 0
 }
 
+pub fn violation_is_fresh(v: &Violation) -> bool {
+    let has_freshness_metadata = !v.freshness_status.trim().is_empty()
+        || v.last_validated_ms > 0
+        || !v.stale_reason.trim().is_empty()
+        || !v.validated_from.is_empty()
+        || !v.evidence_receipts.is_empty()
+        || !v.evidence_hashes.is_empty();
+
+    if !has_freshness_metadata {
+        return true;
+    }
+
+    match v.freshness_status.trim().to_ascii_lowercase().as_str() {
+        "fresh" => return true,
+        "stale" | "unknown" => return false,
+        _ => {}
+    }
+
+    if v.last_validated_ms > 0 {
+        return true;
+    }
+
+    v.evidence.iter().any(|entry| {
+        let normalized = entry.to_ascii_lowercase();
+        normalized.contains("validated against current source")
+            || normalized.contains("current-cycle")
+            || normalized.contains("read_file ")
+            || normalized.contains("run_command ")
+    })
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ViolationsReport {
     pub status: String,
