@@ -4,9 +4,6 @@ use crate::llm_runtime::http_backend::HttpBackend;
 
 use std::sync::{Arc, OnceLock};
 
-/// Port the Chrome extension connects to for the mini-agent.
-const CHROMIUM_WS_PORT: u16 = 9103;
-
 /// WsBridge wraps an `Arc<dyn LlmBackend>` so it can be passed around cheaply
 /// and swapped between HTTP, mock, or any future backend without changing call sites.
 #[derive(Clone)]
@@ -44,7 +41,7 @@ impl WsBridge {
 ///   `http`    → `HttpBackend` (direct Anthropic API via `ANTHROPIC_API_KEY`)
 ///   (default) → `ChromiumBackend` (Chrome extension relay on port 9103)
 pub fn spawn(
-    _addr: std::net::SocketAddr,
+    addr: std::net::SocketAddr,
     response_timeout_secs: u64,
     _retry_count: u32,
     _retry_delay_secs: u64,
@@ -53,7 +50,7 @@ pub fn spawn(
     let backend: Arc<dyn LlmBackend> =
         match std::env::var("CANON_LLM_BACKEND").as_deref() {
             Ok("http") => Arc::new(HttpBackend::from_env()),
-            _ => Arc::new(ChromiumBackend::spawn(CHROMIUM_WS_PORT)),
+            _ => Arc::new(ChromiumBackend::spawn(addr.port())),
         };
     WsBridge::new(backend, response_timeout_secs)
 }
