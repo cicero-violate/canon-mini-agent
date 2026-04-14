@@ -3040,30 +3040,33 @@ struct LlmResponseContext<'a> {
     submit_only: bool,
 }
 
-fn full_exchange_path(exchange_id: &str, suffix: &str) -> PathBuf {
-    let safe_id = exchange_id.replace(':', "_");
-    let ts = exchange_id
-        .rsplit(':')
-        .next()
-        .and_then(|v| v.parse::<u128>().ok())
-        .unwrap_or(0);
+fn full_exchange_path(ts_ms: u64, phase: &str, who: &str, step: usize) -> PathBuf {
     PathBuf::from(crate::constants::agent_state_dir())
         .join("llm_full")
-        .join(format!("{ts}_{safe_id}_{suffix}.json"))
+        .join(format!("{ts_ms:013}_{phase}_{who}_{step:04}.txt"))
 }
 
-fn write_full_exchange(exchange_id: &str, suffix: &str, payload: &Value) {
-    let path = full_exchange_path(exchange_id, suffix);
+fn write_full_exchange(ts_ms: u64, phase: &str, who: &str, step: usize, raw: &str) {
+    let path = full_exchange_path(ts_ms, phase, who, step);
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    if let Ok(text) = serde_json::to_string_pretty(payload) {
-        let _ = std::fs::write(path, text);
-    }
+    let _ = std::fs::write(path, raw);
 }
 
 impl<'a> LlmResponseContext<'a> {
     fn log_request(&self, step: usize, exchange_id: &str, prompt: &str, role_schema: &str) {
+        let ts_ms = crate::logging::now_ms();
+        let who = if role_schema.trim().is_empty() {
+            self.role
+        } else {
+            "system"
+        };
+        let raw_prompt = if role_schema.trim().is_empty() {
+            prompt.to_string()
+        } else {
+            format!("{}\n\n{}", role_schema.trim_end(), prompt)
+        };
         log_message_event(
             self.role,
             self.endpoint,
@@ -3078,17 +3081,7 @@ impl<'a> LlmResponseContext<'a> {
                 "prompt": truncate(prompt, MAX_SNIPPET),
             }),
         );
-        write_full_exchange(
-            exchange_id,
-            "prompt",
-            &json!({
-                "role": self.role,
-                "prompt_kind": self.prompt_kind,
-                "submit_only": self.submit_only,
-                "prompt": prompt,
-                "role_schema": role_schema,
-            }),
-        );
+        write_full_exchange(ts_ms, "prompt", who, step, &raw_prompt);
         trace_message_forwarded(
             self.role,
             self.prompt_kind,
@@ -3100,6 +3093,7 @@ impl<'a> LlmResponseContext<'a> {
     }
 
     fn log_response(&self, step: usize, exchange_id: &str, raw: &str) {
+        let ts_ms = crate::logging::now_ms();
         trace_message_received(
             self.role,
             self.prompt_kind,
@@ -3121,16 +3115,7 @@ impl<'a> LlmResponseContext<'a> {
                 "raw": truncate(raw, MAX_SNIPPET),
             }),
         );
-        write_full_exchange(
-            exchange_id,
-            "response",
-            &json!({
-                "role": self.role,
-                "prompt_kind": self.prompt_kind,
-                "submit_only": self.submit_only,
-                "raw": raw,
-            }),
-        );
+        write_full_exchange(ts_ms, "response", self.role, step, raw);
     }
 
     fn handle_submit_ack(&self, step: usize, exchange_id: &str, raw: &str) -> Option<String> {
