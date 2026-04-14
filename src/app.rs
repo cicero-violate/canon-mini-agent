@@ -1634,6 +1634,17 @@ fn handle_missing_submit_ack(
     exec_result: &str,
 ) -> bool {
     log_missing_submit_ack(job, exec_result);
+    crate::blockers::record_action_failure(
+        std::path::Path::new(&workspace()),
+        "executor",
+        "uncanonicalized_recovery",
+        &format!(
+            "recovery path without canonical event: missing submit_ack forced lane requeue lane={} output={}",
+            job.executor_name,
+            truncate(exec_result, MAX_SNIPPET)
+        ),
+        None,
+    );
     // Recovery: clear stuck ownership and requeue lane
     requeue_lane_after_submit_recovery(writer, rt, job.lane_index);
     false
@@ -1668,6 +1679,16 @@ fn register_late_submit_ack(
     command_id: Option<String>,
 ) -> bool {
     log_late_submit_ack(ctx, lane_id, tab_id, turn_id);
+    crate::blockers::record_action_failure(
+        ctx.workspace.as_path(),
+        "executor",
+        "uncanonicalized_recovery",
+        &format!(
+            "recovery path without canonical event: late submit_ack reconstructed turn lane={} tab_id={} turn_id={}",
+            ctx.lanes[lane_id].label, tab_id, turn_id
+        ),
+        None,
+    );
     let steps_used = writer.state().lane_steps_used_count(job.lane_index);
     register_submitted_executor_turn(
         writer,
@@ -1795,6 +1816,16 @@ fn handle_executor_submit_ack_result(
     if let Some(active_tab) = writer.state().lane_active_tab_id(lane_id) {
         if active_tab != tab_id {
             log_submit_ack_tab_mismatch(ctx, lane_id, active_tab, tab_id);
+            crate::blockers::record_action_failure(
+                ctx.workspace.as_path(),
+                "executor",
+                "runtime_control_bypass",
+                &format!(
+                    "runtime-only control influence: submit ack changed lane={} active tab from {} to {}",
+                    ctx.lanes[lane_id].label, active_tab, tab_id
+                ),
+                None,
+            );
         }
     }
 
@@ -5207,6 +5238,14 @@ pub async fn run() -> Result<()> {
                         &format!("failed to persist reconciled diagnostics after verifier phase: {err:#}"),
                         Some(json!({ "stage": "diagnostics_reconcile_post_verifier" })),
                     );
+                } else {
+                    crate::blockers::record_action_failure(
+                        workspace.as_path(),
+                        "orchestrate",
+                        "runtime_control_bypass",
+                        "runtime-only control influence: diagnostics phase was re-pended because reconciled diagnostics text diverged from on-disk diagnostics text",
+                        None,
+                    );
                 }
             }
 
@@ -5281,6 +5320,13 @@ pub async fn run() -> Result<()> {
                         "objectives_path": OBJECTIVES_FILE,
                         "plan_path": MASTER_PLAN_FILE,
                     }),
+                );
+                crate::blockers::record_action_failure(
+                    workspace.as_path(),
+                    "orchestrate",
+                    "runtime_control_bypass",
+                    "runtime-only control influence: planner was re-pended because plan/diagnostics mtimes changed without objectives update",
+                    None,
                 );
                 writer.apply(ControlEvent::PlannerPendingSet { pending: true });
                 cycle_progress = true;
