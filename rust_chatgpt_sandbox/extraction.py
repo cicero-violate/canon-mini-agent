@@ -26,6 +26,8 @@ HOME_RUST_SANDBOX = HOME / "rust-sandbox"
 
 AUTONOMOUS_DIR = HOME / "autonomous_agent_upgrade"
 CANON_DIR = MNT / "canon-mini-agent-extracted" / "canon-mini-agent"
+CANON_WORKSPACE_ROOT = MNT / "canon-mini-agent-extracted"
+CANON_WORKSPACE_TOML = CANON_WORKSPACE_ROOT / "Cargo.toml"
 AGENT_MAIN = AUTONOMOUS_DIR / "main.py"
 
 CARGO_HOME = MNT / ".cargo"
@@ -177,6 +179,27 @@ def extract_tar(tar_path: Path, dest: Path):
     return {"ok": True, "dest": str(dest)}
 
 
+def ensure_canon_workspace_root():
+    CANON_WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
+    workspace_toml = """
+[workspace]
+members = [
+    "canon-mini-agent",
+    "canon/canon-utils/canon-tools-patch",
+]
+resolver = "2"
+
+[workspace.dependencies]
+anyhow = "1"
+thiserror = "1"
+""".strip() + "\n"
+    CANON_WORKSPACE_TOML.write_text(workspace_toml)
+    return {
+        "path": str(CANON_WORKSPACE_TOML),
+        "written": True,
+    }
+
+
 def install_rust(pid):
     sandbox_root = RUST_SANDBOX
     if sandbox_root.exists():
@@ -283,6 +306,7 @@ def main():
 
     report["autonomous_extract"] = extract_tar(AUTONOMOUS_TAR, HOME)
     report["canon_extract"] = extract_tar(CANON_TAR, MNT / "canon-mini-agent-extracted")
+    report["canon_workspace_root"] = ensure_canon_workspace_root()
     report["cargo_config"] = configure_cargo()
 
     rustc_info = binary_version(RUSTC_PATH)
