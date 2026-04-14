@@ -210,10 +210,7 @@ fn classify_chatgpt_group(raw: &str) -> FrameResult {
         Ok(v) => v,
         Err(_) => return FrameResult::Ignore,
     };
-    if let Some(arr) = v.as_array() {
-        return classify_calpico_array(arr);
-    }
-    FrameResult::Ignore
+    classify_calpico_value(&v)
 }
 fn classify_gemini(raw: &str) -> FrameResult {
     let data = raw.strip_prefix("data: ").unwrap_or(raw).trim();
@@ -315,61 +312,98 @@ fn collect_gemini_fragments(v: &Value, out: &mut String, depth: usize) {
         }
     }
 }
+fn classify_calpico_value(v: &Value) -> FrameResult {
+    if let Some(arr) = v.as_array() {
+        return classify_calpico_array(arr);
+    }
+    let Some(obj) = v.as_object() else {
+        return FrameResult::Ignore;
+    };
+    if let Some(chunk) = obj.get("chunk").and_then(|c| c.as_str()) {
+        return classify_chatgpt_group(chunk);
+    }
+    if let Some(items) = obj.get("items").and_then(|i| i.as_array()) {
+        let result = classify_calpico_array(items);
+        if !matches!(result, FrameResult::Ignore) {
+            return result;
+        }
+    }
+    if obj.get("type").and_then(|t| t.as_str()) == Some("message") {
+        return classify_calpico_envelope(v);
+    }
+    if obj.get("role").and_then(|r| r.as_str()) == Some("assistant") && obj.get("raw_messages").is_some() {
+        return classify_calpico_message(v);
+    }
+    FrameResult::Ignore
+}
+
 fn classify_calpico_array(arr: &[Value]) -> FrameResult {
     for envelope in arr {
-        if envelope.get("type").and_then(|t| t.as_str()) != Some("message") {
-            continue;
+        let result = classify_calpico_envelope(envelope);
+        if !matches!(result, FrameResult::Ignore) {
+            return result;
         }
-        let payload = match envelope.get("payload") {
-            Some(p) => p,
-            None => continue,
-        };
-        if payload.get("type").and_then(|t| t.as_str()) == Some("calpico-message-update") {
-            let msg = match payload.get("payload").and_then(|p| p.get("message")) {
-                Some(m) => m,
-                None => continue,
-            };
-            let assistant_reaction = msg.get("reactions").and_then(|r| r.get("assistant")).and_then(|v| v.as_str()).unwrap_or("");
-            if !assistant_reaction.is_empty() {
-                return FrameResult::Snapshot(format!("assistant reaction-only terminal frame: {}", assistant_reaction));
-            }
-            continue;
-        }
-        if payload.get("type").and_then(|t| t.as_str()) != Some("calpico-message-add") {
-            continue;
-        }
+    }
+    FrameResult::Ignore
+}
+
+fn classify_calpico_envelope(envelope: &Value) -> FrameResult {
+    if envelope.get("type").and_then(|t| t.as_str()) != Some("message") {
+        return FrameResult::Ignore;
+    }
+    let payload = match envelope.get("payload") {
+        Some(p) => p,
+        None => return FrameResult::Ignore,
+    };
+    if payload.get("type").and_then(|t| t.as_str()) == Some("calpico-message-update") {
         let msg = match payload.get("payload").and_then(|p| p.get("message")) {
             Some(m) => m,
-            None => continue,
+            None => return FrameResult::Ignore,
         };
-        if msg.get("role").and_then(|r| r.as_str()) != Some("assistant") {
+        let assistant_reaction = msg.get("reactions").and_then(|r| r.get("assistant")).and_then(|v| v.as_str()).unwrap_or("");
+        if !assistant_reaction.is_empty() {
+            return FrameResult::Snapshot(format!("assistant reaction-only terminal frame: {}", assistant_reaction));
+        }
+        return FrameResult::Ignore;
+    }
+    if payload.get("type").and_then(|t| t.as_str()) != Some("calpico-message-add") {
+        return FrameResult::Ignore;
+    }
+    let msg = match payload.get("payload").and_then(|p| p.get("message")) {
+        Some(m) => m,
+        None => return FrameResult::Ignore,
+    };
+    classify_calpico_message(msg)
+}
+
+fn classify_calpico_message(msg: &Value) -> FrameResult {
+    if msg.get("role").and_then(|r| r.as_str()) != Some("assistant") {
+        return FrameResult::Ignore;
+    }
+    let mut saw_assistant = false;
+    let mut saw_empty = false;
+    let raw_messages = match msg.get("raw_messages").and_then(|v| v.as_array()) {
+        Some(a) => a,
+        None => return FrameResult::Ignore,
+    };
+    for raw_msg in raw_messages {
+        let author_role = raw_msg.get("author").and_then(|a| a.get("role")).and_then(|r| r.as_str()).unwrap_or("");
+        if author_role != "assistant" {
             continue;
         }
-        let mut saw_assistant = false;
-        let mut saw_empty = false;
-        let raw_messages = match msg.get("raw_messages").and_then(|v| v.as_array()) {
-            Some(a) => a,
-            None => continue,
-        };
-        for raw_msg in raw_messages {
-            let author_role = raw_msg.get("author").and_then(|a| a.get("role")).and_then(|r| r.as_str()).unwrap_or("");
-            if author_role != "assistant" {
-                continue;
-            }
-            saw_assistant = true;
-            let channel = raw_msg.get("channel").and_then(|c| c.as_str()).unwrap_or("");
-            if channel != "final" {
-                continue;
-            }
-            let text = raw_msg.get("content").and_then(|c| c.get("parts")).and_then(|p| p.as_array()).and_then(|a| a.first()).and_then(|v| v.as_str()).unwrap_or("");
-            if !text.is_empty() {
-                return FrameResult::Snapshot(text.to_string());
-            }
-            saw_empty = true;
+        saw_assistant = true;
+        let channel = raw_msg.get("channel").and_then(|c| c.as_str()).unwrap_or("");
+        if channel != "final" {
+            continue;
         }
-        if saw_assistant && saw_empty {
-            return FrameResult::Snapshot("LLM error: empty assistant response body".to_string());
+        let text = raw_msg.get("content").and_then(|c| c.get("parts")).and_then(|p| p.as_array()).and_then(|a| a.first()).and_then(|v| v.as_str()).unwrap_or("");
+        if !text.is_empty() {
+            return FrameResult::Snapshot(text.to_string());
         }
+        saw_empty = true;
+    }
+    if saw_assistant && saw_empty {
+        return FrameResult::Snapshot("LLM error: empty assistant response body".to_string());
     }
     FrameResult::Ignore
 }
@@ -402,4 +436,36 @@ pub fn try_extract_complete_fenced_json(raw: &str) -> Option<String> {
         return Some(format!("```json\n{}\n```", inner));
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{classify_frame, FrameResult, SiteType};
+
+    #[test]
+    fn chatgpt_group_parses_calpico_message_add_array() {
+        let raw = r#"[{"type":"message","payload":{"type":"calpico-message-add","payload":{"message":{"role":"assistant","raw_messages":[{"author":{"role":"assistant"},"channel":"final","content":{"parts":["```json\n{\"action\":\"issue\"}\n```"]}}]}}}}]"#;
+        match classify_frame(SiteType::ChatGptGroup, raw) {
+            FrameResult::Snapshot(text) => assert!(text.contains(r#""action":"issue""#)),
+            other => panic!("expected snapshot, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn chatgpt_group_parses_wrapped_chunk_payload() {
+        let raw = r#"{"turn_id":22,"chunk":"[{\"type\":\"message\",\"payload\":{\"type\":\"calpico-message-add\",\"payload\":{\"message\":{\"role\":\"assistant\",\"raw_messages\":[{\"author\":{\"role\":\"assistant\"},\"channel\":\"final\",\"content\":{\"parts\":[\"```json\\n{\\\"action\\\":\\\"apply_patch\\\"}\\n```\"]}}]}}}}]"}"#;
+        match classify_frame(SiteType::ChatGptGroup, raw) {
+            FrameResult::Snapshot(text) => assert!(text.contains(r#""action":"apply_patch""#)),
+            other => panic!("expected snapshot, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn chatgpt_group_parses_direct_assistant_message_object() {
+        let raw = r#"{"id":"msg","role":"assistant","raw_messages":[{"author":{"role":"assistant"},"channel":"final","content":{"parts":["```json\n{\"action\":\"message\"}\n```"]}}]}"#;
+        match classify_frame(SiteType::ChatGptGroup, raw) {
+            FrameResult::Snapshot(text) => assert!(text.contains(r#""action":"message""#)),
+            other => panic!("expected snapshot, got {other:?}"),
+        }
+    }
 }
