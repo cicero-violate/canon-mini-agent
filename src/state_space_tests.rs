@@ -243,7 +243,7 @@ fn wake_flags_covers_blocker_filtering_and_newest_role_selection() {
         modified_ms: 50,
     }];
     let blocked_decision = decide_wake_flags(true, &blocked_to_none);
-    assert_eq!(blocked_decision.scheduled_phase, None);
+    assert_eq!(blocked_decision.scheduled_phase, Some("solo".to_string()));
     assert!(!blocked_decision.planner_pending);
     assert!(!blocked_decision.diagnostics_pending);
     assert!(!blocked_decision.executor_wake);
@@ -398,7 +398,7 @@ fn active_blocker_clears_planner_ownership_when_needed() {
         decide_active_blocker(true, true, Some("planner")),
         ActiveBlockerDecision {
             planner_pending: false,
-            scheduled_phase: None,
+            scheduled_phase: Some("solo".to_string()),
         }
     );
     assert_eq!(
