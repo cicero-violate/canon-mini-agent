@@ -3860,6 +3860,9 @@ async fn run_agent(
                     "process_restart",
                 );
                 last_result = Some(out);
+                if kind.as_str() == "apply_patch" {
+                    return Ok(last_result.unwrap_or_default());
+                }
             }
         }
         step += 1;
