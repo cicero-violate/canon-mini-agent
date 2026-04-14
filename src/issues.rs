@@ -42,10 +42,47 @@ pub struct Issue {
     /// Agent role that discovered this issue, e.g. "solo" or "diagnostics".
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub discovered_by: String,
+    /// fresh | stale | unknown
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub freshness_status: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub stale_reason: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub validated_from: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence_receipts: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence_hashes: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub last_validated_ms: u64,
 }
 
 fn is_zero_f32(v: &f32) -> bool {
     *v == 0.0
+}
+
+fn is_zero_u64(v: &u64) -> bool {
+    *v == 0
+}
+
+pub fn issue_is_fresh(issue: &Issue) -> bool {
+    match issue.freshness_status.trim().to_ascii_lowercase().as_str() {
+        "fresh" => return true,
+        "stale" | "unknown" => return false,
+        _ => {}
+    }
+
+    if issue.last_validated_ms > 0 {
+        return true;
+    }
+
+    issue.evidence.iter().any(|entry| {
+        let normalized = entry.to_ascii_lowercase();
+        normalized.contains("validated against current source")
+            || normalized.contains("current-cycle")
+            || normalized.contains("read_file ")
+            || normalized.contains("run_command ")
+    })
 }
 
 /// Returns true for any status string that represents completion/closure.
@@ -161,6 +198,7 @@ pub fn read_ranked_open_issues(workspace: &Path) -> Vec<Issue> {
         return Vec::new();
     };
     file.issues.retain(|i| !is_closed(i));
+    file.issues.retain(issue_is_fresh);
     if file.issues.is_empty() {
         return Vec::new();
     }

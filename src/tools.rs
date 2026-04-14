@@ -5,10 +5,11 @@ use canon_tools_patch::apply_patch;
 use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind, SyntaxToken};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::BTreeSet;
+use std::collections::{hash_map::DefaultHasher, BTreeSet};
 use std::env;
 use std::fs;
 use std::fs::File;
+use std::hash::{Hash, Hasher};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -779,15 +780,17 @@ fn handle_violation_action(
             Ok((false, serde_json::to_string_pretty(&report)?))
         }
         "upsert" => {
+            let lease = validate_evidence_lease(action)?;
             // Add or replace a violation by id.
             let v_val = action
                 .get("violation")
                 .ok_or_else(|| anyhow!("violation upsert requires a 'violation' object"))?;
-            let v: Violation = serde_json::from_value(v_val.clone())
+            let mut v: Violation = serde_json::from_value(v_val.clone())
                 .map_err(|e| anyhow!("invalid violation payload: {e}"))?;
             if v.id.trim().is_empty() {
                 bail!("violation.id must be non-empty");
             }
+            apply_violation_freshness(&mut v, &lease);
             let mut report = load_violations(&path)?;
             if let Some(existing) = report.violations.iter_mut().find(|x| x.id == v.id) {
                 *existing = v.clone();
@@ -800,6 +803,7 @@ fn handle_violation_action(
             }
         }
         "resolve" => {
+            validate_evidence_lease(action)?;
             let vid = action
                 .get("violation_id")
                 .and_then(|v| v.as_str())
@@ -817,6 +821,7 @@ fn handle_violation_action(
             Ok((false, format!("violation resolve ok — removed `{vid}`")))
         }
         "set_status" => {
+            validate_evidence_lease(action)?;
             let status = action
                 .get("status")
                 .and_then(|v| v.as_str())
@@ -833,11 +838,16 @@ fn handle_violation_action(
             ))
         }
         "replace" => {
+            let lease = validate_evidence_lease(action)?;
             let rep_val = action
                 .get("report")
                 .ok_or_else(|| anyhow!("violation replace requires a 'report' object"))?;
-            let report: ViolationsReport = serde_json::from_value(rep_val.clone())
+            let mut report: ViolationsReport = serde_json::from_value(rep_val.clone())
                 .map_err(|e| anyhow!("invalid ViolationsReport payload: {e}"))?;
+            report.violations.retain(violation_is_fresh);
+            for violation in &mut report.violations {
+                apply_violation_freshness(violation, &lease);
+            }
             save_violations(&path, &report, writer.as_deref_mut(), "replace", "report")?;
             Ok((
                 false,
@@ -873,12 +883,145 @@ fn handle_issue_action(
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct EvidenceReceipt {
+    id: String,
+    ts_ms: u64,
+    actor: String,
+    step: usize,
+    action: String,
+    path: Option<String>,
+    abs_path: Option<String>,
+    meta: Value,
+    output_hash: String,
+}
+
+#[derive(Debug, Clone)]
+struct EvidenceLease {
+    receipt_ids: Vec<String>,
+    validated_from: Vec<String>,
+    evidence_hashes: Vec<String>,
+    last_validated_ms: u64,
+}
+
+fn evidence_receipts_path() -> PathBuf {
+    Path::new(crate::constants::agent_state_dir()).join("evidence_receipts.jsonl")
+}
+
+fn stable_hash_hex(value: &str) -> String {
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+fn append_evidence_receipt(
+    role: &str,
+    step: usize,
+    action: &str,
+    rel_path: Option<&str>,
+    abs_path: Option<PathBuf>,
+    meta: Value,
+    output: &str,
+) -> Result<String> {
+    let ts_ms = now_ms();
+    let id = format!("rcpt-{ts_ms}-{role}-{step}-{action}");
+    let receipt = EvidenceReceipt {
+        id: id.clone(),
+        ts_ms,
+        actor: role.to_string(),
+        step,
+        action: action.to_string(),
+        path: rel_path.map(|s| s.to_string()),
+        abs_path: abs_path.map(|p| p.display().to_string()),
+        meta,
+        output_hash: stable_hash_hex(output),
+    };
+    let path = evidence_receipts_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut file = fs::OpenOptions::new().create(true).append(true).open(path)?;
+    writeln!(file, "{}", serde_json::to_string(&receipt)?)?;
+    Ok(id)
+}
+
+fn validate_evidence_lease(action: &Value) -> Result<EvidenceLease> {
+    let receipt_ids = action
+        .get("evidence_receipts")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| anyhow!("authoritative mutation requires non-empty 'evidence_receipts'"))?
+        .iter()
+        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+        .collect::<Vec<_>>();
+    if receipt_ids.is_empty() {
+        bail!("authoritative mutation requires non-empty 'evidence_receipts'");
+    }
+    let raw = fs::read_to_string(evidence_receipts_path()).unwrap_or_default();
+    let mut validated_from = Vec::new();
+    let mut evidence_hashes = Vec::new();
+    let mut last_validated_ms = 0u64;
+    for receipt_id in &receipt_ids {
+        let maybe_receipt = raw
+            .lines()
+            .filter_map(|line| serde_json::from_str::<EvidenceReceipt>(line).ok())
+            .find(|receipt| &receipt.id == receipt_id);
+        let Some(receipt) = maybe_receipt else {
+            bail!("evidence receipt not found: {receipt_id}");
+        };
+        if now_ms().saturating_sub(receipt.ts_ms) > 15 * 60 * 1000 {
+            bail!("evidence receipt is stale: {receipt_id}");
+        }
+        if let Some(path) = receipt.path.or(receipt.abs_path) {
+            validated_from.push(path);
+        }
+        evidence_hashes.push(receipt.output_hash);
+        last_validated_ms = last_validated_ms.max(receipt.ts_ms);
+    }
+    validated_from.sort();
+    validated_from.dedup();
+    evidence_hashes.sort();
+    evidence_hashes.dedup();
+    Ok(EvidenceLease {
+        receipt_ids,
+        validated_from,
+        evidence_hashes,
+        last_validated_ms,
+    })
+}
+
+fn apply_issue_freshness(issue: &mut Issue, lease: &EvidenceLease) {
+    issue.freshness_status = "fresh".to_string();
+    issue.stale_reason.clear();
+    issue.last_validated_ms = lease.last_validated_ms;
+    issue.validated_from = lease.validated_from.clone();
+    issue.evidence_receipts = lease.receipt_ids.clone();
+    issue.evidence_hashes = lease.evidence_hashes.clone();
+}
+
+fn violation_is_fresh(violation: &crate::reports::Violation) -> bool {
+    match violation.freshness_status.trim().to_ascii_lowercase().as_str() {
+        "fresh" => true,
+        "stale" | "unknown" => false,
+        _ => violation.last_validated_ms > 0,
+    }
+}
+
+fn apply_violation_freshness(violation: &mut crate::reports::Violation, lease: &EvidenceLease) {
+    violation.freshness_status = "fresh".to_string();
+    violation.stale_reason.clear();
+    violation.last_validated_ms = lease.last_validated_ms;
+    violation.validated_from = lease.validated_from.clone();
+    violation.evidence_receipts = lease.receipt_ids.clone();
+    violation.evidence_hashes = lease.evidence_hashes.clone();
+}
+
 fn read_open_issues(raw: &str) -> Result<(bool, String)> {
     if raw.trim().is_empty() {
         return Ok((false, "(no open issues)".to_string()));
     }
     let mut file: IssuesFile = serde_json::from_str(raw).unwrap_or_default();
     file.issues.retain(|i| !is_closed(i));
+    file.issues.retain(crate::issues::issue_is_fresh);
     if file.issues.is_empty() {
         return Ok((false, "(no open issues)".to_string()));
     }
@@ -894,6 +1037,7 @@ fn create_issue(
     raw: &str,
     writer: Option<&mut CanonicalWriter>,
 ) -> Result<(bool, String)> {
+    let lease = validate_evidence_lease(action)?;
     let issue_val = action
         .get("issue")
         .ok_or_else(|| anyhow!("issue create missing 'issue' field"))?;
@@ -947,11 +1091,12 @@ fn create_issue(
     }
 
     let mut file = parse_issues_file_allow_empty(raw)?;
-    let issue: Issue = serde_json::from_value(issue_val.clone())
+    let mut issue: Issue = serde_json::from_value(issue_val.clone())
         .map_err(|e| anyhow!("invalid issue payload: {e}"))?;
     if issue.id.trim().is_empty() {
         bail!("issue.id must be non-empty");
     }
+    apply_issue_freshness(&mut issue, &lease);
     let issue_id = issue.id.clone();
     if file.issues.iter().any(|i| i.id == issue_id) {
         bail!("issue id already exists: {}", issue_id);
@@ -968,6 +1113,7 @@ fn update_issue(
     raw: &str,
     writer: Option<&mut CanonicalWriter>,
 ) -> Result<(bool, String)> {
+    let lease = validate_evidence_lease(action)?;
     let issue_id = action
         .get("issue_id")
         .and_then(|v| v.as_str())
@@ -985,6 +1131,7 @@ fn update_issue(
         }
     }
     *issue = serde_json::from_value(value)?;
+    apply_issue_freshness(issue, &lease);
     write_issues_file(path, &mut file, writer, "update", issue_id)?;
     queue_diagnostics_reconciliation();
     Ok((false, "issue update ok".to_string()))
@@ -1017,6 +1164,7 @@ fn set_issue_status(
     raw: &str,
     writer: Option<&mut CanonicalWriter>,
 ) -> Result<(bool, String)> {
+    let lease = validate_evidence_lease(action)?;
     let issue_id = action
         .get("issue_id")
         .and_then(|v| v.as_str())
@@ -1028,6 +1176,7 @@ fn set_issue_status(
     let mut file = parse_issues_file_required(raw)?;
     let issue = find_issue_mut(&mut file, issue_id)?;
     issue.status = status.to_string();
+    apply_issue_freshness(issue, &lease);
     write_issues_file(path, &mut file, writer, "set_status", issue_id)?;
     queue_diagnostics_reconciliation();
     Ok((false, "issue set_status ok".to_string()))
@@ -2034,6 +2183,15 @@ fn handle_read_file_action(
         .map(|n| n as usize);
     let start = line_start.or(line);
     let out = exec_read_file(workspace, path, start, line_end)?;
+    let _ = append_evidence_receipt(
+        role,
+        step,
+        "read_file",
+        Some(path),
+        Some(workspace.join(path)),
+        json!({"line": line, "line_start": line_start, "line_end": line_end}),
+        &out,
+    );
     eprintln!(
         "[{role}] step={} read_file path={path} bytes={}",
         step,
@@ -3628,6 +3786,15 @@ fn handle_run_command_action(
         .unwrap_or(crate::constants::workspace());
     eprintln!("[{role}] step={} run_command cmd={cmd}", step);
     let (success, out) = exec_run_command(workspace, cmd, cwd)?;
+    let _ = append_evidence_receipt(
+        role,
+        step,
+        "run_command",
+        None,
+        Some(PathBuf::from(cwd)),
+        json!({"cmd": cmd, "success": success}),
+        &out,
+    );
     let label = if success {
         "run_command ok"
     } else {
@@ -3666,6 +3833,15 @@ fn handle_python_action(
         .unwrap_or(crate::constants::workspace());
     eprintln!("[{role}] step={} python bytes={}", step, code.len());
     let (success, mut out) = exec_python(workspace, code, cwd)?;
+    let _ = append_evidence_receipt(
+        role,
+        step,
+        "python",
+        None,
+        Some(PathBuf::from(cwd)),
+        json!({"success": success, "code_hash": stable_hash_hex(code)}),
+        &out,
+    );
     if !success {
         append_python_failure_guidance(&mut out, cwd, workspace);
     }

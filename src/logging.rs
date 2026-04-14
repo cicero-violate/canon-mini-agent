@@ -745,7 +745,12 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
             format!("Identify which injected section accounts for the excess (prompt_bytes={prompt_bytes})."),
             "Trim the over-sized section to a top-N summary or compact format.",
             "Verify the prompt drops below the threshold after trimming."
-        ]
+        ],
+        "freshness_status": "fresh",
+        "validated_from": ["runtime/prompt_bytes"],
+        "evidence_receipts": [format!("runtime-prompt-overflow-{}-{}", role, now_ms())],
+        "evidence_hashes": [format!("prompt_bytes:{}:{}", role, prompt_bytes)],
+        "last_validated_ms": now_ms()
     });
 
     let mut new_violations = violations;

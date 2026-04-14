@@ -158,6 +158,7 @@ fn dead_code_issues(
             ],
             discovered_by: "refactor_analyzer".to_string(),
             score: 0.0,
+            ..Issue::default()
         });
         created += 1;
     }
@@ -251,6 +252,7 @@ fn branch_reduction_issues(
             ],
             discovered_by: "refactor_analyzer".to_string(),
             score: 0.0,
+            ..Issue::default()
         });
         created += 1;
     }
@@ -368,6 +370,7 @@ fn helper_extraction_issues(
             ],
             discovered_by: "refactor_analyzer".to_string(),
             score: 0.0,
+            ..Issue::default()
         });
         created += 1;
     }
@@ -440,6 +443,7 @@ fn call_chain_issues(
             ],
             discovered_by: "refactor_analyzer".to_string(),
             score: 0.0,
+            ..Issue::default()
         });
         created += 1;
     }

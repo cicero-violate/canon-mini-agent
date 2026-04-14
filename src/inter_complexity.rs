@@ -310,6 +310,7 @@ fn build_hotspot_issue(
         evidence,
         discovered_by: "inter_complexity_analyzer".to_string(),
         score: 0.0,
+        ..Issue::default()
     })
 }
 
@@ -361,6 +362,7 @@ fn build_duplicate_issue(group: &[String], existing_ids: &HashSet<String>) -> Op
         evidence: vec![format!("MIR fingerprint shared by: {}", group.join(", "))],
         discovered_by: "inter_complexity_analyzer".to_string(),
         score: 0.0,
+        ..Issue::default()
     })
 }
 

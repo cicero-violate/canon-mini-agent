@@ -424,6 +424,7 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
             ],
             discovered_by: "invariants_analyzer".to_string(),
             score: 0.0,
+            ..Issue::default()
         });
         created += 1;
     }
@@ -456,6 +457,7 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
             ],
             discovered_by: "invariants_analyzer".to_string(),
             score: 0.0,
+            ..Issue::default()
         });
         created += 1;
     }
@@ -517,6 +519,7 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
             ],
             discovered_by: "invariants_analyzer".to_string(),
             score: 0.0,
+            ..Issue::default()
         });
         created += 1;
     }

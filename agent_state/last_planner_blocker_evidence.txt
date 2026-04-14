@@ -1,1 +1,1 @@
-Same-cycle python read confirms `ISSUES.json` keeps `route_gate_invalid_route_livelock_cluster` open with description stating it is the active executor-dispatch stop, while `PLAN.json` still shows ready tasks that cannot be truthfully advanced and `PROMPT-OVERFLOW-PLANNER` also remains open.
+ISSUES.json status=open; VIOLATIONS.json prompt_bytes=384830; diagnostics report unchanged; diagnostics confirms no access to python/read_file/run_command/issue/violation/apply_patch.

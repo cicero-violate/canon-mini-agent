@@ -23,6 +23,22 @@ pub struct Violation {
     pub required_fix: Vec<String>,
     #[serde(default)]
     pub files: Vec<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub freshness_status: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub stale_reason: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub validated_from: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence_receipts: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence_hashes: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub last_validated_ms: u64,
+}
+
+fn is_zero_u64(v: &u64) -> bool {
+    *v == 0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

@@ -706,7 +706,15 @@ fn parse_violations_report(raw: &str) -> Option<ViolationsReport> {
     if raw.trim().is_empty() {
         return None;
     }
-    serde_json::from_str::<ViolationsReport>(raw).ok()
+    let mut report = serde_json::from_str::<ViolationsReport>(raw).ok()?;
+    report.violations.retain(|violation| {
+        match violation.freshness_status.trim().to_ascii_lowercase().as_str() {
+            "fresh" => true,
+            "stale" | "unknown" => false,
+            _ => violation.last_validated_ms > 0,
+        }
+    });
+    Some(report)
 }
 
 fn source_validation_state(report: Option<&ViolationsReport>, raw_violations_text: &str) -> String {
