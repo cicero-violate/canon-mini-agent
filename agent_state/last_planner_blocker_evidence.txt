@@ -1,1 +1,1 @@
-Same-cycle python confirmed `T_prompt_overflow_planner_remediation` exists in `PLAN.json` and is `ready`, but `ready_window` remains ordered with the lower-priority route task first; follow-up inspection of `state/tool_examples.md` and `SPEC.md` returned no matching plan-op examples to safely retry the mutation.
+auto-filled blocker evidence

@@ -28,6 +28,27 @@ fn truncate_bytes(s: &str, max_bytes: usize) -> &str {
     &s[..end]
 }
 
+fn render_budgeted_item_body(item: &PromptBudgetItem<'_>) -> String {
+    const TRUNCATED_MARKER: &str = "\n... [truncated]";
+
+    if item.budget == 0 {
+        return String::new();
+    }
+
+    if item.budget >= item.raw_bytes {
+        return item.body.to_string();
+    }
+
+    if item.budget <= TRUNCATED_MARKER.len() {
+        return truncate_bytes(TRUNCATED_MARKER, item.budget).to_string();
+    }
+
+    let content_budget = item.budget - TRUNCATED_MARKER.len();
+    let mut out = truncate_bytes(item.body, content_budget).to_string();
+    out.push_str(TRUNCATED_MARKER);
+    out
+}
+
 #[derive(Clone, Copy, Debug)]
 struct PromptItem<'a> {
     name: &'a str,
@@ -183,7 +204,7 @@ fn render_budgeted_prompt<'a>(prefix: &str, items: &[PromptItem<'a>], suffix: &s
         out.push_str("\n\n");
         out.push_str(item.heading);
         out.push('\n');
-        out.push_str(truncate_bytes(item.body, item.budget));
+        out.push_str(&render_budgeted_item_body(&item));
     }
     out.push_str(suffix);
     debug_assert!(out.len() <= crate::constants::PROMPT_OVERFLOW_BYTES);
