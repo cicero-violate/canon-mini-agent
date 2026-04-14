@@ -90,6 +90,8 @@ pub struct StateCondition {
 pub struct InvariantEvidenceSample {
     pub source: String,
     pub ts_ms: u64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub matching_rule: String,
     pub raw: Value,
 }
 
@@ -591,6 +593,7 @@ fn fingerprints_from_blockers(workspace: &Path) -> Vec<Fingerprint> {
                 evidence: InvariantEvidenceSample {
                     source: "agent_state/blockers.json".to_string(),
                     ts_ms: b.ts_ms,
+                    matching_rule: "blocker error_class grouped by actor_kind".to_string(),
                     raw,
                 },
             }
@@ -675,6 +678,7 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
                 evidence: InvariantEvidenceSample {
                     source: "agent_state/default/actions.jsonl".to_string(),
                     ts_ms,
+                    matching_rule: "plan_preflight failure with ok=false".to_string(),
                     raw: entry.clone(),
                 },
             });
@@ -696,6 +700,7 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
                     evidence: InvariantEvidenceSample {
                         source: "agent_state/default/actions.jsonl".to_string(),
                         ts_ms,
+                        matching_rule: "forced executor handoff / step limit exceeded".to_string(),
                         raw: entry.clone(),
                     },
                 });
@@ -731,6 +736,7 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
                 evidence: InvariantEvidenceSample {
                     source: "agent_state/default/actions.jsonl".to_string(),
                     ts_ms,
+                    matching_rule: "read_file failed with ok=false".to_string(),
                     raw: entry.clone(),
                 },
             });
@@ -759,6 +765,7 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
                     evidence: InvariantEvidenceSample {
                         source: "agent_state/default/actions.jsonl".to_string(),
                         ts_ms,
+                        matching_rule: "invalid action schema rejection in result phase".to_string(),
                         raw: entry.clone(),
                     },
                 });
@@ -779,6 +786,7 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
                 evidence: InvariantEvidenceSample {
                     source: "agent_state/default/actions.jsonl".to_string(),
                     ts_ms,
+                    matching_rule: "missing target or nonexistent path evidence".to_string(),
                     raw: entry.clone(),
                 },
             });
@@ -845,6 +853,7 @@ fn fingerprint_tool_failure(
         evidence: InvariantEvidenceSample {
             source: "agent_state/default/actions.jsonl".to_string(),
             ts_ms,
+            matching_rule: format!("tool failure categorized as `{error_kind}`"),
             raw: entry.clone(),
         },
     })
