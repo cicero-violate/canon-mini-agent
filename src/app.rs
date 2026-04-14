@@ -513,22 +513,33 @@ async fn run_planner_phase(
         text: last_executor_diff,
     });
     let issues_text = crate::issues::read_top_open_issues(ctx.workspace, 10);
-    let mut planner_prompt = planner_cycle_prompt(
-        &inputs.summary_text,
-        &inputs.objectives_text,
-        &inputs.lessons_text,
-        &inputs.invariants_text,
-        &inputs.violations_text,
-        &inputs.diagnostics_text,
-        &issues_text,
-        &inputs.plan_diff_text,
-        &inputs.executor_diff_text,
-        &inputs.cargo_test_failures,
-    );
+    let restart_resume = peek_post_restart_result("planner");
+    let mut planner_prompt = if let Some(resume) = restart_resume.as_ref() {
+        let prompt = build_restart_resume_prompt("planner", resume);
+        let _ = take_post_restart_result("planner");
+        prompt
+    } else {
+        planner_cycle_prompt(
+            &inputs.summary_text,
+            &inputs.objectives_text,
+            &inputs.lessons_text,
+            &inputs.invariants_text,
+            &inputs.violations_text,
+            &inputs.diagnostics_text,
+            &issues_text,
+            &inputs.plan_diff_text,
+            &inputs.executor_diff_text,
+            &inputs.cargo_test_failures,
+        )
+    };
     inject_inbound_message(&mut planner_prompt, "planner");
-    inject_post_restart_result(&mut planner_prompt, "planner");
     trace_orchestrator_forwarded("orchestrator", "planner", "planner", None, None, None, None);
     let planner_system = system_instructions(AgentPromptKind::Planner);
+    let send_system_prompt = if restart_resume.is_some() {
+        false
+    } else {
+        !*planner_bootstrapped
+    };
     let result = run_agent(
         "planner",
         "planner",
@@ -540,7 +551,7 @@ async fn run_planner_phase(
         ctx.tabs_planner,
         false,
         false,
-        !*planner_bootstrapped,
+        send_system_prompt,
         0,
     )
     .await;
@@ -666,26 +677,37 @@ async fn run_solo_phase(
     let loop_context_hint = crate::prompt_inputs::read_loop_context_hint(std::path::Path::new(
         crate::constants::agent_state_dir(),
     ));
-    let mut prompt = single_role_solo_prompt(
-        &spec,
-        &master_plan,
-        &objectives,
-        &crate::prompt_inputs::read_lessons_or_empty(ctx.workspace),
-        &invariants,
-        &violations,
-        &diagnostics,
-        cargo_test_failures,
-        &crate::prompt_inputs::read_rename_candidates_or_empty(ctx.workspace),
-        &issues_text,
-        &executor_diff_inputs.diff_text,
-        &plan_diff_text,
-        &complexity_hotspots,
-        &loop_context_hint,
-    );
+    let restart_resume = peek_post_restart_result("solo");
+    let mut prompt = if let Some(resume) = restart_resume.as_ref() {
+        let prompt = build_restart_resume_prompt("solo", resume);
+        let _ = take_post_restart_result("solo");
+        prompt
+    } else {
+        single_role_solo_prompt(
+            &spec,
+            &master_plan,
+            &objectives,
+            &crate::prompt_inputs::read_lessons_or_empty(ctx.workspace),
+            &invariants,
+            &violations,
+            &diagnostics,
+            cargo_test_failures,
+            &crate::prompt_inputs::read_rename_candidates_or_empty(ctx.workspace),
+            &issues_text,
+            &executor_diff_inputs.diff_text,
+            &plan_diff_text,
+            &complexity_hotspots,
+            &loop_context_hint,
+        )
+    };
     inject_inbound_message(&mut prompt, "solo");
-    inject_post_restart_result(&mut prompt, "solo");
     trace_orchestrator_forwarded("orchestrator", "solo", "solo", None, None, None, None);
     let solo_system = system_instructions(AgentPromptKind::Solo);
+    let send_system_prompt = if restart_resume.is_some() {
+        false
+    } else {
+        !*solo_bootstrapped
+    };
     let result = run_agent(
         "solo",
         "solo",
@@ -697,7 +719,7 @@ async fn run_solo_phase(
         ctx.tabs_solo,
         false,
         true,
-        !*solo_bootstrapped,
+        send_system_prompt,
         0,
     )
     .await;
@@ -824,7 +846,14 @@ async fn run_diagnostics_phase(
         }
     }
     let summary_text = lane_summary_text(ctx.lanes, &writer.state().verifier_summary);
-    let mut prompt = diagnostics_cycle_prompt(&summary_text, cargo_test_failures);
+    let restart_resume = peek_post_restart_result("diagnostics");
+    let mut prompt = if let Some(resume) = restart_resume.as_ref() {
+        let prompt = build_restart_resume_prompt("diagnostics", resume);
+        let _ = take_post_restart_result("diagnostics");
+        prompt
+    } else {
+        diagnostics_cycle_prompt(&summary_text, cargo_test_failures)
+    };
     inject_inbound_message(&mut prompt, "diagnostics");
     trace_orchestrator_forwarded(
         "verifier",
@@ -847,7 +876,11 @@ async fn run_diagnostics_phase(
         ctx.tabs_diagnostics,
         false,
         false,
-        !*diagnostics_bootstrapped,
+        if restart_resume.is_some() {
+            false
+        } else {
+            !*diagnostics_bootstrapped
+        },
         0,
     )
     .await;
@@ -936,12 +969,19 @@ async fn run_verifier_phase(
         writer.apply(ControlEvent::LastExecutorDiffSet {
             text: last_executor_diff,
         });
-        let mut verifier_prompt = verifier_cycle_prompt(
-            submitted.lane_label.as_str(),
-            &final_exec_result,
-            &prompt_inputs.executor_diff_text,
-            &prompt_inputs.cargo_test_failures,
-        );
+        let restart_resume = peek_post_restart_result("verifier");
+        let mut verifier_prompt = if let Some(resume) = restart_resume.as_ref() {
+            let prompt = build_restart_resume_prompt("verifier", resume);
+            let _ = take_post_restart_result("verifier");
+            prompt
+        } else {
+            verifier_cycle_prompt(
+                submitted.lane_label.as_str(),
+                &final_exec_result,
+                &prompt_inputs.executor_diff_text,
+                &prompt_inputs.cargo_test_failures,
+            )
+        };
         if let Some(inbound) = take_inbound_message("verifier") {
             if let Some((_, to, payload)) = try_parse_blocker(&inbound) {
                 let fields = normalize_blocker_fields(&payload);
@@ -979,7 +1019,11 @@ async fn run_verifier_phase(
         let bridge = ctx.bridge.clone();
         let workspace = ctx.workspace.to_path_buf();
         let tabs_verify = ctx.tabs_verify.clone();
-        let send_system_prompt = !*verifier_bootstrapped;
+        let send_system_prompt = if restart_resume.is_some() {
+            false
+        } else {
+            !*verifier_bootstrapped
+        };
         *verifier_bootstrapped = true;
         verifier_joinset.spawn(async move {
             let verify_result = match run_agent(
@@ -3746,7 +3790,16 @@ async fn run_agent(
                 // initial prompt if the supervisor restarts the process mid-cycle
                 // (e.g. after apply_patch triggers a binary rebuild).  The file is
                 // consumed once on startup and then deleted.
-                write_post_restart_result(role, kind.as_str(), &out, step + 1);
+                write_post_restart_result(
+                    role,
+                    kind.as_str(),
+                    &out,
+                    step + 1,
+                    last_tab_id,
+                    last_turn_id,
+                    &endpoint.id,
+                    "process_restart",
+                );
                 last_result = Some(out);
             }
         }
@@ -3756,7 +3809,16 @@ async fn run_agent(
 
 /// Write the last completed action result to a state file so it survives a
 /// supervisor-triggered restart.  Only the most recent action is kept (overwrites).
-fn write_post_restart_result(role: &str, action: &str, result: &str, step: usize) {
+fn write_post_restart_result(
+    role: &str,
+    action: &str,
+    result: &str,
+    step: usize,
+    tab_id: Option<u32>,
+    turn_id: Option<u64>,
+    endpoint_id: &str,
+    restart_kind: &str,
+) {
     let path =
         std::path::Path::new(crate::constants::agent_state_dir()).join("post_restart_result.json");
     let payload = serde_json::json!({
@@ -3764,6 +3826,10 @@ fn write_post_restart_result(role: &str, action: &str, result: &str, step: usize
         "action": action,
         "result": result,
         "step": step,
+        "tab_id": tab_id,
+        "turn_id": turn_id,
+        "endpoint_id": endpoint_id,
+        "restart_kind": restart_kind,
     });
     let _ = std::fs::write(
         &path,
@@ -3771,9 +3837,20 @@ fn write_post_restart_result(role: &str, action: &str, result: &str, step: usize
     );
 }
 
-/// Read and consume the post-restart result file.  Returns `Some((action, result, step))`
-/// if the file exists and was written by `role`, then deletes the file.
-fn take_post_restart_result(role: &str) -> Option<(String, String, usize)> {
+#[derive(Clone, Debug)]
+struct PostRestartResult {
+    role: String,
+    action: String,
+    result: String,
+    step: usize,
+    tab_id: Option<u32>,
+    turn_id: Option<u64>,
+    endpoint_id: String,
+    restart_kind: String,
+}
+
+/// Read the post-restart result file without consuming it.
+fn peek_post_restart_result(role: &str) -> Option<PostRestartResult> {
     let path =
         std::path::Path::new(crate::constants::agent_state_dir()).join("post_restart_result.json");
     let raw = std::fs::read_to_string(&path).ok()?;
@@ -3793,36 +3870,78 @@ fn take_post_restart_result(role: &str) -> Option<(String, String, usize)> {
     if role_key != saved_key {
         return None;
     }
-    let action = v
+    Some(PostRestartResult {
+        role: saved_role.to_string(),
+        action: v
         .get("action")
         .and_then(|a| a.as_str())
         .unwrap_or("(unknown)")
-        .to_string();
-    let result = v
+        .to_string(),
+        result: v
         .get("result")
         .and_then(|r| r.as_str())
         .unwrap_or("")
-        .to_string();
-    let step = v.get("step").and_then(|s| s.as_u64()).unwrap_or(0) as usize;
-    // Consume — delete so it isn't re-injected on a second restart
-    let _ = std::fs::remove_file(&path);
-    Some((action, result, step))
+        .to_string(),
+        step: v.get("step").and_then(|s| s.as_u64()).unwrap_or(0) as usize,
+        tab_id: v.get("tab_id").and_then(|s| s.as_u64()).map(|v| v as u32),
+        turn_id: v.get("turn_id").and_then(|s| s.as_u64()),
+        endpoint_id: v
+            .get("endpoint_id")
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_string(),
+        restart_kind: v
+            .get("restart_kind")
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_string(),
+    })
 }
 
-/// If a post-restart result exists for this role, append it to the prompt so the
-/// agent continues from where it left off rather than re-running checks.
-fn inject_post_restart_result(prompt: &mut String, role: &str) {
-    if let Some((action, result, step)) = take_post_restart_result(role) {
-        eprintln!(
-            "[{role}] post-restart: injecting prior action result (action={action} step={step})"
-        );
-        prompt.push_str(&format!(
-            "\n\n---\nRESTART CONTEXT: The agent process was restarted (likely because a source \
-             build updated the binary). Your last completed action before restart was:\n\
-             Action: `{action}` (step {step})\nResult:\n{result}\n\
-             Continue from where you left off — do NOT re-run checks that already passed above.\n---\n"
-        ));
-    }
+/// Read and consume the post-restart result file.  Returns `Some(result)` if the
+/// file exists and was written by `role`, then deletes the file.
+fn take_post_restart_result(role: &str) -> Option<PostRestartResult> {
+    let result = peek_post_restart_result(role)?;
+    let path =
+        std::path::Path::new(crate::constants::agent_state_dir()).join("post_restart_result.json");
+    // Consume — delete so it isn't re-injected on a second restart
+    let _ = std::fs::remove_file(&path);
+    Some(result)
+}
+
+fn restart_resume_banner(role: &str, resume: &PostRestartResult) -> String {
+    let agent_type = role_key(role).to_uppercase();
+    let tab_id = resume
+        .tab_id
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "pending".to_string());
+    let turn_id = resume
+        .turn_id
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "pending".to_string());
+    let mut out = format!(
+        "TAB_ID: {tab_id}\nTURN_ID: {turn_id}\nAGENT_TYPE: {agent_type}\n\nSYSTEM RESTART RESUME\n\
+         Resume role: {}\nRestart kind: {}\nEndpoint: {}\nLast completed action: `{}` (step {})\n\
+         Continue from the last completed action result below. Do not resend the bootstrap prompt.\n\
+         Result:\n{}\n",
+        resume.role,
+        resume.restart_kind,
+        if resume.endpoint_id.is_empty() {
+            "unknown"
+        } else {
+            &resume.endpoint_id
+        },
+        resume.action,
+        resume.step,
+        resume.result
+    );
+    out.push_str("\nReturn to the same conversation and continue from this result.");
+    out
+}
+
+/// Build a continuation prompt for a resumed session instead of the full bootstrap prompt.
+fn build_restart_resume_prompt(role: &str, resume: &PostRestartResult) -> String {
+    restart_resume_banner(role, resume)
 }
 
 fn find_endpoint<'a>(endpoints: &'a [LlmEndpoint], role: &str) -> Result<&'a LlmEndpoint> {
@@ -4489,16 +4608,22 @@ async fn submit_executor_turn(
 ) -> Result<String> {
     let ready_tasks =
         crate::prompt_inputs::read_ready_tasks(&std::path::PathBuf::from(workspace()), 10);
-    let mut exec_prompt = executor_cycle_prompt(
-        job.executor_display.as_str(),
-        job.label.as_str(),
-        &job.latest_verify_result,
-        &ready_tasks,
-    );
+    let restart_resume = peek_post_restart_result(&job.executor_role);
+    let mut exec_prompt = if let Some(resume) = restart_resume.as_ref() {
+        let prompt = build_restart_resume_prompt(&job.executor_role, resume);
+        let _ = take_post_restart_result(&job.executor_role);
+        prompt
+    } else {
+        executor_cycle_prompt(
+            job.executor_display.as_str(),
+            job.label.as_str(),
+            &job.latest_verify_result,
+            &ready_tasks,
+        )
+    };
     inject_inbound_message(&mut exec_prompt, "executor");
-    inject_post_restart_result(&mut exec_prompt, "executor");
     let executor_system = system_instructions(AgentPromptKind::Executor);
-    let role_schema = if send_system_prompt {
+    let role_schema = if should_send_system_prompt(send_system_prompt, endpoint.stateful, 0) {
         executor_system
     } else {
         String::new()
@@ -5605,6 +5730,28 @@ mod tests {
         assert!(!super::should_send_system_prompt(true, true, 1));
         assert!(super::should_send_system_prompt(true, false, 1));
         assert!(!super::should_send_system_prompt(false, true, 0));
+    }
+
+    #[test]
+    fn restart_resume_prompt_is_a_short_continuation_prompt() {
+        let resume = PostRestartResult {
+            role: "planner".to_string(),
+            action: "read_file".to_string(),
+            result: "file contents".to_string(),
+            step: 4,
+            tab_id: Some(433977893),
+            turn_id: Some(1),
+            endpoint_id: "mini_planner_chatgpt".to_string(),
+            restart_kind: "process_restart".to_string(),
+        };
+        let prompt = super::build_restart_resume_prompt("planner", &resume);
+        assert!(prompt.contains("SYSTEM RESTART RESUME"));
+        assert!(prompt.contains("Resume role: planner"));
+        assert!(prompt.contains("Restart kind: process_restart"));
+        assert!(prompt.contains("Endpoint: mini_planner_chatgpt"));
+        assert!(prompt.contains("Last completed action: `read_file` (step 4)"));
+        assert!(prompt.contains("Continue from the last completed action result below."));
+        assert!(!prompt.contains("canonical law"));
     }
 
     #[test]
