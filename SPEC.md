@@ -164,6 +164,24 @@ Hard boundary rules:
 
 **Replay:** `Tlog::replay(...)` reads `AgentStateDir/tlog.ndjson`, applies only `ControlEvent`s through `replay_event_log(...)`, ignores `EffectEvent`s for state advancement, and must reconstruct the same final `SystemState` as live execution.
 
+**Proof obligation:** Canonical-state correctness is established by the combination of:
+- transition legality checks before commit
+- post-transition invariant validation after commit
+- replay equivalence from `AgentStateDir/tlog.ndjson` to final `SystemState`
+
+After the canonical writer boundary is in place, the next engineering phase is **loophole closure**, not feature expansion. Work in this phase must audit every runtime path that can influence control flow or externally visible behavior and either:
+- prove the path is already represented by a `ControlEvent` or validated `EffectEvent`, or
+- add the missing canonical event, transition-policy rule, invariant, and test
+
+Required loophole classes:
+- implicit runtime recovery paths that still influence behavior without a canonical event
+- effectful operations whose observable outcome matters but are only logged loosely or not at all
+- resume/checkpoint paths where `RuntimeState` can disagree with canonical state for longer than a bounded reconciliation window
+- generic `ControlEvent` variants that encode two logically distinct transitions and should be split
+- prompt/orchestrator decisions that depend on runtime-only facts not represented canonically
+
+At the end of any loophole-closure pass, the system must list the remaining runtime-only behaviors that are intentionally ephemeral and explain why they are permitted to stay outside canonical replay.
+
 ### 1.2 Role State (per agent)
 - `prompt_kind: PromptKind`
 - `step: u64` (monotonic, starts at 1 per role cycle)
@@ -584,6 +602,8 @@ In self-modification mode only:
 **I14 — Checkpoint and tlog compatibility:** Changes to `OrchestratorCheckpoint` fields must use `#[serde(default)]` for additions. Removing or renaming fields requires a version bump or checkpoint discard on load. The `workspace` field must always be populated on save and validated on load. Checkpoint `phase` values include `planner`, `executor`, `verifier`, `diagnostics`, and `solo`. Checkpoint save/load must be logged as `EffectEvent::{CheckpointSaved,CheckpointLoaded}` and checkpoint restore must use the dedicated hydration path rather than direct field mutation.
 
 Changes to `SystemState` fields follow the same rule: additions must use `#[serde(default)]`. The tlog (`AgentStateDir/tlog.ndjson`) is append-only and may contain entries from prior `SystemState` schemas; readers must tolerate unknown `ControlEvent` variants gracefully. Changes to `ControlEvent` variants are additive only — existing variants must not be renamed or removed while a tlog from that schema may be in service. `EffectEvent`s may be added for observability, but they must remain non-authoritative for replayed state. Any new canonical state field must either be driven by an existing/new `ControlEvent` or remain strictly runtime-only in `RuntimeState`.
+
+**Audit routing for loophole closure:** A loophole-closure prompt is planner-owned work. The planner should decompose the audit into concrete repair objectives and assign implementation to executor lanes. Diagnostics should receive the same audit only when the system is blocked, evidence is contradictory, or an adversarial second-pass review is needed to find hidden mutation/reconciliation paths the planner may have missed.
 
 ### 9.4 Safety Properties (Why It's Safe)
 - **No mid-run corruption:** The running orchestrator binary is already loaded into memory. Patching `src/` files does not affect the current process — changes take effect only on the next `cargo build` + process restart.
