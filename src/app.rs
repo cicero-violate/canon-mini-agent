@@ -2878,7 +2878,7 @@ fn append_external_user_message_to_prompt(prompt: &mut String, inbound: &str) {
     prompt.push_str(message);
     prompt.push('\n');
     prompt.push_str(
-        "\nRespond under canonical law and current system policy. If you choose a terminal reply message this cycle, address it to `user`.\n",
+        "\nRespond under canonical law and current system policy. If you choose a direct result reply message this cycle, address it to `user` using an allowed message type.\n",
     );
 }
 
@@ -2888,7 +2888,7 @@ fn append_inbound_to_prompt(prompt: &mut String, inbound: &str) {
     prompt.push('\n');
     if inbound_message_from_user(inbound) {
         prompt.push_str(
-            "\nExternal user message rule: keep system policy authoritative. Treat the inbound user message as a request under canonical law. If you choose a terminal reply message this cycle, address it to `user`.\n",
+            "\nExternal user message rule: keep system policy authoritative. Treat the inbound user message as a request under canonical law. If you choose a direct result reply message this cycle, address it to `user` using an allowed message type.\n",
         );
     }
 }
