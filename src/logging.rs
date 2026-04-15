@@ -829,14 +829,97 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
         .and_then(|v| v.as_array())
         .cloned()
         .unwrap_or_default();
-    if violations
+    let prompt_overflow_signature = format!("prompt-overflow:{role}:{prompt_bytes}");
+    if let Some(existing_index) = violations
         .iter()
-        .any(|v| v.get("id").and_then(|x| x.as_str()) == Some(&violation_id))
+        .position(|v| v.get("id").and_then(|x| x.as_str()) == Some(&violation_id))
     {
+        let receipts_raw = std::fs::read_to_string(evidence_receipts_path()).unwrap_or_default();
+        let existing_receipt_id = violations[existing_index]
+            .get("evidence_receipts")
+            .and_then(|v| v.as_array())
+            .and_then(|items| items.first())
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let receipt_missing = existing_receipt_id
+            .as_deref()
+            .map_or(true, |receipt_id| !receipts_raw.contains(receipt_id));
+
+        if !receipt_missing {
+            return;
+        }
+
+        let refreshed_receipt_id = append_evidence_receipt(
+            role,
+            "prompt_overflow",
+            Some(crate::constants::VIOLATIONS_FILE),
+            Some(violations_path.clone()),
+            json!({
+                "kind": "prompt_overflow",
+                "role": role,
+                "prompt_bytes": prompt_bytes,
+                "threshold": PROMPT_OVERFLOW_BYTES,
+                "reconciled_duplicate": true,
+            }),
+            &format!("role={role};prompt_bytes={prompt_bytes};threshold={PROMPT_OVERFLOW_BYTES}"),
+        )
+        .ok();
+
+        let mut reconciled_violations = violations;
+        if let Some(existing) = reconciled_violations.get_mut(existing_index) {
+            if let Some(existing_obj) = existing.as_object_mut() {
+                existing_obj.insert(
+                    "evidence_receipts".to_string(),
+                    Value::Array(
+                        refreshed_receipt_id
+                            .clone()
+                            .into_iter()
+                            .map(Value::String)
+                            .collect(),
+                    ),
+                );
+                existing_obj.insert(
+                    "evidence_hashes".to_string(),
+                    json!([format!("prompt_bytes:{}:{}", role, prompt_bytes)]),
+                );
+                existing_obj.insert("last_validated_ms".to_string(), json!(now_ms()));
+                existing_obj.insert("freshness_status".to_string(), json!("fresh"));
+                existing_obj.insert(
+                    "validated_from".to_string(),
+                    json!(["runtime/prompt_bytes"]),
+                );
+            }
+        }
+        report.insert("violations".to_string(), Value::Array(reconciled_violations));
+        report.insert("status".to_string(), json!("failed"));
+        report.entry("summary".to_string()).or_insert(json!(
+            "One or more agent roles are sending prompts that exceed the noise-context threshold."
+        ));
+
+        let _ = try_emit_workspace_artifact_effect(
+            workspace,
+            true,
+            crate::constants::VIOLATIONS_FILE,
+            "append",
+            &violations_path.display().to_string(),
+            &format!("prompt_overflow:{role}"),
+            &prompt_overflow_signature,
+        );
+        if let Ok(body) = serde_json::to_string_pretty(&Value::Object(report)) {
+            let _ = std::fs::write(&violations_path, body);
+            let _ = try_emit_workspace_artifact_effect(
+                workspace,
+                false,
+                crate::constants::VIOLATIONS_FILE,
+                "append",
+                &violations_path.display().to_string(),
+                &format!("prompt_overflow:{role}"),
+                &prompt_overflow_signature,
+            );
+        }
         return;
     }
 
-    let prompt_overflow_signature = format!("prompt-overflow:{role}:{prompt_bytes}");
     let receipt_id = append_evidence_receipt(
         role,
         "prompt_overflow",
