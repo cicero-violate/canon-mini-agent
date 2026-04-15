@@ -2971,9 +2971,74 @@ fn append_external_user_message_to_prompt(prompt: &mut String, inbound: &str) {
     );
 }
 
+fn summarize_inbound_message(inbound: &str) -> String {
+    let Ok(value) = serde_json::from_str::<Value>(inbound) else {
+        return truncate(inbound.trim(), 1600).to_string();
+    };
+    let mut out = String::new();
+    let from = value.get("from").and_then(Value::as_str).unwrap_or("?");
+    let to = value.get("to").and_then(Value::as_str).unwrap_or("?");
+    let ty = value.get("type").and_then(Value::as_str).unwrap_or("?");
+    let status = value.get("status").and_then(Value::as_str).unwrap_or("?");
+    out.push_str(&format!(
+        "from={from} to={to} type={ty} status={status}\n"
+    ));
+
+    if let Some(intent) = value.get("intent").and_then(Value::as_str) {
+        let intent = intent.trim();
+        if !intent.is_empty() {
+            out.push_str(&format!("intent: {}\n", truncate(intent, 240)));
+        }
+    }
+    if let Some(observation) = value.get("observation").and_then(Value::as_str) {
+        let observation = observation.trim();
+        if !observation.is_empty() {
+            out.push_str(&format!(
+                "observation: {}\n",
+                truncate(observation, 280)
+            ));
+        }
+    }
+    if let Some(payload) = value.get("payload").and_then(Value::as_object) {
+        for key in ["summary", "blocker", "evidence", "required_action", "expected_format"] {
+            if let Some(text) = payload.get(key).and_then(Value::as_str) {
+                let text = text.trim();
+                if !text.is_empty() {
+                    out.push_str(&format!("{key}: {}\n", truncate(text, 280)));
+                }
+            }
+        }
+    }
+    if let Some(next_actions) = value
+        .get("predicted_next_actions")
+        .and_then(Value::as_array)
+    {
+        let mut rendered = Vec::new();
+        for action in next_actions.iter().take(3) {
+            let name = action.get("action").and_then(Value::as_str).unwrap_or("?");
+            let intent = action
+                .get("intent")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+                .map(|text| truncate(text, 120).to_string());
+            match intent {
+                Some(intent) => rendered.push(format!("- {name}: {intent}")),
+                None => rendered.push(format!("- {name}")),
+            }
+        }
+        if !rendered.is_empty() {
+            out.push_str("predicted_next_actions:\n");
+            out.push_str(&rendered.join("\n"));
+            out.push('\n');
+        }
+    }
+    out.trim().to_string()
+}
+
 fn append_inbound_to_prompt(prompt: &mut String, inbound: &str) {
-    prompt.push_str("\n\nInbound handoff message (raw JSON):\n");
-    prompt.push_str(inbound);
+    prompt.push_str("\n\nInbound handoff message summary:\n");
+    prompt.push_str(&summarize_inbound_message(inbound));
     prompt.push('\n');
     if inbound_message_from_user(inbound) {
         prompt.push_str(

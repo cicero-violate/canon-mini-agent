@@ -74,7 +74,9 @@ pub struct SingleRoleContext<'a> {
 
 pub fn read_combined_invariants_context(workspace: &Path) -> String {
     let static_invariants = filter_invariants_json(&read_text_or_empty(workspace.join(INVARIANTS_FILE)));
-    let enforced_invariants = crate::invariants::read_enforced_invariants(workspace);
+    let enforced_invariants = summarize_enforced_invariants_for_prompt(
+        &crate::invariants::read_enforced_invariants(workspace),
+    );
     let enforced_trimmed = enforced_invariants.trim();
     let include_enforced = !enforced_trimmed.is_empty()
         && !enforced_trimmed.starts_with("(enforced_invariants.json not yet created")
@@ -91,6 +93,95 @@ pub fn read_combined_invariants_context(workspace: &Path) -> String {
             "Static design invariants (from {INVARIANTS_FILE}):\n{static_invariants}\n\nDynamic enforced invariants (from agent_state/enforced_invariants.json):\n{enforced_invariants}"
         ),
     }
+}
+
+fn invariant_status_label(status: &crate::invariants::InvariantStatus) -> &'static str {
+    match status {
+        crate::invariants::InvariantStatus::Discovered => "discovered",
+        crate::invariants::InvariantStatus::Promoted => "promoted",
+        crate::invariants::InvariantStatus::Enforced => "enforced",
+        crate::invariants::InvariantStatus::Collapsed => "collapsed",
+    }
+}
+
+fn summarize_enforced_invariants_for_prompt(raw: &str) -> String {
+    if raw.trim().is_empty() {
+        return String::new();
+    }
+    let Ok(file) = serde_json::from_str::<crate::invariants::EnforcedInvariantsFile>(raw) else {
+        return raw.to_string();
+    };
+    if file.invariants.is_empty() {
+        return String::new();
+    }
+
+    let mut discovered = 0usize;
+    let mut promoted = 0usize;
+    let mut enforced = 0usize;
+    let mut collapsed = 0usize;
+    for inv in &file.invariants {
+        match inv.status {
+            crate::invariants::InvariantStatus::Discovered => discovered += 1,
+            crate::invariants::InvariantStatus::Promoted => promoted += 1,
+            crate::invariants::InvariantStatus::Enforced => enforced += 1,
+            crate::invariants::InvariantStatus::Collapsed => collapsed += 1,
+        }
+    }
+
+    let mut ranked: Vec<&crate::invariants::DiscoveredInvariant> = file
+        .invariants
+        .iter()
+        .filter(|inv| inv.status != crate::invariants::InvariantStatus::Collapsed)
+        .collect();
+    ranked.sort_by(|a, b| {
+        let status_rank = |status: &crate::invariants::InvariantStatus| match status {
+            crate::invariants::InvariantStatus::Enforced => 0u8,
+            crate::invariants::InvariantStatus::Promoted => 1,
+            crate::invariants::InvariantStatus::Discovered => 2,
+            crate::invariants::InvariantStatus::Collapsed => 3,
+        };
+        status_rank(&a.status)
+            .cmp(&status_rank(&b.status))
+            .then_with(|| b.support_count.cmp(&a.support_count))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+
+    let mut out = String::new();
+    out.push_str(&format!(
+        "Summary: active={} enforced={} promoted={} discovered={} collapsed={} last_synthesized_ms={}\n",
+        discovered + promoted + enforced,
+        enforced,
+        promoted,
+        discovered,
+        collapsed,
+        file.last_synthesized_ms
+    ));
+    for inv in ranked.into_iter().take(8) {
+        let predicate = inv.predicate_text.trim();
+        let predicate = if predicate.chars().count() > 160 {
+            let shortened: String = predicate.chars().take(160).collect();
+            format!("{shortened}…")
+        } else {
+            predicate.to_string()
+        };
+        let gates = if inv.gates.is_empty() {
+            "(no gates)".to_string()
+        } else {
+            inv.gates.join(",")
+        };
+        out.push_str(&format!(
+            "- [{}][support:{}][gates:{}] {} — {}\n",
+            invariant_status_label(&inv.status),
+            inv.support_count,
+            gates,
+            inv.id,
+            predicate
+        ));
+    }
+    out.push_str(
+        "Full detail: {\"action\":\"invariants\",\"op\":\"read\"}",
+    );
+    out
 }
 
 const LESSONS_FILE: &str = "agent_state/lessons.json";
@@ -714,9 +805,15 @@ pub fn filter_active_diagnostics_json(raw: &str) -> String {
         let title = f
             .get("title")
             .and_then(Value::as_str)
+            .or_else(|| f.get("signal").and_then(Value::as_str))
             .or_else(|| f.get("description").and_then(Value::as_str))
+            .or_else(|| f.get("root_cause").and_then(Value::as_str))
             .unwrap_or("(no title)");
-        let severity = f.get("severity").and_then(Value::as_str).unwrap_or("?");
+        let severity = f
+            .get("severity")
+            .and_then(Value::as_str)
+            .or_else(|| f.get("impact").and_then(Value::as_str))
+            .unwrap_or("?");
         out.push_str(&format!("[{}] [{severity}]  {id}  —  {title}\n", rank + 1));
     }
     out.push_str("Full detail: {\"action\":\"read_file\",\"path\":\"PLANS/default/diagnostics-default.json\"}");
@@ -1185,7 +1282,10 @@ pub fn load_planner_inputs(
     let invariants_text = read_combined_invariants_context(workspace);
     let raw_violations_text = read_text_or_empty(violations_path);
     let violations_text = filter_active_violations_json(&raw_violations_text);
-    let diagnostics_text = render_diagnostics_report_from_issues(workspace, &raw_violations_text);
+    let diagnostics_text = filter_active_diagnostics_json(&render_diagnostics_report_from_issues(
+        workspace,
+        &raw_violations_text,
+    ));
     let plan_text = read_text_or_empty(master_plan_path);
     let plan_diff_text = plan_diff(last_plan_text, &plan_text, 400);
     PlannerInputs {
@@ -1226,10 +1326,13 @@ impl SingleRoleContext<'_> {
             SingleRoleRead::Violations => {
                 filter_active_violations_json(&read_text_or_empty(self.violations_path))
             }
-            SingleRoleRead::Diagnostics => render_diagnostics_report_from_issues(
-                self.workspace,
-                &read_text_or_empty(self.violations_path),
-            ),
+            SingleRoleRead::Diagnostics => {
+                let rendered = render_diagnostics_report_from_issues(
+                    self.workspace,
+                    &read_text_or_empty(self.violations_path),
+                );
+                filter_active_diagnostics_json(&rendered)
+            }
             SingleRoleRead::Issues => crate::issues::read_top_open_issues(self.workspace, 10),
             SingleRoleRead::MasterPlan => {
                 filter_pending_plan_json(&read_text_or_empty(self.master_plan_path))
@@ -1340,7 +1443,10 @@ fn build_planner_role_prompt(
 ) -> Result<String> {
     let raw_violations = read_text_or_empty(ctx.violations_path);
     let violations = filter_active_violations_json(&raw_violations);
-    let diagnostics = render_diagnostics_report_from_issues(ctx.workspace, &raw_violations);
+    let diagnostics = filter_active_diagnostics_json(&render_diagnostics_report_from_issues(
+        ctx.workspace,
+        &raw_violations,
+    ));
     let lessons = ctx.read(SingleRoleRead::Lessons)?;
     let objectives = ctx.read(SingleRoleRead::Objectives)?;
     let issues = ctx.read(SingleRoleRead::Issues)?;
@@ -1362,7 +1468,10 @@ fn build_executor_role_prompt(ctx: &SingleRoleContext<'_>) -> Result<String> {
     let master_plan = ctx.read(SingleRoleRead::MasterPlan)?;
     let raw_violations = read_text_or_empty(ctx.violations_path);
     let violations = filter_active_violations_json(&raw_violations);
-    let diagnostics = render_diagnostics_report_from_issues(ctx.workspace, &raw_violations);
+    let diagnostics = filter_active_diagnostics_json(&render_diagnostics_report_from_issues(
+        ctx.workspace,
+        &raw_violations,
+    ));
     let invariants = ctx.read(SingleRoleRead::Invariants)?;
     Ok(single_role_executor_prompt(
         &spec,
