@@ -914,13 +914,18 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
             };
 
             if let Some(text) = assembled {
+                let preview_end = text
+                    .char_indices()
+                    .map(|(idx, _)| idx)
+                    .nth(200)
+                    .unwrap_or(text.len());
                 append_jsonl(
                     "assembled.jsonl",
                     &json!({
                         "tab_id": tab_id,
                         "turn_id": turn_id,
                         "text_len": text.len(),
-                        "text_preview": &text[..text.len().min(200)],
+                        "text_preview": &text[..preview_end],
                     }),
                 );
                 if let Some(tx) = st.pending_resp.remove(&(tab_id, turn_id)) {
