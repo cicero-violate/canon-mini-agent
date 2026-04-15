@@ -865,6 +865,9 @@ fn handle_issue_action(
     workspace: &Path,
     action: &Value,
 ) -> Result<(bool, String)> {
+    if let Err(err) = crate::issues::sweep_stale_issues(workspace) {
+        eprintln!("[issue] stale sweep failed: {err:#}");
+    }
     let op_raw = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
     let path = workspace.join(ISSUES_FILE);
     let raw = fs::read_to_string(&path).unwrap_or_default();

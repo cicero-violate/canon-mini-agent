@@ -5004,6 +5004,16 @@ pub async fn run() -> Result<()> {
             Some(json!({ "stage": "startup" })),
         );
     }
+    if let Err(err) = crate::issues::sweep_stale_issues(&workspace) {
+        eprintln!("[canon-mini-agent] issue staleness sweep failed: {err:#}");
+        log_error_event(
+            "orchestrate",
+            "startup",
+            None,
+            &format!("issue staleness sweep failed: {err:#}"),
+            Some(json!({ "stage": "startup" })),
+        );
+    }
 
     let shutdown = init_shutdown_signal();
     let shutdown_task = shutdown.clone();

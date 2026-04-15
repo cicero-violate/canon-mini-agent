@@ -1,5 +1,7 @@
+use anyhow::Result;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::Path;
 
 use crate::constants::ISSUES_FILE;
@@ -63,6 +65,182 @@ fn is_zero_f32(v: &f32) -> bool {
 
 fn is_zero_u64(v: &u64) -> bool {
     *v == 0
+}
+
+const ISSUE_FRESHNESS_TTL_MS: u64 = 15 * 60 * 1000;
+
+#[derive(Debug, Clone, Default)]
+pub struct IssueSweepSummary {
+    pub scanned: usize,
+    pub marked_stale: usize,
+    pub refreshed: usize,
+    pub rewrote: bool,
+}
+
+fn evidence_receipt_timestamps() -> HashMap<String, u64> {
+    let path = Path::new(crate::constants::agent_state_dir()).join("evidence_receipts.jsonl");
+    let raw = std::fs::read_to_string(path).unwrap_or_default();
+    raw.lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter_map(|value| {
+            Some((
+                value.get("id")?.as_str()?.to_string(),
+                value.get("ts_ms").and_then(|v| v.as_u64()).unwrap_or(0),
+            ))
+        })
+        .collect()
+}
+
+fn normalize_issue_target_path(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let without_fragment = trimmed.split('#').next().unwrap_or(trimmed).trim();
+    let without_note = without_fragment.split(" — ").next().unwrap_or(without_fragment).trim();
+    let candidate = without_note
+        .split_whitespace()
+        .next()
+        .unwrap_or(without_note)
+        .trim();
+    if candidate.is_empty() {
+        return None;
+    }
+    if let Some((head, tail)) = candidate.rsplit_once(':') {
+        if !head.is_empty() && tail.chars().all(|ch| ch.is_ascii_digit() || ch == '-') {
+            return Some(head.to_string());
+        }
+    }
+    if candidate.starts_with('/')
+        || candidate.contains('/')
+        || candidate.ends_with(".json")
+        || candidate.ends_with(".rs")
+        || candidate.ends_with(".md")
+    {
+        return Some(candidate.to_string());
+    }
+    None
+}
+
+fn workspace_target_exists(workspace: &Path, raw: &str) -> Option<bool> {
+    let normalized = normalize_issue_target_path(raw)?;
+    let path = if normalized.starts_with('/') {
+        std::path::PathBuf::from(normalized)
+    } else {
+        workspace.join(normalized)
+    };
+    Some(path.exists())
+}
+
+fn collect_stale_reasons(
+    issue: &Issue,
+    workspace: &Path,
+    receipt_ts: &HashMap<String, u64>,
+    now_ms: u64,
+) -> Vec<String> {
+    let mut reasons = Vec::new();
+
+    if !issue.evidence_receipts.is_empty() {
+        let mut missing = 0usize;
+        let mut expired = 0usize;
+        for receipt_id in &issue.evidence_receipts {
+            match receipt_ts.get(receipt_id) {
+                Some(ts_ms) if now_ms.saturating_sub(*ts_ms) <= ISSUE_FRESHNESS_TTL_MS => {}
+                Some(_) => expired += 1,
+                None => missing += 1,
+            }
+        }
+        if missing == issue.evidence_receipts.len() {
+            reasons.push("all evidence receipts missing".to_string());
+        } else if missing > 0 {
+            reasons.push(format!("{missing} evidence receipt(s) missing"));
+        }
+        if expired > 0 {
+            reasons.push(format!("{expired} evidence receipt(s) expired"));
+        }
+    } else if issue.last_validated_ms > 0
+        && now_ms.saturating_sub(issue.last_validated_ms) > ISSUE_FRESHNESS_TTL_MS
+    {
+        reasons.push("validation timestamp expired".to_string());
+    }
+
+    let mut validated_targets = 0usize;
+    let mut missing_validated_targets = 0usize;
+    for target in &issue.validated_from {
+        if let Some(exists) = workspace_target_exists(workspace, target) {
+            validated_targets += 1;
+            if !exists {
+                missing_validated_targets += 1;
+            }
+        }
+    }
+    if validated_targets > 0 && missing_validated_targets == validated_targets {
+        reasons.push("validated_from targets missing".to_string());
+    }
+
+    if let Some(false) = workspace_target_exists(workspace, &issue.location) {
+        reasons.push("location target missing".to_string());
+    }
+
+    reasons.sort();
+    reasons.dedup();
+    reasons
+}
+
+pub fn sweep_stale_issues(workspace: &Path) -> Result<IssueSweepSummary> {
+    let path = workspace.join(ISSUES_FILE);
+    let raw = std::fs::read_to_string(&path).unwrap_or_default();
+    if raw.trim().is_empty() {
+        return Ok(IssueSweepSummary::default());
+    }
+    let mut file: IssuesFile = match serde_json::from_str(&raw) {
+        Ok(file) => file,
+        Err(_) => return Ok(IssueSweepSummary::default()),
+    };
+
+    let receipt_ts = evidence_receipt_timestamps();
+    let now_ms = crate::logging::now_ms();
+    let mut summary = IssueSweepSummary {
+        scanned: file.issues.len(),
+        ..IssueSweepSummary::default()
+    };
+    let mut mutated = false;
+
+    for issue in &mut file.issues {
+        if is_closed(issue) {
+            continue;
+        }
+        let reasons = collect_stale_reasons(issue, workspace, &receipt_ts, now_ms);
+        if !reasons.is_empty() {
+            let joined = reasons.join("; ");
+            if issue.freshness_status.trim().to_ascii_lowercase() != "stale"
+                || issue.stale_reason != joined
+            {
+                issue.freshness_status = "stale".to_string();
+                issue.stale_reason = joined;
+                summary.marked_stale += 1;
+                mutated = true;
+            }
+            continue;
+        }
+
+        let has_live_validation = !issue.evidence_receipts.is_empty()
+            || issue.last_validated_ms > 0
+            || !issue.validated_from.is_empty();
+        if has_live_validation && issue.freshness_status.trim().to_ascii_lowercase() != "fresh" {
+            issue.freshness_status = "fresh".to_string();
+            issue.stale_reason.clear();
+            summary.refreshed += 1;
+            mutated = true;
+        }
+    }
+
+    if mutated {
+        rescore_all(&mut file);
+        std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
+        summary.rewrote = true;
+    }
+    Ok(summary)
 }
 
 pub fn issue_is_fresh(issue: &Issue) -> bool {
@@ -200,6 +378,7 @@ pub fn read_open_issues(workspace: &Path) -> String {
 /// Read ISSUES.json and return the sorted, open/in-progress issues as structured data.
 /// Returns an empty vector when the file is absent, invalid, or all issues are closed.
 pub fn read_ranked_open_issues(workspace: &Path) -> Vec<Issue> {
+    let _ = sweep_stale_issues(workspace);
     let path = workspace.join(ISSUES_FILE);
     let raw = std::fs::read_to_string(&path).unwrap_or_default();
     if raw.trim().is_empty() {
@@ -273,7 +452,7 @@ pub fn read_top_open_issues(workspace: &Path, limit: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_closed, read_open_issues, read_top_open_issues, Issue};
+    use super::{is_closed, read_open_issues, read_top_open_issues, sweep_stale_issues, Issue};
 
     #[test]
     fn is_closed_treats_done_like_statuses_as_closed() {
@@ -335,5 +514,44 @@ mod tests {
         assert!(summary.contains("Top open issues"));
         assert!(summary.contains("i_high"));
         assert!(!summary.contains("i_low"));
+    }
+
+    #[test]
+    fn sweep_stale_issues_marks_missing_receipt_issue_stale() {
+        let root = std::env::temp_dir().join(format!(
+            "canon-mini-agent-issues-sweep-test-{}",
+            crate::logging::now_ms()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp issues dir");
+        let path = root.join(crate::constants::ISSUES_FILE);
+        std::fs::write(
+            &path,
+            r#"{
+  "version": 1,
+  "issues": [
+    {
+      "id": "ISS-STALE",
+      "title": "stale",
+      "status": "open",
+      "priority": "high",
+      "freshness_status": "fresh",
+      "evidence_receipts": ["rcpt-missing"],
+      "last_validated_ms": 1
+    }
+  ]
+}"#,
+        )
+        .expect("write issues file");
+        crate::constants::set_agent_state_dir(
+            root.join("agent_state").to_string_lossy().into_owned(),
+        );
+
+        let summary = sweep_stale_issues(&root).expect("sweep should succeed");
+        assert_eq!(summary.marked_stale, 1);
+        let filtered = read_open_issues(&root);
+        assert_eq!(filtered, "(no open issues)");
+        let rewritten = std::fs::read_to_string(&path).expect("read rewritten file");
+        assert!(rewritten.contains("\"freshness_status\": \"stale\""));
+        assert!(rewritten.contains("all evidence receipts missing"));
     }
 }
