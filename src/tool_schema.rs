@@ -605,6 +605,20 @@ pub enum ToolAction {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         lessons: Option<serde_json::Value>,
     },
+    /// Review and manage dynamically discovered system invariants.
+    ///
+    /// Ops: read | promote | enforce | collapse
+    Invariants {
+        #[serde(flatten)]
+        base: ActionBase,
+        /// Which operation to perform. Defaults to `read` if omitted.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        op: Option<String>,
+        /// For `promote` / `enforce` / `collapse`: the invariant id to act on.
+        /// `promote` also accepts `"all"`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+    },
     /// Manage VIOLATIONS.json — add, update, resolve, or replace violation entries.
     ///
     /// Ops: read | upsert | resolve | set_status | replace
@@ -1335,6 +1349,7 @@ fn first_missing_field_for_action(action: &Value, action_name: &str) -> Option<S
         "cargo_test" => missing_field("crate"),
         "cargo_fmt" | "cargo_clippy" => None,
         "plan" => missing_field_for_plan_action(action),
+        "invariants" => missing_field_for_invariants_action(action),
         "violation" => missing_field_for_violation_action(action),
         "rustc_hir" | "rustc_mir" | "graph_call" | "graph_cfg" | "graph_dataflow"
         | "graph_reachability" => missing_field("crate"),
@@ -1406,6 +1421,15 @@ fn missing_field_for_violation_action(action: &Value) -> Option<String> {
         "resolve" => missing_field_in_action(action, "violation_id"),
         "set_status" => missing_field_in_action(action, "status"),
         "replace" => missing_field_in_action(action, "report"),
+        _ => None,
+    }
+}
+
+fn missing_field_for_invariants_action(action: &Value) -> Option<String> {
+    let op = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
+    match op {
+        "read" => None,
+        "promote" | "enforce" | "collapse" => missing_field_in_action(action, "id"),
         _ => None,
     }
 }

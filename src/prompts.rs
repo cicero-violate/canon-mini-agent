@@ -1501,6 +1501,7 @@ pub(crate) fn single_role_verifier_prompt(
 pub(crate) fn single_role_diagnostics_prompt(
     violations: &str,
     objectives: &str,
+    invariants: &str,
     cargo_test_failures: &str,
 ) -> String {
     let workspace = workspace();
@@ -1511,6 +1512,7 @@ pub(crate) fn single_role_diagnostics_prompt(
     );
     let violations_heading = format!("Violations (from {VIOLATIONS_FILE})");
     let objectives_heading = format!("Objectives (from {OBJECTIVES_FILE})");
+    let invariants_heading = "Invariant context (static + enforced)".to_string();
     let cargo_failures_heading =
         "Latest cargo test failures (from cargo_test_failures.json)".to_string();
     let suffix = format!(
@@ -1530,6 +1532,15 @@ pub(crate) fn single_role_diagnostics_prompt(
             name: "objectives",
             heading: &objectives_heading,
             body: objectives,
+            reserve: 800,
+            cap: 2500,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            name: "invariants",
+            heading: &invariants_heading,
+            body: invariants,
             reserve: 800,
             cap: 2500,
             weight: 4,

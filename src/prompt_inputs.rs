@@ -72,6 +72,27 @@ pub struct SingleRoleContext<'a> {
     pub diagnostics_path: &'a Path,
 }
 
+pub fn read_combined_invariants_context(workspace: &Path) -> String {
+    let static_invariants = filter_invariants_json(&read_text_or_empty(workspace.join(INVARIANTS_FILE)));
+    let enforced_invariants = crate::invariants::read_enforced_invariants(workspace);
+    let enforced_trimmed = enforced_invariants.trim();
+    let include_enforced = !enforced_trimmed.is_empty()
+        && !enforced_trimmed.starts_with("(enforced_invariants.json not yet created")
+        && !enforced_trimmed.starts_with("(error reading enforced_invariants.json:");
+
+    match (static_invariants.trim().is_empty(), include_enforced) {
+        (true, false) => String::new(),
+        (false, false) => static_invariants,
+        (true, true) => format!(
+            "Dynamic enforced invariants (from agent_state/enforced_invariants.json):\n{}",
+            enforced_invariants
+        ),
+        (false, true) => format!(
+            "Static design invariants (from {INVARIANTS_FILE}):\n{static_invariants}\n\nDynamic enforced invariants (from agent_state/enforced_invariants.json):\n{enforced_invariants}"
+        ),
+    }
+}
+
 const LESSONS_FILE: &str = "agent_state/lessons.json";
 
 /// Lifecycle of an individual lesson entry.
@@ -1161,8 +1182,7 @@ pub fn load_planner_inputs(
     } else {
         objectives_full
     };
-    let invariants_text =
-        filter_invariants_json(&read_text_or_empty(workspace.join(INVARIANTS_FILE)));
+    let invariants_text = read_combined_invariants_context(workspace);
     let raw_violations_text = read_text_or_empty(violations_path);
     let violations_text = filter_active_violations_json(&raw_violations_text);
     let diagnostics_text = render_diagnostics_report_from_issues(workspace, &raw_violations_text);
@@ -1200,7 +1220,7 @@ impl SingleRoleContext<'_> {
                 crate::objectives::read_objectives_compact(&self.workspace.join(OBJECTIVES_FILE))
             }
             SingleRoleRead::Invariants => {
-                filter_invariants_json(&read_text_or_empty(self.workspace.join(INVARIANTS_FILE)))
+                read_combined_invariants_context(self.workspace)
             }
             SingleRoleRead::Lessons => read_lessons_or_empty(self.workspace),
             SingleRoleRead::Violations => {
@@ -1304,9 +1324,11 @@ fn build_diagnostics_role_prompt(
 ) -> Result<String> {
     let violations = ctx.read(SingleRoleRead::Violations)?;
     let objectives = ctx.read(SingleRoleRead::Objectives)?;
+    let invariants = ctx.read(SingleRoleRead::Invariants)?;
     Ok(single_role_diagnostics_prompt(
         &violations,
         &objectives,
+        &invariants,
         cargo_test_failures,
     ))
 }

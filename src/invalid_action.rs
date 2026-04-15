@@ -229,6 +229,7 @@ pub(crate) fn invalid_action_expected_fields(kind: &str) -> Vec<&'static str> {
             "predicted_next_actions",
         ],
         "objectives" | "issue" => QUESTION_ACTION_FIELDS.to_vec(),
+        "invariants" => vec!["action", "op", "rationale", "predicted_next_actions"],
         "message" => vec![
             "action",
             "from",
