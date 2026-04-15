@@ -4,6 +4,7 @@ canon-mini-agent/agent_state \
 canon-mini-agent/tests \
 canon-mini-agent/Cargo.toml \
 canon-mini-agent/src \
+canon-mini-agent/SPEC.md \
 canon-mini-agent/ISSUES.json \
 canon/canon-utils/canon-tools-patch
 
