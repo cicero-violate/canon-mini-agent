@@ -2252,9 +2252,13 @@ fn handle_completed_continuation(
                 lane_id: submitted.lane,
                 in_flight: false,
             });
-            // Continuations only return once the executor has reached completion,
-            // and the returned value is the completion summary (not the raw action JSON).
-            verifier_pending_results.push_back((submitted, turn_id, final_exec_result));
+            if persist_executor_completion_message_from_summary(writer, &final_exec_result) {
+                finalize_executor_message_completion(writer, submitted.lane);
+            } else {
+                // Continuations only return once the executor has reached completion,
+                // and the returned value is the completion summary (not the raw action JSON).
+                verifier_pending_results.push_back((submitted, turn_id, final_exec_result));
+            }
         }
         Err(err) => {
             let err_text = format!("{err:#}");
@@ -3247,12 +3251,26 @@ fn apply_lane_pending_if_changed(
 
 fn apply_wake_flags(agent_state_dir: &std::path::Path, writer: &mut CanonicalWriter) {
     let (inputs, path_map) = collect_wake_flag_inputs(agent_state_dir);
+    let wake_inputs_debug = inputs
+        .iter()
+        .map(|input| format!("{}@{}", input.role, input.modified_ms))
+        .collect::<Vec<_>>()
+        .join(", ");
 
     let semantic_control = SemanticControlState::from_system_state(writer.state(), false, false);
     let decision = semantic_control.wake_decision(&inputs);
     let Some(role) = decision.scheduled_phase.as_deref() else {
         return;
     };
+
+    eprintln!(
+        "[orchestrate] wake_flag_selected: role={} planner_pending={} diagnostics_pending={} executor_wake={} inputs=[{}]",
+        role,
+        decision.planner_pending,
+        decision.diagnostics_pending,
+        decision.executor_wake,
+        wake_inputs_debug,
+    );
 
     apply_scheduled_phase_if_changed(writer, Some(role));
     let wake_flag_path = path_map.get(role).cloned();
@@ -4781,6 +4799,40 @@ fn handle_executor_completion_message_action(
         true,
         exec_result,
     );
+    finalize_executor_message_completion(writer, submitted.lane);
+    persist_executor_completion_message(writer, &action);
+    true
+}
+
+fn finalize_executor_message_completion(writer: &mut CanonicalWriter, lane_id: usize) {
+    writer.apply(ControlEvent::LanePromptInFlightSet {
+        lane_id,
+        in_flight: false,
+    });
+    writer.apply(ControlEvent::LaneStepsUsedSet { lane_id, steps: 0 });
+    writer.apply(ControlEvent::LaneInProgressSet {
+        lane_id,
+        actor: None,
+    });
+    writer.apply(ControlEvent::LanePendingSet {
+        lane_id,
+        pending: false,
+    });
+}
+
+fn persist_executor_completion_message_from_summary(
+    writer: &mut CanonicalWriter,
+    summary: &str,
+) -> bool {
+    let Some(raw_action) = extract_message_action(summary) else {
+        return false;
+    };
+    let Ok(action) = serde_json::from_str::<Value>(&raw_action) else {
+        return false;
+    };
+    if action.get("action").and_then(|v| v.as_str()) != Some("message") {
+        return false;
+    }
     persist_executor_completion_message(writer, &action);
     true
 }
