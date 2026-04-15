@@ -986,7 +986,11 @@ fn retire_tab_locked(st: &mut State, endpoint_id: &str, tab_id: u32, stateful: b
 
 #[cfg(test)]
 mod tests {
-    use super::endpoint_submit_ack_timeout_secs;
+    use super::{endpoint_submit_ack_timeout_secs, handle_inbound, State};
+    use crate::llm_runtime::parsers::{FrameAssembler, SiteType};
+    use serde_json::json;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
 
     #[test]
     fn submit_ack_timeout_is_endpoint_aware() {
@@ -1000,5 +1004,44 @@ mod tests {
     fn submit_ack_timeout_never_exceeds_total_timeout() {
         assert_eq!(endpoint_submit_ack_timeout_secs("solo_chatgpt", 10), 10);
         assert_eq!(endpoint_submit_ack_timeout_secs("executor_pool", 5), 5);
+    }
+
+    #[tokio::test]
+    async fn inbound_message_uses_inbound_turn_id_when_submit_only_ack_cleared_pending_turn() {
+        let state = Arc::new(Mutex::new(State::new()));
+        {
+            let mut st = state.lock().await;
+            st.tab_urls.insert(7, "https://chatgpt.com/".to_string());
+            st.tab_owners.insert(7, "executor_pool".to_string());
+            st.assemblers
+                .insert(7, FrameAssembler::new(SiteType::ChatGptPrivate));
+        }
+
+        let raw = json!({
+            "type": "INBOUND_MESSAGE",
+            "tabId": 7,
+            "payload": json!({
+                "turn_id": 11,
+                "chunk": "data: {\"type\":\"message\",\"content\":{\"parts\":[\"hello\"]}}",
+                "ts": 1,
+            })
+            .to_string(),
+        })
+        .to_string();
+
+        handle_inbound(&raw, &state).await;
+
+        let mut st = state.lock().await;
+        let completed = st
+            .completed_turns
+            .pop_front()
+            .expect("submit-only completion should be queued");
+        assert_eq!(completed.get("tab_id").and_then(|v| v.as_u64()), Some(7));
+        assert_eq!(completed.get("turn_id").and_then(|v| v.as_u64()), Some(11));
+        assert_eq!(completed.get("text").and_then(|v| v.as_str()), Some("hello"));
+        assert_eq!(
+            completed.get("endpoint_id").and_then(|v| v.as_str()),
+            Some("executor_pool")
+        );
     }
 }
