@@ -165,7 +165,8 @@ pub fn evaluate_invariant_gate(
         .invariants
         .iter()
         .filter(|inv| {
-            inv.status == InvariantStatus::Promoted || inv.status == InvariantStatus::Enforced
+            (inv.status == InvariantStatus::Promoted || inv.status == InvariantStatus::Enforced)
+                && invariant_applies_to_role(inv, proposed_role)
         })
         .collect();
 
@@ -197,6 +198,14 @@ pub fn evaluate_invariant_gate(
     }
 
     Ok(())
+}
+
+fn invariant_applies_to_role(inv: &DiscoveredInvariant, proposed_role: &str) -> bool {
+    if inv.gates.is_empty() {
+        return proposed_role == "route";
+    }
+
+    inv.gates.iter().any(|gate| gate == proposed_role)
 }
 
 /// Dispatch an `invariants` tool action from the diagnostics/solo role.

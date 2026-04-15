@@ -1,1 +1,1 @@
-auto-filled blocker evidence
+invariant gate blocked role `route`: Role `executor` repeatedly encounters `llm_timeout`: LLM endpoint call timed out or returned a connection error [id=INV-10b73fb9]
