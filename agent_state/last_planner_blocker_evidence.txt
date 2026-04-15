@@ -1,1 +1,1 @@
-chromium: extension not connected, cannot open tab
+invariant gate blocked role `route`: Role `diagnostics` repeatedly encounters `blocker_escalated`: LLM role explicitly declared itself blocked and cannot proceed [id=INV-05518346]

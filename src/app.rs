@@ -5288,30 +5288,6 @@ pub async fn run() -> Result<()> {
             let diagnostics_reconciliation_needed =
                 reconciled_diagnostics_text != raw_diagnostics_text;
             if diagnostics_reconciliation_needed {
-                if let Err(err) = std::fs::write(&diagnostics_path, &reconciled_diagnostics_text) {
-                    log_error_event(
-                        "orchestrate",
-                        "diagnostics_reconcile_preflight",
-                        None,
-                        &format!("failed to persist reconciled diagnostics before scheduling diagnostics: {err:#}"),
-                        Some(json!({ "stage": "diagnostics_reconcile_preflight" })),
-                    );
-                } else {
-                    crate::blockers::record_action_failure(
-                        workspace.as_path(),
-                        "orchestrate",
-                        "runtime_control_bypass",
-                        "runtime-only control influence: diagnostics were scheduled from preflight reconciliation rather than canonical diagnostics evidence",
-                        None,
-                    );
-                    crate::blockers::record_action_failure(
-                        workspace.as_path(),
-                        "orchestrate",
-                        "effectful_state_advance",
-                        "effectful state advance without control event: preflight diagnostics reconciliation rewrote diagnostics output before a canonical diagnostics-text transition",
-                        None,
-                    );
-                }
                 writer.apply(ControlEvent::DiagnosticsReconciliationQueued);
             }
 
@@ -5422,33 +5398,6 @@ pub async fn run() -> Result<()> {
                 &raw_violations_text,
             );
             let stale_diagnostics_pending = reconciled_diagnostics_text != raw_diagnostics_text;
-
-            if stale_diagnostics_pending {
-                if let Err(err) = std::fs::write(&diagnostics_path, &reconciled_diagnostics_text) {
-                    log_error_event(
-                        "orchestrate",
-                        "diagnostics_reconcile_post_verifier",
-                        None,
-                        &format!("failed to persist reconciled diagnostics after verifier phase: {err:#}"),
-                        Some(json!({ "stage": "diagnostics_reconcile_post_verifier" })),
-                    );
-                } else {
-                    crate::blockers::record_action_failure(
-                        workspace.as_path(),
-                        "orchestrate",
-                        "runtime_control_bypass",
-                        "runtime-only control influence: diagnostics phase was re-pended because reconciled diagnostics text diverged from on-disk diagnostics text",
-                        None,
-                    );
-                    crate::blockers::record_action_failure(
-                        workspace.as_path(),
-                        "orchestrate",
-                        "effectful_state_advance",
-                        "effectful state advance without control event: post-verifier diagnostics reconciliation rewrote diagnostics output before a canonical diagnostics-text transition",
-                        None,
-                    );
-                }
-            }
 
             if verifier_changed {
                 writer.apply(ControlEvent::DiagnosticsVerifierFollowupQueued);
@@ -5656,9 +5605,9 @@ pub async fn run() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        action_retry_fingerprint, enforce_diagnostics_python, executor_step_limit_feedback,
-        has_actionable_objectives, inbound_message_from_user, invariant_id_from_reason,
-        plan_has_incomplete_tasks, route_gate_blocker_message, should_reject_solo_self_complete,
+        action_retry_fingerprint, executor_step_limit_feedback, has_actionable_objectives,
+        inbound_message_from_user, invariant_id_from_reason, plan_has_incomplete_tasks,
+        route_gate_blocker_message, should_reject_solo_self_complete,
         verifier_confirmed_with_plan_text, ActionProvenance,
     };
     use crate::system_state::SystemState;
