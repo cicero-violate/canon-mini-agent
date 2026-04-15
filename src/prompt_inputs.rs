@@ -160,6 +160,7 @@ fn infer_tlog_lane_indices(events: &[crate::events::Event]) -> Vec<usize> {
                 | crate::events::ControlEvent::PlannerObjectiveReviewQueued
                 | crate::events::ControlEvent::PlannerObjectivePlanGapQueued
                 | crate::events::ControlEvent::DiagnosticsPendingSet { .. }
+                | crate::events::ControlEvent::DiagnosticsReconciliationQueued
                 | crate::events::ControlEvent::VerifierBlockerSet { .. }
                 | crate::events::ControlEvent::DiagnosticsVerifierFollowupQueued
                 | crate::events::ControlEvent::DiagnosticsTextSet { .. }
@@ -187,6 +188,9 @@ fn control_event_kind_name(event: &crate::events::ControlEvent) -> &'static str 
             "planner_objective_plan_gap_queued"
         }
         crate::events::ControlEvent::DiagnosticsPendingSet { .. } => "diagnostics_pending_set",
+        crate::events::ControlEvent::DiagnosticsReconciliationQueued => {
+            "diagnostics_reconciliation_queued"
+        }
         crate::events::ControlEvent::VerifierBlockerSet { .. } => "verifier_blocker_set",
         crate::events::ControlEvent::DiagnosticsVerifierFollowupQueued => {
             "diagnostics_verifier_followup_queued"

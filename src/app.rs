@@ -1189,10 +1189,7 @@ fn requeue_lane_after_submit_recovery(
         lane_id,
         actor: None,
     });
-    writer.apply(ControlEvent::LanePendingSet {
-        lane_id,
-        pending: true,
-    });
+    apply_lane_pending_if_changed(writer, lane_id, true);
     rt.executor_submit_inflight.remove(&lane_id);
     writer.apply(ControlEvent::LaneSubmitInFlightSet {
         lane_id,
@@ -1208,6 +1205,10 @@ fn register_submitted_executor_turn(
     turn_id: u64,
     submitted_turn: SubmittedExecutorTurn,
 ) {
+    writer.apply(ControlEvent::LaneSubmitInFlightSet {
+        lane_id,
+        in_flight: false,
+    });
     writer.apply(ControlEvent::ExecutorTurnRegistered {
         tab_id,
         turn_id,
@@ -1292,10 +1293,7 @@ fn recover_timed_out_executor_submit_lane(
         lane_id,
         actor: None,
     });
-    writer.apply(ControlEvent::LanePendingSet {
-        lane_id,
-        pending: true,
-    });
+    apply_lane_pending_if_changed(writer, lane_id, true);
 }
 
 fn sweep_timed_out_executor_submits(
@@ -1311,6 +1309,109 @@ fn sweep_timed_out_executor_submits(
     let timed_out = timed_out_executor_submit_lanes(rt, now, pending_submit_timeout_ms);
     for lane_id in timed_out {
         recover_timed_out_executor_submit_lane(ctx, writer, rt, lane_id);
+    }
+}
+
+fn timed_out_submitted_turns(
+    _writer: &CanonicalWriter,
+    rt: &RuntimeState,
+    now: u64,
+    submitted_turn_timeout_ms: u64,
+) -> Vec<(u32, u64, usize)> {
+    let mut timed_out = Vec::new();
+    for (&(tab_id, turn_id), submitted) in rt.submitted_turns.iter() {
+        if executor_submit_timed_out(submitted.started_ms, now, submitted_turn_timeout_ms) {
+            timed_out.push((tab_id, turn_id, submitted.lane));
+        }
+    }
+    timed_out
+}
+
+fn log_timed_out_submitted_turn(
+    ctx: &OrchestratorContext<'_>,
+    lane_id: usize,
+    tab_id: u32,
+    turn_id: u64,
+    command_id: &str,
+) {
+    eprintln!(
+        "[orchestrate] submitted turn timeout: lane={} tab_id={} turn_id={} command_id={}",
+        ctx.lanes[lane_id].label, tab_id, turn_id, command_id
+    );
+    log_error_event(
+        "executor",
+        "orchestrate",
+        None,
+        &format!(
+            "submitted turn timed out waiting for completion: lane={} tab_id={} turn_id={} command_id={}",
+            ctx.lanes[lane_id].label, tab_id, turn_id, command_id
+        ),
+        Some(json!({
+            "stage": "executor_completion_timeout",
+            "lane": ctx.lanes[lane_id].label,
+            "tab_id": tab_id,
+            "turn_id": turn_id,
+            "command_id": command_id,
+        })),
+    );
+    append_orchestration_trace(
+        "executor_completion_timeout",
+        json!({
+            "lane_name": ctx.lanes[lane_id].label,
+            "tab_id": tab_id,
+            "turn_id": turn_id,
+            "command_id": command_id,
+        }),
+    );
+    crate::blockers::record_action_failure(
+        ctx.workspace.as_path(),
+        "executor",
+        "executor_completion_timeout",
+        &format!(
+            "executor completion timed out: lane={} tab_id={} turn_id={} command_id={}",
+            ctx.lanes[lane_id].label, tab_id, turn_id, command_id
+        ),
+        None,
+    );
+}
+
+fn recover_timed_out_submitted_turn(
+    ctx: &OrchestratorContext<'_>,
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
+    tab_id: u32,
+    turn_id: u64,
+    lane_id: usize,
+) {
+    let Some(submitted) = rt.submitted_turns.remove(&(tab_id, turn_id)) else {
+        return;
+    };
+    log_timed_out_submitted_turn(ctx, lane_id, tab_id, turn_id, &submitted.command_id);
+    writer.apply(ControlEvent::ExecutorTurnDeregistered { tab_id, turn_id });
+    writer.apply(ControlEvent::LanePromptInFlightSet {
+        lane_id,
+        in_flight: false,
+    });
+    writer.apply(ControlEvent::LaneInProgressSet {
+        lane_id,
+        actor: None,
+    });
+    apply_lane_pending_if_changed(writer, lane_id, true);
+}
+
+fn sweep_timed_out_submitted_turns(
+    ctx: &OrchestratorContext<'_>,
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
+    now: u64,
+    submitted_turn_timeout_ms: u64,
+) {
+    if rt.submitted_turns.is_empty() {
+        return;
+    }
+    let timed_out = timed_out_submitted_turns(writer, rt, now, submitted_turn_timeout_ms);
+    for (tab_id, turn_id, lane_id) in timed_out {
+        recover_timed_out_submitted_turn(ctx, writer, rt, tab_id, turn_id, lane_id);
     }
 }
 
@@ -1633,10 +1734,12 @@ fn run_executor_phase(
     rt: &mut RuntimeState,
     now: u64,
     pending_submit_timeout_ms: u64,
+    submitted_turn_timeout_ms: u64,
     submit_joinset: &mut tokio::task::JoinSet<(usize, PendingExecutorSubmit, Result<String>)>,
 ) -> bool {
     let mut cycle_progress = false;
     sweep_timed_out_executor_submits(ctx, writer, rt, now, pending_submit_timeout_ms);
+    sweep_timed_out_submitted_turns(ctx, writer, rt, now, submitted_turn_timeout_ms);
     dispatch_executor_submits(ctx, writer, rt, now, submit_joinset);
 
     while let Some(joined) = submit_joinset.try_join_next() {
@@ -1806,6 +1909,7 @@ fn register_late_submit_ack(
             lane_label: job.label.clone(),
             command_id: command_id
                 .unwrap_or_else(|| make_command_id(&job.executor_role, "executor", 1)),
+            started_ms: now_ms(),
             actor: job.executor_role.clone(),
             endpoint_id: job.endpoint_id.clone(),
             tabs: job.tabs.clone(),
@@ -1862,6 +1966,11 @@ fn handle_submit_ack_timeout(
         lane_id,
         in_flight: false,
     });
+    writer.apply(ControlEvent::LaneInProgressSet {
+        lane_id,
+        actor: None,
+    });
+    apply_lane_pending_if_changed(writer, lane_id, true);
     false
 }
 
@@ -1945,6 +2054,7 @@ fn handle_executor_submit_ack_result(
             lane: job.lane_index,
             lane_label: job.label.clone(),
             command_id: command_id.unwrap_or_else(|| pending.command_id.clone()),
+            started_ms: pending.started_ms,
             actor: job.executor_role.clone(),
             endpoint_id: pending.endpoint_id.clone(),
             tabs: pending.tabs.clone(),
@@ -2067,6 +2177,7 @@ async fn process_completed_turns(
                 lane: lane_id,
                 lane_label: ctx.lanes[lane_id].label.clone(),
                 command_id: pending.command_id,
+                started_ms: pending.started_ms,
                 actor: pending.job.executor_role,
                 endpoint_id: pending.endpoint_id,
                 tabs: pending.tabs,
@@ -3066,6 +3177,9 @@ fn is_reaction_only_response(raw: &str) -> bool {
     if trimmed.is_empty() {
         return false;
     }
+    if extract_message_action(trimmed).is_some() {
+        return false;
+    }
     if trimmed.starts_with("assistant reaction-only terminal frame") {
         return true;
     }
@@ -3075,7 +3189,60 @@ fn is_reaction_only_response(raw: &str) -> bool {
     if trimmed.len() <= 8 && trimmed.chars().all(|c| !c.is_ascii_alphanumeric()) {
         return true;
     }
+    if !trimmed.contains('{') && !trimmed.contains('[') {
+        return true;
+    }
     false
+}
+
+fn apply_scheduled_phase_if_changed(
+    writer: &mut CanonicalWriter,
+    phase: Option<&str>,
+) -> bool {
+    if writer.state().scheduled_phase.as_deref() == phase {
+        return false;
+    }
+    writer.apply(ControlEvent::ScheduledPhaseSet {
+        phase: phase.map(str::to_string),
+    });
+    true
+}
+
+fn apply_planner_pending_if_changed(writer: &mut CanonicalWriter, pending: bool) -> bool {
+    if writer.state().planner_pending == pending {
+        return false;
+    }
+    writer.apply(ControlEvent::PlannerPendingSet { pending });
+    true
+}
+
+fn apply_diagnostics_pending_if_changed(
+    writer: &mut CanonicalWriter,
+    pending: bool,
+) -> bool {
+    if writer.state().diagnostics_pending == pending {
+        return false;
+    }
+    writer.apply(ControlEvent::DiagnosticsPendingSet { pending });
+    true
+}
+
+fn apply_lane_pending_if_changed(
+    writer: &mut CanonicalWriter,
+    lane_id: usize,
+    pending: bool,
+) -> bool {
+    let current = writer
+        .state()
+        .lanes
+        .get(&lane_id)
+        .map(|lane| lane.pending)
+        .unwrap_or(false);
+    if current == pending {
+        return false;
+    }
+    writer.apply(ControlEvent::LanePendingSet { lane_id, pending });
+    true
 }
 
 fn apply_wake_flags(agent_state_dir: &std::path::Path, writer: &mut CanonicalWriter) {
@@ -3087,37 +3254,56 @@ fn apply_wake_flags(agent_state_dir: &std::path::Path, writer: &mut CanonicalWri
         return;
     };
 
-    writer.apply(ControlEvent::ScheduledPhaseSet {
-        phase: Some(role.to_string()),
-    });
-    if let Some(path) = path_map.get(role) {
-        eprintln!(
-            "[orchestrate] wake_flag_triggered: role={} path={}",
-            role,
-            path.display()
-        );
-        let _ = std::fs::remove_file(path);
-    }
+    apply_scheduled_phase_if_changed(writer, Some(role));
+    let wake_flag_path = path_map.get(role).cloned();
+    let mut clear_wake_flag = !decision.executor_wake;
     if decision.planner_pending {
-        writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+        apply_planner_pending_if_changed(writer, true);
     }
     if decision.diagnostics_pending {
-        writer.apply(ControlEvent::DiagnosticsPendingSet { pending: true });
+        apply_diagnostics_pending_if_changed(writer, true);
     }
     if decision.executor_wake {
         let lane_ids: Vec<usize> = writer.state().lanes.keys().copied().collect();
         for lane_id in lane_ids {
-            writer.apply(ControlEvent::LanePendingSet {
-                lane_id,
-                pending: true,
-            });
+            let (pending, in_progress) = {
+                let state = writer.state();
+                let lane = state.lanes.get(&lane_id);
+                (
+                    lane.map(|l| l.pending).unwrap_or(false),
+                    lane.and_then(|l| l.in_progress_by.as_ref()).is_some(),
+                )
+            };
+            if pending {
+                clear_wake_flag = true;
+                continue;
+            }
+            if in_progress {
+                continue;
+            }
+            clear_wake_flag |= apply_lane_pending_if_changed(writer, lane_id, true);
             // Do NOT clear in_progress_by here. If the lane already has a submit
             // in flight, clearing ownership causes a double-submit on the next tick
             // (claim_next_lane sees pending=true + in_progress_by=None and spawns a
-            // second request while the first is still running). The wake effect is
-            // preserved: once the in-flight turn completes and in_progress_by is
-            // cleared by the normal completion path, pending=true ensures the lane
-            // is claimed again immediately.
+            // second request while the first is still running). The wake effect
+            // is preserved by leaving the wake flag on disk until an idle lane can
+            // actually be marked pending.
+        }
+    }
+    if let Some(path) = wake_flag_path {
+        if clear_wake_flag {
+            eprintln!(
+                "[orchestrate] wake_flag_triggered: role={} path={}",
+                role,
+                path.display()
+            );
+            let _ = std::fs::remove_file(path);
+        } else {
+            eprintln!(
+                "[orchestrate] wake_flag_deferred: role={} path={} reason=all_executor_lanes_busy",
+                role,
+                path.display()
+            );
         }
     }
 }
@@ -4199,6 +4385,7 @@ struct SubmittedExecutorTurn {
     lane: usize,
     lane_label: String,
     command_id: String,
+    started_ms: u64,
     actor: String,
     endpoint_id: String,
     tabs: TabManagerHandle,
@@ -5120,6 +5307,7 @@ pub async fn run() -> Result<()> {
     if orchestrate {
         const SERVICE_POLL_MS: u64 = 500;
         const PENDING_SUBMIT_TIMEOUT_MS: u64 = 10_000;
+        const SUBMITTED_TURN_TIMEOUT_MS: u64 = 120_000;
 
         let solo_mode = start_role == "solo";
         let _ = std::fs::write(
@@ -5289,6 +5477,7 @@ pub async fn run() -> Result<()> {
                         lane: item.lane_id,
                         lane_label: lane.label.clone(),
                         command_id: "resume".to_string(),
+                        started_ms: now_ms(),
                         actor: "executor".to_string(),
                         endpoint_id: lane.endpoint.id.clone(),
                         tabs: tabs_verify.clone(),
@@ -5382,12 +5571,11 @@ pub async fn run() -> Result<()> {
                     None,
                 );
             }
-            writer.apply(ControlEvent::PlannerPendingSet {
-                pending: blocker_decision.planner_pending,
-            });
-            writer.apply(ControlEvent::ScheduledPhaseSet {
-                phase: blocker_decision.scheduled_phase,
-            });
+            apply_planner_pending_if_changed(&mut writer, blocker_decision.planner_pending);
+            apply_scheduled_phase_if_changed(
+                &mut writer,
+                blocker_decision.scheduled_phase.as_deref(),
+            );
 
             let state_hash_before = cycle_control_hash(&ControlConvergenceSnapshot {
                 state: writer.state(),
@@ -5464,6 +5652,7 @@ pub async fn run() -> Result<()> {
                     &mut rt,
                     now,
                     PENDING_SUBMIT_TIMEOUT_MS,
+                    SUBMITTED_TURN_TIMEOUT_MS,
                     &mut submit_joinset,
                 ) {
                     cycle_progress = true;
@@ -5561,7 +5750,7 @@ pub async fn run() -> Result<()> {
                     executor_lane_pending,
                     executor_in_progress,
                 ) {
-                    writer.apply(ControlEvent::ScheduledPhaseSet { phase: None });
+                    apply_scheduled_phase_if_changed(&mut writer, None);
                 }
             }
 
@@ -5637,8 +5826,8 @@ pub async fn run() -> Result<()> {
                         writer.state().planner_pending,
                         writer.state().diagnostics_pending,
                     );
-                    writer.apply(ControlEvent::PlannerPendingSet { pending: false });
-                    writer.apply(ControlEvent::DiagnosticsPendingSet { pending: false });
+                    apply_planner_pending_if_changed(&mut writer, false);
+                    apply_diagnostics_pending_if_changed(&mut writer, false);
                     stall_count = 0;
                     cycle_progress = false;
                 }

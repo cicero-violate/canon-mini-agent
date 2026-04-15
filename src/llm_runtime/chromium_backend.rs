@@ -86,6 +86,16 @@ fn init_frames_dir() {
     let _ = std::fs::create_dir_all(FRAMES_DIR);
 }
 
+fn submit_ack_payload(tab_id: u32, turn_id: u64, source: &str) -> String {
+    json!({
+        "submit_ack": true,
+        "tab_id": tab_id,
+        "turn_id": turn_id,
+        "source": source,
+    })
+    .to_string()
+}
+
 // ---------------------------------------------------------------------------
 // Shared server state (guarded by a single Mutex)
 // ---------------------------------------------------------------------------
@@ -100,8 +110,9 @@ struct State {
     /// tabId → expected turn_id (set while a turn is in flight).
     pending_turn_id: HashMap<u32, u64>,
 
-    /// (tabId, turnId) → oneshot that fires when SUBMIT_ACK arrives.
-    pending_ack: HashMap<(u32, u64), oneshot::Sender<()>>,
+    /// (tabId, turnId) → oneshot that fires with the submit-ack payload when
+    /// browser submission is confirmed.
+    pending_ack: HashMap<(u32, u64), oneshot::Sender<String>>,
 
     /// (tabId, turnId) → oneshot that fires with the assembled response.
     pending_resp: HashMap<(u32, u64), oneshot::Sender<String>>,
@@ -338,7 +349,7 @@ impl ChromiumBackend {
         stateful: bool,
     ) -> Result<LlmResponse> {
         let turn_id = self.next_turn_id.fetch_add(1, Ordering::SeqCst);
-        let (ack_tx, ack_rx) = oneshot::channel::<()>();
+        let (ack_tx, ack_rx) = oneshot::channel::<String>();
         let (resp_tx, resp_rx) = oneshot::channel::<String>();
 
         {
@@ -410,7 +421,7 @@ impl ChromiumBackend {
         );
         let ack_remaining = ack_deadline.saturating_duration_since(std::time::Instant::now());
         match tokio::time::timeout(ack_remaining, ack_rx).await {
-            Ok(Ok(())) => {}
+            Ok(Ok(_ack_raw)) => {}
             _ => {
                 let mut st = self.state.lock().await;
                 st.pending_ack.remove(&(tab_id, turn_id));
@@ -470,6 +481,121 @@ impl ChromiumBackend {
             }
         }
     }
+
+    async fn do_submit_only(
+        &self,
+        endpoint_id: &str,
+        urls: &[String],
+        stateful: bool,
+        prompt: &str,
+        timeout_secs: u64,
+    ) -> Result<LlmResponse> {
+        let turn_id = self.next_turn_id.fetch_add(1, Ordering::SeqCst);
+        let tab_id = self
+            .acquire_tab(endpoint_id, urls, timeout_secs, stateful)
+            .await?;
+        let url = {
+            let st = self.state.lock().await;
+            st.tab_urls
+                .get(&tab_id)
+                .cloned()
+                .unwrap_or_else(|| urls.first().cloned().unwrap_or_default())
+        };
+        let (ack_tx, ack_rx) = oneshot::channel::<String>();
+
+        {
+            let mut st = self.state.lock().await;
+            st.pending_ack.insert((tab_id, turn_id), ack_tx);
+            st.pending_turn_id.insert(tab_id, turn_id);
+
+            let site = SiteType::from_url(&url);
+            st.assemblers
+                .entry(tab_id)
+                .and_modify(|a| {
+                    a.set_site(site);
+                    a.reset();
+                })
+                .or_insert_with(|| FrameAssembler::new(site));
+
+            let prompt_bytes = prompt.len();
+            let frame = json!({ "type": "TURN", "tabId": tab_id, "text": prompt, "turnId": turn_id });
+            append_outbound_event(
+                "OUTBOUND_SUBMIT_TRY",
+                json!({
+                    "endpoint_id": endpoint_id,
+                    "tabId": tab_id,
+                    "turnId": turn_id,
+                    "url": url,
+                    "prompt_bytes": prompt_bytes,
+                    "stateful": stateful,
+                    "submit_only": true,
+                }),
+            );
+            if !st.send_msg(frame.clone()) {
+                st.replay_queue.push(frame);
+                append_outbound_event(
+                    "OUTBOUND_SUBMIT_QUEUED",
+                    json!({
+                        "endpoint_id": endpoint_id,
+                        "tabId": tab_id,
+                        "turnId": turn_id,
+                        "url": url,
+                        "prompt_bytes": prompt_bytes,
+                        "stateful": stateful,
+                        "submit_only": true,
+                    }),
+                );
+            } else {
+                append_outbound_event(
+                    "OUTBOUND_SUBMIT_SENT",
+                    json!({
+                        "endpoint_id": endpoint_id,
+                        "tabId": tab_id,
+                        "turnId": turn_id,
+                        "url": url,
+                        "prompt_bytes": prompt_bytes,
+                        "stateful": stateful,
+                        "submit_only": true,
+                    }),
+                );
+            }
+        }
+
+        let ack_timeout_secs = endpoint_submit_ack_timeout_secs(endpoint_id, timeout_secs);
+        match tokio::time::timeout(std::time::Duration::from_secs(ack_timeout_secs), ack_rx).await {
+            Ok(Ok(ack_raw)) => {
+                let mut st = self.state.lock().await;
+                st.pending_turn_id.remove(&tab_id);
+                release_tab_locked(&mut st, endpoint_id, tab_id, stateful);
+                Ok(LlmResponse {
+                    raw: ack_raw,
+                    tab_id: Some(tab_id),
+                    turn_id: Some(turn_id),
+                })
+            }
+            _ => {
+                let mut st = self.state.lock().await;
+                st.pending_ack.remove(&(tab_id, turn_id));
+                st.pending_turn_id.remove(&tab_id);
+                retire_tab_locked(&mut st, endpoint_id, tab_id, stateful);
+                append_outbound_event(
+                    "OUTBOUND_SUBMIT_ACK_TIMEOUT",
+                    json!({
+                        "endpoint_id": endpoint_id,
+                        "tabId": tab_id,
+                        "turnId": turn_id,
+                        "url": url,
+                        "ack_timeout_secs": ack_timeout_secs,
+                        "stateful": stateful,
+                        "submit_only": true,
+                    }),
+                );
+                anyhow::bail!(
+                    "chromium: timeout waiting for SUBMIT_ACK (tab={tab_id} turn={turn_id})"
+                );
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -493,63 +619,9 @@ impl LlmBackend for ChromiumBackend {
         };
 
         if submit_only {
-            let turn_id = self.next_turn_id.fetch_add(1, Ordering::SeqCst);
-            // For submit-only, try to use an existing tab but don't block if none.
-            let tab_id = self
-                .acquire_tab(endpoint_id, urls, timeout, stateful)
-                .await
-                .unwrap_or(0) as u32;
-            {
-                let mut st = self.state.lock().await;
-                let prompt_bytes = full_prompt.len();
-                let url = urls.first().cloned().unwrap_or_default();
-                let frame = json!({ "type": "TURN", "tabId": tab_id, "text": full_prompt, "turnId": turn_id });
-                append_outbound_event(
-                    "OUTBOUND_SUBMIT_TRY",
-                    json!({
-                        "endpoint_id": endpoint_id,
-                        "tabId": tab_id,
-                        "turnId": turn_id,
-                        "url": url,
-                        "prompt_bytes": prompt_bytes,
-                        "stateful": stateful,
-                        "submit_only": true,
-                    }),
-                );
-                if !st.send_msg(frame.clone()) {
-                    st.replay_queue.push(frame);
-                    append_outbound_event(
-                        "OUTBOUND_SUBMIT_QUEUED",
-                        json!({
-                            "endpoint_id": endpoint_id,
-                            "tabId": tab_id,
-                            "turnId": turn_id,
-                            "url": url,
-                            "prompt_bytes": prompt_bytes,
-                            "stateful": stateful,
-                            "submit_only": true,
-                        }),
-                    );
-                } else {
-                    append_outbound_event(
-                        "OUTBOUND_SUBMIT_SENT",
-                        json!({
-                            "endpoint_id": endpoint_id,
-                            "tabId": tab_id,
-                            "turnId": turn_id,
-                            "url": url,
-                            "prompt_bytes": prompt_bytes,
-                            "stateful": stateful,
-                            "submit_only": true,
-                        }),
-                    );
-                }
-            }
-            return Ok(LlmResponse {
-                raw: format!(r#"{{"submit_ack":true,"tab_id":{tab_id},"turn_id":{turn_id}}}"#),
-                tab_id: Some(tab_id),
-                turn_id: Some(turn_id),
-            });
+            return self
+                .do_submit_only(endpoint_id, urls, stateful, &full_prompt, timeout)
+                .await;
         }
 
         let tab_id = self
@@ -754,7 +826,7 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
             };
             let mut st = state.lock().await;
             if let Some(tx) = st.pending_ack.remove(&(tab_id, turn_id)) {
-                let _ = tx.send(());
+                let _ = tx.send(submit_ack_payload(tab_id, turn_id, "submit_ack"));
             }
             append_outbound_event(
                 "OUTBOUND_SUBMIT_ACK",
@@ -817,7 +889,15 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
             let turn_id = expected_turn_id;
 
             if let Some(tx) = st.pending_ack.remove(&(tab_id, turn_id)) {
-                let _ = tx.send(());
+                let _ = tx.send(submit_ack_payload(tab_id, turn_id, "inbound_message"));
+                append_outbound_event(
+                    "OUTBOUND_SUBMIT_ACK_SYNTHETIC",
+                    json!({
+                        "tabId": tab_id,
+                        "turnId": turn_id,
+                        "source": "inbound_message",
+                    }),
+                );
             }
 
             let assembled = if let Some(asm) = st.assemblers.get_mut(&tab_id) {

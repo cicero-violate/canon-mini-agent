@@ -185,6 +185,12 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
                 s.diagnostics_pending_reason = None;
             }
         }
+        ControlEvent::DiagnosticsReconciliationQueued => {
+            // Compatibility no-op for tlogs that recorded reconciliation queue
+            // markers before the event model gained a dedicated variant here.
+            // Keep replay tolerant without inventing state that cannot be
+            // reconstructed from the payloadless historical record.
+        }
         ControlEvent::VerifierBlockerSet { active } => {
             s.active_blocker_to_verifier = *active;
         }
@@ -425,6 +431,16 @@ mod tests {
         );
         assert!(state.planner_pending_reason.is_none());
         assert!(state.diagnostics_pending_reason.is_none());
+    }
+
+    #[test]
+    fn diagnostics_reconciliation_queue_event_replays_as_compatibility_noop() {
+        let state = SystemState::new(&[0], 1);
+        let next = apply_control_event(state.clone(), &ControlEvent::DiagnosticsReconciliationQueued);
+        assert_eq!(next.phase, state.phase);
+        assert_eq!(next.planner_pending, state.planner_pending);
+        assert_eq!(next.diagnostics_pending, state.diagnostics_pending);
+        assert_eq!(next.scheduled_phase, state.scheduled_phase);
     }
 
     #[test]

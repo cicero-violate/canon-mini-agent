@@ -23,6 +23,9 @@ pub enum ControlEvent {
     DiagnosticsPendingSet {
         pending: bool,
     },
+    /// Compatibility event seen in historical/current tlogs. It represents
+    /// queued diagnostics reconciliation work but carries no additional state.
+    DiagnosticsReconciliationQueued,
     VerifierBlockerSet {
         active: bool,
     },
