@@ -23,7 +23,7 @@ use crate::canonical_writer::CanonicalWriter;
 use crate::constants::{
     set_agent_state_dir, set_workspace, workspace, DEFAULT_AGENT_STATE_DIR,
     DEFAULT_LLM_RETRY_COUNT, DEFAULT_LLM_RETRY_DELAY_SECS, DEFAULT_RESPONSE_TIMEOUT_SECS,
-    DIAGNOSTICS_FILE_PATH, ENDPOINT_SPECS, EXECUTOR_STEP_LIMIT, INVARIANTS_FILE, ISSUES_FILE,
+    DIAGNOSTICS_FILE_PATH, ENDPOINT_SPECS, EXECUTOR_STEP_LIMIT, ISSUES_FILE,
     MASTER_PLAN_FILE, MAX_SNIPPET, MAX_STEPS, OBJECTIVES_FILE, ROLE_TIMEOUT_SECS, SPEC_FILE,
     VIOLATIONS_FILE, WS_PORT_CANDIDATES,
 };
@@ -53,7 +53,7 @@ use crate::prompts::{
 use crate::state_space::{
     allow_diagnostics_run, allow_verifier_run, block_executor_dispatch, check_completion_endpoint,
     check_completion_tab, decide_active_blocker, decide_bootstrap_phase, decide_phase_gates,
-    decide_post_diagnostics, decide_resume_phase, decide_wake_flags, executor_step_limit_exceeded,
+    decide_resume_phase, decide_wake_flags, executor_step_limit_exceeded,
     executor_submit_timed_out, is_verifier_specific_blocker, scheduled_phase_resume_done,
     should_force_blocker, verifier_blocker_phase_override, CargoTestGate, CompletionEndpointCheck,
     CompletionTabCheck, WakeFlagInput,
@@ -670,7 +670,7 @@ async fn run_solo_phase(
     } else {
         crate::objectives::read_objectives_compact(&ctx.workspace.join(OBJECTIVES_FILE))
     };
-    let invariants = read_text_or_empty(ctx.workspace.join(INVARIANTS_FILE));
+    let invariants = crate::prompt_inputs::read_combined_invariants_context(ctx.workspace);
     let violations = crate::prompt_inputs::filter_active_violations_json(&read_text_or_empty(
         ctx.violations_path,
     ));
