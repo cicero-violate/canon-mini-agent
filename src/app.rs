@@ -3276,15 +3276,11 @@ fn apply_wake_flags(agent_state_dir: &std::path::Path, writer: &mut CanonicalWri
     let Some(role) = decision.scheduled_phase.as_deref() else {
         return;
     };
-
-    eprintln!(
-        "[orchestrate] wake_flag_selected: role={} planner_pending={} diagnostics_pending={} executor_wake={} inputs=[{}]",
-        role,
-        decision.planner_pending,
-        decision.diagnostics_pending,
-        decision.executor_wake,
-        wake_inputs_debug,
-    );
+    let selected_modified_ms = inputs
+        .iter()
+        .find(|input| input.role == role)
+        .map(|input| input.modified_ms)
+        .unwrap_or(0);
 
     apply_scheduled_phase_if_changed(writer, Some(role));
     let wake_flag_path = path_map.get(role).cloned();
@@ -3322,15 +3318,29 @@ fn apply_wake_flags(agent_state_dir: &std::path::Path, writer: &mut CanonicalWri
             // actually be marked pending.
         }
     }
+    let suppress_deferred_repeat_log = !clear_wake_flag
+        && role == "executor"
+        && should_suppress_repeated_executor_deferred_log(selected_modified_ms);
+    if !suppress_deferred_repeat_log {
+        eprintln!(
+            "[orchestrate] wake_flag_selected: role={} planner_pending={} diagnostics_pending={} executor_wake={} inputs=[{}]",
+            role,
+            decision.planner_pending,
+            decision.diagnostics_pending,
+            decision.executor_wake,
+            wake_inputs_debug,
+        );
+    }
     if let Some(path) = wake_flag_path {
         if clear_wake_flag {
+            clear_repeated_executor_deferred_log_memory(role);
             eprintln!(
                 "[orchestrate] wake_flag_triggered: role={} path={}",
                 role,
                 path.display()
             );
             let _ = std::fs::remove_file(path);
-        } else {
+        } else if !suppress_deferred_repeat_log {
             eprintln!(
                 "[orchestrate] wake_flag_deferred: role={} path={} reason=all_executor_lanes_busy",
                 role,
@@ -3338,6 +3348,31 @@ fn apply_wake_flags(agent_state_dir: &std::path::Path, writer: &mut CanonicalWri
             );
         }
     }
+}
+
+fn should_suppress_repeated_executor_deferred_log(modified_ms: u64) -> bool {
+    let map = repeated_executor_deferred_log_memory();
+    let mut guard = map.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let last = guard.get("executor").copied();
+    guard.insert("executor".to_string(), modified_ms);
+    last == Some(modified_ms)
+}
+
+fn clear_repeated_executor_deferred_log_memory(role: &str) {
+    if role != "executor" {
+        return;
+    }
+    let map = repeated_executor_deferred_log_memory();
+    let mut guard = map.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    guard.remove("executor");
+}
+
+fn repeated_executor_deferred_log_memory(
+) -> &'static std::sync::Mutex<std::collections::HashMap<String, u64>> {
+    static LAST_DEFERRED_BY_ROLE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, u64>>,
+    > = std::sync::OnceLock::new();
+    LAST_DEFERRED_BY_ROLE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
 
 fn collect_wake_flag_inputs(
