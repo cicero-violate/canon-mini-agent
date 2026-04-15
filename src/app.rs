@@ -745,12 +745,11 @@ async fn run_solo_phase(
         crate::objectives::read_objectives_compact(&ctx.workspace.join(OBJECTIVES_FILE))
     };
     let invariants = crate::prompt_inputs::read_combined_invariants_context(ctx.workspace);
-    let violations = crate::prompt_inputs::filter_active_violations_json(&read_text_or_empty(
-        ctx.violations_path,
-    ));
-    let diagnostics = crate::prompt_inputs::filter_active_diagnostics_json(&read_text_or_empty(
-        ctx.diagnostics_path,
-    ));
+    let raw_violations_text = read_text_or_empty(ctx.violations_path);
+    let semantic_artifacts =
+        crate::prompt_inputs::derive_semantic_prompt_artifacts(ctx.workspace, &raw_violations_text, 5);
+    let violations = semantic_artifacts.violations_summary;
+    let diagnostics = semantic_artifacts.diagnostics_summary;
     let objectives_mtime_before = file_modified_ms(&agent_objectives)
         .or_else(|| file_modified_ms(&ctx.workspace.join(OBJECTIVES_FILE)));
     let plan_mtime_before = file_modified_ms(&ctx.workspace.join(MASTER_PLAN_FILE));
@@ -770,7 +769,7 @@ async fn run_solo_phase(
     writer.apply(ControlEvent::LastSoloPlanTextSet {
         text: current_plan_text,
     });
-    let issues_text = crate::issues::read_top_open_issues(ctx.workspace, 5);
+    let issues_text = semantic_artifacts.issues_summary;
     let complexity_hotspots = crate::prompt_inputs::read_complexity_hotspots(ctx.workspace, 8);
     let loop_context_hint = crate::prompt_inputs::read_loop_context_hint(std::path::Path::new(
         crate::constants::agent_state_dir(),

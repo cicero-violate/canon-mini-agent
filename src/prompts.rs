@@ -1205,7 +1205,12 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
     let canonical_law = prompt_canonical_law(kind);
     let workspace_text = prompt_workspace(kind);
     let status_snapshot = canonical_status_snapshot().to_string();
-    let issues = crate::issues::read_top_open_issues(std::path::Path::new(workspace()), 3);
+    let semantic_artifacts = crate::prompt_inputs::derive_semantic_prompt_artifacts(
+        std::path::Path::new(workspace()),
+        &crate::prompt_inputs::read_text_or_empty(std::path::Path::new(workspace()).join(VIOLATIONS_FILE)),
+        3,
+    );
+    let issues = semantic_artifacts.issues_summary;
     let tail = prompt_tail(kind);
     let prefix = format!(
         "{}\n\n{}\n\nCanonical law:\n{}\n\n{}\n\n{}\n\n",
