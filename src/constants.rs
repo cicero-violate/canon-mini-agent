@@ -22,12 +22,12 @@ pub const DEFAULT_RESPONSE_TIMEOUT_SECS: u64 = 150;
 pub const DEFAULT_LLM_RETRY_COUNT: u32 = 3;
 pub const DEFAULT_LLM_RETRY_DELAY_SECS: u64 = 5;
 pub const ROLE_TIMEOUT_SECS: &[(&str, u64)] = &[
-    ("planner", 600),
-    ("mini_planner", 600),
-    ("verifier", 120),
-    ("diagnostics", 120),
+    ("planner", 900),
+    ("mini_planner", 900),
+    ("verifier", 180),
+    ("diagnostics", 180),
     ("executor", 30),
-    ("solo", 600),
+    ("solo", 900),
 ];
 
 static WORKSPACE_PATH: OnceLock<String> = OnceLock::new();

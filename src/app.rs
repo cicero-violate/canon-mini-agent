@@ -117,9 +117,30 @@ fn role_key(role: &str) -> &str {
 }
 
 fn response_timeout_for_role(role: &str) -> u64 {
+    let role_key = role_key(role);
+    let scoped_env = format!(
+        "CANON_LLM_TIMEOUT_SECS_{}",
+        role_key.replace('-', "_").to_ascii_uppercase()
+    );
+    if let Ok(raw) = std::env::var(&scoped_env) {
+        if let Ok(parsed) = raw.trim().parse::<u64>() {
+            if parsed > 0 {
+                return parsed;
+            }
+        }
+    }
+
+    if let Ok(raw) = std::env::var("CANON_LLM_TIMEOUT_SECS") {
+        if let Ok(parsed) = raw.trim().parse::<u64>() {
+            if parsed > 0 {
+                return parsed;
+            }
+        }
+    }
+
     ROLE_TIMEOUT_SECS
         .iter()
-        .find(|(key, _)| *key == role_key(role))
+        .find(|(key, _)| *key == role_key)
         .map(|(_, val)| *val)
         .unwrap_or(DEFAULT_RESPONSE_TIMEOUT_SECS)
 }

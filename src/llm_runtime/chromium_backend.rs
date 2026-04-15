@@ -58,6 +58,30 @@ fn append_outbound_event(event_type: &str, payload: Value) {
     append_jsonl("all.jsonl", &Value::Object(event));
 }
 
+fn endpoint_role(endpoint_id: &str) -> &str {
+    endpoint_id.split('_').next().unwrap_or(endpoint_id)
+}
+
+fn endpoint_submit_ack_timeout_secs(endpoint_id: &str, total_timeout_secs: u64) -> u64 {
+    let role = endpoint_role(endpoint_id).replace('-', "_").to_ascii_uppercase();
+    let scoped_env = format!("CANON_LLM_SUBMIT_ACK_TIMEOUT_SECS_{role}");
+    let override_secs = std::env::var(&scoped_env)
+        .ok()
+        .or_else(|| std::env::var("CANON_LLM_SUBMIT_ACK_TIMEOUT_SECS").ok())
+        .and_then(|raw| raw.trim().parse::<u64>().ok())
+        .filter(|secs| *secs > 0);
+
+    let default_secs = match endpoint_role(endpoint_id) {
+        "solo" | "planner" | "mini" => 60,
+        "diagnostics" | "verifier" => 30,
+        _ => 15,
+    };
+
+    override_secs
+        .unwrap_or(default_secs)
+        .min(total_timeout_secs.max(1))
+}
+
 fn init_frames_dir() {
     let _ = std::fs::create_dir_all(FRAMES_DIR);
 }
@@ -379,9 +403,11 @@ impl ChromiumBackend {
 
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
 
-        // Wait for SUBMIT_ACK (15s cap).
-        let ack_deadline =
-            deadline.min(std::time::Instant::now() + std::time::Duration::from_secs(15));
+        // Wait for SUBMIT_ACK using an endpoint-aware cap.
+        let ack_timeout_secs = endpoint_submit_ack_timeout_secs(endpoint_id, timeout_secs);
+        let ack_deadline = deadline.min(
+            std::time::Instant::now() + std::time::Duration::from_secs(ack_timeout_secs),
+        );
         let ack_remaining = ack_deadline.saturating_duration_since(std::time::Instant::now());
         match tokio::time::timeout(ack_remaining, ack_rx).await {
             Ok(Ok(())) => {}
@@ -390,7 +416,7 @@ impl ChromiumBackend {
                 st.pending_ack.remove(&(tab_id, turn_id));
                 st.pending_resp.remove(&(tab_id, turn_id));
                 st.pending_turn_id.remove(&tab_id);
-                release_tab_locked(&mut st, endpoint_id, tab_id, stateful);
+                retire_tab_locked(&mut st, endpoint_id, tab_id, stateful);
                 append_outbound_event(
                     "OUTBOUND_SUBMIT_ACK_TIMEOUT",
                     json!({
@@ -398,6 +424,7 @@ impl ChromiumBackend {
                         "tabId": tab_id,
                         "turnId": turn_id,
                         "url": url,
+                        "ack_timeout_secs": ack_timeout_secs,
                         "stateful": stateful,
                         "submit_only": false,
                     }),
@@ -425,7 +452,7 @@ impl ChromiumBackend {
                 let mut st = self.state.lock().await;
                 st.pending_resp.remove(&(tab_id, turn_id));
                 st.pending_turn_id.remove(&tab_id);
-                release_tab_locked(&mut st, endpoint_id, tab_id, stateful);
+                retire_tab_locked(&mut st, endpoint_id, tab_id, stateful);
                 append_outbound_event(
                     "OUTBOUND_RESPONSE_TIMEOUT",
                     json!({
@@ -827,4 +854,41 @@ fn release_tab_locked(st: &mut State, endpoint_id: &str, tab_id: u32, stateful: 
     }
     let tab_url = st.tab_urls.get(&tab_id).cloned().unwrap_or_default();
     st.preopened.entry(tab_url).or_default().push_back(tab_id);
+}
+
+fn retire_tab_locked(st: &mut State, endpoint_id: &str, tab_id: u32, stateful: bool) {
+    st.pending_turn_id.remove(&tab_id);
+    st.pending_ack.retain(|(tid, _), _| *tid != tab_id);
+    st.pending_resp.retain(|(tid, _), _| *tid != tab_id);
+    st.assemblers.remove(&tab_id);
+
+    if stateful {
+        if st.endpoint_tabs.get(endpoint_id).copied() == Some(tab_id) {
+            st.endpoint_tabs.remove(endpoint_id);
+        }
+        st.tab_owners.remove(&tab_id);
+    }
+
+    for queue in st.preopened.values_mut() {
+        queue.retain(|id| *id != tab_id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::endpoint_submit_ack_timeout_secs;
+
+    #[test]
+    fn submit_ack_timeout_is_endpoint_aware() {
+        assert_eq!(endpoint_submit_ack_timeout_secs("solo_chatgpt", 900), 60);
+        assert_eq!(endpoint_submit_ack_timeout_secs("planner_chatgpt", 900), 60);
+        assert_eq!(endpoint_submit_ack_timeout_secs("verifier_chatgpt", 180), 30);
+        assert_eq!(endpoint_submit_ack_timeout_secs("executor_pool", 30), 15);
+    }
+
+    #[test]
+    fn submit_ack_timeout_never_exceeds_total_timeout() {
+        assert_eq!(endpoint_submit_ack_timeout_secs("solo_chatgpt", 10), 10);
+        assert_eq!(endpoint_submit_ack_timeout_secs("executor_pool", 5), 5);
+    }
 }
