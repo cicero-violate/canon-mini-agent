@@ -2412,8 +2412,18 @@ pub(crate) fn action_result_prompt(
     steps_used: Option<usize>,
     predicted_next_actions: Option<&str>,
 ) -> String {
-    let _kind = agent_kind_from_agent_type(agent_type);
-    let schema_block = predicted_action_schema_block(predicted_next_actions);
+    let kind = agent_kind_from_agent_type(agent_type);
+    let schema_block = {
+        let predicted = predicted_action_schema_block(predicted_next_actions);
+        if predicted.trim().is_empty() {
+            format!(
+                "Tool schemas in scope for this role:\n{}",
+                default_schema_block(kind)
+            )
+        } else {
+            predicted
+        }
+    };
     let tab_label = tab_id
         .map(|v| v.to_string())
         .unwrap_or_else(|| "unknown".to_string());
@@ -2751,6 +2761,26 @@ mod tests {
         assert_eq!(prompt.matches("Action: `issue`").count(), 1);
         assert_eq!(prompt.matches("Action: `violation`").count(), 1);
         assert_eq!(prompt.matches("Action: `message`").count(), 1);
+    }
+
+    #[test]
+    fn action_result_prompt_falls_back_to_role_schema_when_predictions_missing() {
+        let prompt = action_result_prompt(
+            Some(1),
+            Some(2),
+            "EXECUTOR",
+            "Invalid action rejected.",
+            Some("invalid_action"),
+            None,
+            None,
+            None,
+            Some(1),
+            None,
+        );
+        assert!(prompt.contains("Tool schemas in scope for this role:"));
+        assert!(prompt.contains("Action: `read_file`"));
+        assert!(prompt.contains("Action: `apply_patch`"));
+        assert!(prompt.contains("Action: `run_command`"));
     }
 
     #[test]

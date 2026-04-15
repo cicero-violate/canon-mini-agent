@@ -1,1 +1,1 @@
-LLM error: chromium: timeout waiting for response (tab=433978195 turn=10)
+The requested workflow depends on canon-only actions such as `plan`, `objectives`, `read_file`, `python`, `run_command`, `apply_patch`, and semantic inspection against `/workspace/ai_sandbox/canon-mini-agent`, but those actions are not executable from this interface.
