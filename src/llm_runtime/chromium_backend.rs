@@ -117,6 +117,9 @@ struct State {
     /// (tabId, turnId) → oneshot that fires with the assembled response.
     pending_resp: HashMap<(u32, u64), oneshot::Sender<String>>,
 
+    /// Completed submit-only turns awaiting orchestration pickup.
+    completed_turns: VecDeque<Value>,
+
     /// reqId → oneshot that fires with the tabId when TAB_READY (with reqId) arrives.
     pending_open: HashMap<u64, oneshot::Sender<u32>>,
 
@@ -152,6 +155,7 @@ impl State {
             pending_turn_id: HashMap::new(),
             pending_ack: HashMap::new(),
             pending_resp: HashMap::new(),
+            completed_turns: VecDeque::new(),
             pending_open: HashMap::new(),
             tab_urls: HashMap::new(),
             preopened: HashMap::new(),
@@ -564,9 +568,6 @@ impl ChromiumBackend {
         let ack_timeout_secs = endpoint_submit_ack_timeout_secs(endpoint_id, timeout_secs);
         match tokio::time::timeout(std::time::Duration::from_secs(ack_timeout_secs), ack_rx).await {
             Ok(Ok(ack_raw)) => {
-                let mut st = self.state.lock().await;
-                st.pending_turn_id.remove(&tab_id);
-                release_tab_locked(&mut st, endpoint_id, tab_id, stateful);
                 Ok(LlmResponse {
                     raw: ack_raw,
                     tab_id: Some(tab_id),
@@ -638,6 +639,11 @@ impl LlmBackend for ChromiumBackend {
         self.do_send(endpoint_id, tab_id, &url, &full_prompt, timeout, stateful)
             .await
     }
+
+    async fn take_completed_turns(&self) -> Vec<Value> {
+        let mut st = self.state.lock().await;
+        st.completed_turns.drain(..).collect()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -665,6 +671,7 @@ async fn accept_loop(addr: SocketAddr, state: Arc<Mutex<State>>) {
             }
         }
     }
+
 }
 
 async fn handle_connection(stream: tokio::net::TcpStream, state: Arc<Mutex<State>>) {
@@ -876,7 +883,7 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                 }),
             );
 
-            let expected_turn_id = match expected_turn_id {
+            let expected_turn_id = match expected_turn_id.or(inbound_turn_id) {
                 Some(id) => id,
                 None => return,
             };
@@ -917,7 +924,30 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                     }),
                 );
                 if let Some(tx) = st.pending_resp.remove(&(tab_id, turn_id)) {
+                    st.pending_turn_id.remove(&tab_id);
+                    let endpoint_id = st.tab_owners.get(&tab_id).cloned();
+                    if let Some(endpoint_id) = endpoint_id.as_deref() {
+                        release_tab_locked(&mut st, endpoint_id, tab_id, true);
+                    } else {
+                        let tab_url = st.tab_urls.get(&tab_id).cloned().unwrap_or_default();
+                        st.preopened.entry(tab_url).or_default().push_back(tab_id);
+                    }
                     let _ = tx.send(text);
+                } else {
+                    let endpoint_id = st.tab_owners.get(&tab_id).cloned();
+                    st.pending_turn_id.remove(&tab_id);
+                    if let Some(owner) = endpoint_id.as_deref() {
+                        release_tab_locked(&mut st, owner, tab_id, true);
+                    } else {
+                        let tab_url = st.tab_urls.get(&tab_id).cloned().unwrap_or_default();
+                        st.preopened.entry(tab_url).or_default().push_back(tab_id);
+                    }
+                    st.completed_turns.push_back(json!({
+                        "tab_id": tab_id,
+                        "turn_id": turn_id,
+                        "text": text,
+                        "endpoint_id": endpoint_id,
+                    }));
                 }
             }
         }

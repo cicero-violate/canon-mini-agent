@@ -31,7 +31,7 @@ impl WsBridge {
     /// With a synchronous HTTP backend every response is returned inline,
     /// so there are never any pending items to drain.
     pub async fn take_completed_turns(&self) -> Vec<serde_json::Value> {
-        vec![]
+        self.backend.take_completed_turns().await
     }
 }
 

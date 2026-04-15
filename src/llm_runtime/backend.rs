@@ -1,6 +1,7 @@
 use crate::llm_runtime::types::LlmResponse;
 use anyhow::Result;
 use async_trait::async_trait;
+use serde_json::Value;
 
 #[async_trait]
 pub trait LlmBackend: Send + Sync {
@@ -14,4 +15,8 @@ pub trait LlmBackend: Send + Sync {
         submit_only: bool,
         timeout_secs: Option<u64>,
     ) -> Result<LlmResponse>;
+
+    async fn take_completed_turns(&self) -> Vec<Value> {
+        Vec::new()
+    }
 }
