@@ -1,1 +1,1 @@
-LLM error: chromium: timeout waiting for SUBMIT_ACK (tab=433978173 turn=1)
+`rcpt-1776213468838-planner-1-read_file` shows `ready_window=["T_restore_missing_diagnostics_artifacts"]`; inbound executor blocker reported `invariant gate blocked role \`route\`` for `INV-05518346`.

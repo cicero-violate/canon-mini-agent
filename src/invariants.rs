@@ -30,6 +30,7 @@
 ///   A'            = {a ∈ A | I(result(a)) = 1}  (only valid actions exist)
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -388,15 +389,24 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
     };
 
     let existing_ids: HashSet<String> = file.issues.iter().map(|i| i.id.clone()).collect();
+    let mut mutated = false;
 
     let inv_file = load_invariants(workspace);
     let mut created = 0usize;
 
     // ── Meta-issue 1: action surface ────────────────────────────────────────
-    // Present until someone adds `"invariants" => handle_invariants_action` to
-    // the tools.rs dispatch table and wires the ops read|promote|collapse|enforce.
+    // Only present when the invariants action is actually missing from the live source.
     const ACTION_SURFACE_ID: &str = "inv_action_surface_missing";
-    if !existing_ids.contains(ACTION_SURFACE_ID) {
+    let has_action_surface = source_contains(
+        workspace,
+        "src/tools.rs",
+        "\"invariants\" => crate::invariants::handle_invariants_action",
+    ) && source_contains(
+        workspace,
+        "src/tool_schema.rs",
+        "\"invariants\" => missing_field_for_invariants_action",
+    );
+    if !has_action_surface && !existing_ids.contains(ACTION_SURFACE_ID) {
         file.issues.push(Issue {
             id: ACTION_SURFACE_ID.to_string(),
             title: "Invariant lifecycle has no action surface — diagnostics cannot review, enforce, or collapse invariants".to_string(),
@@ -418,22 +428,37 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
             location: "src/tools.rs; src/invariants.rs; src/app.rs:1011-1050; src/prompt_inputs.rs".to_string(),
             evidence: vec![
                 "src/invariants.rs:evaluate_invariant_gate returns Err but app.rs route gate has blocked=false — never hard-blocks".to_string(),
-                "src/tools.rs dispatch table has no 'invariants' branch (compare: 'lessons' => handle_lessons_action)".to_string(),
-                "src/prompt_inputs.rs:load_planner_inputs injects static INVARIANTS.json but not enforced_invariants.json".to_string(),
-                "src/invariants.rs:read_enforced_invariants is public but called from no prompt path".to_string(),
+                "src/tools.rs dispatch table is missing the 'invariants' branch required to call handle_invariants_action".to_string(),
+                "src/tool_schema.rs is missing the invariants action schema, so invalid-action repair cannot guide the model toward legal invariants ops".to_string(),
+                "Without both dispatch + schema, diagnostics cannot review, enforce, or collapse discovered invariants from enforced_invariants.json".to_string(),
             ],
             discovered_by: "invariants_analyzer".to_string(),
             score: 0.0,
             ..Issue::default()
         });
         created += 1;
+        mutated = true;
+    } else if has_action_surface {
+        mutated |= resolve_stale_meta_issue(
+            &mut file,
+            ACTION_SURFACE_ID,
+            "Resolved automatically after current-source validation: invariants action surface exists in src/tools.rs and src/tool_schema.rs.",
+        );
     }
 
     // ── Meta-issue 2: prompt injection ──────────────────────────────────────
-    // Present until enforced_invariants.json is added to load_planner_inputs
-    // and diagnostics_cycle_prompt.
+    // Only present when enforced invariants are actually absent from live prompt inputs.
     const PROMPT_INJECTION_ID: &str = "inv_enforced_not_in_prompts";
-    if !existing_ids.contains(PROMPT_INJECTION_ID) {
+    let has_prompt_injection = source_contains(
+        workspace,
+        "src/prompt_inputs.rs",
+        "read_enforced_invariants(workspace)",
+    ) && source_contains(
+        workspace,
+        "src/prompts.rs",
+        "agent_state/enforced_invariants.json",
+    );
+    if !has_prompt_injection && !existing_ids.contains(PROMPT_INJECTION_ID) {
         file.issues.push(Issue {
             id: PROMPT_INJECTION_ID.to_string(),
             title: "enforced_invariants.json not injected into diagnostics or planner prompts".to_string(),
@@ -445,21 +470,28 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
                 "checkpoint cycle but is invisible to all roles. Diagnostics cannot see which invariants are ",
                 "accumulating support and cannot decide which to escalate. ",
                 "Fix: add read_enforced_invariants(workspace) call to load_planner_inputs in src/prompt_inputs.rs ",
-                "and inject the result into the diagnostics prompt via diagnostics_cycle_prompt in src/prompts.rs. ",
-                "Add an EnforcedInvariants variant to SingleRoleRead so solo/planner can also access it. ",
+                "and inject the result into the diagnostics/planner prompt surfaces in src/prompts.rs. ",
+                "Ensure SingleRoleContext::read(Invariants) returns the combined static + enforced view. ",
                 "Impact: invariant system is silent — no feedback loop to the decision-making agent."
             ).to_string(),
             location: "src/prompt_inputs.rs; src/prompts.rs; src/invariants.rs:read_enforced_invariants".to_string(),
             evidence: vec![
-                "src/prompt_inputs.rs:load_planner_inputs loads INVARIANTS_FILE (static) but not enforced_invariants.json".to_string(),
-                "src/prompt_inputs.rs:SingleRoleRead enum has Invariants variant but no EnforcedInvariants variant".to_string(),
-                "src/invariants.rs:read_enforced_invariants exists as pub fn but is never called from any prompt path".to_string(),
+                "src/prompt_inputs.rs does not call read_enforced_invariants(workspace) when building prompt inputs".to_string(),
+                "src/prompts.rs does not mention agent_state/enforced_invariants.json in the relevant role instructions".to_string(),
+                "Without the dynamic enforced view, the planner/diagnostics agents can only see static INVARIANTS.json".to_string(),
             ],
             discovered_by: "invariants_analyzer".to_string(),
             score: 0.0,
             ..Issue::default()
         });
         created += 1;
+        mutated = true;
+    } else if has_prompt_injection {
+        mutated |= resolve_stale_meta_issue(
+            &mut file,
+            PROMPT_INJECTION_ID,
+            "Resolved automatically after current-source validation: enforced_invariants.json is injected through prompt_inputs.rs and referenced in prompts.rs.",
+        );
     }
 
     // ── Per-promoted-invariant issues ────────────────────────────────────────
@@ -524,12 +556,40 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
         created += 1;
     }
 
-    if created > 0 {
+    if created > 0 || mutated {
         rescore_all(&mut file);
         std::fs::write(&issues_path, serde_json::to_string_pretty(&file)?)?;
     }
 
     Ok(created)
+}
+
+fn source_contains(workspace: &Path, relative_path: &str, needle: &str) -> bool {
+    std::fs::read_to_string(workspace.join(relative_path))
+        .map(|raw| raw.contains(needle))
+        .unwrap_or(false)
+}
+
+fn resolve_stale_meta_issue(file: &mut IssuesFile, issue_id: &str, note: &str) -> bool {
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let mut changed = false;
+    for issue in &mut file.issues {
+        if issue.id != issue_id || is_closed(issue) {
+            continue;
+        }
+        issue.status = "resolved".to_string();
+        issue.freshness_status = "fresh".to_string();
+        issue.stale_reason.clear();
+        issue.last_validated_ms = now_ms;
+        if !issue.evidence.iter().any(|entry| entry == note) {
+            issue.evidence.push(note.to_string());
+        }
+        changed = true;
+    }
+    changed
 }
 
 // ── Synthesis implementation ──────────────────────────────────────────────────
