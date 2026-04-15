@@ -4,6 +4,7 @@ use crate::llm_runtime::{
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use crate::constants::{INVARIANTS_FILE, MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE};
@@ -73,6 +74,7 @@ pub struct SingleRoleContext<'a> {
 }
 
 pub fn read_combined_invariants_context(workspace: &Path) -> String {
+    let semantic_state = semantic_state_snapshot_from_tlog(workspace);
     let static_invariants = filter_invariants_json(&read_text_or_empty(workspace.join(INVARIANTS_FILE)));
     let enforced_invariants = summarize_enforced_invariants_for_prompt(
         &crate::invariants::read_enforced_invariants(workspace),
@@ -82,7 +84,7 @@ pub fn read_combined_invariants_context(workspace: &Path) -> String {
         && !enforced_trimmed.starts_with("(enforced_invariants.json not yet created")
         && !enforced_trimmed.starts_with("(error reading enforced_invariants.json:");
 
-    match (static_invariants.trim().is_empty(), include_enforced) {
+    let invariants_body = match (static_invariants.trim().is_empty(), include_enforced) {
         (true, false) => String::new(),
         (false, false) => static_invariants,
         (true, true) => format!(
@@ -92,7 +94,245 @@ pub fn read_combined_invariants_context(workspace: &Path) -> String {
         (false, true) => format!(
             "Static design invariants (from {INVARIANTS_FILE}):\n{static_invariants}\n\nDynamic enforced invariants (from agent_state/enforced_invariants.json):\n{enforced_invariants}"
         ),
+    };
+
+    match (
+        semantic_state.trim().is_empty(),
+        invariants_body.trim().is_empty(),
+    ) {
+        (true, true) => String::new(),
+        (false, true) => semantic_state,
+        (true, false) => invariants_body,
+        (false, false) => format!(
+            "Runtime semantic state (derived from agent_state/tlog.ndjson):\n{semantic_state}\n\n{invariants_body}"
+        ),
     }
+}
+
+fn truncate_prompt_value(value: &str, max_chars: usize) -> String {
+    let trimmed = value.trim();
+    let mut out = String::new();
+    for ch in trimmed.chars().take(max_chars) {
+        out.push(ch);
+    }
+    if trimmed.chars().count() > max_chars {
+        out.push('…');
+    }
+    out
+}
+
+fn infer_tlog_lane_indices(events: &[crate::events::Event]) -> Vec<usize> {
+    let mut ids = BTreeSet::new();
+    for event in events {
+        if let crate::events::Event::Control { event } = event {
+            match event {
+                crate::events::ControlEvent::PhaseSet {
+                    lane: Some(lane_id), ..
+                }
+                | crate::events::ControlEvent::LanePendingSet { lane_id, .. }
+                | crate::events::ControlEvent::LaneInProgressSet { lane_id, .. }
+                | crate::events::ControlEvent::LaneVerifierResultSet { lane_id, .. }
+                | crate::events::ControlEvent::LanePlanTextSet { lane_id, .. }
+                | crate::events::ControlEvent::VerifierSummarySet { lane_id, .. }
+                | crate::events::ControlEvent::LaneSubmitInFlightSet { lane_id, .. }
+                | crate::events::ControlEvent::LanePromptInFlightSet { lane_id, .. }
+                | crate::events::ControlEvent::LaneActiveTabSet { lane_id, .. }
+                | crate::events::ControlEvent::TabIdToLaneSet { lane_id, .. }
+                | crate::events::ControlEvent::LaneNextSubmitAtSet { lane_id, .. }
+                | crate::events::ControlEvent::LaneStepsUsedSet { lane_id, .. }
+                | crate::events::ControlEvent::ExecutorTurnRegistered { lane_id, .. }
+                | crate::events::ControlEvent::ExecutorCompletionRecovered { lane_id, .. }
+                | crate::events::ControlEvent::ExecutorCompletionTabRebound { lane_id, .. } => {
+                    ids.insert(*lane_id);
+                }
+                crate::events::ControlEvent::ScheduledPhaseSet { .. }
+                | crate::events::ControlEvent::PlannerPendingSet { .. }
+                | crate::events::ControlEvent::PlannerObjectiveReviewQueued
+                | crate::events::ControlEvent::PlannerObjectivePlanGapQueued
+                | crate::events::ControlEvent::DiagnosticsPendingSet { .. }
+                | crate::events::ControlEvent::DiagnosticsVerifierFollowupQueued
+                | crate::events::ControlEvent::DiagnosticsReconciliationQueued
+                | crate::events::ControlEvent::DiagnosticsTextSet { .. }
+                | crate::events::ControlEvent::LastPlanTextSet { .. }
+                | crate::events::ControlEvent::LastExecutorDiffSet { .. }
+                | crate::events::ControlEvent::LastSoloPlanTextSet { .. }
+                | crate::events::ControlEvent::LastSoloExecutorDiffSet { .. }
+                | crate::events::ControlEvent::PhaseSet { lane: None, .. }
+                | crate::events::ControlEvent::ExecutorTurnDeregistered { .. } => {}
+            }
+        }
+    }
+    ids.into_iter().collect()
+}
+
+fn control_event_kind_name(event: &crate::events::ControlEvent) -> &'static str {
+    match event {
+        crate::events::ControlEvent::PhaseSet { .. } => "phase_set",
+        crate::events::ControlEvent::ScheduledPhaseSet { .. } => "scheduled_phase_set",
+        crate::events::ControlEvent::PlannerPendingSet { .. } => "planner_pending_set",
+        crate::events::ControlEvent::PlannerObjectiveReviewQueued => {
+            "planner_objective_review_queued"
+        }
+        crate::events::ControlEvent::PlannerObjectivePlanGapQueued => {
+            "planner_objective_plan_gap_queued"
+        }
+        crate::events::ControlEvent::DiagnosticsPendingSet { .. } => "diagnostics_pending_set",
+        crate::events::ControlEvent::DiagnosticsVerifierFollowupQueued => {
+            "diagnostics_verifier_followup_queued"
+        }
+        crate::events::ControlEvent::DiagnosticsReconciliationQueued => {
+            "diagnostics_reconciliation_queued"
+        }
+        crate::events::ControlEvent::DiagnosticsTextSet { .. } => "diagnostics_text_set",
+        crate::events::ControlEvent::LastPlanTextSet { .. } => "last_plan_text_set",
+        crate::events::ControlEvent::LastExecutorDiffSet { .. } => "last_executor_diff_set",
+        crate::events::ControlEvent::LastSoloPlanTextSet { .. } => "last_solo_plan_text_set",
+        crate::events::ControlEvent::LastSoloExecutorDiffSet { .. } => {
+            "last_solo_executor_diff_set"
+        }
+        crate::events::ControlEvent::LanePendingSet { .. } => "lane_pending_set",
+        crate::events::ControlEvent::LaneInProgressSet { .. } => "lane_in_progress_set",
+        crate::events::ControlEvent::LaneVerifierResultSet { .. } => {
+            "lane_verifier_result_set"
+        }
+        crate::events::ControlEvent::LanePlanTextSet { .. } => "lane_plan_text_set",
+        crate::events::ControlEvent::VerifierSummarySet { .. } => "verifier_summary_set",
+        crate::events::ControlEvent::LaneSubmitInFlightSet { .. } => {
+            "lane_submit_in_flight_set"
+        }
+        crate::events::ControlEvent::LanePromptInFlightSet { .. } => {
+            "lane_prompt_in_flight_set"
+        }
+        crate::events::ControlEvent::LaneActiveTabSet { .. } => "lane_active_tab_set",
+        crate::events::ControlEvent::TabIdToLaneSet { .. } => "tab_id_to_lane_set",
+        crate::events::ControlEvent::LaneNextSubmitAtSet { .. } => "lane_next_submit_at_set",
+        crate::events::ControlEvent::LaneStepsUsedSet { .. } => "lane_steps_used_set",
+        crate::events::ControlEvent::ExecutorTurnRegistered { .. } => {
+            "executor_turn_registered"
+        }
+        crate::events::ControlEvent::ExecutorTurnDeregistered { .. } => {
+            "executor_turn_deregistered"
+        }
+        crate::events::ControlEvent::ExecutorCompletionRecovered { .. } => {
+            "executor_completion_recovered"
+        }
+        crate::events::ControlEvent::ExecutorCompletionTabRebound { .. } => {
+            "executor_completion_tab_rebound"
+        }
+    }
+}
+
+fn effect_event_kind_name(event: &crate::events::EffectEvent) -> &'static str {
+    match event {
+        crate::events::EffectEvent::InvariantViolation { .. } => "invariant_violation",
+        crate::events::EffectEvent::CheckpointSaved { .. } => "checkpoint_saved",
+        crate::events::EffectEvent::CheckpointLoaded { .. } => "checkpoint_loaded",
+        crate::events::EffectEvent::WorkspaceArtifactWriteRequested { .. } => {
+            "workspace_artifact_write_requested"
+        }
+        crate::events::EffectEvent::WorkspaceArtifactWriteApplied { .. } => {
+            "workspace_artifact_write_applied"
+        }
+    }
+}
+
+pub fn semantic_state_snapshot_from_tlog(_workspace: &Path) -> String {
+    let tlog_path = Path::new(crate::constants::agent_state_dir()).join("tlog.ndjson");
+    let events = match crate::tlog::Tlog::read_events(&tlog_path) {
+        Ok(events) => events,
+        Err(err) => {
+            return format!(
+                "(semantic state unavailable: failed to read {}: {err})",
+                tlog_path.display()
+            )
+        }
+    };
+    if events.is_empty() {
+        return String::new();
+    }
+
+    let mut control_count = 0usize;
+    let mut effect_count = 0usize;
+    let mut recent_controls = Vec::new();
+    let mut recent_effects = Vec::new();
+    for event in events.iter().rev() {
+        match event {
+            crate::events::Event::Control { event } => {
+                control_count += 1;
+                if recent_controls.len() < 6 {
+                    recent_controls.push(control_event_kind_name(event));
+                }
+            }
+            crate::events::Event::Effect { event } => {
+                effect_count += 1;
+                if recent_effects.len() < 6 {
+                    recent_effects.push(effect_event_kind_name(event));
+                }
+            }
+        }
+    }
+
+    let lane_indices = infer_tlog_lane_indices(&events);
+    let lane_count = lane_indices.iter().max().map(|idx| idx + 1).unwrap_or(1);
+    let initial = crate::system_state::SystemState::new(&lane_indices, lane_count);
+    let replayed = crate::system_state::replay_event_log(initial, &events).ok();
+
+    let mut out = String::new();
+    out.push_str(&format!(
+        "events={} control={} effect={} source={}\n",
+        events.len(),
+        control_count,
+        effect_count,
+        tlog_path.display()
+    ));
+    out.push_str("Authority rule: prefer this replayed state over raw artifact caches when they disagree.\n");
+
+    if let Some(state) = replayed {
+        out.push_str(&format!(
+            "phase={} phase_lane={} scheduled_phase={} planner_pending={} diagnostics_pending={} submitted_turns={}\n",
+            if state.phase.trim().is_empty() { "(unset)" } else { state.phase.as_str() },
+            state.phase_lane.map(|lane| lane.to_string()).unwrap_or_else(|| "none".to_string()),
+            state.scheduled_phase.clone().unwrap_or_else(|| "none".to_string()),
+            state.planner_pending,
+            state.diagnostics_pending,
+            state.submitted_turn_ids.len()
+        ));
+
+        let mut lane_lines = Vec::new();
+        for lane_id in lane_indices.iter().take(4) {
+            if let Some(lane) = state.lanes.get(lane_id) {
+                let verifier = truncate_prompt_value(&lane.latest_verifier_result, 72);
+                lane_lines.push(format!(
+                    "lane[{lane_id}] pending={} in_progress_by={} verifier={} submit_in_flight={} prompt_in_flight={} steps_used={} active_tab={}",
+                    lane.pending,
+                    lane.in_progress_by.clone().unwrap_or_else(|| "none".to_string()),
+                    if verifier.is_empty() { "(none)".to_string() } else { verifier },
+                    state.lane_submit_in_flight.get(lane_id).copied().unwrap_or(false),
+                    state.lane_prompt_in_flight.get(lane_id).copied().unwrap_or(false),
+                    state.lane_steps_used.get(lane_id).copied().unwrap_or(0),
+                    state.lane_active_tab.get(lane_id).map(|id| id.to_string()).unwrap_or_else(|| "none".to_string())
+                ));
+            }
+        }
+        if !lane_lines.is_empty() {
+            out.push_str(&format!("{}\n", lane_lines.join("\n")));
+        }
+    }
+
+    if !recent_controls.is_empty() {
+        out.push_str(&format!(
+            "recent control events: {}\n",
+            recent_controls.join(" -> ")
+        ));
+    }
+    if !recent_effects.is_empty() {
+        out.push_str(&format!(
+            "recent effect events: {}\n",
+            recent_effects.join(" -> ")
+        ));
+    }
+
+    out.trim().to_string()
 }
 
 fn invariant_status_label(status: &crate::invariants::InvariantStatus) -> &'static str {

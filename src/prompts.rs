@@ -1273,7 +1273,7 @@ pub(crate) fn planner_cycle_prompt(
     let objectives_heading = format!("Objectives (from {OBJECTIVES_FILE})");
     let issues_heading = format!("Open issues (from {issues_file})");
     let lessons_heading = "Lessons artifact:".to_string();
-    let invariants_heading = format!("Invariants (from {INVARIANTS_FILE})");
+    let invariants_heading = "Runtime semantic state + invariants".to_string();
     let violations_heading = format!("Violations (from {VIOLATIONS_FILE})");
     let diagnostics_heading = format!("Diagnostics report (from {diagnostics_file})");
     let cargo_failures_heading =
@@ -1291,7 +1291,7 @@ pub(crate) fn planner_cycle_prompt(
             reserve: 1200,
             cap: 4000,
             weight: 5,
-            always_include: false,
+            always_include: true,
         },
         PromptItem {
             name: "cargo_test_failures",
@@ -1448,7 +1448,7 @@ pub(crate) fn single_role_verifier_prompt(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed."
     );
     let objectives_heading = format!("Objectives (from {OBJECTIVES_FILE})");
-    let invariants_heading = format!("Invariants (from {INVARIANTS_FILE})");
+    let invariants_heading = "Runtime semantic state + invariants".to_string();
     let executor_diff_heading =
         "Executor diff (workspace changes excluding plans/diagnostics/violations)".to_string();
     let cargo_failures_heading =
@@ -1464,7 +1464,7 @@ pub(crate) fn single_role_verifier_prompt(
             reserve: 800,
             cap: 3000,
             weight: 4,
-            always_include: false,
+            always_include: true,
         },
         PromptItem {
             name: "invariants",
@@ -1512,7 +1512,7 @@ pub(crate) fn single_role_diagnostics_prompt(
     );
     let violations_heading = format!("Violations (from {VIOLATIONS_FILE})");
     let objectives_heading = format!("Objectives (from {OBJECTIVES_FILE})");
-    let invariants_heading = "Invariant context (static + enforced)".to_string();
+    let invariants_heading = "Runtime semantic state + invariants".to_string();
     let cargo_failures_heading =
         "Latest cargo test failures (from cargo_test_failures.json)".to_string();
     let suffix = format!(
@@ -1526,7 +1526,7 @@ pub(crate) fn single_role_diagnostics_prompt(
             reserve: 1000,
             cap: 3000,
             weight: 4,
-            always_include: false,
+            always_include: true,
         },
         PromptItem {
             name: "objectives",
@@ -1627,7 +1627,7 @@ pub(crate) fn single_role_planner_prompt(
     let objectives_heading = format!("Objectives (from {OBJECTIVES_FILE})");
     let issues_heading = format!("Open issues (from {issues_file})");
     let lessons_heading = "Lessons artifact:".to_string();
-    let invariants_heading = format!("Invariants (from {INVARIANTS_FILE})");
+    let invariants_heading = "Runtime semantic state + invariants".to_string();
     let violations_heading = format!("Violations (from {VIOLATIONS_FILE})");
     let diagnostics_heading = format!("Diagnostics report (from {diagnostics_path})");
     let cargo_failures_heading =
@@ -1643,7 +1643,7 @@ pub(crate) fn single_role_planner_prompt(
             reserve: 800,
             cap: 3000,
             weight: 4,
-            always_include: false,
+            always_include: true,
         },
         PromptItem {
             name: "issues",
@@ -1756,7 +1756,7 @@ pub(crate) fn single_role_solo_prompt(
         "Repair loop context (supervisor-directed; focus on this target first)".to_string();
     let violations_heading = format!("Violations (from {VIOLATIONS_FILE})");
     let diagnostics_heading = "Diagnostics slice (current high-signal excerpt)".to_string();
-    let invariants_heading = format!("Invariants (from {INVARIANTS_FILE})");
+    let invariants_heading = "Runtime semantic state + invariants".to_string();
     let complexity_heading =
         "Complexity hotspots (supervisor-generated; use only when directly relevant)".to_string();
     let cargo_failures_heading =
@@ -1776,7 +1776,7 @@ pub(crate) fn single_role_solo_prompt(
             reserve: 1200,
             cap: 4000,
             weight: 5,
-            always_include: false,
+            always_include: true,
         },
         PromptItem {
             name: "executor_diff",
@@ -1984,7 +1984,7 @@ pub(crate) fn single_role_executor_prompt(
     );
     let violations_heading = format!("Violations (from {VIOLATIONS_FILE})");
     let diagnostics_heading = format!("Diagnostics (from {diagnostics_path})");
-    let invariants_heading = format!("Invariants (from {INVARIANTS_FILE})");
+    let invariants_heading = "Runtime semantic state + invariants".to_string();
     let suffix = "\n\nLane plans are deprecated. Use planner handoff messages and {MASTER_PLAN_FILE} for task selection.\n\nDo not modify spec, plan, violations, or diagnostics.\nDo not use internal tools.\nDo not hand off work; continue execution directly in the current role flow.\nUse `message.payload` to report evidence for verifier review. Emit exactly one action to begin. Think through the decision internally; reveal chain-of-thought.";
     let items = vec![
         PromptItem {
@@ -1994,7 +1994,7 @@ pub(crate) fn single_role_executor_prompt(
             reserve: 800,
             cap: 2500,
             weight: 4,
-            always_include: false,
+            always_include: true,
         },
         PromptItem {
             name: "diagnostics",
