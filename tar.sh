@@ -5,6 +5,7 @@ canon-mini-agent/tests \
 canon-mini-agent/INVARIANTS.json \
 canon-mini-agent/Cargo.toml \
 canon-mini-agent/PLAN.json \
+canon-mini-agent/frames \
 canon-mini-agent/src \
 canon-mini-agent/SPEC.md \
 canon-mini-agent/ISSUES.json \
