@@ -132,6 +132,15 @@ fn workspace_target_exists(workspace: &Path, raw: &str) -> Option<bool> {
     Some(path.exists())
 }
 
+fn has_issue_freshness_metadata(issue: &Issue) -> bool {
+    !issue.freshness_status.trim().is_empty()
+        || issue.last_validated_ms > 0
+        || !issue.stale_reason.trim().is_empty()
+        || !issue.validated_from.is_empty()
+        || !issue.evidence_receipts.is_empty()
+        || !issue.evidence_hashes.is_empty()
+}
+
 fn collect_stale_reasons(
     issue: &Issue,
     workspace: &Path,
@@ -139,6 +148,7 @@ fn collect_stale_reasons(
     now_ms: u64,
 ) -> Vec<String> {
     let mut reasons = Vec::new();
+    let has_freshness_metadata = has_issue_freshness_metadata(issue);
 
     if !issue.evidence_receipts.is_empty() {
         let mut missing = 0usize;
@@ -178,8 +188,10 @@ fn collect_stale_reasons(
         reasons.push("validated_from targets missing".to_string());
     }
 
-    if let Some(false) = workspace_target_exists(workspace, &issue.location) {
-        reasons.push("location target missing".to_string());
+    if has_freshness_metadata {
+        if let Some(false) = workspace_target_exists(workspace, &issue.location) {
+            reasons.push("location target missing".to_string());
+        }
     }
 
     reasons.sort();
@@ -244,14 +256,7 @@ pub fn sweep_stale_issues(workspace: &Path) -> Result<IssueSweepSummary> {
 }
 
 pub fn issue_is_fresh(issue: &Issue) -> bool {
-    let has_freshness_metadata = !issue.freshness_status.trim().is_empty()
-        || issue.last_validated_ms > 0
-        || !issue.stale_reason.trim().is_empty()
-        || !issue.validated_from.is_empty()
-        || !issue.evidence_receipts.is_empty()
-        || !issue.evidence_hashes.is_empty();
-
-    if !has_freshness_metadata {
+    if !has_issue_freshness_metadata(issue) {
         return true;
     }
 
@@ -553,5 +558,42 @@ mod tests {
         let rewritten = std::fs::read_to_string(&path).expect("read rewritten file");
         assert!(rewritten.contains("\"freshness_status\": \"stale\""));
         assert!(rewritten.contains("all evidence receipts missing"));
+    }
+
+    #[test]
+    fn sweep_stale_issues_keeps_plain_open_issue_without_validation_metadata() {
+        let root = std::env::temp_dir().join(format!(
+            "canon-mini-agent-issues-plain-open-test-{}",
+            crate::logging::now_ms()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp issues dir");
+        let path = root.join(crate::constants::ISSUES_FILE);
+        std::fs::write(
+            &path,
+            r#"{
+  "version": 1,
+  "issues": [
+    {
+      "id": "ISS-001",
+      "title": "plain open issue",
+      "status": "open",
+      "priority": "high",
+      "location": "missing.rs:10"
+    }
+  ]
+}"#,
+        )
+        .expect("write issues file");
+
+        let summary = sweep_stale_issues(&root).expect("sweep should succeed");
+        assert_eq!(summary.marked_stale, 0);
+        assert!(!summary.rewrote);
+
+        let rendered = read_open_issues(&root);
+        assert!(rendered.contains("\"ISS-001\""));
+
+        let top = read_top_open_issues(&root, 5);
+        assert!(top.contains("Top open issues"));
+        assert!(top.contains("ISS-001"));
     }
 }
