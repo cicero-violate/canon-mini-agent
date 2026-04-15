@@ -96,6 +96,26 @@ pub fn plan_set_plan_status_action_example(status: &str, rationale: &str) -> Str
     }))
 }
 
+pub fn plan_update_bundle_action_example(rationale: &str) -> String {
+    compact_example_json(json!({
+        "action": "plan",
+        "op": "update",
+        "updates": {
+            "status": "in_progress",
+            "ready_window": ["T_restore_missing_diagnostics_artifacts"],
+            "tasks": [
+                {
+                    "id": "T_restore_missing_diagnostics_artifacts",
+                    "title": "Restore diagnostics input artifacts",
+                    "status": "ready",
+                    "priority": 1
+                }
+            ]
+        },
+        "rationale": rationale
+    }))
+}
+
 pub fn plan_sorted_view_action_example(rationale: &str) -> String {
     compact_example_json(json!({
         "action": "plan",
@@ -108,7 +128,7 @@ pub fn plan_action_examples_block() -> &'static str {
     static TEXT: OnceLock<String> = OnceLock::new();
     TEXT.get_or_init(|| {
         format!(
-            "Examples:\n  {}\n  {}\n  {}",
+            "Examples:\n  {}\n  {}\n  {}\n  {}",
             plan_set_task_status_action_example(
                 "T1",
                 "in_progress",
@@ -117,6 +137,9 @@ pub fn plan_action_examples_block() -> &'static str {
             plan_set_plan_status_action_example(
                 "in_progress",
                 "Update top-level PLAN.json status."
+            ),
+            plan_update_bundle_action_example(
+                "Apply a bundled PLAN.json update when ready_window, tasks, or status must change together."
             ),
             plan_sorted_view_action_example("View the current plan in DAG order (read-only).")
         )
@@ -172,6 +195,7 @@ pub enum PlanOp {
     SetPlanStatus,
     SetTaskStatus,
     ReplacePlan,
+    Update,
     SortedView,
 }
 

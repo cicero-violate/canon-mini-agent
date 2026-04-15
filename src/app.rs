@@ -921,27 +921,21 @@ async fn run_diagnostics_phase(
                 ctx.workspace,
                 &raw_violations_text,
             );
-            if reconciled_diagnostics_text != raw_diagnostics_text {
-                if let Err(err) = std::fs::write(ctx.diagnostics_path, &reconciled_diagnostics_text)
-                {
-                    log_error_event(
-                        "diagnostics",
-                        "orchestrate",
-                        None,
-                        &format!("failed to persist reconciled diagnostics: {err:#}"),
-                        Some(json!({ "stage": "diagnostics_reconcile_write" })),
-                    );
-                    return false;
-                }
-            }
-            let new_diagnostics_text = reconciled_diagnostics_text;
+            let diagnostics_reconciliation_needed =
+                reconciled_diagnostics_text != raw_diagnostics_text;
+            let new_diagnostics_text = raw_diagnostics_text;
             let diagnostics_changed = writer.state().diagnostics_text != new_diagnostics_text;
             writer.apply(ControlEvent::DiagnosticsTextSet {
                 text: new_diagnostics_text,
             });
-            writer.apply(ControlEvent::DiagnosticsPendingSet { pending: false });
+            if diagnostics_reconciliation_needed {
+                writer.apply(ControlEvent::DiagnosticsReconciliationQueued);
+            } else {
+                writer.apply(ControlEvent::DiagnosticsPendingSet { pending: false });
+            }
             writer.apply(ControlEvent::PlannerPendingSet {
-                pending: decide_post_diagnostics(diagnostics_changed, verifier_changed),
+                pending: verifier_changed
+                    || (diagnostics_changed && !diagnostics_reconciliation_needed),
             });
             crate::lessons::maybe_synthesize_lessons(ctx.workspace);
             crate::lessons::apply_promoted_lessons(ctx.workspace);

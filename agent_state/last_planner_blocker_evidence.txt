@@ -1,1 +1,1 @@
-invariant gate blocked role `route`: Role `diagnostics` repeatedly encounters `blocker_escalated`: LLM role explicitly declared itself blocked and cannot proceed [id=INV-05518346]
+plan actions derived from diagnostics must cite same-cycle source evidence in observation/rationale (for example read_file, run_command, python, or verified current source evidence)

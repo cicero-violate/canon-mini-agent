@@ -2514,6 +2514,24 @@ pub(crate) fn normalize_action(action: &mut Value) -> Result<()> {
                 obj.insert(field.to_string(), Value::String(val.to_lowercase()));
             }
         }
+        for field in ["severity"] {
+            if let Some(val) = obj
+                .get_mut(field)
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+            {
+                obj.insert(field.to_string(), Value::String(val.to_lowercase()));
+            }
+        }
+        if let Some(payload) = obj.get_mut("payload").and_then(|v| v.as_object_mut()) {
+            if let Some(val) = payload
+                .get_mut("severity")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+            {
+                payload.insert("severity".to_string(), Value::String(val.to_lowercase()));
+            }
+        }
         validate_message_action(action, MessageValidationMode::Basic)?;
     }
     Ok(())

@@ -37,8 +37,11 @@ pub enum MessageStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Severity {
-    InfoRenamed,
+    #[serde(rename = "info", alias = "info_renamed", alias = "low")]
+    Info,
+    #[serde(alias = "medium")]
     Warn,
+    #[serde(alias = "high")]
     Error,
     Critical,
 }

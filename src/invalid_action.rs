@@ -300,7 +300,33 @@ fn example_action_with_string_fields(
     Value::Object(map)
 }
 
-fn example_plan_action() -> Value {
+fn example_plan_action(raw_action: Option<&Value>) -> Value {
+    let op = raw_action
+        .and_then(|action| action.get("op"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("create_task");
+    if op == "update" {
+        return json!({
+            "action": "plan",
+            "op": "update",
+            "question": "Should the planner apply a bundled PLAN.json update instead of a single-op mutation?",
+            "updates": {
+                "status": "in_progress",
+                "ready_window": ["T_restore_missing_diagnostics_artifacts"],
+                "tasks": [
+                    {
+                        "id": "T_restore_missing_diagnostics_artifacts",
+                        "title": "Restore diagnostics input artifacts",
+                        "status": "ready",
+                        "priority": 1
+                    }
+                ]
+            },
+            "observation": "A coordinated plan update is needed.",
+            "rationale": "Use the plan update bundle when status, ready_window, and tasks must move together.",
+            "predicted_next_actions": example_predicted_next_actions()
+        });
+    }
     json!({
         "action": "plan",
         "op": "create_task",
@@ -602,7 +628,7 @@ fn example_action_for(kind: &str, role: &str, raw_action: Option<&Value>) -> Val
             "Run the targeted test.",
             "Verify the change.",
         ),
-        "plan" => example_plan_action(),
+        "plan" => example_plan_action(raw_action),
         "message" => {
             let (from, to_role, msg_type, status) =
                 normalized_message_example_route(raw_action, role);
