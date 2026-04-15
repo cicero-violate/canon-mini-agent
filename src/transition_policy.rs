@@ -138,8 +138,8 @@ pub fn validate_transition(state: &SystemState, event: &ControlEvent) -> Result<
         | ControlEvent::PlannerObjectiveReviewQueued
         | ControlEvent::PlannerObjectivePlanGapQueued
         | ControlEvent::DiagnosticsPendingSet { .. }
+        | ControlEvent::VerifierBlockerSet { .. }
         | ControlEvent::DiagnosticsVerifierFollowupQueued
-        | ControlEvent::DiagnosticsReconciliationQueued
         | ControlEvent::DiagnosticsTextSet { .. }
         | ControlEvent::LastPlanTextSet { .. }
         | ControlEvent::LastExecutorDiffSet { .. }

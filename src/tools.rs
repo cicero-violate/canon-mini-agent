@@ -19,6 +19,7 @@ use crate::constants::{
     diagnostics_file, is_self_modification_mode, ISSUES_FILE, MASTER_PLAN_FILE,
     MAX_FULL_READ_LINES, MAX_SNIPPET, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
 };
+use crate::events::ControlEvent;
 use crate::issues::{is_closed, Issue, IssuesFile};
 use crate::logging::{
     append_orchestration_trace, log_action_event, log_action_result, log_error_event, now_ms,
@@ -2072,6 +2073,7 @@ fn handle_message_action(
         summary,
         &payload,
         agent_state_dir,
+        writer.as_deref_mut(),
     );
     persist_inbound_message(role, step, action, &full_message);
 
@@ -2137,12 +2139,16 @@ fn sync_verifier_blocker_state(
     summary: &str,
     payload: &Value,
     agent_state_dir: &Path,
+    mut writer: Option<&mut CanonicalWriter>,
 ) {
     if !to_role.eq_ignore_ascii_case("verifier") {
         return;
     }
     let active_path = agent_state_dir.join("active_blocker_to_verifier.json");
     if msg_type == "blocker" && status == "blocked" {
+        if let Some(writer) = writer.as_deref_mut() {
+            writer.apply(ControlEvent::VerifierBlockerSet { active: true });
+        }
         let blocker_state = json!({
             "from": role,
             "summary": summary,
@@ -2154,7 +2160,12 @@ fn sync_verifier_blocker_state(
             &active_path,
             serde_json::to_string_pretty(&blocker_state).unwrap_or_default(),
         );
-    } else if active_path.exists() {
+    } else {
+        if let Some(writer) = writer.as_deref_mut() {
+            writer.apply(ControlEvent::VerifierBlockerSet { active: false });
+        }
+    }
+    if active_path.exists() && !(msg_type == "blocker" && status == "blocked") {
         let _ = std::fs::remove_file(active_path);
     }
 }
@@ -3219,10 +3230,7 @@ fn reject_unvalidated_diagnostics_persistence(
     }
     let diagnostics_path = workspace.join(diagnostics_target_path.unwrap_or(diagnostics_file()));
     let new_diagnostics_text = fs::read_to_string(&diagnostics_path).unwrap_or_default();
-    let raw_violations_text =
-        fs::read_to_string(workspace.join(VIOLATIONS_FILE)).unwrap_or_default();
-    let derived =
-        crate::prompt_inputs::reconcile_diagnostics_report(workspace, &raw_violations_text);
+    let derived = crate::prompt_inputs::reconcile_diagnostics_report(workspace);
     if new_diagnostics_text == derived {
         return Ok(None);
     }
@@ -3230,8 +3238,8 @@ fn reject_unvalidated_diagnostics_persistence(
         std::fs::write(&diagnostics_path, previous)?;
     }
     let rejection_msg = format!(
-        "apply_patch rejected: DIAGNOSTICS.json is a derived cache view and must match the rendered diagnostics report from ISSUES.json plus VIOLATIONS.json.\n\
-         Fix: update the underlying issues/violations state instead of editing diagnostics output directly."
+        "apply_patch rejected: DIAGNOSTICS.json is a derived cache view and must match the rendered diagnostics projection from the current workspace issue/violation views.\n\
+         Fix: update the underlying issue/violation state instead of editing diagnostics output directly."
     );
     log_error_event(
         role,

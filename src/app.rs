@@ -21,7 +21,7 @@ use tokio::sync::Notify;
 
 use crate::canonical_writer::CanonicalWriter;
 use crate::constants::{
-    set_agent_state_dir, set_workspace, workspace, DEFAULT_AGENT_STATE_DIR,
+    diagnostics_file, set_agent_state_dir, set_workspace, workspace, DEFAULT_AGENT_STATE_DIR,
     DEFAULT_LLM_RETRY_COUNT, DEFAULT_LLM_RETRY_DELAY_SECS, DEFAULT_RESPONSE_TIMEOUT_SECS,
     DIAGNOSTICS_FILE_PATH, ENDPOINT_SPECS, EXECUTOR_STEP_LIMIT, ISSUES_FILE,
     MASTER_PLAN_FILE, MAX_SNIPPET, MAX_STEPS, OBJECTIVES_FILE, ROLE_TIMEOUT_SECS, SPEC_FILE,
@@ -53,12 +53,11 @@ use crate::prompts::{
     verifier_cycle_prompt, AgentPromptKind,
 };
 use crate::state_space::{
-    allow_diagnostics_run, allow_verifier_run, block_executor_dispatch, check_completion_endpoint,
-    check_completion_tab, decide_active_blocker, decide_bootstrap_phase, decide_phase_gates,
-    decide_resume_phase, decide_wake_flags, executor_step_limit_exceeded,
-    executor_submit_timed_out, is_verifier_specific_blocker, scheduled_phase_resume_done,
-    should_force_blocker, verifier_blocker_phase_override, CargoTestGate, CompletionEndpointCheck,
-    CompletionTabCheck, WakeFlagInput,
+    check_completion_endpoint, check_completion_tab, decide_bootstrap_phase,
+    decide_post_diagnostics, decide_resume_phase, executor_step_limit_exceeded,
+    executor_submit_timed_out, is_verifier_specific_blocker, should_force_blocker,
+    verifier_blocker_phase_override, CargoTestGate, CompletionEndpointCheck,
+    CompletionTabCheck, SemanticControlState, WakeFlagInput,
 };
 use crate::system_state::SystemState;
 use crate::tlog::Tlog;
@@ -456,32 +455,36 @@ fn file_modified_ms(path: &Path) -> Option<u128> {
         .map(|duration| duration.as_millis())
 }
 
-/// Hash the contents of a set of files to detect net state changes across a cycle.
-/// Missing files contribute a fixed sentinel so a file appearing or disappearing
-/// also changes the hash.
-fn cycle_state_hash(paths: &[&Path]) -> u64 {
+#[derive(Serialize)]
+struct ControlConvergenceSnapshot<'a> {
+    state: &'a SystemState,
+    active_blocker: bool,
+    verifier_pending: bool,
+    verifier_running: bool,
+}
+
+/// Hash the semantic control snapshot that actually governs routing.
+fn cycle_control_hash(snapshot: &ControlConvergenceSnapshot<'_>) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
+
     let mut hasher = DefaultHasher::new();
-    for path in paths {
-        match std::fs::read(path) {
-            Ok(bytes) => bytes.hash(&mut hasher),
-            Err(_) => u8::MAX.hash(&mut hasher),
-        }
-    }
+    serde_json::to_vec(snapshot)
+        .unwrap_or_default()
+        .hash(&mut hasher);
     hasher.finish()
 }
 
 fn write_livelock_report(
     agent_state_dir: &Path,
     stall_cycles: u32,
-    watched_paths: &[&Path],
+    control_surfaces: &[&str],
     planner_pending: bool,
     diagnostics_pending: bool,
 ) {
     let report = build_livelock_report(
         stall_cycles,
-        watched_paths,
+        control_surfaces,
         planner_pending,
         diagnostics_pending,
     );
@@ -523,21 +526,21 @@ fn write_livelock_report(
 
 fn build_livelock_report(
     stall_cycles: u32,
-    watched_paths: &[&Path],
+    control_surfaces: &[&str],
     planner_pending: bool,
     diagnostics_pending: bool,
 ) -> Value {
     json!({
         "timestamp_ms": now_ms(),
         "stall_cycles": stall_cycles,
-        "watched_files": watched_paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
+        "watched_control_surfaces": control_surfaces,
         "pending_at_detection": {
             "planner_pending": planner_pending,
             "diagnostics_pending": diagnostics_pending,
         },
         "message": format!(
             "Orchestrator detected {} consecutive cycles where work was dispatched but \
-             no watched file changed. Pending flags cleared. Write a wakeup_*.flag or \
+             no semantic control state changed. Pending flags cleared. Write a wakeup_*.flag or \
              restart to resume.",
             stall_cycles
         ),
@@ -602,14 +605,11 @@ async fn run_planner_phase(
         &writer.state().last_plan_text.clone(),
         &mut last_executor_diff,
         cargo_test_failures.to_string(),
-        ctx.violations_path,
-        ctx.diagnostics_path,
         ctx.master_plan_path,
     );
     writer.apply(ControlEvent::LastExecutorDiffSet {
         text: last_executor_diff,
     });
-    let issues_text = crate::issues::read_top_open_issues(ctx.workspace, 10);
     let restart_resume = peek_post_restart_result("planner");
     let mut planner_prompt = if let Some(resume) = restart_resume.as_ref() {
         let prompt = build_restart_resume_prompt("planner", resume);
@@ -620,10 +620,7 @@ async fn run_planner_phase(
             &inputs.summary_text,
             &inputs.objectives_text,
             &inputs.lessons_text,
-            &inputs.invariants_text,
-            &inputs.violations_text,
-            &inputs.diagnostics_text,
-            &issues_text,
+            &inputs.semantic_control_text,
             &inputs.plan_diff_text,
             &inputs.executor_diff_text,
             &inputs.cargo_test_failures,
@@ -744,12 +741,7 @@ async fn run_solo_phase(
     } else {
         crate::objectives::read_objectives_compact(&ctx.workspace.join(OBJECTIVES_FILE))
     };
-    let invariants = crate::prompt_inputs::read_combined_invariants_context(ctx.workspace);
-    let raw_violations_text = read_text_or_empty(ctx.violations_path);
-    let semantic_artifacts =
-        crate::prompt_inputs::derive_semantic_prompt_artifacts(ctx.workspace, &raw_violations_text, 5);
-    let violations = semantic_artifacts.violations_summary;
-    let diagnostics = semantic_artifacts.diagnostics_summary;
+    let semantic_control = crate::prompt_inputs::read_semantic_control_prompt_context(ctx.workspace, 5);
     let objectives_mtime_before = file_modified_ms(&agent_objectives)
         .or_else(|| file_modified_ms(&ctx.workspace.join(OBJECTIVES_FILE)));
     let plan_mtime_before = file_modified_ms(&ctx.workspace.join(MASTER_PLAN_FILE));
@@ -769,7 +761,6 @@ async fn run_solo_phase(
     writer.apply(ControlEvent::LastSoloPlanTextSet {
         text: current_plan_text,
     });
-    let issues_text = semantic_artifacts.issues_summary;
     let complexity_hotspots = crate::prompt_inputs::read_complexity_hotspots(ctx.workspace, 8);
     let loop_context_hint = crate::prompt_inputs::read_loop_context_hint(std::path::Path::new(
         crate::constants::agent_state_dir(),
@@ -785,12 +776,9 @@ async fn run_solo_phase(
             &master_plan,
             &objectives,
             &crate::prompt_inputs::read_lessons_or_empty(ctx.workspace),
-            &invariants,
-            &violations,
-            &diagnostics,
+            &semantic_control,
             cargo_test_failures,
             &crate::prompt_inputs::read_rename_candidates_or_empty(ctx.workspace),
-            &issues_text,
             &executor_diff_inputs.diff_text,
             &plan_diff_text,
             &complexity_hotspots,
@@ -988,27 +976,15 @@ async fn run_diagnostics_phase(
     match result {
         Ok(result) => {
             eprintln!("[orchestrate] diagnostics ok bytes={}", result.len());
-            let raw_diagnostics_text = read_text_or_empty(ctx.diagnostics_path);
-            let raw_violations_text = read_text_or_empty(ctx.violations_path);
-            let reconciled_diagnostics_text = crate::prompt_inputs::reconcile_diagnostics_report(
-                ctx.workspace,
-                &raw_violations_text,
-            );
-            let diagnostics_reconciliation_needed =
-                reconciled_diagnostics_text != raw_diagnostics_text;
-            let new_diagnostics_text = raw_diagnostics_text;
-            let diagnostics_changed = writer.state().diagnostics_text != new_diagnostics_text;
+            let new_diagnostics_text = crate::prompt_inputs::reconcile_diagnostics_report(ctx.workspace);
+            let diagnostics_projection_path = ctx.workspace.join(diagnostics_file());
+            let _ = std::fs::write(&diagnostics_projection_path, &new_diagnostics_text);
             writer.apply(ControlEvent::DiagnosticsTextSet {
                 text: new_diagnostics_text,
             });
-            if diagnostics_reconciliation_needed {
-                writer.apply(ControlEvent::DiagnosticsReconciliationQueued);
-            } else {
-                writer.apply(ControlEvent::DiagnosticsPendingSet { pending: false });
-            }
+            writer.apply(ControlEvent::DiagnosticsPendingSet { pending: false });
             writer.apply(ControlEvent::PlannerPendingSet {
-                pending: verifier_changed
-                    || (diagnostics_changed && !diagnostics_reconciliation_needed),
+                pending: decide_post_diagnostics(true, verifier_changed),
             });
             crate::lessons::maybe_synthesize_lessons(ctx.workspace);
             crate::lessons::apply_promoted_lessons(ctx.workspace);
@@ -1040,7 +1016,8 @@ async fn run_verifier_phase(
     let mut cycle_progress = false;
     let mut verifier_changed = false;
     while let Some((submitted, turn_id, final_exec_result)) = verifier_pending_results.pop_front() {
-        if !allow_verifier_run(writer.state().scheduled_phase.as_deref()) {
+        let semantic_control = SemanticControlState::from_system_state(writer.state(), true, false);
+        if !semantic_control.verifier_run_allowed() {
             verifier_pending_results.push_front((submitted, turn_id, final_exec_result));
             break;
         }
@@ -1574,7 +1551,8 @@ fn dispatch_executor_submits(
     now: u64,
     submit_joinset: &mut tokio::task::JoinSet<(usize, PendingExecutorSubmit, Result<String>)>,
 ) {
-    if block_executor_dispatch(writer.state().scheduled_phase.as_deref()) {
+    let semantic_control = SemanticControlState::from_system_state(writer.state(), false, false);
+    if semantic_control.executor_dispatch_blocked() {
         return;
     }
 
@@ -3101,13 +3079,10 @@ fn is_reaction_only_response(raw: &str) -> bool {
 }
 
 fn apply_wake_flags(agent_state_dir: &std::path::Path, writer: &mut CanonicalWriter) {
-    let active_blocker = agent_state_dir
-        .join("active_blocker_to_verifier.json")
-        .exists();
-
     let (inputs, path_map) = collect_wake_flag_inputs(agent_state_dir);
 
-    let decision = decide_wake_flags(active_blocker, &inputs);
+    let semantic_control = SemanticControlState::from_system_state(writer.state(), false, false);
+    let decision = semantic_control.wake_decision(&inputs);
     let Some(role) = decision.scheduled_phase.as_deref() else {
         return;
     };
@@ -5041,7 +5016,6 @@ pub async fn run() -> Result<()> {
     let workspace = PathBuf::from(workspace());
     let spec_path = workspace.join(SPEC_FILE);
     let master_plan_path = workspace.join(MASTER_PLAN_FILE);
-    let violations_path = workspace.join(VIOLATIONS_FILE);
     let instance_id = instance_arg(&args).map(str::to_string);
     let path_prefix = instance_id.clone().unwrap_or_else(|| "default".to_string());
     init_log_paths(&path_prefix);
@@ -5112,12 +5086,7 @@ pub async fn run() -> Result<()> {
     let plans_dir = workspace.join("PLANS").join(&path_prefix);
     let _ = std::fs::create_dir_all(&plans_dir);
     if !diagnostics_path.exists() {
-        let legacy_path = workspace.join("DIAGNOSTICS.json");
-        if let Ok(contents) = std::fs::read_to_string(&legacy_path) {
-            let _ = std::fs::write(&diagnostics_path, contents);
-        } else {
-            let _ = std::fs::write(&diagnostics_path, "");
-        }
+        let _ = std::fs::write(&diagnostics_path, "");
     }
     let _ = ensure_workspace_artifact_baseline(&workspace, &diagnostics_path);
     for lane in &lanes {
@@ -5340,18 +5309,12 @@ pub async fn run() -> Result<()> {
             let mut cycle_progress = false;
             let objectives_mtime_before = file_modified_ms(&workspace.join(OBJECTIVES_FILE));
             let plan_mtime_before = file_modified_ms(&master_plan_path);
-            let diagnostics_mtime_before = file_modified_ms(&diagnostics_path);
-
-            let objectives_path = workspace.join(OBJECTIVES_FILE);
-            let issues_path = workspace.join(ISSUES_FILE);
-            let convergence_watched: [&Path; 5] = [
-                master_plan_path.as_path(),
-                violations_path.as_path(),
-                diagnostics_path.as_path(),
-                objectives_path.as_path(),
-                issues_path.as_path(),
+            let control_surfaces = [
+                "system_state",
+                "active_blocker",
+                "verifier_pending_results",
+                "verifier_joinset",
             ];
-            let state_hash_before = cycle_state_hash(&convergence_watched);
             if shutdown.flag.load(Ordering::SeqCst) {
                 eprintln!("[orchestrate] shutdown requested; saving checkpoint");
                 if let Err(err) =
@@ -5393,15 +5356,13 @@ pub async fn run() -> Result<()> {
                 }
             }
 
-            let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
-            let active_blocker = agent_state_dir
-                .join("active_blocker_to_verifier.json")
-                .exists();
-            let blocker_decision = decide_active_blocker(
-                active_blocker,
-                writer.state().planner_pending,
-                writer.state().scheduled_phase.as_deref(),
+            let active_blocker = writer.state().active_blocker_to_verifier;
+            let semantic_control = SemanticControlState::from_system_state(
+                writer.state(),
+                !verifier_pending_results.is_empty(),
+                !verifier_joinset.is_empty(),
             );
+            let blocker_decision = semantic_control.active_blocker_decision();
             let planner_suppression_changes_state = blocker_decision.planner_pending
                 != writer.state().planner_pending
                 || blocker_decision.scheduled_phase.as_deref()
@@ -5417,7 +5378,7 @@ pub async fn run() -> Result<()> {
                     Some(&mut writer),
                     "orchestrate",
                     "runtime_control_bypass",
-                    "runtime-only control influence: active_blocker_to_verifier.json suppressed planner dispatch",
+                    "runtime-only control influence: semantic verifier-blocker state suppressed planner dispatch",
                     None,
                 );
             }
@@ -5428,13 +5389,19 @@ pub async fn run() -> Result<()> {
                 phase: blocker_decision.scheduled_phase,
             });
 
-            let phase_gates = decide_phase_gates(
-                writer.state().planner_pending,
-                writer.state().diagnostics_pending,
+            let state_hash_before = cycle_control_hash(&ControlConvergenceSnapshot {
+                state: writer.state(),
+                active_blocker,
+                verifier_pending: !verifier_pending_results.is_empty(),
+                verifier_running: !verifier_joinset.is_empty(),
+            });
+
+            let semantic_control = SemanticControlState::from_system_state(
+                writer.state(),
                 !verifier_pending_results.is_empty(),
                 !verifier_joinset.is_empty(),
-                writer.state().scheduled_phase.as_deref(),
             );
+            let phase_gates = semantic_control.phase_gates();
 
             let orchestrator_ctx = OrchestratorContext {
                 lanes: &lanes,
@@ -5449,21 +5416,8 @@ pub async fn run() -> Result<()> {
                 diagnostics_ep: &diagnostics_ep,
                 verifier_ep: &verifier_ep,
                 master_plan_path: &master_plan_path,
-                violations_path: &violations_path,
-                diagnostics_path: &diagnostics_path,
             };
             let cargo_test_failures = load_cargo_test_failures(&workspace);
-            let raw_diagnostics_text = read_text_or_empty(&diagnostics_path);
-            let raw_violations_text = read_text_or_empty(&violations_path);
-            let reconciled_diagnostics_text = crate::prompt_inputs::reconcile_diagnostics_report(
-                workspace.as_path(),
-                &raw_violations_text,
-            );
-            let diagnostics_reconciliation_needed =
-                reconciled_diagnostics_text != raw_diagnostics_text;
-            if diagnostics_reconciliation_needed {
-                writer.apply(ControlEvent::DiagnosticsReconciliationQueued);
-            }
 
             if phase_gates.planner {
                 writer.apply(ControlEvent::PhaseSet {
@@ -5565,27 +5519,15 @@ pub async fn run() -> Result<()> {
                 }
             }
 
-            let raw_diagnostics_text = read_text_or_empty(&diagnostics_path);
-            let raw_violations_text = read_text_or_empty(&violations_path);
-            let reconciled_diagnostics_text = crate::prompt_inputs::reconcile_diagnostics_report(
-                workspace.as_path(),
-                &raw_violations_text,
-            );
-            let stale_diagnostics_pending = reconciled_diagnostics_text != raw_diagnostics_text;
-
             if verifier_changed {
                 writer.apply(ControlEvent::DiagnosticsVerifierFollowupQueued);
             }
-            if stale_diagnostics_pending {
-                writer.apply(ControlEvent::DiagnosticsReconciliationQueued);
-            }
-
-            if writer.state().diagnostics_pending
-                && allow_diagnostics_run(
-                    writer.state().scheduled_phase.as_deref(),
-                    !verifier_joinset.is_empty(),
-                )
-            {
+            let semantic_control = SemanticControlState::from_system_state(
+                writer.state(),
+                !verifier_pending_results.is_empty(),
+                !verifier_joinset.is_empty(),
+            );
+            if semantic_control.diagnostics_pending && semantic_control.diagnostics_allowed() {
                 writer.apply(ControlEvent::PhaseSet {
                     phase: "diagnostics".to_string(),
                     lane: None,
@@ -5603,25 +5545,19 @@ pub async fn run() -> Result<()> {
                 }
             }
 
-            if writer.state().scheduled_phase.as_deref() == Some("diagnostics")
-                && !writer.state().diagnostics_pending
-            {
-                writer.apply(ControlEvent::ScheduledPhaseSet { phase: None });
-            }
-
-            if let Some(phase) = writer.state().scheduled_phase.clone() {
+            if writer.state().scheduled_phase.is_some() {
                 let (executor_lane_pending, executor_in_progress) = writer
                     .state()
                     .phase_lane
                     .and_then(|lane_id| writer.state().lanes.get(&lane_id))
                     .map(|lane| (lane.pending, lane.in_progress_by.is_some()))
                     .unwrap_or((false, false));
-                if scheduled_phase_resume_done(
-                    &phase,
-                    writer.state().planner_pending,
-                    writer.state().diagnostics_pending,
-                    verifier_pending_results.len(),
-                    verifier_joinset.is_empty(),
+                let semantic_control = SemanticControlState::from_system_state(
+                    writer.state(),
+                    !verifier_pending_results.is_empty(),
+                    !verifier_joinset.is_empty(),
+                );
+                if semantic_control.scheduled_phase_done(
                     executor_lane_pending,
                     executor_in_progress,
                 ) {
@@ -5631,32 +5567,24 @@ pub async fn run() -> Result<()> {
 
             let objectives_mtime_after = file_modified_ms(&workspace.join(OBJECTIVES_FILE));
             let plan_mtime_after = file_modified_ms(&master_plan_path);
-            let diagnostics_mtime_after = file_modified_ms(&diagnostics_path);
-            let objective_review_required = plan_mtime_before != plan_mtime_after
-                || diagnostics_mtime_before != diagnostics_mtime_after;
+            let objective_review_required = plan_mtime_before != plan_mtime_after;
             let objectives_updated = objectives_mtime_before != objectives_mtime_after;
             let objectives_text = read_text_or_empty(&workspace.join(OBJECTIVES_FILE));
             let plan_text = read_text_or_empty(&master_plan_path);
-            let diagnostics_text = read_text_or_empty(&diagnostics_path);
             let plan_content_changed = plan_text != writer.state().last_plan_text;
-            let diagnostics_content_changed = diagnostics_text != writer.state().diagnostics_text;
-            if objective_review_required
-                && !objectives_updated
-                && (plan_content_changed || diagnostics_content_changed)
-            {
+            if objective_review_required && !objectives_updated && plan_content_changed {
                 append_orchestration_trace(
                     "objective_evolution_enforcement_signal",
                     json!({
                         "required_action": "objective_review_or_update_required",
-                        "reason": "plan_or_diagnostics_changed_without_objective_update",
+                        "reason": "plan_changed_without_objective_update",
                         "plan_changed": plan_content_changed,
-                        "diagnostics_changed": diagnostics_content_changed,
                         "objectives_updated": objectives_updated,
                         "objectives_path": OBJECTIVES_FILE,
                         "plan_path": MASTER_PLAN_FILE,
                     }),
                 );
-                /* replace this branch with the narrowed canonical-content/state guard */
+                /* trace-only: semantic control state owns planner follow-up */
             }
 
             let has_objective_work = has_actionable_objectives(&objectives_text);
@@ -5675,18 +5603,25 @@ pub async fn run() -> Result<()> {
                 cycle_progress = true;
             }
 
-            // Convergence guard: detect cycles where work was dispatched but no watched
-            // file changed. Consecutive stalls indicate a livelock.
+            // Convergence guard: detect cycles where work was dispatched but the
+            // semantic control snapshot did not change. Consecutive stalls indicate
+            // a livelock.
             //
             // Skip the stall increment when executor turns are still in flight: the
             // browser tab has accepted a submission (submitted_turns) or a submit is
             // being negotiated (executor_submit_inflight / lane_submit_in_flight).
-            // In those cases the files will change once the result arrives; counting
-            // the cycle as a stall would be a false positive.
+            // In those cases the semantic control state may remain stable until the
+            // result arrives; counting the cycle as a stall would be a false positive.
             let executor_inflight = !rt.submitted_turns.is_empty()
                 || !rt.executor_submit_inflight.is_empty()
                 || writer.state().lane_submit_in_flight.values().any(|&v| v);
-            let state_hash_after = cycle_state_hash(&convergence_watched);
+            let active_blocker_after = writer.state().active_blocker_to_verifier;
+            let state_hash_after = cycle_control_hash(&ControlConvergenceSnapshot {
+                state: writer.state(),
+                active_blocker: active_blocker_after,
+                verifier_pending: !verifier_pending_results.is_empty(),
+                verifier_running: !verifier_joinset.is_empty(),
+            });
             if cycle_progress && state_hash_before == state_hash_after && !executor_inflight {
                 stall_count += 1;
                 eprintln!(
@@ -5698,7 +5633,7 @@ pub async fn run() -> Result<()> {
                     write_livelock_report(
                         agent_state_dir,
                         stall_count,
-                        &convergence_watched,
+                        &control_surfaces,
                         writer.state().planner_pending,
                         writer.state().diagnostics_pending,
                     );
@@ -5723,8 +5658,6 @@ pub async fn run() -> Result<()> {
             workspace: &workspace,
             spec_path: &spec_path,
             master_plan_path: &master_plan_path,
-            violations_path: &violations_path,
-            diagnostics_path: &diagnostics_path,
         };
         let (inputs, endpoint) = load_single_role_setup(
             &single_role_ctx,

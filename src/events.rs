@@ -23,8 +23,10 @@ pub enum ControlEvent {
     DiagnosticsPendingSet {
         pending: bool,
     },
+    VerifierBlockerSet {
+        active: bool,
+    },
     DiagnosticsVerifierFollowupQueued,
-    DiagnosticsReconciliationQueued,
     DiagnosticsTextSet {
         text: String,
     },

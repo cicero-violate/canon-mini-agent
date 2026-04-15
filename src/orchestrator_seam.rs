@@ -1,6 +1,5 @@
 use crate::canonical_writer::CanonicalWriter;
 use crate::events::ControlEvent;
-use crate::prompt_inputs::reconcile_diagnostics_report;
 use crate::system_state::SystemState;
 use crate::tlog::Tlog;
 use anyhow::Result;
@@ -66,21 +65,6 @@ fn has_actionable_objectives(objectives_text: &str) -> bool {
         .any(|objective| !crate::objectives::is_completed(objective))
 }
 
-pub fn probe_diagnostics_reconciliation(
-    workspace: &Path,
-    diagnostics_path: &Path,
-    violations_path: &Path,
-) -> Result<OrchestratorProbeResult> {
-    let (mut writer, tlog_path, initial) = new_probe_writer(workspace);
-    let raw_diagnostics_text = std::fs::read_to_string(diagnostics_path).unwrap_or_default();
-    let raw_violations_text = std::fs::read_to_string(violations_path).unwrap_or_default();
-    let reconciled_diagnostics_text = reconcile_diagnostics_report(workspace, &raw_violations_text);
-    if reconciled_diagnostics_text != raw_diagnostics_text {
-        writer.try_apply(ControlEvent::DiagnosticsReconciliationQueued)?;
-    }
-    finish_probe(writer, tlog_path, initial)
-}
-
 pub fn probe_verifier_followup(workspace: &Path) -> Result<OrchestratorProbeResult> {
     let (mut writer, tlog_path, initial) = new_probe_writer(workspace);
     writer.try_apply(ControlEvent::DiagnosticsVerifierFollowupQueued)?;
@@ -91,7 +75,6 @@ pub fn probe_planner_objective_review(
     workspace: &Path,
     objectives_path: &Path,
     plan_path: &Path,
-    diagnostics_path: &Path,
 ) -> Result<OrchestratorProbeResult> {
     let (mut writer, tlog_path, initial) = new_probe_writer(workspace);
 
@@ -99,7 +82,6 @@ pub fn probe_planner_objective_review(
     // Mtime-based detection is unreliable on tmpfs/overlayfs (granularity > 2ms).
     let objectives_bytes_before = std::fs::read(objectives_path).unwrap_or_default();
     let plan_bytes_before = std::fs::read(plan_path).unwrap_or_default();
-    let diagnostics_bytes_before = std::fs::read(diagnostics_path).unwrap_or_default();
 
     if !plan_path.exists() || plan_bytes_before.is_empty() {
         std::fs::write(plan_path, "{\"version\":2,\"tasks\":[]}\n")?;
@@ -107,10 +89,7 @@ pub fn probe_planner_objective_review(
 
     let objectives_bytes_after = std::fs::read(objectives_path).unwrap_or_default();
     let plan_bytes_after = std::fs::read(plan_path).unwrap_or_default();
-    let diagnostics_bytes_after = std::fs::read(diagnostics_path).unwrap_or_default();
-
-    let objective_review_required = plan_bytes_before != plan_bytes_after
-        || diagnostics_bytes_before != diagnostics_bytes_after;
+    let objective_review_required = plan_bytes_before != plan_bytes_after;
     let objectives_updated = objectives_bytes_before != objectives_bytes_after;
 
     if objective_review_required && !objectives_updated {

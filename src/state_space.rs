@@ -1,3 +1,5 @@
+use crate::system_state::SystemState;
+
 pub struct CargoTestGate {
     pending_tail_path: Option<String>,
 }
@@ -224,6 +226,109 @@ pub struct PhaseGates {
     pub solo: bool,
 }
 
+/// Unified semantic control projection used by the orchestrator runtime.
+///
+/// This compresses the live control surface into one semantic object so phase
+/// routing, blocker suppression, diagnostics gating, and executor dispatch do
+/// not each re-derive partial control state from parallel booleans.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SemanticControlState {
+    pub scheduled_phase: Option<String>,
+    pub planner_pending: bool,
+    pub diagnostics_pending: bool,
+    pub verifier_queued: bool,
+    pub verifier_in_flight: bool,
+    pub active_blocker_to_verifier: bool,
+}
+
+impl SemanticControlState {
+    pub fn from_system_state(
+        state: &SystemState,
+        verifier_queued: bool,
+        verifier_in_flight: bool,
+    ) -> Self {
+        Self {
+            scheduled_phase: state.scheduled_phase.clone(),
+            planner_pending: state.planner_pending,
+            diagnostics_pending: state.diagnostics_pending,
+            verifier_queued,
+            verifier_in_flight,
+            active_blocker_to_verifier: state.active_blocker_to_verifier,
+        }
+    }
+
+    pub fn active_blocker_decision(&self) -> ActiveBlockerDecision {
+        decide_active_blocker(
+            self.active_blocker_to_verifier,
+            self.planner_pending,
+            self.scheduled_phase.as_deref(),
+        )
+    }
+
+    pub fn wake_decision(&self, flags: &[WakeFlagInput]) -> WakeDecision {
+        decide_wake_flags(self.active_blocker_to_verifier, flags)
+    }
+
+    pub fn with_resumed_checkpoint_phase(
+        &self,
+        checkpoint_phase: &str,
+        has_verifier_items: bool,
+    ) -> Self {
+        let decision = decide_resume_phase(
+            checkpoint_phase,
+            has_verifier_items,
+            self.planner_pending,
+            self.diagnostics_pending,
+        );
+        let mut next = self.clone();
+        next.scheduled_phase = decision.scheduled_phase;
+        next.planner_pending = decision.planner_pending;
+        next.diagnostics_pending = decision.diagnostics_pending;
+        next
+    }
+
+    pub fn phase_gates(&self) -> PhaseGates {
+        decide_phase_gates(
+            self.planner_pending,
+            self.diagnostics_pending,
+            self.verifier_queued,
+            self.verifier_in_flight,
+            self.scheduled_phase.as_deref(),
+        )
+    }
+
+    pub fn executor_dispatch_blocked(&self) -> bool {
+        block_executor_dispatch(self.scheduled_phase.as_deref())
+    }
+
+    pub fn diagnostics_allowed(&self) -> bool {
+        allow_diagnostics_run(self.scheduled_phase.as_deref(), self.verifier_in_flight)
+    }
+
+    pub fn verifier_run_allowed(&self) -> bool {
+        allow_verifier_run(self.scheduled_phase.as_deref())
+    }
+
+    pub fn scheduled_phase_done(
+        &self,
+        executor_lane_pending: bool,
+        executor_in_progress: bool,
+    ) -> bool {
+        let Some(phase) = self.scheduled_phase.as_deref() else {
+            return false;
+        };
+        scheduled_phase_resume_done(
+            phase,
+            self.planner_pending,
+            self.diagnostics_pending,
+            usize::from(self.verifier_queued),
+            !self.verifier_in_flight,
+            executor_lane_pending,
+            executor_in_progress,
+        )
+    }
+}
+
 /// Compute all phase gates at once from the current orchestrator state.
 /// Use this as the single source of truth for what can run in a given cycle.
 pub fn decide_phase_gates(
@@ -273,17 +378,17 @@ pub fn verifier_blocker_phase_override(is_verifier_specific: bool) -> Option<&'s
 }
 
 /// After diagnostics completes, returns whether planner should be re-triggered.
-/// Planner is needed whenever the diagnostics text changed or verifier results changed,
-/// because either event may require the planner to revise the plan.
-pub fn decide_post_diagnostics(diagnostics_changed: bool, verifier_changed: bool) -> bool {
-    diagnostics_changed || verifier_changed
+///
+/// This is intentionally semantic, not artifact-driven: a successful diagnostics
+/// cycle itself is enough to warrant planner follow-up because diagnostics may
+/// have refreshed derived issue/violation views even when the rendered cache is
+/// byte-identical. `verifier_changed` remains an independent semantic trigger.
+pub fn decide_post_diagnostics(diagnostics_ran: bool, verifier_changed: bool) -> bool {
+    diagnostics_ran || verifier_changed
 }
 
-pub fn diagnostics_pending_reason_count(
-    verifier_changed: bool,
-    stale_diagnostics_pending: bool,
-) -> usize {
-    usize::from(verifier_changed) + usize::from(stale_diagnostics_pending)
+pub fn diagnostics_pending_reason_count(verifier_changed: bool) -> usize {
+    usize::from(verifier_changed)
 }
 
 pub fn planner_pending_reason_count(

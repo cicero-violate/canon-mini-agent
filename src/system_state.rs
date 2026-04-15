@@ -44,6 +44,8 @@ pub struct SystemState {
     pub diagnostics_pending: bool,
     #[serde(default)]
     pub diagnostics_pending_reason: Option<String>,
+    #[serde(default)]
+    pub active_blocker_to_verifier: bool,
     pub diagnostics_text: String,
 
     // Rolling diff/plan state fed back into prompts
@@ -139,6 +141,10 @@ impl SystemState {
             "diagnostics_pending".to_string(),
             self.diagnostics_pending.to_string(),
         );
+        m.insert(
+            "active_blocker_to_verifier".to_string(),
+            self.active_blocker_to_verifier.to_string(),
+        );
         m.insert("phase".to_string(), self.phase.clone());
         m
     }
@@ -179,13 +185,12 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
                 s.diagnostics_pending_reason = None;
             }
         }
+        ControlEvent::VerifierBlockerSet { active } => {
+            s.active_blocker_to_verifier = *active;
+        }
         ControlEvent::DiagnosticsVerifierFollowupQueued => {
             s.diagnostics_pending = true;
             s.diagnostics_pending_reason = Some("verifier_followup".to_string());
-        }
-        ControlEvent::DiagnosticsReconciliationQueued => {
-            s.diagnostics_pending = true;
-            s.diagnostics_pending_reason = Some("reconciliation".to_string());
         }
         ControlEvent::DiagnosticsTextSet { text } => {
             s.diagnostics_text = text.clone();
@@ -406,11 +411,11 @@ mod tests {
             Some("objective_review")
         );
 
-        state = apply_control_event(state, &ControlEvent::DiagnosticsReconciliationQueued);
+        state = apply_control_event(state, &ControlEvent::DiagnosticsVerifierFollowupQueued);
         assert!(state.diagnostics_pending);
         assert_eq!(
             state.diagnostics_pending_reason.as_deref(),
-            Some("reconciliation")
+            Some("verifier_followup")
         );
 
         state = apply_control_event(state, &ControlEvent::PlannerPendingSet { pending: false });

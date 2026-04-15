@@ -4,11 +4,12 @@ use crate::state_space::{
     decide_wake_flags, executor_step_limit_exceeded, executor_submit_timed_out,
     is_verifier_specific_blocker, scheduled_phase_resume_done, should_force_blocker,
     verifier_blocker_phase_override, ActiveBlockerDecision, CompletionEndpointCheck,
-    CompletionTabCheck, PhaseGates, WakeFlagInput,
+    CompletionTabCheck, PhaseGates, SemanticControlState, WakeFlagInput,
 };
 use crate::state_space::{
     decide_bootstrap_phase, decide_resume_phase, extract_progress_path_from_result, CargoTestGate,
 };
+use crate::system_state::SystemState;
 
 #[test]
 fn extract_progress_path_detects_output_log() {
@@ -465,6 +466,73 @@ fn decide_phase_gates_combines_pending_and_schedule_rules() {
             solo: true,
         }
     );
+}
+
+#[test]
+fn semantic_control_state_projects_phase_gates_from_system_state() {
+    let mut state = SystemState::new(&[0], 1);
+    state.scheduled_phase = Some("planner".to_string());
+    state.planner_pending = true;
+    state.diagnostics_pending = true;
+    let semantic = SemanticControlState::from_system_state(&state, true, true);
+    assert_eq!(
+        semantic.phase_gates(),
+        PhaseGates {
+            planner: true,
+            executor: false,
+            verifier: false,
+            diagnostics: false,
+            solo: false,
+        }
+    );
+}
+
+#[test]
+fn semantic_control_state_projects_blocker_suppression_and_resume_done() {
+    let mut state = SystemState::new(&[0], 1);
+    state.scheduled_phase = Some("planner".to_string());
+    state.planner_pending = true;
+    state.active_blocker_to_verifier = true;
+    let semantic = SemanticControlState::from_system_state(&state, false, false);
+    assert_eq!(
+        semantic.active_blocker_decision(),
+        ActiveBlockerDecision {
+            planner_pending: false,
+            scheduled_phase: None,
+        }
+    );
+
+    let mut diagnostics_state = SystemState::new(&[0], 1);
+    diagnostics_state.scheduled_phase = Some("diagnostics".to_string());
+    diagnostics_state.diagnostics_pending = false;
+    let semantic = SemanticControlState::from_system_state(&diagnostics_state, false, false);
+    assert!(semantic.scheduled_phase_done(false, false));
+}
+
+#[test]
+fn semantic_control_state_projects_wake_flags_and_resume_hydration() {
+    let state = SystemState::new(&[0], 1);
+    let mut state = state;
+    state.active_blocker_to_verifier = true;
+    let semantic = SemanticControlState::from_system_state(&state, false, false);
+    let wake = semantic.wake_decision(&[
+        WakeFlagInput {
+            role: "planner",
+            modified_ms: 30,
+        },
+        WakeFlagInput {
+            role: "diagnostics",
+            modified_ms: 20,
+        },
+    ]);
+    assert_eq!(wake.scheduled_phase.as_deref(), Some("diagnostics"));
+    assert!(!wake.planner_pending);
+    assert!(wake.diagnostics_pending);
+
+    let resumed = semantic.with_resumed_checkpoint_phase("verifier", false);
+    assert_eq!(resumed.scheduled_phase.as_deref(), Some("planner"));
+    assert!(resumed.planner_pending);
+    assert!(!resumed.diagnostics_pending);
 }
 
 #[test]

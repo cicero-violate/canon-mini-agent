@@ -7,7 +7,9 @@ use serde_json::Value;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use crate::constants::{INVARIANTS_FILE, MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE};
+use crate::constants::{
+    INVARIANTS_FILE, MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
+};
 use crate::issues::{read_ranked_open_issues, Issue};
 use crate::reports::{DiagnosticsFinding, DiagnosticsReport, Impact, Severity, ViolationsReport};
 
@@ -38,8 +40,6 @@ pub struct OrchestratorContext<'a> {
     pub diagnostics_ep: &'a LlmEndpoint,
     pub verifier_ep: &'a LlmEndpoint,
     pub master_plan_path: &'a Path,
-    pub violations_path: &'a Path,
-    pub diagnostics_path: &'a Path,
 }
 
 pub struct PlannerInputs {
@@ -48,9 +48,7 @@ pub struct PlannerInputs {
     pub cargo_test_failures: String,
     pub lessons_text: String,
     pub objectives_text: String,
-    pub invariants_text: String,
-    pub violations_text: String,
-    pub diagnostics_text: String,
+    pub semantic_control_text: String,
     pub plan_text: String,
     pub plan_diff_text: String,
 }
@@ -69,8 +67,6 @@ pub struct SingleRoleContext<'a> {
     pub workspace: &'a Path,
     pub spec_path: &'a Path,
     pub master_plan_path: &'a Path,
-    pub violations_path: &'a Path,
-    pub diagnostics_path: &'a Path,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -79,6 +75,12 @@ pub struct SemanticPromptArtifacts {
     pub violations_summary: String,
     pub diagnostics_summary: String,
     pub diagnostics_report: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SemanticControlPromptState {
+    pub control_summary: String,
+    pub artifacts: SemanticPromptArtifacts,
 }
 
 pub fn read_combined_invariants_context(workspace: &Path) -> String {
@@ -158,8 +160,8 @@ fn infer_tlog_lane_indices(events: &[crate::events::Event]) -> Vec<usize> {
                 | crate::events::ControlEvent::PlannerObjectiveReviewQueued
                 | crate::events::ControlEvent::PlannerObjectivePlanGapQueued
                 | crate::events::ControlEvent::DiagnosticsPendingSet { .. }
+                | crate::events::ControlEvent::VerifierBlockerSet { .. }
                 | crate::events::ControlEvent::DiagnosticsVerifierFollowupQueued
-                | crate::events::ControlEvent::DiagnosticsReconciliationQueued
                 | crate::events::ControlEvent::DiagnosticsTextSet { .. }
                 | crate::events::ControlEvent::LastPlanTextSet { .. }
                 | crate::events::ControlEvent::LastExecutorDiffSet { .. }
@@ -185,11 +187,9 @@ fn control_event_kind_name(event: &crate::events::ControlEvent) -> &'static str 
             "planner_objective_plan_gap_queued"
         }
         crate::events::ControlEvent::DiagnosticsPendingSet { .. } => "diagnostics_pending_set",
+        crate::events::ControlEvent::VerifierBlockerSet { .. } => "verifier_blocker_set",
         crate::events::ControlEvent::DiagnosticsVerifierFollowupQueued => {
             "diagnostics_verifier_followup_queued"
-        }
-        crate::events::ControlEvent::DiagnosticsReconciliationQueued => {
-            "diagnostics_reconciliation_queued"
         }
         crate::events::ControlEvent::DiagnosticsTextSet { .. } => "diagnostics_text_set",
         crate::events::ControlEvent::LastPlanTextSet { .. } => "last_plan_text_set",
@@ -476,7 +476,11 @@ fn summarize_ranked_open_issues_for_prompt(open_issues: &[Issue], limit: usize) 
 
 fn summarize_violations_report_for_prompt(report: Option<&ViolationsReport>, raw: &str) -> String {
     let Some(report) = report else {
-        return filter_active_violations_json(raw);
+        return match raw.trim() {
+            "" => String::new(),
+            "__invalid_json__" => "(projected violations view unavailable: invalid JSON)".to_string(),
+            _ => filter_active_violations_json(raw),
+        };
     };
     if report.violations.is_empty() {
         return String::new();
@@ -498,12 +502,30 @@ fn summarize_violations_report_for_prompt(report: Option<&ViolationsReport>, raw
     out
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ViolationsProjectionStatus {
+    Missing,
+    InvalidJson,
+    Parsed,
+}
+
+fn load_violations_projection(workspace: &Path) -> (Option<ViolationsReport>, ViolationsProjectionStatus) {
+    let raw_violations_text = read_text_or_empty(workspace.join(VIOLATIONS_FILE));
+    if raw_violations_text.trim().is_empty() {
+        return (None, ViolationsProjectionStatus::Missing);
+    }
+    match parse_violations_report(&raw_violations_text) {
+        Some(report) => (Some(report), ViolationsProjectionStatus::Parsed),
+        None => (None, ViolationsProjectionStatus::InvalidJson),
+    }
+}
+
 fn render_diagnostics_report_from_state(
     open_issues: &[Issue],
     violations_report: Option<&ViolationsReport>,
-    raw_violations_text: &str,
+    violations_status: ViolationsProjectionStatus,
 ) -> String {
-    let validation_state = source_validation_state(violations_report, raw_violations_text);
+    let validation_state = source_validation_state(violations_report, violations_status);
     let mut ranked_failures: Vec<DiagnosticsFinding> =
         open_issues.iter().map(issue_to_finding).collect();
     if let Some(report) = violations_report {
@@ -552,10 +574,17 @@ fn render_diagnostics_report_from_state(
                 report.status,
                 report.violations.len()
             ),
-            None if raw_violations_text.trim().is_empty() => {
-                "VIOLATIONS.json (missing or empty)".to_string()
-            }
-            None => "VIOLATIONS.json (invalid JSON)".to_string(),
+            None => match violations_status {
+                ViolationsProjectionStatus::Missing => {
+                    "VIOLATIONS.json (missing or empty)".to_string()
+                }
+                ViolationsProjectionStatus::InvalidJson => {
+                    "VIOLATIONS.json (invalid JSON)".to_string()
+                }
+                ViolationsProjectionStatus::Parsed => {
+                    "VIOLATIONS.json (parsed projection unavailable)".to_string()
+                }
+            },
         },
         format!("source-validation: {validation_state}"),
     ];
@@ -580,25 +609,93 @@ fn render_diagnostics_report_from_state(
 
 pub fn derive_semantic_prompt_artifacts(
     workspace: &Path,
-    raw_violations_text: &str,
     issue_limit: usize,
 ) -> SemanticPromptArtifacts {
     let open_issues = read_ranked_open_issues(workspace);
-    let violations_report = parse_violations_report(raw_violations_text);
+    let (violations_report, violations_status) = load_violations_projection(workspace);
     let diagnostics_report = render_diagnostics_report_from_state(
         &open_issues,
         violations_report.as_ref(),
-        raw_violations_text,
+        violations_status,
     );
     SemanticPromptArtifacts {
         issues_summary: summarize_ranked_open_issues_for_prompt(&open_issues, issue_limit),
         violations_summary: summarize_violations_report_for_prompt(
             violations_report.as_ref(),
-            raw_violations_text,
+            match violations_status {
+                ViolationsProjectionStatus::Missing => "",
+                ViolationsProjectionStatus::InvalidJson => "__invalid_json__",
+                ViolationsProjectionStatus::Parsed => "",
+            },
         ),
         diagnostics_summary: filter_active_diagnostics_json(&diagnostics_report),
         diagnostics_report,
     }
+}
+
+pub fn derive_semantic_control_prompt_state(
+    workspace: &Path,
+    issue_limit: usize,
+) -> SemanticControlPromptState {
+    let artifacts = derive_semantic_prompt_artifacts(workspace, issue_limit);
+    let runtime_state = read_combined_invariants_context(workspace);
+    let mut sections = Vec::new();
+
+    if !runtime_state.trim().is_empty() {
+        sections.push(format!(
+            "Runtime semantic state + invariants:\n{}",
+            runtime_state.trim()
+        ));
+    }
+
+    if !artifacts.issues_summary.trim().is_empty()
+        && artifacts.issues_summary.trim() != "(no open issues)"
+    {
+        sections.push(format!(
+            "Projected issues view (derived from semantic prompt state):\n{}",
+            artifacts.issues_summary.trim()
+        ));
+    }
+
+    if !artifacts.violations_summary.trim().is_empty()
+        && artifacts.violations_summary.trim() != "(no verified violations)"
+    {
+        sections.push(format!(
+            "Projected violations view:\n{}",
+            artifacts.violations_summary.trim()
+        ));
+    }
+
+    if !artifacts.diagnostics_summary.trim().is_empty()
+        && artifacts.diagnostics_summary.trim() != "(no active diagnostics)"
+    {
+        sections.push(format!(
+            "Projected diagnostics view:\n{}",
+            artifacts.diagnostics_summary.trim()
+        ));
+    }
+
+    let control_summary = if sections.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "Derived authority: prefer this semantic control snapshot over raw artifact caches when they disagree.\n\n{}",
+            sections.join("\n\n")
+        )
+    };
+
+    SemanticControlPromptState {
+        control_summary,
+        artifacts,
+    }
+}
+
+pub fn read_semantic_control_prompt_context(
+    workspace: &Path,
+    issue_limit: usize,
+) -> String {
+    derive_semantic_control_prompt_state(workspace, issue_limit)
+        .control_summary
 }
 
 const LESSONS_FILE: &str = "agent_state/lessons.json";
@@ -1248,7 +1345,10 @@ fn parse_violations_report(raw: &str) -> Option<ViolationsReport> {
     Some(report)
 }
 
-fn source_validation_state(report: Option<&ViolationsReport>, raw_violations_text: &str) -> String {
+fn source_validation_state(
+    report: Option<&ViolationsReport>,
+    violations_status: ViolationsProjectionStatus,
+) -> String {
     match report {
         Some(report)
             if report.status.eq_ignore_ascii_case("verified") && report.violations.is_empty() =>
@@ -1260,8 +1360,11 @@ fn source_validation_state(report: Option<&ViolationsReport>, raw_violations_tex
             report.status,
             report.violations.len()
         ),
-        None if raw_violations_text.trim().is_empty() => "missing".to_string(),
-        None => "invalid_json".to_string(),
+        None => match violations_status {
+            ViolationsProjectionStatus::Missing => "missing".to_string(),
+            ViolationsProjectionStatus::InvalidJson => "invalid_json".to_string(),
+            ViolationsProjectionStatus::Parsed => "missing".to_string(),
+        },
     }
 }
 
@@ -1430,14 +1533,13 @@ fn derive_planner_handoff(
 
 pub fn render_diagnostics_report_from_issues(
     workspace: &Path,
-    raw_violations_text: &str,
 ) -> String {
     let open_issues = read_ranked_open_issues(workspace);
-    let violations_report = parse_violations_report(raw_violations_text);
+    let (violations_report, violations_status) = load_violations_projection(workspace);
     render_diagnostics_report_from_state(
         &open_issues,
         violations_report.as_ref(),
-        raw_violations_text,
+        violations_status,
     )
 }
 
@@ -1518,8 +1620,8 @@ fn violations_are_verified_and_empty(raw_violations_text: &str) -> bool {
             .unwrap_or(false)
 }
 
-pub(crate) fn reconcile_diagnostics_report(workspace: &Path, raw_violations_text: &str) -> String {
-    render_diagnostics_report_from_issues(workspace, raw_violations_text)
+pub(crate) fn reconcile_diagnostics_report(workspace: &Path) -> String {
+    render_diagnostics_report_from_issues(workspace)
 }
 
 pub(crate) fn sanitize_diagnostics_for_planner(
@@ -1610,8 +1712,6 @@ pub fn load_planner_inputs(
     last_plan_text: &str,
     last_executor_diff: &mut String,
     cargo_test_failures: String,
-    violations_path: &Path,
-    _diagnostics_path: &Path,
     master_plan_path: &Path,
 ) -> PlannerInputs {
     let summary_text = lane_summary_text(lanes, verifier_summary);
@@ -1628,11 +1728,7 @@ pub fn load_planner_inputs(
     } else {
         objectives_full
     };
-    let invariants_text = read_combined_invariants_context(workspace);
-    let raw_violations_text = read_text_or_empty(violations_path);
-    let semantic_artifacts = derive_semantic_prompt_artifacts(workspace, &raw_violations_text, 10);
-    let violations_text = semantic_artifacts.violations_summary;
-    let diagnostics_text = semantic_artifacts.diagnostics_summary;
+    let semantic_control = derive_semantic_control_prompt_state(workspace, 10);
     let plan_text = read_text_or_empty(master_plan_path);
     let plan_diff_text = plan_diff(last_plan_text, &plan_text, 400);
     PlannerInputs {
@@ -1641,9 +1737,7 @@ pub fn load_planner_inputs(
         cargo_test_failures,
         lessons_text,
         objectives_text,
-        invariants_text,
-        violations_text,
-        diagnostics_text,
+        semantic_control_text: semantic_control.control_summary,
         plan_text,
         plan_diff_text,
     }
@@ -1651,11 +1745,8 @@ pub fn load_planner_inputs(
 
 pub enum SingleRoleRead {
     Objectives,
-    Invariants,
+    SemanticControl,
     Lessons,
-    Violations,
-    Diagnostics,
-    Issues,
     MasterPlan,
     Spec,
 }
@@ -1666,28 +1757,11 @@ impl SingleRoleContext<'_> {
             SingleRoleRead::Objectives => {
                 crate::objectives::read_objectives_compact(&self.workspace.join(OBJECTIVES_FILE))
             }
-            SingleRoleRead::Invariants => {
-                read_combined_invariants_context(self.workspace)
-            }
+            SingleRoleRead::SemanticControl => read_semantic_control_prompt_context(
+                self.workspace,
+                10,
+            ),
             SingleRoleRead::Lessons => read_lessons_or_empty(self.workspace),
-            SingleRoleRead::Violations => derive_semantic_prompt_artifacts(
-                self.workspace,
-                &read_text_or_empty(self.violations_path),
-                10,
-            )
-            .violations_summary,
-            SingleRoleRead::Diagnostics => derive_semantic_prompt_artifacts(
-                self.workspace,
-                &read_text_or_empty(self.violations_path),
-                10,
-            )
-            .diagnostics_summary,
-            SingleRoleRead::Issues => derive_semantic_prompt_artifacts(
-                self.workspace,
-                &read_text_or_empty(self.violations_path),
-                10,
-            )
-            .issues_summary,
             SingleRoleRead::MasterPlan => {
                 filter_pending_plan_json(&read_text_or_empty(self.master_plan_path))
             }
@@ -1763,13 +1837,13 @@ fn build_verifier_role_prompt(
     inputs: &SingleRoleInputs,
     cargo_test_failures: &str,
 ) -> Result<String> {
-    let invariants = ctx.read(SingleRoleRead::Invariants)?;
+    let semantic_control = ctx.read(SingleRoleRead::SemanticControl)?;
     let objectives = ctx.read(SingleRoleRead::Objectives)?;
     let executor_diff_text = ctx.read_executor_diff(400);
     Ok(single_role_verifier_prompt(
         &inputs.primary_input,
         &objectives,
-        &invariants,
+        &semantic_control,
         &executor_diff_text,
         cargo_test_failures,
     ))
@@ -1779,13 +1853,11 @@ fn build_diagnostics_role_prompt(
     ctx: &SingleRoleContext<'_>,
     cargo_test_failures: &str,
 ) -> Result<String> {
-    let violations = ctx.read(SingleRoleRead::Violations)?;
     let objectives = ctx.read(SingleRoleRead::Objectives)?;
-    let invariants = ctx.read(SingleRoleRead::Invariants)?;
+    let semantic_control = ctx.read(SingleRoleRead::SemanticControl)?;
     Ok(single_role_diagnostics_prompt(
-        &violations,
         &objectives,
-        &invariants,
+        &semantic_control,
         cargo_test_failures,
     ))
 }
@@ -1795,22 +1867,14 @@ fn build_planner_role_prompt(
     inputs: &SingleRoleInputs,
     cargo_test_failures: &str,
 ) -> Result<String> {
-    let raw_violations = read_text_or_empty(ctx.violations_path);
-    let semantic_artifacts = derive_semantic_prompt_artifacts(ctx.workspace, &raw_violations, 10);
-    let violations = semantic_artifacts.violations_summary;
-    let diagnostics = semantic_artifacts.diagnostics_summary;
     let lessons = ctx.read(SingleRoleRead::Lessons)?;
     let objectives = ctx.read(SingleRoleRead::Objectives)?;
-    let issues = semantic_artifacts.issues_summary;
-    let invariants = ctx.read(SingleRoleRead::Invariants)?;
+    let semantic_control = ctx.read(SingleRoleRead::SemanticControl)?;
     Ok(single_role_planner_prompt(
         &inputs.primary_input,
         &objectives,
         &lessons,
-        &invariants,
-        &violations,
-        &diagnostics,
-        &issues,
+        &semantic_control,
         cargo_test_failures,
     ))
 }
@@ -1818,17 +1882,11 @@ fn build_planner_role_prompt(
 fn build_executor_role_prompt(ctx: &SingleRoleContext<'_>) -> Result<String> {
     let spec = ctx.read(SingleRoleRead::Spec)?;
     let master_plan = ctx.read(SingleRoleRead::MasterPlan)?;
-    let raw_violations = read_text_or_empty(ctx.violations_path);
-    let semantic_artifacts = derive_semantic_prompt_artifacts(ctx.workspace, &raw_violations, 10);
-    let violations = semantic_artifacts.violations_summary;
-    let diagnostics = semantic_artifacts.diagnostics_summary;
-    let invariants = ctx.read(SingleRoleRead::Invariants)?;
+    let semantic_control = ctx.read(SingleRoleRead::SemanticControl)?;
     Ok(single_role_executor_prompt(
         &spec,
         &master_plan,
-        &violations,
-        &diagnostics,
-        &invariants,
+        &semantic_control,
     ))
 }
 
@@ -2124,7 +2182,6 @@ mod diagnostics_filter_tests {
 
         let rendered = render_diagnostics_report_from_issues(
             workspace.as_path(),
-            &fs::read_to_string(workspace.join(crate::constants::VIOLATIONS_FILE)).unwrap(),
         );
         assert!(rendered.contains("\"status\": \"critical_failure\""));
         assert!(rendered.contains("\"ISS-001\""));
@@ -2243,15 +2300,13 @@ mod diagnostics_filter_tests {
         let spec_path = workspace.join("SPEC.md");
         let master_plan_path = workspace.join("PLAN.json");
         let violations_path = workspace.join("VIOLATIONS.json");
-        let diagnostics_path = workspace.join("PLANS/default/diagnostics-default.json");
         fs::write(&master_plan_path, r#"{"version":2,"tasks":[]}"#).unwrap();
+        fs::write(&violations_path, r#"{"status":"verified","violations":[]}"#).unwrap();
 
         let ctx = super::SingleRoleContext {
             workspace: workspace.as_path(),
             spec_path: spec_path.as_path(),
             master_plan_path: master_plan_path.as_path(),
-            violations_path: violations_path.as_path(),
-            diagnostics_path: diagnostics_path.as_path(),
         };
 
         let inputs = super::load_single_role_inputs(&ctx, false, false, true).unwrap();
