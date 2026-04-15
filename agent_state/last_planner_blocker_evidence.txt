@@ -1,1 +1,1 @@
-auto-filled blocker evidence
+LLM error: chromium: timeout waiting for response (tab=433978195 turn=10)

@@ -653,7 +653,7 @@ async fn run_planner_phase(
     *planner_bootstrapped = true;
     match result {
         Ok(result) => {
-            eprintln!("[orchestrate] planner ok bytes={}", result.len());
+            eprintln!("[orchestrate] planner ok bytes={}", result.summary_text().len());
             let lessons_text = crate::prompt_inputs::read_lessons_or_empty(ctx.workspace);
             append_orchestration_trace(
                 "learning_loop_cycle_audit",
@@ -812,7 +812,7 @@ async fn run_solo_phase(
     *solo_bootstrapped = true;
     match result {
         Ok(result) => {
-            eprintln!("[orchestrate] solo ok bytes={}", result.len());
+            eprintln!("[orchestrate] solo ok bytes={}", result.summary_text().len());
             let lessons_text = crate::prompt_inputs::read_lessons_or_empty(ctx.workspace);
             append_orchestration_trace(
                 "learning_loop_cycle_audit",
@@ -975,7 +975,7 @@ async fn run_diagnostics_phase(
     *diagnostics_bootstrapped = true;
     match result {
         Ok(result) => {
-            eprintln!("[orchestrate] diagnostics ok bytes={}", result.len());
+            eprintln!("[orchestrate] diagnostics ok bytes={}", result.summary_text().len());
             let new_diagnostics_text = crate::prompt_inputs::reconcile_diagnostics_report(ctx.workspace);
             let diagnostics_projection_path = ctx.workspace.join(diagnostics_file());
             let _ = std::fs::write(&diagnostics_projection_path, &new_diagnostics_text);
@@ -1111,7 +1111,7 @@ async fn run_verifier_phase(
             )
             .await
             {
-                Ok(result) => result,
+                Ok(result) => result.into_summary(),
                 Err(err) => format!(
                     "{{\"verified\":false,\"summary\":\"verifier error: {}\"}}",
                     err.to_string().replace('"', "'")
@@ -2068,7 +2068,11 @@ async fn process_completed_turns(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
-    continuation_joinset: &mut tokio::task::JoinSet<(SubmittedExecutorTurn, u64, Result<String>)>,
+    continuation_joinset: &mut tokio::task::JoinSet<(
+        SubmittedExecutorTurn,
+        u64,
+        Result<AgentCompletion>,
+    )>,
     verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
 ) -> bool {
     let mut cycle_progress = false;
@@ -2209,7 +2213,11 @@ async fn process_completed_turns(
 
 fn drain_continuations(
     writer: &mut CanonicalWriter,
-    continuation_joinset: &mut tokio::task::JoinSet<(SubmittedExecutorTurn, u64, Result<String>)>,
+    continuation_joinset: &mut tokio::task::JoinSet<(
+        SubmittedExecutorTurn,
+        u64,
+        Result<AgentCompletion>,
+    )>,
     verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
 ) -> bool {
     let mut cycle_progress = false;
@@ -2244,20 +2252,22 @@ fn handle_completed_continuation(
     verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
     submitted: SubmittedExecutorTurn,
     turn_id: u64,
-    result: Result<String>,
+    result: Result<AgentCompletion>,
 ) -> bool {
     match result {
-        Ok(final_exec_result) => {
+        Ok(completion) => {
             writer.apply(ControlEvent::LanePromptInFlightSet {
                 lane_id: submitted.lane,
                 in_flight: false,
             });
-            if persist_executor_completion_message_from_summary(writer, &final_exec_result) {
-                finalize_executor_message_completion(writer, submitted.lane);
-            } else {
-                // Continuations only return once the executor has reached completion,
-                // and the returned value is the completion summary (not the raw action JSON).
-                verifier_pending_results.push_back((submitted, turn_id, final_exec_result));
+            match completion {
+                AgentCompletion::MessageAction { action, .. } => {
+                    finalize_executor_message_completion(writer, submitted.lane);
+                    persist_executor_completion_message(writer, &action);
+                }
+                AgentCompletion::Summary(final_exec_result) => {
+                    verifier_pending_results.push_back((submitted, turn_id, final_exec_result));
+                }
             }
         }
         Err(err) => {
@@ -2306,7 +2316,11 @@ fn drain_deferred_completions(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
-    continuation_joinset: &mut tokio::task::JoinSet<(SubmittedExecutorTurn, u64, Result<String>)>,
+    continuation_joinset: &mut tokio::task::JoinSet<(
+        SubmittedExecutorTurn,
+        u64,
+        Result<AgentCompletion>,
+    )>,
     verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
 ) -> bool {
     let mut cycle_progress = false;
@@ -3644,7 +3658,7 @@ async fn continue_executor_completion(
     bridge: &WsBridge,
     workspace: &Path,
     tabs: &TabManagerHandle,
-) -> Result<String> {
+) -> Result<AgentCompletion> {
     let role = submitted.actor.as_str();
     let prompt_kind = "executor";
     let step = 1usize;
@@ -3716,7 +3730,14 @@ async fn continue_executor_completion(
         None,
     )?;
     if done {
-        return Ok(out);
+        return Ok(if action.get("action").and_then(|v| v.as_str()) == Some("message") {
+            AgentCompletion::MessageAction {
+                action,
+                summary: out,
+            }
+        } else {
+            AgentCompletion::Summary(out)
+        });
     }
 
     append_orchestration_trace(
@@ -3764,7 +3785,7 @@ async fn continue_executor_completion(
 // ── Agent loop ─────────────────────────────────────────────────────────────────
 
 /// Run one agent role until it calls `message` with status=complete or exhausts MAX_STEPS.
-/// Returns the completion summary on success, or an error on hard failure.
+/// Returns the typed completion on success, or an error on hard failure.
 /// `check_on_done`: if true, run cargo build + test before accepting completion.
 async fn run_agent(
     role: &str,
@@ -3780,7 +3801,7 @@ async fn run_agent(
     check_on_done: bool,
     send_system_prompt: bool,
     initial_steps_used: usize,
-) -> Result<String> {
+) -> Result<AgentCompletion> {
     eprintln!(
         "[{role}] endpoint_id={} url={} prompt_kind={} submit_only={}",
         endpoint.id,
@@ -3820,7 +3841,9 @@ async fn run_agent(
     loop {
         if let Some(sig) = shutdown.as_ref() {
             if sig.flag.load(Ordering::SeqCst) {
-                return Ok("shutdown requested".to_string());
+                return Ok(AgentCompletion::Summary(
+                    "shutdown requested".to_string(),
+                ));
             }
         }
         if step >= MAX_STEPS {
@@ -3891,7 +3914,7 @@ async fn run_agent(
                 tokio::select! {
                     res = request_future => res,
                     _ = sig.notify.notified() => {
-                        return Ok("shutdown requested".to_string());
+                        return Ok(AgentCompletion::Summary("shutdown requested".to_string()));
                     }
                 }
             }
@@ -3933,7 +3956,7 @@ async fn run_agent(
         ctx.log_response(step + 1, &exchange_id, &raw);
 
         if let Some(ack) = ctx.handle_submit_ack(step + 1, &exchange_id, &raw) {
-            return Ok(ack);
+            return Ok(AgentCompletion::Summary(ack));
         }
 
         eprintln!("[{role}] step={} response_bytes={}", step + 1, raw.len());
@@ -4156,7 +4179,16 @@ async fn run_agent(
         match step_result {
             (true, reason) => {
                 eprintln!("[{role}] message complete: {reason}");
-                return Ok(reason);
+                return Ok(
+                    if action.get("action").and_then(|v| v.as_str()) == Some("message") {
+                        AgentCompletion::MessageAction {
+                            action,
+                            summary: reason,
+                        }
+                    } else {
+                        AgentCompletion::Summary(reason)
+                    },
+                );
             }
             (false, out) => {
                 cargo_test_gate.note_result(&kind, &out);
@@ -4195,7 +4227,7 @@ async fn run_agent(
                 );
                 last_result = Some(out);
                 if kind.as_str() == "apply_patch" {
-                    return Ok(last_result.unwrap_or_default());
+                    return Ok(AgentCompletion::Summary(last_result.unwrap_or_default()));
                 }
             }
         }
@@ -4243,6 +4275,28 @@ struct PostRestartResult {
     turn_id: Option<u64>,
     endpoint_id: String,
     restart_kind: String,
+}
+
+#[derive(Clone, Debug)]
+enum AgentCompletion {
+    Summary(String),
+    MessageAction { action: Value, summary: String },
+}
+
+impl AgentCompletion {
+    fn summary_text(&self) -> &str {
+        match self {
+            Self::Summary(summary) => summary,
+            Self::MessageAction { summary, .. } => summary,
+        }
+    }
+
+    fn into_summary(self) -> String {
+        match self {
+            Self::Summary(summary) => summary,
+            Self::MessageAction { summary, .. } => summary,
+        }
+    }
 }
 
 /// Read the post-restart result file without consuming it.
@@ -4539,7 +4593,11 @@ fn handle_executor_completion(
     lanes: &[LaneConfig],
     bridge: &WsBridge,
     workspace: &PathBuf,
-    continuation_joinset: &mut tokio::task::JoinSet<(SubmittedExecutorTurn, u64, Result<String>)>,
+    continuation_joinset: &mut tokio::task::JoinSet<(
+        SubmittedExecutorTurn,
+        u64,
+        Result<AgentCompletion>,
+    )>,
     _verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
 ) -> bool {
     submitted.steps_used = submitted.steps_used.saturating_add(1);
@@ -4735,7 +4793,11 @@ fn spawn_executor_completion_continuation(
     exec_result: &str,
     bridge: &WsBridge,
     workspace: &PathBuf,
-    continuation_joinset: &mut tokio::task::JoinSet<(SubmittedExecutorTurn, u64, Result<String>)>,
+    continuation_joinset: &mut tokio::task::JoinSet<(
+        SubmittedExecutorTurn,
+        u64,
+        Result<AgentCompletion>,
+    )>,
 ) {
     let executor_endpoint = lane_cfg.endpoint.clone();
     let bridge = bridge.clone();
@@ -4818,23 +4880,6 @@ fn finalize_executor_message_completion(writer: &mut CanonicalWriter, lane_id: u
         lane_id,
         pending: false,
     });
-}
-
-fn persist_executor_completion_message_from_summary(
-    writer: &mut CanonicalWriter,
-    summary: &str,
-) -> bool {
-    let Some(raw_action) = extract_message_action(summary) else {
-        return false;
-    };
-    let Ok(action) = serde_json::from_str::<Value>(&raw_action) else {
-        return false;
-    };
-    if action.get("action").and_then(|v| v.as_str()) != Some("message") {
-        return false;
-    }
-    persist_executor_completion_message(writer, &action);
-    true
 }
 
 fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Value) {
@@ -5510,7 +5555,7 @@ pub async fn run() -> Result<()> {
         let mut continuation_joinset: tokio::task::JoinSet<(
             SubmittedExecutorTurn,
             u64,
-            Result<String>,
+            Result<AgentCompletion>,
         )> = tokio::task::JoinSet::new();
         let mut verifier_joinset: tokio::task::JoinSet<(usize, String)> =
             tokio::task::JoinSet::new();
@@ -5945,7 +5990,7 @@ pub async fn run() -> Result<()> {
         )
         .await?;
         let _ = std::fs::write(cycle_idle_marker_path(), "idle\n");
-        println!("message: {reason}");
+        println!("message: {}", reason.into_summary());
         Ok(())
     }
 }
