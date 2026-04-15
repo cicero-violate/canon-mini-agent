@@ -133,6 +133,7 @@ Examples:
 Examples:
   {"action":"plan","op":"set_task_status","rationale":"Update a single task status in PLAN.json.","status":"in_progress","task_id":"T1"}
   {"action":"plan","op":"set_plan_status","rationale":"Update top-level PLAN.json status.","status":"in_progress"}
+  {"action":"plan","op":"update","rationale":"Apply a bundled PLAN.json update when ready_window, tasks, or status must change together.","updates":{"ready_window":["T_restore_missing_diagnostics_artifacts"],"status":"in_progress","tasks":[{"id":"T_restore_missing_diagnostics_artifacts","priority":1,"status":"ready","title":"Restore diagnostics input artifacts"}]}}
   {"action":"plan","op":"sorted_view","rationale":"View the current plan in DAG order (read-only)."}
 
 ## `rustc_hir` — emit HIR for analysis
