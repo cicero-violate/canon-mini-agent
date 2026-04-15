@@ -2392,9 +2392,9 @@ fn save_checkpoint(
     // Record the canonical checkpoint-save effect before materializing the file.
     // The log must lead the side effect so replay can observe the save attempt
     // in the same order the runtime produced it.
-    writer.record_effect(crate::events::EffectEvent::CheckpointSaved {
+    writer.try_record_effect(crate::events::EffectEvent::CheckpointSaved {
         phase: state.phase.clone(),
-    });
+    })?;
     let tmp_path = path.with_extension("json.tmp");
     std::fs::write(&tmp_path, serde_json::to_string_pretty(&checkpoint)?)?;
     std::fs::rename(tmp_path, path)?;
@@ -5105,8 +5105,8 @@ pub async fn run() -> Result<()> {
         let system_state = SystemState::new(&lane_indices, lanes.len());
         let tlog_path = PathBuf::from(crate::constants::agent_state_dir()).join("tlog.ndjson");
         let tlog = Tlog::open(&tlog_path);
-        let mut writer = CanonicalWriter::new(system_state, tlog, workspace.clone());
-        writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+        let mut writer = CanonicalWriter::try_new(system_state, tlog, workspace.clone())?;
+        writer.try_apply(ControlEvent::PlannerPendingSet { pending: true })?;
         let mut rt = new_runtime_state(&lanes);
 
         let mut resume_verifier_items: Vec<ResumeVerifierItem> = Vec::new();
@@ -5150,10 +5150,10 @@ pub async fn run() -> Result<()> {
             restored.scheduled_phase = resume_decision.scheduled_phase;
             restored.planner_pending = resume_decision.planner_pending;
             restored.diagnostics_pending = resume_decision.diagnostics_pending;
-            writer.restore_from_checkpoint(restored);
-            writer.record_effect(crate::events::EffectEvent::CheckpointLoaded {
+            writer.try_restore_from_checkpoint(restored)?;
+            writer.try_record_effect(crate::events::EffectEvent::CheckpointLoaded {
                 phase: checkpoint.phase.clone(),
-            });
+            })?;
             // On resume, DO NOT clear executor_submit_inflight.
             // Clearing inflight state while preserving active tabs and submitted_turns
             // causes valid submit_ack events to lose their pending context, triggering

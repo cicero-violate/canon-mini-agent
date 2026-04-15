@@ -131,7 +131,7 @@ fn emit_workspace_artifact_effect(
     target: &str,
     subject: &str,
     signature: &str,
-) {
+) -> Result<()> {
     let effect = if requested {
         crate::events::EffectEvent::WorkspaceArtifactWriteRequested {
             artifact: artifact.to_string(),
@@ -149,7 +149,7 @@ fn emit_workspace_artifact_effect(
             signature: signature.to_string(),
         }
     };
-    writer.record_effect(effect);
+    writer.try_record_effect(effect)
 }
 
 fn try_emit_workspace_artifact_effect(
@@ -161,18 +161,15 @@ fn try_emit_workspace_artifact_effect(
     subject: &str,
     signature: &str,
 ) -> Result<()> {
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        emit_workspace_artifact_effect(writer, requested, artifact, op, target, subject, signature);
-    }));
-    if result.is_err() {
-        bail!(
-            "canonical effect append failed for {} {} {}",
-            artifact,
-            op,
-            subject
-        );
-    }
-    Ok(())
+    emit_workspace_artifact_effect(writer, requested, artifact, op, target, subject, signature)
+        .map_err(|err| {
+            anyhow!(
+                "canonical effect append failed for {} {} {}: {err:#}",
+                artifact,
+                op,
+                subject
+            )
+        })
 }
 
 fn is_lane_plan(path: &str) -> bool {

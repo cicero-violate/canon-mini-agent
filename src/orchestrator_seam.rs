@@ -16,11 +16,12 @@ pub struct OrchestratorProbeResult {
 fn new_probe_writer(workspace: &Path) -> (CanonicalWriter, PathBuf, SystemState) {
     let initial = SystemState::new(&[0], 1);
     let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
-    let writer = CanonicalWriter::new(
+    let writer = CanonicalWriter::try_new(
         initial.clone(),
         Tlog::open(&tlog_path),
         workspace.to_path_buf(),
-    );
+    )
+    .expect("probe writer initial state should be valid");
     (writer, tlog_path, initial)
 }
 
@@ -75,14 +76,14 @@ pub fn probe_diagnostics_reconciliation(
     let raw_violations_text = std::fs::read_to_string(violations_path).unwrap_or_default();
     let reconciled_diagnostics_text = reconcile_diagnostics_report(workspace, &raw_violations_text);
     if reconciled_diagnostics_text != raw_diagnostics_text {
-        writer.apply(ControlEvent::DiagnosticsReconciliationQueued);
+        writer.try_apply(ControlEvent::DiagnosticsReconciliationQueued)?;
     }
     finish_probe(writer, tlog_path, initial)
 }
 
 pub fn probe_verifier_followup(workspace: &Path) -> Result<OrchestratorProbeResult> {
     let (mut writer, tlog_path, initial) = new_probe_writer(workspace);
-    writer.apply(ControlEvent::DiagnosticsVerifierFollowupQueued);
+    writer.try_apply(ControlEvent::DiagnosticsVerifierFollowupQueued)?;
     finish_probe(writer, tlog_path, initial)
 }
 
@@ -113,7 +114,7 @@ pub fn probe_planner_objective_review(
     let objectives_updated = objectives_bytes_before != objectives_bytes_after;
 
     if objective_review_required && !objectives_updated {
-        writer.apply(ControlEvent::PlannerObjectiveReviewQueued);
+        writer.try_apply(ControlEvent::PlannerObjectiveReviewQueued)?;
     }
     finish_probe(writer, tlog_path, initial)
 }
@@ -127,7 +128,7 @@ pub fn probe_planner_plan_gap(
     let objectives_text = std::fs::read_to_string(objectives_path).unwrap_or_default();
     let plan_text = std::fs::read_to_string(plan_path).unwrap_or_default();
     if has_actionable_objectives(&objectives_text) && !plan_has_incomplete_tasks(&plan_text) {
-        writer.apply(ControlEvent::PlannerObjectivePlanGapQueued);
+        writer.try_apply(ControlEvent::PlannerObjectivePlanGapQueued)?;
     }
     finish_probe(writer, tlog_path, initial)
 }

@@ -766,11 +766,11 @@ fn try_emit_workspace_artifact_effect(
 ) -> Result<()> {
     let tlog_path = std::path::Path::new(crate::constants::agent_state_dir()).join("tlog.ndjson");
     let state = crate::system_state::SystemState::new(&[], 0);
-    let mut writer = crate::canonical_writer::CanonicalWriter::new(
+    let mut writer = crate::canonical_writer::CanonicalWriter::try_new(
         state,
         crate::tlog::Tlog::open(&tlog_path),
         workspace.to_path_buf(),
-    );
+    )?;
     let effect = if requested {
         crate::events::EffectEvent::WorkspaceArtifactWriteRequested {
             artifact: artifact.to_string(),
@@ -788,18 +788,14 @@ fn try_emit_workspace_artifact_effect(
             signature: signature.to_string(),
         }
     };
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        writer.record_effect(effect);
-    }));
-    if result.is_err() {
-        anyhow::bail!(
-            "canonical effect append failed for {} {} {}",
+    writer.try_record_effect(effect).map_err(|err| {
+        anyhow::anyhow!(
+            "canonical effect append failed for {} {} {}: {err:#}",
             artifact,
             op,
             subject
-        );
-    }
-    Ok(())
+        )
+    })
 }
 
 pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, prompt_bytes: usize) {

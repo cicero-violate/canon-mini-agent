@@ -267,7 +267,7 @@ fn emit_blocker_artifact_effect(
     target: &str,
     subject: &str,
     signature: &str,
-) {
+) -> Result<()> {
     let effect = if requested {
         EffectEvent::WorkspaceArtifactWriteRequested {
             artifact: "blockers.json".to_string(),
@@ -285,7 +285,7 @@ fn emit_blocker_artifact_effect(
             signature: signature.to_string(),
         }
     };
-    writer.record_effect(effect);
+    writer.try_record_effect(effect)
 }
 
 fn try_emit_blocker_artifact_effect(
@@ -295,16 +295,12 @@ fn try_emit_blocker_artifact_effect(
     subject: &str,
     signature: &str,
 ) -> Result<()> {
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        emit_blocker_artifact_effect(writer, requested, target, subject, signature);
-    }));
-    if result.is_err() {
-        anyhow::bail!(
-            "canonical effect append failed for blockers.json append {}",
+    emit_blocker_artifact_effect(writer, requested, target, subject, signature).map_err(|err| {
+        anyhow::anyhow!(
+            "canonical effect append failed for blockers.json append {}: {err:#}",
             subject
-        );
-    }
-    Ok(())
+        )
+    })
 }
 
 fn try_append_blocker_with_writer(

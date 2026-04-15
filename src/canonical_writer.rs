@@ -2,6 +2,7 @@ use crate::events::{ControlEvent, EffectEvent, Event};
 use crate::system_state::{apply_control_event, validate_system_state, SystemState};
 use crate::tlog::Tlog;
 use crate::transition_policy::validate_transition;
+use anyhow::{anyhow, Result};
 use std::path::PathBuf;
 
 /// The single gate through which all `SystemState` mutations must pass.
@@ -24,53 +25,77 @@ pub struct CanonicalWriter {
 }
 
 impl CanonicalWriter {
-    pub fn new(state: SystemState, tlog: Tlog, workspace: PathBuf) -> Self {
-        if let Err(reason) = validate_system_state(&state) {
-            panic!("[canonical_writer] invalid initial state: {reason}");
-        }
-        Self {
+    pub fn try_new(state: SystemState, tlog: Tlog, workspace: PathBuf) -> Result<Self> {
+        validate_system_state(&state)
+            .map_err(|reason| anyhow!("[canonical_writer] invalid initial state: {reason}"))?;
+        Ok(Self {
             state,
             tlog,
             workspace,
-        }
+        })
     }
 
-    /// Apply a control event: append to tlog, then transition state.
+    pub fn new(state: SystemState, tlog: Tlog, workspace: PathBuf) -> Self {
+        Self::try_new(state, tlog, workspace)
+            .unwrap_or_else(|err| panic!("{err:#}"))
+    }
+
+    /// Apply a control event after validating the proposed next state.
     ///
     /// This is the ONLY function allowed to mutate `SystemState`.
-    /// If the tlog write fails, the process aborts instead of advancing state.
-    /// Replay equivalence is only meaningful if the durable log and state move
-    /// together.
-    pub fn apply(&mut self, event: ControlEvent) {
-        if let Err(reason) = validate_transition(&self.state, &event) {
-            panic!("[canonical_writer] illegal control transition: {reason}");
-        }
-        if let Err(err) = self.tlog.append(&Event::control(event.clone())) {
-            panic!("[canonical_writer] tlog append failed during apply: {err:#}");
-        }
+    /// Replay equivalence is preserved by refusing to append invalid control
+    /// events before any durable write is attempted.
+    pub fn try_apply(&mut self, event: ControlEvent) -> Result<()> {
+        validate_transition(&self.state, &event)
+            .map_err(|reason| anyhow!("[canonical_writer] illegal control transition: {reason}"))?;
         let next_state = apply_control_event(self.state.clone(), &event);
-        if let Err(reason) = validate_system_state(&next_state) {
-            panic!("[canonical_writer] invalid control transition: {reason}");
-        }
+        validate_system_state(&next_state)
+            .map_err(|reason| anyhow!("[canonical_writer] invalid control transition: {reason}"))?;
+        self.tlog
+            .append(&Event::control(event.clone()))
+            .map_err(|err| anyhow!("[canonical_writer] tlog append failed during apply: {err:#}"))?;
         self.state = next_state;
+        Ok(())
+    }
+
+    pub fn apply(&mut self, event: ControlEvent) {
+        if let Err(err) = self.try_apply(event) {
+            let _ = self.try_record_violation("canonical_writer", &format!("apply failed: {err:#}"));
+            eprintln!("{err:#}");
+        }
     }
 
     /// Record an invariant violation without changing state.
     /// The rejection is appended to the tlog as an effect event.
-    pub fn record_violation(&mut self, proposed_role: &str, reason: &str) {
+    pub fn try_record_violation(&mut self, proposed_role: &str, reason: &str) -> Result<()> {
         let ev = Event::effect(EffectEvent::InvariantViolation {
             proposed_role: proposed_role.to_string(),
             reason: reason.to_string(),
         });
-        if let Err(err) = self.tlog.append(&ev) {
-            panic!("[canonical_writer] tlog violation append failed: {err:#}");
+        self.tlog
+            .append(&ev)
+            .map_err(|err| anyhow!("[canonical_writer] tlog violation append failed: {err:#}"))?;
+        Ok(())
+    }
+
+    pub fn record_violation(&mut self, proposed_role: &str, reason: &str) {
+        if let Err(err) = self.try_record_violation(proposed_role, reason) {
+            eprintln!("{err:#}");
         }
     }
 
     /// Record an effect event (checkpoint saved/loaded, etc.).
+    pub fn try_record_effect(&mut self, effect: EffectEvent) -> Result<()> {
+        self.tlog
+            .append(&Event::effect(effect))
+            .map_err(|err| anyhow!("[canonical_writer] tlog effect append failed: {err:#}"))?;
+        Ok(())
+    }
+
     pub fn record_effect(&mut self, effect: EffectEvent) {
-        if let Err(err) = self.tlog.append(&Event::effect(effect)) {
-            panic!("[canonical_writer] tlog effect append failed: {err:#}");
+        if let Err(err) = self.try_record_effect(effect) {
+            let _ = self.try_record_violation("canonical_writer", &format!("record_effect failed: {err:#}"));
+            eprintln!("{err:#}");
         }
     }
 
@@ -82,11 +107,21 @@ impl CanonicalWriter {
     /// Replace state during checkpoint hydration only.
     /// This is the single non-`apply` mutation path and must never be used for
     /// live runtime transitions.
-    pub fn restore_from_checkpoint(&mut self, restored: SystemState) {
-        if let Err(reason) = validate_system_state(&restored) {
-            panic!("[canonical_writer] invalid checkpoint restore state: {reason}");
-        }
+    pub fn try_restore_from_checkpoint(&mut self, restored: SystemState) -> Result<()> {
+        validate_system_state(&restored)
+            .map_err(|reason| anyhow!("[canonical_writer] invalid checkpoint restore state: {reason}"))?;
         self.state = restored;
+        Ok(())
+    }
+
+    pub fn restore_from_checkpoint(&mut self, restored: SystemState) {
+        if let Err(err) = self.try_restore_from_checkpoint(restored) {
+            let _ = self.try_record_violation(
+                "canonical_writer",
+                &format!("restore_from_checkpoint failed: {err:#}"),
+            );
+            eprintln!("{err:#}");
+        }
     }
 
     pub fn workspace(&self) -> &PathBuf {
@@ -190,15 +225,19 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "illegal control transition")]
-    fn apply_panics_on_illegal_transition() {
+    fn try_apply_rejects_illegal_transition_without_mutating_state() {
         let dir = tempdir();
         let tlog_path = dir.join("tlog.ndjson");
         let initial = SystemState::new(&[0], 1);
         let mut writer = CanonicalWriter::new(initial, Tlog::open(&tlog_path), dir);
-        writer.apply(ControlEvent::ExecutorTurnDeregistered {
+        let err = writer
+            .try_apply(ControlEvent::ExecutorTurnDeregistered {
             tab_id: 7,
             turn_id: 9,
-        });
+        })
+            .expect_err("illegal transition should fail");
+        assert!(err.to_string().contains("illegal control transition"));
+        assert!(std::fs::read_to_string(&tlog_path).unwrap_or_default().trim().is_empty());
+        assert!(writer.state().submitted_turn_ids.is_empty());
     }
 }

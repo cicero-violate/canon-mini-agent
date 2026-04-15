@@ -264,7 +264,7 @@ Examples:
   {"action":"invariants","op":"read","rationale":"Review which invariants are accumulating support or awaiting enforcement."}
   {"action":"invariants","op":"promote","id":"INV-a1b2c3d4","rationale":"This pattern has strong support and the predicate is correct — promote it."}
   {"action":"invariants","op":"enforce","id":"INV-a1b2c3d4","rationale":"Verified safe to hard-block: executor dispatched with no ready tasks is always wrong."}
-  {"action":"invariants","op":"collapse","id":"INV-a1b2c3d4","rationale":"Root cause eliminated in src/app.rs:1016 — no-ready-tasks guard now structurally prevents this.","rationale":"Invariant no longer needed."}
+  {"action":"invariants","op":"collapse","id":"INV-a1b2c3d4","rationale":"Root cause eliminated in src/app.rs:1016 — invariant no longer needed."}
 
 ## `violation` — manage VIOLATIONS.json — add, update, resolve, or replace violation entries
 
