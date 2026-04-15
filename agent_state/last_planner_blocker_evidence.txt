@@ -1,1 +1,1 @@
-plan actions derived from diagnostics must cite same-cycle source evidence in observation/rationale (for example read_file, run_command, python, or verified current source evidence)
+LLM error: chromium: timeout waiting for SUBMIT_ACK (tab=433978173 turn=1)

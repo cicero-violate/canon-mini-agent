@@ -29,6 +29,7 @@ use crate::constants::{
 };
 use crate::engine::process_action_and_execute;
 use crate::events::ControlEvent;
+use crate::issues::IssuesFile;
 use crate::invalid_action::{
     auto_fill_message_fields, build_invalid_action_feedback, corrective_invalid_action_prompt,
     default_message_route, ensure_action_base_schema, expected_message_format,
@@ -41,7 +42,8 @@ use crate::md_convert::ensure_objectives_and_invariants_json;
 use crate::prompt_inputs::{
     build_single_role_prompt, lane_summary_text, load_planner_inputs, load_single_role_inputs,
     load_verifier_prompt_inputs, read_required_text, read_text_or_empty, LaneConfig,
-    OrchestratorContext, PlannerInputs, SingleRoleContext, SingleRoleInputs, VerifierPromptInputs,
+    LessonsArtifact, OrchestratorContext, PlannerInputs, SingleRoleContext, SingleRoleInputs,
+    VerifierPromptInputs,
 };
 use crate::prompts::{
     action_intent, action_objective_id, action_observation, action_rationale, action_result_prompt,
@@ -62,6 +64,78 @@ use crate::system_state::SystemState;
 use crate::tlog::Tlog;
 use crate::tool_schema::write_tool_examples;
 use crate::tools::write_stage_graph;
+
+fn write_json_if_missing_or_empty<T: Serialize>(path: &Path, value: &T) -> Result<bool> {
+    let existing = std::fs::read_to_string(path).unwrap_or_default();
+    if path.exists() && !existing.trim().is_empty() {
+        return Ok(false);
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let text = serde_json::to_string_pretty(value)?;
+    std::fs::write(path, text)?;
+    Ok(true)
+}
+
+fn ensure_workspace_artifact_baseline(workspace: &Path, diagnostics_path: &Path) -> Result<Vec<String>> {
+    let mut created = Vec::new();
+
+    if write_json_if_missing_or_empty(
+        &workspace.join(MASTER_PLAN_FILE),
+        &json!({
+            "version": 2,
+            "status": "in_progress",
+            "ready_window": [],
+            "tasks": [],
+            "dag": { "edges": [] }
+        }),
+    )? {
+        created.push(MASTER_PLAN_FILE.to_string());
+    }
+
+    if write_json_if_missing_or_empty(
+        &workspace.join(VIOLATIONS_FILE),
+        &crate::reports::ViolationsReport {
+            status: "ok".to_string(),
+            summary: String::new(),
+            violations: Vec::new(),
+        },
+    )? {
+        created.push(VIOLATIONS_FILE.to_string());
+    }
+
+    if write_json_if_missing_or_empty(
+        &workspace.join(ISSUES_FILE),
+        &IssuesFile {
+            version: 1,
+            ..IssuesFile::default()
+        },
+    )? {
+        created.push(ISSUES_FILE.to_string());
+    }
+
+    if write_json_if_missing_or_empty(
+        &workspace.join("agent_state/lessons.json"),
+        &LessonsArtifact::default(),
+    )? {
+        created.push("agent_state/lessons.json".to_string());
+    }
+
+    if write_json_if_missing_or_empty(
+        diagnostics_path,
+        &crate::reports::DiagnosticsReport {
+            status: "ok".to_string(),
+            inputs_scanned: Vec::new(),
+            ranked_failures: Vec::new(),
+            planner_handoff: Vec::new(),
+        },
+    )? {
+        created.push(diagnostics_path.display().to_string());
+    }
+
+    Ok(created)
+}
 
 /// Extract a string field from a JSON object, returning `""` on missing/non-string.
 fn jstr<'a>(v: &'a Value, key: &str) -> &'a str {
@@ -4920,6 +4994,16 @@ pub async fn run() -> Result<()> {
             Some(json!({ "stage": "startup" })),
         );
     }
+    if let Err(err) = ensure_workspace_artifact_baseline(&workspace, &diagnostics_path) {
+        eprintln!("[canon-mini-agent] workspace artifact bootstrap failed: {err:#}");
+        log_error_event(
+            "orchestrate",
+            "startup",
+            None,
+            &format!("workspace artifact bootstrap failed: {err:#}"),
+            Some(json!({ "stage": "startup" })),
+        );
+    }
 
     let shutdown = init_shutdown_signal();
     let shutdown_task = shutdown.clone();
@@ -4961,6 +5045,7 @@ pub async fn run() -> Result<()> {
             let _ = std::fs::write(&diagnostics_path, "");
         }
     }
+    let _ = ensure_workspace_artifact_baseline(&workspace, &diagnostics_path);
     for lane in &lanes {
         let plan_path = workspace.join(&lane.plan_file);
         if plan_path.exists() {
@@ -5620,13 +5705,27 @@ pub async fn run() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        action_retry_fingerprint, executor_step_limit_feedback, has_actionable_objectives,
-        inbound_message_from_user, invariant_id_from_reason, plan_has_incomplete_tasks,
-        route_gate_blocker_message, should_reject_solo_self_complete,
-        verifier_confirmed_with_plan_text, ActionProvenance,
+        action_retry_fingerprint, ensure_workspace_artifact_baseline,
+        executor_step_limit_feedback, has_actionable_objectives, inbound_message_from_user,
+        invariant_id_from_reason, plan_has_incomplete_tasks, route_gate_blocker_message,
+        should_reject_solo_self_complete, verifier_confirmed_with_plan_text, ActionProvenance,
     };
     use crate::system_state::SystemState;
     use serde_json::json;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_workspace(label: &str) -> std::path::PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "canon-mini-agent-app-{label}-{}-{}",
+            std::process::id(),
+            unique
+        ))
+    }
 
     #[test]
     fn route_gate_source_injects_inv_171c039a_tuple_before_evaluation() {
@@ -5703,6 +5802,52 @@ mod tests {
     fn inbound_message_from_user_rejects_non_user_sender() {
         let inbound = r#"{"action":"message","from":"planner","to":"solo","type":"handoff","status":"ready","payload":{"summary":"hello"}}"#;
         assert!(!inbound_message_from_user(inbound));
+    }
+
+    #[test]
+    fn workspace_artifact_baseline_creates_missing_diagnostics_inputs() {
+        let workspace = temp_workspace("baseline-create");
+        let diagnostics_path = workspace.join("PLANS/default/diagnostics-default.json");
+
+        let created = ensure_workspace_artifact_baseline(&workspace, &diagnostics_path)
+            .expect("bootstrap baseline");
+
+        assert!(created.iter().any(|p| p == "VIOLATIONS.json"));
+        assert!(created.iter().any(|p| p == "agent_state/lessons.json"));
+        assert!(workspace.join("VIOLATIONS.json").exists());
+        assert!(workspace.join("ISSUES.json").exists());
+        assert!(workspace.join("PLAN.json").exists());
+        assert!(workspace.join("agent_state/lessons.json").exists());
+        assert!(diagnostics_path.exists());
+
+        let violations = fs::read_to_string(workspace.join("VIOLATIONS.json")).unwrap();
+        assert!(violations.contains("\"status\": \"ok\""));
+
+        let plan = fs::read_to_string(workspace.join("PLAN.json")).unwrap();
+        assert!(plan.contains("\"ready_window\": []"));
+
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn workspace_artifact_baseline_preserves_existing_nonempty_files() {
+        let workspace = temp_workspace("baseline-preserve");
+        fs::create_dir_all(workspace.join("agent_state")).unwrap();
+        fs::write(
+            workspace.join("VIOLATIONS.json"),
+            "{\n  \"status\": \"failed\",\n  \"summary\": \"keep\",\n  \"violations\": []\n}\n",
+        )
+        .unwrap();
+        let diagnostics_path = workspace.join("PLANS/default/diagnostics-default.json");
+
+        let created = ensure_workspace_artifact_baseline(&workspace, &diagnostics_path)
+            .expect("bootstrap baseline");
+
+        assert!(!created.iter().any(|p| p == "VIOLATIONS.json"));
+        let violations = fs::read_to_string(workspace.join("VIOLATIONS.json")).unwrap();
+        assert!(violations.contains("\"summary\": \"keep\""));
+
+        let _ = fs::remove_dir_all(workspace);
     }
 
     #[test]
