@@ -1707,4 +1707,72 @@ mod tests {
         assert!(st.pending_resp.is_empty());
         assert_eq!(st.pending_turn_id.get(&7).copied(), Some(11));
     }
+
+    #[tokio::test]
+    async fn assistant_message_add_does_not_clear_turn_complete_stall_tracking() {
+        let state = Arc::new(Mutex::new(State::new()));
+        let (resp_tx, _resp_rx) = oneshot::channel::<String>();
+        let (early_fail_tx, early_fail_rx) = oneshot::channel::<String>();
+        {
+            let mut st = state.lock().await;
+            st.tab_urls.insert(7, "https://chatgpt.com/".to_string());
+            st.tab_owners.insert(7, "planner_chatgpt".to_string());
+            st.pending_turn_id.insert(7, 11);
+            st.pending_turn_lease
+                .insert((7, 11), "lease-expected".to_string());
+            st.pending_resp.insert((7, 11), resp_tx);
+            st.pending_early_fail.insert((7, 11), early_fail_tx);
+            st.assemblers
+                .insert(7, FrameAssembler::new(SiteType::ChatGptGroup));
+        }
+
+        let turn_complete = json!({
+            "type": "INBOUND_MESSAGE",
+            "tabId": 7,
+            "payload": json!({
+                "turn_id": 11,
+                "lease_token": "lease-expected",
+                "chunk": r#"[{"type":"message","topic_id":"conversations","payload":{"type":"conversation-turn-complete","payload":{"conversation_id":"room"}}}]"#,
+                "ts": 1,
+            })
+            .to_string(),
+        })
+        .to_string();
+        handle_inbound(&turn_complete, &state).await;
+
+        let assistant_non_terminal = json!({
+            "type": "INBOUND_MESSAGE",
+            "tabId": 7,
+            "payload": json!({
+                "turn_id": 11,
+                "lease_token": "lease-expected",
+                "chunk": r#"[{"type":"message","topic_id":"calpico-chatgpt","payload":{"type":"calpico-message-add","payload":{"message":{"role":"assistant","raw_messages":[{"author":{"role":"assistant"},"channel":"analysis","content":{"parts":["partial"]}}]}}}}]"#,
+                "ts": 2,
+            })
+            .to_string(),
+        })
+        .to_string();
+        handle_inbound(&assistant_non_terminal, &state).await;
+
+        for ts in 3..=10 {
+            let heartbeat = json!({
+                "type": "INBOUND_MESSAGE",
+                "tabId": 7,
+                "payload": json!({
+                    "turn_id": 11,
+                    "lease_token": "lease-expected",
+                    "chunk": r#"[{"type":"message","topic_id":"calpico-chatgpt","payload":{"type":"calpico-is-responding-heartbeat","payload":{"room_id":"room"}}}]"#,
+                    "ts": ts,
+                })
+                .to_string(),
+            })
+            .to_string();
+            handle_inbound(&heartbeat, &state).await;
+        }
+
+        let reason = early_fail_rx
+            .await
+            .expect("stall evidence should trigger deterministic early fail");
+        assert_eq!(reason, "heartbeat_after_turn_complete");
+    }
 }
