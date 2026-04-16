@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+// #![allow(dead_code)]
 
 mod action_examples;
 pub mod canon_tools_patch;
