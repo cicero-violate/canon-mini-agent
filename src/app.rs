@@ -2656,13 +2656,13 @@ fn load_checkpoint(workspace: &Path) -> Option<OrchestratorCheckpoint> {
     if cp.checkpoint_tlog_seq > 0 {
         let tlog_path = PathBuf::from(crate::constants::agent_state_dir()).join("tlog.ndjson");
         let current_tlog_seq = crate::tlog::Tlog::open(&tlog_path).seq();
-        if cp.checkpoint_tlog_seq > current_tlog_seq {
+        if cp.checkpoint_tlog_seq != current_tlog_seq {
             let msg = format!(
-                "checkpoint/runtime divergence: checkpoint seq {} exceeds tlog seq {}",
+                "checkpoint/runtime divergence: checkpoint seq {} does not match tlog seq {}",
                 cp.checkpoint_tlog_seq, current_tlog_seq
             );
             eprintln!(
-                "[orchestrate] checkpoint seq {} exceeds current tlog seq {} — discarding",
+                "[orchestrate] checkpoint seq {} does not match current tlog seq {} — discarding",
                 cp.checkpoint_tlog_seq, current_tlog_seq
             );
             crate::blockers::record_action_failure(
@@ -5603,11 +5603,23 @@ pub async fn run() -> Result<()> {
 
         // ── Canonical-writer initialisation ─────────────────────────────
         let lane_indices: Vec<usize> = lanes.iter().map(|l| l.index).collect();
-        let system_state = SystemState::new(&lane_indices, lanes.len());
+        let initial_system_state = SystemState::new(&lane_indices, lanes.len());
         let tlog_path = PathBuf::from(crate::constants::agent_state_dir()).join("tlog.ndjson");
+        let system_state = match Tlog::replay(&tlog_path, initial_system_state.clone()) {
+            Ok(replayed) => replayed,
+            Err(err) => {
+                eprintln!(
+                    "[orchestrate] failed to replay {}: {err:#}; using fresh initial state",
+                    tlog_path.display()
+                );
+                initial_system_state.clone()
+            }
+        };
         let tlog = Tlog::open(&tlog_path);
         let mut writer = CanonicalWriter::try_new(system_state, tlog, workspace.clone())?;
-        writer.try_apply(ControlEvent::PlannerPendingSet { pending: true })?;
+        if writer.tlog_seq() == 0 {
+            writer.try_apply(ControlEvent::PlannerPendingSet { pending: true })?;
+        }
         let mut rt = new_runtime_state(&lanes);
 
         let mut resume_verifier_items: Vec<ResumeVerifierItem> = Vec::new();
@@ -5619,41 +5631,31 @@ pub async fn run() -> Result<()> {
                 checkpoint.phase_lane,
                 now_ms().saturating_sub(checkpoint.created_ms)
             );
-            // Restore serializable state through the explicit checkpoint hydration path.
-            let mut restored = writer.state().clone();
-            restored.planner_pending = checkpoint.planner_pending;
-            restored.diagnostics_pending = checkpoint.diagnostics_pending;
-            restored.diagnostics_text = checkpoint.diagnostics_text.clone();
-            restored.last_plan_text = checkpoint.last_plan_text.clone();
-            restored.last_executor_diff = checkpoint.last_executor_diff.clone();
-            restored.last_solo_plan_text = checkpoint.last_solo_plan_text.clone();
-            restored.last_solo_executor_diff = checkpoint.last_solo_executor_diff.clone();
-            for lane_snapshot in &checkpoint.lanes {
-                if let Some(state) = restored.lanes.get_mut(&lane_snapshot.lane_id) {
-                    state.plan_text = lane_snapshot.plan_text.clone();
-                    state.pending = lane_snapshot.pending;
-                    state.in_progress_by = lane_snapshot.in_progress_by.clone();
-                    state.latest_verifier_result = lane_snapshot.latest_verifier_result.clone();
-                }
-            }
-            if checkpoint.verifier_summary.len() == lanes.len() {
-                restored.verifier_summary = checkpoint.verifier_summary.clone();
-            }
-            restored.phase = checkpoint.phase.clone();
-            restored.phase_lane = checkpoint.phase_lane;
             resume_verifier_items = checkpoint.verifier_pending_results;
+            let state = writer.state().clone();
             let resume_decision = decide_resume_phase(
-                &checkpoint.phase,
+                &state.phase,
                 !resume_verifier_items.is_empty(),
-                restored.planner_pending,
-                restored.diagnostics_pending,
+                state.planner_pending,
+                state.diagnostics_pending,
             );
-            restored.scheduled_phase = resume_decision.scheduled_phase;
-            restored.planner_pending = resume_decision.planner_pending;
-            restored.diagnostics_pending = resume_decision.diagnostics_pending;
-            writer.try_restore_from_checkpoint(restored)?;
+            if writer.state().scheduled_phase != resume_decision.scheduled_phase {
+                writer.apply(ControlEvent::ScheduledPhaseSet {
+                    phase: resume_decision.scheduled_phase.clone(),
+                });
+            }
+            if writer.state().planner_pending != resume_decision.planner_pending {
+                writer.apply(ControlEvent::PlannerPendingSet {
+                    pending: resume_decision.planner_pending,
+                });
+            }
+            if writer.state().diagnostics_pending != resume_decision.diagnostics_pending {
+                writer.apply(ControlEvent::DiagnosticsPendingSet {
+                    pending: resume_decision.diagnostics_pending,
+                });
+            }
             writer.try_record_effect(crate::events::EffectEvent::CheckpointLoaded {
-                phase: checkpoint.phase.clone(),
+                phase: state.phase.clone(),
             })?;
             // On resume, DO NOT clear executor_submit_inflight.
             // Clearing inflight state while preserving active tabs and submitted_turns
