@@ -23,6 +23,16 @@ path = "src/bin/canon-exec.rs"
 test = false
 
 [[bin]]
+name = "canon-lessons-synth"
+path = "src/bin/canon-lessons-synth.rs"
+test = false
+
+[[bin]]
+name = "canon-user-chat"
+path = "src/bin/canon-user-chat.rs"
+test = false
+
+[[bin]]
 name = "canon-step"
 path = "src/bin/canon-step.rs"
 test = false

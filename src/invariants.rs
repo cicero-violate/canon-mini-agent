@@ -1362,7 +1362,6 @@ fn read_tail_entries(log_path: &Path, max_lines: usize) -> Vec<Value> {
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::io::Write;
 
     /// Create a temporary directory under `std::env::temp_dir()`.
     fn make_workspace() -> std::path::PathBuf {
