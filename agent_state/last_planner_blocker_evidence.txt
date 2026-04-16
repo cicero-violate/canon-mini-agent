@@ -1,1 +1,1 @@
-invariant gate blocked role `executor`: Role `executor` repeatedly encounters `llm_timeout`: LLM endpoint call timed out or returned a connection error [id=INV-10b73fb9]
+invariant gate blocked role `executor`: Action targeted a path that does not exist — plan is referencing a target that has not been created yet [id=INV-e349216b]
