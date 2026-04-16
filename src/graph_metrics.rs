@@ -10,8 +10,9 @@ use std::path::Path;
 use anyhow::Result;
 use serde_json::{json, Value};
 
-use crate::constants::ISSUES_FILE;
-use crate::issues::{persist_issues_projection, rescore_all, Issue, IssuesFile};
+use crate::issues::{
+    load_issues_file, persist_issues_projection, rescore_all, Issue, IssuesFile,
+};
 use crate::semantic::SemanticIndex;
 
 const DEFAULT_BRIDGE_RATIO_THRESHOLD: f64 = 10.0;
@@ -31,13 +32,7 @@ pub struct BridgeConnectivityStats {
 }
 
 pub fn generate_bridge_connectivity_issues(workspace: &Path) -> Result<usize> {
-    let issues_path = workspace.join(ISSUES_FILE);
-    let raw = std::fs::read_to_string(&issues_path).unwrap_or_default();
-    let mut file: IssuesFile = if raw.trim().is_empty() {
-        IssuesFile::default()
-    } else {
-        serde_json::from_str(&raw).unwrap_or_default()
-    };
+    let mut file: IssuesFile = load_issues_file(workspace);
 
     let before = serde_json::to_value(&file)?;
     let mut mutated = 0usize;

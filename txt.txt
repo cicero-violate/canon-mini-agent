@@ -1,0 +1,162 @@
+cd /mnt/data/canon-mini-agent-extracted/canon-mini-agent
+cat <<'PATCH' | /opt/apply_patch/bin/apply_patch
+*** Begin Patch
+*** Update File: src/app.rs
+@@
+ fn canonical_inbound_message_from_tlog(
+     agent_state_dir: &std::path::Path,
+     state: &SystemState,
+@@
+     }
+     latest.map(|(_, signature, message)| (signature, message))
+ }
++
++fn backfill_inbound_projection_effect(role: &str, raw: &str) -> Option<String> {
++    let parsed = serde_json::from_str::<Value>(raw).ok();
++    let from_role = parsed
++        .as_ref()
++        .and_then(|value| value.get("from"))
++        .and_then(|value| value.as_str())
++        .unwrap_or("unknown");
++    let signature = artifact_write_signature(&[
++        "inbound_message",
++        from_role,
++        role,
++        &raw.len().to_string(),
++        raw,
++    ]);
++    record_effect_for_workspace(
++        Path::new(crate::constants::workspace()),
++        EffectEvent::InboundMessageRecorded {
++            from_role: from_role.to_string(),
++            to_role: role.to_string(),
++            message: raw.to_string(),
++            signature: signature.clone(),
++        },
++    )
++    .ok()?;
++    Some(signature)
++}
+ 
+ fn take_inbound_message(writer: &mut CanonicalWriter, role: &str) -> Option<String> {
+@@
+     let raw = std::fs::read_to_string(&path).ok()?;
+     let trimmed = raw.trim().to_string();
+     if trimmed.is_empty() {
+         let _ = std::fs::remove_file(&path);
+         return None;
+     }
++    if let Some(signature) = backfill_inbound_projection_effect(&role_key, &raw) {
++        writer.apply(ControlEvent::InboundMessageConsumed {
++            role: role_key.clone(),
++            signature,
++        });
++    }
+     let _ = std::fs::remove_file(&path);
+     Some(trimmed)
+ }
+@@
+     let raw = std::fs::read_to_string(&path).ok()?;
+     let trimmed = raw.trim().to_string();
+     if trimmed.is_empty() {
+         let _ = std::fs::remove_file(&path);
+         return None;
+     }
++    if let Some(signature) = backfill_inbound_projection_effect(&role_key, &raw) {
++        let tlog_path = agent_state_dir.join("tlog.ndjson");
++        if let Ok(state) = Tlog::replay(&tlog_path, SystemState::new(&[], 0)) {
++            if let Ok(mut writer) = CanonicalWriter::try_new(
++                state,
++                Tlog::open(&tlog_path),
++                PathBuf::from(crate::constants::workspace()),
++            ) {
++                let _ = writer.try_apply(ControlEvent::InboundMessageConsumed {
++                    role: role_key.clone(),
++                    signature,
++                });
++            }
++        }
++    }
+     let _ = std::fs::remove_file(&path);
+     Some(trimmed)
+ }
+@@
+ fn canonical_external_user_message_from_tlog(
+     agent_state_dir: &std::path::Path,
+     state: &SystemState,
+@@
+     }
+     latest.map(|(_, signature, message)| (signature, message))
+ }
++
++fn backfill_external_user_projection_effect(role: &str, raw: &str) -> Option<String> {
++    let signature = artifact_write_signature(&[
++        "external_user_message",
++        role,
++        &raw.len().to_string(),
++        raw,
++    ]);
++    record_effect_for_workspace(
++        Path::new(crate::constants::workspace()),
++        EffectEvent::ExternalUserMessageRecorded {
++            to_role: role.to_string(),
++            message: raw.to_string(),
++            signature: signature.clone(),
++        },
++    )
++    .ok()?;
++    Some(signature)
++}
+ 
+ fn take_external_user_message_projection(role: &str) -> Option<String> {
+@@
+     let raw = std::fs::read_to_string(&path).ok()?;
+     let trimmed = raw.trim().to_string();
+     if trimmed.is_empty() {
+         let _ = std::fs::remove_file(&path);
+         return None;
+     }
++    if let Some(signature) = backfill_external_user_projection_effect(&role_key, &raw) {
++        let tlog_path = agent_state_dir.join("tlog.ndjson");
++        if let Ok(state) = Tlog::replay(&tlog_path, SystemState::new(&[], 0)) {
++            if let Ok(mut writer) = CanonicalWriter::try_new(
++                state,
++                Tlog::open(&tlog_path),
++                PathBuf::from(crate::constants::workspace()),
++            ) {
++                let _ = writer.try_apply(ControlEvent::ExternalUserMessageConsumed {
++                    role: role_key.clone(),
++                    signature,
++                });
++            }
++        }
++    }
+     let _ = std::fs::remove_file(&path);
+     Some(trimmed)
+ }
+@@
+     if let Some((signature, message)) =
+         canonical_external_user_message_from_tlog(agent_state_dir, writer.state(), &role_key)
+     {
+@@
+         }
+         return Some(trimmed);
+     }
+-    take_external_user_message_projection(role)
++    let raw = std::fs::read_to_string(&path).ok()?;
++    let trimmed = raw.trim().to_string();
++    if trimmed.is_empty() {
++        let _ = std::fs::remove_file(&path);
++        return None;
++    }
++    if let Some(signature) = backfill_external_user_projection_effect(&role_key, &raw) {
++        writer.apply(ControlEvent::ExternalUserMessageConsumed {
++            role: role_key,
++            signature,
++        });
++    }
++    let _ = std::fs::remove_file(&path);
++    Some(trimmed)
+ }
+*** End Patch
+PATCH

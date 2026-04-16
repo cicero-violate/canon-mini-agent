@@ -1,9 +1,14 @@
 use anyhow::{anyhow, bail, Context, Result};
 use canon_mini_agent::complexity::write_complexity_report;
-use canon_mini_agent::logging::init_log_paths;
-use canon_mini_agent::logging::log_error_event;
+use canon_mini_agent::events::EffectEvent;
+use canon_mini_agent::logging::{
+    artifact_write_signature, init_log_paths, log_error_event, record_effect_for_workspace,
+    write_projection_with_artifact_effects,
+};
 use canon_mini_agent::SemanticIndex;
-use canon_mini_agent::{set_agent_state_dir, set_workspace};
+use canon_mini_agent::{
+    load_issues_file, load_violations_report, set_agent_state_dir, set_workspace,
+};
 use serde_json::json;
 use std::fs;
 use std::io::{Read, Write};
@@ -891,7 +896,12 @@ fn read_user_message_cli(args: &SupervisorArgs) -> Result<Option<String>> {
     Ok(None)
 }
 
-fn write_external_user_message(state_dir: &Path, to_role: &str, message: &str) -> Result<PathBuf> {
+fn write_external_user_message(
+    workspace: &Path,
+    state_dir: &Path,
+    to_role: &str,
+    message: &str,
+) -> Result<PathBuf> {
     fs::create_dir_all(state_dir)
         .with_context(|| format!("create state dir {}", state_dir.display()))?;
     let to_key = sanitize_role(to_role);
@@ -902,12 +912,39 @@ fn write_external_user_message(state_dir: &Path, to_role: &str, message: &str) -
         "message": message,
         "reply_to": "user"
     });
+    let action_text = serde_json::to_string_pretty(&action)?;
+    let signature = artifact_write_signature(&[
+        "external_user_message",
+        &to_key,
+        &action_text.len().to_string(),
+        action_text.as_str(),
+    ]);
+    record_effect_for_workspace(
+        workspace,
+        EffectEvent::ExternalUserMessageRecorded {
+            to_role: to_key.clone(),
+            message: action_text.clone(),
+            signature,
+        },
+    )?;
     let msg_path = state_dir.join(format!("external_user_message_to_{}.json", to_key));
-    fs::write(&msg_path, serde_json::to_string_pretty(&action)?)
-        .with_context(|| format!("write {}", msg_path.display()))?;
+    write_projection_with_artifact_effects(
+        workspace,
+        &msg_path,
+        &format!("agent_state/external_user_message_to_{}.json", to_key),
+        "write",
+        "external_user_message_projection",
+        &action_text,
+    )?;
     let wake_path = state_dir.join(format!("wakeup_{}.flag", to_key));
-    fs::write(&wake_path, "user_message")
-        .with_context(|| format!("write {}", wake_path.display()))?;
+    write_projection_with_artifact_effects(
+        workspace,
+        &wake_path,
+        &format!("agent_state/wakeup_{}.flag", to_key),
+        "write",
+        "external_user_message_wakeup",
+        "user_message",
+    )?;
     Ok(msg_path)
 }
 
@@ -926,6 +963,9 @@ fn maybe_handle_user_chat_mode(args: &SupervisorArgs) -> Result<bool> {
         return Ok(false);
     }
 
+    let workspace = PathBuf::from(
+        workspace_from_args(&args.filtered_args).context("missing --workspace")?,
+    );
     let state_dir = agent_state_dir_from_args(&args.filtered_args);
     if args.read_user_reply {
         match read_external_user_reply(&state_dir)? {
@@ -936,6 +976,7 @@ fn maybe_handle_user_chat_mode(args: &SupervisorArgs) -> Result<bool> {
     }
 
     let msg_path = write_external_user_message(
+        &workspace,
         &state_dir,
         &args.user_to_role,
         &message.expect("checked above"),
@@ -1104,32 +1145,16 @@ fn extract_symbol_tokens(text: &str) -> Vec<String> {
 
 /// Read VIOLATIONS.json and extract symbol paths from violation evidence/location fields.
 fn load_violation_symbols(workspace: &Path) -> Vec<String> {
-    let path = workspace.join("VIOLATIONS.json");
-    let Ok(raw) = std::fs::read_to_string(&path) else {
-        return Vec::new();
-    };
-    let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) else {
-        return Vec::new();
-    };
     let mut symbols = Vec::new();
-    if let Some(violations) = val.get("violations").and_then(|v| v.as_array()) {
-        for v in violations {
-            if let Some(files) = v.get("files").and_then(|f| f.as_array()) {
-                for f in files {
-                    if let Some(s) = f.as_str() {
-                        if s.contains("::") {
-                            symbols.push(s.to_string());
-                        }
-                    }
-                }
+    let report = load_violations_report(workspace);
+    for violation in report.violations {
+        for file in violation.files {
+            if file.contains("::") {
+                symbols.push(file);
             }
-            if let Some(evidence) = v.get("evidence").and_then(|e| e.as_array()) {
-                for line in evidence {
-                    if let Some(s) = line.as_str() {
-                        symbols.extend(extract_symbol_tokens(s));
-                    }
-                }
-            }
+        }
+        for entry in violation.evidence {
+            symbols.extend(extract_symbol_tokens(&entry));
         }
     }
     symbols.sort();
@@ -1149,39 +1174,21 @@ struct FileLocation {
 ///
 /// Only open issues are considered; resolved issues are skipped.
 fn load_issue_failure_signals(workspace: &Path) -> (Vec<String>, Vec<FileLocation>) {
-    let path = workspace.join("ISSUES.json");
-    let Ok(raw) = std::fs::read_to_string(&path) else {
-        return (Vec::new(), Vec::new());
-    };
-    let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) else {
-        return (Vec::new(), Vec::new());
-    };
+    let file = load_issues_file(workspace);
     let mut symbols: Vec<String> = Vec::new();
     let mut locations: Vec<FileLocation> = Vec::new();
 
-    let Some(issues) = val.get("issues").and_then(|v| v.as_array()) else {
-        return (symbols, locations);
-    };
-
-    for issue in issues {
-        let status = issue
-            .get("status")
-            .and_then(|v| v.as_str())
-            .unwrap_or("open");
-        if status == "resolved" {
+    for issue in file.issues {
+        if issue.status == "resolved" {
             continue;
         }
 
-        // Parse `location` field: semicolon-separated entries like "src/tools.rs:3553-3562"
-        if let Some(loc_str) = issue.get("location").and_then(|v| v.as_str()) {
-            for part in loc_str.split(';') {
+        if !issue.location.trim().is_empty() {
+            for part in issue.location.split(';') {
                 let part = part.trim();
-                // Extract file:line — take the first colon-separated number as the line.
-                // Format examples: "src/tools.rs:3553-3562", "src/bin/canon-exec.rs:6"
                 if let Some(colon_pos) = part.rfind(':') {
                     let file = part[..colon_pos].trim().to_string();
                     let line_part = part[colon_pos + 1..].trim();
-                    // Take only the start line (before any `-`).
                     let line_str = line_part.split('-').next().unwrap_or("0");
                     if let Ok(line) = line_str.parse::<u32>() {
                         if line > 0 && !file.is_empty() {
@@ -1189,24 +1196,15 @@ fn load_issue_failure_signals(workspace: &Path) -> (Vec<String>, Vec<FileLocatio
                         }
                     }
                 }
-                // Also extract any `::` symbol tokens embedded in location strings.
                 symbols.extend(extract_symbol_tokens(part));
             }
         }
 
-        // Scan evidence strings for `::` symbol tokens.
-        if let Some(evidence) = issue.get("evidence").and_then(|e| e.as_array()) {
-            for entry in evidence {
-                if let Some(s) = entry.as_str() {
-                    symbols.extend(extract_symbol_tokens(s));
-                }
-            }
+        for entry in issue.evidence {
+            symbols.extend(extract_symbol_tokens(&entry));
         }
 
-        // Scan description for `::` tokens (inter-complexity issues embed symbol names).
-        if let Some(desc) = issue.get("description").and_then(|v| v.as_str()) {
-            symbols.extend(extract_symbol_tokens(desc));
-        }
+        symbols.extend(extract_symbol_tokens(&issue.description));
     }
 
     symbols.sort();

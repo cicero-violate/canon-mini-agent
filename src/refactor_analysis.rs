@@ -22,8 +22,9 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::constants::ISSUES_FILE;
-use crate::issues::{is_closed, persist_issues_projection, rescore_all, Issue, IssuesFile};
+use crate::issues::{
+    is_closed, load_issues_file, persist_issues_projection, rescore_all, Issue, IssuesFile,
+};
 use crate::semantic::SemanticIndex;
 
 // ---------------------------------------------------------------------------
@@ -38,13 +39,7 @@ pub fn generate_all_refactor_issues(workspace: &Path) -> Result<usize> {
         return Ok(0);
     }
 
-    let issues_path = workspace.join(ISSUES_FILE);
-    let raw = std::fs::read_to_string(&issues_path).unwrap_or_default();
-    let mut file: IssuesFile = if raw.trim().is_empty() {
-        IssuesFile::default()
-    } else {
-        serde_json::from_str(&raw).unwrap_or_default()
-    };
+    let mut file: IssuesFile = load_issues_file(workspace);
 
     let existing_ids: HashSet<String> = file.issues.iter().map(|i| i.id.clone()).collect();
     let open_locations: HashSet<String> = file

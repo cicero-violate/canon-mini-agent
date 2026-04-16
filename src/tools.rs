@@ -182,7 +182,7 @@ fn record_workspace_artifact_effect_for_workspace(
     subject: &str,
     signature: &str,
 ) -> Result<()> {
-    let tlog_path = std::path::Path::new(crate::constants::agent_state_dir()).join("tlog.ndjson");
+    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
     let state = crate::system_state::SystemState::new(&[], 0);
     let mut writer = crate::canonical_writer::CanonicalWriter::try_new(
         state,
@@ -201,7 +201,7 @@ fn record_workspace_artifact_effect_for_workspace(
 }
 
 fn record_effect_for_workspace(workspace: &Path, effect: crate::events::EffectEvent) -> Result<()> {
-    let tlog_path = std::path::Path::new(crate::constants::agent_state_dir()).join("tlog.ndjson");
+    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
     let state = crate::system_state::SystemState::new(&[], 0);
     let mut writer = crate::canonical_writer::CanonicalWriter::try_new(
         state,
@@ -796,6 +796,9 @@ fn handle_objectives_replace_objectives(
 fn load_violations(path: &Path) -> Result<crate::reports::ViolationsReport> {
     let raw = fs::read_to_string(path).unwrap_or_default();
     if raw.trim().is_empty() {
+        if let Some(report) = load_violations_from_tlog(path) {
+            return Ok(report);
+        }
         return Ok(crate::reports::ViolationsReport {
             status: "ok".to_string(),
             summary: String::new(),
@@ -805,14 +808,48 @@ fn load_violations(path: &Path) -> Result<crate::reports::ViolationsReport> {
     serde_json::from_str(&raw).map_err(|e| anyhow!("VIOLATIONS.json parse error: {e}"))
 }
 
+fn load_violations_from_tlog(path: &Path) -> Option<crate::reports::ViolationsReport> {
+    let workspace = path.parent()?;
+    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
+    let records = crate::tlog::Tlog::read_records(&tlog_path).ok()?;
+    let mut latest: Option<(u64, crate::reports::ViolationsReport)> = None;
+    for record in records {
+        let crate::events::Event::Effect {
+            event: crate::events::EffectEvent::ViolationsReportRecorded { report },
+        } = record.event
+        else {
+            continue;
+        };
+        let replace = match latest.as_ref() {
+            None => true,
+            Some((seq, _)) => record.seq >= *seq,
+        };
+        if replace {
+            latest = Some((record.seq, report));
+        }
+    }
+    latest.map(|(_, report)| report)
+}
+
 fn save_violations(
     path: &Path,
     report: &crate::reports::ViolationsReport,
-    _writer: Option<&mut CanonicalWriter>,
+    mut writer: Option<&mut CanonicalWriter>,
     op: &str,
     subject: &str,
 ) -> Result<()> {
     let json = serde_json::to_string_pretty(report)?;
+    let effect = crate::events::EffectEvent::ViolationsReportRecorded {
+        report: report.clone(),
+    };
+    if let Some(writer_ref) = writer.as_deref_mut() {
+        writer_ref.try_record_effect(effect)?;
+    } else {
+        crate::logging::record_effect_for_workspace(
+            std::path::Path::new(crate::constants::workspace()),
+            effect,
+        )?;
+    }
     crate::logging::write_projection_with_artifact_effects(
         std::path::Path::new(crate::constants::workspace()),
         path,
@@ -932,7 +969,8 @@ fn handle_issue_action(
     }
     let op_raw = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
     let path = workspace.join(ISSUES_FILE);
-    let raw = fs::read_to_string(&path).unwrap_or_default();
+    let raw = serde_json::to_string_pretty(&crate::issues::load_issues_file(workspace))
+        .unwrap_or_default();
     match op_raw {
         "read" => read_open_issues(&raw),
         "create" => create_issue(action, &path, &raw, writer.as_deref_mut()),
@@ -1286,23 +1324,16 @@ fn find_issue_mut<'a>(file: &'a mut IssuesFile, issue_id: &str) -> Result<&'a mu
 }
 
 fn write_issues_file(
-    path: &Path,
+    _path: &Path,
     file: &mut IssuesFile,
-    _writer: Option<&mut CanonicalWriter>,
+    writer: Option<&mut CanonicalWriter>,
     op: &str,
     subject: &str,
 ) -> Result<()> {
     crate::issues::rescore_all(file);
-    let raw = serde_json::to_string_pretty(file)?;
-    crate::logging::write_projection_with_artifact_effects(
-        std::path::Path::new(crate::constants::workspace()),
-        path,
-        "ISSUES.json",
-        op,
-        subject,
-        &raw,
-    )
-    .map_err(|e| anyhow!("failed to write ISSUES.json: {e}"))
+    let workspace = std::path::Path::new(crate::constants::workspace());
+    crate::issues::persist_issues_projection_with_writer(workspace, file, writer, subject)
+        .map_err(|e| anyhow!("failed to write ISSUES.json via {op}: {e}"))
 }
 
 fn handle_plan_sorted_view_action(workspace: &Path) -> Result<(bool, String)> {
@@ -3284,14 +3315,23 @@ fn reject_unvalidated_diagnostics_persistence(
         return Ok(None);
     }
     if let Some(previous) = previous_diagnostics_text {
-        crate::logging::write_projection_with_artifact_effects(
-            workspace,
-            &diagnostics_path,
-            diagnostics_target_path.unwrap_or(diagnostics_file()),
-            "write",
-            "diagnostics_rejection_restore",
-            &previous,
-        )?;
+        if let Ok(report) = serde_json::from_str::<crate::reports::DiagnosticsReport>(&previous) {
+            crate::reports::persist_diagnostics_projection_to_path(
+                workspace,
+                &report,
+                diagnostics_target_path.unwrap_or(diagnostics_file()),
+                "diagnostics_rejection_restore",
+            )?;
+        } else {
+            crate::logging::write_projection_with_artifact_effects(
+                workspace,
+                &diagnostics_path,
+                diagnostics_target_path.unwrap_or(diagnostics_file()),
+                "write",
+                "diagnostics_rejection_restore",
+                &previous,
+            )?;
+        }
     }
     let rejection_msg = format!(
         "apply_patch rejected: DIAGNOSTICS.json is a derived cache view and must match the rendered diagnostics projection from the current workspace issue/violation views.\n\
@@ -5377,9 +5417,12 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
             .and_then(|v| v.as_str())
             .unwrap_or("(see plan)");
         let agent_state = std::path::Path::new(crate::constants::agent_state_dir());
-        let _ = std::fs::create_dir_all(agent_state);
-        let _ = std::fs::write(
-            agent_state.join("wakeup_planner.flag"),
+        let wake_path = agent_state.join("wakeup_planner.flag");
+        let _ = write_projection_with_workspace_effects(
+            std::path::Path::new(crate::constants::workspace()),
+            &wake_path,
+            "agent_state/wakeup_planner.flag",
+            "executor_task_done_wakeup",
             "executor_task_done",
         );
         eprintln!(
@@ -7822,8 +7865,17 @@ mod tests {
             handle_apply_patch_action("diagnostics", 1, None, &tmp, &action).unwrap();
 
         assert!(out.contains("derived cache view"));
-        let persisted = std::fs::read_to_string(tmp.join("DIAGNOSTICS.json")).unwrap();
-        assert_eq!(persisted, "{\"status\":\"healthy\",\"ranked_failures\":[]}");
+        let persisted: Value =
+            serde_json::from_str(&std::fs::read_to_string(tmp.join("DIAGNOSTICS.json")).unwrap())
+                .unwrap();
+        assert_eq!(persisted.get("status").and_then(|v| v.as_str()), Some("healthy"));
+        assert_eq!(
+            persisted
+                .get("ranked_failures")
+                .and_then(|v| v.as_array())
+                .map(|entries| entries.len()),
+            Some(0)
+        );
     }
 
     #[test]
@@ -7884,8 +7936,17 @@ mod tests {
             handle_apply_patch_action("diagnostics", 1, None, &tmp, &action).unwrap();
 
         assert!(out.contains("derived cache view"), "unexpected: {out}");
-        let persisted = std::fs::read_to_string(tmp.join("DIAGNOSTICS.json")).unwrap();
-        assert!(persisted.contains("\"status\":\"healthy\""));
+        let persisted: Value =
+            serde_json::from_str(&std::fs::read_to_string(tmp.join("DIAGNOSTICS.json")).unwrap())
+                .unwrap();
+        assert_eq!(persisted.get("status").and_then(|v| v.as_str()), Some("healthy"));
+        assert_eq!(
+            persisted
+                .get("ranked_failures")
+                .and_then(|v| v.as_array())
+                .map(|entries| entries.len()),
+            Some(0)
+        );
     }
 
     #[test]

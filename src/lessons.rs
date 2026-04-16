@@ -280,14 +280,14 @@ fn op_encode(workspace: &Path, action: &Value) -> Result<(bool, String)> {
 }
 
 fn op_read_lessons(workspace: &Path) -> Result<(bool, String)> {
-    let path = lessons_path(workspace);
-    if !path.exists() {
+    let artifact = load_lessons_artifact(workspace);
+    if artifact == LessonsArtifact::default() {
         return Ok((
             false,
             "(lessons.json does not exist yet — promote candidates to create it)".to_string(),
         ));
     }
-    let raw = std::fs::read_to_string(&path)?;
+    let raw = serde_json::to_string_pretty(&artifact)?;
     Ok((false, format!("lessons.json:\n{raw}")))
 }
 
@@ -930,22 +930,65 @@ fn save_candidates(workspace: &Path, cfile: &LessonsCandidatesFile) -> Result<()
     )
 }
 
-fn load_lessons(workspace: &Path) -> LessonsArtifact {
+pub fn load_lessons_artifact(workspace: &Path) -> LessonsArtifact {
     let path = lessons_path(workspace);
-    load_json_file_or_else(&path, LessonsArtifact::default)
+    let raw = std::fs::read_to_string(&path).unwrap_or_default();
+    if !raw.trim().is_empty() {
+        if let Ok(artifact) = serde_json::from_str::<LessonsArtifact>(&raw) {
+            return artifact;
+        }
+    }
+    load_lessons_from_tlog(workspace).unwrap_or_default()
 }
 
-fn save_lessons(workspace: &Path, artifact: &LessonsArtifact) -> Result<()> {
+fn load_lessons(workspace: &Path) -> LessonsArtifact {
+    load_lessons_artifact(workspace)
+}
+
+pub fn persist_lessons_projection(
+    workspace: &Path,
+    artifact: &LessonsArtifact,
+    subject: &str,
+) -> Result<()> {
     let path = lessons_path(workspace);
-    let text = serde_json::to_string_pretty(artifact)?;
+    let effect = crate::events::EffectEvent::LessonsArtifactRecorded {
+        artifact: artifact.clone(),
+    };
+    crate::logging::record_effect_for_workspace(workspace, effect)?;
     crate::logging::write_projection_with_artifact_effects(
         workspace,
         &path,
         LESSONS_FILE,
         "write",
-        "lessons_save",
-        &text,
+        subject,
+        &serde_json::to_string_pretty(artifact)?,
     )
+}
+
+fn save_lessons(workspace: &Path, artifact: &LessonsArtifact) -> Result<()> {
+    persist_lessons_projection(workspace, artifact, "lessons_save")
+}
+
+fn load_lessons_from_tlog(workspace: &Path) -> Option<LessonsArtifact> {
+    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
+    let records = crate::tlog::Tlog::read_records(&tlog_path).ok()?;
+    let mut latest: Option<(u64, LessonsArtifact)> = None;
+    for record in records {
+        let crate::events::Event::Effect {
+            event: crate::events::EffectEvent::LessonsArtifactRecorded { artifact },
+        } = record.event
+        else {
+            continue;
+        };
+        let replace = match latest.as_ref() {
+            None => true,
+            Some((seq, _)) => record.seq >= *seq,
+        };
+        if replace {
+            latest = Some((record.seq, artifact));
+        }
+    }
+    latest.map(|(_, artifact)| artifact)
 }
 
 // ── Utility ───────────────────────────────────────────────────────────────────
@@ -1870,6 +1913,29 @@ mod tests {
         // Idempotent: calling again should add 0 new rules.
         let added2 = apply_promoted_lessons(&workspace);
         assert_eq!(added2, 0, "second call should be idempotent");
+    }
+
+    #[test]
+    fn load_lessons_artifact_falls_back_to_latest_tlog_snapshot_when_projection_missing() {
+        let workspace = tempdir();
+        std::fs::create_dir_all(workspace.join("agent_state")).unwrap();
+
+        let artifact = LessonsArtifact {
+            summary: "Recovered lessons snapshot".to_string(),
+            failures: vec![LessonEntry::pending("Repeated read stall")],
+            fixes: vec![LessonEntry::pending("Promote the stall check into runtime")],
+            required_actions: vec![LessonEntry::pending("Prefer canonical snapshot loaders")],
+            encoding_instructions: "encode later".to_string(),
+        };
+
+        persist_lessons_projection(&workspace, &artifact, "lessons_tlog_fallback_test").unwrap();
+        std::fs::remove_file(workspace.join(LESSONS_FILE)).unwrap();
+
+        let recovered = load_lessons_artifact(&workspace);
+        assert_eq!(recovered.summary, artifact.summary);
+        assert_eq!(recovered.failures, artifact.failures);
+        assert_eq!(recovered.fixes, artifact.fixes);
+        assert_eq!(recovered.required_actions, artifact.required_actions);
     }
 
     fn tempdir() -> std::path::PathBuf {

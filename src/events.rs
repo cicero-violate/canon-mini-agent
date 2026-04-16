@@ -194,6 +194,24 @@ pub enum EffectEvent {
         message: String,
         signature: String,
     },
+    BlockerRecorded {
+        record: crate::blockers::BlockerRecord,
+    },
+    LessonsArtifactRecorded {
+        artifact: crate::prompt_inputs::LessonsArtifact,
+    },
+    IssuesFileRecorded {
+        file: crate::issues::IssuesFile,
+    },
+    DiagnosticsReportRecorded {
+        report: crate::reports::DiagnosticsReport,
+    },
+    EnforcedInvariantsRecorded {
+        file: crate::invariants::EnforcedInvariantsFile,
+    },
+    ViolationsReportRecorded {
+        report: crate::reports::ViolationsReport,
+    },
 }
 
 /// Envelope that wraps either a `ControlEvent` or an `EffectEvent`.

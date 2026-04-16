@@ -363,15 +363,13 @@ fn op_collapse(workspace: &Path, action: &serde_json::Value) -> anyhow::Result<(
 
 /// Read `enforced_invariants.json` for display or further processing.
 pub fn read_enforced_invariants(workspace: &Path) -> String {
-    let path = invariants_path(workspace);
-    if !path.exists() {
+    let file = load_enforced_invariants_file(workspace);
+    if file.invariants.is_empty() {
         return "(enforced_invariants.json not yet created — runs after first failure synthesis)"
             .to_string();
     }
-    match std::fs::read_to_string(&path) {
-        Ok(s) => s,
-        Err(e) => format!("(error reading enforced_invariants.json: {e})"),
-    }
+    serde_json::to_string_pretty(&file)
+        .unwrap_or_else(|e| format!("(error reading enforced_invariants.json: {e})"))
 }
 
 /// Auto-populate ISSUES.json with invariant lifecycle issues.
@@ -389,13 +387,7 @@ pub fn read_enforced_invariants(workspace: &Path) -> String {
 ///
 /// Returns the number of new issues created.
 pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
-    let issues_path = workspace.join(crate::constants::ISSUES_FILE);
-    let raw = std::fs::read_to_string(&issues_path).unwrap_or_default();
-    let mut file: IssuesFile = if raw.trim().is_empty() {
-        IssuesFile::default()
-    } else {
-        serde_json::from_str(&raw).unwrap_or_default()
-    };
+    let mut file: IssuesFile = crate::issues::load_issues_file(workspace);
 
     let existing_ids: HashSet<String> = file.issues.iter().map(|i| i.id.clone()).collect();
     let mut mutated = false;
@@ -1264,34 +1256,66 @@ fn invariants_path(workspace: &Path) -> std::path::PathBuf {
     workspace.join(ENFORCED_INVARIANTS_FILE)
 }
 
-fn load_invariants(workspace: &Path) -> EnforcedInvariantsFile {
+pub fn load_enforced_invariants_file(workspace: &Path) -> EnforcedInvariantsFile {
     let path = invariants_path(workspace);
-    if !path.exists() {
-        return EnforcedInvariantsFile {
-            version: 1,
-            ..Default::default()
-        };
+    let raw = std::fs::read_to_string(&path).unwrap_or_default();
+    if !raw.trim().is_empty() {
+        if let Ok(file) = serde_json::from_str::<EnforcedInvariantsFile>(&raw) {
+            return file;
+        }
     }
-    std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_else(|| EnforcedInvariantsFile {
-            version: 1,
-            ..Default::default()
-        })
+    load_invariants_from_tlog(workspace).unwrap_or_else(|| EnforcedInvariantsFile {
+        version: 1,
+        ..Default::default()
+    })
 }
 
-fn save_invariants(workspace: &Path, file: &EnforcedInvariantsFile) -> Result<()> {
+fn load_invariants(workspace: &Path) -> EnforcedInvariantsFile {
+    load_enforced_invariants_file(workspace)
+}
+
+pub fn persist_enforced_invariants_projection(
+    workspace: &Path,
+    file: &EnforcedInvariantsFile,
+    subject: &str,
+) -> Result<()> {
     let path = invariants_path(workspace);
-    let json = serde_json::to_string_pretty(file)?;
+    let effect = crate::events::EffectEvent::EnforcedInvariantsRecorded { file: file.clone() };
+    crate::logging::record_effect_for_workspace(workspace, effect)?;
     crate::logging::write_projection_with_artifact_effects(
         workspace,
         &path,
         ENFORCED_INVARIANTS_FILE,
         "write",
-        "enforced_invariants_save",
-        &json,
+        subject,
+        &serde_json::to_string_pretty(file)?,
     )
+}
+
+fn save_invariants(workspace: &Path, file: &EnforcedInvariantsFile) -> Result<()> {
+    persist_enforced_invariants_projection(workspace, file, "enforced_invariants_save")
+}
+
+fn load_invariants_from_tlog(workspace: &Path) -> Option<EnforcedInvariantsFile> {
+    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
+    let records = crate::tlog::Tlog::read_records(&tlog_path).ok()?;
+    let mut latest: Option<(u64, EnforcedInvariantsFile)> = None;
+    for record in records {
+        let crate::events::Event::Effect {
+            event: crate::events::EffectEvent::EnforcedInvariantsRecorded { file },
+        } = record.event
+        else {
+            continue;
+        };
+        let replace = match latest.as_ref() {
+            None => true,
+            Some((seq, _)) => record.seq >= *seq,
+        };
+        if replace {
+            latest = Some((record.seq, file));
+        }
+    }
+    latest.map(|(_, file)| file)
 }
 
 fn read_tail_entries(log_path: &Path, max_lines: usize) -> Vec<Value> {
@@ -1951,5 +1975,44 @@ mod tests {
             file.issues.iter().any(|i| i.id.contains("inv_aabbccdd")),
             "per-promoted issue not found"
         );
+    }
+
+    #[test]
+    fn load_enforced_invariants_file_falls_back_to_latest_tlog_snapshot_when_projection_missing() {
+        let tmp = make_workspace();
+        std::fs::create_dir_all(tmp.join("agent_state")).unwrap();
+
+        let file = EnforcedInvariantsFile {
+            version: 1,
+            last_synthesized_ms: 0,
+            invariants: vec![DiscoveredInvariant {
+                id: "INV-recovered".to_string(),
+                predicate_text: "Recovered invariant snapshot".to_string(),
+                state_conditions: vec![StateCondition {
+                    key: "phase".to_string(),
+                    value: "diagnostics".to_string(),
+                }],
+                support_count: 4,
+                status: InvariantStatus::Promoted,
+                gates: vec!["planner".to_string()],
+                evidence: vec![],
+                first_seen_ms: 1,
+                last_seen_ms: 2,
+            }],
+        };
+
+        persist_enforced_invariants_projection(
+            tmp.as_path(),
+            &file,
+            "invariants_tlog_fallback_test",
+        )
+        .unwrap();
+        std::fs::remove_file(tmp.join(ENFORCED_INVARIANTS_FILE)).unwrap();
+
+        let recovered = load_enforced_invariants_file(tmp.as_path());
+        assert_eq!(recovered.version, file.version);
+        assert_eq!(recovered.invariants.len(), 1);
+        assert_eq!(recovered.invariants[0].id, "INV-recovered");
+        assert_eq!(recovered.invariants[0].status, InvariantStatus::Promoted);
     }
 }

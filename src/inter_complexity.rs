@@ -28,8 +28,9 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::constants::ISSUES_FILE;
-use crate::issues::{is_closed, persist_issues_projection, rescore_all, Issue, IssuesFile};
+use crate::issues::{
+    is_closed, load_issues_file, persist_issues_projection, rescore_all, Issue, IssuesFile,
+};
 use crate::semantic::SemanticIndex;
 
 // ---------------------------------------------------------------------------
@@ -207,8 +208,7 @@ pub fn analyze(workspace: &Path, crate_name: &str) -> Result<InterAnalysis> {
 /// This closes the Detect → Propose gap: the analysis is the Detect step;
 /// creating the issue is the Propose step that routes work to the LLM/planner.
 pub fn generate_hotspot_issues(workspace: &Path, top_n: usize) -> Result<usize> {
-    let issues_path = workspace.join(ISSUES_FILE);
-    let (mut file, existing_ids, open_locations) = load_issue_file_with_indexes(&issues_path);
+    let (mut file, existing_ids, open_locations) = load_issue_file_with_indexes(workspace);
 
     let mut created = 0;
 
@@ -229,15 +229,8 @@ pub fn generate_hotspot_issues(workspace: &Path, top_n: usize) -> Result<usize> 
     Ok(created)
 }
 
-fn load_issue_file_with_indexes(
-    issues_path: &Path,
-) -> (IssuesFile, HashSet<String>, HashSet<String>) {
-    let raw = std::fs::read_to_string(issues_path).unwrap_or_default();
-    let file: IssuesFile = if raw.trim().is_empty() {
-        IssuesFile::default()
-    } else {
-        serde_json::from_str(&raw).unwrap_or_default()
-    };
+fn load_issue_file_with_indexes(workspace: &Path) -> (IssuesFile, HashSet<String>, HashSet<String>) {
+    let file: IssuesFile = load_issues_file(workspace);
     let existing_ids = file.issues.iter().map(|i| i.id.clone()).collect();
     let open_locations = file
         .issues

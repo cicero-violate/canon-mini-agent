@@ -764,7 +764,7 @@ pub fn record_workspace_artifact_effect(
     subject: &str,
     signature: &str,
 ) -> Result<()> {
-    let tlog_path = std::path::Path::new(crate::constants::agent_state_dir()).join("tlog.ndjson");
+    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
     let state = crate::system_state::SystemState::new(&[], 0);
     let mut writer = crate::canonical_writer::CanonicalWriter::try_new(
         state,
@@ -802,7 +802,7 @@ pub fn record_effect_for_workspace(
     workspace: &std::path::Path,
     effect: crate::events::EffectEvent,
 ) -> Result<()> {
-    let tlog_path = std::path::Path::new(crate::constants::agent_state_dir()).join("tlog.ndjson");
+    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
     let state = crate::system_state::SystemState::new(&[], 0);
     let mut writer = crate::canonical_writer::CanonicalWriter::try_new(
         state,

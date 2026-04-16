@@ -12,6 +12,21 @@ pub fn persist_issues_projection(
     file: &IssuesFile,
     subject: &str,
 ) -> Result<()> {
+    persist_issues_projection_with_writer(workspace, file, None, subject)
+}
+
+pub fn persist_issues_projection_with_writer(
+    workspace: &Path,
+    file: &IssuesFile,
+    writer: Option<&mut crate::canonical_writer::CanonicalWriter>,
+    subject: &str,
+) -> Result<()> {
+    let effect = crate::events::EffectEvent::IssuesFileRecorded { file: file.clone() };
+    if let Some(writer_ref) = writer {
+        writer_ref.try_record_effect(effect)?;
+    } else {
+        crate::logging::record_effect_for_workspace(workspace, effect)?;
+    }
     crate::logging::write_projection_with_artifact_effects(
         workspace,
         &workspace.join(ISSUES_FILE),
@@ -104,6 +119,39 @@ pub struct IssueSweepSummary {
     pub marked_stale: usize,
     pub refreshed: usize,
     pub rewrote: bool,
+}
+
+pub fn load_issues_file(workspace: &Path) -> IssuesFile {
+    let path = workspace.join(ISSUES_FILE);
+    let raw = std::fs::read_to_string(&path).unwrap_or_default();
+    if !raw.trim().is_empty() {
+        if let Ok(file) = serde_json::from_str::<IssuesFile>(&raw) {
+            return file;
+        }
+    }
+    load_issues_from_tlog(workspace).unwrap_or_default()
+}
+
+fn load_issues_from_tlog(workspace: &Path) -> Option<IssuesFile> {
+    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
+    let records = crate::tlog::Tlog::read_records(&tlog_path).ok()?;
+    let mut latest: Option<(u64, IssuesFile)> = None;
+    for record in records {
+        let crate::events::Event::Effect {
+            event: crate::events::EffectEvent::IssuesFileRecorded { file },
+        } = record.event
+        else {
+            continue;
+        };
+        let replace = match latest.as_ref() {
+            None => true,
+            Some((seq, _)) => record.seq >= *seq,
+        };
+        if replace {
+            latest = Some((record.seq, file));
+        }
+    }
+    latest.map(|(_, file)| file)
 }
 
 fn evidence_receipt_timestamps() -> HashMap<String, u64> {
@@ -229,15 +277,10 @@ fn collect_stale_reasons(
 }
 
 pub fn sweep_stale_issues(workspace: &Path) -> Result<IssueSweepSummary> {
-    let path = workspace.join(ISSUES_FILE);
-    let raw = std::fs::read_to_string(&path).unwrap_or_default();
-    if raw.trim().is_empty() {
+    let mut file = load_issues_file(workspace);
+    if file.issues.is_empty() {
         return Ok(IssueSweepSummary::default());
     }
-    let mut file: IssuesFile = match serde_json::from_str(&raw) {
-        Ok(file) => file,
-        Err(_) => return Ok(IssueSweepSummary::default()),
-    };
 
     let receipt_ts = evidence_receipt_timestamps();
     let now_ms = crate::logging::now_ms();
@@ -413,14 +456,10 @@ pub fn read_open_issues(workspace: &Path) -> String {
 /// Returns an empty vector when the file is absent, invalid, or all issues are closed.
 pub fn read_ranked_open_issues(workspace: &Path) -> Vec<Issue> {
     let _ = sweep_stale_issues(workspace);
-    let path = workspace.join(ISSUES_FILE);
-    let raw = std::fs::read_to_string(&path).unwrap_or_default();
-    if raw.trim().is_empty() {
+    let mut file = load_issues_file(workspace);
+    if file.issues.is_empty() {
         return Vec::new();
     }
-    let Ok(mut file) = serde_json::from_str::<IssuesFile>(&raw) else {
-        return Vec::new();
-    };
     file.issues.retain(|i| !is_closed(i));
     file.issues.retain(issue_is_fresh);
     if file.issues.is_empty() {
@@ -486,7 +525,11 @@ pub fn read_top_open_issues(workspace: &Path, limit: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_closed, read_open_issues, read_top_open_issues, sweep_stale_issues, Issue};
+    use super::{
+        is_closed, load_issues_file, persist_issues_projection, read_open_issues,
+        read_top_open_issues, sweep_stale_issues, Issue, IssuesFile,
+    };
+    use crate::{set_agent_state_dir, set_workspace};
 
     #[test]
     fn is_closed_treats_done_like_statuses_as_closed() {
@@ -624,5 +667,49 @@ mod tests {
         let top = read_top_open_issues(&root, 5);
         assert!(top.contains("Top open issues"));
         assert!(top.contains("ISS-001"));
+    }
+
+    #[test]
+    fn load_issues_file_falls_back_to_latest_tlog_snapshot_when_projection_missing() {
+        static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+        let _guard = LOCK
+            .get_or_init(|| std::sync::Mutex::new(()))
+            .lock()
+            .expect("lock");
+
+        let root = std::env::temp_dir().join(format!(
+            "canon-mini-agent-issues-tlog-{}",
+            crate::logging::now_ms()
+        ));
+        let state_dir = root.join("agent_state");
+        std::fs::create_dir_all(&state_dir).expect("create state dir");
+        set_workspace(root.to_string_lossy().to_string());
+        set_agent_state_dir(state_dir.to_string_lossy().to_string());
+
+        let file = IssuesFile {
+            version: 3,
+            issues: vec![Issue {
+                id: "ISS-TLOG-1".to_string(),
+                title: "recover issues from tlog".to_string(),
+                status: "open".to_string(),
+                priority: "high".to_string(),
+                description: "projection deleted; tlog snapshot should still drive reads".to_string(),
+                ..Issue::default()
+            }],
+        };
+        persist_issues_projection(&root, &file, "issues_tlog_fallback_test")
+            .expect("persist issues projection");
+
+        let issues_path = root.join(crate::constants::ISSUES_FILE);
+        std::fs::remove_file(&issues_path).expect("delete issues projection");
+
+        let recovered = load_issues_file(&root);
+        assert_eq!(recovered.version, 3);
+        assert_eq!(recovered.issues.len(), 1);
+        assert_eq!(recovered.issues[0].id, "ISS-TLOG-1");
+        assert!(
+            read_open_issues(&root).contains("ISS-TLOG-1"),
+            "read surface should recover from the tlog snapshot"
+        );
     }
 }

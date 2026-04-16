@@ -56,6 +56,8 @@ pub fn has_flag(args: &[String], name: &str) -> bool {
 }
 
 pub use crate::semantic::{SemanticIndex, SemanticTriple, SymbolSummary};
+pub use crate::issues::load_issues_file;
+pub use crate::reports::load_violations_report;
 pub use crate::tools::execute_action_capability;
 
 #[cfg(test)]

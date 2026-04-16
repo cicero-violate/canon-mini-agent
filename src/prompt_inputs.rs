@@ -267,11 +267,23 @@ fn effect_event_kind_name(event: &crate::events::EffectEvent) -> &'static str {
         crate::events::EffectEvent::ExternalUserMessageRecorded { .. } => {
             "external_user_message_recorded"
         }
+        crate::events::EffectEvent::BlockerRecorded { .. } => "blocker_recorded",
+        crate::events::EffectEvent::LessonsArtifactRecorded { .. } => "lessons_artifact_recorded",
+        crate::events::EffectEvent::IssuesFileRecorded { .. } => "issues_file_recorded",
+        crate::events::EffectEvent::DiagnosticsReportRecorded { .. } => {
+            "diagnostics_report_recorded"
+        }
+        crate::events::EffectEvent::EnforcedInvariantsRecorded { .. } => {
+            "enforced_invariants_recorded"
+        }
+        crate::events::EffectEvent::ViolationsReportRecorded { .. } => {
+            "violations_report_recorded"
+        }
     }
 }
 
-pub fn semantic_state_snapshot_from_tlog(_workspace: &Path) -> String {
-    let tlog_path = Path::new(crate::constants::agent_state_dir()).join("tlog.ndjson");
+pub fn semantic_state_snapshot_from_tlog(workspace: &Path) -> String {
+    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
     let events = match crate::tlog::Tlog::read_events(&tlog_path) {
         Ok(events) => events,
         Err(err) => {
@@ -535,6 +547,21 @@ enum ViolationsProjectionStatus {
     Parsed,
 }
 
+fn parse_diagnostics_report(raw: &str) -> Option<DiagnosticsReport> {
+    serde_json::from_str(raw).ok()
+}
+
+fn load_diagnostics_projection_text(workspace: &Path) -> Option<String> {
+    let raw_diagnostics_text = read_text_or_empty(workspace.join(crate::constants::diagnostics_file()));
+    if !raw_diagnostics_text.trim().is_empty()
+        && parse_diagnostics_report(&raw_diagnostics_text).is_some()
+    {
+        return Some(raw_diagnostics_text);
+    }
+    crate::reports::load_diagnostics_report(workspace)
+        .and_then(|report| serde_json::to_string_pretty(&report).ok())
+}
+
 fn load_violations_projection(workspace: &Path) -> (Option<ViolationsReport>, ViolationsProjectionStatus) {
     let raw_violations_text = read_text_or_empty(workspace.join(VIOLATIONS_FILE));
     if raw_violations_text.trim().is_empty() {
@@ -639,11 +666,13 @@ pub fn derive_semantic_prompt_artifacts(
 ) -> SemanticPromptArtifacts {
     let open_issues = read_ranked_open_issues(workspace);
     let (violations_report, violations_status) = load_violations_projection(workspace);
-    let diagnostics_report = render_diagnostics_report_from_state(
-        &open_issues,
-        violations_report.as_ref(),
-        violations_status,
-    );
+    let diagnostics_report = load_diagnostics_projection_text(workspace).unwrap_or_else(|| {
+        render_diagnostics_report_from_state(
+            &open_issues,
+            violations_report.as_ref(),
+            violations_status,
+        )
+    });
     SemanticPromptArtifacts {
         issues_summary: summarize_ranked_open_issues_for_prompt(&open_issues, issue_limit),
         violations_summary: summarize_violations_report_for_prompt(
@@ -1065,13 +1094,17 @@ fn format_complexity_hotspot_line(item: &serde_json::Value) -> String {
 
 pub fn read_lessons_or_empty(workspace: &Path) -> String {
     let raw = read_text_or_empty(workspace.join(LESSONS_FILE));
-    if raw.trim().is_empty() {
-        return raw;
+    if !raw.trim().is_empty() {
+        return match serde_json::from_str::<LessonsArtifact>(&raw) {
+            Ok(artifact) => render_lessons_artifact(&artifact),
+            Err(_) => raw,
+        };
     }
-    match serde_json::from_str::<LessonsArtifact>(&raw) {
-        Ok(artifact) => render_lessons_artifact(&artifact),
-        Err(_) => raw,
+    let artifact = crate::lessons::load_lessons_artifact(workspace);
+    if artifact == LessonsArtifact::default() {
+        return String::new();
     }
+    render_lessons_artifact(&artifact)
 }
 
 #[cfg(test)]
@@ -1129,6 +1162,34 @@ mod tests {
         let rendered = read_lessons_or_empty(&workspace);
 
         assert_eq!(rendered, "plain text lesson entry for prompt injection");
+    }
+
+    #[test]
+    fn read_lessons_or_empty_falls_back_to_tlog_snapshot_when_projection_missing() {
+        let workspace = temp_workspace("lessons-tlog-fallback");
+        fs::create_dir_all(workspace.join("agent_state")).unwrap();
+
+        let artifact = LessonsArtifact {
+            summary: "Recovered from tlog".to_string(),
+            failures: vec![LessonEntry::pending("Prompt loader should recover lessons")],
+            fixes: vec![LessonEntry::pending("Read the latest lessons snapshot from tlog")],
+            required_actions: vec![LessonEntry::pending("Delete the projection and verify recovery")],
+            encoding_instructions: "encode later".to_string(),
+        };
+
+        crate::lessons::persist_lessons_projection(
+            &workspace,
+            &artifact,
+            "prompt_lessons_tlog_fallback_test",
+        )
+        .unwrap();
+        fs::remove_file(workspace.join(LESSONS_FILE)).unwrap();
+
+        let rendered = read_lessons_or_empty(&workspace);
+
+        assert!(rendered.contains("Recovered from tlog"));
+        assert!(rendered.contains("Prompt loader should recover lessons"));
+        assert!(rendered.contains("Read the latest lessons snapshot from tlog"));
     }
 }
 
@@ -2084,10 +2145,13 @@ fn render_executor_diff(diff_text: &str, max_lines: usize) -> String {
 #[cfg(test)]
 mod diagnostics_filter_tests {
     use super::{
-        filter_active_diagnostics_json, filter_active_violations_json, filter_invariants_json,
-        filter_pending_plan_json, render_diagnostics_report_from_issues,
+        derive_semantic_prompt_artifacts, filter_active_diagnostics_json,
+        filter_active_violations_json, filter_invariants_json, filter_pending_plan_json,
+        load_diagnostics_projection_text, render_diagnostics_report_from_issues,
         sanitize_diagnostics_for_planner,
     };
+    use crate::events::{EffectEvent, Event};
+    use crate::reports::{DiagnosticsFinding, DiagnosticsReport, Impact};
 
     const NON_AUTHORITATIVE_VIOLATIONS: &str = r#"{}"#;
 
@@ -2214,6 +2278,51 @@ mod diagnostics_filter_tests {
         assert!(rendered.contains("\"V1\""));
         assert!(rendered.contains("source-validation"));
         assert!(rendered.contains("Planner drift"));
+    }
+
+    #[test]
+    fn derive_semantic_prompt_artifacts_recovers_diagnostics_from_tlog_when_projection_missing() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos();
+        let workspace = std::env::temp_dir().join(format!(
+            "canon-mini-agent-diagnostics-tlog-fallback-{}-{}",
+            std::process::id(),
+            unique
+        ));
+        fs::create_dir_all(workspace.join("agent_state")).unwrap();
+
+        let report = DiagnosticsReport {
+            status: "needs_repair".to_string(),
+            inputs_scanned: vec!["ISSUES.json (open issues: 1)".to_string()],
+            ranked_failures: vec![DiagnosticsFinding {
+                id: "D-TLOG".to_string(),
+                impact: Impact::High,
+                signal: "Tlog recovered diagnostics".to_string(),
+                evidence: vec!["read_file src/app.rs:1-20 — recovered from tlog snapshot".to_string()],
+                root_cause: "projection missing during prompt assembly".to_string(),
+                repair_targets: vec!["src/app.rs".to_string()],
+            }],
+            planner_handoff: vec!["Use the recovered diagnostics snapshot until projection rebuild completes.".to_string()],
+        };
+
+        let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
+        let mut tlog = crate::tlog::Tlog::open(&tlog_path);
+        tlog.append(&Event::effect(EffectEvent::DiagnosticsReportRecorded {
+            report: report.clone(),
+        }))
+        .unwrap();
+
+        let recovered = load_diagnostics_projection_text(workspace.as_path()).unwrap();
+        assert!(recovered.contains("\"D-TLOG\""));
+
+        let artifacts = derive_semantic_prompt_artifacts(workspace.as_path(), 3);
+        assert!(artifacts.diagnostics_report.contains("\"D-TLOG\""));
+        assert!(artifacts.diagnostics_summary.contains("Tlog recovered diagnostics"));
     }
 
     #[test]

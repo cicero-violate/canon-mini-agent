@@ -36,8 +36,9 @@ use crate::invalid_action::{
     default_message_route, ensure_action_base_schema, expected_message_format,
 };
 use crate::logging::{
-    append_action_log_record, append_orchestration_trace, compact_log_record, init_log_paths,
-    log_action_result, log_error_event, log_message_event, make_command_id, now_ms,
+    append_action_log_record, append_orchestration_trace, artifact_write_signature,
+    compact_log_record, init_log_paths, log_action_result, log_error_event, log_message_event,
+    make_command_id, now_ms, record_effect_for_workspace,
 };
 use crate::md_convert::ensure_objectives_and_invariants_json;
 use crate::prompt_inputs::{
@@ -65,16 +66,26 @@ use crate::tlog::Tlog;
 use crate::tool_schema::write_tool_examples;
 use crate::tools::write_stage_graph;
 
-fn write_json_if_missing_or_empty<T: Serialize>(path: &Path, value: &T) -> Result<bool> {
+fn write_json_if_missing_or_empty<T: Serialize>(
+    workspace: &Path,
+    path: &Path,
+    artifact: &str,
+    subject: &str,
+    value: &T,
+) -> Result<bool> {
     let existing = std::fs::read_to_string(path).unwrap_or_default();
     if path.exists() && !existing.trim().is_empty() {
         return Ok(false);
     }
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
     let text = serde_json::to_string_pretty(value)?;
-    std::fs::write(path, text)?;
+    crate::logging::write_projection_with_artifact_effects(
+        workspace,
+        path,
+        artifact,
+        "write",
+        subject,
+        &text,
+    )?;
     Ok(true)
 }
 
@@ -82,7 +93,10 @@ fn ensure_workspace_artifact_baseline(workspace: &Path, diagnostics_path: &Path)
     let mut created = Vec::new();
 
     if write_json_if_missing_or_empty(
+        workspace,
         &workspace.join(MASTER_PLAN_FILE),
+        MASTER_PLAN_FILE,
+        "baseline_master_plan",
         &json!({
             "version": 2,
             "status": "in_progress",
@@ -95,7 +109,10 @@ fn ensure_workspace_artifact_baseline(workspace: &Path, diagnostics_path: &Path)
     }
 
     if write_json_if_missing_or_empty(
+        workspace,
         &workspace.join(VIOLATIONS_FILE),
+        VIOLATIONS_FILE,
+        "baseline_violations",
         &crate::reports::ViolationsReport {
             status: "ok".to_string(),
             summary: String::new(),
@@ -106,7 +123,10 @@ fn ensure_workspace_artifact_baseline(workspace: &Path, diagnostics_path: &Path)
     }
 
     if write_json_if_missing_or_empty(
+        workspace,
         &workspace.join(ISSUES_FILE),
+        ISSUES_FILE,
+        "baseline_issues",
         &IssuesFile {
             version: 1,
             ..IssuesFile::default()
@@ -115,22 +135,33 @@ fn ensure_workspace_artifact_baseline(workspace: &Path, diagnostics_path: &Path)
         created.push(ISSUES_FILE.to_string());
     }
 
-    if write_json_if_missing_or_empty(
-        &workspace.join("agent_state/lessons.json"),
-        &LessonsArtifact::default(),
-    )? {
+    let lessons_path = workspace.join("agent_state/lessons.json");
+    let lessons_ready = std::fs::metadata(&lessons_path)
+        .map(|meta| meta.is_file() && meta.len() > 0)
+        .unwrap_or(false);
+    if !lessons_ready {
+        crate::lessons::persist_lessons_projection(
+            workspace,
+            &LessonsArtifact::default(),
+            "baseline_lessons",
+        )?;
         created.push("agent_state/lessons.json".to_string());
     }
 
-    if write_json_if_missing_or_empty(
-        diagnostics_path,
-        &crate::reports::DiagnosticsReport {
-            status: "ok".to_string(),
-            inputs_scanned: Vec::new(),
-            ranked_failures: Vec::new(),
-            planner_handoff: Vec::new(),
-        },
-    )? {
+    let diagnostics_ready = std::fs::metadata(diagnostics_path)
+        .map(|meta| meta.is_file() && meta.len() > 0)
+        .unwrap_or(false);
+    if !diagnostics_ready {
+        crate::reports::persist_diagnostics_projection(
+            workspace,
+            &crate::reports::DiagnosticsReport {
+                status: "ok".to_string(),
+                inputs_scanned: Vec::new(),
+                ranked_failures: Vec::new(),
+                planner_handoff: Vec::new(),
+            },
+            "baseline_diagnostics",
+        )?;
         created.push(diagnostics_path.display().to_string());
     }
 
@@ -978,15 +1009,24 @@ async fn run_diagnostics_phase(
         Ok(result) => {
             eprintln!("[orchestrate] diagnostics ok bytes={}", result.summary_text().len());
             let new_diagnostics_text = crate::prompt_inputs::reconcile_diagnostics_report(ctx.workspace);
-            let diagnostics_projection_path = ctx.workspace.join(diagnostics_file());
-            let _ = crate::logging::write_projection_with_artifact_effects(
-                ctx.workspace,
-                &diagnostics_projection_path,
-                diagnostics_file(),
-                "write",
-                "diagnostics_reconcile_projection",
-                &new_diagnostics_text,
-            );
+            if let Ok(report) = serde_json::from_str::<crate::reports::DiagnosticsReport>(&new_diagnostics_text) {
+                let _ = crate::reports::persist_diagnostics_projection_with_writer(
+                    ctx.workspace,
+                    &report,
+                    Some(writer),
+                    "diagnostics_reconcile_projection",
+                );
+            } else {
+                let diagnostics_projection_path = ctx.workspace.join(diagnostics_file());
+                let _ = crate::logging::write_projection_with_artifact_effects(
+                    ctx.workspace,
+                    &diagnostics_projection_path,
+                    diagnostics_file(),
+                    "write",
+                    "diagnostics_reconcile_projection",
+                    &new_diagnostics_text,
+                );
+            }
             writer.apply(ControlEvent::DiagnosticsTextSet {
                 text: new_diagnostics_text,
             });
@@ -3180,6 +3220,40 @@ fn canonical_inbound_message_from_tlog(
     latest.map(|(_, signature, message)| (signature, message))
 }
 
+fn latest_inbound_message_from_tlog(
+    agent_state_dir: &std::path::Path,
+    role: &str,
+) -> Option<(String, String)> {
+    let tlog_path = agent_state_dir.join("tlog.ndjson");
+    let records = Tlog::read_records(&tlog_path).ok()?;
+    let mut latest: Option<(u64, String, String)> = None;
+    for record in records {
+        let Event::Effect {
+            event:
+                EffectEvent::InboundMessageRecorded {
+                    to_role,
+                    message,
+                    signature,
+                    ..
+                },
+        } = record.event
+        else {
+            continue;
+        };
+        if to_role != role {
+            continue;
+        }
+        let replace = match latest.as_ref() {
+            None => true,
+            Some((seq, _, _)) => record.seq >= *seq,
+        };
+        if replace {
+            latest = Some((record.seq, signature, message));
+        }
+    }
+    latest.map(|(_, signature, message)| (signature, message))
+}
+
 fn take_inbound_message(writer: &mut CanonicalWriter, role: &str) -> Option<String> {
     let role_key = role
         .trim()
@@ -3201,31 +3275,7 @@ fn take_inbound_message(writer: &mut CanonicalWriter, role: &str) -> Option<Stri
         }
         return Some(trimmed);
     }
-    let raw = std::fs::read_to_string(&path).ok()?;
-    let trimmed = raw.trim().to_string();
-    if trimmed.is_empty() {
-        let _ = std::fs::remove_file(&path);
-        return None;
-    }
-    let _ = std::fs::remove_file(&path);
-    Some(trimmed)
-}
-
-fn take_inbound_message_projection(role: &str) -> Option<String> {
-    let role_key = role
-        .trim()
-        .to_lowercase()
-        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
-    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
-    let path = agent_state_dir.join(format!("last_message_to_{role_key}.json"));
-    let raw = std::fs::read_to_string(&path).ok()?;
-    let trimmed = raw.trim().to_string();
-    if trimmed.is_empty() {
-        let _ = std::fs::remove_file(&path);
-        return None;
-    }
-    let _ = std::fs::remove_file(&path);
-    Some(trimmed)
+    None
 }
 
 fn take_inbound_message_without_writer(role: &str) -> Option<String> {
@@ -3235,22 +3285,24 @@ fn take_inbound_message_without_writer(role: &str) -> Option<String> {
         .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let tlog_path = agent_state_dir.join("tlog.ndjson");
-    let state = Tlog::replay(&tlog_path, SystemState::new(&[], 0)).ok()?;
-    if let Some((signature, message)) =
-        canonical_inbound_message_from_tlog(agent_state_dir, &state, &role_key)
-    {
-        let mut writer = CanonicalWriter::try_new(
-            state,
-            Tlog::open(&tlog_path),
-            PathBuf::from(crate::constants::workspace()),
-        )
-        .ok()?;
-        writer
-            .try_apply(ControlEvent::InboundMessageConsumed {
-                role: role_key,
-                signature,
-            })
-            .ok()?;
+    let state = Tlog::replay(&tlog_path, SystemState::new(&[], 0)).ok();
+    let canonical = state
+        .as_ref()
+        .and_then(|state| canonical_inbound_message_from_tlog(agent_state_dir, state, &role_key))
+        .or_else(|| latest_inbound_message_from_tlog(agent_state_dir, &role_key));
+    if let Some((signature, message)) = canonical {
+        if let Some(state) = state {
+            if let Ok(mut writer) = CanonicalWriter::try_new(
+                state,
+                Tlog::open(&tlog_path),
+                PathBuf::from(crate::constants::workspace()),
+            ) {
+                let _ = writer.try_apply(ControlEvent::InboundMessageConsumed {
+                    role: role_key.clone(),
+                    signature,
+                });
+            }
+        }
         let path = agent_state_dir.join(format!("last_message_to_{}.json", role));
         let _ = std::fs::remove_file(&path);
         let trimmed = message.trim().to_string();
@@ -3259,7 +3311,7 @@ fn take_inbound_message_without_writer(role: &str) -> Option<String> {
         }
         return Some(trimmed);
     }
-    take_inbound_message_projection(role)
+    None
 }
 
 fn canonical_external_user_message_from_tlog(
@@ -3304,21 +3356,37 @@ fn canonical_external_user_message_from_tlog(
     latest.map(|(_, signature, message)| (signature, message))
 }
 
-fn take_external_user_message_projection(role: &str) -> Option<String> {
-    let role_key = role
-        .trim()
-        .to_lowercase()
-        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
-    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
-    let path = agent_state_dir.join(format!("external_user_message_to_{role_key}.json"));
-    let raw = std::fs::read_to_string(&path).ok()?;
-    let trimmed = raw.trim().to_string();
-    if trimmed.is_empty() {
-        let _ = std::fs::remove_file(&path);
-        return None;
+fn latest_external_user_message_from_tlog(
+    agent_state_dir: &std::path::Path,
+    role: &str,
+) -> Option<(String, String)> {
+    let tlog_path = agent_state_dir.join("tlog.ndjson");
+    let records = Tlog::read_records(&tlog_path).ok()?;
+    let mut latest: Option<(u64, String, String)> = None;
+    for record in records {
+        let Event::Effect {
+            event:
+                EffectEvent::ExternalUserMessageRecorded {
+                    to_role,
+                    message,
+                    signature,
+                },
+        } = record.event
+        else {
+            continue;
+        };
+        if to_role != role {
+            continue;
+        }
+        let replace = match latest.as_ref() {
+            None => true,
+            Some((seq, _, _)) => record.seq >= *seq,
+        };
+        if replace {
+            latest = Some((record.seq, signature, message));
+        }
     }
-    let _ = std::fs::remove_file(&path);
-    Some(trimmed)
+    latest.map(|(_, signature, message)| (signature, message))
 }
 
 fn take_external_user_message(writer: &mut CanonicalWriter, role: &str) -> Option<String> {
@@ -3342,7 +3410,7 @@ fn take_external_user_message(writer: &mut CanonicalWriter, role: &str) -> Optio
         }
         return Some(trimmed);
     }
-    take_external_user_message_projection(role)
+    None
 }
 
 fn take_external_user_message_without_writer(role: &str) -> Option<String> {
@@ -3352,22 +3420,26 @@ fn take_external_user_message_without_writer(role: &str) -> Option<String> {
         .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let tlog_path = agent_state_dir.join("tlog.ndjson");
-    let state = Tlog::replay(&tlog_path, SystemState::new(&[], 0)).ok()?;
-    if let Some((signature, message)) =
-        canonical_external_user_message_from_tlog(agent_state_dir, &state, &role_key)
-    {
-        let mut writer = CanonicalWriter::try_new(
-            state,
-            Tlog::open(&tlog_path),
-            PathBuf::from(crate::constants::workspace()),
-        )
-        .ok()?;
-        writer
-            .try_apply(ControlEvent::ExternalUserMessageConsumed {
-                role: role_key.clone(),
-                signature,
-            })
-            .ok()?;
+    let state = Tlog::replay(&tlog_path, SystemState::new(&[], 0)).ok();
+    let canonical = state
+        .as_ref()
+        .and_then(|state| {
+            canonical_external_user_message_from_tlog(agent_state_dir, state, &role_key)
+        })
+        .or_else(|| latest_external_user_message_from_tlog(agent_state_dir, &role_key));
+    if let Some((signature, message)) = canonical {
+        if let Some(state) = state {
+            if let Ok(mut writer) = CanonicalWriter::try_new(
+                state,
+                Tlog::open(&tlog_path),
+                PathBuf::from(crate::constants::workspace()),
+            ) {
+                let _ = writer.try_apply(ControlEvent::ExternalUserMessageConsumed {
+                    role: role_key.clone(),
+                    signature,
+                });
+            }
+        }
         let path = agent_state_dir.join(format!("external_user_message_to_{role_key}.json"));
         let _ = std::fs::remove_file(&path);
         let trimmed = message.trim().to_string();
@@ -3376,7 +3448,7 @@ fn take_external_user_message_without_writer(role: &str) -> Option<String> {
         }
         return Some(trimmed);
     }
-    take_external_user_message_projection(role)
+    None
 }
 
 fn append_external_user_message_to_prompt(prompt: &mut String, inbound: &str) {
@@ -3820,12 +3892,54 @@ fn try_parse_blocker(raw: &str) -> Option<(String, String, Value)> {
     Some((from, to, payload))
 }
 
+fn record_canonical_inbound_message(
+    workspace: &Path,
+    from_role: &str,
+    to_role: &str,
+    message: &str,
+) -> Result<String> {
+    let signature = artifact_write_signature(&[
+        "inbound_message",
+        from_role,
+        to_role,
+        &message.len().to_string(),
+        message,
+    ]);
+    record_effect_for_workspace(
+        workspace,
+        EffectEvent::InboundMessageRecorded {
+            from_role: from_role.to_string(),
+            to_role: to_role.to_string(),
+            message: message.to_string(),
+            signature: signature.clone(),
+        },
+    )?;
+    Ok(signature)
+}
+
 fn persist_planner_message(action: &Value) {
+    let workspace = Path::new(crate::constants::workspace());
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let planner_path = agent_state_dir.join("last_message_to_planner.json");
+    let action_text = serde_json::to_string_pretty(action).unwrap_or_default();
+    let from_role = action
+        .get("from")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    if let Err(err) = record_canonical_inbound_message(
+        workspace,
+        from_role,
+        "planner",
+        &action_text,
+    ) {
+        eprintln!(
+            "[orchestrate] failed to record canonical planner handoff message {}: {err:#}",
+            planner_path.display()
+        );
+    }
     if let Err(err) = persist_agent_state_projection(
         &planner_path,
-        &serde_json::to_string_pretty(action).unwrap_or_default(),
+        &action_text,
         "planner_handoff_message",
     ) {
         eprintln!(
@@ -5333,6 +5447,11 @@ fn finalize_executor_message_completion(writer: &mut CanonicalWriter, lane_id: u
 
 fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Value) {
     let to_role = action.get("to").and_then(|v| v.as_str()).unwrap_or("");
+    let action_text = serde_json::to_string_pretty(action).unwrap_or_default();
+    let from_role = action
+        .get("from")
+        .and_then(Value::as_str)
+        .unwrap_or("executor");
 
     // Self-loop guard: an executor message routed back to "executor" would write
     // wakeup_executor.flag, wake the executor next cycle, and then complete again
@@ -5356,14 +5475,26 @@ fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Va
     }
 
     // Generic wakeup for other targets (verifier, diagnostics, etc.)
+    let workspace = Path::new(crate::constants::workspace());
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let to_key = to_role
         .to_lowercase()
         .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+    if let Err(err) = record_canonical_inbound_message(
+        workspace,
+        from_role,
+        &to_key,
+        &action_text,
+    ) {
+        writer.record_violation(
+            "executor_completion_message",
+            &format!("failed to record canonical message for {to_key}: {err:#}"),
+        );
+    }
     let msg_path = agent_state_dir.join(format!("last_message_to_{to_key}.json"));
     if let Err(err) = persist_agent_state_projection(
         &msg_path,
-        &serde_json::to_string_pretty(action).unwrap_or_default(),
+        &action_text,
         &format!("executor_completion_message:{to_key}"),
     ) {
         writer.record_violation(
@@ -5482,8 +5613,9 @@ fn verifier_confirmed_with_plan_text(reason: &str, plan_text: &str) -> bool {
 }
 
 fn verifier_confirmed(reason: &str) -> bool {
-    let plan_path = Path::new(workspace()).join(MASTER_PLAN_FILE);
-    let plan_text = std::fs::read_to_string(plan_path).unwrap_or_default();
+    let plan_text = crate::prompt_inputs::read_text_or_empty(
+        Path::new(workspace()).join(MASTER_PLAN_FILE),
+    );
     verifier_confirmed_with_plan_text(reason, &plan_text)
 }
 
@@ -6468,12 +6600,23 @@ mod tests {
         action_retry_fingerprint, ensure_workspace_artifact_baseline,
         executor_step_limit_feedback, has_actionable_objectives, inbound_message_from_user,
         invariant_id_from_reason, plan_has_incomplete_tasks, route_gate_blocker_message,
-        should_reject_solo_self_complete, verifier_confirmed_with_plan_text, ActionProvenance,
+        should_reject_solo_self_complete, take_external_user_message_without_writer,
+        take_inbound_message_without_writer, verifier_confirmed_with_plan_text,
+        ActionProvenance,
     };
+    use crate::events::EffectEvent;
+    use crate::logging::{artifact_write_signature, record_effect_for_workspace};
+    use crate::{set_agent_state_dir, set_workspace};
     use crate::system_state::SystemState;
     use serde_json::json;
     use std::fs;
+    use std::sync::{Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn global_state_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     fn temp_workspace(label: &str) -> std::path::PathBuf {
         let unique = SystemTime::now()
@@ -6583,6 +6726,90 @@ mod tests {
     fn inbound_message_from_user_rejects_non_user_sender() {
         let inbound = r#"{"action":"message","from":"planner","to":"solo","type":"handoff","status":"ready","payload":{"summary":"hello"}}"#;
         assert!(!inbound_message_from_user(inbound));
+    }
+
+    #[test]
+    fn inbound_message_without_writer_ignores_projection_without_canonical_tlog_record() {
+        let _guard = global_state_lock().lock().expect("lock");
+        let workspace = temp_workspace("projection-only-inbound");
+        let state_dir = workspace.join("agent_state");
+        fs::create_dir_all(&state_dir).unwrap();
+        set_workspace(workspace.to_string_lossy().to_string());
+        set_agent_state_dir(state_dir.to_string_lossy().to_string());
+
+        fs::write(
+            state_dir.join("last_message_to_planner.json"),
+            serde_json::to_string_pretty(&json!({
+                "action": "message",
+                "from": "executor",
+                "to": "planner",
+                "payload": {"summary": "projection only"}
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert!(take_inbound_message_without_writer("planner").is_none());
+    }
+
+    #[test]
+    fn external_user_message_without_writer_ignores_projection_without_canonical_tlog_record() {
+        let _guard = global_state_lock().lock().expect("lock");
+        let workspace = temp_workspace("projection-only-external");
+        let state_dir = workspace.join("agent_state");
+        fs::create_dir_all(&state_dir).unwrap();
+        set_workspace(workspace.to_string_lossy().to_string());
+        set_agent_state_dir(state_dir.to_string_lossy().to_string());
+
+        fs::write(
+            state_dir.join("external_user_message_to_executor.json"),
+            serde_json::to_string_pretty(&json!({
+                "kind": "external_user_message",
+                "from": "user",
+                "to": "executor",
+                "message": "projection only"
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert!(take_external_user_message_without_writer("executor").is_none());
+    }
+
+    #[test]
+    fn external_user_message_without_writer_reads_canonical_tlog_when_projection_missing() {
+        let _guard = global_state_lock().lock().expect("lock");
+        let workspace = temp_workspace("canonical-external");
+        let state_dir = workspace.join("agent_state");
+        fs::create_dir_all(&state_dir).unwrap();
+        set_workspace(workspace.to_string_lossy().to_string());
+        set_agent_state_dir(state_dir.to_string_lossy().to_string());
+
+        let message = serde_json::to_string_pretty(&json!({
+            "kind": "external_user_message",
+            "from": "user",
+            "to": "executor",
+            "message": "canonical event"
+        }))
+        .unwrap();
+        let signature = artifact_write_signature(&[
+            "external_user_message",
+            "executor",
+            &message.len().to_string(),
+            message.as_str(),
+        ]);
+        record_effect_for_workspace(
+            &workspace,
+            EffectEvent::ExternalUserMessageRecorded {
+                to_role: "executor".to_string(),
+                message: message.clone(),
+                signature,
+            },
+        )
+        .unwrap();
+
+        let recovered = take_external_user_message_without_writer("executor").unwrap();
+        assert!(recovered.contains("canonical event"));
     }
 
     #[test]

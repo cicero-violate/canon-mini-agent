@@ -24,7 +24,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::canonical_writer::CanonicalWriter;
 use crate::error_class::ErrorClass;
-use crate::logging::write_projection_with_artifact_effects;
+use crate::events::{EffectEvent, Event};
+use crate::logging::{record_effect_for_workspace, write_projection_with_artifact_effects};
+use crate::tlog::Tlog;
 
 // ── File path ─────────────────────────────────────────────────────────────────
 
@@ -179,13 +181,15 @@ pub fn record_action_failure_with_writer(
 /// Load the blockers file. Returns empty default if absent or unreadable.
 pub fn load_blockers(workspace: &Path) -> BlockersFile {
     let path = blockers_path(workspace);
-    if !path.exists() {
-        return BlockersFile::default();
+    if path.exists() {
+        if let Some(file) = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+        {
+            return file;
+        }
     }
-    std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+    load_blockers_from_tlog(workspace).unwrap_or_default()
 }
 
 /// Count how many times a given (actor_kind, error_class) pair appears in the
@@ -223,9 +227,32 @@ fn blockers_path(workspace: &Path) -> std::path::PathBuf {
     workspace.join(BLOCKERS_FILE)
 }
 
+fn load_blockers_from_tlog(workspace: &Path) -> Option<BlockersFile> {
+    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
+    let records = Tlog::read_records(&tlog_path).ok()?;
+    let mut file = BlockersFile {
+        version: 1,
+        ..Default::default()
+    };
+    for record in records {
+        let Event::Effect {
+            event: EffectEvent::BlockerRecorded { record },
+        } = record.event
+        else {
+            continue;
+        };
+        file.blockers.push(record);
+    }
+    if file.blockers.len() > MAX_BLOCKER_RECORDS {
+        let drain_count = file.blockers.len() - MAX_BLOCKER_RECORDS;
+        file.blockers.drain(0..drain_count);
+    }
+    Some(file)
+}
+
 fn try_append_blocker_with_writer(
     workspace: &Path,
-    _writer: Option<&mut CanonicalWriter>,
+    mut writer: Option<&mut CanonicalWriter>,
     record: BlockerRecord,
 ) -> Result<()> {
     static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
@@ -237,6 +264,14 @@ fn try_append_blocker_with_writer(
     let path = blockers_path(workspace);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
+    }
+    let effect = EffectEvent::BlockerRecorded {
+        record: record.clone(),
+    };
+    if let Some(writer_ref) = writer.as_deref_mut() {
+        writer_ref.try_record_effect(effect)?;
+    } else {
+        record_effect_for_workspace(workspace, effect)?;
     }
     let subject = record.id.clone();
 
