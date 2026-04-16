@@ -148,3 +148,4 @@ agent_state/
 *.ndjson
 
 rust_chatgpt_sandbox/
+chrome-dev-profile/
