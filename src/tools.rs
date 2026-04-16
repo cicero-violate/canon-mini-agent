@@ -173,6 +173,78 @@ fn try_emit_workspace_artifact_effect(
         })
 }
 
+fn record_workspace_artifact_effect_for_workspace(
+    workspace: &Path,
+    requested: bool,
+    artifact: &str,
+    op: &str,
+    target: &str,
+    subject: &str,
+    signature: &str,
+) -> Result<()> {
+    let tlog_path = std::path::Path::new(crate::constants::agent_state_dir()).join("tlog.ndjson");
+    let state = crate::system_state::SystemState::new(&[], 0);
+    let mut writer = crate::canonical_writer::CanonicalWriter::try_new(
+        state,
+        crate::tlog::Tlog::open(&tlog_path),
+        workspace.to_path_buf(),
+    )?;
+    try_emit_workspace_artifact_effect(
+        &mut writer,
+        requested,
+        artifact,
+        op,
+        target,
+        subject,
+        signature,
+    )
+}
+
+fn write_projection_with_workspace_effects(
+    workspace: &Path,
+    path: &Path,
+    artifact: &str,
+    subject: &str,
+    contents: &str,
+) -> Result<()> {
+    let signature = artifact_write_signature(&[
+        artifact,
+        "write",
+        subject,
+        &contents.len().to_string(),
+    ]);
+    let target = path.to_string_lossy().into_owned();
+    record_workspace_artifact_effect_for_workspace(
+        workspace,
+        true,
+        artifact,
+        "write",
+        &target,
+        subject,
+        &signature,
+    )?;
+    let snapshot = file_snapshot(path)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tmp_path = path.with_extension("tmp");
+    std::fs::write(&tmp_path, contents)?;
+    std::fs::rename(&tmp_path, path)?;
+    if let Err(err) = record_workspace_artifact_effect_for_workspace(
+        workspace,
+        false,
+        artifact,
+        "write",
+        &target,
+        subject,
+        &signature,
+    ) {
+        restore_file_snapshot(path, &snapshot)?;
+        return Err(err);
+    }
+    Ok(())
+}
+
 fn is_lane_plan(path: &str) -> bool {
     if !path.starts_with("PLANS/") {
         return false;
@@ -2075,7 +2147,13 @@ fn handle_message_action(
         agent_state_dir,
         writer.as_deref_mut(),
     );
-    persist_inbound_message(role, step, action, &full_message);
+    persist_inbound_message(
+        role,
+        step,
+        std::path::Path::new(crate::constants::workspace()),
+        action,
+        &full_message,
+    );
 
     // Capture blocker messages as first-class artifact for invariant synthesis.
     if msg_type == "blocker" && status == "blocked" {
@@ -5419,7 +5497,13 @@ fn persist_plan_action_update(
     plan_path: &Path,
     plan: &Value,
 ) -> Result<()> {
-    std::fs::write(plan_path, serde_json::to_string_pretty(plan)?)?;
+    write_projection_with_workspace_effects(
+        std::path::Path::new(crate::constants::workspace()),
+        plan_path,
+        MASTER_PLAN_FILE,
+        &format!("plan_update:{op_raw}"),
+        &serde_json::to_string_pretty(plan)?,
+    )?;
     // Emit control-plane log for plan mutation
     if let Ok(paths) =
         crate::logging::append_action_log_record(&crate::logging::compact_log_record(
@@ -5452,8 +5536,17 @@ fn persist_plan_action_update(
     if plan_op_produced_ready_task(op_raw, action, plan) {
         let flag =
             std::path::Path::new(crate::constants::agent_state_dir()).join("wakeup_executor.flag");
-        let _ = std::fs::create_dir_all(crate::constants::agent_state_dir());
-        let _ = std::fs::write(&flag, "ready_task");
+        if let Err(err) = write_projection_with_workspace_effects(
+            std::path::Path::new(crate::constants::workspace()),
+            &flag,
+            "agent_state/wakeup_executor.flag",
+            "plan_ready_task_wakeup",
+            "ready_task",
+        ) {
+            eprintln!(
+                "[plan] ready task detected via op={op_raw}; failed to persist wakeup flag: {err:#}"
+            );
+        }
         eprintln!("[plan] ready task detected via op={op_raw}; wrote wakeup_executor.flag");
     }
     Ok(())
@@ -7388,7 +7481,13 @@ pub fn execute_action_capability(
     execute_action(role, step, action, workspace, check_on_done, None)
 }
 
-fn persist_inbound_message(role: &str, step: usize, action: &Value, full_message: &str) {
+fn persist_inbound_message(
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    action: &Value,
+    full_message: &str,
+) {
     let Some(to_raw) = action.get("to").and_then(|v| v.as_str()) else {
         return;
     };
@@ -7417,9 +7516,14 @@ fn persist_inbound_message(role: &str, step: usize, action: &Value, full_message
         .to_lowercase()
         .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
-    let _ = std::fs::create_dir_all(agent_state_dir);
     let path = agent_state_dir.join(format!("last_message_to_{to}.json"));
-    if let Err(err) = std::fs::write(&path, full_message) {
+    if let Err(err) = write_projection_with_workspace_effects(
+        workspace,
+        &path,
+        &format!("agent_state/last_message_to_{to}.json"),
+        &format!("handoff_message:{role}:{to}"),
+        full_message,
+    ) {
         eprintln!(
             "[{role}] step={} failed to persist inbound message for {}: {}",
             step, to, err
@@ -7448,7 +7552,13 @@ fn persist_inbound_message(role: &str, step: usize, action: &Value, full_message
         return;
     }
     let wake_path = agent_state_dir.join(format!("wakeup_{to}.flag"));
-    if let Err(err) = std::fs::write(&wake_path, "handoff") {
+    if let Err(err) = write_projection_with_workspace_effects(
+        workspace,
+        &wake_path,
+        &format!("agent_state/wakeup_{to}.flag"),
+        &format!("handoff_wakeup:{role}:{to}"),
+        "handoff",
+    ) {
         eprintln!("[{role}] step={step} failed to write wakeup flag for {to}: {err}");
         if let Some(workspace) = agent_state_dir.parent() {
             crate::blockers::record_action_failure(

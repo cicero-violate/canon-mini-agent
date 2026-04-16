@@ -755,7 +755,7 @@ fn append_evidence_receipt(
     Ok(id)
 }
 
-fn try_emit_workspace_artifact_effect(
+pub(crate) fn record_workspace_artifact_effect(
     workspace: &std::path::Path,
     requested: bool,
     artifact: &str,
@@ -892,7 +892,7 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
             "One or more agent roles are sending prompts that exceed the noise-context threshold."
         ));
 
-        let _ = try_emit_workspace_artifact_effect(
+        let _ = record_workspace_artifact_effect(
             workspace,
             true,
             crate::constants::VIOLATIONS_FILE,
@@ -903,7 +903,7 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
         );
         if let Ok(body) = serde_json::to_string_pretty(&Value::Object(report)) {
             let _ = std::fs::write(&violations_path, body);
-            let _ = try_emit_workspace_artifact_effect(
+            let _ = record_workspace_artifact_effect(
                 workspace,
                 false,
                 crate::constants::VIOLATIONS_FILE,
@@ -930,7 +930,7 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
         &format!("role={role};prompt_bytes={prompt_bytes};threshold={PROMPT_OVERFLOW_BYTES}"),
     )
     .ok();
-    let _ = try_emit_workspace_artifact_effect(
+    let _ = record_workspace_artifact_effect(
         workspace,
         true,
         crate::constants::VIOLATIONS_FILE,
@@ -973,7 +973,7 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
 
     if let Ok(body) = serde_json::to_string_pretty(&Value::Object(report)) {
         let _ = std::fs::write(&violations_path, body);
-        let _ = try_emit_workspace_artifact_effect(
+        let _ = record_workspace_artifact_effect(
             workspace,
             false,
             crate::constants::VIOLATIONS_FILE,

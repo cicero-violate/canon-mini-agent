@@ -11,7 +11,8 @@ use crate::llm_runtime::{
 use anyhow::{anyhow, bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{hash_map::DefaultHasher, HashMap, VecDeque};
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -2451,6 +2452,8 @@ struct ResumeVerifierItem {
 struct OrchestratorCheckpoint {
     #[serde(default)]
     workspace: String,
+    #[serde(default)]
+    checkpoint_tlog_seq: u64,
     created_ms: u64,
     phase: String,
     phase_lane: Option<usize>,
@@ -2480,17 +2483,91 @@ fn orchestrator_mode_flag_path() -> PathBuf {
     PathBuf::from(crate::constants::agent_state_dir()).join("orchestrator_mode.flag")
 }
 
+fn artifact_signature(parts: &[&str]) -> String {
+    let mut hasher = DefaultHasher::new();
+    parts.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+fn record_workspace_artifact_effect_for_workspace(
+    workspace: &Path,
+    requested: bool,
+    artifact: &str,
+    target: &str,
+    subject: &str,
+    signature: &str,
+) -> Result<()> {
+    crate::logging::record_workspace_artifact_effect(
+        workspace,
+        requested,
+        artifact,
+        "write",
+        target,
+        subject,
+        signature,
+    )
+}
+
+fn persist_agent_state_projection(path: &Path, contents: &str, subject: &str) -> Result<()> {
+    let workspace = Path::new(crate::constants::workspace());
+    let artifact = path
+        .strip_prefix(workspace)
+        .ok()
+        .map(|rel| rel.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_else(|| path.to_string_lossy().replace('\\', "/"));
+    let target = path.to_string_lossy().into_owned();
+    let signature = artifact_signature(&[
+        artifact.as_str(),
+        subject,
+        &contents.len().to_string(),
+    ]);
+    record_workspace_artifact_effect_for_workspace(
+        workspace,
+        true,
+        &artifact,
+        &target,
+        subject,
+        &signature,
+    )?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tmp_path = path.with_extension("tmp");
+    std::fs::write(&tmp_path, contents)?;
+    std::fs::rename(&tmp_path, path)?;
+    record_workspace_artifact_effect_for_workspace(
+        workspace,
+        false,
+        &artifact,
+        &target,
+        subject,
+        &signature,
+    )?;
+    Ok(())
+}
+
 fn save_checkpoint(
     workspace: &Path,
     writer: &mut CanonicalWriter,
     lanes: &[LaneConfig],
     verifier_pending_results: &VecDeque<(SubmittedExecutorTurn, u64, String)>,
 ) -> Result<()> {
-    let state = writer.state();
-    let lane_snapshots = build_checkpoint_lane_snapshots(state, lanes);
+    let state = writer.state().clone();
+    let path = checkpoint_path(workspace);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    // Record the canonical checkpoint-save effect before materializing the file.
+    // The log must lead the side effect so replay can observe the save attempt
+    // in the same order the runtime produced it.
+    writer.try_record_effect(crate::events::EffectEvent::CheckpointSaved {
+        phase: state.phase.clone(),
+    })?;
+    let lane_snapshots = build_checkpoint_lane_snapshots(&state, lanes);
     let resume_items = build_resume_verifier_items(lanes, verifier_pending_results);
     let checkpoint = OrchestratorCheckpoint {
         workspace: workspace.to_string_lossy().into_owned(),
+        checkpoint_tlog_seq: writer.tlog_seq(),
         created_ms: now_ms(),
         phase: state.phase.clone(),
         phase_lane: state.phase_lane,
@@ -2505,19 +2582,11 @@ fn save_checkpoint(
         verifier_summary: state.verifier_summary.clone(),
         verifier_pending_results: resume_items,
     };
-    let path = checkpoint_path(workspace);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    // Record the canonical checkpoint-save effect before materializing the file.
-    // The log must lead the side effect so replay can observe the save attempt
-    // in the same order the runtime produced it.
-    writer.try_record_effect(crate::events::EffectEvent::CheckpointSaved {
-        phase: state.phase.clone(),
-    })?;
-    let tmp_path = path.with_extension("json.tmp");
-    std::fs::write(&tmp_path, serde_json::to_string_pretty(&checkpoint)?)?;
-    std::fs::rename(tmp_path, path)?;
+    persist_agent_state_projection(
+        &path,
+        &serde_json::to_string_pretty(&checkpoint)?,
+        "orchestrator_checkpoint",
+    )?;
     Ok(())
 }
 
@@ -2583,6 +2652,28 @@ fn load_checkpoint(workspace: &Path) -> Option<OrchestratorCheckpoint> {
             None,
         );
         return None;
+    }
+    if cp.checkpoint_tlog_seq > 0 {
+        let tlog_path = PathBuf::from(crate::constants::agent_state_dir()).join("tlog.ndjson");
+        let current_tlog_seq = crate::tlog::Tlog::open(&tlog_path).seq();
+        if cp.checkpoint_tlog_seq > current_tlog_seq {
+            let msg = format!(
+                "checkpoint/runtime divergence: checkpoint seq {} exceeds tlog seq {}",
+                cp.checkpoint_tlog_seq, current_tlog_seq
+            );
+            eprintln!(
+                "[orchestrate] checkpoint seq {} exceeds current tlog seq {} — discarding",
+                cp.checkpoint_tlog_seq, current_tlog_seq
+            );
+            crate::blockers::record_action_failure(
+                workspace,
+                "orchestrate",
+                "checkpoint_runtime_divergence",
+                &msg,
+                None,
+            );
+            return None;
+        }
     }
     Some(cp)
 }
@@ -3443,13 +3534,24 @@ fn try_parse_blocker(raw: &str) -> Option<(String, String, Value)> {
 
 fn persist_planner_message(action: &Value) {
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
-    let _ = std::fs::create_dir_all(agent_state_dir);
     let planner_path = agent_state_dir.join("last_message_to_planner.json");
-    let _ = std::fs::write(
+    if let Err(err) = persist_agent_state_projection(
         &planner_path,
-        serde_json::to_string_pretty(action).unwrap_or_default(),
-    );
-    let _ = std::fs::write(agent_state_dir.join("wakeup_planner.flag"), "handoff");
+        &serde_json::to_string_pretty(action).unwrap_or_default(),
+        "planner_handoff_message",
+    ) {
+        eprintln!(
+            "[orchestrate] failed to persist planner handoff message {}: {err:#}",
+            planner_path.display()
+        );
+    }
+    let wake_path = agent_state_dir.join("wakeup_planner.flag");
+    if let Err(err) = persist_agent_state_projection(&wake_path, "handoff", "planner_wakeup") {
+        eprintln!(
+            "[orchestrate] failed to persist planner wakeup flag {}: {err:#}",
+            wake_path.display()
+        );
+    }
 }
 
 fn persist_planner_blocker_message(action: &Value) -> bool {
@@ -4967,19 +5069,31 @@ fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Va
 
     // Generic wakeup for other targets (verifier, diagnostics, etc.)
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
-    let _ = std::fs::create_dir_all(agent_state_dir);
     let to_key = to_role
         .to_lowercase()
         .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
     let msg_path = agent_state_dir.join(format!("last_message_to_{to_key}.json"));
-    let _ = std::fs::write(
+    if let Err(err) = persist_agent_state_projection(
         &msg_path,
-        serde_json::to_string_pretty(action).unwrap_or_default(),
-    );
-    let _ = std::fs::write(
-        agent_state_dir.join(format!("wakeup_{to_key}.flag")),
+        &serde_json::to_string_pretty(action).unwrap_or_default(),
+        &format!("executor_completion_message:{to_key}"),
+    ) {
+        writer.record_violation(
+            "executor_completion_message",
+            &format!("failed to persist message for {to_key}: {err:#}"),
+        );
+    }
+    let wake_path = agent_state_dir.join(format!("wakeup_{to_key}.flag"));
+    if let Err(err) = persist_agent_state_projection(
+        &wake_path,
         "handoff",
-    );
+        &format!("executor_completion_wakeup:{to_key}"),
+    ) {
+        writer.record_violation(
+            "executor_completion_message",
+            &format!("failed to persist wakeup flag for {to_key}: {err:#}"),
+        );
+    }
 }
 
 fn plan_has_incomplete_tasks(plan_text: &str) -> bool {
