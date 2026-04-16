@@ -127,7 +127,6 @@ fn single_prediction(prediction: Value) -> Vec<Value> {
     vec![prediction]
 }
 
-#[allow(dead_code)]
 fn simple_action_prediction(action: &str, intent: &str) -> Vec<Value> {
     forward_prediction((action, intent), |(action, intent)| {
         single_prediction(simple_action_prediction_value(action, intent))
