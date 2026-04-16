@@ -53,7 +53,6 @@ fn render_budgeted_item_body(item: &PromptBudgetItem<'_>) -> String {
 
 #[derive(Clone, Copy, Debug)]
 struct PromptItem<'a> {
-    name: &'a str,
     heading: &'a str,
     body: &'a str,
     reserve: usize,
@@ -89,7 +88,6 @@ fn compute_prompt_budget<'a>(
     let mut budget_items = items
         .iter()
         .map(|item| {
-            let _ = item.name;
             let raw_bytes = item.body.len();
             let cap = item.cap.min(raw_bytes);
             let reserve = item.reserve.min(cap);

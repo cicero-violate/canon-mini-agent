@@ -6378,31 +6378,6 @@ fn looks_like_long_running_command(cmd: &str) -> bool {
         || cmd.contains("| tee")
 }
 
-#[cfg(test)]
-fn spawn_detached_with_log(cmd: &str, cwd_path: &Path) -> Result<(u32, PathBuf)> {
-    let pid = std::process::id();
-    let ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_else(|_| Duration::from_secs(0))
-        .as_millis();
-    let log_path = env::temp_dir().join(format!("canon-mini-agent-{pid}-{ts}.log"));
-    let stdout_file = File::create(&log_path)
-        .with_context(|| format!("failed to create log file {}", log_path.display()))?;
-    let stderr_file = stdout_file
-        .try_clone()
-        .with_context(|| format!("failed to clone log file {}", log_path.display()))?;
-    let child = Command::new("/bin/bash")
-        .arg("-c")
-        .arg(cmd)
-        .current_dir(cwd_path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::from(stdout_file))
-        .stderr(Stdio::from(stderr_file))
-        .spawn()
-        .with_context(|| ctx_spawn(cmd))?;
-    Ok((child.id(), log_path))
-}
-
 fn summarize_cargo_test_log(path: &Path) -> Option<String> {
     let contents = std::fs::read_to_string(path).ok()?;
     if contents.trim().is_empty() {
@@ -6411,23 +6386,6 @@ fn summarize_cargo_test_log(path: &Path) -> Option<String> {
     for line in contents.lines() {
         if let Some(idx) = line.find("test result:") {
             return Some(line[idx..].trim().to_string());
-        }
-    }
-    None
-}
-
-#[cfg(test)]
-fn summarize_cargo_test_log_with_retry(
-    path: &Path,
-    attempts: usize,
-    delay: std::time::Duration,
-) -> Option<String> {
-    for attempt in 0..attempts {
-        if let Some(summary) = summarize_cargo_test_log(path) {
-            return Some(summary);
-        }
-        if attempt + 1 < attempts {
-            std::thread::sleep(delay);
         }
     }
     None
@@ -6584,29 +6542,6 @@ fn exec_run_command_cargo_test(cmd: &str, cwd_path: &Path) -> Result<(bool, Stri
     );
     let _ = timeout_secs;
     Ok((output.status.success(), summary))
-}
-
-#[cfg(test)]
-fn tail_file_lines(path: &Path, max_lines: usize) -> Option<String> {
-    use std::thread::sleep;
-    use std::time::Duration;
-
-    for _ in 0..3 {
-        match std::fs::read_to_string(path) {
-            Ok(contents) => {
-                let lines: Vec<&str> = contents.lines().collect();
-                if lines.is_empty() {
-                    return Some(String::new());
-                }
-                let start = lines.len().saturating_sub(max_lines);
-                return Some(lines[start..].join("\n"));
-            }
-            Err(_) => {
-                sleep(Duration::from_millis(200));
-            }
-        }
-    }
-    None
 }
 
 fn exec_run_command_blocking_with_timeout(
