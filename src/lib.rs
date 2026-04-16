@@ -1,6 +1,5 @@
 // #![allow(dead_code)]
 
-mod action_examples;
 pub mod canon_tools_patch;
 pub mod app;
 pub mod blockers;
@@ -25,8 +24,6 @@ mod prompt_inputs;
 pub mod prompts;
 mod protocol;
 pub mod refactor_analysis;
-mod rename_example_caller;
-mod rename_example_target;
 pub mod rename_semantic;
 mod reports;
 mod semantic;

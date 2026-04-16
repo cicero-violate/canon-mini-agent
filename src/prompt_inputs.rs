@@ -74,13 +74,13 @@ pub struct SemanticPromptArtifacts {
     pub issues_summary: String,
     pub violations_summary: String,
     pub diagnostics_summary: String,
+    #[cfg(test)]
     pub diagnostics_report: String,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct SemanticControlPromptState {
     pub control_summary: String,
-    pub artifacts: SemanticPromptArtifacts,
 }
 
 pub fn read_combined_invariants_context(workspace: &Path) -> String {
@@ -684,6 +684,7 @@ pub fn derive_semantic_prompt_artifacts(
             },
         ),
         diagnostics_summary: filter_active_diagnostics_json(&diagnostics_report),
+        #[cfg(test)]
         diagnostics_report,
     }
 }
@@ -739,10 +740,7 @@ pub fn derive_semantic_control_prompt_state(
         )
     };
 
-    SemanticControlPromptState {
-        control_summary,
-        artifacts,
-    }
+    SemanticControlPromptState { control_summary }
 }
 
 pub fn read_semantic_control_prompt_context(
@@ -1632,6 +1630,7 @@ pub fn render_diagnostics_report_from_issues(
 
 /// Returns a human-readable explanation of which failure is missing source
 /// validation and what keywords are accepted, for use in tool result messages.
+#[cfg(test)]
 pub(crate) fn describe_missing_source_validation(failures: &[Value]) -> String {
     let keywords = &[
         "read_file",
@@ -1675,6 +1674,7 @@ pub(crate) fn describe_missing_source_validation(failures: &[Value]) -> String {
     "ranked_failures missing current-source validation (no failures to inspect)".to_string()
 }
 
+#[cfg(test)]
 fn diagnostics_have_current_source_validation(failures: &[Value]) -> bool {
     failures.iter().all(|failure| {
         failure
@@ -1695,6 +1695,7 @@ fn diagnostics_have_current_source_validation(failures: &[Value]) -> bool {
     })
 }
 
+#[cfg(test)]
 fn violations_are_verified_and_empty(raw_violations_text: &str) -> bool {
     let Ok(value) = serde_json::from_str::<Value>(raw_violations_text) else {
         return false;
@@ -1711,6 +1712,7 @@ pub(crate) fn reconcile_diagnostics_report(workspace: &Path) -> String {
     render_diagnostics_report_from_issues(workspace)
 }
 
+#[cfg(test)]
 pub(crate) fn sanitize_diagnostics_for_planner(
     raw_diagnostics_text: &str,
     raw_violations_text: &str,

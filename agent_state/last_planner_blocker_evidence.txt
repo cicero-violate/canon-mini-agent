@@ -1,1 +1,1 @@
-chromium: early transport failure (heartbeat_after_turn_complete) (tab=633187550 turn=87)
+invariant gate blocked role `executor`: Role `executor` repeatedly encounters `llm_timeout`: LLM endpoint call timed out or returned a connection error [id=INV-10b73fb9]

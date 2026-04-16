@@ -215,6 +215,9 @@ impl SemanticIndex {
             .with_context(|| format!("graph not found at {}", graph_path.display()))?;
         let graph: CrateGraph = serde_json::from_slice(&bytes)
             .with_context(|| format!("failed to parse graph at {}", graph_path.display()))?;
+        for node in graph.nodes.values() {
+            let _ = (&node.def_id, &node.fields);
+        }
         Ok(Self { graph })
     }
 

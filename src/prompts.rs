@@ -6,11 +6,13 @@ use crate::constants::{
     MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
 };
 use crate::protocol::{MessagePayload, MessageStatus, MessageType, ProtocolMessage, Role};
+use crate::tool_schema::selected_tool_protocol_schema_text;
+#[cfg(test)]
 use crate::tool_schema::{
     cargo_test_action_example, plan_set_task_status_action_example,
-    plan_sorted_view_action_example, selected_tool_protocol_schema_text,
-    validate_tool_action,
+    plan_sorted_view_action_example,
 };
+use crate::tool_schema::validate_tool_action;
 
 pub(crate) fn truncate(s: &str, max: usize) -> &str {
     let end = s.char_indices().nth(max).map(|(i, _)| i).unwrap_or(s.len());
@@ -62,11 +64,9 @@ struct PromptItem<'a> {
 
 #[derive(Clone, Debug)]
 struct PromptBudgetItem<'a> {
-    name: &'a str,
     heading: &'a str,
     body: &'a str,
     raw_bytes: usize,
-    reserve: usize,
     cap: usize,
     weight: usize,
     budget: usize,
@@ -75,8 +75,6 @@ struct PromptBudgetItem<'a> {
 
 #[derive(Clone, Debug)]
 struct PromptBudget<'a> {
-    limit: usize,
-    framing: usize,
     available: usize,
     used: usize,
     items: Vec<PromptBudgetItem<'a>>,
@@ -91,15 +89,14 @@ fn compute_prompt_budget<'a>(
     let mut budget_items = items
         .iter()
         .map(|item| {
+            let _ = item.name;
             let raw_bytes = item.body.len();
             let cap = item.cap.min(raw_bytes);
             let reserve = item.reserve.min(cap);
             PromptBudgetItem {
-                name: item.name,
                 heading: item.heading,
                 body: item.body,
                 raw_bytes,
-                reserve,
                 cap,
                 weight: item.weight.max(1),
                 budget: reserve,
@@ -167,13 +164,7 @@ fn compute_prompt_budget<'a>(
         used = budget_items.iter().map(|item| item.budget).sum::<usize>();
     }
 
-    PromptBudget {
-        limit,
-        framing,
-        available,
-        used,
-        items: budget_items,
-    }
+    PromptBudget { available, used, items: budget_items }
 }
 
 fn render_budgeted_prompt<'a>(prefix: &str, items: &[PromptItem<'a>], suffix: &str) -> String {
@@ -220,6 +211,8 @@ pub(crate) enum AgentPromptKind {
     Solo,
 }
 
+#[cfg(test)]
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ToolPromptKind {
     ListDir,
@@ -244,6 +237,7 @@ pub(crate) enum ToolPromptKind {
     Message,
 }
 
+#[cfg(test)]
 fn available_actions(_kind: AgentPromptKind) -> Vec<String> {
     crate::tool_schema::predicted_action_name_list()
 }
@@ -378,6 +372,7 @@ fn default_schema_block(kind: AgentPromptKind) -> String {
     selected_tool_protocol_schema_text(role_default_schema_actions(kind))
 }
 
+#[cfg(test)]
 fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
     match kind {
         AgentPromptKind::Diagnostics => &[
@@ -449,6 +444,7 @@ fn tool_order(kind: AgentPromptKind) -> &'static [ToolPromptKind] {
     }
 }
 
+#[cfg(test)]
 fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
     match (kind, tool) {
         (_, ToolPromptKind::ListDir) => {
@@ -516,14 +512,19 @@ fn tool_title(kind: AgentPromptKind, tool: ToolPromptKind) -> &'static str {
         }
 }
 
+#[cfg(test)]
 const READ_FILE_FOOTER: &str = "   With \"line\":N the output starts at line N and shows up to 1000 lines.\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.\n   ⚠ read_file output is prefixed with line numbers (\"42: code here\"). Strip the \"N: \" prefix when\n     writing patch lines — patch lines must contain ONLY the raw source text, never \"42: code here\".\n     WRONG:  -42: fn old() {}   RIGHT:  -fn old() {}";
 
+#[cfg(test)]
 const READ_FILE_EXECUTOR_FOOTER: &str = "   With \"line\":N the output starts at line N and shows up to 1000 lines.\n   ⚠ Read a file ONCE before patching it. Never patch from memory.\n   ⚠ If this path already appeared in a read_file result this session, its content is already in your context — DO NOT read it again. Act on what you have: apply_patch or message.\n   ⚠ Paths may be relative to WORKSPACE or absolute under WORKSPACE.\n   ⚠ read_file output is prefixed with line numbers (\"42: code here\"). Strip the \"N: \" prefix when\n     writing patch lines — patch lines must contain ONLY the raw source text, never \"42: code here\".\n     WRONG:  -42: fn old() {}   RIGHT:  -fn old() {}";
 
+#[cfg(test)]
 const RUN_COMMAND_FOOTER: &str =
     "   ⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE.";
+#[cfg(test)]
 const PYTHON_FOOTER: &str = "   ⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE.";
 
+#[cfg(test)]
 fn plan_sorted_view_example() -> String {
     format!(
         "   {}",
@@ -531,6 +532,7 @@ fn plan_sorted_view_example() -> String {
     )
 }
 
+#[cfg(test)]
 fn read_plan_with_sorted_view_example(rationale: &str) -> String {
     format!(
         "   {{\"action\":\"read_file\",\"path\":\"PLAN.json\",\"rationale\":\"{rationale}\"}}\n{}",
@@ -538,6 +540,7 @@ fn read_plan_with_sorted_view_example(rationale: &str) -> String {
     )
 }
 
+#[cfg(test)]
 fn message_tool_prompt_examples() -> &'static str {
     truncate(
             "   {\"action\":\"message\",\"from\":\"executor\",\"to\":\"verifier\",\"type\":\"handoff\",\"status\":\"complete\",\"observation\":\"Summarize what happened.\",\"rationale\":\"Execution work is complete and the verifier now has enough evidence to judge it.\",\"predicted_next_actions\":[{\"action\":\"read_file\",\"intent\":\"Inspect the changed source files during verification.\"},{\"action\":\"cargo_test\",\"intent\":\"Run verification tests if the code path needs execution proof.\"}],\"payload\":{\"summary\":\"brief evidence summary\",\"artifacts\":[\"path/to/file.rs\"]}}\n   {\"action\":\"message\",\"from\":\"executor\",\"to\":\"planner\",\"type\":\"blocker\",\"status\":\"blocked\",\"observation\":\"Describe the blocker.\",\"rationale\":\"Explain why progress is impossible.\",\"predicted_next_actions\":[{\"action\":\"read_file\",\"intent\":\"Inspect the blocked source or artifact in more detail.\"},{\"action\":\"run_command\",\"intent\":\"Gather concrete failure evidence for the blocker.\"}],\"payload\":{\"summary\":\"Short blocker summary\",\"blocker\":\"Root cause\",\"evidence\":\"Concrete error text\",\"required_action\":\"What must be done to unblock\",\"severity\":\"error\"}}\n   Allowed roles: user|executor|planner|verifier|diagnostics|solo. Allowed types: handoff|result|verification|failure|blocker|plan|diagnostics. Allowed status: complete|in_progress|failed|verified|ready|blocked.\n   ⚠ message with status=complete is REJECTED if build or tests fail — fix all errors first.",
@@ -545,6 +548,7 @@ fn message_tool_prompt_examples() -> &'static str {
         )
 }
 
+#[cfg(test)]
 fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
     let ws = crate::constants::workspace();
     match (kind, tool) {
@@ -606,6 +610,7 @@ fn tool_prompt(kind: AgentPromptKind, tool: ToolPromptKind) -> String {
     }
 }
 
+#[cfg(test)]
 fn rename_symbol_tool_prompt(kind: AgentPromptKind) -> String {
     match kind {
         AgentPromptKind::Executor | AgentPromptKind::Solo => {
@@ -617,6 +622,7 @@ fn rename_symbol_tool_prompt(kind: AgentPromptKind) -> String {
     }
 }
 
+#[cfg(test)]
 fn apply_patch_tool_prompt(kind: AgentPromptKind) -> String {
     match kind {
         AgentPromptKind::Executor | AgentPromptKind::Solo => {
@@ -639,6 +645,7 @@ fn apply_patch_tool_prompt(kind: AgentPromptKind) -> String {
     }
 }
 
+#[cfg(test)]
 fn run_command_tool_prompt(kind: AgentPromptKind, ws: &str) -> String {
     match kind {
         AgentPromptKind::Executor | AgentPromptKind::Solo => {
@@ -656,6 +663,7 @@ fn run_command_tool_prompt(kind: AgentPromptKind, ws: &str) -> String {
     }
 }
 
+#[cfg(test)]
 fn python_tool_prompt(kind: AgentPromptKind, ws: &str) -> String {
     match kind {
         AgentPromptKind::Executor | AgentPromptKind::Solo => {
@@ -681,6 +689,7 @@ fn python_tool_prompt(kind: AgentPromptKind, ws: &str) -> String {
     }
 }
 
+#[cfg(test)]
 fn plan_tool_prompt(kind: AgentPromptKind) -> String {
     match kind {
         AgentPromptKind::Executor => {
@@ -716,6 +725,7 @@ fn plan_tool_prompt(kind: AgentPromptKind) -> String {
     }
 }
 
+#[cfg(test)]
 fn list_dir_tool_prompt(kind: AgentPromptKind) -> String {
     match kind {
         AgentPromptKind::Executor | AgentPromptKind::Solo => {
@@ -733,6 +743,7 @@ fn list_dir_tool_prompt(kind: AgentPromptKind) -> String {
     }
 }
 
+#[cfg(test)]
 fn read_file_tool_prompt(kind: AgentPromptKind) -> String {
     match kind {
         AgentPromptKind::Executor | AgentPromptKind::Solo => {
@@ -797,6 +808,7 @@ fn canonical_status_snapshot() -> &'static str {
     "Canonical status snapshot:\n- canonical state changes are gated through the canonical writer\n- replay from `agent_state/tlog.ndjson` is meaningful for canonical state\n- many reconciliation paths are now explicit `ControlEvent`s\n- several loophole-shaped runtime paths are classified and recorded in `agent_state/blockers.json`\n- blockers and invariants can now accumulate around structural failures\n\nOpen guarantees still to close:\n- not every runtime-influenced control decision is canonically represented yet\n- not every reconciliation branch has been split into the right explicit event shape yet\n- not every loophole-class blocker is wired into invariant promotion or route gating yet\n- not every checkpoint/resume inconsistency is bounded and proven safe yet\n- not every intentionally-ephemeral runtime behavior is enumerated and justified yet\n- some branches are now detectable but are not all replaced by dedicated canonical `ControlEvent`s yet\n- blocker -> invariant -> gate coverage for ambiguity/effectful classes is still being completed\n- full orchestration-loop integration tests for these loophole classes still do not exist yet\n\nLoophole-closure rule:\n- when you encounter runtime behavior that influences control flow or externally visible behavior, either prove it is already represented canonically or add the missing event/policy/invariant/test instead of building new features."
 }
 
+#[cfg(test)]
 fn action_contract(kind: AgentPromptKind) -> String {
     let actions = available_actions(kind)
         .iter()
@@ -809,6 +821,7 @@ fn action_contract(kind: AgentPromptKind) -> String {
     )
 }
 
+#[cfg(test)]
 fn tools_section(kind: AgentPromptKind) -> String {
     let _ = kind;
     String::new()
@@ -1940,6 +1953,7 @@ fn parse_json_action_value(value: Value) -> Result<Vec<Value>> {
     bail!("not a JSON action object")
 }
 
+#[cfg(test)]
 pub(crate) fn diagnostics_python_reads_event_logs(action: &Value) -> bool {
     if action.get("action").and_then(|v| v.as_str()) != Some("python") {
         return false;

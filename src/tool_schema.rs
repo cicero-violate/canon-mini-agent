@@ -648,6 +648,7 @@ pub enum ToolAction {
     },
 }
 
+#[cfg(test)]
 pub fn tool_protocol_schema_json() -> String {
     let schema = schema_for!(ToolAction);
     serde_json::to_string(&schema).unwrap_or_else(|_| "{}".to_string())
@@ -847,6 +848,7 @@ fn build_tool_actions_list() -> Vec<(&'static str, &'static str, Option<&'static
     ]
 }
 
+#[cfg(test)]
 pub fn tool_protocol_schema_split_text() -> String {
     let schema = schema_for!(ToolAction);
     let value = serde_json::to_value(&schema).unwrap_or_else(|_| Value::Object(Default::default()));
@@ -880,12 +882,14 @@ pub fn tool_protocol_schema_split_text() -> String {
     out
 }
 
+#[cfg(test)]
 fn action_schema_text(action: &str) -> Option<String> {
     let schema = schema_for!(ToolAction);
     let value = serde_json::to_value(&schema).ok()?;
     find_action_schema(&value, action).and_then(|v| serde_json::to_string(v).ok())
 }
 
+#[cfg(test)]
 pub fn predicted_action_schema_text(predicted_next_actions_json: &str) -> String {
     let parsed = match serde_json::from_str::<Value>(predicted_next_actions_json) {
         Ok(value) => value,

@@ -7,7 +7,6 @@ use serde_json::{json, Value};
 use std::collections::{hash_map::DefaultHasher, BTreeSet};
 use std::env;
 use std::fs;
-use std::fs::File;
 use std::hash::{Hash, Hasher};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
@@ -1459,6 +1458,7 @@ fn render_plan_sorted_view_output(
     Ok(serde_json::to_string_pretty(&Value::Object(output))?)
 }
 
+#[cfg(test)]
 fn ensure_plan_edge_endpoints_present(from: &str, to: &str) -> Result<()> {
     if from.is_empty() || to.is_empty() {
         bail!("plan edge missing from/to");
@@ -6378,6 +6378,7 @@ fn looks_like_long_running_command(cmd: &str) -> bool {
         || cmd.contains("| tee")
 }
 
+#[cfg(test)]
 fn spawn_detached_with_log(cmd: &str, cwd_path: &Path) -> Result<(u32, PathBuf)> {
     let pid = std::process::id();
     let ts = SystemTime::now()
@@ -6415,6 +6416,7 @@ fn summarize_cargo_test_log(path: &Path) -> Option<String> {
     None
 }
 
+#[cfg(test)]
 fn summarize_cargo_test_log_with_retry(
     path: &Path,
     attempts: usize,
@@ -6584,6 +6586,7 @@ fn exec_run_command_cargo_test(cmd: &str, cwd_path: &Path) -> Result<(bool, Stri
     Ok((output.status.success(), summary))
 }
 
+#[cfg(test)]
 fn tail_file_lines(path: &Path, max_lines: usize) -> Option<String> {
     use std::thread::sleep;
     use std::time::Duration;

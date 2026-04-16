@@ -1,7 +1,6 @@
 use crate::system_state::SystemState;
 
 pub struct CargoTestGate {
-    pending_tail_path: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -403,9 +402,7 @@ pub fn planner_pending_reason_count(
 
 impl CargoTestGate {
     pub fn new() -> Self {
-        Self {
-            pending_tail_path: None,
-        }
+        Self {}
     }
 
     pub fn note_action(&mut self, kind: &str, cmd: Option<&str>) {
@@ -421,10 +418,6 @@ impl CargoTestGate {
         None
     }
 
-    #[cfg(test)]
-    pub fn pending_tail_path(&self) -> Option<&str> {
-        self.pending_tail_path.as_deref()
-    }
 }
 
 pub fn extract_progress_path_from_result(result: &str) -> Option<String> {

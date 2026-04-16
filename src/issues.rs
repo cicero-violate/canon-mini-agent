@@ -115,7 +115,6 @@ const ISSUE_FRESHNESS_TTL_MS: u64 = 15 * 60 * 1000;
 
 #[derive(Debug, Clone, Default)]
 pub struct IssueSweepSummary {
-    pub scanned: usize,
     pub marked_stale: usize,
     pub refreshed: usize,
     pub rewrote: bool,
@@ -284,10 +283,7 @@ pub fn sweep_stale_issues(workspace: &Path) -> Result<IssueSweepSummary> {
 
     let receipt_ts = evidence_receipt_timestamps();
     let now_ms = crate::logging::now_ms();
-    let mut summary = IssueSweepSummary {
-        scanned: file.issues.len(),
-        ..IssueSweepSummary::default()
-    };
+    let mut summary = IssueSweepSummary::default();
     let mut mutated = false;
 
     for issue in &mut file.issues {
@@ -442,6 +438,7 @@ pub fn rescore_all(file: &mut IssuesFile) {
 
 /// Read ISSUES.json and return the text of open/in-progress issues only.
 /// Returns "(no open issues)" when the file is absent or all issues are closed.
+#[cfg(test)]
 pub fn read_open_issues(workspace: &Path) -> String {
     let issues = read_ranked_open_issues(workspace);
     if issues.is_empty() {
@@ -480,6 +477,7 @@ pub fn read_ranked_open_issues(workspace: &Path) -> Vec<Issue> {
 /// Read ISSUES.json and return a small human-readable summary of the top open issues.
 /// Issues are ranked by normalized score [0.0, 1.0]; score is shown in the output
 /// so the LLM can calibrate effort against impact.
+#[cfg(test)]
 pub fn read_top_open_issues(workspace: &Path, limit: usize) -> String {
     let issues = read_ranked_open_issues(workspace);
     if issues.is_empty() {

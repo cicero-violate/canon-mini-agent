@@ -18,17 +18,6 @@ fn sort_by_objective_desc(a: &serde_json::Value, b: &serde_json::Value) -> std::
     score(b).cmp(&score(a))
 }
 
-fn sort_by_complexity_desc(a: &serde_json::Value, b: &serde_json::Value) -> std::cmp::Ordering {
-    b.get("complexity_proxy")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0)
-        .cmp(
-            &a.get("complexity_proxy")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0),
-        )
-}
-
 /// Compute normalized [0.0, 1.0] objective scores for all items in-place.
 ///
 /// Implements: objective = min(B) + min(R)  s.t. correctness invariant

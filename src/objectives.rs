@@ -44,14 +44,6 @@ pub struct Objective {
     pub success_criteria: Vec<Value>,
 }
 
-pub fn read_objectives_filtered(path: &Path) -> String {
-    let raw = std::fs::read_to_string(path).unwrap_or_default();
-    if raw.trim().is_empty() {
-        return raw;
-    }
-    filter_incomplete_objectives_json(&raw).unwrap_or(raw)
-}
-
 /// Compact one-liner-per-objective for prompt injection.
 /// Strips description/requirement/verification/success_criteria to keep token cost low.
 /// Only non-done objectives are included.

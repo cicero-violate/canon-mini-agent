@@ -243,7 +243,6 @@ struct State {
 /// Shared transport bootstrap for both submit-only and full-response flows.
 struct StartedTurn {
     turn_id: u64,
-    lease_token: String,
     ack_rx: oneshot::Receiver<String>,
     resp_rx: Option<oneshot::Receiver<String>>,
     early_fail_rx: Option<oneshot::Receiver<String>>,
@@ -301,7 +300,6 @@ pub struct ChromiumBackend {
     next_turn_id: Arc<AtomicU64>,
     next_turn_lease_seed: Arc<AtomicU64>,
     next_req_id: Arc<AtomicU64>,
-    port: u16,
 }
 
 impl ChromiumBackend {
@@ -313,7 +311,6 @@ impl ChromiumBackend {
             next_turn_id: Arc::new(AtomicU64::new(1)),
             next_turn_lease_seed: Arc::new(AtomicU64::new(1)),
             next_req_id: Arc::new(AtomicU64::new(1)),
-            port,
         };
 
         let addr: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
@@ -531,7 +528,6 @@ impl ChromiumBackend {
     ) -> Result<LlmResponse> {
         let StartedTurn {
             turn_id,
-            lease_token: _,
             ack_rx,
             resp_rx,
             early_fail_rx,
@@ -670,7 +666,6 @@ impl ChromiumBackend {
     ) -> Result<LlmResponse> {
         let StartedTurn {
             turn_id,
-            lease_token: _,
             ack_rx,
             resp_rx: _,
             early_fail_rx: _,
@@ -801,7 +796,6 @@ impl ChromiumBackend {
 
         StartedTurn {
             turn_id,
-            lease_token,
             ack_rx,
             resp_rx: (!submit_only).then_some(resp_rx),
             early_fail_rx: (!submit_only).then_some(early_fail_rx),
