@@ -265,6 +265,8 @@ pub fn validate_transition(state: &SystemState, event: &ControlEvent) -> Result<
                 }
             }
         }
+        // Runtime traces show executor turn registration is highly order-sensitive.
+        // It must occur only after submit-in-flight clears and the lane/tab binding is canonical.
         ControlEvent::ExecutorTurnRegistered {
             tab_id,
             turn_id,
