@@ -755,7 +755,7 @@ fn append_evidence_receipt(
     Ok(id)
 }
 
-pub(crate) fn record_workspace_artifact_effect(
+pub fn record_workspace_artifact_effect(
     workspace: &std::path::Path,
     requested: bool,
     artifact: &str,
@@ -798,7 +798,23 @@ pub(crate) fn record_workspace_artifact_effect(
     })
 }
 
-pub(crate) fn artifact_write_signature(parts: &[&str]) -> String {
+pub fn record_effect_for_workspace(
+    workspace: &std::path::Path,
+    effect: crate::events::EffectEvent,
+) -> Result<()> {
+    let tlog_path = std::path::Path::new(crate::constants::agent_state_dir()).join("tlog.ndjson");
+    let state = crate::system_state::SystemState::new(&[], 0);
+    let mut writer = crate::canonical_writer::CanonicalWriter::try_new(
+        state,
+        crate::tlog::Tlog::open(&tlog_path),
+        workspace.to_path_buf(),
+    )?;
+    writer.try_record_effect(effect).map_err(|err| {
+        anyhow::anyhow!("canonical effect append failed: {err:#}")
+    })
+}
+
+pub fn artifact_write_signature(parts: &[&str]) -> String {
     let mut hasher = DefaultHasher::new();
     parts.hash(&mut hasher);
     format!("{:016x}", hasher.finish())
@@ -832,7 +848,7 @@ fn restore_file_snapshot(path: &std::path::Path, snapshot: &Option<Vec<u8>>) -> 
     Ok(())
 }
 
-pub(crate) fn write_projection_with_artifact_effects(
+pub fn write_projection_with_artifact_effects(
     workspace: &std::path::Path,
     path: &std::path::Path,
     artifact: &str,

@@ -48,6 +48,8 @@ pub struct SystemState {
     pub active_blocker_to_verifier: bool,
     pub diagnostics_text: String,
     #[serde(default)]
+    pub external_user_message_signatures: HashMap<String, String>,
+    #[serde(default)]
     pub inbound_message_signatures: HashMap<String, String>,
     #[serde(default)]
     pub wake_signal_signatures: HashMap<String, String>,
@@ -204,6 +206,10 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
         }
         ControlEvent::DiagnosticsTextSet { text } => {
             s.diagnostics_text = text.clone();
+        }
+        ControlEvent::ExternalUserMessageConsumed { role, signature } => {
+            s.external_user_message_signatures
+                .insert(role.clone(), signature.clone());
         }
         ControlEvent::InboundMessageConsumed { role, signature } => {
             s.inbound_message_signatures

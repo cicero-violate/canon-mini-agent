@@ -36,7 +36,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::issues::{is_closed, rescore_all, Issue, IssuesFile};
+use crate::issues::{is_closed, persist_issues_projection, rescore_all, Issue, IssuesFile};
 
 // ── File paths ────────────────────────────────────────────────────────────────
 
@@ -567,7 +567,7 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
 
     if created > 0 || mutated {
         rescore_all(&mut file);
-        std::fs::write(&issues_path, serde_json::to_string_pretty(&file)?)?;
+        persist_issues_projection(workspace, &file, "generate_invariant_issues")?;
     }
 
     Ok(created)

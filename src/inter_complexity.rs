@@ -29,7 +29,7 @@ use std::path::Path;
 use anyhow::Result;
 
 use crate::constants::ISSUES_FILE;
-use crate::issues::{is_closed, rescore_all, Issue, IssuesFile};
+use crate::issues::{is_closed, persist_issues_projection, rescore_all, Issue, IssuesFile};
 use crate::semantic::SemanticIndex;
 
 // ---------------------------------------------------------------------------
@@ -224,7 +224,7 @@ pub fn generate_hotspot_issues(workspace: &Path, top_n: usize) -> Result<usize> 
         created += append_duplicate_issues(&mut file, &analysis, &existing_ids);
     }
 
-    persist_if_created(&issues_path, &mut file, created)?;
+    persist_if_created(workspace, &mut file, created)?;
 
     Ok(created)
 }
@@ -366,10 +366,10 @@ fn build_duplicate_issue(group: &[String], existing_ids: &HashSet<String>) -> Op
     })
 }
 
-fn persist_if_created(issues_path: &Path, file: &mut IssuesFile, created: usize) -> Result<()> {
+fn persist_if_created(workspace: &Path, file: &mut IssuesFile, created: usize) -> Result<()> {
     if created > 0 {
         rescore_all(file);
-        std::fs::write(issues_path, serde_json::to_string_pretty(file)?)?;
+        persist_issues_projection(workspace, file, "generate_hotspot_issues")?;
     }
     Ok(())
 }

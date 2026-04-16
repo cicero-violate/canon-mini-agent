@@ -3255,7 +3255,49 @@ fn take_inbound_message_without_writer(role: &str) -> Option<String> {
     take_inbound_message_projection(role)
 }
 
-fn take_external_user_message(role: &str) -> Option<String> {
+fn canonical_external_user_message_from_tlog(
+    agent_state_dir: &std::path::Path,
+    state: &SystemState,
+    role: &str,
+) -> Option<(String, String)> {
+    let tlog_path = agent_state_dir.join("tlog.ndjson");
+    let records = Tlog::read_records(&tlog_path).ok()?;
+    let mut latest: Option<(u64, String, String)> = None;
+    for record in records {
+        let Event::Effect {
+            event:
+                EffectEvent::ExternalUserMessageRecorded {
+                    to_role,
+                    message,
+                    signature,
+                },
+        } = record.event
+        else {
+            continue;
+        };
+        if to_role != role {
+            continue;
+        }
+        if state
+            .external_user_message_signatures
+            .get(role)
+            .map(String::as_str)
+            == Some(signature.as_str())
+        {
+            continue;
+        }
+        let replace = match latest.as_ref() {
+            None => true,
+            Some((seq, _, _)) => record.seq >= *seq,
+        };
+        if replace {
+            latest = Some((record.seq, signature, message));
+        }
+    }
+    latest.map(|(_, signature, message)| (signature, message))
+}
+
+fn take_external_user_message_projection(role: &str) -> Option<String> {
     let role_key = role
         .trim()
         .to_lowercase()
@@ -3270,6 +3312,64 @@ fn take_external_user_message(role: &str) -> Option<String> {
     }
     let _ = std::fs::remove_file(&path);
     Some(trimmed)
+}
+
+fn take_external_user_message(writer: &mut CanonicalWriter, role: &str) -> Option<String> {
+    let role_key = role
+        .trim()
+        .to_lowercase()
+        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
+    let path = agent_state_dir.join(format!("external_user_message_to_{role_key}.json"));
+    if let Some((signature, message)) =
+        canonical_external_user_message_from_tlog(agent_state_dir, writer.state(), &role_key)
+    {
+        let trimmed = message.trim().to_string();
+        writer.apply(ControlEvent::ExternalUserMessageConsumed {
+            role: role_key,
+            signature,
+        });
+        let _ = std::fs::remove_file(&path);
+        if trimmed.is_empty() {
+            return None;
+        }
+        return Some(trimmed);
+    }
+    take_external_user_message_projection(role)
+}
+
+fn take_external_user_message_without_writer(role: &str) -> Option<String> {
+    let role_key = role
+        .trim()
+        .to_lowercase()
+        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
+    let tlog_path = agent_state_dir.join("tlog.ndjson");
+    let state = Tlog::replay(&tlog_path, SystemState::new(&[], 0)).ok()?;
+    if let Some((signature, message)) =
+        canonical_external_user_message_from_tlog(agent_state_dir, &state, &role_key)
+    {
+        let mut writer = CanonicalWriter::try_new(
+            state,
+            Tlog::open(&tlog_path),
+            PathBuf::from(crate::constants::workspace()),
+        )
+        .ok()?;
+        writer
+            .try_apply(ControlEvent::ExternalUserMessageConsumed {
+                role: role_key.clone(),
+                signature,
+            })
+            .ok()?;
+        let path = agent_state_dir.join(format!("external_user_message_to_{role_key}.json"));
+        let _ = std::fs::remove_file(&path);
+        let trimmed = message.trim().to_string();
+        if trimmed.is_empty() {
+            return None;
+        }
+        return Some(trimmed);
+    }
+    take_external_user_message_projection(role)
 }
 
 fn append_external_user_message_to_prompt(prompt: &mut String, inbound: &str) {
@@ -3379,7 +3479,7 @@ fn inbound_message_from_user(inbound: &str) -> bool {
 }
 
 fn inject_inbound_message(prompt: &mut String, writer: &mut CanonicalWriter, role: &str) {
-    if let Some(inbound) = take_external_user_message(role) {
+    if let Some(inbound) = take_external_user_message(writer, role) {
         append_external_user_message_to_prompt(prompt, &inbound);
         return;
     }
@@ -5449,7 +5549,7 @@ async fn submit_executor_turn(
             &ready_tasks,
         )
     };
-    if let Some(inbound) = take_external_user_message("executor") {
+    if let Some(inbound) = take_external_user_message_without_writer("executor") {
         append_external_user_message_to_prompt(&mut exec_prompt, &inbound);
     } else if let Some(inbound) = take_inbound_message_without_writer("executor") {
         append_inbound_to_prompt(&mut exec_prompt, &inbound);

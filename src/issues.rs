@@ -7,6 +7,21 @@ use std::path::Path;
 
 use crate::constants::ISSUES_FILE;
 
+pub fn persist_issues_projection(
+    workspace: &Path,
+    file: &IssuesFile,
+    subject: &str,
+) -> Result<()> {
+    crate::logging::write_projection_with_artifact_effects(
+        workspace,
+        &workspace.join(ISSUES_FILE),
+        ISSUES_FILE,
+        "write",
+        subject,
+        &serde_json::to_string_pretty(file)?,
+    )
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 pub struct IssuesFile {
     #[serde(default)]
@@ -263,7 +278,7 @@ pub fn sweep_stale_issues(workspace: &Path) -> Result<IssueSweepSummary> {
 
     if mutated {
         rescore_all(&mut file);
-        std::fs::write(&path, serde_json::to_string_pretty(&file)?)?;
+        persist_issues_projection(workspace, &file, "sweep_stale_issues")?;
         summary.rewrote = true;
     }
     Ok(summary)

@@ -95,6 +95,10 @@ pub enum ControlEvent {
         lane_id: usize,
         steps: usize,
     },
+    ExternalUserMessageConsumed {
+        role: String,
+        signature: String,
+    },
     InboundMessageConsumed {
         role: String,
         signature: String,
@@ -181,6 +185,11 @@ pub enum EffectEvent {
     },
     InboundMessageRecorded {
         from_role: String,
+        to_role: String,
+        message: String,
+        signature: String,
+    },
+    ExternalUserMessageRecorded {
         to_role: String,
         message: String,
         signature: String,

@@ -1,4 +1,8 @@
 use anyhow::{bail, Context, Result};
+use canon_mini_agent::events::EffectEvent;
+use canon_mini_agent::logging::{
+    artifact_write_signature, record_effect_for_workspace, write_projection_with_artifact_effects,
+};
 use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -67,7 +71,12 @@ fn read_message(args: &[String]) -> Result<String> {
     bail!("missing --message or --message-file")
 }
 
-fn write_user_message(state_dir: &Path, to_role: &str, message: &str) -> Result<PathBuf> {
+fn write_user_message(
+    workspace: &Path,
+    state_dir: &Path,
+    to_role: &str,
+    message: &str,
+) -> Result<PathBuf> {
     fs::create_dir_all(state_dir)
         .with_context(|| format!("create state dir {}", state_dir.display()))?;
     let to_key = sanitize_role(to_role);
@@ -85,12 +94,41 @@ fn write_user_message(state_dir: &Path, to_role: &str, message: &str) -> Result<
             "reply_to": "user"
         }
     });
+    let action_text = serde_json::to_string_pretty(&action)?;
+    let signature = artifact_write_signature(&[
+        "inbound_message",
+        "user",
+        &to_key,
+        &action_text.len().to_string(),
+        action_text.as_str(),
+    ]);
+    record_effect_for_workspace(
+        workspace,
+        EffectEvent::InboundMessageRecorded {
+            from_role: "user".to_string(),
+            to_role: to_key.clone(),
+            message: action_text.clone(),
+            signature,
+        },
+    )?;
     let msg_path = state_dir.join(format!("last_message_to_{}.json", to_key));
-    fs::write(&msg_path, serde_json::to_string_pretty(&action)?)
-        .with_context(|| format!("write {}", msg_path.display()))?;
+    write_projection_with_artifact_effects(
+        workspace,
+        &msg_path,
+        &format!("agent_state/last_message_to_{}.json", to_key),
+        "write",
+        "external_user_handoff_projection",
+        &action_text,
+    )?;
     let wake_path = state_dir.join(format!("wakeup_{}.flag", to_key));
-    fs::write(&wake_path, "user_message")
-        .with_context(|| format!("write {}", wake_path.display()))?;
+    write_projection_with_artifact_effects(
+        workspace,
+        &wake_path,
+        &format!("agent_state/wakeup_{}.flag", to_key),
+        "write",
+        "external_user_handoff_wakeup",
+        "user_message",
+    )?;
     Ok(msg_path)
 }
 
@@ -136,7 +174,7 @@ fn main() -> Result<()> {
     }
 
     let to_role = take_flag_value(&args, "--to").unwrap_or_else(|| "solo".to_string());
-    let msg_path = write_user_message(&state_dir, &to_role, &read_message(&args)?)?;
+    let msg_path = write_user_message(&workspace, &state_dir, &to_role, &read_message(&args)?)?;
     println!(
         "{}",
         serde_json::to_string_pretty(&json!({

@@ -23,7 +23,7 @@ use std::path::Path;
 use anyhow::Result;
 
 use crate::constants::ISSUES_FILE;
-use crate::issues::{is_closed, rescore_all, Issue, IssuesFile};
+use crate::issues::{is_closed, persist_issues_projection, rescore_all, Issue, IssuesFile};
 use crate::semantic::SemanticIndex;
 
 // ---------------------------------------------------------------------------
@@ -91,7 +91,7 @@ pub fn generate_all_refactor_issues(workspace: &Path) -> Result<usize> {
 
     if created > 0 {
         rescore_all(&mut file);
-        std::fs::write(&issues_path, serde_json::to_string_pretty(&file)?)?;
+        persist_issues_projection(workspace, &file, "generate_all_refactor_issues")?;
     }
 
     Ok(created)

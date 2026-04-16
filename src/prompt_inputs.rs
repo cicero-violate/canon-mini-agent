@@ -165,6 +165,7 @@ fn infer_tlog_lane_indices(events: &[crate::events::Event]) -> Vec<usize> {
                 | crate::events::ControlEvent::VerifierBlockerSet { .. }
                 | crate::events::ControlEvent::DiagnosticsVerifierFollowupQueued
                 | crate::events::ControlEvent::DiagnosticsTextSet { .. }
+                | crate::events::ControlEvent::ExternalUserMessageConsumed { .. }
                 | crate::events::ControlEvent::InboundMessageConsumed { .. }
                 | crate::events::ControlEvent::WakeSignalConsumed { .. }
                 | crate::events::ControlEvent::LastPlanTextSet { .. }
@@ -199,6 +200,9 @@ fn control_event_kind_name(event: &crate::events::ControlEvent) -> &'static str 
             "diagnostics_verifier_followup_queued"
         }
         crate::events::ControlEvent::DiagnosticsTextSet { .. } => "diagnostics_text_set",
+        crate::events::ControlEvent::ExternalUserMessageConsumed { .. } => {
+            "external_user_message_consumed"
+        }
         crate::events::ControlEvent::InboundMessageConsumed { .. } => {
             "inbound_message_consumed"
         }
@@ -260,6 +264,9 @@ fn effect_event_kind_name(event: &crate::events::EffectEvent) -> &'static str {
             "workspace_artifact_write_applied"
         }
         crate::events::EffectEvent::InboundMessageRecorded { .. } => "inbound_message_recorded",
+        crate::events::EffectEvent::ExternalUserMessageRecorded { .. } => {
+            "external_user_message_recorded"
+        }
     }
 }
 

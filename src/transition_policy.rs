@@ -142,6 +142,7 @@ pub fn validate_transition(state: &SystemState, event: &ControlEvent) -> Result<
         | ControlEvent::VerifierBlockerSet { .. }
         | ControlEvent::DiagnosticsVerifierFollowupQueued
         | ControlEvent::DiagnosticsTextSet { .. }
+        | ControlEvent::ExternalUserMessageConsumed { .. }
         | ControlEvent::InboundMessageConsumed { .. }
         | ControlEvent::WakeSignalConsumed { .. }
         | ControlEvent::LastPlanTextSet { .. }
