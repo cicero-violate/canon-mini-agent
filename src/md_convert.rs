@@ -472,8 +472,3 @@ fn slugify(value: &str) -> String {
     }
     out.trim_matches('_').to_string()
 }
-
-#[allow(dead_code)]
-fn json_preview(value: &impl serde::Serialize) -> String {
-    serde_json::to_string_pretty(value).unwrap_or_else(|_| "{}".to_string())
-}

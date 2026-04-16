@@ -85,7 +85,6 @@ pub fn format_message_schema(
     )
 }
 
-#[allow(dead_code)]
 const GRAPH_TOOL_TEMPLATES: [&str; 4] = [
     "```json\n{\n  \"action\": \"graph_call\",\n  \"crate\": \"canon_mini_agent\",\n  \"out_dir\": \"\",\n  \"observation\": \"Generate call graph.\",\n  \"rationale\": \"Inspect call graph output.\"\n}\n```",
     "```json\n{\n  \"action\": \"graph_cfg\",\n  \"crate\": \"canon_mini_agent\",\n  \"out_dir\": \"\",\n  \"observation\": \"Generate CFG graph.\",\n  \"rationale\": \"Inspect CFG output.\"\n}\n```",
@@ -97,7 +96,6 @@ fn blocker_message_example_template() -> &'static str {
     "```json\n{\n  \"action\": \"message\",\n  \"from\": \"executor\",\n  \"to\": \"planner\",\n  \"type\": \"blocker\",\n  \"status\": \"blocked\",\n  \"observation\": \"Describe the blocked state.\",\n  \"rationale\": \"Explain why progress is impossible without external action.\",\n  \"predicted_next_actions\": [\n    {\"action\": \"read_file\", \"intent\": \"Inspect the relevant source before making changes.\"},\n    {\"action\": \"run_command\", \"intent\": \"Verify the current workspace state after the read.\"}\n  ],\n  \"payload\": {\n    \"summary\": \"Short blocker summary\",\n    \"blocker\": \"Root cause\",\n    \"evidence\": \"Concrete error text or failing command\",\n    \"required_action\": \"What must be done to unblock\",\n    \"severity\": \"error\"\n  }\n}\n```"
 }
 
-#[allow(dead_code)]
 pub(crate) fn unsupported_action_templates() -> Vec<String> {
     let mut templates = vec![
         "```json\n{\n  \"action\": \"list_dir\",\n  \"path\": \".\",\n  \"observation\": \"List workspace root to locate targets.\",\n  \"rationale\": \"Confirm files before acting.\",\n  \"predicted_next_actions\": [\n    {\"action\": \"read_file\", \"intent\": \"Open the most relevant file after locating it.\"},\n    {\"action\": \"run_command\", \"intent\": \"Verify workspace state after locating targets.\"}\n  ]\n}\n```",
@@ -128,7 +126,6 @@ pub(crate) fn unsupported_action_templates() -> Vec<String> {
     templates
 }
 
-#[allow(dead_code)]
 pub(crate) fn unsupported_action_correction(kind: &str) -> String {
     let mut msg = String::new();
     msg.push_str(&format!(
@@ -144,7 +141,6 @@ pub(crate) fn unsupported_action_correction(kind: &str) -> String {
     msg
 }
 
-#[allow(dead_code)]
 pub(crate) fn message_schema_correction(missing_field: &str, role: &str) -> String {
     let (from, to_role, msg_type, status) = default_message_route(role);
     let expected = expected_message_format(from, to_role, msg_type, status);
@@ -168,7 +164,6 @@ pub(crate) fn message_schema_correction(missing_field: &str, role: &str) -> Stri
     msg
 }
 
-#[allow(dead_code)]
 pub(crate) fn corrective_invalid_action_prompt(
     action: &Value,
     err_text: &str,
