@@ -1,1 +1,1 @@
-invariant gate blocked role `executor`: Role `executor` repeatedly encounters `llm_timeout`: LLM endpoint call timed out or returned a connection error [id=INV-10b73fb9]
+Ready tasks are diagnostics/invariant repairs only; inbound handoff requests a dead-code status update; executor diff shows no new dead-code changes; verifier summary is empty.
