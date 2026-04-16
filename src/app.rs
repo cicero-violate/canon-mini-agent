@@ -3221,6 +3221,40 @@ fn take_inbound_message_projection(role: &str) -> Option<String> {
     Some(trimmed)
 }
 
+fn take_inbound_message_without_writer(role: &str) -> Option<String> {
+    let role_key = role
+        .trim()
+        .to_lowercase()
+        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
+    let tlog_path = agent_state_dir.join("tlog.ndjson");
+    let state = Tlog::replay(&tlog_path, SystemState::new(&[], 0)).ok()?;
+    if let Some((signature, message)) =
+        canonical_inbound_message_from_tlog(agent_state_dir, &state, &role_key)
+    {
+        let mut writer = CanonicalWriter::try_new(
+            state,
+            Tlog::open(&tlog_path),
+            PathBuf::from(crate::constants::workspace()),
+        )
+        .ok()?;
+        writer
+            .try_apply(ControlEvent::InboundMessageConsumed {
+                role: role_key,
+                signature,
+            })
+            .ok()?;
+        let path = agent_state_dir.join(format!("last_message_to_{}.json", role));
+        let _ = std::fs::remove_file(&path);
+        let trimmed = message.trim().to_string();
+        if trimmed.is_empty() {
+            return None;
+        }
+        return Some(trimmed);
+    }
+    take_inbound_message_projection(role)
+}
+
 fn take_external_user_message(role: &str) -> Option<String> {
     let role_key = role
         .trim()
@@ -5417,7 +5451,7 @@ async fn submit_executor_turn(
     };
     if let Some(inbound) = take_external_user_message("executor") {
         append_external_user_message_to_prompt(&mut exec_prompt, &inbound);
-    } else if let Some(inbound) = take_inbound_message_projection("executor") {
+    } else if let Some(inbound) = take_inbound_message_without_writer("executor") {
         append_inbound_to_prompt(&mut exec_prompt, &inbound);
     }
     let executor_system = system_instructions(AgentPromptKind::Executor);
