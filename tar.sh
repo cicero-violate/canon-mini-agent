@@ -10,6 +10,8 @@ canon-mini-agent/ISSUES.json
 # canon-mini-agent/agent_state \
 # canon-mini-agent/frames 
 
+{ on = [ "<A-n>" ], run = ''' shell 'ripdrag "$@" -nxa 2>/dev/null &' --confirm ''' },
+
 # canon-mini-agent/target/debug/deps \
 # canon-mini-agent/target/debug/.fingerprint \
 # canon-mini-agent/target/debug/build \
