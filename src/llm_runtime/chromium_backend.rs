@@ -425,6 +425,37 @@ impl ChromiumBackend {
             .saturating_duration_since(std::time::Instant::now())
             .as_secs()
             .max(10);
+        {
+            let st = self.state.lock().await;
+            append_outbound_event(
+                "OUTBOUND_TAB_ACQUIRE_FALLBACK",
+                json!({
+                    "endpointId": endpoint_id,
+                    "stateful": stateful,
+                    "requestedUrls": urls,
+                    "endpointTab": st.endpoint_tabs.get(endpoint_id).copied(),
+                    "knownTabUrl": st
+                        .endpoint_tabs
+                        .get(endpoint_id)
+                        .and_then(|tab_id| st.tab_urls.get(tab_id).cloned()),
+                    "preopenedForRequestedUrls": urls
+                        .iter()
+                        .map(|candidate| {
+                            (
+                                candidate.clone(),
+                                st.preopened
+                                    .get(candidate)
+                                    .map(|queue| queue.len())
+                                    .unwrap_or(0usize),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                    "preopenedUrlCount": st.preopened.len(),
+                    "knownTabCount": st.tab_urls.len(),
+                    "ownedTabCount": st.tab_owners.len(),
+                }),
+            );
+        }
         eprintln!("[chromium] no tab available, opening {url}");
         let tab_id = self.open_tab(url, remaining).await?;
         if stateful {
