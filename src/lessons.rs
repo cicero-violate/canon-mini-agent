@@ -919,12 +919,15 @@ fn load_candidates(workspace: &Path) -> LessonsCandidatesFile {
 
 fn save_candidates(workspace: &Path, cfile: &LessonsCandidatesFile) -> Result<()> {
     let path = candidates_path(workspace);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).ok();
-    }
     let text = serde_json::to_string_pretty(cfile)?;
-    std::fs::write(&path, text)?;
-    Ok(())
+    crate::logging::write_projection_with_artifact_effects(
+        workspace,
+        &path,
+        CANDIDATES_FILE,
+        "write",
+        "lessons_candidates_save",
+        &text,
+    )
 }
 
 fn load_lessons(workspace: &Path) -> LessonsArtifact {
@@ -934,12 +937,15 @@ fn load_lessons(workspace: &Path) -> LessonsArtifact {
 
 fn save_lessons(workspace: &Path, artifact: &LessonsArtifact) -> Result<()> {
     let path = lessons_path(workspace);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).ok();
-    }
     let text = serde_json::to_string_pretty(artifact)?;
-    std::fs::write(&path, text)?;
-    Ok(())
+    crate::logging::write_projection_with_artifact_effects(
+        workspace,
+        &path,
+        LESSONS_FILE,
+        "write",
+        "lessons_save",
+        &text,
+    )
 }
 
 // ── Utility ───────────────────────────────────────────────────────────────────
@@ -1411,8 +1417,14 @@ fn load_roles_json(workspace: &Path) -> serde_json::Value {
 fn save_roles_json(workspace: &Path, val: &serde_json::Value) -> Result<()> {
     let path = roles_json_path(workspace);
     let text = serde_json::to_string_pretty(val)?;
-    std::fs::write(&path, text)?;
-    Ok(())
+    crate::logging::write_projection_with_artifact_effects(
+        workspace,
+        &path,
+        "ROLES.json",
+        "write",
+        "lessons_prompt_rule_projection",
+        &text,
+    )
 }
 
 fn success_automation_question<'a>(

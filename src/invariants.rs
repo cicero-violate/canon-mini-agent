@@ -1283,12 +1283,15 @@ fn load_invariants(workspace: &Path) -> EnforcedInvariantsFile {
 
 fn save_invariants(workspace: &Path, file: &EnforcedInvariantsFile) -> Result<()> {
     let path = invariants_path(workspace);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
     let json = serde_json::to_string_pretty(file)?;
-    std::fs::write(&path, json)?;
-    Ok(())
+    crate::logging::write_projection_with_artifact_effects(
+        workspace,
+        &path,
+        ENFORCED_INVARIANTS_FILE,
+        "write",
+        "enforced_invariants_save",
+        &json,
+    )
 }
 
 fn read_tail_entries(log_path: &Path, max_lines: usize) -> Vec<Value> {

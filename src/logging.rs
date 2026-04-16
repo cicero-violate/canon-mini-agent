@@ -798,6 +798,83 @@ pub(crate) fn record_workspace_artifact_effect(
     })
 }
 
+pub(crate) fn artifact_write_signature(parts: &[&str]) -> String {
+    let mut hasher = DefaultHasher::new();
+    parts.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+fn file_snapshot(path: &std::path::Path) -> Result<Option<Vec<u8>>> {
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(err).with_context(|| format!("read {}", path.display())),
+    }
+}
+
+fn restore_file_snapshot(path: &std::path::Path, snapshot: &Option<Vec<u8>>) -> Result<()> {
+    match snapshot {
+        Some(bytes) => {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("mkdir {}", parent.display()))?;
+            }
+            std::fs::write(path, bytes)
+                .with_context(|| format!("restore {}", path.display()))?;
+        }
+        None => {
+            if path.exists() {
+                std::fs::remove_file(path)
+                    .with_context(|| format!("remove {}", path.display()))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn write_projection_with_artifact_effects(
+    workspace: &std::path::Path,
+    path: &std::path::Path,
+    artifact: &str,
+    op: &str,
+    subject: &str,
+    contents: &str,
+) -> Result<()> {
+    let signature = artifact_write_signature(&[artifact, op, subject, &contents.len().to_string()]);
+    let target = path.to_string_lossy().into_owned();
+    record_workspace_artifact_effect(
+        workspace,
+        true,
+        artifact,
+        op,
+        &target,
+        subject,
+        &signature,
+    )?;
+    let snapshot = file_snapshot(path)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).with_context(|| format!("mkdir {}", parent.display()))?;
+    }
+    let tmp_path = path.with_extension("tmp");
+    std::fs::write(&tmp_path, contents)
+        .with_context(|| format!("write {}", tmp_path.display()))?;
+    std::fs::rename(&tmp_path, path)
+        .with_context(|| format!("rename {} -> {}", tmp_path.display(), path.display()))?;
+    if let Err(err) = record_workspace_artifact_effect(
+        workspace,
+        false,
+        artifact,
+        op,
+        &target,
+        subject,
+        &signature,
+    ) {
+        restore_file_snapshot(path, &snapshot)?;
+        return Err(err);
+    }
+    Ok(())
+}
+
 pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, prompt_bytes: usize) {
     use crate::constants::PROMPT_OVERFLOW_BYTES;
     if prompt_bytes <= PROMPT_OVERFLOW_BYTES {
@@ -825,7 +902,6 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
         .and_then(|v| v.as_array())
         .cloned()
         .unwrap_or_default();
-    let prompt_overflow_signature = format!("prompt-overflow:{role}:{prompt_bytes}");
     if let Some(existing_index) = violations
         .iter()
         .position(|v| v.get("id").and_then(|x| x.as_str()) == Some(&violation_id))
@@ -892,25 +968,14 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
             "One or more agent roles are sending prompts that exceed the noise-context threshold."
         ));
 
-        let _ = record_workspace_artifact_effect(
-            workspace,
-            true,
-            crate::constants::VIOLATIONS_FILE,
-            "append",
-            &violations_path.display().to_string(),
-            &format!("prompt_overflow:{role}"),
-            &prompt_overflow_signature,
-        );
         if let Ok(body) = serde_json::to_string_pretty(&Value::Object(report)) {
-            let _ = std::fs::write(&violations_path, body);
-            let _ = record_workspace_artifact_effect(
+            let _ = write_projection_with_artifact_effects(
                 workspace,
-                false,
+                &violations_path,
                 crate::constants::VIOLATIONS_FILE,
                 "append",
-                &violations_path.display().to_string(),
                 &format!("prompt_overflow:{role}"),
-                &prompt_overflow_signature,
+                &body,
             );
         }
         return;
@@ -930,16 +995,6 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
         &format!("role={role};prompt_bytes={prompt_bytes};threshold={PROMPT_OVERFLOW_BYTES}"),
     )
     .ok();
-    let _ = record_workspace_artifact_effect(
-        workspace,
-        true,
-        crate::constants::VIOLATIONS_FILE,
-        "append",
-        &violations_path.display().to_string(),
-        &format!("prompt_overflow:{role}"),
-        &prompt_overflow_signature,
-    );
-
     let new_violation = json!({
         "id": violation_id,
         "title": format!("Prompt overflow: {} sent {prompt_bytes} bytes (limit {PROMPT_OVERFLOW_BYTES})", role),
@@ -972,15 +1027,13 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
     ));
 
     if let Ok(body) = serde_json::to_string_pretty(&Value::Object(report)) {
-        let _ = std::fs::write(&violations_path, body);
-        let _ = record_workspace_artifact_effect(
+        let _ = write_projection_with_artifact_effects(
             workspace,
-            false,
+            &violations_path,
             crate::constants::VIOLATIONS_FILE,
             "append",
-            &violations_path.display().to_string(),
             &format!("prompt_overflow:{role}"),
-            &prompt_overflow_signature,
+            &body,
         );
     }
     eprintln!(
