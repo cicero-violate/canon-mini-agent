@@ -110,6 +110,9 @@ pub fn record_blocker_message_with_writer(
     objective_id: Option<&str>,
 ) {
     let error_class = crate::error_class::classify_blocker_summary(summary);
+    if role == "diagnostics" && matches!(error_class, ErrorClass::BlockerEscalated) {
+        return;
+    }
     let ts = crate::logging::now_ms();
     let record = BlockerRecord {
         id: format!("blk-{role}-{}-{ts}", error_class.as_key()),
