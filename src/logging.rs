@@ -1070,6 +1070,26 @@ mod tests {
     };
     use serde_json::{json, Value};
     use std::fs;
+    use std::sync::{Mutex, OnceLock};
+
+    fn global_state_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn temp_workspace(name: &str) -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "canon-mini-agent-logging-test-{}-{}-{}",
+            name,
+            std::process::id(),
+            now_ms()
+        ));
+        if root.exists() {
+            let _ = fs::remove_dir_all(&root);
+        }
+        fs::create_dir_all(&root).expect("create temp workspace");
+        root
+    }
 
     fn read_last_json_record(path: &std::path::Path) -> Value {
         let log_text = fs::read_to_string(path).expect("read log");
@@ -1297,10 +1317,13 @@ mod tests {
 
     #[test]
     fn record_prompt_overflow_appends_real_receipt_and_canonical_effects() {
-        let workspace = std::path::PathBuf::from(crate::constants::workspace());
-        let state_dir = std::path::PathBuf::from(crate::constants::agent_state_dir());
+        let _guard = global_state_lock().lock().expect("lock");
+        let workspace = temp_workspace("prompt-overflow-canonical-effects");
+        let state_dir = workspace.join("agent_state");
         fs::create_dir_all(&workspace).expect("create workspace");
         fs::create_dir_all(&state_dir).expect("create state dir");
+        crate::constants::set_workspace(workspace.to_string_lossy().to_string());
+        crate::constants::set_agent_state_dir(state_dir.to_string_lossy().to_string());
 
         record_prompt_overflow(&workspace, "diagnostics", crate::constants::PROMPT_OVERFLOW_BYTES + 1);
 
@@ -1325,7 +1348,8 @@ mod tests {
             .expect("read evidence receipts");
         assert!(receipts_raw.contains(receipt_id));
 
-        let tlog_raw = fs::read_to_string(state_dir.join("tlog.ndjson")).expect("read tlog");
+        let tlog_raw = fs::read_to_string(workspace.join("agent_state").join("tlog.ndjson"))
+            .expect("read tlog");
         assert!(tlog_raw.contains("workspace_artifact_write_requested"));
         assert!(tlog_raw.contains("workspace_artifact_write_applied"));
         assert!(tlog_raw.contains(crate::constants::VIOLATIONS_FILE));
