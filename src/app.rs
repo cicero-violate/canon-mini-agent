@@ -1529,7 +1529,7 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
         now_ms,
         5 * 60 * 1000,
     );
-    if diagnostics_blocker_escalated_count >= 1 {
+    if diagnostics_blocker_escalated_count >= 3 {
         state.insert("actor_kind".to_string(), "diagnostics".to_string());
         state.insert("error_class".to_string(), "blocker_escalated".to_string());
     }

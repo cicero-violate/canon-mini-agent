@@ -1,1 +1,1 @@
-New planner failure: `LLM error: chromium: early transport failure (heartbeat_after_turn_complete) (tab=633187502 turn=30)`; current prompt state also cites fresh diagnostics projections for the Chromium transport/runtime issue and violation plus unresolved INV-05518346, INV-91c324b9, and INV-10b73fb9 fallout.
+auto-filled blocker evidence
