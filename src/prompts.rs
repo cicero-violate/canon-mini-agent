@@ -235,11 +235,6 @@ pub(crate) enum ToolPromptKind {
     Message,
 }
 
-#[cfg(test)]
-fn available_actions(_kind: AgentPromptKind) -> Vec<String> {
-    crate::tool_schema::predicted_action_name_list()
-}
-
 fn role_default_schema_actions(kind: AgentPromptKind) -> &'static [&'static str] {
     match kind {
         AgentPromptKind::Executor => &[
@@ -804,24 +799,6 @@ fn prompt_workspace(kind: AgentPromptKind) -> String {
 
 fn canonical_status_snapshot() -> &'static str {
     "Canonical status snapshot:\n- canonical state changes are gated through the canonical writer\n- replay from `agent_state/tlog.ndjson` is meaningful for canonical state\n- many reconciliation paths are now explicit `ControlEvent`s\n- several loophole-shaped runtime paths are classified and recorded in `agent_state/blockers.json`\n- blockers and invariants can now accumulate around structural failures\n\nOpen guarantees still to close:\n- not every runtime-influenced control decision is canonically represented yet\n- not every reconciliation branch has been split into the right explicit event shape yet\n- not every loophole-class blocker is wired into invariant promotion or route gating yet\n- not every checkpoint/resume inconsistency is bounded and proven safe yet\n- not every intentionally-ephemeral runtime behavior is enumerated and justified yet\n- some branches are now detectable but are not all replaced by dedicated canonical `ControlEvent`s yet\n- blocker -> invariant -> gate coverage for ambiguity/effectful classes is still being completed\n- full orchestration-loop integration tests for these loophole classes still do not exist yet\n\nLoophole-closure rule:\n- when you encounter runtime behavior that influences control flow or externally visible behavior, either prove it is already represented canonically or add the missing event/policy/invariant/test instead of building new features."
-}
-
-#[cfg(test)]
-fn action_contract(kind: AgentPromptKind) -> String {
-    let actions = available_actions(kind)
-        .iter()
-        .map(|action| format!("- `{action}`"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let graph_hint = "Graph tools hint: artifacts come from rustc wrapper capture (run `cargo build -p <crate>`). `graph_probe` inspects symbols/coverage; `graph_call`/`graph_cfg` emit CSVs; `graph_dataflow`/`graph_reachability` emit reports.";
-    format!(
-        "Each turn you receive either:\n  (a) the initial instruction; or\n  (b) the result of your last action.\n\nBefore choosing your action, think through the following internally:\n  1. What does the current evidence tell me about system state?\n  2. What is the highest-value action I can take right now?\n  3. What are the 2-3 most likely actions after this one?\n\nEmit exactly one action per turn as a single JSON object in a fenced json code block. Think through the decision internally; reveal your chain-of-thought. Only output the JSON action.\nAvailable actions:\n{actions}\n{graph_hint}\nEvery action MUST include:\n- `observation`: what you can see purely from evidence only, as a single string\n- `rationale`: why this is the next best step right now\n- `predicted_next_actions`: ordered array of 2-3 likely follow-on actions, each with an `action` name and `intent` string. This is your decision tree — drives the next turn.\nFor mutating or verification actions, also include:\n- `task_id`: the PLAN task you are advancing\n- `objective_id`: the objective linked to that task\n- `intent`: the concrete purpose of this action within that task\n\nDo NOT include any extra text outside the JSON code block.\nDo NOT echo the tools list or the prompt.\nDo NOT use placeholder action names like `...`; choose a real action from the list.\nDo NOT invent nonexistent semantic actions such as `symbol_search`; use `semantic_map`, `symbol_window`, `symbol_refs`, `symbol_path`, or `symbol_neighborhood`."
-    )
-}
-
-#[cfg(test)]
-fn tools_section(_kind: AgentPromptKind) -> String {
-    String::new()
 }
 
 fn rules_common_footer() -> String {
