@@ -7,14 +7,14 @@
 ///   TAB_READY      { tabId, url, reqId? }  — a ChatGPT tab is ready
 ///   TAB_OPENED     { tabId, url, reqId? }  — newly opened tab navigated
 ///   TAB_CLOSED     { tabId }
-///   SUBMIT_ACK     { tabId, turnId }        — prompt was submitted
-///   INBOUND_MESSAGE{ tabId, payload }       — SSE chunk from ChatGPT
-///   PING                                    — keepalive, ignored
+///   SUBMIT_ACK     { tabId, turnId, leaseToken|lease_token }  — prompt was submitted
+///   INBOUND_MESSAGE{ tabId, payload }                         — SSE chunk from ChatGPT
+///   PING                                                      — keepalive, ignored
 ///
 /// Protocol (Rust → extension):
-///   OPEN_TAB       { url, reqId }           — open a new tab
-///   CLAIM_TAB      { tabId, url }           — assert ownership after sw restart
-///   TURN           { tabId, text, turnId }  — inject prompt
+///   OPEN_TAB       { url, reqId }                             — open a new tab
+///   CLAIM_TAB      { tabId, url }                             — assert ownership after sw restart
+///   TURN           { tabId, text, turnId, leaseToken }        — inject prompt
 use crate::llm_runtime::backend::LlmBackend;
 use crate::llm_runtime::parsers::{FrameAssembler, SiteType};
 use crate::llm_runtime::types::LlmResponse;
@@ -86,14 +86,43 @@ fn init_frames_dir() {
     let _ = std::fs::create_dir_all(FRAMES_DIR);
 }
 
-fn submit_ack_payload(tab_id: u32, turn_id: u64, source: &str) -> String {
+fn submit_ack_payload(tab_id: u32, turn_id: u64, lease_token: &str, source: &str) -> String {
     json!({
         "submit_ack": true,
         "tab_id": tab_id,
         "turn_id": turn_id,
+        "lease_token": lease_token,
         "source": source,
     })
     .to_string()
+}
+
+fn next_turn_lease_token(seed: u64, turn_id: u64) -> String {
+    format!("lease-{turn_id:016x}-{seed:016x}")
+}
+
+fn lease_token_from_value(value: &Value) -> Option<String> {
+    value
+        .get("leaseToken")
+        .and_then(Value::as_str)
+        .or_else(|| value.get("lease_token").and_then(Value::as_str))
+        .map(ToOwned::to_owned)
+}
+
+fn classify_transport_signal(raw: &str) -> Option<&'static str> {
+    if raw.contains("\"calpico-is-responding-heartbeat\"") {
+        return Some("heartbeat");
+    }
+    if raw.contains("\"conversation-turn-complete\"") {
+        return Some("turn_complete");
+    }
+    if raw.contains("\"type\":\"presence\"") {
+        return Some("presence");
+    }
+    if raw.contains("\"calpico-message-add\"") && raw.contains("\"role\":\"assistant\"") {
+        return Some("assistant_message_add");
+    }
+    None
 }
 
 // ---------------------------------------------------------------------------
@@ -110,12 +139,19 @@ struct State {
     /// tabId → expected turn_id (set while a turn is in flight).
     pending_turn_id: HashMap<u32, u64>,
 
+    /// (tabId, turnId) → lease token issued with TURN and required on ack/inbound.
+    pending_turn_lease: HashMap<(u32, u64), String>,
+
     /// (tabId, turnId) → oneshot that fires with the submit-ack payload when
     /// browser submission is confirmed.
     pending_ack: HashMap<(u32, u64), oneshot::Sender<String>>,
 
     /// (tabId, turnId) → oneshot that fires with the assembled response.
     pending_resp: HashMap<(u32, u64), oneshot::Sender<String>>,
+
+    /// (tabId, turnId) → oneshot that fires when inbound transport evidence
+    /// says the response stream has already drifted or stalled.
+    pending_early_fail: HashMap<(u32, u64), oneshot::Sender<String>>,
 
     /// Completed submit-only turns awaiting orchestration pickup.
     completed_turns: VecDeque<Value>,
@@ -140,6 +176,23 @@ struct State {
 
     /// Monotonic counter for frame log entries.
     frame_counter: u64,
+
+    /// (tabId, turnId) -> frame_counter where the turn first emitted
+    /// `conversation-turn-complete` while a response was still pending.
+    turn_complete_seen: HashMap<(u32, u64), u64>,
+
+    /// (tabId, turnId) -> count of `presence` frames observed after
+    /// `conversation-turn-complete` and before any assistant terminal frame.
+    post_complete_presence: HashMap<(u32, u64), u32>,
+}
+
+/// Shared transport bootstrap for both submit-only and full-response flows.
+struct StartedTurn {
+    turn_id: u64,
+    lease_token: String,
+    ack_rx: oneshot::Receiver<String>,
+    resp_rx: Option<oneshot::Receiver<String>>,
+    early_fail_rx: Option<oneshot::Receiver<String>>,
 }
 
 impl State {
@@ -153,8 +206,10 @@ impl State {
             out_tx: None,
             assemblers: HashMap::new(),
             pending_turn_id: HashMap::new(),
+            pending_turn_lease: HashMap::new(),
             pending_ack: HashMap::new(),
             pending_resp: HashMap::new(),
+            pending_early_fail: HashMap::new(),
             completed_turns: VecDeque::new(),
             pending_open: HashMap::new(),
             tab_urls: HashMap::new(),
@@ -163,6 +218,8 @@ impl State {
             tab_owners: HashMap::new(),
             replay_queue: Vec::new(),
             frame_counter: 0,
+            turn_complete_seen: HashMap::new(),
+            post_complete_presence: HashMap::new(),
         }
     }
 
@@ -187,6 +244,7 @@ impl State {
 pub struct ChromiumBackend {
     state: Arc<Mutex<State>>,
     next_turn_id: Arc<AtomicU64>,
+    next_turn_lease_seed: Arc<AtomicU64>,
     next_req_id: Arc<AtomicU64>,
     port: u16,
 }
@@ -198,6 +256,7 @@ impl ChromiumBackend {
         let backend = ChromiumBackend {
             state: state.clone(),
             next_turn_id: Arc::new(AtomicU64::new(1)),
+            next_turn_lease_seed: Arc::new(AtomicU64::new(1)),
             next_req_id: Arc::new(AtomicU64::new(1)),
             port,
         };
@@ -352,69 +411,17 @@ impl ChromiumBackend {
         timeout_secs: u64,
         stateful: bool,
     ) -> Result<LlmResponse> {
-        let turn_id = self.next_turn_id.fetch_add(1, Ordering::SeqCst);
-        let (ack_tx, ack_rx) = oneshot::channel::<String>();
-        let (resp_tx, resp_rx) = oneshot::channel::<String>();
-
-        {
-            let mut st = self.state.lock().await;
-            st.pending_ack.insert((tab_id, turn_id), ack_tx);
-            st.pending_resp.insert((tab_id, turn_id), resp_tx);
-            st.pending_turn_id.insert(tab_id, turn_id);
-
-            let site = SiteType::from_url(url);
-            st.assemblers
-                .entry(tab_id)
-                .and_modify(|a| {
-                    a.set_site(site);
-                    a.reset();
-                })
-                .or_insert_with(|| FrameAssembler::new(site));
-
-            let prompt_bytes = prompt.len();
-            let frame =
-                json!({ "type": "TURN", "tabId": tab_id, "text": prompt, "turnId": turn_id });
-            append_outbound_event(
-                "OUTBOUND_SUBMIT_TRY",
-                json!({
-                    "endpoint_id": endpoint_id,
-                    "tabId": tab_id,
-                    "turnId": turn_id,
-                    "url": url,
-                    "prompt_bytes": prompt_bytes,
-                    "stateful": stateful,
-                    "submit_only": false,
-                }),
-            );
-            if !st.send_msg(frame.clone()) {
-                st.replay_queue.push(frame);
-                append_outbound_event(
-                    "OUTBOUND_SUBMIT_QUEUED",
-                    json!({
-                        "endpoint_id": endpoint_id,
-                        "tabId": tab_id,
-                        "turnId": turn_id,
-                        "url": url,
-                        "prompt_bytes": prompt_bytes,
-                        "stateful": stateful,
-                        "submit_only": false,
-                    }),
-                );
-            } else {
-                append_outbound_event(
-                    "OUTBOUND_SUBMIT_SENT",
-                    json!({
-                        "endpoint_id": endpoint_id,
-                        "tabId": tab_id,
-                        "turnId": turn_id,
-                        "url": url,
-                        "prompt_bytes": prompt_bytes,
-                        "stateful": stateful,
-                        "submit_only": false,
-                    }),
-                );
-            }
-        }
+        let StartedTurn {
+            turn_id,
+            lease_token: _,
+            ack_rx,
+            resp_rx,
+            early_fail_rx,
+        } = self
+            .start_turn(endpoint_id, tab_id, url, prompt, stateful, false)
+            .await;
+        let resp_rx = resp_rx.expect("response channel required for full send");
+        let early_fail_rx = early_fail_rx.expect("early-fail channel required for full send");
 
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
 
@@ -424,38 +431,41 @@ impl ChromiumBackend {
             std::time::Instant::now() + std::time::Duration::from_secs(ack_timeout_secs),
         );
         let ack_remaining = ack_deadline.saturating_duration_since(std::time::Instant::now());
-        match tokio::time::timeout(ack_remaining, ack_rx).await {
-            Ok(Ok(_ack_raw)) => {}
-            _ => {
-                let mut st = self.state.lock().await;
-                st.pending_ack.remove(&(tab_id, turn_id));
-                st.pending_resp.remove(&(tab_id, turn_id));
-                st.pending_turn_id.remove(&tab_id);
-                retire_tab_locked(&mut st, endpoint_id, tab_id, stateful);
-                append_outbound_event(
-                    "OUTBOUND_SUBMIT_ACK_TIMEOUT",
-                    json!({
-                        "endpoint_id": endpoint_id,
-                        "tabId": tab_id,
-                        "turnId": turn_id,
-                        "url": url,
-                        "ack_timeout_secs": ack_timeout_secs,
-                        "stateful": stateful,
-                        "submit_only": false,
-                    }),
-                );
-                anyhow::bail!(
-                    "chromium: timeout waiting for SUBMIT_ACK (tab={tab_id} turn={turn_id})"
-                );
-            }
+        self.await_submit_ack(
+            endpoint_id,
+            tab_id,
+            turn_id,
+            url,
+            stateful,
+            false,
+            ack_timeout_secs,
+            ack_remaining,
+            ack_rx,
+        )
+        .await?;
+
+        enum ResponseWaitOutcome {
+            Response(Result<String, tokio::sync::oneshot::error::RecvError>),
+            EarlyFail(Result<String, tokio::sync::oneshot::error::RecvError>),
         }
 
-        // Wait for full response.
+        // Wait for the assembled response, but allow deterministic protocol
+        // evidence to fail the turn before the wall-clock timeout expires.
         let resp_remaining = deadline.saturating_duration_since(std::time::Instant::now());
-        match tokio::time::timeout(resp_remaining, resp_rx).await {
-            Ok(Ok(raw)) => {
+        match tokio::time::timeout(resp_remaining, async {
+            tokio::select! {
+                biased;
+                raw = resp_rx => ResponseWaitOutcome::Response(raw),
+                early = early_fail_rx => ResponseWaitOutcome::EarlyFail(early),
+            }
+        })
+        .await
+        {
+            Ok(ResponseWaitOutcome::Response(Ok(raw))) => {
                 let mut st = self.state.lock().await;
+                st.pending_early_fail.remove(&(tab_id, turn_id));
                 st.pending_turn_id.remove(&tab_id);
+                st.pending_turn_lease.remove(&(tab_id, turn_id));
                 release_tab_locked(&mut st, endpoint_id, tab_id, stateful);
                 Ok(LlmResponse {
                     raw,
@@ -463,10 +473,35 @@ impl ChromiumBackend {
                     turn_id: Some(turn_id),
                 })
             }
+            Ok(ResponseWaitOutcome::EarlyFail(Ok(reason))) => {
+                let mut st = self.state.lock().await;
+                st.pending_resp.remove(&(tab_id, turn_id));
+                st.pending_early_fail.remove(&(tab_id, turn_id));
+                st.pending_turn_id.remove(&tab_id);
+                st.pending_turn_lease.remove(&(tab_id, turn_id));
+                retire_tab_locked(&mut st, endpoint_id, tab_id, stateful);
+                append_outbound_event(
+                    "OUTBOUND_RESPONSE_EARLY_FAIL",
+                    json!({
+                        "endpoint_id": endpoint_id,
+                        "tabId": tab_id,
+                        "turnId": turn_id,
+                        "url": url,
+                        "stateful": stateful,
+                        "submit_only": false,
+                        "reason": reason,
+                    }),
+                );
+                anyhow::bail!(
+                    "chromium: early transport failure ({reason}) (tab={tab_id} turn={turn_id})"
+                );
+            }
             _ => {
                 let mut st = self.state.lock().await;
                 st.pending_resp.remove(&(tab_id, turn_id));
+                st.pending_early_fail.remove(&(tab_id, turn_id));
                 st.pending_turn_id.remove(&tab_id);
+                st.pending_turn_lease.remove(&(tab_id, turn_id));
                 retire_tab_locked(&mut st, endpoint_id, tab_id, stateful);
                 append_outbound_event(
                     "OUTBOUND_RESPONSE_TIMEOUT",
@@ -489,12 +524,49 @@ impl ChromiumBackend {
     async fn do_submit_only(
         &self,
         endpoint_id: &str,
-        urls: &[String],
+        tab_id: u32,
+        url: &str,
         stateful: bool,
         prompt: &str,
         timeout_secs: u64,
     ) -> Result<LlmResponse> {
-        let turn_id = self.next_turn_id.fetch_add(1, Ordering::SeqCst);
+        let StartedTurn {
+            turn_id,
+            lease_token: _,
+            ack_rx,
+            resp_rx: _,
+            early_fail_rx: _,
+        } = self
+            .start_turn(endpoint_id, tab_id, url, prompt, stateful, true)
+            .await;
+        let ack_timeout_secs = endpoint_submit_ack_timeout_secs(endpoint_id, timeout_secs);
+        let ack_raw = self
+            .await_submit_ack(
+                endpoint_id,
+                tab_id,
+                turn_id,
+                url,
+                stateful,
+                true,
+                ack_timeout_secs,
+                std::time::Duration::from_secs(ack_timeout_secs),
+                ack_rx,
+            )
+            .await?;
+        Ok(LlmResponse {
+            raw: ack_raw,
+            tab_id: Some(tab_id),
+            turn_id: Some(turn_id),
+        })
+    }
+
+    async fn acquire_tab_and_url(
+        &self,
+        endpoint_id: &str,
+        urls: &[String],
+        timeout_secs: u64,
+        stateful: bool,
+    ) -> Result<(u32, String)> {
         let tab_id = self
             .acquire_tab(endpoint_id, urls, timeout_secs, stateful)
             .await?;
@@ -505,79 +577,120 @@ impl ChromiumBackend {
                 .cloned()
                 .unwrap_or_else(|| urls.first().cloned().unwrap_or_default())
         };
+        Ok((tab_id, url))
+    }
+
+    async fn start_turn(
+        &self,
+        endpoint_id: &str,
+        tab_id: u32,
+        url: &str,
+        prompt: &str,
+        stateful: bool,
+        submit_only: bool,
+    ) -> StartedTurn {
+        let turn_id = self.next_turn_id.fetch_add(1, Ordering::SeqCst);
+        let lease_seed = self.next_turn_lease_seed.fetch_add(1, Ordering::SeqCst);
+        let lease_token = next_turn_lease_token(lease_seed, turn_id);
         let (ack_tx, ack_rx) = oneshot::channel::<String>();
+        let (resp_tx, resp_rx) = oneshot::channel::<String>();
+        let (early_fail_tx, early_fail_rx) = oneshot::channel::<String>();
 
-        {
-            let mut st = self.state.lock().await;
-            st.pending_ack.insert((tab_id, turn_id), ack_tx);
-            st.pending_turn_id.insert(tab_id, turn_id);
+        let mut st = self.state.lock().await;
+        st.pending_ack.insert((tab_id, turn_id), ack_tx);
+        st.pending_turn_id.insert(tab_id, turn_id);
+        st.pending_turn_lease
+            .insert((tab_id, turn_id), lease_token.clone());
+        if !submit_only {
+            st.pending_resp.insert((tab_id, turn_id), resp_tx);
+            st.pending_early_fail.insert((tab_id, turn_id), early_fail_tx);
+        }
 
-            let site = SiteType::from_url(&url);
-            st.assemblers
-                .entry(tab_id)
-                .and_modify(|a| {
-                    a.set_site(site);
-                    a.reset();
-                })
-                .or_insert_with(|| FrameAssembler::new(site));
+        let site = SiteType::from_url(url);
+        st.assemblers
+            .entry(tab_id)
+            .and_modify(|a| {
+                a.set_site(site);
+                a.reset();
+            })
+            .or_insert_with(|| FrameAssembler::new(site));
 
-            let prompt_bytes = prompt.len();
-            let frame = json!({ "type": "TURN", "tabId": tab_id, "text": prompt, "turnId": turn_id });
+        let prompt_bytes = prompt.len();
+        let frame = json!({ "type": "TURN", "tabId": tab_id, "text": prompt, "turnId": turn_id, "leaseToken": &lease_token });
+        append_outbound_event(
+            "OUTBOUND_SUBMIT_TRY",
+            json!({
+                "endpoint_id": endpoint_id,
+                "tabId": tab_id,
+                "turnId": turn_id,
+                "leaseToken": &lease_token,
+                "url": url,
+                "prompt_bytes": prompt_bytes,
+                "stateful": stateful,
+                "submit_only": submit_only,
+            }),
+        );
+        if !st.send_msg(frame.clone()) {
+            st.replay_queue.push(frame);
             append_outbound_event(
-                "OUTBOUND_SUBMIT_TRY",
+                "OUTBOUND_SUBMIT_QUEUED",
                 json!({
                     "endpoint_id": endpoint_id,
                     "tabId": tab_id,
                     "turnId": turn_id,
+                    "leaseToken": &lease_token,
                     "url": url,
                     "prompt_bytes": prompt_bytes,
                     "stateful": stateful,
-                    "submit_only": true,
+                    "submit_only": submit_only,
                 }),
             );
-            if !st.send_msg(frame.clone()) {
-                st.replay_queue.push(frame);
-                append_outbound_event(
-                    "OUTBOUND_SUBMIT_QUEUED",
-                    json!({
-                        "endpoint_id": endpoint_id,
-                        "tabId": tab_id,
-                        "turnId": turn_id,
-                        "url": url,
-                        "prompt_bytes": prompt_bytes,
-                        "stateful": stateful,
-                        "submit_only": true,
-                    }),
-                );
-            } else {
-                append_outbound_event(
-                    "OUTBOUND_SUBMIT_SENT",
-                    json!({
-                        "endpoint_id": endpoint_id,
-                        "tabId": tab_id,
-                        "turnId": turn_id,
-                        "url": url,
-                        "prompt_bytes": prompt_bytes,
-                        "stateful": stateful,
-                        "submit_only": true,
-                    }),
-                );
-            }
+        } else {
+            append_outbound_event(
+                "OUTBOUND_SUBMIT_SENT",
+                json!({
+                    "endpoint_id": endpoint_id,
+                    "tabId": tab_id,
+                    "turnId": turn_id,
+                    "leaseToken": &lease_token,
+                    "url": url,
+                    "prompt_bytes": prompt_bytes,
+                    "stateful": stateful,
+                    "submit_only": submit_only,
+                }),
+            );
         }
 
-        let ack_timeout_secs = endpoint_submit_ack_timeout_secs(endpoint_id, timeout_secs);
-        match tokio::time::timeout(std::time::Duration::from_secs(ack_timeout_secs), ack_rx).await {
-            Ok(Ok(ack_raw)) => {
-                Ok(LlmResponse {
-                    raw: ack_raw,
-                    tab_id: Some(tab_id),
-                    turn_id: Some(turn_id),
-                })
-            }
+        StartedTurn {
+            turn_id,
+            lease_token,
+            ack_rx,
+            resp_rx: (!submit_only).then_some(resp_rx),
+            early_fail_rx: (!submit_only).then_some(early_fail_rx),
+        }
+    }
+
+    async fn await_submit_ack(
+        &self,
+        endpoint_id: &str,
+        tab_id: u32,
+        turn_id: u64,
+        url: &str,
+        stateful: bool,
+        submit_only: bool,
+        ack_timeout_secs: u64,
+        ack_wait: std::time::Duration,
+        ack_rx: oneshot::Receiver<String>,
+    ) -> Result<String> {
+        match tokio::time::timeout(ack_wait, ack_rx).await {
+            Ok(Ok(ack_raw)) => Ok(ack_raw),
             _ => {
                 let mut st = self.state.lock().await;
                 st.pending_ack.remove(&(tab_id, turn_id));
+                st.pending_resp.remove(&(tab_id, turn_id));
+                st.pending_early_fail.remove(&(tab_id, turn_id));
                 st.pending_turn_id.remove(&tab_id);
+                st.pending_turn_lease.remove(&(tab_id, turn_id));
                 retire_tab_locked(&mut st, endpoint_id, tab_id, stateful);
                 append_outbound_event(
                     "OUTBOUND_SUBMIT_ACK_TIMEOUT",
@@ -588,7 +701,7 @@ impl ChromiumBackend {
                         "url": url,
                         "ack_timeout_secs": ack_timeout_secs,
                         "stateful": stateful,
-                        "submit_only": true,
+                        "submit_only": submit_only,
                     }),
                 );
                 anyhow::bail!(
@@ -619,22 +732,15 @@ impl LlmBackend for ChromiumBackend {
             format!("{}\n\n{}", system_schema.trim_end(), prompt)
         };
 
+        let (tab_id, url) = self
+            .acquire_tab_and_url(endpoint_id, urls, timeout, stateful)
+            .await?;
+
         if submit_only {
             return self
-                .do_submit_only(endpoint_id, urls, stateful, &full_prompt, timeout)
+                .do_submit_only(endpoint_id, tab_id, &url, stateful, &full_prompt, timeout)
                 .await;
         }
-
-        let tab_id = self
-            .acquire_tab(endpoint_id, urls, timeout, stateful)
-            .await?;
-        let url = {
-            let st = self.state.lock().await;
-            st.tab_urls
-                .get(&tab_id)
-                .cloned()
-                .unwrap_or_else(|| urls.first().cloned().unwrap_or_default())
-        };
 
         self.do_send(endpoint_id, tab_id, &url, &full_prompt, timeout, stateful)
             .await
@@ -820,6 +926,9 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
             st.pending_turn_id.remove(&tab_id);
             st.pending_ack.retain(|(tid, _), _| *tid != tab_id);
             st.pending_resp.retain(|(tid, _), _| *tid != tab_id);
+            st.pending_early_fail.retain(|(tid, _), _| *tid != tab_id);
+            st.turn_complete_seen.retain(|(tid, _), _| *tid != tab_id);
+            st.post_complete_presence.retain(|(tid, _), _| *tid != tab_id);
         }
 
         "SUBMIT_ACK" => {
@@ -831,15 +940,41 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                 Some(id) => id,
                 None => return,
             };
+            let ack_lease_token = match lease_token_from_value(&msg) {
+                Some(token) => token,
+                None => return,
+            };
             let mut st = state.lock().await;
+            let Some(expected_lease_token) = st.pending_turn_lease.get(&(tab_id, turn_id)).cloned() else {
+                return;
+            };
+            if ack_lease_token != expected_lease_token {
+                append_outbound_event(
+                    "OUTBOUND_SUBMIT_ACK_IGNORED",
+                    json!({
+                        "reason": "lease_token_mismatch",
+                        "tabId": tab_id,
+                        "turnId": turn_id,
+                        "leaseToken": ack_lease_token,
+                        "expectedLeaseToken": expected_lease_token,
+                    }),
+                );
+                return;
+            }
             if let Some(tx) = st.pending_ack.remove(&(tab_id, turn_id)) {
-                let _ = tx.send(submit_ack_payload(tab_id, turn_id, "submit_ack"));
+                let _ = tx.send(submit_ack_payload(
+                    tab_id,
+                    turn_id,
+                    &expected_lease_token,
+                    "submit_ack",
+                ));
             }
             append_outbound_event(
                 "OUTBOUND_SUBMIT_ACK",
                 json!({
                     "tabId": tab_id,
                     "turnId": turn_id,
+                    "leaseToken": expected_lease_token,
                 }),
             );
         }
@@ -857,17 +992,21 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
             };
             let mut chunk = payload_raw.clone();
             let mut inbound_turn_id: Option<u64> = None;
+            let mut inbound_lease_token: Option<String> = lease_token_from_value(&msg);
             if payload_raw.trim_start().starts_with('{') {
                 if let Ok(v) = serde_json::from_str::<Value>(&payload_raw) {
                     if let Some(c) = v.get("chunk").and_then(|c| c.as_str()) {
                         chunk = c.to_string();
                     }
                     inbound_turn_id = v.get("turn_id").and_then(|t| t.as_u64());
+                    inbound_lease_token = lease_token_from_value(&v);
                 }
             }
 
             let mut st = state.lock().await;
             let expected_turn_id = st.pending_turn_id.get(&tab_id).copied();
+            let owned_endpoint_id = st.tab_owners.get(&tab_id).cloned();
+            let transport_signal = classify_transport_signal(&chunk);
 
             // Log every inbound chunk with full context.
             st.frame_counter += 1;
@@ -877,15 +1016,40 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                     "frame_counter": st.frame_counter,
                     "tab_id": tab_id,
                     "inbound_turn_id": inbound_turn_id,
+                    "inbound_lease_token": inbound_lease_token,
                     "expected_turn_id": expected_turn_id,
+                    "transport_signal": transport_signal,
                     "chunk": chunk,
                     "payload_raw_len": payload_raw.len(),
                 }),
             );
 
-            let expected_turn_id = match expected_turn_id.or(inbound_turn_id) {
+            let expected_turn_id = match expected_turn_id {
                 Some(id) => id,
-                None => return,
+                None => {
+                    // Reject unsolicited inbound frames from tabs that the backend does not
+                    // currently own. This prevents unrelated ChatGPT tabs (including duplicate
+                    // URLs open in other browser tabs) from leaking completions into the runtime.
+                    //
+                    // Owned/stateful tabs are still allowed to complete via an inbound turn_id
+                    // after a submit-only flow has already cleared its pending turn bookkeeping.
+                    if owned_endpoint_id.is_none() {
+                        append_outbound_event(
+                            "OUTBOUND_INBOUND_IGNORED",
+                            json!({
+                                "reason": "unowned_tab_without_pending_turn",
+                                "tabId": tab_id,
+                                "inbound_turn_id": inbound_turn_id,
+                                "frame_counter": st.frame_counter,
+                            }),
+                        );
+                        return;
+                    }
+                    match inbound_turn_id {
+                        Some(id) => id,
+                        None => return,
+                    }
+                }
             };
             // Drop frames whose turn_id doesn't match what we're waiting for.
             if let Some(itid) = inbound_turn_id {
@@ -894,14 +1058,122 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                 }
             }
             let turn_id = expected_turn_id;
+            let key = (tab_id, turn_id);
+            let Some(expected_lease_token) = st.pending_turn_lease.get(&key).cloned() else {
+                append_outbound_event(
+                    "OUTBOUND_INBOUND_IGNORED",
+                    json!({
+                        "reason": "missing_turn_lease",
+                        "tabId": tab_id,
+                        "turnId": turn_id,
+                        "frame_counter": st.frame_counter,
+                    }),
+                );
+                return;
+            };
+            let Some(actual_lease_token) = inbound_lease_token else {
+                append_outbound_event(
+                    "OUTBOUND_INBOUND_IGNORED",
+                    json!({
+                        "reason": "missing_lease_token",
+                        "tabId": tab_id,
+                        "turnId": turn_id,
+                        "frame_counter": st.frame_counter,
+                    }),
+                );
+                return;
+            };
+            if actual_lease_token != expected_lease_token {
+                append_outbound_event(
+                    "OUTBOUND_INBOUND_IGNORED",
+                    json!({
+                        "reason": "lease_token_mismatch",
+                        "tabId": tab_id,
+                        "turnId": turn_id,
+                        "leaseToken": actual_lease_token,
+                        "expectedLeaseToken": expected_lease_token,
+                        "frame_counter": st.frame_counter,
+                    }),
+                );
+                return;
+            }
+
+            match transport_signal {
+                Some("assistant_message_add") => {
+                    st.turn_complete_seen.remove(&key);
+                    st.post_complete_presence.remove(&key);
+                }
+                Some("turn_complete") if st.pending_resp.contains_key(&key) => {
+                    let frame_counter = st.frame_counter;
+                    st.turn_complete_seen.entry(key).or_insert(frame_counter);
+                    st.post_complete_presence.insert(key, 0);
+                    append_outbound_event(
+                        "OUTBOUND_EARLY_SIGNAL",
+                        json!({
+                            "signal": "turn_complete_before_assistant_terminal",
+                            "tabId": tab_id,
+                            "turnId": turn_id,
+                            "frame_counter": frame_counter,
+                        }),
+                    );
+                }
+                Some("presence") if st.pending_resp.contains_key(&key) => {
+                    if let Some(turn_complete_frame) = st.turn_complete_seen.get(&key).copied() {
+                        let frame_counter = st.frame_counter;
+                        let count = st
+                            .post_complete_presence
+                            .entry(key)
+                            .and_modify(|seen| *seen += 1)
+                            .or_insert(1);
+                        let presence_count = *count;
+                        if presence_count == 3 {
+                            if let Some(tx) = st.pending_early_fail.remove(&key) {
+                                let _ = tx.send("presence_after_turn_complete".to_string());
+                            }
+                            append_outbound_event(
+                                "OUTBOUND_EARLY_SIGNAL",
+                                json!({
+                                    "signal": "presence_after_turn_complete",
+                                    "tabId": tab_id,
+                                    "turnId": turn_id,
+                                    "frame_counter": frame_counter,
+                                    "turn_complete_frame_counter": turn_complete_frame,
+                                    "presence_count": presence_count,
+                                }),
+                            );
+                        }
+                    }
+                }
+                Some("heartbeat") if st.pending_resp.contains_key(&key) => {
+                    if let Some(turn_complete_frame) = st.turn_complete_seen.get(&key).copied() {
+                        append_outbound_event(
+                            "OUTBOUND_EARLY_SIGNAL",
+                            json!({
+                                "signal": "heartbeat_after_turn_complete",
+                                "tabId": tab_id,
+                                "turnId": turn_id,
+                                "frame_counter": st.frame_counter,
+                                "turn_complete_frame_counter": turn_complete_frame,
+                            }),
+                        );
+                    }
+                }
+                _ => {}
+            }
 
             if let Some(tx) = st.pending_ack.remove(&(tab_id, turn_id)) {
-                let _ = tx.send(submit_ack_payload(tab_id, turn_id, "inbound_message"));
+                let _ = tx.send(submit_ack_payload(
+                    tab_id,
+                    turn_id,
+                    &expected_lease_token,
+                    "inbound_message",
+                ));
                 append_outbound_event(
                     "OUTBOUND_SUBMIT_ACK_SYNTHETIC",
                     json!({
                         "tabId": tab_id,
                         "turnId": turn_id,
+                        "leaseToken": expected_lease_token,
                         "source": "inbound_message",
                     }),
                 );
@@ -930,6 +1202,9 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                 );
                 if let Some(tx) = st.pending_resp.remove(&(tab_id, turn_id)) {
                     st.pending_turn_id.remove(&tab_id);
+                    st.pending_turn_lease.remove(&key);
+                    st.turn_complete_seen.remove(&key);
+                    st.post_complete_presence.remove(&key);
                     let endpoint_id = st.tab_owners.get(&tab_id).cloned();
                     if let Some(endpoint_id) = endpoint_id.as_deref() {
                         release_tab_locked(&mut st, endpoint_id, tab_id, true);
@@ -941,6 +1216,9 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                 } else {
                     let endpoint_id = st.tab_owners.get(&tab_id).cloned();
                     st.pending_turn_id.remove(&tab_id);
+                    st.pending_turn_lease.remove(&key);
+                    st.turn_complete_seen.remove(&key);
+                    st.post_complete_presence.remove(&key);
                     if let Some(owner) = endpoint_id.as_deref() {
                         release_tab_locked(&mut st, owner, tab_id, true);
                     } else {
@@ -973,8 +1251,12 @@ fn release_tab_locked(st: &mut State, endpoint_id: &str, tab_id: u32, stateful: 
 
 fn retire_tab_locked(st: &mut State, endpoint_id: &str, tab_id: u32, stateful: bool) {
     st.pending_turn_id.remove(&tab_id);
+    st.pending_turn_lease.retain(|(tid, _), _| *tid != tab_id);
     st.pending_ack.retain(|(tid, _), _| *tid != tab_id);
     st.pending_resp.retain(|(tid, _), _| *tid != tab_id);
+    st.pending_early_fail.retain(|(tid, _), _| *tid != tab_id);
+    st.turn_complete_seen.retain(|(tid, _), _| *tid != tab_id);
+    st.post_complete_presence.retain(|(tid, _), _| *tid != tab_id);
     st.assemblers.remove(&tab_id);
 
     if stateful {
@@ -1014,10 +1296,13 @@ mod tests {
     #[tokio::test]
     async fn inbound_message_uses_inbound_turn_id_when_submit_only_ack_cleared_pending_turn() {
         let state = Arc::new(Mutex::new(State::new()));
+        let lease_token = "lease-submit-only";
         {
             let mut st = state.lock().await;
             st.tab_urls.insert(7, "https://chatgpt.com/".to_string());
             st.tab_owners.insert(7, "executor_pool".to_string());
+            st.pending_turn_lease
+                .insert((7, 11), lease_token.to_string());
             st.assemblers
                 .insert(7, FrameAssembler::new(SiteType::ChatGptPrivate));
         }
@@ -1027,6 +1312,7 @@ mod tests {
             "tabId": 7,
             "payload": json!({
                 "turn_id": 11,
+                "lease_token": lease_token,
                 "chunk": "data: {\"type\":\"message\",\"content\":{\"parts\":[\"hello\"]}}",
                 "ts": 1,
             })
@@ -1048,5 +1334,74 @@ mod tests {
             completed.get("endpoint_id").and_then(|v| v.as_str()),
             Some("executor_pool")
         );
+    }
+
+    #[tokio::test]
+    async fn inbound_message_from_unowned_tab_without_pending_turn_is_ignored() {
+        let state = Arc::new(Mutex::new(State::new()));
+        {
+            let mut st = state.lock().await;
+            st.tab_urls.insert(7, "https://chatgpt.com/".to_string());
+            st.pending_turn_lease
+                .insert((7, 11), "lease-unowned".to_string());
+            st.assemblers
+                .insert(7, FrameAssembler::new(SiteType::ChatGptPrivate));
+        }
+
+        let raw = json!({
+            "type": "INBOUND_MESSAGE",
+            "tabId": 7,
+            "payload": json!({
+                "turn_id": 11,
+                "lease_token": "lease-unowned",
+                "chunk": "data: {\"type\":\"message\",\"content\":{\"parts\":[\"hello\"]}}",
+                "ts": 1,
+            })
+            .to_string(),
+        })
+        .to_string();
+
+        handle_inbound(&raw, &state).await;
+
+        let st = state.lock().await;
+        assert!(
+            st.completed_turns.is_empty(),
+            "unowned organic tabs must not enqueue completed turns"
+        );
+    }
+
+    #[tokio::test]
+    async fn inbound_message_with_wrong_lease_token_is_ignored() {
+        let state = Arc::new(Mutex::new(State::new()));
+        {
+            let mut st = state.lock().await;
+            st.tab_urls.insert(7, "https://chatgpt.com/".to_string());
+            st.tab_owners.insert(7, "executor_pool".to_string());
+            st.pending_turn_id.insert(7, 11);
+            st.pending_turn_lease
+                .insert((7, 11), "lease-expected".to_string());
+            st.assemblers
+                .insert(7, FrameAssembler::new(SiteType::ChatGptPrivate));
+        }
+
+        let raw = json!({
+            "type": "INBOUND_MESSAGE",
+            "tabId": 7,
+            "payload": json!({
+                "turn_id": 11,
+                "lease_token": "lease-foreign",
+                "chunk": "data: {\"type\":\"message\",\"content\":{\"parts\":[\"hello\"]}}",
+                "ts": 1,
+            })
+            .to_string(),
+        })
+        .to_string();
+
+        handle_inbound(&raw, &state).await;
+
+        let st = state.lock().await;
+        assert!(st.completed_turns.is_empty());
+        assert!(st.pending_resp.is_empty());
+        assert_eq!(st.pending_turn_id.get(&7).copied(), Some(11));
     }
 }
