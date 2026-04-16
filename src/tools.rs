@@ -5552,6 +5552,58 @@ fn persist_plan_action_update(
     Ok(())
 }
 
+fn persist_plan_bundle_projection(
+    workspace: &Path,
+    action: &Value,
+    op_raw: &str,
+    plan_path: &Path,
+    plan: &Value,
+    success_message: &str,
+) -> Result<()> {
+    write_projection_with_workspace_effects(
+        workspace,
+        plan_path,
+        MASTER_PLAN_FILE,
+        &format!("plan_update:{op_raw}"),
+        &serde_json::to_string_pretty(plan)?,
+    )?;
+    let _ = crate::logging::append_action_log_record(&crate::logging::compact_log_record(
+        "control",
+        "plan_update",
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(true),
+        Some(success_message.to_string()),
+        action
+            .get("rationale")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        None,
+        Some(json!({"op": op_raw, "path": MASTER_PLAN_FILE})),
+    ));
+    if plan_op_produced_ready_task(op_raw, action, plan) {
+        let flag = std::path::Path::new(crate::constants::agent_state_dir())
+            .join("wakeup_executor.flag");
+        if let Err(err) = write_projection_with_workspace_effects(
+            workspace,
+            &flag,
+            "agent_state/wakeup_executor.flag",
+            &format!("plan_ready_task_wakeup:{op_raw}"),
+            "ready_task",
+        ) {
+            eprintln!(
+                "[plan] ready task detected via op={op_raw}; failed to persist wakeup flag: {err:#}"
+            );
+        }
+    }
+    Ok(())
+}
+
 /// Return true when the plan mutation just written resulted in at least one task
 /// having `status = "ready"`.  Used to decide whether to write wakeup_executor.flag.
 /// Covers all ops that can produce a ready task so the executor is always woken.
@@ -6127,27 +6179,14 @@ fn handle_plan_update_bundle(workspace: &Path, action: &Value) -> Result<(bool, 
     apply_plan_bundle_remove_edges(obj, updates)?;
     apply_plan_bundle_add_edges(obj, updates)?;
 
-    std::fs::write(&plan_path, serde_json::to_string_pretty(&plan)?)?;
-    // Emit control-plane log for plan mutation (update bundle)
-    let _ = crate::logging::append_action_log_record(&crate::logging::compact_log_record(
-        "control",
-        "plan_update",
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        Some(true),
-        Some("PLAN.json updated via plan update bundle".to_string()),
-        action
-            .get("rationale")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string()),
-        None,
-        Some(json!({"op": "update_bundle", "path": MASTER_PLAN_FILE})),
-    ));
+    persist_plan_bundle_projection(
+        workspace,
+        action,
+        "update_bundle",
+        &plan_path,
+        &plan,
+        "PLAN.json updated via plan update bundle",
+    )?;
     Ok((
         false,
         format!("plan ok\nplan_path: {}", plan_path.display()),
@@ -6171,27 +6210,14 @@ fn handle_plan_replace_bundle(workspace: &Path, action: &Value) -> Result<(bool,
         .and_then(|v| v.as_array())
         .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))?;
     ensure_dag(tasks, edges)?;
-    std::fs::write(&plan_path, serde_json::to_string_pretty(&next_plan)?)?;
-    // Emit control-plane log for plan mutation (replace bundle)
-    let _ = crate::logging::append_action_log_record(&crate::logging::compact_log_record(
-        "control",
-        "plan_update",
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        Some(true),
-        Some("PLAN.json replaced via plan action".to_string()),
-        action
-            .get("rationale")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string()),
-        None,
-        Some(json!({"op": "replace_bundle", "path": MASTER_PLAN_FILE})),
-    ));
+    persist_plan_bundle_projection(
+        workspace,
+        action,
+        "replace_bundle",
+        &plan_path,
+        &next_plan,
+        "PLAN.json replaced via plan action",
+    )?;
     Ok((
         false,
         format!("plan ok\nplan_path: {}", plan_path.display()),
