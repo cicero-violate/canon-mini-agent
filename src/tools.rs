@@ -4892,6 +4892,19 @@ fn cargo_test_summary_line(log_path: Option<&Path>, out: &str) -> Option<String>
     })
 }
 
+fn summarize_cargo_test_log(path: &Path) -> Option<String> {
+    let contents = std::fs::read_to_string(path).ok()?;
+    if contents.trim().is_empty() {
+        return None;
+    }
+    for line in contents.lines() {
+        if let Some(idx) = line.find("test result:") {
+            return Some(line[idx..].trim().to_string());
+        }
+    }
+    None
+}
+
 fn cargo_test_label(summary_line: Option<&str>, spawn_ok: bool) -> &'static str {
     if let Some(summary) = summary_line {
         if summary.contains("test result: ok.") {
@@ -5526,7 +5539,7 @@ fn persist_plan_action_update(
         &serde_json::to_string_pretty(plan)?,
     )?;
     // Emit control-plane log for plan mutation
-    if let Ok(paths) =
+    if let Ok(_paths) =
         crate::logging::append_action_log_record(&crate::logging::compact_log_record(
             "control",
             "plan_update",
@@ -5547,7 +5560,6 @@ fn persist_plan_action_update(
             Some(json!({"op": op_raw, "path": MASTER_PLAN_FILE})),
         ))
     {
-        let _ = paths;
     }
     // Option-A dispatch hook: when any plan op results in a task reaching `ready`
     // state, immediately write wakeup_executor.flag so the orchestrator can
@@ -5728,7 +5740,6 @@ fn handle_plan_add_edge(
 
     push_edge(edges, from, to);
     let edges_snapshot = edges.clone();
-    let _ = edges;
 
     let tasks = get_tasks_array(obj)?;
     ensure_dag(tasks, &edges_snapshot)?;
@@ -6378,19 +6389,6 @@ fn looks_like_long_running_command(cmd: &str) -> bool {
         || cmd.contains("| tee")
 }
 
-fn summarize_cargo_test_log(path: &Path) -> Option<String> {
-    let contents = std::fs::read_to_string(path).ok()?;
-    if contents.trim().is_empty() {
-        return None;
-    }
-    for line in contents.lines() {
-        if let Some(idx) = line.find("test result:") {
-            return Some(line[idx..].trim().to_string());
-        }
-    }
-    None
-}
-
 enum RunCommandKind {
     CargoTest,
     LongRunning,
@@ -6540,7 +6538,6 @@ fn exec_run_command_cargo_test(cmd: &str, cwd_path: &Path) -> Result<(bool, Stri
         log_path.display(),
         summary_line
     );
-    let _ = timeout_secs;
     Ok((output.status.success(), summary))
 }
 
@@ -7389,10 +7386,9 @@ fn execute_action(
     step: usize,
     action: &Value,
     workspace: &Path,
-    check_on_done: bool,
+    _check_on_done: bool,
     mut writer: Option<&mut CanonicalWriter>,
 ) -> Result<(bool, String)> {
-    let _ = check_on_done;
     let kind = action
         .get("action")
         .and_then(|v| v.as_str())

@@ -1,1 +1,1 @@
-Ready tasks are diagnostics/invariant repairs only; inbound handoff requests a dead-code status update; executor diff shows no new dead-code changes; verifier summary is empty.
+The prompt requires use of the plan tool for all PLAN.json edits and end-of-cycle objective review/update. The evidence already supports deduplicating the INV-05518346 route-block tasks and recording the confirmed INV-10b73fb9 source path, but those authoritative writes cannot be performed here.

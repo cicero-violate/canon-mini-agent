@@ -4494,7 +4494,7 @@ async fn run_agent(
             }
             None => request_future.await,
         };
-        let (req_id, resp) = match req_result {
+        let (_req_id, resp) = match req_result {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("[{role}] step={} llm_error: {e}", step + 1);
@@ -4532,7 +4532,6 @@ async fn run_agent(
                 continue;
             }
         };
-        let _ = req_id;
         last_tab_id = resp.tab_id;
         last_turn_id = resp.turn_id;
         let raw = resp.raw;

@@ -820,8 +820,7 @@ fn action_contract(kind: AgentPromptKind) -> String {
 }
 
 #[cfg(test)]
-fn tools_section(kind: AgentPromptKind) -> String {
-    let _ = kind;
+fn tools_section(_kind: AgentPromptKind) -> String {
     String::new()
 }
 
@@ -938,7 +937,6 @@ fn diagnostics_process() -> String {
     );
     let items = [
         PromptItem {
-            name: "violations",
             heading: &violations_heading,
             body: violations,
             reserve: 1000,
@@ -947,7 +945,6 @@ fn diagnostics_process() -> String {
             always_include: false,
         },
         PromptItem {
-            name: "objectives",
             heading: &objectives_heading,
             body: objectives,
             reserve: 800,
@@ -956,7 +953,6 @@ fn diagnostics_process() -> String {
             always_include: false,
         },
         PromptItem {
-            name: "cargo_test_failures",
             heading: &cargo_failures_heading,
             body: cargo_test_failures,
             reserve: 800,
@@ -1232,7 +1228,6 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
     );
     let items = [
         PromptItem {
-            name: "issues",
             heading: issues_heading,
             body: &issues,
             reserve: 1500,
@@ -1293,7 +1288,6 @@ pub(crate) fn planner_cycle_prompt(
     append_planner_cycle_footer(&mut suffix);
     let items = [
         PromptItem {
-            name: "executor_diff",
             heading: &executor_diff_heading,
             body: executor_diff,
             reserve: 1200,
@@ -1302,7 +1296,6 @@ pub(crate) fn planner_cycle_prompt(
             always_include: true,
         },
         PromptItem {
-            name: "cargo_test_failures",
             heading: &cargo_failures_heading,
             body: cargo_test_failures,
             reserve: 800,
@@ -1311,7 +1304,6 @@ pub(crate) fn planner_cycle_prompt(
             always_include: false,
         },
         PromptItem {
-            name: "objectives",
             heading: &objectives_heading,
             body: objectives_text,
             reserve: 1000,
@@ -1320,7 +1312,6 @@ pub(crate) fn planner_cycle_prompt(
             always_include: false,
         },
         PromptItem {
-            name: "lessons",
             heading: &lessons_heading,
             body: lessons_text,
             reserve: 800,
@@ -1329,7 +1320,6 @@ pub(crate) fn planner_cycle_prompt(
             always_include: false,
         },
         PromptItem {
-            name: "semantic_control",
             heading: &semantic_control_heading,
             body: semantic_control_text,
             reserve: 1200,
@@ -1338,7 +1328,6 @@ pub(crate) fn planner_cycle_prompt(
             always_include: false,
         },
         PromptItem {
-            name: "summary",
             heading: &summary_heading,
             body: summary_text,
             reserve: 600,
@@ -1433,7 +1422,6 @@ pub(crate) fn single_role_verifier_prompt(
     );
     let items = [
         PromptItem {
-            name: "objectives",
             heading: &objectives_heading,
             body: objectives,
             reserve: 800,
@@ -1442,7 +1430,6 @@ pub(crate) fn single_role_verifier_prompt(
             always_include: true,
         },
         PromptItem {
-            name: "semantic_control",
             heading: &semantic_control_heading,
             body: semantic_control,
             reserve: 800,
@@ -1451,7 +1438,6 @@ pub(crate) fn single_role_verifier_prompt(
             always_include: false,
         },
         PromptItem {
-            name: "executor_diff",
             heading: &executor_diff_heading,
             body: executor_diff_text,
             reserve: 800,
@@ -1460,7 +1446,6 @@ pub(crate) fn single_role_verifier_prompt(
             always_include: false,
         },
         PromptItem {
-            name: "cargo_test_failures",
             heading: &cargo_failures_heading,
             body: cargo_test_failures,
             reserve: 800,
@@ -1479,7 +1464,6 @@ pub(crate) fn single_role_diagnostics_prompt(
 ) -> String {
     let workspace = workspace();
     let diagnostics_path = diagnostics_file();
-    let _diagnostics_heading_marker = diagnostics_path.len();
     let prefix = format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nRead files and search the source code for bugs and inconsistencies (use read_file + run_command/ripgrep).\nRun python analysis actions over available workspace-local logs, state, and code evidence.\nDo not assume canon-specific observability names or paths. Discover the actual project-local artifacts first by inspecting files and directories that exist under WORKSPACE. Examples may include state/, log/, logs, runtime logs, jsonl logs, agent logs, or other workspace-defined artifacts.\nInfer the root cause from the evidence and cite detailed sources of errors (file paths, functions, log evidence).\n\nLatest verifier summary:\n(none yet)"
     );
@@ -1493,7 +1477,6 @@ pub(crate) fn single_role_diagnostics_prompt(
     );
     let items = [
         PromptItem {
-            name: "semantic_control",
             heading: &semantic_control_heading,
             body: semantic_control,
             reserve: 1000,
@@ -1502,7 +1485,6 @@ pub(crate) fn single_role_diagnostics_prompt(
             always_include: true,
         },
         PromptItem {
-            name: "objectives",
             heading: &objectives_heading,
             body: objectives,
             reserve: 800,
@@ -1511,7 +1493,6 @@ pub(crate) fn single_role_diagnostics_prompt(
             always_include: false,
         },
         PromptItem {
-            name: "cargo_test_failures",
             heading: &cargo_failures_heading,
             body: cargo_test_failures,
             reserve: 800,
@@ -1545,7 +1526,6 @@ pub(crate) fn single_role_planner_prompt(
     );
     let items = [
         PromptItem {
-            name: "objectives",
             heading: &objectives_heading,
             body: objectives,
             reserve: 800,
@@ -1554,7 +1534,6 @@ pub(crate) fn single_role_planner_prompt(
             always_include: true,
         },
         PromptItem {
-            name: "lessons",
             heading: &lessons_heading,
             body: lessons_text,
             reserve: 800,
@@ -1563,7 +1542,6 @@ pub(crate) fn single_role_planner_prompt(
             always_include: false,
         },
         PromptItem {
-            name: "semantic_control",
             heading: &semantic_control_heading,
             body: semantic_control,
             reserve: 1200,
@@ -1572,7 +1550,6 @@ pub(crate) fn single_role_planner_prompt(
             always_include: false,
         },
         PromptItem {
-            name: "cargo_test_failures",
             heading: &cargo_failures_heading,
             body: cargo_test_failures,
             reserve: 800,
@@ -1622,7 +1599,6 @@ pub(crate) fn single_role_solo_prompt(
     let suffix = "\n\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nUse the `issue` action only when the current step uncovers direct implementation evidence for a new or stale logic gap.\nFor Rust source investigation, use semantic tools first: symbol_refs, symbol_window, symbol_neighborhood, symbol_path, semantic_map. Reach for read_file only when you need exact lines before a patch.\nOutput contract (strict):\n- Return exactly ONE action\n- Format: a single JSON object in a ```json code block\n- No prose, no markdown explanation outside the JSON block\n- Optimize for the next correct move, not broad analysis\n\nIf replying to the external user, use this shape:\n```json\n{\n  \"action\": \"message\",\n  \"from\": \"solo\",\n  \"to\": \"user\",\n  \"type\": \"result\",\n  \"status\": \"ready\",\n  \"observation\": \"State the grounded evidence you are replying from.\",\n  \"rationale\": \"Explain why a direct reply is the highest-value next step.\",\n  \"predicted_next_actions\": [\n    {\"action\": \"read_file\", \"intent\": \"Inspect a named artifact if the user asks for deeper evidence next.\"},\n    {\"action\": \"message\", \"intent\": \"Send a narrower follow-up reply to the user after targeted inspection.\"}\n  ],\n  \"payload\": {\n    \"summary\": \"Short direct answer to the user.\"\n  }\n}\n```\nEmit exactly one action.";
     let mut items = vec![
         PromptItem {
-            name: "plan_diff",
             heading: &plan_diff_heading,
             body: plan_diff_text,
             reserve: 1200,
@@ -1631,7 +1607,6 @@ pub(crate) fn single_role_solo_prompt(
             always_include: true,
         },
         PromptItem {
-            name: "executor_diff",
             heading: &executor_diff_heading,
             body: executor_diff_text,
             reserve: 1000,
@@ -1640,7 +1615,6 @@ pub(crate) fn single_role_solo_prompt(
             always_include: false,
         },
         PromptItem {
-            name: "objectives",
             heading: &objectives_heading,
             body: &objectives_body,
             reserve: 800,
@@ -1649,7 +1623,6 @@ pub(crate) fn single_role_solo_prompt(
             always_include: false,
         },
         PromptItem {
-            name: "lessons",
             heading: &lessons_heading,
             body: lessons_text,
             reserve: 800,
@@ -1658,7 +1631,6 @@ pub(crate) fn single_role_solo_prompt(
             always_include: true,
         },
         PromptItem {
-            name: "loop_context",
             heading: &loop_context_heading,
             body: loop_context_hint,
             reserve: 600,
@@ -1667,7 +1639,6 @@ pub(crate) fn single_role_solo_prompt(
             always_include: false,
         },
         PromptItem {
-            name: "semantic_control",
             heading: &semantic_control_heading,
             body: &semantic_control_body,
             reserve: 1200,
@@ -1676,7 +1647,6 @@ pub(crate) fn single_role_solo_prompt(
             always_include: false,
         },
         PromptItem {
-            name: "complexity",
             heading: &complexity_heading,
             body: complexity_hotspots,
             reserve: 600,
@@ -1685,7 +1655,6 @@ pub(crate) fn single_role_solo_prompt(
             always_include: false,
         },
         PromptItem {
-            name: "cargo_test_failures",
             heading: &cargo_failures_heading,
             body: cargo_test_failures,
             reserve: 600,
@@ -1703,7 +1672,6 @@ pub(crate) fn single_role_solo_prompt(
     };
     if let Some(rename_section) = rename_section.as_ref() {
         items.push(PromptItem {
-            name: "rename_candidates",
             heading: &rename_heading,
             body: rename_section,
             reserve: 800,
@@ -1733,7 +1701,6 @@ pub(crate) fn single_role_executor_prompt(
     let suffix = "\n\nLane plans are deprecated. Use planner handoff messages and {MASTER_PLAN_FILE} for task selection.\n\nDo not modify spec, plan, violations, or diagnostics.\nDo not use internal tools.\nDo not hand off work; continue execution directly in the current role flow.\nUse `message.payload` to report evidence for verifier review. Emit exactly one action to begin. Think through the decision internally; reveal chain-of-thought.";
     let items = vec![
         PromptItem {
-            name: "semantic_control",
             heading: &semantic_control_heading,
             body: semantic_control,
             reserve: 800,
@@ -2399,7 +2366,6 @@ pub(crate) fn render_action_result_sections(prefix: &str, result: &str, suffix: 
         .iter()
         .map(
             |(heading, body, reserve, cap, weight, always_include)| PromptItem {
-                name: heading.as_str(),
                 heading: heading.as_str(),
                 body: body.as_str(),
                 reserve: *reserve,
