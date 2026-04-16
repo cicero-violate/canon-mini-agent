@@ -2,7 +2,9 @@
 import base64
 import json
 import os
+import re
 import shutil
+import subprocess
 import time
 import urllib.request
 from pathlib import Path
@@ -118,14 +120,22 @@ def terminal_write(pid, data):
 
 
 def run_in_shell(pid, cmd, marker, timeout=1800):
-    terminal_write(pid, cmd + "\n")
+    sentinel = f"__RUN_IN_SHELL_RESULT_{time.time_ns()}__"
+    wrapped = (
+        "{ "
+        f"{cmd}"
+        f"; rc=$?; printf '\\n{sentinel}:%s\\n' \"$rc\"; }}\n"
+    )
+    terminal_write(pid, wrapped)
     output = ""
     start = time.time()
+    pattern = re.compile(rf"{re.escape(sentinel)}:(\d+)")
     while time.time() - start < timeout:
         chunk = terminal_read(pid)
         output += chunk
-        if marker in output:
-            return True, output
+        match = pattern.search(output)
+        if match:
+            return match.group(1) == "0", output
         time.sleep(1)
     return False, output
 
@@ -189,7 +199,7 @@ def reset_dir(path: Path):
         if path.is_symlink() or path.is_file():
             path.unlink()
         else:
-            shutil.rmtree(path)
+            subprocess.run(["/bin/rm", "-rf", "--", str(path)], check=True)
 
 
 def remove_if_exists(path: Path):
@@ -197,8 +207,10 @@ def remove_if_exists(path: Path):
         path.unlink()
 
 
-def extract_tar(tar_path: Path, dest: Path, clean=False):
+def extract_tar(tar_path: Path, dest: Path, clean=False, optional=False):
     if not tar_path.exists():
+        if optional:
+            return {"ok": True, "skipped": True, "reason": f"missing optional tarball: {tar_path}"}
         return {"ok": False, "error": f"missing tarball: {tar_path}"}
     if clean:
         reset_dir(dest)
@@ -228,34 +240,57 @@ def install_rust(shell_pid):
     reset_dir(temp_root)
     temp_root.mkdir(parents=True, exist_ok=True)
 
-    ok_extract, extract_out = run_in_shell(
-        shell_pid,
-        f"rm -rf {temp_root}/* && tar -xzf {RUST_TAR} -C {temp_root} && echo __EXTRACT_DONE__",
-        "__EXTRACT_DONE__",
-        timeout=1800,
-    )
-    if not ok_extract:
-        return {"ok": False, "stage": "extract", "output": extract_out[-4000:]}
+    try:
+        extract_proc = subprocess.run(
+            ["/bin/tar", "-xzf", str(RUST_TAR), "-C", str(temp_root)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as e:
+        return {
+            "ok": False,
+            "stage": "extract",
+            "output": (e.stdout or "")[-2000:] + (e.stderr or "")[-2000:],
+        }
+
+    bundle_dirs = sorted(temp_root.glob("*nightly*"))
+    if not bundle_dirs:
+        return {
+            "ok": False,
+            "stage": "extract",
+            "output": f"missing extracted nightly bundle under {temp_root}",
+        }
+    bundle_dir = bundle_dirs[0]
 
     install_output = {}
     for component in ["rustc", "cargo", "rust-std-x86_64-unknown-linux-gnu"]:
-        install_cmd = (
-            f"cd {temp_root}/*nightly* && "
-            f"./install.sh --prefix={RUST_SANDBOX} --disable-ldconfig "
-            f"--components={component} && echo __INSTALL_DONE__"
-        )
-        ok_install, component_out = run_in_shell(
-            shell_pid, install_cmd, "__INSTALL_DONE__", timeout=1800
-        )
-        install_output[component] = component_out[-1000:]
-        if not ok_install:
+        try:
+            proc = subprocess.run(
+                [
+                    str(bundle_dir / "install.sh"),
+                    f"--prefix={RUST_SANDBOX}",
+                    "--disable-ldconfig",
+                    f"--components={component}",
+                ],
+                cwd=bundle_dir,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            install_output[component] = (proc.stdout or "")[-1000:] + (proc.stderr or "")[-1000:]
+        except subprocess.CalledProcessError as e:
             return {
                 "ok": False,
                 "stage": f"install:{component}",
-                "output": component_out[-4000:],
+                "output": (e.stdout or "")[-2000:] + (e.stderr or "")[-2000:],
             }
 
-    return {"ok": True, "extract_output": extract_out[-1000:], "install_output": install_output}
+    return {
+        "ok": True,
+        "extract_output": (extract_proc.stdout or "")[-1000:] + (extract_proc.stderr or "")[-1000:],
+        "install_output": install_output,
+    }
 
 
 def binary_version(path: Path):
@@ -302,13 +337,35 @@ def smoke_test(shell_pid):
     remove_if_exists(test_src)
     remove_if_exists(test_bin)
     test_src.write_text('fn main() { println!("ok"); }\n')
-    cmd = (
-        f"export PATH={RUST_BIN}:$PATH; "
-        f"export CARGO_HOME={CARGO_HOME}; "
-        f"cd {STATE_ROOT} && {RUSTC_PATH} {test_src.name} -o {test_bin.name} && ./{test_bin.name} && echo __SMOKE_DONE__"
-    )
-    ok, out = run_in_shell(shell_pid, cmd, "__SMOKE_DONE__", timeout=300)
-    return {"ok": ok, "output": out[-2000:]}
+    env = os.environ.copy()
+    env["PATH"] = f"{RUST_BIN}:{env.get('PATH', '')}"
+    env["CARGO_HOME"] = str(CARGO_HOME)
+    try:
+        rustc_proc = subprocess.run(
+            [str(RUSTC_PATH), str(test_src), "-o", str(test_bin)],
+            cwd=STATE_ROOT,
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        run_proc = subprocess.run(
+            [str(test_bin)],
+            cwd=STATE_ROOT,
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return {
+            "ok": True,
+            "output": ((rustc_proc.stdout or "") + (rustc_proc.stderr or "") + (run_proc.stdout or "") + (run_proc.stderr or ""))[-2000:],
+        }
+    except subprocess.CalledProcessError as e:
+        return {
+            "ok": False,
+            "output": ((e.stdout or "") + (e.stderr or ""))[-2000:],
+        }
 
 
 def main():
@@ -335,7 +392,9 @@ def main():
 
     report["rust_install"] = install_rust(shell_pid)
     report["cargo_config"] = configure_cargo()
-    report["autonomous_extract"] = extract_tar(AUTONOMOUS_TAR, AUTONOMOUS_DIR, clean=True)
+    report["autonomous_extract"] = extract_tar(
+        AUTONOMOUS_TAR, AUTONOMOUS_DIR, clean=True, optional=True
+    )
     report["canon_extract"] = extract_tar(CANON_TAR, CANON_ROOT, clean=True)
     report["workspace_root"] = ensure_canon_workspace_root()
 

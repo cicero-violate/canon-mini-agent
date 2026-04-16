@@ -1,1 +1,1 @@
-chromium: timeout waiting for response (tab=633187554 turn=14)
+chromium: early transport failure (heartbeat_after_turn_complete) (tab=633187550 turn=87)
