@@ -485,7 +485,10 @@ impl ChromiumBackend {
                 }),
             );
         }
-        eprintln!("[chromium] no tab available, opening {url}");
+        // This means no reusable tab was found in backend ownership state, not that Chrome has zero tabs.
+        // Console wording should reflect backend reuse semantics, not literal browser tab absence.
+        // Note: if another workspace is built instead of this extracted repo, this local fallback_debug binding will not help that other build.
+        eprintln!("[chromium] no reusable tab in backend state, opening {url}");
         let tab_id = self.open_tab(url, remaining).await?;
         if stateful {
             let mut st = self.state.lock().await;

@@ -1,1 +1,1 @@
-auto-filled blocker evidence
+Receipt `rcpt-1776333471360-planner-1-python` shows `INV-05518346` as promoted with route gate support_count 4076 and visible evidence entries from `agent_state/blockers.json` `source=blocker_message` rows dated `ts_ms=1776193749193` and `ts_ms=1776211106052`; the inbound diagnostics handoff still states the required diagnostics workspace action surface is unavailable here.
