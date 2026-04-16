@@ -5,6 +5,7 @@
   window.__ContentBridgeInstalled = true;
 
   let lastTurnId = null;
+  let lastLeaseToken = null;
   const seenOutboundTurns = new Map();
   const seenOutboundIdempotency = new Map();
   const seenOutboundSignatures = new Map();
@@ -13,6 +14,12 @@
   function normalizeTurnId(turnId) {
     if (typeof turnId === "number" && Number.isFinite(turnId)) return String(turnId);
     if (typeof turnId === "string" && turnId.trim().length > 0) return turnId.trim();
+    return null;
+  }
+
+  function normalizeLeaseToken(leaseToken) {
+    if (typeof leaseToken === "number" && Number.isFinite(leaseToken)) return String(leaseToken);
+    if (typeof leaseToken === "string" && leaseToken.trim().length > 0) return leaseToken.trim();
     return null;
   }
 
@@ -143,16 +150,37 @@
       const payload = event.data.payload;
       let patched = payload;
       if (payload && typeof payload === "object") {
+        let mutated = false;
+        let nextPayload = payload;
         if (payload.turn_id == null && lastTurnId != null) {
-          patched = { ...payload, turn_id: lastTurnId };
+          nextPayload = { ...nextPayload, turn_id: lastTurnId };
+          mutated = true;
         }
+        const payloadLeaseToken = normalizeLeaseToken(
+          payload.lease_token ?? payload.leaseToken
+        );
+        if (!payloadLeaseToken && lastLeaseToken != null) {
+          nextPayload = mutated ? nextPayload : { ...nextPayload };
+          nextPayload.lease_token = lastLeaseToken;
+          mutated = true;
+        }
+        patched = mutated ? nextPayload : payload;
       } else if (typeof payload === "string") {
         try {
           const obj = JSON.parse(payload);
+          let mutated = false;
           if (obj && obj.turn_id == null && lastTurnId != null) {
             obj.turn_id = lastTurnId;
-            patched = obj;
+            mutated = true;
           }
+          const payloadLeaseToken = normalizeLeaseToken(
+            obj?.lease_token ?? obj?.leaseToken
+          );
+          if (obj && !payloadLeaseToken && lastLeaseToken != null) {
+            obj.lease_token = lastLeaseToken;
+            mutated = true;
+          }
+          if (mutated) patched = obj;
         } catch {}
       }
       chrome.runtime.sendMessage({ type: "INBOUND_MESSAGE", payload: patched }, () => void chrome.runtime.lastError);
@@ -166,10 +194,14 @@
       chrome.runtime.sendMessage({ type: "TEMP_CHAT_DONE" }, () => void chrome.runtime.lastError);
     }
     if (event.data?.type === "SUBMIT_ACK") {
+      const leaseToken = normalizeLeaseToken(
+        event.data.lease_token ?? event.data.leaseToken ?? lastLeaseToken
+      );
       chrome.runtime.sendMessage(
         {
           type: "SUBMIT_ACK",
           turn_id: event.data.turn_id ?? lastTurnId ?? null,
+          lease_token: leaseToken,
           ts: event.data.ts ?? Date.now()
         },
         () => void chrome.runtime.lastError
@@ -181,9 +213,13 @@
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === "OUTBOUND_SUBMIT") {
       const turnId = message?.payload?.turn_id;
+      const leaseToken = normalizeLeaseToken(
+        message?.payload?.leaseToken ?? message?.payload?.lease_token
+      );
       if (typeof turnId === "number") {
         lastTurnId = turnId;
       }
+      lastLeaseToken = leaseToken;
       if (shouldDropOutbound(turnId, message.payload)) {
         console.log("[CS] OUTBOUND_SUBMIT deduped", turnId);
         sendResponse({ ok: true, deduped: true });

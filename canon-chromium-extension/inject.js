@@ -7,6 +7,7 @@
   window.__promptInjectionMode     = window.__promptInjectionMode     || "auto";
   window.__promptInjectionQueue    = window.__promptInjectionQueue    || [];
   window.__currentTurnId           = window.__currentTurnId           || null;
+  window.__currentLeaseToken       = window.__currentLeaseToken       || null;
   window.__nextSyntheticTurnId     = window.__nextSyntheticTurnId     || (Date.now() * 1000);
   const __seenOutboundTurns = new Map();
   const __seenOutboundIdempotency = new Map();
@@ -22,6 +23,12 @@
   function normalizeTurnId(turnId) {
     if (typeof turnId === "number" && Number.isFinite(turnId)) return String(turnId);
     if (typeof turnId === "string" && turnId.trim().length > 0) return turnId.trim();
+    return null;
+  }
+
+  function normalizeLeaseToken(leaseToken) {
+    if (typeof leaseToken === "number" && Number.isFinite(leaseToken)) return String(leaseToken);
+    if (typeof leaseToken === "string" && leaseToken.trim().length > 0) return leaseToken.trim();
     return null;
   }
 
@@ -101,6 +108,7 @@
     ensureActiveTurnId("inbound_chunk");
     const payload = {
       turn_id: window.__currentTurnId,
+      lease_token: window.__currentLeaseToken,
       chunk,
       ts: Date.now()
     };
@@ -175,12 +183,14 @@
               emitInbound(line);
               if (line.trim() === "data: [DONE]" || line.trim() === "[DONE]") {
                 window.__currentTurnId = null;
+                window.__currentLeaseToken = null;
               }
             }
           } else {
             emitInbound(chunk);
             if (chunk.trim() === "data: [DONE]" || chunk.trim() === "[DONE]") {
               window.__currentTurnId = null;
+              window.__currentLeaseToken = null;
             }
           }
         }
@@ -259,6 +269,9 @@
     if (event.data?.type !== "OUTBOUND_SUBMIT") return;
 
     const { text, mode, turn_id } = event.data.payload || {};
+    const leaseToken = normalizeLeaseToken(
+      event.data?.payload?.leaseToken ?? event.data?.payload?.lease_token
+    );
     if (typeof text !== "string") return;
     if (shouldDropOutbound(event.data.payload)) {
       console.log("[INJ] OUTBOUND_SUBMIT deduped", turn_id ?? null);
@@ -267,6 +280,7 @@
     console.log("[INJ] OUTBOUND_SUBMIT received, text length:", text.length, "mode:", mode);
 
     window.__currentTurnId = turn_id ?? null;
+    window.__currentLeaseToken = leaseToken;
     window.__promptInjectionMode = mode || "auto";
 
     if (mode === "buffer") {
@@ -301,10 +315,20 @@
 
         if (sendBtn && !sendBtn.disabled) {
           sendBtn.click();
-          window.postMessage({ type: "SUBMIT_ACK", turn_id: window.__currentTurnId, ts: Date.now() }, "*");
+          window.postMessage({
+            type: "SUBMIT_ACK",
+            turn_id: window.__currentTurnId,
+            lease_token: window.__currentLeaseToken,
+            ts: Date.now()
+          }, "*");
         } else {
           if (submitViaEnter()) {
-            window.postMessage({ type: "SUBMIT_ACK", turn_id: window.__currentTurnId, ts: Date.now() }, "*");
+            window.postMessage({
+              type: "SUBMIT_ACK",
+              turn_id: window.__currentTurnId,
+              lease_token: window.__currentLeaseToken,
+              ts: Date.now()
+            }, "*");
           }
         }
       }, 100);

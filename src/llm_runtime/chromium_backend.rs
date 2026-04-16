@@ -213,6 +213,10 @@ struct State {
     /// (tabId, turnId) -> count of `presence` frames observed after
     /// `conversation-turn-complete` and before any assistant terminal frame.
     post_complete_presence: HashMap<(u32, u64), u32>,
+
+    /// (tabId, turnId) -> count of `heartbeat` frames observed after
+    /// `conversation-turn-complete` and before any assistant terminal frame.
+    post_complete_heartbeat: HashMap<(u32, u64), u32>,
 }
 
 /// Shared transport bootstrap for both submit-only and full-response flows.
@@ -249,6 +253,7 @@ impl State {
             frame_counter: 0,
             turn_complete_seen: HashMap::new(),
             post_complete_presence: HashMap::new(),
+            post_complete_heartbeat: HashMap::new(),
         }
     }
 
@@ -988,6 +993,7 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
             st.pending_early_fail.retain(|(tid, _), _| *tid != tab_id);
             st.turn_complete_seen.retain(|(tid, _), _| *tid != tab_id);
             st.post_complete_presence.retain(|(tid, _), _| *tid != tab_id);
+            st.post_complete_heartbeat.retain(|(tid, _), _| *tid != tab_id);
         }
 
         "SUBMIT_ACK" => {
@@ -1161,11 +1167,13 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                 Some("assistant_message_add") => {
                     st.turn_complete_seen.remove(&key);
                     st.post_complete_presence.remove(&key);
+                    st.post_complete_heartbeat.remove(&key);
                 }
                 Some("turn_complete") if st.pending_resp.contains_key(&key) => {
                     let frame_counter = st.frame_counter;
                     st.turn_complete_seen.entry(key).or_insert(frame_counter);
                     st.post_complete_presence.insert(key, 0);
+                    st.post_complete_heartbeat.insert(key, 0);
                     append_outbound_event(
                         "OUTBOUND_EARLY_SIGNAL",
                         json!({
@@ -1205,6 +1213,17 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                 }
                 Some("heartbeat") if st.pending_resp.contains_key(&key) => {
                     if let Some(turn_complete_frame) = st.turn_complete_seen.get(&key).copied() {
+                        let count = st
+                            .post_complete_heartbeat
+                            .entry(key)
+                            .and_modify(|seen| *seen += 1)
+                            .or_insert(1);
+                        let heartbeat_count = *count;
+                        if heartbeat_count == 8 {
+                            if let Some(tx) = st.pending_early_fail.remove(&key) {
+                                let _ = tx.send("heartbeat_after_turn_complete".to_string());
+                            }
+                        }
                         append_outbound_event(
                             "OUTBOUND_EARLY_SIGNAL",
                             json!({
@@ -1213,6 +1232,7 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                                 "turnId": turn_id,
                                 "frame_counter": st.frame_counter,
                                 "turn_complete_frame_counter": turn_complete_frame,
+                                "heartbeat_count": heartbeat_count,
                             }),
                         );
                     }
@@ -1264,6 +1284,7 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                     st.pending_turn_lease.remove(&key);
                     st.turn_complete_seen.remove(&key);
                     st.post_complete_presence.remove(&key);
+                    st.post_complete_heartbeat.remove(&key);
                     let endpoint_id = st.tab_owners.get(&tab_id).cloned();
                     if let Some(endpoint_id) = endpoint_id.as_deref() {
                         release_tab_locked(&mut st, endpoint_id, tab_id, true);
@@ -1278,6 +1299,7 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                     st.pending_turn_lease.remove(&key);
                     st.turn_complete_seen.remove(&key);
                     st.post_complete_presence.remove(&key);
+                    st.post_complete_heartbeat.remove(&key);
                     if let Some(owner) = endpoint_id.as_deref() {
                         release_tab_locked(&mut st, owner, tab_id, true);
                     } else {
@@ -1316,6 +1338,7 @@ fn retire_tab_locked(st: &mut State, endpoint_id: &str, tab_id: u32, stateful: b
     st.pending_early_fail.retain(|(tid, _), _| *tid != tab_id);
     st.turn_complete_seen.retain(|(tid, _), _| *tid != tab_id);
     st.post_complete_presence.retain(|(tid, _), _| *tid != tab_id);
+    st.post_complete_heartbeat.retain(|(tid, _), _| *tid != tab_id);
     st.assemblers.remove(&tab_id);
 
     if stateful {

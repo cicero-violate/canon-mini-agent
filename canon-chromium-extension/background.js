@@ -50,6 +50,25 @@ function normalizeTurnId(turnId) {
   return null;
 }
 
+function normalizeLeaseToken(leaseToken) {
+  if (typeof leaseToken === "number" && Number.isFinite(leaseToken)) return String(leaseToken);
+  if (typeof leaseToken === "string" && leaseToken.trim().length > 0) return leaseToken.trim();
+  return null;
+}
+
+function extractLeaseTokenFromPayload(payload) {
+  if (payload && typeof payload === "object") {
+    return normalizeLeaseToken(payload.lease_token ?? payload.leaseToken);
+  }
+  if (typeof payload === "string") {
+    try {
+      const obj = JSON.parse(payload);
+      return normalizeLeaseToken(obj?.lease_token ?? obj?.leaseToken);
+    } catch {}
+  }
+  return null;
+}
+
 function extractIdempotencyKey(payload) {
   const key =
     payload?.idempotency_key ??
@@ -210,6 +229,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!tabId) { sendResponse({ ok: false, error: "no tabId" }); return true; }
 
   if (message?.type === "INBOUND_MESSAGE") {
+    const leaseToken = extractLeaseTokenFromPayload(message.payload);
     try {
       const payload = typeof message.payload === "string" ? message.payload : JSON.stringify(message.payload ?? "");
       if (payload.includes("\"limit_modal\"") || payload.includes("\"limit_modal_action\"")) {
@@ -222,6 +242,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendToOwner(tabId, {
       type:    "INBOUND_MESSAGE",
       tabId,
+      ...(leaseToken ? { leaseToken, lease_token: leaseToken } : {}),
       payload: typeof message.payload === "string"
         ? message.payload
         : JSON.stringify(message.payload ?? "")
@@ -270,10 +291,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === "SUBMIT_ACK") {
+    const leaseToken = normalizeLeaseToken(
+      message.lease_token ?? message.leaseToken
+    );
     sendToOwner(tabId, {
       type: "SUBMIT_ACK",
       tabId,
       turnId: message.turn_id ?? null,
+      ...(leaseToken ? { leaseToken, lease_token: leaseToken } : {}),
       ts: message.ts ?? Date.now()
     });
     sendResponse({ ok: true });
@@ -365,10 +390,14 @@ function handleRustMessage(msg, sendFn) {
     if (!targetTabId) return;
     console.log("[BG] TURN → sendToTab", targetTabId, "text length:", msg.text?.length);
     const turnId = msg.turnId ?? null;
+    const leaseToken = normalizeLeaseToken(
+      msg.leaseToken ?? msg.lease_token
+    );
     focusTabAndSubmit(targetTabId, {
       text: msg.text,
       mode: "auto",
-      turn_id: turnId
+      turn_id: turnId,
+      ...(leaseToken ? { leaseToken, lease_token: leaseToken } : {})
     });
     return;
   }

@@ -1,1 +1,1 @@
-Fresh read receipt `rcpt-1776315280244-planner-2-read_file` shows ready_window entries and task definitions are present in PLAN.json, while the active blocker class remains route-level invalid_route `INV-171c039a`.
+New failure: `chromium: timeout waiting for response (tab=633187490 turn=14)`; inherited validated diagnostics evidence still cites rcpt-1776328599820-diagnostics-1-python plus unresolved planner INV-91c324b9 and executor INV-10b73fb9 fallout.
