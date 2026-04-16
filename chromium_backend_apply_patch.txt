@@ -1,0 +1,438 @@
+*** Begin Patch
+*** Update File: src/llm_runtime/chromium_backend.rs
+@@ -133,8 +133,8 @@
+     /// (tabId, turnId) → oneshot that fires with the assembled response.
+     pending_resp: HashMap<(u32, u64), oneshot::Sender<String>>,
+ 
+-    /// (tabId, turnId) → oneshot that fires when the inbound transport shape
+-    /// deterministically indicates the response stream has stalled or drifted.
++    /// (tabId, turnId) → oneshot that fires when inbound transport evidence
++    /// says the response stream has already drifted or stalled.
+     pending_early_fail: HashMap<(u32, u64), oneshot::Sender<String>>,
+ 
+     /// Completed submit-only turns awaiting orchestration pickup.
+@@ -168,6 +168,14 @@
+     /// (tabId, turnId) -> count of `presence` frames observed after
+     /// `conversation-turn-complete` and before any assistant terminal frame.
+     post_complete_presence: HashMap<(u32, u64), u32>,
++}
++
++/// Shared transport bootstrap for both submit-only and full-response flows.
++struct StartedTurn {
++    turn_id: u64,
++    ack_rx: oneshot::Receiver<String>,
++    resp_rx: Option<oneshot::Receiver<String>>,
++    early_fail_rx: Option<oneshot::Receiver<String>>,
+ }
+ 
+ impl State {
+@@ -383,72 +391,16 @@
+         timeout_secs: u64,
+         stateful: bool,
+     ) -> Result<LlmResponse> {
+-        let turn_id = self.next_turn_id.fetch_add(1, Ordering::SeqCst);
+-        let (ack_tx, ack_rx) = oneshot::channel::<String>();
+-        let (resp_tx, resp_rx) = oneshot::channel::<String>();
+-        let (early_fail_tx, early_fail_rx) = oneshot::channel::<String>();
+-
+-        {
+-            let mut st = self.state.lock().await;
+-            st.pending_ack.insert((tab_id, turn_id), ack_tx);
+-            st.pending_resp.insert((tab_id, turn_id), resp_tx);
+-            st.pending_early_fail
+-                .insert((tab_id, turn_id), early_fail_tx);
+-            st.pending_turn_id.insert(tab_id, turn_id);
+-
+-            let site = SiteType::from_url(url);
+-            st.assemblers
+-                .entry(tab_id)
+-                .and_modify(|a| {
+-                    a.set_site(site);
+-                    a.reset();
+-                })
+-                .or_insert_with(|| FrameAssembler::new(site));
+-
+-            let prompt_bytes = prompt.len();
+-            let frame =
+-                json!({ "type": "TURN", "tabId": tab_id, "text": prompt, "turnId": turn_id });
+-            append_outbound_event(
+-                "OUTBOUND_SUBMIT_TRY",
+-                json!({
+-                    "endpoint_id": endpoint_id,
+-                    "tabId": tab_id,
+-                    "turnId": turn_id,
+-                    "url": url,
+-                    "prompt_bytes": prompt_bytes,
+-                    "stateful": stateful,
+-                    "submit_only": false,
+-                }),
+-            );
+-            if !st.send_msg(frame.clone()) {
+-                st.replay_queue.push(frame);
+-                append_outbound_event(
+-                    "OUTBOUND_SUBMIT_QUEUED",
+-                    json!({
+-                        "endpoint_id": endpoint_id,
+-                        "tabId": tab_id,
+-                        "turnId": turn_id,
+-                        "url": url,
+-                        "prompt_bytes": prompt_bytes,
+-                        "stateful": stateful,
+-                        "submit_only": false,
+-                    }),
+-                );
+-            } else {
+-                append_outbound_event(
+-                    "OUTBOUND_SUBMIT_SENT",
+-                    json!({
+-                        "endpoint_id": endpoint_id,
+-                        "tabId": tab_id,
+-                        "turnId": turn_id,
+-                        "url": url,
+-                        "prompt_bytes": prompt_bytes,
+-                        "stateful": stateful,
+-                        "submit_only": false,
+-                    }),
+-                );
+-            }
+-        }
++        let StartedTurn {
++            turn_id,
++            ack_rx,
++            resp_rx,
++            early_fail_rx,
++        } = self
++            .start_turn(endpoint_id, tab_id, url, prompt, stateful, false)
++            .await;
++        let resp_rx = resp_rx.expect("response channel required for full send");
++        let early_fail_rx = early_fail_rx.expect("early-fail channel required for full send");
+ 
+         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+ 
+@@ -458,49 +410,34 @@
+             std::time::Instant::now() + std::time::Duration::from_secs(ack_timeout_secs),
+         );
+         let ack_remaining = ack_deadline.saturating_duration_since(std::time::Instant::now());
+-        match tokio::time::timeout(ack_remaining, ack_rx).await {
+-            Ok(Ok(_ack_raw)) => {}
+-            _ => {
+-                let mut st = self.state.lock().await;
+-                st.pending_ack.remove(&(tab_id, turn_id));
+-                st.pending_resp.remove(&(tab_id, turn_id));
+-                st.pending_early_fail.remove(&(tab_id, turn_id));
+-                st.pending_turn_id.remove(&tab_id);
+-                retire_tab_locked(&mut st, endpoint_id, tab_id, stateful);
+-                append_outbound_event(
+-                    "OUTBOUND_SUBMIT_ACK_TIMEOUT",
+-                    json!({
+-                        "endpoint_id": endpoint_id,
+-                        "tabId": tab_id,
+-                        "turnId": turn_id,
+-                        "url": url,
+-                        "ack_timeout_secs": ack_timeout_secs,
+-                        "stateful": stateful,
+-                        "submit_only": false,
+-                    }),
+-                );
+-                anyhow::bail!(
+-                    "chromium: timeout waiting for SUBMIT_ACK (tab={tab_id} turn={turn_id})"
+-                );
+-            }
+-        }
+-
+-        // Wait for full response.
+-        let resp_remaining = deadline.saturating_duration_since(std::time::Instant::now());
++        self.await_submit_ack(
++            endpoint_id,
++            tab_id,
++            turn_id,
++            url,
++            stateful,
++            false,
++            ack_timeout_secs,
++            ack_remaining,
++            ack_rx,
++        )
++        .await?;
++
+         enum ResponseWaitOutcome {
+             Response(Result<String, tokio::sync::oneshot::error::RecvError>),
+             EarlyFail(Result<String, tokio::sync::oneshot::error::RecvError>),
+         }
+ 
++        // Wait for the assembled response, but allow deterministic protocol
++        // evidence to fail the turn before the wall-clock timeout expires.
++        let resp_remaining = deadline.saturating_duration_since(std::time::Instant::now());
+         match tokio::time::timeout(resp_remaining, async {
+             tokio::select! {
+                 biased;
+                 raw = resp_rx => ResponseWaitOutcome::Response(raw),
+                 early = early_fail_rx => ResponseWaitOutcome::EarlyFail(early),
+             }
+-        })
+-        .await
+-        {
++        }).await {
+             Ok(ResponseWaitOutcome::Response(Ok(raw))) => {
+                 let mut st = self.state.lock().await;
+                 st.pending_early_fail.remove(&(tab_id, turn_id));
+@@ -561,12 +498,49 @@
+     async fn do_submit_only(
+         &self,
+         endpoint_id: &str,
+-        urls: &[String],
++        tab_id: u32,
++        url: &str,
+         stateful: bool,
+         prompt: &str,
+         timeout_secs: u64,
+     ) -> Result<LlmResponse> {
+-        let turn_id = self.next_turn_id.fetch_add(1, Ordering::SeqCst);
++        let StartedTurn {
++            turn_id,
++            ack_rx,
++            resp_rx: _,
++            early_fail_rx: _,
++        } = self
++            .start_turn(endpoint_id, tab_id, url, prompt, stateful, true)
++            .await;
++
++        let ack_timeout_secs = endpoint_submit_ack_timeout_secs(endpoint_id, timeout_secs);
++        let ack_raw = self
++            .await_submit_ack(
++                endpoint_id,
++                tab_id,
++                turn_id,
++                url,
++                stateful,
++                true,
++                ack_timeout_secs,
++                std::time::Duration::from_secs(ack_timeout_secs),
++                ack_rx,
++            )
++            .await?;
++        Ok(LlmResponse {
++            raw: ack_raw,
++            tab_id: Some(tab_id),
++            turn_id: Some(turn_id),
++        })
++    }
++
++    async fn acquire_tab_and_url(
++        &self,
++        endpoint_id: &str,
++        urls: &[String],
++        timeout_secs: u64,
++        stateful: bool,
++    ) -> Result<(u32, String)> {
+         let tab_id = self
+             .acquire_tab(endpoint_id, urls, timeout_secs, stateful)
+             .await?;
+@@ -577,26 +551,59 @@
+                 .cloned()
+                 .unwrap_or_else(|| urls.first().cloned().unwrap_or_default())
+         };
++        Ok((tab_id, url))
++    }
++
++    async fn start_turn(
++        &self,
++        endpoint_id: &str,
++        tab_id: u32,
++        url: &str,
++        prompt: &str,
++        stateful: bool,
++        submit_only: bool,
++    ) -> StartedTurn {
++        let turn_id = self.next_turn_id.fetch_add(1, Ordering::SeqCst);
+         let (ack_tx, ack_rx) = oneshot::channel::<String>();
+-
+-        {
+-            let mut st = self.state.lock().await;
+-            st.pending_ack.insert((tab_id, turn_id), ack_tx);
+-            st.pending_turn_id.insert(tab_id, turn_id);
+-
+-            let site = SiteType::from_url(&url);
+-            st.assemblers
+-                .entry(tab_id)
+-                .and_modify(|a| {
+-                    a.set_site(site);
+-                    a.reset();
+-                })
+-                .or_insert_with(|| FrameAssembler::new(site));
+-
+-            let prompt_bytes = prompt.len();
+-            let frame = json!({ "type": "TURN", "tabId": tab_id, "text": prompt, "turnId": turn_id });
++        let (resp_tx, resp_rx) = oneshot::channel::<String>();
++        let (early_fail_tx, early_fail_rx) = oneshot::channel::<String>();
++
++        let mut st = self.state.lock().await;
++        st.pending_ack.insert((tab_id, turn_id), ack_tx);
++        st.pending_turn_id.insert(tab_id, turn_id);
++        if !submit_only {
++            st.pending_resp.insert((tab_id, turn_id), resp_tx);
++            st.pending_early_fail.insert((tab_id, turn_id), early_fail_tx);
++        }
++
++        let site = SiteType::from_url(url);
++        st.assemblers
++            .entry(tab_id)
++            .and_modify(|a| {
++                a.set_site(site);
++                a.reset();
++            })
++            .or_insert_with(|| FrameAssembler::new(site));
++
++        let prompt_bytes = prompt.len();
++        let frame =
++            json!({ "type": "TURN", "tabId": tab_id, "text": prompt, "turnId": turn_id });
++        append_outbound_event(
++            "OUTBOUND_SUBMIT_TRY",
++            json!({
++                "endpoint_id": endpoint_id,
++                "tabId": tab_id,
++                "turnId": turn_id,
++                "url": url,
++                "prompt_bytes": prompt_bytes,
++                "stateful": stateful,
++                "submit_only": submit_only,
++            }),
++        );
++        if !st.send_msg(frame.clone()) {
++            st.replay_queue.push(frame);
+             append_outbound_event(
+-                "OUTBOUND_SUBMIT_TRY",
++                "OUTBOUND_SUBMIT_QUEUED",
+                 json!({
+                     "endpoint_id": endpoint_id,
+                     "tabId": tab_id,
+@@ -604,51 +611,51 @@
+                     "url": url,
+                     "prompt_bytes": prompt_bytes,
+                     "stateful": stateful,
+-                    "submit_only": true,
++                    "submit_only": submit_only,
+                 }),
+             );
+-            if !st.send_msg(frame.clone()) {
+-                st.replay_queue.push(frame);
+-                append_outbound_event(
+-                    "OUTBOUND_SUBMIT_QUEUED",
+-                    json!({
+-                        "endpoint_id": endpoint_id,
+-                        "tabId": tab_id,
+-                        "turnId": turn_id,
+-                        "url": url,
+-                        "prompt_bytes": prompt_bytes,
+-                        "stateful": stateful,
+-                        "submit_only": true,
+-                    }),
+-                );
+-            } else {
+-                append_outbound_event(
+-                    "OUTBOUND_SUBMIT_SENT",
+-                    json!({
+-                        "endpoint_id": endpoint_id,
+-                        "tabId": tab_id,
+-                        "turnId": turn_id,
+-                        "url": url,
+-                        "prompt_bytes": prompt_bytes,
+-                        "stateful": stateful,
+-                        "submit_only": true,
+-                    }),
+-                );
+-            }
+-        }
+-
+-        let ack_timeout_secs = endpoint_submit_ack_timeout_secs(endpoint_id, timeout_secs);
+-        match tokio::time::timeout(std::time::Duration::from_secs(ack_timeout_secs), ack_rx).await {
+-            Ok(Ok(ack_raw)) => {
+-                Ok(LlmResponse {
+-                    raw: ack_raw,
+-                    tab_id: Some(tab_id),
+-                    turn_id: Some(turn_id),
+-                })
+-            }
++        } else {
++            append_outbound_event(
++                "OUTBOUND_SUBMIT_SENT",
++                json!({
++                    "endpoint_id": endpoint_id,
++                    "tabId": tab_id,
++                    "turnId": turn_id,
++                    "url": url,
++                    "prompt_bytes": prompt_bytes,
++                    "stateful": stateful,
++                    "submit_only": submit_only,
++                }),
++            );
++        }
++
++        StartedTurn {
++            turn_id,
++            ack_rx,
++            resp_rx: (!submit_only).then_some(resp_rx),
++            early_fail_rx: (!submit_only).then_some(early_fail_rx),
++        }
++    }
++
++    async fn await_submit_ack(
++        &self,
++        endpoint_id: &str,
++        tab_id: u32,
++        turn_id: u64,
++        url: &str,
++        stateful: bool,
++        submit_only: bool,
++        ack_timeout_secs: u64,
++        ack_wait: std::time::Duration,
++        ack_rx: oneshot::Receiver<String>,
++    ) -> Result<String> {
++        match tokio::time::timeout(ack_wait, ack_rx).await {
++            Ok(Ok(ack_raw)) => Ok(ack_raw),
+             _ => {
+                 let mut st = self.state.lock().await;
+                 st.pending_ack.remove(&(tab_id, turn_id));
++                st.pending_resp.remove(&(tab_id, turn_id));
++                st.pending_early_fail.remove(&(tab_id, turn_id));
+                 st.pending_turn_id.remove(&tab_id);
+                 retire_tab_locked(&mut st, endpoint_id, tab_id, stateful);
+                 append_outbound_event(
+@@ -660,7 +667,7 @@
+                         "url": url,
+                         "ack_timeout_secs": ack_timeout_secs,
+                         "stateful": stateful,
+-                        "submit_only": true,
++                        "submit_only": submit_only,
+                     }),
+                 );
+                 anyhow::bail!(
+@@ -691,22 +698,15 @@
+             format!("{}\n\n{}", system_schema.trim_end(), prompt)
+         };
+ 
++        let (tab_id, url) = self
++            .acquire_tab_and_url(endpoint_id, urls, timeout, stateful)
++            .await?;
++
+         if submit_only {
+             return self
+-                .do_submit_only(endpoint_id, urls, stateful, &full_prompt, timeout)
++                .do_submit_only(endpoint_id, tab_id, &url, stateful, &full_prompt, timeout)
+                 .await;
+         }
+-
+-        let tab_id = self
+-            .acquire_tab(endpoint_id, urls, timeout, stateful)
+-            .await?;
+-        let url = {
+-            let st = self.state.lock().await;
+-            st.tab_urls
+-                .get(&tab_id)
+-                .cloned()
+-                .unwrap_or_else(|| urls.first().cloned().unwrap_or_default())
+-        };
+ 
+         self.do_send(endpoint_id, tab_id, &url, &full_prompt, timeout, stateful)
+             .await
+*** End Patch

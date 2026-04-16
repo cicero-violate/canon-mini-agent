@@ -385,6 +385,45 @@ pub fn validate_transition(state: &SystemState, event: &ControlEvent) -> Result<
                 }
             }
         }
+        ControlEvent::ExecutorSubmitAckTabRebound {
+            lane_id,
+            from_tab_id,
+            to_tab_id,
+        } => {
+            require_lane(state, *lane_id, "ExecutorSubmitAckTabRebound")?;
+            if from_tab_id == to_tab_id {
+                return Err(format!(
+                    "illegal transition: submit ack tab rebound for lane {lane_id} requires distinct tabs"
+                ));
+            }
+            if !lane_in_progress(state, *lane_id) {
+                return Err(format!(
+                    "illegal transition: submit ack tab rebound requires lane {lane_id} to be in progress"
+                ));
+            }
+            if !lane_submit_in_flight(state, *lane_id) {
+                return Err(format!(
+                    "illegal transition: submit ack tab rebound requires lane {lane_id} submit-in-flight to still be active"
+                ));
+            }
+            if state.lane_active_tab.get(lane_id) != Some(from_tab_id) {
+                return Err(format!(
+                    "illegal transition: submit ack tab rebound requires lane {lane_id} active tab to be {from_tab_id}"
+                ));
+            }
+            if state.tab_id_to_lane.get(from_tab_id) != Some(lane_id) {
+                return Err(format!(
+                    "illegal transition: submit ack tab rebound requires prior tab {from_tab_id} to map to lane {lane_id}"
+                ));
+            }
+            if let Some(existing_lane) = state.tab_id_to_lane.get(to_tab_id) {
+                if existing_lane != lane_id {
+                    return Err(format!(
+                        "illegal transition: submit ack rebound tab {to_tab_id} already mapped to lane {existing_lane}"
+                    ));
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -628,5 +667,25 @@ mod tests {
             },
         )
         .expect("completion rebound should be legal when the previous tab mapping matches");
+    }
+
+    #[test]
+    fn legal_submit_ack_tab_rebound_requires_matching_previous_mapping_and_submit_in_flight() {
+        let mut state = SystemState::new(&[0], 1);
+        state.lanes.get_mut(&0).unwrap().pending = false;
+        state.lanes.get_mut(&0).unwrap().in_progress_by = Some("executor-0".to_string());
+        state.lane_submit_in_flight.insert(0, true);
+        state.lane_active_tab.insert(0, 9);
+        state.tab_id_to_lane.insert(9, 0);
+
+        validate_transition(
+            &state,
+            &ControlEvent::ExecutorSubmitAckTabRebound {
+                lane_id: 0,
+                from_tab_id: 9,
+                to_tab_id: 11,
+            },
+        )
+        .expect("submit ack rebound should be legal when the pending submit still owns the lane");
     }
 }

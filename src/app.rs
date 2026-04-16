@@ -1995,6 +1995,19 @@ fn log_submit_ack_tab_mismatch(
     );
 }
 
+fn rebind_submit_ack_tab(
+    writer: &mut CanonicalWriter,
+    lane_id: usize,
+    active_tab: u32,
+    tab_id: u32,
+) {
+    writer.apply(ControlEvent::ExecutorSubmitAckTabRebound {
+        lane_id,
+        from_tab_id: active_tab,
+        to_tab_id: tab_id,
+    });
+}
+
 fn log_submit_ack_event(message: String, payload: serde_json::Value) {
     eprintln!("[orchestrate] {message}");
     log_error_event("executor", "orchestrate", None, &message, Some(payload));
@@ -2039,6 +2052,7 @@ fn handle_executor_submit_ack_result(
                 ),
                 None,
             );
+            rebind_submit_ack_tab(writer, lane_id, active_tab, tab_id);
         }
     }
 
@@ -3960,6 +3974,16 @@ async fn run_agent(
             Err(e) => {
                 eprintln!("[{role}] step={} llm_error: {e}", step + 1);
                 ctx.log_error(step + 1, &exchange_id, &e.to_string());
+                if let Some(writer) = writer.as_mut() {
+                    let _ = writer.try_record_effect(crate::events::EffectEvent::LlmErrorBoundary {
+                        role: role.to_string(),
+                        prompt_kind: prompt_kind.to_string(),
+                        step: step + 1,
+                        endpoint_id: endpoint.id.clone(),
+                        exchange_id: exchange_id.clone(),
+                        error: e.to_string(),
+                    });
+                }
                 crate::blockers::record_action_failure(
                     workspace,
                     role,
@@ -6079,6 +6103,27 @@ mod tests {
                 && actor_kind_insert < error_class_insert
                 && error_class_insert < route_eval,
             "INV-171c039a wiring must inject the exact orchestrator invalid_route tuple before route-gate evaluation"
+        );
+    }
+
+    #[test]
+    fn submit_ack_tab_mismatch_is_canonicalized_before_turn_registration() {
+        let source = include_str!("app.rs");
+        let mismatch = source
+            .find("log_submit_ack_tab_mismatch(ctx, lane_id, active_tab, tab_id);")
+            .expect("missing submit ack mismatch log");
+        let rebind = source[mismatch..]
+            .find("rebind_submit_ack_tab(writer, lane_id, active_tab, tab_id);")
+            .map(|offset| mismatch + offset)
+            .expect("missing canonical submit ack tab rebound");
+        let register = source[rebind..]
+            .find("register_submitted_executor_turn(")
+            .map(|offset| rebind + offset)
+            .expect("missing turn registration after submit ack handling");
+
+        assert!(
+            mismatch < rebind && rebind < register,
+            "submit ack mismatch must emit a canonical tab rebound before turn registration"
         );
     }
 

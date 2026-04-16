@@ -58,6 +58,35 @@ fn append_outbound_event(event_type: &str, payload: Value) {
     append_jsonl("all.jsonl", &Value::Object(event));
 }
 
+fn append_inbound_boundary_event(
+    state: &mut State,
+    tab_id: u32,
+    turn_id: u64,
+    endpoint_id: &str,
+    boundary_kind: &str,
+    reason: &str,
+    stateful: bool,
+    submit_only: bool,
+) {
+    state.frame_counter += 1;
+    append_jsonl(
+        "inbound.jsonl",
+        &json!({
+            "frame_counter": state.frame_counter,
+            "tab_id": tab_id,
+            "inbound_turn_id": turn_id,
+            "expected_turn_id": turn_id,
+            "endpoint_id": endpoint_id,
+            "transport_signal": boundary_kind,
+            "chunk": reason,
+            "payload_raw_len": reason.len(),
+            "boundary": true,
+            "stateful": stateful,
+            "submit_only": submit_only,
+        }),
+    );
+}
+
 fn endpoint_role(endpoint_id: &str) -> &str {
     endpoint_id.split('_').next().unwrap_or(endpoint_id)
 }
@@ -475,6 +504,16 @@ impl ChromiumBackend {
             }
             Ok(ResponseWaitOutcome::EarlyFail(Ok(reason))) => {
                 let mut st = self.state.lock().await;
+                append_inbound_boundary_event(
+                    &mut st,
+                    tab_id,
+                    turn_id,
+                    endpoint_id,
+                    "early_fail",
+                    &reason,
+                    stateful,
+                    false,
+                );
                 st.pending_resp.remove(&(tab_id, turn_id));
                 st.pending_early_fail.remove(&(tab_id, turn_id));
                 st.pending_turn_id.remove(&tab_id);
@@ -498,6 +537,16 @@ impl ChromiumBackend {
             }
             _ => {
                 let mut st = self.state.lock().await;
+                append_inbound_boundary_event(
+                    &mut st,
+                    tab_id,
+                    turn_id,
+                    endpoint_id,
+                    "response_timeout",
+                    "chromium: timeout waiting for response",
+                    stateful,
+                    false,
+                );
                 st.pending_resp.remove(&(tab_id, turn_id));
                 st.pending_early_fail.remove(&(tab_id, turn_id));
                 st.pending_turn_id.remove(&tab_id);
@@ -686,6 +735,16 @@ impl ChromiumBackend {
             Ok(Ok(ack_raw)) => Ok(ack_raw),
             _ => {
                 let mut st = self.state.lock().await;
+                append_inbound_boundary_event(
+                    &mut st,
+                    tab_id,
+                    turn_id,
+                    endpoint_id,
+                    "submit_ack_timeout",
+                    "chromium: timeout waiting for SUBMIT_ACK",
+                    stateful,
+                    submit_only,
+                );
                 st.pending_ack.remove(&(tab_id, turn_id));
                 st.pending_resp.remove(&(tab_id, turn_id));
                 st.pending_early_fail.remove(&(tab_id, turn_id));

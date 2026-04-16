@@ -1,6 +1,7 @@
 use anyhow::Result;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -38,6 +39,15 @@ pub struct Issue {
     /// File path and/or component where the issue lives, e.g. "src/app.rs:420".
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub location: String,
+    /// Structured metric payload for generator-emitted issues.
+    #[serde(default, skip_serializing_if = "is_null_value")]
+    pub metrics: Value,
+    /// Scope of the issue, e.g. "crate:canon_mini_agent" or "state/rustc/.../graph.json".
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub scope: String,
+    /// Concrete acceptance criteria for closing the issue.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub acceptance_criteria: Vec<String>,
     /// Concrete evidence strings (log lines, test failures, frame data, etc.).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub evidence: Vec<String>,
@@ -65,6 +75,10 @@ fn is_zero_f32(v: &f32) -> bool {
 
 fn is_zero_u64(v: &u64) -> bool {
     *v == 0
+}
+
+fn is_null_value(v: &Value) -> bool {
+    v.is_null()
 }
 
 const ISSUE_FRESHNESS_TTL_MS: u64 = 15 * 60 * 1000;

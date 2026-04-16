@@ -9,6 +9,7 @@ mod constants;
 mod engine;
 pub mod error_class;
 pub mod evolution;
+pub mod graph_metrics;
 pub mod inter_complexity;
 pub mod invalid_action;
 pub mod invariants;

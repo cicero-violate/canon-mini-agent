@@ -122,6 +122,11 @@ pub enum ControlEvent {
         from_tab_id: u32,
         to_tab_id: u32,
     },
+    ExecutorSubmitAckTabRebound {
+        lane_id: usize,
+        from_tab_id: u32,
+        to_tab_id: u32,
+    },
 }
 
 /// Side-effect events: logged for observability, never mutate `SystemState`.
@@ -131,6 +136,14 @@ pub enum EffectEvent {
     InvariantViolation {
         proposed_role: String,
         reason: String,
+    },
+    LlmErrorBoundary {
+        role: String,
+        prompt_kind: String,
+        step: usize,
+        endpoint_id: String,
+        exchange_id: String,
+        error: String,
     },
     BuildEvolutionAdvanced {
         evolution: u64,

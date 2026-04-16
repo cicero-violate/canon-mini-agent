@@ -245,6 +245,31 @@ impl SemanticIndex {
         self.graph.bridge_edges.len()
     }
 
+    /// Return bridge edges as `(from, relation, to)` triples.
+    pub fn bridge_edges(&self) -> Vec<(String, String, String)> {
+        self.graph
+            .bridge_edges
+            .iter()
+            .map(|edge| {
+                (
+                    edge.from.clone(),
+                    edge.relation.clone(),
+                    edge.to.clone(),
+                )
+            })
+            .collect()
+    }
+
+    /// Total semantic graph node count.
+    pub fn node_count(&self) -> usize {
+        self.graph.nodes.len()
+    }
+
+    /// Total semantic edge count.
+    pub fn semantic_edge_count(&self) -> usize {
+        self.graph.edges.len()
+    }
+
     /// BFS shortest path across semantic edges, CFG edges, and bridge edges.
     /// Endpoints may be semantic symbols or raw `cfg::...` node ids.
     pub fn execution_path(&self, from: &str, to: &str, expand_bodies: bool) -> Result<String> {

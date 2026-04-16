@@ -200,6 +200,9 @@ pub fn write_complexity_report(workspace: &Path) -> Result<Option<PathBuf>> {
         }
     }
 
+    // Bridge-connectivity analysis: emit deterministic graph-overconnectivity issues.
+    let _ = crate::graph_metrics::generate_bridge_connectivity_issues(workspace);
+
     let report = build_complexity_report(per_crate, global_top, inter_sections);
 
     // Auto-generate issues for top hotspots (Detect → Propose step)

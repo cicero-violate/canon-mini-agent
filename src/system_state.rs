@@ -300,6 +300,15 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
             s.tab_id_to_lane.remove(from_tab_id);
             s.tab_id_to_lane.insert(*to_tab_id, *lane_id);
         }
+        ControlEvent::ExecutorSubmitAckTabRebound {
+            lane_id,
+            from_tab_id,
+            to_tab_id,
+        } => {
+            s.lane_active_tab.insert(*lane_id, *to_tab_id);
+            s.tab_id_to_lane.remove(from_tab_id);
+            s.tab_id_to_lane.insert(*to_tab_id, *lane_id);
+        }
     }
     s
 }

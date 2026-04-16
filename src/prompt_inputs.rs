@@ -152,7 +152,8 @@ fn infer_tlog_lane_indices(events: &[crate::events::Event]) -> Vec<usize> {
                 | crate::events::ControlEvent::LaneStepsUsedSet { lane_id, .. }
                 | crate::events::ControlEvent::ExecutorTurnRegistered { lane_id, .. }
                 | crate::events::ControlEvent::ExecutorCompletionRecovered { lane_id, .. }
-                | crate::events::ControlEvent::ExecutorCompletionTabRebound { lane_id, .. } => {
+                | crate::events::ControlEvent::ExecutorCompletionTabRebound { lane_id, .. }
+                | crate::events::ControlEvent::ExecutorSubmitAckTabRebound { lane_id, .. } => {
                     ids.insert(*lane_id);
                 }
                 crate::events::ControlEvent::ScheduledPhaseSet { .. }
@@ -231,12 +232,16 @@ fn control_event_kind_name(event: &crate::events::ControlEvent) -> &'static str 
         crate::events::ControlEvent::ExecutorCompletionTabRebound { .. } => {
             "executor_completion_tab_rebound"
         }
+        crate::events::ControlEvent::ExecutorSubmitAckTabRebound { .. } => {
+            "executor_submit_ack_tab_rebound"
+        }
     }
 }
 
 fn effect_event_kind_name(event: &crate::events::EffectEvent) -> &'static str {
     match event {
         crate::events::EffectEvent::InvariantViolation { .. } => "invariant_violation",
+        crate::events::EffectEvent::LlmErrorBoundary { .. } => "llm_error_boundary",
         crate::events::EffectEvent::CheckpointSaved { .. } => "checkpoint_saved",
         crate::events::EffectEvent::CheckpointLoaded { .. } => "checkpoint_loaded",
         crate::events::EffectEvent::BuildEvolutionAdvanced { .. } => {
