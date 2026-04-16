@@ -10,6 +10,7 @@ canon-mini-agent/SPEC.md \
 canon-mini-agent/ISSUES.json \
 canon-mini-agent/agent_state \
 canon-mini-agent/frames \
+canon-mini-agent/AUTHORITY_MATRIX.md \
 && ripdrag canon-mini-agent.tar.gz -nxa 2>/dev/null &
 
 
