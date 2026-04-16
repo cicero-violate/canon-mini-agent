@@ -1930,7 +1930,7 @@ mod tests {
                 ],
                 support_count: 5,
                 status: InvariantStatus::Promoted,
-                gates: vec!["route".to_string()],
+                gates: vec!["executor".to_string()],
                 evidence: vec![],
                 first_seen_ms: 0,
                 last_seen_ms: 1,
