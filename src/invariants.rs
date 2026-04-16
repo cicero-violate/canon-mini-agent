@@ -1758,6 +1758,7 @@ mod tests {
         save_invariants(tmp.as_path(), &file).unwrap();
 
         let mut state = HashMap::new();
+        state.insert("proposed_role".to_string(), "executor".to_string());
         state.insert("ready_tasks".to_string(), "0".to_string());
 
         let result = evaluate_invariant_gate("executor", &state, tmp.as_path());
