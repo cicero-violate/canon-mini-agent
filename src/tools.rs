@@ -1458,14 +1458,6 @@ fn render_plan_sorted_view_output(
     Ok(serde_json::to_string_pretty(&Value::Object(output))?)
 }
 
-#[cfg(test)]
-fn ensure_plan_edge_endpoints_present(from: &str, to: &str) -> Result<()> {
-    if from.is_empty() || to.is_empty() {
-        bail!("plan edge missing from/to");
-    }
-    Ok(())
-}
-
 fn insert_plan_edge_adjacency(
     adj: &mut std::collections::HashMap<String, BTreeSet<String>>,
     from: &str,

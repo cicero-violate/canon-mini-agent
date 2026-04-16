@@ -1,1 +1,1 @@
-auto-filled blocker evidence
+The requested workflow depends on canon runtime mutation semantics for PLAN.json, PLANS/OBJECTIVES.json, ISSUES.json, and derived projection refreshes, but only a read-only prompt snapshot is available here.
