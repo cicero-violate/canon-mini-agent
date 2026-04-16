@@ -1377,17 +1377,6 @@ mod tests {
         dir
     }
 
-    fn write_log(dir: &Path, entries: &[Value]) -> std::path::PathBuf {
-        let log_dir = dir.join("default");
-        std::fs::create_dir_all(&log_dir).unwrap();
-        let log_path = log_dir.join("actions.jsonl");
-        let mut f = std::fs::File::create(&log_path).unwrap();
-        for e in entries {
-            writeln!(f, "{}", e).unwrap();
-        }
-        log_path
-    }
-
     #[test]
     fn fingerprint_id_is_stable() {
         let conds = vec![

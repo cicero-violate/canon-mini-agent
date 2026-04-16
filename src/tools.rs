@@ -7773,16 +7773,6 @@ mod tests {
         std::fs::write(path, serde_json::to_string_pretty(&graph).unwrap()).unwrap();
     }
 
-    fn read_last_jsonl_record(path: &std::path::Path) -> Value {
-        let raw = std::fs::read_to_string(path).expect("read jsonl log");
-        let line = raw
-            .lines()
-            .rev()
-            .find(|line| !line.trim().is_empty())
-            .expect("jsonl log should contain at least one record");
-        serde_json::from_str(line).expect("parse jsonl record")
-    }
-
     #[test]
     fn diagnostics_apply_patch_rejects_unvalidated_ranked_failures() {
         let tmp = fresh_test_dir("rejects-unvalidated-ranked-failures");
