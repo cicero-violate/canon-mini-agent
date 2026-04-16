@@ -1245,9 +1245,23 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
 
             match transport_signal {
                 Some("assistant_message_add") => {
-                    st.turn_complete_seen.remove(&key);
-                    st.post_complete_presence.remove(&key);
-                    st.post_complete_heartbeat.remove(&key);
+                    // Do not clear post-turn-complete stall evidence just because an assistant
+                    // envelope appeared on the wire. In the observed failure mode, ChatGPT emits
+                    // a non-terminal `calpico-message-add` and then keeps sending heartbeats /
+                    // presence without ever producing an assembled terminal snapshot. Clearing the
+                    // counters here disables the only deterministic early-fail path and leaves the
+                    // caller stuck until the outer wall-clock timeout.
+                    append_outbound_event(
+                        "OUTBOUND_EARLY_SIGNAL",
+                        json!({
+                            "signal": "assistant_message_add_before_terminal_assembly",
+                            "tabId": tab_id,
+                            "turnId": turn_id,
+                            "frame_counter": st.frame_counter,
+                            "turn_complete_seen": st.turn_complete_seen.contains_key(&key),
+                            "response_pending": st.pending_resp.contains_key(&key),
+                        }),
+                    );
                 }
                 Some("turn_complete") if st.pending_resp.contains_key(&key) => {
                     let frame_counter = st.frame_counter;
