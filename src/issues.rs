@@ -436,19 +436,6 @@ pub fn rescore_all(file: &mut IssuesFile) {
     }
 }
 
-/// Read ISSUES.json and return the text of open/in-progress issues only.
-/// Returns "(no open issues)" when the file is absent or all issues are closed.
-#[cfg(test)]
-pub fn read_open_issues(workspace: &Path) -> String {
-    let issues = read_ranked_open_issues(workspace);
-    if issues.is_empty() {
-        return "(no open issues)".to_string();
-    }
-    let file = IssuesFile { version: 0, issues };
-    serde_json::to_string_pretty(&file)
-        .unwrap_or_else(|_| "(ISSUES.json is not valid JSON)".to_string())
-}
-
 /// Read ISSUES.json and return the sorted, open/in-progress issues as structured data.
 /// Returns an empty vector when the file is absent, invalid, or all issues are closed.
 pub fn read_ranked_open_issues(workspace: &Path) -> Vec<Issue> {
@@ -474,60 +461,66 @@ pub fn read_ranked_open_issues(workspace: &Path) -> Vec<Issue> {
     file.issues
 }
 
-/// Read ISSUES.json and return a small human-readable summary of the top open issues.
-/// Issues are ranked by normalized score [0.0, 1.0]; score is shown in the output
-/// so the LLM can calibrate effort against impact.
-#[cfg(test)]
-pub fn read_top_open_issues(workspace: &Path, limit: usize) -> String {
-    let issues = read_ranked_open_issues(workspace);
-    if issues.is_empty() {
-        return "(no open issues)".to_string();
-    }
-    let mut out = String::new();
-    out.push_str("Top open issues:\n");
-    let title_max_len = 120usize;
-    let location_max_len = 80usize;
-    let byte_budget = 4096usize;
-    for issue in issues.into_iter().take(limit.max(1)) {
-        let title = issue.title.trim();
-        let truncated_title = if title.len() > title_max_len {
-            format!("{}…", &title[..title_max_len])
-        } else {
-            title.to_string()
-        };
-        let location = issue.location.trim();
-        let truncated_location = if location.is_empty() {
-            String::new()
-        } else if location.len() > location_max_len {
-            format!("{}…", &location[..location_max_len])
-        } else {
-            location.to_string()
-        };
-        let loc = if truncated_location.is_empty() {
-            String::new()
-        } else {
-            format!(" ({})", truncated_location)
-        };
-        let line = format!(
-            "- [score:{:.2}] {}: {}{}\n",
-            issue.score, issue.id, truncated_title, loc
-        );
-        if out.len() + line.len() > byte_budget {
-            out.push_str("- … additional open issues omitted; use {\"action\":\"issue\",\"op\":\"read\"} for full detail\n");
-            break;
-        }
-        out.push_str(&line);
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        is_closed, load_issues_file, persist_issues_projection, read_open_issues,
-        read_top_open_issues, sweep_stale_issues, Issue, IssuesFile,
+        is_closed, load_issues_file, persist_issues_projection, read_ranked_open_issues,
+        sweep_stale_issues, Issue, IssuesFile,
     };
     use crate::{set_agent_state_dir, set_workspace};
+
+    fn render_open_issues(workspace: &Path) -> String {
+        let issues = read_ranked_open_issues(workspace);
+        if issues.is_empty() {
+            return "(no open issues)".to_string();
+        }
+        let file = IssuesFile { version: 0, issues };
+        serde_json::to_string_pretty(&file)
+            .unwrap_or_else(|_| "(ISSUES.json is not valid JSON)".to_string())
+    }
+
+    fn render_top_open_issues(workspace: &Path, limit: usize) -> String {
+        let issues = read_ranked_open_issues(workspace);
+        if issues.is_empty() {
+            return "(no open issues)".to_string();
+        }
+        let mut out = String::new();
+        out.push_str("Top open issues:\n");
+        let title_max_len = 120usize;
+        let location_max_len = 80usize;
+        let byte_budget = 4096usize;
+        for issue in issues.into_iter().take(limit.max(1)) {
+            let title = issue.title.trim();
+            let truncated_title = if title.len() > title_max_len {
+                format!("{}…", &title[..title_max_len])
+            } else {
+                title.to_string()
+            };
+            let location = issue.location.trim();
+            let truncated_location = if location.is_empty() {
+                String::new()
+            } else if location.len() > location_max_len {
+                format!("{}…", &location[..location_max_len])
+            } else {
+                location.to_string()
+            };
+            let loc = if truncated_location.is_empty() {
+                String::new()
+            } else {
+                format!(" ({})", truncated_location)
+            };
+            let line = format!(
+                "- [score:{:.2}] {}: {}{}\n",
+                issue.score, issue.id, truncated_title, loc
+            );
+            if out.len() + line.len() > byte_budget {
+                out.push_str("- … additional open issues omitted; use {\"action\":\"issue\",\"op\":\"read\"} for full detail\n");
+                break;
+            }
+            out.push_str(&line);
+        }
+        out
+    }
 
     #[test]
     fn is_closed_treats_done_like_statuses_as_closed() {
@@ -564,7 +557,7 @@ mod tests {
   ]
 }"#;
         std::fs::write(&path, raw).expect("write issues file");
-        let filtered = read_open_issues(&root);
+        let filtered = render_open_issues(&root);
         assert!(filtered.contains("\"id\": \"i_open\""));
         assert!(!filtered.contains("\"id\": \"i_done\""));
     }
@@ -585,7 +578,7 @@ mod tests {
   ]
 }"#;
         std::fs::write(&path, raw).expect("write issues file");
-        let summary = read_top_open_issues(&root, 1);
+        let summary = render_top_open_issues(&root, 1);
         assert!(summary.contains("Top open issues"));
         assert!(summary.contains("i_high"));
         assert!(!summary.contains("i_low"));
@@ -623,7 +616,7 @@ mod tests {
 
         let summary = sweep_stale_issues(&root).expect("sweep should succeed");
         assert_eq!(summary.marked_stale, 1);
-        let filtered = read_open_issues(&root);
+        let filtered = render_open_issues(&root);
         assert_eq!(filtered, "(no open issues)");
         let rewritten = std::fs::read_to_string(&path).expect("read rewritten file");
         assert!(rewritten.contains("\"freshness_status\": \"stale\""));
@@ -659,10 +652,10 @@ mod tests {
         assert_eq!(summary.marked_stale, 0);
         assert!(!summary.rewrote);
 
-        let rendered = read_open_issues(&root);
+        let rendered = render_open_issues(&root);
         assert!(rendered.contains("\"ISS-001\""));
 
-        let top = read_top_open_issues(&root, 5);
+        let top = render_top_open_issues(&root, 5);
         assert!(top.contains("Top open issues"));
         assert!(top.contains("ISS-001"));
     }
@@ -706,7 +699,7 @@ mod tests {
         assert_eq!(recovered.issues.len(), 1);
         assert_eq!(recovered.issues[0].id, "ISS-TLOG-1");
         assert!(
-            read_open_issues(&root).contains("ISS-TLOG-1"),
+            render_open_issues(&root).contains("ISS-TLOG-1"),
             "read surface should recover from the tlog snapshot"
         );
     }

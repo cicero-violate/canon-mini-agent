@@ -127,12 +127,6 @@ fn single_prediction(prediction: Value) -> Vec<Value> {
     vec![prediction]
 }
 
-fn simple_action_prediction(action: &str, intent: &str) -> Vec<Value> {
-    forward_prediction((action, intent), |(action, intent)| {
-        single_prediction(simple_action_prediction_value(action, intent))
-    })
-}
-
 fn simple_action_prediction_value(action: &str, intent: &str) -> Value {
     json!({"action": action, "intent": intent})
 }
@@ -261,7 +255,7 @@ mod tests {
 
     #[test]
     fn simple_action_prediction_preserves_action_and_intent() {
-        let prediction = simple_action_prediction("message", "keep behavior");
+        let prediction = single_prediction(simple_action_prediction_value("message", "keep behavior"));
         assert_eq!(prediction.len(), 1);
         assert_eq!(prediction[0]["action"], "message");
         assert_eq!(prediction[0]["intent"], "keep behavior");
