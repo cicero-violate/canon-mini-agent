@@ -17,14 +17,14 @@
 ///     → invariant synthesis reads blockers.json
 ///     → groups by (actor_kind, error_class)
 ///     → promotes to invariant when support_count ≥ threshold
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::canonical_writer::CanonicalWriter;
 use crate::error_class::ErrorClass;
-use crate::events::EffectEvent;
+use crate::logging::write_projection_with_artifact_effects;
 
 // ── File path ─────────────────────────────────────────────────────────────────
 
@@ -223,92 +223,9 @@ fn blockers_path(workspace: &Path) -> std::path::PathBuf {
     workspace.join(BLOCKERS_FILE)
 }
 
-fn blocker_signature(record: &BlockerRecord) -> String {
-    let canonical = serde_json::json!({
-        "id": record.id,
-        "error_class": record.error_class.as_key(),
-        "actor": record.actor,
-        "task_id": record.task_id,
-        "objective_id": record.objective_id,
-        "summary": record.summary,
-        "action_kind": record.action_kind,
-        "source": record.source,
-        "ts_ms": record.ts_ms,
-    });
-    let text = serde_json::to_string(&canonical).unwrap_or_else(|_| canonical.to_string());
-    let mut hash: u64 = 0xcbf29ce484222325;
-    for byte in text.as_bytes() {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    format!("{hash:016x}")
-}
-
-fn snapshot_file(path: &PathBuf) -> Result<Option<Vec<u8>>> {
-    if path.exists() {
-        Ok(Some(std::fs::read(path)?))
-    } else {
-        Ok(None)
-    }
-}
-
-fn restore_file(path: &PathBuf, snapshot: &Option<Vec<u8>>) -> Result<()> {
-    if let Some(bytes) = snapshot {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(path, bytes)?;
-    } else if path.exists() {
-        std::fs::remove_file(path)?;
-    }
-    Ok(())
-}
-
-fn emit_blocker_artifact_effect(
-    writer: &mut CanonicalWriter,
-    requested: bool,
-    target: &str,
-    subject: &str,
-    signature: &str,
-) -> Result<()> {
-    let effect = if requested {
-        EffectEvent::WorkspaceArtifactWriteRequested {
-            artifact: "blockers.json".to_string(),
-            op: "append".to_string(),
-            target: target.to_string(),
-            subject: subject.to_string(),
-            signature: signature.to_string(),
-        }
-    } else {
-        EffectEvent::WorkspaceArtifactWriteApplied {
-            artifact: "blockers.json".to_string(),
-            op: "append".to_string(),
-            target: target.to_string(),
-            subject: subject.to_string(),
-            signature: signature.to_string(),
-        }
-    };
-    writer.try_record_effect(effect)
-}
-
-fn try_emit_blocker_artifact_effect(
-    writer: &mut CanonicalWriter,
-    requested: bool,
-    target: &str,
-    subject: &str,
-    signature: &str,
-) -> Result<()> {
-    emit_blocker_artifact_effect(writer, requested, target, subject, signature).map_err(|err| {
-        anyhow::anyhow!(
-            "canonical effect append failed for blockers.json append {}: {err:#}",
-            subject
-        )
-    })
-}
-
 fn try_append_blocker_with_writer(
     workspace: &Path,
-    mut writer: Option<&mut CanonicalWriter>,
+    _writer: Option<&mut CanonicalWriter>,
     record: BlockerRecord,
 ) -> Result<()> {
     static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
@@ -321,17 +238,7 @@ fn try_append_blocker_with_writer(
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let snapshot = if writer.is_some() {
-        Some(snapshot_file(&path)?)
-    } else {
-        None
-    };
-    let target = path.to_string_lossy().to_string();
     let subject = record.id.clone();
-    let signature = blocker_signature(&record);
-    if let Some(writer_ref) = writer.as_deref_mut() {
-        try_emit_blocker_artifact_effect(writer_ref, true, &target, &subject, &signature)?;
-    }
 
     let raw = std::fs::read_to_string(&path).unwrap_or_default();
     let mut file: BlockersFile = if raw.trim().is_empty() {
@@ -354,23 +261,14 @@ fn try_append_blocker_with_writer(
         file.blockers.drain(0..drain_count);
     }
 
-    if let Err(err) = std::fs::write(&path, serde_json::to_string_pretty(&file)?) {
-        if let Some(snapshot) = snapshot.as_ref() {
-            let _ = restore_file(&path, snapshot);
-        }
-        return Err(err.into());
-    }
-    if let Some(writer_ref) = writer.as_deref_mut() {
-        if let Err(err) =
-            try_emit_blocker_artifact_effect(writer_ref, false, &target, &subject, &signature)
-        {
-            if let Some(snapshot) = snapshot.as_ref() {
-                let _ = restore_file(&path, snapshot);
-            }
-            return Err(err);
-        }
-    }
-    Ok(())
+    write_projection_with_artifact_effects(
+        workspace,
+        &path,
+        BLOCKERS_FILE,
+        "append",
+        &subject,
+        &serde_json::to_string_pretty(&file)?,
+    )
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

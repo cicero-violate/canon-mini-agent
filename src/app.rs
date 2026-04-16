@@ -979,7 +979,14 @@ async fn run_diagnostics_phase(
             eprintln!("[orchestrate] diagnostics ok bytes={}", result.summary_text().len());
             let new_diagnostics_text = crate::prompt_inputs::reconcile_diagnostics_report(ctx.workspace);
             let diagnostics_projection_path = ctx.workspace.join(diagnostics_file());
-            let _ = std::fs::write(&diagnostics_projection_path, &new_diagnostics_text);
+            let _ = crate::logging::write_projection_with_artifact_effects(
+                ctx.workspace,
+                &diagnostics_projection_path,
+                diagnostics_file(),
+                "write",
+                "diagnostics_reconcile_projection",
+                &new_diagnostics_text,
+            );
             writer.apply(ControlEvent::DiagnosticsTextSet {
                 text: new_diagnostics_text,
             });
