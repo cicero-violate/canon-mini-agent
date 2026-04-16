@@ -8,10 +8,9 @@ canon-mini-agent/PLAN.json \
 canon-mini-agent/src \
 canon-mini-agent/SPEC.md \
 canon-mini-agent/ISSUES.json \
+canon-mini-agent/agent_state \
+canon-mini-agent/frames \
 && ripdrag canon-mini-agent.tar.gz -nxa 2>/dev/null &
-# canon-mini-agent/agent_state \
-# canon-mini-agent/frames \
-
 
 
 # canon-mini-agent/target/debug/deps \
