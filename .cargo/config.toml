@@ -21,7 +21,7 @@ rustflags = [
 [target.'cfg(all())']
 rustflags = [
   "-Dwarnings",
-  # "-Fdead-code",
+  "-Fdead-code",
   "-Dclippy::allow_attributes",
   "-Dclippy::allow_attributes_without_reason"
 ]
