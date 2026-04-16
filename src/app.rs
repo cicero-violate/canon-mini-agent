@@ -3178,7 +3178,9 @@ fn enforce_diagnostics_python(
 }
 
 fn canonical_tlog_read_path(agent_state_dir: &std::path::Path) -> PathBuf {
-    let workspace_tlog = PathBuf::from(crate::constants::workspace()).join("tlog.ndjson");
+    let workspace_tlog = PathBuf::from(crate::constants::workspace())
+        .join("agent_state")
+        .join("tlog.ndjson");
     let agent_state_tlog = agent_state_dir.join("tlog.ndjson");
 
     let has_data = |path: &Path| {
