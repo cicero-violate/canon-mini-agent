@@ -1,16 +1,16 @@
 from pathlib import Path
-import subprocess, textwrap, json
+import subprocess, json, textwrap, os
 
 repo = Path('/mnt/data/canon-mini-agent-extracted/canon-mini-agent')
-target = repo / 'src/llm_runtime/chromium_backend.rs'
-text = target.read_text()
+os.chdir(repo)
 
+text = Path('src/llm_runtime/chromium_backend.rs').read_text()
 assert 'fn lease_token_from_value(value: &Value) -> Option<String> {' in text
-assert '        "SUBMIT_ACK" => {' in text
-assert '        // Clear frame logs so each run starts fresh.' in text
+assert 'let turn_id = match msg.get("turnId").and_then(|v| v.as_u64()) {' in text
+assert '// Clear frame logs so each run starts fresh.' in text
 
 patch = r"""*** Begin Patch
-*** Update File: /mnt/data/canon-mini-agent-extracted/canon-mini-agent/src/llm_runtime/chromium_backend.rs
+*** Update File: src/llm_runtime/chromium_backend.rs
 @@
  fn lease_token_from_value(value: &Value) -> Option<String> {
      value
@@ -77,6 +77,12 @@ patch = r"""*** Begin Patch
              let mut st = state.lock().await;
              let Some(expected_lease_token) = st.pending_turn_lease.get(&(tab_id, turn_id)).cloned() else {
 @@
+     #[test]
+     fn submit_ack_timeout_never_exceeds_total_timeout() {
+         assert_eq!(endpoint_submit_ack_timeout_secs("solo_chatgpt", 10), 10);
+         assert_eq!(endpoint_submit_ack_timeout_secs("executor_pool", 5), 5);
+     }
+ 
      #[tokio::test]
 +    async fn submit_ack_accepts_snake_case_turn_id() {
 +        let state = Arc::new(Mutex::new(State::new()));
@@ -154,6 +160,7 @@ res = subprocess.run(
     input=patch.encode(),
     stdout=subprocess.PIPE,
     stderr=subprocess.STDOUT,
+    cwd=str(repo),
 )
 print(res.stdout.decode())
 print("returncode", res.returncode)
