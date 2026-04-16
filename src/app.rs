@@ -3177,12 +3177,21 @@ fn enforce_diagnostics_python(
     None
 }
 
+fn canonical_tlog_read_path(agent_state_dir: &std::path::Path) -> PathBuf {
+    let agent_state_tlog = agent_state_dir.join("tlog.ndjson");
+    if agent_state_tlog.exists() {
+        agent_state_tlog
+    } else {
+        PathBuf::from(crate::constants::workspace()).join("tlog.ndjson")
+    }
+}
+
 fn canonical_inbound_message_from_tlog(
     agent_state_dir: &std::path::Path,
     state: &SystemState,
     role: &str,
 ) -> Option<(String, String)> {
-    let tlog_path = agent_state_dir.join("tlog.ndjson");
+    let tlog_path = canonical_tlog_read_path(agent_state_dir);
     let records = Tlog::read_records(&tlog_path).ok()?;
     let mut latest: Option<(u64, String, String)> = None;
     for record in records {
@@ -3224,7 +3233,7 @@ fn latest_inbound_message_from_tlog(
     agent_state_dir: &std::path::Path,
     role: &str,
 ) -> Option<(String, String)> {
-    let tlog_path = agent_state_dir.join("tlog.ndjson");
+    let tlog_path = canonical_tlog_read_path(agent_state_dir);
     let records = Tlog::read_records(&tlog_path).ok()?;
     let mut latest: Option<(u64, String, String)> = None;
     for record in records {
@@ -3284,7 +3293,7 @@ fn take_inbound_message_without_writer(role: &str) -> Option<String> {
         .to_lowercase()
         .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
-    let tlog_path = agent_state_dir.join("tlog.ndjson");
+    let tlog_path = canonical_tlog_read_path(agent_state_dir);
     let state = Tlog::replay(&tlog_path, SystemState::new(&[], 0)).ok();
     let canonical = state
         .as_ref()
@@ -3319,7 +3328,7 @@ fn canonical_external_user_message_from_tlog(
     state: &SystemState,
     role: &str,
 ) -> Option<(String, String)> {
-    let tlog_path = agent_state_dir.join("tlog.ndjson");
+    let tlog_path = canonical_tlog_read_path(agent_state_dir);
     let records = Tlog::read_records(&tlog_path).ok()?;
     let mut latest: Option<(u64, String, String)> = None;
     for record in records {
@@ -3360,7 +3369,7 @@ fn latest_external_user_message_from_tlog(
     agent_state_dir: &std::path::Path,
     role: &str,
 ) -> Option<(String, String)> {
-    let tlog_path = agent_state_dir.join("tlog.ndjson");
+    let tlog_path = canonical_tlog_read_path(agent_state_dir);
     let records = Tlog::read_records(&tlog_path).ok()?;
     let mut latest: Option<(u64, String, String)> = None;
     for record in records {
@@ -3419,7 +3428,7 @@ fn take_external_user_message_without_writer(role: &str) -> Option<String> {
         .to_lowercase()
         .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
-    let tlog_path = agent_state_dir.join("tlog.ndjson");
+    let tlog_path = canonical_tlog_read_path(agent_state_dir);
     let state = Tlog::replay(&tlog_path, SystemState::new(&[], 0)).ok();
     let canonical = state
         .as_ref()
