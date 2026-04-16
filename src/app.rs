@@ -3178,11 +3178,21 @@ fn enforce_diagnostics_python(
 }
 
 fn canonical_tlog_read_path(agent_state_dir: &std::path::Path) -> PathBuf {
+    let workspace_tlog = PathBuf::from(crate::constants::workspace()).join("tlog.ndjson");
     let agent_state_tlog = agent_state_dir.join("tlog.ndjson");
-    if agent_state_tlog.exists() {
+
+    let has_data = |path: &Path| {
+        std::fs::metadata(path)
+            .map(|meta| meta.is_file() && meta.len() > 0)
+            .unwrap_or(false)
+    };
+
+    if has_data(&workspace_tlog) {
+        workspace_tlog
+    } else if has_data(&agent_state_tlog) || agent_state_tlog.exists() {
         agent_state_tlog
     } else {
-        PathBuf::from(crate::constants::workspace()).join("tlog.ndjson")
+        workspace_tlog
     }
 }
 
