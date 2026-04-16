@@ -29,7 +29,7 @@ use crate::constants::{
     VIOLATIONS_FILE, WS_PORT_CANDIDATES,
 };
 use crate::engine::process_action_and_execute;
-use crate::events::ControlEvent;
+use crate::events::{ControlEvent, EffectEvent, Event};
 use crate::issues::IssuesFile;
 use crate::invalid_action::{
     auto_fill_message_fields, build_invalid_action_feedback, corrective_invalid_action_prompt,
@@ -627,7 +627,7 @@ async fn run_planner_phase(
             &inputs.cargo_test_failures,
         )
     };
-    inject_inbound_message(&mut planner_prompt, "planner");
+    inject_inbound_message(&mut planner_prompt, writer, "planner");
     trace_orchestrator_forwarded("orchestrator", "planner", "planner", None, None, None, None);
     let planner_system = system_instructions(AgentPromptKind::Planner);
     let send_system_prompt = if restart_resume.is_some() {
@@ -786,7 +786,7 @@ async fn run_solo_phase(
             &loop_context_hint,
         )
     };
-    inject_inbound_message(&mut prompt, "solo");
+    inject_inbound_message(&mut prompt, writer, "solo");
     trace_orchestrator_forwarded("orchestrator", "solo", "solo", None, None, None, None);
     let solo_system = system_instructions(AgentPromptKind::Solo);
     let send_system_prompt = if restart_resume.is_some() {
@@ -942,7 +942,7 @@ async fn run_diagnostics_phase(
     } else {
         diagnostics_cycle_prompt(&summary_text, cargo_test_failures)
     };
-    inject_inbound_message(&mut prompt, "diagnostics");
+    inject_inbound_message(&mut prompt, writer, "diagnostics");
     trace_orchestrator_forwarded(
         "verifier",
         "diagnostics",
@@ -1051,7 +1051,7 @@ async fn run_verifier_phase(
                 &prompt_inputs.cargo_test_failures,
             )
         };
-        if let Some(inbound) = take_inbound_message("verifier") {
+        if let Some(inbound) = take_inbound_message(writer, "verifier") {
             if let Some((_, to, payload)) = try_parse_blocker(&inbound) {
                 let fields = normalize_blocker_fields(&payload);
                 let verifier_specific =
@@ -3130,7 +3130,81 @@ fn enforce_diagnostics_python(
     None
 }
 
-fn take_inbound_message(role: &str) -> Option<String> {
+fn canonical_inbound_message_from_tlog(
+    agent_state_dir: &std::path::Path,
+    state: &SystemState,
+    role: &str,
+) -> Option<(String, String)> {
+    let tlog_path = agent_state_dir.join("tlog.ndjson");
+    let records = Tlog::read_records(&tlog_path).ok()?;
+    let mut latest: Option<(u64, String, String)> = None;
+    for record in records {
+        let Event::Effect {
+            event:
+                EffectEvent::InboundMessageRecorded {
+                    to_role,
+                    message,
+                    signature,
+                    ..
+                },
+        } = record.event
+        else {
+            continue;
+        };
+        if to_role != role {
+            continue;
+        }
+        if state
+            .inbound_message_signatures
+            .get(role)
+            .map(String::as_str)
+            == Some(signature.as_str())
+        {
+            continue;
+        }
+        let replace = match latest.as_ref() {
+            None => true,
+            Some((seq, _, _)) => record.seq >= *seq,
+        };
+        if replace {
+            latest = Some((record.seq, signature, message));
+        }
+    }
+    latest.map(|(_, signature, message)| (signature, message))
+}
+
+fn take_inbound_message(writer: &mut CanonicalWriter, role: &str) -> Option<String> {
+    let role_key = role
+        .trim()
+        .to_lowercase()
+        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
+    let path = agent_state_dir.join(format!("last_message_to_{role_key}.json"));
+    if let Some((signature, message)) =
+        canonical_inbound_message_from_tlog(agent_state_dir, writer.state(), &role_key)
+    {
+        let trimmed = message.trim().to_string();
+        writer.apply(ControlEvent::InboundMessageConsumed {
+            role: role_key.clone(),
+            signature,
+        });
+        let _ = std::fs::remove_file(&path);
+        if trimmed.is_empty() {
+            return None;
+        }
+        return Some(trimmed);
+    }
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let trimmed = raw.trim().to_string();
+    if trimmed.is_empty() {
+        let _ = std::fs::remove_file(&path);
+        return None;
+    }
+    let _ = std::fs::remove_file(&path);
+    Some(trimmed)
+}
+
+fn take_inbound_message_projection(role: &str) -> Option<String> {
     let role_key = role
         .trim()
         .to_lowercase()
@@ -3270,12 +3344,12 @@ fn inbound_message_from_user(inbound: &str) -> bool {
         .is_some_and(|from| from.eq_ignore_ascii_case("user"))
 }
 
-fn inject_inbound_message(prompt: &mut String, role: &str) {
+fn inject_inbound_message(prompt: &mut String, writer: &mut CanonicalWriter, role: &str) {
     if let Some(inbound) = take_external_user_message(role) {
         append_external_user_message_to_prompt(prompt, &inbound);
         return;
     }
-    if let Some(inbound) = take_inbound_message(role) {
+    if let Some(inbound) = take_inbound_message(writer, role) {
         append_inbound_to_prompt(prompt, &inbound);
     }
 }
@@ -3369,14 +3443,16 @@ fn apply_lane_pending_if_changed(
 }
 
 fn apply_wake_flags(agent_state_dir: &std::path::Path, writer: &mut CanonicalWriter) {
-    let (inputs, path_map) = collect_wake_flag_inputs(agent_state_dir);
+    let state_snapshot = writer.state().clone();
+    let (inputs, path_map, signature_map) =
+        collect_wake_flag_inputs(agent_state_dir, &state_snapshot);
     let wake_inputs_debug = inputs
         .iter()
         .map(|input| format!("{}@{}", input.role, input.modified_ms))
         .collect::<Vec<_>>()
         .join(", ");
 
-    let semantic_control = SemanticControlState::from_system_state(writer.state(), false, false);
+    let semantic_control = SemanticControlState::from_system_state(&state_snapshot, false, false);
     let decision = semantic_control.wake_decision(&inputs);
     let Some(role) = decision.scheduled_phase.as_deref() else {
         return;
@@ -3389,6 +3465,7 @@ fn apply_wake_flags(agent_state_dir: &std::path::Path, writer: &mut CanonicalWri
 
     apply_scheduled_phase_if_changed(writer, Some(role));
     let wake_flag_path = path_map.get(role).cloned();
+    let wake_signature = signature_map.get(role).cloned();
     let mut clear_wake_flag = !decision.executor_wake;
     if decision.planner_pending {
         apply_planner_pending_if_changed(writer, true);
@@ -3436,6 +3513,14 @@ fn apply_wake_flags(agent_state_dir: &std::path::Path, writer: &mut CanonicalWri
             wake_inputs_debug,
         );
     }
+    if clear_wake_flag {
+        if let Some(signature) = wake_signature {
+            writer.apply(ControlEvent::WakeSignalConsumed {
+                role: role.to_string(),
+                signature,
+            });
+        }
+    }
     if let Some(path) = wake_flag_path {
         if clear_wake_flag {
             clear_repeated_executor_deferred_log_memory(role);
@@ -3480,11 +3565,65 @@ fn repeated_executor_deferred_log_memory(
     LAST_DEFERRED_BY_ROLE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
 
+fn wake_role_for_artifact(artifact: &str) -> Option<&'static str> {
+    match artifact {
+        "agent_state/wakeup_planner.flag" => Some("planner"),
+        "agent_state/wakeup_solo.flag" => Some("solo"),
+        "agent_state/wakeup_verifier.flag" => Some("verifier"),
+        "agent_state/wakeup_diagnostics.flag" => Some("diagnostics"),
+        "agent_state/wakeup_executor.flag" => Some("executor"),
+        _ => None,
+    }
+}
+
+fn canonical_wake_signatures_from_tlog(
+    agent_state_dir: &std::path::Path,
+    state: &SystemState,
+) -> std::collections::HashMap<&'static str, (u64, String)> {
+    let mut by_role = std::collections::HashMap::new();
+    let tlog_path = agent_state_dir.join("tlog.ndjson");
+    let records = Tlog::read_records(&tlog_path).unwrap_or_default();
+    for record in records {
+        let Event::Effect {
+            event:
+                EffectEvent::WorkspaceArtifactWriteApplied {
+                    artifact,
+                    signature,
+                    ..
+                },
+        } = record.event
+        else {
+            continue;
+        };
+        let Some(role) = wake_role_for_artifact(&artifact) else {
+            continue;
+        };
+        if state
+            .wake_signal_signatures
+            .get(role)
+            .map(String::as_str)
+            == Some(signature.as_str())
+        {
+            continue;
+        }
+        let replace = match by_role.get(role) {
+            None => true,
+            Some((existing_ts_ms, _)) => record.ts_ms >= *existing_ts_ms,
+        };
+        if replace {
+            by_role.insert(role, (record.ts_ms, signature));
+        }
+    }
+    by_role
+}
+
 fn collect_wake_flag_inputs(
     agent_state_dir: &std::path::Path,
+    state: &SystemState,
 ) -> (
     Vec<WakeFlagInput>,
     std::collections::HashMap<&'static str, std::path::PathBuf>,
+    std::collections::HashMap<&'static str, String>,
 ) {
     let flag_paths = [
         ("planner", agent_state_dir.join("wakeup_planner.flag")),
@@ -3499,8 +3638,17 @@ fn collect_wake_flag_inputs(
 
     let mut inputs = Vec::new();
     let mut path_map = std::collections::HashMap::new();
+    let mut signature_map = std::collections::HashMap::new();
+    let canonical_signals = canonical_wake_signatures_from_tlog(agent_state_dir, state);
+    for (role, (modified_ms, signature)) in canonical_signals {
+        inputs.push(WakeFlagInput { role, modified_ms });
+        signature_map.insert(role, signature);
+    }
     for (role, path) in flag_paths {
-        if !path.exists() {
+        if path.exists() {
+            path_map.insert(role, path.clone());
+        }
+        if signature_map.contains_key(role) || !path.exists() {
             continue;
         }
         let modified_ms = path
@@ -3513,10 +3661,9 @@ fn collect_wake_flag_inputs(
             })
             .unwrap_or(0);
         inputs.push(WakeFlagInput { role, modified_ms });
-        path_map.insert(role, path);
     }
 
-    (inputs, path_map)
+    (inputs, path_map, signature_map)
 }
 
 fn try_parse_blocker(raw: &str) -> Option<(String, String, Value)> {
@@ -5268,7 +5415,11 @@ async fn submit_executor_turn(
             &ready_tasks,
         )
     };
-    inject_inbound_message(&mut exec_prompt, "executor");
+    if let Some(inbound) = take_external_user_message("executor") {
+        append_external_user_message_to_prompt(&mut exec_prompt, &inbound);
+    } else if let Some(inbound) = take_inbound_message_projection("executor") {
+        append_inbound_to_prompt(&mut exec_prompt, &inbound);
+    }
     let executor_system = system_instructions(AgentPromptKind::Executor);
     let role_schema = if should_send_system_prompt(send_system_prompt, endpoint.stateful, 0) {
         executor_system

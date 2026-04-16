@@ -6,8 +6,12 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, serde::Deserialize)]
-struct TlogRecord {
-    event: Event,
+pub struct TlogRecord {
+    #[serde(default)]
+    pub seq: u64,
+    #[serde(default)]
+    pub ts_ms: u64,
+    pub event: Event,
 }
 
 /// Total-ordered, append-only log of all system events.
@@ -65,16 +69,23 @@ impl Tlog {
     }
 
     pub fn read_events(path: &Path) -> Result<Vec<Event>> {
+        Ok(Self::read_records(path)?
+            .into_iter()
+            .map(|record| record.event)
+            .collect())
+    }
+
+    pub fn read_records(path: &Path) -> Result<Vec<TlogRecord>> {
         if !path.exists() {
             return Ok(Vec::new());
         }
         let raw = std::fs::read_to_string(path)?;
-        let mut events = Vec::new();
+        let mut records = Vec::new();
         for line in raw.lines().filter(|line| !line.trim().is_empty()) {
             let record: TlogRecord = serde_json::from_str(line)?;
-            events.push(record.event);
+            records.push(record);
         }
-        Ok(events)
+        Ok(records)
     }
 
     pub fn replay(path: &Path, initial: SystemState) -> Result<SystemState> {

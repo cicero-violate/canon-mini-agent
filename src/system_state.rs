@@ -47,6 +47,10 @@ pub struct SystemState {
     #[serde(default)]
     pub active_blocker_to_verifier: bool,
     pub diagnostics_text: String,
+    #[serde(default)]
+    pub inbound_message_signatures: HashMap<String, String>,
+    #[serde(default)]
+    pub wake_signal_signatures: HashMap<String, String>,
 
     // Rolling diff/plan state fed back into prompts
     pub last_plan_text: String,
@@ -200,6 +204,14 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
         }
         ControlEvent::DiagnosticsTextSet { text } => {
             s.diagnostics_text = text.clone();
+        }
+        ControlEvent::InboundMessageConsumed { role, signature } => {
+            s.inbound_message_signatures
+                .insert(role.clone(), signature.clone());
+        }
+        ControlEvent::WakeSignalConsumed { role, signature } => {
+            s.wake_signal_signatures
+                .insert(role.clone(), signature.clone());
         }
         ControlEvent::LastPlanTextSet { text } => {
             s.last_plan_text = text.clone();

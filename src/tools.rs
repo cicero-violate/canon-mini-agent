@@ -200,6 +200,17 @@ fn record_workspace_artifact_effect_for_workspace(
     )
 }
 
+fn record_effect_for_workspace(workspace: &Path, effect: crate::events::EffectEvent) -> Result<()> {
+    let tlog_path = std::path::Path::new(crate::constants::agent_state_dir()).join("tlog.ndjson");
+    let state = crate::system_state::SystemState::new(&[], 0);
+    let mut writer = crate::canonical_writer::CanonicalWriter::try_new(
+        state,
+        crate::tlog::Tlog::open(&tlog_path),
+        workspace.to_path_buf(),
+    )?;
+    writer.try_record_effect(effect)
+}
+
 fn write_projection_with_workspace_effects(
     workspace: &Path,
     path: &Path,
@@ -7524,6 +7535,13 @@ fn persist_inbound_message(
         .trim()
         .to_lowercase()
         .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+    let message_signature = artifact_write_signature(&[
+        "inbound_message",
+        role,
+        &to,
+        &full_message.len().to_string(),
+        full_message,
+    ]);
     let is_redundant_solo_self_complete = role.eq_ignore_ascii_case("solo")
         && to == "solo"
         && action.get("action").and_then(|v| v.as_str()) == Some("message")
@@ -7533,6 +7551,20 @@ fn persist_inbound_message(
             .is_some_and(|status| status.eq_ignore_ascii_case("complete"));
     if is_redundant_solo_self_complete {
         return;
+    }
+    if let Err(err) = record_effect_for_workspace(
+        workspace,
+        crate::events::EffectEvent::InboundMessageRecorded {
+            from_role: role.to_string(),
+            to_role: to.clone(),
+            message: full_message.to_string(),
+            signature: message_signature,
+        },
+    ) {
+        eprintln!(
+            "[{role}] step={} failed to record canonical inbound message for {}: {}",
+            step, to, err
+        );
     }
     // Self-loop guard: any role sending a message to itself creates a wake-flag loop
     // identical to the executor→executor bug fixed in persist_executor_completion_message.

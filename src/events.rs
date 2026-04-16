@@ -95,6 +95,14 @@ pub enum ControlEvent {
         lane_id: usize,
         steps: usize,
     },
+    InboundMessageConsumed {
+        role: String,
+        signature: String,
+    },
+    WakeSignalConsumed {
+        role: String,
+        signature: String,
+    },
 
     // --- Submitted turn tracking (serializable subset) ---
     ExecutorTurnRegistered {
@@ -169,6 +177,12 @@ pub enum EffectEvent {
         op: String,
         target: String,
         subject: String,
+        signature: String,
+    },
+    InboundMessageRecorded {
+        from_role: String,
+        to_role: String,
+        message: String,
         signature: String,
     },
 }

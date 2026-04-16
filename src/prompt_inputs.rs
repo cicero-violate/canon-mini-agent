@@ -165,6 +165,8 @@ fn infer_tlog_lane_indices(events: &[crate::events::Event]) -> Vec<usize> {
                 | crate::events::ControlEvent::VerifierBlockerSet { .. }
                 | crate::events::ControlEvent::DiagnosticsVerifierFollowupQueued
                 | crate::events::ControlEvent::DiagnosticsTextSet { .. }
+                | crate::events::ControlEvent::InboundMessageConsumed { .. }
+                | crate::events::ControlEvent::WakeSignalConsumed { .. }
                 | crate::events::ControlEvent::LastPlanTextSet { .. }
                 | crate::events::ControlEvent::LastExecutorDiffSet { .. }
                 | crate::events::ControlEvent::LastSoloPlanTextSet { .. }
@@ -197,6 +199,10 @@ fn control_event_kind_name(event: &crate::events::ControlEvent) -> &'static str 
             "diagnostics_verifier_followup_queued"
         }
         crate::events::ControlEvent::DiagnosticsTextSet { .. } => "diagnostics_text_set",
+        crate::events::ControlEvent::InboundMessageConsumed { .. } => {
+            "inbound_message_consumed"
+        }
+        crate::events::ControlEvent::WakeSignalConsumed { .. } => "wake_signal_consumed",
         crate::events::ControlEvent::LastPlanTextSet { .. } => "last_plan_text_set",
         crate::events::ControlEvent::LastExecutorDiffSet { .. } => "last_executor_diff_set",
         crate::events::ControlEvent::LastSoloPlanTextSet { .. } => "last_solo_plan_text_set",
@@ -253,6 +259,7 @@ fn effect_event_kind_name(event: &crate::events::EffectEvent) -> &'static str {
         crate::events::EffectEvent::WorkspaceArtifactWriteApplied { .. } => {
             "workspace_artifact_write_applied"
         }
+        crate::events::EffectEvent::InboundMessageRecorded { .. } => "inbound_message_recorded",
     }
 }
 
