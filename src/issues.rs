@@ -468,6 +468,7 @@ mod tests {
         sweep_stale_issues, Issue, IssuesFile,
     };
     use crate::{set_agent_state_dir, set_workspace};
+    use std::path::Path;
 
     fn render_open_issues(workspace: &Path) -> String {
         let issues = read_ranked_open_issues(workspace);

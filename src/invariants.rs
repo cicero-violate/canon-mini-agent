@@ -1377,7 +1377,6 @@ mod tests {
         dir
     }
 
-    #[allow(dead_code)]
     fn write_log(dir: &Path, entries: &[Value]) -> std::path::PathBuf {
         let log_dir = dir.join("default");
         std::fs::create_dir_all(&log_dir).unwrap();

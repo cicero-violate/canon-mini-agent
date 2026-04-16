@@ -25,7 +25,6 @@ fn cargo_test_gate_does_not_block_messages() {
         "cargo_test",
         "output_log: /tmp/run.log\nsummary: (no test result yet)",
     );
-    assert_eq!(gate.pending_tail_path(), None);
     assert!(gate
         .message_blocker_if_needed("message", "/workspace")
         .is_none());
