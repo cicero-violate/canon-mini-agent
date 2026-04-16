@@ -339,7 +339,7 @@ fn classify_calpico_value(v: &Value) -> FrameResult {
         return classify_chatgpt_group(chunk);
     }
     if let Some(items) = obj.get("items").and_then(|i| i.as_array()) {
-        let result = classify_calpico_array(items);
+        let result = classify_calpico_items(items);
         if !matches!(result, FrameResult::Ignore) {
             return result;
         }
@@ -360,6 +360,32 @@ fn classify_calpico_array(arr: &[Value]) -> FrameResult {
         let result = classify_calpico_envelope(envelope);
         if !matches!(result, FrameResult::Ignore) {
             return result;
+        }
+    }
+    FrameResult::Ignore
+}
+
+fn classify_calpico_items(items: &[Value]) -> FrameResult {
+    for item in items {
+        let result = classify_calpico_envelope(item);
+        if !matches!(result, FrameResult::Ignore) {
+            return result;
+        }
+
+        let Some(role) = item.get("role").and_then(|r| r.as_str()) else {
+            continue;
+        };
+        if role != "assistant" {
+            continue;
+        }
+
+        let text = item
+            .get("content")
+            .and_then(|c| c.get("text"))
+            .and_then(|t| t.as_str())
+            .unwrap_or("");
+        if !text.is_empty() {
+            return FrameResult::Snapshot(text.to_string());
         }
     }
     FrameResult::Ignore
@@ -503,6 +529,15 @@ mod tests {
         let raw = r#"{"id":"msg","role":"assistant","raw_messages":[{"author":{"role":"assistant"},"channel":"final","content":{"parts":["```json\n{\"action\":\"message\"}\n```"]}}]}"#;
         match classify_frame(SiteType::ChatGptGroup, raw) {
             FrameResult::Snapshot(text) => assert!(text.contains(r#""action":"message""#)),
+            other => panic!("expected snapshot, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn chatgpt_group_parses_room_read_assistant_snapshot_items() {
+        let raw = r#"{"items":[{"id":"msg","role":"assistant","content":{"text":"```json\n{\"action\":\"python\"}\n```"}}]}"#;
+        match classify_frame(SiteType::ChatGptGroup, raw) {
+            FrameResult::Snapshot(text) => assert!(text.contains(r#""action":"python""#)),
             other => panic!("expected snapshot, got {other:?}"),
         }
     }
