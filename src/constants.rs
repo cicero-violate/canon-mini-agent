@@ -1,4 +1,4 @@
-use std::sync::{OnceLock, RwLock};
+use std::sync::OnceLock;
 
 pub const DEFAULT_WORKSPACE: &str = "/workspace/ai_sandbox/canon";
 pub const SPEC_FILE: &str = "SPEC.md";
@@ -30,7 +30,7 @@ pub const ROLE_TIMEOUT_SECS: &[(&str, u64)] = &[
     ("solo", 900),
 ];
 
-static WORKSPACE_PATH: OnceLock<RwLock<String>> = OnceLock::new();
+static WORKSPACE_PATH: OnceLock<String> = OnceLock::new();
 
 // ── Active plan task tracking ─────────────────────────────────────────────────
 //
@@ -61,10 +61,7 @@ pub fn active_task_id() -> String {
 /// Set the target workspace path from the --workspace CLI argument.
 /// Must be called once before any call to `workspace()`.
 pub fn set_workspace(path: String) {
-    let lock = WORKSPACE_PATH.get_or_init(|| RwLock::new(DEFAULT_WORKSPACE.to_string()));
-    if let Ok(mut guard) = lock.write() {
-        *guard = path;
-    }
+    let _ = WORKSPACE_PATH.set(path);
 }
 
 /// Returns the active target workspace path.
@@ -72,8 +69,7 @@ pub fn set_workspace(path: String) {
 pub fn workspace() -> &'static str {
     WORKSPACE_PATH
         .get()
-        .and_then(|lock| lock.read().ok())
-        .map(|guard| Box::leak(guard.clone().into_boxed_str()) as &'static str)
+        .map(String::as_str)
         .unwrap_or(DEFAULT_WORKSPACE)
 }
 
@@ -83,14 +79,11 @@ pub fn workspace() -> &'static str {
 /// Override with --state-dir <path>.
 pub const DEFAULT_AGENT_STATE_DIR: &str = "/workspace/ai_sandbox/canon-mini-agent/agent_state";
 
-static AGENT_STATE_DIR_PATH: OnceLock<RwLock<String>> = OnceLock::new();
+static AGENT_STATE_DIR_PATH: OnceLock<String> = OnceLock::new();
 
 /// Set the agent state directory from the --state-dir CLI argument.
 pub fn set_agent_state_dir(path: String) {
-    let lock = AGENT_STATE_DIR_PATH.get_or_init(|| RwLock::new(DEFAULT_AGENT_STATE_DIR.to_string()));
-    if let Ok(mut guard) = lock.write() {
-        *guard = path;
-    }
+    let _ = AGENT_STATE_DIR_PATH.set(path);
 }
 
 /// Returns the active agent state directory path.
@@ -99,8 +92,7 @@ pub fn set_agent_state_dir(path: String) {
 pub fn agent_state_dir() -> &'static str {
     AGENT_STATE_DIR_PATH
         .get()
-        .and_then(|lock| lock.read().ok())
-        .map(|guard| Box::leak(guard.clone().into_boxed_str()) as &'static str)
+        .map(String::as_str)
         .unwrap_or(DEFAULT_AGENT_STATE_DIR)
 }
 
