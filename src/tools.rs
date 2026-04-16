@@ -808,42 +808,20 @@ fn load_violations(path: &Path) -> Result<crate::reports::ViolationsReport> {
 fn save_violations(
     path: &Path,
     report: &crate::reports::ViolationsReport,
-    mut writer: Option<&mut CanonicalWriter>,
+    _writer: Option<&mut CanonicalWriter>,
     op: &str,
     subject: &str,
 ) -> Result<()> {
     let json = serde_json::to_string_pretty(report)?;
-    let signature =
-        artifact_write_signature(&["VIOLATIONS.json", op, subject, &json.len().to_string()]);
-    let target = path.to_string_lossy().into_owned();
-    if let Some(writer) = writer.as_mut() {
-        try_emit_workspace_artifact_effect(
-            writer,
-            true,
-            "VIOLATIONS.json",
-            op,
-            &target,
-            subject,
-            &signature,
-        )?;
-    }
-    let snapshot = file_snapshot(path)?;
-    fs::write(path, json).map_err(|e| anyhow!("failed to write VIOLATIONS.json: {e}"))?;
-    if let Some(writer) = writer.as_mut() {
-        if let Err(err) = try_emit_workspace_artifact_effect(
-            writer,
-            false,
-            "VIOLATIONS.json",
-            op,
-            &target,
-            subject,
-            &signature,
-        ) {
-            restore_file_snapshot(path, &snapshot)?;
-            return Err(err);
-        }
-    }
-    Ok(())
+    crate::logging::write_projection_with_artifact_effects(
+        std::path::Path::new(crate::constants::workspace()),
+        path,
+        "VIOLATIONS.json",
+        op,
+        subject,
+        &json,
+    )
+    .map_err(|e| anyhow!("failed to write VIOLATIONS.json: {e}"))
 }
 
 fn handle_violation_action(
@@ -1277,9 +1255,12 @@ fn set_issue_status(
 
 fn queue_diagnostics_reconciliation() {
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
-    let _ = std::fs::create_dir_all(agent_state_dir);
-    let _ = std::fs::write(
-        agent_state_dir.join("wakeup_diagnostics.flag"),
+    let wake_path = agent_state_dir.join("wakeup_diagnostics.flag");
+    let _ = write_projection_with_workspace_effects(
+        std::path::Path::new(crate::constants::workspace()),
+        &wake_path,
+        "agent_state/wakeup_diagnostics.flag",
+        "issues_changed_wakeup",
         "issues_changed",
     );
 }
@@ -1307,42 +1288,21 @@ fn find_issue_mut<'a>(file: &'a mut IssuesFile, issue_id: &str) -> Result<&'a mu
 fn write_issues_file(
     path: &Path,
     file: &mut IssuesFile,
-    mut writer: Option<&mut CanonicalWriter>,
+    _writer: Option<&mut CanonicalWriter>,
     op: &str,
     subject: &str,
 ) -> Result<()> {
     crate::issues::rescore_all(file);
     let raw = serde_json::to_string_pretty(file)?;
-    let signature = artifact_write_signature(&["ISSUES.json", op, subject, &raw.len().to_string()]);
-    let target = path.to_string_lossy().into_owned();
-    if let Some(writer) = writer.as_mut() {
-        try_emit_workspace_artifact_effect(
-            writer,
-            true,
-            "ISSUES.json",
-            op,
-            &target,
-            subject,
-            &signature,
-        )?;
-    }
-    let snapshot = file_snapshot(path)?;
-    std::fs::write(path, raw).map_err(|e| anyhow!("failed to write ISSUES.json: {e}"))?;
-    if let Some(writer) = writer.as_mut() {
-        if let Err(err) = try_emit_workspace_artifact_effect(
-            writer,
-            false,
-            "ISSUES.json",
-            op,
-            &target,
-            subject,
-            &signature,
-        ) {
-            restore_file_snapshot(path, &snapshot)?;
-            return Err(err);
-        }
-    }
-    Ok(())
+    crate::logging::write_projection_with_artifact_effects(
+        std::path::Path::new(crate::constants::workspace()),
+        path,
+        "ISSUES.json",
+        op,
+        subject,
+        &raw,
+    )
+    .map_err(|e| anyhow!("failed to write ISSUES.json: {e}"))
 }
 
 fn handle_plan_sorted_view_action(workspace: &Path) -> Result<(bool, String)> {
@@ -3324,7 +3284,14 @@ fn reject_unvalidated_diagnostics_persistence(
         return Ok(None);
     }
     if let Some(previous) = previous_diagnostics_text {
-        std::fs::write(&diagnostics_path, previous)?;
+        crate::logging::write_projection_with_artifact_effects(
+            workspace,
+            &diagnostics_path,
+            diagnostics_target_path.unwrap_or(diagnostics_file()),
+            "write",
+            "diagnostics_rejection_restore",
+            &previous,
+        )?;
     }
     let rejection_msg = format!(
         "apply_patch rejected: DIAGNOSTICS.json is a derived cache view and must match the rendered diagnostics projection from the current workspace issue/violation views.\n\

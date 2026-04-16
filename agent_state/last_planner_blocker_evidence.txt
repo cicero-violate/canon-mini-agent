@@ -1,1 +1,1 @@
-plan actions derived from diagnostics must cite same-cycle source evidence in observation/rationale (for example read_file, run_command, python, or verified current source evidence)
+invariant gate blocked role `executor`: Role `executor` repeatedly encounters `llm_timeout`: LLM endpoint call timed out or returned a connection error [id=INV-10b73fb9]
