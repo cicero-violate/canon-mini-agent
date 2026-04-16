@@ -1,7 +1,6 @@
 use crate::canonical_writer::CanonicalWriter;
 use crate::llm_runtime::config::LlmEndpoint;
 use anyhow::{anyhow, bail, Context, Result};
-use canon_tools_patch::apply_patch;
 use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind, SyntaxToken};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -29,6 +28,7 @@ use crate::prompts::truncate;
 use crate::tool_schema::{
     plan_set_plan_status_action_example, plan_set_task_status_action_example,
 };
+use crate::canon_tools_patch::apply_patch;
 
 /// Return a human-readable type name for a JSON value (used in validation error messages).
 fn value_type_name(v: &Value) -> &'static str {
@@ -3648,7 +3648,7 @@ fn handle_apply_patch_success(
     schema_snapshots: &[(String, Option<String>)],
     writer: &mut Option<&mut CanonicalWriter>,
     snapshots: &std::collections::BTreeMap<PathBuf, Option<Vec<u8>>>,
-    affected: &canon_tools_patch::AffectedPaths,
+    affected: &crate::canon_tools_patch::AffectedPaths,
     patch_signature: &str,
 ) -> Result<(bool, String)> {
     if let Some(result) = reject_unvalidated_diagnostics_persistence(

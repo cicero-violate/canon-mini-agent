@@ -132,6 +132,12 @@ pub enum EffectEvent {
         proposed_role: String,
         reason: String,
     },
+    BuildEvolutionAdvanced {
+        evolution: u64,
+        command: String,
+        git_commit: Option<String>,
+        git_commit_count: Option<u64>,
+    },
     CheckpointSaved {
         phase: String,
     },

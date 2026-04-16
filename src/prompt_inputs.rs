@@ -239,6 +239,9 @@ fn effect_event_kind_name(event: &crate::events::EffectEvent) -> &'static str {
         crate::events::EffectEvent::InvariantViolation { .. } => "invariant_violation",
         crate::events::EffectEvent::CheckpointSaved { .. } => "checkpoint_saved",
         crate::events::EffectEvent::CheckpointLoaded { .. } => "checkpoint_loaded",
+        crate::events::EffectEvent::BuildEvolutionAdvanced { .. } => {
+            "build_evolution_advanced"
+        }
         crate::events::EffectEvent::WorkspaceArtifactWriteRequested { .. } => {
             "workspace_artifact_write_requested"
         }

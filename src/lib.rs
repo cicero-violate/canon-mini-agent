@@ -1,12 +1,14 @@
 #![allow(dead_code)]
 
 mod action_examples;
+pub mod canon_tools_patch;
 pub mod app;
 pub mod blockers;
 pub mod complexity;
 mod constants;
 mod engine;
 pub mod error_class;
+pub mod evolution;
 pub mod inter_complexity;
 pub mod invalid_action;
 pub mod invariants;

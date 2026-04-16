@@ -18,6 +18,7 @@ struct TlogRecord {
 pub struct Tlog {
     path: PathBuf,
     seq: u64,
+    evolution: u64,
 }
 
 impl Tlog {
@@ -40,6 +41,7 @@ impl Tlog {
         Self {
             path: path.to_path_buf(),
             seq,
+            evolution: crate::evolution::current_evolution_for_tlog(path),
         }
     }
 
@@ -50,6 +52,7 @@ impl Tlog {
         self.seq += 1;
         let record = serde_json::json!({
             "seq": self.seq,
+            "evolution": self.evolution,
             "ts_ms": crate::logging::now_ms(),
             "event": event,
         });
@@ -82,5 +85,9 @@ impl Tlog {
     /// Current sequence number (total events appended since the file was created).
     pub fn seq(&self) -> u64 {
         self.seq
+    }
+
+    pub fn set_evolution(&mut self, evolution: u64) {
+        self.evolution = evolution;
     }
 }

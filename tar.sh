@@ -9,7 +9,7 @@ canon-mini-agent/frames \
 canon-mini-agent/src \
 canon-mini-agent/SPEC.md \
 canon-mini-agent/ISSUES.json \
-canon/canon-utils/canon-tools-patch
+canon-mini-agent/src/canon_tools_patch
 
 # canon-mini-agent/target/debug/deps \
 # canon-mini-agent/target/debug/.fingerprint \
