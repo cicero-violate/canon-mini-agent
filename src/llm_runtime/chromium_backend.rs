@@ -247,8 +247,9 @@ struct State {
     /// echo was first observed before any assistant terminal frame.
     user_message_seen: HashMap<(u32, u64), u64>,
 
-    /// (tabId, turnId) -> count of `heartbeat` frames observed after the user
-    /// prompt echo but before any assistant progress or `turn_complete`.
+    /// (tabId, turnId) -> count of non-progress `heartbeat` frames observed
+    /// after the user prompt echo but before any assistant progress or
+    /// `turn_complete`.
     post_user_message_heartbeat: HashMap<(u32, u64), u32>,
 }
 
@@ -1365,31 +1366,47 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                             }),
                         );
                     } else if let Some(user_message_frame) = st.user_message_seen.get(&key).copied() {
-                        let count = st
-                            .post_user_message_heartbeat
-                            .entry(key)
-                            .and_modify(|seen| *seen += 1)
-                            .or_insert(1);
-                        let heartbeat_count = *count;
-                        if heartbeat_count == PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD {
-                            if let Some(tx) = st.pending_early_fail.remove(&key) {
-                                let _ = tx.send(
-                                    "heartbeat_after_user_echo_before_turn_complete".to_string(),
-                                );
+                        if chunk.contains("\"calpico-is-responding-heartbeat\"") {
+                            st.user_message_seen.remove(&key);
+                            st.post_user_message_heartbeat.remove(&key);
+                            append_outbound_event(
+                                "OUTBOUND_EARLY_SIGNAL",
+                                json!({
+                                    "signal": "responding_heartbeat_before_turn_complete",
+                                    "tabId": tab_id,
+                                    "turnId": turn_id,
+                                    "frame_counter": st.frame_counter,
+                                    "user_message_frame_counter": user_message_frame,
+                                    "suppressed_threshold": PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD,
+                                }),
+                            );
+                        } else {
+                            let count = st
+                                .post_user_message_heartbeat
+                                .entry(key)
+                                .and_modify(|seen| *seen += 1)
+                                .or_insert(1);
+                            let heartbeat_count = *count;
+                            if heartbeat_count == PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD {
+                                if let Some(tx) = st.pending_early_fail.remove(&key) {
+                                    let _ = tx.send(
+                                        "heartbeat_after_user_echo_before_turn_complete".to_string(),
+                                    );
+                                }
                             }
+                            append_outbound_event(
+                                "OUTBOUND_EARLY_SIGNAL",
+                                json!({
+                                    "signal": "heartbeat_after_user_echo_before_turn_complete",
+                                    "tabId": tab_id,
+                                    "turnId": turn_id,
+                                    "frame_counter": st.frame_counter,
+                                    "user_message_frame_counter": user_message_frame,
+                                    "heartbeat_count": heartbeat_count,
+                                    "threshold": PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD,
+                                }),
+                            );
                         }
-                        append_outbound_event(
-                            "OUTBOUND_EARLY_SIGNAL",
-                            json!({
-                                "signal": "heartbeat_after_user_echo_before_turn_complete",
-                                "tabId": tab_id,
-                                "turnId": turn_id,
-                                "frame_counter": st.frame_counter,
-                                "user_message_frame_counter": user_message_frame,
-                                "heartbeat_count": heartbeat_count,
-                                "threshold": PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD,
-                            }),
-                        );
                     }
                 }
                 _ => {}
@@ -1848,7 +1865,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn user_message_echo_with_only_heartbeats_triggers_pre_turn_complete_early_fail() {
+    async fn responding_heartbeats_after_user_echo_count_as_positive_liveness() {
         let state = Arc::new(Mutex::new(State::new()));
         let (resp_tx, _resp_rx) = oneshot::channel::<String>();
         let (early_fail_tx, early_fail_rx) = oneshot::channel::<String>();
@@ -1895,9 +1912,10 @@ mod tests {
             handle_inbound(&heartbeat, &state).await;
         }
 
-        let reason = early_fail_rx
-            .await
-            .expect("planner heartbeat drift after user echo should early fail");
-        assert_eq!(reason, "heartbeat_after_user_echo_before_turn_complete");
+        let result = tokio::time::timeout(std::time::Duration::from_millis(50), early_fail_rx).await;
+        assert!(
+            result.is_err(),
+            "responding heartbeats should keep the active turn alive before turn_complete"
+        );
     }
 }

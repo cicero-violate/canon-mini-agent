@@ -2452,6 +2452,47 @@ fn blocker_escalation_prompt(role: &str, last_error: &str, task_context: &str) -
     )
 }
 
+fn is_chromium_transport_error(err_text: &str) -> bool {
+    err_text.contains("chromium: early transport failure")
+        || err_text.contains("chromium: timeout waiting for SUBMIT_ACK")
+        || err_text.contains("chromium: timeout waiting for response")
+}
+
+fn local_transport_blocker_message(role: &str, err_text: &str, task_context: &str) -> Value {
+    let from = canonical_role_label(role);
+    let to = blocker_target_role(role);
+    json!({
+        "action": "message",
+        "from": from,
+        "to": to,
+        "type": "blocker",
+        "status": "blocked",
+        "observation": "Chromium transport failed before an authoritative assistant completion was assembled.",
+        "rationale": "Once the transport/backend has already failed, asking the model to restate the same failure only creates duplicate turns and extra room traffic.",
+        "predicted_next_actions": [
+            {
+                "action": "read_file",
+                "intent": "Inspect the latest Chromium backend, inbound frames, and tlog evidence for the failed turn."
+            },
+            {
+                "action": "message",
+                "intent": "Report a repaired handoff or a narrower blocker after the transport/runtime path is stable."
+            }
+        ],
+        "payload": build_blocker_payload(
+            &format!("{from} transport/runtime failure"),
+            "Chromium transport/runtime failure prevented a usable assistant completion",
+            &format!(
+                "error: {}\n\ncontext: {}",
+                truncate(err_text, MAX_SNIPPET),
+                truncate(task_context, MAX_SNIPPET),
+            ),
+            "Repair the Chromium/backend session and rerun once assistant completion assembly is stable.",
+            "error",
+        ),
+    })
+}
+
 #[derive(Clone)]
 struct ShutdownSignal {
     flag: Arc<AtomicBool>,
@@ -4497,8 +4538,9 @@ async fn run_agent(
         let (_req_id, resp) = match req_result {
             Ok(r) => r,
             Err(e) => {
+                let err_text = e.to_string();
                 eprintln!("[{role}] step={} llm_error: {e}", step + 1);
-                ctx.log_error(step + 1, &exchange_id, &e.to_string());
+                ctx.log_error(step + 1, &exchange_id, &err_text);
                 if let Some(writer) = writer.as_mut() {
                     let _ = writer.try_record_effect(crate::events::EffectEvent::LlmErrorBoundary {
                         role: role.to_string(),
@@ -4506,23 +4548,45 @@ async fn run_agent(
                         step: step + 1,
                         endpoint_id: endpoint.id.clone(),
                         exchange_id: exchange_id.clone(),
-                        error: e.to_string(),
+                        error: err_text.clone(),
                     });
                 }
                 crate::blockers::record_action_failure(
                     workspace,
                     role,
                     "llm_request",
-                    &e.to_string(),
+                    &err_text,
                     None,
                 );
+                if is_chromium_transport_error(&err_text) {
+                    let action = local_transport_blocker_message(role, &err_text, &task_context);
+                    let (done, reason) = process_action_and_execute(
+                        role,
+                        prompt_kind,
+                        endpoint,
+                        workspace,
+                        step + 1,
+                        &exchange_id,
+                        &action,
+                        false,
+                        writer.as_deref_mut(),
+                    )?;
+                    return Ok(if done {
+                        AgentCompletion::MessageAction {
+                            action,
+                            summary: reason,
+                        }
+                    } else {
+                        AgentCompletion::Summary(reason)
+                    });
+                }
                 apply_error_result(
                     role,
                     &task_context,
                     &mut error_streak,
                     &mut last_error,
                     &mut last_result,
-                    &e.to_string(),
+                    &err_text,
                     format!(
                         "LLM error: {e}\nReturn exactly one action as a single JSON object in a ```json code block.\n\nTask context:\n{}",
                         truncate(&task_context, MAX_SNIPPET)
@@ -6619,7 +6683,9 @@ mod tests {
     use super::{
         action_retry_fingerprint, ensure_workspace_artifact_baseline,
         executor_step_limit_feedback, has_actionable_objectives, inbound_message_from_user,
-        invariant_id_from_reason, plan_has_incomplete_tasks, route_gate_blocker_message,
+        invariant_id_from_reason, is_chromium_transport_error,
+        local_transport_blocker_message, plan_has_incomplete_tasks,
+        route_gate_blocker_message,
         should_reject_solo_self_complete, take_external_user_message_without_writer,
         take_inbound_message_without_writer, verifier_confirmed_with_plan_text,
         ActionProvenance,
@@ -6734,6 +6800,40 @@ mod tests {
             payload.get("evidence").and_then(|v| v.as_str()),
             Some(reason)
         );
+    }
+
+    #[test]
+    fn chromium_transport_errors_are_detected_for_local_blocker_synthesis() {
+        assert!(is_chromium_transport_error(
+            "chromium: early transport failure (heartbeat_after_user_echo_before_turn_complete) (tab=1 turn=2)"
+        ));
+        assert!(is_chromium_transport_error(
+            "chromium: timeout waiting for SUBMIT_ACK (tab=1 turn=2)"
+        ));
+        assert!(!is_chromium_transport_error("schema validation failed"));
+    }
+
+    #[test]
+    fn local_transport_blocker_message_routes_without_extra_llm_turn() {
+        let action = local_transport_blocker_message(
+            "planner",
+            "chromium: early transport failure (heartbeat_after_user_echo_before_turn_complete) (tab=633187572 turn=4)",
+            "Planner task context",
+        );
+        assert_eq!(action.get("action").and_then(|v| v.as_str()), Some("message"));
+        assert_eq!(action.get("from").and_then(|v| v.as_str()), Some("planner"));
+        assert_eq!(action.get("to").and_then(|v| v.as_str()), Some("executor"));
+        assert_eq!(action.get("type").and_then(|v| v.as_str()), Some("blocker"));
+        let payload = action.get("payload").expect("payload");
+        assert_eq!(
+            payload.get("blocker").and_then(|v| v.as_str()),
+            Some("Chromium transport/runtime failure prevented a usable assistant completion")
+        );
+        assert!(payload
+            .get("evidence")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .contains("heartbeat_after_user_echo_before_turn_complete"));
     }
 
     #[test]

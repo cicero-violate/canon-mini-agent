@@ -1,1 +1,1 @@
-chromium: early transport failure (heartbeat_after_user_echo_before_turn_complete) (tab=633187568 turn=1); repeated failures later escalated to heartbeat_after_turn_complete.
+chromium: early transport failure (heartbeat_after_user_echo_before_turn_complete) (tab=633187568 turn=7); current semantic snapshot also shows diagnostics blocked by the same transport instability and no authoritative plan changes applied.
