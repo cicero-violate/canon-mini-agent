@@ -33,7 +33,7 @@ use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Message;
 
 const FRAMES_DIR: &str = "./frames";
-const PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD: u32 = 16;
+const PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD: u32 = 8;
 
 fn append_jsonl(filename: &str, value: &Value) {
     let path = format!("{FRAMES_DIR}/{filename}");
