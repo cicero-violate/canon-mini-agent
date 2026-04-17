@@ -1,5 +1,7 @@
 rm -rf /workspace/ai_sandbox/canon-mini-agent/agent_state/llm_full/received && rm -rf /workspace/ai_sandbox/canon-mini-agent/agent_state/llm_full/sent && rm -rf /workspace/ai_sandbox/canon-mini-agent/agent_state/mini_agent_checkpoint.json && cargo run -p canon-mini-agent --bin canon-mini-supervisor -- --workspace /workspace/ai_sandbox/canon-mini-agent --orchestrate --start solo 2>&1 | tee /workspace/ai_sandbox/canon-mini-agent/agent_state/canon-mini-agent-logs.log
 
+rm -rf /workspace/ai_sandbox/canon-mini-agent/agent_state/* && cargo run -p canon-mini-agent --bin canon-mini-supervisor -- --workspace /workspace/ai_sandbox/canon-mini-agent --orchestrate --start 2>&1 | tee /workspace/ai_sandbox/canon-mini-agent/agent_state/canon-mini-agent-logs.log
+
 rm -rf /workspace/ai_sandbox/canon-mini-agent/agent_state/* && cargo run -p canon-mini-agent --bin canon-mini-supervisor -- --workspace /workspace/ai_sandbox/canon-mini-agent --orchestrate --start solo 2>&1 | tee /workspace/ai_sandbox/canon-mini-agent/agent_state/canon-mini-agent-logs.log
 
 
