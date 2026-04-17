@@ -1,9 +1,11 @@
 use crate::events::Event;
 use crate::system_state::{replay_event_log, SystemState};
 use anyhow::Result;
+use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct TlogRecord {
@@ -25,6 +27,38 @@ pub struct Tlog {
     evolution: u64,
 }
 
+fn seq_registry() -> &'static Mutex<HashMap<PathBuf, u64>> {
+    static REGISTRY: OnceLock<Mutex<HashMap<PathBuf, u64>>> = OnceLock::new();
+    REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn lock_seq_registry() -> std::sync::MutexGuard<'static, HashMap<PathBuf, u64>> {
+    seq_registry()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn observed_seq_floor(path: &Path) -> u64 {
+    if !path.exists() {
+        return 0;
+    }
+
+    let raw = std::fs::read_to_string(path).unwrap_or_default();
+    let mut line_count = 0_u64;
+    let mut max_seq = 0_u64;
+
+    for line in raw.lines().filter(|line| !line.trim().is_empty()) {
+        line_count += 1;
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {
+            if let Some(seq) = value.get("seq").and_then(|seq| seq.as_u64()) {
+                max_seq = max_seq.max(seq);
+            }
+        }
+    }
+
+    line_count.max(max_seq)
+}
+
 impl Tlog {
     /// Open (or create) the tlog at `path`.
     /// Counts existing lines to initialize the sequence number so appends
@@ -33,17 +67,15 @@ impl Tlog {
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        let seq = if path.exists() {
-            std::fs::read_to_string(path)
-                .unwrap_or_default()
-                .lines()
-                .filter(|l| !l.trim().is_empty())
-                .count() as u64
-        } else {
-            0
-        };
+        let seq = observed_seq_floor(path);
+        let path_buf = path.to_path_buf();
+        {
+            let mut registry = lock_seq_registry();
+            let entry = registry.entry(path_buf.clone()).or_insert(seq);
+            *entry = (*entry).max(seq);
+        }
         Self {
-            path: path.to_path_buf(),
+            path: path_buf,
             seq,
             evolution: crate::evolution::current_evolution_for_tlog(path),
         }
@@ -53,9 +85,14 @@ impl Tlog {
     /// Returns an error only if the write itself fails; callers may choose
     /// to log and continue rather than treating a log write failure as fatal.
     pub fn append(&mut self, event: &Event) -> Result<()> {
-        self.seq += 1;
+        let mut registry = lock_seq_registry();
+        let observed = observed_seq_floor(&self.path);
+        let entry = registry.entry(self.path.clone()).or_insert(observed);
+        *entry = (*entry).max(observed).max(self.seq);
+        let previous_seq = *entry;
+        let next_seq = previous_seq + 1;
         let record = serde_json::json!({
-            "seq": self.seq,
+            "seq": next_seq,
             "evolution": self.evolution,
             "ts_ms": crate::logging::now_ms(),
             "event": event,
@@ -64,7 +101,12 @@ impl Tlog {
             .create(true)
             .append(true)
             .open(&self.path)?;
-        writeln!(file, "{}", serde_json::to_string(&record)?)?;
+        if let Err(err) = writeln!(file, "{}", serde_json::to_string(&record)?) {
+            *entry = previous_seq;
+            return Err(err.into());
+        }
+        *entry = next_seq;
+        self.seq = next_seq;
         Ok(())
     }
 
@@ -100,5 +142,53 @@ impl Tlog {
 
     pub fn set_evolution(&mut self, evolution: u64) {
         self.evolution = evolution;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Tlog;
+    use crate::events::{ControlEvent, Event};
+
+    fn planner_pending_event(pending: bool) -> Event {
+        Event::control(ControlEvent::PlannerPendingSet { pending })
+    }
+
+    #[test]
+    fn stale_handles_share_monotonic_seq_for_same_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("tlog.ndjson");
+
+        let mut first = Tlog::open(&path);
+        let mut stale = Tlog::open(&path);
+        first.append(&planner_pending_event(true)).expect("first append");
+        stale
+            .append(&planner_pending_event(false))
+            .expect("stale append");
+
+        let records = Tlog::read_records(&path).expect("read records");
+        let seqs: Vec<u64> = records.into_iter().map(|record| record.seq).collect();
+        assert_eq!(seqs, vec![1, 2]);
+    }
+
+    #[test]
+    fn open_uses_observed_seq_floor_not_raw_line_count_only() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("tlog.ndjson");
+        std::fs::write(
+            &path,
+            concat!(
+                "{\"seq\":10,\"ts_ms\":1,\"event\":{\"class\":\"control\",\"event\":{\"kind\":\"planner_pending_set\",\"pending\":true}}}\n",
+                "{\"seq\":4,\"ts_ms\":2,\"event\":{\"class\":\"control\",\"event\":{\"kind\":\"planner_pending_set\",\"pending\":false}}}\n"
+            ),
+        )
+        .expect("seed tlog");
+
+        let mut tlog = Tlog::open(&path);
+        tlog.append(&planner_pending_event(true)).expect("append");
+
+        let records = Tlog::read_records(&path).expect("read records");
+        let last_seq = records.last().map(|record| record.seq).expect("last seq");
+        assert_eq!(last_seq, 11);
     }
 }
