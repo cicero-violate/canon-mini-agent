@@ -1699,11 +1699,13 @@ fn dispatch_executor_submits(
     rt: &mut RuntimeState,
     now: u64,
     submit_joinset: &mut tokio::task::JoinSet<(usize, PendingExecutorSubmit, Result<String>)>,
-) {
+) -> bool {
     let semantic_control = SemanticControlState::from_system_state(writer.state(), false, false);
     if semantic_control.executor_dispatch_blocked() {
-        return;
+        return false;
     }
+
+    let mut cycle_progress = false;
 
     // No-ready-tasks guard: if PLAN.json has no ready tasks, skip executor dispatch
     // entirely and wake the planner instead.  This eliminates the idle turn where
@@ -1718,13 +1720,37 @@ fn dispatch_executor_submits(
         };
         if ready_count == "0" {
             writer.apply(ControlEvent::PlannerPendingSet { pending: true });
-            return;
+            return true;
         }
         // Route gate G_r: check enforced invariants before dispatching the executor.
         // Currently observational — violations are logged but do not hard-block.
         // Once invariants accumulate enough support, this will become a hard gate.
         if !evaluate_executor_route_gates(writer, ready_count) {
-            return;
+            return false;
+        }
+
+        // Clean-start guard: after agent_state reset, the executor can see ready
+        // PLAN tasks but still have zero lane work seeded because lane.pending is
+        // only populated by the planner bootstrap path. In that state, starting at
+        // executor would silently idle forever while the browser backend stays live.
+        let lanes_seeded = ctx.lanes.iter().any(|lane| {
+            let lane_state = writer.state().lanes.get(&lane.index);
+            lane_state.map(|state| state.pending).unwrap_or(false)
+                || lane_state
+                    .and_then(|state| state.in_progress_by.as_ref())
+                    .is_some()
+                || writer.state().lane_in_flight(lane.index)
+                || writer.state().lane_submit_active(lane.index)
+        });
+        let runtime_busy = !rt.executor_submit_inflight.is_empty()
+            || !rt.submitted_turns.is_empty()
+            || rt.deferred_completions.values().any(|queue| !queue.is_empty());
+        if !lanes_seeded && !runtime_busy {
+            eprintln!(
+                "[orchestrate] executor bootstrap: ready tasks exist but no lane work is seeded; waking planner"
+            );
+            writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+            return true;
         }
     }
 
@@ -1759,6 +1785,7 @@ fn dispatch_executor_submits(
                 lane_id: lane_index,
                 in_flight: true,
             });
+            cycle_progress = true;
             submit_joinset.spawn(async move {
                 let result = submit_executor_turn(
                     &job,
@@ -1774,6 +1801,8 @@ fn dispatch_executor_submits(
             });
         }
     }
+
+    cycle_progress
 }
 
 fn run_executor_phase(
@@ -1788,7 +1817,9 @@ fn run_executor_phase(
     let mut cycle_progress = false;
     sweep_timed_out_executor_submits(ctx, writer, rt, now, pending_submit_timeout_ms);
     sweep_timed_out_submitted_turns(ctx, writer, rt, now, submitted_turn_timeout_ms);
-    dispatch_executor_submits(ctx, writer, rt, now, submit_joinset);
+    if dispatch_executor_submits(ctx, writer, rt, now, submit_joinset) {
+        cycle_progress = true;
+    }
 
     while let Some(joined) = submit_joinset.try_join_next() {
         match joined {
@@ -6761,6 +6792,31 @@ mod tests {
         assert!(
             mismatch < rebind && rebind < register,
             "submit ack mismatch must emit a canonical tab rebound before turn registration"
+        );
+    }
+
+    #[test]
+    fn executor_bootstrap_with_ready_tasks_wakes_planner_before_silent_idle() {
+        let source = include_str!("app.rs");
+        let ready_guard = source
+            .find("let ready_count = if ready_tasks_text == \"(no ready tasks)\"")
+            .expect("missing ready task guard");
+        let bootstrap_guard = source[ready_guard..]
+            .find("executor bootstrap: ready tasks exist but no lane work is seeded; waking planner")
+            .map(|offset| ready_guard + offset)
+            .expect("missing clean-start executor bootstrap guard");
+        let planner_wake = source[bootstrap_guard..]
+            .find("writer.apply(ControlEvent::PlannerPendingSet { pending: true });")
+            .map(|offset| bootstrap_guard + offset)
+            .expect("missing planner wake after executor bootstrap guard");
+        let lane_claim = source[planner_wake..]
+            .find("if let Some(job) = claim_executor_submit(writer, lane) {")
+            .map(|offset| planner_wake + offset)
+            .expect("missing executor lane claim after bootstrap guard");
+
+        assert!(
+            ready_guard < bootstrap_guard && bootstrap_guard < planner_wake && planner_wake < lane_claim,
+            "executor bootstrap guard must wake planner before lane claim to avoid clean-start idle stalls"
         );
     }
 
