@@ -1083,6 +1083,9 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
             st.turn_complete_seen.retain(|(tid, _), _| *tid != tab_id);
             st.post_complete_presence.retain(|(tid, _), _| *tid != tab_id);
             st.post_complete_heartbeat.retain(|(tid, _), _| *tid != tab_id);
+            st.user_message_seen.retain(|(tid, _), _| *tid != tab_id);
+            st.post_user_message_heartbeat
+                .retain(|(tid, _), _| *tid != tab_id);
         }
 
         "SUBMIT_ACK" => {
