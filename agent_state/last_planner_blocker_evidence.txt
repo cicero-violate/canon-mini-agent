@@ -1,1 +1,1 @@
-Your prompt requires planner/executor/diagnostics actions against /workspace/ai_sandbox/canon-mini-agent, but this chat interface does not provide that canon action runtime.
+The prompt requires executor actions against /workspace/ai_sandbox/canon-mini-agent, but this interface does not provide the canon runtime needed to inspect files, patch source, or run workspace verification.

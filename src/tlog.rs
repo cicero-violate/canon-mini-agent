@@ -149,6 +149,37 @@ impl Tlog {
 mod tests {
     use super::Tlog;
     use crate::events::{ControlEvent, Event};
+    use std::path::{Path, PathBuf};
+
+    struct TestDir {
+        path: PathBuf,
+    }
+
+    impl TestDir {
+        fn new() -> Self {
+            let unique = format!(
+                "canon-mini-agent-tlog-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("system time before unix epoch")
+                    .as_nanos()
+            );
+            let path = std::env::temp_dir().join(unique);
+            std::fs::create_dir_all(&path).expect("create temp test dir");
+            Self { path }
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
 
     fn planner_pending_event(pending: bool) -> Event {
         Event::control(ControlEvent::PlannerPendingSet { pending })
@@ -156,7 +187,7 @@ mod tests {
 
     #[test]
     fn stale_handles_share_monotonic_seq_for_same_path() {
-        let dir = tempfile::tempdir().expect("tempdir");
+        let dir = TestDir::new();
         let path = dir.path().join("tlog.ndjson");
 
         let mut first = Tlog::open(&path);
@@ -173,7 +204,7 @@ mod tests {
 
     #[test]
     fn open_uses_observed_seq_floor_not_raw_line_count_only() {
-        let dir = tempfile::tempdir().expect("tempdir");
+        let dir = TestDir::new();
         let path = dir.path().join("tlog.ndjson");
         std::fs::write(
             &path,
