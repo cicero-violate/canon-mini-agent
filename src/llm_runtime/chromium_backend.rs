@@ -1580,7 +1580,10 @@ fn reconcile_tab_state_locked(
 
 #[cfg(test)]
 mod tests {
-    use super::{endpoint_submit_ack_timeout_secs, handle_inbound, State};
+    use super::{
+        endpoint_submit_ack_timeout_secs, handle_inbound,
+        PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD, State,
+    };
     use crate::llm_runtime::parsers::{FrameAssembler, SiteType};
     use serde_json::{json, Value};
     use std::sync::Arc;
