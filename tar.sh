@@ -4,10 +4,8 @@ canon-mini-agent/state/rustc \
 canon-mini-agent/tests \
 canon-mini-agent/INVARIANTS.json \
 canon-mini-agent/Cargo.toml \
-canon-mini-agent/PLAN.json \
 canon-mini-agent/src \
 canon-mini-agent/SPEC.md \
-canon-mini-agent/ISSUES.json \
 canon-mini-agent/agent_state \
 canon-mini-agent/frames \
 canon-mini-agent/AUTHORITY_MATRIX.md \
