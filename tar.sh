@@ -11,6 +11,7 @@ canon-mini-agent/ISSUES.json \
 canon-mini-agent/agent_state \
 canon-mini-agent/frames \
 canon-mini-agent/AUTHORITY_MATRIX.md \
+canon-mini-agent/state \
 && ripdrag canon-mini-agent.tar.gz -nxa 2>/dev/null &
 
 
