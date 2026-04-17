@@ -63,6 +63,8 @@ impl Tlog {
     /// Open (or create) the tlog at `path`.
     /// Counts existing lines to initialize the sequence number so appends
     /// continue from where the previous run left off.
+    /// Ordinary build or process restarts must preserve this file so replay
+    /// and sequence continuity remain intact.
     pub fn open(path: &Path) -> Self {
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
