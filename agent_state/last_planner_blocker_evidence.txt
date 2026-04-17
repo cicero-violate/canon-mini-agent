@@ -1,1 +1,1 @@
-The prompt requires executor actions against /workspace/ai_sandbox/canon-mini-agent, but this interface does not provide the canon runtime needed to inspect files, patch source, or run workspace verification.
+Diagnostics reports that the prompt requires actions against /workspace/ai_sandbox/canon-mini-agent but this interface does not provide the canon runtime needed to inspect files or write projections; semantic state also still shows unchanged PLAN.json and repeated blocked planner cycles.

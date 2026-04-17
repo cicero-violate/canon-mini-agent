@@ -1639,13 +1639,13 @@ fn validate_message_required_fields(obj: &serde_json::Map<String, Value>) -> Res
     Ok(())
 }
 
-fn validate_blocker_message_payload(msg: ProtocolMessage) -> Result<()> {
+fn validate_blocker_message_payload(msg: &ProtocolMessage) -> Result<()> {
     if !(matches!(msg.msg_type, MessageType::Blocker)
         || matches!(msg.status, MessageStatus::Blocked))
     {
         return Ok(());
     }
-    match msg.payload {
+    match &msg.payload {
         MessagePayload::Blocker(payload) => {
             if payload.blocker.trim().is_empty()
                 || payload.evidence.trim().is_empty()
@@ -1681,6 +1681,20 @@ fn validate_optional_message_role(obj: &serde_json::Map<String, Value>, field: &
     Ok(())
 }
 
+fn validate_message_route(msg: &ProtocolMessage) -> Result<()> {
+    let self_routed = std::mem::discriminant(&msg.from) == std::mem::discriminant(&msg.to);
+    let allow_solo_self_complete = matches!(msg.from, Role::Solo)
+        && matches!(msg.to, Role::Solo)
+        && matches!(msg.msg_type, MessageType::Result)
+        && matches!(msg.status, MessageStatus::Complete);
+    if self_routed && !allow_solo_self_complete {
+        bail!(
+            "message route may not target the emitting role; only solo result/complete may self-route"
+        );
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_message_action(action: &Value, mode: MessageValidationMode) -> Result<()> {
     let obj = action
         .as_object()
@@ -1691,7 +1705,8 @@ pub(crate) fn validate_message_action(action: &Value, mode: MessageValidationMod
     }
     let msg: ProtocolMessage = serde_json::from_value(action.clone())
         .map_err(|e| anyhow!("message schema invalid: {e}"))?;
-    validate_blocker_message_payload(msg)?;
+    validate_blocker_message_payload(&msg)?;
+    validate_message_route(&msg)?;
     validate_optional_message_severity(obj)?;
     validate_optional_message_role(obj, "from_role")?;
     validate_optional_message_role(obj, "to_role")?;
@@ -2095,6 +2110,51 @@ mod tests {
             "predicted_next_actions": [
                 {"action": "apply_patch", "intent": "implement the validated planner guard"},
                 {"action": "cargo_test", "intent": "verify the guarded behavior"}
+            ]
+        });
+        assert!(validate_action(&action).is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_self_addressed_planner_message() {
+        let action = json!({
+            "action": "message",
+            "from": "planner",
+            "to": "planner",
+            "type": "blocker",
+            "status": "blocked",
+            "observation": "The chat claims the planner runtime is unavailable.",
+            "rationale": "Escalate the blocked state.",
+            "payload": {
+                "summary": "Planner blocked by missing runtime.",
+                "blocker": "Required runtime missing",
+                "evidence": "this chat does not expose the required canon runtime",
+                "required_action": "Restore the runtime"
+            },
+            "predicted_next_actions": [
+                {"action": "read_file", "intent": "reinspect the runtime contract"},
+                {"action": "message", "intent": "report a corrected blocker if one remains"}
+            ]
+        });
+        assert!(validate_action(&action).is_err());
+    }
+
+    #[test]
+    fn validate_allows_solo_result_self_route() {
+        let action = json!({
+            "action": "message",
+            "from": "solo",
+            "to": "solo",
+            "type": "result",
+            "status": "complete",
+            "observation": "Solo completed the bounded task.",
+            "rationale": "Return the final result within the solo flow.",
+            "payload": {
+                "summary": "Solo work complete."
+            },
+            "predicted_next_actions": [
+                {"action": "read_file", "intent": "inspect any referenced artifact if needed"},
+                {"action": "run_command", "intent": "verify the final workspace state if needed"}
             ]
         });
         assert!(validate_action(&action).is_ok());

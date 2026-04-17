@@ -2124,6 +2124,25 @@ fn handle_message_action(
     let to_role = action.get("to").and_then(|v| v.as_str()).unwrap_or("");
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let _ = std::fs::create_dir_all(agent_state_dir);
+    let normalized_role = role
+        .trim()
+        .to_lowercase()
+        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+    let normalized_to = to_role
+        .trim()
+        .to_lowercase()
+        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+
+    if normalized_role == normalized_to
+        && !is_allowed_self_addressed_message(action, &normalized_role, &normalized_to)
+    {
+        return Ok((
+            true,
+            format!(
+                "invalid self-addressed message suppressed: {normalized_role} -> {normalized_to}"
+            ),
+        ));
+    }
 
     if let Some(result) =
         suppress_redundant_planner_blocker(role, msg_type, &payload, agent_state_dir)
@@ -2201,6 +2220,20 @@ fn suppress_redundant_planner_blocker(
     }
     let _ = std::fs::write(evidence_path, evidence);
     None
+}
+
+fn is_allowed_self_addressed_message(action: &Value, from_role: &str, to_role: &str) -> bool {
+    from_role == "solo"
+        && to_role == "solo"
+        && action.get("action").and_then(|v| v.as_str()) == Some("message")
+        && action
+            .get("type")
+            .and_then(|v| v.as_str())
+            .is_some_and(|kind| kind.eq_ignore_ascii_case("result"))
+        && action
+            .get("status")
+            .and_then(|v| v.as_str())
+            .is_some_and(|status| status.eq_ignore_ascii_case("complete"))
 }
 
 fn sync_verifier_blocker_state(
@@ -7471,6 +7504,19 @@ fn persist_inbound_message(
         .trim()
         .to_lowercase()
         .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+    let normalized_role = role
+        .trim()
+        .to_lowercase()
+        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+    if normalized_role == to {
+        if is_allowed_self_addressed_message(action, &normalized_role, &to) {
+            return;
+        }
+        eprintln!(
+            "[{role}] step={step} invalid self-addressed message to `{to}` — canonical ingress suppressed"
+        );
+        return;
+    }
     let message_signature = artifact_write_signature(&[
         "inbound_message",
         role,
@@ -7478,16 +7524,6 @@ fn persist_inbound_message(
         &full_message.len().to_string(),
         full_message,
     ]);
-    let is_redundant_solo_self_complete = role.eq_ignore_ascii_case("solo")
-        && to == "solo"
-        && action.get("action").and_then(|v| v.as_str()) == Some("message")
-        && action
-            .get("status")
-            .and_then(|v| v.as_str())
-            .is_some_and(|status| status.eq_ignore_ascii_case("complete"));
-    if is_redundant_solo_self_complete {
-        return;
-    }
     if let Err(err) = record_effect_for_workspace(
         workspace,
         crate::events::EffectEvent::InboundMessageRecorded {
@@ -7502,13 +7538,6 @@ fn persist_inbound_message(
             step, to, err
         );
     }
-    // Self-loop guard: any role sending a message to itself creates a wake-flag loop
-    // identical to the executor→executor bug fixed in persist_executor_completion_message.
-    // Suppress the wakeup flag but still write the message file for audit trail.
-    let normalized_role = role
-        .trim()
-        .to_lowercase()
-        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let path = agent_state_dir.join(format!("last_message_to_{to}.json"));
     if let Err(err) = write_projection_with_workspace_effects(
@@ -7538,12 +7567,6 @@ fn persist_inbound_message(
                 None,
             );
         }
-    }
-    if normalized_role == to {
-        eprintln!(
-            "[{role}] step={step} self-addressed message to `{to}` — wakeup flag suppressed to break self-loop"
-        );
-        return;
     }
     let wake_path = agent_state_dir.join(format!("wakeup_{to}.flag"));
     if let Err(err) = write_projection_with_workspace_effects(
@@ -7661,6 +7684,7 @@ pub(crate) fn execute_logged_action(
 mod tests {
     use super::handle_apply_patch_action;
     use super::handle_execution_path_action;
+    use super::is_allowed_self_addressed_message;
     use super::handle_objectives_action;
     use super::handle_plan_action;
     use super::handle_read_file_action;
@@ -7722,6 +7746,29 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("canon-mini-agent-{name}-{unique}"));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn only_solo_result_complete_may_self_route() {
+        let solo = json!({
+            "action": "message",
+            "from": "solo",
+            "to": "solo",
+            "type": "result",
+            "status": "complete",
+            "payload": {"summary": "done"}
+        });
+        assert!(is_allowed_self_addressed_message(&solo, "solo", "solo"));
+
+        let planner = json!({
+            "action": "message",
+            "from": "planner",
+            "to": "planner",
+            "type": "blocker",
+            "status": "blocked",
+            "payload": {"summary": "blocked"}
+        });
+        assert!(!is_allowed_self_addressed_message(&planner, "planner", "planner"));
     }
 
     fn write_minimal_graph_with_def_and_mir(
