@@ -4,8 +4,8 @@ pub const DEFAULT_WORKSPACE: &str = "/workspace/ai_sandbox/canon";
 pub const SPEC_FILE: &str = "SPEC.md";
 pub const OBJECTIVES_FILE: &str = "PLANS/OBJECTIVES.json";
 pub const OBJECTIVES_MD_FILE: &str = "PLANS/OBJECTIVES.md";
-pub const MASTER_PLAN_FILE: &str = "PLAN.json";
-pub const VIOLATIONS_FILE: &str = "VIOLATIONS.json";
+pub const MASTER_PLAN_FILE: &str = "agent_state/PLAN.json";
+pub const VIOLATIONS_FILE: &str = "agent_state/VIOLATIONS.json";
 pub const ISSUES_FILE: &str = "ISSUES.json";
 pub const INVARIANTS_FILE: &str = "INVARIANTS.json";
 pub const INVARIANTS_MD_FILE: &str = "INVARIANT.md";
@@ -133,7 +133,8 @@ pub const ENDPOINT_SPECS: &[EndpointSpec] = &[
         role: "mini_planner",
         role_markdown: "builtin:planner",
         urls: &[
-            "https://chatgpt.com/gg/69d9549305a881a2a3faaff764e2d106",
+            "https://chatgpt.com/gg/69e2b1e67f188192a9ca08c2036a06ed",
+            // "https://chatgpt.com/gg/69d9549305a881a2a3faaff764e2d106",
             // "https://chatgpt.com/",
             // "https://chatgpt.com/gg/69d1275c4ed88191988d28f341f48d42",
             // "https://chatgpt.com/gg/69ca778f7ea0819c8437275ff608eb35",
@@ -148,7 +149,8 @@ pub const ENDPOINT_SPECS: &[EndpointSpec] = &[
         role_markdown: "builtin:planner",
         // urls: &["https://chatgpt.com/"],
         urls: &[
-            "https://chatgpt.com/gg/69d9549305a881a2a3faaff764e2d106",
+            "https://chatgpt.com/gg/69e2b1e67f188192a9ca08c2036a06ed",
+            // "https://chatgpt.com/gg/69d9549305a881a2a3faaff764e2d106",
             // "https://chatgpt.com/",
             // "https://chatgpt.com/gg/69d7931e25b881929ff153362c36df93",
         ],
@@ -160,7 +162,8 @@ pub const ENDPOINT_SPECS: &[EndpointSpec] = &[
         role: "verifier",
         role_markdown: "builtin:planner",
         urls: &[
-            "https://chatgpt.com/gg/69d9549305a881a2a3faaff764e2d106",
+            "https://chatgpt.com/gg/69e2b1e67f188192a9ca08c2036a06ed",
+            // "https://chatgpt.com/gg/69d9549305a881a2a3faaff764e2d106",
             // "https://chatgpt.com/gg/69d12735ff8081a3ad8aab20b4c4e10a",
             // "https://chatgpt.com/gg/69ca70d1a4208199a3d1c4c77e87c147",
             // "https://chatgpt.com/gg/69c265cd2274819690fc291ef716524e",
@@ -173,7 +176,8 @@ pub const ENDPOINT_SPECS: &[EndpointSpec] = &[
         role: "diagnostics",
         role_markdown: "builtin:planner",
         urls: &[
-            "https://chatgpt.com/gg/69d9549305a881a2a3faaff764e2d106",
+            "https://chatgpt.com/gg/69e2b1e67f188192a9ca08c2036a06ed",
+            // "https://chatgpt.com/gg/69d9549305a881a2a3faaff764e2d106",
             // "https://chatgpt.com/gg/69d1266e0a288198bb7b2f150a669dd7",
             // "https://chatgpt.com/gg/69caa6e708108198b02c2d2eaea30118",
             // "https://chatgpt.com/gg/69c265cd2274819690fc291ef716524e",
@@ -186,7 +190,8 @@ pub const ENDPOINT_SPECS: &[EndpointSpec] = &[
         role: "executor",
         role_markdown: "builtin:planner",
         urls: &[
-            "https://chatgpt.com/gg/69d9549305a881a2a3faaff764e2d106",
+            "https://chatgpt.com/gg/69e2b1e67f188192a9ca08c2036a06ed",
+            // "https://chatgpt.com/gg/69d9549305a881a2a3faaff764e2d106",
             // "https://chatgpt.com/",
             // "https://chatgpt.com/gg/69d126d34dc4819d8de9cba1b209d14c",
             // "https://chatgpt.com/gg/69ab7b06a5a88196bf33966df6feee02",
