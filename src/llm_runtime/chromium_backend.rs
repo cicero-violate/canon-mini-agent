@@ -33,6 +33,7 @@ use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Message;
 
 const FRAMES_DIR: &str = "./frames";
+const PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD: u32 = 16;
 
 fn append_jsonl(filename: &str, value: &Value) {
     let path = format!("{FRAMES_DIR}/{filename}");
@@ -169,6 +170,9 @@ fn classify_transport_signal(raw: &str) -> Option<&'static str> {
     if raw.contains("\"type\":\"presence\"") {
         return Some("presence");
     }
+    if raw.contains("\"calpico-message-add\"") && raw.contains("\"role\":\"user\"") {
+        return Some("user_message_add");
+    }
     if raw.contains("\"calpico-message-add\"") && raw.contains("\"role\":\"assistant\"") {
         return Some("assistant_message_add");
     }
@@ -238,6 +242,14 @@ struct State {
     /// (tabId, turnId) -> count of `heartbeat` frames observed after
     /// `conversation-turn-complete` and before any assistant terminal frame.
     post_complete_heartbeat: HashMap<(u32, u64), u32>,
+
+    /// (tabId, turnId) -> frame_counter where the current turn's user prompt
+    /// echo was first observed before any assistant terminal frame.
+    user_message_seen: HashMap<(u32, u64), u64>,
+
+    /// (tabId, turnId) -> count of `heartbeat` frames observed after the user
+    /// prompt echo but before any assistant progress or `turn_complete`.
+    post_user_message_heartbeat: HashMap<(u32, u64), u32>,
 }
 
 /// Shared transport bootstrap for both submit-only and full-response flows.
@@ -274,6 +286,8 @@ impl State {
             turn_complete_seen: HashMap::new(),
             post_complete_presence: HashMap::new(),
             post_complete_heartbeat: HashMap::new(),
+            user_message_seen: HashMap::new(),
+            post_user_message_heartbeat: HashMap::new(),
         }
     }
 
@@ -1251,6 +1265,8 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                     // presence without ever producing an assembled terminal snapshot. Clearing the
                     // counters here disables the only deterministic early-fail path and leaves the
                     // caller stuck until the outer wall-clock timeout.
+                    st.user_message_seen.remove(&key);
+                    st.post_user_message_heartbeat.remove(&key);
                     append_outbound_event(
                         "OUTBOUND_EARLY_SIGNAL",
                         json!({
@@ -1263,11 +1279,27 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                         }),
                     );
                 }
+                Some("user_message_add") if st.pending_resp.contains_key(&key) => {
+                    let frame_counter = st.frame_counter;
+                    st.user_message_seen.entry(key).or_insert(frame_counter);
+                    st.post_user_message_heartbeat.insert(key, 0);
+                    append_outbound_event(
+                        "OUTBOUND_EARLY_SIGNAL",
+                        json!({
+                            "signal": "user_message_add_before_assistant_terminal",
+                            "tabId": tab_id,
+                            "turnId": turn_id,
+                            "frame_counter": frame_counter,
+                        }),
+                    );
+                }
                 Some("turn_complete") if st.pending_resp.contains_key(&key) => {
                     let frame_counter = st.frame_counter;
                     st.turn_complete_seen.entry(key).or_insert(frame_counter);
                     st.post_complete_presence.insert(key, 0);
                     st.post_complete_heartbeat.insert(key, 0);
+                    st.user_message_seen.remove(&key);
+                    st.post_user_message_heartbeat.remove(&key);
                     append_outbound_event(
                         "OUTBOUND_EARLY_SIGNAL",
                         json!({
@@ -1329,6 +1361,32 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                                 "heartbeat_count": heartbeat_count,
                             }),
                         );
+                    } else if let Some(user_message_frame) = st.user_message_seen.get(&key).copied() {
+                        let count = st
+                            .post_user_message_heartbeat
+                            .entry(key)
+                            .and_modify(|seen| *seen += 1)
+                            .or_insert(1);
+                        let heartbeat_count = *count;
+                        if heartbeat_count == PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD {
+                            if let Some(tx) = st.pending_early_fail.remove(&key) {
+                                let _ = tx.send(
+                                    "heartbeat_after_user_echo_before_turn_complete".to_string(),
+                                );
+                            }
+                        }
+                        append_outbound_event(
+                            "OUTBOUND_EARLY_SIGNAL",
+                            json!({
+                                "signal": "heartbeat_after_user_echo_before_turn_complete",
+                                "tabId": tab_id,
+                                "turnId": turn_id,
+                                "frame_counter": st.frame_counter,
+                                "user_message_frame_counter": user_message_frame,
+                                "heartbeat_count": heartbeat_count,
+                                "threshold": PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD,
+                            }),
+                        );
                     }
                 }
                 _ => {}
@@ -1379,6 +1437,8 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                     st.turn_complete_seen.remove(&key);
                     st.post_complete_presence.remove(&key);
                     st.post_complete_heartbeat.remove(&key);
+                    st.user_message_seen.remove(&key);
+                    st.post_user_message_heartbeat.remove(&key);
                     let endpoint_id = st.tab_owners.get(&tab_id).cloned();
                     if let Some(endpoint_id) = endpoint_id.as_deref() {
                         release_tab_locked(&mut st, endpoint_id, tab_id, true);
@@ -1394,6 +1454,8 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                     st.turn_complete_seen.remove(&key);
                     st.post_complete_presence.remove(&key);
                     st.post_complete_heartbeat.remove(&key);
+                    st.user_message_seen.remove(&key);
+                    st.post_user_message_heartbeat.remove(&key);
                     if let Some(owner) = endpoint_id.as_deref() {
                         release_tab_locked(&mut st, owner, tab_id, true);
                     } else {
@@ -1433,6 +1495,9 @@ fn retire_tab_locked(st: &mut State, endpoint_id: &str, tab_id: u32, stateful: b
     st.turn_complete_seen.retain(|(tid, _), _| *tid != tab_id);
     st.post_complete_presence.retain(|(tid, _), _| *tid != tab_id);
     st.post_complete_heartbeat.retain(|(tid, _), _| *tid != tab_id);
+    st.user_message_seen.retain(|(tid, _), _| *tid != tab_id);
+    st.post_user_message_heartbeat
+        .retain(|(tid, _), _| *tid != tab_id);
     st.assemblers.remove(&tab_id);
 
     if stateful {
@@ -1774,5 +1839,59 @@ mod tests {
             .await
             .expect("stall evidence should trigger deterministic early fail");
         assert_eq!(reason, "heartbeat_after_turn_complete");
+    }
+
+    #[tokio::test]
+    async fn user_message_echo_with_only_heartbeats_triggers_pre_turn_complete_early_fail() {
+        let state = Arc::new(Mutex::new(State::new()));
+        let (resp_tx, _resp_rx) = oneshot::channel::<String>();
+        let (early_fail_tx, early_fail_rx) = oneshot::channel::<String>();
+        {
+            let mut st = state.lock().await;
+            st.tab_urls.insert(7, "https://chatgpt.com/".to_string());
+            st.tab_owners.insert(7, "planner_chatgpt".to_string());
+            st.pending_turn_id.insert(7, 11);
+            st.pending_turn_lease
+                .insert((7, 11), "lease-expected".to_string());
+            st.pending_resp.insert((7, 11), resp_tx);
+            st.pending_early_fail.insert((7, 11), early_fail_tx);
+            st.assemblers
+                .insert(7, FrameAssembler::new(SiteType::ChatGptGroup));
+        }
+
+        let user_echo = json!({
+            "type": "INBOUND_MESSAGE",
+            "tabId": 7,
+            "payload": json!({
+                "turn_id": 11,
+                "lease_token": "lease-expected",
+                "chunk": r#"[{"type":"message","topic_id":"calpico-chatgpt","payload":{"type":"calpico-message-add","payload":{"message":{"role":"user","content":{"text":"prompt"}}}}}]"#,
+                "ts": 1,
+            })
+            .to_string(),
+        })
+        .to_string();
+        handle_inbound(&user_echo, &state).await;
+
+        for ts in 2..=(PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD + 1) {
+            let heartbeat = json!({
+                "type": "INBOUND_MESSAGE",
+                "tabId": 7,
+                "payload": json!({
+                    "turn_id": 11,
+                    "lease_token": "lease-expected",
+                    "chunk": r#"[{"type":"message","topic_id":"calpico-chatgpt","payload":{"type":"calpico-is-responding-heartbeat","payload":{"room_id":"room"}}}]"#,
+                    "ts": ts,
+                })
+                .to_string(),
+            })
+            .to_string();
+            handle_inbound(&heartbeat, &state).await;
+        }
+
+        let reason = early_fail_rx
+            .await
+            .expect("planner heartbeat drift after user echo should early fail");
+        assert_eq!(reason, "heartbeat_after_user_echo_before_turn_complete");
     }
 }
