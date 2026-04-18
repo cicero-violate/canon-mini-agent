@@ -11,8 +11,9 @@ use crate::llm_runtime::{
 use anyhow::{anyhow, bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::{hash_map::DefaultHasher, HashMap, VecDeque};
+use std::collections::{hash_map::DefaultHasher, BTreeMap, HashMap, VecDeque};
 use std::hash::{Hash, Hasher};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -549,6 +550,106 @@ fn file_modified_ms(path: &Path) -> Option<u128> {
         .duration_since(std::time::UNIX_EPOCH)
         .ok()
         .map(|duration| duration.as_millis())
+}
+
+const FRAMES_ALL_SAMPLE_MAX_BYTES: u64 = 256 * 1024;
+const FRAMES_ALL_RECENT_TYPES_MAX: usize = 24;
+const FRAMES_ALL_TYPE_COUNTS_MAX: usize = 32;
+
+fn frames_all_fingerprint(path: &Path) -> Option<(u128, u64)> {
+    let meta = std::fs::metadata(path).ok()?;
+    let modified_ms = meta
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_millis();
+    Some((modified_ms, meta.len()))
+}
+
+fn record_frames_all_debug_effect_if_changed(
+    workspace: &Path,
+    writer: &mut CanonicalWriter,
+    last_fingerprint: &mut Option<(u128, u64)>,
+) -> Result<()> {
+    let frames_path = workspace.join("frames").join("all.jsonl");
+    let Some(fingerprint) = frames_all_fingerprint(&frames_path) else {
+        return Ok(());
+    };
+    if last_fingerprint.as_ref() == Some(&fingerprint) {
+        return Ok(());
+    }
+    let mut file = std::fs::File::open(&frames_path)?;
+    let file_size_bytes = fingerprint.1;
+    let sample_bytes = file_size_bytes.min(FRAMES_ALL_SAMPLE_MAX_BYTES);
+    let sample_start_offset = file_size_bytes.saturating_sub(sample_bytes);
+    file.seek(SeekFrom::Start(sample_start_offset))?;
+
+    let mut sample = Vec::with_capacity(sample_bytes as usize);
+    file.read_to_end(&mut sample)?;
+    if sample_start_offset > 0 {
+        if let Some(first_newline) = sample.iter().position(|byte| *byte == b'\n') {
+            sample.drain(..=first_newline);
+        } else {
+            sample.clear();
+        }
+    }
+
+    let mut sample_lines = 0usize;
+    let mut parsed_lines = 0usize;
+    let mut parse_errors = 0usize;
+    let mut type_counts: BTreeMap<String, u64> = BTreeMap::new();
+    let mut recent_event_types = Vec::new();
+
+    for line in String::from_utf8_lossy(&sample).lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        sample_lines += 1;
+        match serde_json::from_str::<Value>(line) {
+            Ok(value) => {
+                parsed_lines += 1;
+                let event_type = value
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("MISSING_TYPE")
+                    .to_string();
+                *type_counts.entry(event_type.clone()).or_insert(0) += 1;
+                if recent_event_types.len() == FRAMES_ALL_RECENT_TYPES_MAX {
+                    recent_event_types.remove(0);
+                }
+                recent_event_types.push(event_type);
+            }
+            Err(_) => {
+                parse_errors += 1;
+            }
+        }
+    }
+
+    if type_counts.len() > FRAMES_ALL_TYPE_COUNTS_MAX {
+        let mut ranked: Vec<(String, u64)> = type_counts.into_iter().collect();
+        ranked.sort_by(|(left_kind, left_count), (right_kind, right_count)| {
+            right_count
+                .cmp(left_count)
+                .then_with(|| left_kind.cmp(right_kind))
+        });
+        ranked.truncate(FRAMES_ALL_TYPE_COUNTS_MAX);
+        type_counts = ranked.into_iter().collect();
+    }
+
+    writer.try_record_effect(EffectEvent::FramesAllDebugSnapshot {
+        source: "frames/all.jsonl".to_string(),
+        file_size_bytes,
+        sample_start_offset,
+        sample_bytes,
+        sample_lines,
+        parsed_lines,
+        parse_errors,
+        type_counts,
+        recent_event_types,
+    })?;
+    *last_fingerprint = Some(fingerprint);
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -3361,14 +3462,6 @@ fn canonical_inbound_message_from_tlog(
         if to_role != role {
             continue;
         }
-        if state
-            .inbound_message_signatures
-            .get(role)
-            .map(String::as_str)
-            == Some(signature.as_str())
-        {
-            continue;
-        }
         let replace = match latest.as_ref() {
             None => true,
             Some((seq, _, _)) => record.seq >= *seq,
@@ -3377,7 +3470,18 @@ fn canonical_inbound_message_from_tlog(
             latest = Some((record.seq, signature, message));
         }
     }
-    latest.map(|(_, signature, message)| (signature, message))
+    latest.and_then(|(_, signature, message)| {
+        let consumed_latest = state
+            .inbound_message_signatures
+            .get(role)
+            .map(String::as_str)
+            == Some(signature.as_str());
+        if consumed_latest {
+            None
+        } else {
+            Some((signature, message))
+        }
+    })
 }
 
 fn latest_inbound_message_from_tlog(
@@ -3497,14 +3601,6 @@ fn canonical_external_user_message_from_tlog(
         if to_role != role {
             continue;
         }
-        if state
-            .external_user_message_signatures
-            .get(role)
-            .map(String::as_str)
-            == Some(signature.as_str())
-        {
-            continue;
-        }
         let replace = match latest.as_ref() {
             None => true,
             Some((seq, _, _)) => record.seq >= *seq,
@@ -3513,7 +3609,18 @@ fn canonical_external_user_message_from_tlog(
             latest = Some((record.seq, signature, message));
         }
     }
-    latest.map(|(_, signature, message)| (signature, message))
+    latest.and_then(|(_, signature, message)| {
+        let consumed_latest = state
+            .external_user_message_signatures
+            .get(role)
+            .map(String::as_str)
+            == Some(signature.as_str());
+        if consumed_latest {
+            None
+        } else {
+            Some((signature, message))
+        }
+    })
 }
 
 fn latest_external_user_message_from_tlog(
@@ -3953,7 +4060,7 @@ fn canonical_wake_signatures_from_tlog(
     agent_state_dir: &std::path::Path,
     state: &SystemState,
 ) -> std::collections::HashMap<&'static str, (u64, String)> {
-    let mut by_role = std::collections::HashMap::new();
+    let mut latest_by_role = std::collections::HashMap::new();
     let tlog_path = agent_state_dir.join("tlog.ndjson");
     let records = Tlog::read_records(&tlog_path).unwrap_or_default();
     for record in records {
@@ -3971,20 +4078,23 @@ fn canonical_wake_signatures_from_tlog(
         let Some(role) = wake_role_for_artifact(&artifact) else {
             continue;
         };
-        if state
-            .wake_signal_signatures
-            .get(role)
-            .map(String::as_str)
-            == Some(signature.as_str())
-        {
-            continue;
-        }
-        let replace = match by_role.get(role) {
+        let replace = match latest_by_role.get(role) {
             None => true,
             Some((existing_ts_ms, _)) => record.ts_ms >= *existing_ts_ms,
         };
         if replace {
-            by_role.insert(role, (record.ts_ms, signature));
+            latest_by_role.insert(role, (record.ts_ms, signature));
+        }
+    }
+    let mut by_role = std::collections::HashMap::new();
+    for (role, (ts_ms, signature)) in latest_by_role {
+        let consumed_latest = state
+            .wake_signal_signatures
+            .get(role)
+            .map(String::as_str)
+            == Some(signature.as_str());
+        if !consumed_latest {
+            by_role.insert(role, (ts_ms, signature));
         }
     }
     by_role
@@ -6394,6 +6504,7 @@ pub async fn run() -> Result<()> {
 
         const STALL_CYCLE_THRESHOLD: u32 = 5;
         let mut stall_count: u32 = 0;
+        let mut last_frames_all_fingerprint: Option<(u128, u64)> = None;
 
         loop {
             let _ = std::fs::remove_file(cycle_idle_marker_path());
@@ -6426,6 +6537,13 @@ pub async fn run() -> Result<()> {
 
             let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
             apply_wake_flags(agent_state_dir, &mut writer);
+            if let Err(err) = record_frames_all_debug_effect_if_changed(
+                workspace.as_path(),
+                &mut writer,
+                &mut last_frames_all_fingerprint,
+            ) {
+                eprintln!("[orchestrate] frames/all.jsonl snapshot failed: {err:#}");
+            }
 
             if writer.state().scheduled_phase.is_none() && writer.state().phase == "bootstrap" {
                 if let Some(phase) = decide_bootstrap_phase(start_role) {
@@ -6831,7 +6949,8 @@ pub async fn run() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        action_retry_fingerprint, ensure_workspace_artifact_baseline,
+        action_retry_fingerprint, canonical_inbound_message_from_tlog,
+        canonical_wake_signatures_from_tlog, ensure_workspace_artifact_baseline,
         executor_step_limit_feedback, has_actionable_objectives, inbound_message_from_user,
         invariant_id_from_reason, is_chromium_transport_error,
         local_transport_blocker_message, plan_has_incomplete_tasks,
@@ -7106,6 +7225,91 @@ mod tests {
 
         let recovered = take_external_user_message_without_writer("executor").unwrap();
         assert!(recovered.contains("canonical event"));
+    }
+
+    #[test]
+    fn canonical_inbound_message_skips_historical_replay_when_latest_consumed() {
+        let _guard = global_state_lock().lock().expect("lock");
+        let workspace = temp_workspace("canonical-inbound-latest-only");
+        let state_dir = workspace.join("agent_state");
+        fs::create_dir_all(&state_dir).unwrap();
+        set_workspace(workspace.to_string_lossy().to_string());
+        set_agent_state_dir(state_dir.to_string_lossy().to_string());
+
+        record_effect_for_workspace(
+            &workspace,
+            EffectEvent::InboundMessageRecorded {
+                from_role: "planner".to_string(),
+                to_role: "executor".to_string(),
+                message: "{\"payload\":{\"summary\":\"old\"}}".to_string(),
+                signature: "sig-old".to_string(),
+            },
+        )
+        .unwrap();
+        record_effect_for_workspace(
+            &workspace,
+            EffectEvent::InboundMessageRecorded {
+                from_role: "planner".to_string(),
+                to_role: "executor".to_string(),
+                message: "{\"payload\":{\"summary\":\"new\"}}".to_string(),
+                signature: "sig-new".to_string(),
+            },
+        )
+        .unwrap();
+
+        let mut state = SystemState::new(&[], 0);
+        state
+            .inbound_message_signatures
+            .insert("executor".to_string(), "sig-new".to_string());
+
+        assert!(canonical_inbound_message_from_tlog(&state_dir, &state, "executor").is_none());
+    }
+
+    #[test]
+    fn canonical_wake_signals_skip_historical_replay_when_latest_consumed() {
+        let _guard = global_state_lock().lock().expect("lock");
+        let workspace = temp_workspace("canonical-wake-latest-only");
+        let state_dir = workspace.join("agent_state");
+        fs::create_dir_all(&state_dir).unwrap();
+        set_workspace(workspace.to_string_lossy().to_string());
+        set_agent_state_dir(state_dir.to_string_lossy().to_string());
+
+        record_effect_for_workspace(
+            &workspace,
+            EffectEvent::WorkspaceArtifactWriteApplied {
+                artifact: "agent_state/wakeup_planner.flag".to_string(),
+                op: "write".to_string(),
+                target: state_dir
+                    .join("wakeup_planner.flag")
+                    .to_string_lossy()
+                    .into_owned(),
+                subject: "handoff_wakeup:executor:planner".to_string(),
+                signature: "wake-old".to_string(),
+            },
+        )
+        .unwrap();
+        record_effect_for_workspace(
+            &workspace,
+            EffectEvent::WorkspaceArtifactWriteApplied {
+                artifact: "agent_state/wakeup_planner.flag".to_string(),
+                op: "write".to_string(),
+                target: state_dir
+                    .join("wakeup_planner.flag")
+                    .to_string_lossy()
+                    .into_owned(),
+                subject: "handoff_wakeup:executor:planner".to_string(),
+                signature: "wake-new".to_string(),
+            },
+        )
+        .unwrap();
+
+        let mut state = SystemState::new(&[], 0);
+        state
+            .wake_signal_signatures
+            .insert("planner".to_string(), "wake-new".to_string());
+
+        let wakes = canonical_wake_signatures_from_tlog(&state_dir, &state);
+        assert!(!wakes.contains_key("planner"));
     }
 
     #[test]

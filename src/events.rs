@@ -212,6 +212,17 @@ pub enum EffectEvent {
     ViolationsReportRecorded {
         report: crate::reports::ViolationsReport,
     },
+    FramesAllDebugSnapshot {
+        source: String,
+        file_size_bytes: u64,
+        sample_start_offset: u64,
+        sample_bytes: u64,
+        sample_lines: usize,
+        parsed_lines: usize,
+        parse_errors: usize,
+        type_counts: std::collections::BTreeMap<String, u64>,
+        recent_event_types: Vec<String>,
+    },
 }
 
 /// Envelope that wraps either a `ControlEvent` or an `EffectEvent`.

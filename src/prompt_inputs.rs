@@ -279,6 +279,9 @@ fn effect_event_kind_name(event: &crate::events::EffectEvent) -> &'static str {
         crate::events::EffectEvent::ViolationsReportRecorded { .. } => {
             "violations_report_recorded"
         }
+        crate::events::EffectEvent::FramesAllDebugSnapshot { .. } => {
+            "frames_all_debug_snapshot"
+        }
     }
 }
 
