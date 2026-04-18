@@ -19,12 +19,21 @@ Input (stdin): JSON object. Supported shapes:\n\
 Output (stdout): {\"predicted_next_actions\":[...]} where entries are action stubs.\n"
 }
 
-fn read_action_input() -> Result<Value> {
+fn read_stdin_string() -> Result<String> {
     let mut raw = String::new();
     std::io::stdin()
         .read_to_string(&mut raw)
         .context("read stdin")?;
-    serde_json::from_str(&raw).context("stdin is not valid JSON")
+    Ok(raw)
+}
+
+fn parse_stdin_json(raw: &str) -> Result<Value> {
+    serde_json::from_str(raw).context("stdin is not valid JSON")
+}
+
+fn read_action_input() -> Result<Value> {
+    let raw = read_stdin_string()?;
+    parse_stdin_json(&raw)
 }
 
 fn predicted_next_actions(action: &Value) -> Vec<Value> {

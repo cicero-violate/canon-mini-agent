@@ -2795,6 +2795,26 @@ fn build_resume_verifier_items(
     resume_items
 }
 
+fn recover_verifier_item_from_executor_post_restart(
+    lanes: &[LaneConfig],
+) -> Option<ResumeVerifierItem> {
+    let resume = peek_post_restart_result("executor")?;
+    if resume.action != "apply_patch" || !resume.result.contains("apply_patch ok") {
+        return None;
+    }
+    let lane = lanes
+        .iter()
+        .find(|lane| lane.endpoint.id == resume.endpoint_id)
+        .or_else(|| (lanes.len() == 1).then(|| &lanes[0]))?;
+    let _ = take_post_restart_result("executor");
+    Some(ResumeVerifierItem {
+        lane_id: lane.index,
+        lane_label: lane.label.clone(),
+        lane_plan_file: lane.plan_file.clone(),
+        final_exec_result: resume.result,
+    })
+}
+
 fn load_checkpoint(workspace: &Path) -> Option<OrchestratorCheckpoint> {
     let path = checkpoint_path(workspace);
     let raw = std::fs::read_to_string(path).ok()?;
@@ -6348,6 +6368,25 @@ pub async fn run() -> Result<()> {
                     };
                     verifier_pending_results.push_back((submitted, 0, item.final_exec_result));
                 }
+            }
+        } else if let Some(item) = recover_verifier_item_from_executor_post_restart(&lanes) {
+            eprintln!(
+                "[orchestrate] recovered verifier item from executor post-restart result: lane={}",
+                item.lane_label
+            );
+            if let Some(lane) = lanes.get(item.lane_id) {
+                let submitted = SubmittedExecutorTurn {
+                    tab_id: 0,
+                    lane: item.lane_id,
+                    lane_label: lane.label.clone(),
+                    command_id: "resume".to_string(),
+                    started_ms: now_ms(),
+                    actor: "executor".to_string(),
+                    endpoint_id: lane.endpoint.id.clone(),
+                    tabs: tabs_verify.clone(),
+                    steps_used: 0,
+                };
+                verifier_pending_results.push_back((submitted, 0, item.final_exec_result));
             }
         }
 
