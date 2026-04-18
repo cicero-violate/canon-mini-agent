@@ -2321,8 +2321,10 @@ fn suppress_redundant_planner_blocker(
     if let Ok(prev) = std::fs::read_to_string(&evidence_path) {
         if prev.trim() == evidence {
             return Some((
-                true,
-                "planner blocker suppressed: evidence unchanged".to_string(),
+                false,
+                "Error executing action: planner blocker suppressed: evidence unchanged. \
+                 Retry with materially updated evidence or choose a different action."
+                    .to_string(),
             ));
         }
     }

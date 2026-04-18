@@ -1,4 +1,4 @@
-use crate::invalid_action::build_invalid_action_feedback;
+use crate::invalid_action::{auto_fill_message_fields, build_invalid_action_feedback};
 use serde_json::json;
 
 #[test]
@@ -93,4 +93,45 @@ fn planner_diagnostics_plan_allows_cited_source_validation_evidence() {
         !result.contains("must cite current source validation"),
         "planner diagnostics-derived plan actions with cited source validation should be allowed"
     );
+}
+
+#[test]
+fn auto_fill_reroutes_diagnostics_self_addressed_message_to_planner() {
+    let mut action = json!({
+        "action": "message",
+        "from": "diagnostics",
+        "to": "diagnostics",
+        "type": "blocker",
+        "status": "blocked",
+        "payload": {
+            "summary": "transport still blocked",
+            "blocker": "transport timeout",
+            "evidence": "chromium timeout",
+            "required_action": "repair routing"
+        }
+    });
+
+    let changed = auto_fill_message_fields(&mut action, "diagnostics");
+
+    assert!(changed, "self-routed diagnostics message should be corrected");
+    assert_eq!(action.get("to").and_then(|v| v.as_str()), Some("planner"));
+}
+
+#[test]
+fn auto_fill_preserves_allowed_solo_self_complete_message() {
+    let mut action = json!({
+        "action": "message",
+        "from": "solo",
+        "to": "solo",
+        "type": "result",
+        "status": "complete",
+        "payload": {
+            "summary": "done"
+        }
+    });
+
+    let changed = auto_fill_message_fields(&mut action, "solo");
+
+    assert!(changed, "solo completion should still receive missing field autofill");
+    assert_eq!(action.get("to").and_then(|v| v.as_str()), Some("solo"));
 }

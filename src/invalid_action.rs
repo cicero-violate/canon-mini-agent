@@ -29,9 +29,9 @@ struct MessageRoute<'a> {
 }
 
 impl<'a> MessageRoute<'a> {
-    fn default_for_role(role: &'a str) -> Self {
+    fn default_for_role(role: &str) -> MessageRoute<'static> {
         let (from, to_role, msg_type, status) = default_message_route(role);
-        Self {
+        MessageRoute {
             from,
             to_role,
             msg_type,
@@ -949,6 +949,33 @@ pub fn auto_fill_message_fields(action: &mut Value, role: &str) -> bool {
         obj.insert("from".to_string(), Value::String(actual_from.to_string()));
         changed = true;
     }
+    if let Some(current_to) = obj
+        .get("to")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+    {
+        let self_routed = current_to.eq_ignore_ascii_case(actual_from);
+        let allow_solo_self_complete = actual_from.eq_ignore_ascii_case("solo")
+            && current_to.eq_ignore_ascii_case("solo")
+            && obj
+                .get("type")
+                .and_then(|v| v.as_str())
+                .is_some_and(|kind| kind.eq_ignore_ascii_case("result"))
+            && obj
+                .get("status")
+                .and_then(|v| v.as_str())
+                .is_some_and(|status| status.eq_ignore_ascii_case("complete"));
+        if self_routed && !allow_solo_self_complete {
+            let reroute_to = reroute_invalid_self_message_target(role, actual_from, obj);
+            if !current_to.eq_ignore_ascii_case(reroute_to) {
+                eprintln!(
+                    "[{role}] auto_fill_message_fields: correcting invalid self-target `{current_to}` → `{reroute_to}`"
+                );
+                obj.insert("to".to_string(), Value::String(reroute_to.to_string()));
+                changed = true;
+            }
+        }
+    }
     changed |= ensure_object_string_field(obj, "to", default_to);
     changed |= ensure_object_string_field(obj, "type", default_type);
     changed |= ensure_object_string_field(obj, "status", default_status);
@@ -1089,4 +1116,58 @@ pub fn ensure_action_base_schema(action: &mut Value) -> bool {
     }
 
     changed
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auto_fill_message_fields_repairs_invalid_self_route() {
+        let mut action = json!({
+            "action": "message",
+            "from": "diagnostics",
+            "to": "diagnostics",
+            "type": "blocker",
+            "status": "blocked",
+            "payload": {"summary": "transport still broken"}
+        });
+
+        let changed = auto_fill_message_fields(&mut action, "diagnostics");
+
+        assert!(changed);
+        assert_eq!(action.get("from").and_then(|v| v.as_str()), Some("diagnostics"));
+        assert_eq!(action.get("to").and_then(|v| v.as_str()), Some("planner"));
+    }
+
+    #[test]
+    fn default_message_route_values_are_static_safe() {
+        let route = MessageRoute::default_for_role("diagnostics");
+        assert_eq!(route.from, "diagnostics");
+        assert_eq!(route.to_role, "planner");
+        assert_eq!(route.msg_type, "diagnostics");
+        assert_eq!(route.status, "complete");
+    }
+}
+
+fn reroute_invalid_self_message_target(
+    role: &str,
+    actual_from: &str,
+    obj: &serde_json::Map<String, Value>,
+) -> &'static str {
+    let msg_type = obj.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    let status = obj.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    if role.starts_with("executor") || actual_from.eq_ignore_ascii_case("executor") {
+        return "planner";
+    }
+    if actual_from.eq_ignore_ascii_case("verifier") || actual_from.eq_ignore_ascii_case("diagnostics") {
+        return "planner";
+    }
+    if actual_from.eq_ignore_ascii_case("planner") {
+        if msg_type.eq_ignore_ascii_case("blocker") || status.eq_ignore_ascii_case("blocked") {
+            return "diagnostics";
+        }
+        return "executor";
+    }
+    MessageRoute::default_for_role(role).to_role
 }

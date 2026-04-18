@@ -42,6 +42,7 @@ use tokio_tungstenite::tungstenite::Message;
 const FRAMES_DIR: &str = "./frames";
 const AGENT_STATE_DIR: &str = "./agent_state";
 const PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD: u32 = 8;
+const RESPONDING_HEARTBEAT_EARLY_FAIL_GRACE_SECS: u64 = 5;
 const CHROMIUM_AUTOLAUNCH_DISABLE_ENV: &str = "CANON_CHROMIUM_AUTOLAUNCH";
 const CHROMIUM_AUTOLAUNCH_SCRIPT_ENV: &str = "CANON_CHROMIUM_LAUNCH_SCRIPT";
 
@@ -266,6 +267,95 @@ fn classify_transport_signal(raw: &str) -> Option<&'static str> {
     None
 }
 
+fn extract_calpico_user_message_trigger_id(raw: &str) -> Option<String> {
+    let data = raw.strip_prefix("data: ").unwrap_or(raw).trim();
+    let value: Value = serde_json::from_str(data).ok()?;
+    let envelopes = value.as_array()?;
+    for envelope in envelopes {
+        if envelope.get("type").and_then(Value::as_str) != Some("message") {
+            continue;
+        }
+        let payload = envelope.get("payload")?;
+        if payload.get("type").and_then(Value::as_str) != Some("calpico-message-add") {
+            continue;
+        }
+        let message = payload.get("payload")?.get("message")?;
+        if message.get("role").and_then(Value::as_str) != Some("user") {
+            continue;
+        }
+        let message_id = message.get("id").and_then(Value::as_str)?;
+        return Some(
+            message_id
+                .rsplit('~')
+                .next()
+                .unwrap_or(message_id)
+                .to_string(),
+        );
+    }
+    None
+}
+
+fn extract_calpico_heartbeat_trigger_message_id(raw: &str) -> Option<String> {
+    let data = raw.strip_prefix("data: ").unwrap_or(raw).trim();
+    let value: Value = serde_json::from_str(data).ok()?;
+    let envelopes = value.as_array()?;
+    for envelope in envelopes {
+        if envelope.get("type").and_then(Value::as_str) != Some("message") {
+            continue;
+        }
+        let payload = envelope.get("payload")?;
+        if payload.get("type").and_then(Value::as_str)
+            != Some("calpico-is-responding-heartbeat")
+        {
+            continue;
+        }
+        let trigger_message_id = payload
+            .get("payload")?
+            .get("source")?
+            .get("trigger_message_id")?
+            .as_str()?;
+        return Some(trigger_message_id.to_string());
+    }
+    None
+}
+
+fn extract_calpico_heartbeat_progress_signature(raw: &str) -> Option<String> {
+    let data = raw.strip_prefix("data: ").unwrap_or(raw).trim();
+    let value: Value = serde_json::from_str(data).ok()?;
+    let envelopes = value.as_array()?;
+    for envelope in envelopes {
+        if envelope.get("type").and_then(Value::as_str) != Some("message") {
+            continue;
+        }
+        let payload = envelope.get("payload")?;
+        if payload.get("type").and_then(Value::as_str)
+            != Some("calpico-is-responding-heartbeat")
+        {
+            continue;
+        }
+        let source = payload.get("payload")?.get("source")?;
+        let trigger_message_id = source
+            .get("trigger_message_id")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let task_type = source.get("task_type").and_then(Value::as_str).unwrap_or("");
+        let message = source.get("message").and_then(Value::as_str).unwrap_or("");
+        return Some(format!(
+            "trigger={trigger_message_id}|task={task_type}|message={message}"
+        ));
+    }
+    None
+}
+
+fn early_fail_grace_duration(reason: &str) -> Option<std::time::Duration> {
+    if reason == "responding_heartbeat_after_user_echo_before_turn_complete" {
+        return Some(std::time::Duration::from_secs(
+            RESPONDING_HEARTBEAT_EARLY_FAIL_GRACE_SECS,
+        ));
+    }
+    None
+}
+
 // ---------------------------------------------------------------------------
 // Shared server state (guarded by a single Mutex)
 // ---------------------------------------------------------------------------
@@ -312,6 +402,11 @@ struct State {
     /// tabId → endpoint_id owner for stateful endpoints.
     tab_owners: HashMap<u32, String>,
 
+    /// Tabs retired after an early transport failure/timeout and awaiting
+    /// `TAB_CLOSED`. These must never be reclaimed by reconciliation because
+    /// their live browser state is known-bad for the next turn.
+    quarantined_tabs: HashSet<u32>,
+
     /// TURN frames queued while the extension socket is down.
     replay_queue: Vec<Value>,
 
@@ -334,10 +429,24 @@ struct State {
     /// echo was first observed before any assistant terminal frame.
     user_message_seen: HashMap<(u32, u64), u64>,
 
+    /// (tabId, turnId) -> trigger message id derived from the echoed user
+    /// prompt. Responding heartbeats for any other trigger id are stale
+    /// cross-turn noise and must not advance the current turn's stall counter.
+    user_message_trigger_id: HashMap<(u32, u64), String>,
+
     /// (tabId, turnId) -> count of non-progress `heartbeat` frames observed
     /// after the user prompt echo but before any assistant progress or
     /// `turn_complete`.
     post_user_message_heartbeat: HashMap<(u32, u64), u32>,
+
+    /// (tabId, turnId) -> last observed responding-heartbeat progress
+    /// signature for the current trigger id. Identical repeated signatures are
+    /// stall evidence; signature changes are treated as forward progress.
+    post_user_message_heartbeat_signature: HashMap<(u32, u64), String>,
+
+    /// (tabId, turnId) keys that have already consumed the one-time grace for
+    /// the first responding heartbeat after a user echo.
+    post_user_message_first_heartbeat_graced: HashSet<(u32, u64)>,
 }
 
 /// Shared transport bootstrap for both submit-only and full-response flows.
@@ -369,13 +478,17 @@ impl State {
             preopened: HashMap::new(),
             endpoint_tabs: HashMap::new(),
             tab_owners: HashMap::new(),
+            quarantined_tabs: HashSet::new(),
             replay_queue: Vec::new(),
             frame_counter: 0,
             turn_complete_seen: HashMap::new(),
             post_complete_presence: HashMap::new(),
             post_complete_heartbeat: HashMap::new(),
             user_message_seen: HashMap::new(),
+            user_message_trigger_id: HashMap::new(),
             post_user_message_heartbeat: HashMap::new(),
+            post_user_message_heartbeat_signature: HashMap::new(),
+            post_user_message_first_heartbeat_graced: HashSet::new(),
         }
     }
 
@@ -439,7 +552,21 @@ impl ChromiumBackend {
     /// Get any available tab from the preopened pool.
     async fn pop_any_tab(&self) -> Option<u32> {
         let mut st = self.state.lock().await;
-        let tab_id = st.preopened.values_mut().find_map(|q| q.pop_front())?;
+        let quarantined_tabs = st.quarantined_tabs.clone();
+        let mut claimed = None;
+        for queue in st.preopened.values_mut() {
+            while let Some(tab_id) = queue.pop_front() {
+                if quarantined_tabs.contains(&tab_id) {
+                    continue;
+                }
+                claimed = Some(tab_id);
+                break;
+            }
+            if claimed.is_some() {
+                break;
+            }
+        }
+        let tab_id = claimed?;
         let url = st.tab_urls.get(&tab_id).cloned().unwrap_or_default();
         st.send_msg(json!({ "type": "CLAIM_TAB", "tabId": tab_id, "url": url }));
         Some(tab_id)
@@ -447,11 +574,20 @@ impl ChromiumBackend {
 
     async fn pop_matching_url_tab(&self, urls: &[String]) -> Option<u32> {
         let mut st = self.state.lock().await;
+        let quarantined_tabs = st.quarantined_tabs.clone();
         for url in urls {
             let Some(queue) = st.preopened.get_mut(url) else {
                 continue;
             };
-            let Some(tab_id) = queue.pop_front() else {
+            let mut tab_id = None;
+            while let Some(candidate) = queue.pop_front() {
+                if quarantined_tabs.contains(&candidate) {
+                    continue;
+                }
+                tab_id = Some(candidate);
+                break;
+            }
+            let Some(tab_id) = tab_id else {
                 continue;
             };
             let claim_url = st
@@ -665,35 +801,135 @@ impl ChromiumBackend {
         .await?;
 
         enum ResponseWaitOutcome {
-            Response(Result<String, tokio::sync::oneshot::error::RecvError>),
-            EarlyFail(Result<String, tokio::sync::oneshot::error::RecvError>),
+            Response(String),
+            ResponseDropped,
+            EarlyFail(String),
+            Timeout,
         }
+
+        let mut resp_rx = resp_rx;
+        let mut early_fail_rx = early_fail_rx;
+        let mut deferred_early_fail_reason: Option<String> = None;
+        let mut deferred_early_fail_deadline: Option<std::time::Instant> = None;
 
         // Wait for the assembled response, but allow deterministic protocol
         // evidence to fail the turn before the wall-clock timeout expires.
-        let resp_remaining = deadline.saturating_duration_since(std::time::Instant::now());
-        match tokio::time::timeout(resp_remaining, async {
-            tokio::select! {
-                biased;
-                raw = resp_rx => ResponseWaitOutcome::Response(raw),
-                early = early_fail_rx => ResponseWaitOutcome::EarlyFail(early),
+        let wait_outcome = loop {
+            let now = std::time::Instant::now();
+            let effective_deadline = deferred_early_fail_deadline
+                .map(|grace_deadline| grace_deadline.min(deadline))
+                .unwrap_or(deadline);
+            if now >= effective_deadline {
+                if let Some(reason) = deferred_early_fail_reason.clone() {
+                    break ResponseWaitOutcome::EarlyFail(reason);
+                }
+                break ResponseWaitOutcome::Timeout;
             }
-        })
-        .await
-        {
-            Ok(ResponseWaitOutcome::Response(Ok(raw))) => {
+
+            let wait_remaining = effective_deadline.saturating_duration_since(now);
+            let sleep = tokio::time::sleep(wait_remaining);
+            tokio::pin!(sleep);
+
+            if deferred_early_fail_reason.is_some() {
+                tokio::select! {
+                    raw = &mut resp_rx => {
+                        match raw {
+                            Ok(text) => break ResponseWaitOutcome::Response(text),
+                            Err(_) => break ResponseWaitOutcome::ResponseDropped,
+                        }
+                    }
+                    _ = &mut sleep => {
+                        if let Some(reason) = deferred_early_fail_reason.clone() {
+                            break ResponseWaitOutcome::EarlyFail(reason);
+                        }
+                        break ResponseWaitOutcome::Timeout;
+                    }
+                }
+            } else {
+                tokio::select! {
+                    raw = &mut resp_rx => {
+                        match raw {
+                            Ok(text) => break ResponseWaitOutcome::Response(text),
+                            Err(_) => break ResponseWaitOutcome::ResponseDropped,
+                        }
+                    }
+                    early = &mut early_fail_rx => {
+                        match early {
+                            Ok(reason) => {
+                                if let Some(grace_duration) = early_fail_grace_duration(&reason) {
+                                    let grace_deadline = std::time::Instant::now() + grace_duration;
+                                    deferred_early_fail_reason = Some(reason.clone());
+                                    deferred_early_fail_deadline = Some(grace_deadline);
+                                    let mut st = self.state.lock().await;
+                                    append_inbound_boundary_event(
+                                        &mut st,
+                                        tab_id,
+                                        turn_id,
+                                        endpoint_id,
+                                        "early_fail_deferred",
+                                        &reason,
+                                        stateful,
+                                        false,
+                                    );
+                                    append_outbound_event(
+                                        "OUTBOUND_RESPONSE_EARLY_FAIL_DEFERRED",
+                                        json!({
+                                            "endpoint_id": endpoint_id,
+                                            "tabId": tab_id,
+                                            "turnId": turn_id,
+                                            "url": url,
+                                            "stateful": stateful,
+                                            "submit_only": false,
+                                            "reason": reason,
+                                            "grace_secs": grace_duration.as_secs(),
+                                        }),
+                                    );
+                                    continue;
+                                }
+                                break ResponseWaitOutcome::EarlyFail(reason);
+                            }
+                            Err(_) => {
+                                // Early-fail sender can disappear when the turn context is reset.
+                                // Treat this as missing early-fail evidence and continue waiting.
+                                continue;
+                            }
+                        }
+                    }
+                    _ = &mut sleep => {
+                        break ResponseWaitOutcome::Timeout;
+                    }
+                }
+            }
+        };
+
+        match wait_outcome {
+            ResponseWaitOutcome::Response(raw) => {
                 let mut st = self.state.lock().await;
                 st.pending_early_fail.remove(&(tab_id, turn_id));
                 st.pending_turn_id.remove(&tab_id);
                 st.pending_turn_lease.remove(&(tab_id, turn_id));
                 release_tab_locked(&mut st, endpoint_id, tab_id, stateful);
+                if let Some(reason) = deferred_early_fail_reason {
+                    append_outbound_event(
+                        "OUTBOUND_RESPONSE_EARLY_FAIL_SUPPRESSED",
+                        json!({
+                            "endpoint_id": endpoint_id,
+                            "tabId": tab_id,
+                            "turnId": turn_id,
+                            "url": url,
+                            "stateful": stateful,
+                            "submit_only": false,
+                            "reason": reason,
+                        }),
+                    );
+                }
                 Ok(LlmResponse {
                     raw,
                     tab_id: Some(tab_id),
                     turn_id: Some(turn_id),
                 })
             }
-            Ok(ResponseWaitOutcome::EarlyFail(Ok(reason))) => {
+            ResponseWaitOutcome::EarlyFail(reason) => {
                 let mut st = self.state.lock().await;
                 append_inbound_boundary_event(
                     &mut st,
@@ -726,7 +962,7 @@ impl ChromiumBackend {
                     "chromium: early transport failure ({reason}) (tab={tab_id} turn={turn_id})"
                 );
             }
-            _ => {
+            ResponseWaitOutcome::Timeout => {
                 let mut st = self.state.lock().await;
                 append_inbound_boundary_event(
                     &mut st,
@@ -756,6 +992,38 @@ impl ChromiumBackend {
                 );
                 anyhow::bail!(
                     "chromium: timeout waiting for response (tab={tab_id} turn={turn_id})"
+                );
+            }
+            ResponseWaitOutcome::ResponseDropped => {
+                let mut st = self.state.lock().await;
+                append_inbound_boundary_event(
+                    &mut st,
+                    tab_id,
+                    turn_id,
+                    endpoint_id,
+                    "response_channel_dropped",
+                    "chromium: response channel dropped before completion",
+                    stateful,
+                    false,
+                );
+                st.pending_resp.remove(&(tab_id, turn_id));
+                st.pending_early_fail.remove(&(tab_id, turn_id));
+                st.pending_turn_id.remove(&tab_id);
+                st.pending_turn_lease.remove(&(tab_id, turn_id));
+                retire_tab_locked(&mut st, endpoint_id, tab_id, stateful);
+                append_outbound_event(
+                    "OUTBOUND_RESPONSE_CHANNEL_DROPPED",
+                    json!({
+                        "endpoint_id": endpoint_id,
+                        "tabId": tab_id,
+                        "turnId": turn_id,
+                        "url": url,
+                        "stateful": stateful,
+                        "submit_only": false,
+                    }),
+                );
+                anyhow::bail!(
+                    "chromium: response channel dropped before completion (tab={tab_id} turn={turn_id})"
                 );
             }
         }
@@ -1131,6 +1399,10 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
             st.tab_urls.insert(tab_id, url.clone());
             eprintln!("[chromium] TAB_READY tab={tab_id} url={url}");
 
+            if st.quarantined_tabs.contains(&tab_id) {
+                return;
+            }
+
             if let Some(rid) = req_id {
                 // This was a tab we opened via OPEN_TAB.
                 if let Some(tx) = st.pending_open.remove(&rid) {
@@ -1164,6 +1436,7 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
             if let Some(endpoint_id) = st.tab_owners.remove(&tab_id) {
                 st.endpoint_tabs.remove(&endpoint_id);
             }
+            st.quarantined_tabs.remove(&tab_id);
             for q in st.preopened.values_mut() {
                 q.retain(|id| *id != tab_id);
             }
@@ -1176,8 +1449,14 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
             st.post_complete_presence.retain(|(tid, _), _| *tid != tab_id);
             st.post_complete_heartbeat.retain(|(tid, _), _| *tid != tab_id);
             st.user_message_seen.retain(|(tid, _), _| *tid != tab_id);
+            st.user_message_trigger_id
+                .retain(|(tid, _), _| *tid != tab_id);
             st.post_user_message_heartbeat
                 .retain(|(tid, _), _| *tid != tab_id);
+            st.post_user_message_heartbeat_signature
+                .retain(|(tid, _), _| *tid != tab_id);
+            st.post_user_message_first_heartbeat_graced
+                .retain(|(tid, _)| *tid != tab_id);
         }
 
         "SUBMIT_ACK" => {
@@ -1361,7 +1640,10 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                     // counters here disables the only deterministic early-fail path and leaves the
                     // caller stuck until the outer wall-clock timeout.
                     st.user_message_seen.remove(&key);
+                    st.user_message_trigger_id.remove(&key);
                     st.post_user_message_heartbeat.remove(&key);
+                    st.post_user_message_heartbeat_signature.remove(&key);
+                    st.post_user_message_first_heartbeat_graced.remove(&key);
                     append_outbound_event(
                         "OUTBOUND_EARLY_SIGNAL",
                         json!({
@@ -1377,7 +1659,14 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                 Some("user_message_add") if st.pending_resp.contains_key(&key) => {
                     let frame_counter = st.frame_counter;
                     st.user_message_seen.entry(key).or_insert(frame_counter);
+                    if let Some(trigger_message_id) =
+                        extract_calpico_user_message_trigger_id(&chunk)
+                    {
+                        st.user_message_trigger_id.insert(key, trigger_message_id);
+                    }
                     st.post_user_message_heartbeat.insert(key, 0);
+                    st.post_user_message_heartbeat_signature.remove(&key);
+                    st.post_user_message_first_heartbeat_graced.remove(&key);
                     append_outbound_event(
                         "OUTBOUND_EARLY_SIGNAL",
                         json!({
@@ -1394,7 +1683,10 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                     st.post_complete_presence.insert(key, 0);
                     st.post_complete_heartbeat.insert(key, 0);
                     st.user_message_seen.remove(&key);
+                    st.user_message_trigger_id.remove(&key);
                     st.post_user_message_heartbeat.remove(&key);
+                    st.post_user_message_heartbeat_signature.remove(&key);
+                    st.post_user_message_first_heartbeat_graced.remove(&key);
                     append_outbound_event(
                         "OUTBOUND_EARLY_SIGNAL",
                         json!({
@@ -1440,7 +1732,7 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                             .and_modify(|seen| *seen += 1)
                             .or_insert(1);
                         let heartbeat_count = *count;
-                        if heartbeat_count == 8 {
+                        if heartbeat_count >= 8 {
                             if let Some(tx) = st.pending_early_fail.remove(&key) {
                                 let _ = tx.send("heartbeat_after_turn_complete".to_string());
                             }
@@ -1457,47 +1749,139 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                             }),
                         );
                     } else if let Some(user_message_frame) = st.user_message_seen.get(&key).copied() {
-                        if chunk.contains("\"calpico-is-responding-heartbeat\"") {
-                            st.user_message_seen.remove(&key);
-                            st.post_user_message_heartbeat.remove(&key);
-                            append_outbound_event(
-                                "OUTBOUND_EARLY_SIGNAL",
-                                json!({
-                                    "signal": "responding_heartbeat_before_turn_complete",
-                                    "tabId": tab_id,
-                                    "turnId": turn_id,
-                                    "frame_counter": st.frame_counter,
-                                    "user_message_frame_counter": user_message_frame,
-                                    "suppressed_threshold": PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD,
-                                }),
-                            );
-                        } else {
-                            let count = st
-                                .post_user_message_heartbeat
-                                .entry(key)
-                                .and_modify(|seen| *seen += 1)
-                                .or_insert(1);
-                            let heartbeat_count = *count;
-                            if heartbeat_count == PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD {
-                                if let Some(tx) = st.pending_early_fail.remove(&key) {
-                                    let _ = tx.send(
-                                        "heartbeat_after_user_echo_before_turn_complete".to_string(),
+                        // Tabs can continue emitting responding-heartbeat frames for
+                        // older prompt echoes after a turn has already been retired.
+                        // Treat those as stale cross-turn noise rather than evidence
+                        // about the current turn, otherwise the stall counter can be
+                        // driven by a prior trigger_message_id and deterministically
+                        // trip an early transport failure on a healthy new turn.
+                        let expected_trigger_message_id =
+                            st.user_message_trigger_id.get(&key).cloned();
+                        let heartbeat_trigger_message_id =
+                            extract_calpico_heartbeat_trigger_message_id(&chunk);
+                        if let Some(expected_trigger_message_id) =
+                            expected_trigger_message_id.as_deref()
+                        {
+                            match heartbeat_trigger_message_id.as_deref() {
+                                Some(actual_trigger_message_id)
+                                    if actual_trigger_message_id
+                                        == expected_trigger_message_id => {}
+                                Some(actual_trigger_message_id) => {
+                                    append_outbound_event(
+                                        "OUTBOUND_EARLY_SIGNAL",
+                                        json!({
+                                            "signal": "heartbeat_ignored_due_to_trigger_message_mismatch",
+                                            "tabId": tab_id,
+                                            "turnId": turn_id,
+                                            "frame_counter": st.frame_counter,
+                                            "expected_trigger_message_id": expected_trigger_message_id,
+                                            "actual_trigger_message_id": actual_trigger_message_id,
+                                            "user_message_frame_counter": user_message_frame,
+                                        }),
                                     );
+                                    return;
+                                }
+                                None => {
+                                    append_outbound_event(
+                                        "OUTBOUND_EARLY_SIGNAL",
+                                        json!({
+                                            "signal": "heartbeat_ignored_due_to_missing_trigger_message_id",
+                                            "tabId": tab_id,
+                                            "turnId": turn_id,
+                                            "frame_counter": st.frame_counter,
+                                            "expected_trigger_message_id": expected_trigger_message_id,
+                                            "user_message_frame_counter": user_message_frame,
+                                        }),
+                                    );
+                                    return;
                                 }
                             }
+                        }
+                        let responding_heartbeat = chunk.contains("\"calpico-is-responding-heartbeat\"");
+                        let heartbeat_progress_signature = if responding_heartbeat {
+                            extract_calpico_heartbeat_progress_signature(&chunk)
+                        } else {
+                            None
+                        };
+                        let progress_updated = if let Some(signature) =
+                            heartbeat_progress_signature.as_deref()
+                        {
+                            match st.post_user_message_heartbeat_signature.get(&key) {
+                                Some(previous) if previous == signature => false,
+                                _ => {
+                                    st.post_user_message_heartbeat_signature
+                                        .insert(key, signature.to_string());
+                                    true
+                                }
+                            }
+                        } else {
+                            false
+                        };
+                        if progress_updated {
+                            st.post_user_message_heartbeat.insert(key, 0);
                             append_outbound_event(
                                 "OUTBOUND_EARLY_SIGNAL",
                                 json!({
-                                    "signal": "heartbeat_after_user_echo_before_turn_complete",
+                                    "signal": "heartbeat_progress_update_after_user_echo",
                                     "tabId": tab_id,
                                     "turnId": turn_id,
                                     "frame_counter": st.frame_counter,
                                     "user_message_frame_counter": user_message_frame,
-                                    "heartbeat_count": heartbeat_count,
-                                    "threshold": PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD,
+                                    "progress_signature": heartbeat_progress_signature,
                                 }),
                             );
+                            return;
                         }
+                        let first_heartbeat_after_user_echo = st
+                            .post_user_message_heartbeat
+                            .get(&key)
+                            .copied()
+                            .unwrap_or(0)
+                            == 0
+                            && !st.post_user_message_first_heartbeat_graced.contains(&key);
+                        if responding_heartbeat && first_heartbeat_after_user_echo {
+                            st.post_user_message_first_heartbeat_graced.insert(key);
+                            append_outbound_event(
+                                "OUTBOUND_EARLY_SIGNAL",
+                                json!({
+                                    "signal": "first_responding_heartbeat_after_user_echo_grace",
+                                    "tabId": tab_id,
+                                    "turnId": turn_id,
+                                    "frame_counter": st.frame_counter,
+                                    "user_message_frame_counter": user_message_frame,
+                                    "progress_signature": heartbeat_progress_signature,
+                                }),
+                            );
+                            return;
+                        }
+                        let count = st
+                            .post_user_message_heartbeat
+                            .entry(key)
+                            .and_modify(|seen| *seen += 1)
+                            .or_insert(1);
+                        let heartbeat_count = *count;
+                        let signal = if responding_heartbeat {
+                            "responding_heartbeat_after_user_echo_before_turn_complete"
+                        } else {
+                            "heartbeat_after_user_echo_before_turn_complete"
+                        };
+                        if heartbeat_count >= PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD {
+                            if let Some(tx) = st.pending_early_fail.remove(&key) {
+                                let _ = tx.send(signal.to_string());
+                            }
+                        }
+                        append_outbound_event(
+                            "OUTBOUND_EARLY_SIGNAL",
+                            json!({
+                                "signal": signal,
+                                "tabId": tab_id,
+                                "turnId": turn_id,
+                                "frame_counter": st.frame_counter,
+                                "user_message_frame_counter": user_message_frame,
+                                "heartbeat_count": heartbeat_count,
+                                "threshold": PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD,
+                            }),
+                        );
                     }
                 }
                 _ => {}
@@ -1549,7 +1933,10 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                     st.post_complete_presence.remove(&key);
                     st.post_complete_heartbeat.remove(&key);
                     st.user_message_seen.remove(&key);
+                    st.user_message_trigger_id.remove(&key);
                     st.post_user_message_heartbeat.remove(&key);
+                    st.post_user_message_heartbeat_signature.remove(&key);
+                    st.post_user_message_first_heartbeat_graced.remove(&key);
                     let endpoint_id = st.tab_owners.get(&tab_id).cloned();
                     if let Some(endpoint_id) = endpoint_id.as_deref() {
                         release_tab_locked(&mut st, endpoint_id, tab_id, true);
@@ -1566,7 +1953,10 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                     st.post_complete_presence.remove(&key);
                     st.post_complete_heartbeat.remove(&key);
                     st.user_message_seen.remove(&key);
+                    st.user_message_trigger_id.remove(&key);
                     st.post_user_message_heartbeat.remove(&key);
+                    st.post_user_message_heartbeat_signature.remove(&key);
+                    st.post_user_message_first_heartbeat_graced.remove(&key);
                     if let Some(owner) = endpoint_id.as_deref() {
                         release_tab_locked(&mut st, owner, tab_id, true);
                     } else {
@@ -1598,6 +1988,7 @@ fn release_tab_locked(st: &mut State, endpoint_id: &str, tab_id: u32, stateful: 
 }
 
 fn retire_tab_locked(st: &mut State, endpoint_id: &str, tab_id: u32, stateful: bool) {
+    let close_url = st.tab_urls.get(&tab_id).cloned().unwrap_or_default();
     st.pending_turn_id.remove(&tab_id);
     st.pending_turn_lease.retain(|(tid, _), _| *tid != tab_id);
     st.pending_ack.retain(|(tid, _), _| *tid != tab_id);
@@ -1607,8 +1998,14 @@ fn retire_tab_locked(st: &mut State, endpoint_id: &str, tab_id: u32, stateful: b
     st.post_complete_presence.retain(|(tid, _), _| *tid != tab_id);
     st.post_complete_heartbeat.retain(|(tid, _), _| *tid != tab_id);
     st.user_message_seen.retain(|(tid, _), _| *tid != tab_id);
+    st.user_message_trigger_id
+        .retain(|(tid, _), _| *tid != tab_id);
     st.post_user_message_heartbeat
         .retain(|(tid, _), _| *tid != tab_id);
+    st.post_user_message_heartbeat_signature
+        .retain(|(tid, _), _| *tid != tab_id);
+    st.post_user_message_first_heartbeat_graced
+        .retain(|(tid, _)| *tid != tab_id);
     st.assemblers.remove(&tab_id);
 
     if stateful {
@@ -1616,7 +2013,30 @@ fn retire_tab_locked(st: &mut State, endpoint_id: &str, tab_id: u32, stateful: b
             st.endpoint_tabs.remove(endpoint_id);
         }
         st.tab_owners.remove(&tab_id);
+
+        // Do not hard-close stateful ChatGPT/Gemini tabs on transport failure.
+        // Closing guarantees the next acquire path has nothing reusable and
+        // forces open-tab churn. Instead, soft-reset the tab by navigating it
+        // back to its current provider URL without a reqId so the eventual
+        // TAB_READY is treated as an organic reusable tab announcement.
+        if !close_url.is_empty() {
+            eprintln!(
+                "[chromium] soft-resetting stateful tab {tab_id} to {close_url} after transport retirement"
+            );
+            let _ = st.send_msg(json!({
+                "type": "NAVIGATE_TAB",
+                "tabId": tab_id,
+                "url": close_url,
+            }));
+            for queue in st.preopened.values_mut() {
+                queue.retain(|id| *id != tab_id);
+            }
+            return;
+        }
     }
+
+    st.quarantined_tabs.insert(tab_id);
+    let _ = st.send_msg(json!({ "type": "CLOSE_TAB", "tabId": tab_id, "url": close_url }));
 
     for queue in st.preopened.values_mut() {
         queue.retain(|id| *id != tab_id);
@@ -1631,6 +2051,7 @@ fn reconcile_tab_state_locked(
     let known_tab_ids: HashSet<u32> = st.tab_urls.keys().copied().collect();
     st.tab_owners
         .retain(|tab_id, _| known_tab_ids.contains(tab_id));
+    st.quarantined_tabs.retain(|tab_id| known_tab_ids.contains(tab_id));
 
     let owned_by_tab = st.tab_owners.clone();
     st.endpoint_tabs.retain(|endpoint, tab_id| {
@@ -1642,11 +2063,13 @@ fn reconcile_tab_state_locked(
     });
 
     let owned_tab_ids: HashSet<u32> = st.tab_owners.keys().copied().collect();
+    let quarantined_tab_ids = st.quarantined_tabs.clone();
     let mut seen_preopened = HashSet::new();
     st.preopened.retain(|_, queue| {
         queue.retain(|tab_id| {
             known_tab_ids.contains(tab_id)
                 && !owned_tab_ids.contains(tab_id)
+                && !quarantined_tab_ids.contains(tab_id)
                 && seen_preopened.insert(*tab_id)
         });
         !queue.is_empty()
@@ -1673,6 +2096,9 @@ fn reconcile_tab_state_locked(
         if st.tab_owners.contains_key(&tab_id) {
             continue;
         }
+        if quarantined_tab_ids.contains(&tab_id) {
+            continue;
+        }
         if !requested_urls.is_empty() && !requested_urls.iter().any(|candidate| candidate == &url) {
             continue;
         }
@@ -1696,6 +2122,13 @@ mod tests {
     use serde_json::{json, Value};
     use std::sync::Arc;
     use tokio::sync::{oneshot, Mutex};
+
+    async fn recv_early_fail(early_fail_rx: oneshot::Receiver<String>, context: &str) -> String {
+        tokio::time::timeout(std::time::Duration::from_secs(1), early_fail_rx)
+            .await
+            .unwrap_or_else(|_| panic!("timed out waiting for deterministic early fail: {context}"))
+            .unwrap_or_else(|_| panic!("early fail sender dropped before emitting reason: {context}"))
+    }
 
     #[test]
     fn submit_ack_timeout_is_endpoint_aware() {
@@ -1949,14 +2382,16 @@ mod tests {
             handle_inbound(&heartbeat, &state).await;
         }
 
-        let reason = early_fail_rx
-            .await
-            .expect("stall evidence should trigger deterministic early fail");
+        let reason = recv_early_fail(
+            early_fail_rx,
+            "assistant message add followed by repeated post-turn-complete heartbeats",
+        )
+        .await;
         assert_eq!(reason, "heartbeat_after_turn_complete");
     }
 
     #[tokio::test]
-    async fn responding_heartbeats_after_user_echo_count_as_positive_liveness() {
+    async fn responding_heartbeats_after_user_echo_trigger_deterministic_early_fail() {
         let state = Arc::new(Mutex::new(State::new()));
         let (resp_tx, _resp_rx) = oneshot::channel::<String>();
         let (early_fail_tx, early_fail_rx) = oneshot::channel::<String>();
@@ -1979,7 +2414,7 @@ mod tests {
             "payload": json!({
                 "turn_id": 11,
                 "lease_token": "lease-expected",
-                "chunk": r#"[{"type":"message","topic_id":"calpico-chatgpt","payload":{"type":"calpico-message-add","payload":{"message":{"role":"user","content":{"text":"prompt"}}}}}]"#,
+                "chunk": r#"[{"type":"message","topic_id":"calpico-chatgpt","payload":{"type":"calpico-message-add","payload":{"message":{"id":"room~room~CalpicoMessage~trigger-1","role":"user","content":{"text":"prompt"}}}}}]"#,
                 "ts": 1,
             })
             .to_string(),
@@ -1987,14 +2422,23 @@ mod tests {
         .to_string();
         handle_inbound(&user_echo, &state).await;
 
-        for ts in 2..=(PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD + 1) {
+        // The runtime now ignores responding heartbeats that do not carry the
+        // echoed trigger_message_id. Keep the synthetic frames aligned with the
+        // user echo id so this test still reaches the deterministic early-fail
+        // path. The runtime currently applies two non-counting frames before
+        // normal accumulation starts:
+        // 1) first seen progress-signature seeds heartbeat state and resets
+        //    the counter; 2) the first responding heartbeat is explicitly
+        //    graced. We therefore need threshold + 1 counted heartbeats, i.e.
+        //    threshold + 3 total heartbeat frames after the user echo.
+        for ts in 2..=(PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD + 3) {
             let heartbeat = json!({
                 "type": "INBOUND_MESSAGE",
                 "tabId": 7,
                 "payload": json!({
                     "turn_id": 11,
                     "lease_token": "lease-expected",
-                    "chunk": r#"[{"type":"message","topic_id":"calpico-chatgpt","payload":{"type":"calpico-is-responding-heartbeat","payload":{"room_id":"room"}}}]"#,
+                    "chunk": r#"[{"type":"message","topic_id":"calpico-chatgpt","payload":{"type":"calpico-is-responding-heartbeat","payload":{"room_id":"room","source":{"trigger_message_id":"trigger-1","client_request_id":"req-1","model_slug":"gpt-5-4-auto-thinking","message":"**ChatGPT** is taking a look"}}}}]"#,
                     "ts": ts,
                 })
                 .to_string(),
@@ -2003,10 +2447,189 @@ mod tests {
             handle_inbound(&heartbeat, &state).await;
         }
 
-        let result = tokio::time::timeout(std::time::Duration::from_millis(50), early_fail_rx).await;
-        assert!(
-            result.is_err(),
-            "responding heartbeats should keep the active turn alive before turn_complete"
+        let reason = recv_early_fail(
+            early_fail_rx,
+            "user echo followed by repeated responding heartbeats",
+        )
+        .await;
+        assert_eq!(
+            reason,
+            "responding_heartbeat_after_user_echo_before_turn_complete"
         );
+    }
+
+    #[tokio::test]
+    async fn changing_responding_heartbeat_status_resets_pre_turn_stall_counter() {
+        let state = Arc::new(Mutex::new(State::new()));
+        let (resp_tx, _resp_rx) = oneshot::channel::<String>();
+        let (early_fail_tx, early_fail_rx) = oneshot::channel::<String>();
+        {
+            let mut st = state.lock().await;
+            st.tab_urls.insert(7, "https://chatgpt.com/".to_string());
+            st.tab_owners.insert(7, "planner_chatgpt".to_string());
+            st.pending_turn_id.insert(7, 11);
+            st.pending_turn_lease
+                .insert((7, 11), "lease-expected".to_string());
+            st.pending_resp.insert((7, 11), resp_tx);
+            st.pending_early_fail.insert((7, 11), early_fail_tx);
+            st.assemblers
+                .insert(7, FrameAssembler::new(SiteType::ChatGptGroup));
+        }
+
+        let user_echo = json!({
+            "type": "INBOUND_MESSAGE",
+            "tabId": 7,
+            "payload": json!({
+                "turn_id": 11,
+                "lease_token": "lease-expected",
+                "chunk": r#"[{"type":"message","topic_id":"calpico-chatgpt","payload":{"type":"calpico-message-add","payload":{"message":{"id":"room~room~CalpicoMessage~trigger-1","role":"user","content":{"text":"prompt"}}}}}]"#,
+                "ts": 1,
+            })
+            .to_string(),
+        })
+        .to_string();
+        handle_inbound(&user_echo, &state).await;
+
+        for ts in 2..=5 {
+            let heartbeat = json!({
+                "type": "INBOUND_MESSAGE",
+                "tabId": 7,
+                "payload": json!({
+                    "turn_id": 11,
+                    "lease_token": "lease-expected",
+                    "chunk": r#"[{"type":"message","topic_id":"calpico-chatgpt","payload":{"type":"calpico-is-responding-heartbeat","payload":{"room_id":"room","source":{"trigger_message_id":"trigger-1","client_request_id":"req-1","model_slug":"gpt-5-4-auto-thinking","message":"**ChatGPT** is taking a look"}}}}]"#,
+                    "ts": ts,
+                })
+                .to_string(),
+            })
+            .to_string();
+            handle_inbound(&heartbeat, &state).await;
+        }
+
+        for ts in 6..=9 {
+            let heartbeat = json!({
+                "type": "INBOUND_MESSAGE",
+                "tabId": 7,
+                "payload": json!({
+                    "turn_id": 11,
+                    "lease_token": "lease-expected",
+                    "chunk": r#"[{"type":"message","topic_id":"calpico-chatgpt","payload":{"type":"calpico-is-responding-heartbeat","payload":{"room_id":"room","source":{"trigger_message_id":"trigger-1","client_request_id":"req-1","model_slug":"gpt-5-4-auto-thinking","message":"**ChatGPT** is thinking"}}}}]"#,
+                    "ts": ts,
+                })
+                .to_string(),
+            })
+            .to_string();
+            handle_inbound(&heartbeat, &state).await;
+        }
+
+        let no_fail = tokio::time::timeout(std::time::Duration::from_millis(100), early_fail_rx).await;
+        assert!(
+            no_fail.is_err(),
+            "progressive heartbeat status changes should not deterministically early-fail"
+        );
+    }
+
+    #[tokio::test]
+    async fn responding_heartbeat_still_fails_when_counter_is_already_at_threshold() {
+        let state = Arc::new(Mutex::new(State::new()));
+        let (resp_tx, _resp_rx) = oneshot::channel::<String>();
+        let (early_fail_tx, early_fail_rx) = oneshot::channel::<String>();
+        {
+            let mut st = state.lock().await;
+            st.tab_urls.insert(7, "https://chatgpt.com/".to_string());
+            st.tab_owners.insert(7, "planner_chatgpt".to_string());
+            st.pending_turn_id.insert(7, 11);
+            st.pending_turn_lease
+                .insert((7, 11), "lease-expected".to_string());
+            st.pending_resp.insert((7, 11), resp_tx);
+            st.pending_early_fail.insert((7, 11), early_fail_tx);
+            st.user_message_seen.insert((7, 11), 1);
+            st.post_user_message_heartbeat.insert(
+                (7, 11),
+                PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD,
+            );
+            st.assemblers
+                .insert(7, FrameAssembler::new(SiteType::ChatGptGroup));
+        }
+
+        let heartbeat = json!({
+            "type": "INBOUND_MESSAGE",
+            "tabId": 7,
+            "payload": json!({
+                "turn_id": 11,
+                "lease_token": "lease-expected",
+                "chunk": r#"[{"type":"message","topic_id":"calpico-chatgpt","payload":{"type":"calpico-is-responding-heartbeat","payload":{"room_id":"room"}}}]"#,
+                "ts": 1,
+            })
+            .to_string(),
+        })
+        .to_string();
+        handle_inbound(&heartbeat, &state).await;
+
+        let reason = recv_early_fail(
+            early_fail_rx,
+            "user echo threshold preload followed by one more responding heartbeat",
+        )
+        .await;
+        assert_eq!(
+            reason,
+            "responding_heartbeat_after_user_echo_before_turn_complete"
+        );
+    }
+
+    #[tokio::test]
+    async fn first_responding_heartbeat_after_user_echo_gets_grace() {
+        let state = Arc::new(Mutex::new(State::new()));
+        let (resp_tx, _resp_rx) = oneshot::channel::<String>();
+        let (early_fail_tx, early_fail_rx) = oneshot::channel::<String>();
+        {
+            let mut st = state.lock().await;
+            st.tab_urls.insert(7, "https://chatgpt.com/".to_string());
+            st.tab_owners.insert(7, "planner_chatgpt".to_string());
+            st.pending_turn_id.insert(7, 11);
+            st.pending_turn_lease
+                .insert((7, 11), "lease-expected".to_string());
+            st.pending_resp.insert((7, 11), resp_tx);
+            st.pending_early_fail.insert((7, 11), early_fail_tx);
+            st.assemblers
+                .insert(7, FrameAssembler::new(SiteType::ChatGptGroup));
+        }
+
+        let user_echo = json!({
+            "type": "INBOUND_MESSAGE",
+            "tabId": 7,
+            "payload": json!({
+                "turn_id": 11,
+                "lease_token": "lease-expected",
+                "chunk": r#"[{"type":"message","topic_id":"calpico-chatgpt","payload":{"type":"calpico-message-add","payload":{"message":{"id":"room~room~CalpicoMessage~trigger-1","role":"user","content":{"text":"prompt"}}}}}]"#,
+                "ts": 1,
+            })
+            .to_string(),
+        })
+        .to_string();
+        handle_inbound(&user_echo, &state).await;
+
+        let heartbeat = json!({
+            "type": "INBOUND_MESSAGE",
+            "tabId": 7,
+            "payload": json!({
+                "turn_id": 11,
+                "lease_token": "lease-expected",
+                "chunk": r#"[{"type":"message","topic_id":"calpico-chatgpt","payload":{"type":"calpico-is-responding-heartbeat","payload":{"room_id":"room","source":{"trigger_message_id":"trigger-1","message":"**ChatGPT** is taking a look"}}}}]"#,
+                "ts": 2,
+            })
+            .to_string(),
+        })
+        .to_string();
+        handle_inbound(&heartbeat, &state).await;
+
+        let no_fail = tokio::time::timeout(std::time::Duration::from_millis(100), early_fail_rx).await;
+        assert!(
+            no_fail.is_err(),
+            "the first responding heartbeat after user echo should not deterministically early-fail"
+        );
+
+        let st = state.lock().await;
+        assert_eq!(st.post_user_message_heartbeat.get(&(7, 11)).copied(), Some(0));
     }
 }
