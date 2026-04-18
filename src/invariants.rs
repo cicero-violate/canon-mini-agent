@@ -1373,6 +1373,7 @@ mod tests {
                 .subsec_nanos()
         ));
         std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join("agent_state")).unwrap();
         dir
     }
 
@@ -1879,7 +1880,7 @@ mod tests {
     fn generate_invariant_issues_creates_meta_issues_on_empty_workspace() {
         let tmp = make_workspace();
         // Create a minimal ISSUES.json so the generator can load it.
-        let issues_path = tmp.join("ISSUES.json");
+        let issues_path = tmp.join(crate::constants::ISSUES_FILE);
         std::fs::write(&issues_path, r#"{"version":0,"issues":[]}"#).unwrap();
 
         let created = generate_invariant_issues(tmp.as_path()).unwrap();
@@ -1907,7 +1908,7 @@ mod tests {
     #[test]
     fn generate_invariant_issues_idempotent() {
         let tmp = make_workspace();
-        let issues_path = tmp.join("ISSUES.json");
+        let issues_path = tmp.join(crate::constants::ISSUES_FILE);
         std::fs::write(&issues_path, r#"{"version":0,"issues":[]}"#).unwrap();
 
         let first = generate_invariant_issues(tmp.as_path()).unwrap();
@@ -1923,7 +1924,7 @@ mod tests {
     #[test]
     fn generate_invariant_issues_creates_per_promoted_issue() {
         let tmp = make_workspace();
-        let issues_path = tmp.join("ISSUES.json");
+        let issues_path = tmp.join(crate::constants::ISSUES_FILE);
         std::fs::write(&issues_path, r#"{"version":0,"issues":[]}"#).unwrap();
 
         // Write a promoted invariant into enforced_invariants.json.

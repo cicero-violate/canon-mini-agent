@@ -470,6 +470,13 @@ mod tests {
     use crate::{set_agent_state_dir, set_workspace};
     use std::path::Path;
 
+    fn write_test_issue_file(path: &Path, raw: &str) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("create issues parent dir");
+        }
+        std::fs::write(path, raw).expect("write issues file");
+    }
+
     fn render_open_issues(workspace: &Path) -> String {
         let issues = read_ranked_open_issues(workspace);
         if issues.is_empty() {
@@ -557,7 +564,7 @@ mod tests {
     { "id": "i_open", "title": "open issue", "status": "open", "priority": "high" }
   ]
 }"#;
-        std::fs::write(&path, raw).expect("write issues file");
+        write_test_issue_file(&path, raw);
         let filtered = render_open_issues(&root);
         assert!(filtered.contains("\"id\": \"i_open\""));
         assert!(!filtered.contains("\"id\": \"i_done\""));
@@ -578,7 +585,7 @@ mod tests {
     { "id": "i_high", "title": "high issue", "status": "open", "priority": "high", "location": "b.rs:2" }
   ]
 }"#;
-        std::fs::write(&path, raw).expect("write issues file");
+        write_test_issue_file(&path, raw);
         let summary = render_top_open_issues(&root, 1);
         assert!(summary.contains("Top open issues"));
         assert!(summary.contains("i_high"));
@@ -593,7 +600,7 @@ mod tests {
         ));
         std::fs::create_dir_all(&root).expect("create temp issues dir");
         let path = root.join(crate::constants::ISSUES_FILE);
-        std::fs::write(
+        write_test_issue_file(
             &path,
             r#"{
   "version": 1,
@@ -609,8 +616,7 @@ mod tests {
     }
   ]
 }"#,
-        )
-        .expect("write issues file");
+        );
         crate::constants::set_agent_state_dir(
             root.join("agent_state").to_string_lossy().into_owned(),
         );
@@ -632,7 +638,7 @@ mod tests {
         ));
         std::fs::create_dir_all(&root).expect("create temp issues dir");
         let path = root.join(crate::constants::ISSUES_FILE);
-        std::fs::write(
+        write_test_issue_file(
             &path,
             r#"{
   "version": 1,
@@ -646,8 +652,7 @@ mod tests {
     }
   ]
 }"#,
-        )
-        .expect("write issues file");
+        );
 
         let summary = sweep_stale_issues(&root).expect("sweep should succeed");
         assert_eq!(summary.marked_stale, 0);

@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use crate::constants::{
-    INVARIANTS_FILE, MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
+    INVARIANTS_FILE, ISSUES_FILE, MASTER_PLAN_FILE, SPEC_FILE, VIOLATIONS_FILE,
 };
 use crate::issues::{read_ranked_open_issues, Issue};
 use crate::reports::{DiagnosticsFinding, DiagnosticsReport, Impact, Severity, ViolationsReport};
@@ -536,7 +536,10 @@ fn summarize_violations_report_for_prompt(report: Option<&ViolationsReport>, raw
             severity, violation.id, violation.title
         ));
     }
-    out.push_str("Full detail: {\"action\":\"read_file\",\"path\":\"VIOLATIONS.json\"}");
+    out.push_str(&format!(
+        "Full detail: {{\"action\":\"read_file\",\"path\":\"{}\"}}",
+        VIOLATIONS_FILE
+    ));
     out
 }
 
@@ -616,26 +619,28 @@ fn render_diagnostics_report_from_state(
     };
 
     let inputs_scanned = vec![
-        format!("ISSUES.json (open issues: {})", open_issues.len()),
+        format!("{} (open issues: {})", ISSUES_FILE, open_issues.len()),
         match violations_report.as_ref() {
             Some(report) if report.violations.is_empty() => format!(
-                "VIOLATIONS.json (status: {}, verified empty)",
+                "{} (status: {}, verified empty)",
+                VIOLATIONS_FILE,
                 report.status
             ),
             Some(report) => format!(
-                "VIOLATIONS.json (status: {}, violations: {})",
+                "{} (status: {}, violations: {})",
+                VIOLATIONS_FILE,
                 report.status,
                 report.violations.len()
             ),
             None => match violations_status {
                 ViolationsProjectionStatus::Missing => {
-                    "VIOLATIONS.json (missing or empty)".to_string()
+                    format!("{} (missing or empty)", VIOLATIONS_FILE)
                 }
                 ViolationsProjectionStatus::InvalidJson => {
-                    "VIOLATIONS.json (invalid JSON)".to_string()
+                    format!("{} (invalid JSON)", VIOLATIONS_FILE)
                 }
                 ViolationsProjectionStatus::Parsed => {
-                    "VIOLATIONS.json (parsed projection unavailable)".to_string()
+                    format!("{} (parsed projection unavailable)", VIOLATIONS_FILE)
                 }
             },
         },
@@ -654,7 +659,8 @@ fn render_diagnostics_report_from_state(
     };
     serde_json::to_string_pretty(&report).unwrap_or_else(|_| {
         format!(
-            "{{\"status\":\"{}\",\"inputs_scanned\":[\"ISSUES.json\"],\"ranked_failures\":[],\"planner_handoff\":[\"failed to render diagnostics report\"]}}",
+            "{{\"status\":\"{}\",\"inputs_scanned\":[\"{}\"],\"ranked_failures\":[],\"planner_handoff\":[\"failed to render diagnostics report\"]}}",
+            ISSUES_FILE,
             status
         )
     })
@@ -1415,7 +1421,7 @@ pub fn filter_active_diagnostics_json(raw: &str) -> String {
             .unwrap_or("?");
         out.push_str(&format!("[{}] [{severity}]  {id}  —  {title}\n", rank + 1));
     }
-    out.push_str("Full detail: {\"action\":\"read_file\",\"path\":\"PLANS/default/diagnostics-default.json\"}");
+    out.push_str("Full detail: {\"action\":\"read_file\",\"path\":\"agent_state/default/diagnostics-default.json\"}");
     out
 }
 
@@ -1507,7 +1513,7 @@ fn issue_repair_targets(issue: &crate::issues::Issue) -> Vec<String> {
         }
     }
     if targets.is_empty() {
-        targets.push(format!("ISSUES.json#{}", issue.id));
+        targets.push(format!("{}#{}", ISSUES_FILE, issue.id));
     }
     targets
 }
@@ -1521,7 +1527,7 @@ fn issue_to_finding(issue: &crate::issues::Issue) -> DiagnosticsFinding {
         format!("{} [score:{:.2}]", title, issue.score)
     };
     let evidence = if issue.evidence.is_empty() {
-        vec![format!("ISSUES.json entry {}", issue.id)]
+        vec![format!("{} entry {}", ISSUES_FILE, issue.id)]
     } else {
         issue.evidence.clone()
     };
@@ -1761,8 +1767,7 @@ pub fn load_planner_inputs(
     let executor_diff_text =
         load_executor_diff_inputs(workspace, last_executor_diff, 400).diff_text;
     let lessons_text = read_lessons_or_empty(workspace);
-    let objectives_full =
-        crate::objectives::read_objectives_compact(&workspace.join(OBJECTIVES_FILE));
+    let objectives_full = crate::objectives::read_objectives_compact_for_workspace(workspace);
     // Hard cap to prevent planner prompt overflow (top-N / truncation strategy)
     let objectives_text = if objectives_full.len() > 8000 {
         let mut truncated = objectives_full.chars().take(8000).collect::<String>();
@@ -1798,7 +1803,7 @@ impl SingleRoleContext<'_> {
     pub fn read(&self, kind: SingleRoleRead) -> Result<String> {
         let text = match kind {
             SingleRoleRead::Objectives => {
-                crate::objectives::read_objectives_compact(&self.workspace.join(OBJECTIVES_FILE))
+                crate::objectives::read_objectives_compact_for_workspace(self.workspace)
             }
             SingleRoleRead::SemanticControl => read_semantic_control_prompt_context(
                 self.workspace,
@@ -1944,7 +1949,7 @@ pub fn solo_plan_diff(old_text: &str, new_text: &str, max_lines: usize) -> Strin
 
 fn plan_diff(old_text: &str, new_text: &str, max_lines: usize) -> String {
     if old_text.is_empty() {
-        let mut out = String::from("+++ PLAN.json (initial)\n");
+        let mut out = format!("+++ {} (initial)\n", MASTER_PLAN_FILE);
         for (idx, line) in new_text.lines().enumerate() {
             if idx >= max_lines {
                 out.push_str("... (truncated)\n");
@@ -2078,10 +2083,12 @@ fn executor_diff_files<'a>(text: &'a str) -> Vec<&'a str> {
 }
 
 fn is_executor_diff_excluded(line: &str) -> bool {
-    line.starts_with("PLAN.json")
+    line.starts_with(MASTER_PLAN_FILE)
         || line.starts_with("PLAN.md")
         || line.starts_with("PLANS/")
-        || line == "VIOLATIONS.json"
+        || line.starts_with("agent_state/")
+        || line == ISSUES_FILE
+        || line == VIOLATIONS_FILE
         || line == "DIAGNOSTICS.json"
 }
 
@@ -2106,6 +2113,7 @@ mod diagnostics_filter_tests {
         load_diagnostics_projection_text, render_diagnostics_report_from_issues,
         sanitize_diagnostics_for_planner,
     };
+    use crate::constants::{MASTER_PLAN_FILE, OBJECTIVES_FILE, VIOLATIONS_FILE};
     use crate::events::{EffectEvent, Event};
     use crate::reports::{DiagnosticsFinding, DiagnosticsReport, Impact};
 
@@ -2186,6 +2194,7 @@ mod diagnostics_filter_tests {
             unique
         ));
         fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(workspace.join("agent_state")).unwrap();
         fs::write(
             workspace.join(crate::constants::ISSUES_FILE),
             r#"{
@@ -2254,7 +2263,10 @@ mod diagnostics_filter_tests {
 
         let report = DiagnosticsReport {
             status: "needs_repair".to_string(),
-            inputs_scanned: vec!["ISSUES.json (open issues: 1)".to_string()],
+            inputs_scanned: vec![format!(
+                "{} (open issues: 1)",
+                crate::constants::ISSUES_FILE
+            )],
             ranked_failures: vec![DiagnosticsFinding {
                 id: "D-TLOG".to_string(),
                 impact: Impact::High,
@@ -2353,12 +2365,12 @@ mod diagnostics_filter_tests {
             std::process::id(),
             unique
         ));
-        fs::create_dir_all(workspace.join("PLANS/default")).unwrap();
+        fs::create_dir_all(workspace.join("agent_state/default")).unwrap();
         fs::create_dir_all(workspace.join("agent_state")).unwrap();
 
         fs::write(workspace.join("SPEC.md"), "planner spec body").unwrap();
         fs::write(
-            workspace.join("PLANS/OBJECTIVES.json"),
+            workspace.join(OBJECTIVES_FILE),
             r#"{"version":1,"objectives":[{"id":"obj_15","title":"OBJ-15","status":"active"}]}"#,
         )
         .unwrap();
@@ -2368,12 +2380,12 @@ mod diagnostics_filter_tests {
         )
         .unwrap();
         fs::write(
-            workspace.join("VIOLATIONS.json"),
+            workspace.join(VIOLATIONS_FILE),
             r#"{"status":"verified","violations":[]}"#,
         )
         .unwrap();
         fs::write(
-            workspace.join("PLANS/default/diagnostics-default.json"),
+            workspace.join(crate::constants::diagnostics_file()),
             r#"{"status":"verified","ranked_failures":[]}"#,
         )
         .unwrap();
@@ -2389,8 +2401,8 @@ mod diagnostics_filter_tests {
         .unwrap();
 
         let spec_path = workspace.join("SPEC.md");
-        let master_plan_path = workspace.join("PLAN.json");
-        let violations_path = workspace.join("VIOLATIONS.json");
+        let master_plan_path = workspace.join(MASTER_PLAN_FILE);
+        let violations_path = workspace.join(VIOLATIONS_FILE);
         fs::write(&master_plan_path, r#"{"version":2,"tasks":[]}"#).unwrap();
         fs::write(&violations_path, r#"{"status":"verified","violations":[]}"#).unwrap();
 

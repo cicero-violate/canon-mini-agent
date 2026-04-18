@@ -40,7 +40,7 @@ The agent reads its own execution history (`agent_state/` logs, `VIOLATIONS.json
 
 ### 0.5 Objective Evolution
 
-At the end of every orchestration cycle, the active role (solo or planner) MUST review `PLANS/OBJECTIVES.json` and update it:
+At the end of every orchestration cycle, the active role (solo or planner) MUST review `agent_state/OBJECTIVES.json` and update it:
 
 - **Add** new objectives for any capability gap, invariant, or sub-goal discovered this cycle.
 - **Update** existing objective status when state changes (active → done, blocked, deferred).
@@ -91,7 +91,7 @@ Notes:
 - `status`, `scope`, and `authority_files` are first-class fields; do not embed them only in `description`.
 - `description` may still include a Status/Scope/Authority checklist, but the authoritative values live in the top-level fields.
 
-This is enforced by `CANONICAL_LAW.md §Objective Evolution`. The verifier should flag any completion that leaves `PLANS/OBJECTIVES.json` unreviewed.
+This is enforced by `CANONICAL_LAW.md §Objective Evolution`. The verifier should flag any completion that leaves `agent_state/OBJECTIVES.json` unreviewed.
 
 ### 0.4 Safety Properties
 Self-improvement is safe because:
@@ -205,7 +205,7 @@ At the end of any loophole-closure pass, the system must list the remaining runt
 ### 1.3 Canonical Files
 Canonical file paths are absolute under `Workspace` (see `src/constants.rs:3-11`, `42-48`):
 - `Spec`: `SPEC.md`
-- `Objectives`: `PLANS/OBJECTIVES.json` (runtime path) and `PLANS/OBJECTIVES.md` (companion markdown source when present)
+- `Objectives`: `agent_state/OBJECTIVES.json` (runtime path) and `PLANS/OBJECTIVES.md` (companion markdown source when present)
 - `Invariants`: `INVARIANTS.json` (runtime path) and `INVARIANT.md` (companion markdown source when present)
 - `MasterPlan`: `PLAN.json`
 - `LanePlan`: `PLANS/<instance>/executor-<id>.json` (preferred) or legacy `PLANS/executor-<id>.md` (see `src/tools.rs:49-63`)
@@ -309,7 +309,7 @@ Action shapes, required fields, and basic field constraints are defined by the T
 - **Executor** may not patch `SPEC.md`, `PLAN.json`, `INVARIANTS.json`, `VIOLATIONS.json`, `OBJECTIVES.json`, any lane plan, diagnostics files, `src/`, or `tests/`.
 - **Verifier** may patch **only** `VIOLATIONS.json`; verifier must use the `plan` action for `PLAN.json` edits.
 - **Diagnostics** may patch **only** the active diagnostics report file.
-- **Planner** may patch **only** lane plans and `PLANS/OBJECTIVES.json`; planner must use the `plan` action for `PLAN.json` edits.
+- **Planner** may patch **only** lane plans and `agent_state/OBJECTIVES.json`; planner must use the `plan` action for `PLAN.json` edits.
 - **Solo** may patch any in-workspace file (full capabilities).
 
 **Self-modification mode** (workspace == orchestrator source, see §9):
@@ -371,7 +371,7 @@ Additional clarification (from implementation):
 
 All agents **must** use the `python` action when reading or writing any `.json` state file at runtime. Shell tools (`cat`, `jq`, `grep`, `sed`, `awk`) must not be used to inspect or mutate JSON state files because they produce no parse-time error on malformed JSON and silently corrupt objects.
 
-Applies to: `PLAN.json`, `PLANS/OBJECTIVES.json`, `ISSUES.json`, `VIOLATIONS.json`, the active diagnostics report, and any other structured JSON artifact under `AgentStateDir` or `Workspace`.
+Applies to: `PLAN.json`, `agent_state/OBJECTIVES.json`, `ISSUES.json`, `VIOLATIONS.json`, the active diagnostics report, and any other structured JSON artifact under `AgentStateDir` or `Workspace`.
 
 Exceptions: reading raw bytes for hash/size checks via `run_command` is permitted; the restriction is on semantic read/write operations.
 
@@ -441,7 +441,7 @@ Self-loop guard: an executor `message` action with `to: "executor"` is a routing
 
 ### 5.5 Convergence Guard (Livelock Detection)
 
-The orchestrator tracks content hashes of five watched files at the start and end of every cycle: `PLAN.json`, `VIOLATIONS.json`, the active diagnostics report, `PLANS/OBJECTIVES.json`, and `ISSUES.json`.
+The orchestrator tracks content hashes of five watched files at the start and end of every cycle: `PLAN.json`, `VIOLATIONS.json`, the active diagnostics report, `agent_state/OBJECTIVES.json`, and `ISSUES.json`.
 
 If `cycle_progress = true` (work was dispatched) but all five hashes are unchanged, the stall counter increments. At `STALL_CYCLE_THRESHOLD` (5) consecutive stalls:
 - `agent_state/livelock_report.json` is written with timestamp, stall count, watched files, and pending flag state at detection.
@@ -523,7 +523,7 @@ Notes:
 - `tasks` are DAG nodes.
 - `dag.edges` defines dependencies (`from` must complete before `to`).
 - The plan tool enforces DAG acyclicity.
-- Planner prompt instruction: derive `PLAN.json` tasks from `PLANS/OBJECTIVES.json` (objectives are the source of plan items; do not introduce plan tasks unrelated to objectives without explicitly updating objectives first).
+- Planner prompt instruction: derive `PLAN.json` tasks from `agent_state/OBJECTIVES.json` (objectives are the source of plan items; do not introduce plan tasks unrelated to objectives without explicitly updating objectives first).
 
 ### 7.3 Task Protocol
 ```json
@@ -570,7 +570,7 @@ This eliminates the ambiguity between message-routing state and plan state that 
 The system uses a three-level authority chain:
 
 ```
-PLANS/OBJECTIVES.json  (objective_id)
+agent_state/OBJECTIVES.json  (objective_id)
         ↓
     PLAN.json          (plan tasks — derived from objectives)
         ↓
@@ -578,7 +578,7 @@ PLANS/OBJECTIVES.json  (objective_id)
 ```
 
 Rules:
-- Every PLAN.json task must trace back to an objective in `PLANS/OBJECTIVES.json` via shared `objective_id`.
+- Every PLAN.json task must trace back to an objective in `agent_state/OBJECTIVES.json` via shared `objective_id`.
 - Every executor action must carry both `objective_id` and `task_id` as provenance fields.
 - The planner must not create plan tasks unrelated to an active objective without first adding the objective.
 - When the executor starts a cycle it receives a `task_id` from the planner handoff. That `task_id` is the scope boundary for all actions in the cycle.

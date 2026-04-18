@@ -3,7 +3,7 @@ use serde_json::Value;
 
 use crate::constants::{
     diagnostics_file, workspace, CANONICAL_LAW_FILE, EXECUTOR_STEP_LIMIT, INVARIANTS_FILE,
-    MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
+    ISSUES_FILE, MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
 };
 use crate::protocol::{MessagePayload, MessageStatus, MessageType, ProtocolMessage, Role};
 use crate::tool_schema::selected_tool_protocol_schema_text;
@@ -348,9 +348,9 @@ fn prompt_mission(kind: AgentPromptKind) -> &'static str {
     match kind {
         AgentPromptKind::Executor => "Your job is to execute the highest-priority READY work described in planner handoff messages and the master plan.\n`SPEC.md` is the canonical contract.\nLane plans are deprecated and should not be relied on for task selection.\nThe verifier judges code against `SPEC.md`.\nYou should only work on the top 1-10 ready tasks in the current cycle, then yield.\nDo not use internal tools.\nDo not reorganize or update `SPEC.md` or plan files yourself.\nMake source changes, run checks, and report evidence in `message.payload`.",
         AgentPromptKind::Verifier => "Your job is to critically review executor evidence against the codebase and judge whether the implementation satisfies `SPEC.md`.\nExecutor evidence is a hint only. The canonical truth is the codebase versus `SPEC.md`.\nIf violations are found, use the `violation` action (op=upsert) to record them in `VIOLATIONS.json`. Use `violation` op=resolve to clear violations that are no longer active. Never use `apply_patch` for VIOLATIONS.json.\nBe skeptical — do not trust executor claims at face value.",
-        AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `PLANS/OBJECTIVES.json`, and the semantic-control snapshot in this prompt, then derive the master plan plus executor handoff guidance.\nThe semantic-control snapshot is the tlog-derived authority for routing/control and already projects issues, violations, diagnostics, and invariants into one view.\nOn every cycle, re-evaluate the workspace and update `PLAN.json` via the plan tool.\nAt the end of every planner cycle, review `PLANS/OBJECTIVES.json` and add or update objectives to reflect what was discovered. New objectives must include id, title, status, scope, authority_files, category, level, description, requirement, verification, and success_criteria. Use `apply_patch` to write them.\nAct on projected open issues from semantic control — diagnostics populates them with evidence-backed findings. Do not require re-verifying an issue before creating a task for it: the diagnostics role already verified the evidence.\nDo not use internal tools.\nDo not hand off work; complete the needed planning and execution directly in the current role flow.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
+        AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `agent_state/OBJECTIVES.json`, and the semantic-control snapshot in this prompt, then derive the master plan plus executor handoff guidance.\nThe semantic-control snapshot is the tlog-derived authority for routing/control and already projects issues, violations, diagnostics, and invariants into one view.\nOn every cycle, re-evaluate the workspace and update `PLAN.json` via the plan tool.\nAt the end of every planner cycle, review `agent_state/OBJECTIVES.json` and add or update objectives to reflect what was discovered. New objectives must include id, title, status, scope, authority_files, category, level, description, requirement, verification, and success_criteria. Use `apply_patch` to write them.\nAct on projected open issues from semantic control — diagnostics populates them with evidence-backed findings. Do not require re-verifying an issue before creating a task for it: the diagnostics role already verified the evidence.\nDo not use internal tools.\nDo not hand off work; complete the needed planning and execution directly in the current role flow.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
         AgentPromptKind::Diagnostics => "Your job is to scan the active workspace state, use the semantic-control snapshot as the control authority, derive the current failures from evidence, and refresh the projected diagnostics/issue/violation views with the `issue` and `violation` actions. Artifact views are supporting projections; planner follow-up is owned by semantic control.",
-        AgentPromptKind::Solo => "Your job is to coordinate planning, execution, and verification in a single role while participating in orchestration.\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nYou may read, patch, and verify any in-workspace files when justified by evidence.\nKeep evidence tight and run checks before claiming completion.\nAt the end of every cycle — before emitting a completion message — review `PLANS/OBJECTIVES.json` and add or update objectives based on what you discovered. New objectives must include id, title, status, scope, authority_files, category, level, description, requirement, verification, and success_criteria. Use `apply_patch` to write them directly.",
+        AgentPromptKind::Solo => "Your job is to coordinate planning, execution, and verification in a single role while participating in orchestration.\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nYou may read, patch, and verify any in-workspace files when justified by evidence.\nKeep evidence tight and run checks before claiming completion.\nAt the end of every cycle — before emitting a completion message — review `agent_state/OBJECTIVES.json` and add or update objectives based on what you discovered. New objectives must include id, title, status, scope, authority_files, category, level, description, requirement, verification, and success_criteria. Use `apply_patch` to write them directly.",
     }
 }
 
@@ -389,7 +389,7 @@ fn rules_common_footer() -> String {
          - Emit exactly one action per turn. Think through the decision internally; reveal chain-of-thought. Only output the JSON action.\n\
          - Every mutating action (`apply_patch`, `plan`, `objectives`, `issue`) MUST include a `question` field: the single decision-boundary question this action answers. If answered differently, a different action would be taken.\n\
          - If you cannot proceed (missing files/permissions, repeated tool errors, or irreconcilable evidence), emit a `message` with `type=blocker`, `status=blocked`, and payload fields `blocker`, `evidence`, `required_action`.\n\
-         - Before emitting a completion message, review `PLANS/OBJECTIVES.json`. Add new objectives for anything you discovered this cycle that is not yet captured. Update the status of existing objectives that changed. Use `apply_patch` to write changes.\n\
+         - Before emitting a completion message, review `agent_state/OBJECTIVES.json`. Add new objectives for anything you discovered this cycle that is not yet captured. Update the status of existing objectives that changed. Use `apply_patch` to write changes.\n\
          - Output format: exactly one JSON object in a fenced json code block. No prose outside it."
     )
 }
@@ -467,7 +467,7 @@ On every planning cycle:\n\
 10. Send handoff messages to executors reflecting the updated ready window.\n\n\
 Provenance fields — include on every new task:\n\
 - `issue_refs`: array of ISSUES.json ids that motivated this task (e.g. [\"auto_mir_dup_abc123\"]). Empty array if none.\n\
-- `objective_id`: the PLANS/OBJECTIVES.json objective id this task advances (e.g. \"obj_reduce_complexity\"). Omit if no clear match.";
+- `objective_id`: the agent_state/OBJECTIVES.json objective id this task advances (e.g. \"obj_reduce_complexity\"). Omit if no clear match.";
 
 fn diagnostics_process() -> String {
     let workspace = crate::constants::workspace();
@@ -613,7 +613,7 @@ const PLANNER_RULES: &[&str] = &[
     "- Only modify `PLAN.json` (via `plan`) and lane plans (via `apply_patch`) — never edit `src/`, `tests/`, `SPEC.md`, `VIOLATIONS.json`, or diagnostics reports.",
     "- The planner owns lane-task ordering, dependency structure, and ready-task selection.",
     "- Use state/reports/complexity/latest.json (supervisor-generated; proxy complexity_proxy=mir_blocks) to prioritize refactors and reduce branching/duplication.",
-    "- Read `ISSUES.json` every cycle and promote top open issues into `PLANS/OBJECTIVES.json` and `PLAN.json` (or explicitly mark them resolved/wontfix with evidence). Issues are hints; objectives/plan are commitments.",
+    "- Read `ISSUES.json` every cycle and promote top open issues into `agent_state/OBJECTIVES.json` and `PLAN.json` (or explicitly mark them resolved/wontfix with evidence). Issues are hints; objectives/plan are commitments.",
     "- Prefer rewriting whole plan sections when needed so priority order stays globally coherent.",
     "- Keep each executor's ready window small: 1-10 tasks maximum.",
     "- Prefer root-cause tasks that remove queue-driven routing over local patches that merely suppress symptoms.",
@@ -941,8 +941,9 @@ pub(crate) fn verifier_cycle_prompt(
 pub(crate) fn diagnostics_cycle_prompt(summary_text: &str, cargo_test_failures: &str) -> String {
     let workspace = workspace();
     let diagnostics_file = diagnostics_file();
+    let issues_file = crate::constants::ISSUES_FILE;
     let prompt = format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations projection to keep synchronized: {VIOLATIONS_FILE}\n- Diagnostics report to write: {diagnostics_file}\n- Issues projection to keep synchronized: ISSUES.json\n- Lessons candidates (synthesized from action log): agent_state/lessons_candidates.json\n- Promoted lessons (injected into planner): agent_state/lessons.json\n- Discovered invariants (synthesized from blockers + action log): agent_state/enforced_invariants.json\n- Classified failure log (first-class blocker artifact): agent_state/blockers.json\n- Observability artifacts: inspect workspace-local state and log paths that actually exist for this project\n\nLatest verifier summary:\n{summary_text}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nDiagnostics output protocol:\n1. Derive ranked failures from current evidence and semantic control summaries.\n2. Project those failures into {diagnostics_file}, ISSUES.json, and {VIOLATIONS_FILE}.\n   - op=create (with kind, location, evidence, priority) if no matching open issue exists.\n   - op=update if a matching issue exists but its evidence is stale.\n   - op=set_status status=resolved if a prior issue is no longer supported by evidence.\n   Artifact files are supporting projections; semantic control state owns planner follow-up.\n3. Do not re-report failures the verifier has already cleared unless fresh current-cycle evidence reconfirms them.\n\nExecution surface guarantee:\n- This diagnostics turn is tool-capable. `python`, `read_file`, `issue`, `violation`, `apply_patch`, and `message` are executable from this role.\n- Do not claim the diagnostics channel is text-only or missing tools. Use a `python` action first to read workspace-local state/log artifacts and establish current-cycle evidence before any blocker or mutation.\n\nLessons review (optional, do after main diagnostics work):\n- Use `lessons` op=read_candidates to inspect pending patterns detected from the action log.\n- Promote candidates that reflect real, recurring patterns (op=promote with candidate_id).\n- Reject candidates that are coincidental or already obvious (op=reject).\n- Promoted patterns appear in lessons.json and are injected into every future planner prompt.\n\nInvariant review (optional, do after lessons review):\n- Use `invariants` op=read to inspect dynamically discovered system invariants from enforced_invariants.json.\n- Invariants are synthesized from agent_state/blockers.json (classified bad outcomes) and the action log.\n- Status lifecycle: discovered → promoted (auto at support_count>=3) → enforced (hard gate) → collapsed (root cause fixed).\n- If a Promoted invariant has a sound predicate, call `invariants` op=enforce to make the gate hard-blocking.\n- If a root cause has been structurally eliminated, call `invariants` op=collapse with a rationale.\n- Enforced invariants block route/planner/executor dispatch before the transition is taken — zero wasted turns.\n\nYou may send a message action to other agents at any time.Think hard internally before responding."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations projection to keep synchronized: {VIOLATIONS_FILE}\n- Diagnostics report to write: {diagnostics_file}\n- Issues projection to keep synchronized: {issues_file}\n- Lessons candidates (synthesized from action log): agent_state/lessons_candidates.json\n- Promoted lessons (injected into planner): agent_state/lessons.json\n- Discovered invariants (synthesized from blockers + action log): agent_state/enforced_invariants.json\n- Classified failure log (first-class blocker artifact): agent_state/blockers.json\n- Observability artifacts: inspect workspace-local state and log paths that actually exist for this project\n\nLatest verifier summary:\n{summary_text}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nDiagnostics output protocol:\n1. Derive ranked failures from current evidence and semantic control summaries.\n2. Project those failures into {diagnostics_file}, {issues_file}, and {VIOLATIONS_FILE}.\n   - op=create (with kind, location, evidence, priority) if no matching open issue exists.\n   - op=update if a matching issue exists but its evidence is stale.\n   - op=set_status status=resolved if a prior issue is no longer supported by evidence.\n   Artifact files are supporting projections; semantic control state owns planner follow-up.\n3. Do not re-report failures the verifier has already cleared unless fresh current-cycle evidence reconfirms them.\n\nExecution surface guarantee:\n- This diagnostics turn is tool-capable. `python`, `read_file`, `issue`, `violation`, `apply_patch`, and `message` are executable from this role.\n- Do not claim the diagnostics channel is text-only or missing tools. Use a `python` action first to read workspace-local state/log artifacts and establish current-cycle evidence before any blocker or mutation.\n\nLessons review (optional, do after main diagnostics work):\n- Use `lessons` op=read_candidates to inspect pending patterns detected from the action log.\n- Promote candidates that reflect real, recurring patterns (op=promote with candidate_id).\n- Reject candidates that are coincidental or already obvious (op=reject).\n- Promoted patterns appear in lessons.json and are injected into every future planner prompt.\n\nInvariant review (optional, do after lessons review):\n- Use `invariants` op=read to inspect dynamically discovered system invariants from enforced_invariants.json.\n- Invariants are synthesized from agent_state/blockers.json (classified bad outcomes) and the action log.\n- Status lifecycle: discovered → promoted (auto at support_count>=3) → enforced (hard gate) → collapsed (root cause fixed).\n- If a Promoted invariant has a sound predicate, call `invariants` op=enforce to make the gate hard-blocking.\n- If a root cause has been structurally eliminated, call `invariants` op=collapse with a rationale.\n- Enforced invariants block route/planner/executor dispatch before the transition is taken — zero wasted turns.\n\nYou may send a message action to other agents at any time.Think hard internally before responding."
     );
     prompt.replace(
         "Use a `python` action first to read workspace-local state/log artifacts and establish current-cycle evidence before any blocker or mutation.",
@@ -1015,6 +1016,7 @@ pub(crate) fn single_role_diagnostics_prompt(
 ) -> String {
     let workspace = workspace();
     let diagnostics_path = diagnostics_file();
+    let issues_file = ISSUES_FILE;
     let prefix = format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nRead files and search the source code for bugs and inconsistencies (use read_file + run_command/ripgrep).\nRun python analysis actions over available workspace-local logs, state, and code evidence.\nDo not assume canon-specific observability names or paths. Discover the actual project-local artifacts first by inspecting files and directories that exist under WORKSPACE. Examples may include state/, log/, logs, runtime logs, jsonl logs, agent logs, or other workspace-defined artifacts.\nInfer the root cause from the evidence and cite detailed sources of errors (file paths, functions, log evidence).\n\nLatest verifier summary:\n(none yet)"
     );
@@ -1024,7 +1026,7 @@ pub(crate) fn single_role_diagnostics_prompt(
     let cargo_failures_heading =
         "Latest cargo test failures (from cargo_test_failures.json)".to_string();
     let suffix = format!(
-        "\n\nVerify whether objectives in {OBJECTIVES_FILE} are being met and note gaps.\nUse {SPEC_FILE}, {OBJECTIVES_FILE}, and {INVARIANTS_FILE} as the contract, not lane plans.\nInfer failures from code, logs, runtime state, and verifier findings.\nPrefer evidence from workspace-local artifacts that actually exist over assumptions from other projects.\nTreat {VIOLATIONS_FILE}, ISSUES.json, and {diagnostics_path} as derived projections to keep synchronized with current evidence, not as control authority.\nDo not restate verifier-cleared or already-resolved issues unless fresh current-cycle source or runtime evidence reconfirms them.\nIf the mismatch is stale projected state rather than a live implementation bug, repair the projection instead of reopening the cleared issue.\n\nWrite a ranked diagnostics report to {diagnostics_path}."
+        "\n\nVerify whether objectives in {OBJECTIVES_FILE} are being met and note gaps.\nUse {SPEC_FILE}, {OBJECTIVES_FILE}, and {INVARIANTS_FILE} as the contract, not lane plans.\nInfer failures from code, logs, runtime state, and verifier findings.\nPrefer evidence from workspace-local artifacts that actually exist over assumptions from other projects.\nTreat {VIOLATIONS_FILE}, {issues_file}, and {diagnostics_path} as derived projections to keep synchronized with current evidence, not as control authority.\nDo not restate verifier-cleared or already-resolved issues unless fresh current-cycle source or runtime evidence reconfirms them.\nIf the mismatch is stale projected state rather than a live implementation bug, repair the projection instead of reopening the cleared issue.\n\nWrite a ranked diagnostics report to {diagnostics_path}."
     );
     let items = [
         PromptItem {
@@ -1063,6 +1065,8 @@ pub(crate) fn single_role_planner_prompt(
     cargo_test_failures: &str,
 ) -> String {
     let workspace = workspace();
+    let diagnostics_path = diagnostics_file();
+    let issues_file = ISSUES_FILE;
     let prefix = format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed."
     );
@@ -1073,7 +1077,7 @@ pub(crate) fn single_role_planner_prompt(
     let cargo_failures_heading =
         "Latest cargo test failures (from cargo_test_failures.json)".to_string();
     let suffix = format!(
-        "\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nOpen issues in `ISSUES.json` (written by diagnostics with evidence) are directly actionable — create plan tasks for them without re-verifying. `PLANS/default/diagnostics-default.json` entries with no matching ISSUES.json entry are hints only.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nWhen a `plan` action is derived from diagnostics, include same-cycle source validation in `observation` and `rationale` before mutating {MASTER_PLAN_FILE}.\n\nTreat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\nIf diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks."
+        "\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nOpen issues in `{issues_file}` (written by diagnostics with evidence) are directly actionable — create plan tasks for them without re-verifying. `{diagnostics_path}` entries with no matching {issues_file} entry are hints only.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nWhen a `plan` action is derived from diagnostics, include same-cycle source validation in `observation` and `rationale` before mutating {MASTER_PLAN_FILE}.\n\nTreat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them.\nIf diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks."
     );
     let items = [
         PromptItem {
@@ -2236,7 +2240,7 @@ mod tests {
             "planner rules must require consuming ISSUES.json"
         );
         assert!(
-            rules.contains("promote top open issues into `PLANS/OBJECTIVES.json` and `PLAN.json`"),
+            rules.contains("promote top open issues into `agent_state/OBJECTIVES.json` and `PLAN.json`"),
             "planner rules must require promoting issues into objectives/plan"
         );
     }
@@ -2255,6 +2259,18 @@ mod tests {
         assert!(
             prompt.contains("Action: `issue`"),
             "planner system prompt should include the issue schema"
+        );
+        assert!(
+            prompt.contains("Schema-derived `plan.op` values:"),
+            "planner system prompt should include schema-derived plan op hints"
+        );
+        assert!(
+            prompt.contains("add_edge"),
+            "planner system prompt should include the canonical add_edge op"
+        );
+        assert!(
+            prompt.contains("do not emit `create_edge`"),
+            "planner system prompt should forbid the legacy create_edge alias"
         );
     }
 

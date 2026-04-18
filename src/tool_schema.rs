@@ -96,6 +96,41 @@ pub fn plan_set_plan_status_action_example(status: &str, rationale: &str) -> Str
     }))
 }
 
+pub fn plan_create_task_action_example(task_id: &str, rationale: &str) -> String {
+    compact_example_json(json!({
+        "action": "plan",
+        "op": "create_task",
+        "task": {
+            "id": task_id,
+            "title": "Add the missing dependency edge",
+            "status": "ready",
+            "priority": 1,
+            "description": "Record the next planner follow-up explicitly in PLAN.json."
+        },
+        "rationale": rationale
+    }))
+}
+
+pub fn plan_add_edge_action_example(from: &str, to: &str, rationale: &str) -> String {
+    compact_example_json(json!({
+        "action": "plan",
+        "op": "add_edge",
+        "from": from,
+        "to": to,
+        "rationale": rationale
+    }))
+}
+
+pub fn plan_remove_edge_action_example(from: &str, to: &str, rationale: &str) -> String {
+    compact_example_json(json!({
+        "action": "plan",
+        "op": "remove_edge",
+        "from": from,
+        "to": to,
+        "rationale": rationale
+    }))
+}
+
 pub fn plan_update_bundle_action_example(rationale: &str) -> String {
     compact_example_json(json!({
         "action": "plan",
@@ -124,25 +159,87 @@ pub fn plan_sorted_view_action_example(rationale: &str) -> String {
     }))
 }
 
+fn schema_enum_values<T: JsonSchema>() -> Vec<String> {
+    let schema = schema_for!(T);
+    extract_enum_strings(&schema.schema).unwrap_or_default()
+}
+
 pub fn plan_action_examples_block() -> &'static str {
     static TEXT: OnceLock<String> = OnceLock::new();
     TEXT.get_or_init(|| {
-        format!(
-            "Examples:\n  {}\n  {}\n  {}\n  {}",
-            plan_set_task_status_action_example(
-                "T1",
-                "in_progress",
-                "Update a single task status in PLAN.json."
-            ),
-            plan_set_plan_status_action_example(
-                "in_progress",
-                "Update top-level PLAN.json status."
-            ),
-            plan_update_bundle_action_example(
-                "Apply a bundled PLAN.json update when ready_window, tasks, or status must change together."
-            ),
-            plan_sorted_view_action_example("View the current plan in DAG order (read-only).")
-        )
+        let ops = schema_enum_values::<PlanOp>();
+        let mut lines = vec![format!(
+            "Allowed `plan.op` values (schema-derived): {}",
+            ops.join(", ")
+        )];
+        lines.push("Examples:".to_string());
+        if ops.iter().any(|op| op == "create_task") {
+            lines.push(format!(
+                "  {}",
+                plan_create_task_action_example(
+                    "T_add_missing_dependency_edge",
+                    "Seed a new planner task in PLAN.json."
+                )
+            ));
+        }
+        if ops.iter().any(|op| op == "add_edge") {
+            lines.push(format!(
+                "  {}",
+                plan_add_edge_action_example(
+                    "T_read_action_input",
+                    "T_emit_prediction_from_stdin",
+                    "Add an explicit DAG edge between two existing tasks."
+                )
+            ));
+        }
+        if ops.iter().any(|op| op == "remove_edge") {
+            lines.push(format!(
+                "  {}",
+                plan_remove_edge_action_example(
+                    "T_old_dependency",
+                    "T_blocked_task",
+                    "Remove an obsolete DAG edge when sequencing changed."
+                )
+            ));
+        }
+        if ops.iter().any(|op| op == "set_task_status") {
+            lines.push(format!(
+                "  {}",
+                plan_set_task_status_action_example(
+                    "T1",
+                    "in_progress",
+                    "Update a single task status in PLAN.json."
+                )
+            ));
+        }
+        if ops.iter().any(|op| op == "set_plan_status") {
+            lines.push(format!(
+                "  {}",
+                plan_set_plan_status_action_example(
+                    "in_progress",
+                    "Update top-level PLAN.json status."
+                )
+            ));
+        }
+        if ops.iter().any(|op| op == "update") {
+            lines.push(format!(
+                "  {}",
+                plan_update_bundle_action_example(
+                    "Apply a bundled PLAN.json update when ready_window, tasks, or status must change together."
+                )
+            ));
+        }
+        if ops.iter().any(|op| op == "sorted_view") {
+            lines.push(format!(
+                "  {}",
+                plan_sorted_view_action_example("View the current plan in DAG order (read-only).")
+            ));
+        }
+        lines.push(
+            "Use `add_edge` / `remove_edge` for DAG edges — never invent `create_edge` / `delete_edge`."
+                .to_string(),
+        );
+        lines.join("\n")
     })
     .as_str()
 }
@@ -207,6 +304,8 @@ pub enum IssueOp {
     Update,
     Delete,
     SetStatus,
+    Upsert,
+    Resolve,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -218,6 +317,7 @@ pub enum ObjectivesOp {
     DeleteObjective,
     SetStatus,
     ReplaceObjectives,
+    Replace,
     SortedView,
 }
 
@@ -701,14 +801,14 @@ fn build_tool_actions_list() -> Vec<(&'static str, &'static str, Option<&'static
             "issue",
             "record/update discovered issues in ISSUES.json for later attention",
             Some(
-                "Examples:\n  {\"action\":\"issue\",\"op\":\"read\",\"rationale\":\"Check open issues before starting work.\"}\n  {\"action\":\"issue\",\"op\":\"create\",\"evidence_receipts\":[\"rcpt-123-diagnostics-1-read_file\"],\"issue\":{\"id\":\"ISS-001\",\"title\":\"Retry loop does not fire for submit-only turns\",\"status\":\"open\",\"priority\":\"high\",\"kind\":\"bug\",\"description\":\"...\",\"location\":\"src/ws_server.rs:554\",\"evidence\":[\"frames/inbound.jsonl fc=91 only presence frames after fc=76 heartbeat\"],\"discovered_by\":\"solo\"},\"rationale\":\"Record the stall bug for later fix using the current-cycle read receipt.\"}\n  {\"action\":\"issue\",\"op\":\"set_status\",\"issue_id\":\"ISS-001\",\"status\":\"resolved\",\"evidence_receipts\":[\"rcpt-124-diagnostics-2-python\"],\"rationale\":\"Issue was fixed by removing the pending check.\"}\n  {\"action\":\"issue\",\"op\":\"update\",\"issue_id\":\"ISS-001\",\"evidence_receipts\":[\"rcpt-125-diagnostics-3-read_file\"],\"updates\":{\"priority\":\"medium\",\"description\":\"Updated description\"},\"rationale\":\"Revise issue details.\"}\nAllowed status: open | in_progress | resolved | wontfix\nAllowed priority: high | medium | low\nAllowed kind: bug | logic | invariant_violation | performance | stale_state\n⚠ Mutating issue ops (`create`, `update`, `set_status`) require non-empty `evidence_receipts` copied from a successful current-cycle `read_file`, `python`, or `run_command` result.",
+                "Examples:\n  {\"action\":\"issue\",\"op\":\"read\",\"rationale\":\"Check open issues before starting work.\"}\n  {\"action\":\"issue\",\"op\":\"create\",\"evidence_receipts\":[\"rcpt-123-diagnostics-1-read_file\"],\"issue\":{\"id\":\"ISS-001\",\"title\":\"Retry loop does not fire for submit-only turns\",\"status\":\"open\",\"priority\":\"high\",\"kind\":\"bug\",\"description\":\"...\",\"location\":\"src/ws_server.rs:554\",\"evidence\":[\"frames/inbound.jsonl fc=91 only presence frames after fc=76 heartbeat\"],\"discovered_by\":\"solo\"},\"rationale\":\"Record the stall bug for later fix using the current-cycle read receipt.\"}\n  {\"action\":\"issue\",\"op\":\"upsert\",\"evidence_receipts\":[\"rcpt-124-diagnostics-2-python\"],\"issue\":{\"id\":\"ISS-001\",\"title\":\"Retry loop does not fire for submit-only turns\",\"status\":\"in_progress\",\"priority\":\"high\",\"kind\":\"bug\",\"description\":\"Updated issue body\"},\"rationale\":\"Legacy alias: create-or-replace the full issue payload by id.\"}\n  {\"action\":\"issue\",\"op\":\"set_status\",\"issue_id\":\"ISS-001\",\"status\":\"resolved\",\"evidence_receipts\":[\"rcpt-125-diagnostics-3-python\"],\"rationale\":\"Issue was fixed by removing the pending check.\"}\n  {\"action\":\"issue\",\"op\":\"resolve\",\"issue_id\":\"ISS-001\",\"evidence_receipts\":[\"rcpt-126-diagnostics-4-read_file\"],\"rationale\":\"Legacy alias: mark the issue resolved.\"}\n  {\"action\":\"issue\",\"op\":\"update\",\"issue_id\":\"ISS-001\",\"evidence_receipts\":[\"rcpt-127-diagnostics-5-read_file\"],\"updates\":{\"priority\":\"medium\",\"description\":\"Updated description\"},\"rationale\":\"Revise issue details.\"}\nAllowed status: open | in_progress | resolved | wontfix\nAllowed priority: high | medium | low\nAllowed kind: bug | logic | invariant_violation | performance | stale_state\n⚠ Mutating issue ops (`create`, `update`, `set_status`, `upsert`, `resolve`) require non-empty `evidence_receipts` copied from a successful current-cycle `read_file`, `python`, or `run_command` result.",
             ),
         ),
         (
             "objectives",
-            "read/update objectives in PLANS/OBJECTIVES.json",
+            "read/update objectives in agent_state/OBJECTIVES.json",
             Some(
-                "Examples:\n  {\"action\":\"objectives\",\"op\":\"read\",\"rationale\":\"Load only non-completed objectives for planning/verification.\"}\n  {\"action\":\"objectives\",\"op\":\"read\",\"include_done\":true,\"rationale\":\"Load all objectives, including completed.\"}\n  {\"action\":\"objectives\",\"op\":\"create_objective\",\"objective\":{\"id\":\"obj_new\",\"title\":\"New objective\",\"status\":\"active\",\"scope\":\"...\",\"authority_files\":[\"src/foo.rs\"],\"category\":\"quality\",\"level\":\"low\",\"description\":\"...\",\"requirement\":[],\"verification\":[],\"success_criteria\":[]},\"rationale\":\"Record a new objective.\"}\n  {\"action\":\"objectives\",\"op\":\"set_status\",\"objective_id\":\"obj_new\",\"status\":\"done\",\"rationale\":\"Mark objective complete.\"}\n  {\"action\":\"objectives\",\"op\":\"update_objective\",\"objective_id\":\"obj_new\",\"updates\":{\"scope\":\"updated scope\"},\"rationale\":\"Update objective fields.\"}\n  {\"action\":\"objectives\",\"op\":\"delete_objective\",\"objective_id\":\"obj_new\",\"rationale\":\"Remove obsolete objective.\"}\n  {\"action\":\"objectives\",\"op\":\"replace_objectives\",\"objectives\":[],\"rationale\":\"Replace objectives list.\"}\n  {\"action\":\"objectives\",\"op\":\"sorted_view\",\"rationale\":\"View objectives sorted by status.\"}",
+                "Examples:\n  {\"action\":\"objectives\",\"op\":\"read\",\"rationale\":\"Load only non-completed objectives for planning/verification.\"}\n  {\"action\":\"objectives\",\"op\":\"read\",\"include_done\":true,\"rationale\":\"Load all objectives, including completed.\"}\n  {\"action\":\"objectives\",\"op\":\"create_objective\",\"objective\":{\"id\":\"obj_new\",\"title\":\"New objective\",\"status\":\"active\",\"scope\":\"...\",\"authority_files\":[\"src/foo.rs\"],\"category\":\"quality\",\"level\":\"low\",\"description\":\"...\",\"requirement\":[],\"verification\":[],\"success_criteria\":[]},\"rationale\":\"Record a new objective.\"}\n  {\"action\":\"objectives\",\"op\":\"set_status\",\"objective_id\":\"obj_new\",\"status\":\"done\",\"rationale\":\"Mark objective complete.\"}\n  {\"action\":\"objectives\",\"op\":\"update_objective\",\"objective_id\":\"obj_new\",\"updates\":{\"scope\":\"updated scope\"},\"rationale\":\"Update objective fields.\"}\n  {\"action\":\"objectives\",\"op\":\"delete_objective\",\"objective_id\":\"obj_new\",\"rationale\":\"Remove obsolete objective.\"}\n  {\"action\":\"objectives\",\"op\":\"replace_objectives\",\"objectives\":[],\"rationale\":\"Replace objectives list.\"}\n  {\"action\":\"objectives\",\"op\":\"replace\",\"objectives\":[],\"rationale\":\"Legacy alias for replace_objectives; replace the objectives list.\"}\n  {\"action\":\"objectives\",\"op\":\"sorted_view\",\"rationale\":\"View objectives sorted by status.\"}",
             ),
         ),
         (
@@ -869,6 +969,43 @@ pub fn selected_tool_protocol_schema_text(actions: &[&str]) -> String {
         out.push_str(&format!(
             "Action: `{action}` — {desc}\n```json\n{schema}\n```\n\n"
         ));
+        let mut derived_notes = Vec::new();
+        match *action {
+            "plan" => {
+                let ops = schema_enum_values::<PlanOp>();
+                if !ops.is_empty() {
+                    derived_notes.push(format!(
+                        "Schema-derived `plan.op` values: {}.",
+                        ops.join(", ")
+                    ));
+                }
+                derived_notes.push(
+                    "Schema-derived reminder: use `add_edge` / `remove_edge` for DAG edges; do not emit `create_edge`.".to_string(),
+                );
+            }
+            "issue" => {
+                let ops = schema_enum_values::<IssueOp>();
+                if !ops.is_empty() {
+                    derived_notes.push(format!(
+                        "Schema-derived `issue.op` values: {}.",
+                        ops.join(", ")
+                    ));
+                }
+            }
+            "objectives" => {
+                let ops = schema_enum_values::<ObjectivesOp>();
+                if !ops.is_empty() {
+                    derived_notes.push(format!(
+                        "Schema-derived `objectives.op` values: {}.",
+                        ops.join(", ")
+                    ));
+                }
+            }
+            _ => {}
+        }
+        if !derived_notes.is_empty() {
+            out.push_str(&format!("{}\n\n", derived_notes.join("\n")));
+        }
         rendered_any = true;
     }
 
@@ -921,10 +1058,16 @@ pub(crate) fn validate_tool_action(action: &Value) -> Result<()> {
         let value = serde_json::to_value(&schema).expect("tool schema to value");
         JSONSchema::compile(&value).expect("compile tool schema")
     });
-    if let Err(errors) = compiled.validate(action) {
+    let normalized_action = normalize_action_aliases_for_validation(action);
+    if let Err(errors) = compiled.validate(&normalized_action) {
         let mut details = Vec::new();
         for err in errors.take(5) {
-            details.push(err.to_string());
+            details.push(map_schema_error_kind(
+                &path_from_error(&err),
+                &err.kind,
+                &err.instance,
+                &normalized_action,
+            ));
         }
         let suffix = if details.is_empty() { "" } else { ": " };
         return Err(anyhow!(
@@ -933,14 +1076,14 @@ pub(crate) fn validate_tool_action(action: &Value) -> Result<()> {
         ));
     }
     // Manual guards not expressible in schemars 0.8
-    if let Some(rationale) = action.get("rationale").and_then(|v| v.as_str()) {
+    if let Some(rationale) = normalized_action.get("rationale").and_then(|v| v.as_str()) {
         if rationale.trim().is_empty() {
             return Err(anyhow!("action missing non-empty 'rationale'"));
         }
     } else {
         return Err(anyhow!("action missing non-empty 'rationale'"));
     }
-    let predicted = action
+    let predicted = normalized_action
         .get("predicted_next_actions")
         .and_then(|v| v.as_array())
         .ok_or_else(|| anyhow!("action missing 'predicted_next_actions'"))?;
@@ -960,6 +1103,41 @@ pub(crate) fn validate_tool_action(action: &Value) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn normalize_action_aliases_for_validation(action: &Value) -> Value {
+    let mut normalized = action.clone();
+    let Some(obj) = normalized.as_object_mut() else {
+        return normalized;
+    };
+    if obj.get("action").and_then(|v| v.as_str()) != Some("plan") {
+        return normalized;
+    }
+    let op = obj
+        .get("op")
+        .and_then(|v| v.as_str())
+        .or_else(|| obj.get("operation").and_then(|v| v.as_str()));
+    let Some(normalized_op) = op.and_then(normalize_plan_op_alias) else {
+        return normalized;
+    };
+    if obj.get("op").is_some() {
+        obj.insert("op".to_string(), Value::String(normalized_op.to_string()));
+    }
+    if obj.get("operation").is_some() {
+        obj.insert(
+            "operation".to_string(),
+            Value::String(normalized_op.to_string()),
+        );
+    }
+    normalized
+}
+
+fn normalize_plan_op_alias(op: &str) -> Option<&'static str> {
+    match op {
+        "create_edge" => Some("add_edge"),
+        "delete_edge" => Some("remove_edge"),
+        _ => None,
+    }
 }
 
 pub(crate) fn schema_diff_messages(action: &Value) -> Vec<String> {
@@ -1006,7 +1184,7 @@ fn map_schema_error_kind(
         ValidationErrorKind::MinItems { .. } | ValidationErrorKind::MaxItems { .. } => {
             predicted_next_actions_count_message()
         }
-        ValidationErrorKind::Enum { .. } => enum_schema_error_message(path, instance),
+        ValidationErrorKind::Enum { .. } => enum_schema_error_message(path, instance, action),
         ValidationErrorKind::OneOfNotValid | ValidationErrorKind::AnyOf => {
             action_schema_mismatch_message(action)
         }
@@ -1053,7 +1231,7 @@ fn missing_required_field_message(path: &str, property: &str) -> String {
     }
 }
 
-fn enum_schema_error_message(path: &str, instance: &Cow<'_, Value>) -> String {
+fn enum_schema_error_message(path: &str, instance: &Cow<'_, Value>, _action: &Value) -> String {
     if path == "op" {
         format!("unknown plan op: {}", stringify_instance(instance))
     } else if path == "action" || path.ends_with(".action") {
@@ -1253,6 +1431,7 @@ fn first_missing_field_for_action(action: &Value, action_name: &str) -> Option<S
         "symbols_index" | "symbols_rename_candidates" | "symbols_prepare_rename" => None,
         "rename_symbol" => require_one_of(action, &missing_field),
         "objectives" => missing_field_for_objectives_action(action),
+        "issue" => missing_field_for_issue_action(action),
         "apply_patch" => missing_field("patch"),
         "run_command" => missing_field("cmd"),
         "python" => missing_field("code"),
@@ -1299,7 +1478,21 @@ fn missing_field_for_objectives_action(action: &Value) -> Option<String> {
         "set_status" => {
             missing_objective_id_field(action).or_else(|| missing_field_in_action(action, "status"))
         }
-        "replace_objectives" => missing_field_in_action(action, "objectives"),
+        "replace_objectives" | "replace" => missing_field_in_action(action, "objectives"),
+        _ => None,
+    }
+}
+
+fn missing_field_for_issue_action(action: &Value) -> Option<String> {
+    let op = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
+    match op {
+        "read" => None,
+        "create" | "upsert" => missing_field_in_action(action, "issue"),
+        "update" => missing_field_in_action(action, "issue_id")
+            .or_else(|| missing_field_in_action(action, "updates")),
+        "delete" | "resolve" => missing_field_in_action(action, "issue_id"),
+        "set_status" => missing_field_in_action(action, "issue_id")
+            .or_else(|| missing_field_in_action(action, "status")),
         _ => None,
     }
 }

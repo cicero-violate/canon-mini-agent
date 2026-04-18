@@ -2,11 +2,11 @@ use std::sync::{OnceLock, RwLock};
 
 pub const DEFAULT_WORKSPACE: &str = "/workspace/ai_sandbox/canon";
 pub const SPEC_FILE: &str = "SPEC.md";
-pub const OBJECTIVES_FILE: &str = "PLANS/OBJECTIVES.json";
+pub const OBJECTIVES_FILE: &str = "agent_state/OBJECTIVES.json";
 pub const OBJECTIVES_MD_FILE: &str = "PLANS/OBJECTIVES.md";
 pub const MASTER_PLAN_FILE: &str = "agent_state/PLAN.json";
 pub const VIOLATIONS_FILE: &str = "agent_state/VIOLATIONS.json";
-pub const ISSUES_FILE: &str = "ISSUES.json";
+pub const ISSUES_FILE: &str = "agent_state/ISSUES.json";
 pub const INVARIANTS_FILE: &str = "INVARIANTS.json";
 pub const INVARIANTS_MD_FILE: &str = "INVARIANT.md";
 pub const CANONICAL_LAW_FILE: &str = "CANONICAL_LAW.md";
@@ -204,9 +204,17 @@ pub const ENDPOINT_SPECS: &[EndpointSpec] = &[
 
 pub static DIAGNOSTICS_FILE_PATH: OnceLock<String> = OnceLock::new();
 
+pub fn diagnostics_file_for_instance(instance_id: &str) -> String {
+    format!("agent_state/{instance_id}/diagnostics-{instance_id}.json")
+}
+
+pub fn lane_plan_file_for_instance(instance_id: &str, endpoint_id: &str) -> String {
+    format!("agent_state/{instance_id}/executor-{endpoint_id}.json")
+}
+
 pub fn diagnostics_file() -> &'static str {
     DIAGNOSTICS_FILE_PATH
         .get()
         .map(String::as_str)
-        .unwrap_or("PLANS/default/diagnostics-default.json")
+        .unwrap_or("agent_state/default/diagnostics-default.json")
 }

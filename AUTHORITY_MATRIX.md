@@ -10,11 +10,11 @@ This file defines the intended authority class for runtime artifacts.
 | --- | --- | --- |
 | `SPEC.md` | canonical | Human-authored contract for expected system behavior. |
 | `INVARIANTS.json` | canonical | Checked-in contract invariants. |
-| `PLAN.json` | canonical | Master work plan managed through the plan tool. |
-| `PLANS/OBJECTIVES.json` | canonical | Checked-in objective authority when present. |
+| `agent_state/PLAN.json` | canonical | Master work plan managed through the plan tool. |
+| `agent_state/OBJECTIVES.json` | canonical | Runtime objective authority. |
 | `agent_state/tlog.ndjson` | canonical | Append-only runtime authority for canonical control/effect history. |
-| `ISSUES.json` | projection | Rebuildable issue view from canonical/projected evidence. |
-| `VIOLATIONS.json` | projection | Rebuildable verifier/diagnostics view. |
+| `agent_state/ISSUES.json` | projection | Rebuildable issue view from canonical/projected evidence. |
+| `agent_state/VIOLATIONS.json` | projection | Rebuildable verifier/diagnostics view. |
 | `agent_state/blockers.json` | projection | Rebuildable blocker projection with tlog-backed recovery. |
 | `agent_state/lessons.json` | projection | Synthesized lessons projection backed by snapshot effects. |
 | `agent_state/enforced_invariants.json` | projection | Synthesized enforced-invariants projection backed by snapshot effects. |

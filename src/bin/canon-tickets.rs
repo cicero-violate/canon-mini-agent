@@ -35,7 +35,7 @@ Usage:\n\
 \n\
 Defaults:\n\
   --crate canon_mini_agent\n\
-  --issues <workspace>/ISSUES.json\n\
+  --issues <workspace>/agent_state/ISSUES.json\n\
   --limit 20\n\
   --min-blocks 50\n\
   --min-stmts 200\n\
@@ -398,7 +398,7 @@ fn parse_ticket_args(args: &[String]) -> Result<TicketArgs> {
     let print = has_flag(args, "--print");
     let issues_path = take_flag_value(args, "--issues")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(&workspace).join("ISSUES.json"));
+        .unwrap_or_else(|| PathBuf::from(&workspace).join(canon_mini_agent::constants::ISSUES_FILE));
 
     Ok(TicketArgs {
         workspace,

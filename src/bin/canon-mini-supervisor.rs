@@ -21,6 +21,8 @@ use std::sync::{
 use std::thread;
 use std::time::{Duration, SystemTime};
 
+const STARTUP_UPDATE_GRACE_SECS: u64 = 15;
+
 #[derive(Clone, Copy, Debug)]
 enum BuildKind {
     Debug,
@@ -719,7 +721,7 @@ fn should_restart_for_pending_update(
     if no_watch {
         return Ok(false);
     }
-    record_pending_update(root, current, pending_update)?;
+    record_pending_update(root, current, pending_update, child_started_at)?;
     maybe_restart_for_pending_update(
         root,
         pending_update.as_ref(),
@@ -735,8 +737,15 @@ fn record_pending_update(
     root: &Path,
     current: &BinaryCandidate,
     pending_update: &mut Option<BinaryCandidate>,
+    child_started_at: SystemTime,
 ) -> Result<()> {
     if let Some(updated) = has_updated(root, current)? {
+        let within_startup_grace = updated.path == current.path
+            && child_started_at.elapsed().unwrap_or_default()
+                < Duration::from_secs(STARTUP_UPDATE_GRACE_SECS);
+        if within_startup_grace {
+            return Ok(());
+        }
         let should_record = pending_update
             .as_ref()
             .map(|prev| prev.mtime < updated.mtime)

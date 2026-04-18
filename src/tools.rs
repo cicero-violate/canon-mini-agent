@@ -256,7 +256,7 @@ fn write_projection_with_workspace_effects(
 }
 
 fn is_lane_plan(path: &str) -> bool {
-    if !path.starts_with("PLANS/") {
+    if !path.starts_with("PLANS/") && !path.starts_with("agent_state/") {
         return false;
     }
     let is_json = path.ends_with(".json");
@@ -267,8 +267,11 @@ fn is_lane_plan(path: &str) -> bool {
     // Allow both legacy and instance-scoped lane plans:
     // - PLANS/executor-<id>.json
     // - PLANS/<instance>/executor-<id>.json
+    // - agent_state/<instance>/executor-<id>.json
     // - legacy .md variants
-    path.starts_with("PLANS/executor-") || path.contains("/executor-")
+    path.starts_with("PLANS/executor-")
+        || path.starts_with("agent_state/executor-")
+        || path.contains("/executor-")
 }
 
 fn is_src_path(path: &str) -> bool {
@@ -527,7 +530,30 @@ fn write_objectives_file(
     file: &crate::objectives::ObjectivesFile,
 ) -> Result<(bool, String)> {
     validate_unique_objective_ids(file)?;
-    std::fs::write(path, serde_json::to_string_pretty(file)?)?;
+    let contents = serde_json::to_string_pretty(file)?;
+    if let Some(agent_state_dir) = path.parent() {
+        if agent_state_dir
+            .file_name()
+            .is_some_and(|name| name == "agent_state")
+        {
+            if let Some(workspace) = agent_state_dir.parent() {
+                write_projection_with_workspace_effects(
+                    workspace,
+                    path,
+                    OBJECTIVES_FILE,
+                    "objectives_write",
+                    &contents,
+                )?;
+                return Ok((false, "objectives write ok".to_string()));
+            }
+        }
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tmp_path = path.with_extension("tmp");
+    std::fs::write(&tmp_path, &contents)?;
+    std::fs::rename(&tmp_path, path)?;
     Ok((false, "objectives write ok".to_string()))
 }
 
@@ -588,7 +614,9 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
         "update_objective" => handle_objectives_update_objective(action, &path, &raw),
         "delete_objective" => handle_objectives_delete_objective(action, &path, &raw),
         "set_status" => handle_objectives_set_status(action, &path, &raw),
-        "replace_objectives" => handle_objectives_replace_objectives(action, &path, &raw),
+        "replace_objectives" | "replace" => {
+            handle_objectives_replace_objectives(action, &path, &raw)
+        }
         _ => bail!("unknown objectives op: {op_raw}"),
     }
 }
@@ -808,8 +836,12 @@ fn load_violations(path: &Path) -> Result<crate::reports::ViolationsReport> {
 }
 
 fn load_violations_from_tlog(path: &Path) -> Option<crate::reports::ViolationsReport> {
-    let workspace = path.parent()?;
-    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
+    let tlog_path = path
+        .parent()
+        .map(|dir| dir.join("tlog.ndjson"))
+        .unwrap_or_else(|| {
+            Path::new(crate::constants::agent_state_dir()).join("tlog.ndjson")
+        });
     let records = crate::tlog::Tlog::read_records(&tlog_path).ok()?;
     let mut latest: Option<(u64, crate::reports::ViolationsReport)> = None;
     for record in records {
@@ -852,7 +884,7 @@ fn save_violations(
     crate::logging::write_projection_with_artifact_effects(
         std::path::Path::new(crate::constants::workspace()),
         path,
-        "VIOLATIONS.json",
+        VIOLATIONS_FILE,
         op,
         subject,
         &json,
@@ -976,8 +1008,12 @@ fn handle_issue_action(
         "update" => update_issue(action, &path, &raw, writer.as_deref_mut()),
         "delete" => delete_issue(action, &path, &raw, writer.as_deref_mut()),
         "set_status" => set_issue_status(action, &path, &raw, writer.as_deref_mut()),
+        "upsert" => upsert_issue(action, &path, &raw, writer.as_deref_mut()),
+        "resolve" => resolve_issue(action, &path, &raw, writer.as_deref_mut()),
         _ => {
-            bail!("unknown issue op '{op_raw}' — use read | create | update | delete | set_status")
+            bail!(
+                "unknown issue op '{op_raw}' — use read | create | update | delete | set_status | upsert | resolve"
+            )
         }
     }
 }
@@ -1150,6 +1186,20 @@ fn create_issue(
         .get("issue")
         .ok_or_else(|| anyhow!("issue create missing 'issue' field"))?;
 
+    let mut file = parse_issues_file_allow_empty(raw)?;
+    let mut issue = parse_issue_payload(issue_val)?;
+    apply_issue_freshness(&mut issue, &lease);
+    let issue_id = issue.id.clone();
+    if file.issues.iter().any(|i| i.id == issue_id) {
+        bail!("issue id already exists: {}", issue_id);
+    }
+    file.issues.push(issue);
+    write_issues_file(path, &mut file, writer, "create", &issue_id)?;
+    queue_diagnostics_reconciliation();
+    Ok((false, "issue create ok".to_string()))
+}
+
+fn parse_issue_payload(issue_val: &Value) -> Result<Issue> {
     // Pre-check: collect all missing required string fields before serde attempts deserialization.
     // serde only reports the first missing field; this lists them all so the LLM can fix in one shot.
     if let Some(obj) = issue_val.as_object() {
@@ -1198,21 +1248,76 @@ fn create_issue(
         );
     }
 
-    let mut file = parse_issues_file_allow_empty(raw)?;
-    let mut issue: Issue = serde_json::from_value(issue_val.clone())
+    let issue: Issue = serde_json::from_value(issue_val.clone())
         .map_err(|e| anyhow!("invalid issue payload: {e}"))?;
     if issue.id.trim().is_empty() {
         bail!("issue.id must be non-empty");
     }
+    Ok(issue)
+}
+
+fn upsert_issue(
+    action: &Value,
+    path: &Path,
+    raw: &str,
+    writer: Option<&mut CanonicalWriter>,
+) -> Result<(bool, String)> {
+    let lease = validate_evidence_lease(action)?;
+    let issue_val = action
+        .get("issue")
+        .ok_or_else(|| anyhow!("issue upsert missing 'issue' field"))?;
+    let mut file = parse_issues_file_allow_empty(raw)?;
+    let mut issue = parse_issue_payload(issue_val)?;
+    if let Some(issue_id) = action.get("issue_id").and_then(|v| v.as_str()) {
+        if issue.id != issue_id {
+            bail!(
+                "issue upsert mismatch: issue_id '{}' does not match issue.id '{}'",
+                issue_id,
+                issue.id
+            );
+        }
+    }
     apply_issue_freshness(&mut issue, &lease);
     let issue_id = issue.id.clone();
-    if file.issues.iter().any(|i| i.id == issue_id) {
-        bail!("issue id already exists: {}", issue_id);
-    }
-    file.issues.push(issue);
-    write_issues_file(path, &mut file, writer, "create", &issue_id)?;
+    let outcome = if let Some(existing) = file.issues.iter_mut().find(|i| i.id == issue_id) {
+        *existing = issue;
+        "updated"
+    } else {
+        file.issues.push(issue);
+        "added"
+    };
+    write_issues_file(path, &mut file, writer, "upsert", &issue_id)?;
     queue_diagnostics_reconciliation();
-    Ok((false, "issue create ok".to_string()))
+    Ok((
+        false,
+        format!("issue upsert ok — {outcome} `{issue_id}`"),
+    ))
+}
+
+fn resolve_issue(
+    action: &Value,
+    path: &Path,
+    raw: &str,
+    writer: Option<&mut CanonicalWriter>,
+) -> Result<(bool, String)> {
+    let lease = validate_evidence_lease(action)?;
+    let issue_id = action
+        .get("issue_id")
+        .and_then(|v| v.as_str())
+        .or_else(|| {
+            action
+                .get("issue")
+                .and_then(|v| v.get("id"))
+                .and_then(|v| v.as_str())
+        })
+        .ok_or_else(|| anyhow!("issue resolve missing 'issue_id'"))?;
+    let mut file = parse_issues_file_required(raw)?;
+    let issue = find_issue_mut(&mut file, issue_id)?;
+    issue.status = "resolved".to_string();
+    apply_issue_freshness(issue, &lease);
+    write_issues_file(path, &mut file, writer, "resolve", issue_id)?;
+    queue_diagnostics_reconciliation();
+    Ok((false, format!("issue resolve ok — `{issue_id}`")))
 }
 
 fn update_issue(
@@ -1323,14 +1428,17 @@ fn find_issue_mut<'a>(file: &'a mut IssuesFile, issue_id: &str) -> Result<&'a mu
 }
 
 fn write_issues_file(
-    _path: &Path,
+    path: &Path,
     file: &mut IssuesFile,
     writer: Option<&mut CanonicalWriter>,
     op: &str,
     subject: &str,
 ) -> Result<()> {
     crate::issues::rescore_all(file);
-    let workspace = std::path::Path::new(crate::constants::workspace());
+    let workspace = path
+        .parent()
+        .and_then(Path::parent)
+        .unwrap_or_else(|| std::path::Path::new(crate::constants::workspace()));
     crate::issues::persist_issues_projection_with_writer(workspace, file, writer, subject)
         .map_err(|e| anyhow!("failed to write ISSUES.json via {op}: {e}"))
 }
@@ -1866,7 +1974,7 @@ fn planner_patch_scope_error(targets: &[&str], touches: &PatchTargetTouches) -> 
         None
     } else {
         Some(
-            "Planner may patch lane plans or `PLANS/OBJECTIVES.json` only. \
+            "Planner may patch lane plans or `agent_state/OBJECTIVES.json` only. \
              Use the `plan` action for `PLAN.json` updates; no other patches are allowed."
                 .to_string(),
         )
@@ -5872,11 +5980,16 @@ fn handle_plan_set_plan_status(
 }
 
 fn extract_plan_op(action: &Value) -> &str {
-    action
+    let op = action
         .get("op")
         .and_then(|v| v.as_str())
         .or_else(|| action.get("operation").and_then(|v| v.as_str()))
-        .unwrap_or("update")
+        .unwrap_or("update");
+    match op {
+        "create_edge" => "add_edge",
+        "delete_edge" => "remove_edge",
+        _ => op,
+    }
 }
 
 fn preflight_plan_action(role: &str, action: &Value, op_raw: &str) -> Result<()> {
@@ -7684,6 +7797,7 @@ pub(crate) fn execute_logged_action(
 mod tests {
     use super::handle_apply_patch_action;
     use super::handle_execution_path_action;
+    use super::handle_issue_action;
     use super::is_allowed_self_addressed_message;
     use super::handle_objectives_action;
     use super::handle_plan_action;
@@ -7693,10 +7807,24 @@ mod tests {
     use super::handle_symbols_index_action;
     use super::handle_symbols_prepare_rename_action;
     use super::handle_symbols_rename_candidates_action;
+    use super::stable_hash_hex;
+    use super::EvidenceReceipt;
+    use crate::constants::{ISSUES_FILE, MASTER_PLAN_FILE};
+    use crate::constants::set_agent_state_dir;
+    use crate::constants::set_workspace;
+    use crate::issues::IssuesFile;
     use crate::logging::init_log_paths;
+    use crate::logging::now_ms;
     use serde_json::json;
     use serde_json::Value;
     use std::path::PathBuf;
+    use std::sync::Mutex;
+    use std::sync::OnceLock;
+
+    fn test_state_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     fn write_minimal_graph_for_ident(
         workspace: &std::path::Path,
@@ -7745,7 +7873,147 @@ mod tests {
             .as_nanos();
         let dir = std::env::temp_dir().join(format!("canon-mini-agent-{name}-{unique}"));
         std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join("agent_state")).unwrap();
         dir
+    }
+
+    fn write_test_evidence_receipt(
+        workspace: &std::path::Path,
+        state_dir: &std::path::Path,
+        id: &str,
+    ) {
+        set_workspace(workspace.to_string_lossy().to_string());
+        set_agent_state_dir(state_dir.to_string_lossy().to_string());
+        std::fs::create_dir_all(state_dir).unwrap();
+        let receipt = EvidenceReceipt {
+            id: id.to_string(),
+            ts_ms: now_ms(),
+            actor: "diagnostics".to_string(),
+            step: 1,
+            action: "python".to_string(),
+            path: Some(ISSUES_FILE.to_string()),
+            abs_path: Some(workspace.join(ISSUES_FILE).display().to_string()),
+            meta: json!({"test": true}),
+            output_hash: stable_hash_hex("test-output"),
+        };
+        std::fs::write(
+            state_dir.join("evidence_receipts.jsonl"),
+            format!("{}\n", serde_json::to_string(&receipt).unwrap()),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn issue_upsert_alias_creates_and_updates_issue() {
+        let _guard = test_state_lock().lock().unwrap();
+        let workspace = fresh_test_dir("issue-upsert");
+        let state_dir = workspace.join("agent_state");
+        write_test_evidence_receipt(&workspace, &state_dir, "rcpt-issue-upsert-1");
+
+        let create = json!({
+            "action": "issue",
+            "op": "upsert",
+            "evidence_receipts": ["rcpt-issue-upsert-1"],
+            "issue": {
+                "id": "ISS-transport",
+                "title": "Transport failure",
+                "status": "open",
+                "priority": "high",
+                "kind": "bug",
+                "description": "first version",
+                "evidence": ["tlog blocker"],
+                "discovered_by": "planner"
+            },
+            "rationale": "record runtime blocker",
+            "predicted_next_actions": []
+        });
+        let (_, create_out) = handle_issue_action(None, &workspace, &create).unwrap();
+        assert!(create_out.contains("added `ISS-transport`"));
+
+        write_test_evidence_receipt(&workspace, &state_dir, "rcpt-issue-upsert-2");
+        let update = json!({
+            "action": "issue",
+            "op": "upsert",
+            "issue_id": "ISS-transport",
+            "evidence_receipts": ["rcpt-issue-upsert-2"],
+            "issue": {
+                "id": "ISS-transport",
+                "title": "Transport failure",
+                "status": "in_progress",
+                "priority": "medium",
+                "kind": "bug",
+                "description": "updated version",
+                "evidence": ["tlog blocker", "fresh receipt"],
+                "discovered_by": "planner"
+            },
+            "rationale": "refresh runtime blocker",
+            "predicted_next_actions": []
+        });
+        let (_, update_out) = handle_issue_action(None, &workspace, &update).unwrap();
+        assert!(update_out.contains("updated `ISS-transport`"));
+
+        let issues: IssuesFile = serde_json::from_str(
+            &std::fs::read_to_string(workspace.join(ISSUES_FILE)).unwrap(),
+        )
+        .unwrap();
+        let issue = issues
+            .issues
+            .iter()
+            .find(|issue| issue.id == "ISS-transport")
+            .unwrap();
+        assert_eq!(issue.status, "in_progress");
+        assert_eq!(issue.priority, "medium");
+        assert_eq!(issue.description, "updated version");
+    }
+
+    #[test]
+    fn issue_resolve_alias_marks_issue_resolved() {
+        let _guard = test_state_lock().lock().unwrap();
+        let workspace = fresh_test_dir("issue-resolve");
+        let state_dir = workspace.join("agent_state");
+        write_test_evidence_receipt(&workspace, &state_dir, "rcpt-issue-resolve-1");
+
+        let create = json!({
+            "action": "issue",
+            "op": "create",
+            "evidence_receipts": ["rcpt-issue-resolve-1"],
+            "issue": {
+                "id": "ISS-recover",
+                "title": "Recovered completion",
+                "status": "open",
+                "priority": "high",
+                "kind": "bug",
+                "description": "needs closure",
+                "evidence": ["tlog blocker"],
+                "discovered_by": "diagnostics"
+            },
+            "rationale": "seed issue",
+            "predicted_next_actions": []
+        });
+        handle_issue_action(None, &workspace, &create).unwrap();
+
+        write_test_evidence_receipt(&workspace, &state_dir, "rcpt-issue-resolve-2");
+        let resolve = json!({
+            "action": "issue",
+            "op": "resolve",
+            "issue_id": "ISS-recover",
+            "evidence_receipts": ["rcpt-issue-resolve-2"],
+            "rationale": "close resolved issue",
+            "predicted_next_actions": []
+        });
+        let (_, out) = handle_issue_action(None, &workspace, &resolve).unwrap();
+        assert!(out.contains("issue resolve ok"));
+
+        let issues: IssuesFile = serde_json::from_str(
+            &std::fs::read_to_string(workspace.join(ISSUES_FILE)).unwrap(),
+        )
+        .unwrap();
+        let issue = issues
+            .issues
+            .iter()
+            .find(|issue| issue.id == "ISS-recover")
+            .unwrap();
+        assert_eq!(issue.status, "resolved");
     }
 
     #[test]
@@ -8298,7 +8566,7 @@ mod tests {
     fn plan_update_task_rejects_reopened_task_without_regression_linkage() {
         let tmp = fresh_test_dir("rejects-reopened-task-without-regression-linkage");
         std::fs::write(
-            tmp.join("PLAN.json"),
+            tmp.join(MASTER_PLAN_FILE),
             r#"{
   "version": 2,
   "status": "in_progress",
@@ -8335,8 +8603,9 @@ mod tests {
     #[test]
     fn plan_update_task_allows_reopened_task_with_regression_linkage() {
         let tmp = fresh_test_dir("allows-reopened-task-with-regression-linkage");
+        std::fs::create_dir_all(tmp.join("agent_state")).unwrap();
         std::fs::write(
-            tmp.join("PLAN.json"),
+            tmp.join(MASTER_PLAN_FILE),
             r#"{
   "version": 2,
   "status": "in_progress",
@@ -8366,7 +8635,7 @@ mod tests {
         let (_done, out) = handle_plan_action("solo", &tmp, &action).unwrap();
 
         assert!(out.contains("plan ok"));
-        let persisted = std::fs::read_to_string(tmp.join("PLAN.json")).unwrap();
+        let persisted = std::fs::read_to_string(tmp.join(MASTER_PLAN_FILE)).unwrap();
         assert!(persisted.contains("\"status\": \"in_progress\""));
         assert!(persisted.contains("add regression test linkage before reopening"));
     }
@@ -8375,7 +8644,7 @@ mod tests {
     fn plan_set_plan_status_rejects_done_when_any_task_is_incomplete() {
         let tmp = fresh_test_dir("rejects-plan-done-while-task-incomplete");
         std::fs::write(
-            tmp.join("PLAN.json"),
+            tmp.join(MASTER_PLAN_FILE),
             r#"{
   "version": 2,
   "status": "in_progress",
@@ -8409,7 +8678,7 @@ mod tests {
             .to_string();
 
         assert!(err.contains("plan status cannot be set to done while tasks remain incomplete"));
-        let persisted = std::fs::read_to_string(tmp.join("PLAN.json")).unwrap();
+        let persisted = std::fs::read_to_string(tmp.join(MASTER_PLAN_FILE)).unwrap();
         assert!(persisted.contains("\"status\": \"in_progress\""));
     }
 
@@ -8417,7 +8686,7 @@ mod tests {
     fn plan_set_task_status_marks_only_target_task_done() {
         let tmp = fresh_test_dir("set-task-status-only-target-task");
         std::fs::write(
-            tmp.join("PLAN.json"),
+            tmp.join(MASTER_PLAN_FILE),
             r#"{
   "version": 2,
   "status": "in_progress",
@@ -8449,7 +8718,7 @@ mod tests {
         let (_done, out) = handle_plan_action("solo", &tmp, &action).unwrap();
         assert!(out.contains("plan ok"));
 
-        let persisted = std::fs::read_to_string(tmp.join("PLAN.json")).unwrap();
+        let persisted = std::fs::read_to_string(tmp.join(MASTER_PLAN_FILE)).unwrap();
         assert!(persisted.contains("\"id\": \"T1\""));
         assert!(persisted.contains("\"status\": \"done\""));
         assert!(persisted.contains("\"id\": \"T2\""));
@@ -8461,7 +8730,7 @@ mod tests {
     fn plan_set_plan_status_allows_task_id_provenance_field() {
         let tmp = fresh_test_dir("set-plan-status-allows-task-id");
         std::fs::write(
-            tmp.join("PLAN.json"),
+            tmp.join(MASTER_PLAN_FILE),
             r#"{
   "version": 2,
   "status": "in_progress",
@@ -8486,7 +8755,7 @@ mod tests {
     fn plan_set_task_status_rejects_task_object_field() {
         let tmp = fresh_test_dir("set-task-status-rejects-task-object");
         std::fs::write(
-            tmp.join("PLAN.json"),
+            tmp.join(MASTER_PLAN_FILE),
             r#"{
   "version": 2,
   "status": "in_progress",
@@ -8512,9 +8781,9 @@ mod tests {
     #[test]
     fn objectives_update_objective_reports_requested_and_compared_ids() {
         let tmp = fresh_test_dir("objective-update-not-found-context");
-        std::fs::create_dir_all(tmp.join("PLANS")).unwrap();
+        std::fs::create_dir_all(tmp.join("agent_state")).unwrap();
         std::fs::write(
-            tmp.join("PLANS").join("OBJECTIVES.json"),
+            tmp.join("agent_state").join("OBJECTIVES.json"),
             r#"{
   "version": 1,
   "objectives": [
@@ -8575,9 +8844,9 @@ mod tests {
     #[test]
     fn objectives_set_status_matches_normalized_id() {
         let tmp = fresh_test_dir("objective-set-status-normalized-id");
-        std::fs::create_dir_all(tmp.join("PLANS")).unwrap();
+        std::fs::create_dir_all(tmp.join("agent_state")).unwrap();
         std::fs::write(
-            tmp.join("PLANS").join("OBJECTIVES.json"),
+            tmp.join("agent_state").join("OBJECTIVES.json"),
             r#"{
   "version": 1,
   "objectives": [
@@ -8612,16 +8881,16 @@ mod tests {
         let (_done, out) = handle_objectives_action(&tmp, &action).unwrap();
 
         assert!(out.contains("objectives set_status ok"));
-        let persisted = std::fs::read_to_string(tmp.join("PLANS").join("OBJECTIVES.json")).unwrap();
+        let persisted = std::fs::read_to_string(tmp.join("agent_state").join("OBJECTIVES.json")).unwrap();
         assert!(persisted.contains("\"status\": \"done\""));
     }
 
     #[test]
     fn objectives_update_objective_reports_raw_and_normalized_lookup_context() {
         let tmp = fresh_test_dir("objective-update-raw-and-normalized-context");
-        std::fs::create_dir_all(tmp.join("PLANS")).unwrap();
+        std::fs::create_dir_all(tmp.join("agent_state")).unwrap();
         std::fs::write(
-            tmp.join("PLANS").join("OBJECTIVES.json"),
+            tmp.join("agent_state").join("OBJECTIVES.json"),
             r#"{
   "version": 1,
   "objectives": [
@@ -8668,9 +8937,9 @@ mod tests {
     #[test]
     fn objectives_create_objective_reports_raw_and_normalized_duplicate_context() {
         let tmp = fresh_test_dir("objective-create-duplicate-context");
-        std::fs::create_dir_all(tmp.join("PLANS")).unwrap();
+        std::fs::create_dir_all(tmp.join("agent_state")).unwrap();
         std::fs::write(
-            tmp.join("PLANS").join("OBJECTIVES.json"),
+            tmp.join("agent_state").join("OBJECTIVES.json"),
             r#"{
   "version": 1,
   "objectives": [
@@ -8727,9 +8996,9 @@ mod tests {
     #[test]
     fn objectives_create_update_read_lifecycle_succeeds() {
         let tmp = fresh_test_dir("objective-create-update-read-lifecycle");
-        std::fs::create_dir_all(tmp.join("PLANS")).unwrap();
+        std::fs::create_dir_all(tmp.join("agent_state")).unwrap();
         std::fs::write(
-            tmp.join("PLANS").join("OBJECTIVES.json"),
+            tmp.join("agent_state").join("OBJECTIVES.json"),
             r#"{
   "version": 1,
   "objectives": [],
@@ -8748,7 +9017,7 @@ mod tests {
                 "title": "Lifecycle",
                 "status": "active",
                 "scope": "objective lifecycle coverage",
-                "authority_files": ["src/tools.rs", "PLANS/OBJECTIVES.json"],
+                "authority_files": ["src/tools.rs", "agent_state/OBJECTIVES.json"],
                 "category": "quality",
                 "level": "medium",
                 "description": "create/update/read lifecycle objective",
@@ -8781,11 +9050,72 @@ mod tests {
     }
 
     #[test]
+    fn objectives_replace_alias_writes_objectives_atomically() {
+        let tmp = fresh_test_dir("objective-replace-alias");
+        std::fs::create_dir_all(tmp.join("agent_state")).unwrap();
+        std::fs::write(
+            tmp.join("agent_state").join("OBJECTIVES.json"),
+            r#"{
+  "version": 1,
+  "objectives": [],
+  "goal": [],
+  "instrumentation": [],
+  "definition_of_done": [],
+  "non_goals": []
+}"#,
+        )
+        .unwrap();
+
+        let action = json!({
+            "op": "replace",
+            "objectives": {
+                "version": 1,
+                "objectives": [
+                    {
+                        "id": "obj_runtime_authority",
+                        "title": "Restore runtime objective authority",
+                        "status": "active",
+                        "scope": "repair runtime authority",
+                        "authority_files": ["agent_state/OBJECTIVES.json"],
+                        "category": "correctness",
+                        "level": "high",
+                        "description": "restored from alias replace",
+                        "requirement": [],
+                        "verification": [],
+                        "success_criteria": []
+                    }
+                ],
+                "goal": [],
+                "instrumentation": [],
+                "definition_of_done": [],
+                "non_goals": []
+            }
+        });
+
+        let (_done, out) = handle_objectives_action(&tmp, &action).unwrap();
+        assert!(out.contains("objectives replace_objectives ok"));
+
+        let persisted = std::fs::read_to_string(tmp.join("agent_state").join("OBJECTIVES.json"))
+            .unwrap();
+        assert!(persisted.contains("obj_runtime_authority"));
+        let parsed: serde_json::Value = serde_json::from_str(&persisted).unwrap();
+        assert_eq!(
+            parsed["objectives"][0]["id"].as_str(),
+            Some("obj_runtime_authority")
+        );
+
+        let tlog = std::fs::read_to_string(tmp.join("agent_state").join("tlog.ndjson")).unwrap();
+        assert!(tlog.contains("workspace_artifact_write_requested"));
+        assert!(tlog.contains("workspace_artifact_write_applied"));
+        assert!(tlog.contains("agent_state/OBJECTIVES.json"));
+    }
+
+    #[test]
     fn objectives_update_objective_emits_attempt_and_success_trace_records() {
         let tmp = fresh_test_dir("objective-update-trace-records");
-        std::fs::create_dir_all(tmp.join("PLANS")).unwrap();
+        std::fs::create_dir_all(tmp.join("agent_state")).unwrap();
         std::fs::write(
-            tmp.join("PLANS").join("OBJECTIVES.json"),
+            tmp.join("agent_state").join("OBJECTIVES.json"),
             r#"{
   "version": 1,
   "objectives": [
@@ -8942,7 +9272,7 @@ mod tests {
             Some(&json!(["obj_alpha"]))
         );
 
-        let persisted = std::fs::read_to_string(tmp.join("PLANS").join("OBJECTIVES.json")).unwrap();
+        let persisted = std::fs::read_to_string(tmp.join("agent_state").join("OBJECTIVES.json")).unwrap();
         assert!(persisted.contains("\"scope\": \"updated alpha scope\""));
 
         let last_objective_record = objective_records

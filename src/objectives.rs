@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+pub const LEGACY_OBJECTIVES_JSON_FILE: &str = "PLANS/OBJECTIVES.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ObjectivesFile {
@@ -42,6 +44,61 @@ pub struct Objective {
     pub verification: Vec<Value>,
     #[serde(default)]
     pub success_criteria: Vec<Value>,
+}
+
+pub fn runtime_objectives_path(workspace: &Path) -> PathBuf {
+    workspace.join(crate::constants::OBJECTIVES_FILE)
+}
+
+pub fn legacy_objectives_path(workspace: &Path) -> PathBuf {
+    workspace.join(LEGACY_OBJECTIVES_JSON_FILE)
+}
+
+pub fn resolve_objectives_path(workspace: &Path) -> PathBuf {
+    let runtime = runtime_objectives_path(workspace);
+    if runtime.exists() {
+        return runtime;
+    }
+    let legacy = legacy_objectives_path(workspace);
+    if legacy.exists() {
+        return legacy;
+    }
+    runtime
+}
+
+pub fn ensure_runtime_objectives_file(workspace: &Path) -> std::io::Result<PathBuf> {
+    let runtime = runtime_objectives_path(workspace);
+    if runtime.exists() {
+        return Ok(runtime);
+    }
+
+    if let Some(parent) = runtime.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let legacy = legacy_objectives_path(workspace);
+    if legacy.exists() {
+        let raw = std::fs::read_to_string(&legacy).unwrap_or_default();
+        if !raw.trim().is_empty() {
+            std::fs::write(&runtime, raw)?;
+            return Ok(runtime);
+        }
+    }
+
+    let empty = serde_json::to_string_pretty(&ObjectivesFile {
+        version: 1,
+        ..ObjectivesFile::default()
+    })
+    .unwrap_or_else(|_| {
+        "{\"version\":1,\"objectives\":[],\"goal\":[],\"instrumentation\":[],\"definition_of_done\":[],\"non_goals\":[]}".to_string()
+    });
+    std::fs::write(&runtime, empty)?;
+    Ok(runtime)
+}
+
+pub fn read_objectives_compact_for_workspace(workspace: &Path) -> String {
+    let path = resolve_objectives_path(workspace);
+    read_objectives_compact(&path)
 }
 
 /// Compact one-liner-per-objective for prompt injection.
@@ -136,6 +193,22 @@ pub fn extract_status(description: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn fresh_workspace(name: &str) -> std::path::PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "canon-mini-agent-objectives-{name}-{}-{}",
+            std::process::id(),
+            unique
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
 
     #[test]
     fn extract_status_parses_marked_status() {
@@ -159,5 +232,41 @@ mod tests {
         let filtered = filter_incomplete_objectives_json(raw).unwrap();
         assert!(filtered.contains("\"id\": \"b\""));
         assert!(!filtered.contains("\"id\": \"a\""));
+    }
+
+    #[test]
+    fn resolve_objectives_path_prefers_legacy_when_runtime_missing() {
+        let workspace = fresh_workspace("legacy-fallback");
+        let legacy = legacy_objectives_path(&workspace);
+        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        std::fs::write(&legacy, r#"{"version":1,"objectives":[{"id":"obj_legacy","title":"Legacy","status":"active"}],"goal":[],"instrumentation":[],"definition_of_done":[],"non_goals":[]}"#).unwrap();
+
+        assert_eq!(resolve_objectives_path(&workspace), legacy);
+        assert!(read_objectives_compact_for_workspace(&workspace).contains("obj_legacy"));
+    }
+
+    #[test]
+    fn ensure_runtime_objectives_file_bootstraps_from_legacy_json() {
+        let workspace = fresh_workspace("bootstrap-runtime");
+        let legacy = legacy_objectives_path(&workspace);
+        let runtime = runtime_objectives_path(&workspace);
+        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        std::fs::write(&legacy, r#"{"version":1,"objectives":[{"id":"obj_runtime","title":"Restore runtime objective authority","status":"active"}],"goal":[],"instrumentation":[],"definition_of_done":[],"non_goals":[]}"#).unwrap();
+
+        let ensured = ensure_runtime_objectives_file(&workspace).unwrap();
+        let persisted = std::fs::read_to_string(&runtime).unwrap();
+
+        assert_eq!(ensured, runtime);
+        assert!(persisted.contains("obj_runtime"));
+    }
+
+    #[test]
+    fn ensure_runtime_objectives_file_creates_empty_runtime_authority_when_absent() {
+        let workspace = fresh_workspace("bootstrap-empty");
+        let runtime = ensure_runtime_objectives_file(&workspace).unwrap();
+        let persisted = std::fs::read_to_string(&runtime).unwrap();
+
+        assert_eq!(runtime, runtime_objectives_path(&workspace));
+        assert!(persisted.contains("\"objectives\": []"));
     }
 }

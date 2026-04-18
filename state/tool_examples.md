@@ -65,14 +65,16 @@ Notes:
 Examples:
   {"action":"issue","op":"read","rationale":"Check open issues before starting work."}
   {"action":"issue","op":"create","evidence_receipts":["rcpt-123-diagnostics-1-read_file"],"issue":{"id":"ISS-001","title":"Retry loop does not fire for submit-only turns","status":"open","priority":"high","kind":"bug","description":"...","location":"src/ws_server.rs:554","evidence":["frames/inbound.jsonl fc=91 only presence frames after fc=76 heartbeat"],"discovered_by":"solo"},"rationale":"Record the stall bug for later fix using the current-cycle read receipt."}
-  {"action":"issue","op":"set_status","issue_id":"ISS-001","status":"resolved","evidence_receipts":["rcpt-124-diagnostics-2-python"],"rationale":"Issue was fixed by removing the pending check."}
-  {"action":"issue","op":"update","issue_id":"ISS-001","evidence_receipts":["rcpt-125-diagnostics-3-read_file"],"updates":{"priority":"medium","description":"Updated description"},"rationale":"Revise issue details."}
+  {"action":"issue","op":"upsert","evidence_receipts":["rcpt-124-diagnostics-2-python"],"issue":{"id":"ISS-001","title":"Retry loop does not fire for submit-only turns","status":"in_progress","priority":"high","kind":"bug","description":"Updated issue body"},"rationale":"Legacy alias: create-or-replace the full issue payload by id."}
+  {"action":"issue","op":"set_status","issue_id":"ISS-001","status":"resolved","evidence_receipts":["rcpt-125-diagnostics-3-python"],"rationale":"Issue was fixed by removing the pending check."}
+  {"action":"issue","op":"resolve","issue_id":"ISS-001","evidence_receipts":["rcpt-126-diagnostics-4-read_file"],"rationale":"Legacy alias: mark the issue resolved."}
+  {"action":"issue","op":"update","issue_id":"ISS-001","evidence_receipts":["rcpt-127-diagnostics-5-read_file"],"updates":{"priority":"medium","description":"Updated description"},"rationale":"Revise issue details."}
 Allowed status: open | in_progress | resolved | wontfix
 Allowed priority: high | medium | low
 Allowed kind: bug | logic | invariant_violation | performance | stale_state
-⚠ Mutating issue ops (`create`, `update`, `set_status`) require non-empty `evidence_receipts` copied from a successful current-cycle `read_file`, `python`, or `run_command` result.
+⚠ Mutating issue ops (`create`, `update`, `set_status`, `upsert`, `resolve`) require non-empty `evidence_receipts` copied from a successful current-cycle `read_file`, `python`, or `run_command` result.
 
-## `objectives` — read/update objectives in PLANS/OBJECTIVES.json
+## `objectives` — read/update objectives in agent_state/OBJECTIVES.json
 
 Examples:
   {"action":"objectives","op":"read","rationale":"Load only non-completed objectives for planning/verification."}
@@ -82,6 +84,7 @@ Examples:
   {"action":"objectives","op":"update_objective","objective_id":"obj_new","updates":{"scope":"updated scope"},"rationale":"Update objective fields."}
   {"action":"objectives","op":"delete_objective","objective_id":"obj_new","rationale":"Remove obsolete objective."}
   {"action":"objectives","op":"replace_objectives","objectives":[],"rationale":"Replace objectives list."}
+  {"action":"objectives","op":"replace","objectives":[],"rationale":"Legacy alias for replace_objectives; replace the objectives list."}
   {"action":"objectives","op":"sorted_view","rationale":"View objectives sorted by status."}
 
 ## `apply_patch` — create or update files using unified patch syntax
@@ -130,11 +133,16 @@ Examples:
 
 ## `plan` — create/update/delete tasks and DAG edges in PLAN.json
 
+Allowed `plan.op` values (schema-derived): create_task, update_task, delete_task, add_edge, remove_edge, set_plan_status, set_task_status, replace_plan, update, sorted_view
 Examples:
+  {"action":"plan","op":"create_task","rationale":"Seed a new planner task in PLAN.json.","task":{"description":"Record the next planner follow-up explicitly in PLAN.json.","id":"T_add_missing_dependency_edge","priority":1,"status":"ready","title":"Add the missing dependency edge"}}
+  {"action":"plan","from":"T_read_action_input","op":"add_edge","rationale":"Add an explicit DAG edge between two existing tasks.","to":"T_emit_prediction_from_stdin"}
+  {"action":"plan","from":"T_old_dependency","op":"remove_edge","rationale":"Remove an obsolete DAG edge when sequencing changed.","to":"T_blocked_task"}
   {"action":"plan","op":"set_task_status","rationale":"Update a single task status in PLAN.json.","status":"in_progress","task_id":"T1"}
   {"action":"plan","op":"set_plan_status","rationale":"Update top-level PLAN.json status.","status":"in_progress"}
   {"action":"plan","op":"update","rationale":"Apply a bundled PLAN.json update when ready_window, tasks, or status must change together.","updates":{"ready_window":["T_restore_missing_diagnostics_artifacts"],"status":"in_progress","tasks":[{"id":"T_restore_missing_diagnostics_artifacts","priority":1,"status":"ready","title":"Restore diagnostics input artifacts"}]}}
   {"action":"plan","op":"sorted_view","rationale":"View the current plan in DAG order (read-only)."}
+Use `add_edge` / `remove_edge` for DAG edges — never invent `create_edge` / `delete_edge`.
 
 ## `rustc_hir` — emit HIR for analysis
 

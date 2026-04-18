@@ -891,6 +891,38 @@ pub fn write_projection_with_artifact_effects(
     Ok(())
 }
 
+pub fn migrate_projection_if_present(
+    workspace: &std::path::Path,
+    legacy_rel: &str,
+    canonical_rel: &str,
+    artifact: &str,
+    subject: &str,
+) -> Result<bool> {
+    let legacy_path = workspace.join(legacy_rel);
+    if !legacy_path.is_file() {
+        return Ok(false);
+    }
+
+    let canonical_path = workspace.join(canonical_rel);
+    if canonical_path.exists() {
+        return Ok(false);
+    }
+
+    let contents = std::fs::read_to_string(&legacy_path)
+        .with_context(|| format!("read {}", legacy_path.display()))?;
+    write_projection_with_artifact_effects(
+        workspace,
+        &canonical_path,
+        artifact,
+        "migrate",
+        subject,
+        &contents,
+    )?;
+    std::fs::remove_file(&legacy_path)
+        .with_context(|| format!("remove {}", legacy_path.display()))?;
+    Ok(true)
+}
+
 pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, prompt_bytes: usize) {
     use crate::constants::PROMPT_OVERFLOW_BYTES;
     if prompt_bytes <= PROMPT_OVERFLOW_BYTES {

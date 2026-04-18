@@ -1,7 +1,12 @@
 /// Chromium backend: acts as a WebSocket server that the Canon Chrome extension
-/// connects to.  Prompts are injected into a ChatGPT tab via the extension
+/// connects to. Prompts are injected into a live ChatGPT tab via the extension
 /// relay; SSE frames come back as INBOUND_MESSAGE and are assembled by the
 /// same `parsers::FrameAssembler` used in canon-llm-runtime.
+///
+/// This backend does not talk directly to the OpenAI API. It depends on a
+/// browser session that is already authenticated to ChatGPT so the extension
+/// can either claim an existing ChatGPT tab or open one and submit prompts
+/// into that page.
 ///
 /// Protocol (extension → Rust):
 ///   TAB_READY      { tabId, url, reqId? }  — a ChatGPT tab is ready
@@ -25,6 +30,8 @@ use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::Write;
 use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -33,7 +40,87 @@ use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Message;
 
 const FRAMES_DIR: &str = "./frames";
+const AGENT_STATE_DIR: &str = "./agent_state";
 const PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD: u32 = 8;
+const CHROMIUM_AUTOLAUNCH_DISABLE_ENV: &str = "CANON_CHROMIUM_AUTOLAUNCH";
+const CHROMIUM_AUTOLAUNCH_SCRIPT_ENV: &str = "CANON_CHROMIUM_LAUNCH_SCRIPT";
+
+static CHROMIUM_AUTOLAUNCH_ATTEMPTED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+fn chromium_autolaunch_log_path() -> PathBuf {
+    Path::new(AGENT_STATE_DIR).join("chromium-autolaunch.log")
+}
+
+fn chromium_autolaunch_script_path() -> Option<PathBuf> {
+    if let Ok(raw) = std::env::var(CHROMIUM_AUTOLAUNCH_SCRIPT_ENV) {
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() {
+            return Some(PathBuf::from(trimmed));
+        }
+    }
+
+    let default = PathBuf::from("./canon-chromium-extension/launch_chromium.sh");
+    default.exists().then_some(default)
+}
+
+fn chromium_autolaunch_enabled() -> bool {
+    match std::env::var(CHROMIUM_AUTOLAUNCH_DISABLE_ENV) {
+        Ok(raw) => !matches!(raw.trim(), "0" | "false" | "FALSE" | "off" | "OFF"),
+        Err(_) => true,
+    }
+}
+
+fn maybe_autolaunch_chromium() {
+    if !chromium_autolaunch_enabled() {
+        return;
+    }
+    if CHROMIUM_AUTOLAUNCH_ATTEMPTED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+
+    let Some(script_path) = chromium_autolaunch_script_path() else {
+        eprintln!(
+            "[chromium] autolaunch skipped; no launch script found (set {CHROMIUM_AUTOLAUNCH_SCRIPT_ENV} to override)"
+        );
+        return;
+    };
+
+    let _ = std::fs::create_dir_all(AGENT_STATE_DIR);
+    let log_path = chromium_autolaunch_log_path();
+    let stdout = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path);
+    let stderr = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path);
+
+    let mut cmd = Command::new("/bin/bash");
+    cmd.arg(&script_path)
+        .current_dir(".")
+        .stdin(Stdio::null())
+        .stdout(stdout.map(Stdio::from).unwrap_or_else(|_| Stdio::null()))
+        .stderr(stderr.map(Stdio::from).unwrap_or_else(|_| Stdio::null()));
+
+    match cmd.spawn() {
+        Ok(child) => {
+            eprintln!(
+                "[chromium] autolaunch started pid={} script={} log={}",
+                child.id(),
+                script_path.display(),
+                log_path.display()
+            );
+        }
+        Err(err) => {
+            eprintln!(
+                "[chromium] autolaunch failed for {}: {err:#}",
+                script_path.display()
+            );
+        }
+    }
+}
 
 fn append_jsonl(filename: &str, value: &Value) {
     let path = format!("{FRAMES_DIR}/{filename}");
@@ -328,6 +415,8 @@ impl ChromiumBackend {
             next_req_id: Arc::new(AtomicU64::new(1)),
         };
 
+        maybe_autolaunch_chromium();
+
         let addr: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
         tokio::spawn(accept_loop(addr, state));
 
@@ -408,6 +497,8 @@ impl ChromiumBackend {
         timeout_secs: u64,
         stateful: bool,
     ) -> Result<u32> {
+        maybe_autolaunch_chromium();
+
         // Wait for extension to connect first (up to timeout).
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
         loop {

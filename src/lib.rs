@@ -4,7 +4,7 @@ pub mod canon_tools_patch;
 pub mod app;
 pub mod blockers;
 pub mod complexity;
-mod constants;
+pub mod constants;
 mod engine;
 pub mod error_class;
 pub mod evolution;
@@ -31,7 +31,9 @@ pub mod state_space;
 mod structured_questions;
 mod tool_schema;
 mod tools;
-// Canonical writer infrastructure
+// Canonical writer infrastructure.
+// Runtime state in extracted workspaces is expected to replay from
+// `agent_state/tlog.ndjson` before trusting projected JSON artifacts.
 pub mod canonical_writer;
 pub mod events;
 pub mod system_state;

@@ -22,7 +22,8 @@ use tokio::sync::Notify;
 
 use crate::canonical_writer::CanonicalWriter;
 use crate::constants::{
-    diagnostics_file, set_agent_state_dir, set_workspace, workspace, DEFAULT_AGENT_STATE_DIR,
+    diagnostics_file, diagnostics_file_for_instance, lane_plan_file_for_instance,
+    set_agent_state_dir, set_workspace, workspace, DEFAULT_AGENT_STATE_DIR,
     DEFAULT_LLM_RETRY_COUNT, DEFAULT_LLM_RETRY_DELAY_SECS, DEFAULT_RESPONSE_TIMEOUT_SECS,
     DIAGNOSTICS_FILE_PATH, ENDPOINT_SPECS, EXECUTOR_STEP_LIMIT, ISSUES_FILE,
     MASTER_PLAN_FILE, MAX_SNIPPET, MAX_STEPS, OBJECTIVES_FILE, ROLE_TIMEOUT_SECS, SPEC_FILE,
@@ -89,8 +90,54 @@ fn write_json_if_missing_or_empty<T: Serialize>(
     Ok(true)
 }
 
+fn touch_file_if_missing_or_empty(path: &Path) -> Result<bool> {
+    let existing = std::fs::read_to_string(path).unwrap_or_default();
+    if path.exists() && !existing.trim().is_empty() {
+        return Ok(false);
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, existing)?;
+    Ok(true)
+}
+
 fn ensure_workspace_artifact_baseline(workspace: &Path, diagnostics_path: &Path) -> Result<Vec<String>> {
     let mut created = Vec::new();
+    let tlog_path = workspace.join("agent_state/tlog.ndjson");
+    let tlog_missing_or_empty_before = std::fs::read_to_string(&tlog_path)
+        .map(|existing| existing.trim().is_empty())
+        .unwrap_or(true);
+
+    if crate::logging::migrate_projection_if_present(
+        workspace,
+        "PLAN.json",
+        MASTER_PLAN_FILE,
+        MASTER_PLAN_FILE,
+        "baseline_master_plan_legacy_migration",
+    )? {
+        created.push(MASTER_PLAN_FILE.to_string());
+    }
+
+    if crate::logging::migrate_projection_if_present(
+        workspace,
+        "VIOLATIONS.json",
+        VIOLATIONS_FILE,
+        VIOLATIONS_FILE,
+        "baseline_violations_legacy_migration",
+    )? {
+        created.push(VIOLATIONS_FILE.to_string());
+    }
+
+    if crate::logging::migrate_projection_if_present(
+        workspace,
+        "ISSUES.json",
+        ISSUES_FILE,
+        ISSUES_FILE,
+        "baseline_issues_legacy_migration",
+    )? {
+        created.push(ISSUES_FILE.to_string());
+    }
 
     if write_json_if_missing_or_empty(
         workspace,
@@ -133,6 +180,23 @@ fn ensure_workspace_artifact_baseline(workspace: &Path, diagnostics_path: &Path)
         },
     )? {
         created.push(ISSUES_FILE.to_string());
+    }
+
+    if write_json_if_missing_or_empty(
+        workspace,
+        &workspace.join("agent_state/blockers.json"),
+        "agent_state/blockers.json",
+        "baseline_blockers",
+        &crate::blockers::BlockersFile {
+            version: 1,
+            blockers: Vec::new(),
+        },
+    )? {
+        created.push("agent_state/blockers.json".to_string());
+    }
+
+    if touch_file_if_missing_or_empty(&tlog_path)? || tlog_missing_or_empty_before {
+        created.push("agent_state/tlog.ndjson".to_string());
     }
 
     let lessons_path = workspace.join("agent_state/lessons.json");
@@ -766,16 +830,10 @@ async fn run_solo_phase(
     };
     let master_plan =
         crate::prompt_inputs::filter_pending_plan_json(&read_text_or_empty(ctx.master_plan_path));
-    let agent_root = crate::constants::agent_state_dir().trim_end_matches("/agent_state");
-    let agent_objectives = Path::new(agent_root).join(OBJECTIVES_FILE);
-    let objectives = if agent_objectives.exists() {
-        crate::objectives::read_objectives_compact(&agent_objectives)
-    } else {
-        crate::objectives::read_objectives_compact(&ctx.workspace.join(OBJECTIVES_FILE))
-    };
+    let objectives_path = preferred_objectives_path(ctx.workspace);
+    let objectives = crate::objectives::read_objectives_compact(&objectives_path);
     let semantic_control = crate::prompt_inputs::read_semantic_control_prompt_context(ctx.workspace, 5);
-    let objectives_mtime_before = file_modified_ms(&agent_objectives)
-        .or_else(|| file_modified_ms(&ctx.workspace.join(OBJECTIVES_FILE)));
+    let objectives_mtime_before = file_modified_ms(&objectives_path);
     let plan_mtime_before = file_modified_ms(&ctx.workspace.join(MASTER_PLAN_FILE));
     // Compute diffs and ranked context (symmetric with planner cycle)
     let mut solo_exec_diff = writer.state().last_solo_executor_diff.clone();
@@ -858,8 +916,7 @@ async fn run_solo_phase(
             );
             // Minimal enforcement hook (OBJ-15): if lessons exist, require objective/plan follow-up
             if !lessons_text.trim().is_empty() {
-                let objectives_mtime_after = file_modified_ms(&agent_objectives)
-                    .or_else(|| file_modified_ms(&ctx.workspace.join(OBJECTIVES_FILE)));
+                let objectives_mtime_after = file_modified_ms(&objectives_path);
                 let plan_mtime_after = file_modified_ms(&ctx.workspace.join(MASTER_PLAN_FILE));
                 let objective_or_plan_updated = objectives_mtime_before != objectives_mtime_after
                     || plan_mtime_before != plan_mtime_after;
@@ -2250,16 +2307,6 @@ async fn process_completed_turns(
                 );
                 continue;
             };
-            crate::blockers::record_action_failure(
-                ctx.workspace.as_path(),
-                "executor",
-                "uncanonicalized_recovery",
-                &format!(
-                    "recovery path without canonical event: executor completion recovered from runtime submit state lane={} tab_id={} turn_id={}",
-                    ctx.lanes[lane_id].label, tab_id, turn_id
-                ),
-                None,
-            );
             writer.apply(ControlEvent::ExecutorCompletionRecovered {
                 tab_id,
                 turn_id,
@@ -5649,13 +5696,8 @@ fn plan_has_incomplete_tasks(plan_text: &str) -> bool {
 }
 
 fn preferred_objectives_path(workspace: &Path) -> PathBuf {
-    let agent_root = crate::constants::agent_state_dir().trim_end_matches("/agent_state");
-    let agent_objectives = Path::new(agent_root).join(OBJECTIVES_FILE);
-    if agent_objectives.exists() {
-        agent_objectives
-    } else {
-        workspace.join(OBJECTIVES_FILE)
-    }
+    crate::objectives::ensure_runtime_objectives_file(workspace)
+        .unwrap_or_else(|_| crate::objectives::resolve_objectives_path(workspace))
 }
 
 fn objective_status_normalized(objective: &crate::objectives::Objective) -> Option<String> {
@@ -6015,9 +6057,19 @@ pub async fn run() -> Result<()> {
     let instance_id = instance_arg(&args).map(str::to_string);
     let path_prefix = instance_id.clone().unwrap_or_else(|| "default".to_string());
     init_log_paths(&path_prefix);
-    let diagnostics_rel = format!("PLANS/{}/diagnostics-{}.json", path_prefix, path_prefix);
+    let diagnostics_rel = diagnostics_file_for_instance(&path_prefix);
     let diagnostics_path = workspace.join(&diagnostics_rel);
     let _ = DIAGNOSTICS_FILE_PATH.set(diagnostics_rel.clone());
+    let legacy_diagnostics_rel = format!("PLANS/{}/diagnostics-{}.json", path_prefix, path_prefix);
+    if let Err(err) = crate::logging::migrate_projection_if_present(
+        &workspace,
+        &legacy_diagnostics_rel,
+        &diagnostics_rel,
+        &diagnostics_rel,
+        "baseline_diagnostics_legacy_migration",
+    ) {
+        eprintln!("[canon-mini-agent] diagnostics migration failed: {err:#}");
+    }
     if let Err(err) = ensure_objectives_and_invariants_json(&workspace) {
         eprintln!("[canon-mini-agent] objectives/invariants conversion failed: {err:#}");
         log_error_event(
@@ -6070,7 +6122,7 @@ pub async fn run() -> Result<()> {
         .enumerate()
         .map(|(index, ep)| LaneConfig {
             index,
-            plan_file: format!("PLANS/{}/executor-{}.json", path_prefix, ep.id),
+            plan_file: lane_plan_file_for_instance(&path_prefix, &ep.id),
             label: ep.id.clone(),
             endpoint: ep,
             tabs: llm_worker_new_tabs(),
@@ -6079,7 +6131,7 @@ pub async fn run() -> Result<()> {
     if lanes.is_empty() {
         bail!("no executor endpoints with role = \"executor\" found in constants");
     }
-    let plans_dir = workspace.join("PLANS").join(&path_prefix);
+    let plans_dir = workspace.join("agent_state").join(&path_prefix);
     let _ = std::fs::create_dir_all(&plans_dir);
     if !diagnostics_path.exists() {
         let _ = std::fs::write(&diagnostics_path, "");
@@ -6307,7 +6359,8 @@ pub async fn run() -> Result<()> {
         loop {
             let _ = std::fs::remove_file(cycle_idle_marker_path());
             let mut cycle_progress = false;
-            let objectives_mtime_before = file_modified_ms(&workspace.join(OBJECTIVES_FILE));
+            let objectives_path = preferred_objectives_path(&workspace);
+            let objectives_mtime_before = file_modified_ms(&objectives_path);
             let plan_mtime_before = file_modified_ms(&master_plan_path);
             let control_surfaces = [
                 "system_state",
@@ -6352,7 +6405,34 @@ pub async fn run() -> Result<()> {
                             phase: Some("solo".to_string()),
                         });
                     }
-                    writer.apply(ControlEvent::PhaseSet { phase, lane: None });
+
+                    let mut bootstrap_phase = phase.clone();
+                    if phase == "executor" {
+                        let ready_tasks_text =
+                            crate::prompt_inputs::read_ready_tasks(workspace.as_path(), 1);
+                        let ready_tasks_exist = ready_tasks_text != "(no ready tasks)";
+                        let lanes_seeded = lanes.iter().any(|lane| {
+                            let lane_state = writer.state().lanes.get(&lane.index);
+                            lane_state.map(|state| state.pending).unwrap_or(false)
+                                || lane_state
+                                    .and_then(|state| state.in_progress_by.as_ref())
+                                    .is_some()
+                                || writer.state().lane_in_flight(lane.index)
+                                || writer.state().lane_submit_active(lane.index)
+                        });
+                        if ready_tasks_exist && !lanes_seeded {
+                            eprintln!(
+                                "[orchestrate] bootstrap executor rerouted to planner: ready tasks exist but no lane work is seeded"
+                            );
+                            writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+                            bootstrap_phase = "planner".to_string();
+                        }
+                    }
+
+                    writer.apply(ControlEvent::PhaseSet {
+                        phase: bootstrap_phase,
+                        lane: None,
+                    });
                 }
             }
 
@@ -6565,11 +6645,11 @@ pub async fn run() -> Result<()> {
                 }
             }
 
-            let objectives_mtime_after = file_modified_ms(&workspace.join(OBJECTIVES_FILE));
+            let objectives_mtime_after = file_modified_ms(&objectives_path);
             let plan_mtime_after = file_modified_ms(&master_plan_path);
             let objective_review_required = plan_mtime_before != plan_mtime_after;
             let objectives_updated = objectives_mtime_before != objectives_mtime_after;
-            let objectives_text = read_text_or_empty(&workspace.join(OBJECTIVES_FILE));
+            let objectives_text = read_text_or_empty(&objectives_path);
             let plan_text = read_text_or_empty(&master_plan_path);
             let plan_content_changed = plan_text != writer.state().last_plan_text;
             if objective_review_required && !objectives_updated && plan_content_changed {
@@ -6721,6 +6801,7 @@ mod tests {
         take_inbound_message_without_writer, verifier_confirmed_with_plan_text,
         ActionProvenance,
     };
+    use crate::constants::{ISSUES_FILE, MASTER_PLAN_FILE, VIOLATIONS_FILE};
     use crate::events::EffectEvent;
     use crate::logging::{artifact_write_signature, record_effect_for_workspace};
     use crate::{set_agent_state_dir, set_workspace};
@@ -6991,24 +7072,32 @@ mod tests {
     #[test]
     fn workspace_artifact_baseline_creates_missing_diagnostics_inputs() {
         let workspace = temp_workspace("baseline-create");
-        let diagnostics_path = workspace.join("PLANS/default/diagnostics-default.json");
+        let diagnostics_path = workspace.join("agent_state/default/diagnostics-default.json");
 
         let created = ensure_workspace_artifact_baseline(&workspace, &diagnostics_path)
             .expect("bootstrap baseline");
 
-        assert!(created.iter().any(|p| p == "VIOLATIONS.json"));
+        assert!(created.iter().any(|p| p == VIOLATIONS_FILE));
+        assert!(created.iter().any(|p| p == MASTER_PLAN_FILE));
+        assert!(created.iter().any(|p| p == "agent_state/blockers.json"));
+        assert!(created.iter().any(|p| p == "agent_state/tlog.ndjson"));
         assert!(created.iter().any(|p| p == "agent_state/lessons.json"));
-        assert!(workspace.join("VIOLATIONS.json").exists());
-        assert!(workspace.join("ISSUES.json").exists());
-        assert!(workspace.join("PLAN.json").exists());
+        assert!(workspace.join(VIOLATIONS_FILE).exists());
+        assert!(workspace.join(ISSUES_FILE).exists());
+        assert!(workspace.join(MASTER_PLAN_FILE).exists());
+        assert!(workspace.join("agent_state/blockers.json").exists());
+        assert!(workspace.join("agent_state/tlog.ndjson").exists());
         assert!(workspace.join("agent_state/lessons.json").exists());
         assert!(diagnostics_path.exists());
 
-        let violations = fs::read_to_string(workspace.join("VIOLATIONS.json")).unwrap();
+        let violations = fs::read_to_string(workspace.join(VIOLATIONS_FILE)).unwrap();
         assert!(violations.contains("\"status\": \"ok\""));
 
-        let plan = fs::read_to_string(workspace.join("PLAN.json")).unwrap();
+        let plan = fs::read_to_string(workspace.join(MASTER_PLAN_FILE)).unwrap();
         assert!(plan.contains("\"ready_window\": []"));
+
+        let blockers = fs::read_to_string(workspace.join("agent_state/blockers.json")).unwrap();
+        assert!(blockers.contains("\"blockers\": []"));
 
         let _ = fs::remove_dir_all(workspace);
     }
@@ -7018,18 +7107,49 @@ mod tests {
         let workspace = temp_workspace("baseline-preserve");
         fs::create_dir_all(workspace.join("agent_state")).unwrap();
         fs::write(
-            workspace.join("VIOLATIONS.json"),
+            workspace.join(VIOLATIONS_FILE),
             "{\n  \"status\": \"failed\",\n  \"summary\": \"keep\",\n  \"violations\": []\n}\n",
         )
         .unwrap();
-        let diagnostics_path = workspace.join("PLANS/default/diagnostics-default.json");
+        let diagnostics_path = workspace.join("agent_state/default/diagnostics-default.json");
 
         let created = ensure_workspace_artifact_baseline(&workspace, &diagnostics_path)
             .expect("bootstrap baseline");
 
-        assert!(!created.iter().any(|p| p == "VIOLATIONS.json"));
-        let violations = fs::read_to_string(workspace.join("VIOLATIONS.json")).unwrap();
+        assert!(!created.iter().any(|p| p == VIOLATIONS_FILE));
+        let violations = fs::read_to_string(workspace.join(VIOLATIONS_FILE)).unwrap();
         assert!(violations.contains("\"summary\": \"keep\""));
+
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn workspace_artifact_baseline_migrates_legacy_root_plan_and_violations() {
+        let workspace = temp_workspace("baseline-migrate-legacy");
+        fs::create_dir_all(workspace.join("agent_state")).unwrap();
+        fs::write(workspace.join("PLAN.json"), "{\"version\":2,\"tasks\":[{\"id\":\"T1\",\"status\":\"ready\"}]}").unwrap();
+        fs::write(
+            workspace.join("VIOLATIONS.json"),
+            "{\"status\":\"failed\",\"summary\":\"legacy\",\"violations\":[]}",
+        )
+        .unwrap();
+        let diagnostics_path = workspace.join("agent_state/default/diagnostics-default.json");
+
+        let created = ensure_workspace_artifact_baseline(&workspace, &diagnostics_path)
+            .expect("bootstrap baseline");
+
+        assert!(created.iter().any(|p| p == MASTER_PLAN_FILE));
+        assert!(created.iter().any(|p| p == VIOLATIONS_FILE));
+        assert!(!workspace.join("PLAN.json").exists());
+        assert!(!workspace.join("VIOLATIONS.json").exists());
+        assert!(workspace.join(MASTER_PLAN_FILE).exists());
+        assert!(workspace.join(VIOLATIONS_FILE).exists());
+        let plan = fs::read_to_string(workspace.join(MASTER_PLAN_FILE)).unwrap();
+        assert!(plan.contains("\"T1\""));
+        let violations: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(workspace.join(VIOLATIONS_FILE)).unwrap())
+                .unwrap();
+        assert_eq!(violations["summary"].as_str(), Some("legacy"));
 
         let _ = fs::remove_dir_all(workspace);
     }

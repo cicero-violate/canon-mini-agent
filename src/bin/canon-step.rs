@@ -118,9 +118,15 @@ fn out_or_default<'a>(action: &'a Value, default: &'a str) -> &'a str {
         .unwrap_or(default)
 }
 
+fn read_file_prediction_value(path: &str, intent: &str) -> Value {
+    json!({"action": "read_file", "path": path, "intent": intent})
+}
+
 fn read_file_prediction_for_output(action: &Value, default: &str, intent: &str) -> Vec<Value> {
-    let path = out_or_default(action, default);
-    single_prediction(json!({"action": "read_file", "path": path, "intent": intent}))
+    single_prediction(read_file_prediction_value(
+        out_or_default(action, default),
+        intent,
+    ))
 }
 
 fn single_prediction(prediction: Value) -> Vec<Value> {
