@@ -415,10 +415,12 @@ The orchestrator uses wakeup flags and `planner_pending` to schedule transitions
 ### 5.3 Handoff Transition
 ```
 Role emits message{to=Planner}
-  -> persist_inbound_message() writes last_message_to_planner.json + wakeup_planner.flag
+  -> writer.apply(ControlEvent::InboundMessageQueued { role: "planner", content, signature })
+  -> writer.apply(ControlEvent::WakeSignalQueued { role: "planner", signature, ts_ms })
   -> writer.apply(ControlEvent::PlannerPendingSet { pending: true })   [logged to tlog]
-  -> next orchestration loop iteration: apply_wake_flags() schedules planner
-  -> planner prompt injects inbound message via inject_inbound_message()
+  -> physical files last_message_to_planner.json + wakeup_planner.flag written as secondary output
+  -> next orchestration loop iteration: apply_wake_flags() reads wake_signals_pending from SystemState
+  -> planner prompt injects inbound message via inject_inbound_message() (reads inbound_messages_pending)
 ```
 
 **PLAN.json is the authoritative handoff medium (Option A):**
@@ -434,7 +436,7 @@ If `cycle_progress = true` (work was dispatched) but all five hashes are unchang
 - `agent_state/livelock_report.json` is written with timestamp, stall count, watched files, and pending flag state at detection.
 - `planner_pending` is cleared (legacy `diagnostics_pending` may still be cleared when present in restored checkpoint state).
 - The stall counter resets and the orchestrator enters the normal idle path.
-- Resuming requires a manual `wakeup_*.flag` write or process restart.
+- Resuming requires a manual `wakeup_*.flag` write, a canonical `WakeSignalQueued` event, or process restart.
 
 The stall counter is **not** incremented when executor turns are in flight (`rt.submitted_turns`, `rt.executor_submit_inflight`, or any `writer.state().lane_submit_in_flight` value non-empty). In-flight executor work legitimately produces no file change until the browser tab returns a result; counting those cycles as stalls would be a false positive.
 

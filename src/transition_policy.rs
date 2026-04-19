@@ -145,6 +145,8 @@ pub fn validate_transition(state: &SystemState, event: &ControlEvent) -> Result<
         | ControlEvent::ExternalUserMessageConsumed { .. }
         | ControlEvent::InboundMessageConsumed { .. }
         | ControlEvent::WakeSignalConsumed { .. }
+        | ControlEvent::WakeSignalQueued { .. }
+        | ControlEvent::InboundMessageQueued { .. }
         | ControlEvent::LastPlanTextSet { .. }
         | ControlEvent::LastExecutorDiffSet { .. }
         | ControlEvent::LastSoloPlanTextSet { .. }

@@ -53,6 +53,16 @@ pub struct SystemState {
     pub inbound_message_signatures: HashMap<String, String>,
     #[serde(default)]
     pub wake_signal_signatures: HashMap<String, String>,
+    /// Canonical pending wake signals: role → (ts_ms, signature).
+    /// Populated by WakeSignalQueued; cleared by WakeSignalConsumed.
+    /// Replaces physical wakeup_*.flag files as the authoritative wake source.
+    #[serde(default)]
+    pub wake_signals_pending: HashMap<String, (u64, String)>,
+    /// Latest inbound message content per role, pending delivery.
+    /// Populated by InboundMessageQueued; cleared by InboundMessageConsumed.
+    /// Replaces last_message_to_*.json files as the authoritative message source.
+    #[serde(default)]
+    pub inbound_messages_pending: HashMap<String, String>,
 
     // Rolling diff/plan state fed back into prompts
     pub last_plan_text: String,
@@ -212,12 +222,29 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
                 .insert(role.clone(), signature.clone());
         }
         ControlEvent::InboundMessageConsumed { role, signature } => {
+            s.inbound_messages_pending.remove(role);
             s.inbound_message_signatures
                 .insert(role.clone(), signature.clone());
         }
+        ControlEvent::WakeSignalQueued { role, signature, ts_ms } => {
+            s.wake_signals_pending
+                .insert(role.clone(), (*ts_ms, signature.clone()));
+        }
         ControlEvent::WakeSignalConsumed { role, signature } => {
+            // Remove from pending if this is the current signal.
+            if s.wake_signals_pending
+                .get(role)
+                .map(|(_, s)| s.as_str())
+                == Some(signature.as_str())
+            {
+                s.wake_signals_pending.remove(role);
+            }
             s.wake_signal_signatures
                 .insert(role.clone(), signature.clone());
+        }
+        ControlEvent::InboundMessageQueued { role, content, .. } => {
+            s.inbound_messages_pending
+                .insert(role.clone(), content.clone());
         }
         ControlEvent::LastPlanTextSet { text } => {
             s.last_plan_text = text.clone();

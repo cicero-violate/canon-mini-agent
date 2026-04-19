@@ -1293,7 +1293,7 @@ async fn run_verifier_phase(
                     && verifier_blocker_phase_override(verifier_specific).is_some()
                 {
                     let ack = build_verifier_blocker_ack(&fields);
-                    persist_planner_message(&ack);
+                    persist_planner_message(writer, &ack);
                     verifier_pending_results.push_front((submitted, turn_id, final_exec_result));
                     let override_phase =
                         verifier_blocker_phase_override(verifier_specific).unwrap();
@@ -1794,35 +1794,8 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
         state.insert("error_class".to_string(), "verification_failed".to_string());
     }
 
-    let block_route_gate = |reason: String| {
-        eprintln!("[invariant_gate] route G_r (BLOCKED): {reason}");
-        let blocker_message = route_gate_blocker_message(&reason);
-        if !persist_planner_blocker_message(&blocker_message) {
-            return;
-        }
-        crate::blockers::record_action_failure_with_writer(
-            &ws,
-            None,
-            "orchestrator",
-            "route_dispatch",
-            &reason,
-            None,
-        );
-        let record = serde_json::json!({
-            "kind": "invariant_gate",
-            "phase": "route",
-            "gate": "G_r",
-            "proposed_role": "executor",
-            "blocked": true,
-            "reason": reason,
-            "ts_ms": crate::logging::now_ms(),
-        });
-        let _ = crate::logging::append_action_log_record(&record);
-    };
-
     if let Err(reason) = crate::invariants::evaluate_invariant_gate("route", &state, &ws) {
-        block_route_gate(reason);
-        writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+        apply_route_gate_block(writer, &ws, &reason);
         return false;
     }
 
@@ -1842,8 +1815,7 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
             &executor_missing_target_state,
             &ws,
         ) {
-            block_route_gate(reason);
-            writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+            apply_route_gate_block(writer, &ws, &reason);
             return false;
         }
     }
@@ -1874,12 +1846,30 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
     }
 
     if let Err(reason) = crate::invariants::evaluate_invariant_gate("executor", &state, &ws) {
-        block_route_gate(reason);
-        writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+        apply_route_gate_block(writer, &ws, &reason);
         return false;
     }
 
     true
+}
+
+fn apply_route_gate_block(
+    writer: &mut CanonicalWriter,
+    ws: &std::path::Path,
+    reason: &str,
+) {
+    eprintln!("[invariant_gate] route G_r (BLOCKED): {reason}");
+    let blocker_message = route_gate_blocker_message(reason);
+    if persist_planner_blocker_message(writer, &blocker_message) {
+        crate::blockers::record_action_failure_with_writer(ws, None, "orchestrator", "route_dispatch", reason, None);
+        let record = serde_json::json!({
+            "kind": "invariant_gate", "phase": "route", "gate": "G_r",
+            "proposed_role": "executor", "blocked": true, "reason": reason,
+            "ts_ms": crate::logging::now_ms(),
+        });
+        let _ = crate::logging::append_action_log_record(&record);
+    }
+    writer.apply(ControlEvent::PlannerPendingSet { pending: true });
 }
 
 fn dispatch_executor_submits(
@@ -3562,6 +3552,27 @@ fn take_inbound_message(writer: &mut CanonicalWriter, role: &str) -> Option<Stri
         .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let path = agent_state_dir.join(format!("last_message_to_{role_key}.json"));
+
+    // Primary: read from canonical state (populated by InboundMessageQueued, survives replay).
+    if let Some(message) = writer.state().inbound_messages_pending.get(&role_key).cloned() {
+        let signature = artifact_write_signature(&[
+            "inbound_message_consumed",
+            &role_key,
+            &message.len().to_string(),
+        ]);
+        let trimmed = message.trim().to_string();
+        writer.apply(ControlEvent::InboundMessageConsumed {
+            role: role_key.clone(),
+            signature,
+        });
+        let _ = std::fs::remove_file(&path);
+        if trimmed.is_empty() {
+            return None;
+        }
+        return Some(trimmed);
+    }
+
+    // Fallback: tlog scan for messages recorded before this deployment.
     if let Some((signature, message)) =
         canonical_inbound_message_from_tlog(agent_state_dir, writer.state(), &role_key)
     {
@@ -3587,9 +3598,25 @@ fn take_inbound_message_without_writer(role: &str) -> Option<String> {
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let tlog_path = canonical_tlog_read_path(agent_state_dir);
     let state = Tlog::replay(&tlog_path, SystemState::new(&[], 0)).ok();
+    // Primary: read from canonical state field (populated by InboundMessageQueued).
+    // Fallback: tlog scan for messages recorded before this deployment.
     let canonical = state
         .as_ref()
-        .and_then(|state| canonical_inbound_message_from_tlog(agent_state_dir, state, &role_key))
+        .and_then(|s| {
+            s.inbound_messages_pending.get(&role_key).map(|msg| {
+                let sig = artifact_write_signature(&[
+                    "inbound_message_consumed",
+                    &role_key,
+                    &msg.len().to_string(),
+                ]);
+                (sig, msg.clone())
+            })
+        })
+        .or_else(|| {
+            state
+                .as_ref()
+                .and_then(|s| canonical_inbound_message_from_tlog(agent_state_dir, s, &role_key))
+        })
         .or_else(|| latest_inbound_message_from_tlog(agent_state_dir, &role_key));
     if let Some((signature, message)) = canonical {
         if let Some(state) = state {
@@ -4077,61 +4104,6 @@ fn repeated_executor_deferred_log_memory(
     LAST_DEFERRED_BY_ROLE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
 
-fn wake_role_for_artifact(artifact: &str) -> Option<&'static str> {
-    match artifact {
-        "agent_state/wakeup_planner.flag" => Some("planner"),
-        "agent_state/wakeup_solo.flag" => Some("solo"),
-        "agent_state/wakeup_verifier.flag" => Some("verifier"),
-        "agent_state/wakeup_diagnostics.flag" => Some("diagnostics"),
-        "agent_state/wakeup_executor.flag" => Some("executor"),
-        _ => None,
-    }
-}
-
-fn canonical_wake_signatures_from_tlog(
-    agent_state_dir: &std::path::Path,
-    state: &SystemState,
-) -> std::collections::HashMap<&'static str, (u64, String)> {
-    let mut latest_by_role = std::collections::HashMap::new();
-    let tlog_path = agent_state_dir.join("tlog.ndjson");
-    let records = Tlog::read_records(&tlog_path).unwrap_or_default();
-    for record in records {
-        let Event::Effect {
-            event:
-                EffectEvent::WorkspaceArtifactWriteApplied {
-                    artifact,
-                    signature,
-                    ..
-                },
-        } = record.event
-        else {
-            continue;
-        };
-        let Some(role) = wake_role_for_artifact(&artifact) else {
-            continue;
-        };
-        if !runtime_role_enabled(role) {
-            continue;
-        }
-        let replace = match latest_by_role.get(role) {
-            None => true,
-            Some((existing_ts_ms, _)) => record.ts_ms >= *existing_ts_ms,
-        };
-        if replace {
-            latest_by_role.insert(role, (record.ts_ms, signature));
-        }
-    }
-    let mut by_role = std::collections::HashMap::new();
-    for (role, (ts_ms, signature)) in latest_by_role {
-        let consumed_latest =
-            state.wake_signal_signatures.get(role).map(String::as_str) == Some(signature.as_str());
-        if !consumed_latest {
-            by_role.insert(role, (ts_ms, signature));
-        }
-    }
-    by_role
-}
-
 fn collect_wake_flag_inputs(
     agent_state_dir: &std::path::Path,
     state: &SystemState,
@@ -4148,17 +4120,30 @@ fn collect_wake_flag_inputs(
     let mut inputs = Vec::new();
     let mut path_map = std::collections::HashMap::new();
     let mut signature_map = std::collections::HashMap::new();
-    let canonical_signals = canonical_wake_signatures_from_tlog(agent_state_dir, state);
-    for (role, (modified_ms, signature)) in canonical_signals {
-        inputs.push(WakeFlagInput { role, modified_ms });
-        signature_map.insert(role, signature);
+
+    // Primary: read canonical pending signals directly from SystemState.
+    // These survive restart via tlog replay — no file scan needed.
+    for (role, (ts_ms, signature)) in &state.wake_signals_pending {
+        let role_key: &'static str = match role.as_str() {
+            "planner" => "planner",
+            "executor" => "executor",
+            _ => continue,
+        };
+        if !runtime_role_enabled(role_key) {
+            continue;
+        }
+        inputs.push(WakeFlagInput { role: role_key, modified_ms: *ts_ms });
+        signature_map.insert(role_key, signature.clone());
     }
-    for (role, path) in flag_paths {
+
+    // Fallback: physical flag files for external/manual triggers not routed
+    // through the canonical writer (e.g. operator writes a flag by hand).
+    for (role, path) in &flag_paths {
         if !runtime_role_enabled(role) {
             continue;
         }
         if path.exists() {
-            path_map.insert(role, path.clone());
+            path_map.insert(*role, path.clone());
         }
         if signature_map.contains_key(role) || !path.exists() {
             continue;
@@ -4217,41 +4202,55 @@ fn record_canonical_inbound_message(
     Ok(signature)
 }
 
-fn persist_planner_message(action: &Value) {
+fn persist_planner_message(writer: &mut CanonicalWriter, action: &Value) {
     let workspace = Path::new(crate::constants::workspace());
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
-    let planner_path = agent_state_dir.join("last_message_to_planner.json");
     let action_text = serde_json::to_string_pretty(action).unwrap_or_default();
     let from_role = action
         .get("from")
         .and_then(Value::as_str)
         .unwrap_or("unknown");
+
+    let msg_signature = artifact_write_signature(&[
+        "inbound_message",
+        from_role,
+        "planner",
+        &action_text.len().to_string(),
+        &action_text,
+    ]);
+    // Canonical event — survives restart via SystemState replay.
+    writer.apply(ControlEvent::InboundMessageQueued {
+        role: "planner".to_string(),
+        content: action_text.clone(),
+        signature: msg_signature.clone(),
+    });
+
+    let wake_signature = artifact_write_signature(&["wake", "planner", &now_ms().to_string()]);
+    writer.apply(ControlEvent::WakeSignalQueued {
+        role: "planner".to_string(),
+        signature: wake_signature,
+        ts_ms: now_ms(),
+    });
+
+    // Secondary: physical files kept for external tooling / backward compat.
+    let planner_path = agent_state_dir.join("last_message_to_planner.json");
     if let Err(err) =
         record_canonical_inbound_message(workspace, from_role, "planner", &action_text)
     {
-        eprintln!(
-            "[orchestrate] failed to record canonical planner handoff message {}: {err:#}",
-            planner_path.display()
-        );
+        eprintln!("[orchestrate] canonical message record failed: {err:#}");
     }
     if let Err(err) =
         persist_agent_state_projection(&planner_path, &action_text, "planner_handoff_message")
     {
-        eprintln!(
-            "[orchestrate] failed to persist planner handoff message {}: {err:#}",
-            planner_path.display()
-        );
+        eprintln!("[orchestrate] physical planner message write failed: {err:#}");
     }
     let wake_path = agent_state_dir.join("wakeup_planner.flag");
     if let Err(err) = persist_agent_state_projection(&wake_path, "handoff", "planner_wakeup") {
-        eprintln!(
-            "[orchestrate] failed to persist planner wakeup flag {}: {err:#}",
-            wake_path.display()
-        );
+        eprintln!("[orchestrate] physical planner wakeup flag write failed: {err:#}");
     }
 }
 
-fn persist_planner_blocker_message(action: &Value) -> bool {
+fn persist_planner_blocker_message(writer: &mut CanonicalWriter, action: &Value) -> bool {
     let evidence = action
         .get("payload")
         .and_then(|payload| payload.get("evidence"))
@@ -4270,7 +4269,7 @@ fn persist_planner_blocker_message(action: &Value) -> bool {
         }
         let _ = std::fs::write(&evidence_path, &evidence);
     }
-    persist_planner_message(action);
+    persist_planner_message(writer, action);
     true
 }
 
@@ -5828,7 +5827,7 @@ fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Va
     }
 
     if effective_to.eq_ignore_ascii_case("planner") {
-        persist_planner_message(action);
+        persist_planner_message(writer, action);
         writer.apply(ControlEvent::PlannerPendingSet { pending: true });
         return;
     }
@@ -5839,6 +5838,27 @@ fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Va
     let to_key = effective_to
         .to_lowercase()
         .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+    // Canonical events — survive restart via SystemState replay.
+    let msg_sig = artifact_write_signature(&[
+        "inbound_message",
+        from_role,
+        &to_key,
+        &action_text.len().to_string(),
+        &action_text,
+    ]);
+    writer.apply(ControlEvent::InboundMessageQueued {
+        role: to_key.clone(),
+        content: action_text.clone(),
+        signature: msg_sig,
+    });
+    let wake_sig = artifact_write_signature(&["wake", &to_key, &now_ms().to_string()]);
+    writer.apply(ControlEvent::WakeSignalQueued {
+        role: to_key.clone(),
+        signature: wake_sig,
+        ts_ms: now_ms(),
+    });
+
+    // Secondary: physical files kept for external tooling / backward compat.
     if let Err(err) = record_canonical_inbound_message(workspace, from_role, &to_key, &action_text)
     {
         writer.record_violation(
@@ -6643,9 +6663,20 @@ pub async fn run() -> Result<()> {
                                 || writer.state().lane_in_flight(lane.index)
                                 || writer.state().lane_submit_active(lane.index)
                         });
+                        let agent_state_dir =
+                            std::path::Path::new(crate::constants::agent_state_dir());
+                        let has_any_wake_signal = !writer.state().wake_signals_pending.is_empty()
+                            || agent_state_dir.join("wakeup_executor.flag").exists()
+                            || agent_state_dir.join("wakeup_planner.flag").exists();
                         if ready_tasks_exist && !lanes_seeded {
                             eprintln!(
                                 "[orchestrate] bootstrap executor rerouted to planner: ready tasks exist but no lane work is seeded"
+                            );
+                            writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+                            bootstrap_phase = "planner".to_string();
+                        } else if !has_any_wake_signal && !lanes_seeded {
+                            eprintln!(
+                                "[orchestrate] bootstrap executor rerouted to planner: no pending wake signals and no seeded lanes"
                             );
                             writer.apply(ControlEvent::PlannerPendingSet { pending: true });
                             bootstrap_phase = "planner".to_string();
@@ -6974,7 +7005,7 @@ pub async fn run() -> Result<()> {
 mod tests {
     use super::{
         action_retry_fingerprint, canonical_inbound_message_from_tlog,
-        canonical_wake_signatures_from_tlog, ensure_workspace_artifact_baseline,
+        collect_wake_flag_inputs, ensure_workspace_artifact_baseline,
         executor_step_limit_feedback, has_actionable_objectives, inbound_message_from_user,
         invariant_id_from_reason, is_chromium_transport_error, local_transport_blocker_message,
         plan_has_incomplete_tasks, route_gate_blocker_message, should_reject_solo_self_complete,
@@ -7293,50 +7324,29 @@ mod tests {
     }
 
     #[test]
-    fn canonical_wake_signals_skip_historical_replay_when_latest_consumed() {
-        let _guard = global_state_lock().lock().expect("lock");
-        let workspace = temp_workspace("canonical-wake-latest-only");
-        let state_dir = workspace.join("agent_state");
+    fn canonical_wake_signals_read_from_state_not_tlog() {
+        // WakeSignalQueued populates wake_signals_pending in SystemState.
+        // collect_wake_flag_inputs reads directly from state — no tlog scan.
+        // Consumed signals are absent; pending ones are present.
+        let state_dir = std::path::PathBuf::from("/tmp/wake-state-test");
         fs::create_dir_all(&state_dir).unwrap();
-        set_workspace(workspace.to_string_lossy().to_string());
-        set_agent_state_dir(state_dir.to_string_lossy().to_string());
-
-        record_effect_for_workspace(
-            &workspace,
-            EffectEvent::WorkspaceArtifactWriteApplied {
-                artifact: "agent_state/wakeup_planner.flag".to_string(),
-                op: "write".to_string(),
-                target: state_dir
-                    .join("wakeup_planner.flag")
-                    .to_string_lossy()
-                    .into_owned(),
-                subject: "handoff_wakeup:executor:planner".to_string(),
-                signature: "wake-old".to_string(),
-            },
-        )
-        .unwrap();
-        record_effect_for_workspace(
-            &workspace,
-            EffectEvent::WorkspaceArtifactWriteApplied {
-                artifact: "agent_state/wakeup_planner.flag".to_string(),
-                op: "write".to_string(),
-                target: state_dir
-                    .join("wakeup_planner.flag")
-                    .to_string_lossy()
-                    .into_owned(),
-                subject: "handoff_wakeup:executor:planner".to_string(),
-                signature: "wake-new".to_string(),
-            },
-        )
-        .unwrap();
 
         let mut state = SystemState::new(&[], 0);
+        // Pending signal for planner
+        state
+            .wake_signals_pending
+            .insert("planner".to_string(), (1000, "sig-pending".to_string()));
+        // Already consumed signal for executor (only in wake_signal_signatures, not pending)
         state
             .wake_signal_signatures
-            .insert("planner".to_string(), "wake-new".to_string());
+            .insert("executor".to_string(), "sig-consumed".to_string());
 
-        let wakes = canonical_wake_signatures_from_tlog(&state_dir, &state);
-        assert!(!wakes.contains_key("planner"));
+        let (inputs, _, sig_map) = collect_wake_flag_inputs(&state_dir, &state);
+        // Planner signal present
+        assert!(inputs.iter().any(|i| i.role == "planner"), "planner should be pending");
+        assert_eq!(sig_map.get("planner").map(String::as_str), Some("sig-pending"));
+        // Executor not present (consumed, not pending)
+        assert!(!inputs.iter().any(|i| i.role == "executor"), "executor should not appear");
     }
 
     #[test]

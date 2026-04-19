@@ -103,8 +103,23 @@ pub enum ControlEvent {
         role: String,
         signature: String,
     },
+    /// A wake signal has been canonically queued for a role.
+    /// This is the authoritative wake source — replaces wakeup_*.flag files.
+    /// Survives tlog replay via wake_signals_pending in SystemState.
+    WakeSignalQueued {
+        role: String,
+        signature: String,
+        ts_ms: u64,
+    },
     WakeSignalConsumed {
         role: String,
+        signature: String,
+    },
+    /// An inbound message has been canonically queued for a role.
+    /// Replaces last_message_to_*.json files as the authoritative message source.
+    InboundMessageQueued {
+        role: String,
+        content: String,
         signature: String,
     },
 

@@ -171,6 +171,8 @@ fn infer_tlog_lane_indices(events: &[crate::events::Event]) -> Vec<usize> {
                 | crate::events::ControlEvent::ExternalUserMessageConsumed { .. }
                 | crate::events::ControlEvent::InboundMessageConsumed { .. }
                 | crate::events::ControlEvent::WakeSignalConsumed { .. }
+                | crate::events::ControlEvent::WakeSignalQueued { .. }
+                | crate::events::ControlEvent::InboundMessageQueued { .. }
                 | crate::events::ControlEvent::LastPlanTextSet { .. }
                 | crate::events::ControlEvent::LastExecutorDiffSet { .. }
                 | crate::events::ControlEvent::LastSoloPlanTextSet { .. }
@@ -208,6 +210,8 @@ fn control_event_kind_name(event: &crate::events::ControlEvent) -> &'static str 
         }
         crate::events::ControlEvent::InboundMessageConsumed { .. } => "inbound_message_consumed",
         crate::events::ControlEvent::WakeSignalConsumed { .. } => "wake_signal_consumed",
+        crate::events::ControlEvent::WakeSignalQueued { .. } => "wake_signal_queued",
+        crate::events::ControlEvent::InboundMessageQueued { .. } => "inbound_message_queued",
         crate::events::ControlEvent::LastPlanTextSet { .. } => "last_plan_text_set",
         crate::events::ControlEvent::LastExecutorDiffSet { .. } => "last_executor_diff_set",
         crate::events::ControlEvent::LastSoloPlanTextSet { .. } => "last_solo_plan_text_set",
