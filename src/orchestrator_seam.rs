@@ -37,7 +37,7 @@ fn finish_probe(
     })
 }
 
-fn plan_has_incomplete_tasks(plan_text: &str) -> bool {
+pub(crate) fn plan_has_incomplete_tasks(plan_text: &str) -> bool {
     let Ok(value) = serde_json::from_str::<Value>(plan_text) else {
         return true;
     };

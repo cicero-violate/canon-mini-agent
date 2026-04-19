@@ -5928,21 +5928,7 @@ fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Va
 }
 
 fn plan_has_incomplete_tasks(plan_text: &str) -> bool {
-    let Ok(value) = serde_json::from_str::<Value>(plan_text) else {
-        return true;
-    };
-    value
-        .get("tasks")
-        .and_then(|v| v.as_array())
-        .map(|tasks| {
-            tasks.iter().any(|task| {
-                task.get("status")
-                    .and_then(|v| v.as_str())
-                    .map(|status| status != "done")
-                    .unwrap_or(true)
-            })
-        })
-        .unwrap_or(true)
+    crate::orchestrator_seam::plan_has_incomplete_tasks(plan_text)
 }
 
 fn preferred_objectives_path(workspace: &Path) -> PathBuf {
