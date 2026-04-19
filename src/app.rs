@@ -4795,6 +4795,24 @@ async fn run_agent(
                     None,
                 );
                 if is_chromium_transport_error(&err_text) {
+                    if role.starts_with("executor") {
+                        apply_error_result(
+                            role,
+                            &task_context,
+                            &mut error_streak,
+                            &mut last_error,
+                            &mut last_result,
+                            &err_text,
+                            format!(
+                                "Executor transport failure recovered locally. Retry on the same executor endpoint/lane.\n\
+                                 Do not emit a blocker handoff for this transport error unless retries are exhausted.\n\
+                                 Return exactly one action as a single JSON object in a ```json code block.\n\nTask context:\n{}",
+                                truncate(&task_context, MAX_SNIPPET)
+                            ),
+                        );
+                        step += 1;
+                        continue;
+                    }
                     let action = local_transport_blocker_message(role, &err_text, &task_context);
                     let (done, reason) = process_action_and_execute(
                         role,
