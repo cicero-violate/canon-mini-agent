@@ -340,18 +340,18 @@ fn default_schema_block(kind: AgentPromptKind) -> String {
 fn prompt_intro(kind: AgentPromptKind) -> &'static str {
     match kind {
         AgentPromptKind::Executor => "You are the canon executor agent.",
-        AgentPromptKind::Verifier => "You are the canon verifier agent.",
+        AgentPromptKind::Verifier => "You are the canon verifier agent (legacy mode; inactive in runtime two-role orchestration).",
         AgentPromptKind::Planner => "You are the canon planner agent.",
-        AgentPromptKind::Diagnostics => "You are the canon diagnostics agent.",
-        AgentPromptKind::Solo => "You are the canon solo agent.",
+        AgentPromptKind::Diagnostics => "You are the canon diagnostics agent (legacy mode; inactive in runtime two-role orchestration).",
+        AgentPromptKind::Solo => "You are the canon solo agent (startup compatibility mode only; inactive in runtime two-role orchestration).",
     }
 }
 
 fn prompt_mission(kind: AgentPromptKind) -> &'static str {
     match kind {
-        AgentPromptKind::Executor => "Your job is to execute the highest-priority READY work described in planner handoff messages and the master plan.\n`SPEC.md` is the canonical contract.\nLane plans are deprecated and should not be relied on for task selection.\nThe verifier judges code against `SPEC.md`.\nYou should only work on the top 1-10 ready tasks in the current cycle, then yield.\nAll actions (`read_file`, `apply_patch`, `run_command`, `plan`, `message`, etc.) are JSON you emit in your response text — they are not function calls or external tools.\nDo not reorganize or update `SPEC.md` or plan files yourself.\nMake source changes, run checks, and report evidence in `message.payload`.",
+        AgentPromptKind::Executor => "Your job is to execute the highest-priority READY work described in planner handoff messages and the master plan.\n`SPEC.md` is the canonical contract.\nLane plans are deprecated and should not be relied on for task selection.\nPlanner validates progress against `SPEC.md` and current evidence in two-role runtime.\nYou should only work on the top 1-10 ready tasks in the current cycle, then yield.\nAll actions (`read_file`, `apply_patch`, `run_command`, `plan`, `message`, etc.) are JSON you emit in your response text — they are not function calls or external tools.\nDo not reorganize or update `SPEC.md` or plan files yourself.\nMake source changes, run checks, and report evidence in `message.payload`.",
         AgentPromptKind::Verifier => "Your job is to critically review executor evidence against the codebase and judge whether the implementation satisfies `SPEC.md`.\nExecutor evidence is a hint only. The canonical truth is the codebase versus `SPEC.md`.\nIf violations are found, use the `violation` action (op=upsert) to record them in `VIOLATIONS.json`. Use `violation` op=resolve to clear violations that are no longer active. Never use `apply_patch` for VIOLATIONS.json.\nBe skeptical — do not trust executor claims at face value.",
-        AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `agent_state/OBJECTIVES.json`, and the semantic-control snapshot in this prompt, then derive the master plan plus executor handoff guidance.\nThe semantic-control snapshot is the tlog-derived authority for routing/control and already projects issues, violations, diagnostics, and invariants into one view.\nOn every cycle, re-evaluate the workspace and update `PLAN.json` via the `plan` action (emit it as JSON in your response).\nAt the end of every planner cycle, review `agent_state/OBJECTIVES.json` and add or update objectives using the `objectives` action (emit it as JSON in your response).\nAct on projected open issues from semantic control — diagnostics populates them with evidence-backed findings. Do not require re-verifying an issue before creating a task for it: the diagnostics role already verified the evidence.\nAll actions (`plan`, `objectives`, `issue`, `message`, `read_file`, etc.) are JSON you emit in your response text — they are not function calls or external tools.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
+        AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `agent_state/OBJECTIVES.json`, and the semantic-control snapshot in this prompt, then derive the master plan plus executor handoff guidance.\nThe semantic-control snapshot is the tlog-derived authority for routing/control and projects issues, violations, and invariants into one view.\nOn every cycle, re-evaluate the workspace and update `PLAN.json` via the `plan` action (emit it as JSON in your response).\nAt the end of every planner cycle, review `agent_state/OBJECTIVES.json` and add or update objectives using the `objectives` action (emit it as JSON in your response).\nAct on projected open issues from semantic control and convert the top open items into ready executor tasks.\nAll actions (`plan`, `objectives`, `issue`, `message`, `read_file`, etc.) are JSON you emit in your response text — they are not function calls or external tools.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
         AgentPromptKind::Diagnostics => "Your job is to scan the active workspace state, use the semantic-control snapshot as the control authority, derive the current failures from evidence, and refresh the projected diagnostics/issue/violation views with the `issue` and `violation` actions. Artifact views are supporting projections; planner follow-up is owned by semantic control.",
         AgentPromptKind::Solo => "Your job is to coordinate planning, execution, and verification in a single role while participating in orchestration.\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nYou may read, patch, and verify any in-workspace files when justified by evidence.\nKeep evidence tight and run checks before claiming completion.\nAt the end of every cycle — before emitting a completion message — review `agent_state/OBJECTIVES.json` and add or update objectives based on what you discovered. New objectives must include id, title, status, scope, authority_files, category, level, description, requirement, verification, and success_criteria. Use `apply_patch` to write them directly.",
     }
@@ -362,7 +362,7 @@ fn prompt_workspace(kind: AgentPromptKind) -> String {
     match kind {
         AgentPromptKind::Executor => format!("You work inside the canon workspace at {ws}. All relative file paths resolve against this workspace root."),
         AgentPromptKind::Verifier => format!("You work inside the canon workspace at {ws}."),
-        AgentPromptKind::Planner => format!("You work inside the canon workspace at {ws}. Use bash, semantic_map/symbol_window/symbol_refs (prefer over read_file for Rust source), python, apply_patch (lane plans only), and diagnostics evidence to review the current project state before reorganizing the plan."),
+        AgentPromptKind::Planner => format!("You work inside the canon workspace at {ws}. Use bash, semantic_map/symbol_window/symbol_refs (prefer over read_file for Rust source), python, and apply_patch (lane plans only) to review the current project state before reorganizing the plan."),
         AgentPromptKind::Diagnostics => format!("You must inspect the active workspace under {ws}, including source files plus any workspace-local state and observability artifacts that exist for this project."),
         AgentPromptKind::Solo => format!("You work inside the canon workspace at {ws}. Use the full tool suite to plan, execute, and verify changes."),
     }
@@ -543,7 +543,7 @@ const EXECUTION_DISCIPLINE_BULLETS: &[&str] = &[
     "Do not repeat the same patch attempt without new evidence from read_file, run_command, or python.",
     "When touching routing, policy, or control-flow code, favor the authority described in INVARIANTS.json over local heuristics.",
     "Use MIR and HIR analysis to derive call graph, CFG, reachability, and dataflow when diagnosing bugs or proving fixes.",
-    "If a task conflicts with INVARIANTS.json, execute the invariant and report the conflict in `message.payload` so planner/verifier can update plan truth.",
+    "If a task conflicts with INVARIANTS.json, execute the invariant and report the conflict in `message.payload` so planner can update plan truth.",
 ];
 
 const SOLO_EXECUTION_DISCIPLINE_BULLETS: &[&str] = &[
@@ -554,7 +554,7 @@ const SOLO_EXECUTION_DISCIPLINE_BULLETS: &[&str] = &[
     "Do not repeat the same patch attempt without new evidence from read_file, run_command, or python.",
     "When touching routing, policy, or control-flow code, favor the authority described in INVARIANTS.json over local heuristics.",
     "Use MIR and HIR analysis to derive call graph, CFG, reachability, and dataflow when diagnosing bugs or proving fixes.",
-    "If a task conflicts with INVARIANTS.json, execute the invariant and report the conflict in `message.payload` so planner/verifier can update plan truth.",
+    "If a task conflicts with INVARIANTS.json, execute the invariant and report the conflict in `message.payload` so planner can update plan truth.",
 ];
 
 fn format_bullets(header: &str, bullets: &[&str], suffix: Option<&str>) -> String {
@@ -614,11 +614,10 @@ const PLANNER_RULES: &[&str] = &[
     "- Keep each executor's ready window small: 1-10 tasks maximum.",
     "- Prefer root-cause tasks that remove queue-driven routing over local patches that merely suppress symptoms.",
     "- Send handoff messages to executors reflecting the current ready window.",
-    "- If the incoming handoff was sent by solo (check `message.from` or context role), finish your planning cycle and send the return `message` to solo so it can resume execution. Do not leave solo waiting.",
     "- PLAN.json is the authoritative source of truth for executor task selection. A handoff message alone is not sufficient — the task MUST be marked `ready` in PLAN.json before the executor will pick it up.",
     "- Always use the `python` action when reading or writing any `.json` state file (PLAN.json, OBJECTIVES.json, ISSUES.json, VIOLATIONS.json, diagnostics). Never use apply_patch or run_command shell pipelines to mutate JSON; use the `plan`, `objectives`, or `issue` actions for their respective files.",
     "- Executor tasks must only require executor-permitted actions: read_file, apply_patch, run_command, python, cargo_fmt, cargo_clippy, semantic tools, and `plan set_task_status → done` (to mark its own task complete). The executor CANNOT use `objectives`, `issue`, or `verify` actions, and cannot use any plan op other than set_task_status → done. Reserve those actions for a planner or verifier cycle.",
-    "- plan actions derived from diagnostics must cite same-cycle source validation in `observation` and `rationale` (for example current-cycle `read_file`, `run_command`, `python`, or other verified source evidence) before mutating `PLAN.json`.",
+    "- plan actions derived from semantic control projections must cite same-cycle source validation in `observation` and `rationale` (for example current-cycle `read_file`, `run_command`, `python`, or other verified source evidence) before mutating `PLAN.json`.",
 ];
 
 fn diagnostics_rules() -> Vec<String> {
@@ -819,8 +818,8 @@ pub(crate) fn planner_cycle_prompt(
     let suffix = format!(
         "\n\n\
          ⟹ IMMEDIATE ACTION: The projected issues in the semantic control section above are \
-         pre-verified by diagnostics and directly actionable. Do not re-verify them — the \
-         diagnostics role already did that. Create `plan` tasks for the top open issues now, \
+         pre-validated by semantic control and directly actionable. Do not stall on re-verifying \
+         them before planning. Create `plan` tasks for the top open issues now, \
          mark them `ready`, and send an executor handoff message.\n\n\
          Before completing this cycle, review {OBJECTIVES_FILE} and add or update objectives \
          for anything discovered this cycle. Use the `objectives` action \
@@ -903,6 +902,7 @@ pub(crate) fn executor_cycle_prompt(
     )
 }
 
+#[allow(dead_code)]
 pub(crate) fn verifier_cycle_prompt(
     lane_label: &str,
     exec_result: &str,
@@ -916,6 +916,7 @@ pub(crate) fn verifier_cycle_prompt(
     )
 }
 
+#[allow(dead_code)]
 pub(crate) fn diagnostics_cycle_prompt(summary_text: &str, cargo_test_failures: &str) -> String {
     let workspace = workspace();
     let diagnostics_file = diagnostics_file();
@@ -1652,25 +1653,28 @@ fn validate_optional_message_severity(obj: &serde_json::Map<String, Value>) -> R
 }
 
 fn validate_optional_message_role(obj: &serde_json::Map<String, Value>, field: &str) -> Result<()> {
-    let Some(role) = obj.get(field) else {
+    let Some(role) = obj.get(field).and_then(|v| v.as_str()) else {
         return Ok(());
     };
-    let _ = serde_json::from_value::<Role>(role.clone()).map_err(|_| {
-        anyhow!("{field} must be one of: user|executor|planner|verifier|diagnostics|solo")
-    })?;
+    if !matches!(role, "user" | "executor" | "planner") {
+        bail!("{field} must be one of: user|executor|planner");
+    }
     Ok(())
 }
 
 fn validate_message_route(msg: &ProtocolMessage) -> Result<()> {
     let self_routed = std::mem::discriminant(&msg.from) == std::mem::discriminant(&msg.to);
-    let allow_solo_self_complete = matches!(msg.from, Role::Solo)
-        && matches!(msg.to, Role::Solo)
-        && matches!(msg.msg_type, MessageType::Result)
-        && matches!(msg.status, MessageStatus::Complete);
-    if self_routed && !allow_solo_self_complete {
-        bail!(
-            "message route may not target the emitting role; only solo result/complete may self-route"
-        );
+    if self_routed {
+        bail!("message route may not target the emitting role in two-role runtime");
+    }
+    Ok(())
+}
+
+fn validate_active_message_roles(msg: &ProtocolMessage) -> Result<()> {
+    let from_ok = matches!(msg.from, Role::Planner | Role::Executor | Role::User);
+    let to_ok = matches!(msg.to, Role::Planner | Role::Executor | Role::User);
+    if !from_ok || !to_ok {
+        bail!("message roles must be planner, executor, or user in two-role runtime");
     }
     Ok(())
 }
@@ -1685,6 +1689,7 @@ pub(crate) fn validate_message_action(action: &Value, mode: MessageValidationMod
     }
     let msg: ProtocolMessage = serde_json::from_value(action.clone())
         .map_err(|e| anyhow!("message schema invalid: {e}"))?;
+    validate_active_message_roles(&msg)?;
     validate_blocker_message_payload(&msg)?;
     validate_message_route(&msg)?;
     validate_optional_message_severity(obj)?;
@@ -2120,7 +2125,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_allows_solo_result_self_route() {
+    fn validate_rejects_legacy_solo_result_self_route() {
         let action = json!({
             "action": "message",
             "from": "solo",
@@ -2137,7 +2142,12 @@ mod tests {
                 {"action": "run_command", "intent": "verify the final workspace state if needed"}
             ]
         });
-        assert!(validate_action(&action).is_ok());
+        let err = validate_action(&action).unwrap_err().to_string();
+        assert!(
+            err.contains("planner, executor, or user")
+                || err.contains("may not target the emitting role"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]

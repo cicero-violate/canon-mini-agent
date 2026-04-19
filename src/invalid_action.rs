@@ -3,26 +3,7 @@ use serde_json::{json, Value};
 use crate::prompts::{validate_message_action, MessageValidationMode};
 use crate::tool_schema::{action_schema_json, schema_diff_messages};
 
-fn runtime_two_role_mode() -> bool {
-    std::env::var("RUNTIME_TWO_ROLE")
-        .map(|v| {
-            let normalized = v.trim().to_ascii_lowercase();
-            matches!(normalized.as_str(), "1" | "true" | "yes" | "on")
-        })
-        .unwrap_or(false)
-}
-
 fn normalize_message_target(role: &str, target: &str) -> &'static str {
-    if !runtime_two_role_mode() {
-        return match target {
-            "planner" => "planner",
-            "executor" => "executor",
-            "verifier" => "verifier",
-            "diagnostics" => "diagnostics",
-            "solo" => "solo",
-            _ => "planner",
-        };
-    }
     if target == "planner" || target == "executor" {
         return if target == "planner" {
             "planner"
@@ -1230,10 +1211,7 @@ fn reroute_invalid_self_message_target(
     }
     if actual_from.eq_ignore_ascii_case("planner") {
         if msg_type.eq_ignore_ascii_case("blocker") || status.eq_ignore_ascii_case("blocked") {
-            if runtime_two_role_mode() {
-                return "executor";
-            }
-            return "diagnostics";
+            return "executor";
         }
         return "executor";
     }

@@ -7567,19 +7567,7 @@ pub fn execute_action_capability(
     execute_action(role, step, action, workspace, check_on_done, None)
 }
 
-fn runtime_two_role_mode() -> bool {
-    std::env::var("RUNTIME_TWO_ROLE")
-        .map(|v| {
-            let normalized = v.trim().to_ascii_lowercase();
-            matches!(normalized.as_str(), "1" | "true" | "yes" | "on")
-        })
-        .unwrap_or(false)
-}
-
 fn sanitize_inbound_target(role: &str, to: &str) -> String {
-    if !runtime_two_role_mode() {
-        return to.to_string();
-    }
     if to == "planner" || to == "executor" {
         return to.to_string();
     }

@@ -146,6 +146,7 @@ fn load_violations_from_tlog(workspace: &Path) -> Option<ViolationsReport> {
     latest.map(|(_, report)| report)
 }
 
+#[allow(dead_code)]
 pub fn persist_diagnostics_projection_with_writer(
     workspace: &Path,
     report: &DiagnosticsReport,

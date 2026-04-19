@@ -27,6 +27,7 @@ pub struct LaneConfig {
     pub tabs: TabManagerHandle,
 }
 
+#[allow(dead_code)]
 pub struct OrchestratorContext<'a> {
     pub lanes: &'a [LaneConfig],
     pub workspace: &'a PathBuf,
@@ -919,8 +920,10 @@ fn render_lessons_artifact(artifact: &LessonsArtifact) -> String {
     sections.join("\n\n")
 }
 
+#[allow(dead_code)]
 const RENAME_CANDIDATES_FILE: &str = "state/rename_candidates.json";
 
+#[allow(dead_code)]
 pub fn read_rename_candidates_or_empty(workspace: &Path) -> String {
     let raw = read_text_or_empty(workspace.join(RENAME_CANDIDATES_FILE));
     if raw.trim().is_empty() {
@@ -969,6 +972,7 @@ pub fn read_rename_candidates_or_empty(workspace: &Path) -> String {
 /// Read `agent_state/loop_context.json` written by the supervisor's bounded repair
 /// loop and return a focused hint for injection into the solo/planner prompt.
 /// Returns empty string when the agent is not running under loop control.
+#[allow(dead_code)]
 pub fn read_loop_context_hint(state_dir: &Path) -> String {
     let path = state_dir.join("loop_context.json");
     let Ok(raw) = std::fs::read_to_string(&path) else {
@@ -1030,6 +1034,7 @@ pub fn read_loop_context_hint(state_dir: &Path) -> String {
 
 /// Read agent_state/reports/complexity/latest.json and return the top `limit` hotspots
 /// as compact text for prompt injection. Returns empty string if report is absent.
+#[allow(dead_code)]
 pub fn read_complexity_hotspots(workspace: &Path, limit: usize) -> String {
     let path = complexity_report_path(workspace);
     let Some(report) = load_complexity_report(&path) else {
@@ -1053,6 +1058,7 @@ pub fn read_complexity_hotspots(workspace: &Path, limit: usize) -> String {
     out
 }
 
+#[allow(dead_code)]
 fn complexity_report_path(workspace: &Path) -> std::path::PathBuf {
     workspace
         .join("agent_state")
@@ -1061,11 +1067,13 @@ fn complexity_report_path(workspace: &Path) -> std::path::PathBuf {
         .join("latest.json")
 }
 
+#[allow(dead_code)]
 fn load_complexity_report(path: &Path) -> Option<serde_json::Value> {
     let raw = std::fs::read_to_string(path).ok()?;
     serde_json::from_str::<serde_json::Value>(&raw).ok()
 }
 
+#[allow(dead_code)]
 fn format_complexity_hotspot_line(item: &serde_json::Value) -> String {
     let symbol = item.get("symbol").and_then(|v| v.as_str()).unwrap_or("?");
     let file = item.get("file").and_then(|v| v.as_str()).unwrap_or("?");
@@ -1719,11 +1727,13 @@ pub fn load_executor_diff_inputs(
     ExecutorDiffInputs { diff_text }
 }
 
+#[allow(dead_code)]
 pub struct VerifierPromptInputs {
     pub executor_diff_text: String,
     pub cargo_test_failures: String,
 }
 
+#[allow(dead_code)]
 pub fn load_verifier_prompt_inputs(
     lanes: &[LaneConfig],
     workspace: &Path,
@@ -1924,6 +1934,7 @@ fn executor_diff_unavailable(reason: &str) -> String {
 }
 
 /// Public wrapper so solo phase can compute plan diffs without duplicating logic.
+#[allow(dead_code)]
 pub fn solo_plan_diff(old_text: &str, new_text: &str, max_lines: usize) -> String {
     plan_diff(old_text, new_text, max_lines)
 }

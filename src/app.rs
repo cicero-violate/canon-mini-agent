@@ -68,25 +68,13 @@ use crate::tlog::Tlog;
 use crate::tool_schema::write_tool_examples;
 use crate::tools::write_stage_graph;
 
-fn runtime_two_role_mode() -> bool {
-    std::env::var("RUNTIME_TWO_ROLE")
-        .map(|v| {
-            let normalized = v.trim().to_ascii_lowercase();
-            matches!(normalized.as_str(), "1" | "true" | "yes" | "on")
-        })
-        .unwrap_or(false)
-}
-
-fn runtime_role_enabled(role: &str, two_role_mode: bool) -> bool {
-    if !two_role_mode {
-        return true;
-    }
+fn runtime_role_enabled(role: &str) -> bool {
     matches!(role, "planner" | "executor")
 }
 
-fn sanitize_phase_for_runtime(phase: Option<&str>, two_role_mode: bool) -> Option<String> {
+fn sanitize_phase_for_runtime(phase: Option<&str>) -> Option<String> {
     let phase = phase?;
-    if runtime_role_enabled(phase, two_role_mode) {
+    if runtime_role_enabled(phase) {
         Some(phase.to_string())
     } else {
         None
@@ -470,6 +458,7 @@ fn trace_orchestrator_forwarded(
     append_orchestration_trace("llm_message_forwarded", Value::Object(payload));
 }
 
+#[allow(dead_code)]
 struct BlockerFields {
     blocker_text: String,
     required_action: String,
@@ -478,6 +467,7 @@ struct BlockerFields {
     severity: String,
 }
 
+#[allow(dead_code)]
 fn normalize_blocker_fields(payload: &Value) -> BlockerFields {
     let blocker_text = jstr(payload, "blocker").to_string();
     let required_action = jstr(payload, "required_action").to_string();
@@ -518,10 +508,12 @@ fn build_blocker_payload(
     })
 }
 
+#[allow(dead_code)]
 fn build_verifier_blocker_ack(fields: &BlockerFields) -> Value {
     verifier_blocker_ack_message(fields)
 }
 
+#[allow(dead_code)]
 fn verifier_blocker_ack_message(fields: &BlockerFields) -> Value {
     json!({
         "action": "message",
@@ -536,6 +528,7 @@ fn verifier_blocker_ack_message(fields: &BlockerFields) -> Value {
     })
 }
 
+#[allow(dead_code)]
 fn verifier_blocker_ack_payload(fields: &BlockerFields) -> Value {
     build_blocker_payload(
         "Verifier paused due to upstream blocker.",
@@ -546,6 +539,7 @@ fn verifier_blocker_ack_payload(fields: &BlockerFields) -> Value {
     )
 }
 
+#[allow(dead_code)]
 fn verifier_blocker_ack_predicted_next_actions() -> Value {
     json!([
         {
@@ -930,6 +924,7 @@ async fn run_planner_phase(
     }
 }
 
+#[allow(dead_code)]
 async fn run_solo_phase(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
@@ -1094,6 +1089,7 @@ async fn run_solo_phase(
     }
 }
 
+#[allow(dead_code)]
 async fn run_diagnostics_phase(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
@@ -1242,6 +1238,7 @@ async fn run_diagnostics_phase(
     }
 }
 
+#[allow(dead_code)]
 async fn run_verifier_phase(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
@@ -2522,7 +2519,7 @@ fn drain_continuations(
 
 fn handle_completed_continuation(
     writer: &mut CanonicalWriter,
-    verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
+    _verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
     submitted: SubmittedExecutorTurn,
     turn_id: u64,
     result: Result<AgentCompletion>,
@@ -2539,16 +2536,12 @@ fn handle_completed_continuation(
                     persist_executor_completion_message(writer, &action);
                 }
                 AgentCompletion::Summary(final_exec_result) => {
-                    if runtime_two_role_mode() {
-                        finalize_executor_summary_without_verifier(
-                            writer,
-                            &submitted,
-                            turn_id,
-                            &final_exec_result,
-                        );
-                    } else {
-                        verifier_pending_results.push_back((submitted, turn_id, final_exec_result));
-                    }
+                    finalize_executor_summary_without_verifier(
+                        writer,
+                        &submitted,
+                        turn_id,
+                        &final_exec_result,
+                    );
                 }
             }
         }
@@ -3961,14 +3954,10 @@ fn apply_lane_pending_if_changed(
     true
 }
 
-fn apply_wake_flags(
-    agent_state_dir: &std::path::Path,
-    writer: &mut CanonicalWriter,
-    two_role_mode: bool,
-) {
+fn apply_wake_flags(agent_state_dir: &std::path::Path, writer: &mut CanonicalWriter) {
     let state_snapshot = writer.state().clone();
     let (inputs, path_map, signature_map) =
-        collect_wake_flag_inputs(agent_state_dir, &state_snapshot, two_role_mode);
+        collect_wake_flag_inputs(agent_state_dir, &state_snapshot);
     let wake_inputs_debug = inputs
         .iter()
         .map(|input| format!("{}@{}", input.role, input.modified_ms))
@@ -4102,7 +4091,6 @@ fn wake_role_for_artifact(artifact: &str) -> Option<&'static str> {
 fn canonical_wake_signatures_from_tlog(
     agent_state_dir: &std::path::Path,
     state: &SystemState,
-    two_role_mode: bool,
 ) -> std::collections::HashMap<&'static str, (u64, String)> {
     let mut latest_by_role = std::collections::HashMap::new();
     let tlog_path = agent_state_dir.join("tlog.ndjson");
@@ -4122,7 +4110,7 @@ fn canonical_wake_signatures_from_tlog(
         let Some(role) = wake_role_for_artifact(&artifact) else {
             continue;
         };
-        if !runtime_role_enabled(role, two_role_mode) {
+        if !runtime_role_enabled(role) {
             continue;
         }
         let replace = match latest_by_role.get(role) {
@@ -4147,36 +4135,26 @@ fn canonical_wake_signatures_from_tlog(
 fn collect_wake_flag_inputs(
     agent_state_dir: &std::path::Path,
     state: &SystemState,
-    two_role_mode: bool,
 ) -> (
     Vec<WakeFlagInput>,
     std::collections::HashMap<&'static str, std::path::PathBuf>,
     std::collections::HashMap<&'static str, String>,
 ) {
-    let mut flag_paths: Vec<(&str, std::path::PathBuf)> = vec![
+    let flag_paths: Vec<(&str, std::path::PathBuf)> = vec![
         ("planner", agent_state_dir.join("wakeup_planner.flag")),
         ("executor", agent_state_dir.join("wakeup_executor.flag")),
     ];
-    if !two_role_mode {
-        flag_paths.push(("solo", agent_state_dir.join("wakeup_solo.flag")));
-        flag_paths.push(("verifier", agent_state_dir.join("wakeup_verifier.flag")));
-        flag_paths.push((
-            "diagnostics",
-            agent_state_dir.join("wakeup_diagnostics.flag"),
-        ));
-    }
 
     let mut inputs = Vec::new();
     let mut path_map = std::collections::HashMap::new();
     let mut signature_map = std::collections::HashMap::new();
-    let canonical_signals =
-        canonical_wake_signatures_from_tlog(agent_state_dir, state, two_role_mode);
+    let canonical_signals = canonical_wake_signatures_from_tlog(agent_state_dir, state);
     for (role, (modified_ms, signature)) in canonical_signals {
         inputs.push(WakeFlagInput { role, modified_ms });
         signature_map.insert(role, signature);
     }
     for (role, path) in flag_paths {
-        if !runtime_role_enabled(role, two_role_mode) {
+        if !runtime_role_enabled(role) {
             continue;
         }
         if path.exists() {
@@ -4200,6 +4178,7 @@ fn collect_wake_flag_inputs(
     (inputs, path_map, signature_map)
 }
 
+#[allow(dead_code)]
 fn try_parse_blocker(raw: &str) -> Option<(String, String, Value)> {
     let value: Value = serde_json::from_str(raw).ok()?;
     let msg_type = jstr(&value, "type");
@@ -5820,8 +5799,7 @@ fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Va
     } else {
         to_role
     };
-    if runtime_two_role_mode()
-        && !effective_to.eq_ignore_ascii_case("planner")
+    if !effective_to.eq_ignore_ascii_case("planner")
         && !effective_to.eq_ignore_ascii_case("executor")
     {
         eprintln!(
@@ -6407,11 +6385,10 @@ pub async fn run() -> Result<()> {
         if writer.tlog_seq() == 0 {
             writer.try_apply(ControlEvent::PlannerPendingSet { pending: true })?;
         }
-        let two_role_mode = runtime_two_role_mode();
         let mut rt = new_runtime_state(&lanes);
 
         let mut resume_verifier_items: Vec<ResumeVerifierItem> = Vec::new();
-        let mut solo_bootstrapped = false;
+        let _solo_bootstrapped = false;
         if let Some(checkpoint) = load_checkpoint(&workspace) {
             eprintln!(
                 "[orchestrate] resume checkpoint loaded: phase={} lane={:?} age_ms={}",
@@ -6427,15 +6404,10 @@ pub async fn run() -> Result<()> {
                 state.planner_pending,
                 state.diagnostics_pending,
             );
-            if two_role_mode {
-                if !runtime_role_enabled(
-                    resume_decision.scheduled_phase.as_deref().unwrap_or(""),
-                    true,
-                ) {
-                    resume_decision.scheduled_phase = None;
-                }
-                resume_decision.diagnostics_pending = false;
+            if !runtime_role_enabled(resume_decision.scheduled_phase.as_deref().unwrap_or("")) {
+                resume_decision.scheduled_phase = None;
             }
+            resume_decision.diagnostics_pending = false;
             if writer.state().scheduled_phase != resume_decision.scheduled_phase {
                 writer.apply(ControlEvent::ScheduledPhaseSet {
                     phase: resume_decision.scheduled_phase.clone(),
@@ -6518,8 +6490,8 @@ pub async fn run() -> Result<()> {
             }
         }
         let mut planner_bootstrapped = false;
-        let mut diagnostics_bootstrapped = false;
-        let mut verifier_bootstrapped = false;
+        let _diagnostics_bootstrapped = false;
+        let _verifier_bootstrapped = false;
         let mut submit_joinset: tokio::task::JoinSet<(
             usize,
             PendingExecutorSubmit,
@@ -6613,7 +6585,7 @@ pub async fn run() -> Result<()> {
             }
 
             let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
-            apply_wake_flags(agent_state_dir, &mut writer, two_role_mode);
+            apply_wake_flags(agent_state_dir, &mut writer);
             if let Err(err) = record_frames_all_debug_effect_if_changed(
                 workspace.as_path(),
                 &mut writer,
@@ -6624,7 +6596,7 @@ pub async fn run() -> Result<()> {
 
             if writer.state().scheduled_phase.is_none() && writer.state().phase == "bootstrap" {
                 if let Some(phase) = decide_bootstrap_phase(start_role) {
-                    let phase = if runtime_role_enabled(&phase, two_role_mode) {
+                    let phase = if runtime_role_enabled(&phase) {
                         phase
                     } else {
                         "planner".to_string()
@@ -6636,15 +6608,6 @@ pub async fn run() -> Result<()> {
                     if phase == "planner" {
                         writer.apply(ControlEvent::PlannerPendingSet { pending: true });
                     }
-                    if phase == "diagnostics" && !two_role_mode {
-                        writer.apply(ControlEvent::DiagnosticsPendingSet { pending: true });
-                    }
-                    if phase == "solo" && !two_role_mode {
-                        writer.apply(ControlEvent::ScheduledPhaseSet {
-                            phase: Some("solo".to_string()),
-                        });
-                    }
-
                     let mut bootstrap_phase = phase.clone();
                     if phase == "executor" {
                         let ready_tasks_text =
@@ -6675,33 +6638,21 @@ pub async fn run() -> Result<()> {
                 }
             }
 
-            if two_role_mode {
-                apply_diagnostics_pending_if_changed(&mut writer, false);
-                let scheduled_phase = writer.state().scheduled_phase.clone();
-                if scheduled_phase
-                    .as_deref()
-                    .is_some_and(|phase| !runtime_role_enabled(phase, true))
-                {
-                    apply_scheduled_phase_if_changed(&mut writer, None);
-                }
+            apply_diagnostics_pending_if_changed(&mut writer, false);
+            let scheduled_phase = writer.state().scheduled_phase.clone();
+            if scheduled_phase
+                .as_deref()
+                .is_some_and(|phase| !runtime_role_enabled(phase))
+            {
+                apply_scheduled_phase_if_changed(&mut writer, None);
             }
 
             let active_blocker = writer.state().active_blocker_to_verifier;
-            let semantic_control = SemanticControlState::from_system_state(
-                writer.state(),
-                !verifier_pending_results.is_empty(),
-                !verifier_joinset.is_empty(),
-            );
-            let blocker_decision = if two_role_mode {
-                crate::state_space::ActiveBlockerDecision {
-                    planner_pending: writer.state().planner_pending,
-                    scheduled_phase: sanitize_phase_for_runtime(
-                        writer.state().scheduled_phase.as_deref(),
-                        true,
-                    ),
-                }
-            } else {
-                semantic_control.active_blocker_decision()
+            let blocker_decision = crate::state_space::ActiveBlockerDecision {
+                planner_pending: writer.state().planner_pending,
+                scheduled_phase: sanitize_phase_for_runtime(
+                    writer.state().scheduled_phase.as_deref(),
+                ),
             };
             let planner_suppression_changes_state = blocker_decision.planner_pending
                 != writer.state().planner_pending
@@ -6741,11 +6692,9 @@ pub async fn run() -> Result<()> {
                 !verifier_joinset.is_empty(),
             );
             let mut phase_gates = semantic_control.phase_gates();
-            if two_role_mode {
-                phase_gates.verifier = false;
-                phase_gates.diagnostics = false;
-                phase_gates.solo = false;
-            }
+            phase_gates.verifier = false;
+            phase_gates.diagnostics = false;
+            phase_gates.solo = false;
 
             let orchestrator_ctx = OrchestratorContext {
                 lanes: &lanes,
@@ -6776,26 +6725,6 @@ pub async fn run() -> Result<()> {
                 )
                 .await
                 {
-                    cycle_progress = true;
-                }
-            }
-
-            if phase_gates.solo && !two_role_mode {
-                writer.apply(ControlEvent::PhaseSet {
-                    phase: "solo".to_string(),
-                    lane: None,
-                });
-                if run_solo_phase(
-                    &orchestrator_ctx,
-                    &mut writer,
-                    &mut solo_bootstrapped,
-                    &cargo_test_failures,
-                )
-                .await
-                {
-                    cycle_progress = true;
-                } else {
-                    writer.apply(ControlEvent::PlannerPendingSet { pending: true });
                     cycle_progress = true;
                 }
             }
@@ -6845,55 +6774,17 @@ pub async fn run() -> Result<()> {
                 cycle_progress = true;
             }
 
-            let mut verifier_changed = false;
-            if !two_role_mode
-                && (!verifier_pending_results.is_empty() || !verifier_joinset.is_empty())
-            {
-                let (phase_progress, phase_changed) = run_verifier_phase(
-                    &orchestrator_ctx,
-                    &mut writer,
-                    &mut verifier_pending_results,
-                    &mut verifier_joinset,
-                    &mut verifier_bootstrapped,
-                    &cargo_test_failures,
-                )
-                .await;
-                if phase_progress {
-                    cycle_progress = true;
-                }
-                if phase_changed {
-                    verifier_changed = true;
-                }
+            if !verifier_pending_results.is_empty() || !verifier_joinset.is_empty() {
+                verifier_pending_results.clear();
+                while verifier_joinset.try_join_next().is_some() {}
             }
 
-            if !two_role_mode && verifier_changed {
-                writer.apply(ControlEvent::DiagnosticsVerifierFollowupQueued);
-            }
             let semantic_control = SemanticControlState::from_system_state(
                 writer.state(),
                 !verifier_pending_results.is_empty(),
                 !verifier_joinset.is_empty(),
             );
-            if !two_role_mode
-                && semantic_control.diagnostics_pending
-                && semantic_control.diagnostics_allowed()
-            {
-                writer.apply(ControlEvent::PhaseSet {
-                    phase: "diagnostics".to_string(),
-                    lane: None,
-                });
-                if run_diagnostics_phase(
-                    &orchestrator_ctx,
-                    &mut writer,
-                    &mut diagnostics_bootstrapped,
-                    verifier_changed,
-                    &cargo_test_failures,
-                )
-                .await
-                {
-                    cycle_progress = true;
-                }
-            }
+            let _ = semantic_control;
 
             if writer.state().scheduled_phase.is_some() {
                 let (executor_lane_pending, executor_in_progress) = writer
@@ -7423,7 +7314,7 @@ mod tests {
             .wake_signal_signatures
             .insert("planner".to_string(), "wake-new".to_string());
 
-        let wakes = canonical_wake_signatures_from_tlog(&state_dir, &state, false);
+        let wakes = canonical_wake_signatures_from_tlog(&state_dir, &state);
         assert!(!wakes.contains_key("planner"));
     }
 
