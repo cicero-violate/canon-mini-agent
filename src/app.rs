@@ -6530,6 +6530,51 @@ pub async fn run() -> Result<()> {
                 }
             }
         }
+        // Stale-lane cleanup: runs regardless of whether a checkpoint loaded.
+        // After tlog replay, a lane may be marked in_progress + prompt_in_flight
+        // but have no corresponding submitted_turn_ids — this happens when the
+        // process was killed mid-step before the turn was registered or completed.
+        // Those lanes are phantom-busy and must be reset so the wake signal can
+        // route work to them.
+        {
+            let lane_ids: Vec<usize> = writer.state().lanes.keys().copied().collect();
+            for lane_id in &lane_ids {
+                let (in_progress, prompt_in_flight) = {
+                    let s = writer.state();
+                    let in_prog = s
+                        .lanes
+                        .get(lane_id)
+                        .and_then(|l| l.in_progress_by.as_ref())
+                        .is_some();
+                    let in_flight = s.lane_in_flight(*lane_id);
+                    (in_prog, in_flight)
+                };
+                let has_submitted_turn = writer
+                    .state()
+                    .submitted_turn_ids
+                    .values()
+                    .any(|r| r.lane_id == *lane_id);
+                if in_progress && prompt_in_flight && !has_submitted_turn {
+                    eprintln!(
+                        "[orchestrate] stale-lane recovery: lane {} was in_progress+prompt_in_flight with no submitted turn; requeuing",
+                        lane_id
+                    );
+                    writer.apply(ControlEvent::LanePromptInFlightSet {
+                        lane_id: *lane_id,
+                        in_flight: false,
+                    });
+                    writer.apply(ControlEvent::LaneInProgressSet {
+                        lane_id: *lane_id,
+                        actor: None,
+                    });
+                    writer.apply(ControlEvent::LanePendingSet {
+                        lane_id: *lane_id,
+                        pending: true,
+                    });
+                }
+            }
+        }
+
         let mut planner_bootstrapped = false;
         let _diagnostics_bootstrapped = false;
         let _verifier_bootstrapped = false;
