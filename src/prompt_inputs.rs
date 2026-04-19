@@ -75,6 +75,9 @@ pub struct SemanticPromptArtifacts {
     pub issues_summary: String,
     pub violations_summary: String,
     pub diagnostics_summary: String,
+    /// Eval score header prepended to the issues section.
+    /// Shows overall score, weakest dimension, and a direct improvement directive.
+    pub eval_header: String,
     #[cfg(test)]
     pub diagnostics_report: String,
 }
@@ -464,6 +467,55 @@ fn summarize_enforced_invariants_for_prompt(raw: &str) -> String {
     out
 }
 
+/// Build a one-line eval score header with a weakest-dimension directive.
+/// Placed directly above the issues list so the LLM sees the score and the
+/// issues that are dragging it down in the same view.
+fn build_eval_header(workspace: &Path) -> String {
+    let path = workspace
+        .join("agent_state")
+        .join("reports")
+        .join("complexity")
+        .join("latest.json");
+    let Some(report) = load_complexity_report(&path) else {
+        return String::new();
+    };
+    let Some(eval) = report.get("eval").and_then(|v| v.as_object()) else {
+        return String::new();
+    };
+
+    let get_f64 = |key: &str| eval.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let overall = get_f64("overall_score");
+    let dims = [
+        ("objective_progress", get_f64("objective_progress")),
+        ("safety",             get_f64("safety")),
+        ("task_velocity",      get_f64("task_velocity")),
+        ("issue_health",       get_f64("issue_health")),
+    ];
+
+    let (weakest_name, weakest_val) = dims
+        .iter()
+        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .copied()
+        .unwrap_or(("unknown", 0.0));
+
+    let directive = match weakest_name {
+        "objective_progress" => "close completed objectives and create plan tasks for active ones",
+        "task_velocity"      => "complete or close stale PLAN.json tasks",
+        "issue_health"       => "close or fix the repeated open issues below",
+        "safety"             => "resolve violations listed in the violations view",
+        _                    => "address the highest-scored issues below",
+    };
+
+    let objectives = eval.get("objectives").and_then(|v| v.as_str()).unwrap_or("?");
+    let tasks      = eval.get("tasks").and_then(|v| v.as_str()).unwrap_or("?");
+
+    format!(
+        "EVAL score={overall:.3}  weakest={weakest_name}({weakest_val:.3})  \
+objectives={objectives}  tasks={tasks}\n\
+→ To raise score: {directive}\n"
+    )
+}
+
 fn summarize_ranked_open_issues_for_prompt(open_issues: &[Issue], limit: usize) -> String {
     if open_issues.is_empty() {
         return "(no open issues)".to_string();
@@ -676,6 +728,7 @@ pub fn derive_semantic_prompt_artifacts(
     });
     SemanticPromptArtifacts {
         issues_summary: summarize_ranked_open_issues_for_prompt(&open_issues, issue_limit),
+        eval_header: build_eval_header(workspace),
         violations_summary: summarize_violations_report_for_prompt(
             violations_report.as_ref(),
             match violations_status {
@@ -708,8 +761,17 @@ pub fn derive_semantic_control_prompt_state(
     if !artifacts.issues_summary.trim().is_empty()
         && artifacts.issues_summary.trim() != "(no open issues)"
     {
+        let issues_header = if artifacts.eval_header.trim().is_empty() {
+            "Projected issues view (derived from semantic prompt state):".to_string()
+        } else {
+            format!(
+                "Projected issues view (derived from semantic prompt state):\n{}",
+                artifacts.eval_header.trim()
+            )
+        };
         sections.push(format!(
-            "Projected issues view (derived from semantic prompt state):\n{}",
+            "{}\n{}",
+            issues_header,
             artifacts.issues_summary.trim()
         ));
     }
