@@ -5169,7 +5169,12 @@ async fn run_agent(
                     "process_restart",
                 );
                 last_result = Some(out);
-                if kind.as_str() == "apply_patch" {
+                if kind.as_str() == "apply_patch"
+                    && !last_result
+                        .as_deref()
+                        .unwrap_or_default()
+                        .starts_with("apply_patch failed:")
+                {
                     return Ok(AgentCompletion::Summary(last_result.unwrap_or_default()));
                 }
             }

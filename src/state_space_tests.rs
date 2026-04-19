@@ -473,7 +473,14 @@ fn semantic_control_state_projects_phase_gates_from_system_state() {
     state.scheduled_phase = Some("planner".to_string());
     state.planner_pending = true;
     state.diagnostics_pending = true;
-    let semantic = SemanticControlState::from_system_state(&state, true, true);
+    let semantic = SemanticControlState {
+        scheduled_phase: state.scheduled_phase.clone(),
+        planner_pending: state.planner_pending,
+        diagnostics_pending: state.diagnostics_pending,
+        verifier_queued: true,
+        verifier_in_flight: true,
+        active_blocker_to_verifier: state.active_blocker_to_verifier,
+    };
     assert_eq!(
         semantic.phase_gates(),
         PhaseGates {
@@ -492,7 +499,14 @@ fn semantic_control_state_projects_blocker_suppression_and_resume_done() {
     state.scheduled_phase = Some("planner".to_string());
     state.planner_pending = true;
     state.active_blocker_to_verifier = true;
-    let semantic = SemanticControlState::from_system_state(&state, false, false);
+    let semantic = SemanticControlState {
+        scheduled_phase: state.scheduled_phase.clone(),
+        planner_pending: state.planner_pending,
+        diagnostics_pending: state.diagnostics_pending,
+        verifier_queued: false,
+        verifier_in_flight: false,
+        active_blocker_to_verifier: state.active_blocker_to_verifier,
+    };
     assert_eq!(
         semantic.active_blocker_decision(),
         ActiveBlockerDecision {
@@ -504,7 +518,14 @@ fn semantic_control_state_projects_blocker_suppression_and_resume_done() {
     let mut diagnostics_state = SystemState::new(&[0], 1);
     diagnostics_state.scheduled_phase = Some("diagnostics".to_string());
     diagnostics_state.diagnostics_pending = false;
-    let semantic = SemanticControlState::from_system_state(&diagnostics_state, false, false);
+    let semantic = SemanticControlState {
+        scheduled_phase: diagnostics_state.scheduled_phase.clone(),
+        planner_pending: diagnostics_state.planner_pending,
+        diagnostics_pending: diagnostics_state.diagnostics_pending,
+        verifier_queued: false,
+        verifier_in_flight: false,
+        active_blocker_to_verifier: diagnostics_state.active_blocker_to_verifier,
+    };
     assert!(semantic.scheduled_phase_done(false, false));
 }
 
@@ -513,7 +534,14 @@ fn semantic_control_state_projects_wake_flags_and_resume_hydration() {
     let state = SystemState::new(&[0], 1);
     let mut state = state;
     state.active_blocker_to_verifier = true;
-    let semantic = SemanticControlState::from_system_state(&state, false, false);
+    let semantic = SemanticControlState {
+        scheduled_phase: state.scheduled_phase.clone(),
+        planner_pending: state.planner_pending,
+        diagnostics_pending: state.diagnostics_pending,
+        verifier_queued: false,
+        verifier_in_flight: false,
+        active_blocker_to_verifier: state.active_blocker_to_verifier,
+    };
     let wake = decide_wake_flags(
         semantic.active_blocker_to_verifier,
         &[
