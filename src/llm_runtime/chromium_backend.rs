@@ -42,7 +42,6 @@ use tokio_tungstenite::tungstenite::Message;
 const FRAMES_DIR: &str = "./frames";
 const AGENT_STATE_DIR: &str = "./agent_state";
 const PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD: u32 = 8;
-const RESPONDING_HEARTBEAT_EARLY_FAIL_GRACE_SECS: u64 = 5;
 const CHROMIUM_AUTOLAUNCH_DISABLE_ENV: &str = "CANON_CHROMIUM_AUTOLAUNCH";
 const CHROMIUM_AUTOLAUNCH_SCRIPT_ENV: &str = "CANON_CHROMIUM_LAUNCH_SCRIPT";
 
@@ -347,14 +346,6 @@ fn extract_calpico_heartbeat_progress_signature(raw: &str) -> Option<String> {
     None
 }
 
-fn early_fail_grace_duration(reason: &str) -> Option<std::time::Duration> {
-    if reason == "responding_heartbeat_after_user_echo_before_turn_complete" {
-        return Some(std::time::Duration::from_secs(
-            RESPONDING_HEARTBEAT_EARLY_FAIL_GRACE_SECS,
-        ));
-    }
-    None
-}
 
 // ---------------------------------------------------------------------------
 // Shared server state (guarded by a single Mutex)
@@ -675,12 +666,20 @@ impl ChromiumBackend {
                 }
                 if stateful {
                     if let Some(tab_id) = st.endpoint_tabs.get(endpoint_id).copied() {
-                        if let Some(url) = st.tab_urls.get(&tab_id).cloned() {
+                        // Owned stateful tabs remain bound to the endpoint across
+                        // a soft-reset quarantine so acquisition waits for the
+                        // original tab instead of opening a duplicate.
+                        if st.quarantined_tabs.contains(&tab_id) {
+                            // Stateful transport retirement soft-resets the owned tab in place.
+                            // Wait for the TAB_READY reannouncement instead of opening a second
+                            // tab for the same endpoint URL.
+                        } else if let Some(url) = st.tab_urls.get(&tab_id).cloned() {
                             st.send_msg(json!({ "type": "CLAIM_TAB", "tabId": tab_id, "url": url }));
                             return Ok(tab_id);
+                        } else {
+                            st.endpoint_tabs.remove(endpoint_id);
+                            st.tab_owners.remove(&tab_id);
                         }
-                        st.endpoint_tabs.remove(endpoint_id);
-                        st.tab_owners.remove(&tab_id);
                     }
                 }
             }
@@ -809,95 +808,41 @@ impl ChromiumBackend {
 
         let mut resp_rx = resp_rx;
         let mut early_fail_rx = early_fail_rx;
-        let mut deferred_early_fail_reason: Option<String> = None;
-        let mut deferred_early_fail_deadline: Option<std::time::Instant> = None;
 
         // Wait for the assembled response, but allow deterministic protocol
-        // evidence to fail the turn before the wall-clock timeout expires.
+        // evidence (non-responding heartbeat stall) to fail the turn before the
+        // wall-clock timeout expires.  Responding heartbeats are liveness
+        // evidence and never trigger early_fail; the wall-clock timeout covers
+        // the "ChatGPT is responding but too slow" case.
         let wait_outcome = loop {
             let now = std::time::Instant::now();
-            let effective_deadline = deferred_early_fail_deadline
-                .map(|grace_deadline| grace_deadline.min(deadline))
-                .unwrap_or(deadline);
-            if now >= effective_deadline {
-                if let Some(reason) = deferred_early_fail_reason.clone() {
-                    break ResponseWaitOutcome::EarlyFail(reason);
-                }
+            if now >= deadline {
                 break ResponseWaitOutcome::Timeout;
             }
 
-            let wait_remaining = effective_deadline.saturating_duration_since(now);
+            let wait_remaining = deadline.saturating_duration_since(now);
             let sleep = tokio::time::sleep(wait_remaining);
             tokio::pin!(sleep);
 
-            if deferred_early_fail_reason.is_some() {
-                tokio::select! {
-                    raw = &mut resp_rx => {
-                        match raw {
-                            Ok(text) => break ResponseWaitOutcome::Response(text),
-                            Err(_) => break ResponseWaitOutcome::ResponseDropped,
-                        }
-                    }
-                    _ = &mut sleep => {
-                        if let Some(reason) = deferred_early_fail_reason.clone() {
-                            break ResponseWaitOutcome::EarlyFail(reason);
-                        }
-                        break ResponseWaitOutcome::Timeout;
+            tokio::select! {
+                raw = &mut resp_rx => {
+                    match raw {
+                        Ok(text) => break ResponseWaitOutcome::Response(text),
+                        Err(_) => break ResponseWaitOutcome::ResponseDropped,
                     }
                 }
-            } else {
-                tokio::select! {
-                    raw = &mut resp_rx => {
-                        match raw {
-                            Ok(text) => break ResponseWaitOutcome::Response(text),
-                            Err(_) => break ResponseWaitOutcome::ResponseDropped,
+                early = &mut early_fail_rx => {
+                    match early {
+                        Ok(reason) => break ResponseWaitOutcome::EarlyFail(reason),
+                        Err(_) => {
+                            // Early-fail sender can disappear when the turn context is reset.
+                            // Treat this as missing early-fail evidence and continue waiting.
+                            continue;
                         }
                     }
-                    early = &mut early_fail_rx => {
-                        match early {
-                            Ok(reason) => {
-                                if let Some(grace_duration) = early_fail_grace_duration(&reason) {
-                                    let grace_deadline = std::time::Instant::now() + grace_duration;
-                                    deferred_early_fail_reason = Some(reason.clone());
-                                    deferred_early_fail_deadline = Some(grace_deadline);
-                                    let mut st = self.state.lock().await;
-                                    append_inbound_boundary_event(
-                                        &mut st,
-                                        tab_id,
-                                        turn_id,
-                                        endpoint_id,
-                                        "early_fail_deferred",
-                                        &reason,
-                                        stateful,
-                                        false,
-                                    );
-                                    append_outbound_event(
-                                        "OUTBOUND_RESPONSE_EARLY_FAIL_DEFERRED",
-                                        json!({
-                                            "endpoint_id": endpoint_id,
-                                            "tabId": tab_id,
-                                            "turnId": turn_id,
-                                            "url": url,
-                                            "stateful": stateful,
-                                            "submit_only": false,
-                                            "reason": reason,
-                                            "grace_secs": grace_duration.as_secs(),
-                                        }),
-                                    );
-                                    continue;
-                                }
-                                break ResponseWaitOutcome::EarlyFail(reason);
-                            }
-                            Err(_) => {
-                                // Early-fail sender can disappear when the turn context is reset.
-                                // Treat this as missing early-fail evidence and continue waiting.
-                                continue;
-                            }
-                        }
-                    }
-                    _ = &mut sleep => {
-                        break ResponseWaitOutcome::Timeout;
-                    }
+                }
+                _ = &mut sleep => {
+                    break ResponseWaitOutcome::Timeout;
                 }
             }
         };
@@ -909,20 +854,6 @@ impl ChromiumBackend {
                 st.pending_turn_id.remove(&tab_id);
                 st.pending_turn_lease.remove(&(tab_id, turn_id));
                 release_tab_locked(&mut st, endpoint_id, tab_id, stateful);
-                if let Some(reason) = deferred_early_fail_reason {
-                    append_outbound_event(
-                        "OUTBOUND_RESPONSE_EARLY_FAIL_SUPPRESSED",
-                        json!({
-                            "endpoint_id": endpoint_id,
-                            "tabId": tab_id,
-                            "turnId": turn_id,
-                            "url": url,
-                            "stateful": stateful,
-                            "submit_only": false,
-                            "reason": reason,
-                        }),
-                    );
-                }
                 Ok(LlmResponse {
                     raw,
                     tab_id: Some(tab_id),
@@ -1391,6 +1322,7 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
             let req_id = msg.get("reqId").and_then(|v| v.as_u64());
 
             let mut st = state.lock().await;
+            let tab_owner = st.tab_owners.get(&tab_id).cloned();
             let site = SiteType::from_url(&url);
             st.assemblers
                 .entry(tab_id)
@@ -1400,7 +1332,13 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
             eprintln!("[chromium] TAB_READY tab={tab_id} url={url}");
 
             if st.quarantined_tabs.contains(&tab_id) {
-                return;
+                // Stateful tabs retired after a transport failure are soft-reset
+                // with NAVIGATE_TAB. Their stale post-retirement traffic must stay
+                // quarantined until the extension re-announces the tab as ready.
+                // Once TAB_READY arrives for that same tab, promote it back into
+                // normal reconciliation/reuse flow instead of leaving it stuck in
+                // permanent quarantine.
+                st.quarantined_tabs.remove(&tab_id);
             }
 
             if let Some(rid) = req_id {
@@ -1408,7 +1346,7 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                 if let Some(tx) = st.pending_open.remove(&rid) {
                     let _ = tx.send(tab_id);
                 }
-            } else {
+            } else if tab_owner.is_none() {
                 // Organic tab (pre-existing or sw-restart re-announcement).
                 let queue = st.preopened.entry(url.clone()).or_default();
                 if !queue.contains(&tab_id) {
@@ -1537,6 +1475,16 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
             }
 
             let mut st = state.lock().await;
+            if st.quarantined_tabs.contains(&tab_id) {
+                append_outbound_event(
+                    "OUTBOUND_INBOUND_IGNORED",
+                    json!({
+                        "reason": "quarantined_tab_during_reset",
+                        "tabId": tab_id,
+                    }),
+                );
+                return;
+            }
             let expected_turn_id = st.pending_turn_id.get(&tab_id).copied();
             let owned_endpoint_id = st.tab_owners.get(&tab_id).cloned();
             let transport_signal = classify_transport_signal(&chunk);
@@ -1865,7 +1813,13 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                         } else {
                             "heartbeat_after_user_echo_before_turn_complete"
                         };
-                        if heartbeat_count >= PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD {
+                        // Responding heartbeats are liveness evidence — ChatGPT is
+                        // actively processing.  Only plain (non-responding) heartbeats
+                        // indicate a genuine stall; the wall-clock timeout handles the
+                        // "ChatGPT is responding but too slow" case.
+                        if heartbeat_count >= PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD
+                            && !responding_heartbeat
+                        {
                             if let Some(tx) = st.pending_early_fail.remove(&key) {
                                 let _ = tx.send(signal.to_string());
                             }
@@ -2009,17 +1963,13 @@ fn retire_tab_locked(st: &mut State, endpoint_id: &str, tab_id: u32, stateful: b
     st.assemblers.remove(&tab_id);
 
     if stateful {
-        if st.endpoint_tabs.get(endpoint_id).copied() == Some(tab_id) {
-            st.endpoint_tabs.remove(endpoint_id);
-        }
-        st.tab_owners.remove(&tab_id);
-
         // Do not hard-close stateful ChatGPT/Gemini tabs on transport failure.
         // Closing guarantees the next acquire path has nothing reusable and
         // forces open-tab churn. Instead, soft-reset the tab by navigating it
         // back to its current provider URL without a reqId so the eventual
         // TAB_READY is treated as an organic reusable tab announcement.
         if !close_url.is_empty() {
+            st.quarantined_tabs.insert(tab_id);
             eprintln!(
                 "[chromium] soft-resetting stateful tab {tab_id} to {close_url} after transport retirement"
             );
@@ -2033,6 +1983,11 @@ fn retire_tab_locked(st: &mut State, endpoint_id: &str, tab_id: u32, stateful: b
             }
             return;
         }
+
+        if st.endpoint_tabs.get(endpoint_id).copied() == Some(tab_id) {
+            st.endpoint_tabs.remove(endpoint_id);
+        }
+        st.tab_owners.remove(&tab_id);
     }
 
     st.quarantined_tabs.insert(tab_id);
@@ -2115,7 +2070,7 @@ fn reconcile_tab_state_locked(
 #[cfg(test)]
 mod tests {
     use super::{
-        endpoint_submit_ack_timeout_secs, handle_inbound,
+        endpoint_submit_ack_timeout_secs, handle_inbound, retire_tab_locked,
         PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD, State,
     };
     use crate::llm_runtime::parsers::{FrameAssembler, SiteType};
@@ -2390,8 +2345,11 @@ mod tests {
         assert_eq!(reason, "heartbeat_after_turn_complete");
     }
 
+    // Responding heartbeats prove ChatGPT is alive and actively processing.
+    // They must NOT trigger early_fail regardless of count; the wall-clock
+    // timeout covers the "responding but too slow" case.
     #[tokio::test]
-    async fn responding_heartbeats_after_user_echo_trigger_deterministic_early_fail() {
+    async fn responding_heartbeats_after_user_echo_do_not_trigger_early_fail() {
         let state = Arc::new(Mutex::new(State::new()));
         let (resp_tx, _resp_rx) = oneshot::channel::<String>();
         let (early_fail_tx, early_fail_rx) = oneshot::channel::<String>();
@@ -2422,15 +2380,7 @@ mod tests {
         .to_string();
         handle_inbound(&user_echo, &state).await;
 
-        // The runtime now ignores responding heartbeats that do not carry the
-        // echoed trigger_message_id. Keep the synthetic frames aligned with the
-        // user echo id so this test still reaches the deterministic early-fail
-        // path. The runtime currently applies two non-counting frames before
-        // normal accumulation starts:
-        // 1) first seen progress-signature seeds heartbeat state and resets
-        //    the counter; 2) the first responding heartbeat is explicitly
-        //    graced. We therefore need threshold + 1 counted heartbeats, i.e.
-        //    threshold + 3 total heartbeat frames after the user echo.
+        // Send well above the threshold count to ensure no false positive.
         for ts in 2..=(PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD + 3) {
             let heartbeat = json!({
                 "type": "INBOUND_MESSAGE",
@@ -2447,14 +2397,10 @@ mod tests {
             handle_inbound(&heartbeat, &state).await;
         }
 
-        let reason = recv_early_fail(
-            early_fail_rx,
-            "user echo followed by repeated responding heartbeats",
-        )
-        .await;
-        assert_eq!(
-            reason,
-            "responding_heartbeat_after_user_echo_before_turn_complete"
+        let no_fail = tokio::time::timeout(std::time::Duration::from_millis(100), early_fail_rx).await;
+        assert!(
+            no_fail.is_err(),
+            "responding heartbeats are liveness evidence and must not trigger early_fail"
         );
     }
 
@@ -2529,8 +2475,10 @@ mod tests {
         );
     }
 
+    // Even when the counter is preloaded to the threshold, a responding heartbeat
+    // must not fire early_fail — liveness evidence always wins.
     #[tokio::test]
-    async fn responding_heartbeat_still_fails_when_counter_is_already_at_threshold() {
+    async fn responding_heartbeat_does_not_fail_when_counter_is_already_at_threshold() {
         let state = Arc::new(Mutex::new(State::new()));
         let (resp_tx, _resp_rx) = oneshot::channel::<String>();
         let (early_fail_tx, early_fail_rx) = oneshot::channel::<String>();
@@ -2566,14 +2514,10 @@ mod tests {
         .to_string();
         handle_inbound(&heartbeat, &state).await;
 
-        let reason = recv_early_fail(
-            early_fail_rx,
-            "user echo threshold preload followed by one more responding heartbeat",
-        )
-        .await;
-        assert_eq!(
-            reason,
-            "responding_heartbeat_after_user_echo_before_turn_complete"
+        let no_fail = tokio::time::timeout(std::time::Duration::from_millis(100), early_fail_rx).await;
+        assert!(
+            no_fail.is_err(),
+            "responding heartbeat must not trigger early_fail even when counter is at threshold"
         );
     }
 
@@ -2631,5 +2575,82 @@ mod tests {
 
         let st = state.lock().await;
         assert_eq!(st.post_user_message_heartbeat.get(&(7, 11)).copied(), Some(0));
+    }
+
+    #[tokio::test]
+    async fn quarantined_tab_inbound_is_ignored_until_tab_ready_reannounces() {
+        let state = Arc::new(Mutex::new(State::new()));
+        {
+            let mut st = state.lock().await;
+            st.quarantined_tabs.insert(7);
+        }
+
+        let inbound = json!({
+            "type": "INBOUND_MESSAGE",
+            "tabId": 7,
+            "payload": json!({
+                "turn_id": 11,
+                "lease_token": "lease-expected",
+                "chunk": r#"[{\"type\":\"message\",\"topic_id\":\"calpico-chatgpt\",\"payload\":{\"type\":\"calpico-message-add\",\"payload\":{\"message\":{\"id\":\"room~room~CalpicoMessage~trigger-1\",\"role\":\"user\",\"content\":{\"text\":\"prompt\"}}}}}]"#,
+                "ts": 1,
+            })
+            .to_string(),
+        })
+        .to_string();
+        handle_inbound(&inbound, &state).await;
+
+        let st = state.lock().await;
+        assert!(st.pending_turn_id.is_empty());
+        assert!(st.quarantined_tabs.contains(&7));
+        drop(st);
+
+        let tab_ready = json!({
+            "type": "TAB_READY",
+            "tabId": 7,
+            "url": "https://chatgpt.com/",
+        })
+        .to_string();
+        handle_inbound(&tab_ready, &state).await;
+
+        let st = state.lock().await;
+        assert!(!st.quarantined_tabs.contains(&7));
+        assert!(st
+            .preopened
+            .get("https://chatgpt.com/")
+            .map(|queue| queue.contains(&7))
+            .unwrap_or(false));
+    }
+
+    #[tokio::test]
+    async fn retire_stateful_tab_quarantines_until_ready() {
+        let state = Arc::new(Mutex::new(State::new()));
+        {
+            let mut st = state.lock().await;
+            st.tab_urls.insert(7, "https://chatgpt.com/".to_string());
+            st.endpoint_tabs.insert("planner_chatgpt".to_string(), 7);
+            st.tab_owners.insert(7, "planner_chatgpt".to_string());
+            retire_tab_locked(&mut st, "planner_chatgpt", 7, true);
+            assert!(st.quarantined_tabs.contains(&7));
+            assert_eq!(st.endpoint_tabs.get("planner_chatgpt").copied(), Some(7));
+            assert_eq!(st.tab_owners.get(&7).map(String::as_str), Some("planner_chatgpt"));
+        }
+
+        let tab_ready = json!({
+            "type": "TAB_READY",
+            "tabId": 7,
+            "url": "https://chatgpt.com/",
+        })
+        .to_string();
+        handle_inbound(&tab_ready, &state).await;
+
+        let st = state.lock().await;
+        assert!(!st.quarantined_tabs.contains(&7));
+        assert_eq!(st.endpoint_tabs.get("planner_chatgpt").copied(), Some(7));
+        assert_eq!(st.tab_owners.get(&7).map(String::as_str), Some("planner_chatgpt"));
+        assert!(!st
+            .preopened
+            .get("https://chatgpt.com/")
+            .map(|queue| queue.contains(&7))
+            .unwrap_or(false));
     }
 }
