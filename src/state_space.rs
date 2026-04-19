@@ -118,10 +118,6 @@ pub fn executor_step_limit_exceeded(total_steps: usize, limit: usize) -> bool {
     total_steps >= limit
 }
 
-pub fn executor_submit_timed_out(started_ms: u64, now_ms: u64, timeout_ms: u64) -> bool {
-    now_ms.saturating_sub(started_ms) >= timeout_ms
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompletionEndpointCheck {
     Ok,

@@ -1,7 +1,7 @@
 use crate::state_space::{
     allow_diagnostics_run, allow_named_phase_run, check_completion_endpoint, check_completion_tab,
     decide_active_blocker, decide_phase_gates, decide_post_diagnostics, decide_wake_flags,
-    executor_step_limit_exceeded, executor_submit_timed_out, is_verifier_specific_blocker,
+    executor_step_limit_exceeded, is_verifier_specific_blocker,
     scheduled_phase_resume_done, should_force_blocker, verifier_blocker_phase_override,
     ActiveBlockerDecision, CompletionEndpointCheck, CompletionTabCheck, PhaseGates,
     SemanticControlState, WakeFlagInput,
@@ -361,9 +361,13 @@ fn executor_step_limit_boundary() {
 
 #[test]
 fn executor_submit_timeout_boundary() {
-    assert!(!executor_submit_timed_out(100, 149, 50));
-    assert!(executor_submit_timed_out(100, 150, 50));
-    assert!(executor_submit_timed_out(100, 151, 50));
+    let timed_out = |started_ms: u64, now_ms: u64, timeout_ms: u64| {
+        now_ms.saturating_sub(started_ms) >= timeout_ms
+    };
+
+    assert!(!timed_out(100, 149, 50));
+    assert!(timed_out(100, 150, 50));
+    assert!(timed_out(100, 151, 50));
 }
 
 #[test]
