@@ -382,14 +382,11 @@ Enforcement: agents are instructed via their prompt rules section. Verifier must
 - Runtime predicate: reject when `has_actionable_objectives(objectives) == true` and `plan_has_incomplete_tasks(plan) == false`.
 - Rejection feedback: `Create/update PLAN tasks for active objectives, or mark objectives deferred/blocked with rationale.`
 
-### 4.11 System Prompt Role Schema (Issues Included)
+### 4.11 System Prompt Role Schema
 - The orchestrator provides role-specific system instructions via the LLM request `role_schema` field.
 - When enabled (`send_system_prompt = true`), `role_schema` is sent on every step of the role loop (not only step 0).
-- `role_schema` includes a short `Top open issues:` section derived from `ISSUES.json` (sorted high → medium → low).
-- The solo user prompt does not embed issues text; issues are surfaced via `role_schema` instead.
 
 Implementation:
-- `system_instructions` includes `read_top_open_issues(..., 3)`: `src/prompts.rs:708-727`, `src/issues.rs:79-120`.
 - `build_agent_prompt` includes `role_schema` on `step > 0` when `send_system_prompt` is true: `src/app.rs:1647-1694`.
 - Orchestrated role cycles set `send_system_prompt = true`: `src/app.rs:390-624` (planner/solo/diagnostics), `src/app.rs:730-767` (verifier), `src/app.rs:2072-2178` (executor continuation).
 
@@ -461,10 +458,10 @@ After every successful `apply_patch` that targets a schema-guarded JSON state fi
 
 Schema-guarded files and their canonical types (`src/reports.rs`):
 
-| File | Type | Canonical fields |
-|------|------|-----------------|
+| File                      | Type                | Canonical fields                                                 |
+|---------------------------+---------------------+------------------------------------------------------------------|
 | Active diagnostics report | `DiagnosticsReport` | `status`, `inputs_scanned`, `ranked_failures`, `planner_handoff` |
-| `VIOLATIONS.json` | `ViolationsReport` | `status`, `summary`, `violations` |
+| `VIOLATIONS.json`         | `ViolationsReport`  | `status`, `summary`, `violations`                                |
 
 Implementation: `validate_state_file_schema` in `src/tools.rs`, called from `handle_apply_patch_action` after patch application and the ranked-failures semantic check. Each schema is compiled once via `OnceLock<JSONSchema>`.
 
@@ -552,10 +549,10 @@ Notes:
 
 **PLAN.json is the single source of truth for executor task selection.**
 
-| Source | Role |
-|--------|------|
-| `PLAN.json` task `status=ready` | Authoritative — executor may only execute tasks listed here as `ready` |
-| Planner→Executor `message` with `status: ready` | Notification only — must reflect PLAN.json state, not override it |
+| Source                                          | Role                                                                   |
+|-------------------------------------------------+------------------------------------------------------------------------|
+| `PLAN.json` task `status=ready`                 | Authoritative — executor may only execute tasks listed here as `ready` |
+| Planner→Executor `message` with `status: ready` | Notification only — must reflect PLAN.json state, not override it      |
 
 Rules:
 1. The executor may only pick up a task when it is marked `"status": "ready"` in PLAN.json.
