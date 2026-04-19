@@ -113,7 +113,10 @@ fn auto_fill_reroutes_diagnostics_self_addressed_message_to_planner() {
 
     let changed = auto_fill_message_fields(&mut action, "diagnostics");
 
-    assert!(changed, "self-routed diagnostics message should be corrected");
+    assert!(
+        changed,
+        "self-routed diagnostics message should be corrected"
+    );
     assert_eq!(action.get("to").and_then(|v| v.as_str()), Some("planner"));
 }
 
@@ -132,6 +135,9 @@ fn auto_fill_preserves_allowed_solo_self_complete_message() {
 
     let changed = auto_fill_message_fields(&mut action, "solo");
 
-    assert!(changed, "solo completion should still receive missing field autofill");
+    assert!(
+        changed,
+        "solo completion should still receive missing field autofill"
+    );
     assert_eq!(action.get("to").and_then(|v| v.as_str()), Some("solo"));
 }

@@ -194,7 +194,9 @@ mod tests {
 
         let mut first = Tlog::open(&path);
         let mut stale = Tlog::open(&path);
-        first.append(&planner_pending_event(true)).expect("first append");
+        first
+            .append(&planner_pending_event(true))
+            .expect("first append");
         stale
             .append(&planner_pending_event(false))
             .expect("stale append");

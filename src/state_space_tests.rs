@@ -514,16 +514,19 @@ fn semantic_control_state_projects_wake_flags_and_resume_hydration() {
     let mut state = state;
     state.active_blocker_to_verifier = true;
     let semantic = SemanticControlState::from_system_state(&state, false, false);
-    let wake = decide_wake_flags(semantic.active_blocker_to_verifier, &[
-        WakeFlagInput {
-            role: "planner",
-            modified_ms: 30,
-        },
-        WakeFlagInput {
-            role: "diagnostics",
-            modified_ms: 20,
-        },
-    ]);
+    let wake = decide_wake_flags(
+        semantic.active_blocker_to_verifier,
+        &[
+            WakeFlagInput {
+                role: "planner",
+                modified_ms: 30,
+            },
+            WakeFlagInput {
+                role: "diagnostics",
+                modified_ms: 20,
+            },
+        ],
+    );
     assert_eq!(wake.scheduled_phase.as_deref(), Some("diagnostics"));
     assert!(!wake.planner_pending);
     assert!(wake.diagnostics_pending);

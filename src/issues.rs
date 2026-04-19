@@ -165,7 +165,11 @@ fn normalize_issue_target_path(raw: &str) -> Option<String> {
         return None;
     }
     let without_fragment = trimmed.split('#').next().unwrap_or(trimmed).trim();
-    let without_note = without_fragment.split(" — ").next().unwrap_or(without_fragment).trim();
+    let without_note = without_fragment
+        .split(" — ")
+        .next()
+        .unwrap_or(without_fragment)
+        .trim();
     let candidate = without_note
         .split_whitespace()
         .next()
@@ -435,7 +439,8 @@ pub fn compute_issue_score(issue: &Issue, all_issues: &[Issue]) -> f32 {
         }
     };
 
-    let score = 0.20 * severity + 0.15 * recurrence + 0.25 * hot_path + 0.30 * velocity + 0.10 * scale;
+    let score =
+        0.20 * severity + 0.15 * recurrence + 0.25 * hot_path + 0.30 * velocity + 0.10 * scale;
     score.clamp(0.0, 1.0)
 }
 
@@ -476,8 +481,8 @@ pub fn read_ranked_open_issues(workspace: &Path) -> Vec<Issue> {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_closed, load_issues_file, persist_issues_projection_with_writer, read_ranked_open_issues,
-        sweep_stale_issues, Issue, IssuesFile,
+        is_closed, load_issues_file, persist_issues_projection_with_writer,
+        read_ranked_open_issues, sweep_stale_issues, Issue, IssuesFile,
     };
     use crate::{set_agent_state_dir, set_workspace};
     use std::path::Path;
@@ -702,7 +707,8 @@ mod tests {
                 title: "recover issues from tlog".to_string(),
                 status: "open".to_string(),
                 priority: "high".to_string(),
-                description: "projection deleted; tlog snapshot should still drive reads".to_string(),
+                description: "projection deleted; tlog snapshot should still drive reads"
+                    .to_string(),
                 ..Issue::default()
             }],
         };

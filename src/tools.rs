@@ -13,6 +13,7 @@ use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use crate::canon_tools_patch::apply_patch;
 use crate::constants::{
     diagnostics_file, is_self_modification_mode, ISSUES_FILE, MASTER_PLAN_FILE,
     MAX_FULL_READ_LINES, MAX_SNIPPET, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
@@ -27,7 +28,6 @@ use crate::prompts::truncate;
 use crate::tool_schema::{
     plan_set_plan_status_action_example, plan_set_task_status_action_example,
 };
-use crate::canon_tools_patch::apply_patch;
 
 /// Return a human-readable type name for a JSON value (used in validation error messages).
 fn value_type_name(v: &Value) -> &'static str {
@@ -190,21 +190,11 @@ fn write_projection_with_workspace_effects(
     subject: &str,
     contents: &str,
 ) -> Result<()> {
-    let signature = artifact_write_signature(&[
-        artifact,
-        "write",
-        subject,
-        &contents.len().to_string(),
-    ]);
+    let signature =
+        artifact_write_signature(&[artifact, "write", subject, &contents.len().to_string()]);
     let target = path.to_string_lossy().into_owned();
     crate::logging::record_workspace_artifact_effect(
-        workspace,
-        true,
-        artifact,
-        "write",
-        &target,
-        subject,
-        &signature,
+        workspace, true, artifact, "write", &target, subject, &signature,
     )?;
     let snapshot = file_snapshot(path)?;
     if let Some(parent) = path.parent() {
@@ -214,13 +204,7 @@ fn write_projection_with_workspace_effects(
     std::fs::write(&tmp_path, contents)?;
     std::fs::rename(&tmp_path, path)?;
     if let Err(err) = crate::logging::record_workspace_artifact_effect(
-        workspace,
-        false,
-        artifact,
-        "write",
-        &target,
-        subject,
-        &signature,
+        workspace, false, artifact, "write", &target, subject, &signature,
     ) {
         restore_file_snapshot(path, &snapshot)?;
         return Err(err);
@@ -812,9 +796,7 @@ fn load_violations_from_tlog(path: &Path) -> Option<crate::reports::ViolationsRe
     let tlog_path = path
         .parent()
         .map(|dir| dir.join("tlog.ndjson"))
-        .unwrap_or_else(|| {
-            Path::new(crate::constants::agent_state_dir()).join("tlog.ndjson")
-        });
+        .unwrap_or_else(|| Path::new(crate::constants::agent_state_dir()).join("tlog.ndjson"));
     let records = crate::tlog::Tlog::read_records(&tlog_path).ok()?;
     let mut latest: Option<(u64, crate::reports::ViolationsReport)> = None;
     for record in records {
@@ -1048,16 +1030,21 @@ fn append_evidence_receipt(
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let mut file = fs::OpenOptions::new().create(true).append(true).open(path)?;
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?;
     writeln!(file, "{}", serde_json::to_string(&receipt)?)?;
     Ok(id)
 }
 
-fn format_output_with_evidence_receipt(prefix: &str, out: &str, receipt_id: Option<&str>) -> String {
+fn format_output_with_evidence_receipt(
+    prefix: &str,
+    out: &str,
+    receipt_id: Option<&str>,
+) -> String {
     match receipt_id {
-        Some(receipt_id) => format!(
-            "{prefix}:\nEvidence receipt: {receipt_id}\n{out}",
-        ),
+        Some(receipt_id) => format!("{prefix}:\nEvidence receipt: {receipt_id}\n{out}",),
         None => format!("{prefix}:\n{out}"),
     }
 }
@@ -1116,7 +1103,12 @@ fn apply_issue_freshness(issue: &mut Issue, lease: &EvidenceLease) {
 }
 
 fn violation_is_fresh(violation: &crate::reports::Violation) -> bool {
-    match violation.freshness_status.trim().to_ascii_lowercase().as_str() {
+    match violation
+        .freshness_status
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
         "fresh" => true,
         "stale" | "unknown" => false,
         _ => violation.last_validated_ms > 0,
@@ -1261,10 +1253,7 @@ fn upsert_issue(
     };
     write_issues_file(path, &mut file, writer, "upsert", &issue_id)?;
     queue_diagnostics_reconciliation();
-    Ok((
-        false,
-        format!("issue upsert ok — {outcome} `{issue_id}`"),
-    ))
+    Ok((false, format!("issue upsert ok — {outcome} `{issue_id}`")))
 }
 
 fn resolve_issue(
@@ -3509,9 +3498,8 @@ fn format_chained_action_entry(
     command: Option<&str>,
     result: &str,
 ) -> String {
-    let mut entry = format!(
-        "{index}. action: {action}\n   status: {status}\n   intent: {intent}\n"
-    );
+    let mut entry =
+        format!("{index}. action: {action}\n   status: {status}\n   intent: {intent}\n");
     if let Some(cmd) = command {
         entry.push_str(&format!("   command: {cmd}\n"));
     }
@@ -3535,8 +3523,7 @@ fn format_apply_patch_action_chain(
 ) -> String {
     let mut sections = vec![
         "apply_patch ok".to_string(),
-        "Chained action transcript:"
-            .to_string(),
+        "Chained action transcript:".to_string(),
         format_chained_action_entry(
             1,
             "apply_patch",
@@ -3548,7 +3535,11 @@ fn format_apply_patch_action_chain(
         format_chained_action_entry(
             2,
             "run_command",
-            if check_label.ends_with("ok") { "ok" } else { "failed" },
+            if check_label.ends_with("ok") {
+                "ok"
+            } else {
+                "failed"
+            },
             "Auto-verify the patched crate compiles after the edit.",
             Some(check_cmd),
             truncate(check_out, MAX_SNIPPET),
@@ -3559,7 +3550,11 @@ fn format_apply_patch_action_chain(
         sections.push(format_chained_action_entry(
             3,
             "run_command",
-            if test_label.ends_with("ok") { "ok" } else { "failed" },
+            if test_label.ends_with("ok") {
+                "ok"
+            } else {
+                "failed"
+            },
             "Auto-verify the patched crate tests after the edit.",
             Some(test_cmd),
             test_out,
@@ -3681,11 +3676,7 @@ fn verify_apply_patch_crate(
         None
     } else {
         Some(verification_rebind_note(
-            workspace,
-            &krate,
-            &plan,
-            &check_out,
-            &test_out,
+            workspace, &krate, &plan, &check_out, &test_out,
         ))
     };
 
@@ -5668,8 +5659,7 @@ fn persist_plan_action_update(
             None,
             Some(json!({"op": op_raw, "path": MASTER_PLAN_FILE})),
         ))
-    {
-    }
+    {}
     // Option-A dispatch hook: when any plan op results in a task reaching `ready`
     // state, immediately write wakeup_executor.flag so the orchestrator can
     // dispatch the executor on the next cycle without waiting for the planner's
@@ -5729,8 +5719,8 @@ fn persist_plan_bundle_projection(
         Some(json!({"op": op_raw, "path": MASTER_PLAN_FILE})),
     ));
     if plan_op_produced_ready_task(op_raw, action, plan) {
-        let flag = std::path::Path::new(crate::constants::agent_state_dir())
-            .join("wakeup_executor.flag");
+        let flag =
+            std::path::Path::new(crate::constants::agent_state_dir()).join("wakeup_executor.flag");
         if let Err(err) = write_projection_with_workspace_effects(
             workspace,
             &flag,
@@ -7577,6 +7567,29 @@ pub fn execute_action_capability(
     execute_action(role, step, action, workspace, check_on_done, None)
 }
 
+fn runtime_two_role_mode() -> bool {
+    std::env::var("RUNTIME_TWO_ROLE")
+        .map(|v| {
+            let normalized = v.trim().to_ascii_lowercase();
+            matches!(normalized.as_str(), "1" | "true" | "yes" | "on")
+        })
+        .unwrap_or(false)
+}
+
+fn sanitize_inbound_target(role: &str, to: &str) -> String {
+    if !runtime_two_role_mode() {
+        return to.to_string();
+    }
+    if to == "planner" || to == "executor" {
+        return to.to_string();
+    }
+    if role == "planner" || role == "mini_planner" {
+        "executor".to_string()
+    } else {
+        "planner".to_string()
+    }
+}
+
 fn persist_inbound_message(
     role: &str,
     step: usize,
@@ -7590,10 +7603,11 @@ fn persist_inbound_message(
     if to_raw.trim().is_empty() {
         return;
     }
-    let to = to_raw
+    let to_raw = to_raw
         .trim()
         .to_lowercase()
         .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+    let to = sanitize_inbound_target(role, &to_raw);
     let normalized_role = role
         .trim()
         .to_lowercase()
@@ -7777,7 +7791,6 @@ mod tests {
     use super::handle_apply_patch_action;
     use super::handle_execution_path_action;
     use super::handle_issue_action;
-    use super::is_allowed_self_addressed_message;
     use super::handle_objectives_action;
     use super::handle_plan_action;
     use super::handle_read_file_action;
@@ -7786,11 +7799,12 @@ mod tests {
     use super::handle_symbols_index_action;
     use super::handle_symbols_prepare_rename_action;
     use super::handle_symbols_rename_candidates_action;
+    use super::is_allowed_self_addressed_message;
     use super::stable_hash_hex;
     use super::EvidenceReceipt;
-    use crate::constants::{ISSUES_FILE, MASTER_PLAN_FILE};
     use crate::constants::set_agent_state_dir;
     use crate::constants::set_workspace;
+    use crate::constants::{ISSUES_FILE, MASTER_PLAN_FILE};
     use crate::issues::IssuesFile;
     use crate::logging::init_log_paths;
     use crate::logging::now_ms;
@@ -7931,10 +7945,9 @@ mod tests {
         let (_, update_out) = handle_issue_action(None, &workspace, &update).unwrap();
         assert!(update_out.contains("updated `ISS-transport`"));
 
-        let issues: IssuesFile = serde_json::from_str(
-            &std::fs::read_to_string(workspace.join(ISSUES_FILE)).unwrap(),
-        )
-        .unwrap();
+        let issues: IssuesFile =
+            serde_json::from_str(&std::fs::read_to_string(workspace.join(ISSUES_FILE)).unwrap())
+                .unwrap();
         let issue = issues
             .issues
             .iter()
@@ -7983,10 +7996,9 @@ mod tests {
         let (_, out) = handle_issue_action(None, &workspace, &resolve).unwrap();
         assert!(out.contains("issue resolve ok"));
 
-        let issues: IssuesFile = serde_json::from_str(
-            &std::fs::read_to_string(workspace.join(ISSUES_FILE)).unwrap(),
-        )
-        .unwrap();
+        let issues: IssuesFile =
+            serde_json::from_str(&std::fs::read_to_string(workspace.join(ISSUES_FILE)).unwrap())
+                .unwrap();
         let issue = issues
             .issues
             .iter()
@@ -8015,7 +8027,9 @@ mod tests {
             "status": "blocked",
             "payload": {"summary": "blocked"}
         });
-        assert!(!is_allowed_self_addressed_message(&planner, "planner", "planner"));
+        assert!(!is_allowed_self_addressed_message(
+            &planner, "planner", "planner"
+        ));
     }
 
     fn write_minimal_graph_with_def_and_mir(
@@ -8078,7 +8092,10 @@ mod tests {
         let persisted: Value =
             serde_json::from_str(&std::fs::read_to_string(tmp.join("DIAGNOSTICS.json")).unwrap())
                 .unwrap();
-        assert_eq!(persisted.get("status").and_then(|v| v.as_str()), Some("healthy"));
+        assert_eq!(
+            persisted.get("status").and_then(|v| v.as_str()),
+            Some("healthy")
+        );
         assert_eq!(
             persisted
                 .get("ranked_failures")
@@ -8149,7 +8166,10 @@ mod tests {
         let persisted: Value =
             serde_json::from_str(&std::fs::read_to_string(tmp.join("DIAGNOSTICS.json")).unwrap())
                 .unwrap();
-        assert_eq!(persisted.get("status").and_then(|v| v.as_str()), Some("healthy"));
+        assert_eq!(
+            persisted.get("status").and_then(|v| v.as_str()),
+            Some("healthy")
+        );
         assert_eq!(
             persisted
                 .get("ranked_failures")
@@ -8860,7 +8880,8 @@ mod tests {
         let (_done, out) = handle_objectives_action(&tmp, &action).unwrap();
 
         assert!(out.contains("objectives set_status ok"));
-        let persisted = std::fs::read_to_string(tmp.join("agent_state").join("OBJECTIVES.json")).unwrap();
+        let persisted =
+            std::fs::read_to_string(tmp.join("agent_state").join("OBJECTIVES.json")).unwrap();
         assert!(persisted.contains("\"status\": \"done\""));
     }
 
@@ -9074,8 +9095,8 @@ mod tests {
         let (_done, out) = handle_objectives_action(&tmp, &action).unwrap();
         assert!(out.contains("objectives replace_objectives ok"));
 
-        let persisted = std::fs::read_to_string(tmp.join("agent_state").join("OBJECTIVES.json"))
-            .unwrap();
+        let persisted =
+            std::fs::read_to_string(tmp.join("agent_state").join("OBJECTIVES.json")).unwrap();
         assert!(persisted.contains("obj_runtime_authority"));
         let parsed: serde_json::Value = serde_json::from_str(&persisted).unwrap();
         assert_eq!(
@@ -9251,7 +9272,8 @@ mod tests {
             Some(&json!(["obj_alpha"]))
         );
 
-        let persisted = std::fs::read_to_string(tmp.join("agent_state").join("OBJECTIVES.json")).unwrap();
+        let persisted =
+            std::fs::read_to_string(tmp.join("agent_state").join("OBJECTIVES.json")).unwrap();
         assert!(persisted.contains("\"scope\": \"updated alpha scope\""));
 
         let last_objective_record = objective_records

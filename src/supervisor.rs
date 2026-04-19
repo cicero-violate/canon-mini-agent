@@ -1,4 +1,3 @@
-use anyhow::{anyhow, bail, Context, Result};
 use crate::complexity::write_complexity_report;
 use crate::events::EffectEvent;
 use crate::logging::{
@@ -6,9 +5,8 @@ use crate::logging::{
     write_projection_with_artifact_effects,
 };
 use crate::SemanticIndex;
-use crate::{
-    load_issues_file, load_violations_report, set_agent_state_dir, set_workspace,
-};
+use crate::{load_issues_file, load_violations_report, set_agent_state_dir, set_workspace};
+use anyhow::{anyhow, bail, Context, Result};
 use serde_json::json;
 use std::fs;
 use std::io::{Read, Write};
@@ -1055,9 +1053,8 @@ fn maybe_handle_user_chat_mode(args: &SupervisorArgs) -> Result<bool> {
         return Ok(false);
     }
 
-    let workspace = PathBuf::from(
-        workspace_from_args(&args.filtered_args).context("missing --workspace")?,
-    );
+    let workspace =
+        PathBuf::from(workspace_from_args(&args.filtered_args).context("missing --workspace")?);
     let state_dir = agent_state_dir_from_args(&args.filtered_args);
     if args.read_user_reply {
         match read_external_user_reply(&state_dir)? {

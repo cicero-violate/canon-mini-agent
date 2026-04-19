@@ -250,13 +250,7 @@ impl SemanticIndex {
         self.graph
             .bridge_edges
             .iter()
-            .map(|edge| {
-                (
-                    edge.from.clone(),
-                    edge.relation.clone(),
-                    edge.to.clone(),
-                )
-            })
+            .map(|edge| (edge.from.clone(), edge.relation.clone(), edge.to.clone()))
             .collect()
     }
 

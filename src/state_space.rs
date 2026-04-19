@@ -1,7 +1,6 @@
 use crate::system_state::SystemState;
 
-pub struct CargoTestGate {
-}
+pub struct CargoTestGate {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WakeFlagInput {
@@ -403,7 +402,6 @@ impl CargoTestGate {
         let _ = (kind, workspace);
         None
     }
-
 }
 
 pub fn extract_progress_path_from_result(result: &str) -> Option<String> {

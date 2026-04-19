@@ -36,8 +36,7 @@ impl CanonicalWriter {
     }
 
     pub fn new(state: SystemState, tlog: Tlog, workspace: PathBuf) -> Self {
-        Self::try_new(state, tlog, workspace)
-            .unwrap_or_else(|err| panic!("{err:#}"))
+        Self::try_new(state, tlog, workspace).unwrap_or_else(|err| panic!("{err:#}"))
     }
 
     /// Apply a control event after validating the proposed next state.
@@ -53,14 +52,17 @@ impl CanonicalWriter {
             .map_err(|reason| anyhow!("[canonical_writer] invalid control transition: {reason}"))?;
         self.tlog
             .append(&Event::control(event.clone()))
-            .map_err(|err| anyhow!("[canonical_writer] tlog append failed during apply: {err:#}"))?;
+            .map_err(|err| {
+                anyhow!("[canonical_writer] tlog append failed during apply: {err:#}")
+            })?;
         self.state = next_state;
         Ok(())
     }
 
     pub fn apply(&mut self, event: ControlEvent) {
         if let Err(err) = self.try_apply(event) {
-            let _ = self.try_record_violation("canonical_writer", &format!("apply failed: {err:#}"));
+            let _ =
+                self.try_record_violation("canonical_writer", &format!("apply failed: {err:#}"));
             eprintln!("{err:#}");
         }
     }
@@ -94,7 +96,10 @@ impl CanonicalWriter {
 
     pub fn record_effect(&mut self, effect: EffectEvent) {
         if let Err(err) = self.try_record_effect(effect) {
-            let _ = self.try_record_violation("canonical_writer", &format!("record_effect failed: {err:#}"));
+            let _ = self.try_record_violation(
+                "canonical_writer",
+                &format!("record_effect failed: {err:#}"),
+            );
             eprintln!("{err:#}");
         }
     }
@@ -108,8 +113,9 @@ impl CanonicalWriter {
     /// This is the single non-`apply` mutation path and must never be used for
     /// live runtime transitions.
     pub fn try_restore_from_checkpoint(&mut self, restored: SystemState) -> Result<()> {
-        validate_system_state(&restored)
-            .map_err(|reason| anyhow!("[canonical_writer] invalid checkpoint restore state: {reason}"))?;
+        validate_system_state(&restored).map_err(|reason| {
+            anyhow!("[canonical_writer] invalid checkpoint restore state: {reason}")
+        })?;
         self.state = restored;
         Ok(())
     }
@@ -232,12 +238,15 @@ mod tests {
         let mut writer = CanonicalWriter::new(initial, Tlog::open(&tlog_path), dir);
         let err = writer
             .try_apply(ControlEvent::ExecutorTurnDeregistered {
-            tab_id: 7,
-            turn_id: 9,
-        })
+                tab_id: 7,
+                turn_id: 9,
+            })
             .expect_err("illegal transition should fail");
         assert!(err.to_string().contains("illegal control transition"));
-        assert!(std::fs::read_to_string(&tlog_path).unwrap_or_default().trim().is_empty());
+        assert!(std::fs::read_to_string(&tlog_path)
+            .unwrap_or_default()
+            .trim()
+            .is_empty());
         assert!(writer.state().submitted_turn_ids.is_empty());
     }
 }

@@ -3,21 +3,85 @@ use serde_json::{json, Value};
 use crate::prompts::{validate_message_action, MessageValidationMode};
 use crate::tool_schema::{action_schema_json, schema_diff_messages};
 
+fn runtime_two_role_mode() -> bool {
+    std::env::var("RUNTIME_TWO_ROLE")
+        .map(|v| {
+            let normalized = v.trim().to_ascii_lowercase();
+            matches!(normalized.as_str(), "1" | "true" | "yes" | "on")
+        })
+        .unwrap_or(false)
+}
+
+fn normalize_message_target(role: &str, target: &str) -> &'static str {
+    if !runtime_two_role_mode() {
+        return match target {
+            "planner" => "planner",
+            "executor" => "executor",
+            "verifier" => "verifier",
+            "diagnostics" => "diagnostics",
+            "solo" => "solo",
+            _ => "planner",
+        };
+    }
+    if target == "planner" || target == "executor" {
+        return if target == "planner" {
+            "planner"
+        } else {
+            "executor"
+        };
+    }
+    if role.starts_with("planner") || role == "planner" || role == "mini_planner" {
+        "executor"
+    } else {
+        "planner"
+    }
+}
+
 pub fn default_message_route(
     role: &str,
 ) -> (&'static str, &'static str, &'static str, &'static str) {
     if role.starts_with("executor") {
-        ("executor", "verifier", "handoff", "complete")
+        (
+            "executor",
+            normalize_message_target(role, "verifier"),
+            "handoff",
+            "complete",
+        )
     } else if role == "verifier" {
-        ("verifier", "planner", "verification", "verified")
+        (
+            "verifier",
+            normalize_message_target(role, "planner"),
+            "verification",
+            "verified",
+        )
     } else if role == "diagnostics" {
-        ("diagnostics", "planner", "diagnostics", "complete")
+        (
+            "diagnostics",
+            normalize_message_target(role, "planner"),
+            "diagnostics",
+            "complete",
+        )
     } else if role == "solo" {
-        ("solo", "solo", "result", "complete")
+        (
+            "solo",
+            normalize_message_target(role, "solo"),
+            "result",
+            "complete",
+        )
     } else if role == "planner" || role == "mini_planner" {
-        ("planner", "executor", "plan", "complete")
+        (
+            "planner",
+            normalize_message_target(role, "executor"),
+            "plan",
+            "complete",
+        )
     } else {
-        ("executor", "verifier", "handoff", "complete")
+        (
+            "executor",
+            normalize_message_target(role, "verifier"),
+            "handoff",
+            "complete",
+        )
     }
 }
 
@@ -949,11 +1013,7 @@ pub fn auto_fill_message_fields(action: &mut Value, role: &str) -> bool {
         obj.insert("from".to_string(), Value::String(actual_from.to_string()));
         changed = true;
     }
-    if let Some(current_to) = obj
-        .get("to")
-        .and_then(|v| v.as_str())
-        .map(str::to_string)
-    {
+    if let Some(current_to) = obj.get("to").and_then(|v| v.as_str()).map(str::to_string) {
         let self_routed = current_to.eq_ignore_ascii_case(actual_from);
         let allow_solo_self_complete = actual_from.eq_ignore_ascii_case("solo")
             && current_to.eq_ignore_ascii_case("solo")
@@ -1136,7 +1196,10 @@ mod tests {
         let changed = auto_fill_message_fields(&mut action, "diagnostics");
 
         assert!(changed);
-        assert_eq!(action.get("from").and_then(|v| v.as_str()), Some("diagnostics"));
+        assert_eq!(
+            action.get("from").and_then(|v| v.as_str()),
+            Some("diagnostics")
+        );
         assert_eq!(action.get("to").and_then(|v| v.as_str()), Some("planner"));
     }
 
@@ -1160,11 +1223,16 @@ fn reroute_invalid_self_message_target(
     if role.starts_with("executor") || actual_from.eq_ignore_ascii_case("executor") {
         return "planner";
     }
-    if actual_from.eq_ignore_ascii_case("verifier") || actual_from.eq_ignore_ascii_case("diagnostics") {
+    if actual_from.eq_ignore_ascii_case("verifier")
+        || actual_from.eq_ignore_ascii_case("diagnostics")
+    {
         return "planner";
     }
     if actual_from.eq_ignore_ascii_case("planner") {
         if msg_type.eq_ignore_ascii_case("blocker") || status.eq_ignore_ascii_case("blocked") {
+            if runtime_two_role_mode() {
+                return "executor";
+            }
             return "diagnostics";
         }
         return "executor";

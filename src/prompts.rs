@@ -157,7 +157,11 @@ fn compute_prompt_budget<'a>(
         used = budget_items.iter().map(|item| item.budget).sum::<usize>();
     }
 
-    PromptBudget { available, used, items: budget_items }
+    PromptBudget {
+        available,
+        used,
+        items: budget_items,
+    }
 }
 
 fn render_budgeted_prompt<'a>(prefix: &str, items: &[PromptItem<'a>], suffix: &str) -> String {
@@ -318,9 +322,8 @@ fn dedup_action_names_preserve_order(actions: Vec<String>) -> Vec<String> {
 }
 
 fn predicted_action_schema_block(predicted_next_actions: Option<&str>) -> String {
-    let actions = dedup_action_names_preserve_order(parse_predicted_action_names(
-        predicted_next_actions,
-    ));
+    let actions =
+        dedup_action_names_preserve_order(parse_predicted_action_names(predicted_next_actions));
     if actions.is_empty() {
         return String::new();
     }
@@ -1229,16 +1232,14 @@ pub(crate) fn single_role_executor_prompt(
     let semantic_control_heading =
         "Semantic control state (tlog-derived authority + projected views)".to_string();
     let suffix = "\n\nLane plans are deprecated. Use planner handoff messages and {MASTER_PLAN_FILE} for task selection.\n\nDo not modify spec, plan, violations, or diagnostics.\nDo not use internal tools.\nDo not hand off work; continue execution directly in the current role flow.\nUse `message.payload` to report evidence for verifier review. Emit exactly one action to begin. Think through the decision internally; reveal chain-of-thought.";
-    let items = vec![
-        PromptItem {
-            heading: &semantic_control_heading,
-            body: semantic_control,
-            reserve: 800,
-            cap: 3000,
-            weight: 4,
-            always_include: true,
-        },
-    ];
+    let items = vec![PromptItem {
+        heading: &semantic_control_heading,
+        body: semantic_control,
+        reserve: 800,
+        cap: 3000,
+        weight: 4,
+        always_include: true,
+    }];
     render_budgeted_prompt(&prefix, &items, suffix)
 }
 
@@ -2214,7 +2215,9 @@ mod tests {
             "planner rules must require consuming ISSUES.json"
         );
         assert!(
-            rules.contains("promote top open issues into `agent_state/OBJECTIVES.json` and `PLAN.json`"),
+            rules.contains(
+                "promote top open issues into `agent_state/OBJECTIVES.json` and `PLAN.json`"
+            ),
             "planner rules must require promoting issues into objectives/plan"
         );
     }

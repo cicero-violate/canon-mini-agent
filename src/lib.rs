@@ -1,8 +1,8 @@
 // #![allow(dead_code)]
 
-pub mod canon_tools_patch;
 pub mod app;
 pub mod blockers;
+pub mod canon_tools_patch;
 pub mod complexity;
 pub mod constants;
 mod engine;
@@ -28,8 +28,8 @@ pub mod rename_semantic;
 mod reports;
 mod semantic;
 pub mod state_space;
-pub mod supervisor;
 mod structured_questions;
+pub mod supervisor;
 mod tool_schema;
 mod tools;
 // Canonical writer infrastructure.
@@ -55,9 +55,9 @@ pub fn has_flag(args: &[String], name: &str) -> bool {
     args.iter().any(|a| a == name)
 }
 
-pub use crate::semantic::{SemanticIndex, SemanticTriple, SymbolSummary};
 pub use crate::issues::load_issues_file;
 pub use crate::reports::load_violations_report;
+pub use crate::semantic::{SemanticIndex, SemanticTriple, SymbolSummary};
 pub use crate::tools::execute_action_capability;
 
 #[cfg(test)]

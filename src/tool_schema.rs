@@ -960,7 +960,8 @@ pub fn selected_tool_protocol_schema_text(actions: &[&str]) -> String {
         if !seen.insert(*action) {
             continue;
         }
-        let Some((_, desc, _notes)) = actions_meta.iter().find(|(name, _, _)| name == action) else {
+        let Some((_, desc, _notes)) = actions_meta.iter().find(|(name, _, _)| name == action)
+        else {
             continue;
         };
         let schema = find_action_schema(&value, action)

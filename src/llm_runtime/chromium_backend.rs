@@ -48,8 +48,7 @@ const CHROMIUM_AUTOLAUNCH_SCRIPT_ENV: &str = "CANON_CHROMIUM_LAUNCH_SCRIPT";
 static CHROMIUM_AUTOLAUNCH_ATTEMPTED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
-static EXTENSION_CONN_ID: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(0);
+static EXTENSION_CONN_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 fn chromium_autolaunch_log_path() -> PathBuf {
     Path::new(AGENT_STATE_DIR).join("chromium-autolaunch.log")
@@ -183,7 +182,9 @@ fn endpoint_role(endpoint_id: &str) -> &str {
 }
 
 fn endpoint_submit_ack_timeout_secs(endpoint_id: &str, total_timeout_secs: u64) -> u64 {
-    let role = endpoint_role(endpoint_id).replace('-', "_").to_ascii_uppercase();
+    let role = endpoint_role(endpoint_id)
+        .replace('-', "_")
+        .to_ascii_uppercase();
     let scoped_env = format!("CANON_LLM_SUBMIT_ACK_TIMEOUT_SECS_{role}");
     let override_secs = std::env::var(&scoped_env)
         .ok()
@@ -306,9 +307,7 @@ fn extract_calpico_heartbeat_trigger_message_id(raw: &str) -> Option<String> {
             continue;
         }
         let payload = envelope.get("payload")?;
-        if payload.get("type").and_then(Value::as_str)
-            != Some("calpico-is-responding-heartbeat")
-        {
+        if payload.get("type").and_then(Value::as_str) != Some("calpico-is-responding-heartbeat") {
             continue;
         }
         let trigger_message_id = payload
@@ -330,9 +329,7 @@ fn extract_calpico_heartbeat_progress_signature(raw: &str) -> Option<String> {
             continue;
         }
         let payload = envelope.get("payload")?;
-        if payload.get("type").and_then(Value::as_str)
-            != Some("calpico-is-responding-heartbeat")
-        {
+        if payload.get("type").and_then(Value::as_str) != Some("calpico-is-responding-heartbeat") {
             continue;
         }
         let source = payload.get("payload")?.get("source")?;
@@ -340,7 +337,10 @@ fn extract_calpico_heartbeat_progress_signature(raw: &str) -> Option<String> {
             .get("trigger_message_id")
             .and_then(Value::as_str)
             .unwrap_or("");
-        let task_type = source.get("task_type").and_then(Value::as_str).unwrap_or("");
+        let task_type = source
+            .get("task_type")
+            .and_then(Value::as_str)
+            .unwrap_or("");
         let message = source.get("message").and_then(Value::as_str).unwrap_or("");
         return Some(format!(
             "trigger={trigger_message_id}|task={task_type}|message={message}"
@@ -348,7 +348,6 @@ fn extract_calpico_heartbeat_progress_signature(raw: &str) -> Option<String> {
     }
     None
 }
-
 
 // ---------------------------------------------------------------------------
 // Shared server state (guarded by a single Mutex)
@@ -503,7 +502,6 @@ impl State {
             false
         }
     }
-
 }
 
 // ---------------------------------------------------------------------------
@@ -656,8 +654,7 @@ impl ChromiumBackend {
         loop {
             {
                 let mut st = self.state.lock().await;
-                let recovered =
-                    reconcile_tab_state_locked(&mut st, Some(endpoint_id), urls);
+                let recovered = reconcile_tab_state_locked(&mut st, Some(endpoint_id), urls);
                 if recovered > 0 {
                     append_outbound_event(
                         "OUTBOUND_TAB_STATE_RECONCILED",
@@ -684,7 +681,9 @@ impl ChromiumBackend {
                             // Wait for the TAB_READY reannouncement instead of opening a second
                             // tab for the same endpoint URL.
                         } else if let Some(url) = st.tab_urls.get(&tab_id).cloned() {
-                            st.send_msg(json!({ "type": "CLAIM_TAB", "tabId": tab_id, "url": url }));
+                            st.send_msg(
+                                json!({ "type": "CLAIM_TAB", "tabId": tab_id, "url": url }),
+                            );
                             return Ok(tab_id);
                         } else {
                             st.endpoint_tabs.remove(endpoint_id);
@@ -792,9 +791,8 @@ impl ChromiumBackend {
 
         // Wait for SUBMIT_ACK using an endpoint-aware cap.
         let ack_timeout_secs = endpoint_submit_ack_timeout_secs(endpoint_id, timeout_secs);
-        let ack_deadline = deadline.min(
-            std::time::Instant::now() + std::time::Duration::from_secs(ack_timeout_secs),
-        );
+        let ack_deadline = deadline
+            .min(std::time::Instant::now() + std::time::Duration::from_secs(ack_timeout_secs));
         let ack_remaining = ack_deadline.saturating_duration_since(std::time::Instant::now());
         self.await_submit_ack(
             endpoint_id,
@@ -1051,7 +1049,8 @@ impl ChromiumBackend {
             .insert((tab_id, turn_id), lease_token.clone());
         if !submit_only {
             st.pending_resp.insert((tab_id, turn_id), resp_tx);
-            st.pending_early_fail.insert((tab_id, turn_id), early_fail_tx);
+            st.pending_early_fail
+                .insert((tab_id, turn_id), early_fail_tx);
         }
 
         let site = SiteType::from_url(url);
@@ -1234,7 +1233,6 @@ async fn accept_loop(addr: SocketAddr, state: Arc<Mutex<State>>) {
             }
         }
     }
-
 }
 
 async fn handle_connection(stream: tokio::net::TcpStream, state: Arc<Mutex<State>>) {
@@ -1304,7 +1302,12 @@ async fn handle_connection(stream: tokio::net::TcpStream, state: Arc<Mutex<State
             }
         } else {
             // Standby disconnected — just clear the standby slot if it matches.
-            if st.standby_tx.as_ref().map(|(id, _)| *id == my_id).unwrap_or(false) {
+            if st
+                .standby_tx
+                .as_ref()
+                .map(|(id, _)| *id == my_id)
+                .unwrap_or(false)
+            {
                 st.standby_tx = None;
             }
             eprintln!("[chromium] standby extension disconnected (conn={my_id})");
@@ -1429,8 +1432,10 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
             st.pending_resp.retain(|(tid, _), _| *tid != tab_id);
             st.pending_early_fail.retain(|(tid, _), _| *tid != tab_id);
             st.turn_complete_seen.retain(|(tid, _), _| *tid != tab_id);
-            st.post_complete_presence.retain(|(tid, _), _| *tid != tab_id);
-            st.post_complete_heartbeat.retain(|(tid, _), _| *tid != tab_id);
+            st.post_complete_presence
+                .retain(|(tid, _), _| *tid != tab_id);
+            st.post_complete_heartbeat
+                .retain(|(tid, _), _| *tid != tab_id);
             st.user_message_seen.retain(|(tid, _), _| *tid != tab_id);
             st.user_message_trigger_id
                 .retain(|(tid, _), _| *tid != tab_id);
@@ -1461,7 +1466,8 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                 None => return,
             };
             let mut st = state.lock().await;
-            let Some(expected_lease_token) = st.pending_turn_lease.get(&(tab_id, turn_id)).cloned() else {
+            let Some(expected_lease_token) = st.pending_turn_lease.get(&(tab_id, turn_id)).cloned()
+            else {
                 return;
             };
             if ack_lease_token != expected_lease_token {
@@ -1741,7 +1747,8 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                                 "heartbeat_count": heartbeat_count,
                             }),
                         );
-                    } else if let Some(user_message_frame) = st.user_message_seen.get(&key).copied() {
+                    } else if let Some(user_message_frame) = st.user_message_seen.get(&key).copied()
+                    {
                         // Tabs can continue emitting responding-heartbeat frames for
                         // older prompt echoes after a turn has already been retired.
                         // Treat those as stale cross-turn noise rather than evidence
@@ -1757,8 +1764,8 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                         {
                             match heartbeat_trigger_message_id.as_deref() {
                                 Some(actual_trigger_message_id)
-                                    if actual_trigger_message_id
-                                        == expected_trigger_message_id => {}
+                                    if actual_trigger_message_id == expected_trigger_message_id => {
+                                }
                                 Some(actual_trigger_message_id) => {
                                     append_outbound_event(
                                         "OUTBOUND_EARLY_SIGNAL",
@@ -1790,26 +1797,26 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                                 }
                             }
                         }
-                        let responding_heartbeat = chunk.contains("\"calpico-is-responding-heartbeat\"");
+                        let responding_heartbeat =
+                            chunk.contains("\"calpico-is-responding-heartbeat\"");
                         let heartbeat_progress_signature = if responding_heartbeat {
                             extract_calpico_heartbeat_progress_signature(&chunk)
                         } else {
                             None
                         };
-                        let progress_updated = if let Some(signature) =
-                            heartbeat_progress_signature.as_deref()
-                        {
-                            match st.post_user_message_heartbeat_signature.get(&key) {
-                                Some(previous) if previous == signature => false,
-                                _ => {
-                                    st.post_user_message_heartbeat_signature
-                                        .insert(key, signature.to_string());
-                                    true
+                        let progress_updated =
+                            if let Some(signature) = heartbeat_progress_signature.as_deref() {
+                                match st.post_user_message_heartbeat_signature.get(&key) {
+                                    Some(previous) if previous == signature => false,
+                                    _ => {
+                                        st.post_user_message_heartbeat_signature
+                                            .insert(key, signature.to_string());
+                                        true
+                                    }
                                 }
-                            }
-                        } else {
-                            false
-                        };
+                            } else {
+                                false
+                            };
                         if progress_updated {
                             st.post_user_message_heartbeat.insert(key, 0);
                             append_outbound_event(
@@ -1994,8 +2001,10 @@ fn retire_tab_locked(st: &mut State, endpoint_id: &str, tab_id: u32, stateful: b
     st.pending_resp.retain(|(tid, _), _| *tid != tab_id);
     st.pending_early_fail.retain(|(tid, _), _| *tid != tab_id);
     st.turn_complete_seen.retain(|(tid, _), _| *tid != tab_id);
-    st.post_complete_presence.retain(|(tid, _), _| *tid != tab_id);
-    st.post_complete_heartbeat.retain(|(tid, _), _| *tid != tab_id);
+    st.post_complete_presence
+        .retain(|(tid, _), _| *tid != tab_id);
+    st.post_complete_heartbeat
+        .retain(|(tid, _), _| *tid != tab_id);
     st.user_message_seen.retain(|(tid, _), _| *tid != tab_id);
     st.user_message_trigger_id
         .retain(|(tid, _), _| *tid != tab_id);
@@ -2051,15 +2060,13 @@ fn reconcile_tab_state_locked(
     let known_tab_ids: HashSet<u32> = st.tab_urls.keys().copied().collect();
     st.tab_owners
         .retain(|tab_id, _| known_tab_ids.contains(tab_id));
-    st.quarantined_tabs.retain(|tab_id| known_tab_ids.contains(tab_id));
+    st.quarantined_tabs
+        .retain(|tab_id| known_tab_ids.contains(tab_id));
 
     let owned_by_tab = st.tab_owners.clone();
     st.endpoint_tabs.retain(|endpoint, tab_id| {
         known_tab_ids.contains(tab_id)
-            && owned_by_tab
-                .get(tab_id)
-                .map(String::as_str)
-                == Some(endpoint.as_str())
+            && owned_by_tab.get(tab_id).map(String::as_str) == Some(endpoint.as_str())
     });
 
     let owned_tab_ids: HashSet<u32> = st.tab_owners.keys().copied().collect();
@@ -2115,8 +2122,8 @@ fn reconcile_tab_state_locked(
 #[cfg(test)]
 mod tests {
     use super::{
-        endpoint_submit_ack_timeout_secs, handle_inbound, retire_tab_locked,
-        PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD, State,
+        endpoint_submit_ack_timeout_secs, handle_inbound, retire_tab_locked, State,
+        PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD,
     };
     use crate::llm_runtime::parsers::{FrameAssembler, SiteType};
     use serde_json::{json, Value};
@@ -2127,14 +2134,19 @@ mod tests {
         tokio::time::timeout(std::time::Duration::from_secs(1), early_fail_rx)
             .await
             .unwrap_or_else(|_| panic!("timed out waiting for deterministic early fail: {context}"))
-            .unwrap_or_else(|_| panic!("early fail sender dropped before emitting reason: {context}"))
+            .unwrap_or_else(|_| {
+                panic!("early fail sender dropped before emitting reason: {context}")
+            })
     }
 
     #[test]
     fn submit_ack_timeout_is_endpoint_aware() {
         assert_eq!(endpoint_submit_ack_timeout_secs("solo_chatgpt", 900), 60);
         assert_eq!(endpoint_submit_ack_timeout_secs("planner_chatgpt", 900), 60);
-        assert_eq!(endpoint_submit_ack_timeout_secs("verifier_chatgpt", 180), 30);
+        assert_eq!(
+            endpoint_submit_ack_timeout_secs("verifier_chatgpt", 180),
+            30
+        );
         assert_eq!(endpoint_submit_ack_timeout_secs("executor_pool", 30), 15);
     }
 
@@ -2199,7 +2211,9 @@ mod tests {
 
         handle_inbound(&raw, &state).await;
 
-        let ack = ack_rx.await.expect("payload-wrapped submit ack should be delivered");
+        let ack = ack_rx
+            .await
+            .expect("payload-wrapped submit ack should be delivered");
         let parsed: Value = serde_json::from_str(&ack).expect("ack payload should be valid json");
         assert_eq!(parsed.get("turn_id").and_then(|v| v.as_u64()), Some(11));
         assert_eq!(
@@ -2244,7 +2258,10 @@ mod tests {
             .expect("submit-only completion should be queued");
         assert_eq!(completed.get("tab_id").and_then(|v| v.as_u64()), Some(7));
         assert_eq!(completed.get("turn_id").and_then(|v| v.as_u64()), Some(11));
-        assert_eq!(completed.get("text").and_then(|v| v.as_str()), Some("hello"));
+        assert_eq!(
+            completed.get("text").and_then(|v| v.as_str()),
+            Some("hello")
+        );
         assert_eq!(
             completed.get("endpoint_id").and_then(|v| v.as_str()),
             Some("executor_pool")
@@ -2442,7 +2459,8 @@ mod tests {
             handle_inbound(&heartbeat, &state).await;
         }
 
-        let no_fail = tokio::time::timeout(std::time::Duration::from_millis(100), early_fail_rx).await;
+        let no_fail =
+            tokio::time::timeout(std::time::Duration::from_millis(100), early_fail_rx).await;
         assert!(
             no_fail.is_err(),
             "responding heartbeats are liveness evidence and must not trigger early_fail"
@@ -2513,7 +2531,8 @@ mod tests {
             handle_inbound(&heartbeat, &state).await;
         }
 
-        let no_fail = tokio::time::timeout(std::time::Duration::from_millis(100), early_fail_rx).await;
+        let no_fail =
+            tokio::time::timeout(std::time::Duration::from_millis(100), early_fail_rx).await;
         assert!(
             no_fail.is_err(),
             "progressive heartbeat status changes should not deterministically early-fail"
@@ -2537,10 +2556,8 @@ mod tests {
             st.pending_resp.insert((7, 11), resp_tx);
             st.pending_early_fail.insert((7, 11), early_fail_tx);
             st.user_message_seen.insert((7, 11), 1);
-            st.post_user_message_heartbeat.insert(
-                (7, 11),
-                PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD,
-            );
+            st.post_user_message_heartbeat
+                .insert((7, 11), PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD);
             st.assemblers
                 .insert(7, FrameAssembler::new(SiteType::ChatGptGroup));
         }
@@ -2559,7 +2576,8 @@ mod tests {
         .to_string();
         handle_inbound(&heartbeat, &state).await;
 
-        let no_fail = tokio::time::timeout(std::time::Duration::from_millis(100), early_fail_rx).await;
+        let no_fail =
+            tokio::time::timeout(std::time::Duration::from_millis(100), early_fail_rx).await;
         assert!(
             no_fail.is_err(),
             "responding heartbeat must not trigger early_fail even when counter is at threshold"
@@ -2612,14 +2630,18 @@ mod tests {
         .to_string();
         handle_inbound(&heartbeat, &state).await;
 
-        let no_fail = tokio::time::timeout(std::time::Duration::from_millis(100), early_fail_rx).await;
+        let no_fail =
+            tokio::time::timeout(std::time::Duration::from_millis(100), early_fail_rx).await;
         assert!(
             no_fail.is_err(),
             "the first responding heartbeat after user echo should not deterministically early-fail"
         );
 
         let st = state.lock().await;
-        assert_eq!(st.post_user_message_heartbeat.get(&(7, 11)).copied(), Some(0));
+        assert_eq!(
+            st.post_user_message_heartbeat.get(&(7, 11)).copied(),
+            Some(0)
+        );
     }
 
     #[tokio::test]
@@ -2677,7 +2699,10 @@ mod tests {
             retire_tab_locked(&mut st, "planner_chatgpt", 7, true);
             assert!(st.quarantined_tabs.contains(&7));
             assert_eq!(st.endpoint_tabs.get("planner_chatgpt").copied(), Some(7));
-            assert_eq!(st.tab_owners.get(&7).map(String::as_str), Some("planner_chatgpt"));
+            assert_eq!(
+                st.tab_owners.get(&7).map(String::as_str),
+                Some("planner_chatgpt")
+            );
         }
 
         let tab_ready = json!({
@@ -2691,7 +2716,10 @@ mod tests {
         let st = state.lock().await;
         assert!(!st.quarantined_tabs.contains(&7));
         assert_eq!(st.endpoint_tabs.get("planner_chatgpt").copied(), Some(7));
-        assert_eq!(st.tab_owners.get(&7).map(String::as_str), Some("planner_chatgpt"));
+        assert_eq!(
+            st.tab_owners.get(&7).map(String::as_str),
+            Some("planner_chatgpt")
+        );
         assert!(!st
             .preopened
             .get("https://chatgpt.com/")

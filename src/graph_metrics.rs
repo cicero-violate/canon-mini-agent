@@ -42,7 +42,11 @@ pub fn generate_bridge_connectivity_issues(workspace: &Path) -> Result<usize> {
             continue;
         };
         let desired_issue = build_bridge_issue(&stats);
-        mutated += upsert_bridge_issue(&mut file, desired_issue, stats.bridge_ratio > stats.threshold);
+        mutated += upsert_bridge_issue(
+            &mut file,
+            desired_issue,
+            stats.bridge_ratio > stats.threshold,
+        );
     }
 
     rescore_all(&mut file);

@@ -85,7 +85,8 @@ pub struct SemanticControlPromptState {
 
 pub fn read_combined_invariants_context(workspace: &Path) -> String {
     let semantic_state = semantic_state_snapshot_from_tlog(workspace);
-    let static_invariants = filter_invariants_json(&read_text_or_empty(workspace.join(INVARIANTS_FILE)));
+    let static_invariants =
+        filter_invariants_json(&read_text_or_empty(workspace.join(INVARIANTS_FILE)));
     let enforced_invariants = summarize_enforced_invariants_for_prompt(
         &crate::invariants::read_enforced_invariants(workspace),
     );
@@ -137,7 +138,8 @@ fn infer_tlog_lane_indices(events: &[crate::events::Event]) -> Vec<usize> {
         if let crate::events::Event::Control { event } = event {
             match event {
                 crate::events::ControlEvent::PhaseSet {
-                    lane: Some(lane_id), ..
+                    lane: Some(lane_id),
+                    ..
                 }
                 | crate::events::ControlEvent::LanePendingSet { lane_id, .. }
                 | crate::events::ControlEvent::LaneInProgressSet { lane_id, .. }
@@ -203,9 +205,7 @@ fn control_event_kind_name(event: &crate::events::ControlEvent) -> &'static str 
         crate::events::ControlEvent::ExternalUserMessageConsumed { .. } => {
             "external_user_message_consumed"
         }
-        crate::events::ControlEvent::InboundMessageConsumed { .. } => {
-            "inbound_message_consumed"
-        }
+        crate::events::ControlEvent::InboundMessageConsumed { .. } => "inbound_message_consumed",
         crate::events::ControlEvent::WakeSignalConsumed { .. } => "wake_signal_consumed",
         crate::events::ControlEvent::LastPlanTextSet { .. } => "last_plan_text_set",
         crate::events::ControlEvent::LastExecutorDiffSet { .. } => "last_executor_diff_set",
@@ -215,24 +215,16 @@ fn control_event_kind_name(event: &crate::events::ControlEvent) -> &'static str 
         }
         crate::events::ControlEvent::LanePendingSet { .. } => "lane_pending_set",
         crate::events::ControlEvent::LaneInProgressSet { .. } => "lane_in_progress_set",
-        crate::events::ControlEvent::LaneVerifierResultSet { .. } => {
-            "lane_verifier_result_set"
-        }
+        crate::events::ControlEvent::LaneVerifierResultSet { .. } => "lane_verifier_result_set",
         crate::events::ControlEvent::LanePlanTextSet { .. } => "lane_plan_text_set",
         crate::events::ControlEvent::VerifierSummarySet { .. } => "verifier_summary_set",
-        crate::events::ControlEvent::LaneSubmitInFlightSet { .. } => {
-            "lane_submit_in_flight_set"
-        }
-        crate::events::ControlEvent::LanePromptInFlightSet { .. } => {
-            "lane_prompt_in_flight_set"
-        }
+        crate::events::ControlEvent::LaneSubmitInFlightSet { .. } => "lane_submit_in_flight_set",
+        crate::events::ControlEvent::LanePromptInFlightSet { .. } => "lane_prompt_in_flight_set",
         crate::events::ControlEvent::LaneActiveTabSet { .. } => "lane_active_tab_set",
         crate::events::ControlEvent::TabIdToLaneSet { .. } => "tab_id_to_lane_set",
         crate::events::ControlEvent::LaneNextSubmitAtSet { .. } => "lane_next_submit_at_set",
         crate::events::ControlEvent::LaneStepsUsedSet { .. } => "lane_steps_used_set",
-        crate::events::ControlEvent::ExecutorTurnRegistered { .. } => {
-            "executor_turn_registered"
-        }
+        crate::events::ControlEvent::ExecutorTurnRegistered { .. } => "executor_turn_registered",
         crate::events::ControlEvent::ExecutorTurnDeregistered { .. } => {
             "executor_turn_deregistered"
         }
@@ -254,9 +246,7 @@ fn effect_event_kind_name(event: &crate::events::EffectEvent) -> &'static str {
         crate::events::EffectEvent::LlmErrorBoundary { .. } => "llm_error_boundary",
         crate::events::EffectEvent::CheckpointSaved { .. } => "checkpoint_saved",
         crate::events::EffectEvent::CheckpointLoaded { .. } => "checkpoint_loaded",
-        crate::events::EffectEvent::BuildEvolutionAdvanced { .. } => {
-            "build_evolution_advanced"
-        }
+        crate::events::EffectEvent::BuildEvolutionAdvanced { .. } => "build_evolution_advanced",
         crate::events::EffectEvent::WorkspaceArtifactWriteRequested { .. } => {
             "workspace_artifact_write_requested"
         }
@@ -276,12 +266,8 @@ fn effect_event_kind_name(event: &crate::events::EffectEvent) -> &'static str {
         crate::events::EffectEvent::EnforcedInvariantsRecorded { .. } => {
             "enforced_invariants_recorded"
         }
-        crate::events::EffectEvent::ViolationsReportRecorded { .. } => {
-            "violations_report_recorded"
-        }
-        crate::events::EffectEvent::FramesAllDebugSnapshot { .. } => {
-            "frames_all_debug_snapshot"
-        }
+        crate::events::EffectEvent::ViolationsReportRecorded { .. } => "violations_report_recorded",
+        crate::events::EffectEvent::FramesAllDebugSnapshot { .. } => "frames_all_debug_snapshot",
     }
 }
 
@@ -334,7 +320,9 @@ pub fn semantic_state_snapshot_from_tlog(workspace: &Path) -> String {
         effect_count,
         tlog_path.display()
     ));
-    out.push_str("Authority rule: prefer this replayed state over raw artifact caches when they disagree.\n");
+    out.push_str(
+        "Authority rule: prefer this replayed state over raw artifact caches when they disagree.\n",
+    );
 
     if let Some(state) = replayed {
         out.push_str(&format!(
@@ -467,9 +455,7 @@ fn summarize_enforced_invariants_for_prompt(raw: &str) -> String {
             predicate
         ));
     }
-    out.push_str(
-        "Full detail: {\"action\":\"invariants\",\"op\":\"read\"}",
-    );
+    out.push_str("Full detail: {\"action\":\"invariants\",\"op\":\"read\"}");
     out
 }
 
@@ -519,7 +505,9 @@ fn summarize_violations_report_for_prompt(report: Option<&ViolationsReport>, raw
     let Some(report) = report else {
         return match raw.trim() {
             "" => String::new(),
-            "__invalid_json__" => "(projected violations view unavailable: invalid JSON)".to_string(),
+            "__invalid_json__" => {
+                "(projected violations view unavailable: invalid JSON)".to_string()
+            }
             _ => filter_active_violations_json(raw),
         };
     };
@@ -558,7 +546,8 @@ fn parse_diagnostics_report(raw: &str) -> Option<DiagnosticsReport> {
 }
 
 fn load_diagnostics_projection_text(workspace: &Path) -> Option<String> {
-    let raw_diagnostics_text = read_text_or_empty(workspace.join(crate::constants::diagnostics_file()));
+    let raw_diagnostics_text =
+        read_text_or_empty(workspace.join(crate::constants::diagnostics_file()));
     if !raw_diagnostics_text.trim().is_empty()
         && parse_diagnostics_report(&raw_diagnostics_text).is_some()
     {
@@ -568,7 +557,9 @@ fn load_diagnostics_projection_text(workspace: &Path) -> Option<String> {
         .and_then(|report| serde_json::to_string_pretty(&report).ok())
 }
 
-fn load_violations_projection(workspace: &Path) -> (Option<ViolationsReport>, ViolationsProjectionStatus) {
+fn load_violations_projection(
+    workspace: &Path,
+) -> (Option<ViolationsReport>, ViolationsProjectionStatus) {
     let raw_violations_text = read_text_or_empty(workspace.join(VIOLATIONS_FILE));
     if raw_violations_text.trim().is_empty() {
         return (None, ViolationsProjectionStatus::Missing);
@@ -626,8 +617,7 @@ fn render_diagnostics_report_from_state(
         match violations_report.as_ref() {
             Some(report) if report.violations.is_empty() => format!(
                 "{} (status: {}, verified empty)",
-                VIOLATIONS_FILE,
-                report.status
+                VIOLATIONS_FILE, report.status
             ),
             Some(report) => format!(
                 "{} (status: {}, violations: {})",
@@ -649,11 +639,8 @@ fn render_diagnostics_report_from_state(
         },
         format!("source-validation: {validation_state}"),
     ];
-    let planner_handoff = derive_planner_handoff(
-        &ranked_failures,
-        violations_report,
-        &validation_state,
-    );
+    let planner_handoff =
+        derive_planner_handoff(&ranked_failures, violations_report, &validation_state);
     let report = DiagnosticsReport {
         status: status.to_string(),
         inputs_scanned,
@@ -752,12 +739,8 @@ pub fn derive_semantic_control_prompt_state(
     SemanticControlPromptState { control_summary }
 }
 
-pub fn read_semantic_control_prompt_context(
-    workspace: &Path,
-    issue_limit: usize,
-) -> String {
-    derive_semantic_control_prompt_state(workspace, issue_limit)
-        .control_summary
+pub fn read_semantic_control_prompt_context(workspace: &Path, issue_limit: usize) -> String {
+    derive_semantic_control_prompt_state(workspace, issue_limit).control_summary
 }
 
 const LESSONS_FILE: &str = "agent_state/lessons.json";
@@ -1179,8 +1162,12 @@ mod tests {
         let artifact = LessonsArtifact {
             summary: "Recovered from tlog".to_string(),
             failures: vec![LessonEntry::pending("Prompt loader should recover lessons")],
-            fixes: vec![LessonEntry::pending("Read the latest lessons snapshot from tlog")],
-            required_actions: vec![LessonEntry::pending("Delete the projection and verify recovery")],
+            fixes: vec![LessonEntry::pending(
+                "Read the latest lessons snapshot from tlog",
+            )],
+            required_actions: vec![LessonEntry::pending(
+                "Delete the projection and verify recovery",
+            )],
             encoding_instructions: "encode later".to_string(),
         };
 
@@ -1433,9 +1420,7 @@ fn parse_violations_report(raw: &str) -> Option<ViolationsReport> {
         return None;
     }
     let mut report = serde_json::from_str::<ViolationsReport>(raw).ok()?;
-    report
-        .violations
-        .retain(crate::reports::violation_is_fresh);
+    report.violations.retain(crate::reports::violation_is_fresh);
     Some(report)
 }
 
@@ -1625,9 +1610,7 @@ fn derive_planner_handoff(
     handoff
 }
 
-pub fn render_diagnostics_report_from_issues(
-    workspace: &Path,
-) -> String {
+pub fn render_diagnostics_report_from_issues(workspace: &Path) -> String {
     let open_issues = read_ranked_open_issues(workspace);
     let (violations_report, violations_status) = load_violations_projection(workspace);
     render_diagnostics_report_from_state(
@@ -1808,10 +1791,9 @@ impl SingleRoleContext<'_> {
             SingleRoleRead::Objectives => {
                 crate::objectives::read_objectives_compact_for_workspace(self.workspace)
             }
-            SingleRoleRead::SemanticControl => read_semantic_control_prompt_context(
-                self.workspace,
-                10,
-            ),
+            SingleRoleRead::SemanticControl => {
+                read_semantic_control_prompt_context(self.workspace, 10)
+            }
             SingleRoleRead::Lessons => read_lessons_or_empty(self.workspace),
             SingleRoleRead::MasterPlan => {
                 filter_pending_plan_json(&read_text_or_empty(self.master_plan_path))
@@ -2234,9 +2216,7 @@ mod diagnostics_filter_tests {
         )
         .unwrap();
 
-        let rendered = render_diagnostics_report_from_issues(
-            workspace.as_path(),
-        );
+        let rendered = render_diagnostics_report_from_issues(workspace.as_path());
         assert!(rendered.contains("\"status\": \"critical_failure\""));
         assert!(rendered.contains("\"ISS-001\""));
         assert!(rendered.contains("\"V1\""));
@@ -2270,11 +2250,16 @@ mod diagnostics_filter_tests {
                 id: "D-TLOG".to_string(),
                 impact: Impact::High,
                 signal: "Tlog recovered diagnostics".to_string(),
-                evidence: vec!["read_file src/app.rs:1-20 — recovered from tlog snapshot".to_string()],
+                evidence: vec![
+                    "read_file src/app.rs:1-20 — recovered from tlog snapshot".to_string()
+                ],
                 root_cause: "projection missing during prompt assembly".to_string(),
                 repair_targets: vec!["src/app.rs".to_string()],
             }],
-            planner_handoff: vec!["Use the recovered diagnostics snapshot until projection rebuild completes.".to_string()],
+            planner_handoff: vec![
+                "Use the recovered diagnostics snapshot until projection rebuild completes."
+                    .to_string(),
+            ],
         };
 
         let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
@@ -2289,7 +2274,9 @@ mod diagnostics_filter_tests {
 
         let artifacts = derive_semantic_prompt_artifacts(workspace.as_path(), 3);
         assert!(artifacts.diagnostics_report.contains("\"D-TLOG\""));
-        assert!(artifacts.diagnostics_summary.contains("Tlog recovered diagnostics"));
+        assert!(artifacts
+            .diagnostics_summary
+            .contains("Tlog recovered diagnostics"));
     }
 
     #[test]

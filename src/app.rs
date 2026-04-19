@@ -26,17 +26,17 @@ use crate::constants::{
     diagnostics_file, diagnostics_file_for_instance, lane_plan_file_for_instance,
     set_agent_state_dir, set_workspace, workspace, DEFAULT_AGENT_STATE_DIR,
     DEFAULT_LLM_RETRY_COUNT, DEFAULT_LLM_RETRY_DELAY_SECS, DEFAULT_RESPONSE_TIMEOUT_SECS,
-    DIAGNOSTICS_FILE_PATH, ENDPOINT_SPECS, EXECUTOR_STEP_LIMIT, ISSUES_FILE,
-    MASTER_PLAN_FILE, MAX_SNIPPET, MAX_STEPS, OBJECTIVES_FILE, ROLE_TIMEOUT_SECS, SPEC_FILE,
-    VIOLATIONS_FILE, WS_PORT_CANDIDATES,
+    DIAGNOSTICS_FILE_PATH, ENDPOINT_SPECS, EXECUTOR_STEP_LIMIT, ISSUES_FILE, MASTER_PLAN_FILE,
+    MAX_SNIPPET, MAX_STEPS, OBJECTIVES_FILE, ROLE_TIMEOUT_SECS, SPEC_FILE, VIOLATIONS_FILE,
+    WS_PORT_CANDIDATES,
 };
 use crate::engine::process_action_and_execute;
 use crate::events::{ControlEvent, EffectEvent, Event};
-use crate::issues::IssuesFile;
 use crate::invalid_action::{
     auto_fill_message_fields, build_invalid_action_feedback, corrective_invalid_action_prompt,
     default_message_route, ensure_action_base_schema, expected_message_format,
 };
+use crate::issues::IssuesFile;
 use crate::logging::{
     append_action_log_record, append_orchestration_trace, artifact_write_signature,
     compact_log_record, init_log_paths, log_action_result, log_error_event, log_message_event,
@@ -53,12 +53,12 @@ use crate::prompts::{
     action_intent, action_objective_id, action_observation, action_rationale, action_result_prompt,
     action_task_id, diagnostics_cycle_prompt, executor_cycle_prompt, is_explicit_idle_action,
     normalize_action, parse_actions, planner_cycle_prompt, render_action_result_sections,
-    single_role_solo_prompt, system_instructions, truncate, validate_action,
-    verifier_cycle_prompt, AgentPromptKind,
+    single_role_solo_prompt, system_instructions, truncate, validate_action, verifier_cycle_prompt,
+    AgentPromptKind,
 };
 use crate::state_space::{
-    check_completion_endpoint, check_completion_tab, decide_bootstrap_phase, decide_post_diagnostics,
-    decide_resume_phase, decide_wake_flags, executor_step_limit_exceeded,
+    check_completion_endpoint, check_completion_tab, decide_bootstrap_phase,
+    decide_post_diagnostics, decide_resume_phase, decide_wake_flags, executor_step_limit_exceeded,
     executor_submit_timed_out, is_verifier_specific_blocker, should_force_blocker,
     verifier_blocker_phase_override, CargoTestGate, CompletionEndpointCheck, CompletionTabCheck,
     SemanticControlState, WakeFlagInput,
@@ -67,6 +67,31 @@ use crate::system_state::SystemState;
 use crate::tlog::Tlog;
 use crate::tool_schema::write_tool_examples;
 use crate::tools::write_stage_graph;
+
+fn runtime_two_role_mode() -> bool {
+    std::env::var("RUNTIME_TWO_ROLE")
+        .map(|v| {
+            let normalized = v.trim().to_ascii_lowercase();
+            matches!(normalized.as_str(), "1" | "true" | "yes" | "on")
+        })
+        .unwrap_or(false)
+}
+
+fn runtime_role_enabled(role: &str, two_role_mode: bool) -> bool {
+    if !two_role_mode {
+        return true;
+    }
+    matches!(role, "planner" | "executor")
+}
+
+fn sanitize_phase_for_runtime(phase: Option<&str>, two_role_mode: bool) -> Option<String> {
+    let phase = phase?;
+    if runtime_role_enabled(phase, two_role_mode) {
+        Some(phase.to_string())
+    } else {
+        None
+    }
+}
 
 fn write_json_if_missing_or_empty<T: Serialize>(
     workspace: &Path,
@@ -81,12 +106,7 @@ fn write_json_if_missing_or_empty<T: Serialize>(
     }
     let text = serde_json::to_string_pretty(value)?;
     crate::logging::write_projection_with_artifact_effects(
-        workspace,
-        path,
-        artifact,
-        "write",
-        subject,
-        &text,
+        workspace, path, artifact, "write", subject, &text,
     )?;
     Ok(true)
 }
@@ -103,7 +123,10 @@ fn touch_file_if_missing_or_empty(path: &Path) -> Result<bool> {
     Ok(true)
 }
 
-fn ensure_workspace_artifact_baseline(workspace: &Path, diagnostics_path: &Path) -> Result<Vec<String>> {
+fn ensure_workspace_artifact_baseline(
+    workspace: &Path,
+    diagnostics_path: &Path,
+) -> Result<Vec<String>> {
     let mut created = Vec::new();
     let tlog_path = workspace.join("agent_state/tlog.ndjson");
     let tlog_missing_or_empty_before = std::fs::read_to_string(&tlog_path)
@@ -845,7 +868,10 @@ async fn run_planner_phase(
     *planner_bootstrapped = true;
     match result {
         Ok(result) => {
-            eprintln!("[orchestrate] planner ok bytes={}", result.summary_text().len());
+            eprintln!(
+                "[orchestrate] planner ok bytes={}",
+                result.summary_text().len()
+            );
             let lessons_text = crate::prompt_inputs::read_lessons_or_empty(ctx.workspace);
             append_orchestration_trace(
                 "learning_loop_cycle_audit",
@@ -928,7 +954,8 @@ async fn run_solo_phase(
         crate::prompt_inputs::filter_pending_plan_json(&read_text_or_empty(ctx.master_plan_path));
     let objectives_path = preferred_objectives_path(ctx.workspace);
     let objectives = crate::objectives::read_objectives_compact(&objectives_path);
-    let semantic_control = crate::prompt_inputs::read_semantic_control_prompt_context(ctx.workspace, 5);
+    let semantic_control =
+        crate::prompt_inputs::read_semantic_control_prompt_context(ctx.workspace, 5);
     let objectives_mtime_before = file_modified_ms(&objectives_path);
     let plan_mtime_before = file_modified_ms(&ctx.workspace.join(MASTER_PLAN_FILE));
     // Compute diffs and ranked context (symmetric with planner cycle)
@@ -998,7 +1025,10 @@ async fn run_solo_phase(
     *solo_bootstrapped = true;
     match result {
         Ok(result) => {
-            eprintln!("[orchestrate] solo ok bytes={}", result.summary_text().len());
+            eprintln!(
+                "[orchestrate] solo ok bytes={}",
+                result.summary_text().len()
+            );
             let lessons_text = crate::prompt_inputs::read_lessons_or_empty(ctx.workspace);
             append_orchestration_trace(
                 "learning_loop_cycle_audit",
@@ -1160,9 +1190,15 @@ async fn run_diagnostics_phase(
     *diagnostics_bootstrapped = true;
     match result {
         Ok(result) => {
-            eprintln!("[orchestrate] diagnostics ok bytes={}", result.summary_text().len());
-            let new_diagnostics_text = crate::prompt_inputs::reconcile_diagnostics_report(ctx.workspace);
-            if let Ok(report) = serde_json::from_str::<crate::reports::DiagnosticsReport>(&new_diagnostics_text) {
+            eprintln!(
+                "[orchestrate] diagnostics ok bytes={}",
+                result.summary_text().len()
+            );
+            let new_diagnostics_text =
+                crate::prompt_inputs::reconcile_diagnostics_report(ctx.workspace);
+            if let Ok(report) =
+                serde_json::from_str::<crate::reports::DiagnosticsReport>(&new_diagnostics_text)
+            {
                 let _ = crate::reports::persist_diagnostics_projection_with_writer(
                     ctx.workspace,
                     &report,
@@ -1900,7 +1936,10 @@ fn dispatch_executor_submits(
         });
         let runtime_busy = !rt.executor_submit_inflight.is_empty()
             || !rt.submitted_turns.is_empty()
-            || rt.deferred_completions.values().any(|queue| !queue.is_empty());
+            || rt
+                .deferred_completions
+                .values()
+                .any(|queue| !queue.is_empty());
         if !lanes_seeded && !runtime_busy {
             eprintln!(
                 "[orchestrate] executor bootstrap: ready tasks exist but no lane work is seeded; waking planner"
@@ -2500,7 +2539,16 @@ fn handle_completed_continuation(
                     persist_executor_completion_message(writer, &action);
                 }
                 AgentCompletion::Summary(final_exec_result) => {
-                    verifier_pending_results.push_back((submitted, turn_id, final_exec_result));
+                    if runtime_two_role_mode() {
+                        finalize_executor_summary_without_verifier(
+                            writer,
+                            &submitted,
+                            turn_id,
+                            &final_exec_result,
+                        );
+                    } else {
+                        verifier_pending_results.push_back((submitted, turn_id, final_exec_result));
+                    }
                 }
             }
         }
@@ -2510,6 +2558,39 @@ fn handle_completed_continuation(
         }
     }
     true
+}
+
+fn finalize_executor_summary_without_verifier(
+    writer: &mut CanonicalWriter,
+    submitted: &SubmittedExecutorTurn,
+    turn_id: u64,
+    final_exec_result: &str,
+) {
+    let summary = truncate(final_exec_result, 800).replace('\n', " ");
+    let action = json!({
+        "action": "message",
+        "from": "executor",
+        "to": "planner",
+        "type": "handoff",
+        "status": "complete",
+        "task_id": submitted.command_id,
+        "observation": format!(
+            "executor completed turn {} on lane {} in two-role mode; verifier phase is inlined into planner",
+            turn_id,
+            submitted.lane_label
+        ),
+        "rationale": "Two-role runtime routes executor completion summaries directly to planner for integrated planning/verification/diagnostics.",
+        "predicted_next_actions": [
+            { "action": "plan", "intent": "update the task graph based on executor completion evidence" },
+            { "action": "message", "intent": "handoff the next bounded task to executor" }
+        ],
+        "payload": {
+            "summary": format!("Executor completion (lane={} turn={}): {}", submitted.lane_label, turn_id, summary),
+            "executor_result": truncate(final_exec_result, 4000),
+        }
+    });
+    finalize_executor_message_completion(writer, submitted.lane);
+    persist_executor_completion_message(writer, &action);
 }
 
 fn recover_failed_continuation(
@@ -2757,19 +2838,9 @@ fn persist_agent_state_projection(path: &Path, contents: &str, subject: &str) ->
         .map(|rel| rel.to_string_lossy().replace('\\', "/"))
         .unwrap_or_else(|| path.to_string_lossy().replace('\\', "/"));
     let target = path.to_string_lossy().into_owned();
-    let signature = artifact_signature(&[
-        artifact.as_str(),
-        subject,
-        &contents.len().to_string(),
-    ]);
+    let signature = artifact_signature(&[artifact.as_str(), subject, &contents.len().to_string()]);
     crate::logging::record_workspace_artifact_effect(
-        workspace,
-        true,
-        &artifact,
-        "write",
-        &target,
-        subject,
-        &signature,
+        workspace, true, &artifact, "write", &target, subject, &signature,
     )?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -2778,13 +2849,7 @@ fn persist_agent_state_projection(path: &Path, contents: &str, subject: &str) ->
     std::fs::write(&tmp_path, contents)?;
     std::fs::rename(&tmp_path, path)?;
     crate::logging::record_workspace_artifact_effect(
-        workspace,
-        false,
-        &artifact,
-        "write",
-        &target,
-        subject,
-        &signature,
+        workspace, false, &artifact, "write", &target, subject, &signature,
     )?;
     Ok(())
 }
@@ -3724,9 +3789,7 @@ fn summarize_inbound_message(inbound: &str) -> String {
     let to = value.get("to").and_then(Value::as_str).unwrap_or("?");
     let ty = value.get("type").and_then(Value::as_str).unwrap_or("?");
     let status = value.get("status").and_then(Value::as_str).unwrap_or("?");
-    out.push_str(&format!(
-        "from={from} to={to} type={ty} status={status}\n"
-    ));
+    out.push_str(&format!("from={from} to={to} type={ty} status={status}\n"));
 
     if let Some(intent) = value.get("intent").and_then(Value::as_str) {
         let intent = intent.trim();
@@ -3737,14 +3800,17 @@ fn summarize_inbound_message(inbound: &str) -> String {
     if let Some(observation) = value.get("observation").and_then(Value::as_str) {
         let observation = observation.trim();
         if !observation.is_empty() {
-            out.push_str(&format!(
-                "observation: {}\n",
-                truncate(observation, 280)
-            ));
+            out.push_str(&format!("observation: {}\n", truncate(observation, 280)));
         }
     }
     if let Some(payload) = value.get("payload").and_then(Value::as_object) {
-        for key in ["summary", "blocker", "evidence", "required_action", "expected_format"] {
+        for key in [
+            "summary",
+            "blocker",
+            "evidence",
+            "required_action",
+            "expected_format",
+        ] {
             if let Some(text) = payload.get(key).and_then(Value::as_str) {
                 let text = text.trim();
                 if !text.is_empty() {
@@ -3851,10 +3917,7 @@ fn is_reaction_only_response(raw: &str) -> bool {
     false
 }
 
-fn apply_scheduled_phase_if_changed(
-    writer: &mut CanonicalWriter,
-    phase: Option<&str>,
-) -> bool {
+fn apply_scheduled_phase_if_changed(writer: &mut CanonicalWriter, phase: Option<&str>) -> bool {
     if writer.state().scheduled_phase.as_deref() == phase {
         return false;
     }
@@ -3872,10 +3935,7 @@ fn apply_planner_pending_if_changed(writer: &mut CanonicalWriter, pending: bool)
     true
 }
 
-fn apply_diagnostics_pending_if_changed(
-    writer: &mut CanonicalWriter,
-    pending: bool,
-) -> bool {
+fn apply_diagnostics_pending_if_changed(writer: &mut CanonicalWriter, pending: bool) -> bool {
     if writer.state().diagnostics_pending == pending {
         return false;
     }
@@ -3901,10 +3961,14 @@ fn apply_lane_pending_if_changed(
     true
 }
 
-fn apply_wake_flags(agent_state_dir: &std::path::Path, writer: &mut CanonicalWriter) {
+fn apply_wake_flags(
+    agent_state_dir: &std::path::Path,
+    writer: &mut CanonicalWriter,
+    two_role_mode: bool,
+) {
     let state_snapshot = writer.state().clone();
     let (inputs, path_map, signature_map) =
-        collect_wake_flag_inputs(agent_state_dir, &state_snapshot);
+        collect_wake_flag_inputs(agent_state_dir, &state_snapshot, two_role_mode);
     let wake_inputs_debug = inputs
         .iter()
         .map(|input| format!("{}@{}", input.role, input.modified_ms))
@@ -4038,6 +4102,7 @@ fn wake_role_for_artifact(artifact: &str) -> Option<&'static str> {
 fn canonical_wake_signatures_from_tlog(
     agent_state_dir: &std::path::Path,
     state: &SystemState,
+    two_role_mode: bool,
 ) -> std::collections::HashMap<&'static str, (u64, String)> {
     let mut latest_by_role = std::collections::HashMap::new();
     let tlog_path = agent_state_dir.join("tlog.ndjson");
@@ -4057,6 +4122,9 @@ fn canonical_wake_signatures_from_tlog(
         let Some(role) = wake_role_for_artifact(&artifact) else {
             continue;
         };
+        if !runtime_role_enabled(role, two_role_mode) {
+            continue;
+        }
         let replace = match latest_by_role.get(role) {
             None => true,
             Some((existing_ts_ms, _)) => record.ts_ms >= *existing_ts_ms,
@@ -4067,11 +4135,8 @@ fn canonical_wake_signatures_from_tlog(
     }
     let mut by_role = std::collections::HashMap::new();
     for (role, (ts_ms, signature)) in latest_by_role {
-        let consumed_latest = state
-            .wake_signal_signatures
-            .get(role)
-            .map(String::as_str)
-            == Some(signature.as_str());
+        let consumed_latest =
+            state.wake_signal_signatures.get(role).map(String::as_str) == Some(signature.as_str());
         if !consumed_latest {
             by_role.insert(role, (ts_ms, signature));
         }
@@ -4082,31 +4147,38 @@ fn canonical_wake_signatures_from_tlog(
 fn collect_wake_flag_inputs(
     agent_state_dir: &std::path::Path,
     state: &SystemState,
+    two_role_mode: bool,
 ) -> (
     Vec<WakeFlagInput>,
     std::collections::HashMap<&'static str, std::path::PathBuf>,
     std::collections::HashMap<&'static str, String>,
 ) {
-    let flag_paths = [
+    let mut flag_paths: Vec<(&str, std::path::PathBuf)> = vec![
         ("planner", agent_state_dir.join("wakeup_planner.flag")),
-        ("solo", agent_state_dir.join("wakeup_solo.flag")),
-        ("verifier", agent_state_dir.join("wakeup_verifier.flag")),
-        (
-            "diagnostics",
-            agent_state_dir.join("wakeup_diagnostics.flag"),
-        ),
         ("executor", agent_state_dir.join("wakeup_executor.flag")),
     ];
+    if !two_role_mode {
+        flag_paths.push(("solo", agent_state_dir.join("wakeup_solo.flag")));
+        flag_paths.push(("verifier", agent_state_dir.join("wakeup_verifier.flag")));
+        flag_paths.push((
+            "diagnostics",
+            agent_state_dir.join("wakeup_diagnostics.flag"),
+        ));
+    }
 
     let mut inputs = Vec::new();
     let mut path_map = std::collections::HashMap::new();
     let mut signature_map = std::collections::HashMap::new();
-    let canonical_signals = canonical_wake_signatures_from_tlog(agent_state_dir, state);
+    let canonical_signals =
+        canonical_wake_signatures_from_tlog(agent_state_dir, state, two_role_mode);
     for (role, (modified_ms, signature)) in canonical_signals {
         inputs.push(WakeFlagInput { role, modified_ms });
         signature_map.insert(role, signature);
     }
     for (role, path) in flag_paths {
+        if !runtime_role_enabled(role, two_role_mode) {
+            continue;
+        }
         if path.exists() {
             path_map.insert(role, path.clone());
         }
@@ -4175,22 +4247,17 @@ fn persist_planner_message(action: &Value) {
         .get("from")
         .and_then(Value::as_str)
         .unwrap_or("unknown");
-    if let Err(err) = record_canonical_inbound_message(
-        workspace,
-        from_role,
-        "planner",
-        &action_text,
-    ) {
+    if let Err(err) =
+        record_canonical_inbound_message(workspace, from_role, "planner", &action_text)
+    {
         eprintln!(
             "[orchestrate] failed to record canonical planner handoff message {}: {err:#}",
             planner_path.display()
         );
     }
-    if let Err(err) = persist_agent_state_projection(
-        &planner_path,
-        &action_text,
-        "planner_handoff_message",
-    ) {
+    if let Err(err) =
+        persist_agent_state_projection(&planner_path, &action_text, "planner_handoff_message")
+    {
         eprintln!(
             "[orchestrate] failed to persist planner handoff message {}: {err:#}",
             planner_path.display()
@@ -4532,14 +4599,16 @@ async fn continue_executor_completion(
         None,
     )?;
     if done {
-        return Ok(if action.get("action").and_then(|v| v.as_str()) == Some("message") {
-            AgentCompletion::MessageAction {
-                action,
-                summary: out,
-            }
-        } else {
-            AgentCompletion::Summary(out)
-        });
+        return Ok(
+            if action.get("action").and_then(|v| v.as_str()) == Some("message") {
+                AgentCompletion::MessageAction {
+                    action,
+                    summary: out,
+                }
+            } else {
+                AgentCompletion::Summary(out)
+            },
+        );
     }
 
     append_orchestration_trace(
@@ -4643,9 +4712,7 @@ async fn run_agent(
     loop {
         if let Some(sig) = shutdown.as_ref() {
             if sig.flag.load(Ordering::SeqCst) {
-                return Ok(AgentCompletion::Summary(
-                    "shutdown requested".to_string(),
-                ));
+                return Ok(AgentCompletion::Summary("shutdown requested".to_string()));
             }
         }
         if step >= MAX_STEPS {
@@ -4730,14 +4797,15 @@ async fn run_agent(
                 eprintln!("[{role}] step={} llm_error: {e}", step + 1);
                 ctx.log_error(step + 1, &exchange_id, &err_text);
                 if let Some(writer) = writer.as_mut() {
-                    let _ = writer.try_record_effect(crate::events::EffectEvent::LlmErrorBoundary {
-                        role: role.to_string(),
-                        prompt_kind: prompt_kind.to_string(),
-                        step: step + 1,
-                        endpoint_id: endpoint.id.clone(),
-                        exchange_id: exchange_id.clone(),
-                        error: err_text.clone(),
-                    });
+                    let _ =
+                        writer.try_record_effect(crate::events::EffectEvent::LlmErrorBoundary {
+                            role: role.to_string(),
+                            prompt_kind: prompt_kind.to_string(),
+                            step: step + 1,
+                            endpoint_id: endpoint.id.clone(),
+                            exchange_id: exchange_id.clone(),
+                            error: err_text.clone(),
+                        });
                 }
                 crate::blockers::record_action_failure_with_writer(
                     workspace,
@@ -4978,11 +5046,9 @@ async fn run_agent(
             }
         }
 
-        if let Some(msg) = enforce_diagnostics_python(
-            role,
-            kind.as_str(),
-            &mut diagnostics_eventlog_python_done,
-        ) {
+        if let Some(msg) =
+            enforce_diagnostics_python(role, kind.as_str(), &mut diagnostics_eventlog_python_done)
+        {
             crate::blockers::record_action_failure_with_writer(
                 workspace,
                 None,
@@ -5745,7 +5811,7 @@ fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Va
     // with another self-addressed message — creating an oscillating stall that
     // permanently resets the convergence counter before it can reach the threshold.
     // Redirect such messages to the planner so the loop is broken deterministically.
-    let effective_to = if to_role.eq_ignore_ascii_case("executor") {
+    let mut effective_to = if to_role.eq_ignore_ascii_case("executor") {
         eprintln!(
             "[orchestrate] executor→executor message detected; redirecting to planner \
              to break self-wake stall loop"
@@ -5754,6 +5820,16 @@ fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Va
     } else {
         to_role
     };
+    if runtime_two_role_mode()
+        && !effective_to.eq_ignore_ascii_case("planner")
+        && !effective_to.eq_ignore_ascii_case("executor")
+    {
+        eprintln!(
+            "[orchestrate] two-role mode rerouting executor message target `{}` -> `planner`",
+            effective_to
+        );
+        effective_to = "planner";
+    }
 
     if effective_to.eq_ignore_ascii_case("planner") {
         persist_planner_message(action);
@@ -5764,15 +5840,11 @@ fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Va
     // Generic wakeup for other targets (verifier, diagnostics, etc.)
     let workspace = Path::new(crate::constants::workspace());
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
-    let to_key = to_role
+    let to_key = effective_to
         .to_lowercase()
         .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
-    if let Err(err) = record_canonical_inbound_message(
-        workspace,
-        from_role,
-        &to_key,
-        &action_text,
-    ) {
+    if let Err(err) = record_canonical_inbound_message(workspace, from_role, &to_key, &action_text)
+    {
         writer.record_violation(
             "executor_completion_message",
             &format!("failed to record canonical message for {to_key}: {err:#}"),
@@ -5895,9 +5967,8 @@ fn verifier_confirmed_with_plan_text(reason: &str, plan_text: &str) -> bool {
 }
 
 fn verifier_confirmed(reason: &str) -> bool {
-    let plan_text = crate::prompt_inputs::read_text_or_empty(
-        Path::new(workspace()).join(MASTER_PLAN_FILE),
-    );
+    let plan_text =
+        crate::prompt_inputs::read_text_or_empty(Path::new(workspace()).join(MASTER_PLAN_FILE));
     verifier_confirmed_with_plan_text(reason, &plan_text)
 }
 
@@ -6336,6 +6407,7 @@ pub async fn run() -> Result<()> {
         if writer.tlog_seq() == 0 {
             writer.try_apply(ControlEvent::PlannerPendingSet { pending: true })?;
         }
+        let two_role_mode = runtime_two_role_mode();
         let mut rt = new_runtime_state(&lanes);
 
         let mut resume_verifier_items: Vec<ResumeVerifierItem> = Vec::new();
@@ -6349,12 +6421,21 @@ pub async fn run() -> Result<()> {
             );
             resume_verifier_items = checkpoint.verifier_pending_results;
             let state = writer.state().clone();
-            let resume_decision = decide_resume_phase(
+            let mut resume_decision = decide_resume_phase(
                 &state.phase,
                 !resume_verifier_items.is_empty(),
                 state.planner_pending,
                 state.diagnostics_pending,
             );
+            if two_role_mode {
+                if !runtime_role_enabled(
+                    resume_decision.scheduled_phase.as_deref().unwrap_or(""),
+                    true,
+                ) {
+                    resume_decision.scheduled_phase = None;
+                }
+                resume_decision.diagnostics_pending = false;
+            }
             if writer.state().scheduled_phase != resume_decision.scheduled_phase {
                 writer.apply(ControlEvent::ScheduledPhaseSet {
                     phase: resume_decision.scheduled_phase.clone(),
@@ -6532,7 +6613,7 @@ pub async fn run() -> Result<()> {
             }
 
             let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
-            apply_wake_flags(agent_state_dir, &mut writer);
+            apply_wake_flags(agent_state_dir, &mut writer, two_role_mode);
             if let Err(err) = record_frames_all_debug_effect_if_changed(
                 workspace.as_path(),
                 &mut writer,
@@ -6543,6 +6624,11 @@ pub async fn run() -> Result<()> {
 
             if writer.state().scheduled_phase.is_none() && writer.state().phase == "bootstrap" {
                 if let Some(phase) = decide_bootstrap_phase(start_role) {
+                    let phase = if runtime_role_enabled(&phase, two_role_mode) {
+                        phase
+                    } else {
+                        "planner".to_string()
+                    };
                     eprintln!(
                         "[orchestrate] bootstrap_start_role: role={} scheduled_phase=None",
                         phase
@@ -6550,10 +6636,10 @@ pub async fn run() -> Result<()> {
                     if phase == "planner" {
                         writer.apply(ControlEvent::PlannerPendingSet { pending: true });
                     }
-                    if phase == "diagnostics" {
+                    if phase == "diagnostics" && !two_role_mode {
                         writer.apply(ControlEvent::DiagnosticsPendingSet { pending: true });
                     }
-                    if phase == "solo" {
+                    if phase == "solo" && !two_role_mode {
                         writer.apply(ControlEvent::ScheduledPhaseSet {
                             phase: Some("solo".to_string()),
                         });
@@ -6589,13 +6675,34 @@ pub async fn run() -> Result<()> {
                 }
             }
 
+            if two_role_mode {
+                apply_diagnostics_pending_if_changed(&mut writer, false);
+                let scheduled_phase = writer.state().scheduled_phase.clone();
+                if scheduled_phase
+                    .as_deref()
+                    .is_some_and(|phase| !runtime_role_enabled(phase, true))
+                {
+                    apply_scheduled_phase_if_changed(&mut writer, None);
+                }
+            }
+
             let active_blocker = writer.state().active_blocker_to_verifier;
             let semantic_control = SemanticControlState::from_system_state(
                 writer.state(),
                 !verifier_pending_results.is_empty(),
                 !verifier_joinset.is_empty(),
             );
-            let blocker_decision = semantic_control.active_blocker_decision();
+            let blocker_decision = if two_role_mode {
+                crate::state_space::ActiveBlockerDecision {
+                    planner_pending: writer.state().planner_pending,
+                    scheduled_phase: sanitize_phase_for_runtime(
+                        writer.state().scheduled_phase.as_deref(),
+                        true,
+                    ),
+                }
+            } else {
+                semantic_control.active_blocker_decision()
+            };
             let planner_suppression_changes_state = blocker_decision.planner_pending
                 != writer.state().planner_pending
                 || blocker_decision.scheduled_phase.as_deref()
@@ -6633,7 +6740,12 @@ pub async fn run() -> Result<()> {
                 !verifier_pending_results.is_empty(),
                 !verifier_joinset.is_empty(),
             );
-            let phase_gates = semantic_control.phase_gates();
+            let mut phase_gates = semantic_control.phase_gates();
+            if two_role_mode {
+                phase_gates.verifier = false;
+                phase_gates.diagnostics = false;
+                phase_gates.solo = false;
+            }
 
             let orchestrator_ctx = OrchestratorContext {
                 lanes: &lanes,
@@ -6668,7 +6780,7 @@ pub async fn run() -> Result<()> {
                 }
             }
 
-            if phase_gates.solo {
+            if phase_gates.solo && !two_role_mode {
                 writer.apply(ControlEvent::PhaseSet {
                     phase: "solo".to_string(),
                     lane: None,
@@ -6734,7 +6846,9 @@ pub async fn run() -> Result<()> {
             }
 
             let mut verifier_changed = false;
-            if !verifier_pending_results.is_empty() || !verifier_joinset.is_empty() {
+            if !two_role_mode
+                && (!verifier_pending_results.is_empty() || !verifier_joinset.is_empty())
+            {
                 let (phase_progress, phase_changed) = run_verifier_phase(
                     &orchestrator_ctx,
                     &mut writer,
@@ -6752,7 +6866,7 @@ pub async fn run() -> Result<()> {
                 }
             }
 
-            if verifier_changed {
+            if !two_role_mode && verifier_changed {
                 writer.apply(ControlEvent::DiagnosticsVerifierFollowupQueued);
             }
             let semantic_control = SemanticControlState::from_system_state(
@@ -6760,7 +6874,10 @@ pub async fn run() -> Result<()> {
                 !verifier_pending_results.is_empty(),
                 !verifier_joinset.is_empty(),
             );
-            if semantic_control.diagnostics_pending && semantic_control.diagnostics_allowed() {
+            if !two_role_mode
+                && semantic_control.diagnostics_pending
+                && semantic_control.diagnostics_allowed()
+            {
                 writer.apply(ControlEvent::PhaseSet {
                     phase: "diagnostics".to_string(),
                     lane: None,
@@ -6790,10 +6907,9 @@ pub async fn run() -> Result<()> {
                     !verifier_pending_results.is_empty(),
                     !verifier_joinset.is_empty(),
                 );
-                if semantic_control.scheduled_phase_done(
-                    executor_lane_pending,
-                    executor_in_progress,
-                ) {
+                if semantic_control
+                    .scheduled_phase_done(executor_lane_pending, executor_in_progress)
+                {
                     apply_scheduled_phase_if_changed(&mut writer, None);
                 }
             }
@@ -6948,18 +7064,16 @@ mod tests {
         action_retry_fingerprint, canonical_inbound_message_from_tlog,
         canonical_wake_signatures_from_tlog, ensure_workspace_artifact_baseline,
         executor_step_limit_feedback, has_actionable_objectives, inbound_message_from_user,
-        invariant_id_from_reason, is_chromium_transport_error,
-        local_transport_blocker_message, plan_has_incomplete_tasks,
-        route_gate_blocker_message,
-        should_reject_solo_self_complete, take_external_user_message_without_writer,
-        take_inbound_message_without_writer, verifier_confirmed_with_plan_text,
-        ActionProvenance,
+        invariant_id_from_reason, is_chromium_transport_error, local_transport_blocker_message,
+        plan_has_incomplete_tasks, route_gate_blocker_message, should_reject_solo_self_complete,
+        take_external_user_message_without_writer, take_inbound_message_without_writer,
+        verifier_confirmed_with_plan_text, ActionProvenance,
     };
     use crate::constants::{ISSUES_FILE, MASTER_PLAN_FILE, VIOLATIONS_FILE};
     use crate::events::EffectEvent;
     use crate::logging::{artifact_write_signature, record_effect_for_workspace};
-    use crate::{set_agent_state_dir, set_workspace};
     use crate::system_state::SystemState;
+    use crate::{set_agent_state_dir, set_workspace};
     use serde_json::json;
     use std::fs;
     use std::sync::{Mutex, OnceLock};
@@ -7037,7 +7151,9 @@ mod tests {
             .find("let ready_count = if ready_tasks_text == \"(no ready tasks)\"")
             .expect("missing ready task guard");
         let bootstrap_guard = source[ready_guard..]
-            .find("executor bootstrap: ready tasks exist but no lane work is seeded; waking planner")
+            .find(
+                "executor bootstrap: ready tasks exist but no lane work is seeded; waking planner",
+            )
             .map(|offset| ready_guard + offset)
             .expect("missing clean-start executor bootstrap guard");
         let planner_wake = source[bootstrap_guard..]
@@ -7111,7 +7227,10 @@ mod tests {
             "chromium: early transport failure (heartbeat_after_user_echo_before_turn_complete) (tab=633187572 turn=4)",
             "Planner task context",
         );
-        assert_eq!(action.get("action").and_then(|v| v.as_str()), Some("message"));
+        assert_eq!(
+            action.get("action").and_then(|v| v.as_str()),
+            Some("message")
+        );
         assert_eq!(action.get("from").and_then(|v| v.as_str()), Some("planner"));
         assert_eq!(action.get("to").and_then(|v| v.as_str()), Some("executor"));
         assert_eq!(action.get("type").and_then(|v| v.as_str()), Some("blocker"));
@@ -7304,7 +7423,7 @@ mod tests {
             .wake_signal_signatures
             .insert("planner".to_string(), "wake-new".to_string());
 
-        let wakes = canonical_wake_signatures_from_tlog(&state_dir, &state);
+        let wakes = canonical_wake_signatures_from_tlog(&state_dir, &state, false);
         assert!(!wakes.contains_key("planner"));
     }
 
@@ -7366,7 +7485,11 @@ mod tests {
     fn workspace_artifact_baseline_migrates_legacy_root_plan_and_violations() {
         let workspace = temp_workspace("baseline-migrate-legacy");
         fs::create_dir_all(workspace.join("agent_state")).unwrap();
-        fs::write(workspace.join("PLAN.json"), "{\"version\":2,\"tasks\":[{\"id\":\"T1\",\"status\":\"ready\"}]}").unwrap();
+        fs::write(
+            workspace.join("PLAN.json"),
+            "{\"version\":2,\"tasks\":[{\"id\":\"T1\",\"status\":\"ready\"}]}",
+        )
+        .unwrap();
         fs::write(
             workspace.join("VIOLATIONS.json"),
             "{\"status\":\"failed\",\"summary\":\"legacy\",\"violations\":[]}",

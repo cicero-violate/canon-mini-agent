@@ -150,7 +150,10 @@ mod tests {
 
         let snapshot = load_snapshot_for_state_dir(&state_dir);
         assert_eq!(snapshot.evolution, 1);
-        assert_eq!(snapshot.last_build_command.as_deref(), Some("cargo build --workspace"));
+        assert_eq!(
+            snapshot.last_build_command.as_deref(),
+            Some("cargo build --workspace")
+        );
 
         let raw = fs::read_to_string(state_dir.join("tlog.ndjson")).expect("read tlog");
         let line = raw

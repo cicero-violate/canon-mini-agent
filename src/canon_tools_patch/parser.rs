@@ -127,11 +127,9 @@ fn check_start_and_end_lines_strict(
         {
             Ok(())
         }
-        (Some(first), _) if first.trim() != BEGIN_PATCH_MARKER => {
-            Err(InvalidPatchError(format!(
-                "patch should start with {BEGIN_PATCH_MARKER}"
-            )))
-        }
+        (Some(first), _) if first.trim() != BEGIN_PATCH_MARKER => Err(InvalidPatchError(format!(
+            "patch should start with {BEGIN_PATCH_MARKER}"
+        ))),
         (_, Some(last)) if last.trim() != END_PATCH_MARKER => Err(InvalidPatchError(format!(
             "patch should end with {END_PATCH_MARKER}"
         ))),
@@ -233,7 +231,12 @@ fn parse_one_hunk(
                 line_number: current_line_number,
             });
         }
-        return Ok((Hunk::DeleteFile { path: PathBuf::from(filename) }, consumed));
+        return Ok((
+            Hunk::DeleteFile {
+                path: PathBuf::from(filename),
+            },
+            consumed,
+        ));
     }
 
     if let Some(filename) = first_line.strip_prefix(UPDATE_FILE_MARKER) {

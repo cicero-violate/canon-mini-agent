@@ -230,7 +230,9 @@ pub fn generate_hotspot_issues(workspace: &Path, top_n: usize) -> Result<usize> 
     Ok(created)
 }
 
-fn load_issue_file_with_indexes(workspace: &Path) -> (IssuesFile, HashSet<String>, HashSet<String>) {
+fn load_issue_file_with_indexes(
+    workspace: &Path,
+) -> (IssuesFile, HashSet<String>, HashSet<String>) {
     let file: IssuesFile = load_issues_file(workspace);
     let existing_ids = file.issues.iter().map(|i| i.id.clone()).collect();
     let open_locations = file
@@ -621,7 +623,9 @@ mod tests {
     #[test]
     fn const_like_symbols_are_not_actionable_for_dup_issues() {
         assert!(looks_like_const_symbol("constants::MASTER_PLAN_FILE"));
-        assert!(looks_like_const_symbol("llm_runtime::chromium_backend::FRAMES_DIR"));
+        assert!(looks_like_const_symbol(
+            "llm_runtime::chromium_backend::FRAMES_DIR"
+        ));
         assert!(!looks_like_const_symbol("app::run_planner_phase"));
         assert!(!looks_like_const_symbol("tools::handle_batch_action"));
     }

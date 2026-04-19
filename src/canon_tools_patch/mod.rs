@@ -65,7 +65,9 @@ pub fn apply_patch(patch: &str, cwd: &Path) -> Result<AffectedPaths, ApplyPatchE
 
 fn affected_paths_from_hunks(hunks: &[Hunk]) -> Result<AffectedPaths, ApplyPatchError> {
     if hunks.is_empty() {
-        return Err(ApplyPatchError::ComputeReplacements("No files were modified.".into()));
+        return Err(ApplyPatchError::ComputeReplacements(
+            "No files were modified.".into(),
+        ));
     }
 
     let mut added: Vec<PathBuf> = Vec::new();
@@ -80,7 +82,9 @@ fn affected_paths_from_hunks(hunks: &[Hunk]) -> Result<AffectedPaths, ApplyPatch
             Hunk::DeleteFile { path } => {
                 deleted.push(path.clone());
             }
-            Hunk::UpdateFile { path, move_path, .. } => {
+            Hunk::UpdateFile {
+                path, move_path, ..
+            } => {
                 if let Some(dest) = move_path {
                     modified.push(dest.clone());
                 } else {

@@ -561,12 +561,7 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
 
     if created > 0 || mutated {
         rescore_all(&mut file);
-        persist_issues_projection_with_writer(
-            workspace,
-            &file,
-            None,
-            "generate_invariant_issues",
-        )?;
+        persist_issues_projection_with_writer(workspace, &file, None, "generate_invariant_issues")?;
     }
 
     Ok(created)
@@ -2068,8 +2063,10 @@ mod tests {
                 value: "0".to_string(),
             },
         ]);
-        let expected_issue_id =
-            format!("inv_gate_unenforced_{}", expected_inv_id.to_lowercase().replace('-', "_"));
+        let expected_issue_id = format!(
+            "inv_gate_unenforced_{}",
+            expected_inv_id.to_lowercase().replace('-', "_")
+        );
 
         // Write a promoted invariant into enforced_invariants.json.
         let inv_file = EnforcedInvariantsFile {

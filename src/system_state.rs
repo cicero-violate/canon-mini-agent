@@ -463,7 +463,10 @@ mod tests {
     #[test]
     fn diagnostics_reconciliation_queue_event_replays_as_compatibility_noop() {
         let state = SystemState::new(&[0], 1);
-        let next = apply_control_event(state.clone(), &ControlEvent::DiagnosticsReconciliationQueued);
+        let next = apply_control_event(
+            state.clone(),
+            &ControlEvent::DiagnosticsReconciliationQueued,
+        );
         assert_eq!(next.phase, state.phase);
         assert_eq!(next.planner_pending, state.planner_pending);
         assert_eq!(next.diagnostics_pending, state.diagnostics_pending);

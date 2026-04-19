@@ -809,9 +809,9 @@ pub fn record_effect_for_workspace(
         crate::tlog::Tlog::open(&tlog_path),
         workspace.to_path_buf(),
     )?;
-    writer.try_record_effect(effect).map_err(|err| {
-        anyhow::anyhow!("canonical effect append failed: {err:#}")
-    })
+    writer
+        .try_record_effect(effect)
+        .map_err(|err| anyhow::anyhow!("canonical effect append failed: {err:#}"))
 }
 
 pub fn artifact_write_signature(parts: &[&str]) -> String {
@@ -835,13 +835,11 @@ fn restore_file_snapshot(path: &std::path::Path, snapshot: &Option<Vec<u8>>) -> 
                 std::fs::create_dir_all(parent)
                     .with_context(|| format!("mkdir {}", parent.display()))?;
             }
-            std::fs::write(path, bytes)
-                .with_context(|| format!("restore {}", path.display()))?;
+            std::fs::write(path, bytes).with_context(|| format!("restore {}", path.display()))?;
         }
         None => {
             if path.exists() {
-                std::fs::remove_file(path)
-                    .with_context(|| format!("remove {}", path.display()))?;
+                std::fs::remove_file(path).with_context(|| format!("remove {}", path.display()))?;
             }
         }
     }
@@ -858,32 +856,17 @@ pub fn write_projection_with_artifact_effects(
 ) -> Result<()> {
     let signature = artifact_write_signature(&[artifact, op, subject, &contents.len().to_string()]);
     let target = path.to_string_lossy().into_owned();
-    record_workspace_artifact_effect(
-        workspace,
-        true,
-        artifact,
-        op,
-        &target,
-        subject,
-        &signature,
-    )?;
+    record_workspace_artifact_effect(workspace, true, artifact, op, &target, subject, &signature)?;
     let snapshot = file_snapshot(path)?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).with_context(|| format!("mkdir {}", parent.display()))?;
     }
     let tmp_path = path.with_extension("tmp");
-    std::fs::write(&tmp_path, contents)
-        .with_context(|| format!("write {}", tmp_path.display()))?;
+    std::fs::write(&tmp_path, contents).with_context(|| format!("write {}", tmp_path.display()))?;
     std::fs::rename(&tmp_path, path)
         .with_context(|| format!("rename {} -> {}", tmp_path.display(), path.display()))?;
     if let Err(err) = record_workspace_artifact_effect(
-        workspace,
-        false,
-        artifact,
-        op,
-        &target,
-        subject,
-        &signature,
+        workspace, false, artifact, op, &target, subject, &signature,
     ) {
         restore_file_snapshot(path, &snapshot)?;
         return Err(err);
@@ -1010,7 +993,10 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
                 );
             }
         }
-        report.insert("violations".to_string(), Value::Array(reconciled_violations));
+        report.insert(
+            "violations".to_string(),
+            Value::Array(reconciled_violations),
+        );
         report.insert("status".to_string(), json!("failed"));
         report.entry("summary".to_string()).or_insert(json!(
             "One or more agent roles are sending prompts that exceed the noise-context threshold."
@@ -1357,13 +1343,16 @@ mod tests {
         crate::constants::set_workspace(workspace.to_string_lossy().to_string());
         crate::constants::set_agent_state_dir(state_dir.to_string_lossy().to_string());
 
-        record_prompt_overflow(&workspace, "diagnostics", crate::constants::PROMPT_OVERFLOW_BYTES + 1);
+        record_prompt_overflow(
+            &workspace,
+            "diagnostics",
+            crate::constants::PROMPT_OVERFLOW_BYTES + 1,
+        );
 
         let violations_path = workspace.join(crate::constants::VIOLATIONS_FILE);
-        let violations: Value = serde_json::from_str(
-            &fs::read_to_string(&violations_path).expect("read violations"),
-        )
-        .expect("parse violations");
+        let violations: Value =
+            serde_json::from_str(&fs::read_to_string(&violations_path).expect("read violations"))
+                .expect("parse violations");
         let receipt_id = violations
             .get("violations")
             .and_then(|v| v.as_array())
