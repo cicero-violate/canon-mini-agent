@@ -146,23 +146,6 @@ fn load_violations_from_tlog(workspace: &Path) -> Option<ViolationsReport> {
     latest.map(|(_, report)| report)
 }
 
-pub fn persist_diagnostics_projection(
-    workspace: &Path,
-    report: &DiagnosticsReport,
-    subject: &str,
-) -> Result<()> {
-    persist_diagnostics_projection_to_path(workspace, report, diagnostics_file(), subject)
-}
-
-pub fn persist_diagnostics_projection_to_path(
-    workspace: &Path,
-    report: &DiagnosticsReport,
-    target_path: &str,
-    subject: &str,
-) -> Result<()> {
-    persist_diagnostics_projection_with_writer_to_path(workspace, report, target_path, None, subject)
-}
-
 pub fn persist_diagnostics_projection_with_writer(
     workspace: &Path,
     report: &DiagnosticsReport,

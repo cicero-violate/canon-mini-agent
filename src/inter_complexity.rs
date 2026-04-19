@@ -29,7 +29,8 @@ use std::path::Path;
 use anyhow::Result;
 
 use crate::issues::{
-    is_closed, load_issues_file, persist_issues_projection, rescore_all, Issue, IssuesFile,
+    is_closed, load_issues_file, persist_issues_projection_with_writer, rescore_all, Issue,
+    IssuesFile,
 };
 use crate::semantic::SemanticIndex;
 
@@ -319,7 +320,8 @@ fn append_duplicate_issues(
 ) -> usize {
     let mut created = 0;
     for group in &analysis.duplicate_groups {
-        if let Some(issue) = build_duplicate_issue(group, existing_ids) {
+        let filtered = actionable_duplicate_symbols(group);
+        if let Some(issue) = build_duplicate_issue(&filtered, existing_ids) {
             file.issues.push(issue);
             created += 1;
         }
@@ -349,10 +351,13 @@ fn build_duplicate_issue(group: &[String], existing_ids: &HashSet<String>) -> Op
              functionally equivalent. All but one can be replaced with a shared \
              helper, eliminating R directly.\n\nSymbols: {}",
             group.len(),
-            group.join(", ")
+            summarize_duplicate_symbols(group)
         ),
         location: String::new(),
-        evidence: vec![format!("MIR fingerprint shared by: {}", group.join(", "))],
+        evidence: vec![format!(
+            "MIR fingerprint shared by: {}",
+            summarize_duplicate_symbols(group)
+        )],
         discovered_by: "inter_complexity_analyzer".to_string(),
         score: 0.0,
         ..Issue::default()
@@ -362,7 +367,7 @@ fn build_duplicate_issue(group: &[String], existing_ids: &HashSet<String>) -> Op
 fn persist_if_created(workspace: &Path, file: &mut IssuesFile, created: usize) -> Result<()> {
     if created > 0 {
         rescore_all(file);
-        persist_issues_projection(workspace, file, "generate_hotspot_issues")?;
+        persist_issues_projection_with_writer(workspace, file, None, "generate_hotspot_issues")?;
     }
     Ok(())
 }
@@ -423,6 +428,32 @@ fn mir_dup_issue_id(group: &[String]) -> String {
     sorted.sort();
     let h = stable_hash(&sorted.join(","));
     format!("auto_mir_dup_{h:x}")
+}
+
+const MAX_DUPLICATE_SYMBOLS_IN_ISSUE: usize = 24;
+
+fn summarize_duplicate_symbols(group: &[String]) -> String {
+    if group.len() <= MAX_DUPLICATE_SYMBOLS_IN_ISSUE {
+        return group.join(", ");
+    }
+    let shown = group[..MAX_DUPLICATE_SYMBOLS_IN_ISSUE].join(", ");
+    let remaining = group.len() - MAX_DUPLICATE_SYMBOLS_IN_ISSUE;
+    format!("{shown}, ... (+{remaining} more)")
+}
+
+fn actionable_duplicate_symbols(group: &[String]) -> Vec<String> {
+    group
+        .iter()
+        .filter(|sym| !looks_like_const_symbol(sym))
+        .cloned()
+        .collect()
+}
+
+fn looks_like_const_symbol(symbol: &str) -> bool {
+    let leaf = symbol.rsplit("::").next().unwrap_or(symbol);
+    let has_lower = leaf.chars().any(|c| c.is_ascii_lowercase());
+    let has_upper = leaf.chars().any(|c| c.is_ascii_uppercase());
+    has_upper && !has_lower
 }
 
 fn stable_hash(s: &str) -> u64 {
@@ -546,7 +577,10 @@ fn build_issue_evidence(entry: &InterEntry, file: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{inter_issue_id, mir_dup_issue_id, priority_from_score, shorten_file};
+    use super::{
+        actionable_duplicate_symbols, inter_issue_id, looks_like_const_symbol, mir_dup_issue_id,
+        priority_from_score, shorten_file, summarize_duplicate_symbols,
+    };
 
     #[test]
     fn priority_bands_are_correct() {
@@ -582,5 +616,38 @@ mod tests {
     fn shorten_file_extracts_src_path() {
         let full = "/workspace/ai_sandbox/canon-mini-agent/src/tools.rs";
         assert_eq!(shorten_file(full), "src/tools.rs");
+    }
+
+    #[test]
+    fn const_like_symbols_are_not_actionable_for_dup_issues() {
+        assert!(looks_like_const_symbol("constants::MASTER_PLAN_FILE"));
+        assert!(looks_like_const_symbol("llm_runtime::chromium_backend::FRAMES_DIR"));
+        assert!(!looks_like_const_symbol("app::run_planner_phase"));
+        assert!(!looks_like_const_symbol("tools::handle_batch_action"));
+    }
+
+    #[test]
+    fn duplicate_issue_symbols_drop_const_like_entries() {
+        let group = vec![
+            "constants::MASTER_PLAN_FILE".to_string(),
+            "app::run_planner_phase".to_string(),
+            "tools::handle_batch_action".to_string(),
+        ];
+        let filtered = actionable_duplicate_symbols(&group);
+        assert_eq!(
+            filtered,
+            vec![
+                "app::run_planner_phase".to_string(),
+                "tools::handle_batch_action".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn duplicate_symbol_summary_is_capped() {
+        let group: Vec<String> = (0..30).map(|i| format!("mod::f{i}")).collect();
+        let summary = summarize_duplicate_symbols(&group);
+        assert!(summary.contains("... (+6 more)"));
+        assert!(!summary.contains("mod::f29"));
     }
 }

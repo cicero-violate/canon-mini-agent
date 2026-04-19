@@ -18,7 +18,6 @@ This file defines the intended authority class for runtime artifacts.
 | `agent_state/blockers.json`                        | projection | Rebuildable blocker projection with tlog-backed recovery.                             |
 | `agent_state/lessons.json`                         | projection | Synthesized lessons projection backed by snapshot effects.                            |
 | `agent_state/enforced_invariants.json`             | projection | Synthesized enforced-invariants projection backed by snapshot effects.                |
-| `DIAGNOSTICS.json` / configured diagnostics path   | projection | Diagnostics report derived from current evidence; recovery prefers canonical loaders. |
 | `agent_state/last_message_to_<role>.json`          | ephemeral  | Delivery cache only; no-writer readers must prefer canonical tlog entries.            |
 | `agent_state/external_user_message_to_<role>.json` | ephemeral  | Delivery cache only; no-writer readers must prefer canonical tlog entries.            |
 | `agent_state/wakeup_<role>.flag`                   | ephemeral  | Wake signal only; may be recreated or removed without losing authority.               |
@@ -27,6 +26,4 @@ This file defines the intended authority class for runtime artifacts.
 
 ## Rules
 
-1. Protected production reads for projection artifacts must go through canonical loaders when they exist.
-2. Raw writes to projection-driving artifacts must stay inside the projection layer helpers and logging wrappers.
-3. Ephemeral artifacts may be deleted during repair or replay without changing canonical truth.
+1. Ephemeral artifacts may be deleted during repair or replay without changing canonical truth.

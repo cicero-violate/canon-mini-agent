@@ -1012,10 +1012,6 @@ pub fn selected_tool_protocol_schema_text(actions: &[&str]) -> String {
     if !rendered_any {
         return String::new();
     }
-
-    out.push_str(
-        "For syntax reminders and longer examples, read `agent_state/tool_examples.md` with `read_file`.\n",
-    );
     out
 }
 

@@ -57,11 +57,11 @@ use crate::prompts::{
     verifier_cycle_prompt, AgentPromptKind,
 };
 use crate::state_space::{
-    check_completion_endpoint, check_completion_tab, decide_bootstrap_phase,
-    decide_post_diagnostics, decide_resume_phase, executor_step_limit_exceeded,
+    check_completion_endpoint, check_completion_tab, decide_bootstrap_phase, decide_post_diagnostics,
+    decide_resume_phase, decide_wake_flags, executor_step_limit_exceeded,
     executor_submit_timed_out, is_verifier_specific_blocker, should_force_blocker,
-    verifier_blocker_phase_override, CargoTestGate, CompletionEndpointCheck,
-    CompletionTabCheck, SemanticControlState, WakeFlagInput,
+    verifier_blocker_phase_override, CargoTestGate, CompletionEndpointCheck, CompletionTabCheck,
+    SemanticControlState, WakeFlagInput,
 };
 use crate::system_state::SystemState;
 use crate::tlog::Tlog;
@@ -217,7 +217,7 @@ fn ensure_workspace_artifact_baseline(workspace: &Path, diagnostics_path: &Path)
         .map(|meta| meta.is_file() && meta.len() > 0)
         .unwrap_or(false);
     if !diagnostics_ready {
-        crate::reports::persist_diagnostics_projection(
+        crate::reports::persist_diagnostics_projection_with_writer_to_path(
             workspace,
             &crate::reports::DiagnosticsReport {
                 status: "ok".to_string(),
@@ -225,6 +225,8 @@ fn ensure_workspace_artifact_baseline(workspace: &Path, diagnostics_path: &Path)
                 ranked_failures: Vec::new(),
                 planner_handoff: Vec::new(),
             },
+            crate::constants::diagnostics_file(),
+            None,
             "baseline_diagnostics",
         )?;
         created.push(diagnostics_path.display().to_string());
@@ -244,20 +246,12 @@ fn find_flag_arg<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
         .map(|w| w[1].as_str())
 }
 
-fn ws_port_arg(args: &[String]) -> Option<&str> {
-    find_flag_arg(args, "--port")
-}
-
-fn instance_arg(args: &[String]) -> Option<&str> {
-    find_flag_arg(args, "--instance")
-}
-
 fn ws_port_is_available(port: u16) -> bool {
     std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).is_ok()
 }
 
 fn choose_ws_port(args: &[String]) -> Result<(u16, bool)> {
-    if let Some(raw) = ws_port_arg(args) {
+    if let Some(raw) = find_flag_arg(args, "--port") {
         let port = raw
             .parse::<u16>()
             .with_context(|| format!("invalid --port value: {raw}"))?;
@@ -696,8 +690,9 @@ fn write_livelock_report(
         report_path.display()
     );
     if let Some(workspace) = agent_state_dir.parent() {
-        crate::blockers::record_action_failure(
+        crate::blockers::record_action_failure_with_writer(
             workspace,
+            None,
             "orchestrator",
             "livelock",
             &format!("livelock after {stall_cycles} consecutive no-change cycles"),
@@ -1470,8 +1465,9 @@ fn log_timed_out_executor_submit(
             "command_id": pending.command_id,
         }),
     );
-    crate::blockers::record_action_failure(
+    crate::blockers::record_action_failure_with_writer(
         ctx.workspace.as_path(),
+        None,
         "executor",
         "executor_submit_timeout",
         &format!(
@@ -1569,8 +1565,9 @@ fn log_timed_out_submitted_turn(
             "command_id": command_id,
         }),
     );
-    crate::blockers::record_action_failure(
+    crate::blockers::record_action_failure_with_writer(
         ctx.workspace.as_path(),
+        None,
         "executor",
         "executor_completion_timeout",
         &format!(
@@ -1770,8 +1767,9 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
         if !persist_planner_blocker_message(&blocker_message) {
             return;
         }
-        crate::blockers::record_action_failure(
+        crate::blockers::record_action_failure_with_writer(
             &ws,
+            None,
             "orchestrator",
             "route_dispatch",
             &reason,
@@ -2078,8 +2076,9 @@ fn handle_missing_submit_ack(
     exec_result: &str,
 ) -> bool {
     log_missing_submit_ack(job, exec_result);
-    crate::blockers::record_action_failure(
+    crate::blockers::record_action_failure_with_writer(
         std::path::Path::new(&workspace()),
+        None,
         "executor",
         "uncanonicalized_recovery",
         &format!(
@@ -2123,8 +2122,9 @@ fn register_late_submit_ack(
     command_id: Option<String>,
 ) -> bool {
     log_late_submit_ack(ctx, lane_id, tab_id, turn_id);
-    crate::blockers::record_action_failure(
+    crate::blockers::record_action_failure_with_writer(
         ctx.workspace.as_path(),
+        None,
         "executor",
         "uncanonicalized_recovery",
         &format!(
@@ -2185,8 +2185,9 @@ fn handle_submit_ack_timeout(
     turn_id: u64,
 ) -> bool {
     log_submit_ack_timeout(ctx, lane_id, tab_id, turn_id);
-    crate::blockers::record_action_failure(
+    crate::blockers::record_action_failure_with_writer(
         ctx.workspace.as_path(),
+        None,
         "executor",
         "submit_ack_timeout",
         &format!(
@@ -2232,19 +2233,6 @@ fn log_submit_ack_tab_mismatch(
     );
 }
 
-fn rebind_submit_ack_tab(
-    writer: &mut CanonicalWriter,
-    lane_id: usize,
-    active_tab: u32,
-    tab_id: u32,
-) {
-    writer.apply(ControlEvent::ExecutorSubmitAckTabRebound {
-        lane_id,
-        from_tab_id: active_tab,
-        to_tab_id: tab_id,
-    });
-}
-
 fn log_submit_ack_event(message: String, payload: serde_json::Value) {
     eprintln!("[orchestrate] {message}");
     log_error_event("executor", "orchestrate", None, &message, Some(payload));
@@ -2279,8 +2267,9 @@ fn handle_executor_submit_ack_result(
     if let Some(active_tab) = writer.state().lane_active_tab_id(lane_id) {
         if active_tab != tab_id {
             log_submit_ack_tab_mismatch(ctx, lane_id, active_tab, tab_id);
-            crate::blockers::record_action_failure(
+            crate::blockers::record_action_failure_with_writer(
                 ctx.workspace.as_path(),
+                None,
                 "executor",
                 "runtime_control_bypass",
                 &format!(
@@ -2289,7 +2278,11 @@ fn handle_executor_submit_ack_result(
                 ),
                 None,
             );
-            rebind_submit_ack_tab(writer, lane_id, active_tab, tab_id);
+            writer.apply(ControlEvent::ExecutorSubmitAckTabRebound {
+                lane_id,
+                from_tab_id: active_tab,
+                to_tab_id: tab_id,
+            });
         }
     }
 
@@ -2756,25 +2749,6 @@ fn artifact_signature(parts: &[&str]) -> String {
     format!("{:016x}", hasher.finish())
 }
 
-fn record_workspace_artifact_effect_for_workspace(
-    workspace: &Path,
-    requested: bool,
-    artifact: &str,
-    target: &str,
-    subject: &str,
-    signature: &str,
-) -> Result<()> {
-    crate::logging::record_workspace_artifact_effect(
-        workspace,
-        requested,
-        artifact,
-        "write",
-        target,
-        subject,
-        signature,
-    )
-}
-
 fn persist_agent_state_projection(path: &Path, contents: &str, subject: &str) -> Result<()> {
     let workspace = Path::new(crate::constants::workspace());
     let artifact = path
@@ -2788,10 +2762,11 @@ fn persist_agent_state_projection(path: &Path, contents: &str, subject: &str) ->
         subject,
         &contents.len().to_string(),
     ]);
-    record_workspace_artifact_effect_for_workspace(
+    crate::logging::record_workspace_artifact_effect(
         workspace,
         true,
         &artifact,
+        "write",
         &target,
         subject,
         &signature,
@@ -2802,10 +2777,11 @@ fn persist_agent_state_projection(path: &Path, contents: &str, subject: &str) ->
     let tmp_path = path.with_extension("tmp");
     std::fs::write(&tmp_path, contents)?;
     std::fs::rename(&tmp_path, path)?;
-    record_workspace_artifact_effect_for_workspace(
+    crate::logging::record_workspace_artifact_effect(
         workspace,
         false,
         &artifact,
+        "write",
         &target,
         subject,
         &signature,
@@ -2931,8 +2907,9 @@ fn load_checkpoint(workspace: &Path) -> Option<OrchestratorCheckpoint> {
             cp.workspace,
             workspace.display()
         );
-        crate::blockers::record_action_failure(
+        crate::blockers::record_action_failure_with_writer(
             workspace,
+            None,
             "orchestrate",
             "checkpoint_runtime_divergence",
             &msg,
@@ -2952,8 +2929,9 @@ fn load_checkpoint(workspace: &Path) -> Option<OrchestratorCheckpoint> {
                 "[orchestrate] checkpoint seq {} does not match current tlog seq {} — discarding",
                 cp.checkpoint_tlog_seq, current_tlog_seq
             );
-            crate::blockers::record_action_failure(
+            crate::blockers::record_action_failure_with_writer(
                 workspace,
+                None,
                 "orchestrate",
                 "checkpoint_runtime_divergence",
                 &msg,
@@ -3387,8 +3365,9 @@ fn enforce_executor_step_limit(
     {
         *error_streak = error_streak.saturating_add(1);
         *last_result = Some(executor_step_limit_feedback());
-        crate::blockers::record_action_failure(
+        crate::blockers::record_action_failure_with_writer(
             workspace,
+            None,
             role,
             "step_limit",
             &format!("executor reached step limit ({EXECUTOR_STEP_LIMIT})"),
@@ -3933,7 +3912,7 @@ fn apply_wake_flags(agent_state_dir: &std::path::Path, writer: &mut CanonicalWri
         .join(", ");
 
     let semantic_control = SemanticControlState::from_system_state(&state_snapshot, false, false);
-    let decision = semantic_control.wake_decision(&inputs);
+    let decision = decide_wake_flags(semantic_control.active_blocker_to_verifier, &inputs);
     let Some(role) = decision.scheduled_phase.as_deref() else {
         return;
     };
@@ -4500,8 +4479,9 @@ async fn continue_executor_completion(
     ) {
         Ok(action) => action,
         Err(invalid) => {
-            crate::blockers::record_action_failure(
+            crate::blockers::record_action_failure_with_writer(
                 workspace,
+                None,
                 role,
                 "schema_validation",
                 &invalid.err_text,
@@ -4682,8 +4662,9 @@ async fn run_agent(
             && executor_step_limit_exceeded(total_steps, EXECUTOR_STEP_LIMIT)
         {
             last_result = Some(executor_step_limit_feedback());
-            crate::blockers::record_action_failure(
+            crate::blockers::record_action_failure_with_writer(
                 workspace,
+                None,
                 role,
                 "step_limit",
                 &format!("executor reached step limit ({EXECUTOR_STEP_LIMIT})"),
@@ -4758,8 +4739,9 @@ async fn run_agent(
                         error: err_text.clone(),
                     });
                 }
-                crate::blockers::record_action_failure(
+                crate::blockers::record_action_failure_with_writer(
                     workspace,
+                    None,
                     role,
                     "llm_request",
                     &err_text,
@@ -4823,8 +4805,9 @@ async fn run_agent(
             &mut error_streak,
             &mut last_error,
         ) {
-            crate::blockers::record_action_failure(
+            crate::blockers::record_action_failure_with_writer(
                 workspace,
+                None,
                 role,
                 "reaction_only",
                 "LLM returned prose without a JSON action block",
@@ -4860,8 +4843,9 @@ async fn run_agent(
         ) {
             Ok(action) => action,
             Err(invalid) => {
-                crate::blockers::record_action_failure(
+                crate::blockers::record_action_failure_with_writer(
                     workspace,
+                    None,
                     role,
                     "schema_validation",
                     &invalid.err_text,
@@ -4906,7 +4890,14 @@ async fn run_agent(
         if let Some(msg) =
             cargo_test_gate.message_blocker_if_needed(&kind, crate::constants::workspace())
         {
-            crate::blockers::record_action_failure(workspace, role, "build_gate", &msg, None);
+            crate::blockers::record_action_failure_with_writer(
+                workspace,
+                None,
+                role,
+                "build_gate",
+                &msg,
+                None,
+            );
             error_streak = error_streak.saturating_add(1);
             last_result = Some(msg);
             step += 1;
@@ -4937,8 +4928,9 @@ async fn run_agent(
         let action_fingerprint = action_retry_fingerprint(&action);
 
         if repeated_failed_action_fingerprint.as_deref() == Some(action_fingerprint.as_str()) {
-            crate::blockers::record_action_failure(
+            crate::blockers::record_action_failure_with_writer(
                 workspace,
+                None,
                 role,
                 "repeated_failed_action",
                 &format!(
@@ -4964,8 +4956,9 @@ async fn run_agent(
             let objectives_text = read_text_or_empty(preferred_objectives_path(workspace));
             let plan_text = read_text_or_empty(workspace.join(MASTER_PLAN_FILE));
             if should_reject_solo_self_complete(&action, &objectives_text, &plan_text) {
-                crate::blockers::record_action_failure(
+                crate::blockers::record_action_failure_with_writer(
                     workspace,
+                    None,
                     role,
                     "solo_completion_gate",
                     "solo attempted self-complete with active objectives and no incomplete plan tasks",
@@ -4990,8 +4983,9 @@ async fn run_agent(
             kind.as_str(),
             &mut diagnostics_eventlog_python_done,
         ) {
-            crate::blockers::record_action_failure(
+            crate::blockers::record_action_failure_with_writer(
                 workspace,
+                None,
                 role,
                 "diagnostics_evidence_gate",
                 &msg,
@@ -5005,8 +4999,9 @@ async fn run_agent(
         if is_explicit_idle_action(&action) {
             idle_streak += 1;
             if idle_streak >= 3 {
-                crate::blockers::record_action_failure(
+                crate::blockers::record_action_failure_with_writer(
                     workspace,
+                    None,
                     role,
                     "idle_streak",
                     "agent stuck: 3 consecutive explicit idle actions with no progress",
@@ -5619,8 +5614,9 @@ fn maybe_rebind_executor_completion_tab(
             "actual_tab": tab_id,
         }),
     );
-    crate::blockers::record_action_failure(
+    crate::blockers::record_action_failure_with_writer(
         workspace,
+        None,
         "executor",
         "runtime_control_bypass",
         &format!(
@@ -6183,7 +6179,7 @@ pub async fn run() -> Result<()> {
     let workspace = PathBuf::from(workspace());
     let spec_path = workspace.join(SPEC_FILE);
     let master_plan_path = workspace.join(MASTER_PLAN_FILE);
-    let instance_id = instance_arg(&args).map(str::to_string);
+    let instance_id = find_flag_arg(&args, "--instance").map(str::to_string);
     let path_prefix = instance_id.clone().unwrap_or_else(|| "default".to_string());
     init_log_paths(&path_prefix);
     let diagnostics_rel = diagnostics_file_for_instance(&path_prefix);
@@ -6418,8 +6414,9 @@ pub async fn run() -> Result<()> {
                     (in_prog, has_tab)
                 };
                 if in_progress && !has_active_tab {
-                    crate::blockers::record_action_failure(
+                    crate::blockers::record_action_failure_with_writer(
                         workspace.as_path(),
+                        None,
                         "orchestrate",
                         "checkpoint_runtime_divergence",
                         &format!(
@@ -7019,7 +7016,7 @@ mod tests {
             .find("log_submit_ack_tab_mismatch(ctx, lane_id, active_tab, tab_id);")
             .expect("missing submit ack mismatch log");
         let rebind = source[mismatch..]
-            .find("rebind_submit_ack_tab(writer, lane_id, active_tab, tab_id);")
+            .find("ControlEvent::ExecutorSubmitAckTabRebound {")
             .map(|offset| mismatch + offset)
             .expect("missing canonical submit ack tab rebound");
         let register = source[rebind..]

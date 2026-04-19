@@ -49,8 +49,9 @@ pub fn preflight_ready_tasks(workspace: &Path) -> Vec<PreflightBounce> {
                         "[plan_preflight] task={} missing={:?}",
                         b.task_id, b.missing_symbols
                     );
-                    crate::blockers::record_action_failure(
+                    crate::blockers::record_action_failure_with_writer(
                         workspace,
+                        None,
                         "orchestrator",
                         "plan_preflight",
                         &b.note,
@@ -62,8 +63,9 @@ pub fn preflight_ready_tasks(workspace: &Path) -> Vec<PreflightBounce> {
         }
         Err(e) => {
             eprintln!("[plan_preflight] error: {e:#}");
-            crate::blockers::record_action_failure(
+            crate::blockers::record_action_failure_with_writer(
                 workspace,
+                None,
                 "orchestrator",
                 "plan_preflight",
                 &e.to_string(),

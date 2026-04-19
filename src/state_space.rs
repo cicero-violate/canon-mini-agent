@@ -184,17 +184,7 @@ pub fn decide_active_blocker(
     }
 }
 
-pub fn allow_verifier_run(scheduled_phase: Option<&str>) -> bool {
-    allow_named_phase_run(scheduled_phase, "verifier")
-}
-
-/// Returns true when planner is allowed to run this cycle.
-/// Planner is blocked if another phase (not planner) owns the schedule.
-pub fn allow_planner_run(scheduled_phase: Option<&str>) -> bool {
-    allow_named_phase_run(scheduled_phase, "planner")
-}
-
-fn allow_named_phase_run(scheduled_phase: Option<&str>, allowed_phase: &str) -> bool {
+pub fn allow_named_phase_run(scheduled_phase: Option<&str>, allowed_phase: &str) -> bool {
     !matches!(scheduled_phase, Some(phase) if phase != allowed_phase)
 }
 
@@ -264,10 +254,6 @@ impl SemanticControlState {
         )
     }
 
-    pub fn wake_decision(&self, flags: &[WakeFlagInput]) -> WakeDecision {
-        decide_wake_flags(self.active_blocker_to_verifier, flags)
-    }
-
     pub fn with_resumed_checkpoint_phase(
         &self,
         checkpoint_phase: &str,
@@ -305,7 +291,7 @@ impl SemanticControlState {
     }
 
     pub fn verifier_run_allowed(&self) -> bool {
-        allow_verifier_run(self.scheduled_phase.as_deref())
+        allow_named_phase_run(self.scheduled_phase.as_deref(), "verifier")
     }
 
     pub fn scheduled_phase_done(
@@ -338,9 +324,9 @@ pub fn decide_phase_gates(
     scheduled_phase: Option<&str>,
 ) -> PhaseGates {
     PhaseGates {
-        planner: planner_pending && allow_planner_run(scheduled_phase),
+        planner: planner_pending && allow_named_phase_run(scheduled_phase, "planner"),
         executor: !block_executor_dispatch(scheduled_phase),
-        verifier: verifier_queued && allow_verifier_run(scheduled_phase),
+        verifier: verifier_queued && allow_named_phase_run(scheduled_phase, "verifier"),
         diagnostics: diagnostics_pending
             && allow_diagnostics_run(scheduled_phase, verifier_in_flight),
         solo: matches!(scheduled_phase, Some("solo")),

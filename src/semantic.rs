@@ -122,6 +122,15 @@ pub struct SemanticIndex {
     graph: CrateGraph,
 }
 
+#[derive(Copy, Clone)]
+pub enum GraphCountKind {
+    CfgNode,
+    CfgEdge,
+    BridgeEdge,
+    Node,
+    SemanticEdge,
+}
+
 #[derive(Debug, Clone)]
 pub struct SymbolSummary {
     pub symbol: String,
@@ -236,18 +245,6 @@ impl SemanticIndex {
             .unwrap_or_default()
     }
 
-    pub fn cfg_node_count(&self) -> usize {
-        self.graph.cfg_nodes.len()
-    }
-
-    pub fn cfg_edge_count(&self) -> usize {
-        self.graph.cfg_edges.len()
-    }
-
-    pub fn bridge_edge_count(&self) -> usize {
-        self.graph.bridge_edges.len()
-    }
-
     /// Return bridge edges as `(from, relation, to)` triples.
     pub fn bridge_edges(&self) -> Vec<(String, String, String)> {
         self.graph
@@ -263,14 +260,14 @@ impl SemanticIndex {
             .collect()
     }
 
-    /// Total semantic graph node count.
-    pub fn node_count(&self) -> usize {
-        self.graph.nodes.len()
-    }
-
-    /// Total semantic edge count.
-    pub fn semantic_edge_count(&self) -> usize {
-        self.graph.edges.len()
+    pub fn graph_count(&self, kind: GraphCountKind) -> usize {
+        match kind {
+            GraphCountKind::CfgNode => self.graph.cfg_nodes.len(),
+            GraphCountKind::CfgEdge => self.graph.cfg_edges.len(),
+            GraphCountKind::BridgeEdge => self.graph.bridge_edges.len(),
+            GraphCountKind::Node => self.graph.nodes.len(),
+            GraphCountKind::SemanticEdge => self.graph.edges.len(),
+        }
     }
 
     /// BFS shortest path across semantic edges, CFG edges, and bridge edges.

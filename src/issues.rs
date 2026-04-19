@@ -7,14 +7,6 @@ use std::path::Path;
 
 use crate::constants::ISSUES_FILE;
 
-pub fn persist_issues_projection(
-    workspace: &Path,
-    file: &IssuesFile,
-    subject: &str,
-) -> Result<()> {
-    persist_issues_projection_with_writer(workspace, file, None, subject)
-}
-
 pub fn persist_issues_projection_with_writer(
     workspace: &Path,
     file: &IssuesFile,
@@ -317,7 +309,7 @@ pub fn sweep_stale_issues(workspace: &Path) -> Result<IssueSweepSummary> {
 
     if mutated {
         rescore_all(&mut file);
-        persist_issues_projection(workspace, &file, "sweep_stale_issues")?;
+        persist_issues_projection_with_writer(workspace, &file, None, "sweep_stale_issues")?;
         summary.rewrote = true;
     }
     Ok(summary)
@@ -364,9 +356,10 @@ pub fn is_closed(issue: &Issue) -> bool {
 ///
 /// Weights:
 ///   severity      0.20 — priority string mapped to float
-///   recurrence    0.20 — sibling issues with the same ID prefix (saturates at 3)
+///   recurrence    0.15 — sibling issues with the same ID prefix (saturates at 3)
 ///   hot_path      0.25 — location/title mentions a per-turn code path
-///   loop_velocity 0.35 — how much fixing this speeds up the agent's issue-close rate
+///   loop_velocity 0.30 — how much fixing this speeds up the agent's issue-close rate
+///   scale         0.10 — candidate/instance count for auto-detected clusters (log2, saturates at ~128)
 pub fn compute_issue_score(issue: &Issue, all_issues: &[Issue]) -> f32 {
     // Severity from priority string
     let severity: f32 = match issue.priority.trim().to_lowercase().as_str() {
@@ -378,7 +371,9 @@ pub fn compute_issue_score(issue: &Issue, all_issues: &[Issue]) -> f32 {
     };
 
     // Recurrence: count other issues that share the same leading token in their ID.
-    // e.g. "ISS-DUPLICATE-1" and "ISS-DUPLICATE-2" are siblings.
+    // IDs using hyphens as separators (e.g. "ISS-DUP-1" and "ISS-DUP-2") are siblings.
+    // IDs using only underscores (e.g. auto_mir_dup_*) fall through with sibling_count=0,
+    // which is correct — their cluster size is captured by the scale component instead.
     let base = issue.id.split('-').next().unwrap_or(&issue.id);
     let sibling_count = all_issues
         .iter()
@@ -423,7 +418,24 @@ pub fn compute_issue_score(issue: &Issue, all_issues: &[Issue]) -> f32 {
         }
     };
 
-    let score = 0.20 * severity + 0.20 * recurrence + 0.25 * hot_path + 0.35 * velocity;
+    // Scale: candidate/instance count extracted from the issue title for auto-detected clusters
+    // (e.g. "MIR-identical functions: 137 candidates for deduplication").
+    // Uses log2 so the difference between 2 and 4 matters, but 64 vs 128 is marginal.
+    // Saturates at 128 candidates (log2(128) = 7).
+    let scale: f32 = {
+        let n: u32 = issue
+            .title
+            .split_whitespace()
+            .find_map(|w| w.parse().ok())
+            .unwrap_or(1);
+        if n > 1 {
+            ((n as f32).log2() / 7.0).clamp(0.0, 1.0)
+        } else {
+            0.0
+        }
+    };
+
+    let score = 0.20 * severity + 0.15 * recurrence + 0.25 * hot_path + 0.30 * velocity + 0.10 * scale;
     score.clamp(0.0, 1.0)
 }
 
@@ -464,7 +476,7 @@ pub fn read_ranked_open_issues(workspace: &Path) -> Vec<Issue> {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_closed, load_issues_file, persist_issues_projection, read_ranked_open_issues,
+        is_closed, load_issues_file, persist_issues_projection_with_writer, read_ranked_open_issues,
         sweep_stale_issues, Issue, IssuesFile,
     };
     use crate::{set_agent_state_dir, set_workspace};
@@ -694,7 +706,7 @@ mod tests {
                 ..Issue::default()
             }],
         };
-        persist_issues_projection(&root, &file, "issues_tlog_fallback_test")
+        persist_issues_projection_with_writer(&root, &file, None, "issues_tlog_fallback_test")
             .expect("persist issues projection");
 
         let issues_path = root.join(crate::constants::ISSUES_FILE);

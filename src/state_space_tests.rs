@@ -1,10 +1,10 @@
 use crate::state_space::{
-    allow_diagnostics_run, allow_planner_run, allow_verifier_run, check_completion_endpoint,
-    check_completion_tab, decide_active_blocker, decide_phase_gates, decide_post_diagnostics,
-    decide_wake_flags, executor_step_limit_exceeded, executor_submit_timed_out,
-    is_verifier_specific_blocker, scheduled_phase_resume_done, should_force_blocker,
-    verifier_blocker_phase_override, ActiveBlockerDecision, CompletionEndpointCheck,
-    CompletionTabCheck, PhaseGates, SemanticControlState, WakeFlagInput,
+    allow_diagnostics_run, allow_named_phase_run, check_completion_endpoint, check_completion_tab,
+    decide_active_blocker, decide_phase_gates, decide_post_diagnostics, decide_wake_flags,
+    executor_step_limit_exceeded, executor_submit_timed_out, is_verifier_specific_blocker,
+    scheduled_phase_resume_done, should_force_blocker, verifier_blocker_phase_override,
+    ActiveBlockerDecision, CompletionEndpointCheck, CompletionTabCheck, PhaseGates,
+    SemanticControlState, WakeFlagInput,
 };
 use crate::state_space::{
     decide_bootstrap_phase, decide_resume_phase, extract_progress_path_from_result, CargoTestGate,
@@ -419,13 +419,13 @@ fn active_blocker_clears_planner_ownership_when_needed() {
 
 #[test]
 fn planner_verifier_and_diagnostics_gate_helpers_follow_schedule() {
-    assert!(allow_planner_run(None));
-    assert!(allow_planner_run(Some("planner")));
-    assert!(!allow_planner_run(Some("verifier")));
+    assert!(allow_named_phase_run(None, "planner"));
+    assert!(allow_named_phase_run(Some("planner"), "planner"));
+    assert!(!allow_named_phase_run(Some("verifier"), "planner"));
 
-    assert!(allow_verifier_run(None));
-    assert!(allow_verifier_run(Some("verifier")));
-    assert!(!allow_verifier_run(Some("planner")));
+    assert!(allow_named_phase_run(None, "verifier"));
+    assert!(allow_named_phase_run(Some("verifier"), "verifier"));
+    assert!(!allow_named_phase_run(Some("planner"), "verifier"));
 
     assert!(allow_diagnostics_run(None, false));
     assert!(allow_diagnostics_run(Some("diagnostics"), false));
@@ -514,7 +514,7 @@ fn semantic_control_state_projects_wake_flags_and_resume_hydration() {
     let mut state = state;
     state.active_blocker_to_verifier = true;
     let semantic = SemanticControlState::from_system_state(&state, false, false);
-    let wake = semantic.wake_decision(&[
+    let wake = decide_wake_flags(semantic.active_blocker_to_verifier, &[
         WakeFlagInput {
             role: "planner",
             modified_ms: 30,

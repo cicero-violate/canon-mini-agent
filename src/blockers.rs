@@ -92,17 +92,6 @@ pub fn append_blocker_with_writer(
 }
 
 /// Convenience: build and append from a `message{type=blocker}` action.
-pub fn record_blocker_message(
-    workspace: &Path,
-    role: &str,
-    summary: &str,
-    task_id: Option<&str>,
-    objective_id: Option<&str>,
-) {
-    record_blocker_message_with_writer(workspace, None, role, summary, task_id, objective_id);
-}
-
-/// Convenience: build and append from a `message{type=blocker}` action.
 pub fn record_blocker_message_with_writer(
     workspace: &Path,
     writer: Option<&mut CanonicalWriter>,
@@ -130,17 +119,6 @@ pub fn record_blocker_message_with_writer(
     if let Err(err) = append_blocker_with_writer(workspace, writer, record) {
         eprintln!("[blockers] append blocker message error: {err:#}");
     }
-}
-
-/// Convenience: build and append from an `ok=false` action result.
-pub fn record_action_failure(
-    workspace: &Path,
-    role: &str,
-    action_kind: &str,
-    result_text: &str,
-    task_id: Option<&str>,
-) {
-    record_action_failure_with_writer(workspace, None, role, action_kind, result_text, task_id);
 }
 
 /// Convenience: build and append from an `ok=false` action result.
@@ -327,8 +305,9 @@ mod tests {
     #[test]
     fn record_blocker_message_writes_file() {
         let ws = temp_ws();
-        record_blocker_message(
+        record_blocker_message_with_writer(
             &ws,
+            None,
             "executor_0",
             "cannot proceed: compile failed",
             None,
@@ -343,7 +322,14 @@ mod tests {
     #[test]
     fn record_action_failure_skips_unknown() {
         let ws = temp_ws();
-        record_action_failure(&ws, "executor_0", "read_file", "some generic output", None);
+        record_action_failure_with_writer(
+            &ws,
+            None,
+            "executor_0",
+            "read_file",
+            "some generic output",
+            None,
+        );
         // Generic output → Unknown class → should NOT be written.
         let file = load_blockers(&ws);
         assert_eq!(file.blockers.len(), 0);
@@ -352,8 +338,9 @@ mod tests {
     #[test]
     fn record_action_failure_writes_classified() {
         let ws = temp_ws();
-        record_action_failure(
+        record_action_failure_with_writer(
             &ws,
+            None,
             "executor_0",
             "apply_patch",
             "path is outside the permitted workspace",
@@ -396,9 +383,16 @@ mod tests {
     #[test]
     fn count_class_groups_by_actor_and_class() {
         let ws = temp_ws();
-        record_blocker_message(&ws, "executor_0", "compile failed", None, None);
-        record_blocker_message(&ws, "executor_1", "cargo build failed", None, None);
-        record_blocker_message(&ws, "planner", "compile failed", None, None);
+        record_blocker_message_with_writer(&ws, None, "executor_0", "compile failed", None, None);
+        record_blocker_message_with_writer(
+            &ws,
+            None,
+            "executor_1",
+            "cargo build failed",
+            None,
+            None,
+        );
+        record_blocker_message_with_writer(&ws, None, "planner", "compile failed", None, None);
         let file = load_blockers(&ws);
         let exec_compile = count_class(&file, "executor", &ErrorClass::CompileError);
         let plan_compile = count_class(&file, "planner", &ErrorClass::CompileError);
@@ -409,8 +403,9 @@ mod tests {
     #[test]
     fn record_action_failure_writes_runtime_control_bypass() {
         let ws = temp_ws();
-        record_action_failure(
+        record_action_failure_with_writer(
             &ws,
+            None,
             "orchestrate",
             "runtime_control_bypass",
             "runtime-only control influence: active blocker file suppressed planner dispatch",
@@ -427,8 +422,9 @@ mod tests {
     #[test]
     fn record_action_failure_writes_uncanonicalized_recovery_path() {
         let ws = temp_ws();
-        record_action_failure(
+        record_action_failure_with_writer(
             &ws,
+            None,
             "executor",
             "uncanonicalized_recovery",
             "recovery path without canonical event: late submit_ack reconstructed turn",

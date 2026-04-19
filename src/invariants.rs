@@ -36,7 +36,9 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::issues::{is_closed, persist_issues_projection, rescore_all, Issue, IssuesFile};
+use crate::issues::{
+    is_closed, persist_issues_projection_with_writer, rescore_all, Issue, IssuesFile,
+};
 
 // ── File paths ────────────────────────────────────────────────────────────────
 
@@ -281,7 +283,7 @@ fn op_promote(workspace: &Path, action: &serde_json::Value) -> anyhow::Result<(b
     if count == 0 {
         return Ok((false, format!("no Discovered invariants matched id='{id}'")));
     }
-    save_invariants(workspace, &file)?;
+    persist_enforced_invariants_projection(workspace, &file, "enforced_invariants_save")?;
     Ok((false, format!("promoted {count} invariant(s) to Promoted")))
 }
 
@@ -308,7 +310,7 @@ fn op_enforce(workspace: &Path, action: &serde_json::Value) -> anyhow::Result<(b
     if count == 0 {
         return Ok((false, format!("no invariant found with id='{id}'")));
     }
-    save_invariants(workspace, &file)?;
+    persist_enforced_invariants_projection(workspace, &file, "enforced_invariants_save")?;
     // Log to action log so synthesis can track the enforcement event.
     let record = serde_json::json!({
         "kind": "invariant_lifecycle",
@@ -345,7 +347,7 @@ fn op_collapse(workspace: &Path, action: &serde_json::Value) -> anyhow::Result<(
     if count == 0 {
         return Ok((false, format!("no invariant found with id='{id}'")));
     }
-    save_invariants(workspace, &file)?;
+    persist_enforced_invariants_projection(workspace, &file, "enforced_invariants_save")?;
     let record = serde_json::json!({
         "kind": "invariant_lifecycle",
         "phase": "collapse",
@@ -559,7 +561,12 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
 
     if created > 0 || mutated {
         rescore_all(&mut file);
-        persist_issues_projection(workspace, &file, "generate_invariant_issues")?;
+        persist_issues_projection_with_writer(
+            workspace,
+            &file,
+            None,
+            "generate_invariant_issues",
+        )?;
     }
 
     Ok(created)
@@ -623,7 +630,7 @@ fn try_synthesize_invariants(workspace: &Path) -> Result<()> {
     prune_excess(&mut file);
 
     file.last_synthesized_ms = crate::logging::now_ms();
-    save_invariants(workspace, &file)?;
+    persist_enforced_invariants_projection(workspace, &file, "enforced_invariants_save")?;
     Ok(())
 }
 
@@ -1292,10 +1299,6 @@ pub fn persist_enforced_invariants_projection(
     )
 }
 
-fn save_invariants(workspace: &Path, file: &EnforcedInvariantsFile) -> Result<()> {
-    persist_enforced_invariants_projection(workspace, file, "enforced_invariants_save")
-}
-
 fn load_invariants_from_tlog(workspace: &Path) -> Option<EnforcedInvariantsFile> {
     let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
     let records = crate::tlog::Tlog::read_records(&tlog_path).ok()?;
@@ -1524,22 +1527,25 @@ mod tests {
     fn synthesize_runtime_control_bypass_from_blockers_and_block_route() {
         let tmp = make_workspace();
         std::fs::create_dir_all(tmp.join("agent_state")).unwrap();
-        crate::blockers::record_action_failure(
+        crate::blockers::record_action_failure_with_writer(
             &tmp,
+            None,
             "orchestrate",
             "runtime_control_bypass",
             "runtime-only control influence: planner was re-pended because plan mtimes changed",
             None,
         );
-        crate::blockers::record_action_failure(
+        crate::blockers::record_action_failure_with_writer(
             &tmp,
+            None,
             "orchestrate",
             "runtime_control_bypass",
             "runtime-only control influence: diagnostics were re-pended because reconciled text diverged",
             None,
         );
-        crate::blockers::record_action_failure(
+        crate::blockers::record_action_failure_with_writer(
             &tmp,
+            None,
             "orchestrate",
             "runtime_control_bypass",
             "runtime-only control influence: active blocker file suppressed planner dispatch",
@@ -1582,8 +1588,9 @@ mod tests {
             "recovery path without canonical event: missing submit_ack forced lane requeue lane=executor-0 output=missing submit_ack",
             "recovery path without canonical event: executor completion recovered from runtime submit state lane=executor-0 tab_id=7 turn_id=11",
         ] {
-            crate::blockers::record_action_failure(
+            crate::blockers::record_action_failure_with_writer(
                 &tmp,
+                None,
                 "executor",
                 "uncanonicalized_recovery",
                 summary,
@@ -1627,8 +1634,9 @@ mod tests {
             "ambiguous control event: diagnostics wakeup encoded both verifier followup and reconciliation rerun",
             "ambiguous control event: one control event encoded multiple scheduler reasons",
         ] {
-            crate::blockers::record_action_failure(
+            crate::blockers::record_action_failure_with_writer(
                 &tmp,
+                None,
                 "orchestrate",
                 "ambiguous_control_event",
                 summary,
@@ -1672,8 +1680,9 @@ mod tests {
             "effectful state advance without control event: checkpoint persisted externally visible state before canonical transition",
             "effectful state advance without control event: side effect changed planner-visible output before control event",
         ] {
-            crate::blockers::record_action_failure(
+            crate::blockers::record_action_failure_with_writer(
                 &tmp,
+                None,
                 "orchestrate",
                 "effectful_state_advance",
                 summary,
@@ -1743,7 +1752,8 @@ mod tests {
                 last_seen_ms: 1,
             }],
         };
-        save_invariants(tmp.as_path(), &file).unwrap();
+        persist_enforced_invariants_projection(tmp.as_path(), &file, "enforced_invariants_save")
+            .unwrap();
 
         let mut state = HashMap::new();
         state.insert("proposed_role".to_string(), "executor".to_string());
@@ -1782,7 +1792,8 @@ mod tests {
                 last_seen_ms: 1,
             }],
         };
-        save_invariants(tmp.as_path(), &file).unwrap();
+        persist_enforced_invariants_projection(tmp.as_path(), &file, "enforced_invariants_save")
+            .unwrap();
 
         // ready_tasks=1 — gate should pass.
         let mut state = HashMap::new();
@@ -1952,7 +1963,12 @@ mod tests {
                 last_seen_ms: 1,
             }],
         };
-        save_invariants(tmp.as_path(), &inv_file).unwrap();
+        persist_enforced_invariants_projection(
+            tmp.as_path(),
+            &inv_file,
+            "enforced_invariants_save",
+        )
+        .unwrap();
 
         let created = generate_invariant_issues(tmp.as_path()).unwrap();
 

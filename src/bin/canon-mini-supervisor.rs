@@ -408,6 +408,88 @@ fn export_semantic_maps_jsonl(root: &Path) -> Result<()> {
     Ok(())
 }
 
+fn newest_file_mtime(root: &Path) -> Option<SystemTime> {
+    let mut newest: Option<SystemTime> = None;
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = match fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let file_type = match entry.file_type() {
+                Ok(kind) => kind,
+                Err(_) => continue,
+            };
+            if file_type.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if !file_type.is_file() {
+                continue;
+            }
+            let Ok(meta) = entry.metadata() else {
+                continue;
+            };
+            let Ok(modified) = meta.modified() else {
+                continue;
+            };
+            newest = match newest {
+                Some(cur) if cur >= modified => Some(cur),
+                _ => Some(modified),
+            };
+        }
+    }
+    newest
+}
+
+fn semantic_graph_is_stale(workspace: &Path) -> bool {
+    let src_dir = workspace.join("src");
+    let rustc_dir = workspace.join("state").join("rustc");
+    let Some(src_newest) = newest_file_mtime(&src_dir) else {
+        return false;
+    };
+    let Some(graph_newest) = newest_file_mtime(&rustc_dir) else {
+        return true;
+    };
+    src_newest > graph_newest
+}
+
+fn refresh_semantic_graph_if_stale(root: &Path, workspace: &Path) {
+    if !semantic_graph_is_stale(workspace) {
+        return;
+    }
+    eprintln!(
+        "[canon-mini-supervisor] semantic graph stale: src/ is newer than state/rustc; refreshing via cargo build --workspace"
+    );
+    let build_root = if workspace.join("Cargo.toml").exists() {
+        workspace
+    } else {
+        root
+    };
+    match run_cmd(build_root, "cargo", &["build", "--workspace"]) {
+        Ok(true) => {
+            eprintln!("[canon-mini-supervisor] semantic graph refresh build passed");
+            if let Err(err) = export_semantic_maps_jsonl(workspace) {
+                eprintln!(
+                    "[canon-mini-supervisor] semantic_map jsonl export failed after graph refresh: {err:#}"
+                );
+            }
+        }
+        Ok(false) => {
+            eprintln!(
+                "[canon-mini-supervisor] semantic graph refresh build failed; continuing with existing graph"
+            );
+        }
+        Err(err) => {
+            eprintln!(
+                "[canon-mini-supervisor] semantic graph refresh build errored; continuing with existing graph: {err:#}"
+            );
+        }
+    }
+}
+
 fn stage_git_checkpoint(root: &Path, reason: &str) -> bool {
     eprintln!("[canon-mini-supervisor] pre-restart: running `git add -A` ({reason})");
     if let Err(err) = run_cmd(root, "git", &["add", "-A"]) {
@@ -571,6 +653,7 @@ fn emit_iteration_status_and_report(
     let report_workspace = workspace_from_args(filtered_args)
         .map(PathBuf::from)
         .unwrap_or_else(|| root.to_path_buf());
+    refresh_semantic_graph_if_stale(root, &report_workspace);
     emit_complexity_report_status(&report_workspace);
 }
 

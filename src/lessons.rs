@@ -211,7 +211,7 @@ fn op_promote(workspace: &Path, action: &Value) -> Result<(bool, String)> {
     artifact.summary = build_artifact_summary(&artifact);
 
     save_candidates(workspace, &cfile)?;
-    save_lessons(workspace, &artifact)?;
+    persist_lessons_projection(workspace, &artifact, "lessons_save")?;
 
     Ok((
         false,
@@ -272,7 +272,7 @@ fn op_encode(workspace: &Path, action: &Value) -> Result<(bool, String)> {
         );
     }
 
-    save_lessons(workspace, &artifact)?;
+    persist_lessons_projection(workspace, &artifact, "lessons_save")?;
     Ok((
         false,
         format!("lessons encode: entry marked as encoded and removed from prompt injection"),
@@ -297,7 +297,7 @@ fn op_write_lessons(workspace: &Path, action: &Value) -> Result<(bool, String)> 
         .ok_or_else(|| anyhow::anyhow!("lessons write requires a 'lessons' object with summary/failures/fixes/required_actions"))?;
     let artifact: LessonsArtifact = serde_json::from_value(lessons_val.clone())
         .map_err(|e| anyhow::anyhow!("invalid lessons object: {e}"))?;
-    save_lessons(workspace, &artifact)?;
+    persist_lessons_projection(workspace, &artifact, "lessons_save")?;
     Ok((false, "lessons write ok".to_string()))
 }
 
@@ -963,10 +963,6 @@ pub fn persist_lessons_projection(
         subject,
         &serde_json::to_string_pretty(artifact)?,
     )
-}
-
-fn save_lessons(workspace: &Path, artifact: &LessonsArtifact) -> Result<()> {
-    persist_lessons_projection(workspace, artifact, "lessons_save")
 }
 
 fn load_lessons_from_tlog(workspace: &Path) -> Option<LessonsArtifact> {

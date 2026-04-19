@@ -1821,10 +1821,6 @@ impl SingleRoleContext<'_> {
         Ok(text)
     }
 
-    pub fn read_executor_diff(&self, max_lines: usize) -> String {
-        executor_diff(self.workspace, max_lines)
-    }
-
     // removed lane_plan_list method (lane plans deleted)
 }
 
@@ -1890,7 +1886,7 @@ fn build_verifier_role_prompt(
 ) -> Result<String> {
     let semantic_control = ctx.read(SingleRoleRead::SemanticControl)?;
     let objectives = ctx.read(SingleRoleRead::Objectives)?;
-    let executor_diff_text = ctx.read_executor_diff(400);
+    let executor_diff_text = executor_diff(ctx.workspace, 400);
     Ok(single_role_verifier_prompt(
         &inputs.primary_input,
         &objectives,

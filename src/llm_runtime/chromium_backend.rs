@@ -48,6 +48,9 @@ const CHROMIUM_AUTOLAUNCH_SCRIPT_ENV: &str = "CANON_CHROMIUM_LAUNCH_SCRIPT";
 static CHROMIUM_AUTOLAUNCH_ATTEMPTED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
+static EXTENSION_CONN_ID: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
 fn chromium_autolaunch_log_path() -> PathBuf {
     Path::new(AGENT_STATE_DIR).join("chromium-autolaunch.log")
 }
@@ -352,8 +355,16 @@ fn extract_calpico_heartbeat_progress_signature(raw: &str) -> Option<String> {
 // ---------------------------------------------------------------------------
 
 struct State {
-    /// Channel to send frames to the currently connected extension.
+    /// Channel to send frames to the primary (first-connected) extension.
+    /// Replaced only when the primary disconnects; a second connection is held as standby.
     out_tx: Option<mpsc::Sender<Message>>,
+
+    /// Connection ID of the current primary, used to distinguish primary from standby on disconnect.
+    primary_conn_id: Option<u64>,
+
+    /// Sender for a second extension that connected while a primary was already active.
+    /// Promoted to primary when the primary disconnects.
+    standby_tx: Option<(u64, mpsc::Sender<Message>)>,
 
     /// tabId → frame assembler.
     assemblers: HashMap<u32, FrameAssembler>,
@@ -457,6 +468,8 @@ impl State {
         }
         Self {
             out_tx: None,
+            primary_conn_id: None,
+            standby_tx: None,
             assemblers: HashMap::new(),
             pending_turn_id: HashMap::new(),
             pending_turn_lease: HashMap::new(),
@@ -491,9 +504,6 @@ impl State {
         }
     }
 
-    fn is_connected(&self) -> bool {
-        self.out_tx.is_some()
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -532,7 +542,7 @@ impl ChromiumBackend {
         loop {
             {
                 let st = self.state.lock().await;
-                if st.is_connected() {
+                if st.out_tx.is_some() {
                     return;
                 }
             }
@@ -629,7 +639,7 @@ impl ChromiumBackend {
         // Wait for extension to connect first (up to timeout).
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
         loop {
-            if self.state.lock().await.is_connected() {
+            if self.state.lock().await.out_tx.is_some() {
                 break;
             }
             if std::time::Instant::now() >= deadline {
@@ -1236,12 +1246,23 @@ async fn handle_connection(stream: tokio::net::TcpStream, state: Arc<Mutex<State
     let (mut sink, mut source) = ws.split();
     let (tx_out, mut rx_out) = mpsc::channel::<Message>(256);
 
+    let my_id = EXTENSION_CONN_ID.fetch_add(1, Ordering::SeqCst);
+
     {
         let mut st = state.lock().await;
-        st.out_tx = Some(tx_out.clone());
-        eprintln!("[chromium] extension connected");
-        for frame in st.replay_queue.drain(..) {
-            let _ = tx_out.try_send(Message::Text(frame.to_string().into()));
+        if st.out_tx.is_some() {
+            // A primary is already active. Hold this connection as standby so the
+            // primary's command channel is not disrupted mid-turn.
+            eprintln!("[chromium] second extension (conn={my_id}) connected, held as standby");
+            st.standby_tx = Some((my_id, tx_out.clone()));
+            // Do not replay the queue — the primary will handle those frames.
+        } else {
+            st.out_tx = Some(tx_out.clone());
+            st.primary_conn_id = Some(my_id);
+            eprintln!("[chromium] extension connected (conn={my_id})");
+            for frame in st.replay_queue.drain(..) {
+                let _ = tx_out.try_send(Message::Text(frame.to_string().into()));
+            }
         }
     }
 
@@ -1262,9 +1283,33 @@ async fn handle_connection(stream: tokio::net::TcpStream, state: Arc<Mutex<State
     }
 
     sink_task.abort();
-    let mut st = state.lock().await;
-    st.out_tx = None;
-    eprintln!("[chromium] extension disconnected");
+
+    {
+        let mut st = state.lock().await;
+        if st.primary_conn_id == Some(my_id) {
+            // Primary disconnected — promote standby if one is waiting.
+            if let Some((standby_id, standby_tx)) = st.standby_tx.take() {
+                eprintln!(
+                    "[chromium] primary (conn={my_id}) disconnected; promoting standby (conn={standby_id})"
+                );
+                st.out_tx = Some(standby_tx.clone());
+                st.primary_conn_id = Some(standby_id);
+                for frame in st.replay_queue.drain(..) {
+                    let _ = standby_tx.try_send(Message::Text(frame.to_string().into()));
+                }
+            } else {
+                eprintln!("[chromium] extension disconnected (conn={my_id})");
+                st.out_tx = None;
+                st.primary_conn_id = None;
+            }
+        } else {
+            // Standby disconnected — just clear the standby slot if it matches.
+            if st.standby_tx.as_ref().map(|(id, _)| *id == my_id).unwrap_or(false) {
+                st.standby_tx = None;
+            }
+            eprintln!("[chromium] standby extension disconnected (conn={my_id})");
+        }
+    }
 }
 
 async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {

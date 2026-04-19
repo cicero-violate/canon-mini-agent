@@ -23,7 +23,8 @@ use std::path::Path;
 use anyhow::Result;
 
 use crate::issues::{
-    is_closed, load_issues_file, persist_issues_projection, rescore_all, Issue, IssuesFile,
+    is_closed, load_issues_file, persist_issues_projection_with_writer, rescore_all, Issue,
+    IssuesFile,
 };
 use crate::semantic::SemanticIndex;
 
@@ -86,7 +87,12 @@ pub fn generate_all_refactor_issues(workspace: &Path) -> Result<usize> {
 
     if created > 0 {
         rescore_all(&mut file);
-        persist_issues_projection(workspace, &file, "generate_all_refactor_issues")?;
+        persist_issues_projection_with_writer(
+            workspace,
+            &file,
+            None,
+            "generate_all_refactor_issues",
+        )?;
     }
 
     Ok(created)

@@ -11,9 +11,9 @@ use anyhow::Result;
 use serde_json::{json, Value};
 
 use crate::issues::{
-    load_issues_file, persist_issues_projection, rescore_all, Issue, IssuesFile,
+    load_issues_file, persist_issues_projection_with_writer, rescore_all, Issue, IssuesFile,
 };
-use crate::semantic::SemanticIndex;
+use crate::semantic::{GraphCountKind, SemanticIndex};
 
 const DEFAULT_BRIDGE_RATIO_THRESHOLD: f64 = 10.0;
 const CANDIDATE_FUNCTION_LIMIT: usize = 5;
@@ -48,7 +48,12 @@ pub fn generate_bridge_connectivity_issues(workspace: &Path) -> Result<usize> {
     rescore_all(&mut file);
     let after = serde_json::to_value(&file)?;
     if before != after {
-        persist_issues_projection(workspace, &file, "generate_bridge_connectivity_issues")?;
+        persist_issues_projection_with_writer(
+            workspace,
+            &file,
+            None,
+            "generate_bridge_connectivity_issues",
+        )?;
     }
 
     Ok(mutated)
@@ -59,11 +64,11 @@ pub fn analyze_bridge_connectivity(
     crate_name: &str,
 ) -> Result<BridgeConnectivityStats> {
     let idx = SemanticIndex::load(workspace, crate_name)?;
-    let node_count = idx.node_count();
-    let bridge_edge_count = idx.bridge_edge_count();
-    let semantic_edge_count = idx.semantic_edge_count();
-    let cfg_node_count = idx.cfg_node_count();
-    let cfg_edge_count = idx.cfg_edge_count();
+    let node_count = idx.graph_count(GraphCountKind::Node);
+    let bridge_edge_count = idx.graph_count(GraphCountKind::BridgeEdge);
+    let semantic_edge_count = idx.graph_count(GraphCountKind::SemanticEdge);
+    let cfg_node_count = idx.graph_count(GraphCountKind::CfgNode);
+    let cfg_edge_count = idx.graph_count(GraphCountKind::CfgEdge);
     let bridge_ratio = bridge_edge_count as f64 / node_count.max(1) as f64;
     let threshold = bridge_ratio_threshold(crate_name);
     let candidate_functions = top_bridge_candidate_functions(&idx);

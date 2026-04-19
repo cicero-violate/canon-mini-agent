@@ -172,33 +172,6 @@ fn try_emit_workspace_artifact_effect(
         })
 }
 
-fn record_workspace_artifact_effect_for_workspace(
-    workspace: &Path,
-    requested: bool,
-    artifact: &str,
-    op: &str,
-    target: &str,
-    subject: &str,
-    signature: &str,
-) -> Result<()> {
-    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
-    let state = crate::system_state::SystemState::new(&[], 0);
-    let mut writer = crate::canonical_writer::CanonicalWriter::try_new(
-        state,
-        crate::tlog::Tlog::open(&tlog_path),
-        workspace.to_path_buf(),
-    )?;
-    try_emit_workspace_artifact_effect(
-        &mut writer,
-        requested,
-        artifact,
-        op,
-        target,
-        subject,
-        signature,
-    )
-}
-
 fn record_effect_for_workspace(workspace: &Path, effect: crate::events::EffectEvent) -> Result<()> {
     let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
     let state = crate::system_state::SystemState::new(&[], 0);
@@ -224,7 +197,7 @@ fn write_projection_with_workspace_effects(
         &contents.len().to_string(),
     ]);
     let target = path.to_string_lossy().into_owned();
-    record_workspace_artifact_effect_for_workspace(
+    crate::logging::record_workspace_artifact_effect(
         workspace,
         true,
         artifact,
@@ -240,7 +213,7 @@ fn write_projection_with_workspace_effects(
     let tmp_path = path.with_extension("tmp");
     std::fs::write(&tmp_path, contents)?;
     std::fs::rename(&tmp_path, path)?;
-    if let Err(err) = record_workspace_artifact_effect_for_workspace(
+    if let Err(err) = crate::logging::record_workspace_artifact_effect(
         workspace,
         false,
         artifact,
@@ -3451,10 +3424,11 @@ fn reject_unvalidated_diagnostics_persistence(
     }
     if let Some(previous) = previous_diagnostics_text {
         if let Ok(report) = serde_json::from_str::<crate::reports::DiagnosticsReport>(&previous) {
-            crate::reports::persist_diagnostics_projection_to_path(
+            crate::reports::persist_diagnostics_projection_with_writer_to_path(
                 workspace,
                 &report,
                 diagnostics_target_path.unwrap_or(diagnostics_file()),
+                None,
                 "diagnostics_rejection_restore",
             )?;
         } else {
@@ -7675,8 +7649,9 @@ fn persist_inbound_message(
             Some(json!({ "path": path.to_string_lossy(), "to": to })),
         );
         if let Some(workspace) = agent_state_dir.parent() {
-            crate::blockers::record_action_failure(
+            crate::blockers::record_action_failure_with_writer(
                 workspace,
+                None,
                 role,
                 "handoff_delivery",
                 &format!("failed to write message file for {to}: {err}"),
@@ -7694,8 +7669,9 @@ fn persist_inbound_message(
     ) {
         eprintln!("[{role}] step={step} failed to write wakeup flag for {to}: {err}");
         if let Some(workspace) = agent_state_dir.parent() {
-            crate::blockers::record_action_failure(
+            crate::blockers::record_action_failure_with_writer(
                 workspace,
+                None,
                 role,
                 "handoff_delivery",
                 &format!("failed to write wakeup flag for {to}: {err}"),
