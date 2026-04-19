@@ -23,17 +23,21 @@ fn sort_by_objective_desc(a: &serde_json::Value, b: &serde_json::Value) -> std::
 
 /// Compute normalized [0.0, 1.0] objective scores for all items in-place.
 ///
-/// Implements: objective = min(B) + min(R)  s.t. correctness invariant
-///   B_norm  = mir_blocks / max_mir_blocks          (branching proxy, weight 0.6)
+///   B_norm  = branch_score / max_branch_score      (terminator-weighted branching, weight 0.6)
 ///   R_norm  = stmt_density / max_stmt_density      (redundancy proxy, weight 0.4)
-///   stmt_density = mir_stmts / max(mir_blocks, 1)  (dense logic per branch → redundancy signal)
+///   stmt_density = mir_stmts / max(mir_blocks, 1)
 ///   objective_score = 0.6 * B_norm + 0.4 * R_norm
 ///
-/// Higher score = higher-value reduction target.
+/// branch_score = SwitchInt×2 + Call×1 + Assert×0.5 over non-cleanup blocks.
+/// Falls back to mir_blocks when branch_score is absent.
 fn apply_objective_scores(items: &mut Vec<serde_json::Value>) {
-    let max_blocks = items
+    let max_branch = items
         .iter()
-        .filter_map(|v| v.get("mir_blocks").and_then(|x| x.as_f64()))
+        .filter_map(|v| {
+            v.get("branch_score")
+                .and_then(|x| x.as_f64())
+                .or_else(|| v.get("mir_blocks").and_then(|x| x.as_f64()))
+        })
         .fold(0.0_f64, f64::max);
     let max_density = items
         .iter()
@@ -49,6 +53,11 @@ fn apply_objective_scores(items: &mut Vec<serde_json::Value>) {
         .fold(0.0_f64, f64::max);
 
     for item in items.iter_mut() {
+        let branch = item
+            .get("branch_score")
+            .and_then(|x| x.as_f64())
+            .or_else(|| item.get("mir_blocks").and_then(|x| x.as_f64()))
+            .unwrap_or(0.0);
         let blocks = item
             .get("mir_blocks")
             .and_then(|x| x.as_f64())
@@ -57,8 +66,8 @@ fn apply_objective_scores(items: &mut Vec<serde_json::Value>) {
             .get("mir_stmts")
             .and_then(|x| x.as_f64())
             .unwrap_or(0.0);
-        let b_norm = if max_blocks > 0.0 {
-            blocks / max_blocks
+        let b_norm = if max_branch > 0.0 {
+            branch / max_branch
         } else {
             0.0
         };
@@ -154,7 +163,9 @@ fn build_complexity_entry(
         "line": s.line,
         "mir_blocks": blocks,
         "mir_stmts": stmts,
-        "complexity_proxy": blocks,
+        "branch_score": s.branch_score,
+        "is_directly_recursive": s.is_directly_recursive,
+        "complexity_proxy": s.branch_score.unwrap_or(blocks as f64),
     })
 }
 
@@ -233,7 +244,7 @@ fn build_complexity_report(
 fn complexity_intra_scoring() -> serde_json::Value {
     json!({
         "objective_score": "0.6·B_norm + 0.4·R_norm  ∈ [0,1]  (higher = higher-value target)",
-        "B_norm": "mir_blocks / max_mir_blocks  (branching proxy)",
+        "B_norm": "branch_score / max_branch_score  (terminator-weighted: SwitchInt×2+Call×1+Assert×0.5)",
         "R_norm": "stmt_density / max_stmt_density  (redundancy proxy: dense logic per branch)",
         "stmt_density": "mir_stmts / mir_blocks"
     })
@@ -241,10 +252,12 @@ fn complexity_intra_scoring() -> serde_json::Value {
 
 fn complexity_inter_scoring() -> serde_json::Value {
     json!({
-        "inter_objective": "0.40·B_transitive_norm + 0.30·R_body + 0.30·(1−D_det)",
-        "B_transitive": "B(F) + mean(B(callee)) — depth-1 branching propagation",
-        "R_body": "1.0 if MIR fingerprint matches another function (exact duplicate)",
-        "D_det": "1.0 − B_norm  (determinism proxy)"
+        "inter_objective": "0.30·B_transitive_norm + 0.20·R_body + 0.20·(1−D_det) + 0.30·heat_norm",
+        "branch_score": "SwitchInt×2.0 + Call×1.0 + Assert×0.5 over non-cleanup MIR blocks",
+        "B_transitive": "branch_score(F) + mean(branch_score(callee)) — depth-1 propagation",
+        "R_body": "1.0 if MIR fingerprint+signature+callees match another function (semantic duplicate)",
+        "D_det": "1.0 − branch_score_norm  (determinism proxy)",
+        "heat_score": "branch_score × ln(call_in + 1) — complexity weighted by call frequency"
     })
 }
 

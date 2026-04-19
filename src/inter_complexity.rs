@@ -58,8 +58,15 @@ pub struct InterEntry {
     pub duplicate_of: Vec<String>,
     /// R_body: 1.0 if at least one MIR-identical sibling exists, else 0.0.
     pub r_body: f64,
-    /// D_det proxy: 1.0 − B_norm (higher = more deterministic).
+    /// D_det proxy: 1.0 − branch_score_norm (higher = more deterministic).
     pub d_det: f64,
+    /// Terminator-weighted branch score: SwitchInt×2 + Call×1 + Assert×0.5 over non-cleanup blocks.
+    /// More accurate than raw mir_blocks as a cyclomatic complexity proxy.
+    pub branch_score: f64,
+    /// Heat score: branch_score × ln(call_in + 1). Surfaces complex AND frequently-called functions.
+    pub heat_score: f64,
+    /// True if the function directly calls itself.
+    pub is_directly_recursive: bool,
     /// Composite inter-function objective score ∈ [0, 1].
     pub inter_objective: f64,
 }
@@ -93,13 +100,22 @@ pub fn analyze(workspace: &Path, crate_name: &str) -> Result<InterAnalysis> {
         *caller_map.entry(to.clone()).or_insert(0) += 1;
     }
 
-    // blocks map: symbol → mir_blocks
-    let blocks_map: HashMap<String, usize> = summaries
+    // Complexity map: symbol → terminator-weighted branch score.
+    // Falls back to mir_blocks when cfg_nodes are absent (e.g. stub crates).
+    let complexity_map: HashMap<String, f64> = summaries
         .iter()
-        .filter_map(|s| s.mir_blocks.map(|b| (s.symbol.clone(), b)))
+        .filter_map(|s| {
+            let c = s
+                .branch_score
+                .or_else(|| s.mir_blocks.map(|b| b as f64))?;
+            Some((s.symbol.clone(), c))
+        })
         .collect();
-
-    let max_b = blocks_map.values().copied().max().unwrap_or(1) as f64;
+    let max_c = complexity_map
+        .values()
+        .copied()
+        .fold(0.0_f64, f64::max)
+        .max(1.0);
 
     // Build callee sequences from bridge_edges: symbol_path → ordered list of callee paths.
     // Two functions are semantic duplicates only if they call the same callees in the same
@@ -163,57 +179,70 @@ pub fn analyze(workspace: &Path, crate_name: &str) -> Result<InterAnalysis> {
     let mut entries: Vec<InterEntry> = summaries
         .iter()
         .filter_map(|s| {
-            let b = s.mir_blocks?;
-            if b == 0 {
+            let c = *complexity_map.get(&s.symbol)?;
+            if c == 0.0 && s.mir_blocks.unwrap_or(0) == 0 {
                 return None;
             }
 
-            // B_transitive: local + mean of direct callee blocks
-            let callee_blocks: Vec<f64> = callee_map
+            let call_in = *caller_map.get(&s.symbol).unwrap_or(&0);
+
+            // B_transitive: local branch_score + mean of direct callee branch_scores
+            let callee_complexities: Vec<f64> = callee_map
                 .get(&s.symbol)
                 .map(|cs| {
                     cs.iter()
-                        .filter_map(|c| blocks_map.get(c))
-                        .map(|&b| b as f64)
+                        .filter_map(|callee| complexity_map.get(callee))
+                        .copied()
                         .collect()
                 })
                 .unwrap_or_default();
-            let callee_mean = if callee_blocks.is_empty() {
+            let callee_mean = if callee_complexities.is_empty() {
                 0.0
             } else {
-                callee_blocks.iter().sum::<f64>() / callee_blocks.len() as f64
+                callee_complexities.iter().sum::<f64>() / callee_complexities.len() as f64
             };
-            let b_transitive = b as f64 + callee_mean;
+            let b_transitive = c + callee_mean;
+
+            // Heat: complexity weighted by call frequency (ln smoothing prevents domination)
+            let heat_score = c * ((call_in as f64 + 1.0).ln());
 
             // Semantic duplicate detection using composite key
             let fp = s.mir_fingerprint.clone();
             let siblings = sym_to_siblings.get(&s.symbol).cloned().unwrap_or_default();
             let r_body = if siblings.is_empty() { 0.0 } else { 1.0 };
 
-            let b_norm = b as f64 / max_b;
-            let d_det = 1.0 - b_norm;
+            let c_norm = c / max_c;
+            let d_det = 1.0 - c_norm;
 
             Some(InterEntry {
                 symbol: s.symbol.clone(),
                 file: s.file.clone(),
                 line: s.line,
-                b_direct: b,
+                b_direct: s.mir_blocks.unwrap_or(0),
                 b_transitive,
                 call_out: s.call_out,
-                call_in: *caller_map.get(&s.symbol).unwrap_or(&0),
+                call_in,
                 mir_fingerprint: fp,
                 duplicate_of: siblings,
                 r_body,
                 d_det,
+                branch_score: c,
+                heat_score,
+                is_directly_recursive: s.is_directly_recursive,
                 inter_objective: 0.0, // filled after normalization
             })
         })
         .collect();
 
-    // Normalize B_transitive across all entries, then compute inter_objective
+    // Normalize B_transitive and heat across all entries, then compute inter_objective.
+    // Weights (sum = 1.0): B_transitive 0.30 · R_body 0.20 · D_det 0.20 · heat 0.30
     let max_bt = entries
         .iter()
         .map(|e| e.b_transitive)
+        .fold(0.0_f64, f64::max);
+    let max_heat = entries
+        .iter()
+        .map(|e| e.heat_score)
         .fold(0.0_f64, f64::max);
 
     for entry in &mut entries {
@@ -222,8 +251,16 @@ pub fn analyze(workspace: &Path, crate_name: &str) -> Result<InterAnalysis> {
         } else {
             0.0
         };
-        entry.inter_objective =
-            (0.40 * bt_norm + 0.30 * entry.r_body + 0.30 * (1.0 - entry.d_det)).clamp(0.0, 1.0);
+        let heat_norm = if max_heat > 0.0 {
+            entry.heat_score / max_heat
+        } else {
+            0.0
+        };
+        entry.inter_objective = (0.30 * bt_norm
+            + 0.20 * entry.r_body
+            + 0.20 * (1.0 - entry.d_det)
+            + 0.30 * heat_norm)
+            .clamp(0.0, 1.0);
     }
 
     entries.sort_by(|a, b| {
@@ -313,6 +350,16 @@ fn append_hotspot_issues(
             created += 1;
         }
     }
+    // Recursive function issues — separate from hotspot threshold
+    for entry in &analysis.entries {
+        if !entry.is_directly_recursive {
+            continue;
+        }
+        if let Some(issue) = build_recursive_issue(entry, crate_name, existing_ids) {
+            file.issues.push(issue);
+            created += 1;
+        }
+    }
     created
 }
 
@@ -374,6 +421,48 @@ fn append_duplicate_issues(
     created
 }
 
+fn build_recursive_issue(
+    entry: &InterEntry,
+    crate_name: &str,
+    existing_ids: &HashSet<String>,
+) -> Option<Issue> {
+    let id = format!(
+        "auto_recursive_{crate_name}_{}",
+        stable_hash(&entry.symbol)
+    );
+    if existing_ids.contains(&id) {
+        return None;
+    }
+    let short = entry.symbol.rsplit("::").next().unwrap_or(&entry.symbol);
+    Some(Issue {
+        id,
+        title: format!("Direct recursion detected: {short}"),
+        status: "open".to_string(),
+        priority: if entry.branch_score >= 10.0 {
+            "high".to_string()
+        } else {
+            "medium".to_string()
+        },
+        kind: "performance".to_string(),
+        description: format!(
+            "`{}` calls itself directly (branch_score={:.1}, call_in={}).\n\
+             Direct recursion prevents inlining, risks stack overflow under deep inputs, \
+             and complicates static analysis. Consider converting to iteration or \
+             introducing a trampoline/accumulator pattern.",
+            entry.symbol, entry.branch_score, entry.call_in
+        ),
+        location: hotspot_location(entry),
+        evidence: vec![
+            format!("is_directly_recursive=true"),
+            format!("branch_score={:.1}", entry.branch_score),
+            format!("call_in={} call_out={}", entry.call_in, entry.call_out),
+        ],
+        discovered_by: "inter_complexity_analyzer".to_string(),
+        score: 0.0,
+        ..Issue::default()
+    })
+}
+
 fn build_duplicate_issue(group: &[String], existing_ids: &HashSet<String>) -> Option<Issue> {
     if group.len() < 2 {
         return None;
@@ -429,6 +518,9 @@ pub fn to_report_value(analysis: &InterAnalysis, top_n: usize) -> serde_json::Va
                 "file": shorten_file(&e.file),
                 "line": e.line,
                 "inter_objective": format!("{:.3}", e.inter_objective),
+                "branch_score": format!("{:.1}", e.branch_score),
+                "heat_score": format!("{:.1}", e.heat_score),
+                "is_directly_recursive": e.is_directly_recursive,
                 "b_direct": e.b_direct,
                 "b_transitive": format!("{:.1}", e.b_transitive),
                 "r_body": e.r_body,
@@ -448,10 +540,12 @@ pub fn to_report_value(analysis: &InterAnalysis, top_n: usize) -> serde_json::Va
 
     serde_json::json!({
         "scoring": {
-            "inter_objective": "0.40·B_transitive_norm + 0.30·R_body + 0.30·(1−D_det)",
-            "B_transitive": "B(F) + mean(B(callee)) for direct callees — depth-1 propagation",
-            "R_body": "1.0 if MIR fingerprint matches another function (exact duplicate), else 0.0",
-            "D_det": "1.0 − B_norm (higher = more deterministic; reduces with branching)",
+            "inter_objective": "0.30·B_transitive_norm + 0.20·R_body + 0.20·(1−D_det) + 0.30·heat_norm",
+            "branch_score": "SwitchInt×2.0 + Call×1.0 + Assert×0.5 over non-cleanup MIR blocks",
+            "B_transitive": "branch_score(F) + mean(branch_score(callee)) — depth-1 propagation",
+            "R_body": "1.0 if MIR fingerprint+signature+callees match another function, else 0.0",
+            "D_det": "1.0 − branch_score_norm (higher = more deterministic)",
+            "heat_score": "branch_score × ln(call_in + 1) — complexity weighted by call frequency",
         },
         "call_edges_analyzed": analysis.call_edge_count,
         "top": top,
@@ -535,23 +629,33 @@ fn build_issue_fields(
     let kind = issue_kind(entry);
     let dup_note = duplicate_note(entry);
 
+    let recursive_note = if entry.is_directly_recursive {
+        "\n- is_directly_recursive=true  (consider converting to iteration)"
+    } else {
+        ""
+    };
     let description = format!(
         "Inter-function objective score {score:.3} in crate `{crate_name}` \
          (threshold for action: ≥0.20).\n\n\
          Execution model: Detect(this issue) → Propose(LLM refactor) → Apply(patch) → Verify(build+test)\n\n\
          Metrics:\n\
-         - B_direct={b_d}  B_transitive={b_t:.1}  (local + mean callee branching)\n\
+         - branch_score={bs:.1}  (SwitchInt×2+Call×1+Assert×0.5 over non-cleanup blocks)\n\
+         - heat_score={heat:.1}  (branch_score × ln(call_in+1))\n\
+         - B_transitive={b_t:.1}  (local + mean callee branch_score)\n\
          - R_body={r:.1}  (1.0 = MIR duplicate exists)\n\
          - D_det={d:.3}  (1.0 = fully deterministic)\n\
          - call_out={co}  call_in={ci}\
+         {recursive_note}\
          {dup_note}",
         score = entry.inter_objective,
-        b_d = entry.b_direct,
+        bs = entry.branch_score,
+        heat = entry.heat_score,
         b_t = entry.b_transitive,
         r = entry.r_body,
         d = entry.d_det,
         co = entry.call_out,
         ci = entry.call_in,
+        recursive_note = recursive_note,
         dup_note = dup_note,
     );
 
@@ -603,13 +707,17 @@ fn build_issue_evidence(entry: &InterEntry, file: &str) -> Vec<String> {
     let mut evidence = vec![
         format!("inter_objective={:.3}", entry.inter_objective),
         format!(
-            "b_direct={} b_transitive={:.1}",
-            entry.b_direct, entry.b_transitive
+            "branch_score={:.1} heat_score={:.1}",
+            entry.branch_score, entry.heat_score
         ),
+        format!("b_transitive={:.1}", entry.b_transitive),
         format!("r_body={:.1} d_det={:.3}", entry.r_body, entry.d_det),
         format!("call_out={} call_in={}", entry.call_out, entry.call_in),
         format!("location: {file}:{}", entry.line),
     ];
+    if entry.is_directly_recursive {
+        evidence.push("is_directly_recursive=true".to_string());
+    }
     if !entry.duplicate_of.is_empty() {
         evidence.push(format!("MIR duplicates: {}", entry.duplicate_of.join(", ")));
     }
