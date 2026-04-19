@@ -42,6 +42,8 @@ use tokio_tungstenite::tungstenite::Message;
 const FRAMES_DIR: &str = "./frames";
 const AGENT_STATE_DIR: &str = "./agent_state";
 const PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD: u32 = 8;
+/// Unclaimed preopened tabs older than this are closed to prevent accumulation across restarts.
+const PREOPENED_TAB_TTL: std::time::Duration = std::time::Duration::from_secs(60);
 const CHROMIUM_AUTOLAUNCH_DISABLE_ENV: &str = "CANON_CHROMIUM_AUTOLAUNCH";
 const CHROMIUM_AUTOLAUNCH_SCRIPT_ENV: &str = "CANON_CHROMIUM_LAUNCH_SCRIPT";
 
@@ -397,6 +399,10 @@ struct State {
     /// URL → queue of pre-opened tabIds (TAB_READY with no reqId).
     preopened: HashMap<String, VecDeque<u32>>,
 
+    /// tabId → time the tab entered the preopened pool.
+    /// Tabs that remain unclaimed beyond PREOPENED_TAB_TTL are closed.
+    preopened_at: HashMap<u32, std::time::Instant>,
+
     /// endpoint_id → tabId for stateful endpoints.
     endpoint_tabs: HashMap<String, u32>,
 
@@ -479,6 +485,7 @@ impl State {
             pending_open: HashMap::new(),
             tab_urls: HashMap::new(),
             preopened: HashMap::new(),
+            preopened_at: HashMap::new(),
             endpoint_tabs: HashMap::new(),
             tab_owners: HashMap::new(),
             quarantined_tabs: HashSet::new(),
@@ -567,6 +574,7 @@ impl ChromiumBackend {
         }
         let tab_id = claimed?;
         let url = st.tab_urls.get(&tab_id).cloned().unwrap_or_default();
+        st.preopened_at.remove(&tab_id);
         st.send_msg(json!({ "type": "CLAIM_TAB", "tabId": tab_id, "url": url }));
         Some(tab_id)
     }
@@ -594,6 +602,7 @@ impl ChromiumBackend {
                 .get(&tab_id)
                 .cloned()
                 .unwrap_or_else(|| url.clone());
+            st.preopened_at.remove(&tab_id);
             st.send_msg(json!({ "type": "CLAIM_TAB", "tabId": tab_id, "url": claim_url }));
             return Some(tab_id);
         }
@@ -654,6 +663,7 @@ impl ChromiumBackend {
         loop {
             {
                 let mut st = self.state.lock().await;
+                close_stale_preopened_tabs(&mut st);
                 let recovered = reconcile_tab_state_locked(&mut st, Some(endpoint_id), urls);
                 if recovered > 0 {
                     append_outbound_event(
@@ -1399,12 +1409,18 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                 let queue = st.preopened.entry(url.clone()).or_default();
                 if !queue.contains(&tab_id) {
                     queue.push_back(tab_id);
+                    st.preopened_at
+                        .entry(tab_id)
+                        .or_insert_with(std::time::Instant::now);
                 }
                 if let Some(orig) = original_url {
                     if orig != url {
                         let q2 = st.preopened.entry(orig).or_default();
                         if !q2.contains(&tab_id) {
                             q2.push_back(tab_id);
+                            st.preopened_at
+                                .entry(tab_id)
+                                .or_insert_with(std::time::Instant::now);
                         }
                     }
                 }
@@ -1423,6 +1439,7 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                 st.endpoint_tabs.remove(&endpoint_id);
             }
             st.quarantined_tabs.remove(&tab_id);
+            st.preopened_at.remove(&tab_id);
             for q in st.preopened.values_mut() {
                 q.retain(|id| *id != tab_id);
             }
@@ -2049,6 +2066,29 @@ fn retire_tab_locked(st: &mut State, endpoint_id: &str, tab_id: u32, stateful: b
 
     for queue in st.preopened.values_mut() {
         queue.retain(|id| *id != tab_id);
+    }
+}
+
+/// Close preopened tabs that have been waiting longer than `PREOPENED_TAB_TTL`.
+/// Called before each tab acquisition to prevent excess tabs from accumulating
+/// across extension reconnects and restarts.
+fn close_stale_preopened_tabs(st: &mut State) {
+    let now = std::time::Instant::now();
+    let stale: Vec<u32> = st
+        .preopened_at
+        .iter()
+        .filter(|(_, t)| now.duration_since(**t) > PREOPENED_TAB_TTL)
+        .map(|(&id, _)| id)
+        .collect();
+    for tab_id in stale {
+        let url = st.tab_urls.get(&tab_id).cloned().unwrap_or_default();
+        eprintln!("[chromium] closing stale preopened tab={tab_id} url={url} (unclaimed >{PREOPENED_TAB_TTL:?})");
+        st.preopened_at.remove(&tab_id);
+        for q in st.preopened.values_mut() {
+            q.retain(|id| *id != tab_id);
+        }
+        st.quarantined_tabs.insert(tab_id);
+        let _ = st.send_msg(json!({ "type": "CLOSE_TAB", "tabId": tab_id, "url": url }));
     }
 }
 
