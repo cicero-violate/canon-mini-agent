@@ -68,8 +68,8 @@ fn chromium_autolaunch_script_path() -> Option<PathBuf> {
 
 fn chromium_autolaunch_enabled() -> bool {
     match std::env::var(CHROMIUM_AUTOLAUNCH_DISABLE_ENV) {
-        Ok(raw) => !matches!(raw.trim(), "0" | "false" | "FALSE" | "off" | "OFF"),
-        Err(_) => true,
+        Ok(raw) => matches!(raw.trim(), "1" | "true" | "TRUE" | "on" | "ON"),
+        Err(_) => false,
     }
 }
 

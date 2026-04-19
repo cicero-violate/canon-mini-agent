@@ -146,6 +146,12 @@ pub struct SymbolSummary {
     /// Number of identifier reference sites recorded for this symbol (HIR-level).
     /// Zero means the symbol is never mentioned in source — a strong dead-code signal.
     pub ref_count: usize,
+    /// Terminator-weighted branch score over non-cleanup blocks:
+    ///   SwitchInt×2.0 + Call×1.0 + Assert×0.5
+    /// More accurate than mir_blocks as a cyclomatic complexity proxy.
+    pub branch_score: Option<f64>,
+    /// True if the symbol has a direct self-call edge (immediate recursion).
+    pub is_directly_recursive: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -348,12 +354,25 @@ impl SemanticIndex {
     pub fn symbol_summaries(&self) -> Vec<SymbolSummary> {
         let mut call_in: HashMap<&str, usize> = HashMap::new();
         let mut call_out: HashMap<&str, usize> = HashMap::new();
+        // Direct recursion: any call edge where from == to (same def_id).
+        let mut self_recursive: HashSet<&str> = HashSet::new();
         for edge in &self.graph.edges {
             if !edge_is_call(edge) {
                 continue;
             }
             *call_out.entry(edge.from.as_str()).or_insert(0) += 1;
             *call_in.entry(edge.to.as_str()).or_insert(0) += 1;
+            if edge.from == edge.to {
+                self_recursive.insert(edge.from.as_str());
+            }
+        }
+
+        // Group cfg_nodes by owner (def_id) for branch-score computation.
+        let mut owner_to_cfg: HashMap<&str, Vec<&CfgNode>> = HashMap::new();
+        for node in self.graph.cfg_nodes.values() {
+            if !node.owner.is_empty() {
+                owner_to_cfg.entry(node.owner.as_str()).or_default().push(node);
+            }
         }
 
         let mut out = Vec::new();
@@ -367,6 +386,23 @@ impl SemanticIndex {
                 None => (None, None, None),
             };
             let symbol = self.node_path(node_key, node).to_string();
+
+            // Terminator-weighted branch score over non-cleanup blocks.
+            let branch_score = owner_to_cfg.get(node_key.as_str()).map(|blocks| {
+                blocks
+                    .iter()
+                    .filter(|b| !b.is_cleanup)
+                    .map(|b| match b.terminator.as_str() {
+                        "SwitchInt" => 2.0,
+                        "Call" => 1.0,
+                        "Assert" => 0.5,
+                        _ => 0.0,
+                    })
+                    .sum::<f64>()
+            });
+
+            let is_directly_recursive = self_recursive.contains(node_key.as_str());
+
             out.push(SymbolSummary {
                 symbol,
                 kind: node.kind.clone(),
@@ -379,6 +415,8 @@ impl SemanticIndex {
                 call_in: *call_in.get(node_key.as_str()).unwrap_or(&0),
                 call_out: *call_out.get(node_key.as_str()).unwrap_or(&0),
                 ref_count: node.refs.len(),
+                branch_score,
+                is_directly_recursive,
             });
         }
 
