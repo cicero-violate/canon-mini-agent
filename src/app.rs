@@ -43,6 +43,7 @@ use crate::logging::{
     make_command_id, now_ms, record_effect_for_workspace,
 };
 use crate::md_convert::ensure_objectives_and_invariants_json;
+use crate::orchestrator_seam::plan_has_incomplete_tasks;
 use crate::prompt_inputs::{
     build_single_role_prompt, lane_summary_text, load_planner_inputs, load_single_role_inputs,
     load_verifier_prompt_inputs, read_required_text, read_text_or_empty, LaneConfig,
@@ -5927,10 +5928,6 @@ fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Va
     }
 }
 
-fn plan_has_incomplete_tasks(plan_text: &str) -> bool {
-    crate::orchestrator_seam::plan_has_incomplete_tasks(plan_text)
-}
-
 fn preferred_objectives_path(workspace: &Path) -> PathBuf {
     crate::objectives::ensure_runtime_objectives_file(workspace)
         .unwrap_or_else(|_| crate::objectives::resolve_objectives_path(workspace))
@@ -5974,7 +5971,8 @@ fn should_reject_solo_self_complete(
     if !is_complete_message {
         return false;
     }
-    has_actionable_objectives(objectives_text) && !plan_has_incomplete_tasks(plan_text)
+    has_actionable_objectives(objectives_text)
+        && !crate::orchestrator_seam::plan_has_incomplete_tasks(plan_text)
 }
 
 fn action_retry_fingerprint(action: &Value) -> String {
@@ -5994,7 +5992,7 @@ fn action_retry_fingerprint(action: &Value) -> String {
 }
 
 fn verifier_confirmed_with_plan_text(reason: &str, plan_text: &str) -> bool {
-    if plan_has_incomplete_tasks(plan_text) {
+    if crate::orchestrator_seam::plan_has_incomplete_tasks(plan_text) {
         return false;
     }
     if let Ok(v) = serde_json::from_str::<Value>(reason) {
