@@ -5,7 +5,10 @@ use std::path::{Path, PathBuf};
 use crate::semantic::{shorten_display_path, SemanticIndex};
 
 fn reports_dir(workspace: &Path) -> PathBuf {
-    workspace.join("state").join("reports").join("complexity")
+    workspace
+        .join("agent_state")
+        .join("reports")
+        .join("complexity")
 }
 
 fn sort_by_objective_desc(a: &serde_json::Value, b: &serde_json::Value) -> std::cmp::Ordering {

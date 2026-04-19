@@ -4313,8 +4313,7 @@ struct LlmResponseContext<'a> {
 fn full_exchange_path(kind: &str, ts_ms: u64, who: &str, step: usize) -> PathBuf {
     PathBuf::from(crate::constants::agent_state_dir())
         .join("llm_full")
-        .join(kind)
-        .join(format!("{ts_ms:013}_{who}_message_{step:04}.txt"))
+        .join(format!("{ts_ms:013}_{kind}_{who}_message_{step:04}.txt"))
 }
 
 fn write_full_exchange(kind: &str, ts_ms: u64, who: &str, step: usize, raw: &str) {

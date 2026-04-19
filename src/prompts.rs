@@ -612,7 +612,7 @@ const PLANNER_RULES: &[&str] = &[
     "- `PLAN.json` MUST be valid JSON following the PLAN/TASK protocol in `SPEC.md`.",
     "- Only modify `PLAN.json` (via `plan`) and lane plans (via `apply_patch`) — never edit `src/`, `tests/`, `SPEC.md`, `VIOLATIONS.json`, or diagnostics reports.",
     "- The planner owns lane-task ordering, dependency structure, and ready-task selection.",
-    "- Use state/reports/complexity/latest.json (supervisor-generated; proxy complexity_proxy=mir_blocks) to prioritize refactors and reduce branching/duplication.",
+    "- Use agent_state/reports/complexity/latest.json (supervisor-generated; proxy complexity_proxy=mir_blocks) to prioritize refactors and reduce branching/duplication.",
     "- Read `ISSUES.json` every cycle and promote top open issues into `agent_state/OBJECTIVES.json` and `PLAN.json` (or explicitly mark them resolved/wontfix with evidence). Issues are hints; objectives/plan are commitments.",
     "- Prefer rewriting whole plan sections when needed so priority order stays globally coherent.",
     "- Keep each executor's ready window small: 1-10 tasks maximum.",
@@ -633,7 +633,7 @@ fn diagnostics_rules() -> Vec<String> {
         "- For each ranked failure you report: if no matching ISSUES.json entry exists, create one with `issue` op=create. If one exists but is stale, update it with `issue` op=update and fresh evidence. If a prior issue is now resolved, close it with `issue` op=set_status status=resolved.".to_string(),
         "- Rank issues by impact on correctness, convergence, and repairability.".to_string(),
         "- Check control-flow and state-management decisions against CANONICAL_LAW.md and INVARIANTS.json.".to_string(),
-        "- Complexity report artifact (supervisor-generated): state/reports/complexity/latest.json (proxy metric complexity_proxy=mir_blocks) for ranking refactor hotspots.".to_string(),
+        "- Complexity report artifact (supervisor-generated): agent_state/reports/complexity/latest.json (proxy metric complexity_proxy=mir_blocks) for ranking refactor hotspots.".to_string(),
         "- Canonical log sources (read all before writing findings): agent_state/tlog.ndjson (state-machine event log), agent_state/enforced_invariants.json (runtime invariant registry), agent_state/lessons.json (synthesized behavioral lessons), agent_state/default/actions.jsonl (full action history — tail with python).".to_string(),
         "- Before trusting any trace or log file, confirm it was updated in the current cycle (mtime, size change, or fresh producer command).".to_string(),
         "- Treat empty `rg` / `grep` results as ambiguous: no match, stale file, or incomplete write are all possible.".to_string(),
@@ -652,7 +652,7 @@ fn executor_rules() -> Vec<String> {
         "- Only list_dir paths that exist under WORKSPACE; do not assume `canon-utils` exists unless WORKSPACE is `/workspace/ai_sandbox/canon`.".to_string(),
         "- Use run_command for cargo builds, tests, and shell discovery.".to_string(),
         "- Use cargo_fmt and cargo_clippy tools for formatting/linting. Both return exactly 3 lines (status/log/summary) and write full output under state/logs/.".to_string(),
-        "- Complexity report artifact (supervisor-generated): state/reports/complexity/latest.json (proxy metric complexity_proxy=mir_blocks) for hotspot targeting.".to_string(),
+        "- Complexity report artifact (supervisor-generated): agent_state/reports/complexity/latest.json (proxy metric complexity_proxy=mir_blocks) for hotspot targeting.".to_string(),
         "- Use python for structured analysis when shell pipelines are awkward.".to_string(),
         "- Always use the `python` action when reading or inspecting any `.json` state file (PLAN.json, OBJECTIVES.json, ISSUES.json, VIOLATIONS.json, diagnostics). Never use shell tools (cat, jq, grep) to read JSON — use python.".to_string(),
         "- Your work is scoped to the task_id provided in the planner handoff. Execute that specific task; do not pick up other PLAN.json tasks unless the planner explicitly includes them in the ready window.".to_string(),
@@ -676,7 +676,7 @@ fn solo_rules() -> Vec<String> {
         "- Use list_dir only to check whether a path exists or to enumerate non-source artifacts; use semantic_map to explore Rust semantic structure. Do not invent `symbol_search`; use `symbol_refs` or `symbol_window` instead.".to_string(),
         "- Use run_command for cargo builds, tests, and shell discovery.".to_string(),
         "- Use cargo_fmt and cargo_clippy tools for formatting/linting. Both return exactly 3 lines (status/log/summary) and write full output under state/logs/.".to_string(),
-        "- Complexity report artifact (supervisor-generated): state/reports/complexity/latest.json (proxy metric complexity_proxy=mir_blocks) for hotspot targeting.".to_string(),
+        "- Complexity report artifact (supervisor-generated): agent_state/reports/complexity/latest.json (proxy metric complexity_proxy=mir_blocks) for hotspot targeting.".to_string(),
         "- Run cargo build/test before `message` with status=complete when changes affect code.".to_string(),
         "- If you rebuild canon-mini-agent, the supervisor may restart immediately in solo mode; be ready for a restart before the next step.".to_string(),
         "- You may modify any in-workspace files when justified by evidence; use the `plan` action for PLAN.json edits.".to_string(),
@@ -774,7 +774,7 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
     let issues_heading = "Open issues projection (top 3)";
     let schema_block = default_schema_block(kind);
     let suffix = format!(
-        "\nTool schemas in scope for this role:\n\n{schema_block}\n\nFull syntax examples with notes: state/tool_examples.md — use read_file when you need a reminder.\n\n{}",
+        "\nTool schemas in scope for this role:\n\n{schema_block}\n\nFull syntax examples with notes: agent_state/tool_examples.md — use read_file when you need a reminder.\n\n{}",
         tail
     );
     let items = [

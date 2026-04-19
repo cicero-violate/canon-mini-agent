@@ -1045,7 +1045,7 @@ pub fn read_loop_context_hint(state_dir: &Path) -> String {
     out
 }
 
-/// Read state/reports/complexity/latest.json and return the top `limit` hotspots
+/// Read agent_state/reports/complexity/latest.json and return the top `limit` hotspots
 /// as compact text for prompt injection. Returns empty string if report is absent.
 pub fn read_complexity_hotspots(workspace: &Path, limit: usize) -> String {
     let path = complexity_report_path(workspace);
@@ -1072,7 +1072,7 @@ pub fn read_complexity_hotspots(workspace: &Path, limit: usize) -> String {
 
 fn complexity_report_path(workspace: &Path) -> std::path::PathBuf {
     workspace
-        .join("state")
+        .join("agent_state")
         .join("reports")
         .join("complexity")
         .join("latest.json")

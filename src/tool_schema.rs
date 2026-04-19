@@ -591,7 +591,7 @@ pub enum ToolAction {
     StageGraph {
         #[serde(flatten)]
         base: ActionBase,
-        /// Output path. Defaults to `state/orchestrator/stage_graph.json`.
+        /// Output path. Defaults to `agent_state/orchestrator/stage_graph.json`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         out: Option<String>,
     },
@@ -864,9 +864,9 @@ fn build_tool_actions_list() -> Vec<(&'static str, &'static str, Option<&'static
         ("graph_reachability", "emit reachability reports", None),
         (
             "stage_graph",
-            "emit a synthetic OODA-style stage graph (written to state/orchestrator/stage_graph.json by default)",
+            "emit a synthetic OODA-style stage graph (written to agent_state/orchestrator/stage_graph.json by default)",
             Some(
-                "Example:\n  {\"action\":\"stage_graph\",\"rationale\":\"Generate the current stage graph for agent branching and introspection.\",\"predicted_next_actions\":[{\"action\":\"read_file\",\"intent\":\"Inspect the generated stage graph JSON.\"},{\"action\":\"semantic_map\",\"intent\":\"Jump from a stage anchor to code symbols.\"}]}\nNotes:\n- `out` defaults to `state/orchestrator/stage_graph.json`.",
+                "Example:\n  {\"action\":\"stage_graph\",\"rationale\":\"Generate the current stage graph for agent branching and introspection.\",\"predicted_next_actions\":[{\"action\":\"read_file\",\"intent\":\"Inspect the generated stage graph JSON.\"},{\"action\":\"semantic_map\",\"intent\":\"Jump from a stage anchor to code symbols.\"}]}\nNotes:\n- `out` defaults to `agent_state/orchestrator/stage_graph.json`.",
             ),
         ),
         (
@@ -1014,12 +1014,12 @@ pub fn selected_tool_protocol_schema_text(actions: &[&str]) -> String {
     }
 
     out.push_str(
-        "For syntax reminders and longer examples, read `state/tool_examples.md` with `read_file`.\n",
+        "For syntax reminders and longer examples, read `agent_state/tool_examples.md` with `read_file`.\n",
     );
     out
 }
 
-/// Write per-action syntax examples to `state/tool_examples.md`.
+/// Write per-action syntax examples to `agent_state/tool_examples.md`.
 /// Called once at agent-loop startup so the file is always fresh.
 pub fn write_tool_examples(workspace: &std::path::Path) {
     if let Err(e) = write_tool_examples_inner(workspace) {
@@ -1031,7 +1031,7 @@ fn write_tool_examples_inner(workspace: &std::path::Path) -> anyhow::Result<()> 
     let schema = schema_for!(ToolAction);
     let value = serde_json::to_value(&schema).unwrap_or_else(|_| Value::Object(Default::default()));
     let actions = build_tool_actions_list();
-    let dir = workspace.join("state");
+    let dir = workspace.join("agent_state");
     std::fs::create_dir_all(&dir)?;
     let path = dir.join("tool_examples.md");
     let mut out = String::from("# Tool action syntax examples\n\n");

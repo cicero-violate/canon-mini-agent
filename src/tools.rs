@@ -7220,10 +7220,11 @@ mod semantic_input_normalization_tests {
     }
 }
 
-/// Write the canonical stage graph artifact to `state/orchestrator/stage_graph.json`.
+/// Write the canonical stage graph artifact to `agent_state/orchestrator/stage_graph.json`.
 /// Called automatically at agent-loop startup so the file is always present as a live artifact.
 pub(crate) fn write_stage_graph(workspace: &Path) {
-    if let Err(e) = write_stage_graph_inner(workspace, "state/orchestrator/stage_graph.json") {
+    if let Err(e) = write_stage_graph_inner(workspace, "agent_state/orchestrator/stage_graph.json")
+    {
         eprintln!("[stage_graph] failed to write live artifact: {e}");
     }
 }
@@ -7343,7 +7344,7 @@ fn handle_stage_graph_action(workspace: &Path, action: &Value) -> Result<(bool, 
     let out_rel = action
         .get("out")
         .and_then(|v| v.as_str())
-        .unwrap_or("state/orchestrator/stage_graph.json");
+        .unwrap_or("agent_state/orchestrator/stage_graph.json");
     let out_path = {
         let p = std::path::Path::new(out_rel);
         if p.is_absolute() {
@@ -8132,7 +8133,7 @@ mod tests {
         let (_done, out) = handle_stage_graph_action(&tmp, &action).unwrap();
         assert!(out.contains("\"nodes\""));
         assert!(out.contains("observe.input"));
-        let path = tmp.join("state/orchestrator/stage_graph.json");
+        let path = tmp.join("agent_state/orchestrator/stage_graph.json");
         assert!(path.exists(), "expected stage graph at {}", path.display());
         let parsed: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert!(
