@@ -1016,6 +1016,25 @@ pub fn auto_fill_message_fields(action: &mut Value, role: &str) -> bool {
                 changed = true;
             }
         }
+
+        // Two-role runtime guard: planner/executor messages must stay in-loop.
+        // Prevent planner->user (or other drift) from bypassing orchestration.
+        let expected_peer = if actual_from.eq_ignore_ascii_case("planner") {
+            Some("executor")
+        } else if actual_from.eq_ignore_ascii_case("executor") {
+            Some("planner")
+        } else {
+            None
+        };
+        if let Some(peer) = expected_peer {
+            if !current_to.eq_ignore_ascii_case(peer) {
+                eprintln!(
+                    "[{role}] auto_fill_message_fields: correcting out-of-band target `{current_to}` → `{peer}`"
+                );
+                obj.insert("to".to_string(), Value::String(peer.to_string()));
+                changed = true;
+            }
+        }
     }
     changed |= ensure_object_string_field(obj, "to", default_to);
     changed |= ensure_object_string_field(obj, "type", default_type);
@@ -1191,6 +1210,23 @@ mod tests {
         assert_eq!(route.to_role, "planner");
         assert_eq!(route.msg_type, "diagnostics");
         assert_eq!(route.status, "complete");
+    }
+
+    #[test]
+    fn auto_fill_message_fields_rewrites_planner_to_user_target() {
+        let mut action = json!({
+            "action": "message",
+            "from": "planner",
+            "to": "user",
+            "type": "blocker",
+            "status": "blocked",
+            "payload": {"summary": "blocked"}
+        });
+
+        let changed = auto_fill_message_fields(&mut action, "planner");
+        assert!(changed);
+        assert_eq!(action.get("from").and_then(|v| v.as_str()), Some("planner"));
+        assert_eq!(action.get("to").and_then(|v| v.as_str()), Some("executor"));
     }
 }
 

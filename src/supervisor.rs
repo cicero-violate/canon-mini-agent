@@ -667,6 +667,7 @@ fn supervise_current_child(
     prefer_release: bool,
     child: &mut Child,
 ) -> Result<bool> {
+    let mut pending_update_defer_checks: u32 = 0;
     loop {
         thread::sleep(Duration::from_millis(1000));
         if handle_shutdown_request(shutdown, child) {
@@ -684,6 +685,7 @@ fn supervise_current_child(
             root,
             current,
             pending_update,
+            &mut pending_update_defer_checks,
             orchestrator_mode_flag,
             idle_marker,
             child_started_at,
@@ -793,6 +795,7 @@ fn should_restart_for_pending_update(
     root: &Path,
     current: &BinaryCandidate,
     pending_update: &mut Option<BinaryCandidate>,
+    pending_update_defer_checks: &mut u32,
     orchestrator_mode_flag: &Path,
     idle_marker: &Path,
     child_started_at: SystemTime,
@@ -806,6 +809,7 @@ fn should_restart_for_pending_update(
     maybe_restart_for_pending_update(
         root,
         pending_update.as_ref(),
+        pending_update_defer_checks,
         orchestrator_mode_flag,
         idle_marker,
         child_started_at,
@@ -855,6 +859,7 @@ fn record_pending_update(
 fn maybe_restart_for_pending_update(
     root: &Path,
     pending_update: Option<&BinaryCandidate>,
+    pending_update_defer_checks: &mut u32,
     orchestrator_mode_flag: &Path,
     idle_marker: &Path,
     child_started_at: SystemTime,
@@ -862,6 +867,7 @@ fn maybe_restart_for_pending_update(
     child: &mut Child,
 ) -> Result<bool> {
     let Some(updated) = pending_update else {
+        *pending_update_defer_checks = 0;
         return Ok(false);
     };
     let mode = read_orchestrator_mode(orchestrator_mode_flag);
@@ -892,6 +898,7 @@ fn maybe_restart_for_pending_update(
         .map(|mtime| mtime >= child_started_at && mtime >= updated.mtime)
         .unwrap_or(false);
     if idle_marker_is_fresh {
+        *pending_update_defer_checks = 0;
         eprintln!(
             "[canon-mini-supervisor] idle marker observed; restarting from {}",
             updated.path.display()
@@ -916,6 +923,38 @@ fn maybe_restart_for_pending_update(
         send_sigint(child);
         wait_for_exit(child, Duration::from_secs(10));
         eprintln!("[canon-mini-supervisor] restarting...");
+        return Ok(true);
+    }
+
+    *pending_update_defer_checks = pending_update_defer_checks.saturating_add(1);
+    if *pending_update_defer_checks >= 10 {
+        eprintln!(
+            "[canon-mini-supervisor] forcing restart after {} deferred checks from {}",
+            pending_update_defer_checks,
+            updated.path.display()
+        );
+        log_error_event(
+            "supervisor",
+            "supervisor_main",
+            None,
+            &format!(
+                "forcing restart after {} deferred checks from {}",
+                pending_update_defer_checks,
+                updated.path.display()
+            ),
+            None,
+        );
+        let state_dir = root.join("agent_state");
+        stage_commit_push_before_restart(
+            root,
+            &state_dir,
+            "orchestrate-deferred-update-timeout",
+            prefer_release,
+        );
+        send_sigint(child);
+        wait_for_exit(child, Duration::from_secs(10));
+        eprintln!("[canon-mini-supervisor] restarting...");
+        *pending_update_defer_checks = 0;
         return Ok(true);
     }
 

@@ -6356,10 +6356,13 @@ pub async fn run() -> Result<()> {
 
         eprintln!("[orchestrate] start_role={start_role}");
 
-        let diagnostics_ep = find_endpoint(&endpoints, "diagnostics")?.clone();
         let planner_ep = find_endpoint(&endpoints, "mini_planner")?.clone();
-        let solo_ep = find_endpoint(&endpoints, "solo")?.clone();
-        let verifier_ep = find_endpoint(&endpoints, "verifier")?.clone();
+        // Two-role runtime: legacy roles (solo/verifier/diagnostics) are inactive.
+        // Reuse planner endpoint handles for legacy context slots to keep the
+        // orchestration context shape stable without requiring those endpoints.
+        let diagnostics_ep = planner_ep.clone();
+        let solo_ep = planner_ep.clone();
+        let verifier_ep = planner_ep.clone();
 
         let tabs_diagnostics = llm_worker_new_tabs();
         let tabs_planner = llm_worker_new_tabs();
