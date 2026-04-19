@@ -101,14 +101,61 @@ pub fn analyze(workspace: &Path, crate_name: &str) -> Result<InterAnalysis> {
 
     let max_b = blocks_map.values().copied().max().unwrap_or(1) as f64;
 
-    // Fingerprint groups: fingerprint → [symbol, ...]
-    let mut fp_groups: HashMap<String, Vec<String>> = HashMap::new();
+    // Build callee sequences from bridge_edges: symbol_path → ordered list of callee paths.
+    // Two functions are semantic duplicates only if they call the same callees in the same
+    // block order — not just share the same MIR structural shape.
+    let mut raw_callee_pairs: HashMap<String, Vec<(usize, String)>> = HashMap::new();
+    for (from, relation, to) in idx.bridge_edges() {
+        if relation != "Call" {
+            continue;
+        }
+        // from pattern: "cfg::{symbol_path}::bb{N}"
+        let Some(bb_pos) = from.rfind("::bb") else {
+            continue;
+        };
+        let Ok(block_idx) = from[bb_pos + 4..].parse::<usize>() else {
+            continue;
+        };
+        let sym_path = &from[4..bb_pos]; // strip "cfg::" prefix
+        raw_callee_pairs
+            .entry(sym_path.to_string())
+            .or_default()
+            .push((block_idx, to));
+    }
+    let callee_seq: HashMap<String, String> = raw_callee_pairs
+        .into_iter()
+        .map(|(sym, mut pairs)| {
+            pairs.sort_by_key(|(idx, _)| *idx);
+            let seq = pairs
+                .into_iter()
+                .map(|(_, c)| c)
+                .collect::<Vec<_>>()
+                .join(",");
+            (sym, seq)
+        })
+        .collect();
+
+    // Semantic duplicate groups: (mir_fingerprint, signature, callee_sequence) → [symbol, ...]
+    // This rejects false positives where structurally identical MIR bodies call different callees.
+    let mut sem_groups: HashMap<(String, String, String), Vec<String>> = HashMap::new();
     for s in &summaries {
-        if let Some(fp) = &s.mir_fingerprint {
-            fp_groups
-                .entry(fp.clone())
-                .or_default()
-                .push(s.symbol.clone());
+        let Some(fp) = &s.mir_fingerprint else {
+            continue;
+        };
+        let sig = s.signature.as_deref().unwrap_or("").to_string();
+        let callees = callee_seq.get(&s.symbol).cloned().unwrap_or_default();
+        sem_groups
+            .entry((fp.clone(), sig, callees))
+            .or_default()
+            .push(s.symbol.clone());
+    }
+
+    // sym_to_siblings: precomputed sibling list for O(1) lookup in the entries loop
+    let mut sym_to_siblings: HashMap<String, Vec<String>> = HashMap::new();
+    for group in sem_groups.values().filter(|g| g.len() >= 2) {
+        for sym in group {
+            let siblings: Vec<String> = group.iter().filter(|s| *s != sym).cloned().collect();
+            sym_to_siblings.insert(sym.clone(), siblings);
         }
     }
 
@@ -138,13 +185,9 @@ pub fn analyze(workspace: &Path, crate_name: &str) -> Result<InterAnalysis> {
             };
             let b_transitive = b as f64 + callee_mean;
 
-            // Duplicate detection
+            // Semantic duplicate detection using composite key
             let fp = s.mir_fingerprint.clone();
-            let siblings: Vec<String> = fp
-                .as_ref()
-                .and_then(|f| fp_groups.get(f))
-                .map(|g| g.iter().filter(|sym| **sym != s.symbol).cloned().collect())
-                .unwrap_or_default();
+            let siblings = sym_to_siblings.get(&s.symbol).cloned().unwrap_or_default();
             let r_body = if siblings.is_empty() { 0.0 } else { 1.0 };
 
             let b_norm = b as f64 / max_b;
@@ -190,7 +233,7 @@ pub fn analyze(workspace: &Path, crate_name: &str) -> Result<InterAnalysis> {
     });
 
     let duplicate_groups: Vec<Vec<String>> =
-        fp_groups.into_values().filter(|g| g.len() >= 2).collect();
+        sem_groups.into_values().filter(|g| g.len() >= 2).collect();
 
     Ok(InterAnalysis {
         entries,
