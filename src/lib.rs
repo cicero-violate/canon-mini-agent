@@ -28,6 +28,7 @@ pub mod rename_semantic;
 mod reports;
 mod semantic;
 pub mod state_space;
+pub mod supervisor;
 mod structured_questions;
 mod tool_schema;
 mod tools;

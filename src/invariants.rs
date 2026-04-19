@@ -1268,13 +1268,15 @@ pub fn load_enforced_invariants_file(workspace: &Path) -> EnforcedInvariantsFile
     let raw = std::fs::read_to_string(&path).unwrap_or_default();
     if !raw.trim().is_empty() {
         if let Ok(file) = serde_json::from_str::<EnforcedInvariantsFile>(&raw) {
-            return file;
+            return normalize_loaded_invariants(file);
         }
     }
-    load_invariants_from_tlog(workspace).unwrap_or_else(|| EnforcedInvariantsFile {
-        version: 1,
-        ..Default::default()
-    })
+    load_invariants_from_tlog(workspace)
+        .map(normalize_loaded_invariants)
+        .unwrap_or_else(|| EnforcedInvariantsFile {
+            version: 1,
+            ..Default::default()
+        })
 }
 
 fn load_invariants(workspace: &Path) -> EnforcedInvariantsFile {
@@ -1286,8 +1288,11 @@ pub fn persist_enforced_invariants_projection(
     file: &EnforcedInvariantsFile,
     subject: &str,
 ) -> Result<()> {
+    let normalized = normalize_loaded_invariants(file.clone());
     let path = invariants_path(workspace);
-    let effect = crate::events::EffectEvent::EnforcedInvariantsRecorded { file: file.clone() };
+    let effect = crate::events::EffectEvent::EnforcedInvariantsRecorded {
+        file: normalized.clone(),
+    };
     crate::logging::record_effect_for_workspace(workspace, effect)?;
     crate::logging::write_projection_with_artifact_effects(
         workspace,
@@ -1295,8 +1300,123 @@ pub fn persist_enforced_invariants_projection(
         ENFORCED_INVARIANTS_FILE,
         "write",
         subject,
-        &serde_json::to_string_pretty(file)?,
+        &serde_json::to_string_pretty(&normalized)?,
     )
+}
+
+fn normalize_loaded_invariants(mut file: EnforcedInvariantsFile) -> EnforcedInvariantsFile {
+    if file.version == 0 {
+        file.version = 1;
+    }
+    let mut merged_by_id: HashMap<String, DiscoveredInvariant> = HashMap::new();
+    for mut inv in file.invariants.drain(..) {
+        normalize_single_invariant(&mut inv);
+        let canonical_id = fingerprint_id(&inv.state_conditions);
+        inv.id = canonical_id.clone();
+        if let Some(existing) = merged_by_id.get_mut(&canonical_id) {
+            merge_invariant_record(existing, inv);
+        } else {
+            merged_by_id.insert(canonical_id, inv);
+        }
+    }
+    file.invariants = merged_by_id.into_values().collect();
+    file.invariants.sort_by(|a, b| {
+        status_rank(&b.status)
+            .cmp(&status_rank(&a.status))
+            .then(b.support_count.cmp(&a.support_count))
+            .then(b.last_seen_ms.cmp(&a.last_seen_ms))
+            .then(a.id.cmp(&b.id))
+    });
+    prune_excess(&mut file);
+    file
+}
+
+fn normalize_single_invariant(inv: &mut DiscoveredInvariant) {
+    inv.state_conditions = canonicalize_conditions(std::mem::take(&mut inv.state_conditions));
+    inv.gates = canonicalize_gates(std::mem::take(&mut inv.gates));
+    inv.evidence = canonicalize_evidence(std::mem::take(&mut inv.evidence));
+    if inv.last_seen_ms < inv.first_seen_ms {
+        std::mem::swap(&mut inv.first_seen_ms, &mut inv.last_seen_ms);
+    }
+    if inv.status == InvariantStatus::Discovered && inv.support_count >= MIN_INVARIANT_SUPPORT {
+        inv.status = InvariantStatus::Promoted;
+    }
+    if (inv.status == InvariantStatus::Promoted || inv.status == InvariantStatus::Enforced)
+        && inv.gates.is_empty()
+    {
+        inv.gates = default_gates_for_conditions(&inv.state_conditions);
+        inv.gates = canonicalize_gates(std::mem::take(&mut inv.gates));
+    }
+}
+
+fn canonicalize_conditions(mut conditions: Vec<StateCondition>) -> Vec<StateCondition> {
+    conditions.retain(|c| !c.key.trim().is_empty() && !c.value.trim().is_empty());
+    conditions.sort_by(|a, b| a.key.cmp(&b.key).then(a.value.cmp(&b.value)));
+    conditions.dedup_by(|a, b| a.key == b.key && a.value == b.value);
+    conditions
+}
+
+fn canonicalize_gates(gates: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = gates
+        .into_iter()
+        .map(|g| g.trim().to_string())
+        .filter(|g| g == "route" || g == "planner" || g == "executor")
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
+fn canonicalize_evidence(evidence: Vec<InvariantEvidenceSample>) -> Vec<InvariantEvidenceSample> {
+    let mut ordered = evidence;
+    ordered.sort_by_key(|sample| sample.ts_ms);
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for sample in ordered {
+        let key = serde_json::to_string(&sample.raw).unwrap_or_default();
+        if !seen.insert(key) {
+            continue;
+        }
+        out.push(sample);
+    }
+    if out.len() > MAX_EVIDENCE_SAMPLES {
+        out = out.split_off(out.len() - MAX_EVIDENCE_SAMPLES);
+    }
+    out
+}
+
+fn merge_invariant_record(existing: &mut DiscoveredInvariant, incoming: DiscoveredInvariant) {
+    if incoming.predicate_text.len() > existing.predicate_text.len() {
+        existing.predicate_text = incoming.predicate_text;
+    }
+    existing.support_count = existing.support_count.max(incoming.support_count);
+    existing.first_seen_ms = std::cmp::min(existing.first_seen_ms, incoming.first_seen_ms);
+    existing.last_seen_ms = std::cmp::max(existing.last_seen_ms, incoming.last_seen_ms);
+    existing.status = stronger_status(existing.status.clone(), incoming.status);
+    let mut gates = existing.gates.clone();
+    gates.extend(incoming.gates);
+    existing.gates = canonicalize_gates(gates);
+    let mut evidence = existing.evidence.clone();
+    evidence.extend(incoming.evidence);
+    existing.evidence = canonicalize_evidence(evidence);
+    normalize_single_invariant(existing);
+}
+
+fn stronger_status(a: InvariantStatus, b: InvariantStatus) -> InvariantStatus {
+    if status_rank(&a) >= status_rank(&b) {
+        a
+    } else {
+        b
+    }
+}
+
+fn status_rank(status: &InvariantStatus) -> u8 {
+    match status {
+        InvariantStatus::Discovered => 0,
+        InvariantStatus::Promoted => 1,
+        InvariantStatus::Enforced => 2,
+        InvariantStatus::Collapsed => 3,
+    }
 }
 
 fn load_invariants_from_tlog(workspace: &Path) -> Option<EnforcedInvariantsFile> {
@@ -1938,12 +2058,25 @@ mod tests {
         let issues_path = tmp.join(crate::constants::ISSUES_FILE);
         std::fs::write(&issues_path, r#"{"version":0,"issues":[]}"#).unwrap();
 
+        let expected_inv_id = fingerprint_id(&[
+            StateCondition {
+                key: "proposed_role".to_string(),
+                value: "executor".to_string(),
+            },
+            StateCondition {
+                key: "ready_tasks".to_string(),
+                value: "0".to_string(),
+            },
+        ]);
+        let expected_issue_id =
+            format!("inv_gate_unenforced_{}", expected_inv_id.to_lowercase().replace('-', "_"));
+
         // Write a promoted invariant into enforced_invariants.json.
         let inv_file = EnforcedInvariantsFile {
             version: 1,
             last_synthesized_ms: 0,
             invariants: vec![DiscoveredInvariant {
-                id: "INV-aabbccdd".to_string(),
+                id: expected_inv_id.clone(),
                 predicate_text: "executor must not run when no tasks are ready".to_string(),
                 state_conditions: vec![
                     StateCondition {
@@ -1977,7 +2110,7 @@ mod tests {
         let raw = std::fs::read_to_string(&issues_path).unwrap();
         let file: IssuesFile = serde_json::from_str(&raw).unwrap();
         assert!(
-            file.issues.iter().any(|i| i.id.contains("inv_aabbccdd")),
+            file.issues.iter().any(|i| i.id == expected_issue_id),
             "per-promoted issue not found"
         );
     }
@@ -2017,7 +2150,102 @@ mod tests {
         let recovered = load_enforced_invariants_file(tmp.as_path());
         assert_eq!(recovered.version, file.version);
         assert_eq!(recovered.invariants.len(), 1);
-        assert_eq!(recovered.invariants[0].id, "INV-recovered");
+        let expected_id = fingerprint_id(&recovered.invariants[0].state_conditions);
+        assert_eq!(recovered.invariants[0].id, expected_id);
         assert_eq!(recovered.invariants[0].status, InvariantStatus::Promoted);
+    }
+
+    #[test]
+    fn load_enforced_invariants_normalizes_ids_gates_and_promotions() {
+        let tmp = make_workspace();
+        let path = tmp.join(ENFORCED_INVARIANTS_FILE);
+        let raw = r#"{
+  "version": 0,
+  "last_synthesized_ms": 1,
+  "invariants": [
+    {
+      "id": "INV-manual",
+      "predicate_text": "executor duplicate",
+      "state_conditions": [
+        {"key":"ready_tasks","value":"0"},
+        {"key":"actor_kind","value":"executor"},
+        {"key":"actor_kind","value":"executor"}
+      ],
+      "support_count": 5,
+      "status": "discovered",
+      "gates": ["executor", "executor", "invalid_gate"],
+      "evidence": [],
+      "first_seen_ms": 10,
+      "last_seen_ms": 9
+    }
+  ]
+}"#;
+        std::fs::write(path, raw).unwrap();
+
+        let loaded = load_enforced_invariants_file(tmp.as_path());
+        assert_eq!(loaded.version, 1);
+        assert_eq!(loaded.invariants.len(), 1);
+        let inv = &loaded.invariants[0];
+        assert_eq!(inv.status, InvariantStatus::Promoted);
+        assert_eq!(inv.gates, vec!["executor".to_string()]);
+        assert_eq!(inv.state_conditions.len(), 2);
+        assert_eq!(inv.first_seen_ms, 9);
+        assert_eq!(inv.last_seen_ms, 10);
+        assert_eq!(inv.id, fingerprint_id(&inv.state_conditions));
+    }
+
+    #[test]
+    fn persist_enforced_invariants_merges_duplicate_condition_sets() {
+        let tmp = make_workspace();
+        let shared_conditions = vec![
+            StateCondition {
+                key: "actor_kind".to_string(),
+                value: "planner".to_string(),
+            },
+            StateCondition {
+                key: "error_class".to_string(),
+                value: "runtime_control_bypass".to_string(),
+            },
+        ];
+        let mut reversed_conditions = shared_conditions.clone();
+        reversed_conditions.reverse();
+
+        let file = EnforcedInvariantsFile {
+            version: 1,
+            last_synthesized_ms: 0,
+            invariants: vec![
+                DiscoveredInvariant {
+                    id: "INV-one".to_string(),
+                    predicate_text: "short".to_string(),
+                    state_conditions: shared_conditions,
+                    support_count: 2,
+                    status: InvariantStatus::Discovered,
+                    gates: vec!["planner".to_string()],
+                    evidence: vec![],
+                    first_seen_ms: 1,
+                    last_seen_ms: 2,
+                },
+                DiscoveredInvariant {
+                    id: "INV-two".to_string(),
+                    predicate_text: "a much longer predicate text".to_string(),
+                    state_conditions: reversed_conditions,
+                    support_count: 7,
+                    status: InvariantStatus::Promoted,
+                    gates: vec!["invalid".to_string(), "planner".to_string()],
+                    evidence: vec![],
+                    first_seen_ms: 3,
+                    last_seen_ms: 4,
+                },
+            ],
+        };
+
+        persist_enforced_invariants_projection(tmp.as_path(), &file, "dedupe_test").unwrap();
+        let loaded = load_enforced_invariants_file(tmp.as_path());
+        assert_eq!(loaded.invariants.len(), 1);
+        let inv = &loaded.invariants[0];
+        assert_eq!(inv.support_count, 7);
+        assert_eq!(inv.status, InvariantStatus::Promoted);
+        assert_eq!(inv.gates, vec!["planner".to_string()]);
+        assert_eq!(inv.predicate_text, "a much longer predicate text");
     }
 }
