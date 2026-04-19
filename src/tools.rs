@@ -1790,7 +1790,12 @@ pub(crate) fn patch_scope_error_with_mode(
     patch: &str,
     self_mod: bool,
 ) -> Option<String> {
-    let targets = patch_targets(patch);
+    let raw_targets = patch_targets(patch);
+    let normalized_targets: Vec<String> = raw_targets
+        .iter()
+        .map(|target| normalize_patch_target_for_scope(target))
+        .collect();
+    let targets: Vec<&str> = normalized_targets.iter().map(|s| s.as_str()).collect();
     if targets.is_empty() {
         return None;
     }
@@ -1804,6 +1809,18 @@ pub(crate) fn patch_scope_error_with_mode(
         "diagnostics" => diagnostics_patch_scope_error(&touches),
         _ => None,
     }
+}
+
+fn normalize_patch_target_for_scope(target: &str) -> String {
+    let trimmed = target.trim();
+    let target_path = Path::new(trimmed);
+    if target_path.is_absolute() {
+        let ws = Path::new(crate::constants::workspace());
+        if let Ok(relative) = target_path.strip_prefix(ws) {
+            return relative.to_string_lossy().replace('\\', "/");
+        }
+    }
+    trimmed.strip_prefix("./").unwrap_or(trimmed).to_string()
 }
 
 struct PatchTargetTouches {

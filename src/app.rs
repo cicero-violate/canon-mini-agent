@@ -1853,15 +1853,18 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
     true
 }
 
-fn apply_route_gate_block(
-    writer: &mut CanonicalWriter,
-    ws: &std::path::Path,
-    reason: &str,
-) {
+fn apply_route_gate_block(writer: &mut CanonicalWriter, ws: &std::path::Path, reason: &str) {
     eprintln!("[invariant_gate] route G_r (BLOCKED): {reason}");
     let blocker_message = route_gate_blocker_message(reason);
     if persist_planner_blocker_message(writer, &blocker_message) {
-        crate::blockers::record_action_failure_with_writer(ws, None, "orchestrator", "route_dispatch", reason, None);
+        crate::blockers::record_action_failure_with_writer(
+            ws,
+            None,
+            "orchestrator",
+            "route_dispatch",
+            reason,
+            None,
+        );
         let record = serde_json::json!({
             "kind": "invariant_gate", "phase": "route", "gate": "G_r",
             "proposed_role": "executor", "blocked": true, "reason": reason,
@@ -3554,7 +3557,12 @@ fn take_inbound_message(writer: &mut CanonicalWriter, role: &str) -> Option<Stri
     let path = agent_state_dir.join(format!("last_message_to_{role_key}.json"));
 
     // Primary: read from canonical state (populated by InboundMessageQueued, survives replay).
-    if let Some(message) = writer.state().inbound_messages_pending.get(&role_key).cloned() {
+    if let Some(message) = writer
+        .state()
+        .inbound_messages_pending
+        .get(&role_key)
+        .cloned()
+    {
         let signature = artifact_write_signature(&[
             "inbound_message_consumed",
             &role_key,
@@ -4132,7 +4140,10 @@ fn collect_wake_flag_inputs(
         if !runtime_role_enabled(role_key) {
             continue;
         }
-        inputs.push(WakeFlagInput { role: role_key, modified_ms: *ts_ms });
+        inputs.push(WakeFlagInput {
+            role: role_key,
+            modified_ms: *ts_ms,
+        });
         signature_map.insert(role_key, signature.clone());
     }
 
@@ -7049,11 +7060,11 @@ pub async fn run() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        action_retry_fingerprint, canonical_inbound_message_from_tlog,
-        collect_wake_flag_inputs, ensure_workspace_artifact_baseline,
-        executor_step_limit_feedback, has_actionable_objectives, inbound_message_from_user,
-        invariant_id_from_reason, is_chromium_transport_error, local_transport_blocker_message,
-        plan_has_incomplete_tasks, route_gate_blocker_message, should_reject_solo_self_complete,
+        action_retry_fingerprint, canonical_inbound_message_from_tlog, collect_wake_flag_inputs,
+        ensure_workspace_artifact_baseline, executor_step_limit_feedback,
+        has_actionable_objectives, inbound_message_from_user, invariant_id_from_reason,
+        is_chromium_transport_error, local_transport_blocker_message, plan_has_incomplete_tasks,
+        route_gate_blocker_message, should_reject_solo_self_complete,
         take_external_user_message_without_writer, take_inbound_message_without_writer,
         verifier_confirmed_with_plan_text, ActionProvenance,
     };
@@ -7388,10 +7399,19 @@ mod tests {
 
         let (inputs, _, sig_map) = collect_wake_flag_inputs(&state_dir, &state);
         // Planner signal present
-        assert!(inputs.iter().any(|i| i.role == "planner"), "planner should be pending");
-        assert_eq!(sig_map.get("planner").map(String::as_str), Some("sig-pending"));
+        assert!(
+            inputs.iter().any(|i| i.role == "planner"),
+            "planner should be pending"
+        );
+        assert_eq!(
+            sig_map.get("planner").map(String::as_str),
+            Some("sig-pending")
+        );
         // Executor not present (consumed, not pending)
-        assert!(!inputs.iter().any(|i| i.role == "executor"), "executor should not appear");
+        assert!(
+            !inputs.iter().any(|i| i.role == "executor"),
+            "executor should not appear"
+        );
     }
 
     #[test]

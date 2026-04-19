@@ -105,9 +105,7 @@ pub fn analyze(workspace: &Path, crate_name: &str) -> Result<InterAnalysis> {
     let complexity_map: HashMap<String, f64> = summaries
         .iter()
         .filter_map(|s| {
-            let c = s
-                .branch_score
-                .or_else(|| s.mir_blocks.map(|b| b as f64))?;
+            let c = s.branch_score.or_else(|| s.mir_blocks.map(|b| b as f64))?;
             Some((s.symbol.clone(), c))
         })
         .collect();
@@ -240,10 +238,7 @@ pub fn analyze(workspace: &Path, crate_name: &str) -> Result<InterAnalysis> {
         .iter()
         .map(|e| e.b_transitive)
         .fold(0.0_f64, f64::max);
-    let max_heat = entries
-        .iter()
-        .map(|e| e.heat_score)
-        .fold(0.0_f64, f64::max);
+    let max_heat = entries.iter().map(|e| e.heat_score).fold(0.0_f64, f64::max);
 
     for entry in &mut entries {
         let bt_norm = if max_bt > 0.0 {
@@ -256,11 +251,9 @@ pub fn analyze(workspace: &Path, crate_name: &str) -> Result<InterAnalysis> {
         } else {
             0.0
         };
-        entry.inter_objective = (0.30 * bt_norm
-            + 0.20 * entry.r_body
-            + 0.20 * (1.0 - entry.d_det)
-            + 0.30 * heat_norm)
-            .clamp(0.0, 1.0);
+        entry.inter_objective =
+            (0.30 * bt_norm + 0.20 * entry.r_body + 0.20 * (1.0 - entry.d_det) + 0.30 * heat_norm)
+                .clamp(0.0, 1.0);
     }
 
     entries.sort_by(|a, b| {
@@ -426,10 +419,7 @@ fn build_recursive_issue(
     crate_name: &str,
     existing_ids: &HashSet<String>,
 ) -> Option<Issue> {
-    let id = format!(
-        "auto_recursive_{crate_name}_{}",
-        stable_hash(&entry.symbol)
-    );
+    let id = format!("auto_recursive_{crate_name}_{}", stable_hash(&entry.symbol));
     if existing_ids.contains(&id) {
         return None;
     }

@@ -7,6 +7,7 @@ pub mod complexity;
 pub mod constants;
 mod engine;
 pub mod error_class;
+pub mod evaluation;
 pub mod evolution;
 pub mod graph_metrics;
 pub mod inter_complexity;

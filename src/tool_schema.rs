@@ -1179,7 +1179,7 @@ fn map_schema_error_kind(
         ValidationErrorKind::Type { kind } => schema_type_mismatch_message(path, kind),
         ValidationErrorKind::MinLength { .. } => schema_missing_field_message(path),
         ValidationErrorKind::MinItems { .. } | ValidationErrorKind::MaxItems { .. } => {
-            predicted_next_actions_count_message()
+            "predicted_next_actions must contain 2-3 entries".to_string()
         }
         ValidationErrorKind::Enum { .. } => enum_schema_error_message(path, instance, action),
         ValidationErrorKind::OneOfNotValid | ValidationErrorKind::AnyOf => {
@@ -1202,10 +1202,6 @@ fn schema_type_mismatch_message(path: &str, kind: &TypeKind) -> String {
 
 fn schema_missing_field_message(path: &str) -> String {
     format!("missing field: {}", schema_error_field(path))
-}
-
-fn predicted_next_actions_count_message() -> String {
-    "predicted_next_actions must contain 2-3 entries".to_string()
 }
 
 fn unexpected_fields_message(unexpected: &[String]) -> String {

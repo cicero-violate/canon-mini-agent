@@ -226,16 +226,17 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
             s.inbound_message_signatures
                 .insert(role.clone(), signature.clone());
         }
-        ControlEvent::WakeSignalQueued { role, signature, ts_ms } => {
+        ControlEvent::WakeSignalQueued {
+            role,
+            signature,
+            ts_ms,
+        } => {
             s.wake_signals_pending
                 .insert(role.clone(), (*ts_ms, signature.clone()));
         }
         ControlEvent::WakeSignalConsumed { role, signature } => {
             // Remove from pending if this is the current signal.
-            if s.wake_signals_pending
-                .get(role)
-                .map(|(_, s)| s.as_str())
-                == Some(signature.as_str())
+            if s.wake_signals_pending.get(role).map(|(_, s)| s.as_str()) == Some(signature.as_str())
             {
                 s.wake_signals_pending.remove(role);
             }

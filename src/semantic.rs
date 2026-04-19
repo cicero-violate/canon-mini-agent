@@ -371,7 +371,10 @@ impl SemanticIndex {
         let mut owner_to_cfg: HashMap<&str, Vec<&CfgNode>> = HashMap::new();
         for node in self.graph.cfg_nodes.values() {
             if !node.owner.is_empty() {
-                owner_to_cfg.entry(node.owner.as_str()).or_default().push(node);
+                owner_to_cfg
+                    .entry(node.owner.as_str())
+                    .or_default()
+                    .push(node);
             }
         }
 

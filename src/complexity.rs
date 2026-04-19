@@ -206,7 +206,8 @@ pub fn write_complexity_report(workspace: &Path) -> Result<Option<PathBuf>> {
     // Bridge-connectivity analysis: emit deterministic graph-overconnectivity issues.
     let _ = crate::graph_metrics::generate_bridge_connectivity_issues(workspace);
 
-    let report = build_complexity_report(per_crate, global_top, inter_sections);
+    let eval = crate::evaluation::evaluate_workspace(workspace);
+    let report = build_complexity_report(per_crate, global_top, inter_sections, &eval);
 
     // Auto-generate issues for top hotspots (Detect → Propose step)
     let _ = crate::inter_complexity::generate_hotspot_issues(workspace, 5);
@@ -225,6 +226,7 @@ fn build_complexity_report(
     per_crate: Vec<serde_json::Value>,
     global_top: Vec<serde_json::Value>,
     inter: serde_json::Value,
+    eval: &crate::evaluation::EvaluationWorkspaceSnapshot,
 ) -> serde_json::Value {
     let intra_scoring = complexity_intra_scoring();
     let inter_scoring = complexity_inter_scoring();
@@ -237,6 +239,16 @@ fn build_complexity_report(
         "generated_at_ms": crate::logging::now_ms(),
         "global_top": global_top,
         "inter": inter,
+        "eval": {
+            "overall_score": eval.overall_score(),
+            "objective_progress": eval.vector.objective_progress,
+            "safety": eval.vector.safety,
+            "task_velocity": eval.vector.task_velocity,
+            "issue_health": eval.vector.issue_health,
+            "diagnostics_repair_pressure": eval.diagnostics_repair_pressure,
+            "objectives": format!("{}/{}", eval.objectives_completed, eval.objectives_total),
+            "tasks": format!("{}/{}", eval.completed_tasks, eval.total_tasks),
+        },
         "per_crate": per_crate,
     })
 }

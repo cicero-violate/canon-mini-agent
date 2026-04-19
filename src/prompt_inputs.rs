@@ -1056,6 +1056,48 @@ pub fn read_complexity_hotspots(workspace: &Path, limit: usize) -> String {
          B_norm=mir_blocks/max  R_norm=stmt_density/max  (higher score = higher-value refactor target)\n\
          Loop: Detect(this report) → Propose(LLM) → Apply(patch/rename) → Verify(build+test)\n",
     );
+    if let Some(eval) = report.get("eval").and_then(|v| v.as_object()) {
+        let overall = eval
+            .get("overall_score")
+            .and_then(|v| v.as_f64())
+            .map(|v| format!("{v:.3}"))
+            .unwrap_or_else(|| "?".to_string());
+        let objective_progress = eval
+            .get("objective_progress")
+            .and_then(|v| v.as_f64())
+            .map(|v| format!("{v:.3}"))
+            .unwrap_or_else(|| "?".to_string());
+        let safety = eval
+            .get("safety")
+            .and_then(|v| v.as_f64())
+            .map(|v| format!("{v:.3}"))
+            .unwrap_or_else(|| "?".to_string());
+        let task_velocity = eval
+            .get("task_velocity")
+            .and_then(|v| v.as_f64())
+            .map(|v| format!("{v:.3}"))
+            .unwrap_or_else(|| "?".to_string());
+        let issue_health = eval
+            .get("issue_health")
+            .and_then(|v| v.as_f64())
+            .map(|v| format!("{v:.3}"))
+            .unwrap_or_else(|| "?".to_string());
+        let pressure = eval
+            .get("diagnostics_repair_pressure")
+            .and_then(|v| v.as_f64())
+            .map(|v| format!("{v:.3}"))
+            .unwrap_or_else(|| "?".to_string());
+        let objectives = eval
+            .get("objectives")
+            .and_then(|v| v.as_str())
+            .unwrap_or("?");
+        let tasks = eval.get("tasks").and_then(|v| v.as_str()).unwrap_or("?");
+        out.push_str(&format!(
+            "Eval: overall={overall} objective_progress={objective_progress} safety={safety} \
+task_velocity={task_velocity} issue_health={issue_health} repair_pressure={pressure} \
+objectives={objectives} tasks={tasks}\n"
+        ));
+    }
     for item in top.iter().take(limit.max(1)) {
         out.push_str(&format_complexity_hotspot_line(item));
     }

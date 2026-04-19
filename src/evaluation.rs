@@ -1,29 +1,29 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::issues::{Issue, IssuesFile};
+use crate::issues::Issue;
+#[cfg(test)]
+use crate::issues::IssuesFile;
 use crate::reports::{DiagnosticsReport, ViolationsReport};
 
 #[derive(Debug, Clone, Default)]
 pub struct EvaluationVector {
-    pub reward_alignment: f64,
-    pub invariant_safety: f64,
-    pub tlog_consistency: f64,
-    pub execution_efficiency: f64,
-    pub convergence_stability: f64,
+    pub objective_progress: f64,
+    pub safety: f64,
+    pub task_velocity: f64,
+    pub issue_health: f64,
 }
 
 impl EvaluationVector {
     pub fn geometric_mean_like_score(&self) -> f64 {
         let values = [
-            clamp_unit(self.reward_alignment),
-            clamp_unit(self.invariant_safety),
-            clamp_unit(self.tlog_consistency),
-            clamp_unit(self.execution_efficiency),
-            clamp_unit(self.convergence_stability),
+            self.objective_progress.clamp(0.001, 1.0),
+            self.safety.clamp(0.001, 1.0),
+            self.task_velocity.clamp(0.001, 1.0),
+            self.issue_health.clamp(0.001, 1.0),
         ];
         let product = values.iter().product::<f64>();
-        product.powf(1.0 / values.len() as f64)
+        product.powf(0.25)
     }
 }
 
@@ -31,14 +31,10 @@ impl EvaluationVector {
 pub struct EvaluationWorkspaceSnapshot {
     pub objectives_completed: usize,
     pub objectives_total: usize,
-    pub enforced_blocks: usize,
-    pub canonical_events: usize,
-    pub projection_mismatches: usize,
     pub completed_tasks: usize,
-    pub actions: usize,
-    pub wall_clock_s: f64,
-    pub repeated_issue_count: usize,
-    pub state_delta_norm: f64,
+    pub total_tasks: usize,
+    pub open_issues: usize,
+    pub repeated_open_issues: usize,
     pub diagnostics_repair_pressure: f64,
     pub vector: EvaluationVector,
 }
@@ -55,7 +51,7 @@ pub fn reward_alignment_score(completed_objectives: usize, total_objectives: usi
     safe_ratio(completed_objectives as f64, total_objectives.max(1) as f64)
 }
 
-pub fn invariant_safety_score(violations: &ViolationsReport, enforced_blocks: usize) -> f64 {
+pub fn safety_score(violations: &ViolationsReport) -> f64 {
     let severity_penalty = violations
         .violations
         .iter()
@@ -66,46 +62,34 @@ pub fn invariant_safety_score(violations: &ViolationsReport, enforced_blocks: us
             crate::reports::Severity::Low => 0.1,
         })
         .sum::<f64>();
-    let enforced_credit = (enforced_blocks as f64) * 0.05;
-    clamp_unit(1.0 - severity_penalty + enforced_credit)
+    clamp_unit(1.0 - severity_penalty)
 }
 
-pub fn tlog_consistency_score(canonical_events: usize, projection_mismatches: usize) -> f64 {
-    if canonical_events == 0 {
+pub fn issue_health_score(open_issues: usize, repeated_open_issues: usize) -> f64 {
+    if open_issues == 0 {
         return 1.0;
     }
-    clamp_unit(1.0 - safe_ratio(projection_mismatches as f64, canonical_events as f64))
+    clamp_unit(1.0 - safe_ratio(repeated_open_issues as f64, open_issues as f64))
 }
 
-pub fn execution_efficiency_score(completed_tasks: usize, actions: usize, wall_clock_s: f64) -> f64 {
-    let denom = (actions.max(1) as f64) * wall_clock_s.max(1.0);
-    clamp_unit((completed_tasks as f64) / denom)
-}
-
-pub fn convergence_stability_score(repeated_issue_count: usize, state_delta_norm: f64) -> f64 {
-    let penalty = repeated_issue_count as f64 * 0.1 + state_delta_norm.max(0.0);
-    clamp_unit(1.0 - penalty)
+pub fn task_velocity_score(completed_tasks: usize, total_tasks: usize) -> f64 {
+    safe_ratio(completed_tasks as f64, total_tasks.max(1) as f64)
 }
 
 pub fn evaluate_repo_state(
     objectives_completed: usize,
     objectives_total: usize,
     violations: &ViolationsReport,
-    enforced_blocks: usize,
-    canonical_events: usize,
-    projection_mismatches: usize,
     completed_tasks: usize,
-    actions: usize,
-    wall_clock_s: f64,
-    repeated_issue_count: usize,
-    state_delta_norm: f64,
+    total_tasks: usize,
+    open_issues: usize,
+    repeated_open_issues: usize,
 ) -> EvaluationVector {
     EvaluationVector {
-        reward_alignment: reward_alignment_score(objectives_completed, objectives_total),
-        invariant_safety: invariant_safety_score(violations, enforced_blocks),
-        tlog_consistency: tlog_consistency_score(canonical_events, projection_mismatches),
-        execution_efficiency: execution_efficiency_score(completed_tasks, actions, wall_clock_s),
-        convergence_stability: convergence_stability_score(repeated_issue_count, state_delta_norm),
+        objective_progress: reward_alignment_score(objectives_completed, objectives_total),
+        safety: safety_score(violations),
+        task_velocity: task_velocity_score(completed_tasks, total_tasks),
+        issue_health: issue_health_score(open_issues, repeated_open_issues),
     }
 }
 
@@ -119,65 +103,64 @@ pub fn evaluate_workspace(workspace: &Path) -> EvaluationWorkspaceSnapshot {
         .count();
 
     let violations = crate::reports::load_violations_report(workspace);
-    let issues = crate::issues::load_issues_file(workspace);
-    let diagnostics = crate::reports::load_diagnostics_report(workspace).unwrap_or_else(empty_diagnostics_report);
+    let diagnostics =
+        crate::reports::load_diagnostics_report(workspace).unwrap_or_else(empty_diagnostics_report);
+    let _canonical_events = load_canonical_event_count(workspace);
 
-    let completed_tasks = load_completed_task_count(workspace);
-    let actions = load_action_count(workspace);
-    let wall_clock_s = load_wall_clock_seconds(workspace);
-    let repeated_issue_count = repeated_open_issue_count(&issues);
-    let state_delta_norm = diagnostics_repair_pressure(&diagnostics);
-    let canonical_events = load_canonical_event_count(workspace);
-    let projection_mismatches = load_projection_mismatch_count(workspace);
-    let enforced_blocks = load_enforced_block_count(workspace);
+    let (completed_tasks, total_tasks) = load_task_counts(workspace);
+    let (open_issues, repeated_open_issues) = load_issue_counts(workspace);
 
     let vector = evaluate_repo_state(
         objectives_completed,
         objectives_total,
         &violations,
-        enforced_blocks,
-        canonical_events,
-        projection_mismatches,
         completed_tasks,
-        actions,
-        wall_clock_s,
-        repeated_issue_count,
-        state_delta_norm,
+        total_tasks,
+        open_issues,
+        repeated_open_issues,
     );
 
     EvaluationWorkspaceSnapshot {
         objectives_completed,
         objectives_total,
-        enforced_blocks,
-        canonical_events,
-        projection_mismatches,
         completed_tasks,
-        actions,
-        wall_clock_s,
-        repeated_issue_count,
-        state_delta_norm,
+        total_tasks,
+        open_issues,
+        repeated_open_issues,
         diagnostics_repair_pressure: diagnostics_repair_pressure(&diagnostics),
         vector,
     }
 }
 
-pub fn repeated_open_issue_count(issues: &IssuesFile) -> usize {
+pub fn load_issue_counts(workspace: &Path) -> (usize, usize) {
+    let issues = crate::issues::load_issues_file(workspace);
     let mut counts: HashMap<&str, usize> = HashMap::new();
     for issue in &issues.issues {
         if is_open(issue) {
             *counts.entry(issue.title.as_str()).or_insert(0) += 1;
         }
     }
-    counts.values().filter(|count| **count > 1).sum()
+    let open_issues = issues.issues.iter().filter(|issue| is_open(issue)).count();
+    let repeated_open_issues = counts.values().filter(|count| **count > 1).copied().sum();
+    (open_issues, repeated_open_issues)
 }
 
 pub fn diagnostics_repair_pressure(report: &DiagnosticsReport) -> f64 {
-    let total_targets = report
+    let total = report.ranked_failures.len();
+    if total == 0 {
+        return 0.0;
+    }
+    let high_impact = report
         .ranked_failures
         .iter()
-        .map(|f| f.repair_targets.len() as f64)
-        .sum::<f64>();
-    clamp_unit(total_targets / (report.ranked_failures.len().max(1) as f64 * 4.0))
+        .filter(|f| {
+            matches!(
+                f.impact,
+                crate::reports::Impact::High | crate::reports::Impact::Critical
+            )
+        })
+        .count();
+    clamp_unit(high_impact as f64 / total as f64)
 }
 
 fn load_objectives_file(workspace: &Path) -> crate::objectives::ObjectivesFile {
@@ -186,85 +169,39 @@ fn load_objectives_file(workspace: &Path) -> crate::objectives::ObjectivesFile {
     serde_json::from_str(&raw).unwrap_or_default()
 }
 
-fn load_completed_task_count(workspace: &Path) -> usize {
+fn load_task_counts(workspace: &Path) -> (usize, usize) {
     let path = workspace.join(crate::constants::MASTER_PLAN_FILE);
     let raw = std::fs::read_to_string(path).unwrap_or_default();
     let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
-        return 0;
+        return (0, 0);
     };
-    value
+    let tasks = value
         .get("tasks")
         .and_then(|tasks| tasks.as_array())
-        .map(|tasks| {
-            tasks.iter()
-                .filter(|task| {
-                    task.get("status")
-                        .and_then(|status| status.as_str())
-                        .map(|status| matches!(status, "done" | "complete" | "completed"))
-                        .unwrap_or(false)
-                })
-                .count()
+        .cloned()
+        .unwrap_or_default();
+    let completed = tasks
+        .iter()
+        .filter(|task| {
+            task.get("status")
+                .and_then(|status| status.as_str())
+                .map(|status| matches!(status, "done" | "complete" | "completed"))
+                .unwrap_or(false)
         })
-        .unwrap_or(0)
-}
-
-fn load_action_count(workspace: &Path) -> usize {
-    let path = workspace
-        .join("agent_state")
-        .join("default")
-        .join("actions.jsonl");
-    let raw = std::fs::read_to_string(path).unwrap_or_default();
-    raw.lines().filter(|line| !line.trim().is_empty()).count()
-}
-
-fn load_wall_clock_seconds(workspace: &Path) -> f64 {
-    let path = workspace.join("agent_state").join("tlog.ndjson");
-    let Ok(records) = crate::tlog::Tlog::read_records(&path) else {
-        return 1.0;
-    };
-    let first = records.first().map(|record| record.ts_ms).unwrap_or(0);
-    let last = records.last().map(|record| record.ts_ms).unwrap_or(first);
-    let delta_ms = last.saturating_sub(first);
-    (delta_ms as f64 / 1000.0).max(1.0)
+        .count();
+    (completed, tasks.len())
 }
 
 fn load_canonical_event_count(workspace: &Path) -> usize {
     let path = workspace.join("agent_state").join("tlog.ndjson");
-    crate::tlog::Tlog::read_records(&path)
-        .map(|records| records.len())
+    std::fs::read_to_string(path)
+        .map(|content| {
+            content
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .count()
+        })
         .unwrap_or(0)
-}
-
-fn load_projection_mismatch_count(workspace: &Path) -> usize {
-    let mut mismatches = 0usize;
-    for relative_path in [
-        crate::constants::ISSUES_FILE,
-        crate::constants::VIOLATIONS_FILE,
-        crate::constants::diagnostics_file(),
-    ] {
-        let path = workspace.join(relative_path);
-        let raw = std::fs::read_to_string(path).unwrap_or_default();
-        if raw.trim().is_empty() {
-            mismatches += 1;
-        }
-    }
-    mismatches
-}
-
-fn load_enforced_block_count(workspace: &Path) -> usize {
-    let path = workspace
-        .join("agent_state")
-        .join("enforced_invariants.json");
-    let raw = std::fs::read_to_string(path).unwrap_or_default();
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
-        return 0;
-    };
-
-    ["enforced", "promoted", "discovered"]
-        .iter()
-        .filter_map(|key| value.get(*key).and_then(|entry| entry.as_array()))
-        .map(|entries| entries.len())
-        .sum()
 }
 
 fn empty_diagnostics_report() -> DiagnosticsReport {
@@ -281,7 +218,11 @@ fn is_open(issue: &Issue) -> bool {
 }
 
 fn safe_ratio(n: f64, d: f64) -> f64 {
-    if d <= 0.0 { 0.0 } else { n / d }
+    if d <= 0.0 {
+        0.0
+    } else {
+        n / d
+    }
 }
 
 fn clamp_unit(value: f64) -> f64 {
@@ -293,20 +234,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn geometric_mean_penalizes_weak_dimensions() {
+    fn geometric_mean_zero_floor_prevents_score_collapse() {
         let vector = EvaluationVector {
-            reward_alignment: 1.0,
-            invariant_safety: 1.0,
-            tlog_consistency: 1.0,
-            execution_efficiency: 1.0,
-            convergence_stability: 0.25,
+            objective_progress: 1.0,
+            safety: 1.0,
+            task_velocity: 0.0,
+            issue_health: 1.0,
         };
 
-        assert!(vector.geometric_mean_like_score() < 1.0);
+        assert!(vector.geometric_mean_like_score() > 0.0);
     }
 
     #[test]
-    fn repeated_open_issues_only_counts_open_duplicates() {
+    fn task_velocity_is_zero_when_no_tasks_done() {
+        assert_eq!(task_velocity_score(0, 3), 0.0);
+    }
+
+    #[test]
+    fn issue_health_drops_when_same_issue_reopened() {
         let issues = IssuesFile {
             version: 1,
             issues: vec![
@@ -328,28 +273,41 @@ mod tests {
             ],
         };
 
-        assert_eq!(repeated_open_issue_count(&issues), 2);
+        let open_issues = issues.issues.iter().filter(|issue| is_open(issue)).count();
+        let mut counts: HashMap<&str, usize> = HashMap::new();
+        for issue in &issues.issues {
+            if is_open(issue) {
+                *counts.entry(issue.title.as_str()).or_insert(0) += 1;
+            }
+        }
+        let repeated_open_issues = counts.values().filter(|count| **count > 1).copied().sum();
+        assert!(issue_health_score(open_issues, repeated_open_issues) < 1.0);
     }
 
     #[test]
-    fn diagnostics_pressure_scales_with_repair_targets() {
-        let report = DiagnosticsReport {
-            status: "needs_repair".to_string(),
-            inputs_scanned: vec![],
-            ranked_failures: vec![crate::reports::DiagnosticsFinding {
-                id: "D1".to_string(),
-                impact: crate::reports::Impact::High,
-                signal: "signal".to_string(),
-                evidence: vec!["evidence".to_string()],
-                root_cause: "cause".to_string(),
-                repair_targets: vec![
-                    "src/app.rs".to_string(),
-                    "src/tlog.rs".to_string(),
-                ],
-            }],
-            planner_handoff: vec![],
+    fn safety_score_decreases_with_critical_violations() {
+        let mut violations = ViolationsReport {
+            status: "bad".to_string(),
+            summary: String::new(),
+            violations: Vec::new(),
         };
-
-        assert!(diagnostics_repair_pressure(&report) > 0.0);
+        let no_violation_score = safety_score(&violations);
+        violations.violations.push(crate::reports::Violation {
+            id: "v1".to_string(),
+            title: "critical".to_string(),
+            severity: crate::reports::Severity::Critical,
+            evidence: vec!["e".to_string()],
+            issue: "i".to_string(),
+            impact: "imp".to_string(),
+            required_fix: vec!["f".to_string()],
+            files: vec![],
+            freshness_status: String::new(),
+            stale_reason: String::new(),
+            validated_from: vec![],
+            evidence_receipts: vec![],
+            evidence_hashes: vec![],
+            last_validated_ms: 0,
+        });
+        assert!(safety_score(&violations) < no_violation_score);
     }
 }
