@@ -134,14 +134,14 @@ Hard boundary rules:
 
 **Components:**
 
-| Component | Type | Role |
-|-----------|------|------|
-| `CanonicalWriter` | `src/canonical_writer.rs` | Single mutation gate: `apply(ControlEvent)` → logs then transitions |
-| `SystemState` | `src/system_state.rs` | All serializable orchestrator state (phase, lanes, pending flags, diffs) |
-| `RuntimeState` | `src/app.rs` | Non-serializable runtime-only state (tab handles, in-flight join sets) |
-| `ControlEvent` | `src/events.rs` | Typed enum of all valid state transitions (23 variants) |
-| `EffectEvent` | `src/events.rs` | Side-effect record (invariant violations, checkpoints) |
-| `Tlog` | `src/tlog.rs` | Append-only NDJSON event log at `AgentStateDir/tlog.ndjson` |
+| Component         | Type                      | Role                                                                     |
+|-------------------+---------------------------+--------------------------------------------------------------------------|
+| `CanonicalWriter` | `src/canonical_writer.rs` | Single mutation gate: `apply(ControlEvent)` → logs then transitions      |
+| `SystemState`     | `src/system_state.rs`     | All serializable orchestrator state (phase, lanes, pending flags, diffs) |
+| `RuntimeState`    | `src/app.rs`              | Non-serializable runtime-only state (tab handles, in-flight join sets)   |
+| `ControlEvent`    | `src/events.rs`           | Typed enum of all valid state transitions (23 variants)                  |
+| `EffectEvent`     | `src/events.rs`           | Side-effect record (invariant violations, checkpoints)                   |
+| `Tlog`            | `src/tlog.rs`             | Append-only NDJSON event log at `AgentStateDir/tlog.ndjson`              |
 
 **Invariant gate:** Before emitting a `ControlEvent`, callers invoke `evaluate_invariant_gate` (`src/invariants.rs`). On violation the caller calls `writer.record_violation(...)` — which appends an `EffectEvent::InvariantViolation` to the tlog without advancing state — and aborts the transition.
 
