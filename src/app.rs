@@ -59,9 +59,9 @@ use crate::prompts::{
 use crate::state_space::{
     check_completion_endpoint, check_completion_tab, decide_bootstrap_phase,
     decide_post_diagnostics, decide_resume_phase, decide_wake_flags, executor_step_limit_exceeded,
-    executor_submit_timed_out, is_verifier_specific_blocker, should_force_blocker,
-    verifier_blocker_phase_override, CargoTestGate, CompletionEndpointCheck, CompletionTabCheck,
-    SemanticControlState, WakeFlagInput,
+    is_verifier_specific_blocker, should_force_blocker, verifier_blocker_phase_override,
+    CargoTestGate, CompletionEndpointCheck, CompletionTabCheck, SemanticControlState,
+    WakeFlagInput,
 };
 use crate::system_state::SystemState;
 use crate::tlog::Tlog;
@@ -1468,7 +1468,7 @@ fn timed_out_executor_submit_lanes(
 ) -> Vec<usize> {
     let mut timed_out = Vec::new();
     for (lane_id, pending) in rt.executor_submit_inflight.iter() {
-        if executor_submit_timed_out(pending.started_ms, now, pending_submit_timeout_ms) {
+        if now.saturating_sub(pending.started_ms) >= pending_submit_timeout_ms {
             timed_out.push(*lane_id);
         }
     }
@@ -1562,7 +1562,7 @@ fn timed_out_submitted_turns(
 ) -> Vec<(u32, u64, usize)> {
     let mut timed_out = Vec::new();
     for (&(tab_id, turn_id), submitted) in rt.submitted_turns.iter() {
-        if executor_submit_timed_out(submitted.started_ms, now, submitted_turn_timeout_ms) {
+        if now.saturating_sub(submitted.started_ms) >= submitted_turn_timeout_ms {
             timed_out.push((tab_id, turn_id, submitted.lane));
         }
     }
@@ -2303,7 +2303,7 @@ fn handle_executor_submit_ack_result(
         );
     };
 
-    if executor_submit_timed_out(pending.started_ms, now_ms(), pending_submit_timeout_ms) {
+    if now_ms().saturating_sub(pending.started_ms) >= pending_submit_timeout_ms {
         return handle_submit_ack_timeout(ctx, writer, lane_id, tab_id, turn_id);
     }
 
@@ -5170,10 +5170,10 @@ async fn run_agent(
                 );
                 last_result = Some(out);
                 if kind.as_str() == "apply_patch"
-                    && !last_result
+                    && last_result
                         .as_deref()
                         .unwrap_or_default()
-                        .starts_with("apply_patch failed:")
+                        .starts_with("apply_patch ok")
                 {
                     return Ok(AgentCompletion::Summary(last_result.unwrap_or_default()));
                 }
