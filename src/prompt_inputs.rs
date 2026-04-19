@@ -487,9 +487,9 @@ fn build_eval_header(workspace: &Path) -> String {
     let overall = get_f64("overall_score");
     let dims = [
         ("objective_progress", get_f64("objective_progress")),
-        ("safety",             get_f64("safety")),
-        ("task_velocity",      get_f64("task_velocity")),
-        ("issue_health",       get_f64("issue_health")),
+        ("safety", get_f64("safety")),
+        ("task_velocity", get_f64("task_velocity")),
+        ("issue_health", get_f64("issue_health")),
     ];
 
     let (weakest_name, weakest_val) = dims
@@ -500,14 +500,17 @@ fn build_eval_header(workspace: &Path) -> String {
 
     let directive = match weakest_name {
         "objective_progress" => "close completed objectives and create plan tasks for active ones",
-        "task_velocity"      => "complete or close stale PLAN.json tasks",
-        "issue_health"       => "close or fix the repeated open issues below",
-        "safety"             => "resolve violations listed in the violations view",
-        _                    => "address the highest-scored issues below",
+        "task_velocity" => "complete or close stale PLAN.json tasks",
+        "issue_health" => "close or fix the repeated open issues below",
+        "safety" => "resolve violations listed in the violations view",
+        _ => "address the highest-scored issues below",
     };
 
-    let objectives = eval.get("objectives").and_then(|v| v.as_str()).unwrap_or("?");
-    let tasks      = eval.get("tasks").and_then(|v| v.as_str()).unwrap_or("?");
+    let objectives = eval
+        .get("objectives")
+        .and_then(|v| v.as_str())
+        .unwrap_or("?");
+    let tasks = eval.get("tasks").and_then(|v| v.as_str()).unwrap_or("?");
 
     format!(
         "EVAL score={overall:.3}  weakest={weakest_name}({weakest_val:.3})  \

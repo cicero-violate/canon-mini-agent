@@ -1,5 +1,3 @@
-use crate::system_state::SystemState;
-
 pub struct CargoTestGate {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -230,21 +228,6 @@ pub struct SemanticControlState {
 }
 
 impl SemanticControlState {
-    pub fn from_system_state(
-        state: &SystemState,
-        verifier_queued: bool,
-        verifier_in_flight: bool,
-    ) -> Self {
-        Self {
-            scheduled_phase: state.scheduled_phase.clone(),
-            planner_pending: state.planner_pending,
-            diagnostics_pending: state.diagnostics_pending,
-            verifier_queued,
-            verifier_in_flight,
-            active_blocker_to_verifier: state.active_blocker_to_verifier,
-        }
-    }
-
     pub fn active_blocker_decision(&self) -> ActiveBlockerDecision {
         decide_active_blocker(
             self.active_blocker_to_verifier,
