@@ -116,7 +116,7 @@ pub fn analyze(workspace: &Path, crate_name: &str) -> Result<InterAnalysis> {
         let Ok(block_idx) = from[bb_pos + 4..].parse::<usize>() else {
             continue;
         };
-        let sym_path = &from[4..bb_pos]; // strip "cfg::" prefix
+        let sym_path = &from[5..bb_pos]; // strip "cfg::" prefix (5 chars)
         raw_callee_pairs
             .entry(sym_path.to_string())
             .or_default()
