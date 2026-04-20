@@ -1375,41 +1375,39 @@ fn find_action_schema<'a>(value: &'a Value, action: &str) -> Option<&'a Value> {
         const_match || enum_match
     }
 
-    if matches_action(value, action) {
-        return Some(value);
+    let mut stack = vec![value];
+    while let Some(value) = stack.pop() {
+        if matches_action(value, action) {
+            return Some(value);
+        }
+
+        match value {
+            Value::Array(arr) => {
+                for item in arr.iter().rev() {
+                    stack.push(item);
+                }
+            }
+            Value::Object(map) => {
+                let values: Vec<_> = map.values().collect();
+                for item in values.into_iter().rev() {
+                    stack.push(item);
+                }
+            }
+            _ => {}
+        }
+
+        if let Some(arr) = value.get("anyOf").and_then(|v| v.as_array()) {
+            for item in arr.iter().rev() {
+                stack.push(item);
+            }
+        }
+        if let Some(arr) = value.get("oneOf").and_then(|v| v.as_array()) {
+            for item in arr.iter().rev() {
+                stack.push(item);
+            }
+        }
     }
 
-    if let Some(arr) = value.get("oneOf").and_then(|v| v.as_array()) {
-        for item in arr {
-            if let Some(found) = find_action_schema(item, action) {
-                return Some(found);
-            }
-        }
-    }
-    if let Some(arr) = value.get("anyOf").and_then(|v| v.as_array()) {
-        for item in arr {
-            if let Some(found) = find_action_schema(item, action) {
-                return Some(found);
-            }
-        }
-    }
-    match value {
-        Value::Array(arr) => {
-            for item in arr {
-                if let Some(found) = find_action_schema(item, action) {
-                    return Some(found);
-                }
-            }
-        }
-        Value::Object(map) => {
-            for item in map.values() {
-                if let Some(found) = find_action_schema(item, action) {
-                    return Some(found);
-                }
-            }
-        }
-        _ => {}
-    }
     None
 }
 
