@@ -78,17 +78,28 @@ pub fn generate_module_cohesion_issues(workspace: &Path) -> Result<usize> {
         if call_edges.is_empty() {
             continue;
         }
+        let summaries = idx.symbol_summaries();
+        let fn_summaries: Vec<_> = summaries.into_iter().filter(|s| s.kind == "fn").collect();
+        if fn_summaries.is_empty() {
+            continue;
+        }
+        let mut fn_to_module: HashMap<String, String> = HashMap::new();
         let mut module_symbols: HashMap<String, HashSet<String>> = HashMap::new();
-        for s in idx.symbol_summaries() {
-            let module = module_prefix(&s.symbol);
-            module_symbols.entry(module).or_default().insert(s.symbol);
+        for s in &fn_summaries {
+            let module = module_partition_key(s);
+            fn_to_module.insert(s.symbol.clone(), module.clone());
+            module_symbols.entry(module).or_default().insert(s.symbol.clone());
         }
 
         let mut internal_edges: HashMap<String, usize> = HashMap::new();
         let mut external_edges: HashMap<String, usize> = HashMap::new();
         for (from, to) in call_edges {
-            let from_module = module_prefix(&from);
-            let to_module = module_prefix(&to);
+            let Some(from_module) = fn_to_module.get(&from).cloned() else {
+                continue;
+            };
+            let Some(to_module) = fn_to_module.get(&to).cloned() else {
+                continue;
+            };
             if from_module == to_module {
                 *internal_edges.entry(from_module).or_insert(0) += 1;
             } else {
@@ -120,6 +131,7 @@ pub fn generate_module_cohesion_issues(workspace: &Path) -> Result<usize> {
             if existing.contains(&id) {
                 continue;
             }
+            let confidence_tier = if symbols.len() > 5 { "high" } else { "medium" };
             file.issues.push(Issue {
                 id,
                 title: format!(
@@ -142,7 +154,9 @@ pub fn generate_module_cohesion_issues(workspace: &Path) -> Result<usize> {
                     "external_edges": external,
                     "cohesion": cohesion,
                     "symbol_count": symbols.len(),
-                    "task": task
+                    "task": task,
+                    "confidence_tier": confidence_tier,
+                    "correctness_level": confidence_tier == "high"
                 }),
                 acceptance_criteria: vec![
                     "module boundary complexity reduced and validated".to_string(),
@@ -239,13 +253,24 @@ fn stable_hash(raw: &str) -> u64 {
     hasher.finish()
 }
 
-fn module_prefix(symbol: &str) -> String {
-    let mut parts = symbol.split("::");
-    let first = parts.next().unwrap_or(symbol);
-    let second = parts.next();
-    match second {
-        Some(seg) if !seg.is_empty() => format!("{first}::{seg}"),
-        _ => first.to_string(),
+fn module_partition_key(summary: &crate::semantic::SymbolSummary) -> String {
+    let sym_scope = summary
+        .symbol
+        .rsplit_once("::")
+        .map(|(scope, _)| scope.to_string())
+        .unwrap_or_else(|| summary.symbol.clone());
+    let file_scope = summary
+        .file
+        .find("/src/")
+        .map(|idx| &summary.file[(idx + 5)..])
+        .map(|path| path.trim_end_matches(".rs").replace('/', "::"))
+        .unwrap_or_default();
+    if !file_scope.is_empty() && sym_scope.contains(&file_scope) {
+        file_scope
+    } else if !file_scope.is_empty() {
+        format!("{file_scope}::{sym_scope}")
+    } else {
+        sym_scope
     }
 }
 

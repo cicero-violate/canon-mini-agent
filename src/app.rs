@@ -1240,6 +1240,52 @@ fn apply_route_gate_block(writer: &mut CanonicalWriter, ws: &std::path::Path, re
     writer.apply(ControlEvent::PlannerPendingSet { pending: true });
 }
 
+fn preflight_executor_dispatch(
+    ctx: &OrchestratorContext<'_>,
+    writer: &mut CanonicalWriter,
+    rt: &RuntimeState,
+) -> Option<bool> {
+    let ws = std::path::PathBuf::from(workspace());
+    let ready_tasks_text = crate::prompt_inputs::read_ready_tasks(&ws, 1);
+    let ready_count = if ready_tasks_text == "(no ready tasks)" {
+        "0"
+    } else {
+        "1+"
+    };
+    if ready_count == "0" {
+        writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+        return Some(true);
+    }
+    if !evaluate_executor_route_gates(writer, ready_count) {
+        return Some(false);
+    }
+
+    let lanes_seeded = ctx.lanes.iter().any(|lane| {
+        let lane_state = writer.state().lanes.get(&lane.index);
+        lane_state.map(|state| state.pending).unwrap_or(false)
+            || lane_state
+                .and_then(|state| state.in_progress_by.as_ref())
+                .is_some()
+            || writer.state().lane_in_flight(lane.index)
+            || writer.state().lane_submit_active(lane.index)
+    });
+    let runtime_busy = !rt.executor_submit_inflight.is_empty()
+        || !rt.submitted_turns.is_empty()
+        || rt
+            .deferred_completions
+            .values()
+            .any(|queue| !queue.is_empty());
+    if !lanes_seeded && !runtime_busy {
+        eprintln!(
+            "[orchestrate] executor bootstrap: ready tasks exist but no lane work is seeded; waking planner"
+        );
+        writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+        return Some(true);
+    }
+
+    None
+}
+
 fn dispatch_executor_submits(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
@@ -1263,49 +1309,15 @@ fn dispatch_executor_submits(
     // entirely and wake the planner instead.  This eliminates the idle turn where
     // the executor discovers no work and sends an empty handoff message back.
     {
-        let ws = std::path::PathBuf::from(workspace());
-        let ready_tasks_text = crate::prompt_inputs::read_ready_tasks(&ws, 1);
-        let ready_count = if ready_tasks_text == "(no ready tasks)" {
-            "0"
-        } else {
-            "1+"
-        };
-        if ready_count == "0" {
-            writer.apply(ControlEvent::PlannerPendingSet { pending: true });
-            return true;
-        }
         // Route gate G_r: check enforced invariants before dispatching the executor.
         // Currently observational — violations are logged but do not hard-block.
         // Once invariants accumulate enough support, this will become a hard gate.
-        if !evaluate_executor_route_gates(writer, ready_count) {
-            return false;
-        }
-
         // Clean-start guard: after agent_state reset, the executor can see ready
         // PLAN tasks but still have zero lane work seeded because lane.pending is
         // only populated by the planner bootstrap path. In that state, starting at
         // executor would silently idle forever while the browser backend stays live.
-        let lanes_seeded = ctx.lanes.iter().any(|lane| {
-            let lane_state = writer.state().lanes.get(&lane.index);
-            lane_state.map(|state| state.pending).unwrap_or(false)
-                || lane_state
-                    .and_then(|state| state.in_progress_by.as_ref())
-                    .is_some()
-                || writer.state().lane_in_flight(lane.index)
-                || writer.state().lane_submit_active(lane.index)
-        });
-        let runtime_busy = !rt.executor_submit_inflight.is_empty()
-            || !rt.submitted_turns.is_empty()
-            || rt
-                .deferred_completions
-                .values()
-                .any(|queue| !queue.is_empty());
-        if !lanes_seeded && !runtime_busy {
-            eprintln!(
-                "[orchestrate] executor bootstrap: ready tasks exist but no lane work is seeded; waking planner"
-            );
-            writer.apply(ControlEvent::PlannerPendingSet { pending: true });
-            return true;
+        if let Some(preflight_result) = preflight_executor_dispatch(ctx, writer, rt) {
+            return preflight_result;
         }
     }
 

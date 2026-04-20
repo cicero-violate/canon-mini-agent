@@ -682,58 +682,69 @@ pub fn dark_assignment_issues(
         if s.kind != "fn" || s.mir_stmts.unwrap_or(0) <= 4 {
             continue;
         }
-        let statements = idx.symbol_statements(&s.symbol);
-        if statements.is_empty() {
+        let Some(cfg) = FunctionCfg::build(&idx, &s.symbol) else {
             continue;
+        };
+
+        let arg_count = parse_fn_arg_count(s.signature.as_deref());
+        let analysis = cfg.reaching_definition_analysis();
+        let liveness = cfg.live_out_per_stmt();
+        let mut dark_writes: Vec<StmtKey> = Vec::new();
+        for key in cfg.write_nodes() {
+            let Some(stmt) = cfg.stmt(key) else { continue };
+            if !is_proof_safe_assignment(stmt, cfg.block_terminator(key.block).unwrap_or("")) {
+                continue;
+            }
+            if is_return_or_arg_local(&stmt.written_local, arg_count) {
+                continue;
+            }
+            let live_out = liveness.get(&key).cloned().unwrap_or_default();
+            if live_out.contains(&stmt.written_local) {
+                continue;
+            }
+            if analysis.used_defs.contains(&key) {
+                continue;
+            }
+            dark_writes.push(key);
         }
-        let mut written: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
-        let mut ever_read: HashSet<String> = HashSet::new();
-        for (block, _in_loop, stmt) in &statements {
-            if !stmt.written_local.trim().is_empty() {
-                written
-                    .entry(stmt.written_local.clone())
-                    .or_default()
-                    .push((*block, stmt.idx));
-            }
-            for local in &stmt.read_locals {
-                if !local.trim().is_empty() {
-                    ever_read.insert(local.clone());
-                }
-            }
+        if dark_writes.is_empty() {
+            continue;
         }
 
-        let dark_locals: Vec<String> = written
-            .keys()
-            .filter(|local| local.as_str() != "_0" && !ever_read.contains(local.as_str()))
-            .cloned()
-            .collect();
-        if dark_locals.is_empty() {
-            continue;
-        }
+        let dark_local_count = dark_writes
+            .iter()
+            .filter_map(|k| cfg.stmt(*k).map(|s| s.written_local.clone()))
+            .collect::<HashSet<_>>()
+            .len();
         let mir_stmts = s.mir_stmts.unwrap_or(0);
-        let dark_ratio = dark_locals.len() as f64 / mir_stmts.max(1) as f64;
+        let dark_ratio = dark_writes.len() as f64 / mir_stmts.max(1) as f64;
         if dark_ratio <= 0.0 {
             continue;
         }
 
-        let dark_local_count = dark_locals.len();
         let location = shorten_location(&s.file, s.line);
-        let mut dark_locals = dark_locals;
+        let mut dark_locals = dark_writes
+            .iter()
+            .filter_map(|k| cfg.stmt(*k).map(|s| s.written_local.clone()))
+            .collect::<Vec<_>>();
         dark_locals.sort();
+        dark_locals.dedup();
         dark_locals.truncate(8);
+        let has_exit_postdom = dark_writes.iter().all(|k| cfg.has_exit_postdominator(k.block));
+        let confidence_tier = if has_exit_postdom { "high" } else { "medium" };
         out.push(Issue {
             id: format!("auto_dark_assign_{crate_name}_{:x}", stable_hash(&s.symbol)),
             title: format!(
-                "Dark assignments in `{}` ({} never-read locals)",
+                "Dark assignments in `{}` ({} dead write(s))",
                 short_name(&s.symbol),
-                dark_local_count
+                dark_writes.len()
             ),
             status: "open".to_string(),
             priority: "low".to_string(),
             kind: "redundancy".to_string(),
             description: format!(
-                "Function `{}` writes locals that are never subsequently read.\n\
-                 Remove dead computation or document intentional side-effect carriers.",
+                "Function `{}` has writes proven dead by reaching-definitions + liveness: \
+                 no reachable read before overwrite/exit for these writes.",
                 s.symbol
             ),
             location: location.clone(),
@@ -741,12 +752,15 @@ pub fn dark_assignment_issues(
             metrics: json!({
                 "task": "RemoveDarkComputation",
                 "dark_local_count": dark_local_count,
+                "dark_write_count": dark_writes.len(),
                 "mir_stmts": mir_stmts,
                 "dark_ratio": dark_ratio,
                 "sample_dark_locals": dark_locals,
+                "confidence_tier": confidence_tier,
+                "correctness_level": confidence_tier == "high",
             }),
             acceptance_criteria: vec![
-                "dark locals removed or justified".to_string(),
+                "dead writes removed or justified".to_string(),
                 "build and tests pass".to_string(),
             ],
             evidence: vec![format!("location: {location}")],
@@ -773,45 +787,57 @@ pub fn loop_invariant_issues(
         if s.kind != "fn" {
             continue;
         }
-        let statements = idx.symbol_statements(&s.symbol);
-        if statements.is_empty() {
+        let Some(cfg) = FunctionCfg::build(&idx, &s.symbol) else {
+            continue;
+        };
+        let loop_blocks = cfg.loop_blocks();
+        if loop_blocks.is_empty() {
             continue;
         }
 
-        let mut loop_blocks: HashSet<usize> = HashSet::new();
-        let mut non_loop_written: HashSet<String> = HashSet::new();
-        let mut loop_written: HashSet<String> = HashSet::new();
-        let mut total_loop_stmts = 0usize;
-        for (block, in_loop, stmt) in &statements {
-            if *in_loop {
-                loop_blocks.insert(*block);
-                total_loop_stmts += 1;
-                if !stmt.written_local.trim().is_empty() {
-                    loop_written.insert(stmt.written_local.clone());
+        let headers = cfg.loop_headers(&loop_blocks);
+        let rd = cfg.reaching_definition_analysis();
+        let mut invariant_set: HashSet<StmtKey> = HashSet::new();
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for key in cfg.stmt_keys_in_blocks(&loop_blocks) {
+                let Some(stmt) = cfg.stmt(key) else { continue };
+                if !is_proof_safe_assignment(stmt, cfg.block_terminator(key.block).unwrap_or("")) {
+                    continue;
                 }
-            } else if !stmt.written_local.trim().is_empty() {
-                non_loop_written.insert(stmt.written_local.clone());
+                if stmt.read_locals.is_empty() {
+                    continue;
+                }
+                if invariant_set.contains(&key) {
+                    continue;
+                }
+                if stmt.read_locals.iter().all(|local| {
+                    local_is_loop_invariant(local, key, &loop_blocks, &headers, &cfg, &rd, &invariant_set)
+                }) {
+                    invariant_set.insert(key);
+                    changed = true;
+                }
             }
         }
-        if loop_blocks.is_empty() || total_loop_stmts == 0 {
+        if invariant_set.is_empty() {
             continue;
         }
 
-        let mut invariant_count = 0usize;
-        for (_block, in_loop, stmt) in &statements {
-            if !*in_loop || stmt.read_locals.is_empty() {
-                continue;
-            }
-            let invariant = stmt.read_locals.iter().all(|local| {
-                non_loop_written.contains(local) && !loop_written.contains(local)
-            });
-            if invariant {
-                invariant_count += 1;
-            }
-        }
-        if invariant_count == 0 {
-            continue;
-        }
+        let total_loop_stmts = cfg
+            .stmt_keys_in_blocks(&loop_blocks)
+            .iter()
+            .filter(|k| cfg.stmt(**k).is_some())
+            .count();
+        let invariant_count = invariant_set.len();
+        let confidence_tier = if invariant_set
+            .iter()
+            .all(|k| cfg.has_exit_postdominator(k.block))
+        {
+            "high"
+        } else {
+            "medium"
+        };
 
         let location = shorten_location(&s.file, s.line);
         out.push(Issue {
@@ -828,8 +854,8 @@ pub fn loop_invariant_issues(
             priority: "medium".to_string(),
             kind: "performance".to_string(),
             description: format!(
-                "Function `{}` recalculates loop-invariant expressions inside loop blocks.\n\
-                 Hoist loop-invariant computations to preheader/setup.",
+                "Function `{}` has assignments proven loop-invariant by dominance + reaching-definitions.\n\
+                 Hoist invariant computations to loop preheader/setup.",
                 s.symbol
             ),
             location: location.clone(),
@@ -839,6 +865,8 @@ pub fn loop_invariant_issues(
                 "loop_invariant_count": invariant_count,
                 "loop_block_count": loop_blocks.len(),
                 "total_loop_stmts": total_loop_stmts,
+                "confidence_tier": confidence_tier,
+                "correctness_level": confidence_tier == "high",
             }),
             acceptance_criteria: vec![
                 "invariant computations moved before loop entry".to_string(),
@@ -852,6 +880,479 @@ pub fn loop_invariant_issues(
     out.sort_by(|a, b| a.id.cmp(&b.id));
     out.truncate(limit);
     out
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct StmtKey {
+    block: usize,
+    idx: usize,
+}
+
+#[derive(Debug, Default)]
+struct ReachingDefAnalysis {
+    used_defs: HashSet<StmtKey>,
+    in_defs: HashMap<StmtKey, HashSet<StmtKey>>,
+}
+
+#[derive(Debug)]
+struct FunctionCfg {
+    blocks: HashMap<usize, crate::semantic::SymbolCfgBlock>,
+    succ: HashMap<usize, HashSet<usize>>,
+    pred: HashMap<usize, HashSet<usize>>,
+    exits: HashSet<usize>,
+    dom: HashMap<usize, HashSet<usize>>,
+    pdom: HashMap<usize, HashSet<usize>>,
+}
+
+impl FunctionCfg {
+    fn build(idx: &SemanticIndex, symbol: &str) -> Option<Self> {
+        let blocks_vec = idx.symbol_cfg_blocks(symbol);
+        if blocks_vec.is_empty() {
+            return None;
+        }
+        let blocks: HashMap<usize, crate::semantic::SymbolCfgBlock> =
+            blocks_vec.into_iter().map(|b| (b.block, b)).collect();
+        let mut succ: HashMap<usize, HashSet<usize>> =
+            blocks.keys().copied().map(|b| (b, HashSet::new())).collect();
+        let mut pred: HashMap<usize, HashSet<usize>> =
+            blocks.keys().copied().map(|b| (b, HashSet::new())).collect();
+        for edge in idx.symbol_cfg_edges(symbol) {
+            if !blocks.contains_key(&edge.from) || !blocks.contains_key(&edge.to) {
+                continue;
+            }
+            succ.entry(edge.from).or_default().insert(edge.to);
+            pred.entry(edge.to).or_default().insert(edge.from);
+        }
+        let entry = blocks.keys().copied().min().unwrap_or(0);
+        let exits: HashSet<usize> = succ
+            .iter()
+            .filter_map(|(block, targets)| targets.is_empty().then_some(*block))
+            .collect();
+        let dom = compute_dominators(entry, &blocks, &pred);
+        let pdom = compute_post_dominators(&blocks, &succ, &exits);
+        Some(Self {
+            blocks,
+            succ,
+            pred,
+            exits,
+            dom,
+            pdom,
+        })
+    }
+
+    fn stmt(&self, key: StmtKey) -> Option<&crate::semantic::StatementInfo> {
+        self.blocks
+            .get(&key.block)
+            .and_then(|b| b.statements.iter().find(|s| s.idx == key.idx))
+    }
+
+    fn block_terminator(&self, block: usize) -> Option<&str> {
+        self.blocks.get(&block).map(|b| b.terminator.as_str())
+    }
+
+    fn stmt_keys_in_blocks(&self, blocks: &HashSet<usize>) -> Vec<StmtKey> {
+        let mut out = Vec::new();
+        for block in blocks {
+            if let Some(data) = self.blocks.get(block) {
+                for stmt in &data.statements {
+                    out.push(StmtKey {
+                        block: *block,
+                        idx: stmt.idx,
+                    });
+                }
+            }
+        }
+        out.sort_by(|a, b| a.block.cmp(&b.block).then(a.idx.cmp(&b.idx)));
+        out
+    }
+
+    fn write_nodes(&self) -> Vec<StmtKey> {
+        let mut out = Vec::new();
+        for (block, data) in &self.blocks {
+            for stmt in &data.statements {
+                if !stmt.written_local.trim().is_empty() {
+                    out.push(StmtKey {
+                        block: *block,
+                        idx: stmt.idx,
+                    });
+                }
+            }
+        }
+        out.sort_by(|a, b| a.block.cmp(&b.block).then(a.idx.cmp(&b.idx)));
+        out
+    }
+
+    fn loop_blocks(&self) -> HashSet<usize> {
+        self.blocks
+            .iter()
+            .filter_map(|(block, data)| data.in_loop.then_some(*block))
+            .collect()
+    }
+
+    fn loop_headers(&self, loop_blocks: &HashSet<usize>) -> HashSet<usize> {
+        let mut headers = HashSet::new();
+        for block in loop_blocks {
+            let preds = self.pred.get(block).cloned().unwrap_or_default();
+            if preds.iter().any(|pred| !loop_blocks.contains(pred)) {
+                headers.insert(*block);
+            }
+        }
+        if headers.is_empty() {
+            if let Some(min_block) = loop_blocks.iter().copied().min() {
+                headers.insert(min_block);
+            }
+        }
+        headers
+    }
+
+    fn has_exit_postdominator(&self, block: usize) -> bool {
+        self.pdom
+            .get(&block)
+            .map(|set| self.exits.iter().any(|exit| set.contains(exit)))
+            .unwrap_or(false)
+    }
+
+    fn block_dominates(&self, dominator: usize, dominated: usize) -> bool {
+        self.dom
+            .get(&dominated)
+            .map(|set| set.contains(&dominator))
+            .unwrap_or(false)
+    }
+
+    fn stmt_dominates(&self, a: StmtKey, b: StmtKey) -> bool {
+        if a.block == b.block {
+            return a.idx <= b.idx;
+        }
+        self.block_dominates(a.block, b.block)
+    }
+
+    fn statement_predecessors(&self, key: StmtKey) -> Vec<StmtKey> {
+        let mut out = Vec::new();
+        let Some(block) = self.blocks.get(&key.block) else {
+            return out;
+        };
+        let mut sorted = block.statements.iter().map(|s| s.idx).collect::<Vec<_>>();
+        sorted.sort_unstable();
+        if let Some(pos) = sorted.iter().position(|idx| *idx == key.idx) {
+            if pos > 0 {
+                out.push(StmtKey {
+                    block: key.block,
+                    idx: sorted[pos - 1],
+                });
+                return out;
+            }
+        }
+        for pred in self.pred.get(&key.block).cloned().unwrap_or_default() {
+            if let Some(pred_block) = self.blocks.get(&pred) {
+                if let Some(last_stmt) = pred_block.statements.iter().max_by_key(|s| s.idx) {
+                    out.push(StmtKey {
+                        block: pred,
+                        idx: last_stmt.idx,
+                    });
+                }
+            }
+        }
+        out
+    }
+
+    fn all_stmt_keys(&self) -> Vec<StmtKey> {
+        let mut out = Vec::new();
+        for (block, data) in &self.blocks {
+            for stmt in &data.statements {
+                out.push(StmtKey {
+                    block: *block,
+                    idx: stmt.idx,
+                });
+            }
+        }
+        out.sort_by(|a, b| a.block.cmp(&b.block).then(a.idx.cmp(&b.idx)));
+        out
+    }
+
+    fn live_out_per_stmt(&self) -> HashMap<StmtKey, HashSet<String>> {
+        let mut live_in_block: HashMap<usize, HashSet<String>> =
+            self.blocks.keys().copied().map(|b| (b, HashSet::new())).collect();
+        let mut live_out_block = live_in_block.clone();
+        let mut live_out_stmt: HashMap<StmtKey, HashSet<String>> = HashMap::new();
+
+        let mut changed = true;
+        while changed {
+            changed = false;
+            let mut block_ids: Vec<usize> = self.blocks.keys().copied().collect();
+            block_ids.sort_unstable_by(|a, b| b.cmp(a));
+            for block in block_ids {
+                let succ_live: HashSet<String> = self
+                    .succ
+                    .get(&block)
+                    .into_iter()
+                    .flatten()
+                    .flat_map(|succ| live_in_block.get(succ).cloned().unwrap_or_default())
+                    .collect();
+                if live_out_block.get(&block) != Some(&succ_live) {
+                    live_out_block.insert(block, succ_live.clone());
+                    changed = true;
+                }
+
+                let mut cursor = succ_live;
+                let mut stmts = self
+                    .blocks
+                    .get(&block)
+                    .map(|b| b.statements.clone())
+                    .unwrap_or_default();
+                stmts.sort_by_key(|s| s.idx);
+                for stmt in stmts.iter().rev() {
+                    let key = StmtKey {
+                        block,
+                        idx: stmt.idx,
+                    };
+                    live_out_stmt.insert(key, cursor.clone());
+                    let mut next = cursor;
+                    if !stmt.written_local.is_empty() {
+                        next.remove(&stmt.written_local);
+                    }
+                    for local in &stmt.read_locals {
+                        if !local.is_empty() {
+                            next.insert(local.clone());
+                        }
+                    }
+                    cursor = next;
+                }
+                if live_in_block.get(&block) != Some(&cursor) {
+                    live_in_block.insert(block, cursor);
+                    changed = true;
+                }
+            }
+        }
+        live_out_stmt
+    }
+
+    fn reaching_definition_analysis(&self) -> ReachingDefAnalysis {
+        let stmt_keys = self.all_stmt_keys();
+        let mut defs_by_local: HashMap<String, HashSet<StmtKey>> = HashMap::new();
+        for key in &stmt_keys {
+            if let Some(stmt) = self.stmt(*key) {
+                if !stmt.written_local.is_empty() {
+                    defs_by_local
+                        .entry(stmt.written_local.clone())
+                        .or_default()
+                        .insert(*key);
+                }
+            }
+        }
+
+        let mut in_defs: HashMap<StmtKey, HashSet<StmtKey>> =
+            stmt_keys.iter().copied().map(|k| (k, HashSet::new())).collect();
+        let mut out_defs = in_defs.clone();
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for key in &stmt_keys {
+                let preds = self.statement_predecessors(*key);
+                let mut in_set: HashSet<StmtKey> = HashSet::new();
+                for pred in preds {
+                    in_set.extend(out_defs.get(&pred).cloned().unwrap_or_default());
+                }
+
+                let Some(stmt) = self.stmt(*key) else { continue };
+                let mut out_set = in_set.clone();
+                if !stmt.written_local.is_empty() {
+                    if let Some(kills) = defs_by_local.get(&stmt.written_local) {
+                        for kill in kills {
+                            out_set.remove(kill);
+                        }
+                    }
+                    out_set.insert(*key);
+                }
+
+                if in_defs.get(key) != Some(&in_set) {
+                    in_defs.insert(*key, in_set);
+                    changed = true;
+                }
+                if out_defs.get(key) != Some(&out_set) {
+                    out_defs.insert(*key, out_set);
+                    changed = true;
+                }
+            }
+        }
+
+        let mut used_defs: HashSet<StmtKey> = HashSet::new();
+        for key in &stmt_keys {
+            let Some(stmt) = self.stmt(*key) else { continue };
+            if stmt.read_locals.is_empty() {
+                continue;
+            }
+            let reaching = in_defs.get(key).cloned().unwrap_or_default();
+            for local in &stmt.read_locals {
+                for def in &reaching {
+                    if self
+                        .stmt(*def)
+                        .map(|s| s.written_local.as_str() == local.as_str())
+                        .unwrap_or(false)
+                    {
+                        used_defs.insert(*def);
+                    }
+                }
+            }
+        }
+
+        ReachingDefAnalysis { used_defs, in_defs }
+    }
+}
+
+fn compute_dominators(
+    entry: usize,
+    blocks: &HashMap<usize, crate::semantic::SymbolCfgBlock>,
+    pred: &HashMap<usize, HashSet<usize>>,
+) -> HashMap<usize, HashSet<usize>> {
+    let all: HashSet<usize> = blocks.keys().copied().collect();
+    let mut dom: HashMap<usize, HashSet<usize>> = HashMap::new();
+    for block in blocks.keys().copied() {
+        if block == entry {
+            dom.insert(block, HashSet::from([entry]));
+        } else {
+            dom.insert(block, all.clone());
+        }
+    }
+
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for block in blocks.keys().copied() {
+            if block == entry {
+                continue;
+            }
+            let predecessors = pred.get(&block).cloned().unwrap_or_default();
+            if predecessors.is_empty() {
+                continue;
+            }
+            let mut inter: Option<HashSet<usize>> = None;
+            for p in predecessors {
+                let candidate = dom.get(&p).cloned().unwrap_or_default();
+                inter = Some(match inter {
+                    None => candidate,
+                    Some(acc) => acc.intersection(&candidate).copied().collect(),
+                });
+            }
+            let mut next = inter.unwrap_or_default();
+            next.insert(block);
+            if dom.get(&block) != Some(&next) {
+                dom.insert(block, next);
+                changed = true;
+            }
+        }
+    }
+    dom
+}
+
+fn compute_post_dominators(
+    blocks: &HashMap<usize, crate::semantic::SymbolCfgBlock>,
+    succ: &HashMap<usize, HashSet<usize>>,
+    exits: &HashSet<usize>,
+) -> HashMap<usize, HashSet<usize>> {
+    let all: HashSet<usize> = blocks.keys().copied().collect();
+    let mut pdom: HashMap<usize, HashSet<usize>> = HashMap::new();
+    for block in blocks.keys().copied() {
+        if exits.contains(&block) {
+            pdom.insert(block, HashSet::from([block]));
+        } else {
+            pdom.insert(block, all.clone());
+        }
+    }
+
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for block in blocks.keys().copied() {
+            if exits.contains(&block) {
+                continue;
+            }
+            let successors = succ.get(&block).cloned().unwrap_or_default();
+            if successors.is_empty() {
+                continue;
+            }
+            let mut inter: Option<HashSet<usize>> = None;
+            for s in successors {
+                let candidate = pdom.get(&s).cloned().unwrap_or_default();
+                inter = Some(match inter {
+                    None => candidate,
+                    Some(acc) => acc.intersection(&candidate).copied().collect(),
+                });
+            }
+            let mut next = inter.unwrap_or_default();
+            next.insert(block);
+            if pdom.get(&block) != Some(&next) {
+                pdom.insert(block, next);
+                changed = true;
+            }
+        }
+    }
+    pdom
+}
+
+fn parse_fn_arg_count(signature: Option<&str>) -> usize {
+    let Some(sig) = signature else { return 0 };
+    let open = sig.find('(');
+    let close = sig.find(')');
+    let (Some(open), Some(close)) = (open, close) else {
+        return 0;
+    };
+    if close <= open + 1 {
+        return 0;
+    }
+    let args = &sig[(open + 1)..close];
+    if args.trim().is_empty() {
+        0
+    } else {
+        args.split(',').count()
+    }
+}
+
+fn is_return_or_arg_local(local: &str, arg_count: usize) -> bool {
+    let Some(num) = local.strip_prefix('_').and_then(|n| n.parse::<usize>().ok()) else {
+        return false;
+    };
+    num == 0 || (num >= 1 && num <= arg_count)
+}
+
+fn is_proof_safe_assignment(stmt: &crate::semantic::StatementInfo, terminator: &str) -> bool {
+    if !stmt.kind.eq_ignore_ascii_case("assign") {
+        return false;
+    }
+    let term = terminator.to_ascii_lowercase();
+    !(term.starts_with("call")
+        || term.starts_with("assert")
+        || term.starts_with("drop")
+        || term.starts_with("yield"))
+}
+
+fn local_is_loop_invariant(
+    local: &str,
+    use_key: StmtKey,
+    loop_blocks: &HashSet<usize>,
+    headers: &HashSet<usize>,
+    cfg: &FunctionCfg,
+    rd: &ReachingDefAnalysis,
+    invariant_set: &HashSet<StmtKey>,
+) -> bool {
+    let reaching = rd.in_defs.get(&use_key).cloned().unwrap_or_default();
+    let defs_for_local: Vec<StmtKey> = reaching
+        .into_iter()
+        .filter(|def| {
+            cfg.stmt(*def)
+                .map(|stmt| stmt.written_local.as_str() == local)
+                .unwrap_or(false)
+        })
+        .collect();
+    if defs_for_local.is_empty() {
+        return false;
+    }
+    defs_for_local.iter().all(|def| {
+        if !loop_blocks.contains(&def.block) {
+            headers.iter().all(|h| cfg.block_dominates(def.block, *h))
+        } else {
+            invariant_set.contains(def) && cfg.stmt_dominates(*def, use_key)
+        }
+    })
 }
 
 // ---------------------------------------------------------------------------

@@ -121,6 +121,8 @@ struct CfgEdge {
     relation: String,
     from: String,
     to: String,
+    #[serde(default)]
+    is_back_edge: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -136,6 +138,22 @@ struct BridgeEdge {
 
 pub struct SemanticIndex {
     graph: CrateGraph,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SymbolCfgBlock {
+    pub block: usize,
+    pub in_loop: bool,
+    pub terminator: String,
+    pub statements: Vec<StatementInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SymbolCfgEdge {
+    pub from: usize,
+    pub to: usize,
+    pub is_back_edge: bool,
+    pub relation: String,
 }
 
 #[derive(Copy, Clone)]
@@ -316,6 +334,56 @@ impl SemanticIndex {
             .collect();
         rows.sort_by(|a, b| a.0.cmp(&b.0).then(a.2.idx.cmp(&b.2.idx)));
         rows
+    }
+
+    pub fn symbol_cfg_blocks(&self, symbol: &str) -> Vec<SymbolCfgBlock> {
+        let Ok(symbol_key) = self.resolve_node_key(symbol) else {
+            return Vec::new();
+        };
+        let mut blocks: Vec<SymbolCfgBlock> = self
+            .graph
+            .cfg_nodes
+            .values()
+            .filter(|node| node.owner == symbol_key && !node.is_cleanup)
+            .map(|node| SymbolCfgBlock {
+                block: node.block,
+                in_loop: node.in_loop,
+                terminator: node.terminator.clone(),
+                statements: node.statements.clone(),
+            })
+            .collect();
+        blocks.sort_by(|a, b| a.block.cmp(&b.block));
+        blocks
+    }
+
+    pub fn symbol_cfg_edges(&self, symbol: &str) -> Vec<SymbolCfgEdge> {
+        let Ok(symbol_key) = self.resolve_node_key(symbol) else {
+            return Vec::new();
+        };
+        let owner_blocks: HashMap<String, usize> = self
+            .graph
+            .cfg_nodes
+            .iter()
+            .filter(|(_, node)| node.owner == symbol_key && !node.is_cleanup)
+            .map(|(id, node)| (id.clone(), node.block))
+            .collect();
+        let mut edges: Vec<SymbolCfgEdge> = self
+            .graph
+            .cfg_edges
+            .iter()
+            .filter_map(|edge| {
+                let from = owner_blocks.get(&edge.from)?;
+                let to = owner_blocks.get(&edge.to)?;
+                Some(SymbolCfgEdge {
+                    from: *from,
+                    to: *to,
+                    is_back_edge: edge.is_back_edge,
+                    relation: edge.relation.clone(),
+                })
+            })
+            .collect();
+        edges.sort_by(|a, b| a.from.cmp(&b.from).then(a.to.cmp(&b.to)));
+        edges
     }
 
     /// BFS shortest path across semantic edges, CFG edges, and bridge edges.
