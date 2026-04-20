@@ -284,7 +284,7 @@ pub(crate) fn invalid_action_expected_fields(kind: &str) -> Vec<&'static str> {
     }
 }
 
-fn example_predicted_next_actions() -> Value {
+pub(crate) fn example_predicted_next_actions() -> Value {
     json!([
         {
             "action": "read_file",

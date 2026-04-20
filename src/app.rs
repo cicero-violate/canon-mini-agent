@@ -542,16 +542,7 @@ fn verifier_blocker_ack_payload(fields: &BlockerFields) -> Value {
 
 #[allow(dead_code)]
 fn verifier_blocker_ack_predicted_next_actions() -> Value {
-    json!([
-        {
-            "action": "message",
-            "intent": "Resume verification only after planner addresses the upstream blocker and re-handoffs the lane."
-        },
-        {
-            "action": "read_file",
-            "intent": "Reinspect the updated planner handoff or affected artifacts after the blocker is resolved."
-        }
-    ])
+    crate::invalid_action::example_predicted_next_actions()
 }
 
 fn file_modified_ms(path: &Path) -> Option<u128> {
