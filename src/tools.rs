@@ -6455,31 +6455,28 @@ fn ensure_dag(tasks: &[Value], edges: &[Value]) -> Result<()> {
     let mut visiting = BTreeSet::new();
     let mut visited = BTreeSet::new();
 
-    fn dfs(
-        node: &str,
-        adj: &std::collections::HashMap<String, Vec<String>>,
-        visiting: &mut BTreeSet<String>,
-        visited: &mut BTreeSet<String>,
-    ) -> Result<()> {
-        if visited.contains(node) {
-            return Ok(());
-        }
-        if visiting.contains(node) {
-            bail!("plan DAG cycle detected at {node}");
-        }
-        visiting.insert(node.to_string());
-        if let Some(nexts) = adj.get(node) {
-            for next in nexts {
-                dfs(next, adj, visiting, visited)?;
+    for id in ids {
+        let mut stack = vec![(id.as_str(), false)];
+        while let Some((node, exiting)) = stack.pop() {
+            if exiting {
+                visiting.remove(node);
+                visited.insert(node.to_string());
+                continue;
+            }
+            if visited.contains(node) {
+                continue;
+            }
+            if visiting.contains(node) {
+                bail!("plan DAG cycle detected at {node}");
+            }
+            visiting.insert(node.to_string());
+            stack.push((node, true));
+            if let Some(nexts) = adj.get(node) {
+                for next in nexts.iter().rev() {
+                    stack.push((next.as_str(), false));
+                }
             }
         }
-        visiting.remove(node);
-        visited.insert(node.to_string());
-        Ok(())
-    }
-
-    for id in ids {
-        dfs(&id, &adj, &mut visiting, &mut visited)?;
     }
     Ok(())
 }
