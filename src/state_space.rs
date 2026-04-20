@@ -224,13 +224,6 @@ pub struct SemanticControlState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct SemanticPhaseView<'a> {
-    scheduled_phase: Option<&'a str>,
-    planner_pending: bool,
-    diagnostics_pending: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SemanticVerifierView {
     verifier_queued: bool,
     verifier_in_flight: bool,
@@ -260,14 +253,6 @@ impl SemanticControlState {
         self
     }
 
-    fn phase_view(&self) -> SemanticPhaseView<'_> {
-        SemanticPhaseView {
-            scheduled_phase: self.scheduled_phase.as_deref(),
-            planner_pending: self.planner_pending,
-            diagnostics_pending: self.diagnostics_pending,
-        }
-    }
-
     fn verifier_view(&self) -> SemanticVerifierView {
         SemanticVerifierView {
             verifier_queued: self.verifier_queued,
@@ -277,12 +262,11 @@ impl SemanticControlState {
     }
 
     pub fn active_blocker_decision(&self) -> ActiveBlockerDecision {
-        let phase = self.phase_view();
         let verifier = self.verifier_view();
         decide_active_blocker(
             verifier.active_blocker_to_verifier,
-            phase.planner_pending,
-            phase.scheduled_phase,
+            self.planner_pending,
+            self.scheduled_phase.as_deref(),
         )
     }
 
@@ -291,12 +275,11 @@ impl SemanticControlState {
         checkpoint_phase: &str,
         has_verifier_items: bool,
     ) -> Self {
-        let phase = self.phase_view();
         let decision = decide_resume_phase(
             checkpoint_phase,
             has_verifier_items,
-            phase.planner_pending,
-            phase.diagnostics_pending,
+            self.planner_pending,
+            self.diagnostics_pending,
         );
         let mut next = self.clone();
         next.scheduled_phase = decision.scheduled_phase;
@@ -306,29 +289,27 @@ impl SemanticControlState {
     }
 
     pub fn phase_gates(&self) -> PhaseGates {
-        let phase = self.phase_view();
         let verifier = self.verifier_view();
         decide_phase_gates(
-            phase.planner_pending,
-            phase.diagnostics_pending,
+            self.planner_pending,
+            self.diagnostics_pending,
             verifier.verifier_queued,
             verifier.verifier_in_flight,
-            phase.scheduled_phase,
+            self.scheduled_phase.as_deref(),
         )
     }
 
     pub fn executor_dispatch_blocked(&self) -> bool {
-        block_executor_dispatch(self.phase_view().scheduled_phase)
+        block_executor_dispatch(self.scheduled_phase.as_deref())
     }
 
     pub fn diagnostics_allowed(&self) -> bool {
-        let phase = self.phase_view();
         let verifier = self.verifier_view();
-        allow_diagnostics_run(phase.scheduled_phase, verifier.verifier_in_flight)
+        allow_diagnostics_run(self.scheduled_phase.as_deref(), verifier.verifier_in_flight)
     }
 
     pub fn verifier_run_allowed(&self) -> bool {
-        allow_named_phase_run(self.phase_view().scheduled_phase, "verifier")
+        allow_named_phase_run(self.scheduled_phase.as_deref(), "verifier")
     }
 
     pub fn scheduled_phase_done(
@@ -336,15 +317,14 @@ impl SemanticControlState {
         executor_lane_pending: bool,
         executor_in_progress: bool,
     ) -> bool {
-        let phase_view = self.phase_view();
         let verifier = self.verifier_view();
-        let Some(phase) = phase_view.scheduled_phase else {
+        let Some(phase) = self.scheduled_phase.as_deref() else {
             return false;
         };
         scheduled_phase_resume_done(
             phase,
-            phase_view.planner_pending,
-            phase_view.diagnostics_pending,
+            self.planner_pending,
+            self.diagnostics_pending,
             usize::from(verifier.verifier_queued),
             !verifier.verifier_in_flight,
             executor_lane_pending,

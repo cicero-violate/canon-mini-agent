@@ -674,13 +674,21 @@ pub fn dark_assignment_issues(
     summaries: &[SymbolSummary],
     limit: usize,
 ) -> Vec<Issue> {
+    const DARK_ASSIGNMENT_SYMBOL_BUDGET: usize = 140;
     let Ok(idx) = SemanticIndex::load(workspace, crate_name) else {
         return Vec::new();
     };
     let mut out = Vec::new();
-    for s in summaries {
-        if s.kind != "fn" || s.mir_stmts.unwrap_or(0) <= 4 {
-            continue;
+    let mut candidates: Vec<&SymbolSummary> = summaries
+        .iter()
+        .filter(|s| s.kind == "fn")
+        .filter(|s| s.mir_stmts.unwrap_or(0) > 4)
+        .collect();
+    candidates.sort_by_key(|s| std::cmp::Reverse(s.mir_stmts.unwrap_or(0)));
+    candidates.truncate(DARK_ASSIGNMENT_SYMBOL_BUDGET);
+    for s in candidates {
+        if out.len() >= limit {
+            break;
         }
         let Some(cfg) = FunctionCfg::build(&idx, &s.symbol) else {
             continue;
@@ -769,7 +777,6 @@ pub fn dark_assignment_issues(
         });
     }
     out.sort_by(|a, b| a.id.cmp(&b.id));
-    out.truncate(limit);
     out
 }
 
@@ -779,13 +786,22 @@ pub fn loop_invariant_issues(
     summaries: &[SymbolSummary],
     limit: usize,
 ) -> Vec<Issue> {
+    const LOOP_INVARIANT_SYMBOL_BUDGET: usize = 90;
     let Ok(idx) = SemanticIndex::load(workspace, crate_name) else {
         return Vec::new();
     };
     let mut out = Vec::new();
-    for s in summaries {
-        if s.kind != "fn" {
-            continue;
+    let mut candidates: Vec<&SymbolSummary> = summaries
+        .iter()
+        .filter(|s| s.kind == "fn")
+        .filter(|s| s.has_back_edges)
+        .filter(|s| s.mir_stmts.unwrap_or(0) >= 6)
+        .collect();
+    candidates.sort_by_key(|s| std::cmp::Reverse(s.mir_stmts.unwrap_or(0)));
+    candidates.truncate(LOOP_INVARIANT_SYMBOL_BUDGET);
+    for s in candidates {
+        if out.len() >= limit {
+            break;
         }
         let Some(cfg) = FunctionCfg::build(&idx, &s.symbol) else {
             continue;
@@ -878,7 +894,6 @@ pub fn loop_invariant_issues(
         });
     }
     out.sort_by(|a, b| a.id.cmp(&b.id));
-    out.truncate(limit);
     out
 }
 
