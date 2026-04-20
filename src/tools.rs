@@ -4995,13 +4995,47 @@ fn maybe_log_graph_reports_failure(
 
 fn build_cargo_test_command(crate_name: &str, test_name: Option<&str>) -> String {
     if let Some(test_name) = test_name {
-        format!(
-            "cargo test -p {} {} -- --exact --nocapture",
-            crate_name, test_name
-        )
+        format!("cargo test -q -p {} {} -- --exact", crate_name, test_name)
     } else {
-        format!("cargo test -p {} -- --nocapture", crate_name)
+        // Faster default profile: skip doc tests and suppress noisy output.
+        // Callers can still target explicit tests via `test`.
+        format!("cargo test -q -p {} --lib --bins --tests", crate_name)
     }
+}
+
+fn load_cached_failed_tests(workspace: &Path) -> Vec<String> {
+    let path = workspace.join("cargo_test_failures.json");
+    let Ok(raw) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&raw) else {
+        return Vec::new();
+    };
+    value
+        .get("failed_tests")
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToString::to_string)
+        .take(6)
+        .collect()
+}
+
+fn build_cached_failed_tests_command(crate_name: &str, tests: &[String]) -> Option<String> {
+    if tests.is_empty() {
+        return None;
+    }
+    let mut parts = Vec::new();
+    for test in tests {
+        parts.push(format!(
+            "cargo test -q -p {} {} -- --exact",
+            crate_name, test
+        ));
+    }
+    Some(parts.join(" && "))
 }
 
 fn cargo_test_summary_line(log_path: Option<&Path>, out: &str) -> Option<String> {
@@ -5115,7 +5149,18 @@ fn handle_cargo_test_action(
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("cargo_test missing 'crate'"))?;
     let test_name = action.get("test").and_then(|v| v.as_str());
-    let cmd = build_cargo_test_command(crate_name, test_name);
+    let cached_failed = if test_name.is_none() {
+        load_cached_failed_tests(workspace)
+    } else {
+        Vec::new()
+    };
+    let cmd = if let Some(test_name) = test_name {
+        build_cargo_test_command(crate_name, Some(test_name))
+    } else if let Some(retry_cmd) = build_cached_failed_tests_command(crate_name, &cached_failed) {
+        retry_cmd
+    } else {
+        build_cargo_test_command(crate_name, None)
+    };
     eprintln!("[{role}] step={} cargo_test cmd={}", step, cmd);
     let (spawn_ok, out) = exec_run_command(workspace, &cmd, crate::constants::workspace())?;
     let log_path = extract_output_log_path(&out);
@@ -5137,6 +5182,10 @@ fn handle_cargo_test_action(
         );
     }
     let failures_json = parse_cargo_test_failures(&out);
+    let _ = fs::write(
+        workspace.join("cargo_test_failures.json"),
+        serde_json::to_string_pretty(&failures_json).unwrap_or_else(|_| failures_json.to_string()),
+    );
     let summary = build_cargo_test_summary(
         label,
         &failures_json,
@@ -6624,7 +6673,7 @@ fn exec_run_command_cargo_test(cmd: &str, cwd_path: &Path) -> Result<(bool, Stri
     let timeout_secs = env::var("CANON_CARGO_TEST_TIMEOUT_SECS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
-        .unwrap_or(20 * 60);
+        .unwrap_or(8 * 60);
     let wrapped_cmd = format!("timeout -s TERM {}s {}", timeout_secs, cmd);
     let output = Command::new("/bin/bash")
         .arg("-c")

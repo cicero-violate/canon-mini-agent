@@ -14,12 +14,17 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::{
     atomic::{AtomicBool, AtomicU32, Ordering},
-    Arc,
+    Arc, OnceLock,
 };
 use std::thread;
 use std::time::{Duration, SystemTime};
 
 const STARTUP_UPDATE_GRACE_SECS: u64 = 15;
+static COMPLEXITY_REPORT_RUNNING: OnceLock<AtomicBool> = OnceLock::new();
+
+fn complexity_report_running_flag() -> &'static AtomicBool {
+    COMPLEXITY_REPORT_RUNNING.get_or_init(|| AtomicBool::new(false))
+}
 
 #[derive(Clone, Copy, Debug)]
 enum BuildKind {
@@ -694,7 +699,22 @@ fn emit_iteration_status_and_report(
         .map(PathBuf::from)
         .unwrap_or_else(|| root.to_path_buf());
     refresh_semantic_graph_if_stale(root, &report_workspace);
-    emit_complexity_report_status(&report_workspace);
+    trigger_complexity_report_status_async(report_workspace);
+}
+
+fn trigger_complexity_report_status_async(report_workspace: PathBuf) {
+    let running = complexity_report_running_flag();
+    if running
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
+        .is_err()
+    {
+        eprintln!("[canon-mini-supervisor] complexity_report: already running (skip trigger)");
+        return;
+    }
+    thread::spawn(move || {
+        emit_complexity_report_status(&report_workspace);
+        complexity_report_running_flag().store(false, Ordering::Release);
+    });
 }
 
 fn supervise_current_child(
