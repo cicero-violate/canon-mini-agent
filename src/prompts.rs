@@ -1594,6 +1594,31 @@ fn next_action_hint_text(result: &str, last_action: Option<&str>) -> String {
     }
 }
 
+fn agent_prompt_kind_from_agent_type(agent_type: &str) -> AgentPromptKind {
+    let normalized = agent_type.trim().to_ascii_uppercase();
+    if normalized.starts_with("EXECUTOR") {
+        AgentPromptKind::Executor
+    } else if normalized.starts_with("VERIFIER") {
+        AgentPromptKind::Verifier
+    } else if normalized.starts_with("DIAGNOSTICS") {
+        AgentPromptKind::Diagnostics
+    } else if normalized.starts_with("SOLO") {
+        AgentPromptKind::Solo
+    } else {
+        AgentPromptKind::Planner
+    }
+}
+
+fn available_actions_hint_text(agent_type: &str) -> String {
+    let kind = agent_prompt_kind_from_agent_type(agent_type);
+    let rendered = role_default_schema_actions(kind)
+        .iter()
+        .map(|action| format!("`{action}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("available_actions: {rendered}")
+}
+
 fn action_result_sections(result: &str) -> Vec<(String, String, usize, usize, usize, bool)> {
     let trimmed = result.trim();
     if trimmed.is_empty() {
@@ -1728,8 +1753,9 @@ pub(crate) fn action_result_prompt(
         "TAB_ID: {tab_label}\nTURN_ID: {turn_label}\nAGENT_TYPE: {agent_type}\n\n{limit_line}{provenance_block}"
     );
     let suffix = format!(
-        "\n\n{predicted_line}{}{}\n{ACTION_EMIT_LINE}",
+        "\n\n{predicted_line}{}\n{}{}\n{ACTION_EMIT_LINE}",
         next_action_hint_text(result, last_action),
+        available_actions_hint_text(agent_type),
         mutating_question,
     );
     render_action_result_sections(&prefix, result, &suffix)
@@ -2086,6 +2112,27 @@ mod tests {
         );
         assert!(!prompt.contains("Predicted next actions from your last turn:"));
         assert!(!prompt.contains("Compare these against the actual result above before choosing your next action."));
+    }
+
+    #[test]
+    fn action_result_prompt_includes_exhaustive_available_actions_for_role() {
+        let prompt = action_result_prompt(
+            Some(1),
+            Some(2),
+            "PLANNER",
+            "plan ok",
+            Some("plan"),
+            Some("T1"),
+            Some("obj_1"),
+            Some("seed ready task"),
+            None,
+            None,
+        );
+        assert!(prompt.contains("available_actions:"));
+        assert!(prompt.contains("`plan`"));
+        assert!(prompt.contains("`objectives`"));
+        assert!(prompt.contains("`issue`"));
+        assert!(prompt.contains("`batch`"));
     }
 
     #[test]
