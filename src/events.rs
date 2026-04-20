@@ -238,7 +238,7 @@ pub enum EffectEvent {
         type_counts: std::collections::BTreeMap<String, u64>,
         recent_event_types: Vec<String>,
     },
-    /// Prompt sent to the LLM. Full text is written to `agent_state/llm_full/`.
+    /// Prompt sent to the LLM.
     LlmTurnInput {
         tab_id: Option<u32>,
         turn_id: Option<u64>,

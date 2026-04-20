@@ -1,5 +1,4 @@
-use crate::events::{EffectEvent, Event};
-use crate::tlog::Tlog;
+use crate::canonical_writer::CanonicalWriter;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -97,32 +96,30 @@ pub fn advance_for_successful_build(
     })
 }
 
-pub fn append_build_event_to_tlog(state_dir: &Path, advance: &EvolutionAdvance) -> Result<()> {
-    let tlog_path = state_dir.join("tlog.ndjson");
-    let mut tlog = Tlog::open(&tlog_path);
-    tlog.set_evolution(advance.evolution);
-    tlog.append(&Event::effect(EffectEvent::BuildEvolutionAdvanced {
-        evolution: advance.evolution,
-        command: advance.command.clone(),
-        git_commit: advance.git_commit.clone(),
-        git_commit_count: advance.git_commit_count,
-    }))?;
-    Ok(())
+pub fn append_build_event_to_tlog(
+    writer: &mut CanonicalWriter,
+    advance: &EvolutionAdvance,
+) -> Result<()> {
+    writer.try_record_evolution_advance(advance)
 }
 
 pub fn record_successful_build(
     workspace: &Path,
     state_dir: &Path,
     command: &str,
+    writer: &mut CanonicalWriter,
 ) -> Result<EvolutionAdvance> {
     let advance = advance_for_successful_build(workspace, state_dir, command)?;
-    append_build_event_to_tlog(state_dir, &advance)?;
+    append_build_event_to_tlog(writer, &advance)?;
     Ok(advance)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::canonical_writer::CanonicalWriter;
+    use crate::system_state::SystemState;
+    use crate::tlog::Tlog;
     use serde_json::Value;
 
     fn tempdir(label: &str) -> PathBuf {
@@ -142,9 +139,17 @@ mod tests {
     fn record_successful_build_updates_snapshot_and_tlog() {
         let workspace = tempdir("workspace");
         let state_dir = workspace.join("agent_state");
+        let tlog_path = state_dir.join("tlog.ndjson");
+        let initial = SystemState::new(&[0], 1);
+        let mut writer = CanonicalWriter::new(initial, Tlog::open(&tlog_path), workspace.clone());
 
-        let advance = record_successful_build(&workspace, &state_dir, "cargo build --workspace")
-            .expect("record successful build");
+        let advance = record_successful_build(
+            &workspace,
+            &state_dir,
+            "cargo build --workspace",
+            &mut writer,
+        )
+        .expect("record successful build");
         assert_eq!(advance.evolution, 1);
         assert!(advance.git_commit.is_none());
 

@@ -3683,36 +3683,11 @@ struct LlmResponseContext<'a> {
     endpoint: &'a LlmEndpoint,
     prompt_kind: &'a str,
     submit_only: bool,
-    workspace: &'a Path,
-}
-
-fn full_exchange_path(kind: &str, ts_ms: u64, who: &str, step: usize) -> PathBuf {
-    PathBuf::from(crate::constants::agent_state_dir())
-        .join("llm_full")
-        .join(format!("{ts_ms:013}_{kind}_{who}_message_{step:04}.txt"))
-}
-
-fn write_full_exchange(kind: &str, ts_ms: u64, who: &str, step: usize, raw: &str) {
-    let path = full_exchange_path(kind, ts_ms, who, step);
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let _ = std::fs::write(path, raw);
+    writer: Option<&'a mut CanonicalWriter>,
 }
 
 impl<'a> LlmResponseContext<'a> {
-    fn log_request(&self, step: usize, exchange_id: &str, prompt: &str, role_schema: &str) {
-        let ts_ms = crate::logging::now_ms();
-        let who = if role_schema.trim().is_empty() {
-            self.role
-        } else {
-            "system"
-        };
-        let raw_prompt = if role_schema.trim().is_empty() {
-            prompt.to_string()
-        } else {
-            format!("{}\n\n{}", role_schema.trim_end(), prompt)
-        };
+    fn log_request(&mut self, step: usize, exchange_id: &str, prompt: &str, role_schema: &str) {
         log_message_event(
             self.role,
             self.endpoint,
@@ -3727,14 +3702,8 @@ impl<'a> LlmResponseContext<'a> {
                 "prompt": truncate(prompt, MAX_SNIPPET),
             }),
         );
-        write_full_exchange("sent", ts_ms, who, step, &raw_prompt);
-        let tlog_path = self
-            .workspace
-            .join("agent_state")
-            .join("tlog.ndjson");
-        let mut tlog = crate::tlog::Tlog::open(&tlog_path);
-        let _ = tlog.append(&crate::events::Event::effect(
-            crate::events::EffectEvent::LlmTurnInput {
+        if let Some(writer) = self.writer.as_deref_mut() {
+            writer.record_effect(crate::events::EffectEvent::LlmTurnInput {
                 tab_id: None,
                 turn_id: None,
                 role: self.role.to_string(),
@@ -3746,8 +3715,8 @@ impl<'a> LlmResponseContext<'a> {
                 prompt_bytes: prompt.len(),
                 role_schema_bytes: role_schema.len(),
                 submit_only: self.submit_only,
-            },
-        ));
+            });
+        }
         trace_message_forwarded(
             self.role,
             self.prompt_kind,
@@ -3758,8 +3727,7 @@ impl<'a> LlmResponseContext<'a> {
         );
     }
 
-    fn log_response(&self, step: usize, exchange_id: &str, raw: &str) {
-        let ts_ms = crate::logging::now_ms();
+    fn log_response(&mut self, step: usize, exchange_id: &str, raw: &str) {
         trace_message_received(
             self.role,
             self.prompt_kind,
@@ -3781,7 +3749,6 @@ impl<'a> LlmResponseContext<'a> {
                 "raw": truncate(raw, MAX_SNIPPET),
             }),
         );
-        write_full_exchange("received", ts_ms, self.role, step, raw);
         let action_kind = serde_json::from_str::<serde_json::Value>(raw)
             .ok()
             .and_then(|v| {
@@ -3789,13 +3756,8 @@ impl<'a> LlmResponseContext<'a> {
                     .and_then(|a| a.as_str())
                     .map(str::to_string)
             });
-        let tlog_path = self
-            .workspace
-            .join("agent_state")
-            .join("tlog.ndjson");
-        let mut tlog = crate::tlog::Tlog::open(&tlog_path);
-        let _ = tlog.append(&crate::events::Event::effect(
-            crate::events::EffectEvent::LlmTurnOutput {
+        if let Some(writer) = self.writer.as_deref_mut() {
+            writer.record_effect(crate::events::EffectEvent::LlmTurnOutput {
                 tab_id: None,
                 turn_id: None,
                 role: self.role.to_string(),
@@ -3806,8 +3768,8 @@ impl<'a> LlmResponseContext<'a> {
                 response_hash: crate::logging::stable_hash_hex(raw),
                 action_kind,
                 raw: raw.to_string(),
-            },
-        ));
+            });
+        }
     }
 
     fn handle_submit_ack(&self, step: usize, exchange_id: &str, raw: &str) -> Option<String> {
@@ -4043,7 +4005,7 @@ async fn run_agent(
     bridge: &WsBridge,
     workspace: &Path,
     tabs: &TabManagerHandle,
-    mut writer: Option<&mut CanonicalWriter>,
+    writer: Option<&mut CanonicalWriter>,
     submit_only: bool,
     check_on_done: bool,
     send_system_prompt: bool,
@@ -4075,12 +4037,12 @@ async fn run_agent(
     let mut last_failed_action_fingerprint: Option<String> = None;
     let mut repeated_failed_action_count: usize = 0;
     let shutdown = shutdown_signal();
-    let ctx = LlmResponseContext {
+    let mut ctx = LlmResponseContext {
         role,
         endpoint,
         prompt_kind,
         submit_only,
-        workspace,
+        writer,
     };
 
     write_stage_graph(workspace);
@@ -4173,7 +4135,7 @@ async fn run_agent(
                 let err_text = e.to_string();
                 eprintln!("[{role}] step={} llm_error: {e}", step + 1);
                 ctx.log_error(step + 1, &exchange_id, &err_text);
-                if let Some(writer) = writer.as_mut() {
+                if let Some(writer) = ctx.writer.as_deref_mut() {
                     let _ =
                         writer.try_record_effect(crate::events::EffectEvent::LlmErrorBoundary {
                             role: role.to_string(),
@@ -4223,7 +4185,7 @@ async fn run_agent(
                         &exchange_id,
                         &action,
                         false,
-                        writer.as_deref_mut(),
+                        ctx.writer.as_deref_mut(),
                     )?;
                     return Ok(if done {
                         AgentCompletion::MessageAction {
@@ -4487,7 +4449,7 @@ async fn run_agent(
             &command_id,
             &action,
             check_on_done,
-            writer.as_deref_mut(),
+            ctx.writer.as_deref_mut(),
         )?;
 
         match step_result {
@@ -4950,7 +4912,6 @@ fn handle_executor_completion(
     );
     if handle_executor_completion_message_action(
         writer,
-        workspace,
         &submitted,
         lane_cfg,
         &exec_result,
@@ -5153,7 +5114,6 @@ fn spawn_executor_completion_continuation(
 
 fn handle_executor_completion_message_action(
     writer: &mut CanonicalWriter,
-    workspace: &Path,
     submitted: &SubmittedExecutorTurn,
     lane_cfg: &LaneConfig,
     exec_result: &str,
@@ -5179,7 +5139,7 @@ fn handle_executor_completion_message_action(
     };
 
     log_action_result(
-        workspace,
+        Some(writer),
         &submitted.actor,
         &lane_cfg.endpoint,
         "executor",

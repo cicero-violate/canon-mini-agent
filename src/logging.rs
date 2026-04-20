@@ -3,9 +3,10 @@ use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
+use crate::canonical_writer::CanonicalWriter;
 use crate::constants::MAX_SNIPPET;
 use crate::prompts::{action_observation, action_rationale, parse_actions, truncate};
 
@@ -544,7 +545,7 @@ pub(crate) fn log_action_event(
 }
 
 pub(crate) fn append_action_result_log(
-    workspace: &Path,
+    mut writer: Option<&mut CanonicalWriter>,
     role: &str,
     endpoint: &LlmEndpoint,
     _prompt_kind: &str,
@@ -573,21 +574,16 @@ pub(crate) fn append_action_result_log(
     inject_action_fields(&mut record, action);
     append_action_log_record(&record)?;
 
-    let tlog_path = workspace
-        .join("agent_state")
-        .join("tlog.ndjson");
-    let action_kind = action
-        .get("action")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown")
-        .to_string();
-    let mut tlog = crate::tlog::Tlog::open(&tlog_path);
-    let _ = tlog.append(&crate::events::Event::effect(
-        crate::events::EffectEvent::ActionResultRecorded {
+    if let Some(writer) = writer.as_deref_mut() {
+        writer.record_effect(crate::events::EffectEvent::ActionResultRecorded {
             role: role.to_string(),
             step,
             command_id: command_id.to_string(),
-            action_kind,
+            action_kind: action
+                .get("action")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string(),
             task_id: action
                 .get("task_id")
                 .and_then(|v| v.as_str())
@@ -600,14 +596,14 @@ pub(crate) fn append_action_result_log(
             result_bytes: result_text.len(),
             result_hash: stable_hash_hex(result_text),
             result: result_text.to_string(),
-        },
-    ));
+        });
+    }
 
     Ok(())
 }
 
 pub(crate) fn log_action_result(
-    workspace: &Path,
+    writer: Option<&mut CanonicalWriter>,
     role: &str,
     endpoint: &LlmEndpoint,
     prompt_kind: &str,
@@ -618,7 +614,7 @@ pub(crate) fn log_action_result(
     output: &str,
 ) {
     if let Err(e) = append_action_result_log(
-        workspace,
+        writer,
         role,
         endpoint,
         prompt_kind,
@@ -978,6 +974,42 @@ pub fn migrate_projection_if_present(
     Ok(true)
 }
 
+fn parse_prompt_overflow_report(raw: &str) -> serde_json::Map<String, Value> {
+    if raw.trim().is_empty() {
+        serde_json::Map::new()
+    } else {
+        serde_json::from_str::<Value>(raw)
+            .ok()
+            .and_then(|v| v.as_object().cloned())
+            .unwrap_or_default()
+    }
+}
+
+fn prompt_overflow_violation_id(role: &str) -> String {
+    format!(
+        "PROMPT-OVERFLOW-{}",
+        role.to_uppercase().replace(['[', ']', '/'], "-")
+    )
+}
+
+fn persist_prompt_overflow_report(
+    workspace: &std::path::Path,
+    violations_path: &std::path::Path,
+    role: &str,
+    report: &serde_json::Map<String, Value>,
+) {
+    if let Ok(body) = serde_json::to_string_pretty(&Value::Object(report.clone())) {
+        let _ = write_projection_with_artifact_effects(
+            workspace,
+            violations_path,
+            crate::constants::VIOLATIONS_FILE,
+            "append",
+            &format!("prompt_overflow:{role}"),
+            &body,
+        );
+    }
+}
+
 pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, prompt_bytes: usize) {
     use crate::constants::PROMPT_OVERFLOW_BYTES;
     if prompt_bytes <= PROMPT_OVERFLOW_BYTES {
@@ -986,20 +1018,10 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
     let violations_path = workspace.join(crate::constants::VIOLATIONS_FILE);
     let raw = std::fs::read_to_string(&violations_path).unwrap_or_default();
 
-    let mut report: serde_json::Map<String, Value> = if raw.trim().is_empty() {
-        serde_json::Map::new()
-    } else {
-        serde_json::from_str::<Value>(&raw)
-            .ok()
-            .and_then(|v| v.as_object().cloned())
-            .unwrap_or_default()
-    };
+    let mut report = parse_prompt_overflow_report(&raw);
 
     // Deduplicate: skip if an open overflow violation for this role already exists.
-    let violation_id = format!(
-        "PROMPT-OVERFLOW-{}",
-        role.to_uppercase().replace(['[', ']', '/'], "-")
-    );
+    let violation_id = prompt_overflow_violation_id(role);
     let violations = report
         .get("violations")
         .and_then(|v| v.as_array())
@@ -1074,16 +1096,7 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
             "One or more agent roles are sending prompts that exceed the noise-context threshold."
         ));
 
-        if let Ok(body) = serde_json::to_string_pretty(&Value::Object(report)) {
-            let _ = write_projection_with_artifact_effects(
-                workspace,
-                &violations_path,
-                crate::constants::VIOLATIONS_FILE,
-                "append",
-                &format!("prompt_overflow:{role}"),
-                &body,
-            );
-        }
+        persist_prompt_overflow_report(workspace, &violations_path, role, &report);
         return;
     }
 
@@ -1132,16 +1145,7 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
         "One or more agent roles are sending prompts that exceed the noise-context threshold."
     ));
 
-    if let Ok(body) = serde_json::to_string_pretty(&Value::Object(report)) {
-        let _ = write_projection_with_artifact_effects(
-            workspace,
-            &violations_path,
-            crate::constants::VIOLATIONS_FILE,
-            "append",
-            &format!("prompt_overflow:{role}"),
-            &body,
-        );
-    }
+    persist_prompt_overflow_report(workspace, &violations_path, role, &report);
     eprintln!(
         "[{role}] PROMPT OVERFLOW: {prompt_bytes} bytes exceeds threshold {PROMPT_OVERFLOW_BYTES}"
     );

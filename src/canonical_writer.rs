@@ -104,6 +104,30 @@ impl CanonicalWriter {
         }
     }
 
+    /// Record a build evolution advance and update the tlog evolution stamp.
+    pub fn try_record_evolution_advance(
+        &mut self,
+        advance: &crate::evolution::EvolutionAdvance,
+    ) -> Result<()> {
+        self.tlog.set_evolution(advance.evolution);
+        self.try_record_effect(EffectEvent::BuildEvolutionAdvanced {
+            evolution: advance.evolution,
+            command: advance.command.clone(),
+            git_commit: advance.git_commit.clone(),
+            git_commit_count: advance.git_commit_count,
+        })
+    }
+
+    pub fn record_evolution_advance(&mut self, advance: &crate::evolution::EvolutionAdvance) {
+        if let Err(err) = self.try_record_evolution_advance(advance) {
+            let _ = self.try_record_violation(
+                "canonical_writer",
+                &format!("record_evolution_advance failed: {err:#}"),
+            );
+            eprintln!("{err:#}");
+        }
+    }
+
     /// Read access to the current system state.
     pub fn state(&self) -> &SystemState {
         &self.state

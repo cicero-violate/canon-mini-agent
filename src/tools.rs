@@ -7723,7 +7723,7 @@ pub(crate) fn execute_logged_action(
     ) {
         Ok((done, out)) => {
             log_action_result(
-                workspace,
+                writer.as_deref_mut(),
                 role,
                 endpoint,
                 prompt_kind,
@@ -7767,7 +7767,7 @@ pub(crate) fn execute_logged_action(
                 format!("Error executing action: {e}")
             };
             log_action_result(
-                workspace,
+                writer.as_deref_mut(),
                 role,
                 endpoint,
                 prompt_kind,
