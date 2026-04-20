@@ -3,7 +3,7 @@ use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 use crate::constants::MAX_SNIPPET;
@@ -544,6 +544,7 @@ pub(crate) fn log_action_event(
 }
 
 pub(crate) fn append_action_result_log(
+    workspace: &Path,
     role: &str,
     endpoint: &LlmEndpoint,
     _prompt_kind: &str,
@@ -570,10 +571,43 @@ pub(crate) fn append_action_result_log(
         None,
     );
     inject_action_fields(&mut record, action);
-    append_action_log_record(&record)
+    append_action_log_record(&record)?;
+
+    let tlog_path = workspace
+        .join("agent_state")
+        .join("tlog.ndjson");
+    let action_kind = action
+        .get("action")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+    let mut tlog = crate::tlog::Tlog::open(&tlog_path);
+    let _ = tlog.append(&crate::events::Event::effect(
+        crate::events::EffectEvent::ActionResultRecorded {
+            role: role.to_string(),
+            step,
+            command_id: command_id.to_string(),
+            action_kind,
+            task_id: action
+                .get("task_id")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
+            objective_id: action
+                .get("objective_id")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
+            ok: success,
+            result_bytes: result_text.len(),
+            result_hash: stable_hash_hex(result_text),
+            result: result_text.to_string(),
+        },
+    ));
+
+    Ok(())
 }
 
 pub(crate) fn log_action_result(
+    workspace: &Path,
     role: &str,
     endpoint: &LlmEndpoint,
     prompt_kind: &str,
@@ -584,6 +618,7 @@ pub(crate) fn log_action_result(
     output: &str,
 ) {
     if let Err(e) = append_action_result_log(
+        workspace,
         role,
         endpoint,
         prompt_kind,
@@ -738,7 +773,7 @@ fn evidence_receipts_path() -> PathBuf {
     std::path::Path::new(crate::constants::agent_state_dir()).join("evidence_receipts.jsonl")
 }
 
-fn stable_hash_hex(value: &str) -> String {
+pub(crate) fn stable_hash_hex(value: &str) -> String {
     let mut hasher = DefaultHasher::new();
     value.hash(&mut hasher);
     format!("{:016x}", hasher.finish())

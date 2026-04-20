@@ -269,6 +269,9 @@ fn effect_event_kind_name(event: &crate::events::EffectEvent) -> &'static str {
         }
         crate::events::EffectEvent::ViolationsReportRecorded { .. } => "violations_report_recorded",
         crate::events::EffectEvent::FramesAllDebugSnapshot { .. } => "frames_all_debug_snapshot",
+        crate::events::EffectEvent::LlmTurnInput { .. } => "llm_turn_input",
+        crate::events::EffectEvent::LlmTurnOutput { .. } => "llm_turn_output",
+        crate::events::EffectEvent::ActionResultRecorded { .. } => "action_result_recorded",
     }
 }
 

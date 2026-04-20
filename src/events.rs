@@ -238,6 +238,46 @@ pub enum EffectEvent {
         type_counts: std::collections::BTreeMap<String, u64>,
         recent_event_types: Vec<String>,
     },
+    /// Prompt sent to the LLM. Full text is written to `agent_state/llm_full/`.
+    LlmTurnInput {
+        tab_id: Option<u32>,
+        turn_id: Option<u64>,
+        role: String,
+        agent_type: String,
+        step: usize,
+        command_id: String,
+        endpoint_id: String,
+        prompt_hash: String,
+        prompt_bytes: usize,
+        role_schema_bytes: usize,
+        submit_only: bool,
+    },
+    /// Raw LLM response payload with small structured metadata for joins.
+    LlmTurnOutput {
+        tab_id: Option<u32>,
+        turn_id: Option<u64>,
+        role: String,
+        step: usize,
+        command_id: String,
+        endpoint_id: String,
+        response_bytes: usize,
+        response_hash: String,
+        action_kind: Option<String>,
+        raw: String,
+    },
+    /// Result text from executing the emitted action.
+    ActionResultRecorded {
+        role: String,
+        step: usize,
+        command_id: String,
+        action_kind: String,
+        task_id: Option<String>,
+        objective_id: Option<String>,
+        ok: bool,
+        result_bytes: usize,
+        result_hash: String,
+        result: String,
+    },
 }
 
 /// Envelope that wraps either a `ControlEvent` or an `EffectEvent`.

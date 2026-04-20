@@ -118,32 +118,50 @@ fn write_user_message_projections(
     Ok(msg_path)
 }
 
+fn ensure_state_dir(state_dir: &Path) -> Result<()> {
+    fs::create_dir_all(state_dir)
+        .with_context(|| format!("create state dir {}", state_dir.display()))?;
+    Ok(())
+}
+
+fn inbound_message_signature(to_key: &str, action_text: &str) -> String {
+    artifact_write_signature(&[
+        "inbound_message",
+        "user",
+        to_key,
+        &action_text.len().to_string(),
+        action_text,
+    ])
+}
+
+fn record_inbound_user_message_effect(
+    workspace: &Path,
+    to_key: &str,
+    action_text: &str,
+) -> Result<()> {
+    let signature = inbound_message_signature(to_key, action_text);
+    record_effect_for_workspace(
+        workspace,
+        EffectEvent::InboundMessageRecorded {
+            from_role: "user".to_string(),
+            to_role: to_key.to_string(),
+            message: action_text.to_string(),
+            signature,
+        },
+    )?;
+    Ok(())
+}
+
 fn write_user_message(
     workspace: &Path,
     state_dir: &Path,
     to_role: &str,
     message: &str,
 ) -> Result<PathBuf> {
-    fs::create_dir_all(state_dir)
-        .with_context(|| format!("create state dir {}", state_dir.display()))?;
+    ensure_state_dir(state_dir)?;
     let to_key = sanitize_role(to_role);
     let action_text = build_user_handoff_action_text(&to_key, message)?;
-    let signature = artifact_write_signature(&[
-        "inbound_message",
-        "user",
-        &to_key,
-        &action_text.len().to_string(),
-        action_text.as_str(),
-    ]);
-    record_effect_for_workspace(
-        workspace,
-        EffectEvent::InboundMessageRecorded {
-            from_role: "user".to_string(),
-            to_role: to_key.clone(),
-            message: action_text.clone(),
-            signature,
-        },
-    )?;
+    record_inbound_user_message_effect(workspace, &to_key, &action_text)?;
     write_user_message_projections(workspace, state_dir, &to_key, &action_text)
 }
 
@@ -200,4 +218,48 @@ fn main() -> Result<()> {
         }))?
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_test_dir(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "canon_user_chat_{prefix}_{}_{}",
+            std::process::id(),
+            nanos
+        ))
+    }
+
+    #[test]
+    fn write_user_message_creates_projection_files() {
+        let workspace = unique_test_dir("workspace");
+        let state_dir = workspace.join("agent_state");
+        let result = (|| -> Result<()> {
+            let msg_path = write_user_message(&workspace, &state_dir, "solo", "hello world")?;
+            let wake_path = state_dir.join("wakeup_solo.flag");
+
+            assert_eq!(msg_path, state_dir.join("last_message_to_solo.json"));
+            assert!(msg_path.exists(), "message projection should exist");
+            assert!(wake_path.exists(), "wake flag should exist");
+
+            let projection = fs::read_to_string(&msg_path)?;
+            assert!(projection.contains("\"action\": \"message\""));
+            assert!(projection.contains("\"to\": \"solo\""));
+            assert!(projection.contains("hello world"));
+
+            let wake = fs::read_to_string(&wake_path)?;
+            assert_eq!(wake, "user_message");
+            Ok(())
+        })();
+
+        let _ = fs::remove_dir_all(&workspace);
+        result.expect("write_user_message should preserve projection behavior");
+    }
 }

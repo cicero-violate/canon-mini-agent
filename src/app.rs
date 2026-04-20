@@ -3683,6 +3683,7 @@ struct LlmResponseContext<'a> {
     endpoint: &'a LlmEndpoint,
     prompt_kind: &'a str,
     submit_only: bool,
+    workspace: &'a Path,
 }
 
 fn full_exchange_path(kind: &str, ts_ms: u64, who: &str, step: usize) -> PathBuf {
@@ -3727,6 +3728,26 @@ impl<'a> LlmResponseContext<'a> {
             }),
         );
         write_full_exchange("sent", ts_ms, who, step, &raw_prompt);
+        let tlog_path = self
+            .workspace
+            .join("agent_state")
+            .join("tlog.ndjson");
+        let mut tlog = crate::tlog::Tlog::open(&tlog_path);
+        let _ = tlog.append(&crate::events::Event::effect(
+            crate::events::EffectEvent::LlmTurnInput {
+                tab_id: None,
+                turn_id: None,
+                role: self.role.to_string(),
+                agent_type: role_key(self.role).to_uppercase(),
+                step,
+                command_id: exchange_id.to_string(),
+                endpoint_id: self.endpoint.id.clone(),
+                prompt_hash: crate::logging::stable_hash_hex(prompt),
+                prompt_bytes: prompt.len(),
+                role_schema_bytes: role_schema.len(),
+                submit_only: self.submit_only,
+            },
+        ));
         trace_message_forwarded(
             self.role,
             self.prompt_kind,
@@ -3761,6 +3782,32 @@ impl<'a> LlmResponseContext<'a> {
             }),
         );
         write_full_exchange("received", ts_ms, self.role, step, raw);
+        let action_kind = serde_json::from_str::<serde_json::Value>(raw)
+            .ok()
+            .and_then(|v| {
+                v.get("action")
+                    .and_then(|a| a.as_str())
+                    .map(str::to_string)
+            });
+        let tlog_path = self
+            .workspace
+            .join("agent_state")
+            .join("tlog.ndjson");
+        let mut tlog = crate::tlog::Tlog::open(&tlog_path);
+        let _ = tlog.append(&crate::events::Event::effect(
+            crate::events::EffectEvent::LlmTurnOutput {
+                tab_id: None,
+                turn_id: None,
+                role: self.role.to_string(),
+                step,
+                command_id: exchange_id.to_string(),
+                endpoint_id: self.endpoint.id.clone(),
+                response_bytes: raw.len(),
+                response_hash: crate::logging::stable_hash_hex(raw),
+                action_kind,
+                raw: raw.to_string(),
+            },
+        ));
     }
 
     fn handle_submit_ack(&self, step: usize, exchange_id: &str, raw: &str) -> Option<String> {
@@ -4033,6 +4080,7 @@ async fn run_agent(
         endpoint,
         prompt_kind,
         submit_only,
+        workspace,
     };
 
     write_stage_graph(workspace);
@@ -4900,7 +4948,13 @@ fn handle_executor_completion(
         turn_id,
         lane_name,
     );
-    if handle_executor_completion_message_action(writer, &submitted, lane_cfg, &exec_result) {
+    if handle_executor_completion_message_action(
+        writer,
+        workspace,
+        &submitted,
+        lane_cfg,
+        &exec_result,
+    ) {
         return true;
     }
     eprintln!(
@@ -5099,6 +5153,7 @@ fn spawn_executor_completion_continuation(
 
 fn handle_executor_completion_message_action(
     writer: &mut CanonicalWriter,
+    workspace: &Path,
     submitted: &SubmittedExecutorTurn,
     lane_cfg: &LaneConfig,
     exec_result: &str,
@@ -5124,6 +5179,7 @@ fn handle_executor_completion_message_action(
     };
 
     log_action_result(
+        workspace,
         &submitted.actor,
         &lane_cfg.endpoint,
         "executor",
