@@ -232,11 +232,15 @@ fn is_lane_plan(path: &str) -> bool {
 }
 
 fn is_src_path(path: &str) -> bool {
-    path == "src" || path.starts_with("src/")
+    is_named_dir_path(path, "src")
 }
 
 fn is_tests_path(path: &str) -> bool {
-    path == "tests" || path.starts_with("tests/")
+    is_named_dir_path(path, "tests")
+}
+
+fn is_named_dir_path(path: &str, dir: &str) -> bool {
+    path == dir || path.starts_with(&format!("{dir}/"))
 }
 
 fn default_graph_out_dir(workspace: &Path, crate_name: &str) -> PathBuf {
