@@ -224,6 +224,28 @@ pub struct SemanticControlState {
 }
 
 impl SemanticControlState {
+    pub fn new(
+        scheduled_phase: Option<String>,
+        planner_pending: bool,
+        diagnostics_pending: bool,
+        active_blocker_to_verifier: bool,
+    ) -> Self {
+        Self {
+            scheduled_phase,
+            planner_pending,
+            diagnostics_pending,
+            verifier_queued: false,
+            verifier_in_flight: false,
+            active_blocker_to_verifier,
+        }
+    }
+
+    pub fn with_verifier_activity(mut self, verifier_queued: bool, verifier_in_flight: bool) -> Self {
+        self.verifier_queued = verifier_queued;
+        self.verifier_in_flight = verifier_in_flight;
+        self
+    }
+
     pub fn active_blocker_decision(&self) -> ActiveBlockerDecision {
         decide_active_blocker(
             self.active_blocker_to_verifier,

@@ -1247,14 +1247,12 @@ fn dispatch_executor_submits(
     now: u64,
     submit_joinset: &mut tokio::task::JoinSet<(usize, PendingExecutorSubmit, Result<String>)>,
 ) -> bool {
-    let semantic_control = SemanticControlState {
-        scheduled_phase: writer.state().scheduled_phase.clone(),
-        planner_pending: writer.state().planner_pending,
-        diagnostics_pending: writer.state().diagnostics_pending,
-        verifier_queued: false,
-        verifier_in_flight: false,
-        active_blocker_to_verifier: writer.state().active_blocker_to_verifier,
-    };
+    let semantic_control = SemanticControlState::new(
+        writer.state().scheduled_phase.clone(),
+        writer.state().planner_pending,
+        writer.state().diagnostics_pending,
+        writer.state().active_blocker_to_verifier,
+    );
     if semantic_control.executor_dispatch_blocked() {
         return false;
     }
@@ -3380,14 +3378,12 @@ fn apply_wake_flags(agent_state_dir: &std::path::Path, writer: &mut CanonicalWri
         .collect::<Vec<_>>()
         .join(", ");
 
-    let semantic_control = SemanticControlState {
-        scheduled_phase: state_snapshot.scheduled_phase.clone(),
-        planner_pending: state_snapshot.planner_pending,
-        diagnostics_pending: state_snapshot.diagnostics_pending,
-        verifier_queued: false,
-        verifier_in_flight: false,
-        active_blocker_to_verifier: state_snapshot.active_blocker_to_verifier,
-    };
+    let semantic_control = SemanticControlState::new(
+        state_snapshot.scheduled_phase.clone(),
+        state_snapshot.planner_pending,
+        state_snapshot.diagnostics_pending,
+        state_snapshot.active_blocker_to_verifier,
+    );
     let decision = decide_wake_flags(semantic_control.active_blocker_to_verifier, &inputs);
     let Some(role) = decision.scheduled_phase.as_deref() else {
         return;
@@ -6270,14 +6266,16 @@ pub async fn run() -> Result<()> {
                 verifier_running: !verifier_joinset.is_empty(),
             });
 
-            let semantic_control = SemanticControlState {
-                scheduled_phase: writer.state().scheduled_phase.clone(),
-                planner_pending: writer.state().planner_pending,
-                diagnostics_pending: writer.state().diagnostics_pending,
-                verifier_queued: !verifier_pending_results.is_empty(),
-                verifier_in_flight: !verifier_joinset.is_empty(),
-                active_blocker_to_verifier: writer.state().active_blocker_to_verifier,
-            };
+            let semantic_control = SemanticControlState::new(
+                writer.state().scheduled_phase.clone(),
+                writer.state().planner_pending,
+                writer.state().diagnostics_pending,
+                writer.state().active_blocker_to_verifier,
+            )
+            .with_verifier_activity(
+                !verifier_pending_results.is_empty(),
+                !verifier_joinset.is_empty(),
+            );
             let mut phase_gates = semantic_control.phase_gates();
             phase_gates.verifier = false;
             phase_gates.diagnostics = false;
@@ -6360,14 +6358,16 @@ pub async fn run() -> Result<()> {
                 while verifier_joinset.try_join_next().is_some() {}
             }
 
-            let semantic_control = SemanticControlState {
-                scheduled_phase: writer.state().scheduled_phase.clone(),
-                planner_pending: writer.state().planner_pending,
-                diagnostics_pending: writer.state().diagnostics_pending,
-                verifier_queued: !verifier_pending_results.is_empty(),
-                verifier_in_flight: !verifier_joinset.is_empty(),
-                active_blocker_to_verifier: writer.state().active_blocker_to_verifier,
-            };
+            let semantic_control = SemanticControlState::new(
+                writer.state().scheduled_phase.clone(),
+                writer.state().planner_pending,
+                writer.state().diagnostics_pending,
+                writer.state().active_blocker_to_verifier,
+            )
+            .with_verifier_activity(
+                !verifier_pending_results.is_empty(),
+                !verifier_joinset.is_empty(),
+            );
             let _ = semantic_control;
 
             if writer.state().scheduled_phase.is_some() {
@@ -6377,14 +6377,16 @@ pub async fn run() -> Result<()> {
                     .and_then(|lane_id| writer.state().lanes.get(&lane_id))
                     .map(|lane| (lane.pending, lane.in_progress_by.is_some()))
                     .unwrap_or((false, false));
-                let semantic_control = SemanticControlState {
-                    scheduled_phase: writer.state().scheduled_phase.clone(),
-                    planner_pending: writer.state().planner_pending,
-                    diagnostics_pending: writer.state().diagnostics_pending,
-                    verifier_queued: !verifier_pending_results.is_empty(),
-                    verifier_in_flight: !verifier_joinset.is_empty(),
-                    active_blocker_to_verifier: writer.state().active_blocker_to_verifier,
-                };
+                let semantic_control = SemanticControlState::new(
+                    writer.state().scheduled_phase.clone(),
+                    writer.state().planner_pending,
+                    writer.state().diagnostics_pending,
+                    writer.state().active_blocker_to_verifier,
+                )
+                .with_verifier_activity(
+                    !verifier_pending_results.is_empty(),
+                    !verifier_joinset.is_empty(),
+                );
                 if semantic_control
                     .scheduled_phase_done(executor_lane_pending, executor_in_progress)
                 {
