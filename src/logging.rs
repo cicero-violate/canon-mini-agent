@@ -546,7 +546,6 @@ pub(crate) fn log_action_event(
 
 pub(crate) fn append_action_result_log(
     mut writer: Option<&mut CanonicalWriter>,
-    effect_tx: Option<&tokio::sync::mpsc::UnboundedSender<crate::events::EffectEvent>>,
     role: &str,
     endpoint: &LlmEndpoint,
     _prompt_kind: &str,
@@ -599,8 +598,6 @@ pub(crate) fn append_action_result_log(
     };
     if let Some(writer) = writer.as_deref_mut() {
         writer.record_effect(effect);
-    } else if let Some(tx) = effect_tx {
-        let _ = tx.send(effect);
     }
 
     Ok(())
@@ -608,7 +605,6 @@ pub(crate) fn append_action_result_log(
 
 pub(crate) fn log_action_result(
     writer: Option<&mut CanonicalWriter>,
-    effect_tx: Option<&tokio::sync::mpsc::UnboundedSender<crate::events::EffectEvent>>,
     role: &str,
     endpoint: &LlmEndpoint,
     prompt_kind: &str,
@@ -620,7 +616,6 @@ pub(crate) fn log_action_result(
 ) {
     if let Err(e) = append_action_result_log(
         writer,
-        effect_tx,
         role,
         endpoint,
         prompt_kind,
@@ -1016,6 +1011,13 @@ fn persist_prompt_overflow_report(
     }
 }
 
+fn mark_prompt_overflow_failed(report: &mut serde_json::Map<String, Value>) {
+    report.insert("status".to_string(), json!("failed"));
+    report.entry("summary".to_string()).or_insert(json!(
+        "One or more agent roles are sending prompts that exceed the noise-context threshold."
+    ));
+}
+
 fn append_prompt_overflow_receipt(
     role: &str,
     prompt_bytes: usize,
@@ -1113,10 +1115,7 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
             "violations".to_string(),
             Value::Array(reconciled_violations),
         );
-        report.insert("status".to_string(), json!("failed"));
-        report.entry("summary".to_string()).or_insert(json!(
-            "One or more agent roles are sending prompts that exceed the noise-context threshold."
-        ));
+        mark_prompt_overflow_failed(&mut report);
 
         persist_prompt_overflow_report(workspace, &violations_path, role, &report);
         return;
@@ -1155,10 +1154,7 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
     let mut new_violations = violations;
     new_violations.push(new_violation);
     report.insert("violations".to_string(), Value::Array(new_violations));
-    report.insert("status".to_string(), json!("failed"));
-    report.entry("summary".to_string()).or_insert(json!(
-        "One or more agent roles are sending prompts that exceed the noise-context threshold."
-    ));
+    mark_prompt_overflow_failed(&mut report);
 
     persist_prompt_overflow_report(workspace, &violations_path, role, &report);
     eprintln!(

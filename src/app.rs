@@ -3952,8 +3952,32 @@ async fn continue_executor_completion(
         &action,
         true,
         None,
-        effect_tx.as_ref(),
     )?;
+    if let Some(tx) = effect_tx.as_ref() {
+        let effect = EffectEvent::ActionResultRecorded {
+            role: role.to_string(),
+            step,
+            command_id: command_id.to_string(),
+            action_kind: action
+                .get("action")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string(),
+            task_id: action
+                .get("task_id")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
+            objective_id: action
+                .get("objective_id")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
+            ok: !out.starts_with("Error executing action:"),
+            result_bytes: out.len(),
+            result_hash: crate::logging::stable_hash_hex(&out),
+            result: out.clone(),
+        };
+        let _ = tx.send(effect);
+    }
     if done {
         return Ok(
             if action.get("action").and_then(|v| v.as_str()) == Some("message") {
@@ -4204,7 +4228,6 @@ async fn run_agent(
                         &action,
                         false,
                         ctx.writer.as_deref_mut(),
-                        ctx.effect_tx.as_ref(),
                     )?;
                     return Ok(if done {
                         AgentCompletion::MessageAction {
@@ -4471,7 +4494,6 @@ async fn run_agent(
             &action,
             check_on_done,
             ctx.writer.as_deref_mut(),
-            ctx.effect_tx.as_ref(),
         )?;
 
         match step_result {
@@ -5163,7 +5185,6 @@ fn handle_executor_completion_message_action(
 
     log_action_result(
         Some(writer),
-        None,
         &submitted.actor,
         &lane_cfg.endpoint,
         "executor",

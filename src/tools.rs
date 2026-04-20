@@ -7711,7 +7711,6 @@ pub(crate) fn execute_logged_action(
     action: &Value,
     check_on_done: bool,
     mut writer: Option<&mut CanonicalWriter>,
-    effect_tx: Option<&tokio::sync::mpsc::UnboundedSender<crate::events::EffectEvent>>,
 ) -> Result<(bool, String)> {
     log_action_event(role, endpoint, prompt_kind, step, command_id, action);
     match execute_action(
@@ -7725,7 +7724,6 @@ pub(crate) fn execute_logged_action(
         Ok((done, out)) => {
             log_action_result(
                 writer.as_deref_mut(),
-                effect_tx,
                 role,
                 endpoint,
                 prompt_kind,
@@ -7770,7 +7768,6 @@ pub(crate) fn execute_logged_action(
             };
             log_action_result(
                 writer.as_deref_mut(),
-                effect_tx,
                 role,
                 endpoint,
                 prompt_kind,
