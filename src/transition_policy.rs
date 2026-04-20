@@ -80,9 +80,13 @@ fn validate_executor_phase(state: &SystemState, lane: Option<usize>) -> Result<(
                 "illegal transition: executor phase for lane {lane_id} requires lane to be in progress"
             ))
         }
-    } else if state.phase == "bootstrap"
-        || state.scheduled_phase.as_deref() == Some("executor")
-    {
+    } else {
+        validate_lane_less_executor_phase(state)
+    }
+}
+
+fn validate_lane_less_executor_phase(state: &SystemState) -> Result<(), String> {
+    if state.phase == "bootstrap" || state.scheduled_phase.as_deref() == Some("executor") {
         Ok(())
     } else {
         Err(
@@ -485,6 +489,21 @@ mod tests {
             },
         )
         .expect("bootstrap executor phase should be allowed");
+    }
+
+    #[test]
+    fn phase_policy_allows_scheduled_executor_without_lane() {
+        let mut state = SystemState::new(&[0], 1);
+        state.phase = "planner".to_string();
+        state.scheduled_phase = Some("executor".to_string());
+        validate_transition(
+            &state,
+            &ControlEvent::PhaseSet {
+                phase: "executor".to_string(),
+                lane: None,
+            },
+        )
+        .expect("scheduled executor phase should be allowed without lane");
     }
 
     #[test]
