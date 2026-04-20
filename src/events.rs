@@ -278,6 +278,9 @@ pub enum EffectEvent {
         result_hash: String,
         result: String,
     },
+    FingerprintDriftRecorded {
+        drift: crate::drift_analysis::FingerprintDrift,
+    },
 }
 
 /// Envelope that wraps either a `ControlEvent` or an `EffectEvent`.

@@ -47,11 +47,15 @@ pub struct Objective {
 }
 
 pub fn runtime_objectives_path(workspace: &Path) -> PathBuf {
-    workspace.join(crate::constants::OBJECTIVES_FILE)
+    workspace_join_path(workspace, crate::constants::OBJECTIVES_FILE)
 }
 
 pub fn legacy_objectives_path(workspace: &Path) -> PathBuf {
-    workspace.join(LEGACY_OBJECTIVES_JSON_FILE)
+    workspace_join_path(workspace, LEGACY_OBJECTIVES_JSON_FILE)
+}
+
+pub fn workspace_join_path(workspace: &Path, file: &str) -> PathBuf {
+    workspace.join(file)
 }
 
 pub fn resolve_objectives_path(workspace: &Path) -> PathBuf {

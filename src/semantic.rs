@@ -131,7 +131,7 @@ pub enum GraphCountKind {
     SemanticEdge,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymbolSummary {
     pub symbol: String,
     pub kind: String,
@@ -152,6 +152,16 @@ pub struct SymbolSummary {
     pub branch_score: Option<f64>,
     /// True if the symbol has a direct self-call edge (immediate recursion).
     pub is_directly_recursive: bool,
+    /// Number of MIR blocks owned by this symbol that terminate in Assert*.
+    pub assert_count: usize,
+    /// Number of MIR blocks owned by this symbol that terminate in Drop*.
+    pub drop_count: usize,
+    /// Number of MIR blocks owned by this symbol that terminate in SwitchInt*.
+    pub switchint_count: usize,
+    /// True when CFG edges indicate a likely loop back-edge for this symbol.
+    pub has_back_edges: bool,
+    /// Number of outgoing call edges that target clone operations.
+    pub clone_call_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -377,6 +387,32 @@ impl SemanticIndex {
                     .push(node);
             }
         }
+        let mut owner_has_back_edges: HashSet<&str> = HashSet::new();
+        for edge in &self.graph.cfg_edges {
+            let (Some(from), Some(to)) = (
+                self.graph.cfg_nodes.get(&edge.from),
+                self.graph.cfg_nodes.get(&edge.to),
+            ) else {
+                continue;
+            };
+            if from.owner.is_empty() || from.owner != to.owner {
+                continue;
+            }
+            if to.block <= from.block {
+                owner_has_back_edges.insert(from.owner.as_str());
+            }
+        }
+        let mut owner_clone_calls: HashMap<&str, usize> = HashMap::new();
+        for edge in &self.graph.edges {
+            if !edge_is_call(edge) {
+                continue;
+            }
+            let to_path = self.edge_endpoint_path(&edge.to);
+            let lower = to_path.to_ascii_lowercase();
+            if lower.contains("::clone") || lower.contains("clone::clone") {
+                *owner_clone_calls.entry(edge.from.as_str()).or_insert(0) += 1;
+            }
+        }
 
         let mut out = Vec::new();
         for (node_key, node) in &self.graph.nodes {
@@ -405,6 +441,25 @@ impl SemanticIndex {
             });
 
             let is_directly_recursive = self_recursive.contains(node_key.as_str());
+            let (assert_count, drop_count, switchint_count) = owner_to_cfg
+                .get(node_key.as_str())
+                .map(|blocks| {
+                    blocks.iter().fold((0usize, 0usize, 0usize), |mut acc, b| {
+                        if b.terminator.starts_with("Assert") {
+                            acc.0 += 1;
+                        }
+                        if b.terminator.starts_with("Drop")
+                            || b.terminator.starts_with("DropAndReplace")
+                        {
+                            acc.1 += 1;
+                        }
+                        if b.terminator.starts_with("SwitchInt") {
+                            acc.2 += 1;
+                        }
+                        acc
+                    })
+                })
+                .unwrap_or((0, 0, 0));
 
             out.push(SymbolSummary {
                 symbol,
@@ -420,6 +475,11 @@ impl SemanticIndex {
                 ref_count: node.refs.len(),
                 branch_score,
                 is_directly_recursive,
+                assert_count,
+                drop_count,
+                switchint_count,
+                has_back_edges: owner_has_back_edges.contains(node_key.as_str()),
+                clone_call_count: *owner_clone_calls.get(node_key.as_str()).unwrap_or(&0),
             });
         }
 

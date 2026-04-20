@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use serde_json::json;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::semantic::{shorten_display_path, SemanticIndex};
@@ -95,6 +96,7 @@ fn process_crate(
     workspace: &Path,
     crate_name: &str,
     global: &mut Vec<serde_json::Value>,
+    all_summaries: &mut Vec<crate::semantic::SymbolSummary>,
 ) -> serde_json::Value {
     let idx = match SemanticIndex::load(workspace, crate_name) {
         Ok(idx) => idx,
@@ -107,7 +109,7 @@ fn process_crate(
         }
     };
 
-    let mut items = collect_complexity_items(&idx, crate_name, global);
+    let mut items = collect_complexity_items(&idx, crate_name, global, all_summaries);
 
     apply_objective_scores(&mut items);
     items.sort_by(sort_by_objective_desc);
@@ -125,6 +127,7 @@ fn collect_complexity_items(
     idx: &crate::semantic::SemanticIndex,
     crate_name: &str,
     global: &mut Vec<serde_json::Value>,
+    all_summaries: &mut Vec<crate::semantic::SymbolSummary>,
 ) -> Vec<serde_json::Value> {
     let mut items = Vec::new();
     for s in idx.symbol_summaries() {
@@ -133,6 +136,7 @@ fn collect_complexity_items(
         if blocks == 0 && stmts == 0 {
             continue;
         }
+        all_summaries.push(s.clone());
         let entry = build_complexity_entry(&s, blocks, stmts);
         global.push(build_global_complexity_entry(crate_name, &entry));
         items.push(entry);
@@ -161,6 +165,7 @@ fn build_complexity_entry(
         "symbol": s.symbol,
         "file": shorten_display_path(&s.file),
         "line": s.line,
+        "mir_fingerprint": s.mir_fingerprint,
         "mir_blocks": blocks,
         "mir_stmts": stmts,
         "branch_score": s.branch_score,
@@ -185,9 +190,10 @@ pub fn write_complexity_report(workspace: &Path) -> Result<Option<PathBuf>> {
 
     let mut per_crate = Vec::new();
     let mut global = Vec::new();
+    let mut current_summaries = Vec::new();
 
     for crate_name in crates {
-        let entry = process_crate(workspace, &crate_name, &mut global);
+        let entry = process_crate(workspace, &crate_name, &mut global, &mut current_summaries);
         per_crate.push(entry);
     }
 
@@ -207,12 +213,22 @@ pub fn write_complexity_report(workspace: &Path) -> Result<Option<PathBuf>> {
     let _ = crate::graph_metrics::generate_bridge_connectivity_issues(workspace);
 
     let eval = crate::evaluation::evaluate_workspace(workspace);
-    let report = build_complexity_report(per_crate, global_top, inter_sections, &eval);
+    let drift = compute_and_persist_fingerprint_drift(workspace, &current_summaries)?;
+    let report = build_complexity_report(per_crate, global_top, inter_sections, &eval, &drift);
 
     // Auto-generate issues for top hotspots (Detect → Propose step)
     let _ = crate::inter_complexity::generate_hotspot_issues(workspace, 5);
     // Auto-generate structural refactor issues (dead code, branch reduction, helper extraction, call chains)
     let _ = crate::refactor_analysis::generate_all_refactor_issues(workspace);
+    let _ = crate::refactor_analysis::generate_panic_surface_issues(workspace);
+    let _ = crate::refactor_analysis::generate_state_machine_issues(workspace);
+    let _ = crate::refactor_analysis::generate_drop_complexity_issues(workspace);
+    let _ = crate::refactor_analysis::generate_clone_pressure_issues(workspace);
+    let _ = crate::refactor_analysis::generate_visibility_leak_issues(workspace);
+    let _ = crate::refactor_analysis::generate_mono_explosion_issues(workspace);
+    let _ = crate::refactor_analysis::generate_generic_overreach_issues(workspace);
+    let _ = crate::refactor_analysis::generate_dead_impl_issues(workspace);
+    let _ = crate::graph_metrics::generate_module_cohesion_issues(workspace);
     // Auto-generate invariant lifecycle issues (action surface gap, prompt injection gap, per-promoted gates)
     let _ = crate::invariants::generate_invariant_issues(workspace);
 
@@ -227,6 +243,7 @@ fn build_complexity_report(
     global_top: Vec<serde_json::Value>,
     inter: serde_json::Value,
     eval: &crate::evaluation::EvaluationWorkspaceSnapshot,
+    drift: &crate::drift_analysis::FingerprintDrift,
 ) -> serde_json::Value {
     let intra_scoring = complexity_intra_scoring();
     let inter_scoring = complexity_inter_scoring();
@@ -249,8 +266,36 @@ fn build_complexity_report(
             "objectives": format!("{}/{}", eval.objectives_completed, eval.objectives_total),
             "tasks": format!("{}/{}", eval.completed_tasks, eval.total_tasks),
         },
+        "fingerprint_drift": drift,
         "per_crate": per_crate,
     })
+}
+
+fn compute_and_persist_fingerprint_drift(
+    workspace: &Path,
+    current_summaries: &[crate::semantic::SymbolSummary],
+) -> Result<crate::drift_analysis::FingerprintDrift> {
+    let dir = reports_dir(workspace);
+    fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
+    let snapshot = dir.join("fingerprint_snapshot.json");
+    let prev_summaries: Vec<crate::semantic::SymbolSummary> = fs::read_to_string(&snapshot)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default();
+
+    let drift =
+        crate::drift_analysis::compute_fingerprint_drift(workspace, &prev_summaries, current_summaries);
+    let body = serde_json::to_string_pretty(current_summaries)?;
+    fs::write(&snapshot, body).with_context(|| format!("write {}", snapshot.display()))?;
+
+    let _ = crate::logging::record_effect_for_workspace(
+        workspace,
+        crate::events::EffectEvent::FingerprintDriftRecorded {
+            drift: drift.clone(),
+        },
+    );
+
+    Ok(drift)
 }
 
 fn complexity_intra_scoring() -> serde_json::Value {

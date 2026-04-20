@@ -18,15 +18,17 @@
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
+use std::path::Path as StdPath;
 use std::path::Path;
 
 use anyhow::Result;
+use serde_json::json;
 
 use crate::issues::{
     is_closed, load_issues_file, persist_issues_projection_with_writer, rescore_all, Issue,
     IssuesFile,
 };
-use crate::semantic::SemanticIndex;
+use crate::semantic::{SemanticIndex, SymbolSummary};
 
 // ---------------------------------------------------------------------------
 // Public entry point
@@ -96,6 +98,556 @@ pub fn generate_all_refactor_issues(workspace: &Path) -> Result<usize> {
     }
 
     Ok(created)
+}
+
+pub fn generate_panic_surface_issues(workspace: &Path) -> Result<usize> {
+    generate_detector_issues(workspace, "generate_panic_surface_issues", 32, panic_surface_issues)
+}
+
+pub fn generate_state_machine_issues(workspace: &Path) -> Result<usize> {
+    generate_detector_issues(
+        workspace,
+        "generate_state_machine_issues",
+        32,
+        state_machine_issues,
+    )
+}
+
+pub fn generate_drop_complexity_issues(workspace: &Path) -> Result<usize> {
+    generate_detector_issues(
+        workspace,
+        "generate_drop_complexity_issues",
+        32,
+        drop_complexity_issues,
+    )
+}
+
+pub fn generate_clone_pressure_issues(workspace: &Path) -> Result<usize> {
+    generate_detector_issues(
+        workspace,
+        "generate_clone_pressure_issues",
+        32,
+        clone_pressure_issues,
+    )
+}
+
+pub fn generate_visibility_leak_issues(workspace: &Path) -> Result<usize> {
+    generate_detector_issues(
+        workspace,
+        "generate_visibility_leak_issues",
+        32,
+        visibility_leak_issues,
+    )
+}
+
+pub fn generate_mono_explosion_issues(workspace: &Path) -> Result<usize> {
+    generate_detector_issues(
+        workspace,
+        "generate_mono_explosion_issues",
+        24,
+        mono_explosion_issues,
+    )
+}
+
+pub fn generate_generic_overreach_issues(workspace: &Path) -> Result<usize> {
+    generate_detector_issues(
+        workspace,
+        "generate_generic_overreach_issues",
+        24,
+        generic_overreach_issues,
+    )
+}
+
+pub fn generate_dead_impl_issues(workspace: &Path) -> Result<usize> {
+    generate_detector_issues(workspace, "generate_dead_impl_issues", 24, dead_impl_issues)
+}
+
+type DetectorFn = fn(&Path, &str, &[SymbolSummary], usize) -> Vec<Issue>;
+
+fn generate_detector_issues(
+    workspace: &Path,
+    subject: &str,
+    limit: usize,
+    detector: DetectorFn,
+) -> Result<usize> {
+    let mut issues = load_issues_file(workspace);
+    let mut seen: HashSet<String> = issues.issues.iter().map(|i| i.id.clone()).collect();
+    let mut created = 0usize;
+
+    for crate_name in SemanticIndex::available_crates(workspace) {
+        let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
+            continue;
+        };
+        let summaries = idx.symbol_summaries();
+        for issue in detector(workspace, &crate_name, &summaries, limit) {
+            if seen.insert(issue.id.clone()) {
+                issues.issues.push(issue);
+                created += 1;
+            }
+        }
+    }
+
+    if created > 0 {
+        rescore_all(&mut issues);
+        persist_issues_projection_with_writer(workspace, &issues, None, subject)?;
+    }
+    Ok(created)
+}
+
+pub fn panic_surface_issues(
+    _workspace: &Path,
+    crate_name: &str,
+    summaries: &[SymbolSummary],
+    limit: usize,
+) -> Vec<Issue> {
+    let mut out = Vec::new();
+    for s in summaries {
+        if s.kind != "fn" {
+            continue;
+        }
+        let blocks = s.mir_blocks.unwrap_or(0);
+        if blocks == 0 || s.call_in <= 2 {
+            continue;
+        }
+        let panic_surface = s.assert_count as f64 / blocks.max(1) as f64;
+        if panic_surface <= 0.4 {
+            continue;
+        }
+        let location = shorten_location(&s.file, s.line);
+        out.push(Issue {
+            id: format!("auto_panic_surface_{crate_name}_{:x}", stable_hash(&s.symbol)),
+            title: format!(
+                "Panic surface area high in `{}` ({:.2})",
+                short_name(&s.symbol),
+                panic_surface
+            ),
+            status: "open".to_string(),
+            priority: "medium".to_string(),
+            kind: "performance".to_string(),
+            description: format!(
+                "Function `{}` has panic-heavy branching (assert_count={} over {} MIR blocks) with call_in={}.\n\
+                 Convert assert-driven failure paths to explicit Result propagation where possible.",
+                s.symbol, s.assert_count, blocks, s.call_in
+            ),
+            location: location.clone(),
+            scope: format!("crate:{crate_name}"),
+            metrics: json!({
+                "assert_count": s.assert_count,
+                "mir_blocks": blocks,
+                "panic_surface": panic_surface,
+                "call_in": s.call_in
+            }),
+            acceptance_criteria: vec![
+                "assert_count reduced or panic paths moved to Result propagation".to_string(),
+                "cargo build and cargo test pass".to_string(),
+            ],
+            evidence: vec![format!("location: {location}")],
+            discovered_by: "refactor_analyzer".to_string(),
+            ..Issue::default()
+        });
+    }
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out.truncate(limit);
+    out
+}
+
+pub fn state_machine_issues(
+    _workspace: &Path,
+    crate_name: &str,
+    summaries: &[SymbolSummary],
+    limit: usize,
+) -> Vec<Issue> {
+    let mut out = Vec::new();
+    for s in summaries {
+        if s.switchint_count <= 3 || !s.has_back_edges {
+            continue;
+        }
+        let blocks = s.mir_blocks.unwrap_or(0);
+        let location = shorten_location(&s.file, s.line);
+        out.push(Issue {
+            id: format!("auto_state_machine_{crate_name}_{:x}", stable_hash(&s.symbol)),
+            title: format!(
+                "Implicit state machine in `{}` (switches={}, loopback)",
+                short_name(&s.symbol),
+                s.switchint_count
+            ),
+            status: "open".to_string(),
+            priority: "medium".to_string(),
+            kind: "logic".to_string(),
+            description: format!(
+                "Function `{}` behaves like an implicit state machine (SwitchInt count {} with CFG back-edges).\n\
+                 Extract explicit state enum and transition handling.",
+                s.symbol, s.switchint_count
+            ),
+            location: location.clone(),
+            scope: format!("crate:{crate_name}"),
+            metrics: json!({
+                "switchint_count": s.switchint_count,
+                "mir_blocks": blocks,
+                "has_back_edges": s.has_back_edges
+            }),
+            acceptance_criteria: vec![
+                "state transitions are represented explicitly".to_string(),
+                "top-level CFG complexity reduced".to_string(),
+            ],
+            evidence: vec![format!("location: {location}")],
+            discovered_by: "refactor_analyzer".to_string(),
+            ..Issue::default()
+        });
+    }
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out.truncate(limit);
+    out
+}
+
+pub fn drop_complexity_issues(
+    _workspace: &Path,
+    crate_name: &str,
+    summaries: &[SymbolSummary],
+    limit: usize,
+) -> Vec<Issue> {
+    let mut out = Vec::new();
+    for s in summaries {
+        let blocks = s.mir_blocks.unwrap_or(0);
+        if blocks <= 4 {
+            continue;
+        }
+        let drop_complexity = s.drop_count as f64 / blocks.max(1) as f64;
+        if drop_complexity <= 0.3 {
+            continue;
+        }
+        let location = shorten_location(&s.file, s.line);
+        out.push(Issue {
+            id: format!("auto_drop_complexity_{crate_name}_{:x}", stable_hash(&s.symbol)),
+            title: format!(
+                "Drop elaboration complexity in `{}` ({:.2})",
+                short_name(&s.symbol),
+                drop_complexity
+            ),
+            status: "open".to_string(),
+            priority: "medium".to_string(),
+            kind: "logic".to_string(),
+            description: format!(
+                "Function `{}` has heavy conditional-drop handling (drop_count={} across {} MIR blocks).\n\
+                 Simplify ownership/drop branching to reduce cleanup complexity.",
+                s.symbol, s.drop_count, blocks
+            ),
+            location: location.clone(),
+            scope: format!("crate:{crate_name}"),
+            metrics: json!({
+                "drop_count": s.drop_count,
+                "mir_blocks": blocks,
+                "drop_complexity": drop_complexity
+            }),
+            evidence: vec![format!("location: {location}")],
+            discovered_by: "refactor_analyzer".to_string(),
+            ..Issue::default()
+        });
+    }
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out.truncate(limit);
+    out
+}
+
+pub fn clone_pressure_issues(
+    _workspace: &Path,
+    crate_name: &str,
+    summaries: &[SymbolSummary],
+    limit: usize,
+) -> Vec<Issue> {
+    let mut out = Vec::new();
+    for s in summaries {
+        let stmts = s.mir_stmts.unwrap_or(0);
+        if stmts == 0 || s.call_in <= 3 {
+            continue;
+        }
+        let clone_pressure = s.clone_call_count as f64 / stmts.max(1) as f64;
+        if clone_pressure <= 0.1 {
+            continue;
+        }
+        let location = shorten_location(&s.file, s.line);
+        out.push(Issue {
+            id: format!("auto_clone_pressure_{crate_name}_{:x}", stable_hash(&s.symbol)),
+            title: format!(
+                "Clone pressure in `{}` ({:.2})",
+                short_name(&s.symbol),
+                clone_pressure
+            ),
+            status: "open".to_string(),
+            priority: "medium".to_string(),
+            kind: "performance".to_string(),
+            description: format!(
+                "Function `{}` has elevated clone-call pressure ({} clone calls over {} MIR stmts, call_in={}).\n\
+                 Prefer borrowing/reference-oriented data flow where feasible.",
+                s.symbol, s.clone_call_count, stmts, s.call_in
+            ),
+            location: location.clone(),
+            scope: format!("crate:{crate_name}"),
+            metrics: json!({
+                "clone_call_count": s.clone_call_count,
+                "mir_stmts": stmts,
+                "clone_pressure": clone_pressure,
+                "call_in": s.call_in
+            }),
+            evidence: vec![format!("location: {location}")],
+            discovered_by: "refactor_analyzer".to_string(),
+            ..Issue::default()
+        });
+    }
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out.truncate(limit);
+    out
+}
+
+pub fn visibility_leak_issues(
+    workspace: &Path,
+    crate_name: &str,
+    summaries: &[SymbolSummary],
+    limit: usize,
+) -> Vec<Issue> {
+    let Ok(idx) = SemanticIndex::load(workspace, crate_name) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for s in summaries {
+        if s.ref_count == 0 || !symbol_is_pub(s) {
+            continue;
+        }
+        let def_dir = StdPath::new(&s.file)
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_default();
+        let Ok(occurrences) = idx.symbol_occurrences(&s.symbol) else {
+            continue;
+        };
+        if occurrences.is_empty() {
+            continue;
+        }
+        let mut all_local = true;
+        for occ in &occurrences {
+            let ref_dir = StdPath::new(&occ.file)
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_default();
+            if ref_dir != def_dir {
+                all_local = false;
+                break;
+            }
+        }
+        if !all_local {
+            continue;
+        }
+        let location = shorten_location(&s.file, s.line);
+        out.push(Issue {
+            id: format!("auto_visibility_leak_{crate_name}_{:x}", stable_hash(&s.symbol)),
+            title: format!(
+                "Visibility can be tightened for `{}`",
+                short_name(&s.symbol)
+            ),
+            status: "open".to_string(),
+            priority: "low".to_string(),
+            kind: "logic".to_string(),
+            description: format!(
+                "Public symbol `{}` is only referenced from its defining module directory.\n\
+                 Tighten visibility to reduce API surface.",
+                s.symbol
+            ),
+            location: location.clone(),
+            scope: format!("crate:{crate_name}"),
+            metrics: json!({
+                "ref_count": s.ref_count,
+                "module_local_refs_only": true
+            }),
+            acceptance_criteria: vec![
+                "visibility narrowed without behavior changes".to_string(),
+                "build and tests remain green".to_string(),
+            ],
+            evidence: vec![format!("location: {location}")],
+            discovered_by: "refactor_analyzer".to_string(),
+            ..Issue::default()
+        });
+    }
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out.truncate(limit);
+    out
+}
+
+pub fn mono_explosion_issues(
+    _workspace: &Path,
+    crate_name: &str,
+    summaries: &[SymbolSummary],
+    limit: usize,
+) -> Vec<Issue> {
+    let mut groups: HashMap<String, Vec<&SymbolSummary>> = HashMap::new();
+    for s in summaries {
+        let base = generic_base_symbol(&s.symbol);
+        groups.entry(base).or_default().push(s);
+    }
+    let mut out = Vec::new();
+    for (base, group) in groups {
+        if group.len() <= 2 {
+            continue;
+        }
+        let mut fingerprints = HashSet::new();
+        let mut all_some = true;
+        for s in &group {
+            match &s.mir_fingerprint {
+                Some(fp) => {
+                    fingerprints.insert(fp.as_str());
+                }
+                None => {
+                    all_some = false;
+                    break;
+                }
+            }
+        }
+        if !all_some || fingerprints.len() != 1 {
+            continue;
+        }
+        let fp = group[0].mir_fingerprint.clone().unwrap_or_default();
+        out.push(Issue {
+            id: format!("auto_mono_explosion_{crate_name}_{:x}", stable_hash(&base)),
+            title: format!(
+                "Monomorphization explosion candidate `{}` ({})",
+                base,
+                group.len()
+            ),
+            status: "open".to_string(),
+            priority: "medium".to_string(),
+            kind: "performance".to_string(),
+            description: format!(
+                "Multiple monomorphized instances share identical MIR fingerprint for base `{}`.\n\
+                 Consider trait-object erasure or API reshaping to reduce codegen duplication.",
+                base
+            ),
+            scope: format!("crate:{crate_name}"),
+            metrics: json!({
+                "base_symbol": base,
+                "monomorphization_count": group.len(),
+                "fingerprint": fp
+            }),
+            discovered_by: "refactor_analyzer".to_string(),
+            ..Issue::default()
+        });
+    }
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out.truncate(limit);
+    out
+}
+
+pub fn generic_overreach_issues(
+    _workspace: &Path,
+    crate_name: &str,
+    summaries: &[SymbolSummary],
+    limit: usize,
+) -> Vec<Issue> {
+    let mut group_size: HashMap<String, usize> = HashMap::new();
+    for s in summaries {
+        let base = generic_base_symbol(&s.symbol);
+        *group_size.entry(base).or_insert(0) += 1;
+    }
+    let mut out = Vec::new();
+    for s in summaries {
+        if !s.symbol.contains('<') {
+            continue;
+        }
+        let base = generic_base_symbol(&s.symbol);
+        if group_size.get(&base).copied().unwrap_or(0) != 1 {
+            continue;
+        }
+        let location = shorten_location(&s.file, s.line);
+        out.push(Issue {
+            id: format!(
+                "auto_generic_overreach_{crate_name}_{:x}",
+                stable_hash(&s.symbol)
+            ),
+            title: format!("Generic overreach candidate `{}`", short_name(&s.symbol)),
+            status: "open".to_string(),
+            priority: "low".to_string(),
+            kind: "logic".to_string(),
+            description: format!(
+                "Generic symbol `{}` appears in only one specialization path.\n\
+                 Consider concretizing the API to reduce abstraction overhead.",
+                s.symbol
+            ),
+            location: location.clone(),
+            scope: format!("crate:{crate_name}"),
+            metrics: json!({
+                "base_symbol": base,
+                "group_size": 1
+            }),
+            evidence: vec![format!("location: {location}")],
+            discovered_by: "refactor_analyzer".to_string(),
+            ..Issue::default()
+        });
+    }
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out.truncate(limit);
+    out
+}
+
+pub fn dead_impl_issues(
+    workspace: &Path,
+    crate_name: &str,
+    _summaries: &[SymbolSummary],
+    limit: usize,
+) -> Vec<Issue> {
+    let Ok(idx) = SemanticIndex::load(workspace, crate_name) else {
+        return Vec::new();
+    };
+    let triples = idx.semantic_triples(None);
+    let mut impl_edges: Vec<(String, String)> = Vec::new();
+    for triple in &triples {
+        if triple.relation.eq_ignore_ascii_case("implements") {
+            impl_edges.push((triple.from.clone(), triple.to.clone()));
+        }
+    }
+    if impl_edges.is_empty() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for (implementer, trait_symbol) in impl_edges {
+        let trait_used = triples.iter().any(|triple| {
+            if triple.relation.eq_ignore_ascii_case("implements") {
+                return false;
+            }
+            triple.from == trait_symbol
+                || triple.to == trait_symbol
+                || triple.to.contains(&format!("dyn {trait_symbol}"))
+        });
+        if trait_used {
+            continue;
+        }
+        out.push(Issue {
+            id: format!(
+                "auto_dead_impl_{crate_name}_{:x}",
+                stable_hash(&format!("{implementer}->{trait_symbol}"))
+            ),
+            title: format!(
+                "Unreferenced trait implementation: `{}` implements `{}`",
+                short_name(&implementer),
+                short_name(&trait_symbol)
+            ),
+            status: "open".to_string(),
+            priority: "low".to_string(),
+            kind: "redundancy".to_string(),
+            description: format!(
+                "Trait implementation edge `{implementer}` -> `{trait_symbol}` has no observed downstream trait usage in the semantic graph.\n\
+                 Remove or justify the impl to reduce maintenance overhead."
+            ),
+            scope: format!("crate:{crate_name}"),
+            metrics: json!({
+                "implementer": implementer,
+                "trait": trait_symbol,
+                "trait_dispatch_usage": 0
+            }),
+            discovered_by: "refactor_analyzer".to_string(),
+            ..Issue::default()
+        });
+    }
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out.truncate(limit);
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -484,6 +1036,18 @@ fn call_chain_id(crate_name: &str, symbol: &str) -> String {
 
 fn short_name(symbol: &str) -> &str {
     symbol.rsplit("::").next().unwrap_or(symbol)
+}
+
+fn generic_base_symbol(symbol: &str) -> String {
+    symbol.split('<').next().unwrap_or(symbol).to_string()
+}
+
+fn symbol_is_pub(summary: &SymbolSummary) -> bool {
+    summary
+        .signature
+        .as_deref()
+        .map(|sig| sig.trim_start().starts_with("pub "))
+        .unwrap_or(false)
 }
 
 fn shorten_location(file: &str, line: u32) -> String {

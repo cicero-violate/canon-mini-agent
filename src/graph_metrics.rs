@@ -4,7 +4,9 @@
 //! and emits deterministic `ISSUES.json` entries when the bridge edge density
 //! exceeds a threshold.
 
-use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use std::path::Path;
 
 use anyhow::Result;
@@ -61,6 +63,108 @@ pub fn generate_bridge_connectivity_issues(workspace: &Path) -> Result<usize> {
     }
 
     Ok(mutated)
+}
+
+pub fn generate_module_cohesion_issues(workspace: &Path) -> Result<usize> {
+    let mut file: IssuesFile = load_issues_file(workspace);
+    let existing: HashSet<String> = file.issues.iter().map(|i| i.id.clone()).collect();
+    let mut created = 0usize;
+
+    for crate_name in SemanticIndex::available_crates(workspace) {
+        let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
+            continue;
+        };
+        let call_edges = idx.call_edges();
+        if call_edges.is_empty() {
+            continue;
+        }
+        let mut module_symbols: HashMap<String, HashSet<String>> = HashMap::new();
+        for s in idx.symbol_summaries() {
+            let module = module_prefix(&s.symbol);
+            module_symbols.entry(module).or_default().insert(s.symbol);
+        }
+
+        let mut internal_edges: HashMap<String, usize> = HashMap::new();
+        let mut external_edges: HashMap<String, usize> = HashMap::new();
+        for (from, to) in call_edges {
+            let from_module = module_prefix(&from);
+            let to_module = module_prefix(&to);
+            if from_module == to_module {
+                *internal_edges.entry(from_module).or_insert(0) += 1;
+            } else {
+                *external_edges.entry(from_module).or_insert(0) += 1;
+            }
+        }
+
+        for (module, symbols) in module_symbols {
+            let internal = internal_edges.get(&module).copied().unwrap_or(0);
+            let external = external_edges.get(&module).copied().unwrap_or(0);
+            let total = internal + external;
+            if total == 0 {
+                continue;
+            }
+            let cohesion = internal as f64 / total as f64;
+            let task = if cohesion < 0.2 && symbols.len() > 5 {
+                Some("DissolveModule")
+            } else if cohesion > 0.8 && external > 10 {
+                Some("FormalizeBoundary")
+            } else {
+                None
+            };
+            let Some(task) = task else { continue };
+            let id = format!(
+                "auto_cohesion_{}_{}",
+                crate_name.replace('-', "_"),
+                stable_hash(&format!("{module}:{task}"))
+            );
+            if existing.contains(&id) {
+                continue;
+            }
+            file.issues.push(Issue {
+                id,
+                title: format!(
+                    "Module cohesion signal `{}` in `{}` (cohesion={:.2})",
+                    task, module, cohesion
+                ),
+                status: "open".to_string(),
+                priority: "medium".to_string(),
+                kind: "logic".to_string(),
+                description: format!(
+                    "Module `{module}` in crate `{crate}` has cohesion={cohesion:.2} (internal={internal}, external={external}, symbols={symbol_count}).\n\
+                     Recommended task: {task}.",
+                    crate = crate_name.replace('-', "_"),
+                    symbol_count = symbols.len()
+                ),
+                scope: format!("crate:{}", crate_name.replace('-', "_")),
+                metrics: json!({
+                    "module": module,
+                    "internal_edges": internal,
+                    "external_edges": external,
+                    "cohesion": cohesion,
+                    "symbol_count": symbols.len(),
+                    "task": task
+                }),
+                acceptance_criteria: vec![
+                    "module boundary complexity reduced and validated".to_string(),
+                    "build and tests remain green".to_string(),
+                ],
+                discovered_by: "graph_metrics_detector".to_string(),
+                ..Issue::default()
+            });
+            created += 1;
+        }
+    }
+
+    if created > 0 {
+        rescore_all(&mut file);
+        persist_issues_projection_with_writer(
+            workspace,
+            &file,
+            None,
+            "generate_module_cohesion_issues",
+        )?;
+    }
+    Ok(created)
 }
 
 pub fn analyze_bridge_connectivity(
@@ -127,6 +231,22 @@ fn sanitize_fragment(raw: &str) -> String {
             }
         })
         .collect()
+}
+
+fn stable_hash(raw: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    raw.hash(&mut hasher);
+    hasher.finish()
+}
+
+fn module_prefix(symbol: &str) -> String {
+    let mut parts = symbol.split("::");
+    let first = parts.next().unwrap_or(symbol);
+    let second = parts.next();
+    match second {
+        Some(seg) if !seg.is_empty() => format!("{first}::{seg}"),
+        _ => first.to_string(),
+    }
 }
 
 fn issue_id(crate_name: &str) -> String {

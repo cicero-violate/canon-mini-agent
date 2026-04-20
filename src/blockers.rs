@@ -202,7 +202,7 @@ pub fn count_class_recent(
 // ── I/O internals ─────────────────────────────────────────────────────────────
 
 fn blockers_path(workspace: &Path) -> std::path::PathBuf {
-    workspace.join(BLOCKERS_FILE)
+    crate::objectives::workspace_join_path(workspace, BLOCKERS_FILE)
 }
 
 fn load_blockers_from_tlog(workspace: &Path) -> Option<BlockersFile> {
