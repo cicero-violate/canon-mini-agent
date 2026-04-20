@@ -17,6 +17,7 @@ pub(crate) fn process_action_and_execute(
     action: &Value,
     check_on_done: bool,
     writer: Option<&mut CanonicalWriter>,
+    effect_tx: Option<&tokio::sync::mpsc::UnboundedSender<crate::events::EffectEvent>>,
 ) -> Result<(bool, String)> {
     if let Err(log_err) = append_llm_completion_log(role, endpoint, step, command_id, action) {
         eprintln!("[{role}] step={} completion_log_error: {log_err}", step);
@@ -38,5 +39,6 @@ pub(crate) fn process_action_and_execute(
         action,
         check_on_done,
         writer,
+        effect_tx,
     )
 }

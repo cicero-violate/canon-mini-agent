@@ -546,6 +546,7 @@ pub(crate) fn log_action_event(
 
 pub(crate) fn append_action_result_log(
     mut writer: Option<&mut CanonicalWriter>,
+    effect_tx: Option<&tokio::sync::mpsc::UnboundedSender<crate::events::EffectEvent>>,
     role: &str,
     endpoint: &LlmEndpoint,
     _prompt_kind: &str,
@@ -574,29 +575,32 @@ pub(crate) fn append_action_result_log(
     inject_action_fields(&mut record, action);
     append_action_log_record(&record)?;
 
+    let effect = crate::events::EffectEvent::ActionResultRecorded {
+        role: role.to_string(),
+        step,
+        command_id: command_id.to_string(),
+        action_kind: action
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string(),
+        task_id: action
+            .get("task_id")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        objective_id: action
+            .get("objective_id")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        ok: success,
+        result_bytes: result_text.len(),
+        result_hash: stable_hash_hex(result_text),
+        result: result_text.to_string(),
+    };
     if let Some(writer) = writer.as_deref_mut() {
-        writer.record_effect(crate::events::EffectEvent::ActionResultRecorded {
-            role: role.to_string(),
-            step,
-            command_id: command_id.to_string(),
-            action_kind: action
-                .get("action")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown")
-                .to_string(),
-            task_id: action
-                .get("task_id")
-                .and_then(|v| v.as_str())
-                .map(str::to_string),
-            objective_id: action
-                .get("objective_id")
-                .and_then(|v| v.as_str())
-                .map(str::to_string),
-            ok: success,
-            result_bytes: result_text.len(),
-            result_hash: stable_hash_hex(result_text),
-            result: result_text.to_string(),
-        });
+        writer.record_effect(effect);
+    } else if let Some(tx) = effect_tx {
+        let _ = tx.send(effect);
     }
 
     Ok(())
@@ -604,6 +608,7 @@ pub(crate) fn append_action_result_log(
 
 pub(crate) fn log_action_result(
     writer: Option<&mut CanonicalWriter>,
+    effect_tx: Option<&tokio::sync::mpsc::UnboundedSender<crate::events::EffectEvent>>,
     role: &str,
     endpoint: &LlmEndpoint,
     prompt_kind: &str,
@@ -615,6 +620,7 @@ pub(crate) fn log_action_result(
 ) {
     if let Err(e) = append_action_result_log(
         writer,
+        effect_tx,
         role,
         endpoint,
         prompt_kind,

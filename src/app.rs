@@ -3952,6 +3952,7 @@ async fn continue_executor_completion(
         &action,
         true,
         None,
+        effect_tx.as_ref(),
     )?;
     if done {
         return Ok(
@@ -4203,6 +4204,7 @@ async fn run_agent(
                         &action,
                         false,
                         ctx.writer.as_deref_mut(),
+                        ctx.effect_tx.as_ref(),
                     )?;
                     return Ok(if done {
                         AgentCompletion::MessageAction {
@@ -4469,6 +4471,7 @@ async fn run_agent(
             &action,
             check_on_done,
             ctx.writer.as_deref_mut(),
+            ctx.effect_tx.as_ref(),
         )?;
 
         match step_result {
@@ -5160,6 +5163,7 @@ fn handle_executor_completion_message_action(
 
     log_action_result(
         Some(writer),
+        None,
         &submitted.actor,
         &lane_cfg.endpoint,
         "executor",
