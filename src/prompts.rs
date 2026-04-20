@@ -285,16 +285,6 @@ fn role_default_schema_actions(kind: AgentPromptKind) -> &'static [&'static str]
     }
 }
 
-fn agent_kind_from_agent_type(agent_type: &str) -> AgentPromptKind {
-    match agent_type {
-        "EXECUTOR" => AgentPromptKind::Executor,
-        "VERIFIER" => AgentPromptKind::Verifier,
-        "PLANNER" => AgentPromptKind::Planner,
-        "DIAGNOSTICS" => AgentPromptKind::Diagnostics,
-        _ => AgentPromptKind::Solo,
-    }
-}
-
 fn parse_predicted_action_names(predicted_next_actions: Option<&str>) -> Vec<String> {
     let Some(raw) = predicted_next_actions else {
         return Vec::new();
@@ -319,18 +309,6 @@ fn dedup_action_names_preserve_order(actions: Vec<String>) -> Vec<String> {
         }
     }
     out
-}
-
-fn predicted_action_schema_block(predicted_next_actions: Option<&str>) -> String {
-    let actions =
-        dedup_action_names_preserve_order(parse_predicted_action_names(predicted_next_actions));
-    if actions.is_empty() {
-        return String::new();
-    }
-
-    let action_refs: Vec<&str> = actions.iter().map(|action| action.as_str()).collect();
-    let rendered = selected_tool_protocol_schema_text(&action_refs);
-    format!("Derived schemas for predicted next actions:\n{rendered}")
 }
 
 fn default_schema_block(kind: AgentPromptKind) -> String {
@@ -770,17 +748,6 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
     render_budgeted_prompt(&prefix, &[], &suffix)
 }
 
-// Helper: truncate large prompt sections deterministically
-fn truncate_section(input: &str, max_len: usize) -> String {
-    if input.len() <= max_len {
-        input.to_string()
-    } else {
-        let mut s = input[..max_len].to_string();
-        s.push_str("\n... [truncated]");
-        s
-    }
-}
-
 pub(crate) fn planner_cycle_prompt(
     summary_text: &str,
     objectives_text: &str,
@@ -899,34 +866,6 @@ pub(crate) fn executor_cycle_prompt(
     };
     format!(
         "TAB_ID: pending\nTURN_ID: pending\nAGENT_TYPE: EXECUTOR\n\nWORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Master plan: {MASTER_PLAN_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics: {diagnostics_file}\n\nREADY TASKS (from {MASTER_PLAN_FILE}, top-10 by plan order):\n{ready_tasks}\n\nLane plans are deprecated. Use planner handoff messages and {MASTER_PLAN_FILE} for task selection.\nLatest verifier result for lane {lane_label}:\n{verify_result}\n\nYou may send a message action to other agents at any time."
-    )
-}
-
-#[allow(dead_code)]
-pub(crate) fn verifier_cycle_prompt(
-    lane_label: &str,
-    exec_result: &str,
-    executor_diff: &str,
-    cargo_test_failures: &str,
-) -> String {
-    let workspace = workspace();
-    let diagnostics_file = diagnostics_file();
-    format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Master plan: {MASTER_PLAN_FILE}\n- Diagnostics: {diagnostics_file}\n- Violations to write: {VIOLATIONS_FILE}\n\nExecutor diff (workspace changes excluding plans/diagnostics/violations):\n{executor_diff}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nExecutor lane: {lane_label}\nExecutor result summary:\n{exec_result}\n\nYou may send a message action to other agents at any time. Think hard internally before responding."
-    )
-}
-
-#[allow(dead_code)]
-pub(crate) fn diagnostics_cycle_prompt(summary_text: &str, cargo_test_failures: &str) -> String {
-    let workspace = workspace();
-    let diagnostics_file = diagnostics_file();
-    let issues_file = crate::constants::ISSUES_FILE;
-    let prompt = format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Objectives: {OBJECTIVES_FILE}\n- Invariants: {INVARIANTS_FILE}\n- Violations projection to keep synchronized: {VIOLATIONS_FILE}\n- Diagnostics report to write: {diagnostics_file}\n- Issues projection to keep synchronized: {issues_file}\n- Lessons candidates (synthesized from action log): agent_state/lessons_candidates.json\n- Promoted lessons (injected into planner): agent_state/lessons.json\n- Discovered invariants (synthesized from blockers + action log): agent_state/enforced_invariants.json\n- Classified failure log (first-class blocker artifact): agent_state/blockers.json\n- Observability artifacts: inspect workspace-local state and log paths that actually exist for this project\n\nLatest verifier summary:\n{summary_text}\n\nLatest cargo test failures (from cargo_test_failures.json):\n{cargo_test_failures}\n\nDiagnostics output protocol:\n1. Derive ranked failures from current evidence and semantic control summaries.\n2. Project those failures into {diagnostics_file}, {issues_file}, and {VIOLATIONS_FILE}.\n   - op=create (with kind, location, evidence, priority) if no matching open issue exists.\n   - op=update if a matching issue exists but its evidence is stale.\n   - op=set_status status=resolved if a prior issue is no longer supported by evidence.\n   Artifact files are supporting projections; semantic control state owns planner follow-up.\n3. Do not re-report failures the verifier has already cleared unless fresh current-cycle evidence reconfirms them.\n\nExecution surface guarantee:\n- This diagnostics turn is tool-capable. `python`, `read_file`, `issue`, `violation`, `apply_patch`, and `message` are executable from this role.\n- Do not claim the diagnostics channel is text-only or missing tools. Use a `python` action first to read workspace-local state/log artifacts and establish current-cycle evidence before any blocker or mutation.\n\nLessons review (optional, do after main diagnostics work):\n- Use `lessons` op=read_candidates to inspect pending patterns detected from the action log.\n- Promote candidates that reflect real, recurring patterns (op=promote with candidate_id).\n- Reject candidates that are coincidental or already obvious (op=reject).\n- Promoted patterns appear in lessons.json and are injected into every future planner prompt.\n\nInvariant review (optional, do after lessons review):\n- Use `invariants` op=read to inspect dynamically discovered system invariants from enforced_invariants.json.\n- Invariants are synthesized from agent_state/blockers.json (classified bad outcomes) and the action log.\n- Status lifecycle: discovered → promoted (auto at support_count>=3) → enforced (hard gate) → collapsed (root cause fixed).\n- If a Promoted invariant has a sound predicate, call `invariants` op=enforce to make the gate hard-blocking.\n- If a root cause has been structurally eliminated, call `invariants` op=collapse with a rationale.\n- Enforced invariants block route/planner/executor dispatch before the transition is taken — zero wasted turns.\n\nYou may send a message action to other agents at any time.Think hard internally before responding."
-    );
-    prompt.replace(
-        "Use a `python` action first to read workspace-local state/log artifacts and establish current-cycle evidence before any blocker or mutation.",
-        "",
     )
 }
 
@@ -1095,132 +1034,6 @@ pub(crate) fn single_role_planner_prompt(
     render_budgeted_prompt(&prefix, &items, &suffix)
 }
 
-pub(crate) fn single_role_solo_prompt(
-    _spec: &str,
-    master_plan: &str,
-    objectives: &str,
-    lessons_text: &str,
-    semantic_control: &str,
-    cargo_test_failures: &str,
-    rename_candidates: &str,
-    executor_diff_text: &str,
-    plan_diff_text: &str,
-    complexity_hotspots: &str,
-    loop_context_hint: &str,
-) -> String {
-    let workspace = workspace();
-    let prefix = format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSolo role: bounded execution kernel. Take one grounded next step under canonical law, using the smallest evidence slice needed. Prefer direct execution, targeted inspection, or a direct result message to `user`; do not behave like planner/diagnostics/verifier.\n\nSpec: {SPEC_FILE} — use read_file only for sections you need.\n\nMaster plan focus (from {MASTER_PLAN_FILE}):\n{}",
-        truncate_section(master_plan, 3000)
-    );
-    let plan_diff_heading = format!("Plan diff since last cycle (from {MASTER_PLAN_FILE})");
-    let executor_diff_heading =
-        "Workspace diff since last cycle (git diff, excluding plans/diagnostics/violations)"
-            .to_string();
-    let objectives_heading = format!("Objectives (from {OBJECTIVES_FILE})");
-    let lessons_heading = "Lessons artifact:".to_string();
-    let loop_context_heading =
-        "Repair loop context (supervisor-directed; focus on this target first)".to_string();
-    let semantic_control_heading =
-        "Semantic control state (tlog-derived authority + projected views)".to_string();
-    let complexity_heading =
-        "Complexity hotspots (supervisor-generated; use only when directly relevant)".to_string();
-    let cargo_failures_heading =
-        "Latest cargo test failures (from cargo_test_failures.json):".to_string();
-    let rename_heading = "Pending rename tasks (from state/rename_candidates.json):".to_string();
-    let objectives_body = truncate_section(objectives, 1200);
-    let semantic_control_body = truncate_section(semantic_control, 3000);
-    let suffix = "\n\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nUse the `issue` action only when the current step uncovers direct implementation evidence for a new or stale logic gap.\nFor Rust source investigation, use semantic tools first: symbol_refs, symbol_window, symbol_neighborhood, symbol_path, semantic_map. Reach for read_file only when you need exact lines before a patch.\nOutput contract (strict):\n- Return exactly ONE action\n- Format: a single JSON object in a ```json code block\n- No prose, no markdown explanation outside the JSON block\n- Optimize for the next correct move, not broad analysis\n\nIf replying to the external user, use this shape:\n```json\n{\n  \"action\": \"message\",\n  \"from\": \"solo\",\n  \"to\": \"user\",\n  \"type\": \"result\",\n  \"status\": \"ready\",\n  \"observation\": \"State the grounded evidence you are replying from.\",\n  \"rationale\": \"Explain why a direct reply is the highest-value next step.\",\n  \"predicted_next_actions\": [\n    {\"action\": \"read_file\", \"intent\": \"Inspect a named artifact if the user asks for deeper evidence next.\"},\n    {\"action\": \"message\", \"intent\": \"Send a narrower follow-up reply to the user after targeted inspection.\"}\n  ],\n  \"payload\": {\n    \"summary\": \"Short direct answer to the user.\"\n  }\n}\n```\nEmit exactly one action.";
-    let mut items = vec![
-        PromptItem {
-            heading: &plan_diff_heading,
-            body: plan_diff_text,
-            reserve: 1200,
-            cap: 4000,
-            weight: 5,
-            always_include: true,
-        },
-        PromptItem {
-            heading: &executor_diff_heading,
-            body: executor_diff_text,
-            reserve: 1000,
-            cap: 4000,
-            weight: 5,
-            always_include: false,
-        },
-        PromptItem {
-            heading: &objectives_heading,
-            body: &objectives_body,
-            reserve: 800,
-            cap: 2000,
-            weight: 4,
-            always_include: false,
-        },
-        PromptItem {
-            heading: &lessons_heading,
-            body: lessons_text,
-            reserve: 800,
-            cap: 1800,
-            weight: 4,
-            always_include: true,
-        },
-        PromptItem {
-            heading: &loop_context_heading,
-            body: loop_context_hint,
-            reserve: 600,
-            cap: 2000,
-            weight: 4,
-            always_include: false,
-        },
-        PromptItem {
-            heading: &semantic_control_heading,
-            body: &semantic_control_body,
-            reserve: 1200,
-            cap: 3000,
-            weight: 4,
-            always_include: false,
-        },
-        PromptItem {
-            heading: &complexity_heading,
-            body: complexity_hotspots,
-            reserve: 600,
-            cap: 1800,
-            weight: 3,
-            always_include: false,
-        },
-        PromptItem {
-            heading: &cargo_failures_heading,
-            body: cargo_test_failures,
-            reserve: 600,
-            cap: 1800,
-            weight: 3,
-            always_include: false,
-        },
-    ];
-    let rename_section = if !rename_candidates.trim().is_empty() {
-        Some(format!(
-            "{rename_candidates}\nFor each candidate: use `symbols_prepare_rename` to select it, then `rename_symbol` to apply. Work through them in score-descending order."
-        ))
-    } else {
-        None
-    };
-    if let Some(rename_section) = rename_section.as_ref() {
-        items.push(PromptItem {
-            heading: &rename_heading,
-            body: rename_section,
-            reserve: 800,
-            cap: 3000,
-            weight: 4,
-            always_include: false,
-        });
-    }
-    let mut prefix = prefix;
-    if !prefix.ends_with("\n\n") {
-        prefix.push_str("\n\n");
-    }
-    render_budgeted_prompt(&prefix, &items, suffix)
-}
-
 pub(crate) fn single_role_executor_prompt(
     _spec: &str,
     master_plan: &str,
@@ -1242,86 +1055,6 @@ pub(crate) fn single_role_executor_prompt(
         always_include: true,
     }];
     render_budgeted_prompt(&prefix, &items, suffix)
-}
-
-#[cfg(test)]
-mod prompt_regression_tests {
-    use super::single_role_solo_prompt;
-
-    #[test]
-    fn single_role_solo_prompt_omits_rename_section_when_candidates_empty() {
-        let output = single_role_solo_prompt(
-            "spec",
-            "plan",
-            "objectives",
-            "lessons",
-            "semantic_control",
-            "failures",
-            "",
-            "",
-            "",
-            "",
-            "",
-        );
-
-        assert!(!output.contains("Pending rename tasks (from state/rename_candidates.json):"));
-        assert!(!output.contains("For each candidate: use `symbols_prepare_rename` to select it"));
-    }
-
-    #[test]
-    fn single_role_solo_prompt_includes_rename_section_when_candidates_present() {
-        let output = single_role_solo_prompt(
-            "spec",
-            "plan",
-            "objectives",
-            "lessons",
-            "semantic_control",
-            "failures",
-            "candidate1",
-            "",
-            "",
-            "",
-            "",
-        );
-
-        assert!(output.contains("Pending rename tasks (from state/rename_candidates.json):"));
-        assert!(output.contains("candidate1"));
-        assert!(output.contains("For each candidate: use `symbols_prepare_rename` to select it"));
-    }
-
-    #[test]
-    fn single_role_solo_prompt_rename_section_formatting_is_stable() {
-        let empty_output = single_role_solo_prompt(
-            "spec",
-            "plan",
-            "objectives",
-            "lessons",
-            "semantic_control",
-            "failures",
-            "",
-            "",
-            "",
-            "",
-            "",
-        );
-        let non_empty_output = single_role_solo_prompt(
-            "spec",
-            "plan",
-            "objectives",
-            "lessons",
-            "semantic_control",
-            "failures",
-            "candidate1",
-            "",
-            "",
-            "",
-            "",
-        );
-
-        assert!(empty_output.contains("Latest cargo test failures (from cargo_test_failures.json):\nfailures\n\nUse the `plan` action"));
-        assert!(non_empty_output.contains("Latest cargo test failures (from cargo_test_failures.json):\nfailures\n\nPending rename tasks (from state/rename_candidates.json):\ncandidate1\nFor each candidate: use `symbols_prepare_rename` to select it, then `rename_symbol` to apply. Work through them in score-descending order.\n\nUse the `plan` action"));
-        assert!(non_empty_output.len() > empty_output.len());
-    }
 }
 
 // ── Action parsing ─────────────────────────────────────────────────────────────
@@ -1941,18 +1674,6 @@ pub(crate) fn action_result_prompt(
     steps_used: Option<usize>,
     predicted_next_actions: Option<&str>,
 ) -> String {
-    let kind = agent_kind_from_agent_type(agent_type);
-    let schema_block = {
-        let predicted = predicted_action_schema_block(predicted_next_actions);
-        if predicted.trim().is_empty() {
-            format!(
-                "Action protocol — respond with exactly one JSON code block matching one of these schemas:\n{}",
-                default_schema_block(kind)
-            )
-        } else {
-            predicted
-        }
-    };
     let tab_label = tab_id
         .map(|v| v.to_string())
         .unwrap_or_else(|| "unknown".to_string());
@@ -1965,19 +1686,20 @@ pub(crate) fn action_result_prompt(
     } else {
         String::new()
     };
-    let predicted_line = match predicted_next_actions {
-        Some(p) if !p.is_empty() => {
-            let pretty = serde_json::from_str::<serde_json::Value>(p)
+    let predicted_actions =
+        dedup_action_names_preserve_order(parse_predicted_action_names(predicted_next_actions));
+    let predicted_line = match (last_action, predicted_actions.is_empty()) {
+        (Some(action_name), false) if !predicted_actions.iter().any(|a| a == action_name) => {
+            let raw = predicted_next_actions.unwrap_or_default();
+            let pretty = serde_json::from_str::<serde_json::Value>(raw)
                 .ok()
                 .and_then(|v| serde_json::to_string_pretty(&v).ok())
-                .unwrap_or_else(|| p.to_string());
+                .unwrap_or_else(|| raw.to_string());
             format!(
                 "Predicted next actions from your last turn:\n```json\n{pretty}\n```\nCompare these against the actual result above before choosing your next action.\n\n"
             )
         }
-        _ => {
-            "Predicted next actions from your last turn:\nNone.\nCompare these against the actual result above before choosing your next action.\n\n".to_string()
-        }
+        _ => String::new(),
     };
     // Re-inject a single fresh question after each mutating step so the agent
     // is prompted to re-examine its premise mid-turn, not only at turn start.
@@ -2001,13 +1723,8 @@ pub(crate) fn action_result_prompt(
     let prefix = format!(
         "TAB_ID: {tab_label}\nTURN_ID: {turn_label}\nAGENT_TYPE: {agent_type}\n\n{limit_line}{provenance_block}"
     );
-    let schema_section = if schema_block.is_empty() {
-        String::new()
-    } else {
-        format!("\n{schema_block}\n")
-    };
     let suffix = format!(
-        "\n\n{predicted_line}{schema_section}{}{}\nEmit exactly one action. Think through the decision internally; reveal chain-of-thought.",
+        "\n\n{predicted_line}{}{}\nEmit bulk actions or one action. Think through the decision internally; reveal chain of thought.",
         next_action_hint_text(result, last_action),
         mutating_question,
     );
@@ -2089,6 +1806,7 @@ mod tests {
             "task_id": "T26_planner_evidence_enforcement_hook",
             "objective_id": "obj_planner_evidence_enforcement_hook",
             "intent": "Advance the verified planner enforcement task after confirming source evidence.",
+            "question": "Does same-cycle source evidence justify this planner task status transition now?",
             "status": "in_progress",
             "observation": "read_file src/app.rs confirmed the planner path and current source evidence supports follow-up work.",
             "rationale": "Diagnostics signal is now backed by same-cycle read_file source evidence, so plan update is justified.",
@@ -2300,37 +2018,6 @@ mod tests {
     }
 
     #[test]
-    fn predicted_action_schema_block_renders_only_predicted_actions() {
-        let predicted = r#"[
-            {"action":"issue","intent":"update stale issue"},
-            {"action":"violation","intent":"refresh violations"},
-            {"action":"message","intent":"report blocker if needed"}
-        ]"#;
-        let schema = predicted_action_schema_block(Some(predicted));
-        assert!(schema.contains("Action: `issue`"));
-        assert!(schema.contains("Action: `violation`"));
-        assert!(schema.contains("Action: `message`"));
-        assert!(!schema.contains("Action: `python`"));
-        assert!(!schema.contains("Action: `read_file`"));
-        assert!(!schema.contains("Action: `run_command`"));
-    }
-
-    #[test]
-    fn predicted_action_schema_block_dedups_repeated_actions_preserving_order() {
-        let predicted = r#"[
-            {"action":"issue","intent":"first issue action"},
-            {"action":"issue","intent":"repeated issue action"},
-            {"action":"message","intent":"handoff blocker"},
-            {"action":"issue","intent":"repeated again"}
-        ]"#;
-        let schema = predicted_action_schema_block(Some(predicted));
-        assert!(schema.contains("Action: `issue`"));
-        assert!(schema.contains("Action: `message`"));
-        assert_eq!(schema.matches("Action: `issue`").count(), 1);
-        assert_eq!(schema.matches("Action: `message`").count(), 1);
-    }
-
-    #[test]
     fn action_result_prompt_does_not_duplicate_predicted_action_schemas() {
         let predicted = r#"[
             {"action":"issue","intent":"update stale issue"},
@@ -2349,10 +2036,10 @@ mod tests {
             None,
             Some(predicted),
         );
-        assert!(prompt.contains("Derived schemas for predicted next actions:"));
-        assert_eq!(prompt.matches("Action: `issue`").count(), 1);
-        assert_eq!(prompt.matches("Action: `violation`").count(), 1);
-        assert_eq!(prompt.matches("Action: `message`").count(), 1);
+        assert!(!prompt.contains("Derived schemas for predicted next actions:"));
+        assert!(!prompt.contains("Action protocol — respond with exactly one JSON code block"));
+        assert!(prompt.contains("Predicted next actions from your last turn:"));
+        assert!(prompt.contains("Compare these against the actual result above before choosing your next action."));
     }
 
     #[test]
@@ -2369,10 +2056,31 @@ mod tests {
             Some(1),
             None,
         );
-        assert!(prompt.contains("Action protocol — respond with exactly one JSON code block matching one of these schemas"));
-        assert!(prompt.contains("Action: `read_file`"));
-        assert!(prompt.contains("Action: `apply_patch`"));
-        assert!(prompt.contains("Action: `run_command`"));
+        assert!(!prompt.contains("Action protocol — respond with exactly one JSON code block"));
+        assert!(!prompt.contains("Derived schemas for predicted next actions:"));
+        assert!(!prompt.contains("Predicted next actions from your last turn:"));
+    }
+
+    #[test]
+    fn action_result_prompt_omits_predicted_echo_when_action_matches_prediction() {
+        let predicted = r#"[
+            {"action":"python","intent":"inspect evidence"},
+            {"action":"message","intent":"report status"}
+        ]"#;
+        let prompt = action_result_prompt(
+            Some(1),
+            Some(2),
+            "EXECUTOR",
+            "python ok:\n{}",
+            Some("python"),
+            Some("T1"),
+            Some("obj_15"),
+            Some("Inspect diagnostics state"),
+            Some(1),
+            Some(predicted),
+        );
+        assert!(!prompt.contains("Predicted next actions from your last turn:"));
+        assert!(!prompt.contains("Compare these against the actual result above before choosing your next action."));
     }
 
     #[test]
@@ -2390,48 +2098,6 @@ mod tests {
         assert!(
             rules.contains("Use the `plan` action for `PLAN.json` edits"),
             "solo rules must require plan tool for PLAN.json edits"
-        );
-    }
-
-    #[test]
-    fn solo_prompt_mentions_plan_tool_for_master_plan() {
-        let prompt = single_role_solo_prompt(
-            "{spec}",
-            "{master_plan}",
-            "{objectives}",
-            "{lessons}",
-            "{semantic_control}",
-            "{cargo_test_failures}",
-            "",
-            "",
-            "",
-            "",
-            "",
-        );
-        assert!(
-            prompt.contains("Use the `plan` action for `PLAN.json` edits"),
-            "solo prompt must direct plan tool usage for PLAN.json"
-        );
-    }
-
-    #[test]
-    fn solo_prompt_includes_lessons_artifact_section() {
-        let prompt = single_role_solo_prompt(
-            "{spec}",
-            "{master_plan}",
-            "{objectives}",
-            "LESSON_TEXT",
-            "{semantic_control}",
-            "{cargo_test_failures}",
-            "",
-            "",
-            "",
-            "",
-            "",
-        );
-        assert!(
-            prompt.contains("Lessons artifact:\nLESSON_TEXT"),
-            "solo prompt must embed the lessons artifact body"
         );
     }
 

@@ -23,8 +23,8 @@ use tokio::sync::Notify;
 
 use crate::canonical_writer::CanonicalWriter;
 use crate::constants::{
-    diagnostics_file, diagnostics_file_for_instance, lane_plan_file_for_instance,
-    set_agent_state_dir, set_workspace, workspace, DEFAULT_AGENT_STATE_DIR,
+    diagnostics_file_for_instance, lane_plan_file_for_instance, set_agent_state_dir, set_workspace,
+    workspace, DEFAULT_AGENT_STATE_DIR,
     DEFAULT_LLM_RETRY_COUNT, DEFAULT_LLM_RETRY_DELAY_SECS, DEFAULT_RESPONSE_TIMEOUT_SECS,
     DIAGNOSTICS_FILE_PATH, ENDPOINT_SPECS, EXECUTOR_STEP_LIMIT, ISSUES_FILE, MASTER_PLAN_FILE,
     MAX_SNIPPET, MAX_STEPS, OBJECTIVES_FILE, ROLE_TIMEOUT_SECS, SPEC_FILE, VIOLATIONS_FILE,
@@ -45,24 +45,20 @@ use crate::logging::{
 use crate::md_convert::ensure_objectives_and_invariants_json;
 use crate::orchestrator_seam::plan_has_incomplete_tasks;
 use crate::prompt_inputs::{
-    build_single_role_prompt, lane_summary_text, load_planner_inputs, load_single_role_inputs,
-    load_verifier_prompt_inputs, read_required_text, read_text_or_empty, LaneConfig,
-    LessonsArtifact, OrchestratorContext, PlannerInputs, SingleRoleContext, SingleRoleInputs,
-    VerifierPromptInputs,
+    build_single_role_prompt, load_planner_inputs, load_single_role_inputs, read_text_or_empty,
+    LaneConfig, LessonsArtifact, OrchestratorContext, PlannerInputs, SingleRoleContext,
+    SingleRoleInputs,
 };
 use crate::prompts::{
     action_intent, action_objective_id, action_observation, action_rationale, action_result_prompt,
-    action_task_id, diagnostics_cycle_prompt, executor_cycle_prompt, is_explicit_idle_action,
-    normalize_action, parse_actions, planner_cycle_prompt, render_action_result_sections,
-    single_role_solo_prompt, system_instructions, truncate, validate_action, verifier_cycle_prompt,
-    AgentPromptKind,
+    action_task_id, executor_cycle_prompt, is_explicit_idle_action, normalize_action, parse_actions,
+    planner_cycle_prompt, render_action_result_sections, system_instructions, truncate,
+    validate_action, AgentPromptKind,
 };
 use crate::state_space::{
     check_completion_endpoint, check_completion_tab, decide_bootstrap_phase,
-    decide_post_diagnostics, decide_resume_phase, decide_wake_flags, executor_step_limit_exceeded,
-    is_verifier_specific_blocker, should_force_blocker, verifier_blocker_phase_override,
-    CargoTestGate, CompletionEndpointCheck, CompletionTabCheck, SemanticControlState,
-    WakeFlagInput,
+    decide_resume_phase, decide_wake_flags, executor_step_limit_exceeded, should_force_blocker,
+    CargoTestGate, CompletionEndpointCheck, CompletionTabCheck, SemanticControlState, WakeFlagInput,
 };
 use crate::system_state::SystemState;
 use crate::tlog::Tlog;
@@ -459,40 +455,6 @@ fn trace_orchestrator_forwarded(
     append_orchestration_trace("llm_message_forwarded", Value::Object(payload));
 }
 
-#[allow(dead_code)]
-struct BlockerFields {
-    blocker_text: String,
-    required_action: String,
-    evidence: String,
-    blocker_display: String,
-    severity: String,
-}
-
-#[allow(dead_code)]
-fn normalize_blocker_fields(payload: &Value) -> BlockerFields {
-    let blocker_text = jstr(payload, "blocker").to_string();
-    let required_action = jstr(payload, "required_action").to_string();
-    let evidence = jstr(payload, "evidence").to_string();
-    let severity_raw = jstr(payload, "severity");
-    let severity = if severity_raw.is_empty() {
-        "error".to_string()
-    } else {
-        severity_raw.to_string()
-    };
-    let blocker_display = if blocker_text.is_empty() {
-        "upstream blocker".to_string()
-    } else {
-        blocker_text.clone()
-    };
-    BlockerFields {
-        blocker_text,
-        required_action,
-        evidence,
-        blocker_display,
-        severity,
-    }
-}
-
 fn build_blocker_payload(
     summary: &str,
     blocker: &str,
@@ -507,42 +469,6 @@ fn build_blocker_payload(
         "required_action": required_action,
         "severity": severity,
     })
-}
-
-#[allow(dead_code)]
-fn build_verifier_blocker_ack(fields: &BlockerFields) -> Value {
-    verifier_blocker_ack_message(fields)
-}
-
-#[allow(dead_code)]
-fn verifier_blocker_ack_message(fields: &BlockerFields) -> Value {
-    json!({
-        "action": "message",
-        "from": "verifier",
-        "to": "planner",
-        "type": "blocker",
-        "status": "blocked",
-        "observation": "Inbound blocker received; verifier yielding without further work until resolved.",
-        "rationale": "Blocker is not verifier-specific; pausing verification avoids unnecessary work.",
-        "predicted_next_actions": verifier_blocker_ack_predicted_next_actions(),
-        "payload": verifier_blocker_ack_payload(fields)
-    })
-}
-
-#[allow(dead_code)]
-fn verifier_blocker_ack_payload(fields: &BlockerFields) -> Value {
-    build_blocker_payload(
-        "Verifier paused due to upstream blocker.",
-        &fields.blocker_display,
-        &fields.evidence,
-        &fields.required_action,
-        &fields.severity,
-    )
-}
-
-#[allow(dead_code)]
-fn verifier_blocker_ack_predicted_next_actions() -> Value {
-    crate::invalid_action::example_predicted_next_actions()
 }
 
 fn file_modified_ms(path: &Path) -> Option<u128> {
@@ -754,6 +680,7 @@ async fn run_planner_phase(
     planner_bootstrapped: &mut bool,
     cargo_test_failures: &str,
 ) -> bool {
+    let semantic_control_snapshot_hash_path = ctx.workspace.join("agent_state/.snapshot_hash");
     {
         let mut state = writer.state().as_kv_map();
         let blockers = crate::blockers::load_blockers(ctx.workspace);
@@ -807,6 +734,7 @@ async fn run_planner_phase(
         &mut last_executor_diff,
         cargo_test_failures.to_string(),
         ctx.master_plan_path,
+        &semantic_control_snapshot_hash_path,
     );
     writer.apply(ControlEvent::LastExecutorDiffSet {
         text: last_executor_diff,
@@ -914,503 +842,6 @@ async fn run_planner_phase(
             false
         }
     }
-}
-
-#[allow(dead_code)]
-async fn run_solo_phase(
-    ctx: &OrchestratorContext<'_>,
-    writer: &mut CanonicalWriter,
-    solo_bootstrapped: &mut bool,
-    cargo_test_failures: &str,
-) -> bool {
-    let spec = match read_required_text(ctx.workspace.join(SPEC_FILE), SPEC_FILE) {
-        Ok(spec) => spec,
-        Err(err) => {
-            eprintln!("[orchestrate] solo error: {err:#}");
-            log_error_event(
-                "solo",
-                "orchestrate",
-                None,
-                &format!("solo error: {err:#}"),
-                Some(json!({ "stage": "solo_load" })),
-            );
-            return false;
-        }
-    };
-    let master_plan =
-        crate::prompt_inputs::filter_pending_plan_json(&read_text_or_empty(ctx.master_plan_path));
-    let objectives_path = preferred_objectives_path(ctx.workspace);
-    let objectives = crate::objectives::read_objectives_compact(&objectives_path);
-    let semantic_control =
-        crate::prompt_inputs::read_semantic_control_prompt_context(ctx.workspace, 5);
-    let objectives_mtime_before = file_modified_ms(&objectives_path);
-    let plan_mtime_before = file_modified_ms(&ctx.workspace.join(MASTER_PLAN_FILE));
-    // Compute diffs and ranked context (symmetric with planner cycle)
-    let mut solo_exec_diff = writer.state().last_solo_executor_diff.clone();
-    let executor_diff_inputs =
-        crate::prompt_inputs::load_executor_diff_inputs(ctx.workspace, &mut solo_exec_diff, 400);
-    writer.apply(ControlEvent::LastSoloExecutorDiffSet {
-        text: solo_exec_diff,
-    });
-    let current_plan_text = read_text_or_empty(ctx.master_plan_path);
-    let plan_diff_text = crate::prompt_inputs::solo_plan_diff(
-        &writer.state().last_solo_plan_text.clone(),
-        &current_plan_text,
-        400,
-    );
-    writer.apply(ControlEvent::LastSoloPlanTextSet {
-        text: current_plan_text,
-    });
-    let complexity_hotspots = crate::prompt_inputs::read_complexity_hotspots(ctx.workspace, 8);
-    let loop_context_hint = crate::prompt_inputs::read_loop_context_hint(std::path::Path::new(
-        crate::constants::agent_state_dir(),
-    ));
-    let restart_resume = peek_post_restart_result("solo");
-    let mut prompt = if let Some(resume) = restart_resume.as_ref() {
-        let prompt = build_restart_resume_prompt("solo", resume);
-        let _ = take_post_restart_result("solo");
-        prompt
-    } else {
-        single_role_solo_prompt(
-            &spec,
-            &master_plan,
-            &objectives,
-            &crate::prompt_inputs::read_lessons_or_empty(ctx.workspace),
-            &semantic_control,
-            cargo_test_failures,
-            &crate::prompt_inputs::read_rename_candidates_or_empty(ctx.workspace),
-            &executor_diff_inputs.diff_text,
-            &plan_diff_text,
-            &complexity_hotspots,
-            &loop_context_hint,
-        )
-    };
-    inject_inbound_message(&mut prompt, writer, "solo");
-    trace_orchestrator_forwarded("orchestrator", "solo", "solo", None, None, None, None);
-    let solo_system = system_instructions(AgentPromptKind::Solo);
-    let send_system_prompt = if restart_resume.is_some() {
-        false
-    } else {
-        !*solo_bootstrapped
-    };
-    let result = run_agent(
-        "solo",
-        "solo",
-        &solo_system,
-        prompt,
-        ctx.solo_ep,
-        ctx.bridge,
-        ctx.workspace,
-        ctx.tabs_solo,
-        Some(writer),
-        false,
-        true,
-        send_system_prompt,
-        0,
-    )
-    .await;
-    *solo_bootstrapped = true;
-    match result {
-        Ok(result) => {
-            eprintln!(
-                "[orchestrate] solo ok bytes={}",
-                result.summary_text().len()
-            );
-            let lessons_text = crate::prompt_inputs::read_lessons_or_empty(ctx.workspace);
-            append_orchestration_trace(
-                "learning_loop_cycle_audit",
-                json!({
-                    "phase": "solo",
-                    "lessons_present": !lessons_text.trim().is_empty(),
-                    "lessons_bytes": lessons_text.len(),
-                    "objectives_path": OBJECTIVES_FILE,
-                    "plan_path": MASTER_PLAN_FILE,
-                }),
-            );
-            // Minimal enforcement hook (OBJ-15): if lessons exist, require objective/plan follow-up
-            if !lessons_text.trim().is_empty() {
-                let objectives_mtime_after = file_modified_ms(&objectives_path);
-                let plan_mtime_after = file_modified_ms(&ctx.workspace.join(MASTER_PLAN_FILE));
-                let objective_or_plan_updated = objectives_mtime_before != objectives_mtime_after
-                    || plan_mtime_before != plan_mtime_after;
-                append_orchestration_trace(
-                    "learning_loop_enforcement_signal",
-                    json!({
-                        "required_action": "objective_or_plan_update_required",
-                        "reason": if objective_or_plan_updated {
-                            "lessons_present_with_followup_update"
-                        } else {
-                            "lessons_present_without_verified_followup"
-                        },
-                        "objective_or_plan_updated": objective_or_plan_updated,
-                        "objectives_path": OBJECTIVES_FILE,
-                        "plan_path": MASTER_PLAN_FILE,
-                    }),
-                );
-                if !objective_or_plan_updated {
-                    log_error_event(
-                        "solo",
-                        "orchestrate",
-                        None,
-                        "learning loop follow-up missing: lessons were present but neither objectives nor plan changed during the solo cycle",
-                        Some(json!({
-                            "stage": "learning_loop_followup_missing",
-                            "objectives_path": OBJECTIVES_FILE,
-                            "plan_path": MASTER_PLAN_FILE,
-                        })),
-                    );
-                    return false;
-                }
-            }
-            crate::lessons::maybe_synthesize_lessons(ctx.workspace);
-            crate::lessons::apply_promoted_lessons(ctx.workspace);
-            crate::invariants::maybe_synthesize_invariants(ctx.workspace);
-            true
-        }
-        Err(err) => {
-            eprintln!("[orchestrate] solo error: {err:#}");
-            log_error_event(
-                "solo",
-                "orchestrate",
-                None,
-                &format!("solo error: {err:#}"),
-                Some(json!({ "stage": "solo_cycle" })),
-            );
-            false
-        }
-    }
-}
-
-#[allow(dead_code)]
-async fn run_diagnostics_phase(
-    ctx: &OrchestratorContext<'_>,
-    writer: &mut CanonicalWriter,
-    diagnostics_bootstrapped: &mut bool,
-    verifier_changed: bool,
-    cargo_test_failures: &str,
-) -> bool {
-    {
-        let mut state = std::collections::HashMap::new();
-        state.insert(
-            "diagnostics_pending".to_string(),
-            writer.state().diagnostics_pending.to_string(),
-        );
-        let blockers = crate::blockers::load_blockers(ctx.workspace);
-        let now_ms = crate::logging::now_ms();
-        let diagnostics_verification_failed_count = crate::blockers::count_class_recent(
-            &blockers,
-            "diagnostics",
-            &crate::error_class::ErrorClass::VerificationFailed,
-            now_ms,
-            5 * 60 * 1000,
-        );
-        // Only inject when entering failure threshold to avoid livelock
-        if diagnostics_verification_failed_count >= 3 && !writer.state().diagnostics_pending {
-            state.insert("actor_kind".to_string(), "diagnostics".to_string());
-            state.insert("error_class".to_string(), "verification_failed".to_string());
-        }
-        if let Err(reason) =
-            crate::invariants::evaluate_invariant_gate("diagnostics", &state, ctx.workspace)
-        {
-            eprintln!("[invariant_gate] diagnostics G_d (BLOCKED): {reason}");
-            crate::blockers::record_action_failure_with_writer(
-                ctx.workspace,
-                Some(writer),
-                "orchestrator",
-                "diagnostics_dispatch",
-                &reason,
-                None,
-            );
-            let record = serde_json::json!({
-                "kind": "invariant_gate",
-                "phase": "diagnostics",
-                "gate": "G_d",
-                "proposed_role": "diagnostics",
-                "blocked": true,
-                "reason": reason,
-                "ts_ms": crate::logging::now_ms(),
-            });
-            let _ = crate::logging::append_action_log_record(&record);
-            writer.apply(ControlEvent::DiagnosticsPendingSet { pending: true });
-            return false;
-        }
-    }
-    let summary_text = lane_summary_text(ctx.lanes, &writer.state().verifier_summary);
-    let restart_resume = peek_post_restart_result("diagnostics");
-    let mut prompt = if let Some(resume) = restart_resume.as_ref() {
-        let prompt = build_restart_resume_prompt("diagnostics", resume);
-        let _ = take_post_restart_result("diagnostics");
-        prompt
-    } else {
-        diagnostics_cycle_prompt(&summary_text, cargo_test_failures)
-    };
-    inject_inbound_message(&mut prompt, writer, "diagnostics");
-    trace_orchestrator_forwarded(
-        "verifier",
-        "diagnostics",
-        "diagnostics",
-        None,
-        None,
-        None,
-        None,
-    );
-    let diagnostics_system = system_instructions(AgentPromptKind::Diagnostics);
-    let result = run_agent(
-        "diagnostics",
-        "diagnostics",
-        &diagnostics_system,
-        prompt,
-        ctx.diagnostics_ep,
-        ctx.bridge,
-        ctx.workspace,
-        ctx.tabs_diagnostics,
-        Some(writer),
-        false,
-        false,
-        if restart_resume.is_some() {
-            false
-        } else {
-            !*diagnostics_bootstrapped
-        },
-        0,
-    )
-    .await;
-    *diagnostics_bootstrapped = true;
-    match result {
-        Ok(result) => {
-            eprintln!(
-                "[orchestrate] diagnostics ok bytes={}",
-                result.summary_text().len()
-            );
-            let new_diagnostics_text =
-                crate::prompt_inputs::reconcile_diagnostics_report(ctx.workspace);
-            if let Ok(report) =
-                serde_json::from_str::<crate::reports::DiagnosticsReport>(&new_diagnostics_text)
-            {
-                let _ = crate::reports::persist_diagnostics_projection_with_writer(
-                    ctx.workspace,
-                    &report,
-                    Some(writer),
-                    "diagnostics_reconcile_projection",
-                );
-            } else {
-                let diagnostics_projection_path = ctx.workspace.join(diagnostics_file());
-                let _ = crate::logging::write_projection_with_artifact_effects(
-                    ctx.workspace,
-                    &diagnostics_projection_path,
-                    diagnostics_file(),
-                    "write",
-                    "diagnostics_reconcile_projection",
-                    &new_diagnostics_text,
-                );
-            }
-            writer.apply(ControlEvent::DiagnosticsTextSet {
-                text: new_diagnostics_text,
-            });
-            writer.apply(ControlEvent::DiagnosticsPendingSet { pending: false });
-            writer.apply(ControlEvent::PlannerPendingSet {
-                pending: decide_post_diagnostics(true, verifier_changed),
-            });
-            crate::lessons::maybe_synthesize_lessons(ctx.workspace);
-            crate::lessons::apply_promoted_lessons(ctx.workspace);
-            crate::invariants::maybe_synthesize_invariants(ctx.workspace);
-            true
-        }
-        Err(err) => {
-            eprintln!("[orchestrate] diagnostics error: {err:#}");
-            log_error_event(
-                "diagnostics",
-                "orchestrate",
-                None,
-                &format!("diagnostics error: {err:#}"),
-                Some(json!({ "stage": "diagnostics_cycle" })),
-            );
-            false
-        }
-    }
-}
-
-#[allow(dead_code)]
-async fn run_verifier_phase(
-    ctx: &OrchestratorContext<'_>,
-    writer: &mut CanonicalWriter,
-    verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
-    verifier_joinset: &mut tokio::task::JoinSet<(usize, String)>,
-    verifier_bootstrapped: &mut bool,
-    cargo_test_failures: &str,
-) -> (bool, bool) {
-    let mut cycle_progress = false;
-    let mut verifier_changed = false;
-    while let Some((submitted, turn_id, final_exec_result)) = verifier_pending_results.pop_front() {
-        let semantic_control = SemanticControlState {
-            scheduled_phase: writer.state().scheduled_phase.clone(),
-            planner_pending: writer.state().planner_pending,
-            diagnostics_pending: writer.state().diagnostics_pending,
-            verifier_queued: true,
-            verifier_in_flight: false,
-            active_blocker_to_verifier: writer.state().active_blocker_to_verifier,
-        };
-        if !semantic_control.verifier_run_allowed() {
-            verifier_pending_results.push_front((submitted, turn_id, final_exec_result));
-            break;
-        }
-        writer.apply(ControlEvent::PhaseSet {
-            phase: "verifier".to_string(),
-            lane: Some(submitted.lane),
-        });
-        let lane_plan_file = ctx.lanes[submitted.lane].plan_file.clone();
-        let mut last_executor_diff = writer.state().last_executor_diff.clone();
-        let prompt_inputs: VerifierPromptInputs = load_verifier_prompt_inputs(
-            ctx.lanes,
-            ctx.workspace,
-            &writer.state().verifier_summary.clone(),
-            &mut last_executor_diff,
-            cargo_test_failures.to_string(),
-        );
-        writer.apply(ControlEvent::LastExecutorDiffSet {
-            text: last_executor_diff,
-        });
-        let restart_resume = peek_post_restart_result("verifier");
-        let mut verifier_prompt = if let Some(resume) = restart_resume.as_ref() {
-            let prompt = build_restart_resume_prompt("verifier", resume);
-            let _ = take_post_restart_result("verifier");
-            prompt
-        } else {
-            verifier_cycle_prompt(
-                submitted.lane_label.as_str(),
-                &final_exec_result,
-                &prompt_inputs.executor_diff_text,
-                &prompt_inputs.cargo_test_failures,
-            )
-        };
-        if let Some(inbound) = take_inbound_message(writer, "verifier") {
-            if let Some((_, to, payload)) = try_parse_blocker(&inbound) {
-                let fields = normalize_blocker_fields(&payload);
-                let verifier_specific =
-                    is_verifier_specific_blocker(&fields.blocker_text, &fields.required_action);
-                if to.eq_ignore_ascii_case("verifier")
-                    && verifier_blocker_phase_override(verifier_specific).is_some()
-                {
-                    let ack = build_verifier_blocker_ack(&fields);
-                    persist_planner_message(writer, &ack);
-                    verifier_pending_results.push_front((submitted, turn_id, final_exec_result));
-                    let override_phase =
-                        verifier_blocker_phase_override(verifier_specific).unwrap();
-                    writer.apply(ControlEvent::ScheduledPhaseSet {
-                        phase: Some(override_phase.to_string()),
-                    });
-                    continue;
-                }
-            }
-            append_inbound_to_prompt(&mut verifier_prompt, &inbound);
-        } else if let Some(inbound) = extract_message_action(&final_exec_result) {
-            append_inbound_to_prompt(&mut verifier_prompt, &inbound);
-        }
-        trace_orchestrator_forwarded(
-            &format!("executor:{}", submitted.lane_label),
-            "verifier",
-            "verifier",
-            Some(submitted.lane_label.as_str()),
-            Some(lane_plan_file.as_str()),
-            Some(submitted.tab_id),
-            Some(turn_id),
-        );
-        let verifier_system = system_instructions(AgentPromptKind::Verifier);
-        let verifier_ep = ctx.verifier_ep.clone();
-        let bridge = ctx.bridge.clone();
-        let workspace = ctx.workspace.to_path_buf();
-        let tabs_verify = ctx.tabs_verify.clone();
-        let send_system_prompt = if restart_resume.is_some() {
-            false
-        } else {
-            !*verifier_bootstrapped
-        };
-        *verifier_bootstrapped = true;
-        verifier_joinset.spawn(async move {
-            let verify_result = match run_agent(
-                "verifier",
-                "verifier",
-                &verifier_system,
-                verifier_prompt,
-                &verifier_ep,
-                &bridge,
-                &workspace,
-                &tabs_verify,
-                None,
-                false,
-                false,
-                send_system_prompt,
-                0,
-            )
-            .await
-            {
-                Ok(result) => result.into_summary(),
-                Err(err) => format!(
-                    "{{\"verified\":false,\"summary\":\"verifier error: {}\"}}",
-                    err.to_string().replace('"', "'")
-                ),
-            };
-            (submitted.lane, verify_result)
-        });
-        cycle_progress = true;
-    }
-
-    while let Some(joined) = verifier_joinset.try_join_next() {
-        match joined {
-            Ok((lane_id, verify_result)) => {
-                if verify_result
-                    .trim()
-                    .eq_ignore_ascii_case("shutdown requested")
-                {
-                    eprintln!(
-                        "[orchestrate] verifier shutdown marker received; preserving previous verifier result"
-                    );
-                    cycle_progress = true;
-                    continue;
-                }
-                let confirmed = verifier_confirmed(&verify_result);
-                let changed = writer
-                    .state()
-                    .lanes
-                    .get(&lane_id)
-                    .map(|l| l.latest_verifier_result.as_str())
-                    .unwrap_or("")
-                    != verify_result;
-                writer.apply(ControlEvent::LaneVerifierResultSet {
-                    lane_id,
-                    result: verify_result.clone(),
-                });
-                writer.apply(ControlEvent::LaneInProgressSet {
-                    lane_id,
-                    actor: None,
-                });
-                writer.apply(ControlEvent::LanePendingSet {
-                    lane_id,
-                    pending: !confirmed,
-                });
-                if changed {
-                    writer.apply(ControlEvent::VerifierSummarySet {
-                        lane_id,
-                        result: verify_result,
-                    });
-                    verifier_changed = true;
-                }
-                cycle_progress = true;
-            }
-            Err(err) => {
-                eprintln!("[orchestrate] verifier join error: {err:#}");
-                log_error_event(
-                    "verifier",
-                    "orchestrate",
-                    None,
-                    &format!("verifier join error: {err:#}"),
-                    Some(json!({ "stage": "verifier_join" })),
-                );
-            }
-        }
-    }
-
-    (cycle_progress, verifier_changed)
 }
 
 fn requeue_lane_after_submit_recovery(
@@ -3857,20 +3288,23 @@ fn summarize_inbound_message(inbound: &str) -> String {
         .get("predicted_next_actions")
         .and_then(Value::as_array)
     {
-        let mut rendered = Vec::new();
-        for action in next_actions.iter().take(3) {
-            let name = action.get("action").and_then(Value::as_str).unwrap_or("?");
-            let intent = action
-                .get("intent")
-                .and_then(Value::as_str)
+        let predicted_intent = |name: &str| -> String {
+            next_actions
+                .iter()
+                .find(|action| action.get("action").and_then(Value::as_str) == Some(name))
+                .and_then(|action| action.get("intent").and_then(Value::as_str))
                 .map(str::trim)
                 .filter(|text| !text.is_empty())
-                .map(|text| truncate(text, 120).to_string());
-            match intent {
-                Some(intent) => rendered.push(format!("- {name}: {intent}")),
-                None => rendered.push(format!("- {name}")),
-            }
-        }
+                .map(|text| truncate(text, 120).to_string())
+                .unwrap_or_else(|| "N/A".to_string())
+        };
+        let rendered = vec![
+            format!("- python: {}", predicted_intent("python")),
+            format!("- read_file: {}", predicted_intent("read_file")),
+            format!("- message: {}", predicted_intent("message")),
+            format!("- run_command: {}", predicted_intent("run_command")),
+            "- <all the other commands>: N/A".to_string(),
+        ];
         if !rendered.is_empty() {
             out.push_str("predicted_next_actions:\n");
             out.push_str(&rendered.join("\n"));
@@ -4185,20 +3619,6 @@ fn collect_wake_flag_inputs(
     }
 
     (inputs, path_map, signature_map)
-}
-
-#[allow(dead_code)]
-fn try_parse_blocker(raw: &str) -> Option<(String, String, Value)> {
-    let value: Value = serde_json::from_str(raw).ok()?;
-    let msg_type = jstr(&value, "type");
-    let status = jstr(&value, "status");
-    if msg_type != "blocker" || status != "blocked" {
-        return None;
-    }
-    let from = jstr(&value, "from").to_string();
-    let to = jstr(&value, "to").to_string();
-    let payload = value.get("payload").cloned().unwrap_or_else(|| Value::Null);
-    Some((from, to, payload))
 }
 
 fn record_canonical_inbound_message(
@@ -6407,16 +5827,7 @@ pub async fn run() -> Result<()> {
         eprintln!("[orchestrate] start_role={start_role}");
 
         let planner_ep = find_endpoint(&endpoints, "mini_planner")?.clone();
-        // Two-role runtime: legacy roles (solo/verifier/diagnostics) are inactive.
-        // Reuse planner endpoint handles for legacy context slots to keep the
-        // orchestration context shape stable without requiring those endpoints.
-        let diagnostics_ep = planner_ep.clone();
-        let solo_ep = planner_ep.clone();
-        let verifier_ep = planner_ep.clone();
-
-        let tabs_diagnostics = llm_worker_new_tabs();
         let tabs_planner = llm_worker_new_tabs();
-        let tabs_solo = llm_worker_new_tabs();
         let tabs_verify = llm_worker_new_tabs();
 
         // ── Canonical-writer initialisation ─────────────────────────────
@@ -6813,13 +6224,7 @@ pub async fn run() -> Result<()> {
                 workspace: &workspace,
                 bridge: &bridge,
                 tabs_planner: &tabs_planner,
-                tabs_solo: &tabs_solo,
-                tabs_diagnostics: &tabs_diagnostics,
-                tabs_verify: &tabs_verify,
                 planner_ep: &planner_ep,
-                solo_ep: &solo_ep,
-                diagnostics_ep: &diagnostics_ep,
-                verifier_ep: &verifier_ep,
                 master_plan_path: &master_plan_path,
             };
             let cargo_test_failures = load_cargo_test_failures(&workspace);

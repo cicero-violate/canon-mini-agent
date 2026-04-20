@@ -11,9 +11,13 @@ use std::sync::OnceLock;
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PredictedNextAction {
     pub action: PredictedActionName,
-    #[schemars(length(min = 1))]
+    #[schemars(length(min = 1, max = 80))]
     pub intent: String,
 }
+
+const ACTION_OBSERVATION_MAX_LEN: usize = 400;
+const ACTION_RATIONALE_MAX_LEN: usize = 300;
+const PREDICTED_INTENT_MAX_LEN: usize = 80;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -258,9 +262,13 @@ fn extract_enum_strings(schema: &SchemaObject) -> Option<Vec<String>> {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ActionBase {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(length(max = 400))]
     pub observation: Option<String>,
-    #[schemars(length(min = 1))]
+    #[schemars(length(min = 1, max = 300))]
     pub rationale: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(length(min = 1))]
+    pub question: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(length(min = 1))]
     pub task_id: Option<String>,
@@ -1056,6 +1064,7 @@ pub(crate) fn validate_tool_action(action: &Value) -> Result<()> {
         JSONSchema::compile(&value).expect("compile tool schema")
     });
     let normalized_action = normalize_action_aliases_for_validation(action);
+    validate_manual_length_guards(&normalized_action)?;
     if let Err(errors) = compiled.validate(&normalized_action) {
         let mut details = Vec::new();
         for err in errors.take(5) {
@@ -1077,8 +1086,32 @@ pub(crate) fn validate_tool_action(action: &Value) -> Result<()> {
         if rationale.trim().is_empty() {
             return Err(anyhow!("action missing non-empty 'rationale'"));
         }
+        if rationale.chars().count() > ACTION_RATIONALE_MAX_LEN {
+            return Err(anyhow!(
+                "rationale exceeds max length ({ACTION_RATIONALE_MAX_LEN} chars)"
+            ));
+        }
     } else {
         return Err(anyhow!("action missing non-empty 'rationale'"));
+    }
+    if let Some(observation) = normalized_action.get("observation").and_then(|v| v.as_str()) {
+        if observation.chars().count() > ACTION_OBSERVATION_MAX_LEN {
+            return Err(anyhow!(
+                "observation exceeds max length ({ACTION_OBSERVATION_MAX_LEN} chars)"
+            ));
+        }
+    }
+    if action_requires_question(&normalized_action) {
+        let question = normalized_action
+            .get("question")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .unwrap_or("");
+        if question.is_empty() {
+            return Err(anyhow!(
+                "mutating actions must include non-empty 'question'"
+            ));
+        }
     }
     let predicted = normalized_action
         .get("predicted_next_actions")
@@ -1098,8 +1131,74 @@ pub(crate) fn validate_tool_action(action: &Value) -> Result<()> {
                 "predicted_next_actions[{idx}] missing non-empty 'intent'"
             ));
         }
+        if intent.chars().count() > PREDICTED_INTENT_MAX_LEN {
+            return Err(anyhow!(
+                "predicted_next_actions[{idx}].intent exceeds max length ({PREDICTED_INTENT_MAX_LEN} chars)"
+            ));
+        }
     }
     Ok(())
+}
+
+fn validate_manual_length_guards(action: &Value) -> Result<()> {
+    if let Some(rationale) = action.get("rationale").and_then(|v| v.as_str()) {
+        if rationale.trim().is_empty() {
+            return Err(anyhow!("action missing non-empty 'rationale'"));
+        }
+        if rationale.chars().count() > ACTION_RATIONALE_MAX_LEN {
+            return Err(anyhow!(
+                "rationale exceeds max length ({ACTION_RATIONALE_MAX_LEN} chars)"
+            ));
+        }
+    }
+    if let Some(observation) = action.get("observation").and_then(|v| v.as_str()) {
+        if observation.chars().count() > ACTION_OBSERVATION_MAX_LEN {
+            return Err(anyhow!(
+                "observation exceeds max length ({ACTION_OBSERVATION_MAX_LEN} chars)"
+            ));
+        }
+    }
+    if action_requires_question(action) {
+        let question = action
+            .get("question")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .unwrap_or("");
+        if question.is_empty() {
+            return Err(anyhow!(
+                "mutating actions must include non-empty 'question'"
+            ));
+        }
+    }
+    if let Some(predicted) = action.get("predicted_next_actions").and_then(|v| v.as_array()) {
+        for (idx, item) in predicted.iter().enumerate() {
+            let intent = item
+                .get("intent")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .unwrap_or("");
+            if intent.chars().count() > PREDICTED_INTENT_MAX_LEN {
+                return Err(anyhow!(
+                    "predicted_next_actions[{idx}].intent exceeds max length ({PREDICTED_INTENT_MAX_LEN} chars)"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn action_requires_question(action: &Value) -> bool {
+    let kind = action.get("action").and_then(|v| v.as_str()).unwrap_or("");
+    match kind {
+        "apply_patch" | "rename_symbol" => true,
+        "plan" => action.get("op").and_then(|v| v.as_str()) != Some("sorted_view"),
+        "objectives" => !matches!(
+            action.get("op").and_then(|v| v.as_str()),
+            Some("read") | Some("sorted_view")
+        ),
+        "issue" => action.get("op").and_then(|v| v.as_str()) != Some("read"),
+        _ => false,
+    }
 }
 
 fn normalize_action_aliases_for_validation(action: &Value) -> Value {
@@ -1178,6 +1277,10 @@ fn map_schema_error_kind(
         }
         ValidationErrorKind::Type { kind } => schema_type_mismatch_message(path, kind),
         ValidationErrorKind::MinLength { .. } => schema_missing_field_message(path),
+        ValidationErrorKind::MaxLength { limit } => {
+            let field = schema_error_field(path);
+            format!("field too long: {field} (max {limit} chars)")
+        }
         ValidationErrorKind::MinItems { .. } | ValidationErrorKind::MaxItems { .. } => {
             "predicted_next_actions must contain 2-3 entries".to_string()
         }

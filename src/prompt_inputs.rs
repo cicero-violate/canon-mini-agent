@@ -27,19 +27,12 @@ pub struct LaneConfig {
     pub tabs: TabManagerHandle,
 }
 
-#[allow(dead_code)]
 pub struct OrchestratorContext<'a> {
     pub lanes: &'a [LaneConfig],
     pub workspace: &'a PathBuf,
     pub bridge: &'a WsBridge,
     pub tabs_planner: &'a TabManagerHandle,
-    pub tabs_solo: &'a TabManagerHandle,
-    pub tabs_diagnostics: &'a TabManagerHandle,
-    pub tabs_verify: &'a TabManagerHandle,
     pub planner_ep: &'a LlmEndpoint,
-    pub solo_ep: &'a LlmEndpoint,
-    pub diagnostics_ep: &'a LlmEndpoint,
-    pub verifier_ep: &'a LlmEndpoint,
     pub master_plan_path: &'a Path,
 }
 
@@ -519,6 +512,11 @@ objectives={objectives}  tasks={tasks}\n\
     )
 }
 
+fn load_complexity_report(path: &Path) -> Option<serde_json::Value> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str::<serde_json::Value>(&raw).ok()
+}
+
 fn summarize_ranked_open_issues_for_prompt(open_issues: &[Issue], limit: usize) -> String {
     if open_issues.is_empty() {
         return "(no open issues)".to_string();
@@ -809,6 +807,61 @@ pub fn derive_semantic_control_prompt_state(
     SemanticControlPromptState { control_summary }
 }
 
+fn semantic_control_snapshot_hash(text: &str) -> u64 {
+    // Stable FNV-1a so hashes are comparable across process restarts.
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for b in text.as_bytes() {
+        hash ^= u64::from(*b);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
+}
+
+fn semantic_control_snapshot_hash_hex(text: &str) -> String {
+    format!("{:016x}", semantic_control_snapshot_hash(text))
+}
+
+fn read_semantic_control_snapshot_hash(path: &Path) -> Option<String> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    let hash = raw.trim();
+    if hash.is_empty() {
+        None
+    } else {
+        Some(hash.to_string())
+    }
+}
+
+fn write_semantic_control_snapshot_hash(path: &Path, hash: &str) {
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(path, hash);
+}
+
+pub fn derive_semantic_control_prompt_state_with_delta(
+    workspace: &Path,
+    issue_limit: usize,
+    snapshot_hash_path: &Path,
+) -> SemanticControlPromptState {
+    let full = derive_semantic_control_prompt_state(workspace, issue_limit);
+    let current_hash = semantic_control_snapshot_hash_hex(&full.control_summary);
+    let previous_hash = read_semantic_control_snapshot_hash(snapshot_hash_path);
+    let unchanged = previous_hash
+        .as_deref()
+        .map(|prev| prev == current_hash)
+        .unwrap_or(false);
+    write_semantic_control_snapshot_hash(snapshot_hash_path, &current_hash);
+    if unchanged {
+        SemanticControlPromptState {
+            control_summary: format!(
+                "Semantic control: no change since last cycle. Hash: {current_hash}"
+            ),
+        }
+    } else {
+        full
+    }
+}
+
 pub fn read_semantic_control_prompt_context(workspace: &Path, issue_limit: usize) -> String {
     derive_semantic_control_prompt_state(workspace, issue_limit).control_summary
 }
@@ -987,218 +1040,6 @@ fn render_lessons_artifact(artifact: &LessonsArtifact) -> String {
         sections.push(section);
     }
     sections.join("\n\n")
-}
-
-#[allow(dead_code)]
-const RENAME_CANDIDATES_FILE: &str = "state/rename_candidates.json";
-
-#[allow(dead_code)]
-pub fn read_rename_candidates_or_empty(workspace: &Path) -> String {
-    let raw = read_text_or_empty(workspace.join(RENAME_CANDIDATES_FILE));
-    if raw.trim().is_empty() {
-        return String::new();
-    }
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) else {
-        return raw;
-    };
-    let Some(candidates) = v.get("candidates").and_then(|c| c.as_array()) else {
-        return raw;
-    };
-    if candidates.is_empty() {
-        return String::new();
-    }
-    let mut lines = Vec::new();
-    for c in candidates {
-        let name = c.get("name").and_then(|v| v.as_str()).unwrap_or("?");
-        let kind = c.get("kind").and_then(|v| v.as_str()).unwrap_or("?");
-        let file = c.get("file").and_then(|v| v.as_str()).unwrap_or("?");
-        let line = c
-            .get("span")
-            .and_then(|s| s.get("line"))
-            .and_then(|v| v.as_u64());
-        let score = c.get("score").and_then(|v| v.as_u64()).unwrap_or(0);
-        let reasons = c
-            .get("reasons")
-            .and_then(|r| r.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            })
-            .unwrap_or_default();
-        let loc = match line {
-            Some(l) => format!("{file}:{l}"),
-            None => file.to_string(),
-        };
-        lines.push(format!(
-            "- [{score}] `{name}` ({kind}) at {loc} — {reasons}"
-        ));
-    }
-    lines.join("\n")
-}
-
-/// Read `agent_state/loop_context.json` written by the supervisor's bounded repair
-/// loop and return a focused hint for injection into the solo/planner prompt.
-/// Returns empty string when the agent is not running under loop control.
-#[allow(dead_code)]
-pub fn read_loop_context_hint(state_dir: &Path) -> String {
-    let path = state_dir.join("loop_context.json");
-    let Ok(raw) = std::fs::read_to_string(&path) else {
-        return String::new();
-    };
-    let Ok(ctx) = serde_json::from_str::<serde_json::Value>(&raw) else {
-        return String::new();
-    };
-    let iteration = ctx.get("iteration").and_then(|v| v.as_u64()).unwrap_or(1);
-    let max = ctx
-        .get("max_iterations")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(1);
-    let symbol = ctx
-        .get("target_symbol")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let file = ctx
-        .get("target_file")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let line = ctx.get("target_line").and_then(|v| v.as_u64()).unwrap_or(0);
-    let patch_kind = ctx
-        .get("patch_kind")
-        .and_then(|v| v.as_str())
-        .unwrap_or("General");
-    let score = ctx.get("score").and_then(|v| v.as_i64()).unwrap_or(0);
-    let tests_passing = ctx
-        .get("tests_passing")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    if symbol.is_empty() {
-        return String::new();
-    }
-
-    let mut out = format!(
-        "\n## Repair Loop Context (iteration {iteration}/{max})\n\
-         Top repair target (score={score}, kind={patch_kind}):\n\
-         - symbol: `{symbol}`\n\
-         - location: {file}:{line}\n"
-    );
-    if tests_passing {
-        out.push_str("- prior iteration: tests PASSING (loop may be verifying)\n");
-    } else {
-        out.push_str("- prior iteration: tests FAILING — focus repair on this symbol\n");
-    }
-    if let Some(reasons) = ctx.get("reasons").and_then(|v| v.as_array()) {
-        let rs: Vec<&str> = reasons.iter().filter_map(|r| r.as_str()).collect();
-        if !rs.is_empty() {
-            out.push_str(&format!("- scoring signals: {}\n", rs.join(", ")));
-        }
-    }
-    out.push_str(
-        "Focus your next patch on this symbol unless a more critical failure is evident.\n",
-    );
-    out
-}
-
-/// Read agent_state/reports/complexity/latest.json and return the top `limit` hotspots
-/// as compact text for prompt injection. Returns empty string if report is absent.
-#[allow(dead_code)]
-pub fn read_complexity_hotspots(workspace: &Path, limit: usize) -> String {
-    let path = complexity_report_path(workspace);
-    let Some(report) = load_complexity_report(&path) else {
-        return String::new();
-    };
-    let Some(top) = report.get("global_top").and_then(|v| v.as_array()) else {
-        return String::new();
-    };
-    if top.is_empty() {
-        return String::new();
-    }
-    // Show the objective formula once so the LLM knows what the score means.
-    let mut out = String::from(
-        "Complexity objective: min(B) + min(R)  →  objective_score = 0.6*B_norm + 0.4*R_norm ∈ [0,1]\n\
-         B_norm=mir_blocks/max  R_norm=stmt_density/max  (higher score = higher-value refactor target)\n\
-         Loop: Detect(this report) → Propose(LLM) → Apply(patch/rename) → Verify(build+test)\n",
-    );
-    if let Some(eval) = report.get("eval").and_then(|v| v.as_object()) {
-        let overall = eval
-            .get("overall_score")
-            .and_then(|v| v.as_f64())
-            .map(|v| format!("{v:.3}"))
-            .unwrap_or_else(|| "?".to_string());
-        let objective_progress = eval
-            .get("objective_progress")
-            .and_then(|v| v.as_f64())
-            .map(|v| format!("{v:.3}"))
-            .unwrap_or_else(|| "?".to_string());
-        let safety = eval
-            .get("safety")
-            .and_then(|v| v.as_f64())
-            .map(|v| format!("{v:.3}"))
-            .unwrap_or_else(|| "?".to_string());
-        let task_velocity = eval
-            .get("task_velocity")
-            .and_then(|v| v.as_f64())
-            .map(|v| format!("{v:.3}"))
-            .unwrap_or_else(|| "?".to_string());
-        let issue_health = eval
-            .get("issue_health")
-            .and_then(|v| v.as_f64())
-            .map(|v| format!("{v:.3}"))
-            .unwrap_or_else(|| "?".to_string());
-        let pressure = eval
-            .get("diagnostics_repair_pressure")
-            .and_then(|v| v.as_f64())
-            .map(|v| format!("{v:.3}"))
-            .unwrap_or_else(|| "?".to_string());
-        let objectives = eval
-            .get("objectives")
-            .and_then(|v| v.as_str())
-            .unwrap_or("?");
-        let tasks = eval.get("tasks").and_then(|v| v.as_str()).unwrap_or("?");
-        out.push_str(&format!(
-            "Eval: overall={overall} objective_progress={objective_progress} safety={safety} \
-task_velocity={task_velocity} issue_health={issue_health} repair_pressure={pressure} \
-objectives={objectives} tasks={tasks}\n"
-        ));
-    }
-    for item in top.iter().take(limit.max(1)) {
-        out.push_str(&format_complexity_hotspot_line(item));
-    }
-    out
-}
-
-#[allow(dead_code)]
-fn complexity_report_path(workspace: &Path) -> std::path::PathBuf {
-    workspace
-        .join("agent_state")
-        .join("reports")
-        .join("complexity")
-        .join("latest.json")
-}
-
-#[allow(dead_code)]
-fn load_complexity_report(path: &Path) -> Option<serde_json::Value> {
-    let raw = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str::<serde_json::Value>(&raw).ok()
-}
-
-#[allow(dead_code)]
-fn format_complexity_hotspot_line(item: &serde_json::Value) -> String {
-    let symbol = item.get("symbol").and_then(|v| v.as_str()).unwrap_or("?");
-    let file = item.get("file").and_then(|v| v.as_str()).unwrap_or("?");
-    let line = item.get("line").and_then(|v| v.as_u64()).unwrap_or(0);
-    let obj_score = item
-        .get("objective_score")
-        .and_then(|v| v.as_str())
-        .unwrap_or("?");
-    let blocks = item.get("mir_blocks").and_then(|v| v.as_u64()).unwrap_or(0);
-    let density = item
-        .get("stmt_density")
-        .and_then(|v| v.as_str())
-        .unwrap_or("?");
-    format!("  [obj:{obj_score} B:{blocks} R_density:{density}] {symbol} ({file}:{line})\n")
 }
 
 pub fn read_lessons_or_empty(workspace: &Path) -> String {
@@ -1838,29 +1679,6 @@ pub fn load_executor_diff_inputs(
     ExecutorDiffInputs { diff_text }
 }
 
-#[allow(dead_code)]
-pub struct VerifierPromptInputs {
-    pub executor_diff_text: String,
-    pub cargo_test_failures: String,
-}
-
-#[allow(dead_code)]
-pub fn load_verifier_prompt_inputs(
-    lanes: &[LaneConfig],
-    workspace: &Path,
-    verifier_summary: &[String],
-    last_executor_diff: &mut String,
-    cargo_test_failures: String,
-) -> VerifierPromptInputs {
-    let _summary_text = lane_summary_text(lanes, verifier_summary);
-    let executor_diff_text =
-        load_executor_diff_inputs(workspace, last_executor_diff, 400).diff_text;
-    VerifierPromptInputs {
-        executor_diff_text,
-        cargo_test_failures,
-    }
-}
-
 pub fn load_planner_inputs(
     lanes: &[LaneConfig],
     workspace: &Path,
@@ -1869,6 +1687,7 @@ pub fn load_planner_inputs(
     last_executor_diff: &mut String,
     cargo_test_failures: String,
     master_plan_path: &Path,
+    semantic_control_snapshot_hash_path: &Path,
 ) -> PlannerInputs {
     let summary_text = lane_summary_text(lanes, verifier_summary);
     let executor_diff_text =
@@ -1883,7 +1702,11 @@ pub fn load_planner_inputs(
     } else {
         objectives_full
     };
-    let semantic_control = derive_semantic_control_prompt_state(workspace, 10);
+    let semantic_control = derive_semantic_control_prompt_state_with_delta(
+        workspace,
+        10,
+        semantic_control_snapshot_hash_path,
+    );
     let plan_text = read_text_or_empty(master_plan_path);
     let plan_diff_text = plan_diff(last_plan_text, &plan_text, 400);
     PlannerInputs {
@@ -2042,12 +1865,6 @@ fn build_executor_role_prompt(ctx: &SingleRoleContext<'_>) -> Result<String> {
 
 fn executor_diff_unavailable(reason: &str) -> String {
     format!("(executor diff unavailable: {reason})")
-}
-
-/// Public wrapper so solo phase can compute plan diffs without duplicating logic.
-#[allow(dead_code)]
-pub fn solo_plan_diff(old_text: &str, new_text: &str, max_lines: usize) -> String {
-    plan_diff(old_text, new_text, max_lines)
 }
 
 fn plan_diff(old_text: &str, new_text: &str, max_lines: usize) -> String {

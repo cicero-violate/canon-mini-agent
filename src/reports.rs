@@ -146,22 +146,6 @@ fn load_violations_from_tlog(workspace: &Path) -> Option<ViolationsReport> {
     latest.map(|(_, report)| report)
 }
 
-#[allow(dead_code)]
-pub fn persist_diagnostics_projection_with_writer(
-    workspace: &Path,
-    report: &DiagnosticsReport,
-    writer: Option<&mut crate::canonical_writer::CanonicalWriter>,
-    subject: &str,
-) -> Result<()> {
-    persist_diagnostics_projection_with_writer_to_path(
-        workspace,
-        report,
-        diagnostics_file(),
-        writer,
-        subject,
-    )
-}
-
 pub fn persist_diagnostics_projection_with_writer_to_path(
     workspace: &Path,
     report: &DiagnosticsReport,
