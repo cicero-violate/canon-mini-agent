@@ -954,9 +954,10 @@ pub fn selected_tool_protocol_schema_text(actions: &[&str]) -> String {
     let schema = schema_for!(ToolAction);
     let value = serde_json::to_value(&schema).unwrap_or_else(|_| Value::Object(Default::default()));
     let mut out = String::new();
-    out.push_str(
-        "Only the schemas below are in scope for this turn. Emit exactly one action whose `action` field matches one of these entries.\n",
-    );
+    out.push_str(&format!(
+        "Only the schemas below are in scope for this turn. {} The `action` field must match one of these entries.\n",
+        crate::prompt_contract::ACTION_EMIT_LINE
+    ));
     out.push_str(
         "Common fields appear in every action: `rationale` (non-empty), `predicted_next_actions` (2-3 items), optional `observation`, and optional provenance fields `task_id`, `objective_id`, `intent`.\n\n",
     );

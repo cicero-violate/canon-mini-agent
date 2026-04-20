@@ -5,6 +5,7 @@ use crate::constants::{
     diagnostics_file, workspace, EXECUTOR_STEP_LIMIT, INVARIANTS_FILE, ISSUES_FILE,
     MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
 };
+use crate::prompt_contract::ACTION_EMIT_LINE;
 use crate::protocol::{MessagePayload, MessageStatus, MessageType, ProtocolMessage, Role};
 use crate::tool_schema::selected_tool_protocol_schema_text;
 use crate::tool_schema::validate_tool_action;
@@ -361,7 +362,7 @@ fn rules_common_footer() -> String {
     format!(
         "{questions}\n\n\
          {protect_rule}\
-         - Emit exactly one action per turn. Think through the decision internally; reveal chain-of-thought. Only output the JSON action.\n\
+         - {ACTION_EMIT_LINE} Only output the JSON action.\n\
          - Keep every `predicted_next_actions[*].intent` concise (max 80 characters).\n\
          - Every mutating action (`apply_patch`, `plan`, `objectives`, `issue`) MUST include a `question` field: the single decision-boundary question this action answers. If answered differently, a different action would be taken.\n\
          - If you cannot proceed (missing files/permissions, repeated tool errors, or irreconcilable evidence), emit a `message` with `type=blocker`, `status=blocked`, and payload fields `blocker`, `evidence`, `required_action`.\n\
@@ -889,7 +890,7 @@ pub(crate) fn single_role_verifier_prompt(
     let cargo_failures_heading =
         "Latest cargo test failures (from cargo_test_failures.json)".to_string();
     let suffix = format!(
-        "\n\nVerify that objectives in {OBJECTIVES_FILE} are completed properly.\nUpdate task status fields in {MASTER_PLAN_FILE} to reflect verified results.\nWrite violations to {VIOLATIONS_FILE} if any are found.\nWhen complete, report verified/unverified/false items in `message.payload`.\nEmit exactly one action to begin. Think through the decision internally; reveal chain-of-thought."
+        "\n\nVerify that objectives in {OBJECTIVES_FILE} are completed properly.\nUpdate task status fields in {MASTER_PLAN_FILE} to reflect verified results.\nWrite violations to {VIOLATIONS_FILE} if any are found.\nWhen complete, report verified/unverified/false items in `message.payload`.\n{ACTION_EMIT_LINE}"
     );
     let items = [
         PromptItem {
@@ -1046,7 +1047,9 @@ pub(crate) fn single_role_executor_prompt(
     );
     let semantic_control_heading =
         "Semantic control state (tlog-derived authority + projected views)".to_string();
-    let suffix = "\n\nLane plans are deprecated. Use planner handoff messages and {MASTER_PLAN_FILE} for task selection.\n\nDo not modify spec, plan, violations, or diagnostics.\nDo not use internal tools.\nDo not hand off work; continue execution directly in the current role flow.\nUse `message.payload` to report evidence for verifier review. Emit exactly one action to begin. Think through the decision internally; reveal chain-of-thought.";
+    let suffix = format!(
+        "\n\nLane plans are deprecated. Use planner handoff messages and {MASTER_PLAN_FILE} for task selection.\n\nDo not modify spec, plan, violations, or diagnostics.\nDo not use internal tools.\nDo not hand off work; continue execution directly in the current role flow.\nUse `message.payload` to report evidence for verifier review. {ACTION_EMIT_LINE}"
+    );
     let items = vec![PromptItem {
         heading: &semantic_control_heading,
         body: semantic_control,
@@ -1055,7 +1058,7 @@ pub(crate) fn single_role_executor_prompt(
         weight: 4,
         always_include: true,
     }];
-    render_budgeted_prompt(&prefix, &items, suffix)
+    render_budgeted_prompt(&prefix, &items, &suffix)
 }
 
 // ── Action parsing ─────────────────────────────────────────────────────────────
@@ -1725,7 +1728,7 @@ pub(crate) fn action_result_prompt(
         "TAB_ID: {tab_label}\nTURN_ID: {turn_label}\nAGENT_TYPE: {agent_type}\n\n{limit_line}{provenance_block}"
     );
     let suffix = format!(
-        "\n\n{predicted_line}{}{}\nEmit batch actions or action. Think through the decision internally; reveal chain of thought.",
+        "\n\n{predicted_line}{}{}\n{ACTION_EMIT_LINE}",
         next_action_hint_text(result, last_action),
         mutating_question,
     );

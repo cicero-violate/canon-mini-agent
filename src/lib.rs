@@ -23,6 +23,7 @@ pub mod orchestrator_seam;
 pub mod plan_preflight;
 mod prompt_inputs;
 pub mod prompts;
+pub mod prompt_contract;
 mod protocol;
 pub mod refactor_analysis;
 pub mod rename_semantic;
