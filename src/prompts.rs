@@ -286,6 +286,21 @@ fn role_default_schema_actions(kind: AgentPromptKind) -> &'static [&'static str]
     }
 }
 
+pub(crate) fn role_default_schema_actions_for_role(role: &str) -> &'static [&'static str] {
+    let role = role.trim().to_ascii_lowercase();
+    if role.starts_with("executor") {
+        role_default_schema_actions(AgentPromptKind::Executor)
+    } else if role.starts_with("verifier") {
+        role_default_schema_actions(AgentPromptKind::Verifier)
+    } else if role.starts_with("diagnostics") {
+        role_default_schema_actions(AgentPromptKind::Diagnostics)
+    } else if role.starts_with("solo") {
+        role_default_schema_actions(AgentPromptKind::Solo)
+    } else {
+        role_default_schema_actions(AgentPromptKind::Planner)
+    }
+}
+
 fn parse_predicted_action_names(predicted_next_actions: Option<&str>) -> Vec<String> {
     let Some(raw) = predicted_next_actions else {
         return Vec::new();

@@ -3245,7 +3245,7 @@ fn append_external_user_message_to_prompt(prompt: &mut String, inbound: &str) {
     );
 }
 
-fn summarize_inbound_message(inbound: &str) -> String {
+fn summarize_inbound_message(inbound: &str, role: &str) -> String {
     let Ok(value) = serde_json::from_str::<Value>(inbound) else {
         return truncate(inbound.trim(), 1600).to_string();
     };
@@ -3298,13 +3298,28 @@ fn summarize_inbound_message(inbound: &str) -> String {
                 .map(|text| truncate(text, 120).to_string())
                 .unwrap_or_else(|| "N/A".to_string())
         };
-        let rendered = vec![
-            format!("- python: {}", predicted_intent("python")),
-            format!("- read_file: {}", predicted_intent("read_file")),
-            format!("- message: {}", predicted_intent("message")),
-            format!("- run_command: {}", predicted_intent("run_command")),
-            "- <all the other commands>: N/A".to_string(),
-        ];
+        let mut rendered = crate::prompts::role_default_schema_actions_for_role(role)
+            .iter()
+            .map(|name| format!("- {}: {}", name, predicted_intent(name)))
+            .collect::<Vec<_>>();
+
+        let mut extra = next_actions
+            .iter()
+            .filter_map(|action| action.get("action").and_then(Value::as_str))
+            .filter(|name| {
+                !crate::prompts::role_default_schema_actions_for_role(role)
+                    .iter()
+                    .any(|allowed| allowed == name)
+            })
+            .map(|name| name.to_string())
+            .collect::<Vec<_>>();
+        extra.sort();
+        extra.dedup();
+        rendered.extend(
+            extra
+                .iter()
+                .map(|name| format!("- {}: {}", name, predicted_intent(name))),
+        );
         if !rendered.is_empty() {
             out.push_str("predicted_next_actions:\n");
             out.push_str(&rendered.join("\n"));
@@ -3314,9 +3329,9 @@ fn summarize_inbound_message(inbound: &str) -> String {
     out.trim().to_string()
 }
 
-fn append_inbound_to_prompt(prompt: &mut String, inbound: &str) {
+fn append_inbound_to_prompt(prompt: &mut String, inbound: &str, role: &str) {
     prompt.push_str("\n\nInbound handoff message summary:\n");
-    prompt.push_str(&summarize_inbound_message(inbound));
+    prompt.push_str(&summarize_inbound_message(inbound, role));
     prompt.push('\n');
     if inbound_message_from_user(inbound) {
         prompt.push_str(
@@ -3343,7 +3358,7 @@ fn inject_inbound_message(prompt: &mut String, writer: &mut CanonicalWriter, rol
         return;
     }
     if let Some(inbound) = take_inbound_message(writer, role) {
-        append_inbound_to_prompt(prompt, &inbound);
+        append_inbound_to_prompt(prompt, &inbound, role);
     }
 }
 
@@ -5496,7 +5511,7 @@ async fn submit_executor_turn(
     if let Some(inbound) = take_external_user_message_without_writer("executor") {
         append_external_user_message_to_prompt(&mut exec_prompt, &inbound);
     } else if let Some(inbound) = take_inbound_message_without_writer("executor") {
-        append_inbound_to_prompt(&mut exec_prompt, &inbound);
+        append_inbound_to_prompt(&mut exec_prompt, &inbound, "executor");
     }
     let executor_system = system_instructions(AgentPromptKind::Executor);
     let role_schema = if should_send_system_prompt(send_system_prompt, endpoint.stateful, 0) {
