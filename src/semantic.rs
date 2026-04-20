@@ -98,6 +98,22 @@ struct CfgNode {
     is_cleanup: bool,
     #[serde(default)]
     terminator: String,
+    #[serde(default)]
+    statements: Vec<StatementInfo>,
+    #[serde(default)]
+    in_loop: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct StatementInfo {
+    #[serde(default)]
+    pub idx: usize,
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub written_local: String,
+    #[serde(default)]
+    pub read_locals: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -278,6 +294,28 @@ impl SemanticIndex {
             GraphCountKind::Node => self.graph.nodes.len(),
             GraphCountKind::SemanticEdge => self.graph.edges.len(),
         }
+    }
+
+    /// Returns `(block, in_loop, statement)` rows for all non-cleanup CFG nodes
+    /// owned by `symbol` (symbol key or path).
+    pub fn symbol_statements(&self, symbol: &str) -> Vec<(usize, bool, StatementInfo)> {
+        let Ok(symbol_key) = self.resolve_node_key(symbol) else {
+            return Vec::new();
+        };
+        let mut rows: Vec<(usize, bool, StatementInfo)> = self
+            .graph
+            .cfg_nodes
+            .values()
+            .filter(|node| node.owner == symbol_key && !node.is_cleanup)
+            .flat_map(|node| {
+                node.statements
+                    .iter()
+                    .cloned()
+                    .map(move |stmt| (node.block, node.in_loop, stmt))
+            })
+            .collect();
+        rows.sort_by(|a, b| a.0.cmp(&b.0).then(a.2.idx.cmp(&b.2.idx)));
+        rows
     }
 
     /// BFS shortest path across semantic edges, CFG edges, and bridge edges.
@@ -2251,6 +2289,8 @@ mod tests {
                 block: 0,
                 is_cleanup: false,
                 terminator: "Call".to_string(),
+                statements: Vec::new(),
+                in_loop: false,
             },
         );
 
@@ -2309,6 +2349,8 @@ mod tests {
                 block: 0,
                 is_cleanup: false,
                 terminator: "Call".to_string(),
+                statements: Vec::new(),
+                in_loop: false,
             },
         );
         let idx = SemanticIndex {

@@ -281,6 +281,11 @@ pub enum EffectEvent {
     FingerprintDriftRecorded {
         drift: crate::drift_analysis::FingerprintDrift,
     },
+    GrpoDatasetRecorded {
+        row_count: usize,
+        group_count: usize,
+        mean_reward: f64,
+    },
 }
 
 /// Envelope that wraps either a `ControlEvent` or an `EffectEvent`.

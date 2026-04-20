@@ -275,6 +275,7 @@ fn effect_event_kind_name(event: &crate::events::EffectEvent) -> &'static str {
         crate::events::EffectEvent::FingerprintDriftRecorded { .. } => {
             "fingerprint_drift_recorded"
         }
+        crate::events::EffectEvent::GrpoDatasetRecorded { .. } => "grpo_dataset_recorded",
     }
 }
 

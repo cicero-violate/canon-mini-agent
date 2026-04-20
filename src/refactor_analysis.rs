@@ -162,6 +162,24 @@ pub fn generate_dead_impl_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(workspace, "generate_dead_impl_issues", 24, dead_impl_issues)
 }
 
+pub fn generate_dark_assignment_issues(workspace: &Path) -> Result<usize> {
+    generate_detector_issues(
+        workspace,
+        "generate_dark_assignment_issues",
+        24,
+        dark_assignment_issues,
+    )
+}
+
+pub fn generate_loop_invariant_issues(workspace: &Path) -> Result<usize> {
+    generate_detector_issues(
+        workspace,
+        "generate_loop_invariant_issues",
+        24,
+        loop_invariant_issues,
+    )
+}
+
 type DetectorFn = fn(&Path, &str, &[SymbolSummary], usize) -> Vec<Issue>;
 
 fn generate_detector_issues(
@@ -641,6 +659,192 @@ pub fn dead_impl_issues(
                 "trait": trait_symbol,
                 "trait_dispatch_usage": 0
             }),
+            discovered_by: "refactor_analyzer".to_string(),
+            ..Issue::default()
+        });
+    }
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out.truncate(limit);
+    out
+}
+
+pub fn dark_assignment_issues(
+    workspace: &Path,
+    crate_name: &str,
+    summaries: &[SymbolSummary],
+    limit: usize,
+) -> Vec<Issue> {
+    let Ok(idx) = SemanticIndex::load(workspace, crate_name) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for s in summaries {
+        if s.kind != "fn" || s.mir_stmts.unwrap_or(0) <= 4 {
+            continue;
+        }
+        let statements = idx.symbol_statements(&s.symbol);
+        if statements.is_empty() {
+            continue;
+        }
+        let mut written: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
+        let mut ever_read: HashSet<String> = HashSet::new();
+        for (block, _in_loop, stmt) in &statements {
+            if !stmt.written_local.trim().is_empty() {
+                written
+                    .entry(stmt.written_local.clone())
+                    .or_default()
+                    .push((*block, stmt.idx));
+            }
+            for local in &stmt.read_locals {
+                if !local.trim().is_empty() {
+                    ever_read.insert(local.clone());
+                }
+            }
+        }
+
+        let dark_locals: Vec<String> = written
+            .keys()
+            .filter(|local| local.as_str() != "_0" && !ever_read.contains(local.as_str()))
+            .cloned()
+            .collect();
+        if dark_locals.is_empty() {
+            continue;
+        }
+        let mir_stmts = s.mir_stmts.unwrap_or(0);
+        let dark_ratio = dark_locals.len() as f64 / mir_stmts.max(1) as f64;
+        if dark_ratio <= 0.0 {
+            continue;
+        }
+
+        let dark_local_count = dark_locals.len();
+        let location = shorten_location(&s.file, s.line);
+        let mut dark_locals = dark_locals;
+        dark_locals.sort();
+        dark_locals.truncate(8);
+        out.push(Issue {
+            id: format!("auto_dark_assign_{crate_name}_{:x}", stable_hash(&s.symbol)),
+            title: format!(
+                "Dark assignments in `{}` ({} never-read locals)",
+                short_name(&s.symbol),
+                dark_local_count
+            ),
+            status: "open".to_string(),
+            priority: "low".to_string(),
+            kind: "redundancy".to_string(),
+            description: format!(
+                "Function `{}` writes locals that are never subsequently read.\n\
+                 Remove dead computation or document intentional side-effect carriers.",
+                s.symbol
+            ),
+            location: location.clone(),
+            scope: format!("crate:{crate_name}"),
+            metrics: json!({
+                "task": "RemoveDarkComputation",
+                "dark_local_count": dark_local_count,
+                "mir_stmts": mir_stmts,
+                "dark_ratio": dark_ratio,
+                "sample_dark_locals": dark_locals,
+            }),
+            acceptance_criteria: vec![
+                "dark locals removed or justified".to_string(),
+                "build and tests pass".to_string(),
+            ],
+            evidence: vec![format!("location: {location}")],
+            discovered_by: "refactor_analyzer".to_string(),
+            ..Issue::default()
+        });
+    }
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out.truncate(limit);
+    out
+}
+
+pub fn loop_invariant_issues(
+    workspace: &Path,
+    crate_name: &str,
+    summaries: &[SymbolSummary],
+    limit: usize,
+) -> Vec<Issue> {
+    let Ok(idx) = SemanticIndex::load(workspace, crate_name) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for s in summaries {
+        if s.kind != "fn" {
+            continue;
+        }
+        let statements = idx.symbol_statements(&s.symbol);
+        if statements.is_empty() {
+            continue;
+        }
+
+        let mut loop_blocks: HashSet<usize> = HashSet::new();
+        let mut non_loop_written: HashSet<String> = HashSet::new();
+        let mut loop_written: HashSet<String> = HashSet::new();
+        let mut total_loop_stmts = 0usize;
+        for (block, in_loop, stmt) in &statements {
+            if *in_loop {
+                loop_blocks.insert(*block);
+                total_loop_stmts += 1;
+                if !stmt.written_local.trim().is_empty() {
+                    loop_written.insert(stmt.written_local.clone());
+                }
+            } else if !stmt.written_local.trim().is_empty() {
+                non_loop_written.insert(stmt.written_local.clone());
+            }
+        }
+        if loop_blocks.is_empty() || total_loop_stmts == 0 {
+            continue;
+        }
+
+        let mut invariant_count = 0usize;
+        for (_block, in_loop, stmt) in &statements {
+            if !*in_loop || stmt.read_locals.is_empty() {
+                continue;
+            }
+            let invariant = stmt.read_locals.iter().all(|local| {
+                non_loop_written.contains(local) && !loop_written.contains(local)
+            });
+            if invariant {
+                invariant_count += 1;
+            }
+        }
+        if invariant_count == 0 {
+            continue;
+        }
+
+        let location = shorten_location(&s.file, s.line);
+        out.push(Issue {
+            id: format!(
+                "auto_loop_invariant_{crate_name}_{:x}",
+                stable_hash(&s.symbol)
+            ),
+            title: format!(
+                "Loop invariant waste in `{}` ({} candidate statement(s))",
+                short_name(&s.symbol),
+                invariant_count
+            ),
+            status: "open".to_string(),
+            priority: "medium".to_string(),
+            kind: "performance".to_string(),
+            description: format!(
+                "Function `{}` recalculates loop-invariant expressions inside loop blocks.\n\
+                 Hoist loop-invariant computations to preheader/setup.",
+                s.symbol
+            ),
+            location: location.clone(),
+            scope: format!("crate:{crate_name}"),
+            metrics: json!({
+                "task": "HoistLoopInvariant",
+                "loop_invariant_count": invariant_count,
+                "loop_block_count": loop_blocks.len(),
+                "total_loop_stmts": total_loop_stmts,
+            }),
+            acceptance_criteria: vec![
+                "invariant computations moved before loop entry".to_string(),
+                "build and tests pass".to_string(),
+            ],
+            evidence: vec![format!("location: {location}")],
             discovered_by: "refactor_analyzer".to_string(),
             ..Issue::default()
         });

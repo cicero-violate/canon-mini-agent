@@ -10,6 +10,7 @@ pub mod error_class;
 pub mod evaluation;
 pub mod evolution;
 pub mod drift_analysis;
+pub mod grpo;
 pub mod graph_metrics;
 pub mod inter_complexity;
 pub mod invalid_action;
