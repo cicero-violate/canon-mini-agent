@@ -3731,7 +3731,14 @@ impl<'a> LlmResponseContext<'a> {
         );
     }
 
-    fn log_response(&mut self, step: usize, exchange_id: &str, raw: &str) {
+    fn log_response(
+        &mut self,
+        step: usize,
+        exchange_id: &str,
+        raw: &str,
+        tab_id: Option<u32>,
+        turn_id: Option<u64>,
+    ) {
         trace_message_received(
             self.role,
             self.prompt_kind,
@@ -3753,7 +3760,13 @@ impl<'a> LlmResponseContext<'a> {
                 "raw": truncate(raw, MAX_SNIPPET),
             }),
         );
-        let action_kind = serde_json::from_str::<serde_json::Value>(raw)
+        let json_body = raw
+            .trim()
+            .trim_start_matches("```json")
+            .trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim();
+        let action_kind = serde_json::from_str::<serde_json::Value>(json_body)
             .ok()
             .and_then(|v| {
                 v.get("action")
@@ -3761,8 +3774,8 @@ impl<'a> LlmResponseContext<'a> {
                     .map(str::to_string)
             });
         self.record_effect(crate::events::EffectEvent::LlmTurnOutput {
-            tab_id: None,
-            turn_id: None,
+            tab_id,
+            turn_id,
             role: self.role.to_string(),
             step,
             command_id: exchange_id.to_string(),
@@ -4218,11 +4231,13 @@ async fn run_agent(
                 continue;
             }
         };
-        last_tab_id = resp.tab_id;
-        last_turn_id = resp.turn_id;
+        let tab_id = resp.tab_id;
+        let turn_id = resp.turn_id;
+        last_tab_id = tab_id;
+        last_turn_id = turn_id;
         let raw = resp.raw;
 
-        ctx.log_response(step + 1, &exchange_id, &raw);
+        ctx.log_response(step + 1, &exchange_id, &raw, tab_id, turn_id);
 
         if let Some(ack) = ctx.handle_submit_ack(step + 1, &exchange_id, &raw) {
             return Ok(AgentCompletion::Summary(ack));
