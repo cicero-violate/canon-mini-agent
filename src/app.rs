@@ -1328,48 +1328,58 @@ fn dispatch_executor_submits(
             continue;
         }
         if let Some(job) = claim_executor_submit(writer, lane) {
-            writer.apply(ControlEvent::PhaseSet {
-                phase: "executor".to_string(),
-                lane: Some(lane.index),
-            });
-            let lane_index = lane.index;
-            let endpoint = lane.endpoint.clone();
-            let bridge = ctx.bridge.clone();
-            let tabs = lane.tabs.clone();
-            let command_id = make_command_id(&job.executor_role, "executor", 1);
-            let response_timeout_secs = response_timeout_for_role(&job.executor_role);
-            rt.executor_submit_inflight.insert(
-                lane_index,
-                PendingSubmitState {
-                    job: job.clone(),
-                    started_ms: now_ms(),
-                    command_id: command_id.clone(),
-                    endpoint_id: endpoint.id.clone(),
-                    tabs: tabs.clone(),
-                },
-            );
-            writer.apply(ControlEvent::LaneSubmitInFlightSet {
-                lane_id: lane_index,
-                in_flight: true,
-            });
+            queue_executor_lane_submit(ctx, writer, rt, submit_joinset, lane.index, job, lane.endpoint.clone(), lane.tabs.clone());
             cycle_progress = true;
-            submit_joinset.spawn(async move {
-                let result = submit_executor_turn(
-                    &job,
-                    &endpoint,
-                    &bridge,
-                    &tabs,
-                    true,
-                    &command_id,
-                    response_timeout_secs,
-                )
-                .await;
-                (lane_index, job, result)
-            });
         }
     }
 
     cycle_progress
+}
+
+fn queue_executor_lane_submit(
+    ctx: &OrchestratorContext<'_>,
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
+    submit_joinset: &mut tokio::task::JoinSet<(usize, PendingExecutorSubmit, Result<String>)>,
+    lane_index: usize,
+    job: PendingExecutorSubmit,
+    endpoint: LlmEndpoint,
+    tabs: TabManagerHandle,
+) {
+    writer.apply(ControlEvent::PhaseSet {
+        phase: "executor".to_string(),
+        lane: Some(lane_index),
+    });
+    let bridge = ctx.bridge.clone();
+    let command_id = make_command_id(&job.executor_role, "executor", 1);
+    let response_timeout_secs = response_timeout_for_role(&job.executor_role);
+    rt.executor_submit_inflight.insert(
+        lane_index,
+        PendingSubmitState {
+            job: job.clone(),
+            started_ms: now_ms(),
+            command_id: command_id.clone(),
+            endpoint_id: endpoint.id.clone(),
+            tabs: tabs.clone(),
+        },
+    );
+    writer.apply(ControlEvent::LaneSubmitInFlightSet {
+        lane_id: lane_index,
+        in_flight: true,
+    });
+    submit_joinset.spawn(async move {
+        let result = submit_executor_turn(
+            &job,
+            &endpoint,
+            &bridge,
+            &tabs,
+            true,
+            &command_id,
+            response_timeout_secs,
+        )
+        .await;
+        (lane_index, job, result)
+    });
 }
 
 fn run_executor_phase(

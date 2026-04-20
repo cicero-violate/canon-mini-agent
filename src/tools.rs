@@ -3625,15 +3625,6 @@ fn verification_rebind_note(
     note
 }
 
-fn summarize_patch_crate_test_output(test_ok: bool, test_out: &str) -> String {
-    let test_summary = cargo_test_totals_summary(test_out);
-    if test_ok && !test_summary.trim().is_empty() {
-        test_summary
-    } else {
-        truncate(test_out, MAX_SNIPPET).to_string()
-    }
-}
-
 fn verify_apply_patch_crate(
     role: &str,
     step: usize,
@@ -3661,7 +3652,15 @@ fn verify_apply_patch_crate(
     let plan = load_execution_plan(workspace, &krate);
     if !check_ok {
         log_execution_learning(
-            workspace, &krate, patch, &plan, check_ok, &check_out, false, "",
+            workspace,
+            &krate,
+            patch,
+            &plan,
+            check_ok,
+            &check_out,
+            false,
+            None,
+            "",
         );
         let rebind_note = verification_rebind_note(workspace, &krate, &plan, &check_out, "");
         let out = format_apply_patch_action_chain(
@@ -3675,31 +3674,17 @@ fn verify_apply_patch_crate(
         );
         return Some((false, out));
     }
-
-    let test_cmd = format!("cargo test -p {krate} -q");
-
-    let (test_ok, test_out, test_label) = run_patch_crate_verification_command(
-        role,
-        step,
-        workspace,
-        &format!("cargo test -p {krate}"),
-        &test_cmd,
-        "cargo test ok",
-        "cargo test failed",
-    );
-
-    let test_display = summarize_patch_crate_test_output(test_ok, &test_out);
     log_execution_learning(
-        workspace, &krate, patch, &plan, check_ok, &check_out, test_ok, &test_out,
+        workspace,
+        &krate,
+        patch,
+        &plan,
+        check_ok,
+        &check_out,
+        false,
+        None,
+        "",
     );
-
-    let rebind_note = if test_ok {
-        None
-    } else {
-        Some(verification_rebind_note(
-            workspace, &krate, &plan, &check_out, &test_out,
-        ))
-    };
 
     Some((
         false,
@@ -3707,10 +3692,10 @@ fn verify_apply_patch_crate(
             check_label,
             &check_cmd,
             &check_out,
-            Some(test_label),
-            Some(&test_cmd),
-            Some(&test_display),
-            rebind_note.as_deref(),
+            None,
+            None,
+            None,
+            Some("Auto post-patch `cargo test` is disabled; run `cargo_test` explicitly when needed."),
         ),
     ))
 }
@@ -3722,7 +3707,8 @@ fn log_execution_learning(
     plan: &Option<crate::semantic::ExecutionPathPlan>,
     check_ok: bool,
     check_out: &str,
-    test_ok: bool,
+    cargo_test_ran: bool,
+    test_ok: Option<bool>,
     test_out: &str,
 ) {
     let patch_paths = patch_targets(patch)
@@ -3740,7 +3726,12 @@ fn log_execution_learning(
     let matched_top_target = top_target_file
         .map(|file| patch_paths.iter().any(|path| path == file))
         .unwrap_or(false);
-    let rebound = if check_ok && test_ok {
+    let verified = if cargo_test_ran {
+        check_ok && test_ok.unwrap_or(false)
+    } else {
+        check_ok
+    };
+    let rebound = if verified {
         None
     } else {
         verification_rebind(workspace, crate_name, plan.as_ref(), check_out, test_out)
@@ -3757,8 +3748,9 @@ fn log_execution_learning(
         "patch_kind": "apply_patch",
         "verification": {
             "cargo_check_ok": check_ok,
+            "cargo_test_ran": cargo_test_ran,
             "cargo_test_ok": test_ok,
-            "verified": check_ok && test_ok,
+            "verified": verified,
         },
         "rebound_failure": rebound,
         "check_excerpt": truncate(check_out, MAX_SNIPPET),

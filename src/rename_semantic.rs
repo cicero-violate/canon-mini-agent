@@ -620,7 +620,7 @@ mod tests {
 
     #[test]
     fn scan_attr_ranges_finds_outer_and_inner_attrs() {
-        let src = "#[derive(Debug)]\n#![allow(dead_code)]\nfn f() {}\n";
+        let src = "#[derive(Debug)]\n#![allow(unused_variables)]\nfn f() {}\n";
         let ranges = scan_attr_ranges(src);
         assert_eq!(ranges.len(), 2);
         assert!(src[ranges[0].0..ranges[0].1].starts_with("#[derive"));
