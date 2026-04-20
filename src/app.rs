@@ -3968,31 +3968,6 @@ async fn continue_executor_completion(
         true,
         None,
     )?;
-    if let Some(tx) = effect_tx.as_ref() {
-        let effect = EffectEvent::ActionResultRecorded {
-            role: role.to_string(),
-            step,
-            command_id: command_id.to_string(),
-            action_kind: action
-                .get("action")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown")
-                .to_string(),
-            task_id: action
-                .get("task_id")
-                .and_then(|v| v.as_str())
-                .map(str::to_string),
-            objective_id: action
-                .get("objective_id")
-                .and_then(|v| v.as_str())
-                .map(str::to_string),
-            ok: !out.starts_with("Error executing action:"),
-            result_bytes: out.len(),
-            result_hash: crate::logging::stable_hash_hex(&out),
-            result: out.clone(),
-        };
-        let _ = tx.send(effect);
-    }
     if done {
         return Ok(
             if action.get("action").and_then(|v| v.as_str()) == Some("message") {
@@ -4513,6 +4488,28 @@ async fn run_agent(
 
         match step_result {
             (true, reason) => {
+                ctx.record_effect(crate::events::EffectEvent::ActionResultRecorded {
+                    role: role.to_string(),
+                    step: step + 1,
+                    command_id: command_id.clone(),
+                    action_kind: action
+                        .get("action")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                        .to_string(),
+                    task_id: action
+                        .get("task_id")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
+                    objective_id: action
+                        .get("objective_id")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
+                    ok: true,
+                    result_bytes: reason.len(),
+                    result_hash: crate::logging::stable_hash_hex(&reason),
+                    result: reason.clone(),
+                });
                 eprintln!("[{role}] message complete: {reason}");
                 return Ok(
                     if action.get("action").and_then(|v| v.as_str()) == Some("message") {
@@ -4526,6 +4523,29 @@ async fn run_agent(
                 );
             }
             (false, out) => {
+                let ok = !out.starts_with("Error executing action:");
+                ctx.record_effect(crate::events::EffectEvent::ActionResultRecorded {
+                    role: role.to_string(),
+                    step: step + 1,
+                    command_id: command_id.clone(),
+                    action_kind: action
+                        .get("action")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                        .to_string(),
+                    task_id: action
+                        .get("task_id")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
+                    objective_id: action
+                        .get("objective_id")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
+                    ok,
+                    result_bytes: out.len(),
+                    result_hash: crate::logging::stable_hash_hex(&out),
+                    result: out.clone(),
+                });
                 cargo_test_gate.note_result(&kind, &out);
                 if out.starts_with("Error executing action:") {
                     if last_failed_action_fingerprint
