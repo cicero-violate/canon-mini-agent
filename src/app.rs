@@ -4249,7 +4249,9 @@ async fn run_agent(
                             format!(
                                 "Executor transport failure recovered locally. Retry on the same executor endpoint/lane.\n\
                                  Do not emit a blocker handoff for this transport error unless retries are exhausted.\n\
-                                 Return exactly one action as a single JSON object in a ```json code block.\n\nTask context:\n{}",
+                                 {}\n{}\n\nTask context:\n{}",
+                                crate::prompt_contract::ACTION_EMIT_LINE,
+                                crate::prompt_contract::OUTPUT_FORMAT_LINE,
                                 truncate(&task_context, MAX_SNIPPET)
                             ),
                         );
@@ -4285,7 +4287,9 @@ async fn run_agent(
                     &mut last_result,
                     &err_text,
                     format!(
-                        "LLM error: {e}\nReturn exactly one action as a single JSON object in a ```json code block.\n\nTask context:\n{}",
+                        "LLM error: {e}\n{}\n{}\n\nTask context:\n{}",
+                        crate::prompt_contract::ACTION_EMIT_LINE,
+                        crate::prompt_contract::OUTPUT_FORMAT_LINE,
                         truncate(&task_context, MAX_SNIPPET)
                     ),
                 );

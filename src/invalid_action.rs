@@ -726,7 +726,9 @@ pub fn build_invalid_action_feedback(
         "example_action": example_action,
     });
     format!(
-        "Invalid action rejected.\naction_result:\n{}\nReturn exactly one action as a single JSON object in a ```json code block. No prose outside it.\nFor any mutating retry (`apply_patch`, `plan`, `objectives`, `issue`, or `rename_symbol`), include a non-empty `question` field stating the decision-boundary premise.",
+        "Invalid action rejected.\naction_result:\n{}\nReturn a schema-valid action. {}\n{}\nFor any mutating retry (`apply_patch`, `plan`, `objectives`, `issue`, or `rename_symbol`), include a non-empty `question` field stating the decision-boundary premise.",
+        crate::prompt_contract::ACTION_EMIT_LINE,
+        crate::prompt_contract::OUTPUT_FORMAT_LINE,
         serde_json::to_string_pretty(&feedback).unwrap_or_else(|_| feedback.to_string())
     )
 }

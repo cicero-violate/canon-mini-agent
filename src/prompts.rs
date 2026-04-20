@@ -5,7 +5,7 @@ use crate::constants::{
     diagnostics_file, workspace, EXECUTOR_STEP_LIMIT, INVARIANTS_FILE, ISSUES_FILE,
     MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
 };
-use crate::prompt_contract::ACTION_EMIT_LINE;
+use crate::prompt_contract::{ACTION_EMIT_LINE, OUTPUT_FORMAT_LINE};
 use crate::protocol::{MessagePayload, MessageStatus, MessageType, ProtocolMessage, Role};
 use crate::tool_schema::selected_tool_protocol_schema_text;
 use crate::tool_schema::validate_tool_action;
@@ -367,7 +367,7 @@ fn rules_common_footer() -> String {
          - Every mutating action (`apply_patch`, `plan`, `objectives`, `issue`) MUST include a `question` field: the single decision-boundary question this action answers. If answered differently, a different action would be taken.\n\
          - If you cannot proceed (missing files/permissions, repeated tool errors, or irreconcilable evidence), emit a `message` with `type=blocker`, `status=blocked`, and payload fields `blocker`, `evidence`, `required_action`.\n\
          - Before emitting a completion message, review `agent_state/OBJECTIVES.json`. Add new objectives for anything you discovered this cycle that is not yet captured. Update the status of existing objectives that changed. Use `apply_patch` to write changes.\n\
-         - Output format: exactly one JSON object in a fenced json code block. No prose outside it."
+         - {OUTPUT_FORMAT_LINE}"
     )
 }
 
@@ -1738,6 +1738,7 @@ pub(crate) fn action_result_prompt(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::prompt_contract::ACTION_EMIT_LINE;
     use serde_json::json;
 
     #[test]
@@ -2189,5 +2190,58 @@ mod tests {
             prompt.contains("Lessons artifact:\nLESSON_TEXT"),
             "planner prompt must embed the lessons artifact body"
         );
+    }
+
+    #[test]
+    fn no_legacy_emit_wording_in_system_instructions() {
+        let kinds = [
+            AgentPromptKind::Planner,
+            AgentPromptKind::Executor,
+            AgentPromptKind::Verifier,
+            AgentPromptKind::Diagnostics,
+            AgentPromptKind::Solo,
+        ];
+        for kind in kinds {
+            let rendered = system_instructions(kind);
+            assert!(!rendered.contains("Emit exactly one action per turn"));
+            assert!(!rendered.contains("Emit exactly one action to begin"));
+            assert!(!rendered.contains("Emit exactly one action"));
+            assert!(rendered.contains(ACTION_EMIT_LINE));
+        }
+    }
+
+    #[test]
+    fn no_legacy_emit_wording_in_action_result_prompt() {
+        let prompt = action_result_prompt(
+            Some(1),
+            Some(2),
+            "PLANNER",
+            "plan ok",
+            Some("plan"),
+            Some("T1"),
+            Some("obj_1"),
+            Some("seed task"),
+            None,
+            Some(r#"[{"action":"message","intent":"handoff"}]"#),
+        );
+        assert!(!prompt.contains("Emit exactly one action per turn"));
+        assert!(!prompt.contains("Emit exactly one action to begin"));
+        assert!(prompt.contains(ACTION_EMIT_LINE));
+    }
+
+    #[test]
+    fn no_legacy_emit_wording_in_schema_preamble() {
+        let text = crate::tool_schema::selected_tool_protocol_schema_text(&["plan", "message"]);
+        assert!(!text.contains("Emit exactly one action per turn"));
+        assert!(!text.contains("Emit exactly one action to begin"));
+        assert!(!text.contains("Emit exactly one action"));
+        assert!(text.contains(ACTION_EMIT_LINE));
+    }
+
+    #[test]
+    fn prompt_contract_constants_are_canonical() {
+        assert!(ACTION_EMIT_LINE.contains("Emit batch actions or action"));
+        assert!(ACTION_EMIT_LINE.contains("reveal chain of thought"));
+        assert!(!ACTION_EMIT_LINE.contains("exactly one action"));
     }
 }
