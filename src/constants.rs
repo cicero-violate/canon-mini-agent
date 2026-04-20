@@ -17,11 +17,11 @@ pub const EXECUTOR_STEP_LIMIT: usize = 70;
 pub const PROMPT_OVERFLOW_BYTES: usize = 80_000;
 pub const MAX_FULL_READ_LINES: usize = 1000;
 pub const MAX_SNIPPET: usize = 20_000;
-pub const DEFAULT_RESPONSE_TIMEOUT_SECS: u64 = 150;
+pub const DEFAULT_RESPONSE_TIMEOUT_SECS: u64 = 60;
 pub const DEFAULT_LLM_RETRY_COUNT: u32 = 3;
 pub const DEFAULT_LLM_RETRY_DELAY_SECS: u64 = 5;
 pub const ROLE_TIMEOUT_SECS: &[(&str, u64)] =
-    &[("planner", 900), ("mini_planner", 900), ("executor", 30)];
+    &[("planner", 60), ("mini_planner", 60), ("executor", 30)];
 
 static WORKSPACE_PATH: OnceLock<RwLock<&'static str>> = OnceLock::new();
 
