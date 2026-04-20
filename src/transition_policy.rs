@@ -70,16 +70,20 @@ fn validate_verifier_phase(state: &SystemState, phase: &str, lane: Option<usize>
     require_in_progress_lane(state, lane_id, phase)
 }
 
+fn require_executor_in_progress_lane(state: &SystemState, lane_id: usize) -> Result<(), String> {
+    require_lane(state, lane_id, "PhaseSet")?;
+    if lane_in_progress(state, lane_id) {
+        Ok(())
+    } else {
+        Err(format!(
+            "illegal transition: executor phase for lane {lane_id} requires lane to be in progress"
+        ))
+    }
+}
+
 fn validate_executor_phase(state: &SystemState, lane: Option<usize>) -> Result<(), String> {
     if let Some(lane_id) = lane {
-        require_lane(state, lane_id, "PhaseSet")?;
-        if lane_in_progress(state, lane_id) {
-            Ok(())
-        } else {
-            Err(format!(
-                "illegal transition: executor phase for lane {lane_id} requires lane to be in progress"
-            ))
-        }
+        require_executor_in_progress_lane(state, lane_id)
     } else {
         validate_lane_less_executor_phase(state)
     }
