@@ -442,13 +442,55 @@ fn newest_file_mtime(root: &Path) -> Option<SystemTime> {
     newest
 }
 
+fn newest_graph_json_mtime(rustc_root: &Path) -> Option<SystemTime> {
+    let mut newest: Option<SystemTime> = None;
+    let mut stack = vec![rustc_root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = match fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let file_type = match entry.file_type() {
+                Ok(kind) => kind,
+                Err(_) => continue,
+            };
+            if file_type.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if !file_type.is_file() {
+                continue;
+            }
+            if path.file_name().and_then(|n| n.to_str()) != Some("graph.json") {
+                continue;
+            }
+            let Ok(meta) = entry.metadata() else {
+                continue;
+            };
+            let Ok(modified) = meta.modified() else {
+                continue;
+            };
+            newest = match newest {
+                Some(cur) if cur >= modified => Some(cur),
+                _ => Some(modified),
+            };
+        }
+    }
+    newest
+}
+
 fn semantic_graph_is_stale(workspace: &Path) -> bool {
     let src_dir = workspace.join("src");
     let rustc_dir = workspace.join("state").join("rustc");
     let Some(src_newest) = newest_file_mtime(&src_dir) else {
         return false;
     };
-    let Some(graph_newest) = newest_file_mtime(&rustc_dir) else {
+    // Only graph artifacts represent semantic freshness. Metadata files under
+    // state/rustc (for example index.json) can be newer and must not mask stale
+    // graph.json captures.
+    let Some(graph_newest) = newest_graph_json_mtime(&rustc_dir) else {
         return true;
     };
     src_newest > graph_newest
