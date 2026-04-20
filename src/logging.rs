@@ -146,42 +146,79 @@ pub(crate) fn make_command_id(role: &str, prompt_kind: &str, step: usize) -> Str
 }
 
 fn compact_json(value: Value) -> Option<Value> {
-    match value {
-        Value::Null => None,
-        Value::String(text) => {
-            let text = text.trim().to_string();
-            if text.is_empty() {
-                None
-            } else {
-                Some(Value::String(text))
-            }
-        }
-        Value::Array(items) => {
-            let items = items
-                .into_iter()
-                .filter_map(compact_json)
-                .collect::<Vec<_>>();
-            if items.is_empty() {
-                None
-            } else {
-                Some(Value::Array(items))
-            }
-        }
-        Value::Object(fields) => {
-            let mut out = serde_json::Map::new();
-            for (key, value) in fields {
-                if let Some(value) = compact_json(value) {
-                    out.insert(key, value);
+    enum Frame {
+        Visit(Value),
+        FinishArray(usize),
+        FinishObject(Vec<String>),
+    }
+
+    let mut frames = vec![Frame::Visit(value)];
+    let mut results: Vec<Option<Value>> = Vec::new();
+
+    while let Some(frame) = frames.pop() {
+        match frame {
+            Frame::Visit(Value::Null) => results.push(None),
+            Frame::Visit(Value::String(text)) => {
+                let text = text.trim().to_string();
+                if text.is_empty() {
+                    results.push(None);
+                } else {
+                    results.push(Some(Value::String(text)));
                 }
             }
-            if out.is_empty() {
-                None
-            } else {
-                Some(Value::Object(out))
+            Frame::Visit(Value::Array(items)) => {
+                let len = items.len();
+                frames.push(Frame::FinishArray(len));
+                for item in items.into_iter().rev() {
+                    frames.push(Frame::Visit(item));
+                }
+            }
+            Frame::Visit(Value::Object(fields)) => {
+                let entries = fields.into_iter().collect::<Vec<_>>();
+                let keys = entries.iter().map(|(key, _)| key.clone()).collect::<Vec<_>>();
+                frames.push(Frame::FinishObject(keys));
+                for (_, value) in entries.into_iter().rev() {
+                    frames.push(Frame::Visit(value));
+                }
+            }
+            Frame::Visit(other) => results.push(Some(other)),
+            Frame::FinishArray(len) => {
+                let mut items = Vec::with_capacity(len);
+                for _ in 0..len {
+                    items.push(results.pop().expect("array child result"));
+                }
+                items.reverse();
+                let items = items.into_iter().flatten().collect::<Vec<_>>();
+                if items.is_empty() {
+                    results.push(None);
+                } else {
+                    results.push(Some(Value::Array(items)));
+                }
+            }
+            Frame::FinishObject(keys) => {
+                let mut values = Vec::with_capacity(keys.len());
+                for _ in 0..keys.len() {
+                    values.push(results.pop().expect("object child result"));
+                }
+                values.reverse();
+
+                let mut out = serde_json::Map::new();
+                for (key, value) in keys.into_iter().zip(values.into_iter()) {
+                    if let Some(value) = value {
+                        out.insert(key, value);
+                    }
+                }
+
+                if out.is_empty() {
+                    results.push(None);
+                } else {
+                    results.push(Some(Value::Object(out)));
+                }
             }
         }
-        other => Some(other),
     }
+
+    results.pop().flatten()
 }
 
 pub(crate) fn compact_log_record(
