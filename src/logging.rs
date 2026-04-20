@@ -1010,6 +1010,30 @@ fn persist_prompt_overflow_report(
     }
 }
 
+fn append_prompt_overflow_receipt(
+    role: &str,
+    prompt_bytes: usize,
+    threshold: usize,
+    violations_path: &std::path::Path,
+    reconciled_duplicate: bool,
+) -> Option<String> {
+    append_evidence_receipt(
+        role,
+        "prompt_overflow",
+        Some(crate::constants::VIOLATIONS_FILE),
+        Some(violations_path.to_path_buf()),
+        json!({
+            "kind": "prompt_overflow",
+            "role": role,
+            "prompt_bytes": prompt_bytes,
+            "threshold": threshold,
+            "reconciled_duplicate": reconciled_duplicate,
+        }),
+        &format!("role={role};prompt_bytes={prompt_bytes};threshold={threshold}"),
+    )
+    .ok()
+}
+
 pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, prompt_bytes: usize) {
     use crate::constants::PROMPT_OVERFLOW_BYTES;
     if prompt_bytes <= PROMPT_OVERFLOW_BYTES {
@@ -1046,21 +1070,13 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
             return;
         }
 
-        let refreshed_receipt_id = append_evidence_receipt(
+        let refreshed_receipt_id = append_prompt_overflow_receipt(
             role,
-            "prompt_overflow",
-            Some(crate::constants::VIOLATIONS_FILE),
-            Some(violations_path.clone()),
-            json!({
-                "kind": "prompt_overflow",
-                "role": role,
-                "prompt_bytes": prompt_bytes,
-                "threshold": PROMPT_OVERFLOW_BYTES,
-                "reconciled_duplicate": true,
-            }),
-            &format!("role={role};prompt_bytes={prompt_bytes};threshold={PROMPT_OVERFLOW_BYTES}"),
-        )
-        .ok();
+            prompt_bytes,
+            PROMPT_OVERFLOW_BYTES,
+            &violations_path,
+            true,
+        );
 
         let mut reconciled_violations = violations;
         if let Some(existing) = reconciled_violations.get_mut(existing_index) {
@@ -1100,20 +1116,13 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
         return;
     }
 
-    let receipt_id = append_evidence_receipt(
+    let receipt_id = append_prompt_overflow_receipt(
         role,
-        "prompt_overflow",
-        Some(crate::constants::VIOLATIONS_FILE),
-        Some(violations_path.clone()),
-        json!({
-            "kind": "prompt_overflow",
-            "role": role,
-            "prompt_bytes": prompt_bytes,
-            "threshold": PROMPT_OVERFLOW_BYTES,
-        }),
-        &format!("role={role};prompt_bytes={prompt_bytes};threshold={PROMPT_OVERFLOW_BYTES}"),
-    )
-    .ok();
+        prompt_bytes,
+        PROMPT_OVERFLOW_BYTES,
+        &violations_path,
+        false,
+    );
     let new_violation = json!({
         "id": violation_id,
         "title": format!("Prompt overflow: {} sent {prompt_bytes} bytes (limit {PROMPT_OVERFLOW_BYTES})", role),

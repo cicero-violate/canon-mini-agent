@@ -18,7 +18,10 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, OnceLock,
 };
-use tokio::sync::Notify;
+use tokio::sync::{
+    mpsc::{self, UnboundedReceiver, UnboundedSender},
+    Notify,
+};
 
 use crate::canonical_writer::CanonicalWriter;
 use crate::constants::{
@@ -672,6 +675,7 @@ async fn run_planner_phase(
         ctx.workspace,
         ctx.tabs_planner,
         Some(writer),
+        None,
         false,
         false,
         send_system_prompt,
@@ -1670,11 +1674,7 @@ async fn process_completed_turns(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
-    continuation_joinset: &mut tokio::task::JoinSet<(
-        SubmittedExecutorTurn,
-        u64,
-        Result<AgentCompletion>,
-    )>,
+    continuation_joinset: &mut tokio::task::JoinSet<ContinuationJoinOutput>,
     verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
 ) -> bool {
     let mut cycle_progress = false;
@@ -1805,17 +1805,16 @@ async fn process_completed_turns(
 
 fn drain_continuations(
     writer: &mut CanonicalWriter,
-    continuation_joinset: &mut tokio::task::JoinSet<(
-        SubmittedExecutorTurn,
-        u64,
-        Result<AgentCompletion>,
-    )>,
+    continuation_joinset: &mut tokio::task::JoinSet<ContinuationJoinOutput>,
     verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
 ) -> bool {
     let mut cycle_progress = false;
     while let Some(joined) = continuation_joinset.try_join_next() {
         match joined {
-            Ok((submitted, turn_id, result)) => {
+            Ok((submitted, turn_id, result, mut effect_rx)) => {
+                while let Ok(effect) = effect_rx.try_recv() {
+                    writer.record_effect(effect);
+                }
                 cycle_progress |= handle_completed_continuation(
                     writer,
                     verifier_pending_results,
@@ -1946,11 +1945,7 @@ fn drain_deferred_completions(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
-    continuation_joinset: &mut tokio::task::JoinSet<(
-        SubmittedExecutorTurn,
-        u64,
-        Result<AgentCompletion>,
-    )>,
+    continuation_joinset: &mut tokio::task::JoinSet<ContinuationJoinOutput>,
     verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
 ) -> bool {
     let mut cycle_progress = false;
@@ -3684,35 +3679,21 @@ struct LlmResponseContext<'a> {
     prompt_kind: &'a str,
     submit_only: bool,
     writer: Option<&'a mut CanonicalWriter>,
-}
-
-fn full_exchange_path(kind: &str, ts_ms: u64, who: &str, step: usize) -> PathBuf {
-    PathBuf::from(crate::constants::agent_state_dir())
-        .join("llm_full")
-        .join(format!("{ts_ms:013}_{kind}_{who}_message_{step:04}.txt"))
-}
-
-fn write_full_exchange(kind: &str, ts_ms: u64, who: &str, step: usize, raw: &str) {
-    let path = full_exchange_path(kind, ts_ms, who, step);
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let _ = std::fs::write(path, raw);
+    effect_tx: Option<UnboundedSender<EffectEvent>>,
 }
 
 impl<'a> LlmResponseContext<'a> {
+    fn record_effect(&mut self, effect: EffectEvent) {
+        if let Some(writer) = self.writer.as_deref_mut() {
+            writer.record_effect(effect);
+            return;
+        }
+        if let Some(tx) = self.effect_tx.as_ref() {
+            let _ = tx.send(effect);
+        }
+    }
+
     fn log_request(&mut self, step: usize, exchange_id: &str, prompt: &str, role_schema: &str) {
-        let ts_ms = crate::logging::now_ms();
-        let who = if role_schema.trim().is_empty() {
-            self.role
-        } else {
-            "system"
-        };
-        let raw_prompt = if role_schema.trim().is_empty() {
-            prompt.to_string()
-        } else {
-            format!("{}\n\n{}", role_schema.trim_end(), prompt)
-        };
         log_message_event(
             self.role,
             self.endpoint,
@@ -3727,23 +3708,19 @@ impl<'a> LlmResponseContext<'a> {
                 "prompt": truncate(prompt, MAX_SNIPPET),
             }),
         );
-        if let Some(writer) = self.writer.as_deref_mut() {
-            writer.record_effect(crate::events::EffectEvent::LlmTurnInput {
-                tab_id: None,
-                turn_id: None,
-                role: self.role.to_string(),
-                agent_type: role_key(self.role).to_uppercase(),
-                step,
-                command_id: exchange_id.to_string(),
-                endpoint_id: self.endpoint.id.clone(),
-                prompt_hash: crate::logging::stable_hash_hex(prompt),
-                prompt_bytes: prompt.len(),
-                role_schema_bytes: role_schema.len(),
-                submit_only: self.submit_only,
-            });
-        }
-        // Debug projection: keep full prompt snapshots for offline inspection.
-        write_full_exchange("sent", ts_ms, who, step, &raw_prompt);
+        self.record_effect(crate::events::EffectEvent::LlmTurnInput {
+            tab_id: None,
+            turn_id: None,
+            role: self.role.to_string(),
+            agent_type: role_key(self.role).to_uppercase(),
+            step,
+            command_id: exchange_id.to_string(),
+            endpoint_id: self.endpoint.id.clone(),
+            prompt_hash: crate::logging::stable_hash_hex(prompt),
+            prompt_bytes: prompt.len(),
+            role_schema_bytes: role_schema.len(),
+            submit_only: self.submit_only,
+        });
         trace_message_forwarded(
             self.role,
             self.prompt_kind,
@@ -3755,7 +3732,6 @@ impl<'a> LlmResponseContext<'a> {
     }
 
     fn log_response(&mut self, step: usize, exchange_id: &str, raw: &str) {
-        let ts_ms = crate::logging::now_ms();
         trace_message_received(
             self.role,
             self.prompt_kind,
@@ -3784,22 +3760,18 @@ impl<'a> LlmResponseContext<'a> {
                     .and_then(|a| a.as_str())
                     .map(str::to_string)
             });
-        if let Some(writer) = self.writer.as_deref_mut() {
-            writer.record_effect(crate::events::EffectEvent::LlmTurnOutput {
-                tab_id: None,
-                turn_id: None,
-                role: self.role.to_string(),
-                step,
-                command_id: exchange_id.to_string(),
-                endpoint_id: self.endpoint.id.clone(),
-                response_bytes: raw.len(),
-                response_hash: crate::logging::stable_hash_hex(raw),
-                action_kind,
-                raw: raw.to_string(),
-            });
-        }
-        // Debug projection: keep full response snapshots for offline inspection.
-        write_full_exchange("received", ts_ms, self.role, step, raw);
+        self.record_effect(crate::events::EffectEvent::LlmTurnOutput {
+            tab_id: None,
+            turn_id: None,
+            role: self.role.to_string(),
+            step,
+            command_id: exchange_id.to_string(),
+            endpoint_id: self.endpoint.id.clone(),
+            response_bytes: raw.len(),
+            response_hash: crate::logging::stable_hash_hex(raw),
+            action_kind,
+            raw: raw.to_string(),
+        });
     }
 
     fn handle_submit_ack(&self, step: usize, exchange_id: &str, raw: &str) -> Option<String> {
@@ -3894,6 +3866,7 @@ async fn continue_executor_completion(
     bridge: &WsBridge,
     workspace: &Path,
     tabs: &TabManagerHandle,
+    effect_tx: Option<UnboundedSender<EffectEvent>>,
 ) -> Result<AgentCompletion> {
     let role = submitted.actor.as_str();
     let prompt_kind = "executor";
@@ -3945,6 +3918,7 @@ async fn continue_executor_completion(
                 workspace,
                 tabs,
                 None,
+                effect_tx.clone(),
                 false,
                 true,
                 true,
@@ -4013,6 +3987,7 @@ async fn continue_executor_completion(
         workspace,
         tabs,
         None,
+        effect_tx,
         false,
         true,
         true,
@@ -4036,6 +4011,7 @@ async fn run_agent(
     workspace: &Path,
     tabs: &TabManagerHandle,
     writer: Option<&mut CanonicalWriter>,
+    effect_tx: Option<UnboundedSender<EffectEvent>>,
     submit_only: bool,
     check_on_done: bool,
     send_system_prompt: bool,
@@ -4073,6 +4049,7 @@ async fn run_agent(
         prompt_kind,
         submit_only,
         writer,
+        effect_tx,
     };
 
     write_stage_graph(workspace);
@@ -4165,17 +4142,14 @@ async fn run_agent(
                 let err_text = e.to_string();
                 eprintln!("[{role}] step={} llm_error: {e}", step + 1);
                 ctx.log_error(step + 1, &exchange_id, &err_text);
-                if let Some(writer) = ctx.writer.as_deref_mut() {
-                    let _ =
-                        writer.try_record_effect(crate::events::EffectEvent::LlmErrorBoundary {
-                            role: role.to_string(),
-                            prompt_kind: prompt_kind.to_string(),
-                            step: step + 1,
-                            endpoint_id: endpoint.id.clone(),
-                            exchange_id: exchange_id.clone(),
-                            error: err_text.clone(),
-                        });
-                }
+                ctx.record_effect(crate::events::EffectEvent::LlmErrorBoundary {
+                    role: role.to_string(),
+                    prompt_kind: prompt_kind.to_string(),
+                    step: step + 1,
+                    endpoint_id: endpoint.id.clone(),
+                    exchange_id: exchange_id.clone(),
+                    error: err_text.clone(),
+                });
                 crate::blockers::record_action_failure_with_writer(
                     workspace,
                     None,
@@ -4775,6 +4749,13 @@ struct SubmittedExecutorTurn {
     steps_used: usize,
 }
 
+type ContinuationJoinOutput = (
+    SubmittedExecutorTurn,
+    u64,
+    Result<AgentCompletion>,
+    UnboundedReceiver<EffectEvent>,
+);
+
 #[derive(Clone)]
 struct PendingExecutorSubmit {
     executor_name: String,
@@ -4904,11 +4885,7 @@ fn handle_executor_completion(
     lanes: &[LaneConfig],
     bridge: &WsBridge,
     workspace: &PathBuf,
-    continuation_joinset: &mut tokio::task::JoinSet<(
-        SubmittedExecutorTurn,
-        u64,
-        Result<AgentCompletion>,
-    )>,
+    continuation_joinset: &mut tokio::task::JoinSet<ContinuationJoinOutput>,
     _verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
 ) -> bool {
     submitted.steps_used = submitted.steps_used.saturating_add(1);
@@ -5110,11 +5087,7 @@ fn spawn_executor_completion_continuation(
     exec_result: &str,
     bridge: &WsBridge,
     workspace: &PathBuf,
-    continuation_joinset: &mut tokio::task::JoinSet<(
-        SubmittedExecutorTurn,
-        u64,
-        Result<AgentCompletion>,
-    )>,
+    continuation_joinset: &mut tokio::task::JoinSet<ContinuationJoinOutput>,
 ) {
     let executor_endpoint = lane_cfg.endpoint.clone();
     let bridge = bridge.clone();
@@ -5122,6 +5095,7 @@ fn spawn_executor_completion_continuation(
     let exec_result = exec_result.to_string();
     let submitted_clone = submitted.clone();
     let tabs = submitted.tabs.clone();
+    let (effect_tx, effect_rx) = mpsc::unbounded_channel::<EffectEvent>();
     writer.apply(ControlEvent::LanePromptInFlightSet {
         lane_id: submitted.lane,
         in_flight: true,
@@ -5136,9 +5110,10 @@ fn spawn_executor_completion_continuation(
             &bridge,
             &workspace,
             &tabs,
+            Some(effect_tx),
         )
         .await;
-        (submitted_clone, turn_id, result)
+        (submitted_clone, turn_id, result, effect_rx)
     });
 }
 
@@ -5963,11 +5938,8 @@ pub async fn run() -> Result<()> {
             PendingExecutorSubmit,
             Result<String>,
         )> = tokio::task::JoinSet::new();
-        let mut continuation_joinset: tokio::task::JoinSet<(
-            SubmittedExecutorTurn,
-            u64,
-            Result<AgentCompletion>,
-        )> = tokio::task::JoinSet::new();
+        let mut continuation_joinset: tokio::task::JoinSet<ContinuationJoinOutput> =
+            tokio::task::JoinSet::new();
         let mut verifier_joinset: tokio::task::JoinSet<(usize, String)> =
             tokio::task::JoinSet::new();
         let mut verifier_pending_results: VecDeque<(SubmittedExecutorTurn, u64, String)> =
@@ -6389,6 +6361,13 @@ pub async fn run() -> Result<()> {
             endpoint.pick_url(0)
         );
 
+        let lane_indices: Vec<usize> = lanes.iter().map(|l| l.index).collect();
+        let initial_system_state = SystemState::new(&lane_indices, lanes.len());
+        let tlog_path = PathBuf::from(crate::constants::agent_state_dir()).join("tlog.ndjson");
+        let system_state = Tlog::replay(&tlog_path, initial_system_state.clone())
+            .unwrap_or(initial_system_state);
+        let mut writer = CanonicalWriter::new(system_state, Tlog::open(&tlog_path), workspace.clone());
+
         let cargo_test_failures = load_cargo_test_failures(&workspace);
         let initial_prompt =
             build_single_role_prompt(&single_role_ctx, &inputs, &cargo_test_failures)?;
@@ -6407,6 +6386,7 @@ pub async fn run() -> Result<()> {
             &bridge,
             &workspace,
             &tabs,
+            Some(&mut writer),
             None,
             submit_only,
             inputs.role == "executor",
