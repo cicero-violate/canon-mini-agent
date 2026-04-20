@@ -362,6 +362,7 @@ fn rules_common_footer() -> String {
         "{questions}\n\n\
          {protect_rule}\
          - Emit exactly one action per turn. Think through the decision internally; reveal chain-of-thought. Only output the JSON action.\n\
+         - Keep every `predicted_next_actions[*].intent` concise (max 80 characters).\n\
          - Every mutating action (`apply_patch`, `plan`, `objectives`, `issue`) MUST include a `question` field: the single decision-boundary question this action answers. If answered differently, a different action would be taken.\n\
          - If you cannot proceed (missing files/permissions, repeated tool errors, or irreconcilable evidence), emit a `message` with `type=blocker`, `status=blocked`, and payload fields `blocker`, `evidence`, `required_action`.\n\
          - Before emitting a completion message, review `agent_state/OBJECTIVES.json`. Add new objectives for anything you discovered this cycle that is not yet captured. Update the status of existing objectives that changed. Use `apply_patch` to write changes.\n\
@@ -1724,7 +1725,7 @@ pub(crate) fn action_result_prompt(
         "TAB_ID: {tab_label}\nTURN_ID: {turn_label}\nAGENT_TYPE: {agent_type}\n\n{limit_line}{provenance_block}"
     );
     let suffix = format!(
-        "\n\n{predicted_line}{}{}\nEmit bulk actions or one action. Think through the decision internally; reveal chain of thought.",
+        "\n\n{predicted_line}{}{}\nEmit batch actions or action. Think through the decision internally; reveal chain of thought.",
         next_action_hint_text(result, last_action),
         mutating_question,
     );
