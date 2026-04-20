@@ -110,6 +110,50 @@ fn touch_file_if_missing_or_empty(path: &Path) -> Result<bool> {
     Ok(true)
 }
 
+fn push_created_path(created: &mut Vec<String>, tracked_path: &str, was_created: bool) {
+    if was_created {
+        created.push(tracked_path.to_string());
+    }
+}
+
+fn migrate_projection_and_track(
+    created: &mut Vec<String>,
+    workspace: &Path,
+    legacy_name: &str,
+    projection_path: &str,
+    tracked_path: &str,
+    reason: &str,
+) -> Result<()> {
+    push_created_path(
+        created,
+        tracked_path,
+        crate::logging::migrate_projection_if_present(
+            workspace,
+            legacy_name,
+            projection_path,
+            tracked_path,
+            reason,
+        )?,
+    );
+    Ok(())
+}
+
+fn write_json_baseline_and_track<T: serde::Serialize>(
+    created: &mut Vec<String>,
+    workspace: &Path,
+    path: &Path,
+    tracked_path: &str,
+    reason: &str,
+    value: &T,
+) -> Result<()> {
+    push_created_path(
+        created,
+        tracked_path,
+        write_json_if_missing_or_empty(workspace, path, tracked_path, reason, value)?,
+    );
+    Ok(())
+}
+
 fn ensure_workspace_artifact_baseline(
     workspace: &Path,
     diagnostics_path: &Path,
@@ -120,37 +164,35 @@ fn ensure_workspace_artifact_baseline(
         .map(|existing| existing.trim().is_empty())
         .unwrap_or(true);
 
-    if crate::logging::migrate_projection_if_present(
+    migrate_projection_and_track(
+        &mut created,
         workspace,
         "PLAN.json",
         MASTER_PLAN_FILE,
         MASTER_PLAN_FILE,
         "baseline_master_plan_legacy_migration",
-    )? {
-        created.push(MASTER_PLAN_FILE.to_string());
-    }
+    )?;
 
-    if crate::logging::migrate_projection_if_present(
+    migrate_projection_and_track(
+        &mut created,
         workspace,
         "VIOLATIONS.json",
         VIOLATIONS_FILE,
         VIOLATIONS_FILE,
         "baseline_violations_legacy_migration",
-    )? {
-        created.push(VIOLATIONS_FILE.to_string());
-    }
+    )?;
 
-    if crate::logging::migrate_projection_if_present(
+    migrate_projection_and_track(
+        &mut created,
         workspace,
         "ISSUES.json",
         ISSUES_FILE,
         ISSUES_FILE,
         "baseline_issues_legacy_migration",
-    )? {
-        created.push(ISSUES_FILE.to_string());
-    }
+    )?;
 
-    if write_json_if_missing_or_empty(
+    write_json_baseline_and_track(
+        &mut created,
         workspace,
         &workspace.join(MASTER_PLAN_FILE),
         MASTER_PLAN_FILE,
@@ -162,11 +204,10 @@ fn ensure_workspace_artifact_baseline(
             "tasks": [],
             "dag": { "edges": [] }
         }),
-    )? {
-        created.push(MASTER_PLAN_FILE.to_string());
-    }
+    )?;
 
-    if write_json_if_missing_or_empty(
+    write_json_baseline_and_track(
+        &mut created,
         workspace,
         &workspace.join(VIOLATIONS_FILE),
         VIOLATIONS_FILE,
@@ -176,11 +217,10 @@ fn ensure_workspace_artifact_baseline(
             summary: String::new(),
             violations: Vec::new(),
         },
-    )? {
-        created.push(VIOLATIONS_FILE.to_string());
-    }
+    )?;
 
-    if write_json_if_missing_or_empty(
+    write_json_baseline_and_track(
+        &mut created,
         workspace,
         &workspace.join(ISSUES_FILE),
         ISSUES_FILE,
@@ -189,11 +229,10 @@ fn ensure_workspace_artifact_baseline(
             version: 1,
             ..IssuesFile::default()
         },
-    )? {
-        created.push(ISSUES_FILE.to_string());
-    }
+    )?;
 
-    if write_json_if_missing_or_empty(
+    write_json_baseline_and_track(
+        &mut created,
         workspace,
         &workspace.join("agent_state/blockers.json"),
         "agent_state/blockers.json",
@@ -202,13 +241,13 @@ fn ensure_workspace_artifact_baseline(
             version: 1,
             blockers: Vec::new(),
         },
-    )? {
-        created.push("agent_state/blockers.json".to_string());
-    }
+    )?;
 
-    if touch_file_if_missing_or_empty(&tlog_path)? || tlog_missing_or_empty_before {
-        created.push("agent_state/tlog.ndjson".to_string());
-    }
+    push_created_path(
+        &mut created,
+        "agent_state/tlog.ndjson",
+        touch_file_if_missing_or_empty(&tlog_path)? || tlog_missing_or_empty_before,
+    );
 
     let lessons_path = workspace.join("agent_state/lessons.json");
     let lessons_ready = std::fs::metadata(&lessons_path)
