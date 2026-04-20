@@ -3908,6 +3908,21 @@ async fn continue_executor_completion(
                 &invalid.err_text,
                 None,
             );
+            if let Some(tx) = effect_tx.as_ref() {
+                let result = invalid.feedback.clone();
+                let _ = tx.send(EffectEvent::ActionResultRecorded {
+                    role: role.to_string(),
+                    step,
+                    command_id: command_id.to_string(),
+                    action_kind: "invalid_action".to_string(),
+                    task_id: None,
+                    objective_id: None,
+                    ok: false,
+                    result_bytes: result.len(),
+                    result_hash: crate::logging::stable_hash_hex(&result),
+                    result,
+                });
+            }
             let agent_type = role.to_uppercase();
             let retry_prompt = action_result_prompt(
                 Some(active_tab_id),
