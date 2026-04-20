@@ -3686,8 +3686,33 @@ struct LlmResponseContext<'a> {
     writer: Option<&'a mut CanonicalWriter>,
 }
 
+fn full_exchange_path(kind: &str, ts_ms: u64, who: &str, step: usize) -> PathBuf {
+    PathBuf::from(crate::constants::agent_state_dir())
+        .join("llm_full")
+        .join(format!("{ts_ms:013}_{kind}_{who}_message_{step:04}.txt"))
+}
+
+fn write_full_exchange(kind: &str, ts_ms: u64, who: &str, step: usize, raw: &str) {
+    let path = full_exchange_path(kind, ts_ms, who, step);
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(path, raw);
+}
+
 impl<'a> LlmResponseContext<'a> {
     fn log_request(&mut self, step: usize, exchange_id: &str, prompt: &str, role_schema: &str) {
+        let ts_ms = crate::logging::now_ms();
+        let who = if role_schema.trim().is_empty() {
+            self.role
+        } else {
+            "system"
+        };
+        let raw_prompt = if role_schema.trim().is_empty() {
+            prompt.to_string()
+        } else {
+            format!("{}\n\n{}", role_schema.trim_end(), prompt)
+        };
         log_message_event(
             self.role,
             self.endpoint,
@@ -3717,6 +3742,8 @@ impl<'a> LlmResponseContext<'a> {
                 submit_only: self.submit_only,
             });
         }
+        // Debug projection: keep full prompt snapshots for offline inspection.
+        write_full_exchange("sent", ts_ms, who, step, &raw_prompt);
         trace_message_forwarded(
             self.role,
             self.prompt_kind,
@@ -3728,6 +3755,7 @@ impl<'a> LlmResponseContext<'a> {
     }
 
     fn log_response(&mut self, step: usize, exchange_id: &str, raw: &str) {
+        let ts_ms = crate::logging::now_ms();
         trace_message_received(
             self.role,
             self.prompt_kind,
@@ -3770,6 +3798,8 @@ impl<'a> LlmResponseContext<'a> {
                 raw: raw.to_string(),
             });
         }
+        // Debug projection: keep full response snapshots for offline inspection.
+        write_full_exchange("received", ts_ms, self.role, step, raw);
     }
 
     fn handle_submit_ack(&self, step: usize, exchange_id: &str, raw: &str) -> Option<String> {
