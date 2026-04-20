@@ -727,9 +727,9 @@ pub fn build_invalid_action_feedback(
     });
     format!(
         "Invalid action rejected.\naction_result:\n{}\nReturn a schema-valid action. {}\n{}\nFor any mutating retry (`apply_patch`, `plan`, `objectives`, `issue`, or `rename_symbol`), include a non-empty `question` field stating the decision-boundary premise.",
+        serde_json::to_string_pretty(&feedback).unwrap_or_else(|_| feedback.to_string()),
         crate::prompt_contract::ACTION_EMIT_LINE,
         crate::prompt_contract::OUTPUT_FORMAT_LINE,
-        serde_json::to_string_pretty(&feedback).unwrap_or_else(|_| feedback.to_string())
     )
 }
 
