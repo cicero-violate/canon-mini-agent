@@ -884,20 +884,6 @@ fn register_submitted_executor_turn(
     rt.submitted_turns.insert((tab_id, turn_id), submitted_turn);
 }
 
-fn timed_out_executor_submit_lanes(
-    rt: &RuntimeState,
-    now: u64,
-    pending_submit_timeout_ms: u64,
-) -> Vec<usize> {
-    let mut timed_out = Vec::new();
-    for (lane_id, pending) in rt.executor_submit_inflight.iter() {
-        if now.saturating_sub(pending.started_ms) >= pending_submit_timeout_ms {
-            timed_out.push(*lane_id);
-        }
-    }
-    timed_out
-}
-
 fn log_timed_out_executor_submit(
     ctx: &OrchestratorContext<'_>,
     lane_id: usize,
@@ -971,7 +957,14 @@ fn sweep_timed_out_executor_submits(
     if rt.executor_submit_inflight.is_empty() {
         return;
     }
-    let timed_out = timed_out_executor_submit_lanes(rt, now, pending_submit_timeout_ms);
+    let timed_out: Vec<usize> = rt
+        .executor_submit_inflight
+        .iter()
+        .filter_map(|(lane_id, pending)| {
+            (now.saturating_sub(pending.started_ms) >= pending_submit_timeout_ms)
+                .then_some(*lane_id)
+        })
+        .collect();
     for lane_id in timed_out {
         recover_timed_out_executor_submit_lane(ctx, writer, rt, lane_id);
     }
