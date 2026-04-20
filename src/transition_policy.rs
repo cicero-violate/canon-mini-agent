@@ -50,80 +50,86 @@ fn lane_prompt_in_flight(state: &SystemState, lane_id: usize) -> bool {
         .unwrap_or(false)
 }
 
+fn validate_phase_set(
+    state: &SystemState,
+    phase: &str,
+    lane: Option<usize>,
+) -> Result<(), String> {
+    if !is_valid_phase(phase) {
+        return Err(format!("illegal transition: invalid phase `{phase}`"));
+    }
+    match phase {
+        "verifier" => {
+            let lane_id = lane
+                .ok_or_else(|| format!("illegal transition: phase `{phase}` requires a lane"))?;
+            require_lane(state, lane_id, "PhaseSet")?;
+            if !lane_in_progress(state, lane_id) {
+                return Err(format!(
+                    "illegal transition: verifier phase requires lane {lane_id} to be in progress"
+                ));
+            }
+        }
+        "executor" => {
+            if let Some(lane_id) = lane {
+                require_lane(state, lane_id, "PhaseSet")?;
+                if !lane_in_progress(state, lane_id) {
+                    return Err(format!(
+                        "illegal transition: executor phase for lane {lane_id} requires lane to be in progress"
+                    ));
+                }
+            } else if state.phase != "bootstrap"
+                && state.scheduled_phase.as_deref() != Some("executor")
+            {
+                return Err(
+                    "illegal transition: lane-less executor phase is only allowed during bootstrap or executor scheduling"
+                        .to_string(),
+                );
+            }
+        }
+        _ if lane.is_some() => {
+            return Err(format!(
+                "illegal transition: phase `{phase}` must not carry a lane"
+            ));
+        }
+        "planner" => {
+            if !(state.planner_pending
+                || state.scheduled_phase.as_deref() == Some("planner")
+                || state.phase == "bootstrap")
+            {
+                return Err(
+                    "illegal transition: planner phase requires planner_pending or scheduled planner work"
+                        .to_string(),
+                );
+            }
+        }
+        "diagnostics" => {
+            if !(state.diagnostics_pending
+                || state.scheduled_phase.as_deref() == Some("diagnostics")
+                || state.phase == "bootstrap")
+            {
+                return Err(
+                    "illegal transition: diagnostics phase requires diagnostics_pending or scheduled diagnostics work"
+                        .to_string(),
+                );
+            }
+        }
+        "solo" => {
+            if !(state.scheduled_phase.as_deref() == Some("solo") || state.phase == "bootstrap")
+            {
+                return Err(
+                    "illegal transition: solo phase requires scheduled solo work".to_string(),
+                );
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 pub fn validate_transition(state: &SystemState, event: &ControlEvent) -> Result<(), String> {
     match event {
         ControlEvent::PhaseSet { phase, lane } => {
-            if !is_valid_phase(phase) {
-                return Err(format!("illegal transition: invalid phase `{phase}`"));
-            }
-            match phase.as_str() {
-                "verifier" => {
-                    let lane_id = lane.ok_or_else(|| {
-                        format!("illegal transition: phase `{phase}` requires a lane")
-                    })?;
-                    require_lane(state, lane_id, "PhaseSet")?;
-                    if !lane_in_progress(state, lane_id) {
-                        return Err(format!(
-                            "illegal transition: verifier phase requires lane {lane_id} to be in progress"
-                        ));
-                    }
-                }
-                "executor" => {
-                    if let Some(lane_id) = lane {
-                        require_lane(state, *lane_id, "PhaseSet")?;
-                        if !lane_in_progress(state, *lane_id) {
-                            return Err(format!(
-                                "illegal transition: executor phase for lane {lane_id} requires lane to be in progress"
-                            ));
-                        }
-                    } else if state.phase != "bootstrap"
-                        && state.scheduled_phase.as_deref() != Some("executor")
-                    {
-                        return Err(
-                            "illegal transition: lane-less executor phase is only allowed during bootstrap or executor scheduling"
-                                .to_string(),
-                        );
-                    }
-                }
-                _ if lane.is_some() => {
-                    return Err(format!(
-                        "illegal transition: phase `{phase}` must not carry a lane"
-                    ));
-                }
-                "planner" => {
-                    if !(state.planner_pending
-                        || state.scheduled_phase.as_deref() == Some("planner")
-                        || state.phase == "bootstrap")
-                    {
-                        return Err(
-                            "illegal transition: planner phase requires planner_pending or scheduled planner work"
-                                .to_string(),
-                        );
-                    }
-                }
-                "diagnostics" => {
-                    if !(state.diagnostics_pending
-                        || state.scheduled_phase.as_deref() == Some("diagnostics")
-                        || state.phase == "bootstrap")
-                    {
-                        return Err(
-                            "illegal transition: diagnostics phase requires diagnostics_pending or scheduled diagnostics work"
-                                .to_string(),
-                        );
-                    }
-                }
-                "solo" => {
-                    if !(state.scheduled_phase.as_deref() == Some("solo")
-                        || state.phase == "bootstrap")
-                    {
-                        return Err(
-                            "illegal transition: solo phase requires scheduled solo work"
-                                .to_string(),
-                        );
-                    }
-                }
-                _ => {}
-            }
+            validate_phase_set(state, phase, *lane)?;
         }
         ControlEvent::ScheduledPhaseSet { phase } => {
             if let Some(phase) = phase {
