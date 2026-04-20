@@ -162,6 +162,15 @@ pub fn generate_dead_impl_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(workspace, "generate_dead_impl_issues", 24, dead_impl_issues)
 }
 
+pub fn generate_rename_symbol_issues(workspace: &Path) -> Result<usize> {
+    generate_detector_issues(
+        workspace,
+        "generate_rename_symbol_issues",
+        24,
+        rename_symbol_issues,
+    )
+}
+
 pub fn generate_dark_assignment_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -666,6 +675,185 @@ pub fn dead_impl_issues(
     out.sort_by(|a, b| a.id.cmp(&b.id));
     out.truncate(limit);
     out
+}
+
+pub fn rename_symbol_issues(
+    _workspace: &Path,
+    crate_name: &str,
+    summaries: &[SymbolSummary],
+    limit: usize,
+) -> Vec<Issue> {
+    let mut fn_prefixes_by_stem: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
+        std::collections::BTreeMap::new();
+    for s in summaries {
+        if s.kind != "fn" {
+            continue;
+        }
+        let name = short_name(&s.symbol);
+        if let Some((prefix, stem)) = split_prefix_and_stem(name) {
+            fn_prefixes_by_stem
+                .entry(stem)
+                .or_default()
+                .insert(prefix.to_string());
+        }
+    }
+
+    let mut out = Vec::new();
+    for s in summaries {
+        let symbol_name = short_name(&s.symbol);
+        if symbol_name.is_empty() {
+            continue;
+        }
+
+        let mut reasons = rename_ambiguity_reasons(symbol_name);
+        if let Some(reason) = inconsistent_prefix_reason(s, symbol_name, &fn_prefixes_by_stem) {
+            reasons.push(reason);
+        }
+        if reasons.is_empty() {
+            continue;
+        }
+
+        let score = rename_reason_score(&reasons);
+        let priority = if score >= 40 { "medium" } else { "low" };
+        let location = shorten_location(&s.file, s.line);
+        out.push(Issue {
+            id: format!(
+                "auto_rename_symbol_{crate_name}_{:x}",
+                stable_hash(&s.symbol)
+            ),
+            title: format!(
+                "Rename candidate: `{}` (score={})",
+                symbol_name, score
+            ),
+            status: "open".to_string(),
+            priority: priority.to_string(),
+            kind: "logic".to_string(),
+            description: format!(
+                "Symbol `{}` is a deterministic rename candidate based on naming heuristics.\n\
+                 Use `symbols_rename_candidates` → `symbols_prepare_rename` → `rename_symbol` and verify with cargo check/test.",
+                s.symbol
+            ),
+            location: location.clone(),
+            scope: format!("crate:{crate_name}"),
+            metrics: json!({
+                "task": "RenameSymbol",
+                "rename_candidate_score": score,
+                "reasons": reasons,
+                "symbol": s.symbol,
+                "kind": s.kind
+            }),
+            acceptance_criteria: vec![
+                "symbol renamed with semantic spans".to_string(),
+                "build and tests pass".to_string(),
+            ],
+            evidence: vec![format!("location: {location}")],
+            discovered_by: "refactor_analyzer".to_string(),
+            ..Issue::default()
+        });
+    }
+    out.sort_by(|a, b| {
+        let sa = a
+            .metrics
+            .get("rename_candidate_score")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let sb = b
+            .metrics
+            .get("rename_candidate_score")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        sb.cmp(&sa).then_with(|| a.id.cmp(&b.id))
+    });
+    out.truncate(limit);
+    out
+}
+
+fn rename_ambiguity_reasons(name: &str) -> Vec<String> {
+    let lower = name.to_ascii_lowercase();
+    let vague = [
+        "tmp", "temp", "data", "info", "item", "obj", "val", "foo", "bar", "baz", "util",
+        "helper", "thing", "stuff", "misc",
+    ];
+    let mut reasons = Vec::new();
+    if lower.len() <= 2 {
+        reasons.push("name is very short".to_string());
+    }
+    if vague.contains(&lower.as_str()) {
+        reasons.push("name is ambiguous/generic".to_string());
+    }
+    if lower.ends_with('_') || lower.contains("__") {
+        reasons.push("name shape suggests low clarity".to_string());
+    }
+    reasons
+}
+
+fn split_prefix_and_stem(name: &str) -> Option<(&'static str, String)> {
+    let prefixes: [(&str, &str); 12] = [
+        ("get_", "get"),
+        ("fetch_", "fetch"),
+        ("load_", "load"),
+        ("read_", "read"),
+        ("build_", "build"),
+        ("make_", "make"),
+        ("create_", "create"),
+        ("set_", "set"),
+        ("update_", "update"),
+        ("handle_", "handle"),
+        ("process_", "process"),
+        ("compute_", "compute"),
+    ];
+    for (needle, tag) in prefixes {
+        if let Some(rest) = name.strip_prefix(needle) {
+            if !rest.is_empty() {
+                return Some((tag, rest.to_string()));
+            }
+        }
+    }
+    None
+}
+
+fn inconsistent_prefix_reason(
+    summary: &SymbolSummary,
+    symbol_name: &str,
+    prefixes_by_stem: &std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
+) -> Option<String> {
+    if summary.kind != "fn" {
+        return None;
+    }
+    let (prefix, stem) = split_prefix_and_stem(symbol_name)?;
+    let prefixes = prefixes_by_stem.get(&stem)?;
+    if prefixes.len() <= 1 {
+        return None;
+    }
+    let mut other: Vec<String> = prefixes
+        .iter()
+        .filter(|p| p.as_str() != prefix)
+        .cloned()
+        .collect();
+    if other.is_empty() {
+        return None;
+    }
+    other.sort();
+    Some(format!(
+        "inconsistent verb prefix for stem '{stem}' (also: {})",
+        other.join(", ")
+    ))
+}
+
+fn rename_reason_score(reasons: &[String]) -> u32 {
+    let mut score = 10u32;
+    for reason in reasons {
+        if reason.contains("inconsistent verb prefix") {
+            score += 30;
+        } else if reason.contains("ambiguous/generic") {
+            score += 20;
+        } else if reason.contains("very short") {
+            score += 10;
+        } else {
+            score += 5;
+        }
+    }
+    score
 }
 
 pub fn dark_assignment_issues(

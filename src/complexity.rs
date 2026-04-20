@@ -228,6 +228,7 @@ pub fn write_complexity_report(workspace: &Path) -> Result<Option<PathBuf>> {
     let _ = crate::refactor_analysis::generate_mono_explosion_issues(workspace);
     let _ = crate::refactor_analysis::generate_generic_overreach_issues(workspace);
     let _ = crate::refactor_analysis::generate_dead_impl_issues(workspace);
+    let _ = crate::refactor_analysis::generate_rename_symbol_issues(workspace);
     let _ = crate::refactor_analysis::generate_dark_assignment_issues(workspace);
     let _ = crate::refactor_analysis::generate_loop_invariant_issues(workspace);
     let _ = crate::graph_metrics::generate_module_cohesion_issues(workspace);
