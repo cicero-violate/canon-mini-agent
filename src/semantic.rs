@@ -2178,6 +2178,7 @@ mod tests {
                 cfg_nodes: HashMap::new(),
                 cfg_edges: Vec::new(),
                 bridge_edges: Vec::new(),
+                redundant_paths: Vec::new(),
             },
         };
         let out = idx
@@ -2256,6 +2257,7 @@ mod tests {
                 cfg_nodes: HashMap::new(),
                 cfg_edges: Vec::new(),
                 bridge_edges: Vec::new(),
+                redundant_paths: Vec::new(),
             },
         };
 
@@ -2319,6 +2321,7 @@ mod tests {
                 cfg_nodes: HashMap::new(),
                 cfg_edges: Vec::new(),
                 bridge_edges: Vec::new(),
+                redundant_paths: Vec::new(),
             },
         };
 
@@ -2390,6 +2393,7 @@ mod tests {
                         to: "dep::callee".to_string(),
                     },
                 ],
+                redundant_paths: Vec::new(),
             },
         };
 
@@ -2442,6 +2446,7 @@ mod tests {
                     from: "app::run".to_string(),
                     to: "cfg::app::run::bb0".to_string(),
                 }],
+                redundant_paths: Vec::new(),
             },
         };
 
@@ -2484,6 +2489,7 @@ mod tests {
                 cfg_nodes: HashMap::new(),
                 cfg_edges: Vec::new(),
                 bridge_edges: Vec::new(),
+                redundant_paths: Vec::new(),
             },
         };
 
@@ -2555,6 +2561,7 @@ mod tests {
                 cfg_nodes: HashMap::new(),
                 cfg_edges: Vec::new(),
                 bridge_edges: Vec::new(),
+                redundant_paths: Vec::new(),
             },
         };
         let out = idx

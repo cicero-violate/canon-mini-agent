@@ -386,6 +386,7 @@ pub fn is_closed(issue: &Issue) -> bool {
 ///   hot_path      0.25 — location/title mentions a per-turn code path
 ///   loop_velocity 0.30 — how much fixing this speeds up the agent's issue-close rate
 ///   scale         0.10 — candidate/instance count for auto-detected clusters (log2, saturates at ~128)
+///   detector_boost up to +0.12 — detector-native confidence/value signal (e.g. redundancy_ratio)
 pub fn compute_issue_score(issue: &Issue, all_issues: &[Issue]) -> f32 {
     // Severity from priority string
     let severity: f32 = match issue.priority.trim().to_lowercase().as_str() {
@@ -461,8 +462,17 @@ pub fn compute_issue_score(issue: &Issue, all_issues: &[Issue]) -> f32 {
         }
     };
 
-    let score =
+    let base_score =
         0.20 * severity + 0.15 * recurrence + 0.25 * hot_path + 0.30 * velocity + 0.10 * scale;
+    // Detector-specific signal: currently used by MIR redundant-path findings.
+    // Expects metrics.redundancy_ratio in [0, 1+] and clamps to [0, 1].
+    let detector_signal = issue
+        .metrics
+        .get("redundancy_ratio")
+        .and_then(|v| v.as_f64())
+        .map(|v| (v as f32).clamp(0.0, 1.0))
+        .unwrap_or(0.0);
+    let score = base_score + 0.12 * detector_signal;
     score.clamp(0.0, 1.0)
 }
 
@@ -503,7 +513,7 @@ pub fn read_ranked_open_issues(workspace: &Path) -> Vec<Issue> {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_closed, load_issues_file, persist_issues_projection_with_writer,
+        compute_issue_score, is_closed, load_issues_file, persist_issues_projection_with_writer,
         read_ranked_open_issues, sweep_stale_issues, Issue, IssuesFile,
     };
     use crate::{set_agent_state_dir, set_workspace};
@@ -747,6 +757,41 @@ mod tests {
         assert!(
             render_open_issues(&root).contains("ISS-TLOG-1"),
             "read surface should recover from the tlog snapshot"
+        );
+    }
+
+    #[test]
+    fn redundant_path_detector_signal_increases_score() {
+        let low = Issue {
+            id: "auto_redundant_path_canon_mini_agent_low".to_string(),
+            title: "Redundant CFG paths in `x` (signature 0001)".to_string(),
+            status: "open".to_string(),
+            priority: "low".to_string(),
+            kind: "redundancy".to_string(),
+            metrics: serde_json::json!({
+                "task": "FoldRedundantPath",
+                "redundancy_ratio": 0.10
+            }),
+            ..Issue::default()
+        };
+        let high = Issue {
+            id: "auto_redundant_path_canon_mini_agent_high".to_string(),
+            title: "Redundant CFG paths in `x` (signature 0002)".to_string(),
+            status: "open".to_string(),
+            priority: "low".to_string(),
+            kind: "redundancy".to_string(),
+            metrics: serde_json::json!({
+                "task": "FoldRedundantPath",
+                "redundancy_ratio": 0.90
+            }),
+            ..Issue::default()
+        };
+        let all = vec![low.clone(), high.clone()];
+        let low_score = compute_issue_score(&low, &all);
+        let high_score = compute_issue_score(&high, &all);
+        assert!(
+            high_score > low_score,
+            "expected detector signal to raise score: low={low_score} high={high_score}"
         );
     }
 }
