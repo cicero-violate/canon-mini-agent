@@ -608,7 +608,7 @@ fn build_livelock_report(
         },
         "message": format!(
             "Orchestrator detected {} consecutive cycles where work was dispatched but \
-             no semantic control state changed. Pending flags cleared. Write a wakeup_*.flag or \
+             no semantic control state changed. Pending signals cleared. Queue a canonical wake signal or \
              restart to resume.",
             stall_cycles
         ),
@@ -3489,10 +3489,9 @@ fn apply_lane_pending_if_changed(
     true
 }
 
-fn apply_wake_flags(agent_state_dir: &std::path::Path, writer: &mut CanonicalWriter) {
+fn apply_wake_flags(writer: &mut CanonicalWriter) {
     let state_snapshot = writer.state().clone();
-    let (inputs, path_map, signature_map) =
-        collect_wake_flag_inputs(agent_state_dir, &state_snapshot);
+    let (inputs, signature_map) = collect_wake_flag_inputs(&state_snapshot);
     let wake_inputs_debug = inputs
         .iter()
         .map(|input| format!("{}@{}", input.role, input.modified_ms))
@@ -3516,7 +3515,6 @@ fn apply_wake_flags(agent_state_dir: &std::path::Path, writer: &mut CanonicalWri
         .unwrap_or(0);
 
     apply_scheduled_phase_if_changed(writer, Some(role));
-    let wake_flag_path = path_map.get(role).cloned();
     let wake_signature = signature_map.get(role).cloned();
     let mut clear_wake_flag = !decision.executor_wake;
     if decision.planner_pending {
@@ -3573,22 +3571,14 @@ fn apply_wake_flags(agent_state_dir: &std::path::Path, writer: &mut CanonicalWri
             });
         }
     }
-    if let Some(path) = wake_flag_path {
-        if clear_wake_flag {
-            clear_repeated_executor_deferred_log_memory(role);
-            eprintln!(
-                "[orchestrate] wake_flag_triggered: role={} path={}",
-                role,
-                path.display()
-            );
-            let _ = std::fs::remove_file(path);
-        } else if !suppress_deferred_repeat_log {
-            eprintln!(
-                "[orchestrate] wake_flag_deferred: role={} path={} reason=all_executor_lanes_busy",
-                role,
-                path.display()
-            );
-        }
+    if clear_wake_flag {
+        clear_repeated_executor_deferred_log_memory(role);
+        eprintln!("[orchestrate] wake_signal_triggered: role={role}");
+    } else if !suppress_deferred_repeat_log {
+        eprintln!(
+            "[orchestrate] wake_signal_deferred: role={} reason=all_executor_lanes_busy",
+            role
+        );
     }
 }
 
@@ -3618,20 +3608,12 @@ fn repeated_executor_deferred_log_memory(
 }
 
 fn collect_wake_flag_inputs(
-    agent_state_dir: &std::path::Path,
     state: &SystemState,
 ) -> (
     Vec<WakeFlagInput>,
-    std::collections::HashMap<&'static str, std::path::PathBuf>,
     std::collections::HashMap<&'static str, String>,
 ) {
-    let flag_paths: Vec<(&str, std::path::PathBuf)> = vec![
-        ("planner", agent_state_dir.join("wakeup_planner.flag")),
-        ("executor", agent_state_dir.join("wakeup_executor.flag")),
-    ];
-
     let mut inputs = Vec::new();
-    let mut path_map = std::collections::HashMap::new();
     let mut signature_map = std::collections::HashMap::new();
 
     // Primary: read canonical pending signals directly from SystemState.
@@ -3652,31 +3634,7 @@ fn collect_wake_flag_inputs(
         signature_map.insert(role_key, signature.clone());
     }
 
-    // Fallback: physical flag files for external/manual triggers not routed
-    // through the canonical writer (e.g. operator writes a flag by hand).
-    for (role, path) in &flag_paths {
-        if !runtime_role_enabled(role) {
-            continue;
-        }
-        if path.exists() {
-            path_map.insert(*role, path.clone());
-        }
-        if signature_map.contains_key(role) || !path.exists() {
-            continue;
-        }
-        let modified_ms = path
-            .metadata()
-            .and_then(|m| m.modified())
-            .map(|t| {
-                t.duration_since(std::time::SystemTime::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64
-            })
-            .unwrap_or(0);
-        inputs.push(WakeFlagInput { role, modified_ms });
-    }
-
-    (inputs, path_map, signature_map)
+    (inputs, signature_map)
 }
 
 fn record_canonical_inbound_message(
@@ -3766,17 +3724,6 @@ fn persist_non_planner_inbound_message(
             &format!("failed to persist message for {to_key}: {err:#}"),
         );
     }
-    let wake_path = agent_state_dir.join(format!("wakeup_{to_key}.flag"));
-    if let Err(err) = persist_agent_state_projection(
-        &wake_path,
-        "handoff",
-        &format!("executor_completion_wakeup:{to_key}"),
-    ) {
-        writer.record_violation(
-            "executor_completion_message",
-            &format!("failed to persist wakeup flag for {to_key}: {err:#}"),
-        );
-    }
 }
 
 fn persist_planner_message(writer: &mut CanonicalWriter, action: &Value) {
@@ -3820,10 +3767,6 @@ fn persist_planner_message(writer: &mut CanonicalWriter, action: &Value) {
         persist_agent_state_projection(&planner_path, &action_text, "planner_handoff_message")
     {
         eprintln!("[orchestrate] physical planner message write failed: {err:#}");
-    }
-    let wake_path = agent_state_dir.join("wakeup_planner.flag");
-    if let Err(err) = persist_agent_state_projection(&wake_path, "handoff", "planner_wakeup") {
-        eprintln!("[orchestrate] physical planner wakeup flag write failed: {err:#}");
     }
 }
 
@@ -6257,7 +6200,7 @@ pub async fn run() -> Result<()> {
         {
             let lane_ids: Vec<usize> = writer.state().lanes.keys().copied().collect();
             for lane_id in &lane_ids {
-                let (in_progress, prompt_in_flight) = {
+                let (in_progress, prompt_in_flight, submit_in_flight) = {
                     let s = writer.state();
                     let in_prog = s
                         .lanes
@@ -6265,7 +6208,8 @@ pub async fn run() -> Result<()> {
                         .and_then(|l| l.in_progress_by.as_ref())
                         .is_some();
                     let in_flight = s.lane_in_flight(*lane_id);
-                    (in_prog, in_flight)
+                    let submit_flight = s.lane_submit_active(*lane_id);
+                    (in_prog, in_flight, submit_flight)
                 };
                 let has_submitted_turn = writer
                     .state()
@@ -6290,6 +6234,48 @@ pub async fn run() -> Result<()> {
                         pending: true,
                     });
                 }
+                // Additional stale-lane recovery: lane is marked in_progress but
+                // has neither prompt-submit inflight flags nor submitted turns.
+                // This state is not claimable by claim_next_lane() and can lock
+                // executor phase forever after checkpoint resume.
+                if in_progress && !prompt_in_flight && !submit_in_flight && !has_submitted_turn {
+                    eprintln!(
+                        "[orchestrate] stale-lane recovery: lane {} was in_progress with no inflight work; requeuing",
+                        lane_id
+                    );
+                    writer.apply(ControlEvent::LaneInProgressSet {
+                        lane_id: *lane_id,
+                        actor: None,
+                    });
+                    writer.apply(ControlEvent::LanePendingSet {
+                        lane_id: *lane_id,
+                        pending: true,
+                    });
+                }
+            }
+        }
+        // Resume hardening: if we loaded a checkpoint into executor phase but no
+        // executor work is runnable after cleanup, force planner reseed.
+        if checkpoint_loaded {
+            let executor_phase = writer.state().phase == "executor";
+            let submitted_turns_present = !writer.state().submitted_turn_ids.is_empty();
+            let any_lane_runnable = lanes.iter().any(|lane| {
+                writer
+                    .state()
+                    .lanes
+                    .get(&lane.index)
+                    .map(|ls| ls.pending && ls.in_progress_by.is_none())
+                    .unwrap_or(false)
+            });
+            if executor_phase && !submitted_turns_present && !any_lane_runnable {
+                eprintln!(
+                    "[orchestrate] resume checkpoint had executor phase but no runnable lane work; reseeding planner"
+                );
+                writer.apply(ControlEvent::PhaseSet {
+                    phase: "planner".to_string(),
+                    lane: None,
+                });
+                writer.apply(ControlEvent::PlannerPendingSet { pending: true });
             }
         }
 
@@ -6388,8 +6374,7 @@ pub async fn run() -> Result<()> {
                 return Ok(());
             }
 
-            let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
-            apply_wake_flags(agent_state_dir, &mut writer);
+            apply_wake_flags(&mut writer);
 
             if writer.state().scheduled_phase.is_none() && writer.state().phase == "bootstrap" {
                 if let Some(phase) = decide_bootstrap_phase(start_role) {
@@ -6419,11 +6404,7 @@ pub async fn run() -> Result<()> {
                                 || writer.state().lane_in_flight(lane.index)
                                 || writer.state().lane_submit_active(lane.index)
                         });
-                        let agent_state_dir =
-                            std::path::Path::new(crate::constants::agent_state_dir());
-                        let has_any_wake_signal = !writer.state().wake_signals_pending.is_empty()
-                            || agent_state_dir.join("wakeup_executor.flag").exists()
-                            || agent_state_dir.join("wakeup_planner.flag").exists();
+                        let has_any_wake_signal = !writer.state().wake_signals_pending.is_empty();
                         if ready_tasks_exist && !lanes_seeded {
                             eprintln!(
                                 "[orchestrate] bootstrap executor rerouted to planner: ready tasks exist but no lane work is seeded"

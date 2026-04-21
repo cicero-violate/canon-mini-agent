@@ -1442,15 +1442,8 @@ fn set_issue_status(
 }
 
 fn queue_diagnostics_reconciliation() {
-    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
-    let wake_path = agent_state_dir.join("wakeup_diagnostics.flag");
-    let _ = write_projection_with_workspace_effects(
-        std::path::Path::new(crate::constants::workspace()),
-        &wake_path,
-        "agent_state/wakeup_diagnostics.flag",
-        "issues_changed_wakeup",
-        "issues_changed",
-    );
+    // Wake signals are canonicalized through ControlEvent::WakeSignalQueued.
+    // Legacy wakeup_*.flag projections are retired.
 }
 
 fn parse_issues_file_allow_empty(raw: &str) -> Result<IssuesFile> {
@@ -5714,10 +5707,9 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
     persist_plan_action_update(role, action, op_raw, &plan_path, &plan)?;
 
     // Planner cycle terminator: a plan op that lands a task in `ready` state is
-    // sufficient to end the planner's turn.  The executor wakeup flag was already
-    // written by persist_plan_action_update; there is no need for a separate
-    // message handoff.  Returning done=true here exits run_agent the same way a
-    // `message` action would, eliminating the redundant handoff step.
+    // sufficient to end the planner's turn. Returning done=true here exits
+    // run_agent the same way a `message` action would, eliminating redundant
+    // handoff steps.
     //
     // Other roles (verifier, solo) are not affected — their plan actions continue
     // to return done=false so their own cycle termination logic is unchanged.
@@ -5738,14 +5730,14 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
         return Ok((
             true,
             format!(
-                "plan ok — ready task `{task_id}` dispatched; executor wakeup written\n\
+                "plan ok — ready task `{task_id}` dispatched\n\
                  plan_path: {}",
                 plan_path.display()
             ),
         ));
     }
 
-    // Executor completion terminal: executor marks its task done → wake the planner
+    // Executor completion terminal: executor marks its task done.
     // so it can schedule the next task.  Return done=true to end the executor's turn
     // without requiring a separate `message` action.
     if role.starts_with("executor")
@@ -5760,17 +5752,8 @@ fn handle_plan_action(role: &str, workspace: &Path, action: &Value) -> Result<(b
             .get("task_id")
             .and_then(|v| v.as_str())
             .unwrap_or("(see plan)");
-        let agent_state = std::path::Path::new(crate::constants::agent_state_dir());
-        let wake_path = agent_state.join("wakeup_planner.flag");
-        let _ = write_projection_with_workspace_effects(
-            std::path::Path::new(crate::constants::workspace()),
-            &wake_path,
-            "agent_state/wakeup_planner.flag",
-            "executor_task_done_wakeup",
-            "executor_task_done",
-        );
         eprintln!(
-            "[plan] executor marked task `{task_id}` done; planner wakeup written; \
+            "[plan] executor marked task `{task_id}` done; \
              no handoff message required"
         );
         return Ok((
@@ -5891,27 +5874,7 @@ fn persist_plan_action_update(
             Some(json!({"op": op_raw, "path": MASTER_PLAN_FILE})),
         ))
     {}
-    // Option-A dispatch hook: when any plan op results in a task reaching `ready`
-    // state, immediately write wakeup_executor.flag so the orchestrator can
-    // dispatch the executor on the next cycle without waiting for the planner's
-    // message handoff.  This makes PLAN.json the authoritative trigger for
-    // executor dispatch (SPEC.md §7.6).
-    if plan_op_produced_ready_task(op_raw, action, plan) {
-        let flag =
-            std::path::Path::new(crate::constants::agent_state_dir()).join("wakeup_executor.flag");
-        if let Err(err) = write_projection_with_workspace_effects(
-            std::path::Path::new(crate::constants::workspace()),
-            &flag,
-            "agent_state/wakeup_executor.flag",
-            "plan_ready_task_wakeup",
-            "ready_task",
-        ) {
-            eprintln!(
-                "[plan] ready task detected via op={op_raw}; failed to persist wakeup flag: {err:#}"
-            );
-        }
-        eprintln!("[plan] ready task detected via op={op_raw}; wrote wakeup_executor.flag");
-    }
+    let _ = plan_op_produced_ready_task(op_raw, action, plan);
     Ok(())
 }
 
@@ -5949,27 +5912,12 @@ fn persist_plan_bundle_projection(
         None,
         Some(json!({"op": op_raw, "path": MASTER_PLAN_FILE})),
     ));
-    if plan_op_produced_ready_task(op_raw, action, plan) {
-        let flag =
-            std::path::Path::new(crate::constants::agent_state_dir()).join("wakeup_executor.flag");
-        if let Err(err) = write_projection_with_workspace_effects(
-            workspace,
-            &flag,
-            "agent_state/wakeup_executor.flag",
-            &format!("plan_ready_task_wakeup:{op_raw}"),
-            "ready_task",
-        ) {
-            eprintln!(
-                "[plan] ready task detected via op={op_raw}; failed to persist wakeup flag: {err:#}"
-            );
-        }
-    }
+    let _ = plan_op_produced_ready_task(op_raw, action, plan);
     Ok(())
 }
 
 /// Return true when the plan mutation just written resulted in at least one task
-/// having `status = "ready"`.  Used to decide whether to write wakeup_executor.flag.
-/// Covers all ops that can produce a ready task so the executor is always woken.
+/// having `status = "ready"`.
 fn plan_op_produced_ready_task(op_raw: &str, action: &Value, plan: &Value) -> bool {
     match op_raw {
         "set_task_status" | "update_task" => action
@@ -7908,26 +7856,8 @@ fn persist_inbound_message(
             );
         }
     }
-    let wake_path = agent_state_dir.join(format!("wakeup_{to}.flag"));
-    if let Err(err) = write_projection_with_workspace_effects(
-        workspace,
-        &wake_path,
-        &format!("agent_state/wakeup_{to}.flag"),
-        &format!("handoff_wakeup:{role}:{to}"),
-        "handoff",
-    ) {
-        eprintln!("[{role}] step={step} failed to write wakeup flag for {to}: {err}");
-        if let Some(workspace) = agent_state_dir.parent() {
-            crate::blockers::record_action_failure_with_writer(
-                workspace,
-                None,
-                role,
-                "handoff_delivery",
-                &format!("failed to write wakeup flag for {to}: {err}"),
-                None,
-            );
-        }
-    }
+    // Wakeup flag projection retired; wake routing is canonicalized via
+    // ControlEvent::WakeSignalQueued.
 }
 
 fn build_execute_logged_action_error_text(action_kind: &str, error: &anyhow::Error) -> String {

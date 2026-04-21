@@ -1155,15 +1155,6 @@ fn write_external_user_message(
         "external_user_message_projection",
         &action_text,
     )?;
-    let wake_path = state_dir.join(format!("wakeup_{}.flag", to_key));
-    write_projection_with_artifact_effects(
-        workspace,
-        &wake_path,
-        &format!("agent_state/wakeup_{}.flag", to_key),
-        "write",
-        "external_user_message_wakeup",
-        "user_message",
-    )?;
     Ok(msg_path)
 }
 
@@ -1219,7 +1210,6 @@ fn maybe_handle_user_chat_mode(args: &SupervisorArgs) -> Result<bool> {
             "ok": true,
             "delivered_to": sanitize_role(&args.user_to_role),
             "message_path": msg_path,
-            "wakeup_flag": state_dir.join(format!("wakeup_{}.flag", sanitize_role(&args.user_to_role))),
         }))?
     );
     Ok(true)
