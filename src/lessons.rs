@@ -1,12 +1,12 @@
 /// Lessons pipeline: two-stage pattern learning system.
 ///
-/// Stage 1 — Synthesis (automatic, runs after each diagnostics cycle):
+/// Stage 1 — Synthesis (automatic, runs after each planner cycle):
 ///   Reads the action log, detects failure patterns AND successful action sequences,
 ///   and writes/merges results into `agent_state/lessons_candidates.json`.
 ///   Candidates are born with `status: "pending"`.
 ///
 /// Stage 2 — Promotion (LLM-driven, via the `lessons` action):
-///   The diagnostics agent reviews pending candidates and promotes or rejects them.
+///   The planner reviews pending candidates and promotes or rejects them.
 ///   Promoted candidates are merged into `agent_state/lessons.json`, which is
 ///   injected into every planner/solo prompt via `read_lessons_or_empty`.
 ///   Rejected candidates persist with `status: "rejected"` so they are not re-surfaced.
@@ -106,7 +106,7 @@ pub struct LessonsCandidatesFile {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/// Called after each successful diagnostics cycle.  Synthesizes failure patterns
+/// Called after each successful planner cycle.  Synthesizes failure patterns
 /// and success sequences from the action log and merges them into
 /// `agent_state/lessons_candidates.json`.  Does not modify `lessons.json`.
 pub fn maybe_synthesize_lessons(workspace: &Path) {
@@ -150,7 +150,7 @@ fn op_read_candidates(workspace: &Path) -> Result<(bool, String)> {
     if !path.exists() {
         return Ok((
             false,
-            "(no lessons candidates yet — synthesis runs after the next diagnostics cycle)"
+            "(no lessons candidates yet — synthesis runs after the next planner cycle)"
                 .to_string(),
         ));
     }

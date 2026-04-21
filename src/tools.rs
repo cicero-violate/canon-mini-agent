@@ -8078,7 +8078,7 @@ mod tests {
         let receipt = EvidenceReceipt {
             id: id.to_string(),
             ts_ms: now_ms(),
-            actor: "diagnostics".to_string(),
+            actor: "planner".to_string(),
             step: 1,
             action: "python".to_string(),
             path: Some(ISSUES_FILE.to_string()),
@@ -8174,7 +8174,7 @@ mod tests {
                 "kind": "bug",
                 "description": "needs closure",
                 "evidence": ["tlog blocker"],
-                "discovered_by": "diagnostics"
+                "discovered_by": "planner"
             },
             "rationale": "seed issue",
             "predicted_next_actions": []

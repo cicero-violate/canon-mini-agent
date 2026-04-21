@@ -73,7 +73,7 @@ pub struct Issue {
     /// Concrete evidence strings (log lines, test failures, frame data, etc.).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub evidence: Vec<String>,
-    /// Agent role that discovered this issue, e.g. "solo" or "diagnostics".
+    /// Agent role that discovered this issue, e.g. "solo" or "planner".
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub discovered_by: String,
     /// fresh | stale | unknown

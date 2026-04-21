@@ -467,7 +467,7 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
                 "read_candidates|promote|reject|encode|read|write feeds into ROLES.json via apply_promoted_lessons. ",
                 "Invariants need the same closure: add `invariants` action (ops: read|promote|collapse|enforce) ",
                 "to src/tools.rs dispatch + implement handle_invariants_action in src/invariants.rs. ",
-                "Wire enforced_invariants.json into diagnostics and planner prompts via src/prompt_inputs.rs. ",
+                "Wire enforced_invariants.json into planner prompts via src/prompt_inputs.rs. ",
                 "Impact: without this the invariant collapse pipeline (TO-DO.txt Phase 4-5) cannot complete."
             ).to_string(),
             location: "src/tools.rs; src/invariants.rs; src/app.rs:1011-1050; src/prompt_inputs.rs".to_string(),
@@ -506,7 +506,7 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
     if !has_prompt_injection && !existing_ids.contains(PROMPT_INJECTION_ID) {
         file.issues.push(Issue {
             id: PROMPT_INJECTION_ID.to_string(),
-            title: "enforced_invariants.json not injected into diagnostics or planner prompts".to_string(),
+            title: "enforced_invariants.json not injected into planner prompts".to_string(),
             status: "open".to_string(),
             priority: "high".to_string(),
             kind: "invariant_violation".to_string(),
@@ -515,7 +515,7 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
                 "checkpoint cycle but is invisible to all roles. Planner cannot see which invariants are ",
                 "accumulating support and cannot decide which to escalate. ",
                 "Fix: add read_enforced_invariants(workspace) call to load_planner_inputs in src/prompt_inputs.rs ",
-                "and inject the result into the diagnostics/planner prompt surfaces in src/prompts.rs. ",
+                "and inject the result into planner prompt surfaces in src/prompts.rs. ",
                 "Ensure SingleRoleContext::read(Invariants) returns the combined static + enforced view. ",
                 "Impact: invariant system is silent — no feedback loop to the decision-making agent."
             ).to_string(),

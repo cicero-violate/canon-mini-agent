@@ -14,7 +14,7 @@ pub enum ControlEvent {
         phase: Option<String>,
     },
 
-    // --- Planner / diagnostics state ---
+    // --- Planner / legacy diagnostics state ---
     PlannerPendingSet {
         pending: bool,
     },
