@@ -1130,9 +1130,6 @@ pub fn redundant_path_issues(
     let mut out = Vec::new();
     let mut seen_owner_sig: HashSet<(String, u64)> = HashSet::new();
     for pair in idx.redundant_path_pairs() {
-        if out.len() >= limit {
-            break;
-        }
         if pair.path_a.owner != pair.path_b.owner {
             continue;
         }
@@ -1194,6 +1191,14 @@ pub fn redundant_path_issues(
             ..Issue::default()
         });
     }
+    // Select the highest-signal pairs before applying the limit, so low-ratio
+    // pairs that appear early in graph order don't displace high-ratio ones.
+    out.sort_by(|a, b| {
+        let ra = a.metrics.get("redundancy_ratio").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let rb = b.metrics.get("redundancy_ratio").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        rb.partial_cmp(&ra).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    out.truncate(limit);
     out.sort_by(|a, b| a.id.cmp(&b.id));
     out
 }
