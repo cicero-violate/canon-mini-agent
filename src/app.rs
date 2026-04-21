@@ -7183,7 +7183,7 @@ mod tests {
             .wake_signal_signatures
             .insert("executor".to_string(), "sig-consumed".to_string());
 
-        let (inputs, _, sig_map) = collect_wake_flag_inputs(&state_dir, &state);
+        let (inputs, sig_map) = collect_wake_flag_inputs(&state);
         // Planner signal present
         assert!(
             inputs.iter().any(|i| i.role == "planner"),
