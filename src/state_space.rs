@@ -1,7 +1,7 @@
 pub struct CargoTestGate {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WakeFlagInput {
+pub struct WakeSignalInput {
     pub role: &'static str,
     pub modified_ms: u64,
 }
@@ -55,11 +55,11 @@ pub fn decide_bootstrap_phase(start_role: &str) -> Option<String> {
     }
 }
 
-pub fn decide_wake_flags(
+pub fn decide_wake_signals(
     active_blocker_to_verifier: bool,
-    flags: &[WakeFlagInput],
+    flags: &[WakeSignalInput],
 ) -> WakeDecision {
-    let mut newest: Option<&WakeFlagInput> = None;
+    let mut newest: Option<&WakeSignalInput> = None;
     let mut planner_suppressed_by_blocker = false;
     for flag in flags {
         if flag.role == "planner" && active_blocker_to_verifier {

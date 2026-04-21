@@ -1,10 +1,10 @@
 use crate::state_space::{
     allow_diagnostics_run, allow_named_phase_run, check_completion_endpoint, check_completion_tab,
-    decide_active_blocker, decide_phase_gates, decide_post_diagnostics, decide_wake_flags,
+    decide_active_blocker, decide_phase_gates, decide_post_diagnostics, decide_wake_signals,
     executor_step_limit_exceeded, is_verifier_specific_blocker,
     scheduled_phase_resume_done, should_force_blocker, verifier_blocker_phase_override,
     ActiveBlockerDecision, CompletionEndpointCheck, CompletionTabCheck, PhaseGates,
-    SemanticControlState, WakeFlagInput,
+    SemanticControlState, WakeSignalInput,
 };
 use crate::state_space::{
     decide_bootstrap_phase, decide_resume_phase, extract_progress_path_from_result, CargoTestGate,
@@ -133,42 +133,42 @@ fn bootstrap_phase_from_start_role() {
 }
 
 #[test]
-fn wake_flags_selects_newest_non_blocked() {
+fn wake_signals_selects_newest_non_blocked() {
     let flags = vec![
-        WakeFlagInput {
+        WakeSignalInput {
             role: "planner",
             modified_ms: 10,
         },
-        WakeFlagInput {
+        WakeSignalInput {
             role: "executor",
             modified_ms: 20,
         },
     ];
-    let decision = decide_wake_flags(false, &flags);
+    let decision = decide_wake_signals(false, &flags);
     assert_eq!(decision.scheduled_phase, Some("executor".to_string()));
     assert!(decision.executor_wake);
 }
 
 #[test]
-fn wake_flags_blocks_planner_when_active_blocker() {
+fn wake_signals_blocks_planner_when_active_blocker() {
     let flags = vec![
-        WakeFlagInput {
+        WakeSignalInput {
             role: "planner",
             modified_ms: 30,
         },
-        WakeFlagInput {
+        WakeSignalInput {
             role: "executor",
             modified_ms: 20,
         },
     ];
-    let decision = decide_wake_flags(true, &flags);
+    let decision = decide_wake_signals(true, &flags);
     assert_eq!(decision.scheduled_phase, Some("executor".to_string()));
     assert!(decision.executor_wake);
 }
 
 #[test]
-fn wake_flags_returns_none_when_no_flags_exist() {
-    let decision = decide_wake_flags(false, &[]);
+fn wake_signals_returns_none_when_no_flags_exist() {
+    let decision = decide_wake_signals(false, &[]);
     assert_eq!(decision.scheduled_phase, None);
     assert!(!decision.planner_pending);
     assert!(!decision.diagnostics_pending);
@@ -176,18 +176,18 @@ fn wake_flags_returns_none_when_no_flags_exist() {
 }
 
 #[test]
-fn wake_flags_sets_planner_pending_when_planner_is_newest() {
+fn wake_signals_sets_planner_pending_when_planner_is_newest() {
     let flags = vec![
-        WakeFlagInput {
+        WakeSignalInput {
             role: "executor",
             modified_ms: 10,
         },
-        WakeFlagInput {
+        WakeSignalInput {
             role: "planner",
             modified_ms: 20,
         },
     ];
-    let decision = decide_wake_flags(false, &flags);
+    let decision = decide_wake_signals(false, &flags);
     assert_eq!(decision.scheduled_phase, Some("planner".to_string()));
     assert!(decision.planner_pending);
     assert!(!decision.diagnostics_pending);
@@ -195,18 +195,18 @@ fn wake_flags_sets_planner_pending_when_planner_is_newest() {
 }
 
 #[test]
-fn wake_flags_sets_diagnostics_pending_when_diagnostics_is_newest() {
+fn wake_signals_sets_diagnostics_pending_when_diagnostics_is_newest() {
     let flags = vec![
-        WakeFlagInput {
+        WakeSignalInput {
             role: "planner",
             modified_ms: 10,
         },
-        WakeFlagInput {
+        WakeSignalInput {
             role: "diagnostics",
             modified_ms: 30,
         },
     ];
-    let decision = decide_wake_flags(false, &flags);
+    let decision = decide_wake_signals(false, &flags);
     assert_eq!(decision.scheduled_phase, Some("diagnostics".to_string()));
     assert!(!decision.planner_pending);
     assert!(decision.diagnostics_pending);
@@ -214,22 +214,22 @@ fn wake_flags_sets_diagnostics_pending_when_diagnostics_is_newest() {
 }
 
 #[test]
-fn wake_flags_ignores_blocked_planner_and_keeps_next_newest_role() {
+fn wake_signals_ignores_blocked_planner_and_keeps_next_newest_role() {
     let flags = vec![
-        WakeFlagInput {
+        WakeSignalInput {
             role: "planner",
             modified_ms: 50,
         },
-        WakeFlagInput {
+        WakeSignalInput {
             role: "diagnostics",
             modified_ms: 40,
         },
-        WakeFlagInput {
+        WakeSignalInput {
             role: "executor",
             modified_ms: 30,
         },
     ];
-    let decision = decide_wake_flags(true, &flags);
+    let decision = decide_wake_signals(true, &flags);
     assert_eq!(decision.scheduled_phase, Some("diagnostics".to_string()));
     assert!(!decision.planner_pending);
     assert!(decision.diagnostics_pending);
@@ -237,28 +237,28 @@ fn wake_flags_ignores_blocked_planner_and_keeps_next_newest_role() {
 }
 
 #[test]
-fn wake_flags_covers_blocker_filtering_and_newest_role_selection() {
-    let blocked_to_none = vec![WakeFlagInput {
+fn wake_signals_covers_blocker_filtering_and_newest_role_selection() {
+    let blocked_to_none = vec![WakeSignalInput {
         role: "planner",
         modified_ms: 50,
     }];
-    let blocked_decision = decide_wake_flags(true, &blocked_to_none);
+    let blocked_decision = decide_wake_signals(true, &blocked_to_none);
     assert_eq!(blocked_decision.scheduled_phase, None);
     assert!(!blocked_decision.planner_pending);
     assert!(!blocked_decision.diagnostics_pending);
     assert!(!blocked_decision.executor_wake);
 
     let planner_newest = vec![
-        WakeFlagInput {
+        WakeSignalInput {
             role: "executor",
             modified_ms: 10,
         },
-        WakeFlagInput {
+        WakeSignalInput {
             role: "planner",
             modified_ms: 20,
         },
     ];
-    let planner_decision = decide_wake_flags(false, &planner_newest);
+    let planner_decision = decide_wake_signals(false, &planner_newest);
     assert_eq!(
         planner_decision.scheduled_phase,
         Some("planner".to_string())
@@ -268,16 +268,16 @@ fn wake_flags_covers_blocker_filtering_and_newest_role_selection() {
     assert!(!planner_decision.executor_wake);
 
     let diagnostics_newest = vec![
-        WakeFlagInput {
+        WakeSignalInput {
             role: "planner",
             modified_ms: 10,
         },
-        WakeFlagInput {
+        WakeSignalInput {
             role: "diagnostics",
             modified_ms: 30,
         },
     ];
-    let diagnostics_decision = decide_wake_flags(false, &diagnostics_newest);
+    let diagnostics_decision = decide_wake_signals(false, &diagnostics_newest);
     assert_eq!(
         diagnostics_decision.scheduled_phase,
         Some("diagnostics".to_string())
@@ -287,16 +287,16 @@ fn wake_flags_covers_blocker_filtering_and_newest_role_selection() {
     assert!(!diagnostics_decision.executor_wake);
 
     let executor_newest = vec![
-        WakeFlagInput {
+        WakeSignalInput {
             role: "planner",
             modified_ms: 10,
         },
-        WakeFlagInput {
+        WakeSignalInput {
             role: "executor",
             modified_ms: 20,
         },
     ];
-    let executor_decision = decide_wake_flags(false, &executor_newest);
+    let executor_decision = decide_wake_signals(false, &executor_newest);
     assert_eq!(
         executor_decision.scheduled_phase,
         Some("executor".to_string())
@@ -534,7 +534,7 @@ fn semantic_control_state_projects_blocker_suppression_and_resume_done() {
 }
 
 #[test]
-fn semantic_control_state_projects_wake_flags_and_resume_hydration() {
+fn semantic_control_state_projects_wake_signals_and_resume_hydration() {
     let state = SystemState::new(&[0], 1);
     let mut state = state;
     state.active_blocker_to_verifier = true;
@@ -546,14 +546,14 @@ fn semantic_control_state_projects_wake_flags_and_resume_hydration() {
         verifier_in_flight: false,
         active_blocker_to_verifier: state.active_blocker_to_verifier,
     };
-    let wake = decide_wake_flags(
+    let wake = decide_wake_signals(
         semantic.active_blocker_to_verifier,
         &[
-            WakeFlagInput {
+            WakeSignalInput {
                 role: "planner",
                 modified_ms: 30,
             },
-            WakeFlagInput {
+            WakeSignalInput {
                 role: "diagnostics",
                 modified_ms: 20,
             },

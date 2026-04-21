@@ -20,7 +20,7 @@ This file defines the intended authority class for runtime artifacts.
 | `agent_state/enforced_invariants.json`             | projection | Synthesized enforced-invariants projection backed by snapshot effects.                |
 | `agent_state/last_message_to_<role>.json`          | ephemeral  | Delivery cache only; no-writer readers must prefer canonical tlog entries.            |
 | `agent_state/external_user_message_to_<role>.json` | ephemeral  | Delivery cache only; no-writer readers must prefer canonical tlog entries.            |
-| `agent_state/wakeup_<role>.flag`                   | ephemeral  | Wake signal only; may be recreated or removed without losing authority.               |
+| `agent_state/wakeup_<role>.flag`                   | ephemeral  | Legacy wake scratch file (deprecated); canonical wake routing uses `WakeSignalQueued` in tlog/SystemState. |
 | `frames/*.jsonl`                                   | ephemeral  | Browser/runtime transport capture; useful for debugging, not authority.               |
 | `agent_state/default/actions.jsonl`                | ephemeral  | Action trace/debug log; informative but not control authority.                        |
 
@@ -30,6 +30,7 @@ This file defines the intended authority class for runtime artifacts.
 2. Loader authority is tlog/canonical-state first; projection files are cache/materialization only.
 3. Runtime mutation of protected projections (`OBJECTIVES`, `ISSUES`, `lessons`, `enforced_invariants`) must go through writer-aware projector functions.
 4. On boot/replay, projection files are reconciled from canonical snapshots when missing/stale/divergent.
+5. Wake routing authority is canonical control state (`WakeSignalQueued` / `WakeSignalConsumed` via `SystemState.wake_signals_pending`), not physical `wakeup_*.flag` files.
 
 ## Gate + Authority Function Map (Code-Derived)
 
@@ -40,6 +41,7 @@ Derived from source/tests only (no `SPEC.md` read).
 - `src/invariants.rs`: `default_gates_for_conditions(...)` — maps invariant conditions/error classes to default enforcing gates.
 - `src/state_space.rs`: `decide_phase_gates(...)` — computes planner/executor/verifier/diagnostics runnable gates from canonical state.
 - `src/state_space.rs`: `allow_named_phase_run(...)`, `block_executor_dispatch(...)`, `allow_diagnostics_run(...)`, `decide_resume_phase(...)`, `decide_post_diagnostics(...)` — gate helpers used by orchestrator transitions.
+- `src/app.rs`: `collect_wake_signal_inputs(...)` / `apply_wake_signals(...)` — canonical wake-signal application from `SystemState` (file-flag fallback retired).
 
 ### Canonical authority mutation/effect sink
 - `src/canonical_writer.rs`: `CanonicalWriter::try_apply/apply(...)` — sole canonical state mutation path.

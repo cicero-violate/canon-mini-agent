@@ -59,8 +59,8 @@ use crate::prompts::{
 };
 use crate::state_space::{
     check_completion_endpoint, check_completion_tab, decide_bootstrap_phase,
-    decide_resume_phase, decide_wake_flags, executor_step_limit_exceeded, should_force_blocker,
-    CargoTestGate, CompletionEndpointCheck, CompletionTabCheck, SemanticControlState, WakeFlagInput,
+    decide_resume_phase, decide_wake_signals, executor_step_limit_exceeded, should_force_blocker,
+    CargoTestGate, CompletionEndpointCheck, CompletionTabCheck, SemanticControlState, WakeSignalInput,
 };
 use crate::system_state::SystemState;
 use crate::tlog::Tlog;
@@ -560,7 +560,7 @@ fn write_livelock_report(
         let _ = std::fs::write(&report_path, text);
     }
     eprintln!(
-        "[orchestrate] livelock detected: {} stall cycles, pending flags cleared, \
+        "[orchestrate] livelock detected: {} stall cycles, pending wake signals cleared, \
          report written to {}",
         stall_cycles,
         report_path.display()
@@ -580,7 +580,7 @@ fn write_livelock_report(
         "livelock_detected",
         None,
         &format!(
-            "livelock detected after {} consecutive no-change cycles; pending flags cleared",
+            "livelock detected after {} consecutive no-change cycles; pending wake signals cleared",
             stall_cycles
         ),
         Some(json!({
@@ -3489,9 +3489,9 @@ fn apply_lane_pending_if_changed(
     true
 }
 
-fn apply_wake_flags(writer: &mut CanonicalWriter) {
+fn apply_wake_signals(writer: &mut CanonicalWriter) {
     let state_snapshot = writer.state().clone();
-    let (inputs, signature_map) = collect_wake_flag_inputs(&state_snapshot);
+    let (inputs, signature_map) = collect_wake_signal_inputs(&state_snapshot);
     let wake_inputs_debug = inputs
         .iter()
         .map(|input| format!("{}@{}", input.role, input.modified_ms))
@@ -3504,7 +3504,7 @@ fn apply_wake_flags(writer: &mut CanonicalWriter) {
         state_snapshot.diagnostics_pending,
         state_snapshot.active_blocker_to_verifier,
     );
-    let decision = decide_wake_flags(semantic_control.active_blocker_to_verifier, &inputs);
+    let decision = decide_wake_signals(semantic_control.active_blocker_to_verifier, &inputs);
     let Some(role) = decision.scheduled_phase.as_deref() else {
         return;
     };
@@ -3516,7 +3516,7 @@ fn apply_wake_flags(writer: &mut CanonicalWriter) {
 
     apply_scheduled_phase_if_changed(writer, Some(role));
     let wake_signature = signature_map.get(role).cloned();
-    let mut clear_wake_flag = !decision.executor_wake;
+    let mut clear_wake_signal = !decision.executor_wake;
     if decision.planner_pending {
         apply_planner_pending_if_changed(writer, true);
     }
@@ -3535,27 +3535,27 @@ fn apply_wake_flags(writer: &mut CanonicalWriter) {
                 )
             };
             if pending {
-                clear_wake_flag = true;
+                clear_wake_signal = true;
                 continue;
             }
             if in_progress {
                 continue;
             }
-            clear_wake_flag |= apply_lane_pending_if_changed(writer, lane_id, true);
+            clear_wake_signal |= apply_lane_pending_if_changed(writer, lane_id, true);
             // Do NOT clear in_progress_by here. If the lane already has a submit
             // in flight, clearing ownership causes a double-submit on the next tick
             // (claim_next_lane sees pending=true + in_progress_by=None and spawns a
             // second request while the first is still running). The wake effect
-            // is preserved by leaving the wake flag on disk until an idle lane can
+            // is preserved by retaining the wake signal until an idle lane can
             // actually be marked pending.
         }
     }
-    let suppress_deferred_repeat_log = !clear_wake_flag
+    let suppress_deferred_repeat_log = !clear_wake_signal
         && role == "executor"
         && should_suppress_repeated_executor_deferred_log(selected_modified_ms);
     if !suppress_deferred_repeat_log {
         eprintln!(
-            "[orchestrate] wake_flag_selected: role={} planner_pending={} diagnostics_pending={} executor_wake={} inputs=[{}]",
+            "[orchestrate] wake_signal_selected: role={} planner_pending={} diagnostics_pending={} executor_wake={} inputs=[{}]",
             role,
             decision.planner_pending,
             decision.diagnostics_pending,
@@ -3563,7 +3563,7 @@ fn apply_wake_flags(writer: &mut CanonicalWriter) {
             wake_inputs_debug,
         );
     }
-    if clear_wake_flag {
+    if clear_wake_signal {
         if let Some(signature) = wake_signature {
             writer.apply(ControlEvent::WakeSignalConsumed {
                 role: role.to_string(),
@@ -3571,7 +3571,7 @@ fn apply_wake_flags(writer: &mut CanonicalWriter) {
             });
         }
     }
-    if clear_wake_flag {
+    if clear_wake_signal {
         clear_repeated_executor_deferred_log_memory(role);
         eprintln!("[orchestrate] wake_signal_triggered: role={role}");
     } else if !suppress_deferred_repeat_log {
@@ -3607,10 +3607,10 @@ fn repeated_executor_deferred_log_memory(
     LAST_DEFERRED_BY_ROLE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
 
-fn collect_wake_flag_inputs(
+fn collect_wake_signal_inputs(
     state: &SystemState,
 ) -> (
-    Vec<WakeFlagInput>,
+    Vec<WakeSignalInput>,
     std::collections::HashMap<&'static str, String>,
 ) {
     let mut inputs = Vec::new();
@@ -3627,7 +3627,7 @@ fn collect_wake_flag_inputs(
         if !runtime_role_enabled(role_key) {
             continue;
         }
-        inputs.push(WakeFlagInput {
+        inputs.push(WakeSignalInput {
             role: role_key,
             modified_ms: *ts_ms,
         });
@@ -6374,7 +6374,7 @@ pub async fn run() -> Result<()> {
                 return Ok(());
             }
 
-            apply_wake_flags(&mut writer);
+            apply_wake_signals(&mut writer);
 
             if writer.state().scheduled_phase.is_none() && writer.state().phase == "bootstrap" {
                 if let Some(phase) = decide_bootstrap_phase(start_role) {
@@ -6846,7 +6846,7 @@ pub async fn run() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        action_retry_fingerprint, canonical_inbound_message_from_tlog, collect_wake_flag_inputs,
+        action_retry_fingerprint, canonical_inbound_message_from_tlog, collect_wake_signal_inputs,
         ensure_workspace_artifact_baseline, executor_step_limit_feedback,
         has_actionable_objectives, inbound_message_from_user, invariant_id_from_reason,
         is_chromium_transport_error, local_transport_blocker_message, plan_has_incomplete_tasks,
@@ -7168,7 +7168,7 @@ mod tests {
     #[test]
     fn canonical_wake_signals_read_from_state_not_tlog() {
         // WakeSignalQueued populates wake_signals_pending in SystemState.
-        // collect_wake_flag_inputs reads directly from state — no tlog scan.
+        // collect_wake_signal_inputs reads directly from state — no tlog scan.
         // Consumed signals are absent; pending ones are present.
         let state_dir = std::path::PathBuf::from("/tmp/wake-state-test");
         fs::create_dir_all(&state_dir).unwrap();
@@ -7183,7 +7183,7 @@ mod tests {
             .wake_signal_signatures
             .insert("executor".to_string(), "sig-consumed".to_string());
 
-        let (inputs, sig_map) = collect_wake_flag_inputs(&state);
+        let (inputs, sig_map) = collect_wake_signal_inputs(&state);
         // Planner signal present
         assert!(
             inputs.iter().any(|i| i.role == "planner"),

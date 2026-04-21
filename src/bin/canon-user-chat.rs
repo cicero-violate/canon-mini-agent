@@ -247,7 +247,7 @@ mod tests {
 
             assert_eq!(msg_path, state_dir.join("last_message_to_solo.json"));
             assert!(msg_path.exists(), "message projection should exist");
-            assert!(wake_path.exists(), "wake flag should exist");
+            assert!(wake_path.exists(), "wake signal file should exist");
 
             let projection = fs::read_to_string(&msg_path)?;
             assert!(projection.contains("\"action\": \"message\""));
