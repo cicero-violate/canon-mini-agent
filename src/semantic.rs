@@ -304,6 +304,30 @@ impl SemanticIndex {
             .collect()
     }
 
+    fn non_cleanup_owned_cfg_blocks<'a>(&'a self, symbol_key: &str) -> HashSet<&'a str> {
+        self.graph
+            .bridge_edges
+            .iter()
+            .filter(|e| e.relation == "BelongsTo" && e.to == symbol_key)
+            .filter(|e| {
+                self.graph
+                    .cfg_nodes
+                    .get(e.from.as_str())
+                    .map(|n| !n.is_cleanup)
+                    .unwrap_or(false)
+            })
+            .map(|e| e.from.as_str())
+            .collect()
+    }
+
+    fn entry_cfg_block_id<'a>(&'a self, symbol_key: &str) -> Option<&'a str> {
+        self.graph
+            .bridge_edges
+            .iter()
+            .find(|e| e.relation == "Entry" && e.from == symbol_key)
+            .map(|e| e.to.as_str())
+    }
+
     pub fn graph_count(&self, kind: GraphCountKind) -> usize {
         match kind {
             GraphCountKind::CfgNode => self.graph.cfg_nodes.len(),
@@ -1386,31 +1410,13 @@ impl SemanticIndex {
     /// from the function's entry block.  Any value > 0 means dead branches exist.
     pub fn unreachable_block_count(&self, symbol_key: &str) -> usize {
         // Collect all non-cleanup blocks belonging to this function.
-        let all_blocks: HashSet<&str> = self
-            .graph
-            .bridge_edges
-            .iter()
-            .filter(|e| e.relation == "BelongsTo" && e.to == symbol_key)
-            .filter(|e| {
-                self.graph
-                    .cfg_nodes
-                    .get(e.from.as_str())
-                    .map(|n| !n.is_cleanup)
-                    .unwrap_or(false)
-            })
-            .map(|e| e.from.as_str())
-            .collect();
+        let all_blocks = self.non_cleanup_owned_cfg_blocks(symbol_key);
 
         if all_blocks.is_empty() {
             return 0;
         }
 
-        let entry_bb_id = self
-            .graph
-            .bridge_edges
-            .iter()
-            .find(|e| e.relation == "Entry" && e.from == symbol_key)
-            .map(|e| e.to.as_str());
+        let entry_bb_id = self.entry_cfg_block_id(symbol_key);
 
         let Some(entry_bb) = entry_bb_id else {
             return 0;
@@ -1468,12 +1474,7 @@ impl SemanticIndex {
     /// by inspecting the function's CFG entry block terminator.
     pub fn classify_patch_kind(&self, symbol_key: &str) -> PatchKind {
         // Find the Entry bridge edge: relation=Entry, from=symbol_key → to=entry_bb_id
-        let entry_bb_id = self
-            .graph
-            .bridge_edges
-            .iter()
-            .find(|e| e.relation == "Entry" && e.from == symbol_key)
-            .map(|e| e.to.as_str());
+        let entry_bb_id = self.entry_cfg_block_id(symbol_key);
 
         let Some(entry_bb_id) = entry_bb_id else {
             return PatchKind::General;
@@ -1484,19 +1485,7 @@ impl SemanticIndex {
         };
 
         // Single basic block (no non-cleanup successors): trivially rewriteable.
-        let non_cleanup_count = self
-            .graph
-            .bridge_edges
-            .iter()
-            .filter(|e| e.relation == "BelongsTo" && e.to == symbol_key)
-            .filter(|e| {
-                self.graph
-                    .cfg_nodes
-                    .get(e.from.as_str())
-                    .map(|n| !n.is_cleanup)
-                    .unwrap_or(false)
-            })
-            .count();
+        let non_cleanup_count = self.non_cleanup_owned_cfg_blocks(symbol_key).len();
 
         if non_cleanup_count <= 1 {
             return PatchKind::PureFunctionRewrite;
@@ -1549,13 +1538,11 @@ impl SemanticIndex {
     pub fn cfg_dominance_score(&self, symbol_key: &str) -> f32 {
         let mut total = 0usize;
         let mut non_cleanup = 0usize;
+        let owned_blocks = self.non_cleanup_owned_cfg_blocks(symbol_key);
         for edge in &self.graph.bridge_edges {
-            if edge.relation != "BelongsTo" || edge.to != symbol_key {
-                continue;
-            }
-            if let Some(cfg_node) = self.graph.cfg_nodes.get(edge.from.as_str()) {
+            if edge.relation == "BelongsTo" && edge.to == symbol_key {
                 total += 1;
-                if !cfg_node.is_cleanup {
+                if owned_blocks.contains(edge.from.as_str()) {
                     non_cleanup += 1;
                 }
             }

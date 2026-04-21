@@ -209,15 +209,42 @@ pub fn write_complexity_report(workspace: &Path) -> Result<Option<PathBuf>> {
         }
     }
 
-    // Bridge-connectivity analysis: emit deterministic graph-overconnectivity issues.
-    let _ = crate::graph_metrics::generate_bridge_connectivity_issues(workspace);
+    // Issue/task generation must complete in the same cycle so planner-visible
+    // artifacts are ready before downstream evidence scans and ready-window
+    // derivation consume them.
+    run_issue_task_generation(workspace)?;
 
     let eval = crate::evaluation::evaluate_workspace(workspace);
     let drift = compute_and_persist_fingerprint_drift(workspace, &current_summaries)?;
     let report = build_complexity_report(per_crate, global_top, inter_sections, &eval, &drift);
 
+    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
+    if let Ok(dataset) = crate::grpo::extract_grpo_dataset(workspace, &tlog_path) {
+        let _ = crate::grpo::record_grpo_dataset_effect(workspace, &dataset, None);
+    }
+
+    let dir = reports_dir(workspace);
+    let latest = persist_complexity_report(&dir, &report)?;
+
+    Ok(Some(latest))
+}
+
+fn run_issue_task_generation(workspace: &Path) -> Result<()> {
+    generate_graph_and_hotspot_issues(workspace);
+    generate_refactor_issue_batch(workspace);
+    generate_invariant_lifecycle_issues(workspace);
+    Ok(())
+}
+
+fn generate_graph_and_hotspot_issues(workspace: &Path) {
+    // Bridge-connectivity analysis: emit deterministic graph-overconnectivity issues.
+    let _ = crate::graph_metrics::generate_bridge_connectivity_issues(workspace);
+
     // Auto-generate issues for top hotspots (Detect → Propose step)
     let _ = crate::inter_complexity::generate_hotspot_issues(workspace, 5);
+}
+
+fn generate_refactor_issue_batch(workspace: &Path) {
     // Auto-generate structural refactor issues (dead code, branch reduction, helper extraction, call chains)
     let _ = crate::refactor_analysis::generate_all_refactor_issues(workspace);
     let _ = crate::refactor_analysis::generate_panic_surface_issues(workspace);
@@ -232,17 +259,11 @@ pub fn write_complexity_report(workspace: &Path) -> Result<Option<PathBuf>> {
     let _ = crate::refactor_analysis::generate_dark_assignment_issues(workspace);
     let _ = crate::refactor_analysis::generate_loop_invariant_issues(workspace);
     let _ = crate::graph_metrics::generate_module_cohesion_issues(workspace);
-    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
-    if let Ok(dataset) = crate::grpo::extract_grpo_dataset(workspace, &tlog_path) {
-        let _ = crate::grpo::record_grpo_dataset_effect(workspace, &dataset, None);
-    }
+}
+
+fn generate_invariant_lifecycle_issues(workspace: &Path) {
     // Auto-generate invariant lifecycle issues (action surface gap, prompt injection gap, per-promoted gates)
     let _ = crate::invariants::generate_invariant_issues(workspace);
-
-    let dir = reports_dir(workspace);
-    let latest = persist_complexity_report(&dir, &report)?;
-
-    Ok(Some(latest))
 }
 
 fn build_complexity_report(

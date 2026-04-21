@@ -732,17 +732,8 @@ fn supervise_current_child(
     let mut pending_update_defer_checks: u32 = 0;
     loop {
         thread::sleep(Duration::from_millis(1000));
-        if handle_shutdown_request(shutdown, child) {
-            return Ok(true);
-        }
-        if handle_child_exit_status(
-            child.try_wait().context("wait child")?,
-            root,
-            prefer_release,
-        ) {
-            break;
-        }
-        if should_restart_for_pending_update(
+        match supervise_current_child_iteration(
+            shutdown,
             no_watch,
             root,
             current,
@@ -754,10 +745,54 @@ fn supervise_current_child(
             prefer_release,
             child,
         )? {
-            break;
+            SuperviseCurrentChildFlow::Continue => {}
+            SuperviseCurrentChildFlow::BreakLoop => break,
+            SuperviseCurrentChildFlow::ReturnOkTrue => return Ok(true),
         }
     }
     Ok(false)
+}
+
+enum SuperviseCurrentChildFlow {
+    Continue,
+    BreakLoop,
+    ReturnOkTrue,
+}
+
+fn supervise_current_child_iteration(
+    shutdown: &AtomicBool,
+    no_watch: bool,
+    root: &Path,
+    current: &BinaryCandidate,
+    pending_update: &mut Option<BinaryCandidate>,
+    pending_update_defer_checks: &mut u32,
+    orchestrator_mode_flag: &Path,
+    idle_marker: &Path,
+    child_started_at: SystemTime,
+    prefer_release: bool,
+    child: &mut Child,
+) -> Result<SuperviseCurrentChildFlow> {
+    if handle_shutdown_request(shutdown, child) {
+        return Ok(SuperviseCurrentChildFlow::ReturnOkTrue);
+    }
+    if handle_child_exit_status(child.try_wait().context("wait child")?, root, prefer_release) {
+        return Ok(SuperviseCurrentChildFlow::BreakLoop);
+    }
+    if should_restart_for_pending_update(
+        no_watch,
+        root,
+        current,
+        pending_update,
+        pending_update_defer_checks,
+        orchestrator_mode_flag,
+        idle_marker,
+        child_started_at,
+        prefer_release,
+        child,
+    )? {
+        return Ok(SuperviseCurrentChildFlow::BreakLoop);
+    }
+    Ok(SuperviseCurrentChildFlow::Continue)
 }
 
 fn handle_shutdown_request(shutdown: &AtomicBool, child: &mut Child) -> bool {

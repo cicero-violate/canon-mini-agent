@@ -151,19 +151,138 @@ fn validate_phase_set(
     Ok(())
 }
 
+fn validate_scheduled_phase(phase: &Option<String>) -> Result<(), String> {
+    if let Some(phase) = phase {
+        if !is_valid_phase(phase) || phase == "bootstrap" {
+            return Err(format!(
+                "illegal transition: scheduled phase `{phase}` is not dispatchable"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_lane_pending_event(
+    state: &SystemState,
+    lane_id: usize,
+    pending: bool,
+) -> Result<(), String> {
+    require_lane(state, lane_id, "LanePendingSet")?;
+    if pending && lane_in_progress(state, lane_id) {
+        return Err(format!(
+            "illegal transition: cannot mark lane {lane_id} pending while it is still in progress"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_lane_in_progress_event(
+    state: &SystemState,
+    lane_id: usize,
+    actor: &Option<String>,
+) -> Result<(), String> {
+    require_lane(state, lane_id, "LaneInProgressSet")?;
+    let current = state
+        .lanes
+        .get(&lane_id)
+        .and_then(|lane| lane.in_progress_by.as_ref());
+    if actor.is_none() && current.is_none() {
+        return Err(format!(
+            "illegal transition: lane {lane_id} is already not in progress"
+        ));
+    }
+    if let (Some(next), Some(existing)) = (actor.as_ref(), current) {
+        if next != existing {
+            return Err(format!(
+                "illegal transition: lane {lane_id} already owned by `{existing}`, cannot switch directly to `{next}`"
+            ));
+        }
+    }
+    if actor.is_some() && lane_pending(state, lane_id) {
+        return Err(format!(
+            "illegal transition: lane {lane_id} must clear pending before entering in-progress"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_verifier_summary_lane(state: &SystemState, lane_id: usize) -> Result<(), String> {
+    if lane_id >= state.verifier_summary.len() {
+        return Err(format!(
+            "illegal transition: verifier summary lane {lane_id} out of range"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_lane_scoped_event(state: &SystemState, lane_id: usize) -> Result<(), String> {
+    require_lane(state, lane_id, "lane-scoped event")
+}
+
+fn validate_lane_submit_in_flight_event(
+    state: &SystemState,
+    lane_id: usize,
+    in_flight: bool,
+) -> Result<(), String> {
+    require_lane(state, lane_id, "LaneSubmitInFlightSet")?;
+    if in_flight {
+        if !lane_in_progress(state, lane_id) {
+            return Err(format!(
+                "illegal transition: lane {lane_id} cannot enter submit-in-flight without being in progress"
+            ));
+        }
+        if lane_submit_in_flight(state, lane_id) {
+            return Err(format!(
+                "illegal transition: lane {lane_id} is already submit-in-flight"
+            ));
+        }
+        if lane_prompt_in_flight(state, lane_id) {
+            return Err(format!(
+                "illegal transition: lane {lane_id} cannot submit while prompt continuation is in flight"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_lane_prompt_in_flight_event(
+    state: &SystemState,
+    lane_id: usize,
+    in_flight: bool,
+) -> Result<(), String> {
+    require_lane(state, lane_id, "LanePromptInFlightSet")?;
+    if in_flight {
+        if !lane_in_progress(state, lane_id) {
+            return Err(format!(
+                "illegal transition: lane {lane_id} cannot enter prompt-in-flight without being in progress"
+            ));
+        }
+        if lane_pending(state, lane_id) {
+            return Err(format!(
+                "illegal transition: lane {lane_id} cannot enter prompt-in-flight while pending"
+            ));
+        }
+        if lane_submit_in_flight(state, lane_id) {
+            return Err(format!(
+                "illegal transition: lane {lane_id} cannot enter prompt-in-flight while submit ack is still pending"
+            ));
+        }
+        if !state.lane_active_tab.contains_key(&lane_id) {
+            return Err(format!(
+                "illegal transition: lane {lane_id} cannot enter prompt-in-flight without an active tab"
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub fn validate_transition(state: &SystemState, event: &ControlEvent) -> Result<(), String> {
     match event {
         ControlEvent::PhaseSet { phase, lane } => {
             validate_phase_set(state, phase, *lane)?;
         }
         ControlEvent::ScheduledPhaseSet { phase } => {
-            if let Some(phase) = phase {
-                if !is_valid_phase(phase) || phase == "bootstrap" {
-                    return Err(format!(
-                        "illegal transition: scheduled phase `{phase}` is not dispatchable"
-                    ));
-                }
-            }
+            validate_scheduled_phase(phase)?;
         }
         ControlEvent::PlannerPendingSet { .. }
         | ControlEvent::PlannerObjectiveReviewQueued
@@ -183,123 +302,31 @@ pub fn validate_transition(state: &SystemState, event: &ControlEvent) -> Result<
         | ControlEvent::LastSoloPlanTextSet { .. }
         | ControlEvent::LastSoloExecutorDiffSet { .. } => {}
         ControlEvent::LanePendingSet { lane_id, pending } => {
-            require_lane(state, *lane_id, "LanePendingSet")?;
-            if *pending && lane_in_progress(state, *lane_id) {
-                return Err(format!(
-                    "illegal transition: cannot mark lane {lane_id} pending while it is still in progress"
-                ));
-            }
+            validate_lane_pending_event(state, *lane_id, *pending)?;
         }
         ControlEvent::LaneInProgressSet { lane_id, actor } => {
-            require_lane(state, *lane_id, "LaneInProgressSet")?;
-            let current = state
-                .lanes
-                .get(lane_id)
-                .and_then(|lane| lane.in_progress_by.as_ref());
-            if actor.is_none() && current.is_none() {
-                return Err(format!(
-                    "illegal transition: lane {lane_id} is already not in progress"
-                ));
-            }
-            if let (Some(next), Some(existing)) = (actor.as_ref(), current) {
-                if next != existing {
-                    return Err(format!(
-                        "illegal transition: lane {lane_id} already owned by `{existing}`, cannot switch directly to `{next}`"
-                    ));
-                }
-            }
-            if actor.is_some() && lane_pending(state, *lane_id) {
-                return Err(format!(
-                    "illegal transition: lane {lane_id} must clear pending before entering in-progress"
-                ));
-            }
+            validate_lane_in_progress_event(state, *lane_id, actor)?;
         }
         ControlEvent::VerifierSummarySet { lane_id, .. } => {
-            if *lane_id >= state.verifier_summary.len() {
-                return Err(format!(
-                    "illegal transition: verifier summary lane {lane_id} out of range"
-                ));
-            }
+            validate_verifier_summary_lane(state, *lane_id)?;
         }
         ControlEvent::LaneVerifierResultSet { lane_id, .. }
         | ControlEvent::LanePlanTextSet { lane_id, .. }
         | ControlEvent::LaneNextSubmitAtSet { lane_id, .. }
         | ControlEvent::LaneStepsUsedSet { lane_id, .. } => {
-            require_lane(state, *lane_id, "lane-scoped event")?;
+            validate_lane_scoped_event(state, *lane_id)?;
         }
         ControlEvent::LaneSubmitInFlightSet { lane_id, in_flight } => {
-            require_lane(state, *lane_id, "LaneSubmitInFlightSet")?;
-            if *in_flight {
-                if !lane_in_progress(state, *lane_id) {
-                    return Err(format!(
-                        "illegal transition: lane {lane_id} cannot enter submit-in-flight without being in progress"
-                    ));
-                }
-                if lane_submit_in_flight(state, *lane_id) {
-                    return Err(format!(
-                        "illegal transition: lane {lane_id} is already submit-in-flight"
-                    ));
-                }
-                if lane_prompt_in_flight(state, *lane_id) {
-                    return Err(format!(
-                        "illegal transition: lane {lane_id} cannot submit while prompt continuation is in flight"
-                    ));
-                }
-            }
+            validate_lane_submit_in_flight_event(state, *lane_id, *in_flight)?;
         }
         ControlEvent::LanePromptInFlightSet { lane_id, in_flight } => {
-            require_lane(state, *lane_id, "LanePromptInFlightSet")?;
-            if *in_flight {
-                if !lane_in_progress(state, *lane_id) {
-                    return Err(format!(
-                        "illegal transition: lane {lane_id} cannot enter prompt-in-flight without being in progress"
-                    ));
-                }
-                if lane_pending(state, *lane_id) {
-                    return Err(format!(
-                        "illegal transition: lane {lane_id} cannot enter prompt-in-flight while pending"
-                    ));
-                }
-                if lane_submit_in_flight(state, *lane_id) {
-                    return Err(format!(
-                        "illegal transition: lane {lane_id} cannot enter prompt-in-flight while submit ack is still pending"
-                    ));
-                }
-                if !state.lane_active_tab.contains_key(lane_id) {
-                    return Err(format!(
-                        "illegal transition: lane {lane_id} cannot enter prompt-in-flight without an active tab"
-                    ));
-                }
-            }
+            validate_lane_prompt_in_flight_event(state, *lane_id, *in_flight)?;
         }
         ControlEvent::LaneActiveTabSet { lane_id, tab_id } => {
-            require_lane(state, *lane_id, "LaneActiveTabSet")?;
-            if !lane_in_progress(state, *lane_id)
-                && !lane_submit_in_flight(state, *lane_id)
-                && !lane_prompt_in_flight(state, *lane_id)
-                && state.phase != "bootstrap"
-            {
-                return Err(format!(
-                    "illegal transition: lane {lane_id} cannot bind active tab {tab_id} without executor/verifier work in flight"
-                ));
-            }
+            validate_lane_active_tab_set(state, *lane_id, tab_id)?;
         }
         ControlEvent::TabIdToLaneSet { tab_id, lane_id } => {
-            require_lane(state, *lane_id, "TabIdToLaneSet")?;
-            if let Some(existing_lane) = state.tab_id_to_lane.get(tab_id) {
-                if existing_lane != lane_id {
-                    return Err(format!(
-                        "illegal transition: tab {tab_id} already mapped to lane {existing_lane}"
-                    ));
-                }
-            }
-            if let Some(active_tab) = state.lane_active_tab.get(lane_id) {
-                if active_tab != tab_id {
-                    return Err(format!(
-                        "illegal transition: lane {lane_id} active tab is {active_tab}, cannot map different tab {tab_id}"
-                    ));
-                }
-            }
+            validate_tab_id_to_lane_set(state, tab_id, *lane_id)?;
         }
         // Runtime traces show executor turn registration is highly order-sensitive.
         // It must occur only after submit-in-flight clears and the lane/tab binding is canonical.
@@ -459,6 +486,47 @@ pub fn validate_transition(state: &SystemState, event: &ControlEvent) -> Result<
                     ));
                 }
             }
+        }
+    }
+    Ok(())
+}
+
+fn validate_lane_active_tab_set(
+    state: &SystemState,
+    lane_id: usize,
+    tab_id: &u32,
+) -> Result<(), String> {
+    require_lane(state, lane_id, "LaneActiveTabSet")?;
+    if !lane_in_progress(state, lane_id)
+        && !lane_submit_in_flight(state, lane_id)
+        && !lane_prompt_in_flight(state, lane_id)
+        && state.phase != "bootstrap"
+    {
+        return Err(format!(
+            "illegal transition: lane {lane_id} cannot bind active tab {tab_id} without executor/verifier work in flight"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_tab_id_to_lane_set(
+    state: &SystemState,
+    tab_id: &u32,
+    lane_id: usize,
+) -> Result<(), String> {
+    require_lane(state, lane_id, "TabIdToLaneSet")?;
+    if let Some(existing_lane) = state.tab_id_to_lane.get(tab_id) {
+        if existing_lane != &lane_id {
+            return Err(format!(
+                "illegal transition: tab {tab_id} already mapped to lane {existing_lane}"
+            ));
+        }
+    }
+    if let Some(active_tab) = state.lane_active_tab.get(&lane_id) {
+        if active_tab != tab_id {
+            return Err(format!(
+                "illegal transition: lane {lane_id} active tab is {active_tab}, cannot map different tab {tab_id}"
+            ));
         }
     }
     Ok(())

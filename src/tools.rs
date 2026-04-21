@@ -7742,6 +7742,76 @@ fn persist_inbound_message(
     }
 }
 
+fn build_execute_logged_action_error_text(action_kind: &str, error: &anyhow::Error) -> String {
+    if action_kind == "plan" {
+        format!(
+            "Error executing action: {error}\n\nPlan tool examples:\n{}\n{}\n{{\"action\":\"plan\",\"op\":\"update_task\",\"task\":{{\"id\":\"T4\",\"status\":\"done\"}},\"rationale\":\"Update a task by id using task payload.\"}}\n\nTo mark a task done, use update_task or set_task_status. set_plan_status changes only PLAN.status.",
+            plan_set_task_status_action_example(
+                "T1",
+                "in_progress",
+                "Update one task status in PLAN.json."
+            ),
+            plan_set_plan_status_action_example(
+                "in_progress",
+                "Update top-level PLAN.json status."
+            ),
+        )
+    } else {
+        format!("Error executing action: {error}")
+    }
+}
+
+fn record_execute_logged_action_failure(
+    workspace: &Path,
+    writer: Option<&mut CanonicalWriter>,
+    role: &str,
+    endpoint: &LlmEndpoint,
+    prompt_kind: &str,
+    step: usize,
+    command_id: &str,
+    action: &Value,
+    error: &anyhow::Error,
+) -> String {
+    let action_kind = action
+        .get("action")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let task_id = action.get("task_id").and_then(|v| v.as_str());
+    let mut writer = writer;
+    crate::blockers::record_action_failure_with_writer(
+        workspace,
+        writer.as_deref_mut(),
+        role,
+        action_kind,
+        &error.to_string(),
+        task_id,
+    );
+    let err_text = build_execute_logged_action_error_text(action_kind, error);
+    log_action_result(
+        writer.as_deref_mut(),
+        role,
+        endpoint,
+        prompt_kind,
+        step,
+        command_id,
+        action,
+        false,
+        &err_text,
+    );
+    log_error_event(
+        role,
+        "execute_logged_action",
+        Some(step),
+        &format!("execute_logged_action error: {error}"),
+        Some(json!({
+            "prompt_kind": prompt_kind,
+            "command_id": command_id,
+            "action": action.get("action").and_then(|v| v.as_str()),
+        })),
+    );
+    err_text
+}
+
 pub(crate) fn execute_logged_action(
     role: &str,
     prompt_kind: &str,
@@ -7777,37 +7847,8 @@ pub(crate) fn execute_logged_action(
             Ok((done, out))
         }
         Err(e) => {
-            // Classify and record the failure as a blocker artifact.
-            let action_kind = action
-                .get("action")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
-            let task_id = action.get("task_id").and_then(|v| v.as_str());
-            crate::blockers::record_action_failure_with_writer(
+            let err_text = record_execute_logged_action_failure(
                 workspace,
-                writer.as_deref_mut(),
-                role,
-                action_kind,
-                &e.to_string(),
-                task_id,
-            );
-            let err_text = if action_kind == "plan" {
-                format!(
-                    "Error executing action: {e}\n\nPlan tool examples:\n{}\n{}\n{{\"action\":\"plan\",\"op\":\"update_task\",\"task\":{{\"id\":\"T4\",\"status\":\"done\"}},\"rationale\":\"Update a task by id using task payload.\"}}\n\nTo mark a task done, use update_task or set_task_status. set_plan_status changes only PLAN.status.",
-                    plan_set_task_status_action_example(
-                        "T1",
-                        "in_progress",
-                        "Update one task status in PLAN.json."
-                    ),
-                    plan_set_plan_status_action_example(
-                        "in_progress",
-                        "Update top-level PLAN.json status."
-                    ),
-                )
-            } else {
-                format!("Error executing action: {e}")
-            };
-            log_action_result(
                 writer.as_deref_mut(),
                 role,
                 endpoint,
@@ -7815,19 +7856,7 @@ pub(crate) fn execute_logged_action(
                 step,
                 command_id,
                 action,
-                false,
-                &err_text,
-            );
-            log_error_event(
-                role,
-                "execute_logged_action",
-                Some(step),
-                &format!("execute_logged_action error: {e}"),
-                Some(json!({
-                    "prompt_kind": prompt_kind,
-                    "command_id": command_id,
-                    "action": action.get("action").and_then(|v| v.as_str()),
-                })),
+                &e,
             );
             eprintln!("[{role}] step={} error: {e}", step);
             Ok((false, err_text))

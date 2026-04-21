@@ -1686,6 +1686,24 @@ pub fn load_executor_diff_inputs(
     ExecutorDiffInputs { diff_text }
 }
 
+fn planner_objectives_text(workspace: &Path) -> String {
+    let objectives_full = crate::objectives::read_objectives_compact_for_workspace(workspace);
+    // Hard cap to prevent planner prompt overflow (top-N / truncation strategy)
+    if objectives_full.len() > 8000 {
+        let mut truncated = objectives_full.chars().take(8000).collect::<String>();
+        truncated.push_str("\n... (objectives truncated for prompt size)");
+        truncated
+    } else {
+        objectives_full
+    }
+}
+
+fn planner_plan_texts(master_plan_path: &Path, last_plan_text: &str) -> (String, String) {
+    let plan_text = read_text_or_empty(master_plan_path);
+    let plan_diff_text = plan_diff(last_plan_text, &plan_text, 400);
+    (plan_text, plan_diff_text)
+}
+
 pub fn load_planner_inputs(
     lanes: &[LaneConfig],
     workspace: &Path,
@@ -1700,22 +1718,13 @@ pub fn load_planner_inputs(
     let executor_diff_text =
         load_executor_diff_inputs(workspace, last_executor_diff, 400).diff_text;
     let lessons_text = read_lessons_or_empty(workspace);
-    let objectives_full = crate::objectives::read_objectives_compact_for_workspace(workspace);
-    // Hard cap to prevent planner prompt overflow (top-N / truncation strategy)
-    let objectives_text = if objectives_full.len() > 8000 {
-        let mut truncated = objectives_full.chars().take(8000).collect::<String>();
-        truncated.push_str("\n... (objectives truncated for prompt size)");
-        truncated
-    } else {
-        objectives_full
-    };
+    let objectives_text = planner_objectives_text(workspace);
     let semantic_control = derive_semantic_control_prompt_state_with_delta(
         workspace,
         10,
         semantic_control_snapshot_hash_path,
     );
-    let plan_text = read_text_or_empty(master_plan_path);
-    let plan_diff_text = plan_diff(last_plan_text, &plan_text, 400);
+    let (plan_text, plan_diff_text) = planner_plan_texts(master_plan_path, last_plan_text);
     PlannerInputs {
         summary_text,
         executor_diff_text,

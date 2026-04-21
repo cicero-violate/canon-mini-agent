@@ -1293,6 +1293,18 @@ fn dispatch_executor_submits(
     now: u64,
     submit_joinset: &mut tokio::task::JoinSet<(usize, PendingExecutorSubmit, Result<String>)>,
 ) -> bool {
+    if let Some(dispatch_result) = executor_dispatch_gate_result(ctx, writer, rt) {
+        return dispatch_result;
+    }
+
+    dispatch_ready_executor_lanes(ctx, writer, rt, now, submit_joinset)
+}
+
+fn executor_dispatch_gate_result(
+    ctx: &OrchestratorContext<'_>,
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
+) -> Option<bool> {
     let semantic_control = SemanticControlState::new(
         writer.state().scheduled_phase.clone(),
         writer.state().planner_pending,
@@ -1300,35 +1312,53 @@ fn dispatch_executor_submits(
         writer.state().active_blocker_to_verifier,
     );
     if semantic_control.executor_dispatch_blocked() {
-        return false;
+        return Some(false);
     }
-
-    let mut cycle_progress = false;
 
     // No-ready-tasks guard: if PLAN.json has no ready tasks, skip executor dispatch
     // entirely and wake the planner instead.  This eliminates the idle turn where
     // the executor discovers no work and sends an empty handoff message back.
-    {
-        // Route gate G_r: check enforced invariants before dispatching the executor.
-        // Currently observational — violations are logged but do not hard-block.
-        // Once invariants accumulate enough support, this will become a hard gate.
-        // Clean-start guard: after agent_state reset, the executor can see ready
-        // PLAN tasks but still have zero lane work seeded because lane.pending is
-        // only populated by the planner bootstrap path. In that state, starting at
-        // executor would silently idle forever while the browser backend stays live.
-        if let Some(preflight_result) = preflight_executor_dispatch(ctx, writer, rt) {
-            return preflight_result;
-        }
+    // Route gate G_r: check enforced invariants before dispatching the executor.
+    // Currently observational — violations are logged but do not hard-block.
+    // Once invariants accumulate enough support, this will become a hard gate.
+    // Clean-start guard: after agent_state reset, the executor can see ready
+    // PLAN tasks but still have zero lane work seeded because lane.pending is
+    // only populated by the planner bootstrap path. In that state, starting at
+    // executor would silently idle forever while the browser backend stays live.
+    if let Some(preflight_result) = preflight_executor_dispatch(ctx, writer, rt) {
+        return Some(preflight_result);
     }
 
+    None
+}
+
+fn dispatch_ready_executor_lanes(
+    ctx: &OrchestratorContext<'_>,
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
+    now: u64,
+    submit_joinset: &mut tokio::task::JoinSet<(usize, PendingExecutorSubmit, Result<String>)>,
+) -> bool {
+    let mut cycle_progress = false;
+
     for lane in ctx.lanes {
-        if writer.state().lane_submit_active(lane.index)
-            || writer.state().lane_next_submit_ms(lane.index) > now
-        {
+        let lane_ready_for_submit = !writer.state().lane_submit_active(lane.index)
+            && writer.state().lane_next_submit_ms(lane.index) <= now;
+        if !lane_ready_for_submit {
             continue;
         }
+
         if let Some(job) = claim_executor_submit(writer, lane) {
-            queue_executor_lane_submit(ctx, writer, rt, submit_joinset, lane.index, job, lane.endpoint.clone(), lane.tabs.clone());
+            queue_executor_lane_submit(
+                ctx,
+                writer,
+                rt,
+                submit_joinset,
+                lane.index,
+                job,
+                lane.endpoint.clone(),
+                lane.tabs.clone(),
+            );
             cycle_progress = true;
         }
     }
@@ -3605,6 +3635,81 @@ fn record_canonical_inbound_message(
     Ok(signature)
 }
 
+fn normalize_executor_completion_target<'a>(to_role: &'a str) -> &'a str {
+    if to_role.eq_ignore_ascii_case("executor") {
+        eprintln!(
+            "[orchestrate] executor→executor message detected; redirecting to planner \
+             to break self-wake stall loop"
+        );
+        "planner"
+    } else if !to_role.eq_ignore_ascii_case("planner") && !to_role.eq_ignore_ascii_case("executor") {
+        eprintln!(
+            "[orchestrate] two-role mode rerouting executor message target `{}` -> `planner`",
+            to_role
+        );
+        "planner"
+    } else {
+        to_role
+    }
+}
+
+fn persist_non_planner_inbound_message(
+    writer: &mut CanonicalWriter,
+    from_role: &str,
+    to_key: &str,
+    action_text: &str,
+) {
+    let workspace = Path::new(crate::constants::workspace());
+    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
+    let msg_sig = artifact_write_signature(&[
+        "inbound_message",
+        from_role,
+        to_key,
+        &action_text.len().to_string(),
+        action_text,
+    ]);
+    writer.apply(ControlEvent::InboundMessageQueued {
+        role: to_key.to_string(),
+        content: action_text.to_string(),
+        signature: msg_sig,
+    });
+    let wake_sig = artifact_write_signature(&["wake", to_key, &now_ms().to_string()]);
+    writer.apply(ControlEvent::WakeSignalQueued {
+        role: to_key.to_string(),
+        signature: wake_sig,
+        ts_ms: now_ms(),
+    });
+
+    if let Err(err) = record_canonical_inbound_message(workspace, from_role, to_key, action_text) {
+        writer.record_violation(
+            "executor_completion_message",
+            &format!("failed to record canonical message for {to_key}: {err:#}"),
+        );
+    }
+    let msg_path = agent_state_dir.join(format!("last_message_to_{to_key}.json"));
+    if let Err(err) = persist_agent_state_projection(
+        &msg_path,
+        action_text,
+        &format!("executor_completion_message:{to_key}"),
+    ) {
+        writer.record_violation(
+            "executor_completion_message",
+            &format!("failed to persist message for {to_key}: {err:#}"),
+        );
+    }
+    let wake_path = agent_state_dir.join(format!("wakeup_{to_key}.flag"));
+    if let Err(err) = persist_agent_state_projection(
+        &wake_path,
+        "handoff",
+        &format!("executor_completion_wakeup:{to_key}"),
+    ) {
+        writer.record_violation(
+            "executor_completion_message",
+            &format!("failed to persist wakeup flag for {to_key}: {err:#}"),
+        );
+    }
+}
+
 fn persist_planner_message(writer: &mut CanonicalWriter, action: &Value) {
     let workspace = Path::new(crate::constants::workspace());
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
@@ -5344,30 +5449,7 @@ fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Va
         .get("from")
         .and_then(Value::as_str)
         .unwrap_or("executor");
-
-    // Self-loop guard: an executor message routed back to "executor" would write
-    // wakeup_executor.flag, wake the executor next cycle, and then complete again
-    // with another self-addressed message — creating an oscillating stall that
-    // permanently resets the convergence counter before it can reach the threshold.
-    // Redirect such messages to the planner so the loop is broken deterministically.
-    let mut effective_to = if to_role.eq_ignore_ascii_case("executor") {
-        eprintln!(
-            "[orchestrate] executor→executor message detected; redirecting to planner \
-             to break self-wake stall loop"
-        );
-        "planner"
-    } else {
-        to_role
-    };
-    if !effective_to.eq_ignore_ascii_case("planner")
-        && !effective_to.eq_ignore_ascii_case("executor")
-    {
-        eprintln!(
-            "[orchestrate] two-role mode rerouting executor message target `{}` -> `planner`",
-            effective_to
-        );
-        effective_to = "planner";
-    }
+    let effective_to = normalize_executor_completion_target(to_role);
 
     if effective_to.eq_ignore_ascii_case("planner") {
         persist_planner_message(writer, action);
@@ -5375,62 +5457,10 @@ fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Va
         return;
     }
 
-    // Generic wakeup for other targets (verifier, diagnostics, etc.)
-    let workspace = Path::new(crate::constants::workspace());
-    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let to_key = effective_to
         .to_lowercase()
         .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
-    // Canonical events — survive restart via SystemState replay.
-    let msg_sig = artifact_write_signature(&[
-        "inbound_message",
-        from_role,
-        &to_key,
-        &action_text.len().to_string(),
-        &action_text,
-    ]);
-    writer.apply(ControlEvent::InboundMessageQueued {
-        role: to_key.clone(),
-        content: action_text.clone(),
-        signature: msg_sig,
-    });
-    let wake_sig = artifact_write_signature(&["wake", &to_key, &now_ms().to_string()]);
-    writer.apply(ControlEvent::WakeSignalQueued {
-        role: to_key.clone(),
-        signature: wake_sig,
-        ts_ms: now_ms(),
-    });
-
-    // Secondary: physical files kept for external tooling / backward compat.
-    if let Err(err) = record_canonical_inbound_message(workspace, from_role, &to_key, &action_text)
-    {
-        writer.record_violation(
-            "executor_completion_message",
-            &format!("failed to record canonical message for {to_key}: {err:#}"),
-        );
-    }
-    let msg_path = agent_state_dir.join(format!("last_message_to_{to_key}.json"));
-    if let Err(err) = persist_agent_state_projection(
-        &msg_path,
-        &action_text,
-        &format!("executor_completion_message:{to_key}"),
-    ) {
-        writer.record_violation(
-            "executor_completion_message",
-            &format!("failed to persist message for {to_key}: {err:#}"),
-        );
-    }
-    let wake_path = agent_state_dir.join(format!("wakeup_{to_key}.flag"));
-    if let Err(err) = persist_agent_state_projection(
-        &wake_path,
-        "handoff",
-        &format!("executor_completion_wakeup:{to_key}"),
-    ) {
-        writer.record_violation(
-            "executor_completion_message",
-            &format!("failed to persist wakeup flag for {to_key}: {err:#}"),
-        );
-    }
+    persist_non_planner_inbound_message(writer, from_role, &to_key, &action_text);
 }
 
 fn preferred_objectives_path(workspace: &Path) -> PathBuf {
