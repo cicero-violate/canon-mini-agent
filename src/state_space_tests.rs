@@ -47,8 +47,9 @@ fn resume_planner_sets_pending() {
 #[test]
 fn resume_diagnostics_sets_pending() {
     let decision = decide_resume_phase("diagnostics", true, false, false);
-    assert_eq!(decision.scheduled_phase, Some("diagnostics".to_string()));
-    assert!(decision.diagnostics_pending);
+    assert_eq!(decision.scheduled_phase, Some("planner".to_string()));
+    assert!(decision.planner_pending);
+    assert!(!decision.diagnostics_pending);
 }
 
 #[test]
@@ -83,9 +84,9 @@ fn resume_phase_covers_all_documented_branches() {
     assert!(!planner.diagnostics_pending);
 
     let diagnostics = decide_resume_phase("diagnostics", true, false, false);
-    assert_eq!(diagnostics.scheduled_phase, Some("diagnostics".to_string()));
-    assert!(!diagnostics.planner_pending);
-    assert!(diagnostics.diagnostics_pending);
+    assert_eq!(diagnostics.scheduled_phase, Some("planner".to_string()));
+    assert!(diagnostics.planner_pending);
+    assert!(!diagnostics.diagnostics_pending);
 
     let verifier_without_items = decide_resume_phase("verifier", false, false, false);
     assert_eq!(
@@ -122,7 +123,7 @@ fn bootstrap_phase_from_start_role() {
     );
     assert_eq!(
         decide_bootstrap_phase("diagnostics"),
-        Some("diagnostics".to_string())
+        None
     );
     assert_eq!(
         decide_bootstrap_phase("executor"),
@@ -207,9 +208,9 @@ fn wake_signals_sets_diagnostics_pending_when_diagnostics_is_newest() {
         },
     ];
     let decision = decide_wake_signals(false, &flags);
-    assert_eq!(decision.scheduled_phase, Some("diagnostics".to_string()));
-    assert!(!decision.planner_pending);
-    assert!(decision.diagnostics_pending);
+    assert_eq!(decision.scheduled_phase, Some("planner".to_string()));
+    assert!(decision.planner_pending);
+    assert!(!decision.diagnostics_pending);
     assert!(!decision.executor_wake);
 }
 
@@ -230,9 +231,9 @@ fn wake_signals_ignores_blocked_planner_and_keeps_next_newest_role() {
         },
     ];
     let decision = decide_wake_signals(true, &flags);
-    assert_eq!(decision.scheduled_phase, Some("diagnostics".to_string()));
-    assert!(!decision.planner_pending);
-    assert!(decision.diagnostics_pending);
+    assert_eq!(decision.scheduled_phase, Some("planner".to_string()));
+    assert!(decision.planner_pending);
+    assert!(!decision.diagnostics_pending);
     assert!(!decision.executor_wake);
 }
 
@@ -280,10 +281,10 @@ fn wake_signals_covers_blocker_filtering_and_newest_role_selection() {
     let diagnostics_decision = decide_wake_signals(false, &diagnostics_newest);
     assert_eq!(
         diagnostics_decision.scheduled_phase,
-        Some("diagnostics".to_string())
+        Some("planner".to_string())
     );
-    assert!(!diagnostics_decision.planner_pending);
-    assert!(diagnostics_decision.diagnostics_pending);
+    assert!(diagnostics_decision.planner_pending);
+    assert!(!diagnostics_decision.diagnostics_pending);
     assert!(!diagnostics_decision.executor_wake);
 
     let executor_newest = vec![
@@ -336,7 +337,7 @@ fn scheduled_phase_resume_done_all_cases() {
     assert!(!scheduled_phase_resume_done(
         "verifier", false, false, 1, false, false, false
     ));
-    assert!(!scheduled_phase_resume_done(
+    assert!(scheduled_phase_resume_done(
         "diagnostics",
         false,
         true,
@@ -431,8 +432,8 @@ fn planner_verifier_and_diagnostics_gate_helpers_follow_schedule() {
     assert!(allow_named_phase_run(Some("verifier"), "verifier"));
     assert!(!allow_named_phase_run(Some("planner"), "verifier"));
 
-    assert!(allow_diagnostics_run(None, false));
-    assert!(allow_diagnostics_run(Some("diagnostics"), false));
+    assert!(!allow_diagnostics_run(None, false));
+    assert!(!allow_diagnostics_run(Some("diagnostics"), false));
     assert!(!allow_diagnostics_run(Some("planner"), false));
     assert!(!allow_diagnostics_run(Some("diagnostics"), true));
 }
@@ -445,7 +446,7 @@ fn decide_phase_gates_combines_pending_and_schedule_rules() {
             planner: true,
             executor: true,
             verifier: true,
-            diagnostics: true,
+            diagnostics: false,
             solo: false,
         }
     );
@@ -520,7 +521,7 @@ fn semantic_control_state_projects_blocker_suppression_and_resume_done() {
     );
 
     let mut diagnostics_state = SystemState::new(&[0], 1);
-    diagnostics_state.scheduled_phase = Some("diagnostics".to_string());
+    diagnostics_state.scheduled_phase = Some("planner".to_string());
     diagnostics_state.diagnostics_pending = false;
     let semantic = SemanticControlState {
         scheduled_phase: diagnostics_state.scheduled_phase.clone(),
@@ -559,9 +560,9 @@ fn semantic_control_state_projects_wake_signals_and_resume_hydration() {
             },
         ],
     );
-    assert_eq!(wake.scheduled_phase.as_deref(), Some("diagnostics"));
-    assert!(!wake.planner_pending);
-    assert!(wake.diagnostics_pending);
+    assert_eq!(wake.scheduled_phase.as_deref(), Some("planner"));
+    assert!(wake.planner_pending);
+    assert!(!wake.diagnostics_pending);
 
     let resumed = semantic.with_resumed_checkpoint_phase("verifier", false);
     assert_eq!(resumed.scheduled_phase.as_deref(), Some("planner"));

@@ -3524,6 +3524,18 @@ fn apply_wake_signals(writer: &mut CanonicalWriter) {
                 continue;
             }
             if in_progress {
+                if lane_has_stale_executor_claim(writer.state(), lane_id) {
+                    eprintln!(
+                        "[orchestrate] wake_signal_recovered_stale_lane: role=executor lane={} reason=stale_in_progress_without_live_work",
+                        lane_id
+                    );
+                    writer.apply(ControlEvent::LaneInProgressSet {
+                        lane_id,
+                        actor: None,
+                    });
+                    writer.apply(ControlEvent::LaneNextSubmitAtSet { lane_id, ms: 0 });
+                    clear_wake_signal |= apply_lane_pending_if_changed(writer, lane_id, true);
+                }
                 continue;
             }
             clear_wake_signal |= apply_lane_pending_if_changed(writer, lane_id, true);
@@ -3565,6 +3577,22 @@ fn apply_wake_signals(writer: &mut CanonicalWriter) {
             role
         );
     }
+}
+
+fn lane_has_stale_executor_claim(state: &SystemState, lane_id: usize) -> bool {
+    let Some(lane) = state.lanes.get(&lane_id) else {
+        return false;
+    };
+    if lane.pending || lane.in_progress_by.is_none() {
+        return false;
+    }
+    if state.lane_submit_active(lane_id) || state.lane_in_flight(lane_id) {
+        return false;
+    }
+    !state
+        .submitted_turn_ids
+        .values()
+        .any(|submitted| submitted.lane_id == lane_id)
 }
 
 fn should_suppress_repeated_executor_deferred_log(modified_ms: u64) -> bool {
@@ -6814,8 +6842,9 @@ mod tests {
         action_retry_fingerprint, canonical_inbound_message_from_tlog, collect_wake_signal_inputs,
         ensure_workspace_artifact_baseline, executor_step_limit_feedback,
         has_actionable_objectives, inbound_message_from_user, invariant_id_from_reason,
-        is_chromium_transport_error, local_transport_blocker_message, plan_has_incomplete_tasks,
-        route_gate_blocker_message, should_reject_solo_self_complete,
+        is_chromium_transport_error, lane_has_stale_executor_claim,
+        local_transport_blocker_message, plan_has_incomplete_tasks, route_gate_blocker_message,
+        should_reject_solo_self_complete,
         take_external_user_message_without_writer, take_inbound_message_without_writer,
         verifier_confirmed_with_plan_text, ActionProvenance,
     };
@@ -7483,6 +7512,18 @@ mod tests {
         assert_eq!(state.lane_next_submit_ms(7), 42);
         assert_eq!(state.lane_steps_used_count(7), 3);
         assert_eq!(state.lane_active_tab_id(7), Some(99));
+    }
+
+    #[test]
+    fn stale_executor_claim_detects_busy_lane_without_live_work() {
+        let mut state = SystemState::new(&[0], 1);
+        state.lanes.get_mut(&0).unwrap().in_progress_by = Some("executor_pool".to_string());
+        state.lane_active_tab.insert(0, 42);
+
+        assert!(lane_has_stale_executor_claim(&state, 0));
+
+        state.lane_submit_in_flight.insert(0, true);
+        assert!(!lane_has_stale_executor_claim(&state, 0));
     }
 
     #[test]

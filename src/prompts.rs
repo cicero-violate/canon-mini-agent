@@ -2133,11 +2133,11 @@ mod tests {
             "{cargo_test_failures}",
         );
         assert!(
-            prompt.contains("Treat stale or already-resolved diagnostics as non-actionable until current source evidence reconfirms them."),
+            prompt.contains("Treat stale or already-resolved projected diagnostics as non-actionable until current source evidence reconfirms them."),
             "planner prompt must keep stale diagnostics non-actionable"
         );
         assert!(
-            prompt.contains("If diagnostics repeatedly report stale issues, create follow-up work to repair diagnostics generation rather than reopening resolved implementation tasks."),
+            prompt.contains("If projected diagnostics repeatedly report stale issues, create follow-up work to repair projection generation rather than reopening resolved implementation tasks."),
             "planner prompt must direct diagnostics-repair follow-up for stale reports"
         );
     }

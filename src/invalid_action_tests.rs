@@ -68,7 +68,7 @@ fn planner_diagnostics_plan_requires_source_validation_evidence() {
     let result = build_invalid_action_feedback(Some(&action), "", "planner");
 
     assert!(
-        result.contains("must cite current source validation"),
+        result.contains("must cite same-cycle source evidence"),
         "planner diagnostics-derived plan actions without source validation should be rejected"
     );
 }
@@ -90,7 +90,7 @@ fn planner_diagnostics_plan_allows_cited_source_validation_evidence() {
     let result = build_invalid_action_feedback(Some(&action), "", "planner");
 
     assert!(
-        !result.contains("must cite current source validation"),
+        !result.contains("must cite same-cycle source evidence"),
         "planner diagnostics-derived plan actions with cited source validation should be allowed"
     );
 }

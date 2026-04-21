@@ -486,11 +486,13 @@ mod tests {
         );
 
         state = apply_control_event(state, &ControlEvent::DiagnosticsVerifierFollowupQueued);
-        assert!(state.diagnostics_pending);
+        assert!(state.planner_pending);
         assert_eq!(
-            state.diagnostics_pending_reason.as_deref(),
+            state.planner_pending_reason.as_deref(),
             Some("verifier_followup")
         );
+        assert!(!state.diagnostics_pending);
+        assert!(state.diagnostics_pending_reason.is_none());
 
         state = apply_control_event(state, &ControlEvent::PlannerPendingSet { pending: false });
         state = apply_control_event(
@@ -509,7 +511,7 @@ mod tests {
             &ControlEvent::DiagnosticsReconciliationQueued,
         );
         assert_eq!(next.phase, state.phase);
-        assert_eq!(next.planner_pending, state.planner_pending);
+        assert!(next.planner_pending);
         assert_eq!(next.diagnostics_pending, state.diagnostics_pending);
         assert_eq!(next.scheduled_phase, state.scheduled_phase);
     }
