@@ -27,6 +27,9 @@ This file defines the intended authority class for runtime artifacts.
 ## Rules
 
 1. Ephemeral artifacts may be deleted during repair or replay without changing canonical truth.
+2. Loader authority is tlog/canonical-state first; projection files are cache/materialization only.
+3. Runtime mutation of protected projections (`OBJECTIVES`, `ISSUES`, `lessons`, `enforced_invariants`) must go through writer-aware projector functions.
+4. On boot/replay, projection files are reconciled from canonical snapshots when missing/stale/divergent.
 
 ## Gate + Authority Function Map (Code-Derived)
 
@@ -47,24 +50,31 @@ Derived from source/tests only (no `SPEC.md` read).
 ### Projection-authority write functions
 - `src/logging.rs`: `write_projection_with_artifact_effects(...)` — standard projection write path with effect + artifact metadata.
 - `src/issues.rs`: `persist_issues_projection_with_writer(...)` — authoritative writer for `agent_state/ISSUES.json`.
-- `src/invariants.rs`: `persist_enforced_invariants_projection(...)` — authoritative writer for `agent_state/enforced_invariants.json`.
-- `src/lessons.rs`: `persist_lessons_projection(...)` — authoritative writer for `agent_state/lessons.json`.
+- `src/invariants.rs`: `persist_enforced_invariants_projection_with_writer(...)` — writer-aware authoritative writer for `agent_state/enforced_invariants.json`.
+- `src/lessons.rs`: `persist_lessons_projection_with_writer(...)` — writer-aware authoritative writer for `agent_state/lessons.json`.
+- `src/objectives.rs`: `persist_objectives_projection(...)` — projection materialization for canonical objectives state.
+- `src/objectives.rs`: `reconcile_objectives_projection(...)` — startup/replay projection reconciliation from canonical objectives.
+- `src/issues.rs`: `reconcile_issues_projection(...)` — startup/replay projection reconciliation from latest `IssuesFileRecorded`.
+- `src/lessons.rs`: `reconcile_lessons_projection(...)` — startup/replay projection reconciliation from latest `LessonsArtifactRecorded`.
+- `src/invariants.rs`: `reconcile_enforced_invariants_projection(...)` — startup/replay projection reconciliation from latest `EnforcedInvariantsRecorded`.
 - `src/logging.rs`: `migrate_projection_if_present(...)` — controlled projection migration helper.
 
-### Authoritative read/load functions (tlog snapshot fallback)
-- `src/issues.rs`: `load_issues_file(...)` (+ `load_issues_from_tlog(...)`) — reads `ISSUES.json`, falls back to latest `IssuesFileRecorded` snapshot in tlog.
-- `src/invariants.rs`: `load_enforced_invariants_file(...)` (+ `load_invariants_from_tlog(...)`) — reads enforced invariants projection, falls back to tlog snapshot.
-- `src/lessons.rs`: `load_lessons_artifact(...)` (+ `load_lessons_from_tlog(...)`) — reads lessons projection, falls back to tlog snapshot.
+### Authoritative read/load functions (tlog first)
+- `src/issues.rs`: `load_issues_file(...)` (+ `load_issues_from_tlog(...)`) — resolves authority from latest `IssuesFileRecorded`, uses file only as compatibility fallback.
+- `src/invariants.rs`: `load_enforced_invariants_file(...)` (+ `load_invariants_from_tlog(...)`) — resolves authority from latest `EnforcedInvariantsRecorded`, uses file only as compatibility fallback.
+- `src/lessons.rs`: `load_lessons_artifact(...)` (+ `load_lessons_from_tlog(...)`) — resolves authority from latest `LessonsArtifactRecorded`, uses file only as compatibility fallback.
 - `src/blockers.rs`: `load_blockers(...)` (+ `load_blockers_from_tlog(...)`) — reads blockers projection, falls back to tlog records.
 - `src/prompt_inputs.rs`: `read_lessons_or_empty(...)` — prompt-safe lessons loader path (structured parse + fallback behavior).
 - `src/prompt_inputs.rs`: `load_planner_inputs(...)`, `load_executor_diff_inputs(...)`, `load_single_role_inputs(...)` — centralized prompt input loaders.
 
 ### Objective authority file helpers
 - `src/objectives.rs`: `runtime_objectives_path(...)`, `resolve_objectives_path(...)`, `ensure_runtime_objectives_file(...)` — objective authority path resolution/bootstrap.
-- `src/objectives.rs`: `read_objectives_compact_for_workspace(...)` — compact authority read for prompt injection.
+- `src/objectives.rs`: `load_runtime_objectives_json(...)` — canonical/tlog-first objective JSON loader.
+- `src/objectives.rs`: `read_objectives_compact_for_workspace(...)` — compact canonical-first objective read for prompt injection.
 
 ### Guardrail test anchoring this policy
 - `tests/authority_matrix_guardrail.rs`: 
   - `canonical_projection_artifacts_do_not_use_raw_writes_outside_projection_layer()`
   - `canonical_projection_artifacts_do_not_use_raw_reads_outside_authoritative_loaders()`
   - `authority_matrix_documents_expected_artifact_classes()`
+  - `projection_authority_writes_flow_through_projector_modules()`
