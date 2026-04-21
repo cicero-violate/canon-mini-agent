@@ -1710,9 +1710,8 @@ fn planner_plan_texts(master_plan_path: &Path, last_plan_text: &str) -> (String,
 }
 
 fn planner_enforced_invariants_text(workspace: &Path) -> String {
-    summarize_enforced_invariants_for_prompt(&crate::invariants::read_enforced_invariants(
-        workspace,
-    ))
+    let raw = crate::invariants::read_enforced_invariants(workspace);
+    summarize_enforced_invariants_for_prompt(&raw)
 }
 
 pub fn load_planner_inputs(
