@@ -690,6 +690,7 @@ async fn run_planner_phase(
             &inputs.summary_text,
             &inputs.objectives_text,
             &inputs.lessons_text,
+            &inputs.enforced_invariants_text,
             &inputs.semantic_control_text,
             &inputs.plan_diff_text,
             &inputs.executor_diff_text,

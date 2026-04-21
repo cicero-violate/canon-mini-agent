@@ -42,6 +42,7 @@ pub struct PlannerInputs {
     pub cargo_test_failures: String,
     pub lessons_text: String,
     pub objectives_text: String,
+    pub enforced_invariants_text: String,
     pub semantic_control_text: String,
     pub plan_text: String,
     pub plan_diff_text: String,
@@ -1708,6 +1709,12 @@ fn planner_plan_texts(master_plan_path: &Path, last_plan_text: &str) -> (String,
     (plan_text, plan_diff_text)
 }
 
+fn planner_enforced_invariants_text(workspace: &Path) -> String {
+    summarize_enforced_invariants_for_prompt(&crate::invariants::read_enforced_invariants(
+        workspace,
+    ))
+}
+
 pub fn load_planner_inputs(
     lanes: &[LaneConfig],
     workspace: &Path,
@@ -1723,6 +1730,7 @@ pub fn load_planner_inputs(
         load_executor_diff_inputs(workspace, last_executor_diff, 400).diff_text;
     let lessons_text = read_lessons_or_empty(workspace);
     let objectives_text = planner_objectives_text(workspace);
+    let enforced_invariants_text = planner_enforced_invariants_text(workspace);
     let semantic_control = derive_semantic_control_prompt_state_with_delta(
         workspace,
         10,
@@ -1735,6 +1743,7 @@ pub fn load_planner_inputs(
         cargo_test_failures,
         lessons_text,
         objectives_text,
+        enforced_invariants_text,
         semantic_control_text: semantic_control.control_summary,
         plan_text,
         plan_diff_text,
@@ -1847,11 +1856,13 @@ fn build_planner_role_prompt(
 ) -> Result<String> {
     let lessons = ctx.read(SingleRoleRead::Lessons)?;
     let objectives = ctx.read(SingleRoleRead::Objectives)?;
+    let enforced_invariants = planner_enforced_invariants_text(ctx.workspace);
     let semantic_control = ctx.read(SingleRoleRead::SemanticControl)?;
     Ok(single_role_planner_prompt(
         &inputs.primary_input,
         &objectives,
         &lessons,
+        &enforced_invariants,
         &semantic_control,
         cargo_test_failures,
     ))

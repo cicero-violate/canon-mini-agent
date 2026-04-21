@@ -720,6 +720,7 @@ pub(crate) fn planner_cycle_prompt(
     summary_text: &str,
     objectives_text: &str,
     lessons_text: &str,
+    enforced_invariants_text: &str,
     semantic_control_text: &str,
     plan_diff: &str,
     executor_diff: &str,
@@ -734,6 +735,7 @@ pub(crate) fn planner_cycle_prompt(
          - Spec: {SPEC_FILE}\n\
          - Objectives: {OBJECTIVES_FILE}\n\
          - Invariants: {INVARIANTS_FILE}\n\
+         - Enforced invariants: agent_state/enforced_invariants.json\n\
          - Violations: {VIOLATIONS_FILE}\n\
          - Diagnostics: {diagnostics_file}\n\
          - Issues: {issues_file}\n\
@@ -743,6 +745,8 @@ pub(crate) fn planner_cycle_prompt(
     );
     let objectives_heading = format!("Objectives (from {OBJECTIVES_FILE})");
     let lessons_heading = "Lessons artifact:".to_string();
+    let enforced_invariants_heading =
+        "Dynamic enforced invariants (from agent_state/enforced_invariants.json)".to_string();
     let semantic_control_heading =
         "Semantic control state (tlog-derived authority + projected views)".to_string();
     let cargo_failures_heading =
@@ -785,6 +789,14 @@ pub(crate) fn planner_cycle_prompt(
             reserve: 1000,
             cap: 3000,
             weight: 5,
+            always_include: false,
+        },
+        PromptItem {
+            heading: &enforced_invariants_heading,
+            body: enforced_invariants_text,
+            reserve: 800,
+            cap: 2500,
+            weight: 4,
             always_include: false,
         },
         PromptItem {
@@ -899,6 +911,7 @@ pub(crate) fn single_role_planner_prompt(
     _primary_input: &str,
     objectives: &str,
     lessons_text: &str,
+    enforced_invariants_text: &str,
     semantic_control: &str,
     cargo_test_failures: &str,
 ) -> String {
@@ -910,6 +923,8 @@ pub(crate) fn single_role_planner_prompt(
     );
     let objectives_heading = format!("Objectives (from {OBJECTIVES_FILE})");
     let lessons_heading = "Lessons artifact:".to_string();
+    let enforced_invariants_heading =
+        "Dynamic enforced invariants (from agent_state/enforced_invariants.json)".to_string();
     let semantic_control_heading =
         "Semantic control state (tlog-derived authority + projected views)".to_string();
     let cargo_failures_heading =
@@ -929,6 +944,14 @@ pub(crate) fn single_role_planner_prompt(
         PromptItem {
             heading: &lessons_heading,
             body: lessons_text,
+            reserve: 800,
+            cap: 2500,
+            weight: 4,
+            always_include: false,
+        },
+        PromptItem {
+            heading: &enforced_invariants_heading,
+            body: enforced_invariants_text,
             reserve: 800,
             cap: 2500,
             weight: 4,
@@ -2129,6 +2152,7 @@ mod tests {
             "{spec}",
             "{objectives}",
             "{lessons}",
+            "{enforced_invariants}",
             "{semantic_control}",
             "{cargo_test_failures}",
         );
@@ -2148,6 +2172,7 @@ mod tests {
             "{spec}",
             "{objectives}",
             "LESSON_TEXT",
+            "{enforced_invariants}",
             "{semantic_control}",
             "{cargo_test_failures}",
         );

@@ -61,10 +61,29 @@ pub fn decide_wake_signals(
     active_blocker_to_verifier: bool,
     flags: &[WakeSignalInput],
 ) -> WakeDecision {
+    let newest_overall = flags.iter().max_by_key(|f| f.modified_ms);
+    if active_blocker_to_verifier
+        && flags.iter().any(|f| f.role == "diagnostics")
+        && newest_overall.map(|f| f.role) != Some("executor")
+    {
+        // Compatibility shim: legacy diagnostics wake signals represented
+        // planner follow-up work. Under an active blocker, suppress the
+        // legacy follow-up bundle unless executor is already the newest wake.
+        return WakeDecision {
+            scheduled_phase: None,
+            planner_pending: false,
+            diagnostics_pending: false,
+            executor_wake: false,
+        };
+    }
+
     let mut newest: Option<&WakeSignalInput> = None;
     let mut planner_suppressed_by_blocker = false;
     for flag in flags {
-        if flag.role == "planner" && active_blocker_to_verifier {
+        if matches!(flag.role, "planner" | "diagnostics") && active_blocker_to_verifier {
+            // Legacy diagnostics wake signals are planner follow-up now, so an
+            // active blocker must suppress them the same way it suppresses a
+            // direct planner wake.
             planner_suppressed_by_blocker = true;
             continue;
         }
@@ -105,7 +124,7 @@ pub fn decide_wake_signals(
 pub fn scheduled_phase_resume_done(
     phase: &str,
     planner_pending: bool,
-    _diagnostics_pending: bool,
+    diagnostics_pending: bool,
     verifier_pending_results: usize,
     verifier_joinset_empty: bool,
     executor_lane_pending: bool,
@@ -114,7 +133,7 @@ pub fn scheduled_phase_resume_done(
     match phase {
         "planner" => !planner_pending,
         "verifier" => verifier_pending_results == 0 && verifier_joinset_empty,
-        "diagnostics" => !planner_pending,
+        "diagnostics" => !diagnostics_pending,
         "executor" => !executor_lane_pending && !executor_in_progress,
         "solo" => true,
         _ => true,
@@ -191,7 +210,10 @@ pub fn allow_named_phase_run(scheduled_phase: Option<&str>, allowed_phase: &str)
 /// Returns true when executor dispatch should be frozen because a resume phase
 /// that requires serialized execution (planner, verifier) is active.
 pub fn block_executor_dispatch(scheduled_phase: Option<&str>) -> bool {
-    matches!(scheduled_phase, Some("planner") | Some("verifier"))
+    matches!(
+        scheduled_phase,
+        Some("planner") | Some("verifier") | Some("diagnostics")
+    )
 }
 
 /// Returns true when diagnostics is allowed to run.

@@ -215,7 +215,7 @@ fn wake_signals_sets_diagnostics_pending_when_diagnostics_is_newest() {
 }
 
 #[test]
-fn wake_signals_ignores_blocked_planner_and_keeps_next_newest_role() {
+fn wake_signals_suppresses_legacy_planner_followups_under_active_blocker() {
     let flags = vec![
         WakeSignalInput {
             role: "planner",
@@ -231,8 +231,8 @@ fn wake_signals_ignores_blocked_planner_and_keeps_next_newest_role() {
         },
     ];
     let decision = decide_wake_signals(true, &flags);
-    assert_eq!(decision.scheduled_phase, Some("planner".to_string()));
-    assert!(decision.planner_pending);
+    assert_eq!(decision.scheduled_phase, None);
+    assert!(!decision.planner_pending);
     assert!(!decision.diagnostics_pending);
     assert!(!decision.executor_wake);
 }
@@ -337,7 +337,7 @@ fn scheduled_phase_resume_done_all_cases() {
     assert!(!scheduled_phase_resume_done(
         "verifier", false, false, 1, false, false, false
     ));
-    assert!(scheduled_phase_resume_done(
+    assert!(!scheduled_phase_resume_done(
         "diagnostics",
         false,
         true,
@@ -560,8 +560,8 @@ fn semantic_control_state_projects_wake_signals_and_resume_hydration() {
             },
         ],
     );
-    assert_eq!(wake.scheduled_phase.as_deref(), Some("planner"));
-    assert!(wake.planner_pending);
+    assert_eq!(wake.scheduled_phase.as_deref(), None);
+    assert!(!wake.planner_pending);
     assert!(!wake.diagnostics_pending);
 
     let resumed = semantic.with_resumed_checkpoint_phase("verifier", false);
