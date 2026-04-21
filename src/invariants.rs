@@ -211,7 +211,7 @@ fn invariant_applies_to_role(inv: &DiscoveredInvariant, proposed_role: &str) -> 
     inv.gates.iter().any(|gate| gate == proposed_role)
 }
 
-/// Dispatch an `invariants` tool action from the diagnostics/solo role.
+/// Dispatch an `invariants` tool action from the planner/solo role.
 ///
 /// Supported ops:
 /// - `read`    — return current enforced_invariants.json (pending + promoted)
@@ -222,20 +222,21 @@ pub fn handle_invariants_action(
     workspace: &Path,
     action: &serde_json::Value,
 ) -> anyhow::Result<(bool, String)> {
-    handle_invariants_action_with_writer(workspace, action, None)
+    handle_invariants_action_with_writer(workspace, action, None, "planner")
 }
 
 pub fn handle_invariants_action_with_writer(
     workspace: &Path,
     action: &serde_json::Value,
     writer: Option<&mut crate::canonical_writer::CanonicalWriter>,
+    actor_role: &str,
 ) -> anyhow::Result<(bool, String)> {
     let op = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
     match op {
         "read" => op_read(workspace),
         "promote" => op_promote(workspace, action, writer),
-        "enforce" => op_enforce(workspace, action, writer),
-        "collapse" => op_collapse(workspace, action, writer),
+        "enforce" => op_enforce(workspace, action, writer, actor_role),
+        "collapse" => op_collapse(workspace, action, writer, actor_role),
         other => anyhow::bail!(
             "unknown invariants op '{other}' — use: read | promote | enforce | collapse"
         ),
@@ -309,6 +310,7 @@ fn op_enforce(
     workspace: &Path,
     action: &serde_json::Value,
     writer: Option<&mut crate::canonical_writer::CanonicalWriter>,
+    actor_role: &str,
 ) -> anyhow::Result<(bool, String)> {
     let id = action
         .get("id")
@@ -343,7 +345,7 @@ fn op_enforce(
         "kind": "invariant_lifecycle",
         "phase": "enforce",
         "invariant_id": id,
-        "actor": "diagnostics",
+        "actor": actor_role,
         "ts_ms": crate::logging::now_ms(),
     });
     let _ = crate::logging::append_action_log_record(&record);
@@ -357,6 +359,7 @@ fn op_collapse(
     workspace: &Path,
     action: &serde_json::Value,
     writer: Option<&mut crate::canonical_writer::CanonicalWriter>,
+    actor_role: &str,
 ) -> anyhow::Result<(bool, String)> {
     let id = action
         .get("id")
@@ -389,7 +392,7 @@ fn op_collapse(
         "phase": "collapse",
         "invariant_id": id,
         "rationale": rationale,
-        "actor": "diagnostics",
+        "actor": actor_role,
         "ts_ms": crate::logging::now_ms(),
     });
     let _ = crate::logging::append_action_log_record(&record);
@@ -436,10 +439,13 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
     // ── Meta-issue 1: action surface ────────────────────────────────────────
     // Only present when the invariants action is actually missing from the live source.
     const ACTION_SURFACE_ID: &str = "inv_action_surface_missing";
-    let has_action_surface = source_contains(
+    let has_action_surface = source_contains_any(
         workspace,
         "src/tools.rs",
-        "\"invariants\" => crate::invariants::handle_invariants_action",
+        &[
+            "\"invariants\" => {",
+            "crate::invariants::handle_invariants_action_with_writer(",
+        ],
     ) && source_contains(
         workspace,
         "src/tool_schema.rs",
@@ -448,13 +454,13 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
     if !has_action_surface && !existing_ids.contains(ACTION_SURFACE_ID) {
         file.issues.push(Issue {
             id: ACTION_SURFACE_ID.to_string(),
-            title: "Invariant lifecycle has no action surface — diagnostics cannot review, enforce, or collapse invariants".to_string(),
+            title: "Invariant lifecycle has no action surface — planner cannot review, enforce, or collapse invariants".to_string(),
             status: "open".to_string(),
             priority: "critical".to_string(),
             kind: "invariant_violation".to_string(),
             description: concat!(
                 "src/invariants.rs populates agent_state/enforced_invariants.json and auto-promotes ",
-                "patterns at support_count >= MIN_INVARIANT_SUPPORT, but the diagnostics agent has no ",
+                "patterns at support_count >= MIN_INVARIANT_SUPPORT, but planner has no ",
                 "action surface to review, promote, enforce, or collapse invariants. ",
                 "The route gate G_r is observational only (blocked=false) — it logs violations but never ",
                 "returns early. The lessons system is the model: `lessons` action with ops ",
@@ -469,7 +475,7 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
                 "src/invariants.rs:evaluate_invariant_gate returns Err but app.rs route gate has blocked=false — never hard-blocks".to_string(),
                 "src/tools.rs dispatch table is missing the 'invariants' branch required to call handle_invariants_action".to_string(),
                 "src/tool_schema.rs is missing the invariants action schema, so invalid-action repair cannot guide the model toward legal invariants ops".to_string(),
-                "Without both dispatch + schema, diagnostics cannot review, enforce, or collapse discovered invariants from enforced_invariants.json".to_string(),
+                "Without both dispatch + schema, planner cannot review, enforce, or collapse discovered invariants from enforced_invariants.json".to_string(),
             ],
             discovered_by: "invariants_analyzer".to_string(),
             score: 0.0,
@@ -506,7 +512,7 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
             kind: "invariant_violation".to_string(),
             description: concat!(
                 "agent_state/enforced_invariants.json is written by maybe_synthesize_invariants on every ",
-                "checkpoint cycle but is invisible to all roles. Diagnostics cannot see which invariants are ",
+                "checkpoint cycle but is invisible to all roles. Planner cannot see which invariants are ",
                 "accumulating support and cannot decide which to escalate. ",
                 "Fix: add read_enforced_invariants(workspace) call to load_planner_inputs in src/prompt_inputs.rs ",
                 "and inject the result into the diagnostics/planner prompt surfaces in src/prompts.rs. ",
@@ -517,7 +523,7 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
             evidence: vec![
                 "src/prompt_inputs.rs does not call read_enforced_invariants(workspace) when building prompt inputs".to_string(),
                 "src/prompts.rs does not mention agent_state/enforced_invariants.json in the relevant role instructions".to_string(),
-                "Without the dynamic enforced view, the planner/diagnostics agents can only see static INVARIANTS.json".to_string(),
+                "Without the dynamic enforced view, planner can only see static INVARIANTS.json".to_string(),
             ],
             discovered_by: "invariants_analyzer".to_string(),
             score: 0.0,
@@ -574,7 +580,7 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
             description: format!(
                 "Invariant `{}` has been auto-promoted (support_count={} >= threshold) but its gate(s) [{}] \
                  are still observational (blocked=false). The invariant predicate: \"{}\". \
-                 Diagnostics should review this invariant and, if the predicate is correct, call \
+                 Planner should review this invariant and, if the predicate is correct, call \
                  `invariants op=enforce id={}` to flip the gate to hard-blocking. \
                  If the root cause has been structurally fixed, call `invariants op=collapse id={}`.",
                 inv.id, inv.support_count, gates_str, inv.predicate_text, inv.id, inv.id
@@ -606,6 +612,12 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
 fn source_contains(workspace: &Path, relative_path: &str, needle: &str) -> bool {
     std::fs::read_to_string(workspace.join(relative_path))
         .map(|raw| raw.contains(needle))
+        .unwrap_or(false)
+}
+
+fn source_contains_any(workspace: &Path, relative_path: &str, needles: &[&str]) -> bool {
+    std::fs::read_to_string(workspace.join(relative_path))
+        .map(|raw| needles.iter().all(|needle| raw.contains(needle)))
         .unwrap_or(false)
 }
 

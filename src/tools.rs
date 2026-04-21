@@ -7721,6 +7721,7 @@ fn execute_action(
                 workspace,
                 action,
                 writer.as_deref_mut(),
+                role,
             )
         }
         "batch" => handle_batch_action(role, step, workspace, action),
