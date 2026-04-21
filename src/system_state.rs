@@ -198,25 +198,30 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
             s.planner_pending_reason = Some("objective_plan_gap".to_string());
         }
         ControlEvent::DiagnosticsPendingSet { pending } => {
-            s.diagnostics_pending = *pending;
-            if !pending {
-                s.diagnostics_pending_reason = None;
-            }
+            // Compatibility shim: diagnostics control is deprecated; map to planner pending.
+            s.planner_pending = *pending;
+            s.diagnostics_pending = false;
+            s.diagnostics_pending_reason = None;
         }
         ControlEvent::DiagnosticsReconciliationQueued => {
             // Compatibility no-op for tlogs that recorded reconciliation queue
             // markers before the event model gained a dedicated variant here.
             // Keep replay tolerant without inventing state that cannot be
             // reconstructed from the payloadless historical record.
+            s.planner_pending = true;
         }
         ControlEvent::VerifierBlockerSet { active } => {
             s.active_blocker_to_verifier = *active;
         }
         ControlEvent::DiagnosticsVerifierFollowupQueued => {
-            s.diagnostics_pending = true;
-            s.diagnostics_pending_reason = Some("verifier_followup".to_string());
+            // Compatibility shim: diagnostics follow-up is planner follow-up now.
+            s.planner_pending = true;
+            s.planner_pending_reason = Some("verifier_followup".to_string());
+            s.diagnostics_pending = false;
+            s.diagnostics_pending_reason = None;
         }
         ControlEvent::DiagnosticsTextSet { text } => {
+            // Keep field for replay compatibility only.
             s.diagnostics_text = text.clone();
         }
         ControlEvent::ExternalUserMessageConsumed { role, signature } => {

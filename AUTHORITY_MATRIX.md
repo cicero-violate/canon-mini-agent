@@ -14,7 +14,7 @@ This file defines the intended authority class for runtime artifacts.
 | `agent_state/OBJECTIVES.json`                      | canonical  | Runtime objective authority.                                                          |
 | `agent_state/tlog.ndjson`                          | canonical  | Append-only runtime authority for canonical control/effect history.                   |
 | `agent_state/ISSUES.json`                          | projection | Rebuildable issue view from canonical/projected evidence.                             |
-| `agent_state/VIOLATIONS.json`                      | projection | Rebuildable verifier/diagnostics view.                                                |
+| `agent_state/VIOLATIONS.json`                      | projection | Rebuildable verifier/planner-projection view.                                         |
 | `agent_state/blockers.json`                        | projection | Rebuildable blocker projection with tlog-backed recovery.                             |
 | `agent_state/lessons.json`                         | projection | Synthesized lessons projection backed by snapshot effects.                            |
 | `agent_state/enforced_invariants.json`             | projection | Synthesized enforced-invariants projection backed by snapshot effects.                |
@@ -39,8 +39,8 @@ Derived from source/tests only (no `SPEC.md` read).
 ### Runtime gate functions
 - `src/invariants.rs`: `evaluate_invariant_gate(...)` — hard gate predicate check for `route|planner|executor` role proposals.
 - `src/invariants.rs`: `default_gates_for_conditions(...)` — maps invariant conditions/error classes to default enforcing gates.
-- `src/state_space.rs`: `decide_phase_gates(...)` — computes planner/executor/verifier/diagnostics runnable gates from canonical state.
-- `src/state_space.rs`: `allow_named_phase_run(...)`, `block_executor_dispatch(...)`, `allow_diagnostics_run(...)`, `decide_resume_phase(...)`, `decide_post_diagnostics(...)` — gate helpers used by orchestrator transitions.
+- `src/state_space.rs`: `decide_phase_gates(...)` — computes planner/executor/verifier runnable gates from canonical state. Legacy diagnostics inputs are remapped to planner for replay compatibility.
+- `src/state_space.rs`: `allow_named_phase_run(...)`, `block_executor_dispatch(...)`, `allow_diagnostics_run(...)` (compat no-op), `decide_resume_phase(...)`, `decide_post_diagnostics(...)` — gate helpers used by orchestrator transitions.
 - `src/app.rs`: `collect_wake_signal_inputs(...)` / `apply_wake_signals(...)` — canonical wake-signal application from `SystemState` (file-flag fallback retired).
 
 ### Canonical authority mutation/effect sink

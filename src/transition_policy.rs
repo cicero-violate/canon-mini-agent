@@ -4,7 +4,7 @@ use crate::system_state::SystemState;
 fn is_valid_phase(phase: &str) -> bool {
     matches!(
         phase,
-        "bootstrap" | "planner" | "executor" | "verifier" | "diagnostics" | "solo"
+        "bootstrap" | "planner" | "executor" | "verifier" | "solo"
     )
 }
 
@@ -143,7 +143,9 @@ fn validate_phase_set(
         }
         "planner" => validate_pending_phase(state, state.planner_pending, "planner")?,
         "diagnostics" => {
-            validate_pending_phase(state, state.diagnostics_pending, "diagnostics")?
+            return Err(
+                "illegal transition: diagnostics phase is deprecated; use planner".to_string(),
+            )
         }
         "solo" => validate_solo_phase(state)?,
         _ => {}

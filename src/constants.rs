@@ -153,19 +153,28 @@ pub const ENDPOINT_SPECS: &[EndpointSpec] = &[
     },
 ];
 
-pub static DIAGNOSTICS_FILE_PATH: OnceLock<String> = OnceLock::new();
+pub static PLANNER_PROJECTION_FILE_PATH: OnceLock<String> = OnceLock::new();
 
-pub fn diagnostics_file_for_instance(instance_id: &str) -> String {
-    format!("agent_state/{instance_id}/diagnostics-{instance_id}.json")
+pub fn planner_projection_file_for_instance(instance_id: &str) -> String {
+    format!("agent_state/{instance_id}/planner-{instance_id}.json")
 }
 
 pub fn lane_plan_file_for_instance(instance_id: &str, endpoint_id: &str) -> String {
     format!("agent_state/{instance_id}/executor-{endpoint_id}.json")
 }
 
-pub fn diagnostics_file() -> &'static str {
-    DIAGNOSTICS_FILE_PATH
+pub fn planner_projection_file() -> &'static str {
+    PLANNER_PROJECTION_FILE_PATH
         .get()
         .map(String::as_str)
-        .unwrap_or("agent_state/default/diagnostics-default.json")
+        .unwrap_or("agent_state/default/planner-default.json")
+}
+
+// Compatibility shims for legacy diagnostics naming.
+pub fn diagnostics_file_for_instance(instance_id: &str) -> String {
+    planner_projection_file_for_instance(instance_id)
+}
+
+pub fn diagnostics_file() -> &'static str {
+    planner_projection_file()
 }

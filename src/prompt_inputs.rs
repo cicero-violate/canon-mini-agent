@@ -14,8 +14,8 @@ use crate::issues::{read_ranked_open_issues, Issue};
 use crate::reports::{DiagnosticsFinding, DiagnosticsReport, Impact, Severity, ViolationsReport};
 
 use crate::prompts::{
-    single_role_diagnostics_prompt, single_role_executor_prompt, single_role_planner_prompt,
-    single_role_verifier_prompt, AgentPromptKind,
+    single_role_executor_prompt, single_role_planner_prompt, single_role_verifier_prompt,
+    AgentPromptKind,
 };
 
 #[derive(Clone)]
@@ -1773,13 +1773,11 @@ impl SingleRoleContext<'_> {
 pub fn load_single_role_inputs(
     ctx: &SingleRoleContext<'_>,
     is_verifier: bool,
-    is_diagnostics: bool,
+    _is_diagnostics: bool,
     is_planner: bool,
 ) -> Result<SingleRoleInputs> {
     let (role, prompt_kind) = if is_verifier {
         ("verifier", AgentPromptKind::Verifier)
-    } else if is_diagnostics {
-        ("diagnostics", AgentPromptKind::Diagnostics)
     } else if is_planner {
         ("mini_planner", AgentPromptKind::Planner)
     } else {
@@ -1815,7 +1813,7 @@ pub fn build_single_role_prompt(
 ) -> Result<String> {
     let prompt = match inputs.prompt_kind {
         AgentPromptKind::Verifier => build_verifier_role_prompt(ctx, inputs, cargo_test_failures)?,
-        AgentPromptKind::Diagnostics => build_diagnostics_role_prompt(ctx, cargo_test_failures)?,
+        AgentPromptKind::Diagnostics => build_planner_role_prompt(ctx, inputs, cargo_test_failures)?,
         AgentPromptKind::Planner => build_planner_role_prompt(ctx, inputs, cargo_test_failures)?,
         AgentPromptKind::Executor => build_executor_role_prompt(ctx)?,
         AgentPromptKind::Solo => {
@@ -1838,19 +1836,6 @@ fn build_verifier_role_prompt(
         &objectives,
         &semantic_control,
         &executor_diff_text,
-        cargo_test_failures,
-    ))
-}
-
-fn build_diagnostics_role_prompt(
-    ctx: &SingleRoleContext<'_>,
-    cargo_test_failures: &str,
-) -> Result<String> {
-    let objectives = ctx.read(SingleRoleRead::Objectives)?;
-    let semantic_control = ctx.read(SingleRoleRead::SemanticControl)?;
-    Ok(single_role_diagnostics_prompt(
-        &objectives,
-        &semantic_control,
         cargo_test_failures,
     ))
 }

@@ -258,14 +258,15 @@ fn role_default_schema_actions(kind: AgentPromptKind) -> &'static [&'static str]
             "batch",
         ],
         AgentPromptKind::Diagnostics => &[
+            "plan",
+            "objectives",
             "issue",
-            "violation",
+            "read_file",
             "apply_patch",
             "symbols_rename_candidates",
             "symbols_prepare_rename",
+            "rename_symbol",
             "python",
-            "read_file",
-            "list_dir",
             "run_command",
             "message",
             "semantic_map",
@@ -304,7 +305,7 @@ pub(crate) fn role_default_schema_actions_for_role(role: &str) -> &'static [&'st
     } else if role.starts_with("verifier") {
         role_default_schema_actions(AgentPromptKind::Verifier)
     } else if role.starts_with("diagnostics") {
-        role_default_schema_actions(AgentPromptKind::Diagnostics)
+        role_default_schema_actions(AgentPromptKind::Planner)
     } else if role.starts_with("solo") {
         role_default_schema_actions(AgentPromptKind::Solo)
     } else {
@@ -347,7 +348,7 @@ fn prompt_intro(kind: AgentPromptKind) -> &'static str {
         AgentPromptKind::Executor => "You are the canon executor agent.",
         AgentPromptKind::Verifier => "You are the canon verifier agent (legacy mode; inactive in runtime two-role orchestration).",
         AgentPromptKind::Planner => "You are the canon planner agent.",
-        AgentPromptKind::Diagnostics => "You are the canon diagnostics agent (legacy mode; inactive in runtime two-role orchestration).",
+        AgentPromptKind::Diagnostics => "You are the canon planner agent (diagnostics compatibility mode).",
         AgentPromptKind::Solo => "You are the canon solo agent (startup compatibility mode only; inactive in runtime two-role orchestration).",
     }
 }
@@ -357,7 +358,7 @@ fn prompt_mission(kind: AgentPromptKind) -> &'static str {
         AgentPromptKind::Executor => "Your job is to execute the highest-priority READY work described in planner handoff messages and the master plan.\n`SPEC.md` is the canonical contract.\nLane plans are deprecated and should not be relied on for task selection.\nPlanner validates progress against `SPEC.md` and current evidence in two-role runtime.\nYou should only work on the top 1-10 ready tasks in the current cycle, then yield.\nAll actions (`read_file`, `apply_patch`, `run_command`, `plan`, `message`, etc.) are JSON you emit in your response text — they are not function calls or external tools.\nDo not reorganize or update `SPEC.md` or plan files yourself.\nMake source changes, run checks, and report evidence in `message.payload`.",
         AgentPromptKind::Verifier => "Your job is to critically review executor evidence against the codebase and judge whether the implementation satisfies `SPEC.md`.\nExecutor evidence is a hint only. The canonical truth is the codebase versus `SPEC.md`.\nIf violations are found, use the `violation` action (op=upsert) to record them in `VIOLATIONS.json`. Use `violation` op=resolve to clear violations that are no longer active. Never use `apply_patch` for VIOLATIONS.json.\nBe skeptical — do not trust executor claims at face value.",
         AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `agent_state/OBJECTIVES.json`, and the semantic-control snapshot in this prompt, then derive the master plan plus executor handoff guidance.\nThe semantic-control snapshot is the tlog-derived authority for routing/control and projects issues, violations, and invariants into one view.\nOn every cycle, re-evaluate the workspace and update `PLAN.json` via the `plan` action (emit it as JSON in your response).\nAt the end of every planner cycle, review `agent_state/OBJECTIVES.json` and add or update objectives using the `objectives` action (emit it as JSON in your response).\nAct on projected open issues from semantic control and convert the top open items into ready executor tasks.\nAll actions (`plan`, `objectives`, `issue`, `message`, `read_file`, etc.) are JSON you emit in your response text — they are not function calls or external tools.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
-        AgentPromptKind::Diagnostics => "Your job is to scan the active workspace state, use the semantic-control snapshot as the control authority, derive the current failures from evidence, and refresh the projected diagnostics/issue/violation views with the `issue` and `violation` actions. Artifact views are supporting projections; planner follow-up is owned by semantic control.",
+        AgentPromptKind::Diagnostics => "Your job is to read `SPEC.md`, `agent_state/OBJECTIVES.json`, and semantic control, then update planner-owned projections and planning state. Diagnostics is deprecated as an active role.",
         AgentPromptKind::Solo => "Your job is to coordinate planning, execution, and verification in a single role while participating in orchestration.\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nYou may read, patch, and verify any in-workspace files when justified by evidence.\nKeep evidence tight and run checks before claiming completion.\nAt the end of every cycle — before emitting a completion message — review `agent_state/OBJECTIVES.json` and add or update objectives based on what you discovered. New objectives must include id, title, status, scope, authority_files, category, level, description, requirement, verification, and success_criteria. Use `apply_patch` to write them directly.",
     }
 }
@@ -368,7 +369,7 @@ fn prompt_workspace(kind: AgentPromptKind) -> String {
         AgentPromptKind::Executor => format!("You work inside the canon workspace at {ws}. All relative file paths resolve against this workspace root."),
         AgentPromptKind::Verifier => format!("You work inside the canon workspace at {ws}."),
         AgentPromptKind::Planner => format!("You work inside the canon workspace at {ws}. Use bash, semantic_map/symbol_window/symbol_refs (prefer over read_file for Rust source), python, and apply_patch (lane plans only) to review the current project state before reorganizing the plan."),
-        AgentPromptKind::Diagnostics => format!("You must inspect the active workspace under {ws}, including source files plus any workspace-local state and observability artifacts that exist for this project."),
+        AgentPromptKind::Diagnostics => format!("You work inside the canon workspace at {ws}. Use planner-compatible actions and planner-owned projections."),
         AgentPromptKind::Solo => format!("You work inside the canon workspace at {ws}. Use the full tool suite to plan, execute, and verify changes."),
     }
 }
@@ -421,7 +422,7 @@ fn role_key(kind: AgentPromptKind) -> &'static str {
         AgentPromptKind::Executor => "executor",
         AgentPromptKind::Verifier => "verifier",
         AgentPromptKind::Planner => "planner",
-        AgentPromptKind::Diagnostics => "diagnostics",
+        AgentPromptKind::Diagnostics => "planner",
         AgentPromptKind::Solo => "solo",
     }
 }
@@ -471,53 +472,6 @@ On every planning cycle:\n\
 Provenance fields — include on every new task:\n\
 - `issue_refs`: array of ISSUES.json ids that motivated this task (e.g. [\"auto_mir_dup_abc123\"]). Empty array if none.\n\
 - `objective_id`: the agent_state/OBJECTIVES.json objective id this task advances (e.g. \"obj_reduce_complexity\"). Omit if no clear match.";
-
-fn diagnostics_process() -> String {
-    let workspace = crate::constants::workspace();
-    let violations = "";
-    let objectives = "";
-    let cargo_test_failures = "";
-    let diagnostics_path = diagnostics_file();
-    let _diagnostics_budget_marker = diagnostics_path.len();
-    let prefix = format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nRead files and search the source code for bugs and inconsistencies (use read_file + run_command/ripgrep).\nRun python analysis actions over available workspace-local logs, state, and code evidence.\nDo not assume canon-specific observability names or paths. Discover the actual project-local artifacts first by inspecting files and directories that exist under WORKSPACE. Examples may include state/, log/, logs, runtime logs, jsonl logs, agent logs, or other workspace-defined artifacts.\nInfer the root cause from the evidence and cite detailed sources of errors (file paths, functions, log evidence).\n\nLatest verifier summary:\n(none yet)"
-    );
-    let violations_heading = format!("Violations (from {VIOLATIONS_FILE})");
-    let objectives_heading = format!("Objectives (from {OBJECTIVES_FILE})");
-    let cargo_failures_heading =
-        "Latest cargo test failures (from cargo_test_failures.json)".to_string();
-    let suffix = format!(
-        "\n\nVerify whether objectives in {OBJECTIVES_FILE} are being met and note gaps.\nUse {SPEC_FILE}, {OBJECTIVES_FILE}, and {INVARIANTS_FILE} as the contract, not lane plans.\nInfer failures from code, logs, runtime state, and verifier findings.\nPrefer evidence from workspace-local artifacts that actually exist over assumptions from other projects.\nTreat {VIOLATIONS_FILE}, ISSUES.json, and {diagnostics_path} as derived projections to keep synchronized with current evidence, not as control authority.\nDo not restate verifier-cleared or already-resolved issues unless fresh current-cycle source or runtime evidence reconfirms them.\nIf the mismatch is stale projected state rather than a live implementation bug, repair the projection instead of reopening the cleared issue.\n\nWrite a ranked diagnostics report to {diagnostics_path}."
-    );
-    let items = [
-        PromptItem {
-            heading: &violations_heading,
-            body: violations,
-            reserve: 1000,
-            cap: 3000,
-            weight: 4,
-            always_include: false,
-        },
-        PromptItem {
-            heading: &objectives_heading,
-            body: objectives,
-            reserve: 800,
-            cap: 2500,
-            weight: 4,
-            always_include: false,
-        },
-        PromptItem {
-            heading: &cargo_failures_heading,
-            body: cargo_test_failures,
-            reserve: 800,
-            cap: 2500,
-            weight: 2,
-            always_include: false,
-        },
-    ];
-    let _ = render_budgeted_prompt(&prefix, &items, &suffix);
-    format!("━━━ DIAGNOSTICS PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nGather evidence from the workspace, projected artifact views, and the current codebase.\n\nMandatory log sources — read ALL of these before writing any findings:\n  - agent_state/tlog.ndjson          — total-ordered event log (ControlEvent sequence); reveals state-machine transitions, phase changes, invariant violations\n  - agent_state/enforced_invariants.json — dynamically discovered invariants (discovered/promoted/enforced/collapsed); check for promoted-but-unenforced entries and stale collapsed entries\n  - agent_state/lessons.json         — synthesized behavioral lessons; surface any high-weight recurring lessons as diagnostics findings\n  - agent_state/default/actions.jsonl — full agent action history; tail with python to find recent failures, retry loops, and stall patterns\n\nStep 1 — Derive ranked failures from current evidence, with tlog-derived semantic control state as the routing/control authority.\nStep 2 — Project those findings into {diagnostics_path}, ISSUES.json, and {VIOLATIONS_FILE} using the available actions and canon-mini-agent/src/reports.rs enums.\n  - op=create if no matching issue exists (include kind, location, evidence, priority).\n  - op=update if a matching issue exists but its evidence is stale.\n  - op=set_status status=resolved if a prior issue is no longer supported by evidence.\n  Artifact files are derived outputs to keep synchronized with current evidence; they do not control planner follow-up.\n\nRules:\n- Use the `python` action for structured analysis of project state and any available logs.\n- Rank issues by impact on correctness, convergence, and repairability.\n- Check whether control-flow decisions are consistent with INVARIANTS.json.\n- Before trusting any trace or log file, confirm it was updated in the current cycle (mtime, size change, or fresh producer command).\n- Treat empty `rg` / `grep` results as ambiguous: no match, stale file, or incomplete write are all possible.\n- Prefer the most recently written evidence sources over ad-hoc temp traces when they disagree.\n- Derive observability paths from workspace-local state and log artifacts that actually exist for this project instead of assuming canon-specific defaults.")
-}
 
 const EXECUTOR_HANDOFF_BULLETS: &[&str] = &[
     "files changed",
@@ -627,21 +581,7 @@ const PLANNER_RULES: &[&str] = &[
 ];
 
 fn diagnostics_rules() -> Vec<String> {
-    let mut rules = vec![
-        "- Use the `python` action for structured analysis of project state and any available logs.".to_string(),
-        "- Emit schema-valid actions only: every `python` action MUST include a non-empty `code` field; every `issue` `set_status` action MUST include the exact `issue_id`; every diagnostics report write MUST include evidence entries with current-source validation markers such as `read_file <path>:<lines>`, `validated against current source`, or equivalent cited source validation.".to_string(),
-        "- Write ranked findings to PLANS/default/diagnostics-default.json AND open or update issues in ISSUES.json for every significant finding. Use the `issue` action (op=create or op=update) with kind, location, evidence, and priority. Issues carry provenance that the planner trusts; raw diagnostics output is supporting context only.".to_string(),
-        "- For each ranked failure you report: if no matching ISSUES.json entry exists, create one with `issue` op=create. If one exists but is stale, update it with `issue` op=update and fresh evidence. If a prior issue is now resolved, close it with `issue` op=set_status status=resolved.".to_string(),
-        "- Rank issues by impact on correctness, convergence, and repairability.".to_string(),
-        "- Check control-flow and state-management decisions against INVARIANTS.json.".to_string(),
-        "- Complexity report artifact (supervisor-generated): agent_state/reports/complexity/latest.json (proxy metric complexity_proxy=mir_blocks) for ranking refactor hotspots.".to_string(),
-        "- Canonical log sources (read all before writing findings): agent_state/tlog.ndjson (state-machine event log), agent_state/enforced_invariants.json (runtime invariant registry), agent_state/lessons.json (synthesized behavioral lessons), agent_state/default/actions.jsonl (full action history — tail with python).".to_string(),
-        "- Before trusting any trace or log file, confirm it was updated in the current cycle (mtime, size change, or fresh producer command).".to_string(),
-        "- Treat empty `rg` / `grep` results as ambiguous: no match, stale file, or incomplete write are all possible.".to_string(),
-        "- Prefer the most recently written evidence sources over ad-hoc temp traces when they disagree.".to_string(),
-    ];
-    rules.extend(load_role_overrides(AgentPromptKind::Diagnostics));
-    rules
+    role_rules_with_overrides(PLANNER_RULES, AgentPromptKind::Planner)
 }
 
 fn executor_rules() -> Vec<String> {
@@ -717,10 +657,10 @@ fn prompt_tail(kind: AgentPromptKind) -> String {
             PLANNER_PROCESS,
             None,
             &role_rules_with_overrides(PLANNER_RULES, AgentPromptKind::Planner),
-            Some("Diagnostics"),
+            Some("Planner"),
         ),
         AgentPromptKind::Diagnostics => format_prompt_tail_with_prefix(
-            &diagnostics_process(),
+            PLANNER_PROCESS,
             None,
             &diagnostics_rules(),
             Some("Planner"),
@@ -941,54 +881,6 @@ pub(crate) fn single_role_verifier_prompt(
             reserve: 800,
             cap: 3000,
             weight: 3,
-            always_include: false,
-        },
-        PromptItem {
-            heading: &cargo_failures_heading,
-            body: cargo_test_failures,
-            reserve: 800,
-            cap: 2500,
-            weight: 2,
-            always_include: false,
-        },
-    ];
-    render_budgeted_prompt(&prefix, &items, &suffix)
-}
-
-pub(crate) fn single_role_diagnostics_prompt(
-    objectives: &str,
-    semantic_control: &str,
-    cargo_test_failures: &str,
-) -> String {
-    let workspace = workspace();
-    let diagnostics_path = diagnostics_file();
-    let issues_file = ISSUES_FILE;
-    let prefix = format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nRead files and search the source code for bugs and inconsistencies (use read_file + run_command/ripgrep).\nRun python analysis actions over available workspace-local logs, state, and code evidence.\nDo not assume canon-specific observability names or paths. Discover the actual project-local artifacts first by inspecting files and directories that exist under WORKSPACE. Examples may include state/, log/, logs, runtime logs, jsonl logs, agent logs, or other workspace-defined artifacts.\nInfer the root cause from the evidence and cite detailed sources of errors (file paths, functions, log evidence).\n\nLatest verifier summary:\n(none yet)"
-    );
-    let objectives_heading = format!("Objectives (from {OBJECTIVES_FILE})");
-    let semantic_control_heading =
-        "Semantic control state (tlog-derived authority + projected views)".to_string();
-    let cargo_failures_heading =
-        "Latest cargo test failures (from cargo_test_failures.json)".to_string();
-    let suffix = format!(
-        "\n\nVerify whether objectives in {OBJECTIVES_FILE} are being met and note gaps.\nUse {SPEC_FILE}, {OBJECTIVES_FILE}, and {INVARIANTS_FILE} as the contract, not lane plans.\nInfer failures from code, logs, runtime state, and verifier findings.\nPrefer evidence from workspace-local artifacts that actually exist over assumptions from other projects.\nTreat {VIOLATIONS_FILE}, {issues_file}, and {diagnostics_path} as derived projections to keep synchronized with current evidence, not as control authority.\nDo not restate verifier-cleared or already-resolved issues unless fresh current-cycle source or runtime evidence reconfirms them.\nIf the mismatch is stale projected state rather than a live implementation bug, repair the projection instead of reopening the cleared issue.\n\nWrite a ranked diagnostics report to {diagnostics_path}."
-    );
-    let items = [
-        PromptItem {
-            heading: &semantic_control_heading,
-            body: semantic_control,
-            reserve: 1000,
-            cap: 3000,
-            weight: 4,
-            always_include: true,
-        },
-        PromptItem {
-            heading: &objectives_heading,
-            body: objectives,
-            reserve: 800,
-            cap: 2500,
-            weight: 4,
             always_include: false,
         },
         PromptItem {

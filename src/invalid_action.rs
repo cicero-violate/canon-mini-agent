@@ -35,13 +35,6 @@ pub fn default_message_route(
             "verification",
             "verified",
         )
-    } else if role == "diagnostics" {
-        (
-            "diagnostics",
-            normalize_message_target(role, "planner"),
-            "diagnostics",
-            "complete",
-        )
     } else if role == "solo" {
         (
             "solo",
@@ -711,7 +704,6 @@ pub fn build_invalid_action_feedback(
         action_schema = action_schema_json(kind);
         schema_diff = schema_diff_messages(action);
         collect_general_action_schema_diff(&mut schema_diff, action, obj, role, kind);
-        maybe_push_planner_plan_diagnostics_error(&mut schema_diff, action, role, kind);
         if kind == "message" {
             collect_message_schema_diff(&mut schema_diff, action, obj, &mut expected_format);
         }
@@ -814,39 +806,6 @@ fn push_missing_or_unknown_action(
 fn add_unique_schema_diff(schema_diff: &mut Vec<String>, msg: String) {
     if !schema_diff.iter().any(|s| s == &msg) {
         schema_diff.push(msg);
-    }
-}
-
-fn maybe_push_planner_plan_diagnostics_error(
-    schema_diff: &mut Vec<String>,
-    action: &Value,
-    role: &str,
-    kind: &str,
-) {
-    if kind != "plan" || !matches!(role, "planner" | "mini_planner") {
-        return;
-    }
-    let rationale = action
-        .get("rationale")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let observation = action
-        .get("observation")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let combined = format!("{observation}\n{rationale}").to_ascii_lowercase();
-    let references_diagnostics = combined.contains("diagnostic")
-        || combined.contains("stale")
-        || combined.contains("violation");
-    let has_source_validation = combined.contains("read_file")
-        || combined.contains("source")
-        || combined.contains("verified")
-        || combined.contains("current-cycle")
-        || combined.contains("rg ")
-        || combined.contains("run_command");
-    if references_diagnostics && !has_source_validation {
-        let msg = "planner plan actions that rely on diagnostics must cite current source validation in observation/rationale (for example read_file, run_command, or verified source evidence)";
-        add_unique_schema_diff(schema_diff, msg.to_string());
     }
 }
 
@@ -1188,29 +1147,26 @@ mod tests {
     fn auto_fill_message_fields_repairs_invalid_self_route() {
         let mut action = json!({
             "action": "message",
-            "from": "diagnostics",
-            "to": "diagnostics",
+            "from": "planner",
+            "to": "planner",
             "type": "blocker",
             "status": "blocked",
             "payload": {"summary": "transport still broken"}
         });
 
-        let changed = auto_fill_message_fields(&mut action, "diagnostics");
+        let changed = auto_fill_message_fields(&mut action, "planner");
 
         assert!(changed);
-        assert_eq!(
-            action.get("from").and_then(|v| v.as_str()),
-            Some("diagnostics")
-        );
-        assert_eq!(action.get("to").and_then(|v| v.as_str()), Some("planner"));
+        assert_eq!(action.get("from").and_then(|v| v.as_str()), Some("planner"));
+        assert_eq!(action.get("to").and_then(|v| v.as_str()), Some("executor"));
     }
 
     #[test]
     fn default_message_route_values_are_static_safe() {
-        let route = MessageRoute::default_for_role("diagnostics");
-        assert_eq!(route.from, "diagnostics");
-        assert_eq!(route.to_role, "planner");
-        assert_eq!(route.msg_type, "diagnostics");
+        let route = MessageRoute::default_for_role("planner");
+        assert_eq!(route.from, "planner");
+        assert_eq!(route.to_role, "executor");
+        assert_eq!(route.msg_type, "plan");
         assert_eq!(route.status, "complete");
     }
 
@@ -1242,9 +1198,7 @@ fn reroute_invalid_self_message_target(
     if role.starts_with("executor") || actual_from.eq_ignore_ascii_case("executor") {
         return "planner";
     }
-    if actual_from.eq_ignore_ascii_case("verifier")
-        || actual_from.eq_ignore_ascii_case("diagnostics")
-    {
+    if actual_from.eq_ignore_ascii_case("verifier") {
         return "planner";
     }
     if actual_from.eq_ignore_ascii_case("planner") {

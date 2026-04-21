@@ -25,10 +25,10 @@ use tokio::sync::{
 
 use crate::canonical_writer::CanonicalWriter;
 use crate::constants::{
-    diagnostics_file_for_instance, lane_plan_file_for_instance, set_agent_state_dir, set_workspace,
-    workspace, DEFAULT_AGENT_STATE_DIR,
+    lane_plan_file_for_instance, planner_projection_file_for_instance, set_agent_state_dir,
+    set_workspace, workspace, DEFAULT_AGENT_STATE_DIR,
     DEFAULT_LLM_RETRY_COUNT, DEFAULT_LLM_RETRY_DELAY_SECS, DEFAULT_RESPONSE_TIMEOUT_SECS,
-    DIAGNOSTICS_FILE_PATH, ENDPOINT_SPECS, EXECUTOR_STEP_LIMIT, ISSUES_FILE, MASTER_PLAN_FILE,
+    ENDPOINT_SPECS, EXECUTOR_STEP_LIMIT, ISSUES_FILE, MASTER_PLAN_FILE, PLANNER_PROJECTION_FILE_PATH,
     MAX_SNIPPET, MAX_STEPS, OBJECTIVES_FILE, ROLE_TIMEOUT_SECS, SPEC_FILE, VIOLATIONS_FILE,
     WS_PORT_CANDIDATES,
 };
@@ -156,7 +156,7 @@ fn write_json_baseline_and_track<T: serde::Serialize>(
 
 fn ensure_workspace_artifact_baseline(
     workspace: &Path,
-    diagnostics_path: &Path,
+    planner_projection_path: &Path,
 ) -> Result<Vec<String>> {
     let mut created = Vec::new();
     let tlog_path = workspace.join("agent_state/tlog.ndjson");
@@ -262,10 +262,10 @@ fn ensure_workspace_artifact_baseline(
         created.push("agent_state/lessons.json".to_string());
     }
 
-    let diagnostics_ready = std::fs::metadata(diagnostics_path)
+    let planner_projection_ready = std::fs::metadata(planner_projection_path)
         .map(|meta| meta.is_file() && meta.len() > 0)
         .unwrap_or(false);
-    if !diagnostics_ready {
+    if !planner_projection_ready {
         crate::reports::persist_diagnostics_projection_with_writer_to_path(
             workspace,
             &crate::reports::DiagnosticsReport {
@@ -274,11 +274,11 @@ fn ensure_workspace_artifact_baseline(
                 ranked_failures: Vec::new(),
                 planner_handoff: Vec::new(),
             },
-            crate::constants::diagnostics_file(),
+            crate::constants::planner_projection_file(),
             None,
-            "baseline_diagnostics",
+            "baseline_planner_projection",
         )?;
-        created.push(diagnostics_path.display().to_string());
+        created.push(planner_projection_path.display().to_string());
     }
 
     Ok(created)
@@ -2078,7 +2078,7 @@ fn canonical_role_label(role: &str) -> &'static str {
     } else if role == "verifier" {
         "verifier"
     } else if role == "diagnostics" {
-        "diagnostics"
+        "planner"
     } else if role == "planner" || role == "mini_planner" {
         "planner"
     } else {
@@ -2486,11 +2486,8 @@ fn guardrail_action_from_raw(raw: &str, role: &str) -> Option<Value> {
 }
 
 fn guardrail_reaction_only_action(role: &str) -> Value {
-    let path = if role == "diagnostics" {
-        "<workspace-local log/state artifacts discovered during diagnostics>"
-    } else {
-        "canon-utils"
-    };
+    let _ = role;
+    let path = "canon-utils";
     json!({
         "action": "list_dir",
         "observation": "Received reaction-only response; forcing a concrete discovery action.",
@@ -2907,18 +2904,6 @@ fn executor_step_limit_feedback() -> String {
     format!(
         "Step limit reached: executor must send a message to planner after {EXECUTOR_STEP_LIMIT} actions. Send exactly one `message` action now.\n\nRequired schema:\n```json\n{{\n  \"action\": \"message\",\n  \"from\": \"executor\",\n  \"to\": \"planner\",\n  \"type\": \"handoff\" | \"blocker\",\n  \"status\": \"complete\" | \"blocked\",\n  \"observation\": \"What happened, based only on evidence.\",\n  \"rationale\": \"Why planner must act next.\",\n  \"payload\": {{\n    \"summary\": \"Short summary\",\n    \"evidence\": \"Concrete evidence or artifact paths\"\n  }}\n}}\n```\n\nExample complete handoff:\n```json\n{{\n  \"action\": \"message\",\n  \"from\": \"executor\",\n  \"to\": \"planner\",\n  \"type\": \"handoff\",\n  \"status\": \"complete\",\n  \"observation\": \"Completed the assigned executor work and gathered verification evidence.\",\n  \"rationale\": \"Planner should record completion and schedule the next ready task.\",\n  \"payload\": {{\n    \"summary\": \"Executor work is complete.\",\n    \"evidence\": \"Include files changed, commands run, and test results.\"\n  }}\n}}\n```\n\nExample blocker:\n```json\n{{\n  \"action\": \"message\",\n  \"from\": \"executor\",\n  \"to\": \"planner\",\n  \"type\": \"blocker\",\n  \"status\": \"blocked\",\n  \"observation\": \"Progress is blocked by a concrete failure.\",\n  \"rationale\": \"Planner must resolve the blocker before more executor actions.\",\n  \"payload\": {{\n    \"summary\": \"Executor is blocked.\",\n    \"blocker\": \"Root cause\",\n    \"evidence\": \"Exact error text or failed command\",\n    \"required_action\": \"What planner should do next\"\n  }}\n}}\n```"
     )
-}
-
-fn enforce_diagnostics_python(
-    role: &str,
-    kind: &str,
-    diagnostics_eventlog_python_done: &mut bool,
-) -> Option<String> {
-    if role == "diagnostics" && kind == "python" {
-        *diagnostics_eventlog_python_done = true;
-    }
-
-    None
 }
 
 fn canonical_tlog_read_path(agent_state_dir: &std::path::Path) -> PathBuf {
@@ -4269,7 +4254,6 @@ async fn run_agent(
     let mut reaction_only_streak: usize = 0;
     let mut cargo_test_gate = CargoTestGate::new();
     let task_context = initial_prompt.clone();
-    let mut diagnostics_eventlog_python_done = false;
     let mut idle_streak = 0usize;
     let mut repeated_failed_action_fingerprint: Option<String> = None;
     let mut last_failed_action_fingerprint: Option<String> = None;
@@ -4671,22 +4655,6 @@ async fn run_agent(
                 step += 1;
                 continue;
             }
-        }
-
-        if let Some(msg) =
-            enforce_diagnostics_python(role, kind.as_str(), &mut diagnostics_eventlog_python_done)
-        {
-            crate::blockers::record_action_failure_with_writer(
-                workspace,
-                None,
-                role,
-                "diagnostics_evidence_gate",
-                &msg,
-                None,
-            );
-            last_result = Some(msg);
-            step += 1;
-            continue;
         }
 
         if is_explicit_idle_action(&action) {
@@ -5845,18 +5813,18 @@ pub async fn run() -> Result<()> {
         .unwrap_or("executor");
     if !matches!(
         start_role,
-        "executor" | "verifier" | "planner" | "diagnostics" | "solo"
+        "executor" | "verifier" | "planner" | "solo"
     ) {
-        bail!("invalid --start value: {start_role} (expected executor|verifier|planner|diagnostics|solo)");
+        bail!("invalid --start value: {start_role} (expected executor|verifier|planner|solo)");
     }
     let role_arg = args
         .windows(2)
         .find(|w| w[0] == "--role")
         .map(|w| w[1].as_str());
-    let role_flags = ["--verifier", "--planner", "--diagnostics"];
+    let role_flags = ["--verifier", "--planner"];
     let has_role_flag = args.iter().any(|a| role_flags.contains(&a.as_str()));
     if role_arg.is_some() && has_role_flag {
-        bail!("--role cannot be combined with --planner, --verifier, or --diagnostics");
+        bail!("--role cannot be combined with --planner or --verifier");
     }
     if role_arg.is_some() && orchestrate {
         bail!("--role cannot be combined with --orchestrate");
@@ -5864,17 +5832,14 @@ pub async fn run() -> Result<()> {
 
     let mut is_verifier = !orchestrate && args.iter().any(|a| a == "--verifier");
     let mut is_planner = !orchestrate && args.iter().any(|a| a == "--planner");
-    let mut is_diagnostics = !orchestrate && args.iter().any(|a| a == "--diagnostics");
+    let is_diagnostics = false;
 
     if let Some(role) = role_arg {
         match role {
             "executor" => {}
             "planner" => is_planner = true,
             "verifier" => is_verifier = true,
-            "diagnostics" => is_diagnostics = true,
-            _ => bail!(
-                "invalid --role value: {role} (expected executor|planner|verifier|diagnostics)"
-            ),
+            _ => bail!("invalid --role value: {role} (expected executor|planner|verifier)"),
         }
     }
     let (ws_port, ws_port_explicit) = choose_ws_port(&args)?;
@@ -5893,18 +5858,18 @@ pub async fn run() -> Result<()> {
     let instance_id = find_flag_arg(&args, "--instance").map(str::to_string);
     let path_prefix = instance_id.clone().unwrap_or_else(|| "default".to_string());
     init_log_paths(&path_prefix);
-    let diagnostics_rel = diagnostics_file_for_instance(&path_prefix);
-    let diagnostics_path = workspace.join(&diagnostics_rel);
-    let _ = DIAGNOSTICS_FILE_PATH.set(diagnostics_rel.clone());
+    let planner_projection_rel = planner_projection_file_for_instance(&path_prefix);
+    let planner_projection_path = workspace.join(&planner_projection_rel);
+    let _ = PLANNER_PROJECTION_FILE_PATH.set(planner_projection_rel.clone());
     let legacy_diagnostics_rel = format!("PLANS/{}/diagnostics-{}.json", path_prefix, path_prefix);
     if let Err(err) = crate::logging::migrate_projection_if_present(
         &workspace,
         &legacy_diagnostics_rel,
-        &diagnostics_rel,
-        &diagnostics_rel,
-        "baseline_diagnostics_legacy_migration",
+        &planner_projection_rel,
+        &planner_projection_rel,
+        "baseline_planner_projection_legacy_migration",
     ) {
-        eprintln!("[canon-mini-agent] diagnostics migration failed: {err:#}");
+        eprintln!("[canon-mini-agent] planner projection migration failed: {err:#}");
     }
     if let Err(err) = ensure_objectives_and_invariants_json(&workspace) {
         eprintln!("[canon-mini-agent] objectives/invariants conversion failed: {err:#}");
@@ -5916,7 +5881,7 @@ pub async fn run() -> Result<()> {
             Some(json!({ "stage": "startup" })),
         );
     }
-    if let Err(err) = ensure_workspace_artifact_baseline(&workspace, &diagnostics_path) {
+    if let Err(err) = ensure_workspace_artifact_baseline(&workspace, &planner_projection_path) {
         eprintln!("[canon-mini-agent] workspace artifact bootstrap failed: {err:#}");
         log_error_event(
             "orchestrate",
@@ -5969,10 +5934,10 @@ pub async fn run() -> Result<()> {
     }
     let plans_dir = workspace.join("agent_state").join(&path_prefix);
     let _ = std::fs::create_dir_all(&plans_dir);
-    if !diagnostics_path.exists() {
-        let _ = std::fs::write(&diagnostics_path, "");
+    if !planner_projection_path.exists() {
+        let _ = std::fs::write(&planner_projection_path, "");
     }
-    let _ = ensure_workspace_artifact_baseline(&workspace, &diagnostics_path);
+    let _ = ensure_workspace_artifact_baseline(&workspace, &planner_projection_path);
     for lane in &lanes {
         let plan_path = workspace.join(&lane.plan_file);
         if plan_path.exists() {
@@ -6336,7 +6301,7 @@ pub async fn run() -> Result<()> {
             }
         }
 
-        eprintln!("[orchestrate] pipeline started: planner -> background executors -> verifier/diagnostics -> planner");
+        eprintln!("[orchestrate] pipeline started: planner -> background executors -> verifier/planner-projection -> planner");
 
         const STALL_CYCLE_THRESHOLD: u32 = 5;
         const EXECUTOR_STALL_PROBE_MS: u64 = 5_000;
@@ -7201,11 +7166,11 @@ mod tests {
     }
 
     #[test]
-    fn workspace_artifact_baseline_creates_missing_diagnostics_inputs() {
+    fn workspace_artifact_baseline_creates_missing_planner_projection_inputs() {
         let workspace = temp_workspace("baseline-create");
-        let diagnostics_path = workspace.join("agent_state/default/diagnostics-default.json");
+        let planner_projection_path = workspace.join("agent_state/default/planner-default.json");
 
-        let created = ensure_workspace_artifact_baseline(&workspace, &diagnostics_path)
+        let created = ensure_workspace_artifact_baseline(&workspace, &planner_projection_path)
             .expect("bootstrap baseline");
 
         assert!(created.iter().any(|p| p == VIOLATIONS_FILE));
@@ -7219,7 +7184,7 @@ mod tests {
         assert!(workspace.join("agent_state/blockers.json").exists());
         assert!(workspace.join("agent_state/tlog.ndjson").exists());
         assert!(workspace.join("agent_state/lessons.json").exists());
-        assert!(diagnostics_path.exists());
+        assert!(planner_projection_path.exists());
 
         let violations = fs::read_to_string(workspace.join(VIOLATIONS_FILE)).unwrap();
         assert!(violations.contains("\"status\": \"ok\""));
@@ -7242,9 +7207,9 @@ mod tests {
             "{\n  \"status\": \"failed\",\n  \"summary\": \"keep\",\n  \"violations\": []\n}\n",
         )
         .unwrap();
-        let diagnostics_path = workspace.join("agent_state/default/diagnostics-default.json");
+        let planner_projection_path = workspace.join("agent_state/default/planner-default.json");
 
-        let created = ensure_workspace_artifact_baseline(&workspace, &diagnostics_path)
+        let created = ensure_workspace_artifact_baseline(&workspace, &planner_projection_path)
             .expect("bootstrap baseline");
 
         assert!(!created.iter().any(|p| p == VIOLATIONS_FILE));
@@ -7268,9 +7233,9 @@ mod tests {
             "{\"status\":\"failed\",\"summary\":\"legacy\",\"violations\":[]}",
         )
         .unwrap();
-        let diagnostics_path = workspace.join("agent_state/default/diagnostics-default.json");
+        let planner_projection_path = workspace.join("agent_state/default/planner-default.json");
 
-        let created = ensure_workspace_artifact_baseline(&workspace, &diagnostics_path)
+        let created = ensure_workspace_artifact_baseline(&workspace, &planner_projection_path)
             .expect("bootstrap baseline");
 
         assert!(created.iter().any(|p| p == MASTER_PLAN_FILE));

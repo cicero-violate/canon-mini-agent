@@ -32,7 +32,10 @@ pub fn decide_resume_phase(
         planner_pending = true;
     }
     if checkpoint_phase == "diagnostics" {
-        diagnostics_pending = true;
+        // Compatibility shim: diagnostics phase is deprecated; remap to planner.
+        scheduled_phase = Some("planner".to_string());
+        planner_pending = true;
+        diagnostics_pending = false;
     }
     if checkpoint_phase == "verifier" && !has_verifier_items {
         planner_pending = true;
@@ -48,7 +51,6 @@ pub fn decide_resume_phase(
 pub fn decide_bootstrap_phase(start_role: &str) -> Option<String> {
     match start_role {
         "planner" => Some("planner".to_string()),
-        "diagnostics" => Some("diagnostics".to_string()),
         "executor" => Some("executor".to_string()),
         "solo" => Some("solo".to_string()),
         _ => None,
@@ -87,7 +89,12 @@ pub fn decide_wake_signals(
         decision.scheduled_phase = Some(flag.role.to_string());
         match flag.role {
             "planner" => decision.planner_pending = true,
-            "diagnostics" => decision.diagnostics_pending = true,
+            "diagnostics" => {
+                // Compatibility shim: diagnostics wake signals are now planner wakes.
+                decision.scheduled_phase = Some("planner".to_string());
+                decision.planner_pending = true;
+                decision.diagnostics_pending = false;
+            }
             "executor" => decision.executor_wake = true,
             _ => {}
         }
@@ -98,7 +105,7 @@ pub fn decide_wake_signals(
 pub fn scheduled_phase_resume_done(
     phase: &str,
     planner_pending: bool,
-    diagnostics_pending: bool,
+    _diagnostics_pending: bool,
     verifier_pending_results: usize,
     verifier_joinset_empty: bool,
     executor_lane_pending: bool,
@@ -107,7 +114,7 @@ pub fn scheduled_phase_resume_done(
     match phase {
         "planner" => !planner_pending,
         "verifier" => verifier_pending_results == 0 && verifier_joinset_empty,
-        "diagnostics" => !diagnostics_pending,
+        "diagnostics" => !planner_pending,
         "executor" => !executor_lane_pending && !executor_in_progress,
         "solo" => true,
         _ => true,
@@ -182,19 +189,17 @@ pub fn allow_named_phase_run(scheduled_phase: Option<&str>, allowed_phase: &str)
 }
 
 /// Returns true when executor dispatch should be frozen because a resume phase
-/// that requires serialized execution (planner, verifier, diagnostics) is active.
+/// that requires serialized execution (planner, verifier) is active.
 pub fn block_executor_dispatch(scheduled_phase: Option<&str>) -> bool {
-    matches!(
-        scheduled_phase,
-        Some("planner") | Some("verifier") | Some("diagnostics")
-    )
+    matches!(scheduled_phase, Some("planner") | Some("verifier"))
 }
 
 /// Returns true when diagnostics is allowed to run.
 /// Diagnostics must not start while verifier tasks are in flight (would race),
 /// and must not run if another phase has exclusive use of the schedule.
 pub fn allow_diagnostics_run(scheduled_phase: Option<&str>, verifier_in_flight: bool) -> bool {
-    !verifier_in_flight && !matches!(scheduled_phase, Some(phase) if phase != "diagnostics")
+    let _ = (scheduled_phase, verifier_in_flight);
+    false
 }
 
 /// The full set of phase eligibility decisions for one orchestrator cycle.
