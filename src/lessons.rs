@@ -117,6 +117,14 @@ pub fn maybe_synthesize_lessons(workspace: &Path) {
 
 /// Handle a `lessons` action dispatched from the main tool executor.
 pub fn handle_lessons_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+    handle_lessons_action_with_writer(workspace, action, None)
+}
+
+pub fn handle_lessons_action_with_writer(
+    workspace: &Path,
+    action: &Value,
+    writer: Option<&mut crate::canonical_writer::CanonicalWriter>,
+) -> Result<(bool, String)> {
     let op = action
         .get("op")
         .and_then(|v| v.as_str())
@@ -124,11 +132,11 @@ pub fn handle_lessons_action(workspace: &Path, action: &Value) -> Result<(bool, 
 
     match op {
         "read_candidates" => op_read_candidates(workspace),
-        "promote" => op_promote(workspace, action),
+        "promote" => op_promote(workspace, action, writer),
         "reject" => op_reject(workspace, action),
-        "encode" => op_encode(workspace, action),
+        "encode" => op_encode(workspace, action, writer),
         "read" => op_read_lessons(workspace),
-        "write" => op_write_lessons(workspace, action),
+        "write" => op_write_lessons(workspace, action, writer),
         other => anyhow::bail!(
             "unknown lessons op '{other}' — use: read_candidates | promote | reject | encode | read | write"
         ),
@@ -170,7 +178,11 @@ fn op_read_candidates(workspace: &Path) -> Result<(bool, String)> {
     ))
 }
 
-fn op_promote(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+fn op_promote(
+    workspace: &Path,
+    action: &Value,
+    writer: Option<&mut crate::canonical_writer::CanonicalWriter>,
+) -> Result<(bool, String)> {
     let candidate_id = action
         .get("candidate_id")
         .and_then(|v| v.as_str())
@@ -211,7 +223,7 @@ fn op_promote(workspace: &Path, action: &Value) -> Result<(bool, String)> {
     artifact.summary = build_artifact_summary(&artifact);
 
     save_candidates(workspace, &cfile)?;
-    persist_lessons_projection(workspace, &artifact, "lessons_save")?;
+    persist_lessons_projection_with_writer(workspace, &artifact, writer, "lessons_save")?;
 
     Ok((
         false,
@@ -243,7 +255,11 @@ fn op_reject(workspace: &Path, action: &Value) -> Result<(bool, String)> {
 /// Required field: `entry_text` — the exact `text` value of the entry to encode.
 /// Optional field: `encoded_at` — a short note of where it was encoded
 ///                 (e.g., `"src/lessons.rs:schema_fix_hint"`).
-fn op_encode(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+fn op_encode(
+    workspace: &Path,
+    action: &Value,
+    writer: Option<&mut crate::canonical_writer::CanonicalWriter>,
+) -> Result<(bool, String)> {
     let entry_text = action
         .get("entry_text")
         .and_then(|v| v.as_str())
@@ -272,7 +288,7 @@ fn op_encode(workspace: &Path, action: &Value) -> Result<(bool, String)> {
         );
     }
 
-    persist_lessons_projection(workspace, &artifact, "lessons_save")?;
+    persist_lessons_projection_with_writer(workspace, &artifact, writer, "lessons_save")?;
     Ok((
         false,
         format!("lessons encode: entry marked as encoded and removed from prompt injection"),
@@ -291,13 +307,17 @@ fn op_read_lessons(workspace: &Path) -> Result<(bool, String)> {
     Ok((false, format!("lessons.json:\n{raw}")))
 }
 
-fn op_write_lessons(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+fn op_write_lessons(
+    workspace: &Path,
+    action: &Value,
+    writer: Option<&mut crate::canonical_writer::CanonicalWriter>,
+) -> Result<(bool, String)> {
     let lessons_val = action
         .get("lessons")
         .ok_or_else(|| anyhow::anyhow!("lessons write requires a 'lessons' object with summary/failures/fixes/required_actions"))?;
     let artifact: LessonsArtifact = serde_json::from_value(lessons_val.clone())
         .map_err(|e| anyhow::anyhow!("invalid lessons object: {e}"))?;
-    persist_lessons_projection(workspace, &artifact, "lessons_save")?;
+    persist_lessons_projection_with_writer(workspace, &artifact, writer, "lessons_save")?;
     Ok((false, "lessons write ok".to_string()))
 }
 
@@ -953,11 +973,24 @@ pub fn persist_lessons_projection(
     artifact: &LessonsArtifact,
     subject: &str,
 ) -> Result<()> {
+    persist_lessons_projection_with_writer(workspace, artifact, None, subject)
+}
+
+pub fn persist_lessons_projection_with_writer(
+    workspace: &Path,
+    artifact: &LessonsArtifact,
+    mut writer: Option<&mut crate::canonical_writer::CanonicalWriter>,
+    subject: &str,
+) -> Result<()> {
     let path = lessons_path(workspace);
     let effect = crate::events::EffectEvent::LessonsArtifactRecorded {
         artifact: artifact.clone(),
     };
-    crate::logging::record_effect_for_workspace(workspace, effect)?;
+    if let Some(w) = writer.as_deref_mut() {
+        w.try_record_effect(effect)?;
+    } else {
+        crate::logging::record_effect_for_workspace(workspace, effect)?;
+    }
     crate::logging::write_projection_with_artifact_effects(
         workspace,
         &path,

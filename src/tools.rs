@@ -7765,8 +7765,16 @@ fn execute_action(
         "symbol_path" => handle_symbol_path_action(workspace, action),
         "execution_path" => handle_execution_path_action(workspace, action),
         "symbol_neighborhood" => handle_symbol_neighborhood_action(workspace, action),
-        "lessons" => crate::lessons::handle_lessons_action(workspace, action),
-        "invariants" => crate::invariants::handle_invariants_action(workspace, action),
+        "lessons" => {
+            crate::lessons::handle_lessons_action_with_writer(workspace, action, writer.as_deref_mut())
+        }
+        "invariants" => {
+            crate::invariants::handle_invariants_action_with_writer(
+                workspace,
+                action,
+                writer.as_deref_mut(),
+            )
+        }
         "batch" => handle_batch_action(role, step, workspace, action),
         other => {
             crate::blockers::record_action_failure_with_writer(
