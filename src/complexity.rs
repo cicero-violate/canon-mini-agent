@@ -1,7 +1,9 @@
 use anyhow::{Context, Result};
 use serde_json::json;
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 use crate::semantic::{shorten_display_path, SemanticIndex};
 
@@ -220,24 +222,52 @@ pub fn write_complexity_report(workspace: &Path) -> Result<Option<PathBuf>> {
         }
     }
 
-    // Issue/task generation must complete in the same cycle so planner-visible
-    // artifacts are ready before downstream evidence scans and ready-window
-    // derivation consume them.
-    run_issue_task_generation(workspace)?;
+    enqueue_issue_task_generation(workspace);
 
     let eval = crate::evaluation::evaluate_workspace(workspace);
     let drift = compute_and_persist_fingerprint_drift(workspace, &current_summaries)?;
     let report = build_complexity_report(per_crate, global_top, inter_sections, &eval, &drift);
 
-    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
-    if let Ok(dataset) = crate::grpo::extract_grpo_dataset(workspace, &tlog_path) {
-        let _ = crate::grpo::record_grpo_dataset_effect(workspace, &dataset, None);
-    }
+    enqueue_grpo_extraction(workspace);
 
     let dir = reports_dir(workspace);
     let latest = persist_complexity_report(&dir, &report)?;
 
     Ok(Some(latest))
+}
+
+fn in_flight_paths() -> &'static Mutex<HashSet<PathBuf>> {
+    static IN_FLIGHT: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
+    IN_FLIGHT.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+fn enqueue_issue_task_generation(workspace: &Path) {
+    let ws = workspace.to_path_buf();
+    {
+        let mut guard = match in_flight_paths().lock() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+        if !guard.insert(ws.clone()) {
+            return;
+        }
+    }
+    std::thread::spawn(move || {
+        let _ = run_issue_task_generation(&ws);
+        if let Ok(mut guard) = in_flight_paths().lock() {
+            guard.remove(&ws);
+        }
+    });
+}
+
+fn enqueue_grpo_extraction(workspace: &Path) {
+    let ws = workspace.to_path_buf();
+    std::thread::spawn(move || {
+        let tlog_path = ws.join("agent_state").join("tlog.ndjson");
+        if let Ok(dataset) = crate::grpo::extract_grpo_dataset(&ws, &tlog_path) {
+            let _ = crate::grpo::record_grpo_dataset_effect(&ws, &dataset, None);
+        }
+    });
 }
 
 fn run_issue_task_generation(workspace: &Path) -> Result<()> {
