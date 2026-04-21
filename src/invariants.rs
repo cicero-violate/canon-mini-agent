@@ -222,12 +222,20 @@ pub fn handle_invariants_action(
     workspace: &Path,
     action: &serde_json::Value,
 ) -> anyhow::Result<(bool, String)> {
+    handle_invariants_action_with_writer(workspace, action, None)
+}
+
+pub fn handle_invariants_action_with_writer(
+    workspace: &Path,
+    action: &serde_json::Value,
+    writer: Option<&mut crate::canonical_writer::CanonicalWriter>,
+) -> anyhow::Result<(bool, String)> {
     let op = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
     match op {
         "read" => op_read(workspace),
-        "promote" => op_promote(workspace, action),
-        "enforce" => op_enforce(workspace, action),
-        "collapse" => op_collapse(workspace, action),
+        "promote" => op_promote(workspace, action, writer),
+        "enforce" => op_enforce(workspace, action, writer),
+        "collapse" => op_collapse(workspace, action, writer),
         other => anyhow::bail!(
             "unknown invariants op '{other}' — use: read | promote | enforce | collapse"
         ),
@@ -261,7 +269,11 @@ fn op_read(workspace: &Path) -> anyhow::Result<(bool, String)> {
     ))
 }
 
-fn op_promote(workspace: &Path, action: &serde_json::Value) -> anyhow::Result<(bool, String)> {
+fn op_promote(
+    workspace: &Path,
+    action: &serde_json::Value,
+    writer: Option<&mut crate::canonical_writer::CanonicalWriter>,
+) -> anyhow::Result<(bool, String)> {
     let id = action.get("id").and_then(|v| v.as_str()).ok_or_else(|| {
         anyhow::anyhow!("invariants promote requires 'id' field (invariant id or \"all\")")
     })?;
@@ -284,11 +296,20 @@ fn op_promote(workspace: &Path, action: &serde_json::Value) -> anyhow::Result<(b
     if count == 0 {
         return Ok((false, format!("no Discovered invariants matched id='{id}'")));
     }
-    persist_enforced_invariants_projection(workspace, &file, "enforced_invariants_save")?;
+    persist_enforced_invariants_projection_with_writer(
+        workspace,
+        &file,
+        writer,
+        "enforced_invariants_save",
+    )?;
     Ok((false, format!("promoted {count} invariant(s) to Promoted")))
 }
 
-fn op_enforce(workspace: &Path, action: &serde_json::Value) -> anyhow::Result<(bool, String)> {
+fn op_enforce(
+    workspace: &Path,
+    action: &serde_json::Value,
+    writer: Option<&mut crate::canonical_writer::CanonicalWriter>,
+) -> anyhow::Result<(bool, String)> {
     let id = action
         .get("id")
         .and_then(|v| v.as_str())
@@ -311,7 +332,12 @@ fn op_enforce(workspace: &Path, action: &serde_json::Value) -> anyhow::Result<(b
     if count == 0 {
         return Ok((false, format!("no invariant found with id='{id}'")));
     }
-    persist_enforced_invariants_projection(workspace, &file, "enforced_invariants_save")?;
+    persist_enforced_invariants_projection_with_writer(
+        workspace,
+        &file,
+        writer,
+        "enforced_invariants_save",
+    )?;
     // Log to action log so synthesis can track the enforcement event.
     let record = serde_json::json!({
         "kind": "invariant_lifecycle",
@@ -327,7 +353,11 @@ fn op_enforce(workspace: &Path, action: &serde_json::Value) -> anyhow::Result<(b
     ))
 }
 
-fn op_collapse(workspace: &Path, action: &serde_json::Value) -> anyhow::Result<(bool, String)> {
+fn op_collapse(
+    workspace: &Path,
+    action: &serde_json::Value,
+    writer: Option<&mut crate::canonical_writer::CanonicalWriter>,
+) -> anyhow::Result<(bool, String)> {
     let id = action
         .get("id")
         .and_then(|v| v.as_str())
@@ -348,7 +378,12 @@ fn op_collapse(workspace: &Path, action: &serde_json::Value) -> anyhow::Result<(
     if count == 0 {
         return Ok((false, format!("no invariant found with id='{id}'")));
     }
-    persist_enforced_invariants_projection(workspace, &file, "enforced_invariants_save")?;
+    persist_enforced_invariants_projection_with_writer(
+        workspace,
+        &file,
+        writer,
+        "enforced_invariants_save",
+    )?;
     let record = serde_json::json!({
         "kind": "invariant_lifecycle",
         "phase": "collapse",
@@ -1285,12 +1320,25 @@ pub fn persist_enforced_invariants_projection(
     file: &EnforcedInvariantsFile,
     subject: &str,
 ) -> Result<()> {
+    persist_enforced_invariants_projection_with_writer(workspace, file, None, subject)
+}
+
+pub fn persist_enforced_invariants_projection_with_writer(
+    workspace: &Path,
+    file: &EnforcedInvariantsFile,
+    mut writer: Option<&mut crate::canonical_writer::CanonicalWriter>,
+    subject: &str,
+) -> Result<()> {
     let normalized = normalize_loaded_invariants(file.clone());
     let path = invariants_path(workspace);
     let effect = crate::events::EffectEvent::EnforcedInvariantsRecorded {
         file: normalized.clone(),
     };
-    crate::logging::record_effect_for_workspace(workspace, effect)?;
+    if let Some(w) = writer.as_deref_mut() {
+        w.try_record_effect(effect)?;
+    } else {
+        crate::logging::record_effect_for_workspace(workspace, effect)?;
+    }
     crate::logging::write_projection_with_artifact_effects(
         workspace,
         &path,

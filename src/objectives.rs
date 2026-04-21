@@ -179,6 +179,14 @@ pub fn load_bootstrap_objectives_seed(workspace: &Path) -> (PathBuf, String) {
     (path, normalized)
 }
 
+pub fn load_runtime_objectives_json(workspace: &Path) -> String {
+    if let Some(canonical) = load_canonical_objectives_json(workspace) {
+        return canonical;
+    }
+    let (_path, raw) = load_bootstrap_objectives_seed(workspace);
+    raw
+}
+
 pub fn objectives_hash(raw: &str) -> String {
     crate::logging::stable_hash_hex(raw)
 }

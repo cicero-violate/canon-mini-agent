@@ -600,7 +600,7 @@ fn handle_objectives_action_with_writer(
         .map(|w| w.state().objectives_json.clone())
         .filter(|s| !s.trim().is_empty())
         .or_else(|| crate::objectives::load_canonical_objectives_json(workspace))
-        .unwrap_or_else(|| fs::read_to_string(&path).unwrap_or_default());
+        .unwrap_or_else(|| crate::objectives::load_runtime_objectives_json(workspace));
     if raw.trim().is_empty() && op_raw == "read" {
         return Ok((false, "(no objectives)".to_string()));
     }

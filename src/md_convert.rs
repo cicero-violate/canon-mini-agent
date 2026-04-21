@@ -10,18 +10,18 @@ use crate::reports::{
 pub fn ensure_objectives_and_invariants_json(workspace: &Path) -> Result<()> {
     let invariants_md = workspace.join(INVARIANTS_MD_FILE);
     let objectives_md = workspace.join(OBJECTIVES_MD_FILE);
-    let invariants_json = workspace.join(INVARIANTS_FILE);
-    let objectives_json = workspace.join(OBJECTIVES_FILE);
 
     if invariants_md.exists() {
         let text = std::fs::read_to_string(&invariants_md).unwrap_or_default();
         let report = parse_invariants_md(&text);
+        let invariants_json = workspace.join(INVARIANTS_FILE);
         write_json(&invariants_json, &report)?;
     }
 
     if objectives_md.exists() {
         let text = std::fs::read_to_string(&objectives_md).unwrap_or_default();
         let report = parse_objectives_md(&text);
+        let objectives_json = workspace.join(OBJECTIVES_FILE);
         write_json(&objectives_json, &report)?;
     }
 
