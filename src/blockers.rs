@@ -355,10 +355,32 @@ mod tests {
     #[test]
     fn cap_enforced_on_overflow() {
         let ws = temp_ws();
-        // Write MAX + 10 records.
-        for i in 0..MAX_BLOCKER_RECORDS + 10 {
-            let record = BlockerRecord {
-                id: format!("blk-{i}"),
+        // Seed a pre-existing full file once, then verify a single append enforces
+        // the cap by dropping the oldest entry.
+        let seeded = BlockersFile {
+            version: 1,
+            blockers: (0..MAX_BLOCKER_RECORDS)
+                .map(|i| BlockerRecord {
+                    id: format!("blk-{i}"),
+                    error_class: ErrorClass::Unknown,
+                    actor: "executor".to_string(),
+                    task_id: None,
+                    objective_id: None,
+                    summary: "test".to_string(),
+                    action_kind: "message".to_string(),
+                    source: "blocker_message".to_string(),
+                    ts_ms: i as u64,
+                })
+                .collect(),
+        };
+        let path = blockers_path(&ws);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, serde_json::to_string_pretty(&seeded).unwrap()).unwrap();
+
+        append_blocker(
+            &ws,
+            BlockerRecord {
+                id: "blk-new".to_string(),
                 error_class: ErrorClass::Unknown,
                 actor: "executor".to_string(),
                 task_id: None,
@@ -366,18 +388,13 @@ mod tests {
                 summary: "test".to_string(),
                 action_kind: "message".to_string(),
                 source: "blocker_message".to_string(),
-                ts_ms: i as u64,
-            };
-            // Use the internal fn directly to bypass the Unknown filter.
-            append_blocker(&ws, record);
-        }
+                ts_ms: MAX_BLOCKER_RECORDS as u64,
+            },
+        );
         let file = load_blockers(&ws);
         assert_eq!(file.blockers.len(), MAX_BLOCKER_RECORDS);
-        // The newest records should be kept.
-        assert_eq!(
-            file.blockers.last().unwrap().ts_ms as usize,
-            MAX_BLOCKER_RECORDS + 9
-        );
+        assert_eq!(file.blockers.first().unwrap().ts_ms, 1);
+        assert_eq!(file.blockers.last().unwrap().id, "blk-new");
     }
 
     #[test]
