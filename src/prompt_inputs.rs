@@ -1873,13 +1873,21 @@ fn build_planner_role_prompt(
 }
 
 fn build_executor_role_prompt(ctx: &SingleRoleContext<'_>) -> Result<String> {
-    let spec = ctx.read(SingleRoleRead::Spec)?;
-    let master_plan = ctx.read(SingleRoleRead::MasterPlan)?;
-    let semantic_control = ctx.read(SingleRoleRead::SemanticControl)?;
+    let (spec, master_plan, semantic_control) = executor_role_prompt_inputs(ctx)?;
     Ok(single_role_executor_prompt(
         &spec,
         &master_plan,
         &semantic_control,
+    ))
+}
+
+fn executor_role_prompt_inputs(
+    ctx: &SingleRoleContext<'_>,
+) -> Result<(String, String, String)> {
+    Ok((
+        ctx.read(SingleRoleRead::Spec)?,
+        ctx.read(SingleRoleRead::MasterPlan)?,
+        ctx.read(SingleRoleRead::SemanticControl)?,
     ))
 }
 

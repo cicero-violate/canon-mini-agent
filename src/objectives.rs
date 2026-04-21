@@ -194,6 +194,16 @@ pub fn persist_objectives_projection(workspace: &Path, raw: &str, subject: &str)
     )
 }
 
+pub fn reconcile_objectives_projection(workspace: &Path, canonical_raw: &str, subject: &str) -> anyhow::Result<bool> {
+    let path = workspace.join(crate::constants::OBJECTIVES_FILE);
+    let current = std::fs::read_to_string(&path).unwrap_or_default();
+    if objectives_hash(&current) == objectives_hash(canonical_raw) {
+        return Ok(false);
+    }
+    persist_objectives_projection(workspace, canonical_raw, subject)?;
+    Ok(true)
+}
+
 pub fn load_canonical_objectives_json(workspace: &Path) -> Option<String> {
     let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
     let records = crate::tlog::Tlog::read_records(&tlog_path).ok()?;

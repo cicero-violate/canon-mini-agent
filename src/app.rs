@@ -6041,10 +6041,16 @@ pub async fn run() -> Result<()> {
                 hash: crate::objectives::objectives_hash(&seed_contents),
                 contents: seed_contents.clone(),
             });
-            let _ = crate::objectives::persist_objectives_projection(
+            let _ = crate::objectives::reconcile_objectives_projection(
                 &workspace,
                 &seed_contents,
                 "objectives_bootstrap_projection",
+            );
+        } else {
+            let _ = crate::objectives::reconcile_objectives_projection(
+                &workspace,
+                &writer.state().objectives_json,
+                "objectives_replay_projection_reconcile",
             );
         }
         if writer.tlog_seq() == 0 {
