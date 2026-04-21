@@ -69,6 +69,8 @@ pub struct SystemState {
     pub last_executor_diff: String,
     pub last_solo_plan_text: String,
     pub last_solo_executor_diff: String,
+    #[serde(default)]
+    pub objectives_json: String,
 
     // Per-lane logical state
     pub lanes: HashMap<usize, LaneState>,
@@ -258,6 +260,12 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
         }
         ControlEvent::LastSoloExecutorDiffSet { text } => {
             s.last_solo_executor_diff = text.clone();
+        }
+        ControlEvent::ObjectivesInitialized { contents, .. } => {
+            s.objectives_json = contents.clone();
+        }
+        ControlEvent::ObjectivesReplaced { contents, .. } => {
+            s.objectives_json = contents.clone();
         }
         ControlEvent::LanePendingSet { lane_id, pending } => {
             s.lanes.entry(*lane_id).or_default().pending = *pending;

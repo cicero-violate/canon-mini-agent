@@ -300,7 +300,9 @@ pub fn validate_transition(state: &SystemState, event: &ControlEvent) -> Result<
         | ControlEvent::LastPlanTextSet { .. }
         | ControlEvent::LastExecutorDiffSet { .. }
         | ControlEvent::LastSoloPlanTextSet { .. }
-        | ControlEvent::LastSoloExecutorDiffSet { .. } => {}
+        | ControlEvent::LastSoloExecutorDiffSet { .. }
+        | ControlEvent::ObjectivesInitialized { .. }
+        | ControlEvent::ObjectivesReplaced { .. } => {}
         ControlEvent::LanePendingSet { lane_id, pending } => {
             validate_lane_pending_event(state, *lane_id, *pending)?;
         }

@@ -4644,7 +4644,7 @@ async fn run_agent(
         }
 
         if role == "solo" {
-            let objectives_text = read_text_or_empty(preferred_objectives_path(workspace));
+            let objectives_text = canonical_objectives_text(workspace);
             let plan_text = read_text_or_empty(workspace.join(MASTER_PLAN_FILE));
             if should_reject_solo_self_complete(&action, &objectives_text, &plan_text) {
                 crate::blockers::record_action_failure_with_writer(
@@ -5525,9 +5525,11 @@ fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Va
     persist_non_planner_inbound_message(writer, from_role, &to_key, &action_text);
 }
 
-fn preferred_objectives_path(workspace: &Path) -> PathBuf {
-    crate::objectives::ensure_runtime_objectives_file(workspace)
-        .unwrap_or_else(|_| crate::objectives::resolve_objectives_path(workspace))
+fn canonical_objectives_text(workspace: &Path) -> String {
+    crate::objectives::load_canonical_objectives_json(workspace).unwrap_or_else(|| {
+        let path = crate::objectives::resolve_objectives_path(workspace);
+        read_text_or_empty(path)
+    })
 }
 
 fn objective_status_normalized(objective: &crate::objectives::Objective) -> Option<String> {
@@ -6032,6 +6034,19 @@ pub async fn run() -> Result<()> {
         };
         let tlog = Tlog::open(&tlog_path);
         let mut writer = CanonicalWriter::try_new(system_state, tlog, workspace.clone())?;
+        if writer.state().objectives_json.trim().is_empty() {
+            let (seed_path, seed_contents) = crate::objectives::load_bootstrap_objectives_seed(&workspace);
+            writer.apply(ControlEvent::ObjectivesInitialized {
+                source_path: seed_path.to_string_lossy().to_string(),
+                hash: crate::objectives::objectives_hash(&seed_contents),
+                contents: seed_contents.clone(),
+            });
+            let _ = crate::objectives::persist_objectives_projection(
+                &workspace,
+                &seed_contents,
+                "objectives_bootstrap_projection",
+            );
+        }
         if writer.tlog_seq() == 0 {
             writer.try_apply(ControlEvent::PlannerPendingSet { pending: true })?;
         }
@@ -6248,8 +6263,8 @@ pub async fn run() -> Result<()> {
         loop {
             let _ = std::fs::remove_file(cycle_idle_marker_path());
             let mut cycle_progress = false;
-            let objectives_path = preferred_objectives_path(&workspace);
-            let objectives_mtime_before = file_modified_ms(&objectives_path);
+            let objectives_hash_before =
+                crate::logging::stable_hash_hex(&writer.state().objectives_json);
             let plan_mtime_before = file_modified_ms(&master_plan_path);
             let control_surfaces = [
                 "system_state",
@@ -6508,11 +6523,12 @@ pub async fn run() -> Result<()> {
                 }
             }
 
-            let objectives_mtime_after = file_modified_ms(&objectives_path);
+            let objectives_hash_after =
+                crate::logging::stable_hash_hex(&writer.state().objectives_json);
             let plan_mtime_after = file_modified_ms(&master_plan_path);
             let objective_review_required = plan_mtime_before != plan_mtime_after;
-            let objectives_updated = objectives_mtime_before != objectives_mtime_after;
-            let objectives_text = read_text_or_empty(&objectives_path);
+            let objectives_updated = objectives_hash_before != objectives_hash_after;
+            let objectives_text = writer.state().objectives_json.clone();
             let plan_text = read_text_or_empty(&master_plan_path);
             let plan_content_changed = plan_text != writer.state().last_plan_text;
             if objective_review_required && !objectives_updated && plan_content_changed {

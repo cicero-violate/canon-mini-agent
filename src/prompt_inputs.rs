@@ -173,6 +173,8 @@ fn infer_tlog_lane_indices(events: &[crate::events::Event]) -> Vec<usize> {
                 | crate::events::ControlEvent::LastExecutorDiffSet { .. }
                 | crate::events::ControlEvent::LastSoloPlanTextSet { .. }
                 | crate::events::ControlEvent::LastSoloExecutorDiffSet { .. }
+                | crate::events::ControlEvent::ObjectivesInitialized { .. }
+                | crate::events::ControlEvent::ObjectivesReplaced { .. }
                 | crate::events::ControlEvent::PhaseSet { lane: None, .. }
                 | crate::events::ControlEvent::ExecutorTurnDeregistered { .. } => {}
             }
@@ -214,6 +216,8 @@ fn control_event_kind_name(event: &crate::events::ControlEvent) -> &'static str 
         crate::events::ControlEvent::LastSoloExecutorDiffSet { .. } => {
             "last_solo_executor_diff_set"
         }
+        crate::events::ControlEvent::ObjectivesInitialized { .. } => "objectives_initialized",
+        crate::events::ControlEvent::ObjectivesReplaced { .. } => "objectives_replaced",
         crate::events::ControlEvent::LanePendingSet { .. } => "lane_pending_set",
         crate::events::ControlEvent::LaneInProgressSet { .. } => "lane_in_progress_set",
         crate::events::ControlEvent::LaneVerifierResultSet { .. } => "lane_verifier_result_set",

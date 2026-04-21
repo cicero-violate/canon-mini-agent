@@ -1168,14 +1168,17 @@ fn write_external_user_message(
 }
 
 fn external_user_message_text(to_key: &str, message: &str) -> Result<String> {
-    serde_json::to_string_pretty(&json!({
+    serde_json::to_string_pretty(&external_user_message_payload(to_key, message)).map_err(Into::into)
+}
+
+fn external_user_message_payload(to_key: &str, message: &str) -> serde_json::Value {
+    json!({
         "kind": "external_user_message",
         "from": "user",
         "to": to_key,
         "message": message,
         "reply_to": "user"
-    }))
-    .map_err(Into::into)
+    })
 }
 
 fn read_external_user_reply(state_dir: &Path) -> Result<Option<String>> {

@@ -400,10 +400,10 @@ fn objective_not_found_message(
 }
 
 fn format_objective_already_exists_message(
-    requested_raw: String,
-    requested_id: String,
-    compared_ids: Vec<String>,
-    compared_normalized_ids: Vec<String>,
+    requested_raw: &str,
+    requested_id: &str,
+    compared_ids: &[String],
+    compared_normalized_ids: &[String],
 ) -> String {
     format!(
         "objective id already exists: requested_raw={requested_raw:?}; requested_id={requested_id}; compared_ids={compared_ids:?}; compared_normalized_ids={compared_normalized_ids:?}"
@@ -419,10 +419,10 @@ fn objective_already_exists_message(
     let compared_ids = objective_compared_ids(objectives);
     let compared_normalized_ids = objective_compared_normalized_ids(objectives);
     format_objective_already_exists_message(
-        requested_raw,
-        requested_id,
-        compared_ids,
-        compared_normalized_ids,
+        &requested_raw,
+        &requested_id,
+        &compared_ids,
+        &compared_normalized_ids,
     )
 }
 
@@ -501,11 +501,25 @@ fn validate_unique_objective_ids(file: &crate::objectives::ObjectivesFile) -> Re
 }
 
 fn write_objectives_file(
+    workspace: &Path,
     path: &Path,
     file: &crate::objectives::ObjectivesFile,
+    mut writer: Option<&mut CanonicalWriter>,
 ) -> Result<(bool, String)> {
     validate_unique_objective_ids(file)?;
     let contents = serde_json::to_string_pretty(file)?;
+    if let Some(writer_ref) = writer.as_deref_mut() {
+        writer_ref.apply(crate::events::ControlEvent::ObjectivesReplaced {
+            hash: crate::objectives::objectives_hash(&contents),
+            contents: contents.clone(),
+        });
+        crate::objectives::persist_objectives_projection(
+            workspace,
+            &contents,
+            "objectives_projection_from_canonical_state",
+        )?;
+        return Ok((false, "objectives write ok".to_string()));
+    }
     if let Some(agent_state_dir) = path.parent() {
         if agent_state_dir
             .file_name()
@@ -566,7 +580,11 @@ fn handle_objectives_sorted_view(raw: &str, include_done: bool) -> Result<(bool,
     ))
 }
 
-fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+fn handle_objectives_action_with_writer(
+    workspace: &Path,
+    action: &Value,
+    writer: Option<&mut CanonicalWriter>,
+) -> Result<(bool, String)> {
     let op_raw = action
         .get("op")
         .and_then(|v| v.as_str())
@@ -577,7 +595,11 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     let path = workspace.join(OBJECTIVES_FILE);
-    let raw = fs::read_to_string(&path).unwrap_or_default();
+    let raw = writer
+        .as_deref()
+        .map(|w| w.state().objectives_json.clone())
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| fs::read_to_string(&path).unwrap_or_default());
     if raw.trim().is_empty() && op_raw == "read" {
         return Ok((false, "(no objectives)".to_string()));
     }
@@ -585,21 +607,27 @@ fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, S
     match op_raw {
         "read" => handle_objectives_read(&raw, include_done),
         "sorted_view" => handle_objectives_sorted_view(&raw, include_done),
-        "create_objective" => handle_objectives_create_objective(action, &path, &raw),
-        "update_objective" => handle_objectives_update_objective(action, &path, &raw),
-        "delete_objective" => handle_objectives_delete_objective(action, &path, &raw),
-        "set_status" => handle_objectives_set_status(action, &path, &raw),
+        "create_objective" => handle_objectives_create_objective(workspace, action, &path, &raw, writer),
+        "update_objective" => handle_objectives_update_objective(workspace, action, &path, &raw, writer),
+        "delete_objective" => handle_objectives_delete_objective(workspace, action, &path, &raw, writer),
+        "set_status" => handle_objectives_set_status(workspace, action, &path, &raw, writer),
         "replace_objectives" | "replace" => {
-            handle_objectives_replace_objectives(action, &path, &raw)
+            handle_objectives_replace_objectives(workspace, action, &path, &raw, writer)
         }
         _ => bail!("unknown objectives op: {op_raw}"),
     }
 }
 
+fn handle_objectives_action(workspace: &Path, action: &Value) -> Result<(bool, String)> {
+    handle_objectives_action_with_writer(workspace, action, None)
+}
+
 fn handle_objectives_create_objective(
+    workspace: &Path,
     action: &Value,
     path: &Path,
     raw: &str,
+    writer: Option<&mut CanonicalWriter>,
 ) -> Result<(bool, String)> {
     let objective_val = action
         .get("objective")
@@ -652,14 +680,16 @@ fn handle_objectives_create_objective(
     file.objectives.push(objective);
     let created_id = file.objectives.last().map(|obj| obj.id.as_str());
     log_objective_operation_context("create_objective", "success", created_id, &file.objectives);
-    write_objectives_file(path, &file)
+    write_objectives_file(workspace, path, &file, writer)
         .map(|_| (false, "objectives create_objective ok".to_string()))
 }
 
 fn handle_objectives_update_objective(
+    workspace: &Path,
     action: &Value,
     path: &Path,
     raw: &str,
+    writer: Option<&mut CanonicalWriter>,
 ) -> Result<(bool, String)> {
     let objective_id = objective_id_from_action(action, "update_objective")?;
     let updates = action
@@ -700,14 +730,16 @@ fn handle_objectives_update_objective(
         Some(objective_id),
         &file.objectives,
     );
-    write_objectives_file(path, &file)
+    write_objectives_file(workspace, path, &file, writer)
         .map(|_| (false, "objectives update_objective ok".to_string()))
 }
 
 fn handle_objectives_delete_objective(
+    workspace: &Path,
     action: &Value,
     path: &Path,
     raw: &str,
+    writer: Option<&mut CanonicalWriter>,
 ) -> Result<(bool, String)> {
     let objective_id = objective_id_from_action(action, "delete_objective")?;
     let mut file = parse_objectives_file_or_default(raw);
@@ -733,11 +765,17 @@ fn handle_objectives_delete_objective(
         Some(objective_id),
         &file.objectives,
     );
-    write_objectives_file(path, &file)
+    write_objectives_file(workspace, path, &file, writer)
         .map(|_| (false, "objectives delete_objective ok".to_string()))
 }
 
-fn handle_objectives_set_status(action: &Value, path: &Path, raw: &str) -> Result<(bool, String)> {
+fn handle_objectives_set_status(
+    workspace: &Path,
+    action: &Value,
+    path: &Path,
+    raw: &str,
+    writer: Option<&mut CanonicalWriter>,
+) -> Result<(bool, String)> {
     let objective_id = objective_id_from_action(action, "set_status")?;
     let status = action
         .get("status")
@@ -767,13 +805,16 @@ fn handle_objectives_set_status(action: &Value, path: &Path, raw: &str) -> Resul
         Some(objective_id),
         &file.objectives,
     );
-    write_objectives_file(path, &file).map(|_| (false, "objectives set_status ok".to_string()))
+    write_objectives_file(workspace, path, &file, writer)
+        .map(|_| (false, "objectives set_status ok".to_string()))
 }
 
 fn handle_objectives_replace_objectives(
+    workspace: &Path,
     action: &Value,
     path: &Path,
     raw: &str,
+    writer: Option<&mut CanonicalWriter>,
 ) -> Result<(bool, String)> {
     let mut file = parse_objectives_file_or_default(raw);
     if let Some(obj_value) = action.get("objectives") {
@@ -791,7 +832,7 @@ fn handle_objectives_replace_objectives(
     } else {
         bail!("objectives replace_objectives missing objectives");
     }
-    write_objectives_file(path, &file)
+    write_objectives_file(workspace, path, &file, writer)
         .map(|_| (false, "objectives replace_objectives ok".to_string()))
 }
 
@@ -4780,10 +4821,16 @@ fn build_graph_call_cfg_summary(
 }
 
 fn graph_call_cfg_target_path(out_dir: &Path, action_kind: &str) -> PathBuf {
+    out_dir
+        .join("graphs")
+        .join(graph_call_cfg_filename(action_kind))
+}
+
+fn graph_call_cfg_filename(action_kind: &str) -> &'static str {
     if action_kind == "graph_call" {
-        out_dir.join("graphs").join("callgraph.csv")
+        "callgraph.csv"
     } else {
-        out_dir.join("graphs").join("cfg.csv")
+        "cfg.csv"
     }
 }
 
@@ -7691,7 +7738,9 @@ fn execute_action(
         "symbols_rename_candidates" => handle_symbols_rename_candidates_action(workspace, action),
         "symbols_prepare_rename" => handle_symbols_prepare_rename_action(workspace, action),
         "rename_symbol" => handle_rename_symbol_action(role, step, workspace, action),
-        "objectives" => handle_objectives_action(workspace, action),
+        "objectives" => {
+            handle_objectives_action_with_writer(workspace, action, writer.as_deref_mut())
+        }
         "issue" => handle_issue_action(writer, workspace, action),
         "violation" => handle_violation_action(writer, workspace, action),
         "apply_patch" => handle_apply_patch_action(role, step, writer, workspace, action),

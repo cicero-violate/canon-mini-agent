@@ -27,3 +27,44 @@ This file defines the intended authority class for runtime artifacts.
 ## Rules
 
 1. Ephemeral artifacts may be deleted during repair or replay without changing canonical truth.
+
+## Gate + Authority Function Map (Code-Derived)
+
+Derived from source/tests only (no `SPEC.md` read).
+
+### Runtime gate functions
+- `src/invariants.rs`: `evaluate_invariant_gate(...)` — hard gate predicate check for `route|planner|executor` role proposals.
+- `src/invariants.rs`: `default_gates_for_conditions(...)` — maps invariant conditions/error classes to default enforcing gates.
+- `src/state_space.rs`: `decide_phase_gates(...)` — computes planner/executor/verifier/diagnostics runnable gates from canonical state.
+- `src/state_space.rs`: `allow_named_phase_run(...)`, `block_executor_dispatch(...)`, `allow_diagnostics_run(...)`, `decide_resume_phase(...)`, `decide_post_diagnostics(...)` — gate helpers used by orchestrator transitions.
+
+### Canonical authority mutation/effect sink
+- `src/canonical_writer.rs`: `CanonicalWriter::try_apply/apply(...)` — sole canonical state mutation path.
+- `src/canonical_writer.rs`: `try_record_violation/record_violation(...)` — records blocked gate/invariant violations to tlog.
+- `src/canonical_writer.rs`: `try_record_effect/record_effect(...)` — canonical effect append path.
+- `src/canonical_writer.rs`: `try_record_evolution_advance/record_evolution_advance(...)` — canonical evolution + effect recording.
+
+### Projection-authority write functions
+- `src/logging.rs`: `write_projection_with_artifact_effects(...)` — standard projection write path with effect + artifact metadata.
+- `src/issues.rs`: `persist_issues_projection_with_writer(...)` — authoritative writer for `agent_state/ISSUES.json`.
+- `src/invariants.rs`: `persist_enforced_invariants_projection(...)` — authoritative writer for `agent_state/enforced_invariants.json`.
+- `src/lessons.rs`: `persist_lessons_projection(...)` — authoritative writer for `agent_state/lessons.json`.
+- `src/logging.rs`: `migrate_projection_if_present(...)` — controlled projection migration helper.
+
+### Authoritative read/load functions (tlog snapshot fallback)
+- `src/issues.rs`: `load_issues_file(...)` (+ `load_issues_from_tlog(...)`) — reads `ISSUES.json`, falls back to latest `IssuesFileRecorded` snapshot in tlog.
+- `src/invariants.rs`: `load_enforced_invariants_file(...)` (+ `load_invariants_from_tlog(...)`) — reads enforced invariants projection, falls back to tlog snapshot.
+- `src/lessons.rs`: `load_lessons_artifact(...)` (+ `load_lessons_from_tlog(...)`) — reads lessons projection, falls back to tlog snapshot.
+- `src/blockers.rs`: `load_blockers(...)` (+ `load_blockers_from_tlog(...)`) — reads blockers projection, falls back to tlog records.
+- `src/prompt_inputs.rs`: `read_lessons_or_empty(...)` — prompt-safe lessons loader path (structured parse + fallback behavior).
+- `src/prompt_inputs.rs`: `load_planner_inputs(...)`, `load_executor_diff_inputs(...)`, `load_single_role_inputs(...)` — centralized prompt input loaders.
+
+### Objective authority file helpers
+- `src/objectives.rs`: `runtime_objectives_path(...)`, `resolve_objectives_path(...)`, `ensure_runtime_objectives_file(...)` — objective authority path resolution/bootstrap.
+- `src/objectives.rs`: `read_objectives_compact_for_workspace(...)` — compact authority read for prompt injection.
+
+### Guardrail test anchoring this policy
+- `tests/authority_matrix_guardrail.rs`: 
+  - `canonical_projection_artifacts_do_not_use_raw_writes_outside_projection_layer()`
+  - `canonical_projection_artifacts_do_not_use_raw_reads_outside_authoritative_loaders()`
+  - `authority_matrix_documents_expected_artifact_classes()`

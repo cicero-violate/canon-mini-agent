@@ -1244,14 +1244,13 @@ pub(crate) fn schema_diff_messages(action: &Value) -> Vec<String> {
         let value = serde_json::to_value(&schema).expect("tool schema to value");
         JSONSchema::compile(&value).expect("compile tool schema")
     });
-    let mut diffs = Vec::new();
-    let Err(errors) = compiled.validate(action) else {
-        return diffs;
-    };
-    for err in errors.take(10) {
-        diffs.push(map_schema_error(&err, action));
+    match compiled.validate(action) {
+        Ok(()) => Vec::new(),
+        Err(errors) => errors
+            .take(10)
+            .map(|err| map_schema_error(&err, action))
+            .collect(),
     }
-    diffs
 }
 
 pub(crate) fn action_schema_json(action: &str) -> Option<Value> {

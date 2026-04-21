@@ -45,6 +45,15 @@ pub enum ControlEvent {
     LastSoloExecutorDiffSet {
         text: String,
     },
+    ObjectivesInitialized {
+        source_path: String,
+        hash: String,
+        contents: String,
+    },
+    ObjectivesReplaced {
+        hash: String,
+        contents: String,
+    },
 
     // --- Per-lane state ---
     LanePendingSet {
