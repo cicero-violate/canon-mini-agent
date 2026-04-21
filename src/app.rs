@@ -6185,6 +6185,28 @@ pub async fn run() -> Result<()> {
             eprintln!("[orchestrate] checkpoint discarded — seeding planner to avoid idle livelock");
             writer.apply(ControlEvent::PlannerPendingSet { pending: true });
         }
+        // When checkpoint resume is discarded (seq mismatch), runtime joinsets are empty and we
+        // cannot safely continue replayed submitted_turn_ids from a prior process. Purge them so
+        // stale-lane recovery can requeue lanes instead of staying phantom-busy forever.
+        if !checkpoint_loaded && !writer.state().submitted_turn_ids.is_empty() {
+            let stale_keys: Vec<String> = writer.state().submitted_turn_ids.keys().cloned().collect();
+            eprintln!(
+                "[orchestrate] checkpoint discarded — dropping {} stale submitted turn ids",
+                stale_keys.len()
+            );
+            for key in stale_keys {
+                let Some((tab_str, turn_str)) = key.split_once(':') else {
+                    continue;
+                };
+                let Ok(tab_id) = tab_str.parse::<u32>() else {
+                    continue;
+                };
+                let Ok(turn_id) = turn_str.parse::<u64>() else {
+                    continue;
+                };
+                writer.apply(ControlEvent::ExecutorTurnDeregistered { tab_id, turn_id });
+            }
+        }
         // Stale-lane cleanup: runs regardless of whether a checkpoint loaded.
         // After tlog replay, a lane may be marked in_progress + prompt_in_flight
         // but have no corresponding submitted_turn_ids — this happens when the

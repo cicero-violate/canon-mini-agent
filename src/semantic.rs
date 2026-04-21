@@ -1050,15 +1050,10 @@ impl SemanticIndex {
         symbol_key: &str,
         refs: &'a [SourceSpan],
     ) -> Vec<&'a str> {
-        let mut out = Vec::new();
-        for span in refs {
-            if let Some(owner) = self.enclosing_symbol_for_span(span) {
-                if owner != symbol_key {
-                    out.push(owner);
-                }
-            }
-        }
-        out
+        refs.iter()
+            .filter_map(|span| self.enclosing_symbol_for_span(span))
+            .filter(|owner| *owner != symbol_key)
+            .collect()
     }
 
     pub fn semantic_triples(&self, filter_path: Option<&str>) -> Vec<SemanticTriple> {
