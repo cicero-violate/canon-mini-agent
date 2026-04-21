@@ -202,6 +202,15 @@ pub fn generate_loop_invariant_issues(workspace: &Path) -> Result<usize> {
     )
 }
 
+pub fn generate_redundant_path_issues(workspace: &Path) -> Result<usize> {
+    generate_detector_issues(
+        workspace,
+        "generate_redundant_path_issues",
+        24,
+        redundant_path_issues,
+    )
+}
+
 type DetectorFn = fn(&Path, &str, &[SymbolSummary], usize) -> Vec<Issue>;
 
 fn generate_detector_issues(
@@ -1091,6 +1100,93 @@ pub fn loop_invariant_issues(
             }),
             acceptance_criteria: vec![
                 "invariant computations moved before loop entry".to_string(),
+                "build and tests pass".to_string(),
+            ],
+            evidence: vec![format!("location: {location}")],
+            discovered_by: "refactor_analyzer".to_string(),
+            ..Issue::default()
+        });
+    }
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out
+}
+
+pub fn redundant_path_issues(
+    workspace: &Path,
+    crate_name: &str,
+    summaries: &[SymbolSummary],
+    limit: usize,
+) -> Vec<Issue> {
+    let Ok(idx) = SemanticIndex::load(workspace, crate_name) else {
+        return Vec::new();
+    };
+    let mut summary_by_key: HashMap<String, &SymbolSummary> = HashMap::new();
+    for summary in summaries {
+        if let Ok(key) = idx.canonical_symbol_key(&summary.symbol) {
+            summary_by_key.insert(key, summary);
+        }
+    }
+
+    let mut out = Vec::new();
+    let mut seen_owner_sig: HashSet<(String, u64)> = HashSet::new();
+    for pair in idx.redundant_path_pairs() {
+        if out.len() >= limit {
+            break;
+        }
+        if pair.path_a.owner != pair.path_b.owner {
+            continue;
+        }
+        if pair.path_a.blocks == pair.path_b.blocks {
+            continue;
+        }
+        let owner = pair.path_a.owner.clone();
+        let shared_signature = pair.shared_signature;
+        if !seen_owner_sig.insert((owner.clone(), shared_signature)) {
+            continue;
+        }
+        let Some(summary) = summary_by_key.get(&owner) else {
+            continue;
+        };
+
+        let location = shorten_location(&summary.file, summary.line);
+        let id_seed = format!("{owner}:{shared_signature:016x}");
+        let avg_path_len = (pair.path_a.blocks.len() + pair.path_b.blocks.len()) as f64 / 2.0;
+        let blocks = summary.mir_blocks.unwrap_or(0).max(1);
+        let redundancy_ratio = avg_path_len / blocks as f64;
+        out.push(Issue {
+            id: format!(
+                "auto_redundant_path_{crate_name}_{:x}",
+                stable_hash(&id_seed)
+            ),
+            title: format!(
+                "Redundant CFG paths in `{}` (signature {:016x})",
+                short_name(&summary.symbol),
+                shared_signature
+            ),
+            status: "open".to_string(),
+            priority: if redundancy_ratio >= 0.5 {
+                "medium".to_string()
+            } else {
+                "low".to_string()
+            },
+            kind: "redundancy".to_string(),
+            description: format!(
+                "Function `{}` has at least two distinct MIR CFG paths with identical \
+                 structural path signature. This is a dead/duplicate branch candidate.",
+                summary.symbol
+            ),
+            location: location.clone(),
+            scope: format!("crate:{crate_name}"),
+            metrics: json!({
+                "task": "FoldRedundantPath",
+                "shared_signature": format!("{shared_signature:016x}"),
+                "owner_key": owner,
+                "path_a_blocks": pair.path_a.blocks,
+                "path_b_blocks": pair.path_b.blocks,
+                "redundancy_ratio": redundancy_ratio,
+            }),
+            acceptance_criteria: vec![
+                "duplicate path folded or justified".to_string(),
                 "build and tests pass".to_string(),
             ],
             evidence: vec![format!("location: {location}")],

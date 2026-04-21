@@ -33,6 +33,8 @@ struct CrateGraph {
     cfg_edges: Vec<CfgEdge>,
     #[serde(default)]
     bridge_edges: Vec<BridgeEdge>,
+    #[serde(default)]
+    redundant_paths: Vec<RedundantPathPair>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -114,6 +116,23 @@ pub struct StatementInfo {
     pub written_local: String,
     #[serde(default)]
     pub read_locals: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PathRecord {
+    pub owner: String,
+    #[serde(default)]
+    pub blocks: Vec<usize>,
+    #[serde(default)]
+    pub signature: u64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RedundantPathPair {
+    pub path_a: PathRecord,
+    pub path_b: PathRecord,
+    #[serde(default)]
+    pub shared_signature: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -302,6 +321,10 @@ impl SemanticIndex {
             .iter()
             .map(|edge| (edge.from.clone(), edge.relation.clone(), edge.to.clone()))
             .collect()
+    }
+
+    pub fn redundant_path_pairs(&self) -> Vec<RedundantPathPair> {
+        self.graph.redundant_paths.clone()
     }
 
     fn non_cleanup_owned_cfg_blocks<'a>(&'a self, symbol_key: &str) -> HashSet<&'a str> {
