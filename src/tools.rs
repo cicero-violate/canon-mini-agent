@@ -7637,6 +7637,32 @@ fn sanitize_inbound_target(role: &str, to: &str) -> String {
     }
 }
 
+fn resolve_inbound_message_target(role: &str, step: usize, action: &Value) -> Option<String> {
+    let to_raw = action.get("to").and_then(|v| v.as_str())?;
+    if to_raw.trim().is_empty() {
+        return None;
+    }
+    let normalized_to_raw = to_raw
+        .trim()
+        .to_lowercase()
+        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+    let to = sanitize_inbound_target(role, &normalized_to_raw);
+    let normalized_role = role
+        .trim()
+        .to_lowercase()
+        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+    if normalized_role == to {
+        if is_allowed_self_addressed_message(action, &normalized_role, &to) {
+            return None;
+        }
+        eprintln!(
+            "[{role}] step={step} invalid self-addressed message to `{to}` — canonical ingress suppressed"
+        );
+        return None;
+    }
+    Some(to)
+}
+
 fn persist_inbound_message(
     role: &str,
     step: usize,
@@ -7644,30 +7670,9 @@ fn persist_inbound_message(
     action: &Value,
     full_message: &str,
 ) {
-    let Some(to_raw) = action.get("to").and_then(|v| v.as_str()) else {
+    let Some(to) = resolve_inbound_message_target(role, step, action) else {
         return;
     };
-    if to_raw.trim().is_empty() {
-        return;
-    }
-    let to_raw = to_raw
-        .trim()
-        .to_lowercase()
-        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
-    let to = sanitize_inbound_target(role, &to_raw);
-    let normalized_role = role
-        .trim()
-        .to_lowercase()
-        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
-    if normalized_role == to {
-        if is_allowed_self_addressed_message(action, &normalized_role, &to) {
-            return;
-        }
-        eprintln!(
-            "[{role}] step={step} invalid self-addressed message to `{to}` — canonical ingress suppressed"
-        );
-        return;
-    }
     let message_signature = artifact_write_signature(&[
         "inbound_message",
         role,

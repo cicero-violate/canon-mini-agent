@@ -3376,6 +3376,14 @@ fn is_reaction_only_response(raw: &str) -> bool {
     false
 }
 
+fn is_transient_service_response(raw: &str) -> bool {
+    let lowered = raw.to_ascii_lowercase();
+    lowered.contains("having trouble processing your request")
+        || (lowered.contains("i'm sorry")
+            && lowered.contains("please try again")
+            && lowered.contains("processing"))
+}
+
 fn apply_scheduled_phase_if_changed(writer: &mut CanonicalWriter, phase: Option<&str>) -> bool {
     if writer.state().scheduled_phase.as_deref() == phase {
         return false;
@@ -4262,6 +4270,7 @@ async fn run_agent(
     let mut repeated_failed_action_fingerprint: Option<String> = None;
     let mut last_failed_action_fingerprint: Option<String> = None;
     let mut repeated_failed_action_count: usize = 0;
+    let mut transient_service_retry_streak: usize = 0;
     let shutdown = shutdown_signal();
     let mut ctx = LlmResponseContext {
         role,
@@ -4452,6 +4461,32 @@ async fn run_agent(
 
         eprintln!("[{role}] step={} response_bytes={}", step + 1, raw.len());
 
+        if is_transient_service_response(&raw) {
+            transient_service_retry_streak = transient_service_retry_streak.saturating_add(1);
+            log_message_event(
+                role,
+                endpoint,
+                prompt_kind,
+                step + 1,
+                &exchange_id,
+                "llm_transient_service_retry",
+                json!({
+                    "raw": truncate(&raw, MAX_SNIPPET),
+                    "retry_streak": transient_service_retry_streak,
+                }),
+            );
+            if transient_service_retry_streak <= 3 {
+                eprintln!(
+                    "[{role}] step={} transient_service_response retry {}",
+                    step + 1,
+                    transient_service_retry_streak
+                );
+                continue;
+            }
+        } else {
+            transient_service_retry_streak = 0;
+        }
+
         if ctx.handle_reaction_only(
             step + 1,
             &exchange_id,
@@ -4560,6 +4595,7 @@ async fn run_agent(
         }
 
         reaction_only_streak = 0;
+        transient_service_retry_streak = 0;
         error_streak = 0;
         eprintln!("[{role}] step={} action={}", step + 1, kind);
         last_action = Some(kind.clone());
@@ -5192,6 +5228,32 @@ fn handle_executor_completion(
     ) {
         return true;
     }
+    handle_executor_completion_tool_continuation(
+        writer,
+        &submitted,
+        lane_cfg,
+        lane_name,
+        tab_id,
+        turn_id,
+        &exec_result,
+        bridge,
+        workspace,
+        continuation_joinset,
+    )
+}
+
+fn handle_executor_completion_tool_continuation(
+    writer: &mut CanonicalWriter,
+    submitted: &SubmittedExecutorTurn,
+    lane_cfg: &LaneConfig,
+    lane_name: &str,
+    tab_id: u32,
+    turn_id: u64,
+    exec_result: &str,
+    bridge: &WsBridge,
+    workspace: &PathBuf,
+    continuation_joinset: &mut tokio::task::JoinSet<ContinuationJoinOutput>,
+) -> bool {
     eprintln!(
         "[orchestrate] executor turn requires tool execution: lane={} turn_id={}",
         lane_name, turn_id
@@ -5207,11 +5269,11 @@ fn handle_executor_completion(
     );
     spawn_executor_completion_continuation(
         writer,
-        &submitted,
+        submitted,
         lane_cfg,
         tab_id,
         turn_id,
-        &exec_result,
+        exec_result,
         bridge,
         workspace,
         continuation_joinset,
