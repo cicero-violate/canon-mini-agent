@@ -2410,6 +2410,64 @@ fn load_checkpoint(workspace: &Path) -> Option<OrchestratorCheckpoint> {
     Some(cp)
 }
 
+#[derive(Debug, Default, Clone, Copy)]
+struct ExecutorProgressSignals {
+    last_progress_seq: Option<u64>,
+    last_progress_ts_ms: Option<u64>,
+    checkpoint_divergence_blockers_recent: usize,
+}
+
+fn read_executor_progress_signals(workspace: &Path, now_ms: u64) -> ExecutorProgressSignals {
+    const SIGNAL_LOOKBACK_RECORDS: usize = 800;
+    const DIVERGENCE_WINDOW_MS: u64 = 120_000;
+
+    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
+    let Ok(records) = crate::tlog::Tlog::read_records(&tlog_path) else {
+        return ExecutorProgressSignals::default();
+    };
+    let start = records.len().saturating_sub(SIGNAL_LOOKBACK_RECORDS);
+    let mut signals = ExecutorProgressSignals::default();
+
+    for record in records[start..].iter().rev() {
+        match &record.event {
+            Event::Control { event } => match event {
+                ControlEvent::ExecutorTurnRegistered { .. }
+                | ControlEvent::ExecutorTurnDeregistered { .. }
+                | ControlEvent::ExecutorCompletionRecovered { .. }
+                | ControlEvent::ExecutorCompletionTabRebound { .. }
+                | ControlEvent::ExecutorSubmitAckTabRebound { .. } => {
+                    if signals.last_progress_seq.is_none() {
+                        signals.last_progress_seq = Some(record.seq);
+                        signals.last_progress_ts_ms = Some(record.ts_ms);
+                    }
+                }
+                _ => {}
+            },
+            Event::Effect { event } => match event {
+                EffectEvent::LlmTurnOutput { role, .. }
+                | EffectEvent::ActionResultRecorded { role, .. } => {
+                    if role.contains("executor") && signals.last_progress_seq.is_none() {
+                        signals.last_progress_seq = Some(record.seq);
+                        signals.last_progress_ts_ms = Some(record.ts_ms);
+                    }
+                }
+                EffectEvent::WorkspaceArtifactWriteRequested {
+                    artifact, subject, ..
+                } => {
+                    if artifact == "agent_state/blockers.json"
+                        && subject.contains("checkpoint_runtime_divergence")
+                        && now_ms.saturating_sub(record.ts_ms) <= DIVERGENCE_WINDOW_MS
+                    {
+                        signals.checkpoint_divergence_blockers_recent += 1;
+                    }
+                }
+                _ => {}
+            },
+        }
+    }
+    signals
+}
+
 fn looks_like_diff(raw: &str) -> bool {
     raw.contains("diff --git")
         || (raw.contains("--- ") && raw.contains("+++ "))
@@ -6075,7 +6133,9 @@ pub async fn run() -> Result<()> {
 
         let mut resume_verifier_items: Vec<ResumeVerifierItem> = Vec::new();
         let _solo_bootstrapped = false;
-        if let Some(checkpoint) = load_checkpoint(&workspace) {
+        let checkpoint = load_checkpoint(&workspace);
+        let checkpoint_loaded = checkpoint.is_some();
+        if let Some(checkpoint) = checkpoint {
             eprintln!(
                 "[orchestrate] resume checkpoint loaded: phase={} lane={:?} age_ms={}",
                 checkpoint.phase,
@@ -6179,6 +6239,14 @@ pub async fn run() -> Result<()> {
                     });
                 }
             }
+        }
+        // When the checkpoint was discarded (seq mismatch) with an existing tlog, the normal
+        // resume path (decide_resume_phase) was skipped. If planner_pending is still false from
+        // tlog replay the agent has no trigger to start working and will idle-poll forever.
+        // Force the planner so work is always re-seeded after a discarded checkpoint.
+        if !checkpoint_loaded && writer.tlog_seq() > 0 && !writer.state().planner_pending {
+            eprintln!("[orchestrate] checkpoint discarded — seeding planner to avoid idle livelock");
+            writer.apply(ControlEvent::PlannerPendingSet { pending: true });
         }
         // Stale-lane cleanup: runs regardless of whether a checkpoint loaded.
         // After tlog replay, a lane may be marked in_progress + prompt_in_flight
@@ -6285,7 +6353,12 @@ pub async fn run() -> Result<()> {
         eprintln!("[orchestrate] pipeline started: planner -> background executors -> verifier/diagnostics -> planner");
 
         const STALL_CYCLE_THRESHOLD: u32 = 5;
+        const EXECUTOR_STALL_PROBE_MS: u64 = 5_000;
+        const EXECUTOR_STALL_STALE_MS: u64 = 45_000;
+        const EXECUTOR_STALL_RECOVERY_COOLDOWN_MS: u64 = 30_000;
         let mut stall_count: u32 = 0;
+        let mut last_executor_stall_probe_ms: u64 = 0;
+        let mut last_executor_stall_recovery_ms: u64 = 0;
         loop {
             let _ = std::fs::remove_file(cycle_idle_marker_path());
             let mut cycle_progress = false;
@@ -6546,6 +6619,93 @@ pub async fn run() -> Result<()> {
                     .scheduled_phase_done(executor_lane_pending, executor_in_progress)
                 {
                     apply_scheduled_phase_if_changed(&mut writer, None);
+                }
+            }
+
+            // Event-driven executor deadlock recovery:
+            // if canonical state says executor is still busy but runtime has no live
+            // in-flight submit/turn objects, confirm via tlog progress signals and
+            // force a planner handoff after a cooldown.
+            let now = now_ms();
+            let executor_flagged_busy = writer.state().phase == "executor"
+                && (writer.state().lane_submit_in_flight.values().any(|&v| v)
+                    || writer.state().lane_prompt_in_flight.values().any(|&v| v)
+                    || writer
+                        .state()
+                        .lanes
+                        .values()
+                        .any(|lane| lane.in_progress_by.is_some()));
+            let runtime_executor_busy = !rt.submitted_turns.is_empty()
+                || !rt.executor_submit_inflight.is_empty()
+                || !submit_joinset.is_empty()
+                || !continuation_joinset.is_empty();
+            if executor_flagged_busy
+                && !runtime_executor_busy
+                && now.saturating_sub(last_executor_stall_probe_ms) >= EXECUTOR_STALL_PROBE_MS
+            {
+                last_executor_stall_probe_ms = now;
+                let signals = read_executor_progress_signals(workspace.as_path(), now);
+                let progress_stale = signals
+                    .last_progress_ts_ms
+                    .map(|ts| now.saturating_sub(ts) > EXECUTOR_STALL_STALE_MS)
+                    .unwrap_or(true);
+                let divergence_hot = signals.checkpoint_divergence_blockers_recent >= 2;
+                let recovery_cooldown_done = now.saturating_sub(last_executor_stall_recovery_ms)
+                    >= EXECUTOR_STALL_RECOVERY_COOLDOWN_MS;
+
+                if progress_stale && divergence_hot && recovery_cooldown_done {
+                    crate::blockers::record_action_failure_with_writer(
+                        workspace.as_path(),
+                        Some(&mut writer),
+                        "orchestrate",
+                        "executor_stall_recovery",
+                        &format!(
+                            "executor deadlock recovered: stale executor progress with busy lane flags (last_progress_seq={:?}, divergence_blockers_recent={})",
+                            signals.last_progress_seq,
+                            signals.checkpoint_divergence_blockers_recent
+                        ),
+                        None,
+                    );
+                    for lane in &lanes {
+                        let lane_busy = writer.state().lane_submit_active(lane.index)
+                            || writer.state().lane_in_flight(lane.index)
+                            || writer
+                                .state()
+                                .lanes
+                                .get(&lane.index)
+                                .and_then(|s| s.in_progress_by.as_ref())
+                                .is_some();
+                        if lane_busy {
+                            writer.apply(ControlEvent::LaneSubmitInFlightSet {
+                                lane_id: lane.index,
+                                in_flight: false,
+                            });
+                            writer.apply(ControlEvent::LanePromptInFlightSet {
+                                lane_id: lane.index,
+                                in_flight: false,
+                            });
+                            writer.apply(ControlEvent::LaneInProgressSet {
+                                lane_id: lane.index,
+                                actor: None,
+                            });
+                            writer.apply(ControlEvent::LanePendingSet {
+                                lane_id: lane.index,
+                                pending: true,
+                            });
+                            writer.apply(ControlEvent::LaneNextSubmitAtSet {
+                                lane_id: lane.index,
+                                ms: 0,
+                            });
+                        }
+                    }
+                    apply_scheduled_phase_if_changed(&mut writer, None);
+                    writer.apply(ControlEvent::PhaseSet {
+                        phase: "planner".to_string(),
+                        lane: None,
+                    });
+                    writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+                    last_executor_stall_recovery_ms = now;
+                    cycle_progress = true;
                 }
             }
 
