@@ -1260,6 +1260,9 @@ fn invariants_path(workspace: &Path) -> std::path::PathBuf {
 }
 
 pub fn load_enforced_invariants_file(workspace: &Path) -> EnforcedInvariantsFile {
+    if let Some(file) = load_invariants_from_tlog(workspace) {
+        return normalize_loaded_invariants(file);
+    }
     let path = invariants_path(workspace);
     let raw = std::fs::read_to_string(&path).unwrap_or_default();
     if !raw.trim().is_empty() {
@@ -1267,12 +1270,10 @@ pub fn load_enforced_invariants_file(workspace: &Path) -> EnforcedInvariantsFile
             return normalize_loaded_invariants(file);
         }
     }
-    load_invariants_from_tlog(workspace)
-        .map(normalize_loaded_invariants)
-        .unwrap_or_else(|| EnforcedInvariantsFile {
-            version: 1,
-            ..Default::default()
-        })
+    EnforcedInvariantsFile {
+        version: 1,
+        ..Default::default()
+    }
 }
 
 fn load_invariants(workspace: &Path) -> EnforcedInvariantsFile {
@@ -1298,6 +1299,21 @@ pub fn persist_enforced_invariants_projection(
         subject,
         &serde_json::to_string_pretty(&normalized)?,
     )
+}
+
+pub fn reconcile_enforced_invariants_projection(workspace: &Path, subject: &str) -> Result<bool> {
+    let Some(file) = load_invariants_from_tlog(workspace) else {
+        return Ok(false);
+    };
+    let normalized = normalize_loaded_invariants(file);
+    let canonical = serde_json::to_string_pretty(&normalized)?;
+    let path = invariants_path(workspace);
+    let current = std::fs::read_to_string(&path).unwrap_or_default();
+    if crate::logging::stable_hash_hex(&current) == crate::logging::stable_hash_hex(&canonical) {
+        return Ok(false);
+    }
+    persist_enforced_invariants_projection(workspace, &normalized, subject)?;
+    Ok(true)
 }
 
 fn normalize_loaded_invariants(mut file: EnforcedInvariantsFile) -> EnforcedInvariantsFile {

@@ -6053,6 +6053,18 @@ pub async fn run() -> Result<()> {
                 "objectives_replay_projection_reconcile",
             );
         }
+        let _ = crate::issues::reconcile_issues_projection(
+            &workspace,
+            "issues_replay_projection_reconcile",
+        );
+        let _ = crate::lessons::reconcile_lessons_projection(
+            &workspace,
+            "lessons_replay_projection_reconcile",
+        );
+        let _ = crate::invariants::reconcile_enforced_invariants_projection(
+            &workspace,
+            "enforced_invariants_replay_projection_reconcile",
+        );
         if writer.tlog_seq() == 0 {
             writer.try_apply(ControlEvent::PlannerPendingSet { pending: true })?;
         }

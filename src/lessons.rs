@@ -931,6 +931,9 @@ fn save_candidates(workspace: &Path, cfile: &LessonsCandidatesFile) -> Result<()
 }
 
 pub fn load_lessons_artifact(workspace: &Path) -> LessonsArtifact {
+    if let Some(artifact) = load_lessons_from_tlog(workspace) {
+        return artifact;
+    }
     let path = lessons_path(workspace);
     let raw = std::fs::read_to_string(&path).unwrap_or_default();
     if !raw.trim().is_empty() {
@@ -938,7 +941,7 @@ pub fn load_lessons_artifact(workspace: &Path) -> LessonsArtifact {
             return artifact;
         }
     }
-    load_lessons_from_tlog(workspace).unwrap_or_default()
+    LessonsArtifact::default()
 }
 
 fn load_lessons(workspace: &Path) -> LessonsArtifact {
@@ -985,6 +988,20 @@ fn load_lessons_from_tlog(workspace: &Path) -> Option<LessonsArtifact> {
         }
     }
     latest.map(|(_, artifact)| artifact)
+}
+
+pub fn reconcile_lessons_projection(workspace: &Path, subject: &str) -> Result<bool> {
+    let Some(artifact) = load_lessons_from_tlog(workspace) else {
+        return Ok(false);
+    };
+    let canonical = serde_json::to_string_pretty(&artifact)?;
+    let path = lessons_path(workspace);
+    let current = std::fs::read_to_string(&path).unwrap_or_default();
+    if crate::logging::stable_hash_hex(&current) == crate::logging::stable_hash_hex(&canonical) {
+        return Ok(false);
+    }
+    persist_lessons_projection(workspace, &artifact, subject)?;
+    Ok(true)
 }
 
 // ── Utility ───────────────────────────────────────────────────────────────────

@@ -113,12 +113,15 @@ pub struct IssueSweepSummary {
 }
 
 pub fn load_issues_file(workspace: &Path) -> IssuesFile {
+    if let Some(file) = load_issues_from_tlog(workspace) {
+        return file;
+    }
     let path = workspace.join(ISSUES_FILE);
     let raw = std::fs::read_to_string(&path).unwrap_or_default();
     if let Some(file) = parse_issues_file_from_raw(&raw) {
         return file;
     }
-    load_issues_from_tlog(workspace).unwrap_or_default()
+    IssuesFile::default()
 }
 
 fn parse_issues_file_from_raw(raw: &str) -> Option<IssuesFile> {
@@ -148,6 +151,20 @@ fn load_issues_from_tlog(workspace: &Path) -> Option<IssuesFile> {
         }
     }
     latest.map(|(_, file)| file)
+}
+
+pub fn reconcile_issues_projection(workspace: &Path, subject: &str) -> Result<bool> {
+    let Some(file) = load_issues_from_tlog(workspace) else {
+        return Ok(false);
+    };
+    let canonical = serde_json::to_string_pretty(&file)?;
+    let path = workspace.join(ISSUES_FILE);
+    let current = std::fs::read_to_string(&path).unwrap_or_default();
+    if crate::logging::stable_hash_hex(&current) == crate::logging::stable_hash_hex(&canonical) {
+        return Ok(false);
+    }
+    persist_issues_projection_with_writer(workspace, &file, None, subject)?;
+    Ok(true)
 }
 
 fn evidence_receipt_timestamps() -> HashMap<String, u64> {
