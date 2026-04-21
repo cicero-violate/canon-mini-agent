@@ -6185,6 +6185,45 @@ pub async fn run() -> Result<()> {
             eprintln!("[orchestrate] checkpoint discarded — seeding planner to avoid idle livelock");
             writer.apply(ControlEvent::PlannerPendingSet { pending: true });
         }
+        // Runtime/state reconciliation: after replay (especially when checkpoint resume is
+        // discarded), canonical in-flight flags may survive without matching runtime objects.
+        // Clear those stale flags so executor dispatch can progress instead of livelocking on
+        // "all lanes busy".
+        {
+            let lane_ids: Vec<usize> = writer.state().lanes.keys().copied().collect();
+            for lane_id in lane_ids {
+                let submit_flag = writer.state().lane_submit_active(lane_id);
+                let prompt_flag = writer.state().lane_in_flight(lane_id);
+                let has_runtime_submit = rt.executor_submit_inflight.contains_key(&lane_id);
+                let has_runtime_turn = rt.submitted_turns.values().any(|t| t.lane == lane_id);
+                let has_state_turn = writer
+                    .state()
+                    .submitted_turn_ids
+                    .values()
+                    .any(|record| record.lane_id == lane_id);
+
+                if submit_flag && !has_runtime_submit {
+                    eprintln!(
+                        "[orchestrate] stale-flag recovery: lane {} submit_in_flight had no runtime submit; clearing",
+                        lane_id
+                    );
+                    writer.apply(ControlEvent::LaneSubmitInFlightSet {
+                        lane_id,
+                        in_flight: false,
+                    });
+                }
+                if prompt_flag && !has_runtime_turn && !has_state_turn {
+                    eprintln!(
+                        "[orchestrate] stale-flag recovery: lane {} prompt_in_flight had no submitted turn; clearing",
+                        lane_id
+                    );
+                    writer.apply(ControlEvent::LanePromptInFlightSet {
+                        lane_id,
+                        in_flight: false,
+                    });
+                }
+            }
+        }
         // When checkpoint resume is discarded (seq mismatch), runtime joinsets are empty and we
         // cannot safely continue replayed submitted_turn_ids from a prior process. Purge them so
         // stale-lane recovery can requeue lanes instead of staying phantom-busy forever.
