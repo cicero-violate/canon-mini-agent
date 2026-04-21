@@ -106,8 +106,12 @@ pub fn probe_planner_plan_gap(
     let (mut writer, tlog_path, initial) = new_probe_writer(workspace);
     let objectives_text = std::fs::read_to_string(objectives_path).unwrap_or_default();
     let plan_text = std::fs::read_to_string(plan_path).unwrap_or_default();
-    if has_actionable_objectives(&objectives_text) && !plan_has_incomplete_tasks(&plan_text) {
+    if planner_plan_gap_detected(&objectives_text, &plan_text) {
         writer.try_apply(ControlEvent::PlannerObjectivePlanGapQueued)?;
     }
     finish_probe(writer, tlog_path, initial)
+}
+
+fn planner_plan_gap_detected(objectives_text: &str, plan_text: &str) -> bool {
+    has_actionable_objectives(objectives_text) && !plan_has_incomplete_tasks(plan_text)
 }

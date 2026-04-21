@@ -277,11 +277,14 @@ pub(crate) fn compact_log_record(
 
 fn action_op(action: &Value) -> Option<Value> {
     let name = action.get("action").and_then(|v| v.as_str())?;
-    let summary = action_command_summary(action);
-    Some(json!({
+    Some(build_action_op(name, action_command_summary(action)))
+}
+
+fn build_action_op(name: &str, summary: String) -> Value {
+    json!({
         "name": name,
         "summary": summary,
-    }))
+    })
 }
 
 fn filtered_payload_meta(payload: &Value) -> Option<Value> {

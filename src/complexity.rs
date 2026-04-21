@@ -131,17 +131,28 @@ fn collect_complexity_items(
 ) -> Vec<serde_json::Value> {
     let mut items = Vec::new();
     for s in idx.symbol_summaries() {
-        let blocks = s.mir_blocks.unwrap_or(0);
-        let stmts = s.mir_stmts.unwrap_or(0);
-        if blocks == 0 && stmts == 0 {
-            continue;
+        if let Some(entry) = collect_complexity_item(crate_name, global, all_summaries, s) {
+            items.push(entry);
         }
-        all_summaries.push(s.clone());
-        let entry = build_complexity_entry(&s, blocks, stmts);
-        global.push(build_global_complexity_entry(crate_name, &entry));
-        items.push(entry);
     }
     items
+}
+
+fn collect_complexity_item(
+    crate_name: &str,
+    global: &mut Vec<serde_json::Value>,
+    all_summaries: &mut Vec<crate::semantic::SymbolSummary>,
+    s: crate::semantic::SymbolSummary,
+) -> Option<serde_json::Value> {
+    let blocks = s.mir_blocks.unwrap_or(0);
+    let stmts = s.mir_stmts.unwrap_or(0);
+    if blocks == 0 && stmts == 0 {
+        return None;
+    }
+    all_summaries.push(s.clone());
+    let entry = build_complexity_entry(&s, blocks, stmts);
+    global.push(build_global_complexity_entry(crate_name, &entry));
+    Some(entry)
 }
 
 fn build_global_complexity_entry(crate_name: &str, entry: &serde_json::Value) -> serde_json::Value {

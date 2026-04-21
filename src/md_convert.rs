@@ -355,8 +355,7 @@ struct ObjectiveBuilder {
 
 impl ObjectiveBuilder {
     fn new(title: &str) -> Self {
-        let level = parse_objective_level(title);
-        let category = categorize_objective(title);
+        let (category, level) = objective_metadata(title);
         Self {
             title: title.to_string(),
             category,
@@ -380,6 +379,10 @@ impl ObjectiveBuilder {
             success_criteria: self.success_criteria,
         }
     }
+}
+
+fn objective_metadata(title: &str) -> (ObjectiveCategory, ObjectiveLevel) {
+    (categorize_objective(title), parse_objective_level(title))
 }
 
 #[derive(Clone, Copy)]

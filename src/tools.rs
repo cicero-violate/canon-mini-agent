@@ -399,6 +399,17 @@ fn objective_not_found_message(
     )
 }
 
+fn format_objective_already_exists_message(
+    requested_raw: String,
+    requested_id: String,
+    compared_ids: Vec<String>,
+    compared_normalized_ids: Vec<String>,
+) -> String {
+    format!(
+        "objective id already exists: requested_raw={requested_raw:?}; requested_id={requested_id}; compared_ids={compared_ids:?}; compared_normalized_ids={compared_normalized_ids:?}"
+    )
+}
+
 fn objective_already_exists_message(
     objectives: &[crate::objectives::Objective],
     requested: &str,
@@ -407,8 +418,11 @@ fn objective_already_exists_message(
     let requested_raw = requested.to_string();
     let compared_ids = objective_compared_ids(objectives);
     let compared_normalized_ids = objective_compared_normalized_ids(objectives);
-    format!(
-        "objective id already exists: requested_raw={requested_raw:?}; requested_id={requested_id}; compared_ids={compared_ids:?}; compared_normalized_ids={compared_normalized_ids:?}"
+    format_objective_already_exists_message(
+        requested_raw,
+        requested_id,
+        compared_ids,
+        compared_normalized_ids,
     )
 }
 
@@ -1019,17 +1033,17 @@ fn append_evidence_receipt(
 ) -> Result<String> {
     let ts_ms = now_ms();
     let id = format!("rcpt-{ts_ms}-{role}-{step}-{action}");
-    let receipt = EvidenceReceipt {
-        id: id.clone(),
+    let receipt = build_evidence_receipt(
+        &id,
         ts_ms,
-        actor: role.to_string(),
+        role,
         step,
-        action: action.to_string(),
-        path: rel_path.map(|s| s.to_string()),
-        abs_path: abs_path.map(|p| p.display().to_string()),
+        action,
+        rel_path,
+        abs_path,
         meta,
-        output_hash: stable_hash_hex(output),
-    };
+        output,
+    );
     let path = evidence_receipts_path();
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -1040,6 +1054,30 @@ fn append_evidence_receipt(
         .open(path)?;
     writeln!(file, "{}", serde_json::to_string(&receipt)?)?;
     Ok(id)
+}
+
+fn build_evidence_receipt(
+    id: &str,
+    ts_ms: u64,
+    role: &str,
+    step: usize,
+    action: &str,
+    rel_path: Option<&str>,
+    abs_path: Option<PathBuf>,
+    meta: Value,
+    output: &str,
+) -> EvidenceReceipt {
+    EvidenceReceipt {
+        id: id.to_string(),
+        ts_ms,
+        actor: role.to_string(),
+        step,
+        action: action.to_string(),
+        path: rel_path.map(|s| s.to_string()),
+        abs_path: abs_path.map(|p| p.display().to_string()),
+        meta,
+        output_hash: stable_hash_hex(output),
+    }
 }
 
 fn format_output_with_evidence_receipt(
@@ -3230,21 +3268,25 @@ fn normalize_pair(crate_name: &str, old: &str, new: &str) -> Result<(String, Str
 fn capture_rename_symbol_environment(workspace: &Path) -> Result<RenameSymbolEnvironment> {
     let in_git = workspace.join(".git").exists();
     let has_cargo = workspace.join("Cargo.toml").exists();
-    let head = if in_git {
-        let out = Command::new("git")
-            .args(["rev-parse", "HEAD"])
-            .current_dir(workspace)
-            .output()
-            .context("git rev-parse HEAD")?;
-        String::from_utf8_lossy(&out.stdout).trim().to_string()
-    } else {
-        String::new()
-    };
+    let head = load_git_head(workspace, in_git)?;
     Ok(RenameSymbolEnvironment {
         in_git,
         has_cargo,
         head,
     })
+}
+
+fn load_git_head(workspace: &Path, in_git: bool) -> Result<String> {
+    if !in_git {
+        return Ok(String::new());
+    }
+
+    let out = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(workspace)
+        .output()
+        .context("git rev-parse HEAD")?;
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
 fn run_post_rename_cargo_check(
@@ -3297,10 +3339,14 @@ fn run_post_rename_cargo_check(
 
 fn persist_rename_symbol_errors(workspace: &Path, compiler_output: &str) {
     let errors_path = workspace.join("state/rename_errors.txt");
-    if let Some(parent) = errors_path.parent() {
+    persist_text_file(&errors_path, compiler_output);
+}
+
+fn persist_text_file(path: &Path, content: &str) {
+    if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
-    let _ = fs::write(&errors_path, compiler_output);
+    let _ = fs::write(path, content);
 }
 
 /// Validate that a just-written JSON state file conforms to its canonical schema.
@@ -3478,20 +3524,38 @@ fn validate_schema_guarded_patch_outputs(
     for (target, prev_content) in schema_snapshots {
         let new_content = fs::read_to_string(workspace.join(target)).unwrap_or_default();
         if let Some(err_msg) = validate_state_file_schema(target, &new_content) {
-            if let Some(prev) = prev_content {
-                let _ = fs::write(workspace.join(target), prev);
-            }
-            log_error_event(
+            return Some(schema_guarded_patch_validation_failure(
                 role,
-                "apply_patch",
-                Some(step),
-                &err_msg,
-                Some(json!({"stage": "schema_validation", "path": target})),
-            );
-            return Some((false, err_msg));
+                step,
+                workspace,
+                target,
+                prev_content.as_deref(),
+                err_msg,
+            ));
         }
     }
     None
+}
+
+fn schema_guarded_patch_validation_failure(
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    target: &str,
+    prev_content: Option<&str>,
+    err_msg: String,
+) -> (bool, String) {
+    if let Some(prev) = prev_content {
+        let _ = fs::write(workspace.join(target), prev);
+    }
+    log_error_event(
+        role,
+        "apply_patch",
+        Some(step),
+        &err_msg,
+        Some(json!({"stage": "schema_validation", "path": target})),
+    );
+    (false, err_msg)
 }
 
 fn run_patch_crate_verification_command(
@@ -3711,6 +3775,31 @@ fn log_execution_learning(
     test_ok: Option<bool>,
     test_out: &str,
 ) {
+    let record = execution_learning_record(
+        workspace,
+        crate_name,
+        patch,
+        plan,
+        check_ok,
+        check_out,
+        cargo_test_ran,
+        test_ok,
+        test_out,
+    );
+    let _ = append_execution_learning_record(workspace, &record);
+}
+
+fn execution_learning_record(
+    workspace: &Path,
+    crate_name: &str,
+    patch: &str,
+    plan: &Option<crate::semantic::ExecutionPathPlan>,
+    check_ok: bool,
+    check_out: &str,
+    cargo_test_ran: bool,
+    test_ok: Option<bool>,
+    test_out: &str,
+) -> Value {
     let patch_paths = patch_targets(patch)
         .into_iter()
         .map(|path| path.to_string())
@@ -3736,7 +3825,7 @@ fn log_execution_learning(
     } else {
         verification_rebind(workspace, crate_name, plan.as_ref(), check_out, test_out)
     };
-    let record = json!({
+    json!({
         "ts_ms": now_ms(),
         "crate": crate_name,
         "path_fingerprint": plan.as_ref().map(|value| value.path_fingerprint.clone()),
@@ -3755,8 +3844,7 @@ fn log_execution_learning(
         "rebound_failure": rebound,
         "check_excerpt": truncate(check_out, MAX_SNIPPET),
         "test_excerpt": truncate(test_out, MAX_SNIPPET),
-    });
-    let _ = append_execution_learning_record(workspace, &record);
+    })
 }
 
 fn append_python_failure_guidance(out: &mut String, cwd: &str, workspace: &Path) {
@@ -4611,9 +4699,8 @@ fn render_graph_call_cfg_output(
 ) -> Result<String> {
     let label = graph_call_cfg_action_label(action_kind, bin_ok);
     let target_path = graph_call_cfg_target_path(out_dir, action_kind);
-    let preview = graph_preview_text(&target_path)?;
-    let (symbol_preview, symbol_path) =
-        build_graph_symbol_preview(out_dir, &target_path, action_kind)?;
+    let (preview, symbol_preview, symbol_path) =
+        collect_graph_call_cfg_preview_data(out_dir, &target_path, action_kind)?;
     let summary = build_graph_call_cfg_summary(
         &label,
         out_dir_str,
@@ -4622,8 +4709,23 @@ fn render_graph_call_cfg_output(
         symbol_preview.as_str(),
         symbol_path.as_ref(),
     );
+    Ok(format_graph_call_cfg_output(&summary, bin_label, bin_out))
+}
+
+fn collect_graph_call_cfg_preview_data(
+    out_dir: &Path,
+    target_path: &Path,
+    action_kind: &str,
+) -> Result<(String, String, Option<PathBuf>)> {
+    let preview = graph_preview_text(target_path)?;
+    let (symbol_preview, symbol_path) =
+        build_graph_symbol_preview(out_dir, target_path, action_kind)?;
+    Ok((preview, symbol_preview, symbol_path))
+}
+
+fn format_graph_call_cfg_output(summary: &str, bin_label: &str, bin_out: &str) -> String {
     let full_out = format!("{bin_label}:\n{}\n", truncate(bin_out, MAX_SNIPPET));
-    Ok(format!("{summary}\n\nfull_output:\n{full_out}"))
+    format!("{summary}\n\nfull_output:\n{full_out}")
 }
 
 fn log_graph_call_cfg_failure(
@@ -4944,11 +5046,30 @@ fn handle_graph_reports_action(
         &out_dir_str,
         tlog.as_deref(),
     );
-    let (report_path, report_label) = graph_report_path(&crate_dir, action_kind);
-    let summary = build_graph_reports_summary(&label, &out_dir_str, &report_path, report_label)?;
     Ok((
         false,
-        format!("{summary}\n\nfull_output:\n{}", truncate(&out, MAX_SNIPPET)),
+        build_graph_reports_output(
+            &label,
+            action_kind,
+            &out_dir_str,
+            &crate_dir,
+            &out,
+        )?,
+    ))
+}
+
+fn build_graph_reports_output(
+    label: &str,
+    action_kind: &str,
+    out_dir_str: &str,
+    crate_dir: &Path,
+    out: &str,
+) -> Result<String> {
+    let (report_path, report_label) = graph_report_path(crate_dir, action_kind);
+    let summary = build_graph_reports_summary(label, out_dir_str, &report_path, report_label)?;
+    Ok(format!(
+        "{summary}\n\nfull_output:\n{}",
+        truncate(out, MAX_SNIPPET)
     ))
 }
 
@@ -7514,10 +7635,14 @@ fn batch_item_op_note(item: &Value) -> String {
 
 fn append_rejected_batch_item(out: &mut String, n: usize, total: usize, kind: &str, item: &Value) {
     let op_note = batch_item_op_note(item);
-    out.push_str(&format!(
+    out.push_str(&format_rejected_batch_item(n, total, kind, &op_note));
+}
+
+fn format_rejected_batch_item(n: usize, total: usize, kind: &str, op_note: &str) -> String {
+    format!(
         "[batch {n}/{total}: REJECTED {kind}{op_note}]\n\
          mutating action '{kind}{op_note}' is not allowed in batch\n\n"
-    ));
+    )
 }
 
 fn append_batch_item_result(

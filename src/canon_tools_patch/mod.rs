@@ -138,10 +138,14 @@ fn run_external_apply_patch(patch: &str, cwd: &Path) -> Result<(), ApplyPatchErr
 
 fn to_io(err: anyhow::Error) -> ApplyPatchError {
     match err.downcast::<std::io::Error>() {
-        Ok(ioe) => ApplyPatchError::Io(IoError {
-            context: "I/O error".to_string(),
-            source: ioe,
-        }),
+        Ok(ioe) => io_apply_patch_error(ioe),
         Err(other) => ApplyPatchError::ComputeReplacements(other.to_string()),
     }
+}
+
+fn io_apply_patch_error(source: std::io::Error) -> ApplyPatchError {
+    ApplyPatchError::Io(IoError {
+        context: "I/O error".to_string(),
+        source,
+    })
 }

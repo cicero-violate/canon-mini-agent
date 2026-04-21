@@ -29,6 +29,7 @@
 ///   T'(s→s')     = T(s→s') · I_p(s')    (transition filtered by invariant predicate)
 ///   A'            = {a ∈ A | I(result(a)) = 1}  (only valid actions exist)
 use std::collections::{HashMap, HashSet};
+use std::io::BufRead;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -1414,6 +1415,20 @@ fn status_rank(status: &InvariantStatus) -> u8 {
     }
 }
 
+fn update_latest_invariants_record(
+    latest: &mut Option<(u64, EnforcedInvariantsFile)>,
+    seq: u64,
+    file: EnforcedInvariantsFile,
+) {
+    let replace = match latest.as_ref() {
+        None => true,
+        Some((latest_seq, _)) => seq >= *latest_seq,
+    };
+    if replace {
+        *latest = Some((seq, file));
+    }
+}
+
 fn load_invariants_from_tlog(workspace: &Path) -> Option<EnforcedInvariantsFile> {
     let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
     let records = crate::tlog::Tlog::read_records(&tlog_path).ok()?;
@@ -1425,38 +1440,16 @@ fn load_invariants_from_tlog(workspace: &Path) -> Option<EnforcedInvariantsFile>
         else {
             continue;
         };
-        let replace = match latest.as_ref() {
-            None => true,
-            Some((seq, _)) => record.seq >= *seq,
-        };
-        if replace {
-            latest = Some((record.seq, file));
-        }
+        update_latest_invariants_record(&mut latest, record.seq, file);
     }
     latest.map(|(_, file)| file)
 }
 
 fn read_tail_entries(log_path: &Path, max_lines: usize) -> Vec<Value> {
-    use std::io::{BufRead, BufReader, Seek, SeekFrom};
-
-    let file = match std::fs::File::open(log_path) {
-        Ok(f) => f,
-        Err(_) => return vec![],
+    let reader = match open_tail_reader(log_path) {
+        Some(reader) => reader,
+        None => return vec![],
     };
-    let file_len = file.metadata().map(|m| m.len()).unwrap_or(0);
-
-    // Read up to last 2 MB to avoid loading huge logs.
-    const MAX_BYTES: u64 = 2 * 1024 * 1024;
-    let mut file = file;
-    if file_len > MAX_BYTES {
-        let _ = file.seek(SeekFrom::End(-(MAX_BYTES as i64)));
-        // Skip possibly-partial first line.
-        let mut reader = BufReader::new(&mut file);
-        let mut _dummy = String::new();
-        let _ = reader.read_line(&mut _dummy);
-    }
-
-    let reader = BufReader::new(file);
     let mut lines: Vec<String> = reader
         .lines()
         .filter_map(|l| l.ok())
@@ -1472,6 +1465,26 @@ fn read_tail_entries(log_path: &Path, max_lines: usize) -> Vec<Value> {
         .iter()
         .filter_map(|l| serde_json::from_str(l).ok())
         .collect()
+}
+
+fn open_tail_reader(log_path: &Path) -> Option<std::io::BufReader<std::fs::File>> {
+    use std::io::{BufRead, BufReader, Seek, SeekFrom};
+
+    let file = std::fs::File::open(log_path).ok()?;
+    let file_len = file.metadata().map(|m| m.len()).unwrap_or(0);
+
+    // Read up to last 2 MB to avoid loading huge logs.
+    const MAX_BYTES: u64 = 2 * 1024 * 1024;
+    let mut file = file;
+    if file_len > MAX_BYTES {
+        let _ = file.seek(SeekFrom::End(-(MAX_BYTES as i64)));
+        // Skip possibly-partial first line.
+        let mut reader = BufReader::new(&mut file);
+        let mut _dummy = String::new();
+        let _ = reader.read_line(&mut _dummy);
+    }
+
+    Some(BufReader::new(file))
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

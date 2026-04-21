@@ -1131,14 +1131,7 @@ fn write_external_user_message(
     fs::create_dir_all(state_dir)
         .with_context(|| format!("create state dir {}", state_dir.display()))?;
     let to_key = sanitize_role(to_role);
-    let action = json!({
-        "kind": "external_user_message",
-        "from": "user",
-        "to": to_key,
-        "message": message,
-        "reply_to": "user"
-    });
-    let action_text = serde_json::to_string_pretty(&action)?;
+    let action_text = external_user_message_text(&to_key, message)?;
     let signature = artifact_write_signature(&[
         "external_user_message",
         &to_key,
@@ -1172,6 +1165,17 @@ fn write_external_user_message(
         "user_message",
     )?;
     Ok(msg_path)
+}
+
+fn external_user_message_text(to_key: &str, message: &str) -> Result<String> {
+    serde_json::to_string_pretty(&json!({
+        "kind": "external_user_message",
+        "from": "user",
+        "to": to_key,
+        "message": message,
+        "reply_to": "user"
+    }))
+    .map_err(Into::into)
 }
 
 fn read_external_user_reply(state_dir: &Path) -> Result<Option<String>> {

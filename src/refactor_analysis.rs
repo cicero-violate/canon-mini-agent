@@ -43,14 +43,7 @@ pub fn generate_all_refactor_issues(workspace: &Path) -> Result<usize> {
     }
 
     let mut file: IssuesFile = load_issues_file(workspace);
-
-    let existing_ids: HashSet<String> = file.issues.iter().map(|i| i.id.clone()).collect();
-    let open_locations: HashSet<String> = file
-        .issues
-        .iter()
-        .filter(|i| !is_closed(i))
-        .map(|i| i.location.clone())
-        .collect();
+    let (existing_ids, open_locations) = issue_scan_context(&file);
 
     let mut created = 0;
 
@@ -87,17 +80,37 @@ pub fn generate_all_refactor_issues(workspace: &Path) -> Result<usize> {
         );
     }
 
+    persist_generated_refactor_issues(workspace, &mut file, created)?;
+
+    Ok(created)
+}
+
+fn issue_scan_context(file: &IssuesFile) -> (HashSet<String>, HashSet<String>) {
+    let existing_ids = file.issues.iter().map(|i| i.id.clone()).collect();
+    let open_locations = file
+        .issues
+        .iter()
+        .filter(|i| !is_closed(i))
+        .map(|i| i.location.clone())
+        .collect();
+    (existing_ids, open_locations)
+}
+
+fn persist_generated_refactor_issues(
+    workspace: &Path,
+    file: &mut IssuesFile,
+    created: usize,
+) -> Result<()> {
     if created > 0 {
-        rescore_all(&mut file);
+        rescore_all(file);
         persist_issues_projection_with_writer(
             workspace,
-            &file,
+            file,
             None,
             "generate_all_refactor_issues",
         )?;
     }
-
-    Ok(created)
+    Ok(())
 }
 
 pub fn generate_panic_surface_issues(workspace: &Path) -> Result<usize> {
@@ -289,42 +302,46 @@ pub fn state_machine_issues(
         if s.switchint_count <= 3 || !s.has_back_edges {
             continue;
         }
-        let blocks = s.mir_blocks.unwrap_or(0);
-        let location = shorten_location(&s.file, s.line);
-        out.push(Issue {
-            id: format!("auto_state_machine_{crate_name}_{:x}", stable_hash(&s.symbol)),
-            title: format!(
-                "Implicit state machine in `{}` (switches={}, loopback)",
-                short_name(&s.symbol),
-                s.switchint_count
-            ),
-            status: "open".to_string(),
-            priority: "medium".to_string(),
-            kind: "logic".to_string(),
-            description: format!(
-                "Function `{}` behaves like an implicit state machine (SwitchInt count {} with CFG back-edges).\n\
-                 Extract explicit state enum and transition handling.",
-                s.symbol, s.switchint_count
-            ),
-            location: location.clone(),
-            scope: format!("crate:{crate_name}"),
-            metrics: json!({
-                "switchint_count": s.switchint_count,
-                "mir_blocks": blocks,
-                "has_back_edges": s.has_back_edges
-            }),
-            acceptance_criteria: vec![
-                "state transitions are represented explicitly".to_string(),
-                "top-level CFG complexity reduced".to_string(),
-            ],
-            evidence: vec![format!("location: {location}")],
-            discovered_by: "refactor_analyzer".to_string(),
-            ..Issue::default()
-        });
+        out.push(build_state_machine_issue(crate_name, s));
     }
     out.sort_by(|a, b| a.id.cmp(&b.id));
     out.truncate(limit);
     out
+}
+
+fn build_state_machine_issue(crate_name: &str, summary: &SymbolSummary) -> Issue {
+    let blocks = summary.mir_blocks.unwrap_or(0);
+    let location = shorten_location(&summary.file, summary.line);
+    Issue {
+        id: format!("auto_state_machine_{crate_name}_{:x}", stable_hash(&summary.symbol)),
+        title: format!(
+            "Implicit state machine in `{}` (switches={}, loopback)",
+            short_name(&summary.symbol),
+            summary.switchint_count
+        ),
+        status: "open".to_string(),
+        priority: "medium".to_string(),
+        kind: "logic".to_string(),
+        description: format!(
+            "Function `{}` behaves like an implicit state machine (SwitchInt count {} with CFG back-edges).\n\
+             Extract explicit state enum and transition handling.",
+            summary.symbol, summary.switchint_count
+        ),
+        location: location.clone(),
+        scope: format!("crate:{crate_name}"),
+        metrics: json!({
+            "switchint_count": summary.switchint_count,
+            "mir_blocks": blocks,
+            "has_back_edges": summary.has_back_edges
+        }),
+        acceptance_criteria: vec![
+            "state transitions are represented explicitly".to_string(),
+            "top-level CFG complexity reduced".to_string(),
+        ],
+        evidence: vec![format!("location: {location}")],
+        discovered_by: "refactor_analyzer".to_string(),
+        ..Issue::default()
+    }
 }
 
 pub fn drop_complexity_issues(

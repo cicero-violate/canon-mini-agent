@@ -115,12 +115,17 @@ pub struct IssueSweepSummary {
 pub fn load_issues_file(workspace: &Path) -> IssuesFile {
     let path = workspace.join(ISSUES_FILE);
     let raw = std::fs::read_to_string(&path).unwrap_or_default();
-    if !raw.trim().is_empty() {
-        if let Ok(file) = serde_json::from_str::<IssuesFile>(&raw) {
-            return file;
-        }
+    if let Some(file) = parse_issues_file_from_raw(&raw) {
+        return file;
     }
     load_issues_from_tlog(workspace).unwrap_or_default()
+}
+
+fn parse_issues_file_from_raw(raw: &str) -> Option<IssuesFile> {
+    if raw.trim().is_empty() {
+        return None;
+    }
+    serde_json::from_str::<IssuesFile>(raw).ok()
 }
 
 fn load_issues_from_tlog(workspace: &Path) -> Option<IssuesFile> {

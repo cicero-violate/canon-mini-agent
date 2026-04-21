@@ -1471,28 +1471,9 @@ fn success_automation_question<'a>(
     objective_ids: impl Iterator<Item = &'a String>,
     success_clusters: &HashMap<String, usize>,
 ) -> Option<String> {
-    let matched_task_ids: Vec<String> = task_ids
-        .filter(|task_id| !task_id.is_empty())
-        .filter(|task_id| {
-            success_clusters
-                .get(&format!("task:{task_id}"))
-                .copied()
-                .unwrap_or(0)
-                >= 2
-        })
-        .cloned()
-        .collect();
-    let matched_objective_ids: Vec<String> = objective_ids
-        .filter(|objective_id| !objective_id.is_empty())
-        .filter(|objective_id| {
-            success_clusters
-                .get(&format!("objective:{objective_id}"))
-                .copied()
-                .unwrap_or(0)
-                >= 2
-        })
-        .cloned()
-        .collect();
+    let matched_task_ids = matched_success_cluster_ids(task_ids, "task", success_clusters);
+    let matched_objective_ids =
+        matched_success_cluster_ids(objective_ids, "objective", success_clusters);
 
     if matched_task_ids.is_empty() && matched_objective_ids.is_empty() {
         return None;
@@ -1502,6 +1483,23 @@ fn success_automation_question<'a>(
         "How can this successful pathway be automated in the system, without forcing the LLM to change, for task_ids {:?} and objective_ids {:?}?",
         matched_task_ids, matched_objective_ids
     ))
+}
+
+fn matched_success_cluster_ids<'a>(
+    ids: impl Iterator<Item = &'a String>,
+    prefix: &str,
+    success_clusters: &HashMap<String, usize>,
+) -> Vec<String> {
+    ids.filter(|id| !id.is_empty())
+        .filter(|id| {
+            success_clusters
+                .get(&format!("{prefix}:{id}"))
+                .copied()
+                .unwrap_or(0)
+                >= 2
+        })
+        .cloned()
+        .collect()
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
