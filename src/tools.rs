@@ -2330,6 +2330,7 @@ fn handle_message_action(
         std::path::Path::new(crate::constants::workspace()),
         action,
         &full_message,
+        writer.as_deref_mut(),
     );
 
     // Capture blocker messages as first-class artifact for invariant synthesis.
@@ -7801,6 +7802,7 @@ fn persist_inbound_message(
     workspace: &Path,
     action: &Value,
     full_message: &str,
+    mut writer: Option<&mut CanonicalWriter>,
 ) {
     let Some(to) = resolve_inbound_message_target(role, step, action) else {
         return;
@@ -7818,13 +7820,26 @@ fn persist_inbound_message(
             from_role: role.to_string(),
             to_role: to.clone(),
             message: full_message.to_string(),
-            signature: message_signature,
+            signature: message_signature.clone(),
         },
     ) {
         eprintln!(
             "[{role}] step={} failed to record canonical inbound message for {}: {}",
             step, to, err
         );
+    }
+    if let Some(w) = writer.as_deref_mut() {
+        w.apply(ControlEvent::InboundMessageQueued {
+            role: to.clone(),
+            content: full_message.to_string(),
+            signature: message_signature.clone(),
+        });
+        let wake_signature = artifact_write_signature(&["wake", &to, &now_ms().to_string()]);
+        w.apply(ControlEvent::WakeSignalQueued {
+            role: to.clone(),
+            signature: wake_signature,
+            ts_ms: now_ms(),
+        });
     }
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let path = agent_state_dir.join(format!("last_message_to_{to}.json"));
