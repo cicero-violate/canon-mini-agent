@@ -6574,12 +6574,19 @@ pub async fn run() -> Result<()> {
             let _ = semantic_control;
 
             if writer.state().scheduled_phase.is_some() {
-                let (executor_lane_pending, executor_in_progress) = writer
-                    .state()
-                    .phase_lane
-                    .and_then(|lane_id| writer.state().lanes.get(&lane_id))
-                    .map(|lane| (lane.pending, lane.in_progress_by.is_some()))
-                    .unwrap_or((false, false));
+                // Phase completion for executor must be based on aggregate lane activity,
+                // not only `phase_lane` (which can legitimately be None between submits).
+                // Using phase_lane-only creates None<->executor schedule thrash while
+                // wake signals are pending and lanes are still busy.
+                let executor_lane_pending = writer.state().lanes.values().any(|lane| lane.pending);
+                let executor_in_progress = writer.state().lanes.values().any(|lane| {
+                    lane.in_progress_by.is_some()
+                }) || writer.state().lane_submit_in_flight.values().any(|&v| v)
+                    || writer.state().lane_prompt_in_flight.values().any(|&v| v)
+                    || !rt.executor_submit_inflight.is_empty()
+                    || !rt.submitted_turns.is_empty()
+                    || !submit_joinset.is_empty()
+                    || !continuation_joinset.is_empty();
                 let semantic_control = SemanticControlState::new(
                     writer.state().scheduled_phase.clone(),
                     writer.state().planner_pending,
