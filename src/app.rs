@@ -2289,11 +2289,14 @@ fn save_checkpoint(
         verifier_summary: state.verifier_summary.clone(),
         verifier_pending_results: resume_items,
     };
-    persist_agent_state_projection(
-        &path,
-        &serde_json::to_string_pretty(&checkpoint)?,
-        "orchestrator_checkpoint",
-    )?;
+    // Use a plain atomic write instead of persist_agent_state_projection.
+    // persist_agent_state_projection records two artifact-write tlog events (start + end)
+    // AFTER checkpoint_tlog_seq is captured, causing checkpoint_tlog_seq to always lag
+    // the tlog by 2 on the next restart, making every checkpoint appear diverged and
+    // getting discarded permanently.
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, serde_json::to_string_pretty(&checkpoint)?)?;
+    std::fs::rename(&tmp, &path)?;
     Ok(())
 }
 
