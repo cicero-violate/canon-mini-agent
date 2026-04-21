@@ -6136,7 +6136,12 @@ pub async fn run() -> Result<()> {
                     });
                 }
             }
-            // Reset lanes that lost ownership (no active tab) so they become pending.
+        }
+        // Reset lanes that lost ownership (no active tab) — runs whether or not a checkpoint
+        // loaded. Tlog replay can produce the same orphaned in_progress state when the process
+        // was killed between tab release and turn registration (prompt_in_flight=false), which
+        // the stale-lane cleanup below does not cover.
+        {
             let lane_ids: Vec<usize> = writer.state().lanes.keys().copied().collect();
             for lane_id in lane_ids {
                 let (in_progress, has_active_tab) = {
