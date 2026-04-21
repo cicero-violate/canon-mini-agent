@@ -737,6 +737,34 @@ fn collect_general_action_schema_diff(
         push_missing_or_invalid_rationale(schema_diff, obj.get("rationale"));
     }
     push_type_mismatch_if_present(schema_diff, action.get("observation"), "observation");
+    if matches!(role, "planner" | "mini_planner") && kind == "plan" {
+        let rationale = action
+            .get("rationale")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let observation = action
+            .get("observation")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let combined = format!("{observation}\n{rationale}").to_ascii_lowercase();
+        let references_diagnostics = combined.contains("diagnostic")
+            || combined.contains("stale")
+            || combined.contains("violation");
+        let has_source_validation = combined.contains("read_file")
+            || combined.contains("run_command")
+            || combined.contains("python")
+            || combined.contains("source evidence")
+            || combined.contains("current source")
+            || combined.contains("verified source")
+            || combined.contains("current-cycle")
+            || combined.contains("rg ");
+        if references_diagnostics && !has_source_validation {
+            add_unique_schema_diff(
+                schema_diff,
+                "plan actions derived from diagnostics must cite same-cycle source evidence in observation/rationale (for example read_file, run_command, python, or verified current source evidence)".to_string(),
+            );
+        }
+    }
     if kind == "apply_patch" {
         if let Some(patch) = action.get("patch").and_then(|v| v.as_str()) {
             if let Some(msg) = crate::tools::patch_scope_error(role, patch) {
