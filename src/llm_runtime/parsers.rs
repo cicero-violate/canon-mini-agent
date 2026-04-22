@@ -336,6 +336,34 @@ fn is_assistant_raw_message(obj: &serde_json::Map<String, Value>) -> bool {
         && obj.get("raw_messages").is_some()
 }
 
+fn classify_calpico_object(obj: &serde_json::Map<String, Value>, value: &Value) -> FrameResult {
+    if let Some(result) = classify_chunk_object(obj) {
+        return result;
+    }
+    if let Some(result) = classify_calpico_items_object(obj) {
+        return result;
+    }
+    if calpico_object_is_message_envelope(obj) {
+        return classify_calpico_envelope(value);
+    }
+    if is_assistant_raw_message(obj) {
+        return classify_calpico_message(value);
+    }
+    FrameResult::Ignore
+}
+
+fn classify_calpico_items_object(obj: &serde_json::Map<String, Value>) -> Option<FrameResult> {
+    let items = obj.get("items")?.as_array()?;
+    match classify_calpico_items(items) {
+        FrameResult::Ignore => None,
+        result => Some(result),
+    }
+}
+
+fn calpico_object_is_message_envelope(obj: &serde_json::Map<String, Value>) -> bool {
+    obj.get("type").and_then(|t| t.as_str()) == Some("message")
+}
+
 fn classify_calpico_value(v: &Value) -> FrameResult {
     if let Some(arr) = v.as_array() {
         return classify_calpico_array(arr);
@@ -343,23 +371,7 @@ fn classify_calpico_value(v: &Value) -> FrameResult {
     let Some(obj) = v.as_object() else {
         return FrameResult::Ignore;
     };
-    if let Some(result) = classify_chunk_object(obj) {
-        return result;
-    }
-    if let Some(items) = obj.get("items").and_then(|i| i.as_array()) {
-        match classify_calpico_items(items) {
-            FrameResult::Ignore => {}
-            result => return result,
-        }
-    }
-    let kind = obj.get("type").and_then(|t| t.as_str());
-    if kind == Some("message") {
-        return classify_calpico_envelope(v);
-    }
-    if is_assistant_raw_message(obj) {
-        return classify_calpico_message(v);
-    }
-    FrameResult::Ignore
+    classify_calpico_object(obj, v)
 }
 
 fn classify_calpico_array(arr: &[Value]) -> FrameResult {
@@ -378,24 +390,55 @@ fn classify_calpico_items(items: &[Value]) -> FrameResult {
         if !matches!(result, FrameResult::Ignore) {
             return result;
         }
-
-        let Some(role) = item.get("role").and_then(|r| r.as_str()) else {
-            continue;
-        };
-        if role != "assistant" {
-            continue;
-        }
-
-        let text = item
-            .get("content")
-            .and_then(|c| c.get("text"))
-            .and_then(|t| t.as_str())
-            .unwrap_or("");
-        if !text.is_empty() {
+        if let Some(text) = assistant_item_text(item) {
             return FrameResult::Snapshot(text.to_string());
         }
     }
     FrameResult::Ignore
+}
+
+fn assistant_item_text(item: &Value) -> Option<&str> {
+    if item.get("role").and_then(|r| r.as_str()) != Some("assistant") {
+        return None;
+    }
+    let text = item
+        .get("content")
+        .and_then(|c| c.get("text"))
+        .and_then(|t| t.as_str())?;
+    if text.is_empty() {
+        return None;
+    }
+    Some(text)
+}
+
+fn calpico_message_from_payload(payload: &Value) -> Option<&Value> {
+    payload.get("payload")?.get("message")
+}
+
+fn classify_calpico_update_payload(payload: &Value) -> Option<FrameResult> {
+    if payload.get("type").and_then(|t| t.as_str()) != Some("calpico-message-update") {
+        return None;
+    }
+    let msg = calpico_message_from_payload(payload)?;
+    let assistant_reaction = msg
+        .get("reactions")
+        .and_then(|r| r.get("assistant"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if assistant_reaction.is_empty() {
+        return Some(FrameResult::Ignore);
+    }
+    Some(FrameResult::Snapshot(format!(
+        "assistant reaction-only terminal frame: {}",
+        assistant_reaction
+    )))
+}
+
+fn classify_calpico_add_payload(payload: &Value) -> Option<FrameResult> {
+    if payload.get("type").and_then(|t| t.as_str()) != Some("calpico-message-add") {
+        return None;
+    }
+    Some(classify_calpico_message(calpico_message_from_payload(payload)?))
 }
 
 fn classify_calpico_envelope(envelope: &Value) -> FrameResult {
@@ -406,32 +449,35 @@ fn classify_calpico_envelope(envelope: &Value) -> FrameResult {
         Some(p) => p,
         None => return FrameResult::Ignore,
     };
-    if payload.get("type").and_then(|t| t.as_str()) == Some("calpico-message-update") {
-        let msg = match payload.get("payload").and_then(|p| p.get("message")) {
-            Some(m) => m,
-            None => return FrameResult::Ignore,
-        };
-        let assistant_reaction = msg
-            .get("reactions")
-            .and_then(|r| r.get("assistant"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        if !assistant_reaction.is_empty() {
-            return FrameResult::Snapshot(format!(
-                "assistant reaction-only terminal frame: {}",
-                assistant_reaction
-            ));
-        }
-        return FrameResult::Ignore;
+    if let Some(result) = classify_calpico_update_payload(payload) {
+        return result;
     }
-    if payload.get("type").and_then(|t| t.as_str()) != Some("calpico-message-add") {
-        return FrameResult::Ignore;
+    if let Some(result) = classify_calpico_add_payload(payload) {
+        return result;
     }
-    let msg = match payload.get("payload").and_then(|p| p.get("message")) {
-        Some(m) => m,
-        None => return FrameResult::Ignore,
-    };
-    classify_calpico_message(msg)
+    FrameResult::Ignore
+}
+
+fn assistant_final_message_text(raw_msg: &Value) -> Option<Option<&str>> {
+    let author_role = raw_msg
+        .get("author")
+        .and_then(|a| a.get("role"))
+        .and_then(|r| r.as_str())?;
+    if author_role != "assistant" {
+        return None;
+    }
+    let channel = raw_msg.get("channel").and_then(|c| c.as_str()).unwrap_or("");
+    if channel != "final" {
+        return Some(None);
+    }
+    let text = raw_msg
+        .get("content")
+        .and_then(|c| c.get("parts"))
+        .and_then(|p| p.as_array())
+        .and_then(|a| a.first())
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    Some(Some(text))
 }
 
 fn classify_calpico_message(msg: &Value) -> FrameResult {
@@ -445,33 +491,19 @@ fn classify_calpico_message(msg: &Value) -> FrameResult {
         None => return FrameResult::Ignore,
     };
     for raw_msg in raw_messages {
-        let author_role = raw_msg
-            .get("author")
-            .and_then(|a| a.get("role"))
-            .and_then(|r| r.as_str())
-            .unwrap_or("");
-        if author_role != "assistant" {
-            continue;
+        match assistant_final_message_text(raw_msg) {
+            Some(Some(text)) if !text.is_empty() => {
+                return FrameResult::Snapshot(text.to_string());
+            }
+            Some(Some(_)) => {
+                saw_assistant = true;
+                saw_empty = true;
+            }
+            Some(None) => {
+                saw_assistant = true;
+            }
+            None => {}
         }
-        saw_assistant = true;
-        let channel = raw_msg
-            .get("channel")
-            .and_then(|c| c.as_str())
-            .unwrap_or("");
-        if channel != "final" {
-            continue;
-        }
-        let text = raw_msg
-            .get("content")
-            .and_then(|c| c.get("parts"))
-            .and_then(|p| p.as_array())
-            .and_then(|a| a.first())
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        if !text.is_empty() {
-            return FrameResult::Snapshot(text.to_string());
-        }
-        saw_empty = true;
     }
     if saw_assistant && saw_empty {
         return FrameResult::Snapshot("LLM error: empty assistant response body".to_string());
