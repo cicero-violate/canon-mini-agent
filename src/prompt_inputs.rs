@@ -7,9 +7,7 @@ use serde_json::Value;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use crate::constants::{
-    INVARIANTS_FILE, ISSUES_FILE, MASTER_PLAN_FILE, SPEC_FILE, VIOLATIONS_FILE,
-};
+use crate::constants::{ISSUES_FILE, MASTER_PLAN_FILE, SPEC_FILE, VIOLATIONS_FILE};
 use crate::issues::{read_ranked_open_issues, Issue};
 use crate::reports::{DiagnosticsFinding, DiagnosticsReport, Impact, Severity, ViolationsReport};
 
@@ -82,40 +80,7 @@ pub struct SemanticControlPromptState {
 }
 
 pub fn read_combined_invariants_context(workspace: &Path) -> String {
-    let semantic_state = semantic_state_snapshot_from_tlog(workspace);
-    let static_invariants =
-        filter_invariants_json(&read_text_or_empty(workspace.join(INVARIANTS_FILE)));
-    let enforced_invariants = summarize_enforced_invariants_for_prompt(
-        &crate::invariants::read_enforced_invariants(workspace),
-    );
-    let enforced_trimmed = enforced_invariants.trim();
-    let include_enforced = !enforced_trimmed.is_empty()
-        && !enforced_trimmed.starts_with("(enforced_invariants.json not yet created")
-        && !enforced_trimmed.starts_with("(error reading enforced_invariants.json:");
-
-    let invariants_body = match (static_invariants.trim().is_empty(), include_enforced) {
-        (true, false) => String::new(),
-        (false, false) => static_invariants,
-        (true, true) => format!(
-            "Dynamic enforced invariants (from agent_state/enforced_invariants.json):\n{}",
-            enforced_invariants
-        ),
-        (false, true) => format!(
-            "Static design invariants (from {INVARIANTS_FILE}):\n{static_invariants}\n\nDynamic enforced invariants (from agent_state/enforced_invariants.json):\n{enforced_invariants}"
-        ),
-    };
-
-    match (
-        semantic_state.trim().is_empty(),
-        invariants_body.trim().is_empty(),
-    ) {
-        (true, true) => String::new(),
-        (false, true) => semantic_state,
-        (true, false) => invariants_body,
-        (false, false) => format!(
-            "Runtime semantic state (derived from agent_state/tlog.ndjson):\n{semantic_state}\n\n{invariants_body}"
-        ),
-    }
+    semantic_state_snapshot_from_tlog(workspace)
 }
 
 fn truncate_prompt_value(value: &str, max_chars: usize) -> String {
@@ -295,9 +260,7 @@ fn effect_event_kind_name(event: &crate::events::EffectEvent) -> &'static str {
         crate::events::EffectEvent::LlmTurnInput { .. } => "llm_turn_input",
         crate::events::EffectEvent::LlmTurnOutput { .. } => "llm_turn_output",
         crate::events::EffectEvent::ActionResultRecorded { .. } => "action_result_recorded",
-        crate::events::EffectEvent::FingerprintDriftRecorded { .. } => {
-            "fingerprint_drift_recorded"
-        }
+        crate::events::EffectEvent::FingerprintDriftRecorded { .. } => "fingerprint_drift_recorded",
         crate::events::EffectEvent::GrpoDatasetRecorded { .. } => "grpo_dataset_recorded",
         crate::events::EffectEvent::PostRestartResultRecorded { .. } => {
             "post_restart_result_recorded"
@@ -786,10 +749,7 @@ pub fn derive_semantic_control_prompt_state(
     let mut sections = Vec::new();
 
     if !runtime_state.trim().is_empty() {
-        sections.push(format!(
-            "Runtime semantic state + invariants:\n{}",
-            runtime_state.trim()
-        ));
+        sections.push(format!("Runtime semantic state:\n{}", runtime_state.trim()));
     }
 
     if !artifacts.issues_summary.trim().is_empty()
@@ -1313,39 +1273,6 @@ pub fn filter_pending_plan_json(raw: &str) -> String {
     serde_json::to_string_pretty(&value).unwrap_or_else(|_| raw.to_string())
 }
 
-pub fn filter_invariants_json(raw: &str) -> String {
-    if raw.trim().is_empty() {
-        return String::new();
-    }
-    let Ok(value) = serde_json::from_str::<Value>(raw) else {
-        return raw.to_string();
-    };
-    let Some(invariants) = value.get("invariants").and_then(Value::as_array) else {
-        return raw.to_string();
-    };
-    if invariants.is_empty() {
-        return String::new();
-    }
-    let mut out = String::new();
-    for inv in invariants {
-        let id = inv.get("id").and_then(Value::as_str).unwrap_or("?");
-        let title = inv
-            .get("title")
-            .and_then(Value::as_str)
-            .unwrap_or("(no title)");
-        let level = inv.get("level").and_then(Value::as_str).unwrap_or("?");
-        let category = inv.get("category").and_then(Value::as_str).unwrap_or("");
-        let scope = if category.is_empty() {
-            String::new()
-        } else {
-            format!("  ({})", category)
-        };
-        out.push_str(&format!("[{level}]  {id}  —  {title}{scope}\n"));
-    }
-    out.push_str("Full detail: {\"action\":\"read_file\",\"path\":\"INVARIANTS.json\"}");
-    out
-}
-
 pub fn filter_active_violations_json(raw: &str) -> String {
     if raw.trim().is_empty() {
         return String::new();
@@ -1842,7 +1769,9 @@ pub fn build_single_role_prompt(
 ) -> Result<String> {
     let prompt = match inputs.prompt_kind {
         AgentPromptKind::Verifier => build_verifier_role_prompt(ctx, inputs, cargo_test_failures)?,
-        AgentPromptKind::Diagnostics => build_planner_role_prompt(ctx, inputs, cargo_test_failures)?,
+        AgentPromptKind::Diagnostics => {
+            build_planner_role_prompt(ctx, inputs, cargo_test_failures)?
+        }
         AgentPromptKind::Planner => build_planner_role_prompt(ctx, inputs, cargo_test_failures)?,
         AgentPromptKind::Executor => build_executor_role_prompt(ctx)?,
         AgentPromptKind::Solo => {
@@ -1897,9 +1826,7 @@ fn build_executor_role_prompt(ctx: &SingleRoleContext<'_>) -> Result<String> {
     ))
 }
 
-fn executor_role_prompt_inputs(
-    ctx: &SingleRoleContext<'_>,
-) -> Result<(String, String, String)> {
+fn executor_role_prompt_inputs(ctx: &SingleRoleContext<'_>) -> Result<(String, String, String)> {
     Ok((
         ctx.read(SingleRoleRead::Spec)?,
         ctx.read(SingleRoleRead::MasterPlan)?,
