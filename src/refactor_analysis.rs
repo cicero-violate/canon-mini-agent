@@ -826,14 +826,11 @@ fn split_prefix_and_stem(name: &str) -> Option<(&'static str, String)> {
         ("process_", "process"),
         ("compute_", "compute"),
     ];
-    for (needle, tag) in prefixes {
-        if let Some(rest) = name.strip_prefix(needle) {
-            if !rest.is_empty() {
-                return Some((tag, rest.to_string()));
-            }
-        }
-    }
-    None
+    prefixes.into_iter().find_map(|(needle, tag)| {
+        name.strip_prefix(needle)
+            .filter(|rest| !rest.is_empty())
+            .map(|rest| (tag, rest.to_string()))
+    })
 }
 
 fn inconsistent_prefix_reason(
