@@ -462,102 +462,10 @@ pub fn generate_implicit_state_machine_issues(workspace: &Path) -> Result<usize>
 pub fn generate_effect_boundary_leak_issues(workspace: &Path) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
     let before = serde_json::to_value(&file)?;
-    let mut desired_ids = HashSet::new();
     let mut mutated = 0usize;
 
     for crate_name in SemanticIndex::available_crates(workspace) {
-        let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
-            continue;
-        };
-        let crate_name = crate_name.replace('-', "_");
-        let mut effects_by_symbol: HashMap<String, HashSet<&'static str>> = HashMap::new();
-        for (symbol, _) in idx.artifact_write_edges() {
-            effects_by_symbol
-                .entry(symbol)
-                .or_default()
-                .insert("artifact_write");
-        }
-        for (symbol, _) in idx.artifact_read_edges() {
-            effects_by_symbol
-                .entry(symbol)
-                .or_default()
-                .insert("artifact_read");
-        }
-        for (symbol, _) in idx.state_write_edges() {
-            effects_by_symbol
-                .entry(symbol)
-                .or_default()
-                .insert("state_write");
-        }
-        for (symbol, _) in idx.state_read_edges() {
-            effects_by_symbol
-                .entry(symbol)
-                .or_default()
-                .insert("state_read");
-        }
-        for (symbol, _) in idx.state_transition_edges() {
-            effects_by_symbol
-                .entry(symbol)
-                .or_default()
-                .insert("state_transition");
-        }
-        for (symbol, _) in idx.semantic_edges_by_relation("ShapesError") {
-            effects_by_symbol
-                .entry(symbol)
-                .or_default()
-                .insert("error_shape");
-        }
-        for (symbol, _) in idx.semantic_edges_by_relation("PerformsLogging") {
-            effects_by_symbol
-                .entry(symbol)
-                .or_default()
-                .insert("logging");
-        }
-        for (symbol, _) in idx.semantic_edges_by_relation("SpawnsProcess") {
-            effects_by_symbol
-                .entry(symbol)
-                .or_default()
-                .insert("process_spawn");
-        }
-        for (symbol, _) in idx.semantic_edges_by_relation("UsesNetwork") {
-            effects_by_symbol
-                .entry(symbol)
-                .or_default()
-                .insert("network");
-        }
-        let effectful_symbols: HashSet<String> = effects_by_symbol.keys().cloned().collect();
-        let canonical_modules =
-            derive_canonical_effect_boundary_modules(&idx, &effectful_symbols);
-
-        let mut by_module: HashMap<String, Vec<(String, Vec<&'static str>)>> = HashMap::new();
-        for (symbol, effects) in effects_by_symbol {
-            if is_canonical_effect_boundary_symbol(&canonical_modules, &symbol) || effects.len() < 3
-            {
-                continue;
-            }
-            let module = symbol_module(&symbol);
-            let mut effects_vec: Vec<&'static str> = effects.into_iter().collect();
-            effects_vec.sort();
-            by_module.entry(module).or_default().push((symbol, effects_vec));
-        }
-
-        for (module, mut rows) in by_module {
-            rows.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.0.cmp(&b.0)));
-            let issue = build_effect_boundary_leak_issue(&crate_name, &module, &rows);
-            desired_ids.insert(issue.id.clone());
-            mutated += upsert_bridge_issue(&mut file, issue, !rows.is_empty());
-        }
-
-        let prefix = format!("auto_effect_boundary_leak_{crate_name}_");
-        for issue in &mut file.issues {
-            if issue.id.starts_with(&prefix)
-                && !desired_ids.contains(&issue.id)
-                && issue.status != "resolved"
-            {
-                issue.status = "resolved".to_string();
-                mutated += 1;
-            }
-        }
+        mutated += sync_effect_boundary_leak_issues_for_crate(workspace, &mut file, &crate_name)?;
     }
 
     rescore_all(&mut file);
@@ -572,6 +480,119 @@ pub fn generate_effect_boundary_leak_issues(workspace: &Path) -> Result<usize> {
     }
 
     Ok(mutated)
+}
+
+fn sync_effect_boundary_leak_issues_for_crate(
+    workspace: &Path,
+    file: &mut IssuesFile,
+    crate_name: &str,
+) -> Result<usize> {
+    let Ok(idx) = SemanticIndex::load(workspace, crate_name) else {
+        return Ok(0);
+    };
+    let crate_name = crate_name.replace('-', "_");
+    let by_module = collect_effect_boundary_rows_by_module(&idx);
+    let mut desired_ids = HashSet::new();
+    let mut mutated = 0usize;
+
+    for (module, rows) in by_module {
+        let issue = build_effect_boundary_leak_issue(&crate_name, &module, &rows);
+        desired_ids.insert(issue.id.clone());
+        mutated += upsert_bridge_issue(file, issue, !rows.is_empty());
+    }
+
+    mutated += resolve_stale_effect_boundary_leak_issues(file, &crate_name, &desired_ids);
+    Ok(mutated)
+}
+
+fn collect_effect_boundary_rows_by_module(
+    idx: &SemanticIndex,
+) -> HashMap<String, Vec<(String, Vec<&'static str>)>> {
+    let effects_by_symbol = collect_effects_by_symbol(idx);
+    let effectful_symbols: HashSet<String> = effects_by_symbol.keys().cloned().collect();
+    let canonical_modules = derive_canonical_effect_boundary_modules(idx, &effectful_symbols);
+    let mut by_module: HashMap<String, Vec<(String, Vec<&'static str>)>> = HashMap::new();
+
+    for (symbol, effects) in effects_by_symbol {
+        if is_canonical_effect_boundary_symbol(&canonical_modules, &symbol) || effects.len() < 3 {
+            continue;
+        }
+        let module = symbol_module(&symbol);
+        let mut effects_vec: Vec<&'static str> = effects.into_iter().collect();
+        effects_vec.sort();
+        by_module.entry(module).or_default().push((symbol, effects_vec));
+    }
+
+    for rows in by_module.values_mut() {
+        rows.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.0.cmp(&b.0)));
+    }
+
+    by_module
+}
+
+fn collect_effects_by_symbol(idx: &SemanticIndex) -> HashMap<String, HashSet<&'static str>> {
+    let mut effects_by_symbol: HashMap<String, HashSet<&'static str>> = HashMap::new();
+    insert_effect_labels(&mut effects_by_symbol, idx.artifact_write_edges(), "artifact_write");
+    insert_effect_labels(&mut effects_by_symbol, idx.artifact_read_edges(), "artifact_read");
+    insert_effect_labels(&mut effects_by_symbol, idx.state_write_edges(), "state_write");
+    insert_effect_labels(&mut effects_by_symbol, idx.state_read_edges(), "state_read");
+    insert_effect_labels(
+        &mut effects_by_symbol,
+        idx.state_transition_edges(),
+        "state_transition",
+    );
+    insert_effect_labels(
+        &mut effects_by_symbol,
+        idx.semantic_edges_by_relation("ShapesError"),
+        "error_shape",
+    );
+    insert_effect_labels(
+        &mut effects_by_symbol,
+        idx.semantic_edges_by_relation("PerformsLogging"),
+        "logging",
+    );
+    insert_effect_labels(
+        &mut effects_by_symbol,
+        idx.semantic_edges_by_relation("SpawnsProcess"),
+        "process_spawn",
+    );
+    insert_effect_labels(
+        &mut effects_by_symbol,
+        idx.semantic_edges_by_relation("UsesNetwork"),
+        "network",
+    );
+    effects_by_symbol
+}
+
+fn insert_effect_labels<I>(
+    effects_by_symbol: &mut HashMap<String, HashSet<&'static str>>,
+    edges: I,
+    label: &'static str,
+) where
+    I: IntoIterator<Item = (String, String)>,
+{
+    for (symbol, _) in edges {
+        effects_by_symbol.entry(symbol).or_default().insert(label);
+    }
+}
+
+fn resolve_stale_effect_boundary_leak_issues(
+    file: &mut IssuesFile,
+    crate_name: &str,
+    desired_ids: &HashSet<String>,
+) -> usize {
+    let prefix = format!("auto_effect_boundary_leak_{crate_name}_");
+    let mut mutated = 0usize;
+    for issue in &mut file.issues {
+        if issue.id.starts_with(&prefix)
+            && !desired_ids.contains(&issue.id)
+            && issue.status != "resolved"
+        {
+            issue.status = "resolved".to_string();
+            mutated += 1;
+        }
+    }
+    mutated
 }
 
 pub fn generate_logging_dispersion_issues(workspace: &Path) -> Result<usize> {
