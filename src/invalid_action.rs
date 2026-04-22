@@ -393,17 +393,26 @@ fn example_message_payload(msg_type: &str, status: &str) -> Value {
     }
 }
 
+fn example_message_metadata() -> Value {
+    json!({
+        "action": "message",
+        "observation": "Summarize what happened.",
+        "rationale": "Explain why this is the next step.",
+        "predicted_next_actions": example_predicted_next_actions()
+    })
+}
+
 fn example_message_action(from: &str, to_role: &str, msg_type: &str, status: &str) -> Value {
     let payload = example_message_payload(msg_type, status);
     json!({
-        "action": "message",
+        "action": example_message_metadata()["action"],
         "from": from,
         "to": to_role,
         "type": msg_type,
         "status": status,
-        "observation": "Summarize what happened.",
-        "rationale": "Explain why this is the next step.",
-        "predicted_next_actions": example_predicted_next_actions(),
+        "observation": example_message_metadata()["observation"],
+        "rationale": example_message_metadata()["rationale"],
+        "predicted_next_actions": example_message_metadata()["predicted_next_actions"],
         "payload": payload
     })
 }

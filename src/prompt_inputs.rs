@@ -4,7 +4,6 @@ use crate::llm_runtime::{
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use crate::constants::{ISSUES_FILE, MASTER_PLAN_FILE, SPEC_FILE, VIOLATIONS_FILE};
@@ -92,66 +91,6 @@ fn truncate_prompt_value(value: &str, max_chars: usize) -> String {
         out.push('…');
     }
     out
-}
-
-fn infer_tlog_lane_indices(events: &[crate::events::Event]) -> Vec<usize> {
-    let mut ids = BTreeSet::new();
-    for event in events {
-        if let crate::events::Event::Control { event } = event {
-            match event {
-                crate::events::ControlEvent::PhaseSet {
-                    lane: Some(lane_id),
-                    ..
-                }
-                | crate::events::ControlEvent::LanePendingSet { lane_id, .. }
-                | crate::events::ControlEvent::LaneInProgressSet { lane_id, .. }
-                | crate::events::ControlEvent::LaneVerifierResultSet { lane_id, .. }
-                | crate::events::ControlEvent::LanePlanTextSet { lane_id, .. }
-                | crate::events::ControlEvent::VerifierSummarySet { lane_id, .. }
-                | crate::events::ControlEvent::LaneSubmitInFlightSet { lane_id, .. }
-                | crate::events::ControlEvent::LanePromptInFlightSet { lane_id, .. }
-                | crate::events::ControlEvent::LaneActiveTabSet { lane_id, .. }
-                | crate::events::ControlEvent::TabIdToLaneSet { lane_id, .. }
-                | crate::events::ControlEvent::LaneNextSubmitAtSet { lane_id, .. }
-                | crate::events::ControlEvent::LaneStepsUsedSet { lane_id, .. }
-                | crate::events::ControlEvent::ExecutorTurnRegistered { lane_id, .. }
-                | crate::events::ControlEvent::ExecutorCompletionRecovered { lane_id, .. }
-                | crate::events::ControlEvent::ExecutorCompletionTabRebound { lane_id, .. }
-                | crate::events::ControlEvent::ExecutorSubmitAckTabRebound { lane_id, .. } => {
-                    ids.insert(*lane_id);
-                }
-                crate::events::ControlEvent::ScheduledPhaseSet { .. }
-                | crate::events::ControlEvent::PlannerPendingSet { .. }
-                | crate::events::ControlEvent::PlannerObjectiveReviewQueued
-                | crate::events::ControlEvent::PlannerObjectivePlanGapQueued
-                | crate::events::ControlEvent::DiagnosticsPendingSet { .. }
-                | crate::events::ControlEvent::DiagnosticsReconciliationQueued
-                | crate::events::ControlEvent::VerifierBlockerSet { .. }
-                | crate::events::ControlEvent::DiagnosticsVerifierFollowupQueued
-                | crate::events::ControlEvent::DiagnosticsTextSet { .. }
-                | crate::events::ControlEvent::ExternalUserMessageConsumed { .. }
-                | crate::events::ControlEvent::InboundMessageConsumed { .. }
-                | crate::events::ControlEvent::WakeSignalConsumed { .. }
-                | crate::events::ControlEvent::WakeSignalQueued { .. }
-                | crate::events::ControlEvent::InboundMessageQueued { .. }
-                | crate::events::ControlEvent::RustPatchVerificationRequested { .. }
-                | crate::events::ControlEvent::OrchestratorModeSet { .. }
-                | crate::events::ControlEvent::OrchestratorIdlePulse { .. }
-                | crate::events::ControlEvent::CheckpointSnapshotSet { .. }
-                | crate::events::ControlEvent::PlannerBlockerEvidenceSet { .. }
-                | crate::events::ControlEvent::PostRestartResultConsumed { .. }
-                | crate::events::ControlEvent::LastPlanTextSet { .. }
-                | crate::events::ControlEvent::LastExecutorDiffSet { .. }
-                | crate::events::ControlEvent::LastSoloPlanTextSet { .. }
-                | crate::events::ControlEvent::LastSoloExecutorDiffSet { .. }
-                | crate::events::ControlEvent::ObjectivesInitialized { .. }
-                | crate::events::ControlEvent::ObjectivesReplaced { .. }
-                | crate::events::ControlEvent::PhaseSet { lane: None, .. }
-                | crate::events::ControlEvent::ExecutorTurnDeregistered { .. } => {}
-            }
-        }
-    }
-    ids.into_iter().collect()
 }
 
 fn control_event_kind_name(event: &crate::events::ControlEvent) -> &'static str {
@@ -303,7 +242,7 @@ pub fn semantic_state_snapshot_from_tlog(workspace: &Path) -> String {
         }
     }
 
-    let lane_indices = infer_tlog_lane_indices(&events);
+    let lane_indices = crate::events::lane_indices_from_events(&events);
     let lane_count = lane_indices.iter().max().map(|idx| idx + 1).unwrap_or(1);
     let initial = crate::system_state::SystemState::new(&lane_indices, lane_count);
     let replayed = crate::system_state::replay_event_log(initial, &events).ok();

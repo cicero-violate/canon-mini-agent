@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 pub const LEGACY_OBJECTIVES_JSON_FILE: &str = "PLANS/OBJECTIVES.json";
@@ -219,47 +218,15 @@ pub fn load_canonical_objectives_json(workspace: &Path) -> Option<String> {
         return None;
     }
 
-    let lane_ids = lane_ids_from_records(&records);
-    let lane_indices: Vec<usize> = lane_ids.into_iter().collect();
-    let initial = crate::system_state::SystemState::new(&lane_indices, lane_indices.len());
     let events: Vec<crate::events::Event> = records.into_iter().map(|r| r.event).collect();
+    let lane_indices = crate::events::lane_indices_from_events(&events);
+    let initial = crate::system_state::SystemState::new(&lane_indices, lane_indices.len());
     let replayed = crate::system_state::replay_event_log(initial, &events).ok()?;
     if replayed.objectives_json.trim().is_empty() {
         None
     } else {
         Some(replayed.objectives_json)
     }
-}
-
-fn lane_ids_from_records(records: &[crate::tlog::TlogRecord]) -> BTreeSet<usize> {
-    let mut out = BTreeSet::new();
-    for record in records {
-        let crate::events::Event::Control { event } = &record.event else {
-            continue;
-        };
-        match event {
-            crate::events::ControlEvent::PhaseSet { lane: Some(lane), .. }
-            | crate::events::ControlEvent::LanePendingSet { lane_id: lane, .. }
-            | crate::events::ControlEvent::LaneInProgressSet { lane_id: lane, .. }
-            | crate::events::ControlEvent::LaneVerifierResultSet { lane_id: lane, .. }
-            | crate::events::ControlEvent::LanePlanTextSet { lane_id: lane, .. }
-            | crate::events::ControlEvent::VerifierSummarySet { lane_id: lane, .. }
-            | crate::events::ControlEvent::LaneSubmitInFlightSet { lane_id: lane, .. }
-            | crate::events::ControlEvent::LanePromptInFlightSet { lane_id: lane, .. }
-            | crate::events::ControlEvent::LaneActiveTabSet { lane_id: lane, .. }
-            | crate::events::ControlEvent::TabIdToLaneSet { lane_id: lane, .. }
-            | crate::events::ControlEvent::LaneNextSubmitAtSet { lane_id: lane, .. }
-            | crate::events::ControlEvent::LaneStepsUsedSet { lane_id: lane, .. }
-            | crate::events::ControlEvent::ExecutorTurnRegistered { lane_id: lane, .. }
-            | crate::events::ControlEvent::ExecutorCompletionRecovered { lane_id: lane, .. }
-            | crate::events::ControlEvent::ExecutorCompletionTabRebound { lane_id: lane, .. }
-            | crate::events::ControlEvent::ExecutorSubmitAckTabRebound { lane_id: lane, .. } => {
-                out.insert(*lane);
-            }
-            _ => {}
-        }
-    }
-    out
 }
 
 pub fn filter_incomplete_objectives_json(raw: &str) -> Option<String> {

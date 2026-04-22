@@ -827,11 +827,34 @@ fn register_submitted_executor_turn(
     rt.submitted_turns.insert((tab_id, turn_id), submitted_turn);
 }
 
+fn executor_submit_timeout_message(ctx: &OrchestratorContext<'_>, lane_id: usize, command_id: &str) -> String {
+    format!(
+        "pending submit timeout: lane={} command_id={}",
+        ctx.lanes[lane_id].label, command_id
+    )
+}
+
+fn executor_submit_timeout_trace(ctx: &OrchestratorContext<'_>, lane_id: usize, command_id: &str) -> Value {
+    json!({
+        "lane_name": ctx.lanes[lane_id].label,
+        "command_id": command_id,
+    })
+}
+
+fn executor_submit_timeout_details(ctx: &OrchestratorContext<'_>, lane_id: usize, command_id: &str) -> Value {
+    json!({
+        "stage": "executor_submit_timeout",
+        "lane": ctx.lanes[lane_id].label,
+        "command_id": command_id,
+    })
+}
+
 fn log_timed_out_executor_submit(
     ctx: &OrchestratorContext<'_>,
     lane_id: usize,
     pending: PendingSubmitState,
 ) {
+    let timeout_message = executor_submit_timeout_message(ctx, lane_id, &pending.command_id);
     eprintln!(
         "[orchestrate] pending submit timeout: lane={} command_id={}",
         ctx.lanes[lane_id].label, pending.command_id
@@ -840,22 +863,16 @@ fn log_timed_out_executor_submit(
         "executor",
         "orchestrate",
         None,
-        &format!(
-            "pending submit timeout: lane={} command_id={}",
-            ctx.lanes[lane_id].label, pending.command_id
-        ),
-        Some(json!({
-            "stage": "executor_submit_timeout",
-            "lane": ctx.lanes[lane_id].label,
-            "command_id": pending.command_id,
-        })),
+        &timeout_message,
+        Some(executor_submit_timeout_details(
+            ctx,
+            lane_id,
+            &pending.command_id,
+        )),
     );
     append_orchestration_trace(
         "executor_submit_timeout",
-        json!({
-            "lane_name": ctx.lanes[lane_id].label,
-            "command_id": pending.command_id,
-        }),
+        executor_submit_timeout_trace(ctx, lane_id, &pending.command_id),
     );
     crate::blockers::record_action_failure_with_writer(
         ctx.workspace.as_path(),
@@ -1219,15 +1236,23 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
     true
 }
 
+fn route_gate_block_record(reason: &str) -> serde_json::Value {
+    serde_json::json!({
+        "kind": "invariant_gate",
+        "phase": "route",
+        "gate": "G_r",
+        "proposed_role": "executor",
+        "blocked": true,
+        "reason": reason,
+        "ts_ms": crate::logging::now_ms(),
+    })
+}
+
 fn apply_route_gate_block(writer: &mut CanonicalWriter, ws: &std::path::Path, reason: &str) {
     eprintln!("[invariant_gate] route G_r (BLOCKED): {reason}");
     let blocker_message = route_gate_blocker_message(reason);
     if persist_planner_blocker_message(writer, &blocker_message) {
-        let record = serde_json::json!({
-            "kind": "invariant_gate", "phase": "route", "gate": "G_r",
-            "proposed_role": "executor", "blocked": true, "reason": reason,
-            "ts_ms": crate::logging::now_ms(),
-        });
+        let record = route_gate_block_record(reason);
         crate::blockers::record_action_failure_with_writer(
             ws,
             None,
@@ -2949,70 +2974,48 @@ fn canonical_tlog_read_path(agent_state_dir: &std::path::Path) -> PathBuf {
     }
 }
 
-fn canonical_inbound_message_from_tlog(
-    agent_state_dir: &std::path::Path,
-    state: &SystemState,
-    role: &str,
-) -> Option<(String, String)> {
-    let tlog_path = canonical_tlog_read_path(agent_state_dir);
-    let records = Tlog::read_records(&tlog_path).ok()?;
-    let mut latest: Option<(u64, String, String)> = None;
-    for record in records {
-        let Event::Effect {
-            event:
-                EffectEvent::InboundMessageRecorded {
-                    to_role,
-                    message,
-                    signature,
-                    ..
-                },
-        } = record.event
-        else {
-            continue;
-        };
-        if to_role != role {
-            continue;
-        }
-        let replace = match latest.as_ref() {
-            None => true,
-            Some((seq, _, _)) => record.seq >= *seq,
-        };
-        if replace {
-            latest = Some((record.seq, signature, message));
-        }
-    }
-    latest.and_then(|(_, signature, message)| {
-        let consumed_latest = state
-            .inbound_message_signatures
-            .get(role)
-            .map(String::as_str)
-            == Some(signature.as_str());
-        if consumed_latest {
-            None
-        } else {
-            Some((signature, message))
-        }
-    })
+#[derive(Clone, Copy)]
+enum RecordedMessageKind {
+    Inbound,
+    ExternalUser,
 }
 
-fn latest_inbound_message_from_tlog(
+fn latest_recorded_message_from_tlog(
     agent_state_dir: &std::path::Path,
     role: &str,
+    kind: RecordedMessageKind,
 ) -> Option<(String, String)> {
     let tlog_path = canonical_tlog_read_path(agent_state_dir);
     let records = Tlog::read_records(&tlog_path).ok()?;
     let mut latest: Option<(u64, String, String)> = None;
     for record in records {
-        let Event::Effect {
-            event:
-                EffectEvent::InboundMessageRecorded {
-                    to_role,
-                    message,
-                    signature,
-                    ..
+        let matched = match (kind, record.event) {
+            (
+                RecordedMessageKind::Inbound,
+                Event::Effect {
+                    event:
+                        EffectEvent::InboundMessageRecorded {
+                            to_role,
+                            message,
+                            signature,
+                            ..
+                        },
                 },
-        } = record.event
-        else {
+            ) => Some((to_role, signature, message)),
+            (
+                RecordedMessageKind::ExternalUser,
+                Event::Effect {
+                    event:
+                        EffectEvent::ExternalUserMessageRecorded {
+                            to_role,
+                            message,
+                            signature,
+                        },
+                },
+            ) => Some((to_role, signature, message)),
+            _ => None,
+        };
+        let Some((to_role, signature, message)) = matched else {
             continue;
         };
         if to_role != role {
@@ -3027,6 +3030,41 @@ fn latest_inbound_message_from_tlog(
         }
     }
     latest.map(|(_, signature, message)| (signature, message))
+}
+
+fn canonical_recorded_message_from_tlog(
+    agent_state_dir: &std::path::Path,
+    state: &SystemState,
+    role: &str,
+    kind: RecordedMessageKind,
+) -> Option<(String, String)> {
+    let (signature, message) = latest_recorded_message_from_tlog(agent_state_dir, role, kind)?;
+    let consumed_latest = match kind {
+        RecordedMessageKind::Inbound => state.inbound_message_signatures.get(role),
+        RecordedMessageKind::ExternalUser => state.external_user_message_signatures.get(role),
+    }
+    .map(String::as_str)
+        == Some(signature.as_str());
+    if consumed_latest {
+        None
+    } else {
+        Some((signature, message))
+    }
+}
+
+fn canonical_inbound_message_from_tlog(
+    agent_state_dir: &std::path::Path,
+    state: &SystemState,
+    role: &str,
+) -> Option<(String, String)> {
+    canonical_recorded_message_from_tlog(agent_state_dir, state, role, RecordedMessageKind::Inbound)
+}
+
+fn latest_inbound_message_from_tlog(
+    agent_state_dir: &std::path::Path,
+    role: &str,
+) -> Option<(String, String)> {
+    latest_recorded_message_from_tlog(agent_state_dir, role, RecordedMessageKind::Inbound)
 }
 
 fn take_inbound_message(writer: &mut CanonicalWriter, role: &str) -> Option<String> {
@@ -3136,77 +3174,19 @@ fn canonical_external_user_message_from_tlog(
     state: &SystemState,
     role: &str,
 ) -> Option<(String, String)> {
-    let tlog_path = canonical_tlog_read_path(agent_state_dir);
-    let records = Tlog::read_records(&tlog_path).ok()?;
-    let mut latest: Option<(u64, String, String)> = None;
-    for record in records {
-        let Event::Effect {
-            event:
-                EffectEvent::ExternalUserMessageRecorded {
-                    to_role,
-                    message,
-                    signature,
-                },
-        } = record.event
-        else {
-            continue;
-        };
-        if to_role != role {
-            continue;
-        }
-        let replace = match latest.as_ref() {
-            None => true,
-            Some((seq, _, _)) => record.seq >= *seq,
-        };
-        if replace {
-            latest = Some((record.seq, signature, message));
-        }
-    }
-    latest.and_then(|(_, signature, message)| {
-        let consumed_latest = state
-            .external_user_message_signatures
-            .get(role)
-            .map(String::as_str)
-            == Some(signature.as_str());
-        if consumed_latest {
-            None
-        } else {
-            Some((signature, message))
-        }
-    })
+    canonical_recorded_message_from_tlog(
+        agent_state_dir,
+        state,
+        role,
+        RecordedMessageKind::ExternalUser,
+    )
 }
 
 fn latest_external_user_message_from_tlog(
     agent_state_dir: &std::path::Path,
     role: &str,
 ) -> Option<(String, String)> {
-    let tlog_path = canonical_tlog_read_path(agent_state_dir);
-    let records = Tlog::read_records(&tlog_path).ok()?;
-    let mut latest: Option<(u64, String, String)> = None;
-    for record in records {
-        let Event::Effect {
-            event:
-                EffectEvent::ExternalUserMessageRecorded {
-                    to_role,
-                    message,
-                    signature,
-                },
-        } = record.event
-        else {
-            continue;
-        };
-        if to_role != role {
-            continue;
-        }
-        let replace = match latest.as_ref() {
-            None => true,
-            Some((seq, _, _)) => record.seq >= *seq,
-        };
-        if replace {
-            latest = Some((record.seq, signature, message));
-        }
-    }
-    latest.map(|(_, signature, message)| (signature, message))
+    latest_recorded_message_from_tlog(agent_state_dir, role, RecordedMessageKind::ExternalUser)
 }
 
 fn take_external_user_message(writer: &mut CanonicalWriter, role: &str) -> Option<String> {

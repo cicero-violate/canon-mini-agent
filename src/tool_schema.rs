@@ -188,17 +188,21 @@ pub fn plan_set_plan_status_action_example(status: &str, rationale: &str) -> Str
     }))
 }
 
+fn plan_create_task_example_task(task_id: &str) -> Value {
+    json!({
+        "id": task_id,
+        "title": "Add the missing dependency edge",
+        "status": "ready",
+        "priority": 1,
+        "description": "Record the next planner follow-up explicitly in PLAN.json."
+    })
+}
+
 pub fn plan_create_task_action_example(task_id: &str, rationale: &str) -> String {
     compact_example_json(json!({
         "action": "plan",
         "op": "create_task",
-        "task": {
-            "id": task_id,
-            "title": "Add the missing dependency edge",
-            "status": "ready",
-            "priority": 1,
-            "description": "Record the next planner follow-up explicitly in PLAN.json."
-        },
+        "task": plan_create_task_example_task(task_id),
         "rationale": rationale
     }))
 }

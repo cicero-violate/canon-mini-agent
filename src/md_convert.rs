@@ -409,15 +409,19 @@ fn parse_objective_level(title: &str) -> ObjectiveLevel {
     }
 }
 
+fn contains_any(text: &str, needles: &[&str]) -> bool {
+    needles.iter().any(|needle| text.contains(needle))
+}
+
 fn categorize_objective(title: &str) -> ObjectiveCategory {
     let t = title.to_lowercase();
     if t.contains("eventbus") {
         ObjectiveCategory::EventBusIntegrity
     } else if t.contains("hook") {
         ObjectiveCategory::HookSafety
-    } else if t.contains("control flow") || t.contains("control-flow") || t.contains("cycle") {
+    } else if contains_any(&t, &["control flow", "control-flow", "cycle"]) {
         ObjectiveCategory::ControlFlowGuarantee
-    } else if t.contains("deterministic") || t.contains("decision") {
+    } else if contains_any(&t, &["deterministic", "decision"]) {
         ObjectiveCategory::DecisionDeterminism
     } else if t.contains("async") {
         ObjectiveCategory::AsyncPropagation

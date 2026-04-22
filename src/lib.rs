@@ -17,6 +17,8 @@ pub mod invalid_action;
 pub mod invariants;
 mod issues;
 pub mod lessons;
+// Transport/runtime hot path: `app` and `llm_runtime` own the submit-ack,
+// inbound-message, and turn-lease surfaces that dominate recent tlog failures.
 pub mod llm_runtime;
 pub mod logging;
 mod md_convert;

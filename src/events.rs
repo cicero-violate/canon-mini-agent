@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
 /// All events that advance the system state machine.
 /// Every mutation of `SystemState` is described by exactly one `ControlEvent`.
@@ -194,6 +195,43 @@ pub enum ControlEvent {
         from_tab_id: u32,
         to_tab_id: u32,
     },
+}
+
+pub(crate) fn lane_id_from_control_event(event: &ControlEvent) -> Option<usize> {
+    match event {
+        ControlEvent::PhaseSet {
+            lane: Some(lane_id), ..
+        }
+        | ControlEvent::LanePendingSet { lane_id, .. }
+        | ControlEvent::LaneInProgressSet { lane_id, .. }
+        | ControlEvent::LaneVerifierResultSet { lane_id, .. }
+        | ControlEvent::LanePlanTextSet { lane_id, .. }
+        | ControlEvent::VerifierSummarySet { lane_id, .. }
+        | ControlEvent::LaneSubmitInFlightSet { lane_id, .. }
+        | ControlEvent::LanePromptInFlightSet { lane_id, .. }
+        | ControlEvent::LaneActiveTabSet { lane_id, .. }
+        | ControlEvent::TabIdToLaneSet { lane_id, .. }
+        | ControlEvent::LaneNextSubmitAtSet { lane_id, .. }
+        | ControlEvent::LaneStepsUsedSet { lane_id, .. }
+        | ControlEvent::ExecutorTurnRegistered { lane_id, .. }
+        | ControlEvent::ExecutorCompletionRecovered { lane_id, .. }
+        | ControlEvent::ExecutorCompletionTabRebound { lane_id, .. }
+        | ControlEvent::ExecutorSubmitAckTabRebound { lane_id, .. } => Some(*lane_id),
+        _ => None,
+    }
+}
+
+pub(crate) fn lane_indices_from_events(events: &[Event]) -> Vec<usize> {
+    let mut lane_ids = BTreeSet::new();
+    for event in events {
+        let Event::Control { event } = event else {
+            continue;
+        };
+        if let Some(lane_id) = lane_id_from_control_event(event) {
+            lane_ids.insert(lane_id);
+        }
+    }
+    lane_ids.into_iter().collect()
 }
 
 /// Side-effect events: logged for observability, never mutate `SystemState`.

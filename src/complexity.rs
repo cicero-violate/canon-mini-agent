@@ -67,10 +67,10 @@ fn graph_only_entry_json(entry: &GraphOnlyEntry) -> serde_json::Value {
         "line": entry.line,
         "mir_blocks": entry.mir_blocks,
         "mir_stmts": entry.mir_stmts,
-        "branch_score": format!("{:.2}", entry.branch_score),
-        "stmt_density": format!("{:.2}", entry.stmt_density),
-        "b_transitive": format!("{:.2}", entry.b_transitive),
-        "heat_score": format!("{:.2}", entry.heat_score),
+        "branch_score": format_graph_score_2(entry.branch_score),
+        "stmt_density": format_graph_score_2(entry.stmt_density),
+        "b_transitive": format_graph_score_2(entry.b_transitive),
+        "heat_score": format_graph_score_2(entry.heat_score),
         "call_in": entry.call_in,
         "call_out": entry.call_out,
         "duplicate_body_count": entry.duplicate_body_count,
@@ -79,8 +79,16 @@ fn graph_only_entry_json(entry: &GraphOnlyEntry) -> serde_json::Value {
         "pathway_wrapper_count": entry.pathway_wrapper_count,
         "scc_size": entry.scc_size,
         "is_directly_recursive": entry.is_directly_recursive,
-        "graph_complexity_score": format!("{:.3}", entry.graph_complexity_score),
+        "graph_complexity_score": format_graph_score_3(entry.graph_complexity_score),
     })
+}
+
+fn format_graph_score_2(value: f64) -> String {
+    format!("{value:.2}")
+}
+
+fn format_graph_score_3(value: f64) -> String {
+    format!("{value:.3}")
 }
 
 fn graph_only_sort_desc(a: &GraphOnlyEntry, b: &GraphOnlyEntry) -> std::cmp::Ordering {
@@ -947,8 +955,12 @@ fn build_complexity_entry(
         "mir_stmts": stmts,
         "branch_score": branch_score,
         "is_directly_recursive": s.is_directly_recursive,
-        "complexity_proxy": branch_score.unwrap_or(blocks as f64),
+        "complexity_proxy": complexity_proxy(branch_score, blocks),
     })
+}
+
+fn complexity_proxy(branch_score: Option<f64>, blocks: usize) -> f64 {
+    branch_score.unwrap_or(blocks as f64)
 }
 
 /// Emit a cyclomatic-complexity-style report on startup/restart.
