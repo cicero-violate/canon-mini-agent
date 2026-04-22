@@ -6,7 +6,7 @@ use crate::constants::{
     MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE,
 };
 use crate::prompt_contract::ACTION_EMIT_LINE;
-use crate::protocol::{MessagePayload, MessageStatus, MessageType, ProtocolMessage, Role};
+use crate::protocol::{BlockerPayload, MessagePayload, MessageStatus, MessageType, ProtocolMessage, Role};
 use crate::tool_schema::selected_tool_protocol_schema_text;
 use crate::tool_schema::validate_tool_action;
 
@@ -954,6 +954,12 @@ fn validate_message_required_fields(obj: &serde_json::Map<String, Value>) -> Res
     Ok(())
 }
 
+fn blocker_payload_fields_present(payload: &BlockerPayload) -> bool {
+    !payload.blocker.trim().is_empty()
+        && !payload.evidence.trim().is_empty()
+        && !payload.required_action.trim().is_empty()
+}
+
 fn validate_blocker_message_payload(msg: &ProtocolMessage) -> Result<()> {
     if !(matches!(msg.msg_type, MessageType::Blocker)
         || matches!(msg.status, MessageStatus::Blocked))
@@ -962,10 +968,7 @@ fn validate_blocker_message_payload(msg: &ProtocolMessage) -> Result<()> {
     }
     match &msg.payload {
         MessagePayload::Blocker(payload) => {
-            if payload.blocker.trim().is_empty()
-                || payload.evidence.trim().is_empty()
-                || payload.required_action.trim().is_empty()
-            {
+            if !blocker_payload_fields_present(payload) {
                 bail!("blocker payload fields must be non-empty strings");
             }
             Ok(())

@@ -1493,34 +1493,15 @@ fn status_rank(status: &InvariantStatus) -> u8 {
     }
 }
 
-fn update_latest_invariants_record(
-    latest: &mut Option<(u64, EnforcedInvariantsFile)>,
-    seq: u64,
-    file: EnforcedInvariantsFile,
-) {
-    let replace = match latest.as_ref() {
-        None => true,
-        Some((latest_seq, _)) => seq >= *latest_seq,
-    };
-    if replace {
-        *latest = Some((seq, file));
-    }
-}
-
 fn load_invariants_from_tlog(workspace: &Path) -> Option<EnforcedInvariantsFile> {
     let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
-    let records = crate::tlog::Tlog::read_records(&tlog_path).ok()?;
-    let mut latest: Option<(u64, EnforcedInvariantsFile)> = None;
-    for record in records {
-        let crate::events::Event::Effect {
+    crate::tlog::Tlog::latest_record_by_seq(&tlog_path, |event| match event {
+        crate::events::Event::Effect {
             event: crate::events::EffectEvent::EnforcedInvariantsRecorded { file },
-        } = record.event
-        else {
-            continue;
-        };
-        update_latest_invariants_record(&mut latest, record.seq, file);
-    }
-    latest.map(|(_, file)| file)
+        } => Some(file),
+        _ => None,
+    })
+    .ok()?
 }
 
 fn read_tail_entries(log_path: &Path, max_lines: usize) -> Vec<Value> {

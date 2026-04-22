@@ -132,6 +132,26 @@ impl Tlog {
         Ok(records)
     }
 
+    pub fn latest_record_by_seq<T, F>(path: &Path, mut select: F) -> Result<Option<T>>
+    where
+        F: FnMut(Event) -> Option<T>,
+    {
+        let mut latest: Option<(u64, T)> = None;
+        for record in Self::read_records(path)? {
+            let Some(value) = select(record.event) else {
+                continue;
+            };
+            let replace = match latest.as_ref() {
+                None => true,
+                Some((seq, _)) => record.seq >= *seq,
+            };
+            if replace {
+                latest = Some((record.seq, value));
+            }
+        }
+        Ok(latest.map(|(_, value)| value))
+    }
+
     pub fn replay(path: &Path, initial: SystemState) -> Result<SystemState> {
         let events = Self::read_events(path)?;
         replay_event_log(initial, &events).map_err(anyhow::Error::msg)
@@ -225,5 +245,32 @@ mod tests {
         let records = Tlog::read_records(&path).expect("read records");
         let last_seq = records.last().map(|record| record.seq).expect("last seq");
         assert_eq!(last_seq, 11);
+    }
+
+    #[test]
+    fn latest_record_by_seq_returns_latest_matching_value() {
+        let dir = TestDir::new();
+        let path = dir.path().join("tlog.ndjson");
+
+        let mut tlog = Tlog::open(&path);
+        tlog.append(&planner_pending_event(true))
+            .expect("append planner pending true");
+        tlog.append(&Event::control(ControlEvent::PhaseSet {
+            phase: "executor".to_string(),
+        }))
+        .expect("append phase set");
+        tlog.append(&planner_pending_event(false))
+            .expect("append planner pending false");
+
+        let latest = Tlog::latest_record_by_seq(&path, |event| match event {
+            Event::Control {
+                event: ControlEvent::PlannerPendingSet { pending },
+            } => Some(pending),
+            _ => None,
+        })
+        .expect("latest record")
+        .expect("planner pending event present");
+
+        assert!(!latest);
     }
 }

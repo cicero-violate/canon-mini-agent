@@ -1003,24 +1003,13 @@ pub fn persist_lessons_projection_with_writer(
 
 fn load_lessons_from_tlog(workspace: &Path) -> Option<LessonsArtifact> {
     let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
-    let records = crate::tlog::Tlog::read_records(&tlog_path).ok()?;
-    let mut latest: Option<(u64, LessonsArtifact)> = None;
-    for record in records {
-        let crate::events::Event::Effect {
+    crate::tlog::Tlog::latest_record_by_seq(&tlog_path, |event| match event {
+        crate::events::Event::Effect {
             event: crate::events::EffectEvent::LessonsArtifactRecorded { artifact },
-        } = record.event
-        else {
-            continue;
-        };
-        let replace = match latest.as_ref() {
-            None => true,
-            Some((seq, _)) => record.seq >= *seq,
-        };
-        if replace {
-            latest = Some((record.seq, artifact));
-        }
-    }
-    latest.map(|(_, artifact)| artifact)
+        } => Some(artifact),
+        _ => None,
+    })
+    .ok()?
 }
 
 pub fn reconcile_lessons_projection(workspace: &Path, subject: &str) -> Result<bool> {

@@ -857,24 +857,13 @@ fn load_violations_from_tlog(path: &Path) -> Option<crate::reports::ViolationsRe
         .parent()
         .map(|dir| dir.join("tlog.ndjson"))
         .unwrap_or_else(|| Path::new(crate::constants::agent_state_dir()).join("tlog.ndjson"));
-    let records = crate::tlog::Tlog::read_records(&tlog_path).ok()?;
-    let mut latest: Option<(u64, crate::reports::ViolationsReport)> = None;
-    for record in records {
-        let crate::events::Event::Effect {
+    crate::tlog::Tlog::latest_record_by_seq(&tlog_path, |event| match event {
+        crate::events::Event::Effect {
             event: crate::events::EffectEvent::ViolationsReportRecorded { report },
-        } = record.event
-        else {
-            continue;
-        };
-        let replace = match latest.as_ref() {
-            None => true,
-            Some((seq, _)) => record.seq >= *seq,
-        };
-        if replace {
-            latest = Some((record.seq, report));
-        }
-    }
-    latest.map(|(_, report)| report)
+        } => Some(report),
+        _ => None,
+    })
+    .ok()?
 }
 
 fn save_violations(

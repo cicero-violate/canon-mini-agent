@@ -1,3 +1,4 @@
+// Local workspace note: keep report types lightweight for graph/tlog correlation analysis.
 use anyhow::Result;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -126,24 +127,13 @@ pub fn load_violations_report(workspace: &Path) -> ViolationsReport {
 
 fn load_violations_from_tlog(workspace: &Path) -> Option<ViolationsReport> {
     let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
-    let records = crate::tlog::Tlog::read_records(&tlog_path).ok()?;
-    let mut latest: Option<(u64, ViolationsReport)> = None;
-    for record in records {
-        let crate::events::Event::Effect {
+    crate::tlog::Tlog::latest_record_by_seq(&tlog_path, |event| match event {
+        crate::events::Event::Effect {
             event: crate::events::EffectEvent::ViolationsReportRecorded { report },
-        } = record.event
-        else {
-            continue;
-        };
-        let replace = match latest.as_ref() {
-            None => true,
-            Some((seq, _)) => record.seq >= *seq,
-        };
-        if replace {
-            latest = Some((record.seq, report));
-        }
-    }
-    latest.map(|(_, report)| report)
+        } => Some(report),
+        _ => None,
+    })
+    .ok()?
 }
 
 pub fn persist_diagnostics_projection_with_writer_to_path(
@@ -184,24 +174,13 @@ pub fn load_diagnostics_report(workspace: &Path) -> Option<DiagnosticsReport> {
 
 fn load_diagnostics_from_tlog(workspace: &Path) -> Option<DiagnosticsReport> {
     let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
-    let records = crate::tlog::Tlog::read_records(&tlog_path).ok()?;
-    let mut latest: Option<(u64, DiagnosticsReport)> = None;
-    for record in records {
-        let crate::events::Event::Effect {
+    crate::tlog::Tlog::latest_record_by_seq(&tlog_path, |event| match event {
+        crate::events::Event::Effect {
             event: crate::events::EffectEvent::DiagnosticsReportRecorded { report },
-        } = record.event
-        else {
-            continue;
-        };
-        let replace = match latest.as_ref() {
-            None => true,
-            Some((seq, _)) => record.seq >= *seq,
-        };
-        if replace {
-            latest = Some((record.seq, report));
-        }
-    }
-    latest.map(|(_, report)| report)
+        } => Some(report),
+        _ => None,
+    })
+    .ok()?
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -929,14 +929,18 @@ fn collect_complexity_item(
 }
 
 fn build_global_complexity_entry(crate_name: &str, entry: &serde_json::Value) -> serde_json::Value {
+    fn entry_field<'a>(entry: &'a serde_json::Value, key: &str) -> Option<&'a serde_json::Value> {
+        entry.get(key)
+    }
+
     json!({
         "crate": crate_name,
-        "symbol": entry.get("symbol"),
-        "file": entry.get("file"),
-        "line": entry.get("line"),
-        "complexity_proxy": entry.get("complexity_proxy"),
-        "mir_blocks": entry.get("mir_blocks"),
-        "mir_stmts": entry.get("mir_stmts"),
+        "symbol": entry_field(entry, "symbol"),
+        "file": entry_field(entry, "file"),
+        "line": entry_field(entry, "line"),
+        "complexity_proxy": entry_field(entry, "complexity_proxy"),
+        "mir_blocks": entry_field(entry, "mir_blocks"),
+        "mir_stmts": entry_field(entry, "mir_stmts"),
     })
 }
 

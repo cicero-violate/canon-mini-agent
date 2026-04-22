@@ -2986,10 +2986,8 @@ fn latest_recorded_message_from_tlog(
     kind: RecordedMessageKind,
 ) -> Option<(String, String)> {
     let tlog_path = canonical_tlog_read_path(agent_state_dir);
-    let records = Tlog::read_records(&tlog_path).ok()?;
-    let mut latest: Option<(u64, String, String)> = None;
-    for record in records {
-        let matched = match (kind, record.event) {
+    Tlog::latest_record_by_seq(&tlog_path, |event| {
+        let matched = match (kind, event) {
             (
                 RecordedMessageKind::Inbound,
                 Event::Effect {
@@ -3015,21 +3013,10 @@ fn latest_recorded_message_from_tlog(
             ) => Some((to_role, signature, message)),
             _ => None,
         };
-        let Some((to_role, signature, message)) = matched else {
-            continue;
-        };
-        if to_role != role {
-            continue;
-        }
-        let replace = match latest.as_ref() {
-            None => true,
-            Some((seq, _, _)) => record.seq >= *seq,
-        };
-        if replace {
-            latest = Some((record.seq, signature, message));
-        }
-    }
-    latest.map(|(_, signature, message)| (signature, message))
+        let (to_role, signature, message) = matched?;
+        (to_role == role).then_some((signature, message))
+    })
+    .ok()?
 }
 
 fn canonical_recorded_message_from_tlog(
