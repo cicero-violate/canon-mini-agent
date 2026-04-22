@@ -175,6 +175,7 @@ fn infer_tlog_lane_indices(events: &[crate::events::Event]) -> Vec<usize> {
                 | crate::events::ControlEvent::OrchestratorIdlePulse { .. }
                 | crate::events::ControlEvent::CheckpointSnapshotSet { .. }
                 | crate::events::ControlEvent::PlannerBlockerEvidenceSet { .. }
+                | crate::events::ControlEvent::PostRestartResultConsumed { .. }
                 | crate::events::ControlEvent::LastPlanTextSet { .. }
                 | crate::events::ControlEvent::LastExecutorDiffSet { .. }
                 | crate::events::ControlEvent::LastSoloPlanTextSet { .. }
@@ -224,6 +225,9 @@ fn control_event_kind_name(event: &crate::events::ControlEvent) -> &'static str 
         crate::events::ControlEvent::CheckpointSnapshotSet { .. } => "checkpoint_snapshot_set",
         crate::events::ControlEvent::PlannerBlockerEvidenceSet { .. } => {
             "planner_blocker_evidence_set"
+        }
+        crate::events::ControlEvent::PostRestartResultConsumed { .. } => {
+            "post_restart_result_consumed"
         }
         crate::events::ControlEvent::LastPlanTextSet { .. } => "last_plan_text_set",
         crate::events::ControlEvent::LastExecutorDiffSet { .. } => "last_executor_diff_set",
@@ -295,6 +299,9 @@ fn effect_event_kind_name(event: &crate::events::EffectEvent) -> &'static str {
             "fingerprint_drift_recorded"
         }
         crate::events::EffectEvent::GrpoDatasetRecorded { .. } => "grpo_dataset_recorded",
+        crate::events::EffectEvent::PostRestartResultRecorded { .. } => {
+            "post_restart_result_recorded"
+        }
     }
 }
 

@@ -4820,7 +4820,7 @@ async fn run_agent(
                 // initial prompt if the supervisor restarts the process mid-cycle
                 // (e.g. after apply_patch triggers a binary rebuild).  The file is
                 // consumed once on startup and then deleted.
-                write_post_restart_result(
+                let resume = write_post_restart_result(
                     role,
                     kind.as_str(),
                     &out,
@@ -4830,6 +4830,17 @@ async fn run_agent(
                     &endpoint.id,
                     "process_restart",
                 );
+                ctx.record_effect(crate::events::EffectEvent::PostRestartResultRecorded {
+                    role: resume.role.clone(),
+                    action: resume.action.clone(),
+                    result: resume.result.clone(),
+                    step: resume.step,
+                    tab_id: resume.tab_id,
+                    turn_id: resume.turn_id,
+                    endpoint_id: resume.endpoint_id.clone(),
+                    restart_kind: resume.restart_kind.clone(),
+                    signature: resume.signature.clone(),
+                });
                 last_result = Some(out);
                 if kind.as_str() == "apply_patch"
                     && last_result
@@ -4856,9 +4867,16 @@ fn write_post_restart_result(
     turn_id: Option<u64>,
     endpoint_id: &str,
     restart_kind: &str,
-) {
+) -> PostRestartResult {
     let path =
         std::path::Path::new(crate::constants::agent_state_dir()).join("post_restart_result.json");
+    let signature = artifact_signature(&[
+        role,
+        action,
+        &step.to_string(),
+        endpoint_id,
+        &result.len().to_string(),
+    ]);
     let payload = serde_json::json!({
         "role": role,
         "action": action,
@@ -4868,11 +4886,23 @@ fn write_post_restart_result(
         "turn_id": turn_id,
         "endpoint_id": endpoint_id,
         "restart_kind": restart_kind,
+        "signature": signature,
     });
     let _ = std::fs::write(
         &path,
         serde_json::to_string_pretty(&payload).unwrap_or_default(),
     );
+    PostRestartResult {
+        role: role.to_string(),
+        action: action.to_string(),
+        result: result.to_string(),
+        step,
+        tab_id,
+        turn_id,
+        endpoint_id: endpoint_id.to_string(),
+        restart_kind: restart_kind.to_string(),
+        signature,
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -4885,6 +4915,7 @@ struct PostRestartResult {
     turn_id: Option<u64>,
     endpoint_id: String,
     restart_kind: String,
+    signature: String,
 }
 
 #[derive(Clone, Debug)]
@@ -4911,6 +4942,67 @@ impl AgentCompletion {
 
 /// Read the post-restart result file without consuming it.
 fn peek_post_restart_result(role: &str) -> Option<PostRestartResult> {
+    let tlog_path = std::path::Path::new(crate::constants::agent_state_dir()).join("tlog.ndjson");
+    if tlog_path.exists() {
+        if let Ok(state) = Tlog::replay(&tlog_path, SystemState::new(&[], 0)) {
+            let consumed = state
+                .post_restart_consumed_signatures
+                .get(if role.starts_with("executor") {
+                    "executor"
+                } else {
+                    role
+                })
+                .cloned();
+            if let Ok(records) = Tlog::read_records(&tlog_path) {
+                for record in records.iter().rev() {
+                    let Event::Effect { event } = &record.event else {
+                        continue;
+                    };
+                    let crate::events::EffectEvent::PostRestartResultRecorded {
+                        role: saved_role,
+                        action,
+                        result,
+                        step,
+                        tab_id,
+                        turn_id,
+                        endpoint_id,
+                        restart_kind,
+                        signature,
+                    } = event
+                    else {
+                        continue;
+                    };
+                    let role_key = if role.starts_with("executor") {
+                        "executor"
+                    } else {
+                        role
+                    };
+                    let saved_key = if saved_role.starts_with("executor") {
+                        "executor"
+                    } else {
+                        saved_role.as_str()
+                    };
+                    if role_key != saved_key {
+                        continue;
+                    }
+                    if consumed.as_deref() == Some(signature.as_str()) {
+                        break;
+                    }
+                    return Some(PostRestartResult {
+                        role: saved_role.clone(),
+                        action: action.clone(),
+                        result: result.clone(),
+                        step: *step,
+                        tab_id: *tab_id,
+                        turn_id: *turn_id,
+                        endpoint_id: endpoint_id.clone(),
+                        restart_kind: restart_kind.clone(),
+                        signature: signature.clone(),
+                    });
+                }
+            }
+        }
+    }
     let path =
         std::path::Path::new(crate::constants::agent_state_dir()).join("post_restart_result.json");
     let raw = std::fs::read_to_string(&path).ok()?;
@@ -4955,6 +5047,23 @@ fn peek_post_restart_result(role: &str) -> Option<PostRestartResult> {
             .and_then(|s| s.as_str())
             .unwrap_or("")
             .to_string(),
+        signature: v
+            .get("signature")
+            .and_then(|s| s.as_str())
+            .map(str::to_string)
+            .unwrap_or_else(|| {
+                artifact_signature(&[
+                    saved_role,
+                    v.get("action").and_then(|a| a.as_str()).unwrap_or("(unknown)"),
+                    &v.get("step").and_then(|s| s.as_u64()).unwrap_or(0).to_string(),
+                    v.get("endpoint_id").and_then(|s| s.as_str()).unwrap_or(""),
+                    &v.get("result")
+                        .and_then(|r| r.as_str())
+                        .unwrap_or("")
+                        .len()
+                        .to_string(),
+                ])
+            }),
     })
 }
 
@@ -4962,6 +5071,26 @@ fn peek_post_restart_result(role: &str) -> Option<PostRestartResult> {
 /// file exists and was written by `role`, then deletes the file.
 fn take_post_restart_result(role: &str) -> Option<PostRestartResult> {
     let result = peek_post_restart_result(role)?;
+    let tlog_path = std::path::Path::new(crate::constants::agent_state_dir()).join("tlog.ndjson");
+    if tlog_path.exists() {
+        if let Ok(state) = Tlog::replay(&tlog_path, SystemState::new(&[], 0)) {
+            if let Ok(mut writer) = CanonicalWriter::try_new(
+                state,
+                Tlog::open(&tlog_path),
+                std::path::PathBuf::from(crate::constants::workspace()),
+            ) {
+                let role_key = if role.starts_with("executor") {
+                    "executor".to_string()
+                } else {
+                    role.to_string()
+                };
+                writer.apply(ControlEvent::PostRestartResultConsumed {
+                    role: role_key,
+                    signature: result.signature.clone(),
+                });
+            }
+        }
+    }
     let path =
         std::path::Path::new(crate::constants::agent_state_dir()).join("post_restart_result.json");
     // Consume — delete so it isn't re-injected on a second restart

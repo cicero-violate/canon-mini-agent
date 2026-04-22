@@ -304,6 +304,7 @@ pub fn validate_transition(state: &SystemState, event: &ControlEvent) -> Result<
         | ControlEvent::OrchestratorIdlePulse { .. }
         | ControlEvent::CheckpointSnapshotSet { .. }
         | ControlEvent::PlannerBlockerEvidenceSet { .. }
+        | ControlEvent::PostRestartResultConsumed { .. }
         | ControlEvent::LastPlanTextSet { .. }
         | ControlEvent::LastExecutorDiffSet { .. }
         | ControlEvent::LastSoloPlanTextSet { .. }

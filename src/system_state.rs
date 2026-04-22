@@ -78,6 +78,9 @@ pub struct SystemState {
     /// Canonical hash of the last planner blocker evidence payload.
     #[serde(default)]
     pub planner_blocker_evidence_hash: String,
+    /// Canonical consumed restart-resume payload signatures by role.
+    #[serde(default)]
+    pub post_restart_consumed_signatures: HashMap<String, String>,
 
     // Rolling diff/plan state fed back into prompts
     pub last_plan_text: String,
@@ -283,6 +286,10 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
         }
         ControlEvent::PlannerBlockerEvidenceSet { evidence_hash } => {
             s.planner_blocker_evidence_hash = evidence_hash.clone();
+        }
+        ControlEvent::PostRestartResultConsumed { role, signature } => {
+            s.post_restart_consumed_signatures
+                .insert(role.clone(), signature.clone());
         }
         ControlEvent::LastPlanTextSet { text } => {
             s.last_plan_text = text.clone();
