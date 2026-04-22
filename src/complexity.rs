@@ -1001,6 +1001,7 @@ fn generate_refactor_issue_batch(workspace: &Path) {
     let _ = crate::graph_metrics::generate_state_transition_dispersion_issues(workspace);
     let _ = crate::graph_metrics::generate_planner_loop_fragmentation_issues(workspace);
     let _ = crate::graph_metrics::generate_implicit_state_machine_issues(workspace);
+    let _ = crate::graph_metrics::generate_effect_boundary_leak_issues(workspace);
 }
 
 fn generate_invariant_lifecycle_issues(workspace: &Path) {

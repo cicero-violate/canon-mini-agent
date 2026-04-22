@@ -431,6 +431,102 @@ pub fn generate_implicit_state_machine_issues(workspace: &Path) -> Result<usize>
     Ok(mutated)
 }
 
+pub fn generate_effect_boundary_leak_issues(workspace: &Path) -> Result<usize> {
+    let mut file: IssuesFile = load_issues_file(workspace);
+    let before = serde_json::to_value(&file)?;
+    let mut desired_ids = HashSet::new();
+    let mut mutated = 0usize;
+
+    for crate_name in SemanticIndex::available_crates(workspace) {
+        let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
+            continue;
+        };
+        let crate_name = crate_name.replace('-', "_");
+        let mut effects_by_symbol: HashMap<String, HashSet<&'static str>> = HashMap::new();
+        for (symbol, _) in idx.artifact_write_edges() {
+            effects_by_symbol
+                .entry(symbol)
+                .or_default()
+                .insert("artifact_write");
+        }
+        for (symbol, _) in idx.artifact_read_edges() {
+            effects_by_symbol
+                .entry(symbol)
+                .or_default()
+                .insert("artifact_read");
+        }
+        for (symbol, _) in idx.state_write_edges() {
+            effects_by_symbol
+                .entry(symbol)
+                .or_default()
+                .insert("state_write");
+        }
+        for (symbol, _) in idx.state_read_edges() {
+            effects_by_symbol
+                .entry(symbol)
+                .or_default()
+                .insert("state_read");
+        }
+        for (symbol, _) in idx.state_transition_edges() {
+            effects_by_symbol
+                .entry(symbol)
+                .or_default()
+                .insert("state_transition");
+        }
+        for (symbol, _) in idx.semantic_edges_by_relation("ShapesError") {
+            effects_by_symbol
+                .entry(symbol)
+                .or_default()
+                .insert("error_shape");
+        }
+
+        let mut by_module: HashMap<String, Vec<(String, Vec<&'static str>)>> = HashMap::new();
+        for (symbol, effects) in effects_by_symbol {
+            if canonical_effect_boundary_symbol(&symbol) || effects.len() < 3 {
+                continue;
+            }
+            let module = symbol
+                .rsplit_once("::")
+                .map(|(m, _)| m.to_string())
+                .unwrap_or(symbol.clone());
+            let mut effects_vec: Vec<&'static str> = effects.into_iter().collect();
+            effects_vec.sort();
+            by_module.entry(module).or_default().push((symbol, effects_vec));
+        }
+
+        for (module, mut rows) in by_module {
+            rows.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.0.cmp(&b.0)));
+            let issue = build_effect_boundary_leak_issue(&crate_name, &module, &rows);
+            desired_ids.insert(issue.id.clone());
+            mutated += upsert_bridge_issue(&mut file, issue, !rows.is_empty());
+        }
+
+        let prefix = format!("auto_effect_boundary_leak_{crate_name}_");
+        for issue in &mut file.issues {
+            if issue.id.starts_with(&prefix)
+                && !desired_ids.contains(&issue.id)
+                && issue.status != "resolved"
+            {
+                issue.status = "resolved".to_string();
+                mutated += 1;
+            }
+        }
+    }
+
+    rescore_all(&mut file);
+    let after = serde_json::to_value(&file)?;
+    if before != after {
+        persist_issues_projection_with_writer(
+            workspace,
+            &file,
+            None,
+            "generate_effect_boundary_leak_issues",
+        )?;
+    }
+
+    Ok(mutated)
+}
+
 pub fn analyze_bridge_connectivity(
     workspace: &Path,
     crate_name: &str,
@@ -1013,6 +1109,87 @@ fn build_implicit_state_machine_issue(
     }
 }
 
+fn canonical_effect_boundary_symbol(symbol: &str) -> bool {
+    const CANONICAL_PREFIXES: &[&str] = &[
+        "app::",
+        "tools::",
+        "logging::",
+        "supervisor::",
+        "canonical_writer::",
+        "issues::",
+        "reports::",
+        "invariants::",
+        "lessons::",
+        "objectives::",
+        "blockers::",
+    ];
+    CANONICAL_PREFIXES.iter().any(|prefix| symbol.starts_with(prefix))
+}
+
+fn effect_boundary_leak_issue_id(crate_name: &str, module: &str) -> String {
+    format!(
+        "auto_effect_boundary_leak_{}_{}",
+        sanitize_fragment(crate_name),
+        stable_hash(&format!("{crate_name}:{module}"))
+    )
+}
+
+fn build_effect_boundary_leak_issue(
+    crate_name: &str,
+    module: &str,
+    rows: &[(String, Vec<&'static str>)],
+) -> Issue {
+    let canonical_target = "logging / canonical_writer / app orchestration boundary";
+    let evidence = rows
+        .iter()
+        .map(|(symbol, effects)| format!("`{symbol}` directly performs [{}]", effects.join(", ")))
+        .collect::<Vec<_>>();
+    let symbol_metrics = rows
+        .iter()
+        .map(|(symbol, effects)| {
+            json!({
+                "symbol": symbol,
+                "effects": effects,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    Issue {
+        id: effect_boundary_leak_issue_id(crate_name, module),
+        title: format!(
+            "Effect boundary leak in `{}` ({} effectful symbols)",
+            module,
+            rows.len()
+        ),
+        status: if rows.is_empty() { "resolved" } else { "open" }.to_string(),
+        priority: if rows.len() >= 2 { "high" } else { "medium" }.to_string(),
+        kind: "logic".to_string(),
+        description: format!(
+            "Module `{module}` in crate `{crate_name}` directly mixes multiple effect families instead of routing them through a narrower boundary layer. \
+             This is a hypothesis-grade boundary leak signal: symbols in the module are simultaneously handling state/artifact IO and error shaping or transition logic.\n\n\
+             Recommended direction: move direct effects behind `{canonical_target}` and leave `{module}` with orchestration or pure transformation responsibilities only."
+        ),
+        location: format!("state/rustc/{crate_name}/graph.json"),
+        scope: format!("crate:{crate_name}"),
+        metrics: json!({
+            "task": "RepairEffectBoundary",
+            "proof_tier": "hypothesis",
+            "module": module,
+            "symbol_count": rows.len(),
+            "symbols": symbol_metrics,
+            "canonical_target_candidate": canonical_target,
+        }),
+        acceptance_criteria: vec![
+            format!("direct multi-effect work is removed from `{module}` or routed through a canonical boundary layer"),
+            "remaining symbols in the module focus on orchestration or pure transformation".to_string(),
+            "graph.json is regenerated and the detector reports fewer leaked effectful symbols".to_string(),
+        ],
+        evidence,
+        discovered_by: "graph_metrics_detector".to_string(),
+        ..Issue::default()
+    }
+}
+
 fn shorten_symbol_location(summary: &crate::semantic::SymbolSummary) -> String {
     format!("{}:{}", crate::semantic::shorten_display_path(&summary.file), summary.line)
 }
@@ -1213,10 +1390,10 @@ fn upsert_bridge_issue(file: &mut IssuesFile, desired: Issue, active: bool) -> u
 mod tests {
     use super::{
         analyze_bridge_connectivity, generate_artifact_writer_dispersion_issues,
-        generate_bridge_connectivity_issues, generate_error_shaping_dispersion_issues,
-        generate_implicit_state_machine_issues, generate_planner_loop_fragmentation_issues,
-        generate_state_transition_dispersion_issues, issue_id, priority_from_ratio,
-        sanitize_fragment,
+        generate_bridge_connectivity_issues, generate_effect_boundary_leak_issues,
+        generate_error_shaping_dispersion_issues, generate_implicit_state_machine_issues,
+        generate_planner_loop_fragmentation_issues, generate_state_transition_dispersion_issues,
+        issue_id, priority_from_ratio, sanitize_fragment,
     };
     use crate::constants::ISSUES_FILE;
     use serde_json::json;
@@ -1691,6 +1868,57 @@ mod tests {
             .expect("implicit state machine issue");
         assert_eq!(issue.status, "open");
         assert_eq!(issue.metrics["proof_tier"].as_str(), Some("hypothesis"));
+    }
+
+    #[test]
+    fn effect_boundary_leak_emits_issue_for_non_boundary_module() {
+        let workspace = unique_workspace("effect-boundary-leak");
+        write_index(&workspace, &["canon_mini_agent"]);
+        write_graph_with_edges(
+            &workspace,
+            "canon_mini_agent",
+            &["plan_preflight::try_preflight_ready_tasks"],
+            vec![
+                json!({
+                    "relation": "ReadsArtifact",
+                    "from": "plan_preflight::try_preflight_ready_tasks",
+                    "to": "path::artifact::MASTER_PLAN_FILE",
+                }),
+                json!({
+                    "relation": "ReadsState",
+                    "from": "plan_preflight::try_preflight_ready_tasks",
+                    "to": "path::state::MASTER_PLAN_FILE",
+                }),
+                json!({
+                    "relation": "WritesArtifact",
+                    "from": "plan_preflight::try_preflight_ready_tasks",
+                    "to": "path::artifact::last_planner_blocker_evidence.txt",
+                }),
+                json!({
+                    "relation": "WritesState",
+                    "from": "plan_preflight::try_preflight_ready_tasks",
+                    "to": "path::state::last_planner_blocker_evidence.txt",
+                }),
+                json!({
+                    "relation": "TransitionsState",
+                    "from": "plan_preflight::try_preflight_ready_tasks",
+                    "to": "path::state::last_planner_blocker_evidence.txt",
+                }),
+            ],
+        );
+
+        assert!(generate_effect_boundary_leak_issues(&workspace).unwrap() > 0);
+        let issues = read_issues(&workspace);
+        let issue = issues
+            .iter()
+            .find(|issue| issue.id.starts_with("auto_effect_boundary_leak_"))
+            .expect("effect boundary leak issue");
+        assert_eq!(issue.status, "open");
+        assert_eq!(issue.metrics["proof_tier"].as_str(), Some("hypothesis"));
+        assert_eq!(
+            issue.metrics["module"].as_str(),
+            Some("plan_preflight")
+        );
     }
 
     #[test]

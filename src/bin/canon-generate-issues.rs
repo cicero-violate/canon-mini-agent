@@ -43,6 +43,9 @@ fn main() -> Result<()> {
     } else if canon_mini_agent::has_flag(&args, "--implicit-state-machine-only") {
         let _ = canon_mini_agent::graph_metrics::generate_implicit_state_machine_issues(&workspace)?;
         Ok(())
+    } else if canon_mini_agent::has_flag(&args, "--effect-boundary-only") {
+        let _ = canon_mini_agent::graph_metrics::generate_effect_boundary_leak_issues(&workspace)?;
+        Ok(())
     } else if canon_mini_agent::has_flag(&args, "--alpha-only") {
         let _ = canon_mini_agent::refactor_analysis::generate_alpha_pathway_issues(&workspace)?;
         Ok(())
