@@ -112,12 +112,7 @@ fn classify_chatgpt_private(raw: &str) -> FrameResult {
     }
     let v: Value = match serde_json::from_str(data) {
         Ok(v) => v,
-        Err(_) => {
-            if let Some(fenced) = extract_fenced_json(data) {
-                return FrameResult::Snapshot(fenced);
-            }
-            return FrameResult::Ignore;
-        }
+        Err(_) => return fallback_fenced_snapshot_or_ignore(data),
     };
     if let Some(fenced) = find_fenced_json_in_value(&v) {
         return FrameResult::Snapshot(fenced);
@@ -126,97 +121,106 @@ fn classify_chatgpt_private(raw: &str) -> FrameResult {
         Some(o) => o,
         None => return FrameResult::Ignore,
     };
-    if obj.get("type").and_then(|t| t.as_str()) == Some("message_stream_complete") {
+    if chatgpt_private_is_done(obj) {
         return FrameResult::Done;
     }
-    if obj.get("type").and_then(|t| t.as_str()) == Some("message") {
-        let text = obj
-            .get("content")
-            .and_then(|c| c.get("parts"))
-            .and_then(|p| p.as_array())
-            .and_then(|a| a.first())
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        if !text.is_empty() {
-            return FrameResult::Snapshot(text.to_string());
-        }
+    if let Some(text) = chatgpt_private_snapshot(obj) {
+        return FrameResult::Snapshot(text);
     }
-    if obj.get("object").and_then(|v| v.as_str()) == Some("chat.completion.chunk") {
-        let content = obj
-            .get("choices")
-            .and_then(|c| c.as_array())
-            .and_then(|arr| arr.first())
-            .and_then(|c| c.get("delta"))
-            .and_then(|d| d.get("content"))
-            .and_then(|v| v.as_str());
-        return match content {
-            Some(s) if !s.is_empty() => FrameResult::ExecutionDelta(s.to_string()),
-            _ => FrameResult::Ignore,
-        };
-    }
-    if let Some(delta) = obj.get("delta").and_then(|d| d.as_str()) {
-        if !delta.is_empty() {
-            return FrameResult::ExecutionDelta(delta.to_string());
-        }
-    }
-    if let Some(op) = obj.get("o").and_then(|o| o.as_str()) {
-        match op {
-            "append" => {
-                let p = obj.get("p").and_then(|p| p.as_str()).unwrap_or("");
-                if p.contains("parts") {
-                    if let Some(s) = obj.get("v").and_then(|v| v.as_str()) {
-                        if !s.is_empty() {
-                            return FrameResult::ExecutionDelta(s.to_string());
-                        }
-                    }
-                }
-            }
-            "patch" => {
-                if let Some(arr) = obj.get("v").and_then(|v| v.as_array()) {
-                    let mut out = String::new();
-                    for item in arr {
-                        if item.get("o").and_then(|o| o.as_str()) != Some("append") {
-                            continue;
-                        }
-                        let p = item.get("p").and_then(|p| p.as_str()).unwrap_or("");
-                        if p.contains("parts") {
-                            if let Some(s) = item.get("v").and_then(|v| v.as_str()) {
-                                out.push_str(s);
-                            }
-                        }
-                    }
-                    if !out.is_empty() {
-                        return FrameResult::ExecutionDelta(out);
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    if let Some(text) = obj.get("v").and_then(|v| v.as_str()) {
-        if !text.is_empty() {
-            return FrameResult::ExecutionDelta(text.to_string());
-        }
-    }
-    if let Some(arr) = obj.get("v").and_then(|v| v.as_array()) {
-        let mut out = String::new();
-        for item in arr {
-            if item.get("o").and_then(|o| o.as_str()) != Some("append") {
-                continue;
-            }
-            let p = item.get("p").and_then(|p| p.as_str()).unwrap_or("");
-            if p.contains("parts") {
-                if let Some(s) = item.get("v").and_then(|v| v.as_str()) {
-                    out.push_str(s);
-                }
-            }
-        }
-        if !out.is_empty() {
-            return FrameResult::ExecutionDelta(out);
-        }
+    if let Some(delta) = chatgpt_private_delta(obj) {
+        return FrameResult::ExecutionDelta(delta);
     }
     FrameResult::Ignore
 }
+
+fn fallback_fenced_snapshot_or_ignore(data: &str) -> FrameResult {
+    extract_fenced_json(data)
+        .map(FrameResult::Snapshot)
+        .unwrap_or(FrameResult::Ignore)
+}
+
+fn chatgpt_private_is_done(obj: &serde_json::Map<String, Value>) -> bool {
+    obj.get("type").and_then(|t| t.as_str()) == Some("message_stream_complete")
+}
+
+fn chatgpt_private_snapshot(obj: &serde_json::Map<String, Value>) -> Option<String> {
+    if obj.get("type").and_then(|t| t.as_str()) != Some("message") {
+        return None;
+    }
+    obj.get("content")
+        .and_then(|c| c.get("parts"))
+        .and_then(Value::as_array)
+        .and_then(|parts| parts.first())
+        .and_then(Value::as_str)
+        .filter(|text| !text.is_empty())
+        .map(ToString::to_string)
+}
+
+fn chatgpt_private_delta(obj: &serde_json::Map<String, Value>) -> Option<String> {
+    chatgpt_completion_chunk_delta(obj)
+        .or_else(|| non_empty_json_str(obj.get("delta")))
+        .or_else(|| chatgpt_operation_delta(obj))
+        .or_else(|| non_empty_json_str(obj.get("v")))
+        .or_else(|| chatgpt_append_array_delta(obj.get("v")?))
+}
+
+fn chatgpt_completion_chunk_delta(obj: &serde_json::Map<String, Value>) -> Option<String> {
+    if obj.get("object").and_then(|v| v.as_str()) != Some("chat.completion.chunk") {
+        return None;
+    }
+    obj.get("choices")
+        .and_then(Value::as_array)
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.get("delta"))
+        .and_then(|delta| delta.get("content"))
+        .and_then(Value::as_str)
+        .filter(|content| !content.is_empty())
+        .map(ToString::to_string)
+}
+
+fn chatgpt_operation_delta(obj: &serde_json::Map<String, Value>) -> Option<String> {
+    match obj.get("o").and_then(|o| o.as_str()) {
+        Some("append") => chatgpt_append_delta(obj),
+        Some("patch") => chatgpt_append_array_delta(obj.get("v")?),
+        _ => None,
+    }
+}
+
+fn chatgpt_append_delta(obj: &serde_json::Map<String, Value>) -> Option<String> {
+    obj.get("p")
+        .and_then(Value::as_str)
+        .filter(|path| path.contains("parts"))?;
+    non_empty_json_str(obj.get("v"))
+}
+
+fn chatgpt_append_array_delta(value: &Value) -> Option<String> {
+    let mut out = String::new();
+    for item in value.as_array()? {
+        if item.get("o").and_then(|o| o.as_str()) != Some("append") {
+            continue;
+        }
+        let path = item.get("p").and_then(|p| p.as_str()).unwrap_or("");
+        if !path.contains("parts") {
+            continue;
+        }
+        if let Some(fragment) = item.get("v").and_then(Value::as_str) {
+            out.push_str(fragment);
+        }
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
+fn non_empty_json_str(value: Option<&Value>) -> Option<String> {
+    value
+        .and_then(Value::as_str)
+        .filter(|text| !text.is_empty())
+        .map(ToString::to_string)
+}
+
 fn classify_chatgpt_group(raw: &str) -> FrameResult {
     let data = raw.strip_prefix("data: ").unwrap_or(raw).trim();
     if data.is_empty() {
