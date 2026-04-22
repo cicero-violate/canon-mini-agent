@@ -1616,25 +1616,13 @@ fn register_late_submit_ack(
         ),
         None,
     );
-    let steps_used = writer.state().lane_steps_used_count(job.lane_index);
     register_submitted_executor_turn(
         writer,
         rt,
         lane_id,
         tab_id,
         turn_id,
-        SubmittedExecutorTurn {
-            tab_id,
-            lane: job.lane_index,
-            lane_label: job.label.clone(),
-            command_id: command_id
-                .unwrap_or_else(|| make_command_id(&job.executor_role, "executor", 1)),
-            started_ms: now_ms(),
-            actor: job.executor_role.clone(),
-            endpoint_id: job.endpoint_id.clone(),
-            tabs: job.tabs.clone(),
-            steps_used,
-        },
+        build_late_submitted_executor_turn(writer, job, tab_id, command_id),
     );
     true
 }
@@ -1721,6 +1709,82 @@ fn log_submit_ack_event(message: String, payload: serde_json::Value) {
     log_error_event("executor", "orchestrate", None, &message, Some(payload));
 }
 
+fn submitted_executor_steps_used(writer: &CanonicalWriter, lane_id: usize) -> usize {
+    writer.state().lane_steps_used_count(lane_id)
+}
+
+fn build_submitted_executor_turn(
+    writer: &CanonicalWriter,
+    job: &PendingExecutorSubmit,
+    pending: &PendingSubmitState,
+    tab_id: u32,
+    command_id: Option<String>,
+) -> SubmittedExecutorTurn {
+    SubmittedExecutorTurn {
+        tab_id,
+        lane: job.lane_index,
+        lane_label: job.label.clone(),
+        command_id: command_id.unwrap_or_else(|| pending.command_id.clone()),
+        started_ms: pending.started_ms,
+        actor: job.executor_role.clone(),
+        endpoint_id: pending.endpoint_id.clone(),
+        tabs: pending.tabs.clone(),
+        steps_used: submitted_executor_steps_used(writer, job.lane_index),
+    }
+}
+
+fn build_late_submitted_executor_turn(
+    writer: &CanonicalWriter,
+    job: &PendingExecutorSubmit,
+    tab_id: u32,
+    command_id: Option<String>,
+) -> SubmittedExecutorTurn {
+    SubmittedExecutorTurn {
+        tab_id,
+        lane: job.lane_index,
+        lane_label: job.label.clone(),
+        command_id: command_id
+            .unwrap_or_else(|| make_command_id(&job.executor_role, "executor", 1)),
+        started_ms: now_ms(),
+        actor: job.executor_role.clone(),
+        endpoint_id: job.endpoint_id.clone(),
+        tabs: job.tabs.clone(),
+        steps_used: submitted_executor_steps_used(writer, job.lane_index),
+    }
+}
+
+fn canonicalize_submit_ack_active_tab(
+    ctx: &OrchestratorContext<'_>,
+    writer: &mut CanonicalWriter,
+    lane_id: usize,
+    tab_id: u32,
+) {
+    let Some(active_tab) = writer.state().lane_active_tab_id(lane_id) else {
+        return;
+    };
+    if active_tab == tab_id {
+        return;
+    }
+
+    log_submit_ack_tab_mismatch(ctx, lane_id, active_tab, tab_id);
+    crate::blockers::record_action_failure_with_writer(
+        ctx.workspace.as_path(),
+        None,
+        "executor",
+        "runtime_control_bypass",
+        &format!(
+            "runtime-only control influence: submit ack changed lane={} active tab from {} to {}",
+            ctx.lanes[lane_id].label, active_tab, tab_id
+        ),
+        None,
+    );
+    writer.apply(ControlEvent::ExecutorSubmitAckTabRebound {
+        lane_id,
+        from_tab_id: active_tab,
+        to_tab_id: tab_id,
+    });
+}
+
 fn handle_executor_submit_ack_result(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
@@ -1747,46 +1811,15 @@ fn handle_executor_submit_ack_result(
         return handle_submit_ack_timeout(ctx, writer, lane_id, tab_id, turn_id);
     }
 
-    if let Some(active_tab) = writer.state().lane_active_tab_id(lane_id) {
-        if active_tab != tab_id {
-            log_submit_ack_tab_mismatch(ctx, lane_id, active_tab, tab_id);
-            crate::blockers::record_action_failure_with_writer(
-                ctx.workspace.as_path(),
-                None,
-                "executor",
-                "runtime_control_bypass",
-                &format!(
-                    "runtime-only control influence: submit ack changed lane={} active tab from {} to {}",
-                    ctx.lanes[lane_id].label, active_tab, tab_id
-                ),
-                None,
-            );
-            writer.apply(ControlEvent::ExecutorSubmitAckTabRebound {
-                lane_id,
-                from_tab_id: active_tab,
-                to_tab_id: tab_id,
-            });
-        }
-    }
+    canonicalize_submit_ack_active_tab(ctx, writer, lane_id, tab_id);
 
-    let steps_used = writer.state().lane_steps_used_count(job.lane_index);
     register_submitted_executor_turn(
         writer,
         rt,
         lane_id,
         tab_id,
         turn_id,
-        SubmittedExecutorTurn {
-            tab_id,
-            lane: job.lane_index,
-            lane_label: job.label.clone(),
-            command_id: command_id.unwrap_or_else(|| pending.command_id.clone()),
-            started_ms: pending.started_ms,
-            actor: job.executor_role.clone(),
-            endpoint_id: pending.endpoint_id.clone(),
-            tabs: pending.tabs.clone(),
-            steps_used,
-        },
+        build_submitted_executor_turn(writer, &job, &pending, tab_id, command_id),
     );
     true
 }
