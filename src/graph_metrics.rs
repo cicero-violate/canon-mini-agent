@@ -1256,7 +1256,11 @@ fn build_state_transition_dispersion_issue(
             }
         }
     }
-    let coordinated_count = workflow_coordinated_count + read_write_cycle_count;
+    // Count symbols with any coordination backing (not edges — one symbol can have both proof types).
+    let coordinated_count = transitions
+        .iter()
+        .filter(|s| coordinated_by_symbol.contains_key(*s))
+        .count();
     let all_coordinated = !transitions.is_empty() && coordinated_count == transitions.len();
     let proof_tier = if all_coordinated { "proof" } else { "hypothesis" };
 
