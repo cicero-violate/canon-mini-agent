@@ -190,38 +190,13 @@ pub fn generate_module_cohesion_issues(workspace: &Path) -> Result<usize> {
 pub fn generate_artifact_writer_dispersion_issues(workspace: &Path) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
     let before = serde_json::to_value(&file)?;
-    let mut desired_ids = HashSet::new();
     let mut mutated = 0usize;
 
     for crate_name in SemanticIndex::available_crates(workspace) {
         let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
             continue;
         };
-
-        let mut writers_by_artifact: HashMap<String, HashSet<String>> = HashMap::new();
-        for (writer, artifact) in idx.artifact_write_edges() {
-            if !looks_like_symbol(&writer) || artifact.trim().is_empty() {
-                continue;
-            }
-            writers_by_artifact.entry(artifact).or_default().insert(writer);
-        }
-
-        let crate_name = crate_name.replace('-', "_");
-        for (artifact, writers) in writers_by_artifact {
-            let mut writers: Vec<String> = writers.into_iter().collect();
-            writers.sort();
-            let issue = build_artifact_writer_dispersion_issue(&crate_name, &artifact, &writers);
-            desired_ids.insert(issue.id.clone());
-            mutated += upsert_bridge_issue(&mut file, issue, writers.len() > 1);
-        }
-
-        let prefix = format!("auto_artifact_writer_dispersion_{crate_name}_");
-        for issue in &mut file.issues {
-            if issue.id.starts_with(&prefix) && !desired_ids.contains(&issue.id) && issue.status != "resolved" {
-                issue.status = "resolved".to_string();
-                mutated += 1;
-            }
-        }
+        mutated += sync_artifact_writer_dispersion_issues_for_crate(&mut file, &crate_name, &idx);
     }
 
     rescore_all(&mut file);
@@ -238,6 +213,69 @@ pub fn generate_artifact_writer_dispersion_issues(workspace: &Path) -> Result<us
     Ok(mutated)
 }
 
+fn sync_artifact_writer_dispersion_issues_for_crate(
+    file: &mut IssuesFile,
+    crate_name: &str,
+    idx: &SemanticIndex,
+) -> usize {
+    let crate_name = crate_name.replace('-', "_");
+    let writers_by_artifact = collect_artifact_writers_by_artifact(idx);
+    let (desired_ids, mutated) =
+        upsert_artifact_writer_dispersion_issues(file, &crate_name, writers_by_artifact);
+    mutated + resolve_stale_artifact_writer_dispersion_issues(file, &crate_name, &desired_ids)
+}
+
+fn collect_artifact_writers_by_artifact(idx: &SemanticIndex) -> HashMap<String, HashSet<String>> {
+    let mut writers_by_artifact: HashMap<String, HashSet<String>> = HashMap::new();
+    for (writer, artifact) in idx.artifact_write_edges() {
+        if !looks_like_symbol(&writer) || artifact.trim().is_empty() {
+            continue;
+        }
+        writers_by_artifact.entry(artifact).or_default().insert(writer);
+    }
+    writers_by_artifact
+}
+
+fn upsert_artifact_writer_dispersion_issues(
+    file: &mut IssuesFile,
+    crate_name: &str,
+    writers_by_artifact: HashMap<String, HashSet<String>>,
+) -> (HashSet<String>, usize) {
+    let mut desired_ids = HashSet::new();
+    let mut mutated = 0usize;
+
+    for (artifact, writers) in writers_by_artifact {
+        let mut writers: Vec<String> = writers.into_iter().collect();
+        writers.sort();
+        let issue = build_artifact_writer_dispersion_issue(crate_name, &artifact, &writers);
+        desired_ids.insert(issue.id.clone());
+        mutated += upsert_bridge_issue(file, issue, writers.len() > 1);
+    }
+
+    (desired_ids, mutated)
+}
+
+fn resolve_stale_artifact_writer_dispersion_issues(
+    file: &mut IssuesFile,
+    crate_name: &str,
+    desired_ids: &HashSet<String>,
+) -> usize {
+    let mut mutated = 0usize;
+    let prefix = format!("auto_artifact_writer_dispersion_{crate_name}_");
+
+    for issue in &mut file.issues {
+        if issue.id.starts_with(&prefix)
+            && !desired_ids.contains(&issue.id)
+            && issue.status != "resolved"
+        {
+            issue.status = "resolved".to_string();
+            mutated += 1;
+        }
+    }
+
+    mutated
+}
+
 pub fn generate_error_shaping_dispersion_issues(workspace: &Path) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
     let before = serde_json::to_value(&file)?;
@@ -247,24 +285,7 @@ pub fn generate_error_shaping_dispersion_issues(workspace: &Path) -> Result<usiz
         let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
             continue;
         };
-
-        let mut by_style: HashMap<String, HashSet<String>> = HashMap::new();
-        for (symbol, style) in idx.semantic_edges_by_relation("ShapesError") {
-            if !looks_like_symbol(&symbol) || style.trim().is_empty() {
-                continue;
-            }
-            by_style.entry(style).or_default().insert(symbol);
-        }
-
-        let crate_name = crate_name.replace('-', "_");
-        let desired = build_error_shaping_dispersion_issue(&crate_name, &by_style);
-        let active = desired
-            .metrics
-            .get("function_count")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0)
-            >= 4;
-        mutated += upsert_bridge_issue(&mut file, desired, active);
+        mutated += sync_error_shaping_dispersion_issue_for_crate(&mut file, &crate_name, &idx);
     }
 
     rescore_all(&mut file);
@@ -279,6 +300,34 @@ pub fn generate_error_shaping_dispersion_issues(workspace: &Path) -> Result<usiz
     }
 
     Ok(mutated)
+}
+
+fn sync_error_shaping_dispersion_issue_for_crate(
+    file: &mut IssuesFile,
+    crate_name: &str,
+    idx: &SemanticIndex,
+) -> usize {
+    let crate_name = crate_name.replace('-', "_");
+    let by_style = collect_error_styles_by_style(idx);
+    let desired = build_error_shaping_dispersion_issue(&crate_name, &by_style);
+    let active = desired
+        .metrics
+        .get("function_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0)
+        >= 4;
+    upsert_bridge_issue(file, desired, active)
+}
+
+fn collect_error_styles_by_style(idx: &SemanticIndex) -> HashMap<String, HashSet<String>> {
+    let mut by_style: HashMap<String, HashSet<String>> = HashMap::new();
+    for (symbol, style) in idx.semantic_edges_by_relation("ShapesError") {
+        if !looks_like_symbol(&symbol) || style.trim().is_empty() {
+            continue;
+        }
+        by_style.entry(style).or_default().insert(symbol);
+    }
+    by_style
 }
 
 fn collect_state_transitions_by_domain(idx: &SemanticIndex) -> HashMap<String, HashSet<String>> {
