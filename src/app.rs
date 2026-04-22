@@ -2980,6 +2980,59 @@ enum RecordedMessageKind {
     ExternalUser,
 }
 
+fn normalized_role_key(role: &str) -> String {
+    role
+        .trim()
+        .to_lowercase()
+        .replace(|c: char| !c.is_ascii_alphanumeric(), "_")
+}
+
+fn recorded_message_projection_path(
+    agent_state_dir: &std::path::Path,
+    role_key: &str,
+    kind: RecordedMessageKind,
+) -> PathBuf {
+    match kind {
+        RecordedMessageKind::Inbound => {
+            agent_state_dir.join(format!("last_message_to_{role_key}.json"))
+        }
+        RecordedMessageKind::ExternalUser => {
+            agent_state_dir.join(format!("external_user_message_to_{role_key}.json"))
+        }
+    }
+}
+
+fn recorded_message_consumed_event(
+    kind: RecordedMessageKind,
+    role: String,
+    signature: String,
+) -> ControlEvent {
+    match kind {
+        RecordedMessageKind::Inbound => ControlEvent::InboundMessageConsumed { role, signature },
+        RecordedMessageKind::ExternalUser => {
+            ControlEvent::ExternalUserMessageConsumed { role, signature }
+        }
+    }
+}
+
+fn pending_recorded_message_from_state(
+    state: &SystemState,
+    role_key: &str,
+    kind: RecordedMessageKind,
+) -> Option<(String, String)> {
+    match kind {
+        RecordedMessageKind::Inbound => state.inbound_messages_pending.get(role_key).map(|msg| {
+            let signature = artifact_write_signature(&[
+                "inbound_message_consumed",
+                role_key,
+                &msg.len().to_string(),
+            ]);
+            (signature, msg.clone())
+        }),
+        RecordedMessageKind::ExternalUser => None,
+    }
+}
+
 fn latest_recorded_message_from_tlog(
     agent_state_dir: &std::path::Path,
     role: &str,
@@ -3039,181 +3092,53 @@ fn canonical_recorded_message_from_tlog(
     }
 }
 
-fn canonical_inbound_message_from_tlog(
-    agent_state_dir: &std::path::Path,
-    state: &SystemState,
+fn take_recorded_message(
+    writer: &mut CanonicalWriter,
     role: &str,
-) -> Option<(String, String)> {
-    canonical_recorded_message_from_tlog(agent_state_dir, state, role, RecordedMessageKind::Inbound)
-}
+    kind: RecordedMessageKind,
+) -> Option<String> {
+    let role_key = normalized_role_key(role);
+    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
+    let path = recorded_message_projection_path(agent_state_dir, &role_key, kind);
+    let canonical = pending_recorded_message_from_state(writer.state(), &role_key, kind)
+        .or_else(|| canonical_recorded_message_from_tlog(agent_state_dir, writer.state(), &role_key, kind));
 
-fn latest_inbound_message_from_tlog(
-    agent_state_dir: &std::path::Path,
-    role: &str,
-) -> Option<(String, String)> {
-    latest_recorded_message_from_tlog(agent_state_dir, role, RecordedMessageKind::Inbound)
+    if let Some((signature, message)) = canonical {
+        let trimmed = message.trim().to_string();
+        writer.apply(recorded_message_consumed_event(kind, role_key, signature));
+        let _ = std::fs::remove_file(&path);
+        if trimmed.is_empty() {
+            return None;
+        }
+        return Some(trimmed);
+    }
+    None
 }
 
 fn take_inbound_message(writer: &mut CanonicalWriter, role: &str) -> Option<String> {
-    let role_key = role
-        .trim()
-        .to_lowercase()
-        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
-    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
-    let path = agent_state_dir.join(format!("last_message_to_{role_key}.json"));
-
-    // Primary: read from canonical state (populated by InboundMessageQueued, survives replay).
-    if let Some(message) = writer
-        .state()
-        .inbound_messages_pending
-        .get(&role_key)
-        .cloned()
-    {
-        let signature = artifact_write_signature(&[
-            "inbound_message_consumed",
-            &role_key,
-            &message.len().to_string(),
-        ]);
-        let trimmed = message.trim().to_string();
-        writer.apply(ControlEvent::InboundMessageConsumed {
-            role: role_key.clone(),
-            signature,
-        });
-        let _ = std::fs::remove_file(&path);
-        if trimmed.is_empty() {
-            return None;
-        }
-        return Some(trimmed);
-    }
-
-    // Fallback: tlog scan for messages recorded before this deployment.
-    if let Some((signature, message)) =
-        canonical_inbound_message_from_tlog(agent_state_dir, writer.state(), &role_key)
-    {
-        let trimmed = message.trim().to_string();
-        writer.apply(ControlEvent::InboundMessageConsumed {
-            role: role_key.clone(),
-            signature,
-        });
-        let _ = std::fs::remove_file(&path);
-        if trimmed.is_empty() {
-            return None;
-        }
-        return Some(trimmed);
-    }
-    None
+    take_recorded_message(writer, role, RecordedMessageKind::Inbound)
 }
 
 fn take_inbound_message_without_writer(role: &str) -> Option<String> {
-    let role_key = role
-        .trim()
-        .to_lowercase()
-        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
-    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
-    let tlog_path = canonical_tlog_read_path(agent_state_dir);
-    let state = Tlog::replay(&tlog_path, SystemState::new(&[], 0)).ok();
-    // Primary: read from canonical state field (populated by InboundMessageQueued).
-    // Fallback: tlog scan for messages recorded before this deployment.
-    let canonical = state
-        .as_ref()
-        .and_then(|s| {
-            s.inbound_messages_pending.get(&role_key).map(|msg| {
-                let sig = artifact_write_signature(&[
-                    "inbound_message_consumed",
-                    &role_key,
-                    &msg.len().to_string(),
-                ]);
-                (sig, msg.clone())
-            })
-        })
-        .or_else(|| {
-            state
-                .as_ref()
-                .and_then(|s| canonical_inbound_message_from_tlog(agent_state_dir, s, &role_key))
-        })
-        .or_else(|| latest_inbound_message_from_tlog(agent_state_dir, &role_key));
-    if let Some((signature, message)) = canonical {
-        if let Some(state) = state {
-            if let Ok(mut writer) = CanonicalWriter::try_new(
-                state,
-                Tlog::open(&tlog_path),
-                PathBuf::from(crate::constants::workspace()),
-            ) {
-                let _ = writer.try_apply(ControlEvent::InboundMessageConsumed {
-                    role: role_key.clone(),
-                    signature,
-                });
-            }
-        }
-        let path = agent_state_dir.join(format!("last_message_to_{}.json", role));
-        let _ = std::fs::remove_file(&path);
-        let trimmed = message.trim().to_string();
-        if trimmed.is_empty() {
-            return None;
-        }
-        return Some(trimmed);
-    }
-    None
+    take_recorded_message_without_writer(role, RecordedMessageKind::Inbound)
 }
 
-fn canonical_external_user_message_from_tlog(
-    agent_state_dir: &std::path::Path,
-    state: &SystemState,
+fn take_recorded_message_without_writer(
     role: &str,
-) -> Option<(String, String)> {
-    canonical_recorded_message_from_tlog(
-        agent_state_dir,
-        state,
-        role,
-        RecordedMessageKind::ExternalUser,
-    )
-}
-
-fn latest_external_user_message_from_tlog(
-    agent_state_dir: &std::path::Path,
-    role: &str,
-) -> Option<(String, String)> {
-    latest_recorded_message_from_tlog(agent_state_dir, role, RecordedMessageKind::ExternalUser)
-}
-
-fn take_external_user_message(writer: &mut CanonicalWriter, role: &str) -> Option<String> {
-    let role_key = role
-        .trim()
-        .to_lowercase()
-        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
-    let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
-    let path = agent_state_dir.join(format!("external_user_message_to_{role_key}.json"));
-    if let Some((signature, message)) =
-        canonical_external_user_message_from_tlog(agent_state_dir, writer.state(), &role_key)
-    {
-        let trimmed = message.trim().to_string();
-        writer.apply(ControlEvent::ExternalUserMessageConsumed {
-            role: role_key,
-            signature,
-        });
-        let _ = std::fs::remove_file(&path);
-        if trimmed.is_empty() {
-            return None;
-        }
-        return Some(trimmed);
-    }
-    None
-}
-
-fn take_external_user_message_without_writer(role: &str) -> Option<String> {
-    let role_key = role
-        .trim()
-        .to_lowercase()
-        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+    kind: RecordedMessageKind,
+) -> Option<String> {
+    let role_key = normalized_role_key(role);
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let tlog_path = canonical_tlog_read_path(agent_state_dir);
     let state = Tlog::replay(&tlog_path, SystemState::new(&[], 0)).ok();
     let canonical = state
         .as_ref()
         .and_then(|state| {
-            canonical_external_user_message_from_tlog(agent_state_dir, state, &role_key)
+            pending_recorded_message_from_state(state, &role_key, kind)
+                .or_else(|| canonical_recorded_message_from_tlog(agent_state_dir, state, &role_key, kind))
         })
-        .or_else(|| latest_external_user_message_from_tlog(agent_state_dir, &role_key));
+        .or_else(|| latest_recorded_message_from_tlog(agent_state_dir, &role_key, kind));
+
     if let Some((signature, message)) = canonical {
         if let Some(state) = state {
             if let Ok(mut writer) = CanonicalWriter::try_new(
@@ -3221,13 +3146,14 @@ fn take_external_user_message_without_writer(role: &str) -> Option<String> {
                 Tlog::open(&tlog_path),
                 PathBuf::from(crate::constants::workspace()),
             ) {
-                let _ = writer.try_apply(ControlEvent::ExternalUserMessageConsumed {
-                    role: role_key.clone(),
+                let _ = writer.try_apply(recorded_message_consumed_event(
+                    kind,
+                    role_key.clone(),
                     signature,
-                });
+                ));
             }
         }
-        let path = agent_state_dir.join(format!("external_user_message_to_{role_key}.json"));
+        let path = recorded_message_projection_path(agent_state_dir, &role_key, kind);
         let _ = std::fs::remove_file(&path);
         let trimmed = message.trim().to_string();
         if trimmed.is_empty() {
@@ -3236,6 +3162,14 @@ fn take_external_user_message_without_writer(role: &str) -> Option<String> {
         return Some(trimmed);
     }
     None
+}
+
+fn take_external_user_message(writer: &mut CanonicalWriter, role: &str) -> Option<String> {
+    take_recorded_message(writer, role, RecordedMessageKind::ExternalUser)
+}
+
+fn take_external_user_message_without_writer(role: &str) -> Option<String> {
+    take_recorded_message_without_writer(role, RecordedMessageKind::ExternalUser)
 }
 
 fn append_external_user_message_to_prompt(prompt: &mut String, inbound: &str) {
