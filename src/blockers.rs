@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use crate::canonical_writer::CanonicalWriter;
 use crate::error_class::ErrorClass;
 use crate::events::{EffectEvent, Event};
-use crate::logging::{record_effect_for_workspace, write_projection_with_artifact_effects};
+use crate::logging::record_json_projection_with_optional_writer;
 use crate::tlog::Tlog;
 
 // ── File path ─────────────────────────────────────────────────────────────────
@@ -230,7 +230,7 @@ fn load_blockers_from_tlog(workspace: &Path) -> Option<BlockersFile> {
 
 fn try_append_blocker_with_writer(
     workspace: &Path,
-    mut writer: Option<&mut CanonicalWriter>,
+    writer: Option<&mut CanonicalWriter>,
     record: BlockerRecord,
 ) -> Result<()> {
     static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
@@ -242,14 +242,6 @@ fn try_append_blocker_with_writer(
     let path = blockers_path(workspace);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
-    }
-    let effect = EffectEvent::BlockerRecorded {
-        record: record.clone(),
-    };
-    if let Some(writer_ref) = writer.as_deref_mut() {
-        writer_ref.try_record_effect(effect)?;
-    } else {
-        record_effect_for_workspace(workspace, effect)?;
     }
     let subject = record.id.clone();
 
@@ -266,7 +258,7 @@ fn try_append_blocker_with_writer(
         })
     };
 
-    file.blockers.push(record);
+    file.blockers.push(record.clone());
 
     // Cap to MAX_BLOCKER_RECORDS: keep the newest.
     if file.blockers.len() > MAX_BLOCKER_RECORDS {
@@ -274,13 +266,17 @@ fn try_append_blocker_with_writer(
         file.blockers.drain(0..drain_count);
     }
 
-    write_projection_with_artifact_effects(
+    record_json_projection_with_optional_writer(
         workspace,
         &path,
         BLOCKERS_FILE,
         "append",
         &subject,
-        &serde_json::to_string_pretty(&file)?,
+        &file,
+        writer,
+        Some(EffectEvent::BlockerRecorded {
+            record: record.clone(),
+        }),
     )
 }
 

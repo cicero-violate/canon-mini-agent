@@ -1345,21 +1345,17 @@ pub fn persist_enforced_invariants_projection_with_writer(
 ) -> Result<()> {
     let normalized = normalize_loaded_invariants(file.clone());
     let path = invariants_path(workspace);
-    let effect = crate::events::EffectEvent::EnforcedInvariantsRecorded {
-        file: normalized.clone(),
-    };
-    if let Some(w) = writer.as_deref_mut() {
-        w.try_record_effect(effect)?;
-    } else {
-        crate::logging::record_effect_for_workspace(workspace, effect)?;
-    }
-    crate::logging::write_projection_with_artifact_effects(
+    crate::logging::record_json_projection_with_optional_writer(
         workspace,
         &path,
         ENFORCED_INVARIANTS_FILE,
         "write",
         subject,
-        &serde_json::to_string_pretty(&normalized)?,
+        &normalized,
+        writer.as_deref_mut(),
+        Some(crate::events::EffectEvent::EnforcedInvariantsRecorded {
+            file: normalized.clone(),
+        }),
     )
 }
 

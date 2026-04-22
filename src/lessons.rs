@@ -939,14 +939,15 @@ fn load_candidates(workspace: &Path) -> LessonsCandidatesFile {
 
 fn save_candidates(workspace: &Path, cfile: &LessonsCandidatesFile) -> Result<()> {
     let path = candidates_path(workspace);
-    let text = serde_json::to_string_pretty(cfile)?;
-    crate::logging::write_projection_with_artifact_effects(
+    crate::logging::record_json_projection_with_optional_writer(
         workspace,
         &path,
         CANDIDATES_FILE,
         "write",
         "lessons_candidates_save",
-        &text,
+        cfile,
+        None,
+        None,
     )
 }
 
@@ -983,21 +984,17 @@ pub fn persist_lessons_projection_with_writer(
     subject: &str,
 ) -> Result<()> {
     let path = lessons_path(workspace);
-    let effect = crate::events::EffectEvent::LessonsArtifactRecorded {
-        artifact: artifact.clone(),
-    };
-    if let Some(w) = writer.as_deref_mut() {
-        w.try_record_effect(effect)?;
-    } else {
-        crate::logging::record_effect_for_workspace(workspace, effect)?;
-    }
-    crate::logging::write_projection_with_artifact_effects(
+    crate::logging::record_json_projection_with_optional_writer(
         workspace,
         &path,
         LESSONS_FILE,
         "write",
         subject,
-        &serde_json::to_string_pretty(artifact)?,
+        artifact,
+        writer.as_deref_mut(),
+        Some(crate::events::EffectEvent::LessonsArtifactRecorded {
+            artifact: artifact.clone(),
+        }),
     )
 }
 
@@ -1490,14 +1487,15 @@ fn load_roles_json(workspace: &Path) -> serde_json::Value {
 
 fn save_roles_json(workspace: &Path, val: &serde_json::Value) -> Result<()> {
     let path = roles_json_path(workspace);
-    let text = serde_json::to_string_pretty(val)?;
-    crate::logging::write_projection_with_artifact_effects(
+    crate::logging::record_json_projection_with_optional_writer(
         workspace,
         &path,
         "ROLES.json",
         "write",
         "lessons_prompt_rule_projection",
-        &text,
+        val,
+        None,
+        None,
     )
 }
 

@@ -13,19 +13,15 @@ pub fn persist_issues_projection_with_writer(
     writer: Option<&mut crate::canonical_writer::CanonicalWriter>,
     subject: &str,
 ) -> Result<()> {
-    let effect = crate::events::EffectEvent::IssuesFileRecorded { file: file.clone() };
-    if let Some(writer_ref) = writer {
-        writer_ref.try_record_effect(effect)?;
-    } else {
-        crate::logging::record_effect_for_workspace(workspace, effect)?;
-    }
-    crate::logging::write_projection_with_artifact_effects(
+    crate::logging::record_json_projection_with_optional_writer(
         workspace,
         &workspace.join(ISSUES_FILE),
         ISSUES_FILE,
         "write",
         subject,
-        &serde_json::to_string_pretty(file)?,
+        file,
+        writer,
+        Some(crate::events::EffectEvent::IssuesFileRecorded { file: file.clone() }),
     )
 }
 

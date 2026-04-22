@@ -1,5 +1,6 @@
 use crate::llm_runtime::config::LlmEndpoint;
 use anyhow::{Context, Result};
+use serde::Serialize;
 use serde_json::{json, Value};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Write;
@@ -930,6 +931,33 @@ pub fn write_projection_with_artifact_effects(
         return Err(err);
     }
     Ok(())
+}
+
+pub fn record_json_projection_with_optional_writer<T: Serialize>(
+    workspace: &std::path::Path,
+    path: &std::path::Path,
+    artifact: &str,
+    op: &str,
+    subject: &str,
+    payload: &T,
+    writer: Option<&mut CanonicalWriter>,
+    effect: Option<crate::events::EffectEvent>,
+) -> Result<()> {
+    if let Some(effect) = effect {
+        if let Some(writer_ref) = writer {
+            writer_ref.try_record_effect(effect)?;
+        } else {
+            record_effect_for_workspace(workspace, effect)?;
+        }
+    }
+    write_projection_with_artifact_effects(
+        workspace,
+        path,
+        artifact,
+        op,
+        subject,
+        &serde_json::to_string_pretty(payload)?,
+    )
 }
 
 pub fn migrate_projection_if_present(
