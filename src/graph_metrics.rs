@@ -370,6 +370,67 @@ pub fn generate_planner_loop_fragmentation_issues(workspace: &Path) -> Result<us
     Ok(mutated)
 }
 
+pub fn generate_implicit_state_machine_issues(workspace: &Path) -> Result<usize> {
+    let mut file: IssuesFile = load_issues_file(workspace);
+    let before = serde_json::to_value(&file)?;
+    let mut desired_ids = HashSet::new();
+    let mut mutated = 0usize;
+
+    for crate_name in SemanticIndex::available_crates(workspace) {
+        let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
+            continue;
+        };
+        let crate_name = crate_name.replace('-', "_");
+        let summaries = idx.symbol_summaries();
+        let mut states_by_symbol: HashMap<String, HashSet<String>> = HashMap::new();
+        for (symbol, state) in idx.state_transition_edges() {
+            states_by_symbol.entry(symbol).or_default().insert(state);
+        }
+
+        for summary in summaries {
+            if summary.kind != "fn" {
+                continue;
+            }
+            let Some(state_domains) = states_by_symbol.get(&summary.symbol) else {
+                continue;
+            };
+            let branch_score = summary.branch_score.unwrap_or(0.0);
+            let workflow_like = implicit_state_machine_candidate_symbol(&summary.symbol);
+            let state_count = state_domains.len();
+            let qualifies = workflow_like
+                && branch_score >= 4.0
+                && (summary.has_back_edges || summary.switchint_count >= 2 || state_count >= 2);
+            let issue = build_implicit_state_machine_issue(&crate_name, &summary, state_domains);
+            desired_ids.insert(issue.id.clone());
+            mutated += upsert_bridge_issue(&mut file, issue, qualifies);
+        }
+
+        let prefix = format!("auto_implicit_state_machine_{crate_name}_");
+        for issue in &mut file.issues {
+            if issue.id.starts_with(&prefix)
+                && !desired_ids.contains(&issue.id)
+                && issue.status != "resolved"
+            {
+                issue.status = "resolved".to_string();
+                mutated += 1;
+            }
+        }
+    }
+
+    rescore_all(&mut file);
+    let after = serde_json::to_value(&file)?;
+    if before != after {
+        persist_issues_projection_with_writer(
+            workspace,
+            &file,
+            None,
+            "generate_implicit_state_machine_issues",
+        )?;
+    }
+
+    Ok(mutated)
+}
+
 pub fn analyze_bridge_connectivity(
     workspace: &Path,
     crate_name: &str,
@@ -867,6 +928,95 @@ fn build_planner_loop_fragmentation_issue(crate_name: &str, idx: &SemanticIndex)
     }
 }
 
+fn implicit_state_machine_issue_id(crate_name: &str, symbol: &str) -> String {
+    format!(
+        "auto_implicit_state_machine_{}_{}",
+        sanitize_fragment(crate_name),
+        stable_hash(&format!("{crate_name}:{symbol}"))
+    )
+}
+
+fn implicit_state_machine_candidate_symbol(symbol: &str) -> bool {
+    const PREFIXES: &[&str] = &[
+        "app::",
+        "tools::",
+        "system_state::",
+        "transition_policy::",
+        "canonical_writer::",
+        "supervisor::",
+    ];
+    const EXCLUDED_SUBSTRINGS: &[&str] = &["persist_", "write_", "save_", "append_", "record_"];
+    PREFIXES.iter().any(|prefix| symbol.starts_with(prefix))
+        && !EXCLUDED_SUBSTRINGS.iter().any(|frag| symbol.contains(frag))
+}
+
+fn build_implicit_state_machine_issue(
+    crate_name: &str,
+    summary: &crate::semantic::SymbolSummary,
+    state_domains: &HashSet<String>,
+) -> Issue {
+    let mut states: Vec<String> = state_domains.iter().cloned().collect();
+    states.sort();
+    let display_states = states
+        .iter()
+        .map(|s| display_state_domain(s))
+        .collect::<Vec<_>>();
+    let evidence = vec![
+        format!("state transition domains: {}", display_states.join(", ")),
+        format!(
+            "branch_score={:.2}, switchint_count={}, has_back_edges={}",
+            summary.branch_score.unwrap_or(0.0),
+            summary.switchint_count,
+            summary.has_back_edges
+        ),
+    ];
+
+    Issue {
+        id: implicit_state_machine_issue_id(crate_name, &summary.symbol),
+        title: format!("Implicit state machine candidate in `{}`", summary.symbol),
+        status: "open".to_string(),
+        priority: if summary.has_back_edges || states.len() >= 2 {
+            "high".to_string()
+        } else {
+            "medium".to_string()
+        },
+        kind: "logic".to_string(),
+        description: format!(
+            "Function `{}` in crate `{}` combines compiler-observed state transitions with non-trivial branching. \
+             This is a hypothesis-grade signal that the function is encoding a state machine implicitly rather than \
+             through an explicit enum + transition table.\n\n\
+             Observed state domains: {}. Consider extracting a first-class transition type or routing the mutation \
+             through a canonical transition engine.",
+            summary.symbol,
+            crate_name,
+            display_states.join(", ")
+        ),
+        location: shorten_symbol_location(summary),
+        scope: format!("crate:{crate_name}"),
+        metrics: json!({
+            "task": "ExtractImplicitStateMachine",
+            "proof_tier": "hypothesis",
+            "symbol": summary.symbol,
+            "state_domains": states,
+            "branch_score": summary.branch_score.unwrap_or(0.0),
+            "switchint_count": summary.switchint_count,
+            "has_back_edges": summary.has_back_edges,
+        }),
+        acceptance_criteria: vec![
+            "branch-driven state mutation is extracted into an explicit state transition abstraction".to_string(),
+            "remaining function body delegates to the extracted transition helper or table".to_string(),
+            "graph.json is regenerated and the detector no longer reports the function".to_string(),
+        ],
+        evidence,
+        discovered_by: "graph_metrics_detector".to_string(),
+        ..Issue::default()
+    }
+}
+
+fn shorten_symbol_location(summary: &crate::semantic::SymbolSummary) -> String {
+    format!("{}:{}", crate::semantic::shorten_display_path(&summary.file), summary.line)
+}
+
 fn module_partition_key(summary: &crate::semantic::SymbolSummary) -> String {
     let sym_scope = summary
         .symbol
@@ -1064,8 +1214,9 @@ mod tests {
     use super::{
         analyze_bridge_connectivity, generate_artifact_writer_dispersion_issues,
         generate_bridge_connectivity_issues, generate_error_shaping_dispersion_issues,
-        generate_planner_loop_fragmentation_issues, generate_state_transition_dispersion_issues,
-        issue_id, priority_from_ratio, sanitize_fragment,
+        generate_implicit_state_machine_issues, generate_planner_loop_fragmentation_issues,
+        generate_state_transition_dispersion_issues, issue_id, priority_from_ratio,
+        sanitize_fragment,
     };
     use crate::constants::ISSUES_FILE;
     use serde_json::json;
@@ -1464,6 +1615,73 @@ mod tests {
             .expect("planner loop issue");
         assert_eq!(issue.status, "open");
         assert_eq!(issue.metrics["orchestrator_count"].as_u64(), Some(2));
+        assert_eq!(issue.metrics["proof_tier"].as_str(), Some("hypothesis"));
+    }
+
+    #[test]
+    fn implicit_state_machine_emits_issue_for_branching_state_transition_function() {
+        let workspace = unique_workspace("implicit-state-machine");
+        write_index(&workspace, &["canon_mini_agent"]);
+        write_graph_with_edges(
+            &workspace,
+            "canon_mini_agent",
+            &["app::apply_wake_signals"],
+            vec![json!({
+                "relation": "TransitionsState",
+                "from": "app::apply_wake_signals",
+                "to": "state::VIOLATIONS_FILE",
+            })],
+        );
+
+        let graph_path = workspace
+            .join("state")
+            .join("rustc")
+            .join("canon_mini_agent")
+            .join("graph.json");
+        let mut graph: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&graph_path).expect("read graph")).unwrap();
+        graph["nodes"]["app::apply_wake_signals"]["mir"] = json!({
+            "fingerprint": "fp_apply_wake_signals",
+            "blocks": 5,
+            "stmts": 9,
+        });
+        let def = graph["nodes"]["app::apply_wake_signals"]["def"].clone();
+        graph["nodes"]["app::apply_wake_signals"]["def"] = def;
+        graph["cfg_nodes"] = json!({
+            "cfg::app::apply_wake_signals::bb0": {
+                "owner": "app::apply_wake_signals",
+                "block": 0,
+                "is_cleanup": false,
+                "terminator": "SwitchInt",
+                "statements": [],
+                "in_loop": false
+            },
+            "cfg::app::apply_wake_signals::bb1": {
+                "owner": "app::apply_wake_signals",
+                "block": 1,
+                "is_cleanup": false,
+                "terminator": "Goto",
+                "statements": [],
+                "in_loop": true
+            }
+        });
+        graph["cfg_edges"] = json!([
+            {
+                "relation": "normal",
+                "from": "cfg::app::apply_wake_signals::bb1",
+                "to": "cfg::app::apply_wake_signals::bb0",
+                "is_back_edge": true
+            }
+        ]);
+        fs::write(&graph_path, serde_json::to_string_pretty(&graph).unwrap()).unwrap();
+
+        assert!(generate_implicit_state_machine_issues(&workspace).unwrap() > 0);
+        let issues = read_issues(&workspace);
+        let issue = issues
+            .iter()
+            .find(|issue| issue.id.starts_with("auto_implicit_state_machine_"))
+            .expect("implicit state machine issue");
+        assert_eq!(issue.status, "open");
         assert_eq!(issue.metrics["proof_tier"].as_str(), Some("hypothesis"));
     }
 
