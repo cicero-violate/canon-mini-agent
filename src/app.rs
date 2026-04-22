@@ -1834,127 +1834,210 @@ async fn process_completed_turns(
     let mut cycle_progress = false;
     let completed_turns = ctx.bridge.take_completed_turns().await;
     for item in completed_turns {
-        append_orchestration_trace("llm_message_received", item.clone());
-        let Some((tab_id, turn_id, exec_result, completed_endpoint_id)) =
-            parse_completed_turn(&item)
-        else {
-            continue;
-        };
-        let submitted = if let Some(submitted) = rt.submitted_turns.remove(&(tab_id, turn_id)) {
-            writer.apply(ControlEvent::ExecutorTurnDeregistered { tab_id, turn_id });
-            if check_completion_endpoint(&submitted.endpoint_id, completed_endpoint_id.as_deref())
-                == CompletionEndpointCheck::Mismatch
-            {
-                append_orchestration_trace(
-                    "executor_completion_endpoint_mismatch",
-                    json!({
-                        "tab_id": tab_id,
-                        "turn_id": turn_id,
-                        "expected_endpoint_id": submitted.endpoint_id,
-                        "completed_endpoint_id": completed_endpoint_id,
-                    }),
-                );
-                continue;
-            }
-            submitted
-        } else {
-            let lane_id = writer.state().tab_id_to_lane.get(&tab_id).copied();
-            let Some(lane_id) = lane_id else {
-                append_orchestration_trace(
-                    "executor_completion_unmatched",
-                    json!({
-                        "tab_id": tab_id,
-                        "turn_id": turn_id,
-                        "text": truncate(&exec_result, MAX_SNIPPET),
-                    }),
-                );
-                continue;
-            };
-            if check_completion_endpoint(
-                &ctx.lanes[lane_id].endpoint.id,
-                completed_endpoint_id.as_deref(),
-            ) == CompletionEndpointCheck::Mismatch
-            {
-                append_orchestration_trace(
-                    "executor_completion_endpoint_mismatch",
-                    json!({
-                        "lane_name": ctx.lanes[lane_id].label,
-                        "tab_id": tab_id,
-                        "turn_id": turn_id,
-                        "expected_endpoint_id": ctx.lanes[lane_id].endpoint.id,
-                        "completed_endpoint_id": completed_endpoint_id,
-                    }),
-                );
-                continue;
-            }
-            match check_completion_tab(writer.state().lane_active_tab_id(lane_id), tab_id) {
-                CompletionTabCheck::Mismatch => {
-                    append_orchestration_trace(
-                        "executor_completion_tab_mismatch",
-                        json!({
-                            "lane_name": ctx.lanes[lane_id].label,
-                            "active_tab": writer.state().lane_active_tab_id(lane_id),
-                            "tab_id": tab_id,
-                            "turn_id": turn_id,
-                        }),
-                    );
-                    continue;
-                }
-                CompletionTabCheck::NoneSet | CompletionTabCheck::Ok => {}
-            }
-            let Some(pending) = rt.executor_submit_inflight.remove(&lane_id) else {
-                append_orchestration_trace(
-                    "executor_completion_unmatched",
-                    json!({
-                        "tab_id": tab_id,
-                        "turn_id": turn_id,
-                        "text": truncate(&exec_result, MAX_SNIPPET),
-                    }),
-                );
-                continue;
-            };
-            writer.apply(ControlEvent::ExecutorCompletionRecovered {
-                tab_id,
-                turn_id,
-                lane_id,
-                lane_label: ctx.lanes[lane_id].label.clone(),
-                actor: pending.job.executor_role.clone(),
-                endpoint_id: pending.endpoint_id.clone(),
-            });
-            let steps_used = writer.state().lane_steps_used_count(lane_id);
-            SubmittedExecutorTurn {
-                tab_id,
-                lane: lane_id,
-                lane_label: ctx.lanes[lane_id].label.clone(),
-                command_id: pending.command_id,
-                started_ms: pending.started_ms,
-                actor: pending.job.executor_role,
-                endpoint_id: pending.endpoint_id,
-                tabs: pending.tabs,
-                steps_used,
-            }
-        };
-        writer.apply(ControlEvent::LanePromptInFlightSet {
-            lane_id: submitted.lane,
-            in_flight: false,
-        });
-        if handle_executor_completion(
-            submitted,
-            tab_id,
-            turn_id,
-            exec_result,
+        cycle_progress |= process_completed_turn_item(
+            ctx,
             writer,
             rt,
-            ctx.lanes,
-            ctx.bridge,
-            ctx.workspace,
             continuation_joinset,
             verifier_pending_results,
-        ) {
-            cycle_progress = true;
-        }
+            item,
+        );
     }
     cycle_progress
+}
+
+fn process_completed_turn_item(
+    ctx: &OrchestratorContext<'_>,
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
+    continuation_joinset: &mut tokio::task::JoinSet<ContinuationJoinOutput>,
+    verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
+    item: Value,
+) -> bool {
+    append_orchestration_trace("llm_message_received", item.clone());
+    let Some((tab_id, turn_id, exec_result, completed_endpoint_id)) = parse_completed_turn(&item)
+    else {
+        return false;
+    };
+    let Some(submitted) = resolve_completed_turn_submission(
+        ctx,
+        writer,
+        rt,
+        tab_id,
+        turn_id,
+        &exec_result,
+        completed_endpoint_id.as_deref(),
+    ) else {
+        return false;
+    };
+    writer.apply(ControlEvent::LanePromptInFlightSet {
+        lane_id: submitted.lane,
+        in_flight: false,
+    });
+    handle_executor_completion(
+        submitted,
+        tab_id,
+        turn_id,
+        exec_result,
+        writer,
+        rt,
+        ctx.lanes,
+        ctx.bridge,
+        ctx.workspace,
+        continuation_joinset,
+        verifier_pending_results,
+    )
+}
+
+fn resolve_completed_turn_submission(
+    ctx: &OrchestratorContext<'_>,
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
+    tab_id: u32,
+    turn_id: u64,
+    exec_result: &str,
+    completed_endpoint_id: Option<&str>,
+) -> Option<SubmittedExecutorTurn> {
+    if let Some(submitted) = rt.submitted_turns.remove(&(tab_id, turn_id)) {
+        return validate_registered_submitted_turn(
+            writer,
+            tab_id,
+            turn_id,
+            submitted,
+            completed_endpoint_id,
+        );
+    }
+    recover_completed_turn_submission(
+        ctx,
+        writer,
+        rt,
+        tab_id,
+        turn_id,
+        exec_result,
+        completed_endpoint_id,
+    )
+}
+
+fn validate_registered_submitted_turn(
+    writer: &mut CanonicalWriter,
+    tab_id: u32,
+    turn_id: u64,
+    submitted: SubmittedExecutorTurn,
+    completed_endpoint_id: Option<&str>,
+) -> Option<SubmittedExecutorTurn> {
+    writer.apply(ControlEvent::ExecutorTurnDeregistered { tab_id, turn_id });
+    if check_completion_endpoint(&submitted.endpoint_id, completed_endpoint_id)
+        == CompletionEndpointCheck::Mismatch
+    {
+        append_orchestration_trace(
+            "executor_completion_endpoint_mismatch",
+            json!({
+                "tab_id": tab_id,
+                "turn_id": turn_id,
+                "expected_endpoint_id": submitted.endpoint_id,
+                "completed_endpoint_id": completed_endpoint_id,
+            }),
+        );
+        return None;
+    }
+    Some(submitted)
+}
+
+fn recover_completed_turn_submission(
+    ctx: &OrchestratorContext<'_>,
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
+    tab_id: u32,
+    turn_id: u64,
+    exec_result: &str,
+    completed_endpoint_id: Option<&str>,
+) -> Option<SubmittedExecutorTurn> {
+    let lane_id = match writer.state().tab_id_to_lane.get(&tab_id).copied() {
+        Some(lane_id) => lane_id,
+        None => {
+            trace_unmatched_executor_completion(tab_id, turn_id, exec_result);
+            return None;
+        }
+    };
+    if check_completion_endpoint(&ctx.lanes[lane_id].endpoint.id, completed_endpoint_id)
+        == CompletionEndpointCheck::Mismatch
+    {
+        append_orchestration_trace(
+            "executor_completion_endpoint_mismatch",
+            json!({
+                "lane_name": ctx.lanes[lane_id].label,
+                "tab_id": tab_id,
+                "turn_id": turn_id,
+                "expected_endpoint_id": ctx.lanes[lane_id].endpoint.id,
+                "completed_endpoint_id": completed_endpoint_id,
+            }),
+        );
+        return None;
+    }
+    let active_tab = writer.state().lane_active_tab_id(lane_id);
+    if check_completion_tab(active_tab, tab_id) == CompletionTabCheck::Mismatch {
+        append_orchestration_trace(
+            "executor_completion_tab_mismatch",
+            json!({
+                "lane_name": ctx.lanes[lane_id].label,
+                "active_tab": active_tab,
+                "tab_id": tab_id,
+                "turn_id": turn_id,
+            }),
+        );
+        return None;
+    }
+    let pending = match rt.executor_submit_inflight.remove(&lane_id) {
+        Some(pending) => pending,
+        None => {
+            trace_unmatched_executor_completion(tab_id, turn_id, exec_result);
+            return None;
+        }
+    };
+    Some(build_recovered_submitted_turn(
+        ctx, writer, tab_id, turn_id, lane_id, pending,
+    ))
+}
+
+fn trace_unmatched_executor_completion(tab_id: u32, turn_id: u64, exec_result: &str) {
+    append_orchestration_trace(
+        "executor_completion_unmatched",
+        json!({
+            "tab_id": tab_id,
+            "turn_id": turn_id,
+            "text": truncate(exec_result, MAX_SNIPPET),
+        }),
+    );
+}
+
+fn build_recovered_submitted_turn(
+    ctx: &OrchestratorContext<'_>,
+    writer: &mut CanonicalWriter,
+    tab_id: u32,
+    turn_id: u64,
+    lane_id: usize,
+    pending: PendingSubmitState,
+) -> SubmittedExecutorTurn {
+    writer.apply(ControlEvent::ExecutorCompletionRecovered {
+        tab_id,
+        turn_id,
+        lane_id,
+        lane_label: ctx.lanes[lane_id].label.clone(),
+        actor: pending.job.executor_role.clone(),
+        endpoint_id: pending.endpoint_id.clone(),
+    });
+    let steps_used = writer.state().lane_steps_used_count(lane_id);
+    SubmittedExecutorTurn {
+        tab_id,
+        lane: lane_id,
+        lane_label: ctx.lanes[lane_id].label.clone(),
+        command_id: pending.command_id,
+        started_ms: pending.started_ms,
+        actor: pending.job.executor_role,
+        endpoint_id: pending.endpoint_id,
+        tabs: pending.tabs,
+        steps_used,
+    }
 }
 
 fn drain_continuations(

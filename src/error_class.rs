@@ -333,8 +333,8 @@ fn classify_action_kind_failure(action_kind: &str, text: &str) -> Option<ErrorCl
 }
 
 fn classify_failure_text(text: &str) -> ErrorClass {
-    if text.contains("outside") && (text.contains("workspace") || text.contains("permitted")) {
-        return ErrorClass::PermissionDenied;
+    if let Some(classification) = classify_permission_or_authorization_text(text) {
+        return classification;
     }
     if is_step_limit_text(text) {
         return ErrorClass::StepLimitExceeded;
@@ -369,10 +369,17 @@ fn classify_failure_text(text: &str) -> ErrorClass {
     if is_permission_denied_text(text) {
         return ErrorClass::PermissionDenied;
     }
-    if contains_any(text, &["not allowed", "not permitted"]) {
-        return ErrorClass::UnauthorizedPlanOp;
-    }
     ErrorClass::Unknown
+}
+
+fn classify_permission_or_authorization_text(text: &str) -> Option<ErrorClass> {
+    if text.contains("outside") && (text.contains("workspace") || text.contains("permitted")) {
+        return Some(ErrorClass::PermissionDenied);
+    }
+    if contains_any(text, &["not allowed", "not permitted"]) {
+        return Some(ErrorClass::UnauthorizedPlanOp);
+    }
+    None
 }
 
 /// Classify a blocker summary string from a `message{type=blocker}` action.
