@@ -600,8 +600,8 @@ fn upsert_bridge_issue(file: &mut IssuesFile, desired: Issue, active: bool) -> u
 #[cfg(test)]
 mod tests {
     use super::{
-        analyze_bridge_connectivity, generate_bridge_connectivity_issues, issue_id,
-        priority_from_ratio, sanitize_fragment,
+        analyze_bridge_connectivity, generate_artifact_writer_dispersion_issues,
+        generate_bridge_connectivity_issues, issue_id, priority_from_ratio, sanitize_fragment,
     };
     use crate::constants::ISSUES_FILE;
     use serde_json::json;
@@ -690,6 +690,46 @@ mod tests {
             "cfg_nodes": {},
             "cfg_edges": [],
             "bridge_edges": bridge_edges,
+        });
+        fs::write(
+            crate_dir.join("graph.json"),
+            serde_json::to_string_pretty(&graph).expect("serialize graph"),
+        )
+        .expect("write graph");
+    }
+
+    fn write_graph_with_edges(
+        workspace: &Path,
+        crate_name: &str,
+        node_symbols: &[&str],
+        edges: Vec<serde_json::Value>,
+    ) {
+        let crate_dir = workspace.join("state").join("rustc").join(crate_name);
+        fs::create_dir_all(&crate_dir).expect("create crate dir");
+
+        let mut nodes = serde_json::Map::new();
+        for symbol in node_symbols {
+            nodes.insert((*symbol).to_string(), graph_node(symbol));
+        }
+        for edge in &edges {
+            if let Some(to) = edge.get("to").and_then(|v| v.as_str()) {
+                let key = to.strip_prefix("path::").unwrap_or(to);
+                if key.starts_with("artifact::") {
+                    nodes.entry(to.to_string()).or_insert(json!({
+                        "def_id": to,
+                        "path": key,
+                        "kind": "external",
+                    }));
+                }
+            }
+        }
+
+        let graph = json!({
+            "nodes": nodes,
+            "edges": edges,
+            "cfg_nodes": {},
+            "cfg_edges": [],
+            "bridge_edges": [],
         });
         fs::write(
             crate_dir.join("graph.json"),
@@ -795,6 +835,39 @@ mod tests {
             !workspace.join(ISSUES_FILE).exists(),
             "no issues file should be written when graph is missing"
         );
+    }
+
+    #[test]
+    fn artifact_writer_dispersion_emits_issue_for_shared_artifact_domain() {
+        let workspace = unique_workspace("artifact-writer-dispersion");
+        write_index(&workspace, &["canon_mini_agent"]);
+        write_graph_with_edges(
+            &workspace,
+            "canon_mini_agent",
+            &["logging::persist_prompt_overflow_report", "tools::save_violations"],
+            vec![
+                json!({
+                    "relation": "WritesArtifact",
+                    "from": "logging::persist_prompt_overflow_report",
+                    "to": "path::artifact::VIOLATIONS_FILE",
+                }),
+                json!({
+                    "relation": "WritesArtifact",
+                    "from": "tools::save_violations",
+                    "to": "path::artifact::VIOLATIONS_FILE",
+                }),
+            ],
+        );
+
+        assert!(generate_artifact_writer_dispersion_issues(&workspace).unwrap() > 0);
+        let issues = read_issues(&workspace);
+        let issue = issues
+            .iter()
+            .find(|issue| issue.id.starts_with("auto_artifact_writer_dispersion_"))
+            .expect("artifact writer issue");
+        assert_eq!(issue.status, "open");
+        assert_eq!(issue.metrics["writer_count"].as_u64(), Some(2));
+        assert_eq!(issue.metrics["display_artifact"].as_str(), Some("VIOLATIONS_FILE"));
     }
 
     #[test]
