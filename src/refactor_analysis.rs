@@ -1203,17 +1203,23 @@ pub fn redundant_path_issues(
 // ---------------------------------------------------------------------------
 //
 // Finds call chains where every function in the chain carries the same
-// alpha-equivalent type signature (identical structure up to bound-variable
-// renaming of lifetimes and generic type params — the De Bruijn sense).
+// alpha-equivalent type signature AND every caller in the chain is a
+// confirmed thin wrapper — i.e., it adds no logic beyond delegating to
+// its callee.
 //
 // Detection strategy (no rustc dependency):
 //   1. Canonicalize each fn signature textually: extract the bound-var list
 //      from the `<...>` clause, replace each lifetime with 'L0/'L1/... and
-//      each type param with T0/T1/... in order of first appearance, then
-//      compare only the `(params) -> return` part.
+//      each type param with T0/T1/... in order of first appearance, strip
+//      parameter names, and compare only the `(params) -> return` part.
 //   2. Cluster functions by canonical-signature hash.
 //   3. Within each cluster, walk call edges to find chains f₀→f₁→...→fₙ.
-//   4. Emit one ticket per chain with step-by-step agent instructions.
+//   4. Gate: every caller in the chain (all nodes except the leaf) must be a
+//      confirmed thin wrapper — mir_blocks ≤ 3 (entry + call + return) OR
+//      same mir_fingerprint as the next node (provably identical body).
+//   5. The canonical head is chain[last] — the innermost implementation.
+//      The wrappers chain[0..last] are the redundant nodes to delete.
+//   6. Emit one ticket per confirmed chain with exact agent instructions.
 
 pub fn generate_alpha_pathway_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
@@ -1490,6 +1496,26 @@ pub fn alpha_pathway_issues(
                 continue;
             }
 
+            // Safety gate: every caller in the chain (all nodes except the leaf)
+            // must be a confirmed thin wrapper. A node is a thin wrapper if:
+            //   (a) mir_blocks ≤ 3 — MIR has at most entry + call + return blocks,
+            //       meaning no additional logic beyond delegating to the callee, OR
+            //   (b) mir_fingerprint matches the next node — the bodies are provably
+            //       identical at the MIR level, safe to collapse regardless of size.
+            // Without this gate, semantic pipelines (same signature, different logic)
+            // would be incorrectly reported as redundant.
+            let wrappers_confirmed = chain.windows(2).all(|pair| {
+                let caller_s = summary_by_symbol[pair[0]];
+                let callee_s = summary_by_symbol[pair[1]];
+                let thin_body = caller_s.mir_blocks.map(|b| b <= 3).unwrap_or(false);
+                let identical_body = caller_s.mir_fingerprint.is_some()
+                    && caller_s.mir_fingerprint == callee_s.mir_fingerprint;
+                thin_body || identical_body
+            });
+            if !wrappers_confirmed {
+                continue;
+            }
+
             // Dedup: sort symbols to produce a canonical chain key.
             let mut sorted = chain.clone();
             sorted.sort();
@@ -1498,23 +1524,58 @@ pub fn alpha_pathway_issues(
                 continue;
             }
 
-            let head_summary = summary_by_symbol[head];
+            // The canonical head is the LEAF (chain[last]) — the actual implementation.
+            // The wrappers (chain[..last]) are the redundant nodes: thin delegators
+            // whose call sites should be redirected to the canonical head, then deleted.
+            let canonical_head = chain[chain.len() - 1];
+            let canonical_head_short = short_name(canonical_head);
+            let wrappers: Vec<&str> = chain[..chain.len() - 1].to_vec();
+
             let chain_syms: Vec<String> = chain.iter().map(|s| s.to_string()).collect();
             let chain_short: Vec<&str> = chain.iter().map(|s| short_name(s)).collect();
             let chain_display = chain_short.join(" → ");
-            let canonical_head = chain[0];
-            let canonical_head_short = short_name(canonical_head);
-            let redundant_syms: Vec<&str> = chain[1..].to_vec();
-            let redundant_list = redundant_syms
+            let wrapper_list = wrappers
                 .iter()
                 .map(|s| format!("`{}`", short_name(s)))
                 .collect::<Vec<_>>()
                 .join(", ");
+
+            // Evidence: each function's location plus wrapper confirmation reason.
             let chain_locs: Vec<String> = chain
-                .iter()
-                .filter_map(|s| summary_by_symbol.get(s))
-                .map(|s| format!("{} at {}", s.symbol, shorten_location(&s.file, s.line)))
+                .windows(2)
+                .filter_map(|pair| {
+                    let caller_s = summary_by_symbol.get(pair[0])?;
+                    let callee_s = summary_by_symbol.get(pair[1])?;
+                    let reason = if caller_s.mir_fingerprint.is_some()
+                        && caller_s.mir_fingerprint == callee_s.mir_fingerprint
+                    {
+                        "identical MIR fingerprint".to_string()
+                    } else {
+                        format!(
+                            "thin body ({} MIR block{})",
+                            caller_s.mir_blocks.unwrap_or(0),
+                            if caller_s.mir_blocks.unwrap_or(0) == 1 { "" } else { "s" }
+                        )
+                    };
+                    Some(format!(
+                        "`{}` → `{}` confirmed wrapper ({}); {} at {}",
+                        short_name(pair[0]),
+                        short_name(pair[1]),
+                        reason,
+                        caller_s.symbol,
+                        shorten_location(&caller_s.file, caller_s.line),
+                    ))
+                })
+                .chain(std::iter::once(format!(
+                    "canonical: `{}` at {}",
+                    canonical_head,
+                    shorten_location(
+                        &summary_by_symbol[canonical_head].file,
+                        summary_by_symbol[canonical_head].line
+                    )
+                )))
                 .collect();
+
             let chain_depth = chain.len();
             let id_seed = format!("{crate_name}:{}", chain_syms.join(":"));
 
@@ -1524,10 +1585,10 @@ pub fn alpha_pathway_issues(
                     stable_hash(&id_seed)
                 ),
                 title: format!(
-                    "Alpha-equivalent pathway: {} ({} hop{})",
+                    "Alpha-equivalent pathway: {} ({} confirmed wrapper{})",
                     chain_display,
-                    chain_depth - 1,
-                    if chain_depth - 1 == 1 { "" } else { "s" }
+                    wrappers.len(),
+                    if wrappers.len() == 1 { "" } else { "s" }
                 ),
                 status: "open".to_string(),
                 priority: if chain_depth >= 3 {
@@ -1537,29 +1598,32 @@ pub fn alpha_pathway_issues(
                 },
                 kind: "pathway_elimination".to_string(),
                 description: format!(
-                    "Functions [{chain_display}] form a call chain in crate `{crate_name}` \
-                     where every member carries the same alpha-equivalent type signature \
-                     (canonical form: `{canon}`).\n\n\
-                     This means the chain performs the same abstract type transformation at \
-                     each hop — a redundant pathway that can be collapsed to a single symbol.\n\n\
-                     **Execution model:** Detect → Rename canonical → Redirect call sites → Delete redundant → Verify\n\n\
-                     **Step 1 — Choose the canonical symbol.**\n\
-                     `{canonical_head}` is the chain entry point and becomes the single \
-                     implementation. Rename it now if a clearer name exists \
-                     (use `cargo fix` or your editor's rename-symbol feature across the crate).\n\n\
-                     **Step 2 — Redirect call sites of redundant symbols.**\n\
-                     For each of {redundant_list}: search the codebase for every call site \
-                     (including re-exports, trait impls, and test helpers) and replace it with \
-                     a direct call to `{canonical_head}`. Update any `use` imports accordingly.\n\n\
-                     **Step 3 — Delete the redundant function definitions.**\n\
-                     Remove the `fn` definitions for {redundant_list}. If any are `pub`, \
-                     confirm no downstream crate depends on them before deletion \
-                     (check workspace `Cargo.toml` and any reverse-dependency search).\n\n\
-                     **Step 4 — Verify.**\n\
+                    "Functions [{chain_display}] form a confirmed alpha-equivalent wrapper \
+                     chain in crate `{crate_name}`. Every function in the chain carries the \
+                     same canonical type signature (`{canon}`), and every caller in the chain \
+                     is a thin wrapper (≤3 MIR blocks or identical MIR fingerprint) that \
+                     adds no logic beyond delegating to the next function.\n\n\
+                     The canonical implementation is `{canonical_head}`. \
+                     The wrapper(s) {wrapper_list} are safe to delete — their call sites \
+                     should be redirected to `{canonical_head}` directly.\n\n\
+                     **Execution model:** Redirect call sites → Delete wrappers → Verify\n\n\
+                     **Step 1 — Redirect call sites.**\n\
+                     For each wrapper in {wrapper_list}: search the full codebase for every \
+                     call site (including re-exports, trait impls, and test helpers) and \
+                     replace it with a direct call to `{canonical_head}`. \
+                     Update any `use` imports accordingly. \
+                     If a wrapper is `pub`, check that no external crate depends on it \
+                     before removing the symbol (search workspace `Cargo.toml`).\n\n\
+                     **Step 2 — Delete the wrapper definitions.**\n\
+                     Remove the `fn` definitions for {wrapper_list} from the source.\n\n\
+                     **Step 3 — Verify.**\n\
                      Run `cargo build` and `cargo test --workspace`. \
                      Fix any unresolved-symbol or type-mismatch errors before closing.",
                 ),
-                location: shorten_location(&head_summary.file, head_summary.line),
+                location: shorten_location(
+                    &summary_by_symbol[canonical_head].file,
+                    summary_by_symbol[canonical_head].line,
+                ),
                 scope: format!("crate:{crate_name}"),
                 metrics: json!({
                     "task": "EliminateAlphaPathway",
@@ -1567,18 +1631,18 @@ pub fn alpha_pathway_issues(
                     "chain_depth": chain_depth,
                     "chain": chain_syms,
                     "canonical_head": canonical_head,
-                    "redundant_symbols": redundant_syms.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+                    "wrapper_symbols": wrappers.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
                 }),
                 acceptance_criteria: vec![
                     format!(
-                        "canonical symbol `{}` retained; renamed if a clearer name exists",
+                        "canonical implementation `{}` retained and unmodified",
                         canonical_head_short
                     ),
                     format!(
                         "all call sites of {} redirected to `{}`",
-                        redundant_list, canonical_head_short
+                        wrapper_list, canonical_head_short
                     ),
-                    format!("{} deleted from codebase", redundant_list),
+                    format!("{} deleted from codebase", wrapper_list),
                     "cargo build and cargo test --workspace pass".to_string(),
                 ],
                 evidence: chain_locs,
@@ -2489,7 +2553,7 @@ fn shorten_location(file: &str, line: u32) -> String {
 mod tests {
     use super::{
         canonicalize_signature, dead_code_id, helper_extract_id, is_exempt_from_dead_code,
-        priority_from_unreachable, short_name,
+        priority_from_unreachable, short_name, strip_param_names,
     };
 
     #[test]
@@ -2559,5 +2623,20 @@ mod tests {
         let a = canonicalize_signature("fn f<T>(x: T) -> T");
         let b = canonicalize_signature("fn g<T>(x: T) -> ()");
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn strip_param_names_removes_lowercase_prefixes() {
+        // Basic case
+        assert_eq!(strip_param_names("(x: &'L0 T0) -> T0"), "(&'L0 T0) -> T0");
+        // Multiple params
+        assert_eq!(
+            strip_param_names("(x: &'L0 T0, y: T1) -> T0"),
+            "(&'L0 T0, T1) -> T0"
+        );
+        // No param names — should pass through unchanged
+        assert_eq!(strip_param_names("(&'L0 T0) -> T0"), "(&'L0 T0) -> T0");
+        // Type names (uppercase) are NOT stripped
+        assert_eq!(strip_param_names("(Vec<T0>) -> T0"), "(Vec<T0>) -> T0");
     }
 }

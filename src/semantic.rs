@@ -883,18 +883,12 @@ impl SemanticIndex {
     ) -> Vec<(&'a str, Option<&'a str>)> {
         let mut path: Vec<(&str, Option<&str>)> = Vec::new();
         let mut cur = to_key;
-        loop {
-            let via_relation = if cur == from_key {
-                None
-            } else {
-                Some(prev[cur].1)
-            };
-            path.push((cur, via_relation));
-            if cur == from_key {
-                break;
-            }
-            cur = prev[cur].0;
+        while cur != from_key {
+            let (next, relation) = prev[cur];
+            path.push((cur, Some(relation)));
+            cur = next;
         }
+        path.push((from_key, None));
         path.reverse();
         path
     }
