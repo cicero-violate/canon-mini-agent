@@ -500,10 +500,11 @@ pub fn replay_event_log(initial: SystemState, events: &[Event]) -> Result<System
     let mut state = initial;
     validate_system_state(&state)?;
     for event in events {
-        if let Event::Control { event } = event {
-            state = apply_control_event(state, event);
-            validate_system_state(&state)?;
-        }
+        let Event::Control { event } = event else {
+            continue;
+        };
+        state = apply_control_event(state, event);
+        validate_system_state(&state)?;
     }
     Ok(state)
 }

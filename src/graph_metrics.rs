@@ -281,6 +281,61 @@ pub fn generate_error_shaping_dispersion_issues(workspace: &Path) -> Result<usiz
     Ok(mutated)
 }
 
+pub fn generate_state_transition_dispersion_issues(workspace: &Path) -> Result<usize> {
+    let mut file: IssuesFile = load_issues_file(workspace);
+    let before = serde_json::to_value(&file)?;
+    let mut desired_ids = HashSet::new();
+    let mut mutated = 0usize;
+
+    for crate_name in SemanticIndex::available_crates(workspace) {
+        let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
+            continue;
+        };
+
+        let mut transitions_by_state: HashMap<String, HashSet<String>> = HashMap::new();
+        for (symbol, state) in idx.state_transition_edges() {
+            if !looks_like_symbol(&symbol) || state.trim().is_empty() {
+                continue;
+            }
+            transitions_by_state.entry(state).or_default().insert(symbol);
+        }
+
+        let crate_name = crate_name.replace('-', "_");
+        for (state_domain, transitions) in transitions_by_state {
+            let mut transitions: Vec<String> = transitions.into_iter().collect();
+            transitions.sort();
+            let issue =
+                build_state_transition_dispersion_issue(&crate_name, &state_domain, &transitions);
+            desired_ids.insert(issue.id.clone());
+            mutated += upsert_bridge_issue(&mut file, issue, transitions.len() > 1);
+        }
+
+        let prefix = format!("auto_state_transition_dispersion_{crate_name}_");
+        for issue in &mut file.issues {
+            if issue.id.starts_with(&prefix)
+                && !desired_ids.contains(&issue.id)
+                && issue.status != "resolved"
+            {
+                issue.status = "resolved".to_string();
+                mutated += 1;
+            }
+        }
+    }
+
+    rescore_all(&mut file);
+    let after = serde_json::to_value(&file)?;
+    if before != after {
+        persist_issues_projection_with_writer(
+            workspace,
+            &file,
+            None,
+            "generate_state_transition_dispersion_issues",
+        )?;
+    }
+
+    Ok(mutated)
+}
+
 pub fn analyze_bridge_connectivity(
     workspace: &Path,
     crate_name: &str,
@@ -540,6 +595,67 @@ fn build_error_shaping_dispersion_issue(
     }
 }
 
+fn display_state_domain(raw: &str) -> String {
+    raw.strip_prefix("state::").unwrap_or(raw).to_string()
+}
+
+fn build_state_transition_dispersion_issue(
+    crate_name: &str,
+    state_domain: &str,
+    transitions: &[String],
+) -> Issue {
+    let display_state = display_state_domain(state_domain);
+    let transition_list = transitions
+        .iter()
+        .map(|symbol| format!("`{symbol}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let evidence = transitions
+        .iter()
+        .map(|symbol| format!("transition site `{symbol}` mutates `{display_state}` after branching"))
+        .collect::<Vec<_>>();
+
+    Issue {
+        id: format!(
+            "auto_state_transition_dispersion_{}_{}",
+            sanitize_fragment(crate_name),
+            stable_hash(&format!("{crate_name}:{state_domain}"))
+        ),
+        title: format!(
+            "State transition dispersion for `{display_state}` ({} transition sites)",
+            transitions.len()
+        ),
+        status: if transitions.len() > 1 { "open" } else { "resolved" }.to_string(),
+        priority: if transitions.len() >= 4 { "high" } else { "medium" }.to_string(),
+        kind: "logic".to_string(),
+        description: format!(
+            "Compiler-observed branch-plus-state-write transitions for state domain `{state_domain}` \
+             are distributed across multiple functions in crate `{crate_name}`: {transition_list}.\n\n\
+             Transition logic that mutates the same state domain from several unrelated sites tends to \
+             create implicit state machines, duplicated guards, and divergent recovery semantics.\n\n\
+             Extract one canonical transition layer for `{display_state}` and route these sites through it."
+        ),
+        location: format!("state/rustc/{crate_name}/graph.json"),
+        scope: format!("crate:{crate_name}"),
+        metrics: json!({
+            "task": "CentralizeStateTransitions",
+            "state_domain": state_domain,
+            "display_state": display_state,
+            "transition_count": transitions.len(),
+            "transitions": transitions,
+            "proof_tier": "hypothesis",
+        }),
+        acceptance_criteria: vec![
+            format!("state mutations for `{display_state}` route through one canonical transition layer"),
+            "branch-local transition logic is reduced or converted to thin delegates".to_string(),
+            "graph.json is regenerated and the detector reports at most one transition site for the state domain".to_string(),
+        ],
+        evidence,
+        discovered_by: "graph_metrics_detector".to_string(),
+        ..Issue::default()
+    }
+}
+
 fn module_partition_key(summary: &crate::semantic::SymbolSummary) -> String {
     let sym_scope = summary
         .symbol
@@ -736,7 +852,9 @@ fn upsert_bridge_issue(file: &mut IssuesFile, desired: Issue, active: bool) -> u
 mod tests {
     use super::{
         analyze_bridge_connectivity, generate_artifact_writer_dispersion_issues,
-        generate_bridge_connectivity_issues, issue_id, priority_from_ratio, sanitize_fragment,
+        generate_bridge_connectivity_issues, generate_error_shaping_dispersion_issues,
+        generate_state_transition_dispersion_issues, issue_id, priority_from_ratio,
+        sanitize_fragment,
     };
     use crate::constants::ISSUES_FILE;
     use serde_json::json;
@@ -1003,6 +1121,90 @@ mod tests {
         assert_eq!(issue.status, "open");
         assert_eq!(issue.metrics["writer_count"].as_u64(), Some(2));
         assert_eq!(issue.metrics["display_artifact"].as_str(), Some("VIOLATIONS_FILE"));
+    }
+
+    #[test]
+    fn error_shaping_dispersion_emits_issue_for_shared_styles() {
+        let workspace = unique_workspace("error-shaping-dispersion");
+        write_index(&workspace, &["canon_mini_agent"]);
+        write_graph_with_edges(
+            &workspace,
+            "canon_mini_agent",
+            &[
+                "semantic::SemanticIndex::load",
+                "logging::write_projection_with_artifact_effects",
+                "tools::load_git_head",
+                "tools::exec_python",
+            ],
+            vec![
+                json!({
+                    "relation": "ShapesError",
+                    "from": "semantic::SemanticIndex::load",
+                    "to": "error_shape::with_context",
+                }),
+                json!({
+                    "relation": "ShapesError",
+                    "from": "logging::write_projection_with_artifact_effects",
+                    "to": "error_shape::with_context",
+                }),
+                json!({
+                    "relation": "ShapesError",
+                    "from": "tools::load_git_head",
+                    "to": "error_shape::context",
+                }),
+                json!({
+                    "relation": "ShapesError",
+                    "from": "tools::exec_python",
+                    "to": "error_shape::map_err",
+                }),
+            ],
+        );
+
+        assert!(generate_error_shaping_dispersion_issues(&workspace).unwrap() > 0);
+        let issues = read_issues(&workspace);
+        let issue = issues
+            .iter()
+            .find(|issue| issue.id.starts_with("auto_error_shaping_dispersion_"))
+            .expect("error shaping issue");
+        assert_eq!(issue.status, "open");
+        assert_eq!(issue.metrics["function_count"].as_u64(), Some(4));
+        assert_eq!(issue.metrics["style_count"].as_u64(), Some(3));
+    }
+
+    #[test]
+    fn state_transition_dispersion_emits_issue_for_shared_state_domain() {
+        let workspace = unique_workspace("state-transition-dispersion");
+        write_index(&workspace, &["canon_mini_agent"]);
+        write_graph_with_edges(
+            &workspace,
+            "canon_mini_agent",
+            &[
+                "planner::advance_plan_state",
+                "tools::save_violations_after_review",
+            ],
+            vec![
+                json!({
+                    "relation": "TransitionsState",
+                    "from": "planner::advance_plan_state",
+                    "to": "state::VIOLATIONS_FILE",
+                }),
+                json!({
+                    "relation": "TransitionsState",
+                    "from": "tools::save_violations_after_review",
+                    "to": "state::VIOLATIONS_FILE",
+                }),
+            ],
+        );
+
+        assert!(generate_state_transition_dispersion_issues(&workspace).unwrap() > 0);
+        let issues = read_issues(&workspace);
+        let issue = issues
+            .iter()
+            .find(|issue| issue.id.starts_with("auto_state_transition_dispersion_"))
+            .expect("state transition issue");
+        assert_eq!(issue.status, "open");
+        assert_eq!(issue.metrics["transition_count"].as_u64(), Some(2));
+        assert_eq!(issue.metrics["display_state"].as_str(), Some("VIOLATIONS_FILE"));
     }
 
     #[test]

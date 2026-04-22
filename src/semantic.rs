@@ -377,6 +377,48 @@ impl SemanticIndex {
             .collect()
     }
 
+    pub fn state_read_edges(&self) -> Vec<(String, String)> {
+        self.graph
+            .edges
+            .iter()
+            .filter(|e| edge_relation(e) == "ReadsState")
+            .map(|e| {
+                (
+                    self.edge_endpoint_path(&e.from),
+                    self.edge_endpoint_path(&e.to),
+                )
+            })
+            .collect()
+    }
+
+    pub fn state_write_edges(&self) -> Vec<(String, String)> {
+        self.graph
+            .edges
+            .iter()
+            .filter(|e| edge_relation(e) == "WritesState")
+            .map(|e| {
+                (
+                    self.edge_endpoint_path(&e.from),
+                    self.edge_endpoint_path(&e.to),
+                )
+            })
+            .collect()
+    }
+
+    pub fn state_transition_edges(&self) -> Vec<(String, String)> {
+        self.graph
+            .edges
+            .iter()
+            .filter(|e| edge_relation(e) == "TransitionsState")
+            .map(|e| {
+                (
+                    self.edge_endpoint_path(&e.from),
+                    self.edge_endpoint_path(&e.to),
+                )
+            })
+            .collect()
+    }
+
     pub fn semantic_edges_by_relation(&self, relation: &str) -> Vec<(String, String)> {
         self.graph
             .edges
