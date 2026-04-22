@@ -691,13 +691,26 @@ fn build_state_transition_dispersion_issue(
 }
 
 fn workflow_phase_for_symbol(symbol: &str) -> Option<&'static str> {
+    const WORKFLOW_PREFIXES: &[&str] = &[
+        "app::",
+        "tools::",
+        "supervisor::",
+        "canonical_writer::",
+        "transition_policy::",
+        "plan_preflight::",
+        "orchestrator_seam::",
+        "rename_semantic::",
+    ];
+    if !WORKFLOW_PREFIXES.iter().any(|prefix| symbol.starts_with(prefix)) {
+        return None;
+    }
+
     let lower = symbol.to_ascii_lowercase();
     if lower.contains("verify")
         || lower.contains("verifier")
         || lower.contains("cargo_test")
         || lower.contains("cargo_check")
         || lower.contains("preflight")
-        || lower.contains("validate_")
     {
         return Some("verify");
     }
