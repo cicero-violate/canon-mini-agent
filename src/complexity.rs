@@ -274,36 +274,46 @@ fn compute_call_scc_sizes(
     summaries: &[crate::semantic::SymbolSummary],
     outgoing: &HashMap<String, Vec<String>>,
 ) -> HashMap<String, usize> {
-    fn dfs(
+fn dfs(
         node: &str,
         graph: &HashMap<String, Vec<String>>,
         seen: &mut HashSet<String>,
         order: &mut Vec<String>,
     ) {
-        if !seen.insert(node.to_string()) {
-            return;
-        }
-        if let Some(nexts) = graph.get(node) {
-            for next in nexts {
-                dfs(next, graph, seen, order);
+        let mut stack = vec![(node.to_string(), false)];
+        while let Some((current, expanded)) = stack.pop() {
+            if expanded {
+                order.push(current);
+                continue;
+            }
+            if !seen.insert(current.clone()) {
+                continue;
+            }
+            stack.push((current.clone(), true));
+            if let Some(nexts) = graph.get(&current) {
+                for next in nexts.iter().rev() {
+                    stack.push((next.clone(), false));
+                }
             }
         }
-        order.push(node.to_string());
     }
 
-    fn dfs_collect(
+fn dfs_collect(
         node: &str,
         graph: &HashMap<String, Vec<String>>,
         seen: &mut HashSet<String>,
         component: &mut Vec<String>,
     ) {
-        if !seen.insert(node.to_string()) {
-            return;
-        }
-        component.push(node.to_string());
-        if let Some(nexts) = graph.get(node) {
-            for next in nexts {
-                dfs_collect(next, graph, seen, component);
+        let mut stack = vec![node.to_string()];
+        while let Some(current) = stack.pop() {
+            if !seen.insert(current.clone()) {
+                continue;
+            }
+            component.push(current.clone());
+            if let Some(nexts) = graph.get(&current) {
+                for next in nexts.iter().rev() {
+                    stack.push(next.clone());
+                }
             }
         }
     }
@@ -927,6 +937,7 @@ fn build_complexity_entry(
     blocks: usize,
     stmts: usize,
 ) -> serde_json::Value {
+    let branch_score = s.branch_score;
     json!({
         "symbol": s.symbol,
         "file": shorten_display_path(&s.file),
@@ -934,9 +945,9 @@ fn build_complexity_entry(
         "mir_fingerprint": s.mir_fingerprint,
         "mir_blocks": blocks,
         "mir_stmts": stmts,
-        "branch_score": s.branch_score,
+        "branch_score": branch_score,
         "is_directly_recursive": s.is_directly_recursive,
-        "complexity_proxy": s.branch_score.unwrap_or(blocks as f64),
+        "complexity_proxy": branch_score.unwrap_or(blocks as f64),
     })
 }
 

@@ -1223,6 +1223,11 @@ fn apply_route_gate_block(writer: &mut CanonicalWriter, ws: &std::path::Path, re
     eprintln!("[invariant_gate] route G_r (BLOCKED): {reason}");
     let blocker_message = route_gate_blocker_message(reason);
     if persist_planner_blocker_message(writer, &blocker_message) {
+        let record = serde_json::json!({
+            "kind": "invariant_gate", "phase": "route", "gate": "G_r",
+            "proposed_role": "executor", "blocked": true, "reason": reason,
+            "ts_ms": crate::logging::now_ms(),
+        });
         crate::blockers::record_action_failure_with_writer(
             ws,
             None,
@@ -1231,11 +1236,6 @@ fn apply_route_gate_block(writer: &mut CanonicalWriter, ws: &std::path::Path, re
             reason,
             None,
         );
-        let record = serde_json::json!({
-            "kind": "invariant_gate", "phase": "route", "gate": "G_r",
-            "proposed_role": "executor", "blocked": true, "reason": reason,
-            "ts_ms": crate::logging::now_ms(),
-        });
         let _ = crate::logging::append_action_log_record(&record);
     }
     writer.apply(ControlEvent::PlannerPendingSet { pending: true });
@@ -3916,18 +3916,28 @@ impl<'a> LlmResponseContext<'a> {
         }
     }
 
+    fn request_log_who(role: &str, has_role_schema: bool) -> &str {
+        if has_role_schema {
+            "system"
+        } else {
+            role
+        }
+    }
+
+    fn request_raw_prompt(prompt: &str, trimmed_role_schema: &str, has_role_schema: bool) -> String {
+        if has_role_schema {
+            format!("{}\n\n{}", trimmed_role_schema, prompt)
+        } else {
+            prompt.to_string()
+        }
+    }
+
     fn log_request(&mut self, step: usize, exchange_id: &str, prompt: &str, role_schema: &str) {
         let ts_ms = crate::logging::now_ms();
-        let who = if role_schema.trim().is_empty() {
-            self.role
-        } else {
-            "system"
-        };
-        let raw_prompt = if role_schema.trim().is_empty() {
-            prompt.to_string()
-        } else {
-            format!("{}\n\n{}", role_schema.trim_end(), prompt)
-        };
+        let trimmed_role_schema = role_schema.trim_end();
+        let has_role_schema = !trimmed_role_schema.trim().is_empty();
+        let who = Self::request_log_who(self.role, has_role_schema);
+        let raw_prompt = Self::request_raw_prompt(prompt, trimmed_role_schema, has_role_schema);
         log_message_event(
             self.role,
             self.endpoint,

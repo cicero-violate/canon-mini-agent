@@ -181,7 +181,7 @@ fn evidence_receipt_timestamps() -> HashMap<String, u64> {
         .collect()
 }
 
-fn normalize_issue_target_path(raw: &str) -> Option<String> {
+fn trim_issue_target_candidate(raw: &str) -> Option<&str> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return None;
@@ -198,19 +198,34 @@ fn normalize_issue_target_path(raw: &str) -> Option<String> {
         .unwrap_or(without_note)
         .trim();
     if candidate.is_empty() {
-        return None;
+        None
+    } else {
+        Some(candidate)
     }
-    if let Some((head, tail)) = candidate.rsplit_once(':') {
-        if !head.is_empty() && tail.chars().all(|ch| ch.is_ascii_digit() || ch == '-') {
-            return Some(head.to_string());
-        }
+}
+
+fn strip_issue_target_line_suffix(candidate: &str) -> Option<String> {
+    let (head, tail) = candidate.rsplit_once(':')?;
+    if !head.is_empty() && tail.chars().all(|ch| ch.is_ascii_digit() || ch == '-') {
+        Some(head.to_string())
+    } else {
+        None
     }
-    if candidate.starts_with('/')
-        || candidate.contains('/')
-        || candidate.ends_with(".json")
+}
+
+fn issue_target_looks_like_path(candidate: &str) -> bool {
+    let known_file_suffix = candidate.ends_with(".json")
         || candidate.ends_with(".rs")
-        || candidate.ends_with(".md")
-    {
+        || candidate.ends_with(".md");
+    candidate.starts_with('/') || candidate.contains('/') || known_file_suffix
+}
+
+fn normalize_issue_target_path(raw: &str) -> Option<String> {
+    let candidate = trim_issue_target_candidate(raw)?;
+    if let Some(path) = strip_issue_target_line_suffix(candidate) {
+        return Some(path);
+    }
+    if issue_target_looks_like_path(candidate) {
         return Some(candidate.to_string());
     }
     None

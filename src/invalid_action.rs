@@ -445,27 +445,19 @@ fn push_missing_string_object_field(
     obj: Option<&serde_json::Map<String, Value>>,
     field: &str,
 ) {
+    let missing_field = format!("missing field: {field}");
+    let type_mismatch = format!("field type mismatch: {field} (expected string)");
     let value = obj.and_then(|o| o.get(field));
     if let Some(val) = value {
         if let Some(text) = val.as_str() {
-            if text.trim().is_empty()
-                && !schema_diff
-                    .iter()
-                    .any(|s| s == &format!("missing field: {field}"))
-            {
-                schema_diff.push(format!("missing field: {field}"));
+            if text.trim().is_empty() && !schema_diff.iter().any(|s| s == &missing_field) {
+                schema_diff.push(missing_field);
             }
-        } else if !schema_diff
-            .iter()
-            .any(|s| s == &format!("field type mismatch: {field} (expected string)"))
-        {
-            schema_diff.push(format!("field type mismatch: {field} (expected string)"));
+        } else if !schema_diff.iter().any(|s| s == &type_mismatch) {
+            schema_diff.push(type_mismatch);
         }
-    } else if !schema_diff
-        .iter()
-        .any(|s| s == &format!("missing field: {field}"))
-    {
-        schema_diff.push(format!("missing field: {field}"));
+    } else if !schema_diff.iter().any(|s| s == &missing_field) {
+        schema_diff.push(missing_field);
     }
 }
 

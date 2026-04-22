@@ -717,51 +717,9 @@ pub fn generate_representation_fanout_issues(workspace: &Path) -> Result<usize> 
             continue;
         };
         let crate_name = crate_name.replace('-', "_");
-        let mut sources_by_symbol: HashMap<String, HashSet<String>> = HashMap::new();
-        let mut targets_by_symbol: HashMap<String, HashSet<String>> = HashMap::new();
-
-        for (symbol, artifact) in idx.artifact_read_edges() {
-            sources_by_symbol
-                .entry(symbol)
-                .or_default()
-                .insert(normalize_representation_domain("artifact", &artifact));
-        }
-        for (symbol, state) in idx.state_read_edges() {
-            sources_by_symbol
-                .entry(symbol)
-                .or_default()
-                .insert(normalize_representation_domain("state", &state));
-        }
-        for (symbol, artifact) in idx.artifact_write_edges() {
-            targets_by_symbol
-                .entry(symbol)
-                .or_default()
-                .insert(normalize_representation_domain("artifact", &artifact));
-        }
-        for (symbol, state) in idx.state_write_edges() {
-            targets_by_symbol
-                .entry(symbol)
-                .or_default()
-                .insert(normalize_representation_domain("state", &state));
-        }
-
-        let mut symbols_by_pair: HashMap<(String, String), Vec<String>> = HashMap::new();
-        for (symbol, sources) in sources_by_symbol {
-            let Some(targets) = targets_by_symbol.get(&symbol) else {
-                continue;
-            };
-            for source in &sources {
-                for target in targets {
-                    if source == target {
-                        continue;
-                    }
-                    symbols_by_pair
-                        .entry((source.clone(), target.clone()))
-                        .or_default()
-                        .push(symbol.clone());
-                }
-            }
-        }
+        let (sources_by_symbol, targets_by_symbol) = collect_representation_domains(&idx);
+        let symbols_by_pair =
+            build_representation_symbols_by_pair(sources_by_symbol, &targets_by_symbol);
 
         for ((source, target), mut symbols) in symbols_by_pair {
             symbols.sort();
@@ -795,6 +753,69 @@ pub fn generate_representation_fanout_issues(workspace: &Path) -> Result<usize> 
     }
 
     Ok(mutated)
+}
+
+fn collect_representation_domains(
+    idx: &SemanticIndex,
+) -> (
+    HashMap<String, HashSet<String>>,
+    HashMap<String, HashSet<String>>,
+) {
+    let mut sources_by_symbol: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut targets_by_symbol: HashMap<String, HashSet<String>> = HashMap::new();
+
+    for (symbol, artifact) in idx.artifact_read_edges() {
+        sources_by_symbol
+            .entry(symbol)
+            .or_default()
+            .insert(normalize_representation_domain("artifact", &artifact));
+    }
+    for (symbol, state) in idx.state_read_edges() {
+        sources_by_symbol
+            .entry(symbol)
+            .or_default()
+            .insert(normalize_representation_domain("state", &state));
+    }
+    for (symbol, artifact) in idx.artifact_write_edges() {
+        targets_by_symbol
+            .entry(symbol)
+            .or_default()
+            .insert(normalize_representation_domain("artifact", &artifact));
+    }
+    for (symbol, state) in idx.state_write_edges() {
+        targets_by_symbol
+            .entry(symbol)
+            .or_default()
+            .insert(normalize_representation_domain("state", &state));
+    }
+
+    (sources_by_symbol, targets_by_symbol)
+}
+
+fn build_representation_symbols_by_pair(
+    sources_by_symbol: HashMap<String, HashSet<String>>,
+    targets_by_symbol: &HashMap<String, HashSet<String>>,
+) -> HashMap<(String, String), Vec<String>> {
+    let mut symbols_by_pair: HashMap<(String, String), Vec<String>> = HashMap::new();
+
+    for (symbol, sources) in sources_by_symbol {
+        let Some(targets) = targets_by_symbol.get(&symbol) else {
+            continue;
+        };
+        for source in &sources {
+            for target in targets {
+                if source == target {
+                    continue;
+                }
+                symbols_by_pair
+                    .entry((source.clone(), target.clone()))
+                    .or_default()
+                    .push(symbol.clone());
+            }
+        }
+    }
+
+    symbols_by_pair
 }
 
 pub fn generate_scc_region_reduction_issues(workspace: &Path) -> Result<usize> {

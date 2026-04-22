@@ -325,6 +325,17 @@ fn collect_gemini_fragments(v: &Value, out: &mut String, depth: usize) {
         }
     }
 }
+fn classify_chunk_object(obj: &serde_json::Map<String, Value>) -> Option<FrameResult> {
+    obj.get("chunk")
+        .and_then(|c| c.as_str())
+        .map(classify_chatgpt_group)
+}
+
+fn is_assistant_raw_message(obj: &serde_json::Map<String, Value>) -> bool {
+    obj.get("role").and_then(|r| r.as_str()) == Some("assistant")
+        && obj.get("raw_messages").is_some()
+}
+
 fn classify_calpico_value(v: &Value) -> FrameResult {
     if let Some(arr) = v.as_array() {
         return classify_calpico_array(arr);
@@ -332,8 +343,8 @@ fn classify_calpico_value(v: &Value) -> FrameResult {
     let Some(obj) = v.as_object() else {
         return FrameResult::Ignore;
     };
-    if let Some(chunk) = obj.get("chunk").and_then(|c| c.as_str()) {
-        return classify_chatgpt_group(chunk);
+    if let Some(result) = classify_chunk_object(obj) {
+        return result;
     }
     if let Some(items) = obj.get("items").and_then(|i| i.as_array()) {
         match classify_calpico_items(items) {
@@ -345,9 +356,7 @@ fn classify_calpico_value(v: &Value) -> FrameResult {
     if kind == Some("message") {
         return classify_calpico_envelope(v);
     }
-    let role = obj.get("role").and_then(|r| r.as_str());
-    let has_raw_messages = obj.get("raw_messages").is_some();
-    if role == Some("assistant") && has_raw_messages {
+    if is_assistant_raw_message(obj) {
         return classify_calpico_message(v);
     }
     FrameResult::Ignore

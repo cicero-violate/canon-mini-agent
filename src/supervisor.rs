@@ -1104,6 +1104,12 @@ fn maybe_restart_for_pending_update(
         *pending_update_defer_checks = 0;
         return Ok(false);
     };
+    let restart_child = |child: &mut Child| {
+        send_sigint(child);
+        wait_for_exit(child, Duration::from_secs(10));
+        eprintln!("[canon-mini-supervisor] restarting...");
+        Ok(true)
+    };
     let mode = read_orchestrator_mode(state_dir, orchestrator_mode_flag);
     if mode.as_deref() != Some("orchestrate") {
         eprintln!(
@@ -1121,10 +1127,7 @@ fn maybe_restart_for_pending_update(
             None,
         );
         stage_commit_push_before_restart(root, state_dir, "single-role-update", prefer_release);
-        send_sigint(child);
-        wait_for_exit(child, Duration::from_secs(10));
-        eprintln!("[canon-mini-supervisor] restarting...");
-        return Ok(true);
+        return restart_child(child);
     }
 
     let idle_marker_is_fresh =
@@ -1151,10 +1154,7 @@ fn maybe_restart_for_pending_update(
             "orchestrate-idle-update",
             prefer_release,
         );
-        send_sigint(child);
-        wait_for_exit(child, Duration::from_secs(10));
-        eprintln!("[canon-mini-supervisor] restarting...");
-        return Ok(true);
+        return restart_child(child);
     }
 
     *pending_update_defer_checks = pending_update_defer_checks.saturating_add(1);
@@ -1181,11 +1181,8 @@ fn maybe_restart_for_pending_update(
             "orchestrate-deferred-update-timeout",
             prefer_release,
         );
-        send_sigint(child);
-        wait_for_exit(child, Duration::from_secs(10));
-        eprintln!("[canon-mini-supervisor] restarting...");
         *pending_update_defer_checks = 0;
-        return Ok(true);
+        return restart_child(child);
     }
 
     if idle_marker.exists() {
