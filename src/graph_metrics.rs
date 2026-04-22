@@ -2654,7 +2654,11 @@ mod tests {
 
     fn read_issues(workspace: &Path) -> Vec<crate::issues::Issue> {
         let path = workspace.join(ISSUES_FILE);
-        let raw = fs::read_to_string(path).expect("read issues");
+        let raw = match fs::read_to_string(path) {
+            Ok(raw) => raw,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
+            Err(err) => panic!("read issues: {err:?}"),
+        };
         let file: crate::issues::IssuesFile = serde_json::from_str(&raw).expect("parse issues");
         file.issues
     }
