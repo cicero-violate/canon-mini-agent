@@ -94,11 +94,21 @@ Completed:
   - `TransitionsState` now requires workflow coordination or a same-domain
     read/write cycle
   - `CoordinatesTransition` records the stronger transition proof shape
+- effect-domain dispersion reports now exploit all three new fact classes:
+  - `logging_dispersion`: flags modules with >10 direct logging sites outside
+    `logging::` — action: centralize through logging boundary
+  - `process_spawn_dispersion`: flags non-canonical process-spawning modules
+    — action: route through `process::` boundary
+  - `network_usage_dispersion`: inventories all network-using symbols and
+    flags dispersion across modules — action: establish network access layer
+- `state_transition_dispersion` now consumes `CoordinatesTransition` edges:
+  - adds `coordinates_transition_count`, `workflow_coordinated_count`,
+    `read_write_cycle_count`, and `all_coordinated` to issue metrics
+  - upgrades `proof_tier` from `"hypothesis"` to `"proof"` when every
+    transition site has `CoordinatesTransition` backing
 
 Missing:
 
-- richer effect classes:
-  - effect-domain reports that exploit the new logging/process/network facts
 - tighter proof boundary between canonical boundary modules and leak candidates
 - richer dominator-funnel signal if the dominator family should emit live issues
 
@@ -575,13 +585,9 @@ Status:
 
 Do this next, in order:
 
-1. add analyzer/reporting passes that exploit logging/process/network effect facts
-2. decide whether `state_transition_dispersion` should consume
-   `CoordinatesTransition` directly or keep relying on the stronger
-   `TransitionsState` edges
-3. decide whether dominator-funnel evidence needs new compiler facts or lower-risk
+1. decide whether dominator-funnel evidence needs new compiler facts or lower-risk
    analyzer signals
-4. only then revisit dominator-region live emission if the stronger facts justify it
+2. only then revisit dominator-region live emission if the stronger facts justify it
 
 Do not:
 
