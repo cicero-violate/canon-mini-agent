@@ -2009,9 +2009,10 @@ mod tests {
             prompt.contains("Action: `python`"),
             "executor system prompt should include the python schema"
         );
+        let snapshot = canonical_status_snapshot();
         assert!(
-            prompt.contains("Canonical status snapshot:"),
-            "executor system prompt should retain the canonical status snapshot"
+            prompt.contains(snapshot),
+            "executor system prompt must contain canonical runtime law snapshot"
         );
     }
 

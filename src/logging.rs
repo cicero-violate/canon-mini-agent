@@ -711,18 +711,17 @@ pub(crate) fn append_orchestration_trace(event: &str, payload: Value) {
             "summary": summary.unwrap_or_else(|| Value::String(name.to_string())),
         })
     };
+    let command_summary = payload
+        .get("command_used")
+        .cloned()
+        .or_else(|| proposed_command.clone());
     let op = if let Some(name) = payload.get("action").and_then(|v| v.as_str()) {
-        Some(op_summary(
-            name,
-            payload
-                .get("command_used")
-                .cloned()
-                .or_else(|| proposed_command.clone()),
-        ))
-    } else if let Some(name) = payload.get("proposed_action").and_then(|v| v.as_str()) {
-        Some(op_summary(name, proposed_command.clone()))
+        Some(op_summary(name, command_summary))
     } else {
-        None
+        payload
+            .get("proposed_action")
+            .and_then(|v| v.as_str())
+            .map(|name| op_summary(name, proposed_command.clone()))
     };
     let ok = payload.get("success").and_then(|v| v.as_bool());
     let text = payload
