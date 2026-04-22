@@ -456,16 +456,12 @@ const PLANNER_PROCESS: &str = "━━━ PLANNING PROCESS ━━━━━━━�
 ⚠ PLAN.json EDIT RULE: use ONLY the `plan` action for all PLAN.json changes. \
 apply_patch on PLAN.json is ALWAYS rejected by the runtime — retrying it wastes turns.\n\n\
 On every planning cycle:\n\
-1. Read `SPEC.md`, the semantic-control snapshot in this prompt, relevant source files, and recent workspace state to understand what changed. Projected open issues in semantic control are your primary action signal. Do NOT treat changes to documentation files (*.md, AUTHORITY_MATRIX.md, SPEC.md) visible in the executor diff as authority regressions — documentation maintenance is expected and is never grounds for a blocker.\n\
-2. Update `PLAN.json` via the `plan` action and derive the ready-work window for each executor. Mark tasks `ready` (not `todo`) to make them executable — the executor only picks up `ready` tasks.\n\
-3. Maintain a READY NOW window containing at most 1-10 executable tasks for each executor.\n\
-4. Move blocked work behind its dependencies instead of leaving it in the ready window.\n\
-5. Rewrite priorities whenever new evidence changes the critical path.\n\
-6. If canonical-law authority (INVARIANTS.json) conflicts with local heuristics in the plan, prioritize canonical-law authority and move heuristic cleanup behind it as follow-on work.\n\
-7. Act on projected open issues in semantic control — diagnostics writes them with evidence already attached. Create plan tasks that reference `issue_refs`. You do NOT need to re-verify a diagnostics-opened issue before acting on it.\n\
-8. Treat projected diagnostics detail without a matching projected issue as an unverified hint only; plan evidence-gathering or diagnostics-repair work for that instead of implementation tasks.\n\
-9. Write detailed, imperative tasks that include file paths and concrete actions (read/patch/test).\n\
-10. Send handoff messages to executors reflecting the updated ready window.\n\n\
+1. Update `PLAN.json` via the `plan` action and derive the ready-work window for each executor. Mark tasks `ready` (not `todo`) to make them executable — the executor only picks up `ready` tasks.\n\
+2. Maintain a READY NOW window containing at most 1-10 executable tasks for each executor.\n\
+3. Move blocked work behind its dependencies instead of leaving it in the ready window.\n\
+4. Rewrite priorities whenever new evidence changes the critical path.\n\
+5. Write detailed, imperative tasks that include file paths and concrete actions (read/patch/test).\n\
+6. Send handoff messages to executors reflecting the updated ready window.\n\n\
 Provenance fields — include on every new task:\n\
 - `issue_refs`: array of ISSUES.json ids that motivated this task (e.g. [\"auto_mir_dup_abc123\"]). Empty array if none.\n\
 - `objective_id`: the agent_state/OBJECTIVES.json objective id this task advances (e.g. \"obj_reduce_complexity\"). Omit if no clear match.";
@@ -714,7 +710,7 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
 }
 
 pub(crate) fn planner_cycle_prompt(
-    summary_text: &str,
+    _summary_text: &str,
     objectives_text: &str,
     lessons_text: &str,
     enforced_invariants_text: &str,
@@ -724,19 +720,8 @@ pub(crate) fn planner_cycle_prompt(
     cargo_test_failures: &str,
 ) -> String {
     let workspace = workspace();
-    let diagnostics_file = diagnostics_file();
-    let issues_file = crate::constants::ISSUES_FILE;
     let prefix = format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\n\
-         Canonical references:\n\
-         - Spec: {SPEC_FILE}\n\
-         - Objectives: {OBJECTIVES_FILE}\n\
-         - Invariants: {INVARIANTS_FILE}\n\
-         - Enforced invariants: agent_state/enforced_invariants.json\n\
-         - Violations: {VIOLATIONS_FILE}\n\
-         - Diagnostics: {diagnostics_file}\n\
-         - Issues: {issues_file}\n\
-         - Master plan: {MASTER_PLAN_FILE}\n\n\
          PLAN.json EDIT RULE: always use the `plan` action — NEVER apply_patch on {MASTER_PLAN_FILE}.\n\n\
          Current plan state (from {MASTER_PLAN_FILE}) — read-only context, edit via `plan` action:\n{plan_diff}"
     );
@@ -750,7 +735,6 @@ pub(crate) fn planner_cycle_prompt(
         "Latest cargo test failures (from cargo_test_failures.json)".to_string();
     let executor_diff_heading =
         "Executor diff (workspace changes excluding plans/diagnostics/violations)".to_string();
-    let summary_heading = "Latest verifier summary".to_string();
     let suffix = format!(
         "\n\n\
          ⟹ IMMEDIATE ACTION: The projected issues in the semantic control section above are \
@@ -810,14 +794,6 @@ pub(crate) fn planner_cycle_prompt(
             reserve: 1200,
             cap: 3500,
             weight: 4,
-            always_include: false,
-        },
-        PromptItem {
-            heading: &summary_heading,
-            body: summary_text,
-            reserve: 600,
-            cap: 1500,
-            weight: 2,
             always_include: false,
         },
     ];
