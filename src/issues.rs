@@ -384,9 +384,17 @@ pub fn is_closed(issue: &Issue) -> bool {
 ///   severity      0.20 — priority string mapped to float
 ///   recurrence    0.15 — sibling issues with the same ID prefix (saturates at 3)
 ///   hot_path      0.25 — location/title mentions a per-turn code path
-///   loop_velocity 0.30 — how much fixing this speeds up the agent's issue-close rate
+///   loop_velocity 0.30 — how much fixing this unblocks the agent's self-improvement loop
 ///   scale         0.10 — candidate/instance count for auto-detected clusters (log2, saturates at ~128)
-///   detector_boost up to +0.12 — detector-native confidence/value signal (e.g. redundancy_ratio)
+///   detector_boost up to +0.12 — detector-native confidence signal
+///
+/// Velocity by kind (what gets prioritized first):
+///   bug / invariant_violation  1.00 — correctness, must fix
+///   dead_code                  0.70 — confirmed zero-ref deletions, direct noise reduction
+///   stale_state / branch_reduction / logic  0.65 — structural clarity, unreachable-block removal
+///   performance                0.50 — runtime cost
+///   pathway_elimination        0.45 — inter-procedural alpha-equivalent chain collapse
+///   everything else            0.35 — housekeeping (redundancy, helper extraction, etc.)
 pub fn compute_issue_score(issue: &Issue, all_issues: &[Issue]) -> f32 {
     // Severity from priority string
     let severity: f32 = match issue.priority.trim().to_lowercase().as_str() {
@@ -432,17 +440,14 @@ pub fn compute_issue_score(issue: &Issue, all_issues: &[Issue]) -> f32 {
     };
 
     // Loop-velocity: how much does fixing this unblock the agent's self-improvement loop?
+    // See doc comment on compute_issue_score for the full table and rationale.
     let velocity: f32 = match issue.kind.trim().to_lowercase().as_str() {
         "bug" | "invariant_violation" => 1.0,
-        "stale_state" | "logic" => 0.65,
-        "performance" => 0.5,
-        _ => {
-            if issue.id.starts_with("auto_branch_reduce") || issue.id.starts_with("auto_refactor") {
-                0.25
-            } else {
-                0.4
-            }
-        }
+        "dead_code" => 0.70,
+        "stale_state" | "branch_reduction" | "logic" => 0.65,
+        "performance" => 0.50,
+        "pathway_elimination" => 0.45,
+        _ => 0.35,
     };
 
     // Scale: candidate/instance count extracted from the issue title for auto-detected clusters
@@ -464,13 +469,22 @@ pub fn compute_issue_score(issue: &Issue, all_issues: &[Issue]) -> f32 {
 
     let base_score =
         0.20 * severity + 0.15 * recurrence + 0.25 * hot_path + 0.30 * velocity + 0.10 * scale;
-    // Detector-specific signal: currently used by MIR redundant-path findings.
-    // Expects metrics.redundancy_ratio in [0, 1+] and clamps to [0, 1].
+    // Detector-specific signal: a per-detector confidence/magnitude metric in [0, 1].
+    //   redundancy_ratio  — for FoldRedundantPath: avg_path_len / total_blocks
+    //   chain_depth       — for EliminateAlphaPathway: depth 2=0.00, 3=0.33, 4=0.67, 5+=1.00
     let detector_signal = issue
         .metrics
         .get("redundancy_ratio")
         .and_then(|v| v.as_f64())
         .map(|v| (v as f32).clamp(0.0, 1.0))
+        .or_else(|| {
+            issue
+                .metrics
+                .get("chain_depth")
+                .and_then(|v| v.as_u64())
+                .filter(|&d| d >= 2)
+                .map(|d| ((d - 2) as f32 / 3.0).clamp(0.0, 1.0))
+        })
         .unwrap_or(0.0);
     let score = base_score + 0.12 * detector_signal;
     score.clamp(0.0, 1.0)

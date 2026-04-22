@@ -1789,14 +1789,15 @@ fn load_cargo_test_failure_scan(out: &str) -> (Option<PathBuf>, String) {
 }
 
 fn collect_stalled_test_name(stalled_tests: &mut BTreeSet<String>, stripped: &str) {
-    let Some((name, tail)) = stripped.rsplit_once(" has been running for over ") else {
-        return;
-    };
-    let Some(seconds_raw) = tail.strip_suffix(" seconds") else {
-        return;
-    };
-    if seconds_raw.trim().parse::<u64>().is_ok() {
-        stalled_tests.insert(name.trim().to_string());
+    let stalled_test = stripped
+        .rsplit_once(" has been running for over ")
+        .and_then(|(name, tail)| {
+            tail.strip_suffix(" seconds")
+                .filter(|seconds_raw| seconds_raw.trim().parse::<u64>().is_ok())
+                .map(|_| name.trim().to_string())
+        });
+    if let Some(name) = stalled_test {
+        stalled_tests.insert(name);
     }
 }
 

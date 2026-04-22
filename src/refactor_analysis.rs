@@ -1535,7 +1535,7 @@ pub fn alpha_pathway_issues(
                 } else {
                     "low".to_string()
                 },
-                kind: "redundancy".to_string(),
+                kind: "pathway_elimination".to_string(),
                 description: format!(
                     "Functions [{chain_display}] form a call chain in crate `{crate_name}` \
                      where every member carries the same alpha-equivalent type signature \
