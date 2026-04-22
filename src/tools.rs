@@ -1719,31 +1719,52 @@ fn parse_cargo_test_failure_line(
     failure_block: &mut Vec<String>,
     rerun_hint: &mut Option<String>,
 ) {
-    if let Some(idx) = trimmed.find(".rs:") {
-        let path = &trimmed[..idx + 3];
-        let rest = &trimmed[idx + 3..];
-        let mut it = rest.splitn(3, ':');
-        let line_no = it.next().unwrap_or("");
-        let col_no = it.next().unwrap_or("");
-        if !line_no.is_empty() && !col_no.is_empty() {
-            locations.insert(format!("{}:{}:{}", path, line_no, col_no));
-        }
+    if let Some(location) = cargo_test_error_location(trimmed) {
+        locations.insert(location);
     }
-    if let Some(stripped) = trimmed.strip_prefix("test ") {
-        if let Some(name) = stripped.strip_suffix(" ... FAILED") {
-            failed_tests.insert(name.trim().to_string());
-        }
+    if let Some(stripped) = cargo_test_test_line(trimmed) {
+        insert_failed_test_name(failed_tests, stripped);
         collect_stalled_test_name(stalled_tests, stripped);
     }
-    if rerun_hint.is_none() && trimmed.contains("To rerun") {
-        *rerun_hint = Some(trimmed.to_string());
+    if let Some(hint) = cargo_test_rerun_hint(trimmed) {
+        rerun_hint.get_or_insert(hint);
     }
-    if trimmed.contains("panicked at")
-        || trimmed.contains("FAILED")
-        || trimmed.contains("has been running for over")
-    {
+    if is_cargo_test_failure_block_line(trimmed) {
         failure_block.push(trimmed.to_string());
     }
+}
+
+fn cargo_test_error_location(trimmed: &str) -> Option<String> {
+    let idx = trimmed.find(".rs:")?;
+    let path = &trimmed[..idx + 3];
+    let rest = &trimmed[idx + 3..];
+    let mut it = rest.splitn(3, ':');
+    let line_no = it.next().unwrap_or("");
+    let col_no = it.next().unwrap_or("");
+    if line_no.is_empty() || col_no.is_empty() {
+        return None;
+    }
+    Some(format!("{}:{}:{}", path, line_no, col_no))
+}
+
+fn cargo_test_test_line(trimmed: &str) -> Option<&str> {
+    trimmed.strip_prefix("test ")
+}
+
+fn insert_failed_test_name(failed_tests: &mut BTreeSet<String>, stripped: &str) {
+    if let Some(name) = stripped.strip_suffix(" ... FAILED") {
+        failed_tests.insert(name.trim().to_string());
+    }
+}
+
+fn cargo_test_rerun_hint(trimmed: &str) -> Option<String> {
+    trimmed.contains("To rerun").then(|| trimmed.to_string())
+}
+
+fn is_cargo_test_failure_block_line(trimmed: &str) -> bool {
+    trimmed.contains("panicked at")
+        || trimmed.contains("FAILED")
+        || trimmed.contains("has been running for over")
 }
 
 fn load_cargo_test_failure_scan(out: &str) -> (Option<PathBuf>, String) {
