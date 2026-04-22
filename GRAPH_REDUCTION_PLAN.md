@@ -94,6 +94,13 @@ Completed:
   - `TransitionsState` now requires workflow coordination or a same-domain
     read/write cycle
   - `CoordinatesTransition` records the stronger transition proof shape
+- dominator-region live emission decision: no new compiler facts needed
+  - `cfg_dominance_score >= 0.55` was a no-op gate (always 0.68–1.00 for candidates)
+  - real discriminants are `branch_score + switchint_count + no back-edges`
+  - `cfg_dominance_score` renamed to `non_cleanup_fraction` in metrics (honest name)
+  - `switchint_density` added as the meaningful funnel-structure metric
+  - `region_kind` updated to `"loop-free dispatch funnel"` (accurate description)
+  - 26 open issues currently live
 - effect-domain dispersion reports now exploit all three new fact classes:
   - `logging_dispersion`: flags modules with >10 direct logging sites outside
     `logging::` — action: centralize through logging boundary
@@ -110,7 +117,6 @@ Completed:
 Missing:
 
 - tighter proof boundary between canonical boundary modules and leak candidates
-- richer dominator-funnel signal if the dominator family should emit live issues
 
 ## Canonical Object
 
@@ -583,11 +589,11 @@ Status:
 
 ## Near-Term Implementation Order
 
-Do this next, in order:
+Remaining open item:
 
-1. decide whether dominator-funnel evidence needs new compiler facts or lower-risk
-   analyzer signals
-2. only then revisit dominator-region live emission if the stronger facts justify it
+- tighter proof boundary for `effect_boundary_leak`: the `canonical_effect_boundary_symbol`
+  prefix list is static; a graph-derived canonicality check (entry nodes, root-level
+  ownership from workflow-domain edges) would be more precise
 
 Do not:
 
