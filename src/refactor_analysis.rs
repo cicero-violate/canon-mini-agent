@@ -1255,11 +1255,6 @@ pub fn alpha_pathway_issues(
         if chain.len() < 2 {
             continue;
         }
-        if !chain.windows(2).all(|pair| {
-            is_strict_passthrough_wrapper(&idx, pair[0].as_str(), pair[1].as_str())
-        }) {
-            continue;
-        }
         let canonical_head = &pathway.canonical_head;
         let canonical_head_short = short_name(canonical_head);
         let wrappers: Vec<&str> = chain[..chain.len() - 1].iter().map(String::as_str).collect();
@@ -1374,106 +1369,6 @@ pub fn alpha_pathway_issues(
     out.truncate(limit);
     out.sort_by(|a, b| a.id.cmp(&b.id));
     out
-}
-
-fn is_strict_passthrough_wrapper(idx: &SemanticIndex, wrapper_symbol: &str, callee_symbol: &str) -> bool {
-    let Ok(window) = idx.symbol_window(wrapper_symbol) else {
-        return false;
-    };
-    is_strict_passthrough_wrapper_source(&window, short_name(callee_symbol))
-}
-
-fn is_strict_passthrough_wrapper_source(source: &str, callee_leaf: &str) -> bool {
-    let Some(body) = extract_fn_body(source) else {
-        return false;
-    };
-    let body_no_comments = body
-        .lines()
-        .map(|line| line.split("//").next().unwrap_or(""))
-        .collect::<Vec<_>>()
-        .join(" ");
-    let mut expr = body_no_comments.split_whitespace().collect::<Vec<_>>().join(" ");
-    if expr.is_empty() {
-        return false;
-    }
-    if let Some(rest) = expr.strip_prefix("return ") {
-        expr = rest.trim().to_string();
-    }
-    if let Some(rest) = expr.strip_suffix(';') {
-        expr = rest.trim().to_string();
-    }
-    if expr.is_empty() {
-        return false;
-    }
-    // Reject wrappers that add behavior, diagnostics, or control flow.
-    let rejected_markers = [
-        "map_err(",
-        "with_context(",
-        ".context(",
-        "format!(",
-        "if ",
-        "match ",
-        "for ",
-        "while ",
-        "loop ",
-        " let ",
-        " anyhow!(",
-    ];
-    if expr.contains('?') || rejected_markers.iter().any(|marker| expr.contains(marker)) {
-        return false;
-    }
-    let Some((open_idx, close_idx)) = locate_callee_call(&expr, callee_leaf) else {
-        return false;
-    };
-    let suffix = expr[close_idx + 1..].trim();
-    // Allow plain delegation, optionally with async await only.
-    if !(suffix.is_empty() || suffix == ".await") {
-        return false;
-    }
-    // Ensure no extra operators/constructs before the callee call.
-    let prefix = expr[..open_idx].trim();
-    prefix == callee_leaf
-        || prefix.ends_with(&format!("::{callee_leaf}"))
-        || prefix.ends_with(&format!("::{callee_leaf}::<>"))
-}
-
-fn locate_callee_call(expr: &str, callee_leaf: &str) -> Option<(usize, usize)> {
-    if callee_leaf.is_empty() {
-        return None;
-    }
-    let direct = format!("{callee_leaf}(");
-    let generic = format!("{callee_leaf}::<");
-    let (name_pos, open_idx) = if let Some(pos) = expr.find(&direct) {
-        (pos, pos + callee_leaf.len())
-    } else if let Some(pos) = expr.find(&generic) {
-        let open = expr[pos..].find('(')? + pos;
-        (pos, open)
-    } else {
-        return None;
-    };
-    let close_idx = find_matching_paren(expr, open_idx)?;
-    Some((name_pos + callee_leaf.len(), close_idx))
-}
-
-fn find_matching_paren(expr: &str, open_idx: usize) -> Option<usize> {
-    let mut depth: i32 = 0;
-    for (idx, ch) in expr.char_indices().skip_while(|(i, _)| *i < open_idx) {
-        if ch == '(' {
-            depth += 1;
-        } else if ch == ')' {
-            depth -= 1;
-            if depth == 0 {
-                return Some(idx);
-            }
-        }
-    }
-    None
-}
-
-fn extract_fn_body(source: &str) -> Option<&str> {
-    let start = source.find('{')?;
-    let end = source.rfind('}')?;
-    (end > start).then_some(&source[start + 1..end])
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -2365,8 +2260,8 @@ fn shorten_location(file: &str, line: u32) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        dead_code_id, helper_extract_id, is_exempt_from_dead_code,
-        is_strict_passthrough_wrapper_source, priority_from_unreachable, short_name,
+        dead_code_id, helper_extract_id, is_exempt_from_dead_code, priority_from_unreachable,
+        short_name,
     };
 
     #[test]
@@ -2413,36 +2308,6 @@ mod tests {
             "handle_apply_patch"
         );
         assert_eq!(short_name("main"), "main");
-    }
-
-    #[test]
-    fn strict_passthrough_accepts_plain_delegate() {
-        let src = r#"
-fn wrap(a: i32) -> Result<i32> {
-    inner(a)
-}
-"#;
-        assert!(is_strict_passthrough_wrapper_source(src, "inner"));
-    }
-
-    #[test]
-    fn strict_passthrough_rejects_map_err_wrapper() {
-        let src = r#"
-fn wrap(a: i32) -> Result<i32> {
-    inner(a).map_err(|e| anyhow!(\"boom: {e}\"))
-}
-"#;
-        assert!(!is_strict_passthrough_wrapper_source(src, "inner"));
-    }
-
-    #[test]
-    fn strict_passthrough_rejects_branching_wrapper() {
-        let src = r#"
-fn wrap(a: i32) -> i32 {
-    if a > 0 { inner(a) } else { 0 }
-}
-"#;
-        assert!(!is_strict_passthrough_wrapper_source(src, "inner"));
     }
 
 }

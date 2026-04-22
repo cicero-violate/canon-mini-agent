@@ -2162,18 +2162,14 @@ fn extract_anchor_context_excerpt(full: &str, err_msg: &str) -> Option<(usize, u
         return None;
     }
     let file_lines: Vec<&str> = full.lines().collect();
-    let mut best_idx: Option<usize> = None;
-    for anchor in anchor_lines.iter().rev() {
-        let needle = anchor.trim();
-        if needle.len() < 8 {
-            continue;
-        }
-        if let Some(idx) = file_lines.iter().position(|l| l.contains(needle)) {
-            best_idx = Some(idx);
-            break;
-        }
-    }
-    let idx = best_idx?;
+    let idx = anchor_lines
+        .iter()
+        .rev()
+        .filter_map(|anchor| {
+            let needle = anchor.trim();
+            (needle.len() >= 8).then_some(needle)
+        })
+        .find_map(|needle| file_lines.iter().position(|line| line.contains(needle)))?;
     let start_idx = idx.saturating_sub(AUTO_READ_CONTEXT_BEFORE);
     let end_idx = (idx + AUTO_READ_CONTEXT_AFTER + 1).min(file_lines.len());
     let start_line = start_idx + 1;
