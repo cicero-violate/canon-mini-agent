@@ -21,6 +21,27 @@ pub struct ResumePhaseDecision {
     pub diagnostics_pending: bool,
 }
 
+fn suppress_wake_under_blocker(role: &str, active_blocker_to_verifier: bool) -> bool {
+    active_blocker_to_verifier && matches!(role, "planner" | "diagnostics")
+}
+
+fn apply_wake_role(role: &str, decision: &mut WakeDecision) {
+    match role {
+        "planner" | "diagnostics" => {
+            decision.scheduled_phase = Some("planner".to_string());
+            decision.planner_pending = true;
+            decision.diagnostics_pending = false;
+        }
+        "executor" => {
+            decision.scheduled_phase = Some("executor".to_string());
+            decision.executor_wake = true;
+        }
+        other => {
+            decision.scheduled_phase = Some(other.to_string());
+        }
+    }
+}
+
 pub fn decide_resume_phase(
     checkpoint_phase: &str,
     has_verifier_items: bool,
@@ -80,7 +101,7 @@ pub fn decide_wake_signals(
     let mut newest: Option<&WakeSignalInput> = None;
     let mut planner_suppressed_by_blocker = false;
     for flag in flags {
-        if matches!(flag.role, "planner" | "diagnostics") && active_blocker_to_verifier {
+        if suppress_wake_under_blocker(flag.role, active_blocker_to_verifier) {
             // Legacy diagnostics wake signals are planner follow-up now, so an
             // active blocker must suppress them the same way it suppresses a
             // direct planner wake.
@@ -105,18 +126,7 @@ pub fn decide_wake_signals(
         return decision;
     }
     if let Some(flag) = newest {
-        decision.scheduled_phase = Some(flag.role.to_string());
-        match flag.role {
-            "planner" => decision.planner_pending = true,
-            "diagnostics" => {
-                // Compatibility shim: diagnostics wake signals are now planner wakes.
-                decision.scheduled_phase = Some("planner".to_string());
-                decision.planner_pending = true;
-                decision.diagnostics_pending = false;
-            }
-            "executor" => decision.executor_wake = true,
-            _ => {}
-        }
+        apply_wake_role(flag.role, &mut decision);
     }
     decision
 }

@@ -71,6 +71,77 @@ fn partial_turn_slot<'a>(
     by_command.entry(command_id).or_default()
 }
 
+fn apply_effect_event(
+    record_seq: u64,
+    event: crate::events::EffectEvent,
+    by_command: &mut HashMap<String, PartialTurn>,
+    outcomes: &mut HashMap<String, TaskOutcome>,
+    blocker_count_by_task: &mut HashMap<String, usize>,
+    latest_drift: &mut Option<crate::drift_analysis::FingerprintDrift>,
+) {
+    match event {
+        crate::events::EffectEvent::LlmTurnInput {
+            role,
+            command_id,
+            prompt_hash,
+            ..
+        } => {
+            let slot = partial_turn_slot(by_command, command_id);
+            slot.state_seq = Some(record_seq);
+            slot.prompt_hash = Some(prompt_hash);
+            slot.role = Some(role);
+        }
+        crate::events::EffectEvent::LlmTurnOutput {
+            role,
+            command_id,
+            raw,
+            action_kind,
+            ..
+        } => {
+            let slot = partial_turn_slot(by_command, command_id);
+            slot.completion = Some(raw);
+            slot.output_action_kind = action_kind;
+            if slot.role.is_none() {
+                slot.role = Some(role);
+            }
+        }
+        crate::events::EffectEvent::ActionResultRecorded {
+            command_id,
+            action_kind,
+            task_id,
+            ok,
+            result,
+            ..
+        } => {
+            let slot = partial_turn_slot(by_command, command_id);
+            slot.result = Some(result);
+            slot.result_action_kind = Some(action_kind);
+            slot.result_task_id = task_id.clone();
+            slot.result_ok = Some(ok);
+            if !ok {
+                if let Some(task) = task_id {
+                    let entry = outcomes.entry(task).or_default();
+                    if entry.status != "complete" {
+                        entry.status = "blocked".to_string();
+                    }
+                }
+            }
+        }
+        crate::events::EffectEvent::InboundMessageRecorded { message, .. } => {
+            update_outcome_from_message(&message, outcomes);
+        }
+        crate::events::EffectEvent::BlockerRecorded { record } => {
+            if let Some(task_id) = record.task_id {
+                *blocker_count_by_task.entry(task_id).or_insert(0) += 1;
+            }
+        }
+        crate::events::EffectEvent::FingerprintDriftRecorded { drift } => {
+            *latest_drift = Some(drift);
+        }
+        _ => {}
+    }
+}
+
 pub fn extract_grpo_dataset(workspace: &Path, tlog_path: &Path) -> Result<GrpoDataset> {
     let records = crate::tlog::Tlog::read_records(tlog_path)
         .with_context(|| format!("read tlog records from {}", tlog_path.display()))?;
@@ -84,67 +155,14 @@ pub fn extract_grpo_dataset(workspace: &Path, tlog_path: &Path) -> Result<GrpoDa
         let crate::events::Event::Effect { event } = record.event else {
             continue;
         };
-        match event {
-            crate::events::EffectEvent::LlmTurnInput {
-                role,
-                command_id,
-                prompt_hash,
-                ..
-            } => {
-                let slot = partial_turn_slot(&mut by_command, command_id);
-                slot.state_seq = Some(record.seq);
-                slot.prompt_hash = Some(prompt_hash);
-                slot.role = Some(role);
-            }
-            crate::events::EffectEvent::LlmTurnOutput {
-                role,
-                command_id,
-                raw,
-                action_kind,
-                ..
-            } => {
-                let slot = partial_turn_slot(&mut by_command, command_id);
-                slot.completion = Some(raw);
-                slot.output_action_kind = action_kind;
-                if slot.role.is_none() {
-                    slot.role = Some(role);
-                }
-            }
-            crate::events::EffectEvent::ActionResultRecorded {
-                command_id,
-                action_kind,
-                task_id,
-                ok,
-                result,
-                ..
-            } => {
-                let slot = partial_turn_slot(&mut by_command, command_id);
-                slot.result = Some(result);
-                slot.result_action_kind = Some(action_kind);
-                slot.result_task_id = task_id.clone();
-                slot.result_ok = Some(ok);
-                if !ok {
-                    if let Some(task) = task_id {
-                        let entry = outcomes.entry(task.clone()).or_default();
-                        if entry.status != "complete" {
-                            entry.status = "blocked".to_string();
-                        }
-                    }
-                }
-            }
-            crate::events::EffectEvent::InboundMessageRecorded { message, .. } => {
-                update_outcome_from_message(&message, &mut outcomes);
-            }
-            crate::events::EffectEvent::BlockerRecorded { record } => {
-                if let Some(task_id) = record.task_id {
-                    *blocker_count_by_task.entry(task_id).or_insert(0) += 1;
-                }
-            }
-            crate::events::EffectEvent::FingerprintDriftRecorded { drift } => {
-                latest_drift = Some(drift);
-            }
-            _ => {}
-        }
+        apply_effect_event(
+            record.seq,
+            event,
+            &mut by_command,
+            &mut outcomes,
+            &mut blocker_count_by_task,
+            &mut latest_drift,
+        );
     }
 
     for (task_id, count) in blocker_count_by_task {
