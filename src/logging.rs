@@ -55,41 +55,35 @@ fn patch_summary_path(patch: &str) -> Option<&str> {
 }
 
 fn action_command_summary(action: &Value) -> String {
+    let str_field = |key: &str| action.get(key).and_then(|v| v.as_str()).unwrap_or("");
     let kind = action
         .get("action")
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
     match kind {
-        "run_command" => action
-            .get("cmd")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
+        "run_command" => str_field("cmd").to_string(),
         "python" => {
-            let code = action.get("code").and_then(|v| v.as_str()).unwrap_or("");
+            let code = str_field("code");
             let first = code.lines().next().unwrap_or("");
             format!("python: {}", truncate(first, 160))
         }
         "read_file" => {
-            let path = action.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            let path = str_field("path");
             let line = action.get("line").and_then(|v| v.as_u64());
             match line {
                 Some(n) => format!("read_file {}:{}", path, n),
                 None => format!("read_file {}", path),
             }
         }
-        "list_dir" => format!(
-            "list_dir {}",
-            action.get("path").and_then(|v| v.as_str()).unwrap_or("")
-        ),
+        "list_dir" => format!("list_dir {}", str_field("path")),
         "apply_patch" => {
-            let patch = action.get("patch").and_then(|v| v.as_str()).unwrap_or("");
+            let patch = str_field("patch");
             patch_summary_path(patch)
                 .map(|path| format!("apply_patch {}", path))
                 .unwrap_or_else(|| "apply_patch".to_string())
         }
         "message" => {
-            let status = action.get("status").and_then(|v| v.as_str()).unwrap_or("");
+            let status = str_field("status");
             let summary = action
                 .get("payload")
                 .and_then(|v| v.get("summary"))

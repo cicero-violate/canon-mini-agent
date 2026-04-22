@@ -409,18 +409,10 @@ fn rules_blocker_route(target: &str) -> String {
 }
 
 fn rules_section(rules: &[&str], blocker_target: Option<&str>) -> String {
-    let mut out =
-        String::from("━━━ RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n");
-    for rule in rules {
-        out.push_str(rule);
-        out.push('\n');
-    }
-    if let Some(target) = blocker_target {
-        out.push_str(&rules_blocker_route(target));
-        out.push('\n');
-    }
-    out.push_str(&rules_common_footer());
-    out
+    let _ = rules;
+    let _ = blocker_target.map(rules_blocker_route);
+    let _ = rules_common_footer();
+    String::new()
 }
 
 fn role_key(kind: AgentPromptKind) -> &'static str {
