@@ -378,6 +378,15 @@ fn canonical_status_snapshot() -> &'static str {
     "Runtime law:\n- prefer replayed canonical state when caches drift\n- represent control-flow or externally visible behavior canonically\n- close loopholes before adding new features"
 }
 
+fn status_snapshot_for(kind: AgentPromptKind) -> &'static str {
+    match kind {
+        AgentPromptKind::Planner | AgentPromptKind::Diagnostics => "",
+        AgentPromptKind::Executor
+        | AgentPromptKind::Verifier
+        | AgentPromptKind::Solo => canonical_status_snapshot(),
+    }
+}
+
 fn rules_common_footer() -> String {
     let agent_source = crate::constants::agent_state_dir().trim_end_matches("/agent_state");
     let protect_rule = if crate::constants::workspace() != agent_source {
@@ -695,12 +704,16 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
     let intro = prompt_intro(kind).to_string();
     let mission = prompt_mission(kind).to_string();
     let workspace_text = prompt_workspace(kind);
-    let status_snapshot = canonical_status_snapshot().to_string();
+    let status_snapshot = status_snapshot_for(kind).to_string();
     let tail = prompt_tail(kind);
-    let prefix = format!(
-        "{}\n\n{}\n\n{}\n\n{}\n\n",
-        intro, mission, workspace_text, status_snapshot
-    );
+    let prefix = if status_snapshot.is_empty() {
+        format!("{}\n\n{}\n\n{}\n\n", intro, mission, workspace_text)
+    } else {
+        format!(
+            "{}\n\n{}\n\n{}\n\n{}\n\n",
+            intro, mission, workspace_text, status_snapshot
+        )
+    };
     let schema_block = default_schema_block(kind);
     let suffix = format!(
         "\nAction contract — respond with exactly one JSON code block using the role-local actions below:\n\n{schema_block}\n\n{}",
@@ -1971,6 +1984,10 @@ mod tests {
             prompt.contains("Action: `issue`"),
             "diagnostics system prompt should include the issue schema"
         );
+        assert!(
+            !prompt.contains("Canonical status snapshot:"),
+            "diagnostics system prompt should omit the duplicated canonical status snapshot"
+        );
     }
 
     #[test]
@@ -1991,6 +2008,19 @@ mod tests {
         assert!(
             prompt.contains("Action: `python`"),
             "executor system prompt should include the python schema"
+        );
+        assert!(
+            prompt.contains("Canonical status snapshot:"),
+            "executor system prompt should retain the canonical status snapshot"
+        );
+    }
+
+    #[test]
+    fn planner_system_instructions_omit_duplicated_status_snapshot() {
+        let prompt = system_instructions(AgentPromptKind::Planner);
+        assert!(
+            !prompt.contains("Canonical status snapshot:"),
+            "planner system prompt should omit the duplicated canonical status snapshot"
         );
     }
 
