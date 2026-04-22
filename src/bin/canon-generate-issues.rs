@@ -50,7 +50,14 @@ fn main() -> Result<()> {
         let _ = canon_mini_agent::graph_metrics::generate_representation_fanout_issues(&workspace)?;
         Ok(())
     } else if canon_mini_agent::has_flag(&args, "--cfg-region-only") {
-        let _ = canon_mini_agent::graph_metrics::generate_cfg_region_reduction_issues(&workspace)?;
+        let _ = canon_mini_agent::graph_metrics::generate_scc_region_reduction_issues(&workspace)?;
+        let _ = canon_mini_agent::graph_metrics::generate_dominator_region_reduction_issues(&workspace)?;
+        Ok(())
+    } else if canon_mini_agent::has_flag(&args, "--scc-region-only") {
+        let _ = canon_mini_agent::graph_metrics::generate_scc_region_reduction_issues(&workspace)?;
+        Ok(())
+    } else if canon_mini_agent::has_flag(&args, "--dominator-region-only") {
+        let _ = canon_mini_agent::graph_metrics::generate_dominator_region_reduction_issues(&workspace)?;
         Ok(())
     } else if canon_mini_agent::has_flag(&args, "--alpha-only") {
         let _ = canon_mini_agent::refactor_analysis::generate_alpha_pathway_issues(&workspace)?;

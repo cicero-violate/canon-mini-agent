@@ -618,7 +618,90 @@ pub fn generate_representation_fanout_issues(workspace: &Path) -> Result<usize> 
     Ok(mutated)
 }
 
-pub fn generate_cfg_region_reduction_issues(workspace: &Path) -> Result<usize> {
+pub fn generate_scc_region_reduction_issues(workspace: &Path) -> Result<usize> {
+    let mut file: IssuesFile = load_issues_file(workspace);
+    let before = serde_json::to_value(&file)?;
+    let mut desired_ids = HashSet::new();
+    let mut mutated = 0usize;
+
+    for crate_name in SemanticIndex::available_crates(workspace) {
+        let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
+            continue;
+        };
+        let crate_name = crate_name.replace('-', "_");
+        let redundant_by_symbol: HashMap<String, usize> = idx
+            .redundant_path_pairs()
+            .into_iter()
+            .fold(HashMap::new(), |mut acc, pair| {
+                *acc.entry(pair.path_a.owner).or_insert(0) += 1;
+                acc
+            });
+
+        let mut candidates: Vec<(f64, Issue)> = Vec::new();
+        for summary in idx.symbol_summaries() {
+            if summary.kind != "fn" {
+                continue;
+            }
+            let symbol = summary.symbol.clone();
+            let cfg_edges = idx.symbol_cfg_edges(&symbol);
+            let back_edge_count = cfg_edges.iter().filter(|edge| edge.is_back_edge).count();
+            let redundant_path_count = redundant_by_symbol.get(&symbol).copied().unwrap_or(0);
+            let branch_score = summary.branch_score.unwrap_or(0.0);
+            let qualifies = branch_score >= 4.0 && back_edge_count > 0;
+            let issue = build_scc_region_reduction_issue(
+                &crate_name,
+                &summary,
+                back_edge_count,
+                redundant_path_count,
+            );
+            if qualifies {
+                let score = branch_score
+                    + (back_edge_count as f64 * 4.0)
+                    + (redundant_path_count as f64 * 2.0)
+                    + (summary.switchint_count as f64);
+                candidates.push((score, issue));
+            }
+        }
+
+        candidates.sort_by(|a, b| {
+            b.0.partial_cmp(&a.0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.1.id.cmp(&b.1.id))
+        });
+
+        for (_, issue) in candidates.into_iter().take(25) {
+            desired_ids.insert(issue.id.clone());
+            mutated += upsert_bridge_issue(&mut file, issue, true);
+        }
+
+        let prefix = format!("auto_scc_region_reduction_{crate_name}_");
+        for issue in &mut file.issues {
+            if issue.id.starts_with(&prefix)
+                && !desired_ids.contains(&issue.id)
+                && issue.status != "resolved"
+            {
+                issue.status = "resolved".to_string();
+                mutated += 1;
+            }
+        }
+        mutated += resolve_legacy_cfg_region_issues(&mut file, &crate_name);
+    }
+
+    rescore_all(&mut file);
+    let after = serde_json::to_value(&file)?;
+    if before != after {
+        persist_issues_projection_with_writer(
+            workspace,
+            &file,
+            None,
+            "generate_scc_region_reduction_issues",
+        )?;
+    }
+
+    Ok(mutated)
+}
+
+pub fn generate_dominator_region_reduction_issues(workspace: &Path) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
     let before = serde_json::to_value(&file)?;
     let mut desired_ids = HashSet::new();
@@ -649,18 +732,17 @@ pub fn generate_cfg_region_reduction_issues(workspace: &Path) -> Result<usize> {
             let redundant_path_count = redundant_by_symbol.get(&symbol).copied().unwrap_or(0);
             let branch_score = summary.branch_score.unwrap_or(0.0);
             let qualifies = branch_score >= 4.0
-                && dominance_score >= 0.45
-                && (back_edge_count > 0 || summary.switchint_count >= 2 || redundant_path_count > 0);
-            let issue = build_cfg_region_reduction_issue(
+                && back_edge_count == 0
+                && dominance_score >= 0.55
+                && (summary.switchint_count >= 2 || redundant_path_count > 0);
+            let issue = build_dominator_region_reduction_issue(
                 &crate_name,
                 &summary,
                 dominance_score,
-                back_edge_count,
                 redundant_path_count,
             );
             if qualifies {
                 let score = branch_score
-                    + (back_edge_count as f64 * 4.0)
                     + (redundant_path_count as f64 * 2.0)
                     + (summary.switchint_count as f64)
                     + (dominance_score as f64 * 10.0);
@@ -674,12 +756,12 @@ pub fn generate_cfg_region_reduction_issues(workspace: &Path) -> Result<usize> {
                 .then(a.1.id.cmp(&b.1.id))
         });
 
-        for (_, issue) in candidates.into_iter().take(50) {
+        for (_, issue) in candidates.into_iter().take(25) {
             desired_ids.insert(issue.id.clone());
             mutated += upsert_bridge_issue(&mut file, issue, true);
         }
 
-        let prefix = format!("auto_cfg_region_reduction_{crate_name}_");
+        let prefix = format!("auto_dominator_region_reduction_{crate_name}_");
         for issue in &mut file.issues {
             if issue.id.starts_with(&prefix)
                 && !desired_ids.contains(&issue.id)
@@ -689,6 +771,7 @@ pub fn generate_cfg_region_reduction_issues(workspace: &Path) -> Result<usize> {
                 mutated += 1;
             }
         }
+        mutated += resolve_legacy_cfg_region_issues(&mut file, &crate_name);
     }
 
     rescore_all(&mut file);
@@ -698,7 +781,7 @@ pub fn generate_cfg_region_reduction_issues(workspace: &Path) -> Result<usize> {
             workspace,
             &file,
             None,
-            "generate_cfg_region_reduction_issues",
+            "generate_dominator_region_reduction_issues",
         )?;
     }
 
@@ -1121,8 +1204,11 @@ fn build_planner_loop_fragmentation_issue(crate_name: &str, idx: &SemanticIndex)
     });
     let mut owner_candidates: Vec<(String, Vec<String>, Vec<String>, usize, usize)> = orchestrators
         .iter()
-        .filter(|(_, direct_phases, reached_phases, _, outgoing)| {
-            *outgoing >= 4 && (direct_phases.len() >= 3 || reached_phases.len() >= 3)
+        .filter(|(_, direct_phases, reached_phases, incoming, outgoing)| {
+            *incoming == 0
+                && *outgoing >= 4
+                && direct_phases.len() >= 3
+                && reached_phases.len() >= 3
         })
         .cloned()
         .collect();
@@ -1493,29 +1579,33 @@ fn build_representation_fanout_issue(
     }
 }
 
-fn cfg_region_reduction_issue_id(crate_name: &str, symbol: &str) -> String {
+fn resolve_legacy_cfg_region_issues(file: &mut IssuesFile, crate_name: &str) -> usize {
+    let prefix = format!("auto_cfg_region_reduction_{crate_name}_");
+    let mut mutated = 0usize;
+    for issue in &mut file.issues {
+        if issue.id.starts_with(&prefix) && issue.status != "resolved" {
+            issue.status = "resolved".to_string();
+            mutated += 1;
+        }
+    }
+    mutated
+}
+
+fn scc_region_reduction_issue_id(crate_name: &str, symbol: &str) -> String {
     format!(
-        "auto_cfg_region_reduction_{}_{}",
+        "auto_scc_region_reduction_{}_{}",
         sanitize_fragment(crate_name),
         stable_hash(&format!("{crate_name}:{symbol}"))
     )
 }
 
-fn build_cfg_region_reduction_issue(
+fn build_scc_region_reduction_issue(
     crate_name: &str,
     summary: &crate::semantic::SymbolSummary,
-    dominance_score: f32,
     back_edge_count: usize,
     redundant_path_count: usize,
 ) -> Issue {
     let branch_score = summary.branch_score.unwrap_or(0.0);
-    let region_kind = if back_edge_count > 0 {
-        "loop/SCC"
-    } else if redundant_path_count > 0 {
-        "duplicate-path"
-    } else {
-        "dominator branch funnel"
-    };
     let evidence = vec![
         format!(
             "branch_score={branch_score:.2}, switchint_count={}, has_back_edges={}",
@@ -1523,24 +1613,24 @@ fn build_cfg_region_reduction_issue(
             summary.has_back_edges
         ),
         format!(
-            "cfg_dominance_score={dominance_score:.2}, back_edge_count={back_edge_count}, redundant_path_count={redundant_path_count}"
+            "back_edge_count={back_edge_count}, redundant_path_count={redundant_path_count}"
         ),
     ];
 
     Issue {
-        id: cfg_region_reduction_issue_id(crate_name, &summary.symbol),
-        title: format!("CFG region reduction candidate in `{}`", summary.symbol),
+        id: scc_region_reduction_issue_id(crate_name, &summary.symbol),
+        title: format!("SCC region reduction candidate in `{}`", summary.symbol),
         status: "open".to_string(),
-        priority: if back_edge_count > 0 || redundant_path_count >= 2 {
+        priority: if back_edge_count >= 2 || redundant_path_count >= 2 {
             "high".to_string()
         } else {
             "medium".to_string()
         },
         kind: "logic".to_string(),
         description: format!(
-            "Function `{}` in crate `{}` contains a concentrated `{region_kind}` control region. \
-             The CFG shows enough branching pressure, dominance concentration, or loop structure to justify a focused reduction pass.\n\n\
-             Recommended direction: collapse the hot region into a smaller canonical control node, extract a transition table, or isolate the SCC behind a single dispatcher."
+            "Function `{}` in crate `{}` contains a loop-heavy SCC control region. \
+             The CFG shows explicit back edges and branching pressure concentrated in one cycle-heavy region.\n\n\
+             Recommended direction: isolate the SCC behind one dispatcher, collapse loop exits, or extract a smaller transition reducer for the cycle."
             ,
             summary.symbol,
             crate_name
@@ -1548,20 +1638,87 @@ fn build_cfg_region_reduction_issue(
         location: shorten_symbol_location(summary),
         scope: format!("crate:{crate_name}"),
         metrics: json!({
-            "task": "ReduceCfgRegion",
+            "task": "ReduceSccRegion",
             "proof_tier": "hypothesis",
             "symbol": summary.symbol,
-            "region_kind": region_kind,
+            "region_kind": "loop/SCC",
             "branch_score": branch_score,
             "switchint_count": summary.switchint_count,
-            "cfg_dominance_score": dominance_score,
             "back_edge_count": back_edge_count,
             "redundant_path_count": redundant_path_count,
         }),
         acceptance_criteria: vec![
-            "the concentrated CFG region is reduced to a simpler control surface".to_string(),
-            "remaining loop or branch structure is routed through one canonical reducer or dispatcher".to_string(),
-            "graph.json is regenerated and the detector reports lower branch/back-edge pressure for the function".to_string(),
+            "the loop-heavy SCC is reduced to a simpler control cycle or dispatcher".to_string(),
+            "remaining back-edge behavior is routed through one canonical reducer".to_string(),
+            "graph.json is regenerated and the detector reports lower back-edge pressure for the function".to_string(),
+        ],
+        evidence,
+        discovered_by: "graph_metrics_detector".to_string(),
+        ..Issue::default()
+    }
+}
+
+fn dominator_region_reduction_issue_id(crate_name: &str, symbol: &str) -> String {
+    format!(
+        "auto_dominator_region_reduction_{}_{}",
+        sanitize_fragment(crate_name),
+        stable_hash(&format!("{crate_name}:{symbol}"))
+    )
+}
+
+fn build_dominator_region_reduction_issue(
+    crate_name: &str,
+    summary: &crate::semantic::SymbolSummary,
+    dominance_score: f32,
+    redundant_path_count: usize,
+) -> Issue {
+    let branch_score = summary.branch_score.unwrap_or(0.0);
+    let evidence = vec![
+        format!(
+            "branch_score={branch_score:.2}, switchint_count={}, has_back_edges={}",
+            summary.switchint_count,
+            summary.has_back_edges
+        ),
+        format!(
+            "cfg_dominance_score={dominance_score:.2}, redundant_path_count={redundant_path_count}"
+        ),
+    ];
+
+    Issue {
+        id: dominator_region_reduction_issue_id(crate_name, &summary.symbol),
+        title: format!("Dominator region reduction candidate in `{}`", summary.symbol),
+        status: "open".to_string(),
+        priority: if redundant_path_count >= 2 || summary.switchint_count >= 3 {
+            "high".to_string()
+        } else {
+            "medium".to_string()
+        },
+        kind: "logic".to_string(),
+        description: format!(
+            "Function `{}` in crate `{}` contains a dominance-heavy branch funnel without loop back edges. \
+             The CFG shows concentrated non-cleanup branch structure and repeated path pressure in one control funnel.\n\n\
+             Recommended direction: collapse the branch funnel into a smaller dispatcher, extract a table-driven reducer, or merge duplicate exits."
+            ,
+            summary.symbol,
+            crate_name
+        ),
+        location: shorten_symbol_location(summary),
+        scope: format!("crate:{crate_name}"),
+        metrics: json!({
+            "task": "ReduceDominatorRegion",
+            "proof_tier": "hypothesis",
+            "symbol": summary.symbol,
+            "region_kind": "dominator branch funnel",
+            "branch_score": branch_score,
+            "switchint_count": summary.switchint_count,
+            "cfg_dominance_score": dominance_score,
+            "back_edge_count": 0,
+            "redundant_path_count": redundant_path_count,
+        }),
+        acceptance_criteria: vec![
+            "the dominance-heavy branch funnel is reduced to a simpler dispatch surface".to_string(),
+            "duplicate exits or repeated branch tails are collapsed".to_string(),
+            "graph.json is regenerated and the detector reports lower dominance or duplicate-path pressure for the function".to_string(),
         ],
         evidence,
         discovered_by: "graph_metrics_detector".to_string(),
@@ -1769,10 +1926,11 @@ fn upsert_bridge_issue(file: &mut IssuesFile, desired: Issue, active: bool) -> u
 mod tests {
     use super::{
         analyze_bridge_connectivity, generate_artifact_writer_dispersion_issues,
-        generate_cfg_region_reduction_issues,
         generate_bridge_connectivity_issues, generate_effect_boundary_leak_issues,
+        generate_dominator_region_reduction_issues,
         generate_error_shaping_dispersion_issues, generate_implicit_state_machine_issues,
         generate_planner_loop_fragmentation_issues, generate_representation_fanout_issues,
+        generate_scc_region_reduction_issues,
         generate_state_transition_dispersion_issues, issue_id, priority_from_ratio,
         sanitize_fragment,
     };
@@ -2151,6 +2309,16 @@ mod tests {
                 }),
                 json!({
                     "relation": "TouchesWorkflowDomain",
+                    "from": "app::run_planner_phase",
+                    "to": "workflow::apply",
+                }),
+                json!({
+                    "relation": "TouchesWorkflowDomain",
+                    "from": "app::run_planner_phase",
+                    "to": "workflow::verify",
+                }),
+                json!({
+                    "relation": "TouchesWorkflowDomain",
                     "from": "tools::handle_apply_patch_action",
                     "to": "workflow::apply",
                 }),
@@ -2163,6 +2331,16 @@ mod tests {
                     "relation": "TouchesWorkflowDomain",
                     "from": "app::apply_wake_signals",
                     "to": "workflow::apply",
+                }),
+                json!({
+                    "relation": "TouchesWorkflowDomain",
+                    "from": "app::apply_wake_signals",
+                    "to": "workflow::planner",
+                }),
+                json!({
+                    "relation": "TouchesWorkflowDomain",
+                    "from": "app::apply_wake_signals",
+                    "to": "workflow::verify",
                 }),
                 json!({
                     "relation": "TouchesWorkflowDomain",
@@ -2272,6 +2450,7 @@ mod tests {
             .expect("planner loop issue");
         assert_eq!(issue.status, "open");
         assert_eq!(issue.metrics["orchestrator_count"].as_u64(), Some(2));
+        assert_eq!(issue.metrics["owner_candidate_count"].as_u64(), Some(2));
         assert_eq!(issue.metrics["proof_tier"].as_str(), Some("hypothesis"));
     }
 
@@ -2448,7 +2627,7 @@ mod tests {
     }
 
     #[test]
-    fn cfg_region_reduction_emits_issue_for_loop_dominated_function() {
+    fn scc_region_reduction_emits_issue_for_loop_dominated_function() {
         let workspace = unique_workspace("cfg-region-reduction");
         write_index(&workspace, &["canon_mini_agent"]);
         write_graph_with_edges(
@@ -2534,15 +2713,113 @@ mod tests {
         ]);
         fs::write(&graph_path, serde_json::to_string_pretty(&graph).unwrap()).unwrap();
 
-        assert!(generate_cfg_region_reduction_issues(&workspace).unwrap() > 0);
+        assert!(generate_scc_region_reduction_issues(&workspace).unwrap() > 0);
         let issues = read_issues(&workspace);
         let issue = issues
             .iter()
-            .find(|issue| issue.id.starts_with("auto_cfg_region_reduction_"))
-            .expect("cfg region issue");
+            .find(|issue| issue.id.starts_with("auto_scc_region_reduction_"))
+            .expect("scc region issue");
         assert_eq!(issue.status, "open");
         assert_eq!(issue.metrics["proof_tier"].as_str(), Some("hypothesis"));
         assert_eq!(issue.metrics["back_edge_count"].as_u64(), Some(1));
+    }
+
+    #[test]
+    fn dominator_region_reduction_emits_issue_for_branch_funnel_function() {
+        let workspace = unique_workspace("dominator-region-reduction");
+        write_index(&workspace, &["canon_mini_agent"]);
+        write_graph_with_edges(
+            &workspace,
+            "canon_mini_agent",
+            &["tools::handle_plan_action"],
+            vec![],
+        );
+        let graph_path = workspace
+            .join("state")
+            .join("rustc")
+            .join("canon_mini_agent")
+            .join("graph.json");
+        let mut graph: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&graph_path).unwrap()).unwrap();
+        graph["nodes"]["tools::handle_plan_action"]["mir"] = json!({
+            "fingerprint": "fp_handle_plan_action",
+            "blocks": 4,
+            "stmts": 8,
+        });
+        graph["cfg_nodes"] = json!({
+            "cfg::tools::handle_plan_action::bb0": {
+                "owner": "tools::handle_plan_action",
+                "block": 0,
+                "is_cleanup": false,
+                "terminator": "SwitchInt",
+                "statements": [],
+                "in_loop": false
+            },
+            "cfg::tools::handle_plan_action::bb1": {
+                "owner": "tools::handle_plan_action",
+                "block": 1,
+                "is_cleanup": false,
+                "terminator": "SwitchInt",
+                "statements": [],
+                "in_loop": false
+            },
+            "cfg::tools::handle_plan_action::bb2": {
+                "owner": "tools::handle_plan_action",
+                "block": 2,
+                "is_cleanup": false,
+                "terminator": "Goto",
+                "statements": [],
+                "in_loop": false
+            }
+        });
+        graph["bridge_edges"] = json!([
+            {
+                "relation": "BelongsTo",
+                "from": "cfg::tools::handle_plan_action::bb0",
+                "to": "tools::handle_plan_action"
+            },
+            {
+                "relation": "BelongsTo",
+                "from": "cfg::tools::handle_plan_action::bb1",
+                "to": "tools::handle_plan_action"
+            },
+            {
+                "relation": "BelongsTo",
+                "from": "cfg::tools::handle_plan_action::bb2",
+                "to": "tools::handle_plan_action"
+            },
+            {
+                "relation": "BelongsTo",
+                "from": "cfg::tools::handle_plan_action::cleanup",
+                "to": "tools::handle_plan_action"
+            }
+        ]);
+        graph["redundant_paths"] = json!([
+            {
+                "signature": "dup-path",
+                "shared_prefix_len": 2,
+                "path_a": {
+                    "owner": "tools::handle_plan_action",
+                    "blocks": [0, 1, 2]
+                },
+                "path_b": {
+                    "owner": "tools::handle_plan_action",
+                    "blocks": [0, 1, 3]
+                }
+            }
+        ]);
+        fs::write(&graph_path, serde_json::to_string_pretty(&graph).unwrap()).unwrap();
+
+        assert!(generate_dominator_region_reduction_issues(&workspace).unwrap() > 0);
+        let issues = read_issues(&workspace);
+        let issue = issues
+            .iter()
+            .find(|issue| issue.id.starts_with("auto_dominator_region_reduction_"))
+            .expect("dominator region issue");
+        assert_eq!(issue.status, "open");
+        assert_eq!(issue.metrics["proof_tier"].as_str(), Some("hypothesis"));
+        assert_eq!(issue.metrics["back_edge_count"].as_u64(), Some(0));
+        assert_eq!(issue.metrics["redundant_path_count"].as_u64(), Some(1));
     }
 
     #[test]
