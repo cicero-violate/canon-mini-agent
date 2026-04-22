@@ -602,16 +602,20 @@ fn build_livelock_report(
         "timestamp_ms": now_ms(),
         "stall_cycles": stall_cycles,
         "watched_control_surfaces": control_surfaces,
-        "pending_at_detection": {
-            "planner_pending": planner_pending,
-            "diagnostics_pending": diagnostics_pending,
-        },
+        "pending_at_detection": livelock_pending_state(planner_pending, diagnostics_pending),
         "message": format!(
             "Orchestrator detected {} consecutive cycles where work was dispatched but \
              no semantic control state changed. Pending signals cleared. Queue a canonical wake signal or \
              restart to resume.",
             stall_cycles
         ),
+    })
+}
+
+fn livelock_pending_state(planner_pending: bool, diagnostics_pending: bool) -> Value {
+    json!({
+        "planner_pending": planner_pending,
+        "diagnostics_pending": diagnostics_pending,
     })
 }
 

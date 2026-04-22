@@ -165,6 +165,136 @@ pub fn classify_result(action_kind: &str, result_text: &str, ok: bool) -> ErrorC
     classify_failure_text(&text)
 }
 
+fn contains_any(text: &str, needles: &[&str]) -> bool {
+    needles.iter().any(|needle| text.contains(needle))
+}
+
+fn is_compile_failure_text(text: &str) -> bool {
+    contains_any(text, &["error[e", "compilation failed", "test failed"])
+}
+
+fn is_permission_boundary_text(text: &str) -> bool {
+    text.contains("outside") || text.contains("permission denied")
+}
+
+fn is_missing_target_action_text(text: &str) -> bool {
+    contains_any(text, &["not found", "no such file"])
+}
+
+fn is_unauthorized_plan_text(text: &str) -> bool {
+    contains_any(text, &["not allowed", "only", "permitted"])
+}
+
+fn is_step_limit_text(text: &str) -> bool {
+    contains_any(text, &["step limit", "step budget", "forced handoff"])
+}
+
+fn is_invalid_schema_text(text: &str) -> bool {
+    contains_any(text, &["schema", "required field", "invalid action"])
+}
+
+fn is_second_mutation_text(text: &str) -> bool {
+    contains_any(
+        text,
+        &["second mutation path", "canonical state bypass", "state_mut"],
+    )
+}
+
+fn is_runtime_control_bypass_text(text: &str) -> bool {
+    contains_any(
+        text,
+        &[
+            "runtime control bypass",
+            "runtime-only control influence",
+            "runtime-only state influenced control",
+        ],
+    )
+}
+
+fn is_uncanonicalized_recovery_text(text: &str) -> bool {
+    contains_any(
+        text,
+        &[
+            "uncanonicalized recovery",
+            "recovery path without canonical event",
+            "reconciliation path without canonical event",
+        ],
+    )
+}
+
+fn is_checkpoint_runtime_divergence_text(text: &str) -> bool {
+    contains_any(
+        text,
+        &[
+            "checkpoint/runtime divergence",
+            "checkpoint runtime divergence",
+            "runtime diverged from checkpoint",
+        ],
+    )
+}
+
+fn is_effectful_state_advance_text(text: &str) -> bool {
+    contains_any(
+        text,
+        &[
+            "effectful state advance without control event",
+            "effect advanced state without controlevent",
+            "effect advanced state without control event",
+        ],
+    )
+}
+
+fn is_ambiguous_control_event_text(text: &str) -> bool {
+    contains_any(
+        text,
+        &[
+            "ambiguous control event",
+            "control event encoded multiple transitions",
+        ],
+    )
+}
+
+fn is_missing_target_text(text: &str) -> bool {
+    contains_any(
+        text,
+        &["not found", "no such file", "missing_target", "does not exist"],
+    )
+}
+
+fn is_timeout_text(text: &str) -> bool {
+    contains_any(text, &["timed out", "connection refused", "timeout"])
+}
+
+fn is_permission_denied_text(text: &str) -> bool {
+    contains_any(text, &["permission denied", "access denied"])
+}
+
+fn is_blocker_tool_unavailable_text(text: &str) -> bool {
+    contains_any(
+        text,
+        &[
+            "tool unavailable",
+            "tools unavailable",
+            "workspace tools unavailable",
+            "toolchain unavailable",
+            "unavailable in this chat environment",
+            "cannot proceed without the required canon toolchain",
+        ],
+    )
+}
+
+fn is_compile_blocker_text(text: &str) -> bool {
+    contains_any(text, &["compile", "build fail", "test fail", "cargo"])
+}
+
+fn is_verification_blocker_text(text: &str) -> bool {
+    contains_any(text, &["verify", "verification", "test"])
+}
+
+fn is_plan_preflight_blocker_text(text: &str) -> bool {
+    contains_any(text, &["symbol", "preflight"])
+}
+
 fn classify_action_kind_failure(action_kind: &str, text: &str) -> Option<ErrorClass> {
     match action_kind {
         "canonical_state_bypass" => Some(ErrorClass::SecondMutationPath),
@@ -185,20 +315,17 @@ fn classify_action_kind_failure(action_kind: &str, text: &str) -> Option<ErrorCl
         "reaction_only" => Some(ErrorClass::ReactionOnly),
         "executor_submit_timeout" | "submit_ack_timeout" => Some(ErrorClass::LlmTimeout),
         "repeated_failed_action" | "idle_streak" => Some(ErrorClass::InvalidSchema),
-        "cargo_test" | "cargo_clippy" | "run_command"
-            if text.contains("error[e")
-                || text.contains("compilation failed")
-                || text.contains("test failed") =>
+        "cargo_test" | "cargo_clippy" | "run_command" if is_compile_failure_text(text) =>
         {
             Some(ErrorClass::CompileError)
         }
-        "read_file" | "apply_patch" if text.contains("outside") || text.contains("permission denied") => {
+        "read_file" | "apply_patch" if is_permission_boundary_text(text) => {
             Some(ErrorClass::PermissionDenied)
         }
-        "read_file" | "apply_patch" if text.contains("not found") || text.contains("no such file") => {
+        "read_file" | "apply_patch" if is_missing_target_action_text(text) => {
             Some(ErrorClass::MissingTarget)
         }
-        "plan" if text.contains("not allowed") || text.contains("only") || text.contains("permitted") => {
+        "plan" if is_unauthorized_plan_text(text) => {
             Some(ErrorClass::UnauthorizedPlanOp)
         }
         _ => None,
@@ -209,66 +336,40 @@ fn classify_failure_text(text: &str) -> ErrorClass {
     if text.contains("outside") && (text.contains("workspace") || text.contains("permitted")) {
         return ErrorClass::PermissionDenied;
     }
-    if text.contains("step limit")
-        || text.contains("step budget")
-        || text.contains("forced handoff")
-    {
+    if is_step_limit_text(text) {
         return ErrorClass::StepLimitExceeded;
     }
-    if text.contains("schema") || text.contains("required field") || text.contains("invalid action")
-    {
+    if is_invalid_schema_text(text) {
         return ErrorClass::InvalidSchema;
     }
-    if text.contains("second mutation path")
-        || text.contains("canonical state bypass")
-        || text.contains("state_mut")
-    {
+    if is_second_mutation_text(text) {
         return ErrorClass::SecondMutationPath;
     }
-    if text.contains("runtime control bypass")
-        || text.contains("runtime-only control influence")
-        || text.contains("runtime-only state influenced control")
-    {
+    if is_runtime_control_bypass_text(text) {
         return ErrorClass::RuntimeControlBypass;
     }
-    if text.contains("uncanonicalized recovery")
-        || text.contains("recovery path without canonical event")
-        || text.contains("reconciliation path without canonical event")
-    {
+    if is_uncanonicalized_recovery_text(text) {
         return ErrorClass::UncanonicalizedRecoveryPath;
     }
-    if text.contains("checkpoint/runtime divergence")
-        || text.contains("checkpoint runtime divergence")
-        || text.contains("runtime diverged from checkpoint")
-    {
+    if is_checkpoint_runtime_divergence_text(text) {
         return ErrorClass::CheckpointRuntimeDivergence;
     }
-    if text.contains("effectful state advance without control event")
-        || text.contains("effect advanced state without controlevent")
-        || text.contains("effect advanced state without control event")
-    {
+    if is_effectful_state_advance_text(text) {
         return ErrorClass::EffectfulStateAdvanceWithoutControlEvent;
     }
-    if text.contains("ambiguous control event")
-        || text.contains("control event encoded multiple transitions")
-    {
+    if is_ambiguous_control_event_text(text) {
         return ErrorClass::AmbiguousControlEvent;
     }
-    if text.contains("not found")
-        || text.contains("no such file")
-        || text.contains("missing_target")
-        || text.contains("does not exist")
-    {
+    if is_missing_target_text(text) {
         return ErrorClass::MissingTarget;
     }
-    if text.contains("timed out") || text.contains("connection refused") || text.contains("timeout")
-    {
+    if is_timeout_text(text) {
         return ErrorClass::LlmTimeout;
     }
-    if text.contains("permission denied") || text.contains("access denied") {
+    if is_permission_denied_text(text) {
         return ErrorClass::PermissionDenied;
     }
-    if text.contains("not allowed") || text.contains("not permitted") {
+    if contains_any(text, &["not allowed", "not permitted"]) {
         return ErrorClass::UnauthorizedPlanOp;
     }
     ErrorClass::Unknown
@@ -278,70 +379,46 @@ fn classify_failure_text(text: &str) -> ErrorClass {
 /// This is a best-effort heuristic; the LLM's free-text summary is the input.
 pub fn classify_blocker_summary(summary: &str) -> ErrorClass {
     let text = summary.to_lowercase();
-    if text.contains("tool unavailable")
-        || text.contains("tools unavailable")
-        || text.contains("workspace tools unavailable")
-        || text.contains("toolchain unavailable")
-        || text.contains("unavailable in this chat environment")
-        || text.contains("cannot proceed without the required canon toolchain")
-    {
+    if is_blocker_tool_unavailable_text(&text) {
         return ErrorClass::PermissionDenied;
     }
-    if text.contains("step limit") || text.contains("budget") || text.contains("too many steps") {
+    if contains_any(&text, &["step limit", "budget", "too many steps"]) {
         return ErrorClass::StepLimitExceeded;
     }
-    if text.contains("compile")
-        || text.contains("build fail")
-        || text.contains("test fail")
-        || text.contains("cargo")
-    {
+    if is_compile_blocker_text(&text) {
         return ErrorClass::CompileError;
     }
-    if text.contains("not found") || text.contains("does not exist") || text.contains("missing") {
+    if contains_any(&text, &["not found", "does not exist", "missing"]) {
         return ErrorClass::MissingTarget;
     }
-    if text.contains("schema") || text.contains("invalid action") || text.contains("required field")
-    {
+    if is_invalid_schema_text(&text) {
         return ErrorClass::InvalidSchema;
     }
-    if text.contains("second mutation path") || text.contains("canonical state bypass") {
+    if is_second_mutation_text(&text) {
         return ErrorClass::SecondMutationPath;
     }
-    if text.contains("runtime control bypass")
-        || text.contains("runtime-only control influence")
-        || text.contains("runtime-only state influenced control")
-    {
+    if is_runtime_control_bypass_text(&text) {
         return ErrorClass::RuntimeControlBypass;
     }
-    if text.contains("uncanonicalized recovery")
-        || text.contains("recovery path without canonical event")
-        || text.contains("reconciliation path without canonical event")
-    {
+    if is_uncanonicalized_recovery_text(&text) {
         return ErrorClass::UncanonicalizedRecoveryPath;
     }
-    if text.contains("checkpoint/runtime divergence")
-        || text.contains("checkpoint runtime divergence")
-        || text.contains("runtime diverged from checkpoint")
-    {
+    if is_checkpoint_runtime_divergence_text(&text) {
         return ErrorClass::CheckpointRuntimeDivergence;
     }
-    if text.contains("effectful state advance without control event")
-        || text.contains("effect advanced state without control event")
-    {
+    if is_effectful_state_advance_text(&text) {
         return ErrorClass::EffectfulStateAdvanceWithoutControlEvent;
     }
-    if text.contains("ambiguous control event")
-        || text.contains("control event encoded multiple transitions")
-    {
+    if is_ambiguous_control_event_text(&text) {
         return ErrorClass::AmbiguousControlEvent;
     }
     if text.contains("outside workspace") || text.contains("permission") {
         return ErrorClass::PermissionDenied;
     }
-    if text.contains("verify") || text.contains("verification") || text.contains("test") {
+    if is_verification_blocker_text(&text) {
         return ErrorClass::VerificationFailed;
     }
-    if text.contains("symbol") || text.contains("preflight") {
+    if is_plan_preflight_blocker_text(&text) {
         return ErrorClass::PlanPreflightFailed;
     }
     ErrorClass::BlockerEscalated

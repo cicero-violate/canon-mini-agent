@@ -283,6 +283,140 @@ fn validate_prompt_in_flight_entry(state: &SystemState, lane_id: usize) -> Resul
     Ok(())
 }
 
+fn is_state_neutral_transition(event: &ControlEvent) -> bool {
+    matches!(
+        event,
+        ControlEvent::PlannerPendingSet { .. }
+            | ControlEvent::PlannerObjectiveReviewQueued
+            | ControlEvent::PlannerObjectivePlanGapQueued
+            | ControlEvent::DiagnosticsPendingSet { .. }
+            | ControlEvent::DiagnosticsReconciliationQueued
+            | ControlEvent::VerifierBlockerSet { .. }
+            | ControlEvent::DiagnosticsVerifierFollowupQueued
+            | ControlEvent::DiagnosticsTextSet { .. }
+            | ControlEvent::ExternalUserMessageConsumed { .. }
+            | ControlEvent::InboundMessageConsumed { .. }
+            | ControlEvent::WakeSignalConsumed { .. }
+            | ControlEvent::WakeSignalQueued { .. }
+            | ControlEvent::InboundMessageQueued { .. }
+            | ControlEvent::RustPatchVerificationRequested { .. }
+            | ControlEvent::OrchestratorModeSet { .. }
+            | ControlEvent::OrchestratorIdlePulse { .. }
+            | ControlEvent::CheckpointSnapshotSet { .. }
+            | ControlEvent::PlannerBlockerEvidenceSet { .. }
+            | ControlEvent::PostRestartResultConsumed { .. }
+            | ControlEvent::LastPlanTextSet { .. }
+            | ControlEvent::LastExecutorDiffSet { .. }
+            | ControlEvent::LastSoloPlanTextSet { .. }
+            | ControlEvent::LastSoloExecutorDiffSet { .. }
+            | ControlEvent::ObjectivesInitialized { .. }
+            | ControlEvent::ObjectivesReplaced { .. }
+    )
+}
+
+fn validate_lane_scoped_transition(
+    state: &SystemState,
+    event: &ControlEvent,
+) -> Option<Result<(), String>> {
+    match event {
+        ControlEvent::LanePendingSet { lane_id, pending } => {
+            Some(validate_lane_pending_event(state, *lane_id, *pending))
+        }
+        ControlEvent::LaneInProgressSet { lane_id, actor } => {
+            Some(validate_lane_in_progress_event(state, *lane_id, actor))
+        }
+        ControlEvent::VerifierSummarySet { lane_id, .. } => {
+            Some(validate_verifier_summary_lane(state, *lane_id))
+        }
+        ControlEvent::LaneVerifierResultSet { lane_id, .. }
+        | ControlEvent::LanePlanTextSet { lane_id, .. }
+        | ControlEvent::LaneNextSubmitAtSet { lane_id, .. }
+        | ControlEvent::LaneStepsUsedSet { lane_id, .. } => {
+            Some(validate_lane_scoped_event(state, *lane_id))
+        }
+        ControlEvent::LaneSubmitInFlightSet { lane_id, in_flight } => Some(
+            validate_lane_submit_in_flight_event(state, *lane_id, *in_flight),
+        ),
+        ControlEvent::LanePromptInFlightSet { lane_id, in_flight } => Some(
+            validate_lane_prompt_in_flight_event(state, *lane_id, *in_flight),
+        ),
+        ControlEvent::LaneActiveTabSet { lane_id, tab_id } => {
+            Some(validate_lane_active_tab_set(state, *lane_id, tab_id))
+        }
+        ControlEvent::TabIdToLaneSet { tab_id, lane_id } => {
+            Some(validate_tab_id_to_lane_set(state, tab_id, *lane_id))
+        }
+        _ => None,
+    }
+}
+
+fn validate_executor_turn_deregistered(state: &SystemState, tab_id: u32, turn_id: u64) -> Result<(), String> {
+    let key = format!("{tab_id}:{turn_id}");
+    if state.submitted_turn_ids.contains_key(&key) {
+        Ok(())
+    } else {
+        Err(format!(
+            "illegal transition: submitted turn `{key}` is not registered"
+        ))
+    }
+}
+
+fn validate_executor_transition(
+    state: &SystemState,
+    event: &ControlEvent,
+) -> Option<Result<(), String>> {
+    match event {
+        // Runtime traces show executor turn registration is highly order-sensitive.
+        // It must occur only after submit-in-flight clears and the lane/tab binding is canonical.
+        ControlEvent::ExecutorTurnRegistered {
+            tab_id,
+            turn_id,
+            lane_id,
+            ..
+        } => Some(validate_executor_turn_registered_transition(
+            state, *tab_id, *turn_id, *lane_id,
+        )),
+        ControlEvent::ExecutorTurnDeregistered { tab_id, turn_id } => {
+            Some(validate_executor_turn_deregistered(state, *tab_id, *turn_id))
+        }
+        ControlEvent::ExecutorCompletionRecovered {
+            tab_id,
+            turn_id,
+            lane_id,
+            ..
+        } => Some(validate_executor_completion_recovered_transition(
+            state, *tab_id, *turn_id, *lane_id,
+        )),
+        ControlEvent::ExecutorCompletionTabRebound {
+            lane_id,
+            from_tab_id,
+            to_tab_id,
+        } => Some(validate_executor_tab_rebound_transition(
+            state,
+            *lane_id,
+            *from_tab_id,
+            *to_tab_id,
+            "ExecutorCompletionTabRebound",
+            "completion tab rebound",
+            false,
+        )),
+        ControlEvent::ExecutorSubmitAckTabRebound {
+            lane_id,
+            from_tab_id,
+            to_tab_id,
+        } => Some(validate_executor_tab_rebound_transition(
+            state,
+            *lane_id,
+            *from_tab_id,
+            *to_tab_id,
+            "ExecutorSubmitAckTabRebound",
+            "submit ack tab rebound",
+            true,
+        )),
+        _ => None,
+    }
+}
+
 pub fn validate_transition(state: &SystemState, event: &ControlEvent) -> Result<(), String> {
     match event {
         ControlEvent::PhaseSet { phase, lane } => {
@@ -291,113 +425,13 @@ pub fn validate_transition(state: &SystemState, event: &ControlEvent) -> Result<
         ControlEvent::ScheduledPhaseSet { phase } => {
             validate_scheduled_phase(phase)?;
         }
-        ControlEvent::PlannerPendingSet { .. }
-        | ControlEvent::PlannerObjectiveReviewQueued
-        | ControlEvent::PlannerObjectivePlanGapQueued
-        | ControlEvent::DiagnosticsPendingSet { .. }
-        | ControlEvent::DiagnosticsReconciliationQueued
-        | ControlEvent::VerifierBlockerSet { .. }
-        | ControlEvent::DiagnosticsVerifierFollowupQueued
-        | ControlEvent::DiagnosticsTextSet { .. }
-        | ControlEvent::ExternalUserMessageConsumed { .. }
-        | ControlEvent::InboundMessageConsumed { .. }
-        | ControlEvent::WakeSignalConsumed { .. }
-        | ControlEvent::WakeSignalQueued { .. }
-        | ControlEvent::InboundMessageQueued { .. }
-        | ControlEvent::RustPatchVerificationRequested { .. }
-        | ControlEvent::OrchestratorModeSet { .. }
-        | ControlEvent::OrchestratorIdlePulse { .. }
-        | ControlEvent::CheckpointSnapshotSet { .. }
-        | ControlEvent::PlannerBlockerEvidenceSet { .. }
-        | ControlEvent::PostRestartResultConsumed { .. }
-        | ControlEvent::LastPlanTextSet { .. }
-        | ControlEvent::LastExecutorDiffSet { .. }
-        | ControlEvent::LastSoloPlanTextSet { .. }
-        | ControlEvent::LastSoloExecutorDiffSet { .. }
-        | ControlEvent::ObjectivesInitialized { .. }
-        | ControlEvent::ObjectivesReplaced { .. } => {}
-        ControlEvent::LanePendingSet { lane_id, pending } => {
-            validate_lane_pending_event(state, *lane_id, *pending)?;
-        }
-        ControlEvent::LaneInProgressSet { lane_id, actor } => {
-            validate_lane_in_progress_event(state, *lane_id, actor)?;
-        }
-        ControlEvent::VerifierSummarySet { lane_id, .. } => {
-            validate_verifier_summary_lane(state, *lane_id)?;
-        }
-        ControlEvent::LaneVerifierResultSet { lane_id, .. }
-        | ControlEvent::LanePlanTextSet { lane_id, .. }
-        | ControlEvent::LaneNextSubmitAtSet { lane_id, .. }
-        | ControlEvent::LaneStepsUsedSet { lane_id, .. } => {
-            validate_lane_scoped_event(state, *lane_id)?;
-        }
-        ControlEvent::LaneSubmitInFlightSet { lane_id, in_flight } => {
-            validate_lane_submit_in_flight_event(state, *lane_id, *in_flight)?;
-        }
-        ControlEvent::LanePromptInFlightSet { lane_id, in_flight } => {
-            validate_lane_prompt_in_flight_event(state, *lane_id, *in_flight)?;
-        }
-        ControlEvent::LaneActiveTabSet { lane_id, tab_id } => {
-            validate_lane_active_tab_set(state, *lane_id, tab_id)?;
-        }
-        ControlEvent::TabIdToLaneSet { tab_id, lane_id } => {
-            validate_tab_id_to_lane_set(state, tab_id, *lane_id)?;
-        }
-        // Runtime traces show executor turn registration is highly order-sensitive.
-        // It must occur only after submit-in-flight clears and the lane/tab binding is canonical.
-        ControlEvent::ExecutorTurnRegistered {
-            tab_id,
-            turn_id,
-            lane_id,
-            ..
-        } => {
-            validate_executor_turn_registered_transition(state, *tab_id, *turn_id, *lane_id)?;
-        }
-        ControlEvent::ExecutorTurnDeregistered { tab_id, turn_id } => {
-            let key = format!("{tab_id}:{turn_id}");
-            if !state.submitted_turn_ids.contains_key(&key) {
-                return Err(format!(
-                    "illegal transition: submitted turn `{key}` is not registered"
-                ));
+        _ if is_state_neutral_transition(event) => {}
+        _ => {
+            if let Some(result) = validate_lane_scoped_transition(state, event) {
+                result?;
+            } else if let Some(result) = validate_executor_transition(state, event) {
+                result?;
             }
-        }
-        ControlEvent::ExecutorCompletionRecovered {
-            tab_id,
-            turn_id,
-            lane_id,
-            ..
-        } => {
-            validate_executor_completion_recovered_transition(state, *tab_id, *turn_id, *lane_id)?;
-        }
-        ControlEvent::ExecutorCompletionTabRebound {
-            lane_id,
-            from_tab_id,
-            to_tab_id,
-        } => {
-            validate_executor_tab_rebound_transition(
-                state,
-                *lane_id,
-                *from_tab_id,
-                *to_tab_id,
-                "ExecutorCompletionTabRebound",
-                "completion tab rebound",
-                false,
-            )?;
-        }
-        ControlEvent::ExecutorSubmitAckTabRebound {
-            lane_id,
-            from_tab_id,
-            to_tab_id,
-        } => {
-            validate_executor_tab_rebound_transition(
-                state,
-                *lane_id,
-                *from_tab_id,
-                *to_tab_id,
-                "ExecutorSubmitAckTabRebound",
-                "submit ack tab rebound",
-                true,
-            )?;
         }
     }
     Ok(())
