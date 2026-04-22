@@ -6981,12 +6981,13 @@ pub async fn run() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        action_retry_fingerprint, canonical_inbound_message_from_tlog, collect_wake_signal_inputs,
+        action_retry_fingerprint, canonical_recorded_message_from_tlog, collect_wake_signal_inputs,
         ensure_workspace_artifact_baseline, executor_step_limit_feedback,
         has_actionable_objectives, inbound_message_from_user, invariant_id_from_reason,
         is_chromium_transport_error, lane_has_stale_executor_claim,
         local_transport_blocker_message, plan_has_incomplete_tasks, route_gate_blocker_message,
         should_reject_solo_self_complete,
+        RecordedMessageKind,
         take_external_user_message_without_writer, take_inbound_message_without_writer,
         verifier_confirmed_with_plan_text, ActionProvenance,
     };
@@ -7298,7 +7299,13 @@ mod tests {
             .inbound_message_signatures
             .insert("executor".to_string(), "sig-new".to_string());
 
-        assert!(canonical_inbound_message_from_tlog(&state_dir, &state, "executor").is_none());
+        assert!(canonical_recorded_message_from_tlog(
+            &state_dir,
+            &state,
+            "executor",
+            RecordedMessageKind::Inbound,
+        )
+        .is_none());
     }
 
     #[test]
