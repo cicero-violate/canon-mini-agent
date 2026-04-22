@@ -1161,7 +1161,7 @@ pub fn redundant_path_issues(
             } else {
                 "low".to_string()
             },
-            kind: "redundancy".to_string(),
+            kind: "dead_branch".to_string(),
             description: format!(
                 "Function `{}` has at least two distinct MIR CFG paths with identical \
                  structural path signature. This is a dead/duplicate branch candidate.",
@@ -1230,186 +1230,6 @@ pub fn generate_alpha_pathway_issues(workspace: &Path) -> Result<usize> {
     )
 }
 
-/// Canonicalize a function signature by replacing bound variable names with
-/// positional placeholders and stripping parameter names, then returning only
-/// the `(params) -> ret` portion.
-///
-/// `fn foo<'a, T>(x: &'a T) -> T`  →  `(&'L0 T0) -> T0`
-/// `fn bar<'b, U>(y: &'b U) -> U`  →  `(&'L0 T0) -> T0`  (same → alpha-equiv)
-fn canonicalize_signature(sig: &str) -> String {
-    let paren_pos = sig.find('(').unwrap_or(sig.len());
-    let angle_pos = sig.find('<').unwrap_or(sig.len());
-
-    let mut mapping: Vec<(String, String)> = Vec::new();
-    let mut lt_idx = 0usize;
-    let mut ty_idx = 0usize;
-
-    if angle_pos < paren_pos {
-        // Extract the raw generics string between '<' and the matching '>'.
-        // We scan forward from angle_pos tracking depth so nested bounds like
-        // `T: Iterator<Item = U>` don't confuse us.
-        let after_open = &sig[angle_pos + 1..];
-        let mut depth = 1usize;
-        let mut close = after_open.len();
-        for (i, c) in after_open.char_indices() {
-            match c {
-                '<' => depth += 1,
-                '>' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        close = i;
-                        break;
-                    }
-                }
-                _ => {}
-            }
-        }
-        let generics_str = &after_open[..close];
-
-        // Split on ',' but only at depth 0 inside the generics block.
-        let mut parts: Vec<&str> = Vec::new();
-        let mut start = 0;
-        let mut d = 0usize;
-        for (i, c) in generics_str.char_indices() {
-            match c {
-                '<' => d += 1,
-                '>' => d = d.saturating_sub(1),
-                ',' if d == 0 => {
-                    parts.push(&generics_str[start..i]);
-                    start = i + 1;
-                }
-                _ => {}
-            }
-        }
-        parts.push(&generics_str[start..]);
-
-        for part in parts {
-            let part = part.trim();
-            if part.is_empty() {
-                continue;
-            }
-            if part.starts_with('\'') {
-                let name = part.split(':').next().unwrap_or(part).trim();
-                if name != "'static" && name != "'_" {
-                    mapping.push((name.to_string(), format!("'L{lt_idx}")));
-                    lt_idx += 1;
-                }
-            } else {
-                let name = part.split(':').next().unwrap_or(part).trim();
-                // Only single-word identifiers starting with uppercase are type params.
-                if !name.is_empty()
-                    && name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
-                    && name.chars().all(|c| c.is_alphanumeric() || c == '_')
-                {
-                    mapping.push((name.to_string(), format!("T{ty_idx}")));
-                    ty_idx += 1;
-                }
-            }
-        }
-    }
-
-    // Nothing to canonicalize — no bound vars means no alpha-equivalence interest.
-    if mapping.is_empty() {
-        return String::new();
-    }
-
-    // Take the `(params) -> ret` portion only — function name is irrelevant.
-    let body = &sig[paren_pos..];
-
-    // Sort longest-first so `'ab` is replaced before `'a` (no partial matches).
-    mapping.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
-
-    let mut result = body.to_string();
-    for (orig, canonical) in &mapping {
-        result = result.replace(orig.as_str(), canonical.as_str());
-    }
-
-    // Strip parameter names from the (params) block: `name: type` → `type`.
-    // Parameter names are not part of the function's type — removing them lets
-    // `(x: &'L0 T0)` and `(y: &'L0 T0)` canonicalize to the same string.
-    result = strip_param_names(&result);
-    result
-}
-
-/// Remove `ident: ` prefixes from parameters inside the outermost `(…)` block.
-/// Scans character-by-character to stay correct across nested angle brackets.
-fn strip_param_names(body: &str) -> String {
-    let mut out = String::with_capacity(body.len());
-    let mut chars = body.char_indices().peekable();
-    let mut paren_depth = 0usize;
-
-    while let Some((_, c)) = chars.next() {
-        if c == '(' {
-            paren_depth += 1;
-            out.push(c);
-            // After `(` or `,` at depth 1, skip an optional `ident: ` prefix.
-            if paren_depth == 1 {
-                skip_param_name_prefix(&mut chars, &mut out);
-            }
-            continue;
-        }
-        if c == ')' {
-            paren_depth = paren_depth.saturating_sub(1);
-            out.push(c);
-            continue;
-        }
-        if c == ',' && paren_depth == 1 {
-            out.push(c);
-            skip_param_name_prefix(&mut chars, &mut out);
-            continue;
-        }
-        out.push(c);
-    }
-    out
-}
-
-/// Consume and discard a leading `whitespace* ident: ` sequence from `chars`,
-/// appending only the whitespace to `out` if no `ident: ` pattern is found.
-fn skip_param_name_prefix(
-    chars: &mut std::iter::Peekable<std::str::CharIndices>,
-    out: &mut String,
-) {
-    // Collect optional leading whitespace.
-    let mut ws = String::new();
-    while let Some(&(_, c)) = chars.peek() {
-        if c == ' ' || c == '\t' {
-            ws.push(c);
-            chars.next();
-        } else {
-            break;
-        }
-    }
-
-    // Collect a run of identifier characters (the potential param name).
-    let mut ident = String::new();
-    while let Some(&(_, c)) = chars.peek() {
-        if c.is_alphanumeric() || c == '_' {
-            ident.push(c);
-            chars.next();
-        } else {
-            break;
-        }
-    }
-
-    // Check for the ': ' that marks a parameter name (not '::' which is a path).
-    let is_param_name = !ident.is_empty()
-        && ident.chars().next().map(|c| c.is_lowercase() || c == '_').unwrap_or(false)
-        && matches!(chars.peek(), Some(&(_, ':')));
-
-    if is_param_name {
-        chars.next(); // consume ':'
-        // Consume optional space after ':'.
-        if matches!(chars.peek(), Some(&(_, ' '))) {
-            chars.next();
-        }
-        // Discard ws + ident + ':' — they are the param name, not part of the type.
-    } else {
-        // Not a param name pattern — emit what we collected.
-        out.push_str(&ws);
-        out.push_str(&ident);
-    }
-}
-
 pub fn alpha_pathway_issues(
     workspace: &Path,
     crate_name: &str,
@@ -1420,239 +1240,127 @@ pub fn alpha_pathway_issues(
         return Vec::new();
     };
 
-    // Resolve each fn symbol to a graph key and build lookups.
+    // The compiler already did the hard work: canonical type hashing with real
+    // De Bruijn indices, thin-wrapper gating, and chain construction. Just read
+    // the pre-computed results and turn them into issues.
     let mut summary_by_symbol: HashMap<&str, &SymbolSummary> = HashMap::new();
-    let mut key_by_symbol: HashMap<&str, String> = HashMap::new();
     for s in summaries {
-        if s.kind != "fn" {
-            continue;
-        }
         summary_by_symbol.insert(s.symbol.as_str(), s);
-        if let Ok(key) = idx.canonical_symbol_key(&s.symbol) {
-            key_by_symbol.insert(s.symbol.as_str(), key);
-        }
-    }
-
-    // Cluster fn symbols by canonical signature.
-    let mut by_canon: HashMap<String, Vec<&str>> = HashMap::new();
-    for (&sym, s) in &summary_by_symbol {
-        let Some(sig) = &s.signature else { continue };
-        let canon = canonicalize_signature(sig);
-        if !canon.is_empty() {
-            by_canon.entry(canon).or_default().push(sym);
-        }
     }
 
     let mut out = Vec::new();
-    let mut seen_chain: HashSet<String> = HashSet::new();
 
-    for (canon, cluster) in &by_canon {
-        if cluster.len() < 2 {
+    for pathway in idx.alpha_pathways() {
+        let chain = &pathway.chain;
+        if chain.len() < 2 {
             continue;
         }
-        let cluster_set: HashSet<&str> = cluster.iter().copied().collect();
-
-        // Build intra-cluster call edges and track which symbols have an
-        // in-cluster caller (they are not chain heads).
-        let mut callee_map: HashMap<&str, Vec<&str>> = HashMap::new();
-        let mut has_in_cluster_caller: HashSet<&str> = HashSet::new();
-
-        for &sym in cluster {
-            let Some(key) = key_by_symbol.get(sym) else { continue };
-            let callees: Vec<&str> = idx
-                .direct_callee_paths(key)
-                .into_iter()
-                .filter_map(|c| cluster_set.iter().find(|&&s| s == c.as_str()).copied())
-                .collect();
-            for &callee in &callees {
-                has_in_cluster_caller.insert(callee);
-            }
-            if !callees.is_empty() {
-                callee_map.insert(sym, callees);
-            }
-        }
-
-        // Chain heads: in the cluster, have outgoing edges, no incoming from cluster.
-        let heads: Vec<&str> = cluster
+        let canonical_head = &pathway.canonical_head;
+        let canonical_head_short = short_name(canonical_head);
+        let wrappers: Vec<&str> = chain[..chain.len() - 1].iter().map(String::as_str).collect();
+        let chain_short: Vec<&str> = chain.iter().map(|s| short_name(s.as_str())).collect();
+        let chain_display = chain_short.join(" → ");
+        let wrapper_list = wrappers
             .iter()
-            .copied()
-            .filter(|s| callee_map.contains_key(s) && !has_in_cluster_caller.contains(s))
-            .collect();
+            .map(|s| format!("`{}`", short_name(s)))
+            .collect::<Vec<_>>()
+            .join(", ");
 
-        for head in heads {
-            // Walk the chain from head following first callee each step.
-            let mut chain: Vec<&str> = vec![head];
-            let mut cur = head;
-            loop {
-                let Some(callees) = callee_map.get(cur) else { break };
-                let Some(&next) = callees.first() else { break };
-                if chain.contains(&next) {
-                    break; // cycle guard
-                }
-                chain.push(next);
-                cur = next;
-            }
-            if chain.len() < 2 {
-                continue;
-            }
-
-            // Safety gate: every caller in the chain (all nodes except the leaf)
-            // must be a confirmed thin wrapper. A node is a thin wrapper if:
-            //   (a) mir_blocks ≤ 3 — MIR has at most entry + call + return blocks,
-            //       meaning no additional logic beyond delegating to the callee, OR
-            //   (b) mir_fingerprint matches the next node — the bodies are provably
-            //       identical at the MIR level, safe to collapse regardless of size.
-            // Without this gate, semantic pipelines (same signature, different logic)
-            // would be incorrectly reported as redundant.
-            let wrappers_confirmed = chain.windows(2).all(|pair| {
-                let caller_s = summary_by_symbol[pair[0]];
-                let callee_s = summary_by_symbol[pair[1]];
-                let thin_body = caller_s.mir_blocks.map(|b| b <= 3).unwrap_or(false);
-                let identical_body = caller_s.mir_fingerprint.is_some()
-                    && caller_s.mir_fingerprint == callee_s.mir_fingerprint;
-                thin_body || identical_body
-            });
-            if !wrappers_confirmed {
-                continue;
-            }
-
-            // Dedup: sort symbols to produce a canonical chain key.
-            let mut sorted = chain.clone();
-            sorted.sort();
-            let chain_key = sorted.join("::");
-            if !seen_chain.insert(chain_key) {
-                continue;
-            }
-
-            // The canonical head is the LEAF (chain[last]) — the actual implementation.
-            // The wrappers (chain[..last]) are the redundant nodes: thin delegators
-            // whose call sites should be redirected to the canonical head, then deleted.
-            let canonical_head = chain[chain.len() - 1];
-            let canonical_head_short = short_name(canonical_head);
-            let wrappers: Vec<&str> = chain[..chain.len() - 1].to_vec();
-
-            let chain_syms: Vec<String> = chain.iter().map(|s| s.to_string()).collect();
-            let chain_short: Vec<&str> = chain.iter().map(|s| short_name(s)).collect();
-            let chain_display = chain_short.join(" → ");
-            let wrapper_list = wrappers
-                .iter()
-                .map(|s| format!("`{}`", short_name(s)))
-                .collect::<Vec<_>>()
-                .join(", ");
-
-            // Evidence: each function's location plus wrapper confirmation reason.
-            let chain_locs: Vec<String> = chain
-                .windows(2)
-                .filter_map(|pair| {
-                    let caller_s = summary_by_symbol.get(pair[0])?;
-                    let callee_s = summary_by_symbol.get(pair[1])?;
-                    let reason = if caller_s.mir_fingerprint.is_some()
-                        && caller_s.mir_fingerprint == callee_s.mir_fingerprint
+        // Evidence: each link with MIR block count where available.
+        let chain_locs: Vec<String> = chain
+            .windows(2)
+            .map(|pair| {
+                let caller_s = summary_by_symbol.get(pair[0].as_str());
+                let callee_s = summary_by_symbol.get(pair[1].as_str());
+                let reason = match (caller_s, callee_s) {
+                    (Some(a), Some(b))
+                        if a.mir_fingerprint.is_some() && a.mir_fingerprint == b.mir_fingerprint =>
                     {
                         "identical MIR fingerprint".to_string()
-                    } else {
-                        format!(
-                            "thin body ({} MIR block{})",
-                            caller_s.mir_blocks.unwrap_or(0),
-                            if caller_s.mir_blocks.unwrap_or(0) == 1 { "" } else { "s" }
-                        )
-                    };
-                    Some(format!(
-                        "`{}` → `{}` confirmed wrapper ({}); {} at {}",
-                        short_name(pair[0]),
-                        short_name(pair[1]),
-                        reason,
-                        caller_s.symbol,
-                        shorten_location(&caller_s.file, caller_s.line),
-                    ))
-                })
-                .chain(std::iter::once(format!(
-                    "canonical: `{}` at {}",
-                    canonical_head,
-                    shorten_location(
-                        &summary_by_symbol[canonical_head].file,
-                        summary_by_symbol[canonical_head].line
-                    )
-                )))
-                .collect();
-
-            let chain_depth = chain.len();
-            let id_seed = format!("{crate_name}:{}", chain_syms.join(":"));
-
-            out.push(Issue {
-                id: format!(
-                    "auto_alpha_pathway_{crate_name}_{:x}",
-                    stable_hash(&id_seed)
-                ),
-                title: format!(
-                    "Alpha-equivalent pathway: {} ({} confirmed wrapper{})",
-                    chain_display,
-                    wrappers.len(),
-                    if wrappers.len() == 1 { "" } else { "s" }
-                ),
-                status: "open".to_string(),
-                priority: if chain_depth >= 3 {
-                    "medium".to_string()
-                } else {
-                    "low".to_string()
-                },
-                kind: "pathway_elimination".to_string(),
-                description: format!(
-                    "Functions [{chain_display}] form a confirmed alpha-equivalent wrapper \
-                     chain in crate `{crate_name}`. Every function in the chain carries the \
-                     same canonical type signature (`{canon}`), and every caller in the chain \
-                     is a thin wrapper (≤3 MIR blocks or identical MIR fingerprint) that \
-                     adds no logic beyond delegating to the next function.\n\n\
-                     The canonical implementation is `{canonical_head}`. \
-                     The wrapper(s) {wrapper_list} are safe to delete — their call sites \
-                     should be redirected to `{canonical_head}` directly.\n\n\
-                     **Execution model:** Redirect call sites → Delete wrappers → Verify\n\n\
-                     **Step 1 — Redirect call sites.**\n\
-                     For each wrapper in {wrapper_list}: search the full codebase for every \
-                     call site (including re-exports, trait impls, and test helpers) and \
-                     replace it with a direct call to `{canonical_head}`. \
-                     Update any `use` imports accordingly. \
-                     If a wrapper is `pub`, check that no external crate depends on it \
-                     before removing the symbol (search workspace `Cargo.toml`).\n\n\
-                     **Step 2 — Delete the wrapper definitions.**\n\
-                     Remove the `fn` definitions for {wrapper_list} from the source.\n\n\
-                     **Step 3 — Verify.**\n\
-                     Run `cargo build` and `cargo test --workspace`. \
-                     Fix any unresolved-symbol or type-mismatch errors before closing.",
-                ),
-                location: shorten_location(
-                    &summary_by_symbol[canonical_head].file,
-                    summary_by_symbol[canonical_head].line,
-                ),
-                scope: format!("crate:{crate_name}"),
-                metrics: json!({
-                    "task": "EliminateAlphaPathway",
-                    "canonical_signature": canon,
-                    "chain_depth": chain_depth,
-                    "chain": chain_syms,
-                    "canonical_head": canonical_head,
-                    "wrapper_symbols": wrappers.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
-                }),
-                acceptance_criteria: vec![
-                    format!(
-                        "canonical implementation `{}` retained and unmodified",
-                        canonical_head_short
+                    }
+                    (Some(a), _) => format!(
+                        "thin body ({} MIR block{})",
+                        a.mir_blocks.unwrap_or(0),
+                        if a.mir_blocks.unwrap_or(0) == 1 { "" } else { "s" }
                     ),
-                    format!(
-                        "all call sites of {} redirected to `{}`",
-                        wrapper_list, canonical_head_short
-                    ),
-                    format!("{} deleted from codebase", wrapper_list),
-                    "cargo build and cargo test --workspace pass".to_string(),
-                ],
-                evidence: chain_locs,
-                discovered_by: "refactor_analyzer".to_string(),
-                ..Issue::default()
-            });
-        }
+                    _ => "thin wrapper".to_string(),
+                };
+                let loc = caller_s
+                    .map(|s| format!("{} at {}", s.symbol, shorten_location(&s.file, s.line)))
+                    .unwrap_or_else(|| pair[0].clone());
+                format!("`{}` → `{}` confirmed wrapper ({}); {}", short_name(&pair[0]), short_name(&pair[1]), reason, loc)
+            })
+            .chain(std::iter::once({
+                let s = summary_by_symbol.get(canonical_head.as_str());
+                match s {
+                    Some(s) => format!("canonical: `{}` at {}", canonical_head, shorten_location(&s.file, s.line)),
+                    None => format!("canonical: `{canonical_head}`"),
+                }
+            }))
+            .collect();
+
+        let chain_depth = chain.len();
+        let id_seed = format!("{crate_name}:{}", chain.join(":"));
+        let location = summary_by_symbol
+            .get(canonical_head.as_str())
+            .map(|s| shorten_location(&s.file, s.line))
+            .unwrap_or_default();
+
+        out.push(Issue {
+            id: format!("auto_alpha_pathway_{crate_name}_{:x}", stable_hash(&id_seed)),
+            title: format!(
+                "Alpha-equivalent pathway: {} ({} confirmed wrapper{})",
+                chain_display,
+                wrappers.len(),
+                if wrappers.len() == 1 { "" } else { "s" }
+            ),
+            status: "open".to_string(),
+            priority: if chain_depth >= 3 { "medium".to_string() } else { "low".to_string() },
+            kind: "pathway_elimination".to_string(),
+            description: format!(
+                "Functions [{chain_display}] form a confirmed alpha-equivalent wrapper \
+                 chain in crate `{crate_name}`. Every function carries the same canonical \
+                 type signature (verified by the compiler using De Bruijn index \
+                 normalization), and every caller is a thin wrapper (≤3 MIR blocks or \
+                 identical MIR fingerprint) that adds no logic beyond delegating.\n\n\
+                 The canonical implementation is `{canonical_head}`. \
+                 The wrapper(s) {wrapper_list} are safe to delete.\n\n\
+                 **Execution model:** Redirect call sites → Delete wrappers → Verify\n\n\
+                 **Step 1 — Redirect call sites.**\n\
+                 For each wrapper in {wrapper_list}: find every call site (including \
+                 re-exports, trait impls, and test helpers) and replace it with a direct \
+                 call to `{canonical_head}`. Update any `use` imports. \
+                 If a wrapper is `pub`, confirm no external crate depends on it \
+                 before deletion (search workspace `Cargo.toml`).\n\n\
+                 **Step 2 — Delete the wrapper definitions.**\n\
+                 Remove the `fn` definitions for {wrapper_list}.\n\n\
+                 **Step 3 — Verify.**\n\
+                 Run `cargo build` and `cargo test --workspace`. \
+                 Fix any unresolved-symbol errors before closing.",
+            ),
+            location,
+            scope: format!("crate:{crate_name}"),
+            metrics: json!({
+                "task": "EliminateAlphaPathway",
+                "canonical_sig_hash": format!("{:016x}", pathway.canonical_sig_hash),
+                "chain_depth": chain_depth,
+                "chain": chain,
+                "canonical_head": canonical_head,
+                "wrapper_symbols": wrappers.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+            }),
+            acceptance_criteria: vec![
+                format!("canonical implementation `{}` retained and unmodified", canonical_head_short),
+                format!("all call sites of {} redirected to `{}`", wrapper_list, canonical_head_short),
+                format!("{} deleted from codebase", wrapper_list),
+                "cargo build and cargo test --workspace pass".to_string(),
+            ],
+            evidence: chain_locs,
+            discovered_by: "refactor_analyzer".to_string(),
+            ..Issue::default()
+        });
     }
 
-    // Prefer longer chains (higher signal) before truncating.
+    // Prefer longer chains before truncating.
     out.sort_by(|a, b| {
         let da = a.metrics.get("chain_depth").and_then(|v| v.as_u64()).unwrap_or(0);
         let db = b.metrics.get("chain_depth").and_then(|v| v.as_u64()).unwrap_or(0);
@@ -2552,8 +2260,8 @@ fn shorten_location(file: &str, line: u32) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        canonicalize_signature, dead_code_id, helper_extract_id, is_exempt_from_dead_code,
-        priority_from_unreachable, short_name, strip_param_names,
+        dead_code_id, helper_extract_id, is_exempt_from_dead_code, priority_from_unreachable,
+        short_name,
     };
 
     #[test]
@@ -2602,41 +2310,4 @@ mod tests {
         assert_eq!(short_name("main"), "main");
     }
 
-    #[test]
-    fn canonicalize_signature_normalizes_bound_vars() {
-        // 'a and 'b differ only in name — should produce identical canonical forms.
-        let a = canonicalize_signature("fn foo<'a, T>(x: &'a T) -> T");
-        let b = canonicalize_signature("fn bar<'b, U>(y: &'b U) -> U");
-        assert_eq!(a, b, "alpha-equivalent sigs must canonicalize to the same form");
-
-        // A second type param appears in position T1.
-        let c = canonicalize_signature("fn baz<'a, T, S>(x: &'a T, y: S) -> S");
-        let d = canonicalize_signature("fn qux<'z, A, B>(p: &'z A, q: B) -> B");
-        assert_eq!(c, d);
-
-        // No generics → empty (not alpha-equiv in the bound-var sense).
-        assert_eq!(canonicalize_signature("fn f(x: u32) -> u32"), "");
-    }
-
-    #[test]
-    fn canonicalize_signature_different_structures_differ() {
-        let a = canonicalize_signature("fn f<T>(x: T) -> T");
-        let b = canonicalize_signature("fn g<T>(x: T) -> ()");
-        assert_ne!(a, b);
-    }
-
-    #[test]
-    fn strip_param_names_removes_lowercase_prefixes() {
-        // Basic case
-        assert_eq!(strip_param_names("(x: &'L0 T0) -> T0"), "(&'L0 T0) -> T0");
-        // Multiple params — leading space before each param name is also consumed.
-        assert_eq!(
-            strip_param_names("(x: &'L0 T0, y: T1) -> T0"),
-            "(&'L0 T0,T1) -> T0"
-        );
-        // No param names — should pass through unchanged
-        assert_eq!(strip_param_names("(&'L0 T0) -> T0"), "(&'L0 T0) -> T0");
-        // Type names (uppercase) are NOT stripped
-        assert_eq!(strip_param_names("(Vec<T0>) -> T0"), "(Vec<T0>) -> T0");
-    }
 }

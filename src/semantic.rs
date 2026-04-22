@@ -35,6 +35,8 @@ struct CrateGraph {
     bridge_edges: Vec<BridgeEdge>,
     #[serde(default)]
     redundant_paths: Vec<RedundantPathPair>,
+    #[serde(default)]
+    alpha_pathways: Vec<AlphaPathwayChain>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -133,6 +135,19 @@ pub struct RedundantPathPair {
     pub path_b: PathRecord,
     #[serde(default)]
     pub shared_signature: u64,
+}
+
+/// A confirmed alpha-equivalent wrapper chain emitted by canon-rustc-v2.
+/// Mirrors `canon_rustc_v2::graph::AlphaPathwayChain`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AlphaPathwayChain {
+    /// Ordered chain: outermost wrapper first, canonical head last.
+    pub chain: Vec<String>,
+    /// The canonical implementation to keep.
+    pub canonical_head: String,
+    /// FNV-1a hash of the canonical type signature (De Bruijn indices only).
+    #[serde(default)]
+    pub canonical_sig_hash: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -325,6 +340,10 @@ impl SemanticIndex {
 
     pub fn redundant_path_pairs(&self) -> Vec<RedundantPathPair> {
         self.graph.redundant_paths.clone()
+    }
+
+    pub fn alpha_pathways(&self) -> &[AlphaPathwayChain] {
+        &self.graph.alpha_pathways
     }
 
     fn non_cleanup_owned_cfg_blocks<'a>(&'a self, symbol_key: &str) -> HashSet<&'a str> {
@@ -2168,6 +2187,7 @@ mod tests {
                 cfg_edges: Vec::new(),
                 bridge_edges: Vec::new(),
                 redundant_paths: Vec::new(),
+                alpha_pathways: Vec::new(),
             },
         };
         let out = idx
@@ -2247,6 +2267,7 @@ mod tests {
                 cfg_edges: Vec::new(),
                 bridge_edges: Vec::new(),
                 redundant_paths: Vec::new(),
+                alpha_pathways: Vec::new(),
             },
         };
 
@@ -2311,6 +2332,7 @@ mod tests {
                 cfg_edges: Vec::new(),
                 bridge_edges: Vec::new(),
                 redundant_paths: Vec::new(),
+                alpha_pathways: Vec::new(),
             },
         };
 
@@ -2383,6 +2405,7 @@ mod tests {
                     },
                 ],
                 redundant_paths: Vec::new(),
+                alpha_pathways: Vec::new(),
             },
         };
 
@@ -2436,6 +2459,7 @@ mod tests {
                     to: "cfg::app::run::bb0".to_string(),
                 }],
                 redundant_paths: Vec::new(),
+                alpha_pathways: Vec::new(),
             },
         };
 
@@ -2479,6 +2503,7 @@ mod tests {
                 cfg_edges: Vec::new(),
                 bridge_edges: Vec::new(),
                 redundant_paths: Vec::new(),
+                alpha_pathways: Vec::new(),
             },
         };
 
@@ -2551,6 +2576,7 @@ mod tests {
                 cfg_edges: Vec::new(),
                 bridge_edges: Vec::new(),
                 redundant_paths: Vec::new(),
+                alpha_pathways: Vec::new(),
             },
         };
         let out = idx

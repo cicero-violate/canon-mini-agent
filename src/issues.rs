@@ -392,8 +392,9 @@ pub fn is_closed(issue: &Issue) -> bool {
 ///   bug / invariant_violation  1.00 — correctness, must fix
 ///   dead_code                  0.70 — confirmed zero-ref deletions, direct noise reduction
 ///   stale_state / branch_reduction / logic  0.65 — structural clarity, unreachable-block removal
+///   pathway_elimination        0.65 — confirmed thin-wrapper chain deletions (compiler-validated)
+///   dead_branch                0.60 — intra-function CFG paths with identical structural hash
 ///   performance                0.50 — runtime cost
-///   pathway_elimination        0.45 — inter-procedural alpha-equivalent chain collapse
 ///   everything else            0.35 — housekeeping (redundancy, helper extraction, etc.)
 pub fn compute_issue_score(issue: &Issue, all_issues: &[Issue]) -> f32 {
     // Severity from priority string
@@ -444,9 +445,9 @@ pub fn compute_issue_score(issue: &Issue, all_issues: &[Issue]) -> f32 {
     let velocity: f32 = match issue.kind.trim().to_lowercase().as_str() {
         "bug" | "invariant_violation" => 1.0,
         "dead_code" => 0.70,
-        "stale_state" | "branch_reduction" | "logic" => 0.65,
+        "stale_state" | "branch_reduction" | "logic" | "pathway_elimination" => 0.65,
+        "dead_branch" => 0.60,
         "performance" => 0.50,
-        "pathway_elimination" => 0.45,
         _ => 0.35,
     };
 
