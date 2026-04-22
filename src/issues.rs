@@ -132,14 +132,10 @@ fn parse_issues_file_from_raw(raw: &str) -> Option<IssuesFile> {
 }
 
 fn load_issues_from_tlog(workspace: &Path) -> Option<IssuesFile> {
-    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
-    crate::tlog::Tlog::latest_record_by_seq(&tlog_path, |event| match event {
-        crate::events::Event::Effect {
-            event: crate::events::EffectEvent::IssuesFileRecorded { file },
-        } => Some(file),
+    crate::tlog::Tlog::latest_effect_from_workspace(workspace, |event| match event {
+        crate::events::EffectEvent::IssuesFileRecorded { file } => Some(file),
         _ => None,
     })
-    .ok()?
 }
 
 pub fn reconcile_issues_projection(workspace: &Path, subject: &str) -> Result<bool> {

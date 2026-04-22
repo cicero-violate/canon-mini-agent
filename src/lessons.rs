@@ -1002,14 +1002,10 @@ pub fn persist_lessons_projection_with_writer(
 }
 
 fn load_lessons_from_tlog(workspace: &Path) -> Option<LessonsArtifact> {
-    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
-    crate::tlog::Tlog::latest_record_by_seq(&tlog_path, |event| match event {
-        crate::events::Event::Effect {
-            event: crate::events::EffectEvent::LessonsArtifactRecorded { artifact },
-        } => Some(artifact),
+    crate::tlog::Tlog::latest_effect_from_workspace(workspace, |event| match event {
+        crate::events::EffectEvent::LessonsArtifactRecorded { artifact } => Some(artifact),
         _ => None,
     })
-    .ok()?
 }
 
 pub fn reconcile_lessons_projection(workspace: &Path, subject: &str) -> Result<bool> {

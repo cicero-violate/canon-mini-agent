@@ -1,4 +1,4 @@
-use crate::events::Event;
+use crate::events::{EffectEvent, Event};
 use crate::system_state::{replay_event_log, SystemState};
 use anyhow::Result;
 use std::collections::HashMap;
@@ -150,6 +150,24 @@ impl Tlog {
             }
         }
         Ok(latest.map(|(_, value)| value))
+    }
+
+    pub fn latest_effect_by_seq<T, F>(path: &Path, mut select: F) -> Result<Option<T>>
+    where
+        F: FnMut(EffectEvent) -> Option<T>,
+    {
+        Self::latest_record_by_seq(path, |event| match event {
+            Event::Effect { event } => select(event),
+            _ => None,
+        })
+    }
+
+    pub fn latest_effect_from_workspace<T, F>(workspace: &Path, select: F) -> Option<T>
+    where
+        F: FnMut(EffectEvent) -> Option<T>,
+    {
+        let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
+        Self::latest_effect_by_seq(&tlog_path, select).ok()?
     }
 
     pub fn replay_with_lane_inference(events: &[Event]) -> Result<SystemState> {

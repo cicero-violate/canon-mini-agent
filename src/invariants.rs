@@ -1494,14 +1494,10 @@ fn status_rank(status: &InvariantStatus) -> u8 {
 }
 
 fn load_invariants_from_tlog(workspace: &Path) -> Option<EnforcedInvariantsFile> {
-    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
-    crate::tlog::Tlog::latest_record_by_seq(&tlog_path, |event| match event {
-        crate::events::Event::Effect {
-            event: crate::events::EffectEvent::EnforcedInvariantsRecorded { file },
-        } => Some(file),
+    crate::tlog::Tlog::latest_effect_from_workspace(workspace, |event| match event {
+        crate::events::EffectEvent::EnforcedInvariantsRecorded { file } => Some(file),
         _ => None,
     })
-    .ok()?
 }
 
 fn read_tail_entries(log_path: &Path, max_lines: usize) -> Vec<Value> {
