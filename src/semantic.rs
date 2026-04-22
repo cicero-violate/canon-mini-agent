@@ -377,6 +377,20 @@ impl SemanticIndex {
             .collect()
     }
 
+    pub fn semantic_edges_by_relation(&self, relation: &str) -> Vec<(String, String)> {
+        self.graph
+            .edges
+            .iter()
+            .filter(|e| edge_relation(e) == relation)
+            .map(|e| {
+                (
+                    self.edge_endpoint_path(&e.from),
+                    self.edge_endpoint_path(&e.to),
+                )
+            })
+            .collect()
+    }
+
     fn non_cleanup_owned_cfg_blocks<'a>(&'a self, symbol_key: &str) -> HashSet<&'a str> {
         self.graph
             .bridge_edges

@@ -238,6 +238,49 @@ pub fn generate_artifact_writer_dispersion_issues(workspace: &Path) -> Result<us
     Ok(mutated)
 }
 
+pub fn generate_error_shaping_dispersion_issues(workspace: &Path) -> Result<usize> {
+    let mut file: IssuesFile = load_issues_file(workspace);
+    let before = serde_json::to_value(&file)?;
+    let mut mutated = 0usize;
+
+    for crate_name in SemanticIndex::available_crates(workspace) {
+        let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
+            continue;
+        };
+
+        let mut by_style: HashMap<String, HashSet<String>> = HashMap::new();
+        for (symbol, style) in idx.semantic_edges_by_relation("ShapesError") {
+            if !looks_like_symbol(&symbol) || style.trim().is_empty() {
+                continue;
+            }
+            by_style.entry(style).or_default().insert(symbol);
+        }
+
+        let crate_name = crate_name.replace('-', "_");
+        let desired = build_error_shaping_dispersion_issue(&crate_name, &by_style);
+        let active = desired
+            .metrics
+            .get("function_count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0)
+            >= 4;
+        mutated += upsert_bridge_issue(&mut file, desired, active);
+    }
+
+    rescore_all(&mut file);
+    let after = serde_json::to_value(&file)?;
+    if before != after {
+        persist_issues_projection_with_writer(
+            workspace,
+            &file,
+            None,
+            "generate_error_shaping_dispersion_issues",
+        )?;
+    }
+
+    Ok(mutated)
+}
+
 pub fn analyze_bridge_connectivity(
     workspace: &Path,
     crate_name: &str,
@@ -398,6 +441,98 @@ fn build_artifact_writer_dispersion_issue(
             format!("all writes to `{display_artifact}` route through `{canonical_short}`"),
             format!("redundant writer entrypoints for `{display_artifact}` are deleted or converted to thin delegates"),
             "graph.json is regenerated and the detector reports at most one writer for the artifact".to_string(),
+        ],
+        evidence,
+        discovered_by: "graph_metrics_detector".to_string(),
+        ..Issue::default()
+    }
+}
+
+fn error_shaping_issue_id(crate_name: &str) -> String {
+    format!(
+        "auto_error_shaping_dispersion_{}",
+        sanitize_fragment(crate_name)
+    )
+}
+
+fn display_error_style(raw: &str) -> String {
+    raw.strip_prefix("error_shape::").unwrap_or(raw).to_string()
+}
+
+fn build_error_shaping_dispersion_issue(
+    crate_name: &str,
+    by_style: &HashMap<String, HashSet<String>>,
+) -> Issue {
+    let mut styles: Vec<(String, Vec<String>)> = by_style
+        .iter()
+        .map(|(style, symbols)| {
+            let mut symbols: Vec<String> = symbols.iter().cloned().collect();
+            symbols.sort();
+            (style.clone(), symbols)
+        })
+        .collect();
+    styles.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.0.cmp(&b.0)));
+
+    let mut all_functions: Vec<String> = styles
+        .iter()
+        .flat_map(|(_, symbols)| symbols.iter().cloned())
+        .collect();
+    all_functions.sort();
+    all_functions.dedup();
+
+    let style_metrics = styles
+        .iter()
+        .map(|(style, symbols)| {
+            json!({
+                "style": display_error_style(style),
+                "function_count": symbols.len(),
+                "functions": symbols,
+            })
+        })
+        .collect::<Vec<_>>();
+    let evidence = styles
+        .iter()
+        .map(|(style, symbols)| {
+            format!(
+                "error shaping `{}` used by {}",
+                display_error_style(style),
+                symbols.join(", ")
+            )
+        })
+        .collect::<Vec<_>>();
+
+    Issue {
+        id: error_shaping_issue_id(crate_name),
+        title: format!(
+            "Error shaping dispersion in `{}` ({} functions, {} styles)",
+            crate_name,
+            all_functions.len(),
+            styles.len()
+        ),
+        status: if all_functions.len() >= 4 { "open" } else { "resolved" }.to_string(),
+        priority: if all_functions.len() >= 8 { "high" } else { "medium" }.to_string(),
+        kind: "logic".to_string(),
+        description: format!(
+            "Compiler-observed error shaping is distributed across {} function(s) in crate `{}`.\n\n\
+             Direct use of `map_err`, `context`, and `with_context` across many functions increases \
+             error-reporting drift and makes failure semantics harder to standardize. Centralize error \
+             shaping behind a smaller helper layer or canonical report boundary.",
+            all_functions.len(),
+            crate_name
+        ),
+        location: format!("state/rustc/{crate_name}/graph.json"),
+        scope: format!("crate:{crate_name}"),
+        metrics: json!({
+            "task": "CentralizeErrorShaping",
+            "function_count": all_functions.len(),
+            "style_count": styles.len(),
+            "functions": all_functions,
+            "styles": style_metrics,
+        }),
+        acceptance_criteria: vec![
+            "direct error shaping is centralized through a smaller helper surface".to_string(),
+            "remaining call sites use consistent error-context conventions".to_string(),
+            "graph.json is regenerated and the detector reports a lower function_count".to_string(),
         ],
         evidence,
         discovered_by: "graph_metrics_detector".to_string(),
