@@ -1789,14 +1789,13 @@ fn load_cargo_test_failure_scan(out: &str) -> (Option<PathBuf>, String) {
 }
 
 fn collect_stalled_test_name(stalled_tests: &mut BTreeSet<String>, stripped: &str) {
-    if let Some(name) = [
-        " has been running for over 60 seconds",
-        " has been running for over 30 seconds",
-        " has been running for over 10 seconds",
-    ]
-    .into_iter()
-    .find_map(|suffix| stripped.strip_suffix(suffix))
-    {
+    let Some((name, tail)) = stripped.rsplit_once(" has been running for over ") else {
+        return;
+    };
+    let Some(seconds_raw) = tail.strip_suffix(" seconds") else {
+        return;
+    };
+    if seconds_raw.trim().parse::<u64>().is_ok() {
         stalled_tests.insert(name.trim().to_string());
     }
 }
