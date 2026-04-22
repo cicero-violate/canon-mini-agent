@@ -1679,4 +1679,16 @@ fn missing_field_for_violation_action(action: &Value) -> Option<String> {
         "upsert" => missing_field_in_action(action, "violation"),
         "resolve" => missing_field_in_action(action, "violation_id"),
         "set_status" => missing_field_in_action(action, "status"),
-        "replace" => missing_field_in_action(action,
+        "replace" => missing_field_in_action(action, "report"),
+        _ => None,
+    }
+}
+
+fn missing_field_for_invariants_action(action: &Value) -> Option<String> {
+    let op = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
+    match op {
+        "read" => None,
+        "promote" | "enforce" | "collapse" => missing_field_in_action(action, "id"),
+        _ => None,
+    }
+}
