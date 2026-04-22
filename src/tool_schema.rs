@@ -81,6 +81,94 @@ fn compact_example_json(value: Value) -> String {
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
+fn prompt_required_fields(action: &str) -> &'static [&'static str] {
+    match action {
+        "plan" => &["action", "op", "rationale", "predicted_next_actions"],
+        "objectives" => &["action", "rationale", "predicted_next_actions"],
+        "issue" => &["action", "rationale", "predicted_next_actions"],
+        "message" => &[
+            "action",
+            "from",
+            "to",
+            "type",
+            "status",
+            "payload",
+            "rationale",
+            "predicted_next_actions",
+        ],
+        "read_file" => &["action", "path", "rationale", "predicted_next_actions"],
+        "apply_patch" => &[
+            "action",
+            "patch",
+            "question",
+            "rationale",
+            "predicted_next_actions",
+        ],
+        "symbols_rename_candidates" => &["action", "rationale", "predicted_next_actions"],
+        "symbols_prepare_rename" => &["action", "rationale", "predicted_next_actions"],
+        "rename_symbol" => &["action", "question", "rationale", "predicted_next_actions"],
+        "python" => &["action", "code", "rationale", "predicted_next_actions"],
+        "run_command" => &["action", "cmd", "rationale", "predicted_next_actions"],
+        "cargo_test" => &["action", "crate", "rationale", "predicted_next_actions"],
+        "semantic_map" => &["action", "crate", "rationale", "predicted_next_actions"],
+        "symbol_window" => &[
+            "action",
+            "crate",
+            "symbol",
+            "rationale",
+            "predicted_next_actions",
+        ],
+        "symbol_refs" => &[
+            "action",
+            "crate",
+            "symbol",
+            "rationale",
+            "predicted_next_actions",
+        ],
+        "execution_path" => &[
+            "action",
+            "crate",
+            "from",
+            "to",
+            "rationale",
+            "predicted_next_actions",
+        ],
+        "batch" => &["action", "actions", "rationale", "predicted_next_actions"],
+        _ => &["action", "rationale", "predicted_next_actions"],
+    }
+}
+
+fn prompt_extra_notes(action: &str) -> Vec<String> {
+    match action {
+        "plan" => vec![
+            format!(
+                "Ops: {}.",
+                schema_enum_values::<PlanOp>().join(", ")
+            ),
+            "Use `add_edge` / `remove_edge` for DAG edges; do not emit `create_edge`.".to_string(),
+            "Mutating plan ops require a non-empty `question` field.".to_string(),
+        ],
+        "objectives" => vec![format!(
+            "Ops: {}.",
+            schema_enum_values::<ObjectivesOp>().join(", ")
+        )],
+        "issue" => vec![format!(
+            "Ops: {}.",
+            schema_enum_values::<IssueOp>().join(", ")
+        )],
+        "rename_symbol" => vec![
+            "Provide either `old_symbol` + `new_symbol` or a non-empty `renames` array.".to_string(),
+            "Mutating rename ops require a non-empty `question` field.".to_string(),
+        ],
+        "apply_patch" => vec!["Mutating patch ops require a non-empty `question` field.".to_string()],
+        "batch" => vec![
+            "Read-only only: mutating actions inside `actions` are rejected.".to_string(),
+            "Max 8 items; batch items omit `rationale`, `predicted_next_actions`, and `observation`.".to_string(),
+        ],
+        _ => Vec::new(),
+    }
+}
+
 pub fn plan_set_task_status_action_example(task_id: &str, status: &str, rationale: &str) -> String {
     compact_example_json(json!({
         "action": "plan",
@@ -951,15 +1039,13 @@ fn build_tool_actions_list() -> Vec<(&'static str, &'static str, Option<&'static
 }
 
 pub fn selected_tool_protocol_schema_text(actions: &[&str]) -> String {
-    let schema = schema_for!(ToolAction);
-    let value = serde_json::to_value(&schema).unwrap_or_else(|_| Value::Object(Default::default()));
     let mut out = String::new();
     out.push_str(&format!(
-        "Only the schemas below are in scope for this turn. {} The `action` field must match one of these entries.\n",
+        "Only the actions below are in scope for this turn. The `action` field must match one of these entries. {}\n",
         crate::prompt_contract::ACTION_EMIT_LINE
     ));
     out.push_str(
-        "Common fields appear in every action: `rationale` (non-empty), `predicted_next_actions` (2-3 items), optional `observation`, and optional provenance fields `task_id`, `objective_id`, `intent`.\n\n",
+        "Common fields: `rationale`, `predicted_next_actions`, optional `observation`, optional provenance `task_id` / `objective_id` / `intent`.\n\n",
     );
 
     let actions_meta = build_tool_actions_list();
@@ -973,49 +1059,19 @@ pub fn selected_tool_protocol_schema_text(actions: &[&str]) -> String {
         else {
             continue;
         };
-        let schema = find_action_schema(&value, action)
-            .and_then(|v| serde_json::to_string(v).ok())
-            .unwrap_or_else(|| "{}".to_string());
+        let required = prompt_required_fields(action)
+            .iter()
+            .map(|field| format!("`{field}`"))
+            .collect::<Vec<_>>()
+            .join(", ");
         out.push_str(&format!(
-            "Action: `{action}` — {desc}\n```json\n{schema}\n```\n\n"
+            "Action: `{action}` — {desc}\nRequired: {required}\n",
         ));
-        let mut derived_notes = Vec::new();
-        match *action {
-            "plan" => {
-                let ops = schema_enum_values::<PlanOp>();
-                if !ops.is_empty() {
-                    derived_notes.push(format!(
-                        "Schema-derived `plan.op` values: {}.",
-                        ops.join(", ")
-                    ));
-                }
-                derived_notes.push(
-                    "Schema-derived reminder: use `add_edge` / `remove_edge` for DAG edges; do not emit `create_edge`.".to_string(),
-                );
-            }
-            "issue" => {
-                let ops = schema_enum_values::<IssueOp>();
-                if !ops.is_empty() {
-                    derived_notes.push(format!(
-                        "Schema-derived `issue.op` values: {}.",
-                        ops.join(", ")
-                    ));
-                }
-            }
-            "objectives" => {
-                let ops = schema_enum_values::<ObjectivesOp>();
-                if !ops.is_empty() {
-                    derived_notes.push(format!(
-                        "Schema-derived `objectives.op` values: {}.",
-                        ops.join(", ")
-                    ));
-                }
-            }
-            _ => {}
-        }
+        let derived_notes = prompt_extra_notes(action);
         if !derived_notes.is_empty() {
-            out.push_str(&format!("{}\n\n", derived_notes.join("\n")));
+            out.push_str(&format!("{}\n", derived_notes.join("\n")));
         }
+        out.push('\n');
         rendered_any = true;
     }
 
@@ -1095,7 +1151,10 @@ pub(crate) fn validate_tool_action(action: &Value) -> Result<()> {
     } else {
         return Err(anyhow!("action missing non-empty 'rationale'"));
     }
-    if let Some(observation) = normalized_action.get("observation").and_then(|v| v.as_str()) {
+    if let Some(observation) = normalized_action
+        .get("observation")
+        .and_then(|v| v.as_str())
+    {
         if observation.chars().count() > ACTION_OBSERVATION_MAX_LEN {
             return Err(anyhow!(
                 "observation exceeds max length ({ACTION_OBSERVATION_MAX_LEN} chars)"
@@ -1171,7 +1230,10 @@ fn validate_manual_length_guards(action: &Value) -> Result<()> {
             ));
         }
     }
-    if let Some(predicted) = action.get("predicted_next_actions").and_then(|v| v.as_array()) {
+    if let Some(predicted) = action
+        .get("predicted_next_actions")
+        .and_then(|v| v.as_array())
+    {
         for (idx, item) in predicted.iter().enumerate() {
             let intent = item
                 .get("intent")
@@ -1617,16 +1679,4 @@ fn missing_field_for_violation_action(action: &Value) -> Option<String> {
         "upsert" => missing_field_in_action(action, "violation"),
         "resolve" => missing_field_in_action(action, "violation_id"),
         "set_status" => missing_field_in_action(action, "status"),
-        "replace" => missing_field_in_action(action, "report"),
-        _ => None,
-    }
-}
-
-fn missing_field_for_invariants_action(action: &Value) -> Option<String> {
-    let op = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
-    match op {
-        "read" => None,
-        "promote" | "enforce" | "collapse" => missing_field_in_action(action, "id"),
-        _ => None,
-    }
-}
+        "replace" => missing_field_in_action(action,
