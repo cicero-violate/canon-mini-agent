@@ -46,6 +46,15 @@ fn main() -> Result<()> {
     } else if canon_mini_agent::has_flag(&args, "--effect-boundary-only") {
         let _ = canon_mini_agent::graph_metrics::generate_effect_boundary_leak_issues(&workspace)?;
         Ok(())
+    } else if canon_mini_agent::has_flag(&args, "--logging-dispersion-only") {
+        let _ = canon_mini_agent::graph_metrics::generate_logging_dispersion_issues(&workspace)?;
+        Ok(())
+    } else if canon_mini_agent::has_flag(&args, "--process-spawn-only") {
+        let _ = canon_mini_agent::graph_metrics::generate_process_spawn_dispersion_issues(&workspace)?;
+        Ok(())
+    } else if canon_mini_agent::has_flag(&args, "--network-usage-only") {
+        let _ = canon_mini_agent::graph_metrics::generate_network_usage_dispersion_issues(&workspace)?;
+        Ok(())
     } else if canon_mini_agent::has_flag(&args, "--representation-fanout-only") {
         let _ = canon_mini_agent::graph_metrics::generate_representation_fanout_issues(&workspace)?;
         Ok(())

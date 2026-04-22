@@ -86,14 +86,19 @@ Completed:
   - `31` open `scc_region_reduction` issues
   - `0` open `dominator_region_reduction` issues at the current threshold
   - legacy `cfg_region_reduction` issues resolved
+- richer effect classes now emitted by the compiler facts:
+  - `PerformsLogging`
+  - `SpawnsProcess`
+  - `UsesNetwork`
+- transition semantics strengthened:
+  - `TransitionsState` now requires workflow coordination or a same-domain
+    read/write cycle
+  - `CoordinatesTransition` records the stronger transition proof shape
 
 Missing:
 
 - richer effect classes:
-  - process spawn
-  - network
-  - logging split from generic artifact/state IO
-- stronger transition semantics than “branches + writes state”
+  - effect-domain reports that exploit the new logging/process/network facts
 - tighter proof boundary between canonical boundary modules and leak candidates
 - richer dominator-funnel signal if the dominator family should emit live issues
 
@@ -563,14 +568,17 @@ Status:
     - `dominator_region_reduction`
 - still missing:
   - richer dominator-funnel signal if the dominator family should become live
-  - richer effect classes and stronger transition semantics
+  - analyzer/reporting passes that exploit the richer effect classes and
+    strengthened transition semantics
 
 ## Near-Term Implementation Order
 
 Do this next, in order:
 
-1. refine effect classes beyond generic state/artifact IO
-2. tighten `state_transition_dispersion` with richer transition semantics
+1. add analyzer/reporting passes that exploit logging/process/network effect facts
+2. decide whether `state_transition_dispersion` should consume
+   `CoordinatesTransition` directly or keep relying on the stronger
+   `TransitionsState` edges
 3. decide whether dominator-funnel evidence needs new compiler facts or lower-risk
    analyzer signals
 4. only then revisit dominator-region live emission if the stronger facts justify it
@@ -599,4 +607,5 @@ Reason:
 
 - planner-loop ownership now converges on one canonical owner candidate
 - CFG-region splitting is complete and only the SCC family is live at current thresholds
-- the next useful step is richer effect modeling, not more workflow/control reshaping
+- the compiler now emits richer effect and transition facts, but the analyzer only
+  partially exploits them

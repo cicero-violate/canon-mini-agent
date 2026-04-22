@@ -1065,6 +1065,9 @@ fn generate_refactor_issue_batch(workspace: &Path) {
     let _ = crate::graph_metrics::generate_planner_loop_fragmentation_issues(workspace);
     let _ = crate::graph_metrics::generate_implicit_state_machine_issues(workspace);
     let _ = crate::graph_metrics::generate_effect_boundary_leak_issues(workspace);
+    let _ = crate::graph_metrics::generate_logging_dispersion_issues(workspace);
+    let _ = crate::graph_metrics::generate_process_spawn_dispersion_issues(workspace);
+    let _ = crate::graph_metrics::generate_network_usage_dispersion_issues(workspace);
     let _ = crate::graph_metrics::generate_representation_fanout_issues(workspace);
     let _ = crate::graph_metrics::generate_scc_region_reduction_issues(workspace);
     let _ = crate::graph_metrics::generate_dominator_region_reduction_issues(workspace);

@@ -322,12 +322,24 @@ pub fn generate_state_transition_dispersion_issues(workspace: &Path) -> Result<u
             continue;
         };
 
+        let mut coordinated_by_symbol: HashMap<String, Vec<String>> = HashMap::new();
+        for (symbol, proof_type) in idx.semantic_edges_by_relation("CoordinatesTransition") {
+            coordinated_by_symbol
+                .entry(symbol)
+                .or_default()
+                .push(proof_type);
+        }
+
         let crate_name = crate_name.replace('-', "_");
         for (state_domain, transitions) in collect_state_transitions_by_domain(&idx) {
             let mut transitions: Vec<String> = transitions.into_iter().collect();
             transitions.sort();
-            let issue =
-                build_state_transition_dispersion_issue(&crate_name, &state_domain, &transitions);
+            let issue = build_state_transition_dispersion_issue(
+                &crate_name,
+                &state_domain,
+                &transitions,
+                &coordinated_by_symbol,
+            );
             desired_ids.insert(issue.id.clone());
             mutated += upsert_bridge_issue(&mut file, issue, transitions.len() > 1);
         }
@@ -555,6 +567,139 @@ pub fn generate_effect_boundary_leak_issues(workspace: &Path) -> Result<usize> {
             &file,
             None,
             "generate_effect_boundary_leak_issues",
+        )?;
+    }
+
+    Ok(mutated)
+}
+
+pub fn generate_logging_dispersion_issues(workspace: &Path) -> Result<usize> {
+    let mut file: IssuesFile = load_issues_file(workspace);
+    let before = serde_json::to_value(&file)?;
+    let mut mutated = 0usize;
+
+    for crate_name in SemanticIndex::available_crates(workspace) {
+        let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
+            continue;
+        };
+
+        let mut by_module: HashMap<String, Vec<String>> = HashMap::new();
+        for (symbol, _) in idx.semantic_edges_by_relation("PerformsLogging") {
+            if !looks_like_symbol(&symbol) {
+                continue;
+            }
+            let module = symbol
+                .rsplit_once("::")
+                .map(|(m, _)| m.to_string())
+                .unwrap_or_else(|| symbol.clone());
+            by_module.entry(module).or_default().push(symbol);
+        }
+
+        let crate_name = crate_name.replace('-', "_");
+        let non_canonical_count: usize = by_module
+            .iter()
+            .filter(|(module, _)| !is_canonical_logging_module(module))
+            .map(|(_, syms)| syms.len())
+            .sum();
+        let desired = build_logging_dispersion_issue(&crate_name, &by_module);
+        mutated += upsert_bridge_issue(&mut file, desired, non_canonical_count > 10);
+    }
+
+    rescore_all(&mut file);
+    let after = serde_json::to_value(&file)?;
+    if before != after {
+        persist_issues_projection_with_writer(
+            workspace,
+            &file,
+            None,
+            "generate_logging_dispersion_issues",
+        )?;
+    }
+
+    Ok(mutated)
+}
+
+pub fn generate_process_spawn_dispersion_issues(workspace: &Path) -> Result<usize> {
+    let mut file: IssuesFile = load_issues_file(workspace);
+    let before = serde_json::to_value(&file)?;
+    let mut mutated = 0usize;
+
+    for crate_name in SemanticIndex::available_crates(workspace) {
+        let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
+            continue;
+        };
+
+        let mut by_module: HashMap<String, Vec<String>> = HashMap::new();
+        for (symbol, _) in idx.semantic_edges_by_relation("SpawnsProcess") {
+            if !looks_like_symbol(&symbol) {
+                continue;
+            }
+            let module = symbol
+                .rsplit_once("::")
+                .map(|(m, _)| m.to_string())
+                .unwrap_or_else(|| symbol.clone());
+            by_module.entry(module).or_default().push(symbol);
+        }
+
+        let crate_name = crate_name.replace('-', "_");
+        let non_canonical_modules: usize = by_module
+            .keys()
+            .filter(|m| !is_canonical_process_boundary(m))
+            .count();
+        let desired = build_process_spawn_dispersion_issue(&crate_name, &by_module);
+        mutated += upsert_bridge_issue(&mut file, desired, non_canonical_modules > 1);
+    }
+
+    rescore_all(&mut file);
+    let after = serde_json::to_value(&file)?;
+    if before != after {
+        persist_issues_projection_with_writer(
+            workspace,
+            &file,
+            None,
+            "generate_process_spawn_dispersion_issues",
+        )?;
+    }
+
+    Ok(mutated)
+}
+
+pub fn generate_network_usage_dispersion_issues(workspace: &Path) -> Result<usize> {
+    let mut file: IssuesFile = load_issues_file(workspace);
+    let before = serde_json::to_value(&file)?;
+    let mut mutated = 0usize;
+
+    for crate_name in SemanticIndex::available_crates(workspace) {
+        let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
+            continue;
+        };
+
+        let mut by_module: HashMap<String, Vec<String>> = HashMap::new();
+        for (symbol, _) in idx.semantic_edges_by_relation("UsesNetwork") {
+            if !looks_like_symbol(&symbol) {
+                continue;
+            }
+            let module = symbol
+                .rsplit_once("::")
+                .map(|(m, _)| m.to_string())
+                .unwrap_or_else(|| symbol.clone());
+            by_module.entry(module).or_default().push(symbol);
+        }
+
+        let crate_name = crate_name.replace('-', "_");
+        let total_symbols: usize = by_module.values().map(|v| v.len()).sum();
+        let desired = build_network_usage_dispersion_issue(&crate_name, &by_module);
+        mutated += upsert_bridge_issue(&mut file, desired, total_symbols > 0);
+    }
+
+    rescore_all(&mut file);
+    let after = serde_json::to_value(&file)?;
+    if before != after {
+        persist_issues_projection_with_writer(
+            workspace,
+            &file,
+            None,
+            "generate_network_usage_dispersion_issues",
         )?;
     }
 
@@ -1089,6 +1234,7 @@ fn build_state_transition_dispersion_issue(
     crate_name: &str,
     state_domain: &str,
     transitions: &[String],
+    coordinated_by_symbol: &HashMap<String, Vec<String>>,
 ) -> Issue {
     let display_state = display_state_domain(state_domain);
     let transition_list = transitions
@@ -1096,9 +1242,42 @@ fn build_state_transition_dispersion_issue(
         .map(|symbol| format!("`{symbol}`"))
         .collect::<Vec<_>>()
         .join(", ");
+
+    let mut workflow_coordinated_count = 0usize;
+    let mut read_write_cycle_count = 0usize;
+    for symbol in transitions {
+        if let Some(proof_types) = coordinated_by_symbol.get(symbol) {
+            for pt in proof_types {
+                if pt == "transition::workflow_coordinated" {
+                    workflow_coordinated_count += 1;
+                } else if pt == "transition::read_write_cycle" {
+                    read_write_cycle_count += 1;
+                }
+            }
+        }
+    }
+    let coordinated_count = workflow_coordinated_count + read_write_cycle_count;
+    let all_coordinated = !transitions.is_empty() && coordinated_count == transitions.len();
+    let proof_tier = if all_coordinated { "proof" } else { "hypothesis" };
+
     let evidence = transitions
         .iter()
-        .map(|symbol| format!("transition site `{symbol}` mutates `{display_state}` after branching"))
+        .map(|symbol| {
+            let coordination = coordinated_by_symbol.get(symbol).map(|pts| {
+                pts.iter()
+                    .filter_map(|pt| pt.strip_prefix("transition::"))
+                    .collect::<Vec<_>>()
+                    .join("+")
+            });
+            match coordination.as_deref() {
+                Some(proof) if !proof.is_empty() => format!(
+                    "transition site `{symbol}` mutates `{display_state}` [{proof}]"
+                ),
+                _ => format!(
+                    "transition site `{symbol}` mutates `{display_state}` after branching"
+                ),
+            }
+        })
         .collect::<Vec<_>>();
 
     Issue {
@@ -1131,7 +1310,11 @@ fn build_state_transition_dispersion_issue(
             "display_state": display_state,
             "transition_count": transitions.len(),
             "transitions": transitions,
-            "proof_tier": "hypothesis",
+            "proof_tier": proof_tier,
+            "coordinates_transition_count": coordinated_count,
+            "workflow_coordinated_count": workflow_coordinated_count,
+            "read_write_cycle_count": read_write_cycle_count,
+            "all_coordinated": all_coordinated,
         }),
         acceptance_criteria: vec![
             format!("state mutations for `{display_state}` route through one canonical transition layer"),
@@ -1897,6 +2080,266 @@ fn build_bridge_issue(stats: &BridgeConnectivityStats) -> Issue {
     }
 }
 
+fn is_canonical_logging_module(module: &str) -> bool {
+    module == "logging" || module.starts_with("logging::")
+}
+
+fn is_canonical_process_boundary(module: &str) -> bool {
+    module == "process"
+        || module.starts_with("process::")
+        || module == "tools"
+        || module.starts_with("tools::")
+}
+
+fn build_logging_dispersion_issue(
+    crate_name: &str,
+    by_module: &HashMap<String, Vec<String>>,
+) -> Issue {
+    let mut non_canonical: Vec<(String, Vec<String>)> = Vec::new();
+    let mut canonical_count = 0usize;
+    for (module, symbols) in by_module {
+        if is_canonical_logging_module(module) {
+            canonical_count += symbols.len();
+        } else {
+            let mut syms = symbols.clone();
+            syms.sort();
+            non_canonical.push((module.clone(), syms));
+        }
+    }
+    non_canonical.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.0.cmp(&b.0)));
+    let total_non_canonical: usize = non_canonical.iter().map(|(_, s)| s.len()).sum();
+    let total = canonical_count + total_non_canonical;
+
+    let evidence = non_canonical
+        .iter()
+        .take(8)
+        .map(|(module, syms)| {
+            let sample = syms
+                .iter()
+                .take(3)
+                .map(|s| format!("`{s}`"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("`{module}` has {} direct logging site(s): {sample}", syms.len())
+        })
+        .collect::<Vec<_>>();
+
+    let module_metrics: Vec<Value> = non_canonical
+        .iter()
+        .map(|(module, syms)| {
+            json!({ "module": module, "direct_logging_count": syms.len(), "symbols": syms })
+        })
+        .collect();
+
+    Issue {
+        id: format!("auto_logging_dispersion_{}", sanitize_fragment(crate_name)),
+        title: format!(
+            "Logging dispersion in `{crate_name}` ({total_non_canonical} direct sites across {} modules)",
+            non_canonical.len()
+        ),
+        status: if total_non_canonical > 10 { "open" } else { "resolved" }.to_string(),
+        priority: if total_non_canonical >= 20 { "high" } else { "medium" }.to_string(),
+        kind: "logic".to_string(),
+        description: format!(
+            "Crate `{crate_name}` has {total_non_canonical} function(s) outside the `logging` module that \
+             perform direct logging calls ({total} total, {canonical_count} in canonical boundary).\n\n\
+             Dispersed logging makes it hard to add structured event metadata, change log backends, \
+             or enforce consistent log levels. Centralizing logging calls through a structured event \
+             emission layer reduces this surface.\n\n\
+             Recommended direction: route direct log calls through the `logging` module boundary \
+             or emit structured events that the logging layer serializes."
+        ),
+        location: format!("state/rustc/{crate_name}/graph.json"),
+        scope: format!("crate:{crate_name}"),
+        metrics: json!({
+            "task": "CentralizeLogging",
+            "proof_tier": "hypothesis",
+            "total_logging_sites": total,
+            "canonical_logging_sites": canonical_count,
+            "non_canonical_logging_sites": total_non_canonical,
+            "non_canonical_module_count": non_canonical.len(),
+            "modules": module_metrics,
+        }),
+        acceptance_criteria: vec![
+            format!("direct logging calls outside `logging::` in `{crate_name}` reduced by ≥50%"),
+            "remaining direct logging calls are in leaf call sites where delegation adds no value".to_string(),
+            "graph.json is regenerated and non_canonical_logging_sites decreases".to_string(),
+        ],
+        evidence,
+        discovered_by: "graph_metrics_detector".to_string(),
+        ..Issue::default()
+    }
+}
+
+fn build_process_spawn_dispersion_issue(
+    crate_name: &str,
+    by_module: &HashMap<String, Vec<String>>,
+) -> Issue {
+    let mut canonical: Vec<(String, Vec<String>)> = Vec::new();
+    let mut non_canonical: Vec<(String, Vec<String>)> = Vec::new();
+    for (module, symbols) in by_module {
+        let mut syms = symbols.clone();
+        syms.sort();
+        if is_canonical_process_boundary(module) {
+            canonical.push((module.clone(), syms));
+        } else {
+            non_canonical.push((module.clone(), syms));
+        }
+    }
+    non_canonical.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.0.cmp(&b.0)));
+    canonical.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.0.cmp(&b.0)));
+
+    let total_non_canonical: usize = non_canonical.iter().map(|(_, s)| s.len()).sum();
+    let total_canonical: usize = canonical.iter().map(|(_, s)| s.len()).sum();
+    let total = total_canonical + total_non_canonical;
+
+    let evidence = non_canonical
+        .iter()
+        .map(|(module, syms)| {
+            format!(
+                "`{module}` spawns processes outside canonical boundary: {}",
+                syms.iter().map(|s| format!("`{s}`")).collect::<Vec<_>>().join(", ")
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let module_metrics: Vec<Value> = {
+        let mut all: Vec<(String, Vec<String>)> = by_module
+            .iter()
+            .map(|(m, s)| {
+                let mut syms = s.clone();
+                syms.sort();
+                (m.clone(), syms)
+            })
+            .collect();
+        all.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.0.cmp(&b.0)));
+        all.iter()
+            .map(|(module, syms)| {
+                json!({
+                    "module": module,
+                    "canonical": is_canonical_process_boundary(module),
+                    "spawn_count": syms.len(),
+                    "symbols": syms,
+                })
+            })
+            .collect()
+    };
+
+    Issue {
+        id: format!(
+            "auto_process_spawn_dispersion_{}",
+            sanitize_fragment(crate_name)
+        ),
+        title: format!(
+            "Process spawn dispersion in `{crate_name}` ({total_non_canonical} non-canonical sites across {} modules)",
+            non_canonical.len()
+        ),
+        status: if non_canonical.len() > 1 { "open" } else { "resolved" }.to_string(),
+        priority: if non_canonical.len() >= 3 { "high" } else { "medium" }.to_string(),
+        kind: "logic".to_string(),
+        description: format!(
+            "Crate `{crate_name}` has {total} process-spawning function(s): {total_canonical} in canonical \
+             boundary module(s) (`process`, `tools`) and {total_non_canonical} outside.\n\n\
+             Process spawning is a high-blast-radius side effect that should flow through a narrow execution boundary. \
+             When multiple non-canonical modules spawn subprocesses directly, error handling, environment setup, \
+             and stdout/stderr routing tend to diverge.\n\n\
+             Recommended direction: route all process spawning through `process::` and restrict callers to that module."
+        ),
+        location: format!("state/rustc/{crate_name}/graph.json"),
+        scope: format!("crate:{crate_name}"),
+        metrics: json!({
+            "task": "CentralizeProcessSpawning",
+            "proof_tier": "hypothesis",
+            "total_spawn_sites": total,
+            "canonical_spawn_sites": total_canonical,
+            "non_canonical_spawn_sites": total_non_canonical,
+            "non_canonical_module_count": non_canonical.len(),
+            "modules": module_metrics,
+        }),
+        acceptance_criteria: vec![
+            format!("all process spawning in `{crate_name}` routes through `process::` boundary"),
+            "non-canonical process-spawning symbols are eliminated or converted to thin delegates".to_string(),
+            "graph.json is regenerated and non_canonical_spawn_sites = 0".to_string(),
+        ],
+        evidence,
+        discovered_by: "graph_metrics_detector".to_string(),
+        ..Issue::default()
+    }
+}
+
+fn build_network_usage_dispersion_issue(
+    crate_name: &str,
+    by_module: &HashMap<String, Vec<String>>,
+) -> Issue {
+    let mut modules: Vec<(String, Vec<String>)> = by_module
+        .iter()
+        .map(|(module, symbols)| {
+            let mut syms = symbols.clone();
+            syms.sort();
+            (module.clone(), syms)
+        })
+        .collect();
+    modules.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.0.cmp(&b.0)));
+
+    let total: usize = modules.iter().map(|(_, s)| s.len()).sum();
+    let module_count = modules.len();
+
+    let evidence = modules
+        .iter()
+        .map(|(module, syms)| {
+            format!(
+                "`{module}` uses network I/O: {}",
+                syms.iter().map(|s| format!("`{s}`")).collect::<Vec<_>>().join(", ")
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let module_metrics: Vec<Value> = modules
+        .iter()
+        .map(|(module, syms)| {
+            json!({ "module": module, "network_site_count": syms.len(), "symbols": syms })
+        })
+        .collect();
+
+    Issue {
+        id: format!(
+            "auto_network_usage_dispersion_{}",
+            sanitize_fragment(crate_name)
+        ),
+        title: format!(
+            "Network usage dispersion in `{crate_name}` ({total} sites across {module_count} modules)"
+        ),
+        status: if total > 0 { "open" } else { "resolved" }.to_string(),
+        priority: if module_count >= 3 { "high" } else { "medium" }.to_string(),
+        kind: "logic".to_string(),
+        description: format!(
+            "Crate `{crate_name}` has {total} network-using function(s) across {module_count} module(s).\n\n\
+             No canonical network access layer has been identified. Network calls scattered across modules \
+             resist uniform retry/timeout policy, make offline testing harder, and leak transport \
+             concerns into business logic.\n\n\
+             Recommended direction: establish a dedicated network access layer (e.g. `llm_runtime::`) \
+             and route all network I/O through it."
+        ),
+        location: format!("state/rustc/{crate_name}/graph.json"),
+        scope: format!("crate:{crate_name}"),
+        metrics: json!({
+            "task": "CentralizeNetworkAccess",
+            "proof_tier": "hypothesis",
+            "total_network_sites": total,
+            "module_count": module_count,
+            "modules": module_metrics,
+        }),
+        acceptance_criteria: vec![
+            format!("all network I/O in `{crate_name}` routes through one canonical access layer"),
+            "modules outside the network layer do not hold direct network-using symbols".to_string(),
+            "graph.json is regenerated and network sites collapse to one module".to_string(),
+        ],
+        evidence,
+        discovered_by: "graph_metrics_detector".to_string(),
+        ..Issue::default()
+    }
+}
+
 fn upsert_bridge_issue(file: &mut IssuesFile, desired: Issue, active: bool) -> usize {
     let issue_id = desired.id.clone();
     let mut mutated = 0usize;
@@ -1962,13 +2405,13 @@ fn upsert_bridge_issue(file: &mut IssuesFile, desired: Issue, active: bool) -> u
 mod tests {
     use super::{
         analyze_bridge_connectivity, generate_artifact_writer_dispersion_issues,
-        generate_bridge_connectivity_issues, generate_effect_boundary_leak_issues,
-        generate_dominator_region_reduction_issues,
-        generate_error_shaping_dispersion_issues, generate_implicit_state_machine_issues,
-        generate_planner_loop_fragmentation_issues, generate_representation_fanout_issues,
-        generate_scc_region_reduction_issues,
-        generate_state_transition_dispersion_issues, issue_id, priority_from_ratio,
-        sanitize_fragment,
+        generate_bridge_connectivity_issues, generate_dominator_region_reduction_issues,
+        generate_effect_boundary_leak_issues, generate_error_shaping_dispersion_issues,
+        generate_implicit_state_machine_issues, generate_logging_dispersion_issues,
+        generate_network_usage_dispersion_issues, generate_planner_loop_fragmentation_issues,
+        generate_process_spawn_dispersion_issues, generate_representation_fanout_issues,
+        generate_scc_region_reduction_issues, generate_state_transition_dispersion_issues,
+        issue_id, priority_from_ratio, sanitize_fragment,
     };
     use crate::constants::ISSUES_FILE;
     use serde_json::json;
@@ -2924,5 +3367,141 @@ mod tests {
             .expect("crate_b issue");
         assert_eq!(crate_a.status, "resolved");
         assert_eq!(crate_b.status, "open");
+    }
+
+    #[test]
+    fn logging_dispersion_emits_issue_for_non_canonical_logging_sites() {
+        let workspace = unique_workspace("logging-dispersion");
+        write_index(&workspace, &["canon_mini_agent"]);
+        let all_syms: Vec<String> = (0..12)
+            .map(|i| format!("tools::run_action_{i}"))
+            .chain((0..6).map(|i| format!("planner::step_{i}")))
+            .collect();
+        let node_symbols: Vec<&str> = all_syms.iter().map(|s| s.as_str()).collect();
+        let edges: Vec<serde_json::Value> = all_syms
+            .iter()
+            .map(|sym| {
+                json!({
+                    "relation": "PerformsLogging",
+                    "from": sym,
+                    "to": "effect::logging",
+                })
+            })
+            .collect();
+        write_graph_with_edges(&workspace, "canon_mini_agent", &node_symbols, edges);
+
+        assert!(generate_logging_dispersion_issues(&workspace).unwrap() > 0);
+        let issues = read_issues(&workspace);
+        let issue = issues
+            .iter()
+            .find(|i| i.id.starts_with("auto_logging_dispersion_"))
+            .expect("logging dispersion issue");
+        assert_eq!(issue.status, "open");
+        assert!(
+            issue.metrics["non_canonical_logging_sites"]
+                .as_u64()
+                .unwrap_or(0)
+                > 10
+        );
+    }
+
+    #[test]
+    fn process_spawn_dispersion_emits_issue_for_multiple_non_canonical_modules() {
+        let workspace = unique_workspace("process-spawn-dispersion");
+        write_index(&workspace, &["canon_mini_agent"]);
+        write_graph_with_edges(
+            &workspace,
+            "canon_mini_agent",
+            &[
+                "process::run_command",
+                "tools::exec_git",
+                "planner::invoke_rustc",
+                "engine::spawn_worker",
+            ],
+            vec![
+                json!({ "relation": "SpawnsProcess", "from": "process::run_command", "to": "effect::process_spawn" }),
+                json!({ "relation": "SpawnsProcess", "from": "tools::exec_git", "to": "effect::process_spawn" }),
+                json!({ "relation": "SpawnsProcess", "from": "planner::invoke_rustc", "to": "effect::process_spawn" }),
+                json!({ "relation": "SpawnsProcess", "from": "engine::spawn_worker", "to": "effect::process_spawn" }),
+            ],
+        );
+
+        assert!(generate_process_spawn_dispersion_issues(&workspace).unwrap() > 0);
+        let issues = read_issues(&workspace);
+        let issue = issues
+            .iter()
+            .find(|i| i.id.starts_with("auto_process_spawn_dispersion_"))
+            .expect("process spawn dispersion issue");
+        assert_eq!(issue.status, "open");
+        assert!(
+            issue.metrics["non_canonical_module_count"]
+                .as_u64()
+                .unwrap_or(0)
+                >= 2
+        );
+    }
+
+    #[test]
+    fn network_usage_dispersion_emits_issue_when_network_sites_exist() {
+        let workspace = unique_workspace("network-usage-dispersion");
+        write_index(&workspace, &["canon_mini_agent"]);
+        write_graph_with_edges(
+            &workspace,
+            "canon_mini_agent",
+            &["llm_runtime::send_request", "tools::fetch_remote"],
+            vec![
+                json!({ "relation": "UsesNetwork", "from": "llm_runtime::send_request", "to": "effect::network" }),
+                json!({ "relation": "UsesNetwork", "from": "tools::fetch_remote", "to": "effect::network" }),
+            ],
+        );
+
+        assert!(generate_network_usage_dispersion_issues(&workspace).unwrap() > 0);
+        let issues = read_issues(&workspace);
+        let issue = issues
+            .iter()
+            .find(|i| i.id.starts_with("auto_network_usage_dispersion_"))
+            .expect("network usage dispersion issue");
+        assert_eq!(issue.status, "open");
+        assert_eq!(issue.metrics["total_network_sites"].as_u64(), Some(2));
+        assert_eq!(issue.metrics["module_count"].as_u64(), Some(2));
+    }
+
+    #[test]
+    fn state_transition_dispersion_records_coordinates_transition_proof() {
+        let workspace = unique_workspace("state-transition-coordinated");
+        write_index(&workspace, &["canon_mini_agent"]);
+        write_graph_with_edges(
+            &workspace,
+            "canon_mini_agent",
+            &[
+                "planner::advance_plan_state",
+                "tools::save_violations_after_review",
+            ],
+            vec![
+                json!({ "relation": "TransitionsState", "from": "planner::advance_plan_state", "to": "state::VIOLATIONS_FILE" }),
+                json!({ "relation": "TransitionsState", "from": "tools::save_violations_after_review", "to": "state::VIOLATIONS_FILE" }),
+                json!({ "relation": "CoordinatesTransition", "from": "planner::advance_plan_state", "to": "transition::workflow_coordinated" }),
+                json!({ "relation": "CoordinatesTransition", "from": "tools::save_violations_after_review", "to": "transition::read_write_cycle" }),
+            ],
+        );
+
+        assert!(generate_state_transition_dispersion_issues(&workspace).unwrap() > 0);
+        let issues = read_issues(&workspace);
+        let issue = issues
+            .iter()
+            .find(|i| i.id.starts_with("auto_state_transition_dispersion_"))
+            .expect("state transition issue");
+        assert_eq!(issue.status, "open");
+        assert_eq!(issue.metrics["proof_tier"].as_str(), Some("proof"));
+        assert_eq!(
+            issue.metrics["coordinates_transition_count"].as_u64(),
+            Some(2)
+        );
+        assert_eq!(
+            issue.metrics["workflow_coordinated_count"].as_u64(),
+            Some(1)
+        );
+        assert_eq!(issue.metrics["read_write_cycle_count"].as_u64(), Some(1));
+        assert_eq!(issue.metrics["all_coordinated"].as_bool(), Some(true));
     }
 }

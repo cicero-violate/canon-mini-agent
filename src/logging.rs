@@ -701,32 +701,30 @@ pub(crate) fn append_orchestration_trace(event: &str, payload: Value) {
         .and_then(|v| usize::try_from(v).ok());
     let turn_id = payload.get("turn_id").and_then(|v| v.as_u64());
     let command_id = payload.get("command_id").and_then(|v| v.as_str());
+    let proposed_command = payload.get("proposed_command").cloned();
+    let op_summary = |name: &str, summary: Option<Value>| {
+        json!({
+            "name": name,
+            "summary": summary.unwrap_or_else(|| Value::String(name.to_string())),
+        })
+    };
     let op = payload
         .get("action")
         .and_then(|v| v.as_str())
         .map(|name| {
-            json!({
-                "name": name,
-                "summary": payload
+            op_summary(
+                name,
+                payload
                     .get("command_used")
-                    .or_else(|| payload.get("proposed_command"))
                     .cloned()
-                    .unwrap_or_else(|| Value::String(name.to_string())),
-            })
+                    .or_else(|| proposed_command.clone()),
+            )
         })
         .or_else(|| {
             payload
                 .get("proposed_action")
                 .and_then(|v| v.as_str())
-                .map(|name| {
-                    json!({
-                        "name": name,
-                        "summary": payload
-                            .get("proposed_command")
-                            .cloned()
-                            .unwrap_or_else(|| Value::String(name.to_string())),
-                    })
-                })
+                .map(|name| op_summary(name, proposed_command.clone()))
         });
     let ok = payload.get("success").and_then(|v| v.as_bool());
     let text = payload
