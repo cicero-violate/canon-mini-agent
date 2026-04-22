@@ -905,26 +905,27 @@ pub fn generate_dominator_region_reduction_issues(workspace: &Path) -> Result<us
                 continue;
             }
             let symbol = summary.symbol.clone();
-            let dominance_score = idx.cfg_dominance_score(&symbol);
+            let non_cleanup_fraction = idx.cfg_dominance_score(&symbol);
             let cfg_edges = idx.symbol_cfg_edges(&symbol);
             let back_edge_count = cfg_edges.iter().filter(|edge| edge.is_back_edge).count();
             let redundant_path_count = redundant_by_symbol.get(&symbol).copied().unwrap_or(0);
             let branch_score = summary.branch_score.unwrap_or(0.0);
+            // Dominator-region candidates: high branching, no back-edges (loop-free),
+            // and at least 2 SwitchInt terminators. non_cleanup_fraction is retained
+            // for context only — it does not gate emission.
             let qualifies = branch_score >= 4.0
                 && back_edge_count == 0
-                && dominance_score >= 0.55
                 && (summary.switchint_count >= 2 || redundant_path_count > 0);
             let issue = build_dominator_region_reduction_issue(
                 &crate_name,
                 &summary,
-                dominance_score,
+                non_cleanup_fraction,
                 redundant_path_count,
             );
             if qualifies {
                 let score = branch_score
                     + (redundant_path_count as f64 * 2.0)
-                    + (summary.switchint_count as f64)
-                    + (dominance_score as f64 * 10.0);
+                    + (summary.switchint_count as f64);
                 candidates.push((score, issue));
             }
         }
@@ -1892,18 +1893,24 @@ fn dominator_region_reduction_issue_id(crate_name: &str, symbol: &str) -> String
 fn build_dominator_region_reduction_issue(
     crate_name: &str,
     summary: &crate::semantic::SymbolSummary,
-    dominance_score: f32,
+    non_cleanup_fraction: f32,
     redundant_path_count: usize,
 ) -> Issue {
     let branch_score = summary.branch_score.unwrap_or(0.0);
+    let mir_blocks = summary.mir_blocks.unwrap_or(0);
+    // switchint_density: SwitchInt terminators per MIR block — higher = more dispatch-shaped
+    let switchint_density = if mir_blocks > 0 {
+        summary.switchint_count as f64 / mir_blocks as f64
+    } else {
+        0.0
+    };
     let evidence = vec![
         format!(
-            "branch_score={branch_score:.2}, switchint_count={}, has_back_edges={}",
+            "branch_score={branch_score:.1}, switchint_count={}, switchint_density={switchint_density:.2}",
             summary.switchint_count,
-            summary.has_back_edges
         ),
         format!(
-            "cfg_dominance_score={dominance_score:.2}, redundant_path_count={redundant_path_count}"
+            "non_cleanup_fraction={non_cleanup_fraction:.2}, redundant_path_count={redundant_path_count}, back_edges=0"
         ),
     ];
 
@@ -1918,12 +1925,16 @@ fn build_dominator_region_reduction_issue(
         },
         kind: "logic".to_string(),
         description: format!(
-            "Function `{}` in crate `{}` contains a dominance-heavy branch funnel without loop back edges. \
-             The CFG shows concentrated non-cleanup branch structure and repeated path pressure in one control funnel.\n\n\
-             Recommended direction: collapse the branch funnel into a smaller dispatcher, extract a table-driven reducer, or merge duplicate exits."
-            ,
+            "Function `{}` in crate `{}` is a loop-free, heavily-branching dispatch function \
+             (branch_score={branch_score:.1}, switchint_count={}, switchint_density={switchint_density:.2} per block).\n\n\
+             Functions with many SwitchInt terminators and no back-edges are candidates for \
+             dominator-region reduction: extract a table-driven dispatcher, collapse parallel \
+             match arms into a shared helper, or split the function along its natural branch regions.\n\n\
+             Recommended direction: identify the dominant SwitchInt bottleneck and extract each \
+             branch arm into a named helper, leaving a thin dispatch entry.",
             summary.symbol,
-            crate_name
+            crate_name,
+            summary.switchint_count,
         ),
         location: shorten_symbol_location(summary),
         scope: format!("crate:{crate_name}"),
@@ -1931,17 +1942,18 @@ fn build_dominator_region_reduction_issue(
             "task": "ReduceDominatorRegion",
             "proof_tier": "hypothesis",
             "symbol": summary.symbol,
-            "region_kind": "dominator branch funnel",
+            "region_kind": "loop-free dispatch funnel",
             "branch_score": branch_score,
             "switchint_count": summary.switchint_count,
-            "cfg_dominance_score": dominance_score,
+            "switchint_density": switchint_density,
+            "non_cleanup_fraction": non_cleanup_fraction,
             "back_edge_count": 0,
             "redundant_path_count": redundant_path_count,
         }),
         acceptance_criteria: vec![
-            "the dominance-heavy branch funnel is reduced to a simpler dispatch surface".to_string(),
-            "duplicate exits or repeated branch tails are collapsed".to_string(),
-            "graph.json is regenerated and the detector reports lower dominance or duplicate-path pressure for the function".to_string(),
+            "the dominant SwitchInt bottleneck is extracted into named branch helpers".to_string(),
+            "branch_score and switchint_count decrease measurably after refactor".to_string(),
+            "graph.json is regenerated and the detector no longer emits this symbol".to_string(),
         ],
         evidence,
         discovered_by: "graph_metrics_detector".to_string(),
@@ -3301,8 +3313,11 @@ mod tests {
             .expect("dominator region issue");
         assert_eq!(issue.status, "open");
         assert_eq!(issue.metrics["proof_tier"].as_str(), Some("hypothesis"));
+        assert_eq!(issue.metrics["region_kind"].as_str(), Some("loop-free dispatch funnel"));
         assert_eq!(issue.metrics["back_edge_count"].as_u64(), Some(0));
         assert_eq!(issue.metrics["redundant_path_count"].as_u64(), Some(1));
+        assert!(issue.metrics.get("non_cleanup_fraction").is_some());
+        assert!(issue.metrics.get("switchint_density").is_some());
     }
 
     #[test]
