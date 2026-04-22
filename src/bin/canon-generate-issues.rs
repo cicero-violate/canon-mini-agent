@@ -16,7 +16,11 @@ fn main() -> Result<()> {
     }
 
     canon_mini_agent::set_workspace(workspace.display().to_string());
-    if canon_mini_agent::has_flag(&args, "--alpha-only") {
+    if canon_mini_agent::has_flag(&args, "--graph-complexity-only") {
+        let path = canon_mini_agent::complexity::write_graph_only_complexity_report(&workspace)?;
+        println!("{}", path.display());
+        Ok(())
+    } else if canon_mini_agent::has_flag(&args, "--alpha-only") {
         let _ = canon_mini_agent::refactor_analysis::generate_alpha_pathway_issues(&workspace)?;
         Ok(())
     } else {
