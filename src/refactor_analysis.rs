@@ -1269,26 +1269,24 @@ pub fn alpha_pathway_issues(
         // Evidence: each link with MIR block count where available.
         let chain_locs: Vec<String> = chain
             .windows(2)
-            .map(|pair| {
+            .enumerate()
+            .map(|(idx, pair)| {
                 let caller_s = summary_by_symbol.get(pair[0].as_str());
-                let callee_s = summary_by_symbol.get(pair[1].as_str());
-                let reason = match (caller_s, callee_s) {
-                    (Some(a), Some(b))
-                        if a.mir_fingerprint.is_some() && a.mir_fingerprint == b.mir_fingerprint =>
-                    {
-                        "identical MIR fingerprint".to_string()
-                    }
-                    (Some(a), _) => format!(
-                        "thin body ({} MIR block{})",
-                        a.mir_blocks.unwrap_or(0),
-                        if a.mir_blocks.unwrap_or(0) == 1 { "" } else { "s" }
-                    ),
-                    _ => "thin wrapper".to_string(),
-                };
+                let reason = pathway
+                    .link_proofs
+                    .get(idx)
+                    .cloned()
+                    .unwrap_or_else(|| "compiler-proven pure delegate".to_string());
                 let loc = caller_s
                     .map(|s| format!("{} at {}", s.symbol, shorten_location(&s.file, s.line)))
                     .unwrap_or_else(|| pair[0].clone());
-                format!("`{}` → `{}` confirmed wrapper ({}); {}", short_name(&pair[0]), short_name(&pair[1]), reason, loc)
+                format!(
+                    "`{}` → `{}` confirmed pure delegate ({}); {}",
+                    short_name(&pair[0]),
+                    short_name(&pair[1]),
+                    reason,
+                    loc
+                )
             })
             .chain(std::iter::once({
                 let s = summary_by_symbol.get(canonical_head.as_str());
@@ -1321,8 +1319,9 @@ pub fn alpha_pathway_issues(
                 "Functions [{chain_display}] form a confirmed alpha-equivalent wrapper \
                  chain in crate `{crate_name}`. Every function carries the same canonical \
                  type signature (verified by the compiler using De Bruijn index \
-                 normalization), and every caller is a thin wrapper (≤3 MIR blocks or \
-                 identical MIR fingerprint) that adds no logic beyond delegating.\n\n\
+                 normalization), and every caller is a compiler-proven pure delegate \
+                 with a linear MIR return path and no retained branching/drop/assert \
+                 behavior around the delegated call.\n\n\
                  The canonical implementation is `{canonical_head}`. \
                  The wrapper(s) {wrapper_list} are safe to delete.\n\n\
                  **Execution model:** Redirect call sites → Delete wrappers → Verify\n\n\

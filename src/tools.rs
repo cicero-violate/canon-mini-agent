@@ -6391,13 +6391,11 @@ fn apply_plan_bundle_task_updates(
             .get("id")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("plan update task missing id"))?;
-        let Some(existing) = tasks_obj
+        let existing = tasks_obj
             .iter_mut()
             .find(|t| t.get("id").and_then(|v| v.as_str()) == Some(id))
             .and_then(|t| t.as_object_mut())
-        else {
-            bail!("plan task not found: {id}");
-        };
+            .ok_or_else(|| anyhow!("plan task not found: {id}"))?;
         apply_plan_bundle_task_patch(existing, task_obj, id)?;
     }
     Ok(())

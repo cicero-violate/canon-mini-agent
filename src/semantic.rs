@@ -148,6 +148,9 @@ pub struct AlphaPathwayChain {
     /// FNV-1a hash of the canonical type signature (De Bruijn indices only).
     #[serde(default)]
     pub canonical_sig_hash: u64,
+    /// One proof string per wrapper hop describing the compiler-side delegation proof.
+    #[serde(default)]
+    pub link_proofs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1879,18 +1882,20 @@ impl SemanticIndex {
             if def.file != span.file {
                 continue;
             }
-            if def.start_offset <= span.start_offset && def.end_offset >= span.end_offset {
-                let candidate = (
-                    sym.as_str(),
-                    def.end_offset.saturating_sub(def.start_offset),
-                );
-                if best
-                    .map(|(_, best_width)| candidate.1 < best_width)
-                    .unwrap_or(true)
-                {
-                    best = Some(candidate);
-                }
+            if def.start_offset > span.start_offset || def.end_offset < span.end_offset {
+                continue;
             }
+            let candidate = (
+                sym.as_str(),
+                def.end_offset.saturating_sub(def.start_offset),
+            );
+            if best
+                .map(|(_, best_width)| candidate.1 >= best_width)
+                .unwrap_or(false)
+            {
+                continue;
+            }
+            best = Some(candidate);
         }
         best.map(|(sym, _)| sym)
     }
