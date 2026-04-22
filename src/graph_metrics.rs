@@ -86,99 +86,7 @@ pub fn generate_module_cohesion_issues(workspace: &Path) -> Result<usize> {
         let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
             continue;
         };
-        let call_edges = idx.call_edges();
-        if call_edges.is_empty() {
-            continue;
-        }
-        let summaries = idx.symbol_summaries();
-        let fn_summaries: Vec<_> = summaries.into_iter().filter(|s| s.kind == "fn").collect();
-        if fn_summaries.is_empty() {
-            continue;
-        }
-        let mut fn_to_module: HashMap<String, String> = HashMap::new();
-        let mut module_symbols: HashMap<String, HashSet<String>> = HashMap::new();
-        for s in &fn_summaries {
-            let module = module_partition_key(s);
-            fn_to_module.insert(s.symbol.clone(), module.clone());
-            module_symbols.entry(module).or_default().insert(s.symbol.clone());
-        }
-
-        let mut internal_edges: HashMap<String, usize> = HashMap::new();
-        let mut external_edges: HashMap<String, usize> = HashMap::new();
-        for (from, to) in call_edges {
-            let Some(from_module) = fn_to_module.get(&from).cloned() else {
-                continue;
-            };
-            let Some(to_module) = fn_to_module.get(&to).cloned() else {
-                continue;
-            };
-            if from_module == to_module {
-                *internal_edges.entry(from_module).or_insert(0) += 1;
-            } else {
-                *external_edges.entry(from_module).or_insert(0) += 1;
-            }
-        }
-
-        for (module, symbols) in module_symbols {
-            let internal = internal_edges.get(&module).copied().unwrap_or(0);
-            let external = external_edges.get(&module).copied().unwrap_or(0);
-            let total = internal + external;
-            if total == 0 {
-                continue;
-            }
-            let cohesion = internal as f64 / total as f64;
-            let task = if cohesion < 0.2 && symbols.len() > 5 {
-                Some("DissolveModule")
-            } else if cohesion > 0.8 && external > 10 {
-                Some("FormalizeBoundary")
-            } else {
-                None
-            };
-            let Some(task) = task else { continue };
-            let id = format!(
-                "auto_cohesion_{}_{}",
-                crate_name.replace('-', "_"),
-                stable_hash(&format!("{module}:{task}"))
-            );
-            if existing.contains(&id) {
-                continue;
-            }
-            let confidence_tier = if symbols.len() > 5 { "high" } else { "medium" };
-            file.issues.push(Issue {
-                id,
-                title: format!(
-                    "Module cohesion signal `{}` in `{}` (cohesion={:.2})",
-                    task, module, cohesion
-                ),
-                status: "open".to_string(),
-                priority: "medium".to_string(),
-                kind: "logic".to_string(),
-                description: format!(
-                    "Module `{module}` in crate `{crate}` has cohesion={cohesion:.2} (internal={internal}, external={external}, symbols={symbol_count}).\n\
-                     Recommended task: {task}.",
-                    crate = crate_name.replace('-', "_"),
-                    symbol_count = symbols.len()
-                ),
-                scope: format!("crate:{}", crate_name.replace('-', "_")),
-                metrics: json!({
-                    "module": module,
-                    "internal_edges": internal,
-                    "external_edges": external,
-                    "cohesion": cohesion,
-                    "symbol_count": symbols.len(),
-                    "task": task,
-                    "confidence_tier": confidence_tier,
-                    "correctness_level": confidence_tier == "high"
-                }),
-                acceptance_criteria: vec![
-                    "module boundary complexity reduced and validated".to_string(),
-                    "build and tests remain green".to_string(),
-                ],
-                discovered_by: "graph_metrics_detector".to_string(),
-                ..Issue::default()
-            });
-            created += 1;
-        }
+        created += sync_module_cohesion_issues_for_crate(&mut file, &existing, &crate_name, &idx);
     }
 
     if created > 0 {
@@ -191,6 +99,156 @@ pub fn generate_module_cohesion_issues(workspace: &Path) -> Result<usize> {
         )?;
     }
     Ok(created)
+}
+
+fn sync_module_cohesion_issues_for_crate(
+    file: &mut IssuesFile,
+    existing: &HashSet<String>,
+    crate_name: &str,
+    idx: &SemanticIndex,
+) -> usize {
+    let call_edges = idx.call_edges();
+    if call_edges.is_empty() {
+        return 0;
+    }
+    let (fn_to_module, module_symbols) = collect_module_functions(idx);
+    if fn_to_module.is_empty() {
+        return 0;
+    }
+    let (internal_edges, external_edges) = collect_module_edge_counts(call_edges, &fn_to_module);
+
+    let crate_name = crate_name.replace('-', "_");
+    let mut created = 0usize;
+    for (module, symbols) in module_symbols {
+        created += maybe_insert_module_cohesion_issue(
+            file,
+            existing,
+            &crate_name,
+            module,
+            symbols,
+            &internal_edges,
+            &external_edges,
+        );
+    }
+    created
+}
+
+fn collect_module_functions(
+    idx: &SemanticIndex,
+) -> (HashMap<String, String>, HashMap<String, HashSet<String>>) {
+    let summaries = idx.symbol_summaries();
+    let fn_summaries: Vec<_> = summaries.into_iter().filter(|s| s.kind == "fn").collect();
+
+    let mut fn_to_module: HashMap<String, String> = HashMap::new();
+    let mut module_symbols: HashMap<String, HashSet<String>> = HashMap::new();
+    for summary in &fn_summaries {
+        let module = module_partition_key(summary);
+        fn_to_module.insert(summary.symbol.clone(), module.clone());
+        module_symbols
+            .entry(module)
+            .or_default()
+            .insert(summary.symbol.clone());
+    }
+
+    (fn_to_module, module_symbols)
+}
+
+fn collect_module_edge_counts(
+    call_edges: Vec<(String, String)>,
+    fn_to_module: &HashMap<String, String>,
+) -> (HashMap<String, usize>, HashMap<String, usize>) {
+    let mut internal_edges: HashMap<String, usize> = HashMap::new();
+    let mut external_edges: HashMap<String, usize> = HashMap::new();
+
+    for (from, to) in call_edges {
+        let Some(from_module) = fn_to_module.get(&from) else {
+            continue;
+        };
+        let Some(to_module) = fn_to_module.get(&to) else {
+            continue;
+        };
+        if from_module == to_module {
+            *internal_edges.entry(from_module.clone()).or_insert(0) += 1;
+        } else {
+            *external_edges.entry(from_module.clone()).or_insert(0) += 1;
+        }
+    }
+
+    (internal_edges, external_edges)
+}
+
+fn maybe_insert_module_cohesion_issue(
+    file: &mut IssuesFile,
+    existing: &HashSet<String>,
+    crate_name: &str,
+    module: String,
+    symbols: HashSet<String>,
+    internal_edges: &HashMap<String, usize>,
+    external_edges: &HashMap<String, usize>,
+) -> usize {
+    let internal = internal_edges.get(&module).copied().unwrap_or(0);
+    let external = external_edges.get(&module).copied().unwrap_or(0);
+    let total = internal + external;
+    if total == 0 {
+        return 0;
+    }
+
+    let cohesion = internal as f64 / total as f64;
+    let task = if cohesion < 0.2 && symbols.len() > 5 {
+        Some("DissolveModule")
+    } else if cohesion > 0.8 && external > 10 {
+        Some("FormalizeBoundary")
+    } else {
+        None
+    };
+    let Some(task) = task else {
+        return 0;
+    };
+
+    let id = format!(
+        "auto_cohesion_{}_{}",
+        crate_name,
+        stable_hash(&format!("{module}:{task}"))
+    );
+    if existing.contains(&id) {
+        return 0;
+    }
+
+    let confidence_tier = if symbols.len() > 5 { "high" } else { "medium" };
+    file.issues.push(Issue {
+        id,
+        title: format!(
+            "Module cohesion signal `{}` in `{}` (cohesion={:.2})",
+            task, module, cohesion
+        ),
+        status: "open".to_string(),
+        priority: "medium".to_string(),
+        kind: "logic".to_string(),
+        description: format!(
+            "Module `{module}` in crate `{crate}` has cohesion={cohesion:.2} (internal={internal}, external={external}, symbols={symbol_count}).\n\
+             Recommended task: {task}.",
+            crate = crate_name,
+            symbol_count = symbols.len()
+        ),
+        scope: format!("crate:{crate_name}"),
+        metrics: json!({
+            "module": module,
+            "internal_edges": internal,
+            "external_edges": external,
+            "cohesion": cohesion,
+            "symbol_count": symbols.len(),
+            "task": task,
+            "confidence_tier": confidence_tier,
+            "correctness_level": confidence_tier == "high"
+        }),
+        acceptance_criteria: vec![
+            "module boundary complexity reduced and validated".to_string(),
+            "build and tests remain green".to_string(),
+        ],
+        discovered_by: "graph_metrics_detector".to_string(),
+        ..Issue::default()
+    });
+    1
 }
 
 pub fn generate_artifact_writer_dispersion_issues(workspace: &Path) -> Result<usize> {
@@ -715,38 +773,21 @@ fn resolve_stale_effect_boundary_leak_issues(
 }
 
 pub fn generate_logging_dispersion_issues(workspace: &Path) -> Result<usize> {
-    let mut file: IssuesFile = load_issues_file(workspace);
-    let before = serde_json::to_value(&file)?;
-    let mut mutated = 0usize;
-
-    for crate_name in SemanticIndex::available_crates(workspace) {
-        let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
-            continue;
-        };
-
-        let by_module = collect_effect_modules_by_relation(&idx, "PerformsLogging");
-
-        let crate_name = crate_name.replace('-', "_");
-        let non_canonical_count = count_symbols_outside_boundary(&by_module, is_canonical_logging_module);
-        let desired = build_logging_dispersion_issue(&crate_name, &by_module);
-        mutated += upsert_bridge_issue(&mut file, desired, non_canonical_count > 10);
-    }
-
-    rescore_all(&mut file);
-    let after = serde_json::to_value(&file)?;
-    if before != after {
-        persist_issues_projection_with_writer(
-            workspace,
-            &file,
-            None,
-            "generate_logging_dispersion_issues",
-        )?;
-    }
-
-    Ok(mutated)
+    generate_effect_dispersion_issues(workspace, EffectDispersionMode::Logging)
 }
 
 pub fn generate_process_spawn_dispersion_issues(workspace: &Path) -> Result<usize> {
+    generate_effect_dispersion_issues(workspace, EffectDispersionMode::ProcessSpawn)
+}
+
+pub fn generate_network_usage_dispersion_issues(workspace: &Path) -> Result<usize> {
+    generate_effect_dispersion_issues(workspace, EffectDispersionMode::Network)
+}
+
+fn generate_effect_dispersion_issues(
+    workspace: &Path,
+    mode: EffectDispersionMode,
+) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
     let before = serde_json::to_value(&file)?;
     let mut mutated = 0usize;
@@ -755,13 +796,8 @@ pub fn generate_process_spawn_dispersion_issues(workspace: &Path) -> Result<usiz
         let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
             continue;
         };
-
-        let by_module = collect_effect_modules_by_relation(&idx, "SpawnsProcess");
-
         let crate_name = crate_name.replace('-', "_");
-        let non_canonical_modules = count_modules_outside_boundary(&by_module, is_canonical_process_boundary);
-        let desired = build_process_spawn_dispersion_issue(&crate_name, &by_module);
-        mutated += upsert_bridge_issue(&mut file, desired, non_canonical_modules > 1);
+        mutated += sync_effect_dispersion_issue_for_crate(&mut file, &crate_name, &idx, mode);
     }
 
     rescore_all(&mut file);
@@ -771,43 +807,73 @@ pub fn generate_process_spawn_dispersion_issues(workspace: &Path) -> Result<usiz
             workspace,
             &file,
             None,
-            "generate_process_spawn_dispersion_issues",
+            mode.persist_label(),
         )?;
     }
 
     Ok(mutated)
 }
 
-pub fn generate_network_usage_dispersion_issues(workspace: &Path) -> Result<usize> {
-    let mut file: IssuesFile = load_issues_file(workspace);
-    let before = serde_json::to_value(&file)?;
-    let mut mutated = 0usize;
+fn sync_effect_dispersion_issue_for_crate(
+    file: &mut IssuesFile,
+    crate_name: &str,
+    idx: &SemanticIndex,
+    mode: EffectDispersionMode,
+) -> usize {
+    let by_module = collect_effect_modules_by_relation(idx, mode.relation());
+    let desired = mode.build_issue(crate_name, &by_module);
+    upsert_bridge_issue(file, desired, mode.is_active(&by_module))
+}
 
-    for crate_name in SemanticIndex::available_crates(workspace) {
-        let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
-            continue;
-        };
+#[derive(Clone, Copy)]
+enum EffectDispersionMode {
+    Logging,
+    ProcessSpawn,
+    Network,
+}
 
-        let by_module = collect_effect_modules_by_relation(&idx, "UsesNetwork");
-
-        let crate_name = crate_name.replace('-', "_");
-        let total_symbols: usize = by_module.values().map(|v| v.len()).sum();
-        let desired = build_network_usage_dispersion_issue(&crate_name, &by_module);
-        mutated += upsert_bridge_issue(&mut file, desired, total_symbols > 0);
+impl EffectDispersionMode {
+    fn relation(self) -> &'static str {
+        match self {
+            EffectDispersionMode::Logging => "PerformsLogging",
+            EffectDispersionMode::ProcessSpawn => "SpawnsProcess",
+            EffectDispersionMode::Network => "UsesNetwork",
+        }
     }
 
-    rescore_all(&mut file);
-    let after = serde_json::to_value(&file)?;
-    if before != after {
-        persist_issues_projection_with_writer(
-            workspace,
-            &file,
-            None,
-            "generate_network_usage_dispersion_issues",
-        )?;
+    fn persist_label(self) -> &'static str {
+        match self {
+            EffectDispersionMode::Logging => "generate_logging_dispersion_issues",
+            EffectDispersionMode::ProcessSpawn => "generate_process_spawn_dispersion_issues",
+            EffectDispersionMode::Network => "generate_network_usage_dispersion_issues",
+        }
     }
 
-    Ok(mutated)
+    fn build_issue(self, crate_name: &str, by_module: &HashMap<String, Vec<String>>) -> Issue {
+        match self {
+            EffectDispersionMode::Logging => build_logging_dispersion_issue(crate_name, by_module),
+            EffectDispersionMode::ProcessSpawn => {
+                build_process_spawn_dispersion_issue(crate_name, by_module)
+            }
+            EffectDispersionMode::Network => {
+                build_network_usage_dispersion_issue(crate_name, by_module)
+            }
+        }
+    }
+
+    fn is_active(self, by_module: &HashMap<String, Vec<String>>) -> bool {
+        match self {
+            EffectDispersionMode::Logging => {
+                count_symbols_outside_boundary(by_module, is_canonical_logging_module) > 10
+            }
+            EffectDispersionMode::ProcessSpawn => {
+                count_modules_outside_boundary(by_module, is_canonical_process_boundary) > 1
+            }
+            EffectDispersionMode::Network => {
+                by_module.values().map(|symbols| symbols.len()).sum::<usize>() > 0
+            }
+        }
+    }
 }
 
 pub fn generate_representation_fanout_issues(workspace: &Path) -> Result<usize> {

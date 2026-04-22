@@ -129,6 +129,21 @@ pub struct PathRecord {
     pub signature: u64,
 }
 
+fn summarize_cfg_terminators(blocks: &[&CfgNode]) -> (usize, usize, usize) {
+    blocks.iter().fold((0usize, 0usize, 0usize), |mut acc, b| {
+        if b.terminator.starts_with("Assert") {
+            acc.0 += 1;
+        }
+        if b.terminator.starts_with("Drop") || b.terminator.starts_with("DropAndReplace") {
+            acc.1 += 1;
+        }
+        if b.terminator.starts_with("SwitchInt") {
+            acc.2 += 1;
+        }
+        acc
+    })
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RedundantPathPair {
     pub path_a: PathRecord,
@@ -716,22 +731,7 @@ impl SemanticIndex {
             let is_directly_recursive = self_recursive.contains(node_key.as_str());
             let (assert_count, drop_count, switchint_count) = owner_to_cfg
                 .get(node_key.as_str())
-                .map(|blocks| {
-                    blocks.iter().fold((0usize, 0usize, 0usize), |mut acc, b| {
-                        if b.terminator.starts_with("Assert") {
-                            acc.0 += 1;
-                        }
-                        if b.terminator.starts_with("Drop")
-                            || b.terminator.starts_with("DropAndReplace")
-                        {
-                            acc.1 += 1;
-                        }
-                        if b.terminator.starts_with("SwitchInt") {
-                            acc.2 += 1;
-                        }
-                        acc
-                    })
-                })
+                .map(|blocks| summarize_cfg_terminators(blocks))
                 .unwrap_or((0, 0, 0));
 
             out.push(SymbolSummary {
