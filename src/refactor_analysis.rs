@@ -114,13 +114,20 @@ fn persist_generated_refactor_issues(
 }
 
 pub fn generate_panic_surface_issues(workspace: &Path) -> Result<usize> {
-    generate_detector_issues(workspace, "generate_panic_surface_issues", 32, panic_surface_issues)
+    generate_detector_issues(
+        workspace,
+        "generate_panic_surface_issues",
+        "auto_panic_surface_",
+        32,
+        panic_surface_issues,
+    )
 }
 
 pub fn generate_state_machine_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
         "generate_state_machine_issues",
+        "auto_state_machine_",
         32,
         state_machine_issues,
     )
@@ -130,6 +137,7 @@ pub fn generate_drop_complexity_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
         "generate_drop_complexity_issues",
+        "auto_drop_complexity_",
         32,
         drop_complexity_issues,
     )
@@ -139,6 +147,7 @@ pub fn generate_clone_pressure_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
         "generate_clone_pressure_issues",
+        "auto_clone_pressure_",
         32,
         clone_pressure_issues,
     )
@@ -148,6 +157,7 @@ pub fn generate_visibility_leak_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
         "generate_visibility_leak_issues",
+        "auto_visibility_leak_",
         32,
         visibility_leak_issues,
     )
@@ -157,6 +167,7 @@ pub fn generate_mono_explosion_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
         "generate_mono_explosion_issues",
+        "auto_mono_explosion_",
         24,
         mono_explosion_issues,
     )
@@ -166,19 +177,27 @@ pub fn generate_generic_overreach_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
         "generate_generic_overreach_issues",
+        "auto_generic_overreach_",
         24,
         generic_overreach_issues,
     )
 }
 
 pub fn generate_dead_impl_issues(workspace: &Path) -> Result<usize> {
-    generate_detector_issues(workspace, "generate_dead_impl_issues", 24, dead_impl_issues)
+    generate_detector_issues(
+        workspace,
+        "generate_dead_impl_issues",
+        "auto_dead_impl_",
+        24,
+        dead_impl_issues,
+    )
 }
 
 pub fn generate_rename_symbol_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
         "generate_rename_symbol_issues",
+        "auto_rename_symbol_",
         24,
         rename_symbol_issues,
     )
@@ -188,6 +207,7 @@ pub fn generate_dark_assignment_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
         "generate_dark_assignment_issues",
+        "auto_dark_assignment_",
         24,
         dark_assignment_issues,
     )
@@ -197,6 +217,7 @@ pub fn generate_loop_invariant_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
         "generate_loop_invariant_issues",
+        "auto_loop_invariant_",
         24,
         loop_invariant_issues,
     )
@@ -206,8 +227,19 @@ pub fn generate_redundant_path_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
         "generate_redundant_path_issues",
+        "auto_redundant_path_",
         24,
         redundant_path_issues,
+    )
+}
+
+pub fn generate_alpha_pathway_issues(workspace: &Path) -> Result<usize> {
+    generate_detector_issues(
+        workspace,
+        "generate_alpha_pathway_issues",
+        "auto_alpha_pathway_",
+        16,
+        alpha_pathway_issues,
     )
 }
 
@@ -216,11 +248,19 @@ type DetectorFn = fn(&Path, &str, &[SymbolSummary], usize) -> Vec<Issue>;
 fn generate_detector_issues(
     workspace: &Path,
     subject: &str,
+    family_prefix: &str,
     limit: usize,
     detector: DetectorFn,
 ) -> Result<usize> {
     let mut issues = load_issues_file(workspace);
+    let previous_open_family_ids: HashSet<String> = issues
+        .issues
+        .iter()
+        .filter(|issue| !is_closed(issue) && issue.id.starts_with(family_prefix))
+        .map(|issue| issue.id.clone())
+        .collect();
     let mut seen: HashSet<String> = issues.issues.iter().map(|i| i.id.clone()).collect();
+    let mut current_ids: HashSet<String> = HashSet::new();
     let mut created = 0usize;
 
     for crate_name in SemanticIndex::available_crates(workspace) {
@@ -229,6 +269,7 @@ fn generate_detector_issues(
         };
         let summaries = idx.symbol_summaries();
         for issue in detector(workspace, &crate_name, &summaries, limit) {
+            current_ids.insert(issue.id.clone());
             if seen.insert(issue.id.clone()) {
                 issues.issues.push(issue);
                 created += 1;
@@ -236,11 +277,23 @@ fn generate_detector_issues(
         }
     }
 
-    if created > 0 {
+    let stale_open_ids: HashSet<String> = previous_open_family_ids
+        .difference(&current_ids)
+        .cloned()
+        .collect();
+    let removed = if stale_open_ids.is_empty() {
+        0
+    } else {
+        let before = issues.issues.len();
+        issues.issues.retain(|issue| !stale_open_ids.contains(&issue.id));
+        before.saturating_sub(issues.issues.len())
+    };
+
+    if created > 0 || removed > 0 {
         rescore_all(&mut issues);
         persist_issues_projection_with_writer(workspace, &issues, None, subject)?;
     }
-    Ok(created)
+    Ok(created + removed)
 }
 
 pub fn panic_surface_issues(
@@ -1220,15 +1273,6 @@ pub fn redundant_path_issues(
 //   5. The canonical head is chain[last] — the innermost implementation.
 //      The wrappers chain[0..last] are the redundant nodes to delete.
 //   6. Emit one ticket per confirmed chain with exact agent instructions.
-
-pub fn generate_alpha_pathway_issues(workspace: &Path) -> Result<usize> {
-    generate_detector_issues(
-        workspace,
-        "generate_alpha_pathway_issues",
-        16,
-        alpha_pathway_issues,
-    )
-}
 
 pub fn alpha_pathway_issues(
     workspace: &Path,

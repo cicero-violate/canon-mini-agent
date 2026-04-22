@@ -236,6 +236,17 @@ pub fn write_complexity_report(workspace: &Path) -> Result<Option<PathBuf>> {
     Ok(Some(latest))
 }
 
+/// Regenerate issue artifacts without starting the supervisor loop.
+///
+/// This runs the same issue-generation batch that the supervisor triggers from
+/// complexity-report startup, but avoids websocket/orchestration side effects.
+pub fn refresh_issue_artifacts(workspace: &Path) -> Result<()> {
+    generate_graph_and_hotspot_issues(workspace);
+    generate_refactor_issue_batch(workspace);
+    generate_invariant_lifecycle_issues(workspace);
+    Ok(())
+}
+
 fn in_flight_paths() -> &'static Mutex<HashSet<PathBuf>> {
     static IN_FLIGHT: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
     IN_FLIGHT.get_or_init(|| Mutex::new(HashSet::new()))
@@ -253,7 +264,7 @@ fn enqueue_issue_task_generation(workspace: &Path) {
         }
     }
     std::thread::spawn(move || {
-        let _ = run_issue_task_generation(&ws);
+        let _ = refresh_issue_artifacts(&ws);
         if let Ok(mut guard) = in_flight_paths().lock() {
             guard.remove(&ws);
         }
@@ -268,13 +279,6 @@ fn enqueue_grpo_extraction(workspace: &Path) {
             let _ = crate::grpo::record_grpo_dataset_effect(&ws, &dataset, None);
         }
     });
-}
-
-fn run_issue_task_generation(workspace: &Path) -> Result<()> {
-    generate_graph_and_hotspot_issues(workspace);
-    generate_refactor_issue_batch(workspace);
-    generate_invariant_lifecycle_issues(workspace);
-    Ok(())
 }
 
 fn generate_graph_and_hotspot_issues(workspace: &Path) {
