@@ -311,42 +311,62 @@ fn resolve_missing_state_transition_dispersion_issues(
     mutated
 }
 
+fn collect_coordinated_transitions_by_symbol(
+    idx: &SemanticIndex,
+) -> HashMap<String, Vec<String>> {
+    let mut coordinated_by_symbol: HashMap<String, Vec<String>> = HashMap::new();
+    for (symbol, proof_type) in idx.semantic_edges_by_relation("CoordinatesTransition") {
+        coordinated_by_symbol
+            .entry(symbol)
+            .or_default()
+            .push(proof_type);
+    }
+    for proof_types in coordinated_by_symbol.values_mut() {
+        proof_types.sort();
+        proof_types.dedup();
+    }
+    coordinated_by_symbol
+}
+
+fn sync_state_transition_dispersion_issues_for_crate(
+    file: &mut IssuesFile,
+    crate_name: &str,
+    idx: &SemanticIndex,
+) -> usize {
+    let coordinated_by_symbol = collect_coordinated_transitions_by_symbol(idx);
+    let mut desired_ids = HashSet::new();
+    let mut mutated = 0usize;
+
+    for (state_domain, transitions) in collect_state_transitions_by_domain(idx) {
+        let mut transitions: Vec<String> = transitions.into_iter().collect();
+        transitions.sort();
+        let issue = build_state_transition_dispersion_issue(
+            crate_name,
+            &state_domain,
+            &transitions,
+            &coordinated_by_symbol,
+        );
+        desired_ids.insert(issue.id.clone());
+        mutated += upsert_bridge_issue(file, issue, transitions.len() > 1);
+    }
+
+    mutated + resolve_missing_state_transition_dispersion_issues(file, &desired_ids, crate_name)
+}
+
 pub fn generate_state_transition_dispersion_issues(workspace: &Path) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
     let before = serde_json::to_value(&file)?;
-    let mut desired_ids = HashSet::new();
     let mut mutated = 0usize;
 
     for crate_name in SemanticIndex::available_crates(workspace) {
         let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
             continue;
         };
-
-        let mut coordinated_by_symbol: HashMap<String, Vec<String>> = HashMap::new();
-        for (symbol, proof_type) in idx.semantic_edges_by_relation("CoordinatesTransition") {
-            coordinated_by_symbol
-                .entry(symbol)
-                .or_default()
-                .push(proof_type);
-        }
-
         let crate_name = crate_name.replace('-', "_");
-        for (state_domain, transitions) in collect_state_transitions_by_domain(&idx) {
-            let mut transitions: Vec<String> = transitions.into_iter().collect();
-            transitions.sort();
-            let issue = build_state_transition_dispersion_issue(
-                &crate_name,
-                &state_domain,
-                &transitions,
-                &coordinated_by_symbol,
-            );
-            desired_ids.insert(issue.id.clone());
-            mutated += upsert_bridge_issue(&mut file, issue, transitions.len() > 1);
-        }
-        mutated += resolve_missing_state_transition_dispersion_issues(
+        mutated += sync_state_transition_dispersion_issues_for_crate(
             &mut file,
-            &desired_ids,
             &crate_name,
+            &idx,
         );
     }
 
