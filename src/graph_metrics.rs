@@ -525,16 +525,17 @@ pub fn generate_effect_boundary_leak_issues(workspace: &Path) -> Result<usize> {
                 .or_default()
                 .insert("network");
         }
+        let effectful_symbols: HashSet<String> = effects_by_symbol.keys().cloned().collect();
+        let canonical_modules =
+            derive_canonical_effect_boundary_modules(&idx, &effectful_symbols);
 
         let mut by_module: HashMap<String, Vec<(String, Vec<&'static str>)>> = HashMap::new();
         for (symbol, effects) in effects_by_symbol {
-            if canonical_effect_boundary_symbol(&symbol) || effects.len() < 3 {
+            if is_canonical_effect_boundary_symbol(&canonical_modules, &symbol) || effects.len() < 3
+            {
                 continue;
             }
-            let module = symbol
-                .rsplit_once("::")
-                .map(|(m, _)| m.to_string())
-                .unwrap_or(symbol.clone());
+            let module = symbol_module(&symbol);
             let mut effects_vec: Vec<&'static str> = effects.into_iter().collect();
             effects_vec.sort();
             by_module.entry(module).or_default().push((symbol, effects_vec));
@@ -718,13 +719,27 @@ pub fn generate_representation_fanout_issues(workspace: &Path) -> Result<usize> 
         };
         let crate_name = crate_name.replace('-', "_");
         let (sources_by_symbol, targets_by_symbol) = collect_representation_domains(&idx);
+        let canonical_modules = derive_canonical_effect_boundary_modules(
+            &idx,
+            &sources_by_symbol
+                .keys()
+                .chain(targets_by_symbol.keys())
+                .cloned()
+                .collect(),
+        );
         let symbols_by_pair =
             build_representation_symbols_by_pair(sources_by_symbol, &targets_by_symbol);
 
         for ((source, target), mut symbols) in symbols_by_pair {
             symbols.sort();
             symbols.dedup();
-            let issue = build_representation_fanout_issue(&crate_name, &source, &target, &symbols);
+            let issue = build_representation_fanout_issue(
+                &crate_name,
+                &source,
+                &target,
+                &symbols,
+                &canonical_modules,
+            );
             desired_ids.insert(issue.id.clone());
             mutated += upsert_bridge_issue(&mut file, issue, symbols.len() > 1);
         }
@@ -1653,21 +1668,68 @@ fn build_implicit_state_machine_issue(
     }
 }
 
-fn canonical_effect_boundary_symbol(symbol: &str) -> bool {
-    const CANONICAL_PREFIXES: &[&str] = &[
-        "app::",
-        "tools::",
-        "logging::",
-        "supervisor::",
-        "canonical_writer::",
-        "issues::",
-        "reports::",
-        "invariants::",
-        "lessons::",
-        "objectives::",
-        "blockers::",
-    ];
-    CANONICAL_PREFIXES.iter().any(|prefix| symbol.starts_with(prefix))
+fn derive_canonical_effect_boundary_modules(
+    idx: &SemanticIndex,
+    candidate_symbols: &HashSet<String>,
+) -> HashSet<String> {
+    let mut candidate_modules: HashSet<String> = candidate_symbols
+        .iter()
+        .map(|symbol| symbol_module(symbol))
+        .collect();
+    let workflow_modules: HashSet<String> = idx
+        .workflow_domain_edges()
+        .into_iter()
+        .map(|(symbol, _)| symbol_module(&symbol))
+        .collect();
+    candidate_modules.extend(workflow_modules.iter().cloned());
+
+    let mut incoming_callers_by_module: HashMap<String, HashSet<String>> = HashMap::new();
+    for (caller, callee) in idx.call_edges() {
+        let callee_module = symbol_module(&callee);
+        if !candidate_modules.contains(&callee_module) {
+            continue;
+        }
+        let caller_module = symbol_module(&caller);
+        if caller_module != callee_module {
+            incoming_callers_by_module
+                .entry(callee_module)
+                .or_default()
+                .insert(caller_module);
+        }
+    }
+
+    let mut canonical_modules = workflow_modules;
+    let mut ordered_modules: Vec<String> = candidate_modules.into_iter().collect();
+    ordered_modules.sort();
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for module in &ordered_modules {
+            let only_canonical_callers = incoming_callers_by_module
+                .get(module)
+                .map(|callers| callers.iter().all(|caller| canonical_modules.contains(caller)))
+                .unwrap_or(true);
+            if only_canonical_callers && canonical_modules.insert(module.clone()) {
+                changed = true;
+            }
+        }
+    }
+
+    canonical_modules
+}
+
+fn is_canonical_effect_boundary_symbol(
+    canonical_modules: &HashSet<String>,
+    symbol: &str,
+) -> bool {
+    canonical_modules.contains(&symbol_module(symbol))
+}
+
+fn symbol_module(symbol: &str) -> String {
+    symbol
+        .rsplit_once("::")
+        .map(|(module, _)| module.to_string())
+        .unwrap_or_else(|| symbol.to_string())
 }
 
 fn normalize_representation_domain(kind: &str, raw: &str) -> String {
@@ -1696,11 +1758,14 @@ fn representation_fanout_issue_id(crate_name: &str, source: &str, target: &str) 
     )
 }
 
-fn canonical_representation_target(symbols: &[String]) -> String {
+fn canonical_representation_target(
+    symbols: &[String],
+    canonical_modules: &HashSet<String>,
+) -> String {
     let mut ranked = symbols.to_vec();
     ranked.sort_by(|a, b| {
-        canonical_effect_boundary_symbol(b)
-            .cmp(&canonical_effect_boundary_symbol(a))
+        is_canonical_effect_boundary_symbol(canonical_modules, b)
+            .cmp(&is_canonical_effect_boundary_symbol(canonical_modules, a))
             .then(a.len().cmp(&b.len()))
             .then(a.cmp(b))
     });
@@ -1779,10 +1844,11 @@ fn build_representation_fanout_issue(
     source: &str,
     target: &str,
     symbols: &[String],
+    canonical_modules: &HashSet<String>,
 ) -> Issue {
     let display_source = display_representation_domain(source);
     let display_target = display_representation_domain(target);
-    let canonical_target = canonical_representation_target(symbols);
+    let canonical_target = canonical_representation_target(symbols, canonical_modules);
     let evidence = symbols
         .iter()
         .map(|symbol| format!("translation site `{symbol}` reads `{display_source}` and writes `{display_target}`"))
@@ -3094,6 +3160,47 @@ mod tests {
             issue.metrics["module"].as_str(),
             Some("plan_preflight")
         );
+    }
+
+    #[test]
+    fn effect_boundary_leak_skips_workflow_derived_boundary_module() {
+        let workspace = unique_workspace("effect-boundary-derived-boundary");
+        write_index(&workspace, &["canon_mini_agent"]);
+        write_graph_with_edges(
+            &workspace,
+            "canon_mini_agent",
+            &["app::run", "issues::persist_projection"],
+            vec![
+                json!({
+                    "relation": "TouchesWorkflowDomain",
+                    "from": "app::run",
+                    "to": "path::workflow::planner",
+                }),
+                json!({
+                    "relation": "Calls",
+                    "from": "app::run",
+                    "to": "issues::persist_projection",
+                }),
+                json!({
+                    "relation": "ReadsArtifact",
+                    "from": "issues::persist_projection",
+                    "to": "path::artifact::ISSUES.json",
+                }),
+                json!({
+                    "relation": "WritesArtifact",
+                    "from": "issues::persist_projection",
+                    "to": "path::artifact::ISSUES.json",
+                }),
+                json!({
+                    "relation": "ShapesError",
+                    "from": "issues::persist_projection",
+                    "to": "shape::issues::projection",
+                }),
+            ],
+        );
+
+        assert_eq!(generate_effect_boundary_leak_issues(&workspace).unwrap(), 0);
+        assert!(read_issues(&workspace).is_empty());
     }
 
     #[test]

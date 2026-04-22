@@ -351,37 +351,7 @@ pub fn validate_transition(state: &SystemState, event: &ControlEvent) -> Result<
             lane_id,
             ..
         } => {
-            require_lane(state, *lane_id, "ExecutorTurnRegistered")?;
-            let key = format!("{tab_id}:{turn_id}");
-            if state.submitted_turn_ids.contains_key(&key) {
-                return Err(format!(
-                    "illegal transition: submitted turn `{key}` already registered"
-                ));
-            }
-            if let Some(existing_lane) = state.tab_id_to_lane.get(tab_id) {
-                if existing_lane != lane_id {
-                    return Err(format!(
-                        "illegal transition: tab {tab_id} already mapped to lane {existing_lane}"
-                    ));
-                }
-            }
-            if !lane_in_progress(state, *lane_id) {
-                return Err(format!(
-                    "illegal transition: executor turn registration requires lane {lane_id} to be in progress"
-                ));
-            }
-            if lane_submit_in_flight(state, *lane_id) {
-                return Err(format!(
-                    "illegal transition: executor turn registration requires submit-in-flight to be cleared for lane {lane_id}"
-                ));
-            }
-            if let Some(active_tab) = state.lane_active_tab.get(lane_id) {
-                if active_tab != tab_id {
-                    return Err(format!(
-                        "illegal transition: executor turn registration for lane {lane_id} must use active tab {active_tab}, got {tab_id}"
-                    ));
-                }
-            }
+            validate_executor_turn_registered_transition(state, *tab_id, *turn_id, *lane_id)?;
         }
         ControlEvent::ExecutorTurnDeregistered { tab_id, turn_id } => {
             let key = format!("{tab_id}:{turn_id}");
@@ -397,110 +367,167 @@ pub fn validate_transition(state: &SystemState, event: &ControlEvent) -> Result<
             lane_id,
             ..
         } => {
-            require_lane(state, *lane_id, "ExecutorCompletionRecovered")?;
-            let key = format!("{tab_id}:{turn_id}");
-            if state.submitted_turn_ids.contains_key(&key) {
-                return Err(format!(
-                    "illegal transition: completion recovery for `{key}` requires the turn to be absent from submitted_turn_ids"
-                ));
-            }
-            if !lane_in_progress(state, *lane_id) {
-                return Err(format!(
-                    "illegal transition: completion recovery requires lane {lane_id} to be in progress"
-                ));
-            }
-            if !lane_submit_in_flight(state, *lane_id) {
-                return Err(format!(
-                    "illegal transition: completion recovery requires lane {lane_id} to still be submit-in-flight"
-                ));
-            }
-            if let Some(active_tab) = state.lane_active_tab.get(lane_id) {
-                if active_tab != tab_id {
-                    return Err(format!(
-                        "illegal transition: completion recovery for lane {lane_id} cannot rebind active tab from {active_tab} to {tab_id}"
-                    ));
-                }
-            }
-            if let Some(existing_lane) = state.tab_id_to_lane.get(tab_id) {
-                if existing_lane != lane_id {
-                    return Err(format!(
-                        "illegal transition: recovered completion tab {tab_id} already mapped to lane {existing_lane}"
-                    ));
-                }
-            }
+            validate_executor_completion_recovered_transition(state, *tab_id, *turn_id, *lane_id)?;
         }
         ControlEvent::ExecutorCompletionTabRebound {
             lane_id,
             from_tab_id,
             to_tab_id,
         } => {
-            require_lane(state, *lane_id, "ExecutorCompletionTabRebound")?;
-            if from_tab_id == to_tab_id {
-                return Err(format!(
-                    "illegal transition: completion tab rebound for lane {lane_id} requires distinct tabs"
-                ));
-            }
-            if !lane_in_progress(state, *lane_id) {
-                return Err(format!(
-                    "illegal transition: completion tab rebound requires lane {lane_id} to be in progress"
-                ));
-            }
-            if state.lane_active_tab.get(lane_id) != Some(from_tab_id) {
-                return Err(format!(
-                    "illegal transition: completion tab rebound requires lane {lane_id} active tab to be {from_tab_id}"
-                ));
-            }
-            if state.tab_id_to_lane.get(from_tab_id) != Some(lane_id) {
-                return Err(format!(
-                    "illegal transition: completion tab rebound requires prior tab {from_tab_id} to map to lane {lane_id}"
-                ));
-            }
-            if let Some(existing_lane) = state.tab_id_to_lane.get(to_tab_id) {
-                if existing_lane != lane_id {
-                    return Err(format!(
-                        "illegal transition: rebound tab {to_tab_id} already mapped to lane {existing_lane}"
-                    ));
-                }
-            }
+            validate_executor_tab_rebound_transition(
+                state,
+                *lane_id,
+                *from_tab_id,
+                *to_tab_id,
+                "ExecutorCompletionTabRebound",
+                "completion tab rebound",
+                false,
+            )?;
         }
         ControlEvent::ExecutorSubmitAckTabRebound {
             lane_id,
             from_tab_id,
             to_tab_id,
         } => {
-            require_lane(state, *lane_id, "ExecutorSubmitAckTabRebound")?;
-            if from_tab_id == to_tab_id {
-                return Err(format!(
-                    "illegal transition: submit ack tab rebound for lane {lane_id} requires distinct tabs"
-                ));
-            }
-            if !lane_in_progress(state, *lane_id) {
-                return Err(format!(
-                    "illegal transition: submit ack tab rebound requires lane {lane_id} to be in progress"
-                ));
-            }
-            if !lane_submit_in_flight(state, *lane_id) {
-                return Err(format!(
-                    "illegal transition: submit ack tab rebound requires lane {lane_id} submit-in-flight to still be active"
-                ));
-            }
-            if state.lane_active_tab.get(lane_id) != Some(from_tab_id) {
-                return Err(format!(
-                    "illegal transition: submit ack tab rebound requires lane {lane_id} active tab to be {from_tab_id}"
-                ));
-            }
-            if state.tab_id_to_lane.get(from_tab_id) != Some(lane_id) {
-                return Err(format!(
-                    "illegal transition: submit ack tab rebound requires prior tab {from_tab_id} to map to lane {lane_id}"
-                ));
-            }
-            if let Some(existing_lane) = state.tab_id_to_lane.get(to_tab_id) {
-                if existing_lane != lane_id {
-                    return Err(format!(
-                        "illegal transition: submit ack rebound tab {to_tab_id} already mapped to lane {existing_lane}"
-                    ));
-                }
-            }
+            validate_executor_tab_rebound_transition(
+                state,
+                *lane_id,
+                *from_tab_id,
+                *to_tab_id,
+                "ExecutorSubmitAckTabRebound",
+                "submit ack tab rebound",
+                true,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_executor_turn_registered_transition(
+    state: &SystemState,
+    tab_id: u32,
+    turn_id: u64,
+    lane_id: usize,
+) -> Result<(), String> {
+    require_lane(state, lane_id, "ExecutorTurnRegistered")?;
+    let key = format!("{tab_id}:{turn_id}");
+    if state.submitted_turn_ids.contains_key(&key) {
+        return Err(format!(
+            "illegal transition: submitted turn `{key}` already registered"
+        ));
+    }
+    if let Some(existing_lane) = state.tab_id_to_lane.get(&tab_id) {
+        if *existing_lane != lane_id {
+            return Err(format!(
+                "illegal transition: tab {tab_id} already mapped to lane {existing_lane}"
+            ));
+        }
+    }
+    if !lane_in_progress(state, lane_id) {
+        return Err(format!(
+            "illegal transition: executor turn registration requires lane {lane_id} to be in progress"
+        ));
+    }
+    if lane_submit_in_flight(state, lane_id) {
+        return Err(format!(
+            "illegal transition: executor turn registration requires submit-in-flight to be cleared for lane {lane_id}"
+        ));
+    }
+    if let Some(active_tab) = state.lane_active_tab.get(&lane_id) {
+        if *active_tab != tab_id {
+            return Err(format!(
+                "illegal transition: executor turn registration for lane {lane_id} must use active tab {active_tab}, got {tab_id}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_executor_completion_recovered_transition(
+    state: &SystemState,
+    tab_id: u32,
+    turn_id: u64,
+    lane_id: usize,
+) -> Result<(), String> {
+    require_lane(state, lane_id, "ExecutorCompletionRecovered")?;
+    let key = format!("{tab_id}:{turn_id}");
+    if state.submitted_turn_ids.contains_key(&key) {
+        return Err(format!(
+            "illegal transition: completion recovery for `{key}` requires the turn to be absent from submitted_turn_ids"
+        ));
+    }
+    if !lane_in_progress(state, lane_id) {
+        return Err(format!(
+            "illegal transition: completion recovery requires lane {lane_id} to be in progress"
+        ));
+    }
+    if !lane_submit_in_flight(state, lane_id) {
+        return Err(format!(
+            "illegal transition: completion recovery requires lane {lane_id} to still be submit-in-flight"
+        ));
+    }
+    if let Some(active_tab) = state.lane_active_tab.get(&lane_id) {
+        if *active_tab != tab_id {
+            return Err(format!(
+                "illegal transition: completion recovery for lane {lane_id} cannot rebind active tab from {active_tab} to {tab_id}"
+            ));
+        }
+    }
+    if let Some(existing_lane) = state.tab_id_to_lane.get(&tab_id) {
+        if *existing_lane != lane_id {
+            return Err(format!(
+                "illegal transition: recovered completion tab {tab_id} already mapped to lane {existing_lane}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_executor_tab_rebound_transition(
+    state: &SystemState,
+    lane_id: usize,
+    from_tab_id: u32,
+    to_tab_id: u32,
+    event_name: &str,
+    label: &str,
+    require_submit_in_flight_state: bool,
+) -> Result<(), String> {
+    require_lane(state, lane_id, event_name)?;
+    if from_tab_id == to_tab_id {
+        return Err(format!(
+            "illegal transition: {label} for lane {lane_id} requires distinct tabs"
+        ));
+    }
+    if !lane_in_progress(state, lane_id) {
+        return Err(format!(
+            "illegal transition: {label} requires lane {lane_id} to be in progress"
+        ));
+    }
+    if require_submit_in_flight_state && !lane_submit_in_flight(state, lane_id) {
+        return Err(format!(
+            "illegal transition: {label} requires lane {lane_id} submit-in-flight to still be active"
+        ));
+    }
+    if state.lane_active_tab.get(&lane_id) != Some(&from_tab_id) {
+        return Err(format!(
+            "illegal transition: {label} requires lane {lane_id} active tab to be {from_tab_id}"
+        ));
+    }
+    if state.tab_id_to_lane.get(&from_tab_id) != Some(&lane_id) {
+        return Err(format!(
+            "illegal transition: {label} requires prior tab {from_tab_id} to map to lane {lane_id}"
+        ));
+    }
+    if let Some(existing_lane) = state.tab_id_to_lane.get(&to_tab_id) {
+        if *existing_lane != lane_id {
+            let prefix = if require_submit_in_flight_state {
+                "submit ack rebound"
+            } else {
+                "rebound"
+            };
+            return Err(format!(
+                "illegal transition: {prefix} tab {to_tab_id} already mapped to lane {existing_lane}"
+            ));
         }
     }
     Ok(())

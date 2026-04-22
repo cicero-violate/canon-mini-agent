@@ -159,58 +159,53 @@ pub fn classify_result(action_kind: &str, result_text: &str, ok: bool) -> ErrorC
         return ErrorClass::Unknown; // only classify failures
     }
     let text = result_text.to_lowercase();
+    if let Some(class) = classify_action_kind_failure(action_kind, &text) {
+        return class;
+    }
+    classify_failure_text(&text)
+}
+
+fn classify_action_kind_failure(action_kind: &str, text: &str) -> Option<ErrorClass> {
     match action_kind {
-        "canonical_state_bypass" => return ErrorClass::SecondMutationPath,
-        "runtime_control_bypass" => return ErrorClass::RuntimeControlBypass,
-        "uncanonicalized_recovery" => return ErrorClass::UncanonicalizedRecoveryPath,
-        "checkpoint_runtime_divergence" => return ErrorClass::CheckpointRuntimeDivergence,
-        "effectful_state_advance" => {
-            return ErrorClass::EffectfulStateAdvanceWithoutControlEvent;
+        "canonical_state_bypass" => Some(ErrorClass::SecondMutationPath),
+        "runtime_control_bypass" => Some(ErrorClass::RuntimeControlBypass),
+        "uncanonicalized_recovery" => Some(ErrorClass::UncanonicalizedRecoveryPath),
+        "checkpoint_runtime_divergence" => Some(ErrorClass::CheckpointRuntimeDivergence),
+        "effectful_state_advance" => Some(ErrorClass::EffectfulStateAdvanceWithoutControlEvent),
+        "ambiguous_control_event" => Some(ErrorClass::AmbiguousControlEvent),
+        "plan_preflight" => Some(ErrorClass::PlanPreflightFailed),
+        "route_dispatch" => Some(ErrorClass::InvalidRoute),
+        "step_limit" => Some(ErrorClass::StepLimitExceeded),
+        "livelock" => Some(ErrorClass::LivelockDetected),
+        "build_gate" => Some(ErrorClass::CompileError),
+        "solo_completion_gate" | "diagnostics_evidence_gate" => {
+            Some(ErrorClass::VerificationFailed)
         }
-        "ambiguous_control_event" => return ErrorClass::AmbiguousControlEvent,
-        "plan_preflight" => return ErrorClass::PlanPreflightFailed,
-        "route_dispatch" => return ErrorClass::InvalidRoute,
-        "step_limit" => return ErrorClass::StepLimitExceeded,
-        "livelock" => return ErrorClass::LivelockDetected,
-        "build_gate" => return ErrorClass::CompileError,
-        "solo_completion_gate" => return ErrorClass::VerificationFailed,
-        "diagnostics_evidence_gate" => return ErrorClass::VerificationFailed,
-        "handoff_delivery" => return ErrorClass::InvalidRoute,
-        "reaction_only" => return ErrorClass::ReactionOnly,
-        "executor_submit_timeout" | "submit_ack_timeout" => return ErrorClass::LlmTimeout,
-        "repeated_failed_action" | "idle_streak" => return ErrorClass::InvalidSchema,
-        "cargo_test" | "cargo_clippy" | "run_command" => {
+        "handoff_delivery" => Some(ErrorClass::InvalidRoute),
+        "reaction_only" => Some(ErrorClass::ReactionOnly),
+        "executor_submit_timeout" | "submit_ack_timeout" => Some(ErrorClass::LlmTimeout),
+        "repeated_failed_action" | "idle_streak" => Some(ErrorClass::InvalidSchema),
+        "cargo_test" | "cargo_clippy" | "run_command"
             if text.contains("error[e")
                 || text.contains("compilation failed")
-                || text.contains("test failed")
-            {
-                return ErrorClass::CompileError;
-            }
+                || text.contains("test failed") =>
+        {
+            Some(ErrorClass::CompileError)
         }
-        "read_file" => {
-            if text.contains("outside") || text.contains("permission denied") {
-                return ErrorClass::PermissionDenied;
-            }
-            if text.contains("not found") || text.contains("no such file") {
-                return ErrorClass::MissingTarget;
-            }
+        "read_file" | "apply_patch" if text.contains("outside") || text.contains("permission denied") => {
+            Some(ErrorClass::PermissionDenied)
         }
-        "apply_patch" => {
-            if text.contains("outside") || text.contains("permission denied") {
-                return ErrorClass::PermissionDenied;
-            }
-            if text.contains("not found") || text.contains("no such file") {
-                return ErrorClass::MissingTarget;
-            }
+        "read_file" | "apply_patch" if text.contains("not found") || text.contains("no such file") => {
+            Some(ErrorClass::MissingTarget)
         }
-        "plan" => {
-            if text.contains("not allowed") || text.contains("only") || text.contains("permitted") {
-                return ErrorClass::UnauthorizedPlanOp;
-            }
+        "plan" if text.contains("not allowed") || text.contains("only") || text.contains("permitted") => {
+            Some(ErrorClass::UnauthorizedPlanOp)
         }
-        _ => {}
+        _ => None,
     }
-    // Cross-cutting text patterns
+}
+
+fn classify_failure_text(text: &str) -> ErrorClass {
     if text.contains("outside") && (text.contains("workspace") || text.contains("permitted")) {
         return ErrorClass::PermissionDenied;
     }

@@ -4788,17 +4788,17 @@ fn write_post_restart_result(
         endpoint_id,
         &result.len().to_string(),
     ]);
-    let payload = serde_json::json!({
-        "role": role,
-        "action": action,
-        "result": result,
-        "step": step,
-        "tab_id": tab_id,
-        "turn_id": turn_id,
-        "endpoint_id": endpoint_id,
-        "restart_kind": restart_kind,
-        "signature": signature,
-    });
+    let payload = build_post_restart_result_payload(
+        role,
+        action,
+        result,
+        step,
+        tab_id,
+        turn_id,
+        endpoint_id,
+        restart_kind,
+        &signature,
+    );
     let _ = std::fs::write(
         &path,
         serde_json::to_string_pretty(&payload).unwrap_or_default(),
@@ -4814,6 +4814,30 @@ fn write_post_restart_result(
         restart_kind: restart_kind.to_string(),
         signature,
     }
+}
+
+fn build_post_restart_result_payload(
+    role: &str,
+    action: &str,
+    result: &str,
+    step: usize,
+    tab_id: Option<u32>,
+    turn_id: Option<u64>,
+    endpoint_id: &str,
+    restart_kind: &str,
+    signature: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "role": role,
+        "action": action,
+        "result": result,
+        "step": step,
+        "tab_id": tab_id,
+        "turn_id": turn_id,
+        "endpoint_id": endpoint_id,
+        "restart_kind": restart_kind,
+        "signature": signature,
+    })
 }
 
 #[derive(Clone, Debug)]
@@ -5436,6 +5460,24 @@ fn maybe_rebind_executor_completion_tab(
     if submitted.tab_id == tab_id {
         return;
     }
+    record_executor_completion_tab_rebind(
+        workspace,
+        writer,
+        submitted,
+        tab_id,
+        turn_id,
+        lane_name,
+    );
+}
+
+fn record_executor_completion_tab_rebind(
+    workspace: &Path,
+    writer: &mut CanonicalWriter,
+    submitted: &mut SubmittedExecutorTurn,
+    tab_id: u32,
+    turn_id: u64,
+    lane_name: &str,
+) {
     eprintln!(
         "[orchestrate] completed turn tab rebound: turn_id={} expected_tab={} actual_tab={}",
         turn_id, submitted.tab_id, tab_id
