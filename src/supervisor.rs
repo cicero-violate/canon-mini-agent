@@ -868,9 +868,10 @@ fn supervise_current_child(
             prefer_release,
             child,
         )? {
-            SuperviseCurrentChildFlow::Continue => {}
-            SuperviseCurrentChildFlow::BreakLoop => return Ok(false),
-            SuperviseCurrentChildFlow::ReturnOkTrue => return Ok(true),
+            SuperviseCurrentChildFlow::Continue => continue,
+            flow => {
+                return Ok(matches!(flow, SuperviseCurrentChildFlow::ReturnOkTrue));
+            }
         }
     }
 }

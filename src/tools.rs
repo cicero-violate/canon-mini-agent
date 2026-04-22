@@ -43,18 +43,12 @@ fn value_type_name(v: &Value) -> &'static str {
 
 /// Extract the first file path touched by the patch (*** Update File: / *** Add File:).
 fn patch_first_file(patch: &str) -> Option<&str> {
-    for line in patch.lines() {
-        if let Some(rest) = line
-            .strip_prefix("*** Update File:")
+    patch.lines().find_map(|line| {
+        line.strip_prefix("*** Update File:")
             .or_else(|| line.strip_prefix("*** Add File:"))
-        {
-            let path = rest.trim();
-            if !path.is_empty() {
-                return Some(path);
-            }
-        }
-    }
-    None
+            .map(str::trim)
+            .filter(|path| !path.is_empty())
+    })
 }
 
 fn patch_targets<'a>(patch: &'a str) -> Vec<&'a str> {
@@ -2104,15 +2098,12 @@ const AUTO_READ_CONTEXT_AFTER: usize = 40;
 /// Matches: "Failed to find expected lines in PATH:\n..."
 fn extract_anchor_fail_path(err_msg: &str) -> Option<String> {
     let prefix = "Failed to find expected lines in ";
-    for line in err_msg.lines() {
-        if let Some(rest) = line.strip_prefix(prefix) {
-            let path = rest.trim_end_matches(':').trim();
-            if !path.is_empty() {
-                return Some(path.to_string());
-            }
-        }
-    }
-    None
+    err_msg.lines().find_map(|line| {
+        line.strip_prefix(prefix)
+            .map(|rest| rest.trim_end_matches(':').trim())
+            .filter(|path| !path.is_empty())
+            .map(str::to_string)
+    })
 }
 
 /// Parse the indented anchor lines out of the patch error message.
@@ -2120,26 +2111,18 @@ fn extract_expected_anchor_lines(err_msg: &str) -> Vec<String> {
     let mut lines = Vec::new();
     let mut capture = false;
     for line in err_msg.lines() {
-        if line.starts_with("Failed to find expected lines in ") {
-            capture = true;
-            continue;
-        }
         if !capture {
+            capture = line.starts_with("Failed to find expected lines in ");
             continue;
         }
-        if line.trim().is_empty() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || (!line.starts_with("    ") && !line.starts_with('\t')) {
             if !lines.is_empty() {
                 break;
             }
             continue;
         }
-        if line.starts_with("    ") || line.starts_with('\t') {
-            lines.push(line.trim().to_string());
-            continue;
-        }
-        if !lines.is_empty() {
-            break;
-        }
+        lines.push(trimmed.to_string());
     }
     lines
 }
@@ -6387,10 +6370,8 @@ fn apply_plan_bundle_task_patch(
     id: &str,
 ) -> Result<()> {
     ensure_reopened_task_has_regression_linkage(existing, task_obj, id)?;
-    for (key, value) in task_obj {
-        if key != "id" {
-            existing.insert(key.to_string(), value.clone());
-        }
+    for (key, value) in task_obj.iter().filter(|(key, _)| key.as_str() != "id") {
+        existing.insert(key.to_string(), value.clone());
     }
     Ok(())
 }

@@ -1880,13 +1880,15 @@ impl SemanticIndex {
                 continue;
             }
             if def.start_offset <= span.start_offset && def.end_offset >= span.end_offset {
-                let width = def.end_offset.saturating_sub(def.start_offset);
-                match best {
-                    None => best = Some((sym.as_str(), width)),
-                    Some((_, best_width)) if width < best_width => {
-                        best = Some((sym.as_str(), width))
-                    }
-                    _ => {}
+                let candidate = (
+                    sym.as_str(),
+                    def.end_offset.saturating_sub(def.start_offset),
+                );
+                if best
+                    .map(|(_, best_width)| candidate.1 < best_width)
+                    .unwrap_or(true)
+                {
+                    best = Some(candidate);
                 }
             }
         }
