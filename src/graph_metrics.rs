@@ -19,6 +19,7 @@ use crate::semantic::{GraphCountKind, SemanticIndex};
 
 const DEFAULT_BRIDGE_RATIO_THRESHOLD: f64 = 10.0;
 const CANDIDATE_FUNCTION_LIMIT: usize = 5;
+const MIN_ACTIONABLE_BRIDGE_GRAPH_NODES: usize = 32;
 
 #[derive(Debug, Clone)]
 pub struct BridgeConnectivityStats {
@@ -44,10 +45,11 @@ pub fn generate_bridge_connectivity_issues(workspace: &Path) -> Result<usize> {
             continue;
         };
         let desired_issue = build_bridge_issue(&stats);
+        let actionable = bridge_signal_is_actionable(&stats);
         mutated += upsert_bridge_issue(
             &mut file,
             desired_issue,
-            stats.bridge_ratio > stats.threshold,
+            actionable && stats.bridge_ratio > stats.threshold,
         );
     }
 
@@ -63,6 +65,10 @@ pub fn generate_bridge_connectivity_issues(workspace: &Path) -> Result<usize> {
     }
 
     Ok(mutated)
+}
+
+fn bridge_signal_is_actionable(stats: &BridgeConnectivityStats) -> bool {
+    !(stats.node_count < MIN_ACTIONABLE_BRIDGE_GRAPH_NODES && stats.candidate_functions.is_empty())
 }
 
 pub fn generate_module_cohesion_issues(workspace: &Path) -> Result<usize> {
