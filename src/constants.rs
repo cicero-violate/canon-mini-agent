@@ -126,7 +126,8 @@ pub const ENDPOINT_SPECS: &[EndpointSpec] = &[
         role: "mini_planner",
         role_markdown: "builtin:planner",
         urls: &[
-            "https://chatgpt.com/gg/69e2b1e67f188192a9ca08c2036a06ed",
+            "https://chatgpt.com/gg/69e927d762c481a3a2ae6038794f2a3a",
+            // "https://chatgpt.com/gg/69e2b1e67f188192a9ca08c2036a06ed",
             // "https://chatgpt.com/gg/69d9549305a881a2a3faaff764e2d106",
             // "https://chatgpt.com/",
             // "https://chatgpt.com/gg/69d1275c4ed88191988d28f341f48d42",
@@ -141,7 +142,8 @@ pub const ENDPOINT_SPECS: &[EndpointSpec] = &[
         role: "executor",
         role_markdown: "builtin:planner",
         urls: &[
-            "https://chatgpt.com/gg/69e2b1e67f188192a9ca08c2036a06ed",
+            // "https://chatgpt.com/gg/69e2b1e67f188192a9ca08c2036a06ed",
+            "https://chatgpt.com/gg/69e927d762c481a3a2ae6038794f2a3a",
             // "https://chatgpt.com/gg/69d9549305a881a2a3faaff764e2d106",
             // "https://chatgpt.com/",
             // "https://chatgpt.com/gg/69d126d34dc4819d8de9cba1b209d14c",
