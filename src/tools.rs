@@ -840,8 +840,8 @@ fn handle_objectives_replace_objectives(
 fn load_violations(path: &Path) -> Result<crate::reports::ViolationsReport> {
     let raw = fs::read_to_string(path).unwrap_or_default();
     if raw.trim().is_empty() {
-        if let Some(report) = load_violations_from_tlog(path) {
-            return Ok(report);
+        if let Some(workspace) = path.parent().and_then(|dir| dir.parent()) {
+            return Ok(crate::reports::load_violations_report(workspace));
         }
         return Ok(crate::reports::ViolationsReport {
             status: "ok".to_string(),
@@ -850,20 +850,6 @@ fn load_violations(path: &Path) -> Result<crate::reports::ViolationsReport> {
         });
     }
     serde_json::from_str(&raw).map_err(|e| anyhow!("VIOLATIONS.json parse error: {e}"))
-}
-
-fn load_violations_from_tlog(path: &Path) -> Option<crate::reports::ViolationsReport> {
-    let tlog_path = path
-        .parent()
-        .map(|dir| dir.join("tlog.ndjson"))
-        .unwrap_or_else(|| Path::new(crate::constants::agent_state_dir()).join("tlog.ndjson"));
-    crate::tlog::Tlog::latest_record_by_seq(&tlog_path, |event| match event {
-        crate::events::Event::Effect {
-            event: crate::events::EffectEvent::ViolationsReportRecorded { report },
-        } => Some(report),
-        _ => None,
-    })
-    .ok()?
 }
 
 fn save_violations(

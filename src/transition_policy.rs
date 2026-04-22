@@ -254,26 +254,31 @@ fn validate_lane_prompt_in_flight_event(
 ) -> Result<(), String> {
     require_lane(state, lane_id, "LanePromptInFlightSet")?;
     if in_flight {
-        if !lane_in_progress(state, lane_id) {
-            return Err(format!(
-                "illegal transition: lane {lane_id} cannot enter prompt-in-flight without being in progress"
-            ));
-        }
-        if lane_pending(state, lane_id) {
-            return Err(format!(
-                "illegal transition: lane {lane_id} cannot enter prompt-in-flight while pending"
-            ));
-        }
-        if lane_submit_in_flight(state, lane_id) {
-            return Err(format!(
-                "illegal transition: lane {lane_id} cannot enter prompt-in-flight while submit ack is still pending"
-            ));
-        }
-        if !state.lane_active_tab.contains_key(&lane_id) {
-            return Err(format!(
-                "illegal transition: lane {lane_id} cannot enter prompt-in-flight without an active tab"
-            ));
-        }
+        validate_prompt_in_flight_entry(state, lane_id)?;
+    }
+    Ok(())
+}
+
+fn validate_prompt_in_flight_entry(state: &SystemState, lane_id: usize) -> Result<(), String> {
+    if !lane_in_progress(state, lane_id) {
+        return Err(format!(
+            "illegal transition: lane {lane_id} cannot enter prompt-in-flight without being in progress"
+        ));
+    }
+    if lane_pending(state, lane_id) {
+        return Err(format!(
+            "illegal transition: lane {lane_id} cannot enter prompt-in-flight while pending"
+        ));
+    }
+    if lane_submit_in_flight(state, lane_id) {
+        return Err(format!(
+            "illegal transition: lane {lane_id} cannot enter prompt-in-flight while submit ack is still pending"
+        ));
+    }
+    if !state.lane_active_tab.contains_key(&lane_id) {
+        return Err(format!(
+            "illegal transition: lane {lane_id} cannot enter prompt-in-flight without an active tab"
+        ));
     }
     Ok(())
 }

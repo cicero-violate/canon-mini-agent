@@ -378,7 +378,7 @@ fn example_plan_action(raw_action: Option<&Value>) -> Value {
 }
 
 fn example_message_payload(msg_type: &str, status: &str) -> Value {
-    if msg_type == "blocker" || status == "blocked" {
+    if is_blocker_message_example(msg_type, status) {
         json!({
             "summary": "Short blocker summary",
             "blocker": "Root cause",
@@ -391,6 +391,10 @@ fn example_message_payload(msg_type: &str, status: &str) -> Value {
             "summary": "Short summary"
         })
     }
+}
+
+fn is_blocker_message_example(msg_type: &str, status: &str) -> bool {
+    msg_type == "blocker" || status == "blocked"
 }
 
 fn example_message_metadata() -> Value {
