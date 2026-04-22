@@ -37,6 +37,9 @@ fn main() -> Result<()> {
     } else if canon_mini_agent::has_flag(&args, "--state-transition-only") {
         let _ = canon_mini_agent::graph_metrics::generate_state_transition_dispersion_issues(&workspace)?;
         Ok(())
+    } else if canon_mini_agent::has_flag(&args, "--planner-loop-only") {
+        let _ = canon_mini_agent::graph_metrics::generate_planner_loop_fragmentation_issues(&workspace)?;
+        Ok(())
     } else if canon_mini_agent::has_flag(&args, "--alpha-only") {
         let _ = canon_mini_agent::refactor_analysis::generate_alpha_pathway_issues(&workspace)?;
         Ok(())

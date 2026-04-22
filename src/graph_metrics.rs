@@ -336,6 +336,40 @@ pub fn generate_state_transition_dispersion_issues(workspace: &Path) -> Result<u
     Ok(mutated)
 }
 
+pub fn generate_planner_loop_fragmentation_issues(workspace: &Path) -> Result<usize> {
+    let mut file: IssuesFile = load_issues_file(workspace);
+    let before = serde_json::to_value(&file)?;
+    let mut mutated = 0usize;
+
+    for crate_name in SemanticIndex::available_crates(workspace) {
+        let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
+            continue;
+        };
+        let crate_name = crate_name.replace('-', "_");
+        let desired = build_planner_loop_fragmentation_issue(&crate_name, &idx);
+        let active = desired
+            .metrics
+            .get("orchestrator_count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0)
+            > 1;
+        mutated += upsert_bridge_issue(&mut file, desired, active);
+    }
+
+    rescore_all(&mut file);
+    let after = serde_json::to_value(&file)?;
+    if before != after {
+        persist_issues_projection_with_writer(
+            workspace,
+            &file,
+            None,
+            "generate_planner_loop_fragmentation_issues",
+        )?;
+    }
+
+    Ok(mutated)
+}
+
 pub fn analyze_bridge_connectivity(
     workspace: &Path,
     crate_name: &str,
@@ -656,6 +690,170 @@ fn build_state_transition_dispersion_issue(
     }
 }
 
+fn workflow_phase_for_symbol(symbol: &str) -> Option<&'static str> {
+    let lower = symbol.to_ascii_lowercase();
+    if lower.contains("verify")
+        || lower.contains("verifier")
+        || lower.contains("cargo_test")
+        || lower.contains("cargo_check")
+        || lower.contains("preflight")
+        || lower.contains("validate_")
+    {
+        return Some("verify");
+    }
+    if lower.contains("apply")
+        || lower.contains("patch")
+        || lower.contains("rename")
+        || lower.contains("executor")
+    {
+        return Some("apply");
+    }
+    if lower.contains("planner") || lower.contains("plan_") || lower.contains("plan::") {
+        return Some("planner");
+    }
+    None
+}
+
+fn planner_loop_issue_id(crate_name: &str) -> String {
+    format!(
+        "auto_planner_loop_fragmentation_{}",
+        sanitize_fragment(crate_name)
+    )
+}
+
+fn build_planner_loop_fragmentation_issue(crate_name: &str, idx: &SemanticIndex) -> Issue {
+    let summaries = idx.symbol_summaries();
+    let mut phase_by_symbol: HashMap<String, &'static str> = HashMap::new();
+    for summary in summaries {
+        if summary.kind != "fn" {
+            continue;
+        }
+        if let Some(phase) = workflow_phase_for_symbol(&summary.symbol) {
+            phase_by_symbol.insert(summary.symbol, phase);
+        }
+    }
+
+    let mut phase_symbols: HashMap<&'static str, HashSet<String>> = HashMap::new();
+    for (symbol, phase) in &phase_by_symbol {
+        phase_symbols.entry(*phase).or_default().insert(symbol.clone());
+    }
+
+    let mut workflow_callers: HashMap<String, HashSet<&'static str>> = HashMap::new();
+    let mut incoming_workflow: HashMap<String, usize> = HashMap::new();
+    let mut outgoing_workflow: HashMap<String, usize> = HashMap::new();
+    for (from, to) in idx.call_edges() {
+        let Some(_from_phase) = phase_by_symbol.get(&from).copied() else {
+            continue;
+        };
+        let Some(to_phase) = phase_by_symbol.get(&to).copied() else {
+            continue;
+        };
+        workflow_callers
+            .entry(from.clone())
+            .or_default()
+            .insert(to_phase);
+        *outgoing_workflow.entry(from).or_insert(0) += 1;
+        *incoming_workflow.entry(to).or_insert(0) += 1;
+    }
+
+    let mut orchestrators: Vec<(String, Vec<&'static str>, usize, usize)> = workflow_callers
+        .into_iter()
+        .filter_map(|(symbol, phases)| {
+            let mut phases_vec: Vec<&'static str> = phases.into_iter().collect();
+            phases_vec.sort();
+            let incoming = incoming_workflow.get(&symbol).copied().unwrap_or(0);
+            let outgoing = outgoing_workflow.get(&symbol).copied().unwrap_or(0);
+            let root_like = incoming == 0 && outgoing > 0;
+            let multi_phase = phases_vec.len() >= 2;
+            if root_like || multi_phase {
+                Some((symbol, phases_vec, incoming, outgoing))
+            } else {
+                None
+            }
+        })
+        .collect();
+    orchestrators.sort_by(|a, b| {
+        b.1.len()
+            .cmp(&a.1.len())
+            .then(b.3.cmp(&a.3))
+            .then(a.0.len().cmp(&b.0.len()))
+            .then(a.0.cmp(&b.0))
+    });
+
+    let phase_count = phase_symbols.len();
+    let planner_count = phase_symbols.get("planner").map(|s| s.len()).unwrap_or(0);
+    let apply_count = phase_symbols.get("apply").map(|s| s.len()).unwrap_or(0);
+    let verify_count = phase_symbols.get("verify").map(|s| s.len()).unwrap_or(0);
+    let canonical_target = orchestrators
+        .first()
+        .map(|row| row.0.clone())
+        .unwrap_or_else(|| "app::run_planner_phase".to_string());
+    let evidence = orchestrators
+        .iter()
+        .take(8)
+        .map(|(symbol, phases, incoming, outgoing)| {
+            format!(
+                "workflow orchestrator `{symbol}` reaches phases [{}] (incoming_workflow={incoming}, outgoing_workflow={outgoing})",
+                phases.join(", ")
+            )
+        })
+        .collect::<Vec<_>>();
+    let orchestrator_metrics = orchestrators
+        .iter()
+        .map(|(symbol, phases, incoming, outgoing)| {
+            json!({
+                "symbol": symbol,
+                "phases": phases,
+                "incoming_workflow": incoming,
+                "outgoing_workflow": outgoing,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    Issue {
+        id: planner_loop_issue_id(crate_name),
+        title: format!(
+            "Planner/apply/verify fragmentation in `{}` ({} orchestrators)",
+            crate_name,
+            orchestrators.len()
+        ),
+        status: if orchestrators.len() > 1 { "open" } else { "resolved" }.to_string(),
+        priority: if orchestrators.len() >= 4 { "high" } else { "medium" }.to_string(),
+        kind: "logic".to_string(),
+        description: format!(
+            "Workflow-classified functions in crate `{crate_name}` are spread across planner/apply/verify phases \
+             without a single clear orchestrator. Detected phase counts: planner={planner_count}, \
+             apply={apply_count}, verify={verify_count}. Hypothesis-grade workflow analysis found {} \
+             root-like or multi-phase orchestrators.\n\n\
+             This usually means the planner/apply/verify loop is fragmented across multiple entrypoints \
+             instead of one canonical control path. Consolidate orchestration around `{canonical_target}` \
+             or another single workflow owner, and downgrade the remaining sites to thin delegates.",
+            orchestrators.len()
+        ),
+        location: format!("state/rustc/{crate_name}/graph.json"),
+        scope: format!("crate:{crate_name}"),
+        metrics: json!({
+            "task": "CentralizePlannerLoop",
+            "proof_tier": "hypothesis",
+            "phase_count": phase_count,
+            "planner_count": planner_count,
+            "apply_count": apply_count,
+            "verify_count": verify_count,
+            "orchestrator_count": orchestrators.len(),
+            "canonical_target_candidate": canonical_target,
+            "orchestrators": orchestrator_metrics,
+        }),
+        acceptance_criteria: vec![
+            "planner/apply/verify orchestration is centralized through one canonical control path".to_string(),
+            "secondary workflow entrypoints are deleted or reduced to thin delegates".to_string(),
+            "graph.json is regenerated and the detector reports at most one orchestrator".to_string(),
+        ],
+        evidence,
+        discovered_by: "graph_metrics_detector".to_string(),
+        ..Issue::default()
+    }
+}
+
 fn module_partition_key(summary: &crate::semantic::SymbolSummary) -> String {
     let sym_scope = summary
         .symbol
@@ -853,8 +1051,8 @@ mod tests {
     use super::{
         analyze_bridge_connectivity, generate_artifact_writer_dispersion_issues,
         generate_bridge_connectivity_issues, generate_error_shaping_dispersion_issues,
-        generate_state_transition_dispersion_issues, issue_id, priority_from_ratio,
-        sanitize_fragment,
+        generate_planner_loop_fragmentation_issues, generate_state_transition_dispersion_issues,
+        issue_id, priority_from_ratio, sanitize_fragment,
     };
     use crate::constants::ISSUES_FILE;
     use serde_json::json;
@@ -1205,6 +1403,55 @@ mod tests {
         assert_eq!(issue.status, "open");
         assert_eq!(issue.metrics["transition_count"].as_u64(), Some(2));
         assert_eq!(issue.metrics["display_state"].as_str(), Some("VIOLATIONS_FILE"));
+    }
+
+    #[test]
+    fn planner_loop_fragmentation_emits_issue_for_multiple_workflow_orchestrators() {
+        let workspace = unique_workspace("planner-loop-fragmentation");
+        write_index(&workspace, &["canon_mini_agent"]);
+        write_graph_with_edges(
+            &workspace,
+            "canon_mini_agent",
+            &[
+                "app::run_planner_phase",
+                "tools::handle_apply_patch_action",
+                "tools::verify_apply_patch_crate",
+                "app::apply_wake_signals",
+                "tools::handle_plan_action",
+            ],
+            vec![
+                json!({
+                    "relation": "call",
+                    "from": "app::run_planner_phase",
+                    "to": "tools::handle_apply_patch_action",
+                }),
+                json!({
+                    "relation": "call",
+                    "from": "app::run_planner_phase",
+                    "to": "tools::verify_apply_patch_crate",
+                }),
+                json!({
+                    "relation": "call",
+                    "from": "app::apply_wake_signals",
+                    "to": "tools::handle_plan_action",
+                }),
+                json!({
+                    "relation": "call",
+                    "from": "app::apply_wake_signals",
+                    "to": "tools::verify_apply_patch_crate",
+                }),
+            ],
+        );
+
+        assert!(generate_planner_loop_fragmentation_issues(&workspace).unwrap() > 0);
+        let issues = read_issues(&workspace);
+        let issue = issues
+            .iter()
+            .find(|issue| issue.id.starts_with("auto_planner_loop_fragmentation_"))
+            .expect("planner loop issue");
+        assert_eq!(issue.status, "open");
+        assert_eq!(issue.metrics["orchestrator_count"].as_u64(), Some(2));
+        assert_eq!(issue.metrics["proof_tier"].as_str(), Some("hypothesis"));
     }
 
     #[test]
