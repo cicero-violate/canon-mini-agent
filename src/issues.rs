@@ -250,15 +250,12 @@ fn has_issue_freshness_metadata(issue: &Issue) -> bool {
         || !issue.evidence_hashes.is_empty()
 }
 
-fn collect_stale_reasons(
+fn append_receipt_stale_reasons(
     issue: &Issue,
-    workspace: &Path,
     receipt_ts: &HashMap<String, u64>,
     now_ms: u64,
-) -> Vec<String> {
-    let mut reasons = Vec::new();
-    let has_freshness_metadata = has_issue_freshness_metadata(issue);
-
+    reasons: &mut Vec<String>,
+) {
     if !issue.evidence_receipts.is_empty() {
         let mut missing = 0usize;
         let mut expired = 0usize;
@@ -277,12 +274,17 @@ fn collect_stale_reasons(
         if expired > 0 {
             reasons.push(format!("{expired} evidence receipt(s) expired"));
         }
-    } else if issue.last_validated_ms > 0
+        return;
+    }
+
+    if issue.last_validated_ms > 0
         && now_ms.saturating_sub(issue.last_validated_ms) > ISSUE_FRESHNESS_TTL_MS
     {
         reasons.push("validation timestamp expired".to_string());
     }
+}
 
+fn all_validated_targets_missing(issue: &Issue, workspace: &Path) -> bool {
     let mut validated_targets = 0usize;
     let mut missing_validated_targets = 0usize;
     for target in &issue.validated_from {
@@ -293,7 +295,21 @@ fn collect_stale_reasons(
             }
         }
     }
-    if validated_targets > 0 && missing_validated_targets == validated_targets {
+    validated_targets > 0 && missing_validated_targets == validated_targets
+}
+
+fn collect_stale_reasons(
+    issue: &Issue,
+    workspace: &Path,
+    receipt_ts: &HashMap<String, u64>,
+    now_ms: u64,
+) -> Vec<String> {
+    let mut reasons = Vec::new();
+    let has_freshness_metadata = has_issue_freshness_metadata(issue);
+
+    append_receipt_stale_reasons(issue, receipt_ts, now_ms, &mut reasons);
+
+    if all_validated_targets_missing(issue, workspace) {
         reasons.push("validated_from targets missing".to_string());
     }
 
