@@ -213,15 +213,7 @@ pub fn reconcile_objectives_projection(workspace: &Path, canonical_raw: &str, su
 
 pub fn load_canonical_objectives_json(workspace: &Path) -> Option<String> {
     let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
-    let records = crate::tlog::Tlog::read_records(&tlog_path).ok()?;
-    if records.is_empty() {
-        return None;
-    }
-
-    let events: Vec<crate::events::Event> = records.into_iter().map(|r| r.event).collect();
-    let lane_indices = crate::events::lane_indices_from_events(&events);
-    let initial = crate::system_state::SystemState::new(&lane_indices, lane_indices.len());
-    let replayed = crate::system_state::replay_event_log(initial, &events).ok()?;
+    let replayed = crate::tlog::Tlog::replay_canonical_state(&tlog_path).ok()?;
     if replayed.objectives_json.trim().is_empty() {
         None
     } else {

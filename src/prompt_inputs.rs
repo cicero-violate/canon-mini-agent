@@ -242,10 +242,7 @@ pub fn semantic_state_snapshot_from_tlog(workspace: &Path) -> String {
         }
     }
 
-    let lane_indices = crate::events::lane_indices_from_events(&events);
-    let lane_count = lane_indices.iter().max().map(|idx| idx + 1).unwrap_or(1);
-    let initial = crate::system_state::SystemState::new(&lane_indices, lane_count);
-    let replayed = crate::system_state::replay_event_log(initial, &events).ok();
+    let replayed = crate::tlog::Tlog::replay_with_lane_inference(&events).ok();
 
     let mut out = String::new();
     out.push_str(&format!(
@@ -270,6 +267,8 @@ pub fn semantic_state_snapshot_from_tlog(workspace: &Path) -> String {
             state.submitted_turn_ids.len()
         ));
 
+        let mut lane_indices = state.lanes.keys().cloned().collect::<Vec<_>>();
+        lane_indices.sort();
         let mut lane_lines = Vec::new();
         for lane_id in lane_indices.iter().take(4) {
             if let Some(lane) = state.lanes.get(lane_id) {

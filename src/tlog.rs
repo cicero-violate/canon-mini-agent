@@ -152,6 +152,18 @@ impl Tlog {
         Ok(latest.map(|(_, value)| value))
     }
 
+    pub fn replay_with_lane_inference(events: &[Event]) -> Result<SystemState> {
+        let lane_indices = crate::events::lane_indices_from_events(events);
+        let lane_count = lane_indices.iter().max().map(|idx| idx + 1).unwrap_or(1);
+        let initial = SystemState::new(&lane_indices, lane_count);
+        replay_event_log(initial, events).map_err(anyhow::Error::msg)
+    }
+
+    pub fn replay_canonical_state(path: &Path) -> Result<SystemState> {
+        let events = Self::read_events(path)?;
+        Self::replay_with_lane_inference(&events)
+    }
+
     pub fn replay(path: &Path, initial: SystemState) -> Result<SystemState> {
         let events = Self::read_events(path)?;
         replay_event_log(initial, &events).map_err(anyhow::Error::msg)
@@ -257,6 +269,7 @@ mod tests {
             .expect("append planner pending true");
         tlog.append(&Event::control(ControlEvent::PhaseSet {
             phase: "executor".to_string(),
+            lane: None,
         }))
         .expect("append phase set");
         tlog.append(&planner_pending_event(false))
