@@ -637,6 +637,7 @@ pub fn generate_cfg_region_reduction_issues(workspace: &Path) -> Result<usize> {
                 acc
             });
 
+        let mut candidates: Vec<(f64, Issue)> = Vec::new();
         for summary in idx.symbol_summaries() {
             if summary.kind != "fn" {
                 continue;
@@ -657,8 +658,25 @@ pub fn generate_cfg_region_reduction_issues(workspace: &Path) -> Result<usize> {
                 back_edge_count,
                 redundant_path_count,
             );
+            if qualifies {
+                let score = branch_score
+                    + (back_edge_count as f64 * 4.0)
+                    + (redundant_path_count as f64 * 2.0)
+                    + (summary.switchint_count as f64)
+                    + (dominance_score as f64 * 10.0);
+                candidates.push((score, issue));
+            }
+        }
+
+        candidates.sort_by(|a, b| {
+            b.0.partial_cmp(&a.0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.1.id.cmp(&b.1.id))
+        });
+
+        for (_, issue) in candidates.into_iter().take(50) {
             desired_ids.insert(issue.id.clone());
-            mutated += upsert_bridge_issue(&mut file, issue, qualifies);
+            mutated += upsert_bridge_issue(&mut file, issue, true);
         }
 
         let prefix = format!("auto_cfg_region_reduction_{crate_name}_");
@@ -1086,7 +1104,7 @@ fn build_planner_loop_fragmentation_issue(crate_name: &str, idx: &SemanticIndex)
                 .and_then(|summary| summary.branch_score)
                 .unwrap_or(0.0);
             let coordinating =
-                outgoing >= 2 && branch_score >= 2.0 && (root_like || reached_vec.len() >= 2 || direct_vec.len() >= 2);
+                outgoing >= 4 && branch_score >= 2.0 && (root_like || reached_vec.len() >= 2 || direct_vec.len() >= 2);
             if coordinating {
                 Some((symbol.clone(), direct_vec, reached_vec, incoming, outgoing))
             } else {

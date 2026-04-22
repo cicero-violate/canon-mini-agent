@@ -1668,11 +1668,12 @@ impl SemanticIndex {
     /// is unavoidable on normal execution; a low score means most of the function
     /// is error/unwind handling.
     pub fn cfg_dominance_score(&self, symbol_key: &str) -> f32 {
+        let resolved_key = self.resolve_node_key(symbol_key).unwrap_or(symbol_key);
         let mut total = 0usize;
         let mut non_cleanup = 0usize;
-        let owned_blocks = self.non_cleanup_owned_cfg_blocks(symbol_key);
+        let owned_blocks = self.non_cleanup_owned_cfg_blocks(resolved_key);
         for edge in &self.graph.bridge_edges {
-            if edge.relation == "BelongsTo" && edge.to == symbol_key {
+            if edge.relation == "BelongsTo" && edge.to == resolved_key {
                 total += 1;
                 if owned_blocks.contains(edge.from.as_str()) {
                     non_cleanup += 1;

@@ -65,11 +65,16 @@ Completed:
   - `implicit_state_machine`
   - `effect_boundary_leak`
   - `representation_fanout`
+- initial compiler-emitted workflow-domain edges:
+  - `TouchesWorkflowDomain -> workflow::{planner,apply,verify}`
+- initial CFG-region reduction detector:
+  - `cfg_region_reduction`
 - graph verification snapshot + delta reporting
 
 Missing:
 
-- explicit workflow-domain edges from compiler facts rather than symbol classification
+- tighter planner-loop orchestration thresholds on live crate data
+- validation of live `cfg_region_reduction` candidates against fresh graph output
 - SCC / dominator region reduction candidates
 - richer effect classes:
   - process spawn
@@ -536,19 +541,22 @@ Status:
   - `implicit_state_machine`
   - `effect_boundary_leak`
   - `representation_fanout`
+- in progress:
+  - compiler-driven workflow-domain facts replacing symbol classification
+  - initial `cfg_region_reduction` report path
 - still missing:
-  - SCC / dominator reduction candidates
+  - stable live thresholds for workflow orchestrator detection
+  - confirmed live SCC / dominator reduction candidates
 
 ## Near-Term Implementation Order
 
 Do this next, in order:
 
-1. add explicit workflow-domain edges in the compiler facts
-2. replace symbol-name workflow classification in `planner_loop_fragmentation`
-3. add SCC / dominator region summaries to `graph.json`
-4. implement reduction-candidate reports from those summaries
-5. refine effect classes beyond generic state/artifact IO
-6. tighten `state_transition_dispersion` with richer transition semantics
+1. tighten live `planner_loop_fragmentation` thresholds using compiler workflow facts
+2. validate live `cfg_region_reduction` candidates against fresh graph output
+3. add SCC / dominator region summaries to `graph.json` if live CFG-region signal remains too weak
+4. refine effect classes beyond generic state/artifact IO
+5. tighten `state_transition_dispersion` with richer transition semantics
 
 Do not:
 
@@ -568,10 +576,10 @@ This plan is complete enough when:
 
 ## Immediate Next Step
 
-Start with explicit workflow-domain graph facts.
+Start with the live workflow/control critical path.
 
 Reason:
 
-- current `planner_loop_fragmentation` still depends on symbol classification
-- workflow edges should be facts, not naming conventions
-- SCC / dominator reduction work will need the workflow region boundaries anyway
+- the compiler now emits workflow-domain facts, but the live planner report is still too broad
+- the next useful step is threshold correction, not more schema
+- the CFG-region detector exists; it now needs live-signal validation before expanding the graph again
