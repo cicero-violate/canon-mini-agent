@@ -1473,25 +1473,24 @@ fn workflow_phase_from_domain(raw: &str) -> Option<String> {
     })
 }
 
-fn build_planner_loop_fragmentation_issue(crate_name: &str, idx: &SemanticIndex) -> Issue {
-    let summary_by_symbol: HashMap<String, crate::semantic::SymbolSummary> = idx
-        .symbol_summaries()
-        .into_iter()
-        .map(|summary| (summary.symbol.clone(), summary))
-        .collect();
+type WorkflowOrchestratorRow = (String, Vec<String>, Vec<String>, usize, usize);
+
+fn workflow_phases_by_symbol(idx: &SemanticIndex) -> HashMap<String, HashSet<String>> {
     let mut phases_by_symbol: HashMap<String, HashSet<String>> = HashMap::new();
     for (symbol, workflow) in idx.workflow_domain_edges() {
         let Some(phase) = workflow_phase_from_domain(&workflow) else {
             continue;
         };
-        phases_by_symbol
-            .entry(symbol)
-            .or_default()
-            .insert(phase);
+        phases_by_symbol.entry(symbol).or_default().insert(phase);
     }
+    phases_by_symbol
+}
 
+fn workflow_phase_symbols(
+    phases_by_symbol: &HashMap<String, HashSet<String>>,
+) -> HashMap<String, HashSet<String>> {
     let mut phase_symbols: HashMap<String, HashSet<String>> = HashMap::new();
-    for (symbol, phases) in &phases_by_symbol {
+    for (symbol, phases) in phases_by_symbol {
         for phase in phases {
             phase_symbols
                 .entry(phase.clone())
@@ -1499,7 +1498,17 @@ fn build_planner_loop_fragmentation_issue(crate_name: &str, idx: &SemanticIndex)
                 .insert(symbol.clone());
         }
     }
+    phase_symbols
+}
 
+fn workflow_call_stats(
+    idx: &SemanticIndex,
+    phases_by_symbol: &HashMap<String, HashSet<String>>,
+) -> (
+    HashMap<String, HashSet<String>>,
+    HashMap<String, usize>,
+    HashMap<String, usize>,
+) {
     let mut workflow_callers: HashMap<String, HashSet<String>> = HashMap::new();
     let mut incoming_workflow: HashMap<String, usize> = HashMap::new();
     let mut outgoing_workflow: HashMap<String, usize> = HashMap::new();
@@ -1510,12 +1519,24 @@ fn build_planner_loop_fragmentation_issue(crate_name: &str, idx: &SemanticIndex)
         let Some(to_phases) = phases_by_symbol.get(&to) else {
             continue;
         };
-        workflow_callers.entry(from.clone()).or_default().extend(to_phases.iter().cloned());
+        workflow_callers
+            .entry(from.clone())
+            .or_default()
+            .extend(to_phases.iter().cloned());
         *outgoing_workflow.entry(from).or_insert(0) += 1;
         *incoming_workflow.entry(to).or_insert(0) += 1;
     }
+    (workflow_callers, incoming_workflow, outgoing_workflow)
+}
 
-    let mut orchestrators: Vec<(String, Vec<String>, Vec<String>, usize, usize)> = phases_by_symbol
+fn collect_workflow_orchestrators(
+    phases_by_symbol: &HashMap<String, HashSet<String>>,
+    workflow_callers: &HashMap<String, HashSet<String>>,
+    incoming_workflow: &HashMap<String, usize>,
+    outgoing_workflow: &HashMap<String, usize>,
+    summary_by_symbol: &HashMap<String, crate::semantic::SymbolSummary>,
+) -> Vec<WorkflowOrchestratorRow> {
+    let mut orchestrators: Vec<WorkflowOrchestratorRow> = phases_by_symbol
         .iter()
         .filter_map(|(symbol, direct_phases)| {
             let mut direct_vec: Vec<String> = direct_phases.iter().cloned().collect();
@@ -1533,13 +1554,10 @@ fn build_planner_loop_fragmentation_issue(crate_name: &str, idx: &SemanticIndex)
                 .get(symbol)
                 .and_then(|summary| summary.branch_score)
                 .unwrap_or(0.0);
-            let coordinating =
-                outgoing >= 4 && branch_score >= 2.0 && (root_like || reached_vec.len() >= 2 || direct_vec.len() >= 2);
-            if coordinating {
-                Some((symbol.clone(), direct_vec, reached_vec, incoming, outgoing))
-            } else {
-                None
-            }
+            let coordinating = outgoing >= 4
+                && branch_score >= 2.0
+                && (root_like || reached_vec.len() >= 2 || direct_vec.len() >= 2);
+            coordinating.then_some((symbol.clone(), direct_vec, reached_vec, incoming, outgoing))
         })
         .collect();
     orchestrators.sort_by(|a, b| {
@@ -1549,7 +1567,69 @@ fn build_planner_loop_fragmentation_issue(crate_name: &str, idx: &SemanticIndex)
             .then(a.0.len().cmp(&b.0.len()))
             .then(a.0.cmp(&b.0))
     });
-    let mut owner_candidates: Vec<(String, Vec<String>, Vec<String>, usize, usize)> = orchestrators
+    orchestrators
+}
+
+fn planner_loop_evidence(
+    owner_candidates: &[WorkflowOrchestratorRow],
+    orchestrators: &[WorkflowOrchestratorRow],
+) -> Vec<String> {
+    let mut evidence_rows = owner_candidates.to_vec();
+    for row in orchestrators {
+        if !evidence_rows.iter().any(|existing| existing.0 == row.0) {
+            evidence_rows.push(row.clone());
+        }
+    }
+    evidence_rows
+        .iter()
+        .take(8)
+        .map(|(symbol, direct_phases, reached_phases, incoming, outgoing)| {
+            let role = if owner_candidates.iter().any(|row| row.0 == *symbol) {
+                "workflow owner candidate"
+            } else {
+                "strong workflow orchestrator"
+            };
+            format!(
+                "{role} `{symbol}` touches phases [{}] and reaches [{}] (incoming_workflow={incoming}, outgoing_workflow={outgoing})",
+                direct_phases.join(", "),
+                reached_phases.join(", ")
+            )
+        })
+        .collect()
+}
+
+fn planner_loop_row_metrics(rows: &[WorkflowOrchestratorRow]) -> Vec<Value> {
+    rows.iter()
+        .map(|(symbol, direct_phases, reached_phases, incoming, outgoing)| {
+            json!({
+                "symbol": symbol,
+                "direct_phases": direct_phases,
+                "reached_phases": reached_phases,
+                "incoming_workflow": incoming,
+                "outgoing_workflow": outgoing,
+            })
+        })
+        .collect()
+}
+
+fn build_planner_loop_fragmentation_issue(crate_name: &str, idx: &SemanticIndex) -> Issue {
+    let summary_by_symbol: HashMap<String, crate::semantic::SymbolSummary> = idx
+        .symbol_summaries()
+        .into_iter()
+        .map(|summary| (summary.symbol.clone(), summary))
+        .collect();
+    let phases_by_symbol = workflow_phases_by_symbol(idx);
+    let phase_symbols = workflow_phase_symbols(&phases_by_symbol);
+    let (workflow_callers, incoming_workflow, outgoing_workflow) =
+        workflow_call_stats(idx, &phases_by_symbol);
+    let orchestrators = collect_workflow_orchestrators(
+        &phases_by_symbol,
+        &workflow_callers,
+        &incoming_workflow,
+        &outgoing_workflow,
+        &summary_by_symbol,
+    );
+    let mut owner_candidates: Vec<WorkflowOrchestratorRow> = orchestrators
         .iter()
         .filter(|(_, direct_phases, reached_phases, incoming, outgoing)| {
             *incoming == 0
@@ -1576,52 +1656,9 @@ fn build_planner_loop_fragmentation_issue(crate_name: &str, idx: &SemanticIndex)
         .or_else(|| orchestrators.first())
         .map(|row| row.0.clone())
         .unwrap_or_else(|| "app::run_planner_phase".to_string());
-    let mut evidence_rows = owner_candidates.clone();
-    for row in &orchestrators {
-        if !evidence_rows.iter().any(|existing| existing.0 == row.0) {
-            evidence_rows.push(row.clone());
-        }
-    }
-    let evidence = evidence_rows
-        .iter()
-        .take(8)
-        .map(|(symbol, direct_phases, reached_phases, incoming, outgoing)| {
-            let role = if owner_candidates.iter().any(|row| row.0 == *symbol) {
-                "workflow owner candidate"
-            } else {
-                "strong workflow orchestrator"
-            };
-            format!(
-                "{role} `{symbol}` touches phases [{}] and reaches [{}] (incoming_workflow={incoming}, outgoing_workflow={outgoing})",
-                direct_phases.join(", "),
-                reached_phases.join(", ")
-            )
-        })
-        .collect::<Vec<_>>();
-    let orchestrator_metrics = orchestrators
-        .iter()
-        .map(|(symbol, direct_phases, reached_phases, incoming, outgoing)| {
-            json!({
-                "symbol": symbol,
-                "direct_phases": direct_phases,
-                "reached_phases": reached_phases,
-                "incoming_workflow": incoming,
-                "outgoing_workflow": outgoing,
-            })
-        })
-        .collect::<Vec<_>>();
-    let owner_candidate_metrics = owner_candidates
-        .iter()
-        .map(|(symbol, direct_phases, reached_phases, incoming, outgoing)| {
-            json!({
-                "symbol": symbol,
-                "direct_phases": direct_phases,
-                "reached_phases": reached_phases,
-                "incoming_workflow": incoming,
-                "outgoing_workflow": outgoing,
-            })
-        })
-        .collect::<Vec<_>>();
+    let evidence = planner_loop_evidence(&owner_candidates, &orchestrators);
+    let orchestrator_metrics = planner_loop_row_metrics(&orchestrators);
+    let owner_candidate_metrics = planner_loop_row_metrics(&owner_candidates);
 
     Issue {
         id: planner_loop_issue_id(crate_name),
