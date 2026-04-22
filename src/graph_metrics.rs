@@ -393,15 +393,7 @@ pub fn generate_planner_loop_fragmentation_issues(workspace: &Path) -> Result<us
         let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
             continue;
         };
-        let crate_name = crate_name.replace('-', "_");
-        let desired = build_planner_loop_fragmentation_issue(&crate_name, &idx);
-        let active = desired
-            .metrics
-            .get("owner_candidate_count")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0)
-            > 1;
-        mutated += upsert_bridge_issue(&mut file, desired, active);
+        mutated += sync_planner_loop_fragmentation_issue_for_crate(&mut file, &crate_name, &idx);
     }
 
     rescore_all(&mut file);
@@ -418,51 +410,32 @@ pub fn generate_planner_loop_fragmentation_issues(workspace: &Path) -> Result<us
     Ok(mutated)
 }
 
+fn sync_planner_loop_fragmentation_issue_for_crate(
+    file: &mut IssuesFile,
+    crate_name: &str,
+    idx: &SemanticIndex,
+) -> usize {
+    let crate_name = crate_name.replace('-', "_");
+    let desired = build_planner_loop_fragmentation_issue(&crate_name, idx);
+    let active = desired
+        .metrics
+        .get("owner_candidate_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0)
+        > 1;
+    upsert_bridge_issue(file, desired, active)
+}
+
 pub fn generate_implicit_state_machine_issues(workspace: &Path) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
     let before = serde_json::to_value(&file)?;
-    let mut desired_ids = HashSet::new();
     let mut mutated = 0usize;
 
     for crate_name in SemanticIndex::available_crates(workspace) {
         let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
             continue;
         };
-        let crate_name = crate_name.replace('-', "_");
-        let summaries = idx.symbol_summaries();
-        let mut states_by_symbol: HashMap<String, HashSet<String>> = HashMap::new();
-        for (symbol, state) in idx.state_transition_edges() {
-            states_by_symbol.entry(symbol).or_default().insert(state);
-        }
-
-        for summary in summaries {
-            if summary.kind != "fn" {
-                continue;
-            }
-            let Some(state_domains) = states_by_symbol.get(&summary.symbol) else {
-                continue;
-            };
-            let branch_score = summary.branch_score.unwrap_or(0.0);
-            let workflow_like = implicit_state_machine_candidate_symbol(&summary.symbol);
-            let state_count = state_domains.len();
-            let qualifies = workflow_like
-                && branch_score >= 4.0
-                && (summary.has_back_edges || summary.switchint_count >= 2 || state_count >= 2);
-            let issue = build_implicit_state_machine_issue(&crate_name, &summary, state_domains);
-            desired_ids.insert(issue.id.clone());
-            mutated += upsert_bridge_issue(&mut file, issue, qualifies);
-        }
-
-        let prefix = format!("auto_implicit_state_machine_{crate_name}_");
-        for issue in &mut file.issues {
-            if issue.id.starts_with(&prefix)
-                && !desired_ids.contains(&issue.id)
-                && issue.status != "resolved"
-            {
-                issue.status = "resolved".to_string();
-                mutated += 1;
-            }
-        }
+        mutated += sync_implicit_state_machine_issues_for_crate(&mut file, &crate_name, &idx);
     }
 
     rescore_all(&mut file);
@@ -477,6 +450,77 @@ pub fn generate_implicit_state_machine_issues(workspace: &Path) -> Result<usize>
     }
 
     Ok(mutated)
+}
+
+fn sync_implicit_state_machine_issues_for_crate(
+    file: &mut IssuesFile,
+    crate_name: &str,
+    idx: &SemanticIndex,
+) -> usize {
+    let crate_name = crate_name.replace('-', "_");
+    let states_by_symbol = collect_states_by_symbol(idx);
+    let (desired_ids, mutated) =
+        upsert_implicit_state_machine_issues(file, &crate_name, idx, &states_by_symbol);
+    mutated + resolve_stale_implicit_state_machine_issues(file, &crate_name, &desired_ids)
+}
+
+fn collect_states_by_symbol(idx: &SemanticIndex) -> HashMap<String, HashSet<String>> {
+    let mut states_by_symbol: HashMap<String, HashSet<String>> = HashMap::new();
+    for (symbol, state) in idx.state_transition_edges() {
+        states_by_symbol.entry(symbol).or_default().insert(state);
+    }
+    states_by_symbol
+}
+
+fn upsert_implicit_state_machine_issues(
+    file: &mut IssuesFile,
+    crate_name: &str,
+    idx: &SemanticIndex,
+    states_by_symbol: &HashMap<String, HashSet<String>>,
+) -> (HashSet<String>, usize) {
+    let mut desired_ids = HashSet::new();
+    let mut mutated = 0usize;
+
+    for summary in idx.symbol_summaries() {
+        if summary.kind != "fn" {
+            continue;
+        }
+        let Some(state_domains) = states_by_symbol.get(&summary.symbol) else {
+            continue;
+        };
+        let branch_score = summary.branch_score.unwrap_or(0.0);
+        let workflow_like = implicit_state_machine_candidate_symbol(&summary.symbol);
+        let state_count = state_domains.len();
+        let qualifies = workflow_like
+            && branch_score >= 4.0
+            && (summary.has_back_edges || summary.switchint_count >= 2 || state_count >= 2);
+        let issue = build_implicit_state_machine_issue(crate_name, &summary, state_domains);
+        desired_ids.insert(issue.id.clone());
+        mutated += upsert_bridge_issue(file, issue, qualifies);
+    }
+
+    (desired_ids, mutated)
+}
+
+fn resolve_stale_implicit_state_machine_issues(
+    file: &mut IssuesFile,
+    crate_name: &str,
+    desired_ids: &HashSet<String>,
+) -> usize {
+    let mut mutated = 0usize;
+    let prefix = format!("auto_implicit_state_machine_{crate_name}_");
+
+    for issue in &mut file.issues {
+        if issue.id.starts_with(&prefix)
+            && !desired_ids.contains(&issue.id)
+            && issue.status != "resolved"
+        {
+            issue.status = "resolved".to_string();
+            mutated += 1;
+        }
+    }
+
+    mutated
 }
 
 pub fn generate_effect_boundary_leak_issues(workspace: &Path) -> Result<usize> {
