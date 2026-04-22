@@ -15,11 +15,17 @@ use serde_json::{json, Value};
 use crate::issues::{
     load_issues_file, persist_issues_projection_with_writer, rescore_all, Issue, IssuesFile,
 };
-use crate::semantic::{GraphCountKind, SemanticIndex};
+use crate::semantic::{GraphCountKind, SemanticIndex, SymbolSummary};
 
 const DEFAULT_BRIDGE_RATIO_THRESHOLD: f64 = 10.0;
 const CANDIDATE_FUNCTION_LIMIT: usize = 5;
 const MIN_ACTIONABLE_BRIDGE_GRAPH_NODES: usize = 32;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RegionReductionMode {
+    Scc,
+    Dominator,
+}
 
 #[derive(Debug, Clone)]
 pub struct BridgeConnectivityStats {
@@ -970,6 +976,17 @@ fn build_representation_symbols_by_pair(
 }
 
 pub fn generate_scc_region_reduction_issues(workspace: &Path) -> Result<usize> {
+    generate_region_reduction_issues(workspace, RegionReductionMode::Scc)
+}
+
+pub fn generate_dominator_region_reduction_issues(workspace: &Path) -> Result<usize> {
+    generate_region_reduction_issues(workspace, RegionReductionMode::Dominator)
+}
+
+fn generate_region_reduction_issues(
+    workspace: &Path,
+    mode: RegionReductionMode,
+) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
     let before = serde_json::to_value(&file)?;
     let mut desired_ids = HashSet::new();
@@ -980,61 +997,13 @@ pub fn generate_scc_region_reduction_issues(workspace: &Path) -> Result<usize> {
             continue;
         };
         let crate_name = crate_name.replace('-', "_");
-        let redundant_by_symbol: HashMap<String, usize> = idx
-            .redundant_path_pairs()
-            .into_iter()
-            .fold(HashMap::new(), |mut acc, pair| {
-                *acc.entry(pair.path_a.owner).or_insert(0) += 1;
-                acc
-            });
-
-        let mut candidates: Vec<(f64, Issue)> = Vec::new();
-        for summary in idx.symbol_summaries() {
-            if summary.kind != "fn" {
-                continue;
-            }
-            let symbol = summary.symbol.clone();
-            let cfg_edges = idx.symbol_cfg_edges(&symbol);
-            let back_edge_count = cfg_edges.iter().filter(|edge| edge.is_back_edge).count();
-            let redundant_path_count = redundant_by_symbol.get(&symbol).copied().unwrap_or(0);
-            let branch_score = summary.branch_score.unwrap_or(0.0);
-            let qualifies = branch_score >= 4.0 && back_edge_count > 0;
-            let issue = build_scc_region_reduction_issue(
-                &crate_name,
-                &summary,
-                back_edge_count,
-                redundant_path_count,
-            );
-            if qualifies {
-                let score = branch_score
-                    + (back_edge_count as f64 * 4.0)
-                    + (redundant_path_count as f64 * 2.0)
-                    + (summary.switchint_count as f64);
-                candidates.push((score, issue));
-            }
-        }
-
-        candidates.sort_by(|a, b| {
-            b.0.partial_cmp(&a.0)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then(a.1.id.cmp(&b.1.id))
-        });
-
-        for (_, issue) in candidates.into_iter().take(25) {
-            desired_ids.insert(issue.id.clone());
-            mutated += upsert_bridge_issue(&mut file, issue, true);
-        }
-
-        let prefix = format!("auto_scc_region_reduction_{crate_name}_");
-        for issue in &mut file.issues {
-            if issue.id.starts_with(&prefix)
-                && !desired_ids.contains(&issue.id)
-                && issue.status != "resolved"
-            {
-                issue.status = "resolved".to_string();
-                mutated += 1;
-            }
-        }
+        mutated += sync_region_reduction_issues_for_crate(
+            &mut file,
+            &crate_name,
+            &idx,
+            &mut desired_ids,
+            mode,
+        );
         mutated += resolve_legacy_cfg_region_issues(&mut file, &crate_name);
     }
 
@@ -1045,99 +1014,135 @@ pub fn generate_scc_region_reduction_issues(workspace: &Path) -> Result<usize> {
             workspace,
             &file,
             None,
-            "generate_scc_region_reduction_issues",
+            match mode {
+                RegionReductionMode::Scc => "generate_scc_region_reduction_issues",
+                RegionReductionMode::Dominator => "generate_dominator_region_reduction_issues",
+            },
         )?;
     }
 
     Ok(mutated)
 }
 
-pub fn generate_dominator_region_reduction_issues(workspace: &Path) -> Result<usize> {
-    let mut file: IssuesFile = load_issues_file(workspace);
-    let before = serde_json::to_value(&file)?;
-    let mut desired_ids = HashSet::new();
+fn sync_region_reduction_issues_for_crate(
+    file: &mut IssuesFile,
+    crate_name: &str,
+    idx: &SemanticIndex,
+    desired_ids: &mut HashSet<String>,
+    mode: RegionReductionMode,
+) -> usize {
     let mut mutated = 0usize;
+    let mut candidates = collect_region_reduction_candidates(crate_name, idx, mode);
+    candidates.sort_by(|a, b| {
+        b.0.partial_cmp(&a.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.1.id.cmp(&b.1.id))
+    });
 
-    for crate_name in SemanticIndex::available_crates(workspace) {
-        let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
-            continue;
-        };
-        let crate_name = crate_name.replace('-', "_");
-        let redundant_by_symbol: HashMap<String, usize> = idx
-            .redundant_path_pairs()
-            .into_iter()
-            .fold(HashMap::new(), |mut acc, pair| {
-                *acc.entry(pair.path_a.owner).or_insert(0) += 1;
-                acc
-            });
+    for (_, issue) in candidates.into_iter().take(25) {
+        desired_ids.insert(issue.id.clone());
+        mutated += upsert_bridge_issue(file, issue, true);
+    }
 
-        let mut candidates: Vec<(f64, Issue)> = Vec::new();
-        for summary in idx.symbol_summaries() {
-            if summary.kind != "fn" {
-                continue;
-            }
-            let symbol = summary.symbol.clone();
-            let non_cleanup_fraction = idx.cfg_dominance_score(&symbol);
-            let cfg_edges = idx.symbol_cfg_edges(&symbol);
-            let back_edge_count = cfg_edges.iter().filter(|edge| edge.is_back_edge).count();
-            let redundant_path_count = redundant_by_symbol.get(&symbol).copied().unwrap_or(0);
-            let branch_score = summary.branch_score.unwrap_or(0.0);
+    let prefix = region_reduction_prefix(crate_name, mode);
+    for issue in &mut file.issues {
+        if issue.id.starts_with(&prefix)
+            && !desired_ids.contains(&issue.id)
+            && issue.status != "resolved"
+        {
+            issue.status = "resolved".to_string();
+            mutated += 1;
+        }
+    }
+
+    mutated
+}
+
+fn collect_region_reduction_candidates(
+    crate_name: &str,
+    idx: &SemanticIndex,
+    mode: RegionReductionMode,
+) -> Vec<(f64, Issue)> {
+    let redundant_by_symbol = redundant_path_counts_by_symbol(idx);
+    idx.symbol_summaries()
+        .into_iter()
+        .filter(|summary| summary.kind == "fn")
+        .filter_map(|summary| {
+            qualifying_region_reduction_issue(crate_name, idx, &summary, &redundant_by_symbol, mode)
+        })
+        .collect()
+}
+
+fn qualifying_region_reduction_issue(
+    crate_name: &str,
+    idx: &SemanticIndex,
+    summary: &SymbolSummary,
+    redundant_by_symbol: &HashMap<String, usize>,
+    mode: RegionReductionMode,
+) -> Option<(f64, Issue)> {
+    let symbol = summary.symbol.clone();
+    let cfg_edges = idx.symbol_cfg_edges(&symbol);
+    let back_edge_count = cfg_edges.iter().filter(|edge| edge.is_back_edge).count();
+    let redundant_path_count = redundant_by_symbol.get(&symbol).copied().unwrap_or(0);
+    let branch_score = summary.branch_score.unwrap_or(0.0);
+
+    match mode {
+        RegionReductionMode::Scc => {
+            let qualifies = branch_score >= 4.0 && back_edge_count > 0;
+            qualifies.then(|| {
+                let issue = build_scc_region_reduction_issue(
+                    crate_name,
+                    summary,
+                    back_edge_count,
+                    redundant_path_count,
+                );
+                let score = branch_score
+                    + (back_edge_count as f64 * 4.0)
+                    + (redundant_path_count as f64 * 2.0)
+                    + (summary.switchint_count as f64);
+                (score, issue)
+            })
+        }
+        RegionReductionMode::Dominator => {
             // Dominator-region candidates: high branching, no back-edges (loop-free),
             // and at least 2 SwitchInt terminators. non_cleanup_fraction is retained
             // for context only — it does not gate emission.
             let qualifies = branch_score >= 4.0
                 && back_edge_count == 0
                 && (summary.switchint_count >= 2 || redundant_path_count > 0);
-            let issue = build_dominator_region_reduction_issue(
-                &crate_name,
-                &summary,
-                non_cleanup_fraction,
-                redundant_path_count,
-            );
-            if qualifies {
+            qualifies.then(|| {
+                let non_cleanup_fraction = idx.cfg_dominance_score(&symbol);
+                let issue = build_dominator_region_reduction_issue(
+                    crate_name,
+                    summary,
+                    non_cleanup_fraction,
+                    redundant_path_count,
+                );
                 let score = branch_score
                     + (redundant_path_count as f64 * 2.0)
                     + (summary.switchint_count as f64);
-                candidates.push((score, issue));
-            }
+                (score, issue)
+            })
         }
-
-        candidates.sort_by(|a, b| {
-            b.0.partial_cmp(&a.0)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then(a.1.id.cmp(&b.1.id))
-        });
-
-        for (_, issue) in candidates.into_iter().take(25) {
-            desired_ids.insert(issue.id.clone());
-            mutated += upsert_bridge_issue(&mut file, issue, true);
-        }
-
-        let prefix = format!("auto_dominator_region_reduction_{crate_name}_");
-        for issue in &mut file.issues {
-            if issue.id.starts_with(&prefix)
-                && !desired_ids.contains(&issue.id)
-                && issue.status != "resolved"
-            {
-                issue.status = "resolved".to_string();
-                mutated += 1;
-            }
-        }
-        mutated += resolve_legacy_cfg_region_issues(&mut file, &crate_name);
     }
+}
 
-    rescore_all(&mut file);
-    let after = serde_json::to_value(&file)?;
-    if before != after {
-        persist_issues_projection_with_writer(
-            workspace,
-            &file,
-            None,
-            "generate_dominator_region_reduction_issues",
-        )?;
+fn redundant_path_counts_by_symbol(idx: &SemanticIndex) -> HashMap<String, usize> {
+    idx.redundant_path_pairs()
+        .into_iter()
+        .fold(HashMap::new(), |mut acc, pair| {
+            *acc.entry(pair.path_a.owner).or_insert(0) += 1;
+            acc
+        })
+}
+
+fn region_reduction_prefix(crate_name: &str, mode: RegionReductionMode) -> String {
+    match mode {
+        RegionReductionMode::Scc => format!("auto_scc_region_reduction_{crate_name}_"),
+        RegionReductionMode::Dominator => {
+            format!("auto_dominator_region_reduction_{crate_name}_")
+        }
     }
-
-    Ok(mutated)
 }
 
 pub fn analyze_bridge_connectivity(
