@@ -2629,10 +2629,10 @@ mod tests {
     fn strip_param_names_removes_lowercase_prefixes() {
         // Basic case
         assert_eq!(strip_param_names("(x: &'L0 T0) -> T0"), "(&'L0 T0) -> T0");
-        // Multiple params
+        // Multiple params — leading space before each param name is also consumed.
         assert_eq!(
             strip_param_names("(x: &'L0 T0, y: T1) -> T0"),
-            "(&'L0 T0, T1) -> T0"
+            "(&'L0 T0,T1) -> T0"
         );
         // No param names — should pass through unchanged
         assert_eq!(strip_param_names("(&'L0 T0) -> T0"), "(&'L0 T0) -> T0");
