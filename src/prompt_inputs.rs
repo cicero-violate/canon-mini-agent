@@ -12,8 +12,7 @@ use crate::issues::{read_ranked_open_issues, Issue};
 use crate::reports::{DiagnosticsFinding, DiagnosticsReport, Impact, Severity, ViolationsReport};
 
 use crate::prompts::{
-    single_role_executor_prompt, single_role_planner_prompt, single_role_verifier_prompt,
-    AgentPromptKind,
+    single_role_executor_prompt, single_role_planner_prompt, AgentPromptKind,
 };
 
 #[derive(Clone)]
@@ -1732,9 +1731,7 @@ pub fn load_single_role_inputs(
     _is_diagnostics: bool,
     is_planner: bool,
 ) -> Result<SingleRoleInputs> {
-    let (role, prompt_kind) = if is_verifier {
-        ("verifier", AgentPromptKind::Verifier)
-    } else if is_planner {
+    let (role, prompt_kind) = if is_verifier || is_planner {
         ("mini_planner", AgentPromptKind::Planner)
     } else {
         ("executor", AgentPromptKind::Executor)
@@ -1768,10 +1765,6 @@ pub fn build_single_role_prompt(
     cargo_test_failures: &str,
 ) -> Result<String> {
     let prompt = match inputs.prompt_kind {
-        AgentPromptKind::Verifier => build_verifier_role_prompt(ctx, inputs, cargo_test_failures)?,
-        AgentPromptKind::Diagnostics => {
-            build_planner_role_prompt(ctx, inputs, cargo_test_failures)?
-        }
         AgentPromptKind::Planner => build_planner_role_prompt(ctx, inputs, cargo_test_failures)?,
         AgentPromptKind::Executor => build_executor_role_prompt(ctx)?,
         AgentPromptKind::Solo => {
@@ -1779,23 +1772,6 @@ pub fn build_single_role_prompt(
         }
     };
     Ok(prompt)
-}
-
-fn build_verifier_role_prompt(
-    ctx: &SingleRoleContext<'_>,
-    inputs: &SingleRoleInputs,
-    cargo_test_failures: &str,
-) -> Result<String> {
-    let semantic_control = ctx.read(SingleRoleRead::SemanticControl)?;
-    let objectives = ctx.read(SingleRoleRead::Objectives)?;
-    let executor_diff_text = executor_diff(ctx.workspace, 400);
-    Ok(single_role_verifier_prompt(
-        &inputs.primary_input,
-        &objectives,
-        &semantic_control,
-        &executor_diff_text,
-        cargo_test_failures,
-    ))
 }
 
 fn build_planner_role_prompt(

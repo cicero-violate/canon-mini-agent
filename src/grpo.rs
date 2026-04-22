@@ -64,6 +64,13 @@ impl Default for TaskOutcome {
     }
 }
 
+fn partial_turn_slot<'a>(
+    by_command: &'a mut HashMap<String, PartialTurn>,
+    command_id: String,
+) -> &'a mut PartialTurn {
+    by_command.entry(command_id).or_default()
+}
+
 pub fn extract_grpo_dataset(workspace: &Path, tlog_path: &Path) -> Result<GrpoDataset> {
     let records = crate::tlog::Tlog::read_records(tlog_path)
         .with_context(|| format!("read tlog records from {}", tlog_path.display()))?;
@@ -84,7 +91,7 @@ pub fn extract_grpo_dataset(workspace: &Path, tlog_path: &Path) -> Result<GrpoDa
                 prompt_hash,
                 ..
             } => {
-                let slot = by_command.entry(command_id).or_default();
+                let slot = partial_turn_slot(&mut by_command, command_id);
                 slot.state_seq = Some(record.seq);
                 slot.prompt_hash = Some(prompt_hash);
                 slot.role = Some(role);
@@ -96,7 +103,7 @@ pub fn extract_grpo_dataset(workspace: &Path, tlog_path: &Path) -> Result<GrpoDa
                 action_kind,
                 ..
             } => {
-                let slot = by_command.entry(command_id).or_default();
+                let slot = partial_turn_slot(&mut by_command, command_id);
                 slot.completion = Some(raw);
                 slot.output_action_kind = action_kind;
                 if slot.role.is_none() {
@@ -111,7 +118,7 @@ pub fn extract_grpo_dataset(workspace: &Path, tlog_path: &Path) -> Result<GrpoDa
                 result,
                 ..
             } => {
-                let slot = by_command.entry(command_id).or_default();
+                let slot = partial_turn_slot(&mut by_command, command_id);
                 slot.result = Some(result);
                 slot.result_action_kind = Some(action_kind);
                 slot.result_task_id = task_id.clone();

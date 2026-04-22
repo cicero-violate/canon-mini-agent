@@ -3,7 +3,7 @@ use serde_json::Value;
 
 use crate::constants::{
     diagnostics_file, workspace, EXECUTOR_STEP_LIMIT, INVARIANTS_FILE, ISSUES_FILE,
-    MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
+    MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE,
 };
 use crate::prompt_contract::ACTION_EMIT_LINE;
 use crate::protocol::{MessagePayload, MessageStatus, MessageType, ProtocolMessage, Role};
@@ -203,9 +203,7 @@ fn render_budgeted_prompt<'a>(prefix: &str, items: &[PromptItem<'a>], suffix: &s
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum AgentPromptKind {
     Executor,
-    Verifier,
     Planner,
-    Diagnostics,
     Solo,
 }
 
@@ -227,37 +225,7 @@ fn role_default_schema_actions(kind: AgentPromptKind) -> &'static [&'static str]
             "execution_path",
             "batch",
         ],
-        AgentPromptKind::Verifier => &[
-            "read_file",
-            "cargo_test",
-            "python",
-            "violation",
-            "message",
-            "semantic_map",
-            "symbol_window",
-            "symbol_refs",
-            "execution_path",
-            "batch",
-        ],
         AgentPromptKind::Planner => &[
-            "plan",
-            "objectives",
-            "issue",
-            "read_file",
-            "apply_patch",
-            "symbols_rename_candidates",
-            "symbols_prepare_rename",
-            "rename_symbol",
-            "python",
-            "run_command",
-            "message",
-            "semantic_map",
-            "symbol_window",
-            "symbol_refs",
-            "execution_path",
-            "batch",
-        ],
-        AgentPromptKind::Diagnostics => &[
             "plan",
             "objectives",
             "issue",
@@ -302,9 +270,7 @@ pub(crate) fn role_default_schema_actions_for_role(role: &str) -> &'static [&'st
     let role = role.trim().to_ascii_lowercase();
     if role.starts_with("executor") {
         role_default_schema_actions(AgentPromptKind::Executor)
-    } else if role.starts_with("verifier") {
-        role_default_schema_actions(AgentPromptKind::Verifier)
-    } else if role.starts_with("diagnostics") {
+    } else if role.starts_with("verifier") || role.starts_with("diagnostics") {
         role_default_schema_actions(AgentPromptKind::Planner)
     } else if role.starts_with("solo") {
         role_default_schema_actions(AgentPromptKind::Solo)
@@ -346,9 +312,7 @@ fn default_schema_block(kind: AgentPromptKind) -> String {
 fn prompt_intro(kind: AgentPromptKind) -> &'static str {
     match kind {
         AgentPromptKind::Executor => "You are the canon executor agent.",
-        AgentPromptKind::Verifier => "You are the canon verifier agent (legacy mode; inactive in runtime two-role orchestration).",
         AgentPromptKind::Planner => "You are the canon planner agent.",
-        AgentPromptKind::Diagnostics => "You are the canon planner agent (diagnostics compatibility mode).",
         AgentPromptKind::Solo => "You are the canon solo agent (startup compatibility mode only; inactive in runtime two-role orchestration).",
     }
 }
@@ -356,9 +320,7 @@ fn prompt_intro(kind: AgentPromptKind) -> &'static str {
 fn prompt_mission(kind: AgentPromptKind) -> &'static str {
     match kind {
         AgentPromptKind::Executor => "All actions (`read_file`, `apply_patch`, `run_command`, `plan`, `message`, etc.) are JSON you emit in your response text — they are not function calls or external tools.\nMake source changes, run checks, and report evidence in `message.payload`.",
-        AgentPromptKind::Verifier => "Your job is to critically review executor evidence against the codebase and judge whether the implementation satisfies `SPEC.md`.\nExecutor evidence is a hint only. The canonical truth is the codebase versus `SPEC.md`.\nIf violations are found, use the `violation` action (op=upsert) to record them in `VIOLATIONS.json`. Use `violation` op=resolve to clear violations that are no longer active. Never use `apply_patch` for VIOLATIONS.json.\nBe skeptical — do not trust executor claims at face value.",
         AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `agent_state/OBJECTIVES.json`, and the semantic-control snapshot in this prompt, then derive the master plan plus executor handoff guidance.\nThe semantic-control snapshot is the tlog-derived authority for routing/control and projects issues, violations, and invariants into one view.\nOn every cycle, re-evaluate the workspace and update `PLAN.json` via the `plan` action (emit it as JSON in your response).\nAt the end of every planner cycle, review `agent_state/OBJECTIVES.json` and add or update objectives using the `objectives` action (emit it as JSON in your response).\nAct on projected open issues from semantic control and convert the top open items into ready executor tasks.\nAll actions (`plan`, `objectives`, `issue`, `message`, `read_file`, etc.) are JSON you emit in your response text — they are not function calls or external tools.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
-        AgentPromptKind::Diagnostics => "Your job is to read `SPEC.md`, `agent_state/OBJECTIVES.json`, and semantic control, then update planner-owned projections and planning state. Diagnostics is deprecated as an active role.",
         AgentPromptKind::Solo => "Your job is to coordinate planning, execution, and verification in a single role while participating in orchestration.\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nYou may read, patch, and verify any in-workspace files when justified by evidence.\nKeep evidence tight and run checks before claiming completion.\nAt the end of every cycle — before emitting a completion message — review `agent_state/OBJECTIVES.json` and add or update objectives based on what you discovered. New objectives must include id, title, status, scope, authority_files, category, level, description, requirement, verification, and success_criteria. Use `apply_patch` to write them directly.",
     }
 }
@@ -367,24 +329,15 @@ fn prompt_workspace(kind: AgentPromptKind) -> String {
     let ws = crate::constants::workspace();
     match kind {
         AgentPromptKind::Executor => format!("You work inside the canon workspace at {ws}. All relative file paths resolve against this workspace root."),
-        AgentPromptKind::Verifier => format!("You work inside the canon workspace at {ws}."),
         AgentPromptKind::Planner => format!("You work inside the canon workspace at {ws}. Use bash, semantic_map/symbol_window/symbol_refs (prefer over read_file for Rust source), python, and apply_patch (lane plans only) to review the current project state before reorganizing the plan."),
-        AgentPromptKind::Diagnostics => format!("You work inside the canon workspace at {ws}. Use planner-compatible actions and planner-owned projections."),
         AgentPromptKind::Solo => format!("You work inside the canon workspace at {ws}. Use the full tool suite to plan, execute, and verify changes."),
     }
 }
 
 fn status_snapshot_for(kind: AgentPromptKind) -> &'static str {
-    match kind {
-        AgentPromptKind::Planner
-        | AgentPromptKind::Diagnostics
-        | AgentPromptKind::Executor
-        | AgentPromptKind::Verifier
-        | AgentPromptKind::Solo => "",
-    }
+    let _ = kind;
+    ""
 }
-
-const VERIFIER_PROCESS: &str = "━━━ VERIFICATION PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nFor each executor claim:\n1. Use the executor result summary plus `SPEC.md` to derive the candidate obligations.\n2. Read the relevant source files to confirm the described change exists.\n3. Run cargo check or cargo test if the task involves code correctness.\n4. Judge whether the code satisfies the spec.\n5. If violations are found, write `VIOLATIONS.json` with a clear, actionable list using the enums in canon-mini-agent/src/reports.rs.\n6. Update task `status` fields in `PLAN.json` via the `plan` action (never `apply_patch`) and update any related `next_on_success` / `next_on_failure` as needed.\n7. Report a verification breakdown in `message.payload` (verified, unverified, false) with explicit items.\n8. For any control-flow or state-management claim, verify that the described behavior matches the source code and is consistent with INVARIANTS.json.";
 
 const PLANNER_PROCESS: &str = "━━━ PLANNING PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n\
 ⚠ PLAN.json EDIT RULE: use ONLY the `plan` action for all PLAN.json changes. \
@@ -471,8 +424,7 @@ fn prompt_tail(kind: AgentPromptKind) -> String {
         AgentPromptKind::Executor => {
             format!("{}\n\n{}", executor_handoff(), execution_discipline())
         }
-        AgentPromptKind::Verifier => VERIFIER_PROCESS.to_string(),
-        AgentPromptKind::Planner | AgentPromptKind::Diagnostics => PLANNER_PROCESS.to_string(),
+        AgentPromptKind::Planner => PLANNER_PROCESS.to_string(),
         AgentPromptKind::Solo => solo_execution_discipline(),
     }
 }
@@ -609,64 +561,6 @@ pub(crate) fn executor_cycle_prompt(
     format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nREADY TASKS (from {MASTER_PLAN_FILE}, top-10 by plan order):\n{ready_tasks}\n\nLane plans are deprecated. Use planner handoff messages and {MASTER_PLAN_FILE} for task selection.\nLatest verifier result for lane {lane_label}:\n{verify_result}\n\nYou may send a message action to other agents at any time."
     )
-}
-
-pub(crate) fn single_role_verifier_prompt(
-    _primary_input: &str,
-    objectives: &str,
-    semantic_control: &str,
-    executor_diff_text: &str,
-    cargo_test_failures: &str,
-) -> String {
-    let workspace = workspace();
-    let prefix = format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed."
-    );
-    let objectives_heading = format!("Objectives (from {OBJECTIVES_FILE})");
-    let semantic_control_heading =
-        "Semantic control state (tlog-derived authority + projected views)".to_string();
-    let executor_diff_heading =
-        "Executor diff (workspace changes excluding plans/diagnostics/violations)".to_string();
-    let cargo_failures_heading =
-        "Latest cargo test failures (from cargo_test_failures.json)".to_string();
-    let suffix = format!(
-        "\n\nVerify that objectives in {OBJECTIVES_FILE} are completed properly.\nUpdate task status fields in {MASTER_PLAN_FILE} to reflect verified results.\nWrite violations to {VIOLATIONS_FILE} if any are found.\nWhen complete, report verified/unverified/false items in `message.payload`.\n{ACTION_EMIT_LINE}"
-    );
-    let items = [
-        PromptItem {
-            heading: &objectives_heading,
-            body: objectives,
-            reserve: 800,
-            cap: 3000,
-            weight: 4,
-            always_include: true,
-        },
-        PromptItem {
-            heading: &semantic_control_heading,
-            body: semantic_control,
-            reserve: 800,
-            cap: 2500,
-            weight: 4,
-            always_include: false,
-        },
-        PromptItem {
-            heading: &executor_diff_heading,
-            body: executor_diff_text,
-            reserve: 800,
-            cap: 3000,
-            weight: 3,
-            always_include: false,
-        },
-        PromptItem {
-            heading: &cargo_failures_heading,
-            body: cargo_test_failures,
-            reserve: 800,
-            cap: 2500,
-            weight: 2,
-            always_include: false,
-        },
-    ];
-    render_budgeted_prompt(&prefix, &items, &suffix)
 }
 
 pub(crate) fn single_role_planner_prompt(
@@ -1334,10 +1228,8 @@ fn agent_prompt_kind_from_agent_type(agent_type: &str) -> AgentPromptKind {
     let normalized = agent_type.trim().to_ascii_uppercase();
     if normalized.starts_with("EXECUTOR") {
         AgentPromptKind::Executor
-    } else if normalized.starts_with("VERIFIER") {
-        AgentPromptKind::Verifier
-    } else if normalized.starts_with("DIAGNOSTICS") {
-        AgentPromptKind::Diagnostics
+    } else if normalized.starts_with("VERIFIER") || normalized.starts_with("DIAGNOSTICS") {
+        AgentPromptKind::Planner
     } else if normalized.starts_with("SOLO") {
         AgentPromptKind::Solo
     } else {
@@ -1735,27 +1627,6 @@ mod tests {
     }
 
     #[test]
-    fn diagnostics_system_instructions_include_tool_schema_block() {
-        let prompt = system_instructions(AgentPromptKind::Diagnostics);
-        assert!(
-            prompt.contains("Action contract — respond with exactly one JSON code block using the role-local actions below"),
-            "diagnostics system prompt should include an introductory schema block"
-        );
-        assert!(
-            prompt.contains("Action: `python`"),
-            "diagnostics system prompt should include the python schema"
-        );
-        assert!(
-            prompt.contains("Action: `issue`"),
-            "diagnostics system prompt should include the issue schema"
-        );
-        assert!(
-            !prompt.contains("Canonical status snapshot:"),
-            "diagnostics system prompt should omit the duplicated canonical status snapshot"
-        );
-    }
-
-    #[test]
     fn executor_system_instructions_include_tool_schema_block() {
         let prompt = system_instructions(AgentPromptKind::Executor);
         assert!(
@@ -1807,7 +1678,7 @@ mod tests {
         let prompt = action_result_prompt(
             Some(1),
             Some(2),
-            "DIAGNOSTICS",
+            "PLANNER",
             "python ok:\nEvidence receipt: rcpt-123\n{}",
             Some("python"),
             Some("T1"),
@@ -1988,8 +1859,6 @@ mod tests {
         let kinds = [
             AgentPromptKind::Planner,
             AgentPromptKind::Executor,
-            AgentPromptKind::Verifier,
-            AgentPromptKind::Diagnostics,
             AgentPromptKind::Solo,
         ];
         for kind in kinds {
