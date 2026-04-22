@@ -2099,6 +2099,8 @@ mod tests {
                 "tools::verify_apply_patch_crate",
                 "app::apply_wake_signals",
                 "tools::handle_plan_action",
+                "tools::apply_patch_queue",
+                "tools::dispatch_verify_followups",
             ],
             vec![
                 json!({
@@ -2127,6 +2129,16 @@ mod tests {
                     "to": "workflow::planner",
                 }),
                 json!({
+                    "relation": "TouchesWorkflowDomain",
+                    "from": "tools::apply_patch_queue",
+                    "to": "workflow::apply",
+                }),
+                json!({
+                    "relation": "TouchesWorkflowDomain",
+                    "from": "tools::dispatch_verify_followups",
+                    "to": "workflow::verify",
+                }),
+                json!({
                     "relation": "call",
                     "from": "app::run_planner_phase",
                     "to": "tools::handle_apply_patch_action",
@@ -2138,6 +2150,16 @@ mod tests {
                 }),
                 json!({
                     "relation": "call",
+                    "from": "app::run_planner_phase",
+                    "to": "tools::handle_plan_action",
+                }),
+                json!({
+                    "relation": "call",
+                    "from": "app::run_planner_phase",
+                    "to": "tools::apply_patch_queue",
+                }),
+                json!({
+                    "relation": "call",
                     "from": "app::apply_wake_signals",
                     "to": "tools::handle_plan_action",
                 }),
@@ -2145,6 +2167,16 @@ mod tests {
                     "relation": "call",
                     "from": "app::apply_wake_signals",
                     "to": "tools::verify_apply_patch_crate",
+                }),
+                json!({
+                    "relation": "call",
+                    "from": "app::apply_wake_signals",
+                    "to": "tools::handle_apply_patch_action",
+                }),
+                json!({
+                    "relation": "call",
+                    "from": "app::apply_wake_signals",
+                    "to": "tools::dispatch_verify_followups",
                 }),
             ],
         );
