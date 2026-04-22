@@ -18,6 +18,14 @@ fn graph_only_report_path(workspace: &Path) -> PathBuf {
     reports_dir(workspace).join("graph_only_latest.json")
 }
 
+fn graph_verification_snapshot_latest_path(workspace: &Path) -> PathBuf {
+    reports_dir(workspace).join("graph_verification_snapshot_latest.json")
+}
+
+fn graph_delta_report_latest_path(workspace: &Path) -> PathBuf {
+    reports_dir(workspace).join("graph_delta_latest.json")
+}
+
 fn sort_by_objective_desc(a: &serde_json::Value, b: &serde_json::Value) -> std::cmp::Ordering {
     let score = |v: &serde_json::Value| {
         v.get("objective_score")
@@ -421,6 +429,291 @@ pub fn write_graph_only_complexity_report(workspace: &Path) -> Result<PathBuf> {
     Ok(path)
 }
 
+fn count_artifact_writer_dispersion(idx: &SemanticIndex) -> usize {
+    let mut writers_by_artifact: HashMap<String, HashSet<String>> = HashMap::new();
+    for (writer, artifact) in idx.artifact_write_edges() {
+        if artifact.trim().is_empty() {
+            continue;
+        }
+        writers_by_artifact.entry(artifact).or_default().insert(writer);
+    }
+    writers_by_artifact
+        .into_values()
+        .filter(|writers| writers.len() > 1)
+        .count()
+}
+
+fn count_error_shaping_dispersion(idx: &SemanticIndex) -> usize {
+    let mut functions = HashSet::new();
+    for (symbol, style) in idx.semantic_edges_by_relation("ShapesError") {
+        if !style.trim().is_empty() {
+            functions.insert(symbol);
+        }
+    }
+    usize::from(functions.len() >= 4)
+}
+
+fn count_state_transition_dispersion(idx: &SemanticIndex) -> usize {
+    let mut transitions_by_state: HashMap<String, HashSet<String>> = HashMap::new();
+    for (symbol, state) in idx.state_transition_edges() {
+        if state.trim().is_empty() {
+            continue;
+        }
+        transitions_by_state.entry(state).or_default().insert(symbol);
+    }
+    transitions_by_state
+        .into_values()
+        .filter(|transitions| transitions.len() > 1)
+        .count()
+}
+
+pub fn build_graph_verification_snapshot(workspace: &Path) -> Result<serde_json::Value> {
+    let crates = SemanticIndex::available_crates(workspace);
+    let mut per_crate = Vec::new();
+    let mut global_entries = Vec::new();
+    let mut totals = serde_json::Map::new();
+    let mut total_pathways = 0usize;
+    let mut total_redundant_paths = 0usize;
+    let mut total_artifact_writer_dispersion = 0usize;
+    let mut total_error_shaping_dispersion = 0usize;
+    let mut total_state_transition_dispersion = 0usize;
+
+    for crate_name in crates {
+        let idx = match SemanticIndex::load(workspace, &crate_name) {
+            Ok(idx) => idx,
+            Err(err) => {
+                per_crate.push(json!({
+                    "crate": crate_name,
+                    "status": "error",
+                    "error": err.to_string(),
+                }));
+                continue;
+            }
+        };
+
+        let entries = build_graph_only_entries(&idx, &crate_name);
+        let crate_entropy = if entries.is_empty() {
+            0.0
+        } else {
+            entries
+                .iter()
+                .map(|e| e.graph_complexity_score)
+                .sum::<f64>()
+                / entries.len() as f64
+        };
+        let pathway_count = idx.alpha_pathways().len();
+        let redundant_path_count = idx.redundant_path_pairs().len();
+        let artifact_writer_dispersion_count = count_artifact_writer_dispersion(&idx);
+        let error_shaping_dispersion_count = count_error_shaping_dispersion(&idx);
+        let state_transition_dispersion_count = count_state_transition_dispersion(&idx);
+        let call_edge_count = idx.call_edges().len();
+
+        total_pathways += pathway_count;
+        total_redundant_paths += redundant_path_count;
+        total_artifact_writer_dispersion += artifact_writer_dispersion_count;
+        total_error_shaping_dispersion += error_shaping_dispersion_count;
+        total_state_transition_dispersion += state_transition_dispersion_count;
+        global_entries.extend(entries.iter().cloned());
+
+        per_crate.push(json!({
+            "crate": crate_name,
+            "status": "ok",
+            "overall_graph_entropy_score": crate_entropy,
+            "pathway_count": pathway_count,
+            "redundant_path_count": redundant_path_count,
+            "artifact_writer_dispersion_count": artifact_writer_dispersion_count,
+            "error_shaping_dispersion_count": error_shaping_dispersion_count,
+            "state_transition_dispersion_count": state_transition_dispersion_count,
+            "call_edge_count": call_edge_count,
+            "top_entropy_hotspots": entries.iter().take(10).map(graph_only_entry_json).collect::<Vec<_>>(),
+        }));
+    }
+
+    global_entries.sort_by(graph_only_sort_desc);
+    let overall_entropy = if global_entries.is_empty() {
+        0.0
+    } else {
+        global_entries
+            .iter()
+            .map(|e| e.graph_complexity_score)
+            .sum::<f64>()
+            / global_entries.len() as f64
+    };
+
+    totals.insert(
+        "overall_graph_entropy_score".to_string(),
+        json!(overall_entropy),
+    );
+    totals.insert("pathway_count".to_string(), json!(total_pathways));
+    totals.insert("redundant_path_count".to_string(), json!(total_redundant_paths));
+    totals.insert(
+        "artifact_writer_dispersion_count".to_string(),
+        json!(total_artifact_writer_dispersion),
+    );
+    totals.insert(
+        "error_shaping_dispersion_count".to_string(),
+        json!(total_error_shaping_dispersion),
+    );
+    totals.insert(
+        "state_transition_dispersion_count".to_string(),
+        json!(total_state_transition_dispersion),
+    );
+
+    Ok(json!({
+        "version": 1,
+        "kind": "graph_verification_snapshot",
+        "generated_at_ms": crate::logging::now_ms(),
+        "totals": totals,
+        "global_top": global_entries.iter().take(25).map(graph_only_entry_json).collect::<Vec<_>>(),
+        "crates": per_crate,
+    }))
+}
+
+fn persist_graph_verification_snapshot(
+    workspace: &Path,
+    snapshot: &serde_json::Value,
+) -> Result<PathBuf> {
+    let dir = reports_dir(workspace);
+    fs::create_dir_all(&dir)?;
+    let body = serde_json::to_string_pretty(snapshot)?;
+    let ts = crate::logging::now_ms();
+    let path = dir.join(format!("graph_verification_snapshot_{ts}.json"));
+    fs::write(&path, &body).with_context(|| format!("write {}", path.display()))?;
+    let latest = graph_verification_snapshot_latest_path(workspace);
+    fs::write(&latest, body).with_context(|| format!("write {}", latest.display()))?;
+    Ok(latest)
+}
+
+pub fn write_graph_verification_snapshot(workspace: &Path) -> Result<PathBuf> {
+    let snapshot = build_graph_verification_snapshot(workspace)?;
+    persist_graph_verification_snapshot(workspace, &snapshot)
+}
+
+fn metric_delta(before: &serde_json::Value, after: &serde_json::Value, key: &str) -> serde_json::Value {
+    let before_v = before.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let after_v = after.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let delta = after_v - before_v;
+    json!({
+        "before": before_v,
+        "after": after_v,
+        "delta": delta,
+        "improved": delta < 0.0,
+    })
+}
+
+pub fn build_graph_delta_report(
+    before: &serde_json::Value,
+    after: &serde_json::Value,
+) -> serde_json::Value {
+    let before_totals = before.get("totals").cloned().unwrap_or_else(|| json!({}));
+    let after_totals = after.get("totals").cloned().unwrap_or_else(|| json!({}));
+
+    let metrics = json!({
+        "overall_graph_entropy_score": metric_delta(&before_totals, &after_totals, "overall_graph_entropy_score"),
+        "pathway_count": metric_delta(&before_totals, &after_totals, "pathway_count"),
+        "redundant_path_count": metric_delta(&before_totals, &after_totals, "redundant_path_count"),
+        "artifact_writer_dispersion_count": metric_delta(&before_totals, &after_totals, "artifact_writer_dispersion_count"),
+        "error_shaping_dispersion_count": metric_delta(&before_totals, &after_totals, "error_shaping_dispersion_count"),
+        "state_transition_dispersion_count": metric_delta(&before_totals, &after_totals, "state_transition_dispersion_count"),
+    });
+
+    let keys = [
+        "overall_graph_entropy_score",
+        "pathway_count",
+        "redundant_path_count",
+        "artifact_writer_dispersion_count",
+        "error_shaping_dispersion_count",
+        "state_transition_dispersion_count",
+    ];
+    let improved_metrics = keys
+        .iter()
+        .filter(|key| metrics[*key]["improved"].as_bool().unwrap_or(false))
+        .copied()
+        .collect::<Vec<_>>();
+    let regressed_metrics = keys
+        .iter()
+        .filter(|key| metrics[*key]["delta"].as_f64().unwrap_or(0.0) > 0.0)
+        .copied()
+        .collect::<Vec<_>>();
+
+    let before_crates = before
+        .get("crates")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let after_crates = after
+        .get("crates")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let mut before_by_crate = HashMap::new();
+    for crate_entry in before_crates {
+        if let Some(name) = crate_entry.get("crate").and_then(|v| v.as_str()) {
+            before_by_crate.insert(name.to_string(), crate_entry);
+        }
+    }
+    let per_crate = after_crates
+        .into_iter()
+        .filter_map(|after_entry| {
+            let name = after_entry.get("crate").and_then(|v| v.as_str())?.to_string();
+            let before_entry = before_by_crate.get(&name).cloned().unwrap_or_else(|| json!({}));
+            Some(json!({
+                "crate": name,
+                "overall_graph_entropy_score": metric_delta(&before_entry, &after_entry, "overall_graph_entropy_score"),
+                "pathway_count": metric_delta(&before_entry, &after_entry, "pathway_count"),
+                "redundant_path_count": metric_delta(&before_entry, &after_entry, "redundant_path_count"),
+                "artifact_writer_dispersion_count": metric_delta(&before_entry, &after_entry, "artifact_writer_dispersion_count"),
+                "error_shaping_dispersion_count": metric_delta(&before_entry, &after_entry, "error_shaping_dispersion_count"),
+                "state_transition_dispersion_count": metric_delta(&before_entry, &after_entry, "state_transition_dispersion_count"),
+            }))
+        })
+        .collect::<Vec<_>>();
+
+    json!({
+        "version": 1,
+        "kind": "graph_delta_verification",
+        "generated_at_ms": crate::logging::now_ms(),
+        "before_generated_at_ms": before.get("generated_at_ms").cloned().unwrap_or(serde_json::Value::Null),
+        "after_generated_at_ms": after.get("generated_at_ms").cloned().unwrap_or(serde_json::Value::Null),
+        "metrics": metrics,
+        "improved_metrics": improved_metrics,
+        "regressed_metrics": regressed_metrics,
+        "verification_passed": regressed_metrics.is_empty(),
+        "per_crate": per_crate,
+    })
+}
+
+pub fn write_graph_delta_report(workspace: &Path) -> Result<PathBuf> {
+    let latest_snapshot_path = graph_verification_snapshot_latest_path(workspace);
+    let previous = fs::read_to_string(&latest_snapshot_path)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok());
+    let current = build_graph_verification_snapshot(workspace)?;
+    persist_graph_verification_snapshot(workspace, &current)?;
+
+    let report = match previous {
+        Some(before) => build_graph_delta_report(&before, &current),
+        None => json!({
+            "version": 1,
+            "kind": "graph_delta_verification",
+            "generated_at_ms": crate::logging::now_ms(),
+            "status": "no_baseline",
+            "message": "No previous graph verification snapshot was available; current snapshot has been recorded as the new baseline.",
+            "after_generated_at_ms": current.get("generated_at_ms").cloned().unwrap_or(serde_json::Value::Null),
+        }),
+    };
+
+    let dir = reports_dir(workspace);
+    fs::create_dir_all(&dir)?;
+    let body = serde_json::to_string_pretty(&report)?;
+    let ts = crate::logging::now_ms();
+    let path = dir.join(format!("graph_delta_{ts}.json"));
+    fs::write(&path, &body).with_context(|| format!("write {}", path.display()))?;
+    let latest = graph_delta_report_latest_path(workspace);
+    fs::write(&latest, body).with_context(|| format!("write {}", latest.display()))?;
+    Ok(latest)
+}
+
 /// Compute normalized [0.0, 1.0] objective scores for all items in-place.
 ///
 ///   B_norm  = branch_score / max_branch_score      (terminator-weighted branching, weight 0.6)
@@ -802,4 +1095,69 @@ fn persist_complexity_report(dir: &Path, report: &serde_json::Value) -> Result<P
     let latest = dir.join("latest.json");
     std::fs::write(&latest, body).with_context(|| format!("write {}", latest.display()))?;
     Ok(latest)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_graph_delta_report;
+    use serde_json::json;
+
+    #[test]
+    fn graph_delta_report_marks_reductions_as_improvements() {
+        let before = json!({
+            "generated_at_ms": 100,
+            "totals": {
+                "overall_graph_entropy_score": 0.40,
+                "pathway_count": 12,
+                "redundant_path_count": 30,
+                "artifact_writer_dispersion_count": 3,
+                "error_shaping_dispersion_count": 2,
+                "state_transition_dispersion_count": 4
+            },
+            "crates": [{
+                "crate": "canon_mini_agent",
+                "overall_graph_entropy_score": 0.40,
+                "pathway_count": 12,
+                "redundant_path_count": 30,
+                "artifact_writer_dispersion_count": 3,
+                "error_shaping_dispersion_count": 2,
+                "state_transition_dispersion_count": 4
+            }]
+        });
+        let after = json!({
+            "generated_at_ms": 200,
+            "totals": {
+                "overall_graph_entropy_score": 0.32,
+                "pathway_count": 11,
+                "redundant_path_count": 24,
+                "artifact_writer_dispersion_count": 2,
+                "error_shaping_dispersion_count": 1,
+                "state_transition_dispersion_count": 2
+            },
+            "crates": [{
+                "crate": "canon_mini_agent",
+                "overall_graph_entropy_score": 0.32,
+                "pathway_count": 11,
+                "redundant_path_count": 24,
+                "artifact_writer_dispersion_count": 2,
+                "error_shaping_dispersion_count": 1,
+                "state_transition_dispersion_count": 2
+            }]
+        });
+
+        let report = build_graph_delta_report(&before, &after);
+        let delta = report["metrics"]["overall_graph_entropy_score"]["delta"]
+            .as_f64()
+            .unwrap_or_default();
+        assert!((delta + 0.08).abs() < 1e-9, "unexpected delta: {delta}");
+        assert_eq!(
+            report["metrics"]["pathway_count"]["improved"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(report["verification_passed"].as_bool(), Some(true));
+        assert_eq!(
+            report["per_crate"][0]["artifact_writer_dispersion_count"]["delta"].as_f64(),
+            Some(-1.0)
+        );
+    }
 }

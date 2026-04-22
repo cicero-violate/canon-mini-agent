@@ -20,6 +20,14 @@ fn main() -> Result<()> {
         let path = canon_mini_agent::complexity::write_graph_only_complexity_report(&workspace)?;
         println!("{}", path.display());
         Ok(())
+    } else if canon_mini_agent::has_flag(&args, "--graph-verify-snapshot") {
+        let path = canon_mini_agent::complexity::write_graph_verification_snapshot(&workspace)?;
+        println!("{}", path.display());
+        Ok(())
+    } else if canon_mini_agent::has_flag(&args, "--graph-verify-delta") {
+        let path = canon_mini_agent::complexity::write_graph_delta_report(&workspace)?;
+        println!("{}", path.display());
+        Ok(())
     } else if canon_mini_agent::has_flag(&args, "--artifact-writer-only") {
         let _ = canon_mini_agent::graph_metrics::generate_artifact_writer_dispersion_issues(&workspace)?;
         Ok(())
