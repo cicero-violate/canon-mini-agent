@@ -59,14 +59,6 @@ pub(crate) fn select_questions() -> [&'static str; 3] {
     ]
 }
 
-/// Format the 3 selected questions as a prompt snippet ready for injection.
-pub(crate) fn questions_prompt_snippet() -> String {
-    let qs = select_questions();
-    format!(
-        "Before acting, answer these questions internally:\n- {}\n- {}\n- {}",
-        qs[0], qs[1], qs[2]
-    )
-}
 
 #[cfg(test)]
 mod tests {

@@ -84,7 +84,7 @@ Completed:
   - current canonical owner candidate converges to `tools::execute_action`
 - current live split results:
   - `31` open `scc_region_reduction` issues
-  - `0` open `dominator_region_reduction` issues at the current threshold
+  - `26` open `dominator_region_reduction` issues
   - legacy `cfg_region_reduction` issues resolved
 - richer effect classes now emitted by the compiler facts:
   - `PerformsLogging`
@@ -365,6 +365,11 @@ Hypothesis-grade report kinds:
 - `planner_loop_fragmentation`
 - `effect_boundary_leak`
 - `representation_fanout`
+- `scc_region_reduction`
+- `dominator_region_reduction`
+- `logging_dispersion`
+- `process_spawn_dispersion`
+- `network_usage_dispersion`
 
 Every report must include:
 
@@ -571,21 +576,21 @@ Acceptance:
 
 Status:
 
-- partially complete
+- complete
 - implemented:
   - `planner_loop_fragmentation`
   - `implicit_state_machine`
   - `effect_boundary_leak`
   - `representation_fanout`
-- completed:
-  - compiler-driven workflow-domain facts replacing symbol classification
-  - split CFG-region report paths:
-    - `scc_region_reduction`
-    - `dominator_region_reduction`
-- still missing:
-  - richer dominator-funnel signal if the dominator family should become live
-  - analyzer/reporting passes that exploit the richer effect classes and
-    strengthened transition semantics
+  - `scc_region_reduction` (31 open)
+  - `dominator_region_reduction` (26 open)
+  - `logging_dispersion` (1 open, 50 non-canonical sites)
+  - `process_spawn_dispersion` (1 open, 10 non-canonical sites across 5 modules)
+  - `network_usage_dispersion` (1 open, 4 sites across 4 modules)
+- compiler-driven facts:
+  - workflow-domain edges replacing symbol classification
+  - `PerformsLogging`, `SpawnsProcess`, `UsesNetwork`, `CoordinatesTransition`
+  - `TransitionsState` strengthened to require workflow-coordination or read/write cycle
 
 ## Near-Term Implementation Order
 
@@ -613,11 +618,18 @@ This plan is complete enough when:
 
 ## Immediate Next Step
 
-Start with richer effect classes and stronger transition semantics.
+Tighten the effect boundary canonicality check.
 
-Reason:
+Current state:
 
-- planner-loop ownership now converges on one canonical owner candidate
-- CFG-region splitting is complete and only the SCC family is live at current thresholds
-- the compiler now emits richer effect and transition facts, but the analyzer only
-  partially exploits them
+- `canonical_effect_boundary_symbol` in `src/graph_metrics.rs` uses a static prefix list
+  (`app::`, `tools::`, `logging::`, `supervisor::`, etc.)
+- this is a policy decision embedded in the analyzer as a hard-coded allow-list
+
+Better approach:
+
+- derive canonical boundary symbols from graph facts: symbols that have
+  `TouchesWorkflowDomain` edges or have zero incoming `Calls` edges from
+  outside canonical modules are natural entry-point candidates
+- this removes the hard-coded list and grounds canonicality in the same
+  workflow-domain facts already present in `graph.json`

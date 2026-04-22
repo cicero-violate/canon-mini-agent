@@ -375,7 +375,7 @@ fn prompt_workspace(kind: AgentPromptKind) -> String {
 }
 
 fn canonical_status_snapshot() -> &'static str {
-    "Canonical status snapshot:\n- canonical state changes are gated through the canonical writer\n- replay from `agent_state/tlog.ndjson` is meaningful for canonical state\n- many reconciliation paths are now explicit `ControlEvent`s\n- several loophole-shaped runtime paths are classified and recorded in `agent_state/blockers.json`\n- blockers and invariants can now accumulate around structural failures\n\nOpen guarantees still to close:\n- not every runtime-influenced control decision is canonically represented yet\n- not every reconciliation branch has been split into the right explicit event shape yet\n- not every loophole-class blocker is wired into invariant promotion or route gating yet\n- not every checkpoint/resume inconsistency is bounded and proven safe yet\n- not every intentionally-ephemeral runtime behavior is enumerated and justified yet\n- some branches are now detectable but are not all replaced by dedicated canonical `ControlEvent`s yet\n- blocker -> invariant -> gate coverage for ambiguity/effectful classes is still being completed\n- full orchestration-loop integration tests for these loophole classes still do not exist yet\n\nLoophole-closure rule:\n- when you encounter runtime behavior that influences control flow or externally visible behavior, either prove it is already represented canonically or add the missing event/policy/invariant/test instead of building new features."
+    "Runtime law:\n- prefer replayed canonical state when caches drift\n- represent control-flow or externally visible behavior canonically\n- close loopholes before adding new features"
 }
 
 fn rules_common_footer() -> String {
@@ -385,15 +385,12 @@ fn rules_common_footer() -> String {
     } else {
         String::new()
     };
-    let questions = crate::structured_questions::questions_prompt_snippet();
     format!(
-        "{questions}\n\n\
-         {protect_rule}\
+        "{protect_rule}\
          - {ACTION_EMIT_LINE} Only output the JSON action.\n\
-         - Keep every `predicted_next_actions[*].intent` concise (max 80 characters).\n\
-         - Every mutating action (`apply_patch`, `plan`, `objectives`, `issue`) MUST include a `question` field: the single decision-boundary question this action answers. If answered differently, a different action would be taken.\n\
-         - If you cannot proceed (missing files/permissions, repeated tool errors, or irreconcilable evidence), emit a `message` with `type=blocker`, `status=blocked`, and payload fields `blocker`, `evidence`, `required_action`.\n\
-         - Before emitting a completion message, review `agent_state/OBJECTIVES.json`. Add new objectives for anything you discovered this cycle that is not yet captured. Update the status of existing objectives that changed. Use `apply_patch` to write changes.\n\
+         - Keep `predicted_next_actions[*].intent` concise (max 80 chars).\n\
+         - Mutating actions must include a non-empty `question`.\n\
+         - If blocked, emit `message` with `type=blocker`, `status=blocked`, and payload `blocker`/`evidence`/`required_action`.\n\
          - {OUTPUT_FORMAT_LINE}"
     )
 }
@@ -710,7 +707,7 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
     );
     let schema_block = default_schema_block(kind);
     let suffix = format!(
-        "\nAction protocol — respond with exactly one JSON code block matching one of these schemas. These are not function calls; emit the JSON in plain text:\n\n{schema_block}\n\nFull syntax examples with notes: agent_state/tool_examples.md — use read_file when you need a reminder.\n\n{}",
+        "\nAction contract — respond with exactly one JSON code block using the role-local actions below:\n\n{schema_block}\n\n{}",
         tail
     );
     render_budgeted_prompt(&prefix, &[], &suffix)
@@ -1535,6 +1532,39 @@ fn next_action_hint_text(result: &str, last_action: Option<&str>) -> String {
     }
 }
 
+fn predicted_actions_summary(predicted_next_actions: Option<&str>) -> String {
+    let Some(raw) = predicted_next_actions else {
+        return String::new();
+    };
+    let Ok(value) = serde_json::from_str::<Value>(raw) else {
+        return String::new();
+    };
+    let Some(items) = value.as_array() else {
+        return String::new();
+    };
+    let mut rendered = Vec::new();
+    for item in items.iter().take(3) {
+        let Some(action) = item.get("action").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let intent = item
+            .get("intent")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .map(|text| truncate(text, 48).to_string())
+            .unwrap_or_else(|| "no intent".to_string());
+        rendered.push(format!("`{action}` ({intent})"));
+    }
+    if rendered.is_empty() {
+        return String::new();
+    }
+    format!(
+        "Predicted next actions from your last turn: {}. Compare these against the actual result above before choosing your next action.\n\n",
+        rendered.join(", ")
+    )
+}
+
 fn agent_prompt_kind_from_agent_type(agent_type: &str) -> AgentPromptKind {
     let normalized = agent_type.trim().to_ascii_uppercase();
     if normalized.starts_with("EXECUTOR") {
@@ -1552,12 +1582,18 @@ fn agent_prompt_kind_from_agent_type(agent_type: &str) -> AgentPromptKind {
 
 fn available_actions_hint_text(agent_type: &str) -> String {
     let kind = agent_prompt_kind_from_agent_type(agent_type);
-    let rendered = role_default_schema_actions(kind)
+    let actions = role_default_schema_actions(kind);
+    let preview = actions
         .iter()
+        .take(6)
         .map(|action| format!("`{action}`"))
         .collect::<Vec<_>>()
         .join(", ");
-    format!("available_actions: {rendered}")
+    if actions.len() > 6 {
+        format!("available_actions: {preview}, …")
+    } else {
+        format!("available_actions: {preview}")
+    }
 }
 
 fn action_result_sections(result: &str) -> Vec<(String, String, usize, usize, usize, bool)> {
@@ -1660,14 +1696,7 @@ pub(crate) fn action_result_prompt(
         dedup_action_names_preserve_order(parse_predicted_action_names(predicted_next_actions));
     let predicted_line = match (last_action, predicted_actions.is_empty()) {
         (Some(action_name), false) if !predicted_actions.iter().any(|a| a == action_name) => {
-            let raw = predicted_next_actions.unwrap_or_default();
-            let pretty = serde_json::from_str::<serde_json::Value>(raw)
-                .ok()
-                .and_then(|v| serde_json::to_string_pretty(&v).ok())
-                .unwrap_or_else(|| raw.to_string());
-            format!(
-                "Predicted next actions from your last turn:\n```json\n{pretty}\n```\nCompare these against the actual result above before choosing your next action.\n\n"
-            )
+            predicted_actions_summary(predicted_next_actions)
         }
         _ => String::new(),
     };
@@ -1926,7 +1955,7 @@ mod tests {
     fn planner_system_instructions_include_tool_schema_block() {
         let prompt = system_instructions(AgentPromptKind::Planner);
         assert!(
-            prompt.contains("Action protocol — respond with exactly one JSON code block matching one of these schemas"),
+            prompt.contains("Action contract — respond with exactly one JSON code block using the role-local actions below"),
             "planner system prompt should include an introductory schema block"
         );
         assert!(
@@ -1938,7 +1967,7 @@ mod tests {
             "planner system prompt should include the issue schema"
         );
         assert!(
-            prompt.contains("Schema-derived `plan.op` values:"),
+            prompt.contains("Ops: create_task"),
             "planner system prompt should include schema-derived plan op hints"
         );
         assert!(
@@ -1955,7 +1984,7 @@ mod tests {
     fn diagnostics_system_instructions_include_tool_schema_block() {
         let prompt = system_instructions(AgentPromptKind::Diagnostics);
         assert!(
-            prompt.contains("Action protocol — respond with exactly one JSON code block matching one of these schemas"),
+            prompt.contains("Action contract — respond with exactly one JSON code block using the role-local actions below"),
             "diagnostics system prompt should include an introductory schema block"
         );
         assert!(
@@ -1972,7 +2001,7 @@ mod tests {
     fn executor_system_instructions_include_tool_schema_block() {
         let prompt = system_instructions(AgentPromptKind::Executor);
         assert!(
-            prompt.contains("Action protocol — respond with exactly one JSON code block matching one of these schemas"),
+            prompt.contains("Action contract — respond with exactly one JSON code block using the role-local actions below"),
             "executor system prompt should include an introductory schema block"
         );
         assert!(
@@ -1987,6 +2016,14 @@ mod tests {
             prompt.contains("Action: `python`"),
             "executor system prompt should include the python schema"
         );
+    }
+
+    #[test]
+    fn planner_system_instructions_trim_static_prompt_mass() {
+        let prompt = system_instructions(AgentPromptKind::Planner);
+        assert!(prompt.len() < 24_000, "planner system prompt should stay compact");
+        assert!(!prompt.contains("Canonical status snapshot:"));
+        assert!(!prompt.contains("Open guarantees still to close:"));
     }
 
     #[test]
@@ -2009,9 +2046,10 @@ mod tests {
             Some(predicted),
         );
         assert!(!prompt.contains("Derived schemas for predicted next actions:"));
-        assert!(!prompt.contains("Action protocol — respond with exactly one JSON code block"));
+        assert!(!prompt.contains("Action contract — respond with exactly one JSON code block"));
         assert!(prompt.contains("Predicted next actions from your last turn:"));
         assert!(prompt.contains("Compare these against the actual result above before choosing your next action."));
+        assert!(!prompt.contains("```json\n["));
     }
 
     #[test]
@@ -2028,7 +2066,7 @@ mod tests {
             Some(1),
             None,
         );
-        assert!(!prompt.contains("Action protocol — respond with exactly one JSON code block"));
+        assert!(!prompt.contains("Action contract — respond with exactly one JSON code block"));
         assert!(!prompt.contains("Derived schemas for predicted next actions:"));
         assert!(!prompt.contains("Predicted next actions from your last turn:"));
     }
@@ -2073,7 +2111,8 @@ mod tests {
         assert!(prompt.contains("`plan`"));
         assert!(prompt.contains("`objectives`"));
         assert!(prompt.contains("`issue`"));
-        assert!(prompt.contains("`batch`"));
+        assert!(prompt.contains("…"));
+        assert!(!prompt.contains("`batch`"));
     }
 
     #[test]

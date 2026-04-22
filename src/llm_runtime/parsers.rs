@@ -336,9 +336,9 @@ fn classify_calpico_value(v: &Value) -> FrameResult {
         return classify_chatgpt_group(chunk);
     }
     if let Some(items) = obj.get("items").and_then(|i| i.as_array()) {
-        let result = classify_calpico_items(items);
-        if !matches!(result, FrameResult::Ignore) {
-            return result;
+        match classify_calpico_items(items) {
+            FrameResult::Ignore => {}
+            result => return result,
         }
     }
     if obj.get("type").and_then(|t| t.as_str()) == Some("message") {

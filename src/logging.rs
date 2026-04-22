@@ -689,6 +689,9 @@ pub(crate) fn append_llm_completion_log(
 }
 
 pub(crate) fn append_orchestration_trace(event: &str, payload: Value) {
+    if LOG_PATHS.get().is_none() {
+        return;
+    }
     let actor = payload
         .get("role")
         .and_then(|v| v.as_str())
@@ -754,9 +757,6 @@ pub(crate) fn append_orchestration_trace(event: &str, payload: Value) {
         text,
         filtered_payload_meta(&payload),
     );
-    if LOG_PATHS.get().is_none() {
-        return;
-    }
     if let Err(err) = append_action_log_record(&record) {
         eprintln!("[trace] orchestration_log_error: {err}");
     }
