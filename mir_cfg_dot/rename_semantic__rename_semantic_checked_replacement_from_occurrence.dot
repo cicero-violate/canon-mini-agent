@@ -1,0 +1,38 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2960 {
+    label="rename_semantic::checked_replacement_from_occurrence";
+    "cfg::rename_semantic::checked_replacement_from_occurrence::bb0" [label="bb0\nCall"];
+    "cfg::rename_semantic::checked_replacement_from_occurrence::bb1" [label="bb1\nCall"];
+    "cfg::rename_semantic::checked_replacement_from_occurrence::bb2" [label="bb2\nCall"];
+    "cfg::rename_semantic::checked_replacement_from_occurrence::bb3" [label="bb3\nCall"];
+    "cfg::rename_semantic::checked_replacement_from_occurrence::bb4" [label="bb4\nSwitchInt"];
+    "cfg::rename_semantic::checked_replacement_from_occurrence::bb5" [label="bb5\nUnreachable"];
+    "cfg::rename_semantic::checked_replacement_from_occurrence::bb6" [label="bb6\nCall"];
+    "cfg::rename_semantic::checked_replacement_from_occurrence::bb7" [label="bb7\nCall"];
+    "cfg::rename_semantic::checked_replacement_from_occurrence::bb8" [label="bb8\nDrop"];
+    "cfg::rename_semantic::checked_replacement_from_occurrence::bb9" [label="bb9\nCall"];
+    "cfg::rename_semantic::checked_replacement_from_occurrence::bb10" [label="bb10\nGoto"];
+    "cfg::rename_semantic::checked_replacement_from_occurrence::bb11" [label="bb11\nGoto"];
+    "cfg::rename_semantic::checked_replacement_from_occurrence::bb12" [label="bb12\nReturn"];
+    "cfg::rename_semantic::checked_replacement_from_occurrence::bb13" [label="bb13\nDrop cleanup"];
+    "cfg::rename_semantic::checked_replacement_from_occurrence::bb14" [label="bb14\nDrop cleanup"];
+    "cfg::rename_semantic::checked_replacement_from_occurrence::bb15" [label="bb15\nUnwindResume cleanup loop"];
+    "cfg::rename_semantic::checked_replacement_from_occurrence::bb16" [label="bb16\nDrop cleanup loop"];
+    "cfg::rename_semantic::checked_replacement_from_occurrence::bb17" [label="bb17\nSwitchInt cleanup loop"];
+  }
+  "cfg::rename_semantic::checked_replacement_from_occurrence::bb4" -> "cfg::rename_semantic::checked_replacement_from_occurrence::bb6" [label="SwitchInt"];
+  "cfg::rename_semantic::checked_replacement_from_occurrence::bb4" -> "cfg::rename_semantic::checked_replacement_from_occurrence::bb7" [label="SwitchInt"];
+  "cfg::rename_semantic::checked_replacement_from_occurrence::bb4" -> "cfg::rename_semantic::checked_replacement_from_occurrence::bb5" [label="SwitchInt"];
+  "cfg::rename_semantic::checked_replacement_from_occurrence::bb8" -> "cfg::rename_semantic::checked_replacement_from_occurrence::bb11" [label="Drop"];
+  "cfg::rename_semantic::checked_replacement_from_occurrence::bb10" -> "cfg::rename_semantic::checked_replacement_from_occurrence::bb12" [label="Goto"];
+  "cfg::rename_semantic::checked_replacement_from_occurrence::bb11" -> "cfg::rename_semantic::checked_replacement_from_occurrence::bb12" [label="Goto"];
+  "cfg::rename_semantic::checked_replacement_from_occurrence::bb13" -> "cfg::rename_semantic::checked_replacement_from_occurrence::bb14" [label="Drop"];
+  "cfg::rename_semantic::checked_replacement_from_occurrence::bb14" -> "cfg::rename_semantic::checked_replacement_from_occurrence::bb17" [label="Drop"];
+  "cfg::rename_semantic::checked_replacement_from_occurrence::bb16" -> "cfg::rename_semantic::checked_replacement_from_occurrence::bb15" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::rename_semantic::checked_replacement_from_occurrence::bb17" -> "cfg::rename_semantic::checked_replacement_from_occurrence::bb15" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::rename_semantic::checked_replacement_from_occurrence::bb17" -> "cfg::rename_semantic::checked_replacement_from_occurrence::bb16" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

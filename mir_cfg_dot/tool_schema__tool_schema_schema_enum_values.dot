@@ -1,0 +1,19 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3430 {
+    label="tool_schema::schema_enum_values";
+    "cfg::tool_schema::schema_enum_values::bb0" [label="bb0\nCall"];
+    "cfg::tool_schema::schema_enum_values::bb1" [label="bb1\nCall"];
+    "cfg::tool_schema::schema_enum_values::bb2" [label="bb2\nCall"];
+    "cfg::tool_schema::schema_enum_values::bb3" [label="bb3\nCall"];
+    "cfg::tool_schema::schema_enum_values::bb4" [label="bb4\nDrop"];
+    "cfg::tool_schema::schema_enum_values::bb5" [label="bb5\nReturn"];
+    "cfg::tool_schema::schema_enum_values::bb6" [label="bb6\nDrop cleanup"];
+    "cfg::tool_schema::schema_enum_values::bb7" [label="bb7\nUnwindResume cleanup"];
+  }
+  "cfg::tool_schema::schema_enum_values::bb4" -> "cfg::tool_schema::schema_enum_values::bb5" [label="Drop"];
+  "cfg::tool_schema::schema_enum_values::bb6" -> "cfg::tool_schema::schema_enum_values::bb7" [label="Drop"];
+}

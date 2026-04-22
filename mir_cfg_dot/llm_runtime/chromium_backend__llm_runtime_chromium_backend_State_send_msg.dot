@@ -1,0 +1,31 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1667 {
+    label="llm_runtime::chromium_backend::State::send_msg";
+    "cfg::llm_runtime::chromium_backend::State::send_msg::bb0" [label="bb0\nSwitchInt"];
+    "cfg::llm_runtime::chromium_backend::State::send_msg::bb1" [label="bb1\nCall"];
+    "cfg::llm_runtime::chromium_backend::State::send_msg::bb2" [label="bb2\nCall"];
+    "cfg::llm_runtime::chromium_backend::State::send_msg::bb3" [label="bb3\nCall"];
+    "cfg::llm_runtime::chromium_backend::State::send_msg::bb4" [label="bb4\nCall"];
+    "cfg::llm_runtime::chromium_backend::State::send_msg::bb5" [label="bb5\nDrop"];
+    "cfg::llm_runtime::chromium_backend::State::send_msg::bb6" [label="bb6\nGoto"];
+    "cfg::llm_runtime::chromium_backend::State::send_msg::bb7" [label="bb7\nDrop"];
+    "cfg::llm_runtime::chromium_backend::State::send_msg::bb8" [label="bb8\nReturn"];
+    "cfg::llm_runtime::chromium_backend::State::send_msg::bb9" [label="bb9\nDrop cleanup"];
+    "cfg::llm_runtime::chromium_backend::State::send_msg::bb10" [label="bb10\nDrop cleanup"];
+    "cfg::llm_runtime::chromium_backend::State::send_msg::bb11" [label="bb11\nUnwindResume cleanup"];
+    "cfg::llm_runtime::chromium_backend::State::send_msg::bb12" [label="bb12\nUnreachable"];
+  }
+  "cfg::llm_runtime::chromium_backend::State::send_msg::bb0" -> "cfg::llm_runtime::chromium_backend::State::send_msg::bb1" [label="SwitchInt"];
+  "cfg::llm_runtime::chromium_backend::State::send_msg::bb0" -> "cfg::llm_runtime::chromium_backend::State::send_msg::bb6" [label="SwitchInt"];
+  "cfg::llm_runtime::chromium_backend::State::send_msg::bb0" -> "cfg::llm_runtime::chromium_backend::State::send_msg::bb12" [label="SwitchInt"];
+  "cfg::llm_runtime::chromium_backend::State::send_msg::bb5" -> "cfg::llm_runtime::chromium_backend::State::send_msg::bb7" [label="Drop"];
+  "cfg::llm_runtime::chromium_backend::State::send_msg::bb5" -> "cfg::llm_runtime::chromium_backend::State::send_msg::bb10" [label="Drop"];
+  "cfg::llm_runtime::chromium_backend::State::send_msg::bb6" -> "cfg::llm_runtime::chromium_backend::State::send_msg::bb7" [label="Goto"];
+  "cfg::llm_runtime::chromium_backend::State::send_msg::bb7" -> "cfg::llm_runtime::chromium_backend::State::send_msg::bb8" [label="Drop"];
+  "cfg::llm_runtime::chromium_backend::State::send_msg::bb9" -> "cfg::llm_runtime::chromium_backend::State::send_msg::bb10" [label="Drop"];
+  "cfg::llm_runtime::chromium_backend::State::send_msg::bb10" -> "cfg::llm_runtime::chromium_backend::State::send_msg::bb11" [label="Drop"];
+}

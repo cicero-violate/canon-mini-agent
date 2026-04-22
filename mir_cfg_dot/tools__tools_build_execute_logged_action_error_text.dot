@@ -1,0 +1,36 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4582 {
+    label="tools::build_execute_logged_action_error_text";
+    "cfg::tools::build_execute_logged_action_error_text::bb0" [label="bb0\nCall"];
+    "cfg::tools::build_execute_logged_action_error_text::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::build_execute_logged_action_error_text::bb2" [label="bb2\nCall"];
+    "cfg::tools::build_execute_logged_action_error_text::bb3" [label="bb3\nCall"];
+    "cfg::tools::build_execute_logged_action_error_text::bb4" [label="bb4\nCall"];
+    "cfg::tools::build_execute_logged_action_error_text::bb5" [label="bb5\nCall"];
+    "cfg::tools::build_execute_logged_action_error_text::bb6" [label="bb6\nCall"];
+    "cfg::tools::build_execute_logged_action_error_text::bb7" [label="bb7\nCall"];
+    "cfg::tools::build_execute_logged_action_error_text::bb8" [label="bb8\nCall"];
+    "cfg::tools::build_execute_logged_action_error_text::bb9" [label="bb9\nDrop"];
+    "cfg::tools::build_execute_logged_action_error_text::bb10" [label="bb10\nDrop"];
+    "cfg::tools::build_execute_logged_action_error_text::bb11" [label="bb11\nCall"];
+    "cfg::tools::build_execute_logged_action_error_text::bb12" [label="bb12\nCall"];
+    "cfg::tools::build_execute_logged_action_error_text::bb13" [label="bb13\nCall"];
+    "cfg::tools::build_execute_logged_action_error_text::bb14" [label="bb14\nCall"];
+    "cfg::tools::build_execute_logged_action_error_text::bb15" [label="bb15\nCall"];
+    "cfg::tools::build_execute_logged_action_error_text::bb16" [label="bb16\nReturn"];
+    "cfg::tools::build_execute_logged_action_error_text::bb17" [label="bb17\nDrop cleanup"];
+    "cfg::tools::build_execute_logged_action_error_text::bb18" [label="bb18\nDrop cleanup"];
+    "cfg::tools::build_execute_logged_action_error_text::bb19" [label="bb19\nUnwindResume cleanup"];
+  }
+  "cfg::tools::build_execute_logged_action_error_text::bb1" -> "cfg::tools::build_execute_logged_action_error_text::bb12" [label="SwitchInt"];
+  "cfg::tools::build_execute_logged_action_error_text::bb1" -> "cfg::tools::build_execute_logged_action_error_text::bb2" [label="SwitchInt"];
+  "cfg::tools::build_execute_logged_action_error_text::bb9" -> "cfg::tools::build_execute_logged_action_error_text::bb10" [label="Drop"];
+  "cfg::tools::build_execute_logged_action_error_text::bb9" -> "cfg::tools::build_execute_logged_action_error_text::bb18" [label="Drop"];
+  "cfg::tools::build_execute_logged_action_error_text::bb10" -> "cfg::tools::build_execute_logged_action_error_text::bb11" [label="Drop"];
+  "cfg::tools::build_execute_logged_action_error_text::bb17" -> "cfg::tools::build_execute_logged_action_error_text::bb18" [label="Drop"];
+  "cfg::tools::build_execute_logged_action_error_text::bb18" -> "cfg::tools::build_execute_logged_action_error_text::bb19" [label="Drop"];
+}

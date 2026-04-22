@@ -1,0 +1,52 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2523 {
+    label="prompt_inputs::executor_role_prompt_inputs";
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb0" [label="bb0\nCall"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb1" [label="bb1\nCall"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb2" [label="bb2\nSwitchInt"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb3" [label="bb3\nUnreachable loop"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb4" [label="bb4\nCall loop"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb5" [label="bb5\nCall loop"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb6" [label="bb6\nCall loop"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb8" [label="bb8\nCall loop"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb9" [label="bb9\nCall loop"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb10" [label="bb10\nDrop loop"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb11" [label="bb11\nCall loop"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb13" [label="bb13\nGoto"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb14" [label="bb14\nCall"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb15" [label="bb15\nDrop"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb16" [label="bb16\nDrop"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb17" [label="bb17\nReturn"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb18" [label="bb18\nDrop cleanup"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb19" [label="bb19\nDrop cleanup"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb20" [label="bb20\nDrop cleanup"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb21" [label="bb21\nDrop cleanup"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb22" [label="bb22\nDrop cleanup"];
+    "cfg::prompt_inputs::executor_role_prompt_inputs::bb23" [label="bb23\nUnwindResume cleanup"];
+  }
+  "cfg::prompt_inputs::executor_role_prompt_inputs::bb2" -> "cfg::prompt_inputs::executor_role_prompt_inputs::bb4" [label="SwitchInt"];
+  "cfg::prompt_inputs::executor_role_prompt_inputs::bb2" -> "cfg::prompt_inputs::executor_role_prompt_inputs::bb5" [label="SwitchInt"];
+  "cfg::prompt_inputs::executor_role_prompt_inputs::bb2" -> "cfg::prompt_inputs::executor_role_prompt_inputs::bb3" [label="SwitchInt"];
+  "cfg::prompt_inputs::executor_role_prompt_inputs::bb7" -> "cfg::prompt_inputs::executor_role_prompt_inputs::bb8" [label="SwitchInt"];
+  "cfg::prompt_inputs::executor_role_prompt_inputs::bb7" -> "cfg::prompt_inputs::executor_role_prompt_inputs::bb9" [label="SwitchInt"];
+  "cfg::prompt_inputs::executor_role_prompt_inputs::bb7" -> "cfg::prompt_inputs::executor_role_prompt_inputs::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompt_inputs::executor_role_prompt_inputs::bb10" -> "cfg::prompt_inputs::executor_role_prompt_inputs::bb17" [label="Drop"];
+  "cfg::prompt_inputs::executor_role_prompt_inputs::bb12" -> "cfg::prompt_inputs::executor_role_prompt_inputs::bb13" [label="SwitchInt"];
+  "cfg::prompt_inputs::executor_role_prompt_inputs::bb12" -> "cfg::prompt_inputs::executor_role_prompt_inputs::bb14" [label="SwitchInt"];
+  "cfg::prompt_inputs::executor_role_prompt_inputs::bb12" -> "cfg::prompt_inputs::executor_role_prompt_inputs::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompt_inputs::executor_role_prompt_inputs::bb13" -> "cfg::prompt_inputs::executor_role_prompt_inputs::bb17" [label="Goto"];
+  "cfg::prompt_inputs::executor_role_prompt_inputs::bb15" -> "cfg::prompt_inputs::executor_role_prompt_inputs::bb16" [label="Drop"];
+  "cfg::prompt_inputs::executor_role_prompt_inputs::bb15" -> "cfg::prompt_inputs::executor_role_prompt_inputs::bb19" [label="Drop"];
+  "cfg::prompt_inputs::executor_role_prompt_inputs::bb16" -> "cfg::prompt_inputs::executor_role_prompt_inputs::bb17" [label="Drop"];
+  "cfg::prompt_inputs::executor_role_prompt_inputs::bb18" -> "cfg::prompt_inputs::executor_role_prompt_inputs::bb19" [label="Drop"];
+  "cfg::prompt_inputs::executor_role_prompt_inputs::bb19" -> "cfg::prompt_inputs::executor_role_prompt_inputs::bb23" [label="Drop"];
+  "cfg::prompt_inputs::executor_role_prompt_inputs::bb20" -> "cfg::prompt_inputs::executor_role_prompt_inputs::bb21" [label="Drop"];
+  "cfg::prompt_inputs::executor_role_prompt_inputs::bb21" -> "cfg::prompt_inputs::executor_role_prompt_inputs::bb23" [label="Drop"];
+  "cfg::prompt_inputs::executor_role_prompt_inputs::bb22" -> "cfg::prompt_inputs::executor_role_prompt_inputs::bb23" [label="Drop"];
+}

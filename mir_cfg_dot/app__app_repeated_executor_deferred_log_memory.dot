@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_370 {
+    label="app::repeated_executor_deferred_log_memory";
+    "cfg::app::repeated_executor_deferred_log_memory::bb0" [label="bb0\nCall"];
+    "cfg::app::repeated_executor_deferred_log_memory::bb1" [label="bb1\nReturn"];
+  }
+}

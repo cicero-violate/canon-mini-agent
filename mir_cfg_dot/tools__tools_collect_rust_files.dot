@@ -1,0 +1,57 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3921 {
+    label="tools::collect_rust_files";
+    "cfg::tools::collect_rust_files::bb0" [label="bb0\nCall"];
+    "cfg::tools::collect_rust_files::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::collect_rust_files::bb2" [label="bb2\nGoto"];
+    "cfg::tools::collect_rust_files::bb3" [label="bb3\nCall"];
+    "cfg::tools::collect_rust_files::bb4" [label="bb4\nCall"];
+    "cfg::tools::collect_rust_files::bb5" [label="bb5\nSwitchInt"];
+    "cfg::tools::collect_rust_files::bb6" [label="bb6\nUnreachable loop"];
+    "cfg::tools::collect_rust_files::bb7" [label="bb7\nCall loop"];
+    "cfg::tools::collect_rust_files::bb8" [label="bb8\nCall loop"];
+    "cfg::tools::collect_rust_files::bb9" [label="bb9\nGoto loop"];
+    "cfg::tools::collect_rust_files::bb10" [label="bb10\nCall loop"];
+    "cfg::tools::collect_rust_files::bb11" [label="bb11\nSwitchInt loop"];
+    "cfg::tools::collect_rust_files::bb12" [label="bb12\nCall loop"];
+    "cfg::tools::collect_rust_files::bb13" [label="bb13\nDrop loop"];
+    "cfg::tools::collect_rust_files::bb14" [label="bb14\nCall loop"];
+    "cfg::tools::collect_rust_files::bb15" [label="bb15\nSwitchInt loop"];
+    "cfg::tools::collect_rust_files::bb16" [label="bb16\nCall"];
+    "cfg::tools::collect_rust_files::bb17" [label="bb17\nDrop"];
+    "cfg::tools::collect_rust_files::bb18" [label="bb18\nGoto"];
+    "cfg::tools::collect_rust_files::bb19" [label="bb19\nGoto"];
+    "cfg::tools::collect_rust_files::bb20" [label="bb20\nReturn"];
+    "cfg::tools::collect_rust_files::bb21" [label="bb21\nDrop cleanup"];
+    "cfg::tools::collect_rust_files::bb22" [label="bb22\nUnwindResume cleanup loop"];
+    "cfg::tools::collect_rust_files::bb23" [label="bb23\nDrop cleanup loop"];
+    "cfg::tools::collect_rust_files::bb24" [label="bb24\nSwitchInt cleanup loop"];
+  }
+  "cfg::tools::collect_rust_files::bb1" -> "cfg::tools::collect_rust_files::bb3" [label="SwitchInt"];
+  "cfg::tools::collect_rust_files::bb1" -> "cfg::tools::collect_rust_files::bb2" [label="SwitchInt"];
+  "cfg::tools::collect_rust_files::bb2" -> "cfg::tools::collect_rust_files::bb20" [label="Goto"];
+  "cfg::tools::collect_rust_files::bb5" -> "cfg::tools::collect_rust_files::bb7" [label="SwitchInt"];
+  "cfg::tools::collect_rust_files::bb5" -> "cfg::tools::collect_rust_files::bb8" [label="SwitchInt"];
+  "cfg::tools::collect_rust_files::bb5" -> "cfg::tools::collect_rust_files::bb6" [label="SwitchInt"];
+  "cfg::tools::collect_rust_files::bb9" -> "cfg::tools::collect_rust_files::bb10" [label="Goto"];
+  "cfg::tools::collect_rust_files::bb11" -> "cfg::tools::collect_rust_files::bb13" [label="SwitchInt"];
+  "cfg::tools::collect_rust_files::bb11" -> "cfg::tools::collect_rust_files::bb12" [label="SwitchInt"];
+  "cfg::tools::collect_rust_files::bb11" -> "cfg::tools::collect_rust_files::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::collect_rust_files::bb13" -> "cfg::tools::collect_rust_files::bb18" [label="Drop"];
+  "cfg::tools::collect_rust_files::bb13" -> "cfg::tools::collect_rust_files::bb24" [label="Drop"];
+  "cfg::tools::collect_rust_files::bb15" -> "cfg::tools::collect_rust_files::bb10" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::collect_rust_files::bb15" -> "cfg::tools::collect_rust_files::bb16" [label="SwitchInt"];
+  "cfg::tools::collect_rust_files::bb15" -> "cfg::tools::collect_rust_files::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::collect_rust_files::bb17" -> "cfg::tools::collect_rust_files::bb19" [label="Drop"];
+  "cfg::tools::collect_rust_files::bb17" -> "cfg::tools::collect_rust_files::bb24" [label="Drop"];
+  "cfg::tools::collect_rust_files::bb18" -> "cfg::tools::collect_rust_files::bb20" [label="Goto"];
+  "cfg::tools::collect_rust_files::bb19" -> "cfg::tools::collect_rust_files::bb20" [label="Goto"];
+  "cfg::tools::collect_rust_files::bb21" -> "cfg::tools::collect_rust_files::bb24" [label="Drop"];
+  "cfg::tools::collect_rust_files::bb23" -> "cfg::tools::collect_rust_files::bb22" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tools::collect_rust_files::bb24" -> "cfg::tools::collect_rust_files::bb22" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::collect_rust_files::bb24" -> "cfg::tools::collect_rust_files::bb23" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

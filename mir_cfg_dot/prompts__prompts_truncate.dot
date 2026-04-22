@@ -1,0 +1,16 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2562 {
+    label="prompts::truncate";
+    "cfg::prompts::truncate::bb0" [label="bb0\nCall"];
+    "cfg::prompts::truncate::bb1" [label="bb1\nCall"];
+    "cfg::prompts::truncate::bb2" [label="bb2\nCall"];
+    "cfg::prompts::truncate::bb3" [label="bb3\nCall"];
+    "cfg::prompts::truncate::bb4" [label="bb4\nCall"];
+    "cfg::prompts::truncate::bb5" [label="bb5\nCall"];
+    "cfg::prompts::truncate::bb6" [label="bb6\nReturn"];
+  }
+}

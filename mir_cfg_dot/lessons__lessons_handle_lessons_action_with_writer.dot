@@ -1,0 +1,48 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1405 {
+    label="lessons::handle_lessons_action_with_writer";
+    "cfg::lessons::handle_lessons_action_with_writer::bb0" [label="bb0\nCall"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb1" [label="bb1\nCall"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb2" [label="bb2\nCall"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb3" [label="bb3\nCall"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb4" [label="bb4\nCall loop"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb5" [label="bb5\nCall loop"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb6" [label="bb6\nCall loop"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb7" [label="bb7\nCall loop"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb8" [label="bb8\nCall loop"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb9" [label="bb9\nCall loop"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb10" [label="bb10\nCall loop"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb11" [label="bb11\nCall loop"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb12" [label="bb12\nCall loop"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb13" [label="bb13\nCall loop"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb14" [label="bb14\nCall loop"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb15" [label="bb15\nCall loop"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb16" [label="bb16\nSwitchInt loop"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb17" [label="bb17\nSwitchInt loop"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb18" [label="bb18\nSwitchInt loop"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb19" [label="bb19\nSwitchInt loop"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb20" [label="bb20\nSwitchInt loop"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb21" [label="bb21\nSwitchInt loop"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb22" [label="bb22\nCall"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb23" [label="bb23\nCall"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb24" [label="bb24\nGoto"];
+    "cfg::lessons::handle_lessons_action_with_writer::bb25" [label="bb25\nReturn"];
+  }
+  "cfg::lessons::handle_lessons_action_with_writer::bb16" -> "cfg::lessons::handle_lessons_action_with_writer::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::lessons::handle_lessons_action_with_writer::bb16" -> "cfg::lessons::handle_lessons_action_with_writer::bb15" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::lessons::handle_lessons_action_with_writer::bb17" -> "cfg::lessons::handle_lessons_action_with_writer::bb14" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::lessons::handle_lessons_action_with_writer::bb17" -> "cfg::lessons::handle_lessons_action_with_writer::bb13" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::lessons::handle_lessons_action_with_writer::bb18" -> "cfg::lessons::handle_lessons_action_with_writer::bb12" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::lessons::handle_lessons_action_with_writer::bb18" -> "cfg::lessons::handle_lessons_action_with_writer::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::lessons::handle_lessons_action_with_writer::bb19" -> "cfg::lessons::handle_lessons_action_with_writer::bb10" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::lessons::handle_lessons_action_with_writer::bb19" -> "cfg::lessons::handle_lessons_action_with_writer::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::lessons::handle_lessons_action_with_writer::bb20" -> "cfg::lessons::handle_lessons_action_with_writer::bb8" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::lessons::handle_lessons_action_with_writer::bb20" -> "cfg::lessons::handle_lessons_action_with_writer::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::lessons::handle_lessons_action_with_writer::bb21" -> "cfg::lessons::handle_lessons_action_with_writer::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::lessons::handle_lessons_action_with_writer::bb21" -> "cfg::lessons::handle_lessons_action_with_writer::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::lessons::handle_lessons_action_with_writer::bb24" -> "cfg::lessons::handle_lessons_action_with_writer::bb25" [label="Goto"];
+}

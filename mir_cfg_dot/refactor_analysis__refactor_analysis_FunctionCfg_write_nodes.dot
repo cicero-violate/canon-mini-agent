@@ -1,0 +1,42 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2864 {
+    label="refactor_analysis::FunctionCfg::write_nodes";
+    "cfg::refactor_analysis::FunctionCfg::write_nodes::bb0" [label="bb0\nCall"];
+    "cfg::refactor_analysis::FunctionCfg::write_nodes::bb1" [label="bb1\nCall"];
+    "cfg::refactor_analysis::FunctionCfg::write_nodes::bb2" [label="bb2\nGoto"];
+    "cfg::refactor_analysis::FunctionCfg::write_nodes::bb3" [label="bb3\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::write_nodes::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::refactor_analysis::FunctionCfg::write_nodes::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::refactor_analysis::FunctionCfg::write_nodes::bb6" [label="bb6\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::write_nodes::bb7" [label="bb7\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::write_nodes::bb8" [label="bb8\nGoto loop"];
+    "cfg::refactor_analysis::FunctionCfg::write_nodes::bb9" [label="bb9\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::write_nodes::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::refactor_analysis::FunctionCfg::write_nodes::bb11" [label="bb11\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::write_nodes::bb12" [label="bb12\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::write_nodes::bb13" [label="bb13\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::write_nodes::bb14" [label="bb14\nSwitchInt loop"];
+    "cfg::refactor_analysis::FunctionCfg::write_nodes::bb15" [label="bb15\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::write_nodes::bb16" [label="bb16\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::write_nodes::bb17" [label="bb17\nReturn loop"];
+    "cfg::refactor_analysis::FunctionCfg::write_nodes::bb18" [label="bb18\nDrop cleanup loop"];
+    "cfg::refactor_analysis::FunctionCfg::write_nodes::bb19" [label="bb19\nUnwindResume cleanup loop"];
+    "cfg::refactor_analysis::FunctionCfg::write_nodes::bb20" [label="bb20\nGoto loop"];
+  }
+  "cfg::refactor_analysis::FunctionCfg::write_nodes::bb2" -> "cfg::refactor_analysis::FunctionCfg::write_nodes::bb3" [label="Goto"];
+  "cfg::refactor_analysis::FunctionCfg::write_nodes::bb4" -> "cfg::refactor_analysis::FunctionCfg::write_nodes::bb7" [label="SwitchInt"];
+  "cfg::refactor_analysis::FunctionCfg::write_nodes::bb4" -> "cfg::refactor_analysis::FunctionCfg::write_nodes::bb6" [label="SwitchInt"];
+  "cfg::refactor_analysis::FunctionCfg::write_nodes::bb4" -> "cfg::refactor_analysis::FunctionCfg::write_nodes::bb5" [label="SwitchInt"];
+  "cfg::refactor_analysis::FunctionCfg::write_nodes::bb8" -> "cfg::refactor_analysis::FunctionCfg::write_nodes::bb9" [label="Goto"];
+  "cfg::refactor_analysis::FunctionCfg::write_nodes::bb10" -> "cfg::refactor_analysis::FunctionCfg::write_nodes::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::refactor_analysis::FunctionCfg::write_nodes::bb10" -> "cfg::refactor_analysis::FunctionCfg::write_nodes::bb11" [label="SwitchInt"];
+  "cfg::refactor_analysis::FunctionCfg::write_nodes::bb10" -> "cfg::refactor_analysis::FunctionCfg::write_nodes::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::refactor_analysis::FunctionCfg::write_nodes::bb14" -> "cfg::refactor_analysis::FunctionCfg::write_nodes::bb15" [label="SwitchInt"];
+  "cfg::refactor_analysis::FunctionCfg::write_nodes::bb14" -> "cfg::refactor_analysis::FunctionCfg::write_nodes::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::refactor_analysis::FunctionCfg::write_nodes::bb18" -> "cfg::refactor_analysis::FunctionCfg::write_nodes::bb19" [label="Drop"];
+  "cfg::refactor_analysis::FunctionCfg::write_nodes::bb20" -> "cfg::refactor_analysis::FunctionCfg::write_nodes::bb9" [color="crimson", penwidth=2, label="Goto back"];
+}

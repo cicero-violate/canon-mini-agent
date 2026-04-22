@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1977 {
+    label="llm_runtime::worker::llm_worker_send_request_with_req_id_timeout";
+    "cfg::llm_runtime::worker::llm_worker_send_request_with_req_id_timeout::bb0" [label="bb0\nReturn"];
+  }
+}

@@ -1,0 +1,39 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1144 {
+    label="invalid_action::validate_blocker_payload_fields";
+    "cfg::invalid_action::validate_blocker_payload_fields::bb0" [label="bb0\nCall"];
+    "cfg::invalid_action::validate_blocker_payload_fields::bb1" [label="bb1\nCall"];
+    "cfg::invalid_action::validate_blocker_payload_fields::bb2" [label="bb2\nSwitchInt"];
+    "cfg::invalid_action::validate_blocker_payload_fields::bb3" [label="bb3\nGoto"];
+    "cfg::invalid_action::validate_blocker_payload_fields::bb4" [label="bb4\nCall"];
+    "cfg::invalid_action::validate_blocker_payload_fields::bb5" [label="bb5\nCall"];
+    "cfg::invalid_action::validate_blocker_payload_fields::bb6" [label="bb6\nSwitchInt"];
+    "cfg::invalid_action::validate_blocker_payload_fields::bb7" [label="bb7\nCall"];
+    "cfg::invalid_action::validate_blocker_payload_fields::bb8" [label="bb8\nGoto"];
+    "cfg::invalid_action::validate_blocker_payload_fields::bb9" [label="bb9\nCall loop"];
+    "cfg::invalid_action::validate_blocker_payload_fields::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::invalid_action::validate_blocker_payload_fields::bb11" [label="bb11\nUnreachable loop"];
+    "cfg::invalid_action::validate_blocker_payload_fields::bb12" [label="bb12\nCall loop"];
+    "cfg::invalid_action::validate_blocker_payload_fields::bb13" [label="bb13\nDrop loop"];
+    "cfg::invalid_action::validate_blocker_payload_fields::bb14" [label="bb14\nReturn loop"];
+    "cfg::invalid_action::validate_blocker_payload_fields::bb15" [label="bb15\nDrop cleanup loop"];
+    "cfg::invalid_action::validate_blocker_payload_fields::bb16" [label="bb16\nUnwindResume cleanup loop"];
+    "cfg::invalid_action::validate_blocker_payload_fields::bb17" [label="bb17\nGoto loop"];
+  }
+  "cfg::invalid_action::validate_blocker_payload_fields::bb2" -> "cfg::invalid_action::validate_blocker_payload_fields::bb4" [label="SwitchInt"];
+  "cfg::invalid_action::validate_blocker_payload_fields::bb2" -> "cfg::invalid_action::validate_blocker_payload_fields::bb3" [label="SwitchInt"];
+  "cfg::invalid_action::validate_blocker_payload_fields::bb3" -> "cfg::invalid_action::validate_blocker_payload_fields::bb6" [label="Goto"];
+  "cfg::invalid_action::validate_blocker_payload_fields::bb6" -> "cfg::invalid_action::validate_blocker_payload_fields::bb14" [label="SwitchInt"];
+  "cfg::invalid_action::validate_blocker_payload_fields::bb6" -> "cfg::invalid_action::validate_blocker_payload_fields::bb7" [label="SwitchInt"];
+  "cfg::invalid_action::validate_blocker_payload_fields::bb8" -> "cfg::invalid_action::validate_blocker_payload_fields::bb9" [label="Goto"];
+  "cfg::invalid_action::validate_blocker_payload_fields::bb10" -> "cfg::invalid_action::validate_blocker_payload_fields::bb13" [label="SwitchInt"];
+  "cfg::invalid_action::validate_blocker_payload_fields::bb10" -> "cfg::invalid_action::validate_blocker_payload_fields::bb12" [label="SwitchInt"];
+  "cfg::invalid_action::validate_blocker_payload_fields::bb10" -> "cfg::invalid_action::validate_blocker_payload_fields::bb11" [label="SwitchInt"];
+  "cfg::invalid_action::validate_blocker_payload_fields::bb13" -> "cfg::invalid_action::validate_blocker_payload_fields::bb14" [label="Drop"];
+  "cfg::invalid_action::validate_blocker_payload_fields::bb15" -> "cfg::invalid_action::validate_blocker_payload_fields::bb16" [label="Drop"];
+  "cfg::invalid_action::validate_blocker_payload_fields::bb17" -> "cfg::invalid_action::validate_blocker_payload_fields::bb9" [color="crimson", penwidth=2, label="Goto back"];
+}

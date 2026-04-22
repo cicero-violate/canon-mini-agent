@@ -1,0 +1,23 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_486 {
+    label="app::record_executor_completion_observation";
+    "cfg::app::record_executor_completion_observation::bb0" [label="bb0\nCall"];
+    "cfg::app::record_executor_completion_observation::bb1" [label="bb1\nCall"];
+    "cfg::app::record_executor_completion_observation::bb2" [label="bb2\nSwitchInt"];
+    "cfg::app::record_executor_completion_observation::bb3" [label="bb3\nCall"];
+    "cfg::app::record_executor_completion_observation::bb4" [label="bb4\nDrop"];
+    "cfg::app::record_executor_completion_observation::bb5" [label="bb5\nDrop cleanup"];
+    "cfg::app::record_executor_completion_observation::bb6" [label="bb6\nReturn"];
+    "cfg::app::record_executor_completion_observation::bb7" [label="bb7\nUnwindResume cleanup"];
+    "cfg::app::record_executor_completion_observation::bb8" [label="bb8\nUnreachable"];
+  }
+  "cfg::app::record_executor_completion_observation::bb2" -> "cfg::app::record_executor_completion_observation::bb3" [label="SwitchInt"];
+  "cfg::app::record_executor_completion_observation::bb2" -> "cfg::app::record_executor_completion_observation::bb6" [label="SwitchInt"];
+  "cfg::app::record_executor_completion_observation::bb2" -> "cfg::app::record_executor_completion_observation::bb8" [label="SwitchInt"];
+  "cfg::app::record_executor_completion_observation::bb4" -> "cfg::app::record_executor_completion_observation::bb6" [label="Drop"];
+  "cfg::app::record_executor_completion_observation::bb5" -> "cfg::app::record_executor_completion_observation::bb7" [label="Drop"];
+}

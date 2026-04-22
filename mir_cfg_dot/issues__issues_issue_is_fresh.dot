@@ -1,0 +1,51 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1357 {
+    label="issues::issue_is_fresh";
+    "cfg::issues::issue_is_fresh::bb0" [label="bb0\nCall"];
+    "cfg::issues::issue_is_fresh::bb1" [label="bb1\nSwitchInt"];
+    "cfg::issues::issue_is_fresh::bb2" [label="bb2\nCall"];
+    "cfg::issues::issue_is_fresh::bb3" [label="bb3\nGoto"];
+    "cfg::issues::issue_is_fresh::bb4" [label="bb4\nCall"];
+    "cfg::issues::issue_is_fresh::bb5" [label="bb5\nCall"];
+    "cfg::issues::issue_is_fresh::bb6" [label="bb6\nCall"];
+    "cfg::issues::issue_is_fresh::bb7" [label="bb7\nCall"];
+    "cfg::issues::issue_is_fresh::bb8" [label="bb8\nDrop loop"];
+    "cfg::issues::issue_is_fresh::bb9" [label="bb9\nGoto loop"];
+    "cfg::issues::issue_is_fresh::bb10" [label="bb10\nCall loop"];
+    "cfg::issues::issue_is_fresh::bb11" [label="bb11\nCall loop"];
+    "cfg::issues::issue_is_fresh::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::issues::issue_is_fresh::bb13" [label="bb13\nSwitchInt loop"];
+    "cfg::issues::issue_is_fresh::bb14" [label="bb14\nSwitchInt loop"];
+    "cfg::issues::issue_is_fresh::bb15" [label="bb15\nGoto"];
+    "cfg::issues::issue_is_fresh::bb16" [label="bb16\nSwitchInt"];
+    "cfg::issues::issue_is_fresh::bb17" [label="bb17\nGoto"];
+    "cfg::issues::issue_is_fresh::bb18" [label="bb18\nCall"];
+    "cfg::issues::issue_is_fresh::bb19" [label="bb19\nCall"];
+    "cfg::issues::issue_is_fresh::bb20" [label="bb20\nCall"];
+    "cfg::issues::issue_is_fresh::bb21" [label="bb21\nDrop"];
+    "cfg::issues::issue_is_fresh::bb22" [label="bb22\nReturn"];
+    "cfg::issues::issue_is_fresh::bb23" [label="bb23\nDrop cleanup"];
+    "cfg::issues::issue_is_fresh::bb24" [label="bb24\nUnwindResume cleanup"];
+  }
+  "cfg::issues::issue_is_fresh::bb1" -> "cfg::issues::issue_is_fresh::bb3" [label="SwitchInt"];
+  "cfg::issues::issue_is_fresh::bb1" -> "cfg::issues::issue_is_fresh::bb2" [label="SwitchInt"];
+  "cfg::issues::issue_is_fresh::bb3" -> "cfg::issues::issue_is_fresh::bb22" [label="Goto"];
+  "cfg::issues::issue_is_fresh::bb8" -> "cfg::issues::issue_is_fresh::bb16" [label="Drop"];
+  "cfg::issues::issue_is_fresh::bb9" -> "cfg::issues::issue_is_fresh::bb21" [label="Goto"];
+  "cfg::issues::issue_is_fresh::bb12" -> "cfg::issues::issue_is_fresh::bb8" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::issues::issue_is_fresh::bb12" -> "cfg::issues::issue_is_fresh::bb15" [label="SwitchInt"];
+  "cfg::issues::issue_is_fresh::bb13" -> "cfg::issues::issue_is_fresh::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::issues::issue_is_fresh::bb13" -> "cfg::issues::issue_is_fresh::bb15" [label="SwitchInt"];
+  "cfg::issues::issue_is_fresh::bb14" -> "cfg::issues::issue_is_fresh::bb10" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::issues::issue_is_fresh::bb14" -> "cfg::issues::issue_is_fresh::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::issues::issue_is_fresh::bb15" -> "cfg::issues::issue_is_fresh::bb21" [label="Goto"];
+  "cfg::issues::issue_is_fresh::bb16" -> "cfg::issues::issue_is_fresh::bb18" [label="SwitchInt"];
+  "cfg::issues::issue_is_fresh::bb16" -> "cfg::issues::issue_is_fresh::bb17" [label="SwitchInt"];
+  "cfg::issues::issue_is_fresh::bb17" -> "cfg::issues::issue_is_fresh::bb22" [label="Goto"];
+  "cfg::issues::issue_is_fresh::bb21" -> "cfg::issues::issue_is_fresh::bb22" [label="Drop"];
+  "cfg::issues::issue_is_fresh::bb23" -> "cfg::issues::issue_is_fresh::bb24" [label="Drop"];
+}

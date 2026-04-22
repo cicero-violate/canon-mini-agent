@@ -1,0 +1,12 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4652 {
+    label="system_state::SystemState::lane_active_tab_id";
+    "cfg::system_state::SystemState::lane_active_tab_id::bb0" [label="bb0\nCall"];
+    "cfg::system_state::SystemState::lane_active_tab_id::bb1" [label="bb1\nCall"];
+    "cfg::system_state::SystemState::lane_active_tab_id::bb2" [label="bb2\nReturn"];
+  }
+}

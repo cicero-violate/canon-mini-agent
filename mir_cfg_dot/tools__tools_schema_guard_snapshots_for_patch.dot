@@ -1,0 +1,16 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4023 {
+    label="tools::schema_guard_snapshots_for_patch";
+    "cfg::tools::schema_guard_snapshots_for_patch::bb0" [label="bb0\nCall"];
+    "cfg::tools::schema_guard_snapshots_for_patch::bb1" [label="bb1\nCall"];
+    "cfg::tools::schema_guard_snapshots_for_patch::bb2" [label="bb2\nCall"];
+    "cfg::tools::schema_guard_snapshots_for_patch::bb3" [label="bb3\nCall"];
+    "cfg::tools::schema_guard_snapshots_for_patch::bb4" [label="bb4\nCall"];
+    "cfg::tools::schema_guard_snapshots_for_patch::bb5" [label="bb5\nCall"];
+    "cfg::tools::schema_guard_snapshots_for_patch::bb6" [label="bb6\nReturn"];
+  }
+}

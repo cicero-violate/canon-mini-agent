@@ -1,0 +1,42 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_210 {
+    label="app::executor_dispatch_gate_result";
+    "cfg::app::executor_dispatch_gate_result::bb0" [label="bb0\nCall"];
+    "cfg::app::executor_dispatch_gate_result::bb1" [label="bb1\nCall"];
+    "cfg::app::executor_dispatch_gate_result::bb2" [label="bb2\nCall"];
+    "cfg::app::executor_dispatch_gate_result::bb3" [label="bb3\nCall"];
+    "cfg::app::executor_dispatch_gate_result::bb4" [label="bb4\nCall"];
+    "cfg::app::executor_dispatch_gate_result::bb5" [label="bb5\nCall"];
+    "cfg::app::executor_dispatch_gate_result::bb6" [label="bb6\nCall"];
+    "cfg::app::executor_dispatch_gate_result::bb7" [label="bb7\nSwitchInt"];
+    "cfg::app::executor_dispatch_gate_result::bb8" [label="bb8\nGoto"];
+    "cfg::app::executor_dispatch_gate_result::bb9" [label="bb9\nCall"];
+    "cfg::app::executor_dispatch_gate_result::bb10" [label="bb10\nSwitchInt"];
+    "cfg::app::executor_dispatch_gate_result::bb11" [label="bb11\nGoto"];
+    "cfg::app::executor_dispatch_gate_result::bb12" [label="bb12\nDrop"];
+    "cfg::app::executor_dispatch_gate_result::bb13" [label="bb13\nDrop"];
+    "cfg::app::executor_dispatch_gate_result::bb14" [label="bb14\nReturn"];
+    "cfg::app::executor_dispatch_gate_result::bb15" [label="bb15\nDrop cleanup"];
+    "cfg::app::executor_dispatch_gate_result::bb16" [label="bb16\nUnwindResume cleanup loop"];
+    "cfg::app::executor_dispatch_gate_result::bb17" [label="bb17\nDrop cleanup loop"];
+    "cfg::app::executor_dispatch_gate_result::bb18" [label="bb18\nSwitchInt cleanup loop"];
+    "cfg::app::executor_dispatch_gate_result::bb19" [label="bb19\nUnreachable"];
+  }
+  "cfg::app::executor_dispatch_gate_result::bb7" -> "cfg::app::executor_dispatch_gate_result::bb9" [label="SwitchInt"];
+  "cfg::app::executor_dispatch_gate_result::bb7" -> "cfg::app::executor_dispatch_gate_result::bb8" [label="SwitchInt"];
+  "cfg::app::executor_dispatch_gate_result::bb8" -> "cfg::app::executor_dispatch_gate_result::bb13" [label="Goto"];
+  "cfg::app::executor_dispatch_gate_result::bb10" -> "cfg::app::executor_dispatch_gate_result::bb11" [label="SwitchInt"];
+  "cfg::app::executor_dispatch_gate_result::bb10" -> "cfg::app::executor_dispatch_gate_result::bb12" [label="SwitchInt"];
+  "cfg::app::executor_dispatch_gate_result::bb10" -> "cfg::app::executor_dispatch_gate_result::bb19" [label="SwitchInt"];
+  "cfg::app::executor_dispatch_gate_result::bb11" -> "cfg::app::executor_dispatch_gate_result::bb13" [label="Goto"];
+  "cfg::app::executor_dispatch_gate_result::bb12" -> "cfg::app::executor_dispatch_gate_result::bb14" [label="Drop"];
+  "cfg::app::executor_dispatch_gate_result::bb13" -> "cfg::app::executor_dispatch_gate_result::bb14" [label="Drop"];
+  "cfg::app::executor_dispatch_gate_result::bb15" -> "cfg::app::executor_dispatch_gate_result::bb16" [label="Drop"];
+  "cfg::app::executor_dispatch_gate_result::bb17" -> "cfg::app::executor_dispatch_gate_result::bb16" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::executor_dispatch_gate_result::bb18" -> "cfg::app::executor_dispatch_gate_result::bb16" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::executor_dispatch_gate_result::bb18" -> "cfg::app::executor_dispatch_gate_result::bb17" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

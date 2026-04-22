@@ -1,0 +1,21 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_514 {
+    label="app::verifier_confirmed";
+    "cfg::app::verifier_confirmed::bb0" [label="bb0\nCall"];
+    "cfg::app::verifier_confirmed::bb1" [label="bb1\nCall"];
+    "cfg::app::verifier_confirmed::bb2" [label="bb2\nCall"];
+    "cfg::app::verifier_confirmed::bb3" [label="bb3\nCall"];
+    "cfg::app::verifier_confirmed::bb4" [label="bb4\nCall"];
+    "cfg::app::verifier_confirmed::bb5" [label="bb5\nCall"];
+    "cfg::app::verifier_confirmed::bb6" [label="bb6\nDrop"];
+    "cfg::app::verifier_confirmed::bb7" [label="bb7\nReturn"];
+    "cfg::app::verifier_confirmed::bb8" [label="bb8\nDrop cleanup"];
+    "cfg::app::verifier_confirmed::bb9" [label="bb9\nUnwindResume cleanup"];
+  }
+  "cfg::app::verifier_confirmed::bb6" -> "cfg::app::verifier_confirmed::bb7" [label="Drop"];
+  "cfg::app::verifier_confirmed::bb8" -> "cfg::app::verifier_confirmed::bb9" [label="Drop"];
+}

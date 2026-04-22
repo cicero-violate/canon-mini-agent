@@ -1,0 +1,20 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2160 {
+    label="logging::parse_prompt_overflow_report";
+    "cfg::logging::parse_prompt_overflow_report::bb0" [label="bb0\nCall"];
+    "cfg::logging::parse_prompt_overflow_report::bb1" [label="bb1\nCall"];
+    "cfg::logging::parse_prompt_overflow_report::bb2" [label="bb2\nSwitchInt"];
+    "cfg::logging::parse_prompt_overflow_report::bb3" [label="bb3\nCall"];
+    "cfg::logging::parse_prompt_overflow_report::bb4" [label="bb4\nCall"];
+    "cfg::logging::parse_prompt_overflow_report::bb5" [label="bb5\nCall"];
+    "cfg::logging::parse_prompt_overflow_report::bb6" [label="bb6\nCall"];
+    "cfg::logging::parse_prompt_overflow_report::bb7" [label="bb7\nCall"];
+    "cfg::logging::parse_prompt_overflow_report::bb8" [label="bb8\nReturn"];
+  }
+  "cfg::logging::parse_prompt_overflow_report::bb2" -> "cfg::logging::parse_prompt_overflow_report::bb4" [label="SwitchInt"];
+  "cfg::logging::parse_prompt_overflow_report::bb2" -> "cfg::logging::parse_prompt_overflow_report::bb3" [label="SwitchInt"];
+}

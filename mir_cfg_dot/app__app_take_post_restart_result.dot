@@ -1,0 +1,40 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_439 {
+    label="app::take_post_restart_result";
+    "cfg::app::take_post_restart_result::bb0" [label="bb0\nCall"];
+    "cfg::app::take_post_restart_result::bb1" [label="bb1\nCall"];
+    "cfg::app::take_post_restart_result::bb2" [label="bb2\nSwitchInt"];
+    "cfg::app::take_post_restart_result::bb3" [label="bb3\nUnreachable"];
+    "cfg::app::take_post_restart_result::bb4" [label="bb4\nCall"];
+    "cfg::app::take_post_restart_result::bb5" [label="bb5\nCall"];
+    "cfg::app::take_post_restart_result::bb6" [label="bb6\nGoto"];
+    "cfg::app::take_post_restart_result::bb7" [label="bb7\nCall"];
+    "cfg::app::take_post_restart_result::bb8" [label="bb8\nCall"];
+    "cfg::app::take_post_restart_result::bb9" [label="bb9\nCall"];
+    "cfg::app::take_post_restart_result::bb10" [label="bb10\nDrop"];
+    "cfg::app::take_post_restart_result::bb11" [label="bb11\nDrop"];
+    "cfg::app::take_post_restart_result::bb12" [label="bb12\nGoto"];
+    "cfg::app::take_post_restart_result::bb13" [label="bb13\nReturn"];
+    "cfg::app::take_post_restart_result::bb14" [label="bb14\nDrop cleanup"];
+    "cfg::app::take_post_restart_result::bb15" [label="bb15\nUnwindResume cleanup loop"];
+    "cfg::app::take_post_restart_result::bb16" [label="bb16\nDrop cleanup loop"];
+    "cfg::app::take_post_restart_result::bb17" [label="bb17\nSwitchInt cleanup loop"];
+  }
+  "cfg::app::take_post_restart_result::bb2" -> "cfg::app::take_post_restart_result::bb4" [label="SwitchInt"];
+  "cfg::app::take_post_restart_result::bb2" -> "cfg::app::take_post_restart_result::bb5" [label="SwitchInt"];
+  "cfg::app::take_post_restart_result::bb2" -> "cfg::app::take_post_restart_result::bb3" [label="SwitchInt"];
+  "cfg::app::take_post_restart_result::bb6" -> "cfg::app::take_post_restart_result::bb13" [label="Goto"];
+  "cfg::app::take_post_restart_result::bb10" -> "cfg::app::take_post_restart_result::bb11" [label="Drop"];
+  "cfg::app::take_post_restart_result::bb10" -> "cfg::app::take_post_restart_result::bb14" [label="Drop"];
+  "cfg::app::take_post_restart_result::bb11" -> "cfg::app::take_post_restart_result::bb12" [label="Drop"];
+  "cfg::app::take_post_restart_result::bb11" -> "cfg::app::take_post_restart_result::bb17" [label="Drop"];
+  "cfg::app::take_post_restart_result::bb12" -> "cfg::app::take_post_restart_result::bb13" [label="Goto"];
+  "cfg::app::take_post_restart_result::bb14" -> "cfg::app::take_post_restart_result::bb17" [label="Drop"];
+  "cfg::app::take_post_restart_result::bb16" -> "cfg::app::take_post_restart_result::bb15" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::take_post_restart_result::bb17" -> "cfg::app::take_post_restart_result::bb15" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::take_post_restart_result::bb17" -> "cfg::app::take_post_restart_result::bb16" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

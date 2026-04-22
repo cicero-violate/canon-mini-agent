@@ -1,0 +1,30 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2681 {
+    label="prompts::validate_optional_message_severity";
+    "cfg::prompts::validate_optional_message_severity::bb0" [label="bb0\nCall"];
+    "cfg::prompts::validate_optional_message_severity::bb1" [label="bb1\nCall"];
+    "cfg::prompts::validate_optional_message_severity::bb2" [label="bb2\nSwitchInt"];
+    "cfg::prompts::validate_optional_message_severity::bb3" [label="bb3\nCall"];
+    "cfg::prompts::validate_optional_message_severity::bb4" [label="bb4\nGoto"];
+    "cfg::prompts::validate_optional_message_severity::bb5" [label="bb5\nCall"];
+    "cfg::prompts::validate_optional_message_severity::bb6" [label="bb6\nCall"];
+    "cfg::prompts::validate_optional_message_severity::bb7" [label="bb7\nCall"];
+    "cfg::prompts::validate_optional_message_severity::bb8" [label="bb8\nSwitchInt"];
+    "cfg::prompts::validate_optional_message_severity::bb9" [label="bb9\nUnreachable"];
+    "cfg::prompts::validate_optional_message_severity::bb10" [label="bb10\nGoto"];
+    "cfg::prompts::validate_optional_message_severity::bb11" [label="bb11\nCall"];
+    "cfg::prompts::validate_optional_message_severity::bb12" [label="bb12\nReturn"];
+  }
+  "cfg::prompts::validate_optional_message_severity::bb2" -> "cfg::prompts::validate_optional_message_severity::bb3" [label="SwitchInt"];
+  "cfg::prompts::validate_optional_message_severity::bb2" -> "cfg::prompts::validate_optional_message_severity::bb4" [label="SwitchInt"];
+  "cfg::prompts::validate_optional_message_severity::bb2" -> "cfg::prompts::validate_optional_message_severity::bb9" [label="SwitchInt"];
+  "cfg::prompts::validate_optional_message_severity::bb4" -> "cfg::prompts::validate_optional_message_severity::bb12" [label="Goto"];
+  "cfg::prompts::validate_optional_message_severity::bb8" -> "cfg::prompts::validate_optional_message_severity::bb10" [label="SwitchInt"];
+  "cfg::prompts::validate_optional_message_severity::bb8" -> "cfg::prompts::validate_optional_message_severity::bb11" [label="SwitchInt"];
+  "cfg::prompts::validate_optional_message_severity::bb8" -> "cfg::prompts::validate_optional_message_severity::bb9" [label="SwitchInt"];
+  "cfg::prompts::validate_optional_message_severity::bb10" -> "cfg::prompts::validate_optional_message_severity::bb12" [label="Goto"];
+}

@@ -1,0 +1,18 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4464 {
+    label="tools::exec_graph_command";
+    "cfg::tools::exec_graph_command::bb0" [label="bb0\nCall"];
+    "cfg::tools::exec_graph_command::bb1" [label="bb1\nCall"];
+    "cfg::tools::exec_graph_command::bb2" [label="bb2\nCall"];
+    "cfg::tools::exec_graph_command::bb3" [label="bb3\nAssert"];
+    "cfg::tools::exec_graph_command::bb4" [label="bb4\nCall"];
+    "cfg::tools::exec_graph_command::bb5" [label="bb5\nCall"];
+    "cfg::tools::exec_graph_command::bb6" [label="bb6\nCall"];
+    "cfg::tools::exec_graph_command::bb7" [label="bb7\nReturn"];
+  }
+  "cfg::tools::exec_graph_command::bb3" -> "cfg::tools::exec_graph_command::bb4" [label="Assert"];
+}

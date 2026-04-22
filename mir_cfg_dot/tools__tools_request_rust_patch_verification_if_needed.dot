@@ -1,0 +1,38 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3622 {
+    label="tools::request_rust_patch_verification_if_needed";
+    "cfg::tools::request_rust_patch_verification_if_needed::bb0" [label="bb0\nCall"];
+    "cfg::tools::request_rust_patch_verification_if_needed::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::request_rust_patch_verification_if_needed::bb2" [label="bb2\nCall"];
+    "cfg::tools::request_rust_patch_verification_if_needed::bb3" [label="bb3\nCall"];
+    "cfg::tools::request_rust_patch_verification_if_needed::bb4" [label="bb4\nCall"];
+    "cfg::tools::request_rust_patch_verification_if_needed::bb5" [label="bb5\nSwitchInt"];
+    "cfg::tools::request_rust_patch_verification_if_needed::bb6" [label="bb6\nCall"];
+    "cfg::tools::request_rust_patch_verification_if_needed::bb7" [label="bb7\nDrop"];
+    "cfg::tools::request_rust_patch_verification_if_needed::bb8" [label="bb8\nCall"];
+    "cfg::tools::request_rust_patch_verification_if_needed::bb9" [label="bb9\nDrop"];
+    "cfg::tools::request_rust_patch_verification_if_needed::bb10" [label="bb10\nGoto"];
+    "cfg::tools::request_rust_patch_verification_if_needed::bb11" [label="bb11\nReturn"];
+    "cfg::tools::request_rust_patch_verification_if_needed::bb12" [label="bb12\nUnwindResume cleanup loop"];
+    "cfg::tools::request_rust_patch_verification_if_needed::bb13" [label="bb13\nDrop cleanup loop"];
+    "cfg::tools::request_rust_patch_verification_if_needed::bb14" [label="bb14\nSwitchInt cleanup loop"];
+    "cfg::tools::request_rust_patch_verification_if_needed::bb15" [label="bb15\nUnreachable"];
+  }
+  "cfg::tools::request_rust_patch_verification_if_needed::bb1" -> "cfg::tools::request_rust_patch_verification_if_needed::bb11" [label="SwitchInt"];
+  "cfg::tools::request_rust_patch_verification_if_needed::bb1" -> "cfg::tools::request_rust_patch_verification_if_needed::bb2" [label="SwitchInt"];
+  "cfg::tools::request_rust_patch_verification_if_needed::bb5" -> "cfg::tools::request_rust_patch_verification_if_needed::bb6" [label="SwitchInt"];
+  "cfg::tools::request_rust_patch_verification_if_needed::bb5" -> "cfg::tools::request_rust_patch_verification_if_needed::bb8" [label="SwitchInt"];
+  "cfg::tools::request_rust_patch_verification_if_needed::bb5" -> "cfg::tools::request_rust_patch_verification_if_needed::bb15" [label="SwitchInt"];
+  "cfg::tools::request_rust_patch_verification_if_needed::bb7" -> "cfg::tools::request_rust_patch_verification_if_needed::bb8" [label="Drop"];
+  "cfg::tools::request_rust_patch_verification_if_needed::bb7" -> "cfg::tools::request_rust_patch_verification_if_needed::bb14" [label="Drop"];
+  "cfg::tools::request_rust_patch_verification_if_needed::bb9" -> "cfg::tools::request_rust_patch_verification_if_needed::bb10" [label="Drop"];
+  "cfg::tools::request_rust_patch_verification_if_needed::bb9" -> "cfg::tools::request_rust_patch_verification_if_needed::bb14" [label="Drop"];
+  "cfg::tools::request_rust_patch_verification_if_needed::bb10" -> "cfg::tools::request_rust_patch_verification_if_needed::bb11" [label="Goto"];
+  "cfg::tools::request_rust_patch_verification_if_needed::bb13" -> "cfg::tools::request_rust_patch_verification_if_needed::bb12" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tools::request_rust_patch_verification_if_needed::bb14" -> "cfg::tools::request_rust_patch_verification_if_needed::bb12" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::request_rust_patch_verification_if_needed::bb14" -> "cfg::tools::request_rust_patch_verification_if_needed::bb13" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

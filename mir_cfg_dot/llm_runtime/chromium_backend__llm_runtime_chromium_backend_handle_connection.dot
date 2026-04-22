@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1718 {
+    label="llm_runtime::chromium_backend::handle_connection";
+    "cfg::llm_runtime::chromium_backend::handle_connection::bb0" [label="bb0\nReturn"];
+  }
+}

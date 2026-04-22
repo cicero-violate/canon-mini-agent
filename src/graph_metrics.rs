@@ -232,7 +232,7 @@ fn top_bridge_candidate_functions(idx: &SemanticIndex) -> Vec<(String, usize)> {
 }
 
 fn looks_like_symbol(raw: &str) -> bool {
-    !raw.starts_with("cfg::") && raw.contains("::")
+    !raw.starts_with("cfg::") && !raw.starts_with("path::") && raw.contains("::")
 }
 
 fn sanitize_fragment(raw: &str) -> String {

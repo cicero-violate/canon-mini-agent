@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4629 {
+    label="canonical_writer::CanonicalWriter::tlog_seq";
+    "cfg::canonical_writer::CanonicalWriter::tlog_seq::bb0" [label="bb0\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::tlog_seq::bb1" [label="bb1\nReturn"];
+  }
+}

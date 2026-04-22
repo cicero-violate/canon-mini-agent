@@ -1,0 +1,51 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2425 {
+    label="prompt_inputs::derive_semantic_control_prompt_state_with_delta";
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb0" [label="bb0\nCall"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb1" [label="bb1\nCall"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb2" [label="bb2\nCall"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb3" [label="bb3\nCall"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb4" [label="bb4\nCall"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb5" [label="bb5\nCall"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb6" [label="bb6\nCall"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb7" [label="bb7\nCall"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb8" [label="bb8\nCall"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb9" [label="bb9\nSwitchInt"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb10" [label="bb10\nCall"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb11" [label="bb11\nCall"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb12" [label="bb12\nCall"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb13" [label="bb13\nCall"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb14" [label="bb14\nGoto"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb15" [label="bb15\nGoto"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb16" [label="bb16\nDrop"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb17" [label="bb17\nDrop"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb18" [label="bb18\nSwitchInt"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb19" [label="bb19\nReturn loop"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb20" [label="bb20\nDrop cleanup loop"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb21" [label="bb21\nDrop cleanup loop"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb22" [label="bb22\nUnwindResume cleanup loop"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb23" [label="bb23\nDrop loop"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb24" [label="bb24\nDrop cleanup loop"];
+    "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb25" [label="bb25\nSwitchInt cleanup loop"];
+  }
+  "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb9" -> "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb15" [label="SwitchInt"];
+  "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb9" -> "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb10" [label="SwitchInt"];
+  "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb14" -> "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb16" [label="Goto"];
+  "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb15" -> "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb16" [label="Goto"];
+  "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb16" -> "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb17" [label="Drop"];
+  "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb16" -> "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb21" [label="Drop"];
+  "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb17" -> "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb18" [label="Drop"];
+  "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb17" -> "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb25" [label="Drop"];
+  "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb18" -> "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb19" [label="SwitchInt"];
+  "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb18" -> "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb23" [label="SwitchInt"];
+  "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb20" -> "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb21" [label="Drop"];
+  "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb21" -> "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb25" [label="Drop"];
+  "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb23" -> "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb19" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb24" -> "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb22" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb25" -> "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb22" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb25" -> "cfg::prompt_inputs::derive_semantic_control_prompt_state_with_delta::bb24" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

@@ -1,0 +1,38 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2949 {
+    label="rename_semantic::skip_block_comment";
+    "cfg::rename_semantic::skip_block_comment::bb0" [label="bb0\nAssert"];
+    "cfg::rename_semantic::skip_block_comment::bb1" [label="bb1\nGoto"];
+    "cfg::rename_semantic::skip_block_comment::bb2" [label="bb2\nAssert loop"];
+    "cfg::rename_semantic::skip_block_comment::bb3" [label="bb3\nSwitchInt loop"];
+    "cfg::rename_semantic::skip_block_comment::bb4" [label="bb4\nAssert loop"];
+    "cfg::rename_semantic::skip_block_comment::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::rename_semantic::skip_block_comment::bb6" [label="bb6\nAssert loop"];
+    "cfg::rename_semantic::skip_block_comment::bb7" [label="bb7\nAssert loop"];
+    "cfg::rename_semantic::skip_block_comment::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::rename_semantic::skip_block_comment::bb9" [label="bb9\nAssert loop"];
+    "cfg::rename_semantic::skip_block_comment::bb10" [label="bb10\nGoto loop"];
+    "cfg::rename_semantic::skip_block_comment::bb11" [label="bb11\nAssert"];
+    "cfg::rename_semantic::skip_block_comment::bb12" [label="bb12\nCall"];
+    "cfg::rename_semantic::skip_block_comment::bb13" [label="bb13\nReturn"];
+  }
+  "cfg::rename_semantic::skip_block_comment::bb0" -> "cfg::rename_semantic::skip_block_comment::bb1" [label="Assert"];
+  "cfg::rename_semantic::skip_block_comment::bb1" -> "cfg::rename_semantic::skip_block_comment::bb2" [label="Goto"];
+  "cfg::rename_semantic::skip_block_comment::bb2" -> "cfg::rename_semantic::skip_block_comment::bb3" [label="Assert"];
+  "cfg::rename_semantic::skip_block_comment::bb3" -> "cfg::rename_semantic::skip_block_comment::bb11" [label="SwitchInt"];
+  "cfg::rename_semantic::skip_block_comment::bb3" -> "cfg::rename_semantic::skip_block_comment::bb4" [label="SwitchInt"];
+  "cfg::rename_semantic::skip_block_comment::bb4" -> "cfg::rename_semantic::skip_block_comment::bb5" [label="Assert"];
+  "cfg::rename_semantic::skip_block_comment::bb5" -> "cfg::rename_semantic::skip_block_comment::bb9" [label="SwitchInt"];
+  "cfg::rename_semantic::skip_block_comment::bb5" -> "cfg::rename_semantic::skip_block_comment::bb6" [label="SwitchInt"];
+  "cfg::rename_semantic::skip_block_comment::bb6" -> "cfg::rename_semantic::skip_block_comment::bb7" [label="Assert"];
+  "cfg::rename_semantic::skip_block_comment::bb7" -> "cfg::rename_semantic::skip_block_comment::bb8" [label="Assert"];
+  "cfg::rename_semantic::skip_block_comment::bb8" -> "cfg::rename_semantic::skip_block_comment::bb9" [label="SwitchInt"];
+  "cfg::rename_semantic::skip_block_comment::bb8" -> "cfg::rename_semantic::skip_block_comment::bb11" [label="SwitchInt"];
+  "cfg::rename_semantic::skip_block_comment::bb9" -> "cfg::rename_semantic::skip_block_comment::bb10" [label="Assert"];
+  "cfg::rename_semantic::skip_block_comment::bb10" -> "cfg::rename_semantic::skip_block_comment::bb2" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::rename_semantic::skip_block_comment::bb11" -> "cfg::rename_semantic::skip_block_comment::bb12" [label="Assert"];
+}

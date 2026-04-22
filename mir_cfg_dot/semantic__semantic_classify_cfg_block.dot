@@ -1,0 +1,34 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3158 {
+    label="semantic::classify_cfg_block";
+    "cfg::semantic::classify_cfg_block::bb0" [label="bb0\nCall"];
+    "cfg::semantic::classify_cfg_block::bb1" [label="bb1\nSwitchInt"];
+    "cfg::semantic::classify_cfg_block::bb2" [label="bb2\nGoto"];
+    "cfg::semantic::classify_cfg_block::bb3" [label="bb3\nCall"];
+    "cfg::semantic::classify_cfg_block::bb4" [label="bb4\nSwitchInt"];
+    "cfg::semantic::classify_cfg_block::bb5" [label="bb5\nGoto"];
+    "cfg::semantic::classify_cfg_block::bb6" [label="bb6\nCall"];
+    "cfg::semantic::classify_cfg_block::bb7" [label="bb7\nSwitchInt"];
+    "cfg::semantic::classify_cfg_block::bb8" [label="bb8\nCall"];
+    "cfg::semantic::classify_cfg_block::bb9" [label="bb9\nSwitchInt"];
+    "cfg::semantic::classify_cfg_block::bb10" [label="bb10\nGoto"];
+    "cfg::semantic::classify_cfg_block::bb11" [label="bb11\nGoto"];
+    "cfg::semantic::classify_cfg_block::bb12" [label="bb12\nReturn"];
+  }
+  "cfg::semantic::classify_cfg_block::bb1" -> "cfg::semantic::classify_cfg_block::bb3" [label="SwitchInt"];
+  "cfg::semantic::classify_cfg_block::bb1" -> "cfg::semantic::classify_cfg_block::bb2" [label="SwitchInt"];
+  "cfg::semantic::classify_cfg_block::bb2" -> "cfg::semantic::classify_cfg_block::bb12" [label="Goto"];
+  "cfg::semantic::classify_cfg_block::bb4" -> "cfg::semantic::classify_cfg_block::bb6" [label="SwitchInt"];
+  "cfg::semantic::classify_cfg_block::bb4" -> "cfg::semantic::classify_cfg_block::bb5" [label="SwitchInt"];
+  "cfg::semantic::classify_cfg_block::bb5" -> "cfg::semantic::classify_cfg_block::bb12" [label="Goto"];
+  "cfg::semantic::classify_cfg_block::bb7" -> "cfg::semantic::classify_cfg_block::bb8" [label="SwitchInt"];
+  "cfg::semantic::classify_cfg_block::bb7" -> "cfg::semantic::classify_cfg_block::bb10" [label="SwitchInt"];
+  "cfg::semantic::classify_cfg_block::bb9" -> "cfg::semantic::classify_cfg_block::bb11" [label="SwitchInt"];
+  "cfg::semantic::classify_cfg_block::bb9" -> "cfg::semantic::classify_cfg_block::bb10" [label="SwitchInt"];
+  "cfg::semantic::classify_cfg_block::bb10" -> "cfg::semantic::classify_cfg_block::bb12" [label="Goto"];
+  "cfg::semantic::classify_cfg_block::bb11" -> "cfg::semantic::classify_cfg_block::bb12" [label="Goto"];
+}

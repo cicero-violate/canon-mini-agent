@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_851 {
+    label="evolution::snapshot_path_for_state_dir";
+    "cfg::evolution::snapshot_path_for_state_dir::bb0" [label="bb0\nCall"];
+    "cfg::evolution::snapshot_path_for_state_dir::bb1" [label="bb1\nReturn"];
+  }
+}

@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3029 {
+    label="semantic::SemanticIndex::redundant_path_pairs";
+    "cfg::semantic::SemanticIndex::redundant_path_pairs::bb0" [label="bb0\nCall"];
+    "cfg::semantic::SemanticIndex::redundant_path_pairs::bb1" [label="bb1\nReturn"];
+  }
+}

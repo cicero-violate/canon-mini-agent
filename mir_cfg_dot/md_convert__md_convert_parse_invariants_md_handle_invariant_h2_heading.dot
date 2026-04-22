@@ -1,0 +1,47 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2202 {
+    label="md_convert::parse_invariants_md::handle_invariant_h2_heading";
+    "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb0" [label="bb0\nCall"];
+    "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb1" [label="bb1\nSwitchInt"];
+    "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb2" [label="bb2\nCall"];
+    "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb3" [label="bb3\nGoto"];
+    "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb4" [label="bb4\nCall"];
+    "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb5" [label="bb5\nSwitchInt"];
+    "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb6" [label="bb6\nCall"];
+    "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb7" [label="bb7\nGoto"];
+    "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb8" [label="bb8\nCall"];
+    "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb9" [label="bb9\nSwitchInt"];
+    "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb10" [label="bb10\nCall"];
+    "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb11" [label="bb11\nSwitchInt"];
+    "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb12" [label="bb12\nCall"];
+    "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb13" [label="bb13\nSwitchInt"];
+    "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb14" [label="bb14\nCall"];
+    "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb15" [label="bb15\nCall"];
+    "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb16" [label="bb16\nSwitchInt"];
+    "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb17" [label="bb17\nCall"];
+    "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb18" [label="bb18\nCall"];
+    "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb19" [label="bb19\nGoto"];
+    "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb20" [label="bb20\nGoto"];
+    "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb21" [label="bb21\nReturn"];
+  }
+  "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb1" -> "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb4" [label="SwitchInt"];
+  "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb1" -> "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb2" [label="SwitchInt"];
+  "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb3" -> "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb21" [label="Goto"];
+  "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb5" -> "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb8" [label="SwitchInt"];
+  "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb5" -> "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb6" [label="SwitchInt"];
+  "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb7" -> "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb21" [label="Goto"];
+  "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb9" -> "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb10" [label="SwitchInt"];
+  "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb9" -> "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb14" [label="SwitchInt"];
+  "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb11" -> "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb12" [label="SwitchInt"];
+  "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb11" -> "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb14" [label="SwitchInt"];
+  "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb13" -> "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb20" [label="SwitchInt"];
+  "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb13" -> "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb14" [label="SwitchInt"];
+  "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb16" -> "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb17" [label="SwitchInt"];
+  "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb16" -> "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb19" [label="SwitchInt"];
+  "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb19" -> "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb21" [label="Goto"];
+  "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb20" -> "cfg::md_convert::parse_invariants_md::handle_invariant_h2_heading::bb21" [label="Goto"];
+}

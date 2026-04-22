@@ -1,0 +1,44 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2677 {
+    label="prompts::validate_message_required_fields";
+    "cfg::prompts::validate_message_required_fields::bb0" [label="bb0\nCall"];
+    "cfg::prompts::validate_message_required_fields::bb1" [label="bb1\nGoto"];
+    "cfg::prompts::validate_message_required_fields::bb2" [label="bb2\nCall loop"];
+    "cfg::prompts::validate_message_required_fields::bb3" [label="bb3\nSwitchInt loop"];
+    "cfg::prompts::validate_message_required_fields::bb4" [label="bb4\nUnreachable loop"];
+    "cfg::prompts::validate_message_required_fields::bb5" [label="bb5\nCall loop"];
+    "cfg::prompts::validate_message_required_fields::bb6" [label="bb6\nDrop loop"];
+    "cfg::prompts::validate_message_required_fields::bb7" [label="bb7\nCall loop"];
+    "cfg::prompts::validate_message_required_fields::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::prompts::validate_message_required_fields::bb9" [label="bb9\nCall loop"];
+    "cfg::prompts::validate_message_required_fields::bb10" [label="bb10\nDrop loop"];
+    "cfg::prompts::validate_message_required_fields::bb11" [label="bb11\nCall loop"];
+    "cfg::prompts::validate_message_required_fields::bb12" [label="bb12\nCall loop"];
+    "cfg::prompts::validate_message_required_fields::bb13" [label="bb13\nCall loop"];
+    "cfg::prompts::validate_message_required_fields::bb14" [label="bb14\nCall loop"];
+    "cfg::prompts::validate_message_required_fields::bb15" [label="bb15\nSwitchInt loop"];
+    "cfg::prompts::validate_message_required_fields::bb16" [label="bb16\nGoto"];
+    "cfg::prompts::validate_message_required_fields::bb17" [label="bb17\nCall"];
+    "cfg::prompts::validate_message_required_fields::bb18" [label="bb18\nReturn"];
+    "cfg::prompts::validate_message_required_fields::bb19" [label="bb19\nDrop cleanup"];
+    "cfg::prompts::validate_message_required_fields::bb20" [label="bb20\nUnwindResume cleanup"];
+  }
+  "cfg::prompts::validate_message_required_fields::bb1" -> "cfg::prompts::validate_message_required_fields::bb2" [label="Goto"];
+  "cfg::prompts::validate_message_required_fields::bb3" -> "cfg::prompts::validate_message_required_fields::bb6" [label="SwitchInt"];
+  "cfg::prompts::validate_message_required_fields::bb3" -> "cfg::prompts::validate_message_required_fields::bb5" [label="SwitchInt"];
+  "cfg::prompts::validate_message_required_fields::bb3" -> "cfg::prompts::validate_message_required_fields::bb4" [label="SwitchInt"];
+  "cfg::prompts::validate_message_required_fields::bb6" -> "cfg::prompts::validate_message_required_fields::bb11" [label="Drop"];
+  "cfg::prompts::validate_message_required_fields::bb8" -> "cfg::prompts::validate_message_required_fields::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompts::validate_message_required_fields::bb8" -> "cfg::prompts::validate_message_required_fields::bb9" [label="SwitchInt"];
+  "cfg::prompts::validate_message_required_fields::bb8" -> "cfg::prompts::validate_message_required_fields::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompts::validate_message_required_fields::bb10" -> "cfg::prompts::validate_message_required_fields::bb18" [label="Drop"];
+  "cfg::prompts::validate_message_required_fields::bb15" -> "cfg::prompts::validate_message_required_fields::bb16" [label="SwitchInt"];
+  "cfg::prompts::validate_message_required_fields::bb15" -> "cfg::prompts::validate_message_required_fields::bb17" [label="SwitchInt"];
+  "cfg::prompts::validate_message_required_fields::bb15" -> "cfg::prompts::validate_message_required_fields::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompts::validate_message_required_fields::bb16" -> "cfg::prompts::validate_message_required_fields::bb18" [label="Goto"];
+  "cfg::prompts::validate_message_required_fields::bb19" -> "cfg::prompts::validate_message_required_fields::bb20" [label="Drop"];
+}

@@ -306,13 +306,11 @@ pub fn state_machine_issues(
     summaries: &[SymbolSummary],
     limit: usize,
 ) -> Vec<Issue> {
-    let mut out = Vec::new();
-    for s in summaries {
-        if s.switchint_count <= 3 || !s.has_back_edges {
-            continue;
-        }
-        out.push(build_state_machine_issue(crate_name, s));
-    }
+    let mut out: Vec<Issue> = summaries
+        .iter()
+        .filter(|s| s.switchint_count > 3 && s.has_back_edges)
+        .map(|s| build_state_machine_issue(crate_name, s))
+        .collect();
     out.sort_by(|a, b| a.id.cmp(&b.id));
     out.truncate(limit);
     out

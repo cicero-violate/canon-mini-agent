@@ -1,0 +1,49 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1092 {
+    label="invalid_action::push_missing_string_payload_field";
+    "cfg::invalid_action::push_missing_string_payload_field::bb0" [label="bb0\nCall"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb1" [label="bb1\nSwitchInt"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb2" [label="bb2\nCall"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb3" [label="bb3\nSwitchInt"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb4" [label="bb4\nCall"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb5" [label="bb5\nCall"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb6" [label="bb6\nCall"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb7" [label="bb7\nSwitchInt"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb8" [label="bb8\nCall"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb9" [label="bb9\nCall"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb10" [label="bb10\nCall"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb11" [label="bb11\nCall"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb12" [label="bb12\nCall"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb13" [label="bb13\nCall"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb14" [label="bb14\nCall"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb15" [label="bb15\nCall"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb16" [label="bb16\nCall"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb17" [label="bb17\nSwitchInt"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb18" [label="bb18\nCall"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb19" [label="bb19\nCall"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb20" [label="bb20\nCall"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb21" [label="bb21\nSwitchInt"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb22" [label="bb22\nCall"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb23" [label="bb23\nCall"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb24" [label="bb24\nCall"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb25" [label="bb25\nCall"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb26" [label="bb26\nCall"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb27" [label="bb27\nReturn"];
+    "cfg::invalid_action::push_missing_string_payload_field::bb28" [label="bb28\nUnreachable"];
+  }
+  "cfg::invalid_action::push_missing_string_payload_field::bb1" -> "cfg::invalid_action::push_missing_string_payload_field::bb2" [label="SwitchInt"];
+  "cfg::invalid_action::push_missing_string_payload_field::bb1" -> "cfg::invalid_action::push_missing_string_payload_field::bb13" [label="SwitchInt"];
+  "cfg::invalid_action::push_missing_string_payload_field::bb1" -> "cfg::invalid_action::push_missing_string_payload_field::bb28" [label="SwitchInt"];
+  "cfg::invalid_action::push_missing_string_payload_field::bb3" -> "cfg::invalid_action::push_missing_string_payload_field::bb4" [label="SwitchInt"];
+  "cfg::invalid_action::push_missing_string_payload_field::bb3" -> "cfg::invalid_action::push_missing_string_payload_field::bb13" [label="SwitchInt"];
+  "cfg::invalid_action::push_missing_string_payload_field::bb7" -> "cfg::invalid_action::push_missing_string_payload_field::bb8" [label="SwitchInt"];
+  "cfg::invalid_action::push_missing_string_payload_field::bb7" -> "cfg::invalid_action::push_missing_string_payload_field::bb27" [label="SwitchInt"];
+  "cfg::invalid_action::push_missing_string_payload_field::bb17" -> "cfg::invalid_action::push_missing_string_payload_field::bb27" [label="SwitchInt"];
+  "cfg::invalid_action::push_missing_string_payload_field::bb17" -> "cfg::invalid_action::push_missing_string_payload_field::bb18" [label="SwitchInt"];
+  "cfg::invalid_action::push_missing_string_payload_field::bb21" -> "cfg::invalid_action::push_missing_string_payload_field::bb22" [label="SwitchInt"];
+  "cfg::invalid_action::push_missing_string_payload_field::bb21" -> "cfg::invalid_action::push_missing_string_payload_field::bb27" [label="SwitchInt"];
+}

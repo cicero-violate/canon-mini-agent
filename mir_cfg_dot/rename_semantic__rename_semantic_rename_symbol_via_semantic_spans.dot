@@ -1,0 +1,20 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2978 {
+    label="rename_semantic::rename_symbol_via_semantic_spans";
+    "cfg::rename_semantic::rename_symbol_via_semantic_spans::bb0" [label="bb0\nCall"];
+    "cfg::rename_semantic::rename_symbol_via_semantic_spans::bb1" [label="bb1\nCall"];
+    "cfg::rename_semantic::rename_symbol_via_semantic_spans::bb2" [label="bb2\nCall"];
+    "cfg::rename_semantic::rename_symbol_via_semantic_spans::bb3" [label="bb3\nDrop"];
+    "cfg::rename_semantic::rename_symbol_via_semantic_spans::bb4" [label="bb4\nReturn"];
+    "cfg::rename_semantic::rename_symbol_via_semantic_spans::bb5" [label="bb5\nDrop cleanup"];
+    "cfg::rename_semantic::rename_symbol_via_semantic_spans::bb6" [label="bb6\nDrop cleanup"];
+    "cfg::rename_semantic::rename_symbol_via_semantic_spans::bb7" [label="bb7\nUnwindResume cleanup"];
+  }
+  "cfg::rename_semantic::rename_symbol_via_semantic_spans::bb3" -> "cfg::rename_semantic::rename_symbol_via_semantic_spans::bb4" [label="Drop"];
+  "cfg::rename_semantic::rename_symbol_via_semantic_spans::bb5" -> "cfg::rename_semantic::rename_symbol_via_semantic_spans::bb7" [label="Drop"];
+  "cfg::rename_semantic::rename_symbol_via_semantic_spans::bb6" -> "cfg::rename_semantic::rename_symbol_via_semantic_spans::bb7" [label="Drop"];
+}

@@ -1,0 +1,34 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1544 {
+    label="lessons::save_roles_json";
+    "cfg::lessons::save_roles_json::bb0" [label="bb0\nCall"];
+    "cfg::lessons::save_roles_json::bb1" [label="bb1\nCall"];
+    "cfg::lessons::save_roles_json::bb2" [label="bb2\nCall"];
+    "cfg::lessons::save_roles_json::bb3" [label="bb3\nSwitchInt"];
+    "cfg::lessons::save_roles_json::bb4" [label="bb4\nUnreachable"];
+    "cfg::lessons::save_roles_json::bb5" [label="bb5\nCall"];
+    "cfg::lessons::save_roles_json::bb6" [label="bb6\nCall"];
+    "cfg::lessons::save_roles_json::bb7" [label="bb7\nDrop"];
+    "cfg::lessons::save_roles_json::bb8" [label="bb8\nCall"];
+    "cfg::lessons::save_roles_json::bb9" [label="bb9\nCall"];
+    "cfg::lessons::save_roles_json::bb10" [label="bb10\nDrop"];
+    "cfg::lessons::save_roles_json::bb11" [label="bb11\nDrop"];
+    "cfg::lessons::save_roles_json::bb12" [label="bb12\nReturn"];
+    "cfg::lessons::save_roles_json::bb13" [label="bb13\nDrop cleanup"];
+    "cfg::lessons::save_roles_json::bb14" [label="bb14\nDrop cleanup"];
+    "cfg::lessons::save_roles_json::bb15" [label="bb15\nUnwindResume cleanup"];
+  }
+  "cfg::lessons::save_roles_json::bb3" -> "cfg::lessons::save_roles_json::bb5" [label="SwitchInt"];
+  "cfg::lessons::save_roles_json::bb3" -> "cfg::lessons::save_roles_json::bb6" [label="SwitchInt"];
+  "cfg::lessons::save_roles_json::bb3" -> "cfg::lessons::save_roles_json::bb4" [label="SwitchInt"];
+  "cfg::lessons::save_roles_json::bb7" -> "cfg::lessons::save_roles_json::bb12" [label="Drop"];
+  "cfg::lessons::save_roles_json::bb10" -> "cfg::lessons::save_roles_json::bb11" [label="Drop"];
+  "cfg::lessons::save_roles_json::bb10" -> "cfg::lessons::save_roles_json::bb14" [label="Drop"];
+  "cfg::lessons::save_roles_json::bb11" -> "cfg::lessons::save_roles_json::bb12" [label="Drop"];
+  "cfg::lessons::save_roles_json::bb13" -> "cfg::lessons::save_roles_json::bb14" [label="Drop"];
+  "cfg::lessons::save_roles_json::bb14" -> "cfg::lessons::save_roles_json::bb15" [label="Drop"];
+}

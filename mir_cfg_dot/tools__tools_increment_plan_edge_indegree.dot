@@ -1,0 +1,20 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3819 {
+    label="tools::increment_plan_edge_indegree";
+    "cfg::tools::increment_plan_edge_indegree::bb0" [label="bb0\nCall"];
+    "cfg::tools::increment_plan_edge_indegree::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::increment_plan_edge_indegree::bb2" [label="bb2\nAssert"];
+    "cfg::tools::increment_plan_edge_indegree::bb3" [label="bb3\nGoto"];
+    "cfg::tools::increment_plan_edge_indegree::bb4" [label="bb4\nReturn"];
+    "cfg::tools::increment_plan_edge_indegree::bb5" [label="bb5\nUnreachable"];
+  }
+  "cfg::tools::increment_plan_edge_indegree::bb1" -> "cfg::tools::increment_plan_edge_indegree::bb2" [label="SwitchInt"];
+  "cfg::tools::increment_plan_edge_indegree::bb1" -> "cfg::tools::increment_plan_edge_indegree::bb4" [label="SwitchInt"];
+  "cfg::tools::increment_plan_edge_indegree::bb1" -> "cfg::tools::increment_plan_edge_indegree::bb5" [label="SwitchInt"];
+  "cfg::tools::increment_plan_edge_indegree::bb2" -> "cfg::tools::increment_plan_edge_indegree::bb3" [label="Assert"];
+  "cfg::tools::increment_plan_edge_indegree::bb3" -> "cfg::tools::increment_plan_edge_indegree::bb4" [label="Goto"];
+}

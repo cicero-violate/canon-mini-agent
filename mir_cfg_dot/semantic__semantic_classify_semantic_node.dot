@@ -1,0 +1,45 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3157 {
+    label="semantic::classify_semantic_node";
+    "cfg::semantic::classify_semantic_node::bb0" [label="bb0\nCall"];
+    "cfg::semantic::classify_semantic_node::bb1" [label="bb1\nCall"];
+    "cfg::semantic::classify_semantic_node::bb2" [label="bb2\nGoto loop"];
+    "cfg::semantic::classify_semantic_node::bb3" [label="bb3\nGoto loop"];
+    "cfg::semantic::classify_semantic_node::bb4" [label="bb4\nCall loop"];
+    "cfg::semantic::classify_semantic_node::bb5" [label="bb5\nCall loop"];
+    "cfg::semantic::classify_semantic_node::bb6" [label="bb6\nCall loop"];
+    "cfg::semantic::classify_semantic_node::bb7" [label="bb7\nCall loop"];
+    "cfg::semantic::classify_semantic_node::bb8" [label="bb8\nGoto loop"];
+    "cfg::semantic::classify_semantic_node::bb9" [label="bb9\nCall loop"];
+    "cfg::semantic::classify_semantic_node::bb10" [label="bb10\nGoto loop"];
+    "cfg::semantic::classify_semantic_node::bb11" [label="bb11\nSwitchInt loop"];
+    "cfg::semantic::classify_semantic_node::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::semantic::classify_semantic_node::bb13" [label="bb13\nSwitchInt loop"];
+    "cfg::semantic::classify_semantic_node::bb14" [label="bb14\nSwitchInt loop"];
+    "cfg::semantic::classify_semantic_node::bb15" [label="bb15\nSwitchInt loop"];
+    "cfg::semantic::classify_semantic_node::bb16" [label="bb16\nSwitchInt loop"];
+    "cfg::semantic::classify_semantic_node::bb17" [label="bb17\nGoto"];
+    "cfg::semantic::classify_semantic_node::bb18" [label="bb18\nReturn"];
+  }
+  "cfg::semantic::classify_semantic_node::bb2" -> "cfg::semantic::classify_semantic_node::bb18" [label="Goto"];
+  "cfg::semantic::classify_semantic_node::bb3" -> "cfg::semantic::classify_semantic_node::bb18" [label="Goto"];
+  "cfg::semantic::classify_semantic_node::bb8" -> "cfg::semantic::classify_semantic_node::bb18" [label="Goto"];
+  "cfg::semantic::classify_semantic_node::bb10" -> "cfg::semantic::classify_semantic_node::bb18" [label="Goto"];
+  "cfg::semantic::classify_semantic_node::bb11" -> "cfg::semantic::classify_semantic_node::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::classify_semantic_node::bb11" -> "cfg::semantic::classify_semantic_node::bb10" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::classify_semantic_node::bb12" -> "cfg::semantic::classify_semantic_node::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::classify_semantic_node::bb12" -> "cfg::semantic::classify_semantic_node::bb8" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::classify_semantic_node::bb13" -> "cfg::semantic::classify_semantic_node::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::classify_semantic_node::bb13" -> "cfg::semantic::classify_semantic_node::bb17" [label="SwitchInt"];
+  "cfg::semantic::classify_semantic_node::bb14" -> "cfg::semantic::classify_semantic_node::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::classify_semantic_node::bb14" -> "cfg::semantic::classify_semantic_node::bb17" [label="SwitchInt"];
+  "cfg::semantic::classify_semantic_node::bb15" -> "cfg::semantic::classify_semantic_node::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::classify_semantic_node::bb15" -> "cfg::semantic::classify_semantic_node::bb17" [label="SwitchInt"];
+  "cfg::semantic::classify_semantic_node::bb16" -> "cfg::semantic::classify_semantic_node::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::classify_semantic_node::bb16" -> "cfg::semantic::classify_semantic_node::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::classify_semantic_node::bb17" -> "cfg::semantic::classify_semantic_node::bb18" [label="Goto"];
+}

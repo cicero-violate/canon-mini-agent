@@ -1,9 +1,13 @@
 use crate::complexity::write_complexity_report;
+use crate::canonical_writer::CanonicalWriter;
+use crate::events::ControlEvent;
 use crate::events::EffectEvent;
 use crate::logging::{
     artifact_write_signature, init_log_paths, log_error_event, record_effect_for_workspace,
     write_projection_with_artifact_effects,
 };
+use crate::system_state::SystemState;
+use crate::tlog::Tlog;
 use crate::SemanticIndex;
 use crate::{load_issues_file, load_violations_report, set_agent_state_dir, set_workspace};
 use anyhow::{anyhow, bail, Context, Result};
@@ -14,16 +18,22 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::{
     atomic::{AtomicBool, AtomicU32, Ordering},
-    Arc, OnceLock,
+    Arc, Mutex, OnceLock,
 };
 use std::thread;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const STARTUP_UPDATE_GRACE_SECS: u64 = 15;
 static COMPLEXITY_REPORT_RUNNING: OnceLock<AtomicBool> = OnceLock::new();
+static CANONICAL_CONTROL_CACHE: OnceLock<Mutex<Option<CachedCanonicalControlSnapshot>>> =
+    OnceLock::new();
 
 fn complexity_report_running_flag() -> &'static AtomicBool {
     COMPLEXITY_REPORT_RUNNING.get_or_init(|| AtomicBool::new(false))
+}
+
+fn canonical_control_cache() -> &'static Mutex<Option<CachedCanonicalControlSnapshot>> {
+    CANONICAL_CONTROL_CACHE.get_or_init(|| Mutex::new(None))
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -213,15 +223,92 @@ fn agent_state_flag_path(args: &[String], filename: &str) -> PathBuf {
     agent_state_dir_from_args(args).join(filename)
 }
 
+#[derive(Clone, Debug, Default)]
+struct CanonicalControlSnapshot {
+    rust_patch_verification_requested: bool,
+    orchestrator_mode: Option<String>,
+    orchestrator_idle_ts_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug)]
+struct CachedCanonicalControlSnapshot {
+    tlog_path: PathBuf,
+    tlog_mtime: Option<SystemTime>,
+    snapshot: CanonicalControlSnapshot,
+}
+
+fn tlog_path_for_state_dir(state_dir: &Path) -> PathBuf {
+    state_dir.join("tlog.ndjson")
+}
+
+fn replay_canonical_control_snapshot(state_dir: &Path) -> Option<CanonicalControlSnapshot> {
+    let tlog_path = tlog_path_for_state_dir(state_dir);
+    if !tlog_path.exists() {
+        return None;
+    }
+    let tlog_mtime = fs::metadata(&tlog_path).ok().and_then(|m| m.modified().ok());
+    if let Ok(guard) = canonical_control_cache().lock() {
+        if let Some(cached) = guard.as_ref() {
+            if cached.tlog_path == tlog_path && cached.tlog_mtime == tlog_mtime {
+                return Some(cached.snapshot.clone());
+            }
+        }
+    }
+    let state = Tlog::replay(&tlog_path, SystemState::new(&[], 0)).ok()?;
+    let mode = state.orchestrator_mode.trim();
+    let snapshot = CanonicalControlSnapshot {
+        rust_patch_verification_requested: state.rust_patch_verification_requested,
+        orchestrator_mode: if mode.is_empty() {
+            None
+        } else {
+            Some(mode.to_string())
+        },
+        orchestrator_idle_ts_ms: (state.orchestrator_idle_ts_ms > 0)
+            .then_some(state.orchestrator_idle_ts_ms),
+    };
+    if let Ok(mut guard) = canonical_control_cache().lock() {
+        *guard = Some(CachedCanonicalControlSnapshot {
+            tlog_path,
+            tlog_mtime,
+            snapshot: snapshot.clone(),
+        });
+    }
+    Some(snapshot)
+}
+
+fn try_apply_canonical_control_event(state_dir: &Path, event: ControlEvent) {
+    let tlog_path = tlog_path_for_state_dir(state_dir);
+    if !tlog_path.exists() {
+        return;
+    }
+    let Ok(state) = Tlog::replay(&tlog_path, SystemState::new(&[], 0)) else {
+        return;
+    };
+    let workspace = state_dir
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let Ok(mut writer) = CanonicalWriter::try_new(state, Tlog::open(&tlog_path), workspace) else {
+        return;
+    };
+    let _ = writer.try_apply(event);
+}
+
 fn rust_patch_verification_flag_path(state_dir: &Path) -> PathBuf {
     state_dir.join("rust_patch_verification_requested.flag")
 }
 
 fn rust_patch_verification_requested(state_dir: &Path) -> bool {
-    rust_patch_verification_flag_path(state_dir).exists()
+    replay_canonical_control_snapshot(state_dir)
+        .map(|s| s.rust_patch_verification_requested)
+        .unwrap_or_else(|| rust_patch_verification_flag_path(state_dir).exists())
 }
 
 fn clear_rust_patch_verification_request(state_dir: &Path) {
+    try_apply_canonical_control_event(
+        state_dir,
+        ControlEvent::RustPatchVerificationRequested { requested: false },
+    );
     let _ = fs::remove_file(rust_patch_verification_flag_path(state_dir));
 }
 
@@ -244,15 +331,45 @@ fn orchestrator_mode_flag_path(args: &[String]) -> PathBuf {
     agent_state_flag_path(args, "orchestrator_mode.flag")
 }
 
-fn read_orchestrator_mode(path: &Path) -> Option<String> {
+fn read_orchestrator_mode_file(path: &Path) -> Option<String> {
     std::fs::read_to_string(path)
         .ok()
         .map(|s| s.trim().to_string())
 }
 
+fn read_orchestrator_mode(state_dir: &Path, path: &Path) -> Option<String> {
+    replay_canonical_control_snapshot(state_dir)
+        .and_then(|s| s.orchestrator_mode)
+        .or_else(|| read_orchestrator_mode_file(path))
+}
+
+fn idle_pulse_is_fresh(
+    state_dir: &Path,
+    idle_marker: &Path,
+    child_started_at: SystemTime,
+    updated_mtime: SystemTime,
+) -> bool {
+    if let Some(snapshot) = replay_canonical_control_snapshot(state_dir) {
+        if let Some(idle_ts_ms) = snapshot.orchestrator_idle_ts_ms {
+            let child_started_ms = system_time_ms(child_started_at).unwrap_or(0);
+            let updated_ms = system_time_ms(updated_mtime).unwrap_or(0);
+            return idle_ts_ms >= child_started_ms && idle_ts_ms >= updated_ms;
+        }
+    }
+    file_mtime_if_exists(idle_marker)
+        .map(|mtime| mtime >= child_started_at && mtime >= updated_mtime)
+        .unwrap_or(false)
+}
+
 fn file_mtime_if_exists(path: &Path) -> Option<SystemTime> {
     let meta = fs::metadata(path).ok()?;
     meta.modified().ok()
+}
+
+fn system_time_ms(ts: SystemTime) -> Option<u64> {
+    ts.duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_millis() as u64)
 }
 
 fn run_cmd(root: &Path, program: &str, args: &[&str]) -> Result<bool> {
@@ -634,10 +751,12 @@ pub fn run() -> Result<()> {
 
     let idle_marker = cycle_idle_marker_path(&filtered_args);
     let orchestrator_mode_flag = orchestrator_mode_flag_path(&filtered_args);
+    let state_dir = agent_state_dir_from_args(&filtered_args);
 
     run_supervisor_loop(
         &exe,
         &root,
+        &state_dir,
         &filtered_args,
         shutdown.as_ref(),
         &child_pid,
@@ -651,6 +770,7 @@ pub fn run() -> Result<()> {
 fn run_supervisor_loop(
     exe: &str,
     root: &Path,
+    state_dir: &Path,
     filtered_args: &[String],
     shutdown: &AtomicBool,
     child_pid: &Arc<AtomicU32>,
@@ -669,6 +789,7 @@ fn run_supervisor_loop(
             shutdown,
             no_watch,
             root,
+            state_dir,
             &current,
             &mut pending_update,
             orchestrator_mode_flag,
@@ -721,6 +842,7 @@ fn supervise_current_child(
     shutdown: &AtomicBool,
     no_watch: bool,
     root: &Path,
+    state_dir: &Path,
     current: &BinaryCandidate,
     pending_update: &mut Option<BinaryCandidate>,
     orchestrator_mode_flag: &Path,
@@ -736,6 +858,7 @@ fn supervise_current_child(
             shutdown,
             no_watch,
             root,
+            state_dir,
             current,
             pending_update,
             &mut pending_update_defer_checks,
@@ -746,11 +869,10 @@ fn supervise_current_child(
             child,
         )? {
             SuperviseCurrentChildFlow::Continue => {}
-            SuperviseCurrentChildFlow::BreakLoop => break,
+            SuperviseCurrentChildFlow::BreakLoop => return Ok(false),
             SuperviseCurrentChildFlow::ReturnOkTrue => return Ok(true),
         }
     }
-    Ok(false)
 }
 
 enum SuperviseCurrentChildFlow {
@@ -763,6 +885,7 @@ fn supervise_current_child_iteration(
     shutdown: &AtomicBool,
     no_watch: bool,
     root: &Path,
+    state_dir: &Path,
     current: &BinaryCandidate,
     pending_update: &mut Option<BinaryCandidate>,
     pending_update_defer_checks: &mut u32,
@@ -775,12 +898,18 @@ fn supervise_current_child_iteration(
     if handle_shutdown_request(shutdown, child) {
         return Ok(SuperviseCurrentChildFlow::ReturnOkTrue);
     }
-    if handle_child_exit_status(child.try_wait().context("wait child")?, root, prefer_release) {
+    if handle_child_exit_status(
+        child.try_wait().context("wait child")?,
+        root,
+        state_dir,
+        prefer_release,
+    ) {
         return Ok(SuperviseCurrentChildFlow::BreakLoop);
     }
     if should_restart_for_pending_update(
         no_watch,
         root,
+        state_dir,
         current,
         pending_update,
         pending_update_defer_checks,
@@ -811,7 +940,12 @@ fn handle_shutdown_request(shutdown: &AtomicBool, child: &mut Child) -> bool {
     true
 }
 
-fn handle_child_exit_status(status: Option<ExitStatus>, root: &Path, prefer_release: bool) -> bool {
+fn handle_child_exit_status(
+    status: Option<ExitStatus>,
+    root: &Path,
+    state_dir: &Path,
+    prefer_release: bool,
+) -> bool {
     let Some(status) = status else {
         return false;
     };
@@ -821,8 +955,7 @@ fn handle_child_exit_status(status: Option<ExitStatus>, root: &Path, prefer_rele
         std::process::exit(0);
     }
     eprintln!("[canon-mini-supervisor] restarting due to failure...");
-    let state_dir = root.join("agent_state");
-    stage_commit_push_before_restart(root, &state_dir, "failure-restart", prefer_release);
+    stage_commit_push_before_restart(root, state_dir, "failure-restart", prefer_release);
     log_error_event(
         "supervisor",
         "supervisor_main",
@@ -890,6 +1023,7 @@ fn start_supervisor_child(
 fn should_restart_for_pending_update(
     no_watch: bool,
     root: &Path,
+    state_dir: &Path,
     current: &BinaryCandidate,
     pending_update: &mut Option<BinaryCandidate>,
     pending_update_defer_checks: &mut u32,
@@ -905,6 +1039,7 @@ fn should_restart_for_pending_update(
     record_pending_update(root, current, pending_update, child_started_at)?;
     maybe_restart_for_pending_update(
         root,
+        state_dir,
         pending_update.as_ref(),
         pending_update_defer_checks,
         orchestrator_mode_flag,
@@ -955,6 +1090,7 @@ fn record_pending_update(
 
 fn maybe_restart_for_pending_update(
     root: &Path,
+    state_dir: &Path,
     pending_update: Option<&BinaryCandidate>,
     pending_update_defer_checks: &mut u32,
     orchestrator_mode_flag: &Path,
@@ -967,7 +1103,7 @@ fn maybe_restart_for_pending_update(
         *pending_update_defer_checks = 0;
         return Ok(false);
     };
-    let mode = read_orchestrator_mode(orchestrator_mode_flag);
+    let mode = read_orchestrator_mode(state_dir, orchestrator_mode_flag);
     if mode.as_deref() != Some("orchestrate") {
         eprintln!(
             "[canon-mini-supervisor] binary updated in single-role; restarting from {}",
@@ -983,17 +1119,15 @@ fn maybe_restart_for_pending_update(
             ),
             None,
         );
-        let state_dir = root.join("agent_state");
-        stage_commit_push_before_restart(root, &state_dir, "single-role-update", prefer_release);
+        stage_commit_push_before_restart(root, state_dir, "single-role-update", prefer_release);
         send_sigint(child);
         wait_for_exit(child, Duration::from_secs(10));
         eprintln!("[canon-mini-supervisor] restarting...");
         return Ok(true);
     }
 
-    let idle_marker_is_fresh = file_mtime_if_exists(idle_marker)
-        .map(|mtime| mtime >= child_started_at && mtime >= updated.mtime)
-        .unwrap_or(false);
+    let idle_marker_is_fresh =
+        idle_pulse_is_fresh(state_dir, idle_marker, child_started_at, updated.mtime);
     if idle_marker_is_fresh {
         *pending_update_defer_checks = 0;
         eprintln!(
@@ -1010,10 +1144,9 @@ fn maybe_restart_for_pending_update(
             ),
             None,
         );
-        let state_dir = root.join("agent_state");
         stage_commit_push_before_restart(
             root,
-            &state_dir,
+            state_dir,
             "orchestrate-idle-update",
             prefer_release,
         );
@@ -1041,10 +1174,9 @@ fn maybe_restart_for_pending_update(
             ),
             None,
         );
-        let state_dir = root.join("agent_state");
         stage_commit_push_before_restart(
             root,
-            &state_dir,
+            state_dir,
             "orchestrate-deferred-update-timeout",
             prefer_release,
         );

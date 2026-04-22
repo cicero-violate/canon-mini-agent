@@ -1,0 +1,21 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3301 {
+    label="supervisor::file_mtime_if_exists";
+    "cfg::supervisor::file_mtime_if_exists::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::file_mtime_if_exists::bb1" [label="bb1\nCall"];
+    "cfg::supervisor::file_mtime_if_exists::bb2" [label="bb2\nCall"];
+    "cfg::supervisor::file_mtime_if_exists::bb3" [label="bb3\nSwitchInt"];
+    "cfg::supervisor::file_mtime_if_exists::bb4" [label="bb4\nUnreachable"];
+    "cfg::supervisor::file_mtime_if_exists::bb5" [label="bb5\nCall"];
+    "cfg::supervisor::file_mtime_if_exists::bb6" [label="bb6\nCall"];
+    "cfg::supervisor::file_mtime_if_exists::bb7" [label="bb7\nCall"];
+    "cfg::supervisor::file_mtime_if_exists::bb8" [label="bb8\nReturn"];
+  }
+  "cfg::supervisor::file_mtime_if_exists::bb3" -> "cfg::supervisor::file_mtime_if_exists::bb5" [label="SwitchInt"];
+  "cfg::supervisor::file_mtime_if_exists::bb3" -> "cfg::supervisor::file_mtime_if_exists::bb6" [label="SwitchInt"];
+  "cfg::supervisor::file_mtime_if_exists::bb3" -> "cfg::supervisor::file_mtime_if_exists::bb4" [label="SwitchInt"];
+}

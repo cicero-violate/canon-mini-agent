@@ -1,0 +1,18 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1542 {
+    label="lessons::load_roles_json";
+    "cfg::lessons::load_roles_json::bb0" [label="bb0\nCall"];
+    "cfg::lessons::load_roles_json::bb1" [label="bb1\nCall"];
+    "cfg::lessons::load_roles_json::bb2" [label="bb2\nCall"];
+    "cfg::lessons::load_roles_json::bb3" [label="bb3\nDrop"];
+    "cfg::lessons::load_roles_json::bb4" [label="bb4\nReturn"];
+    "cfg::lessons::load_roles_json::bb5" [label="bb5\nDrop cleanup"];
+    "cfg::lessons::load_roles_json::bb6" [label="bb6\nUnwindResume cleanup"];
+  }
+  "cfg::lessons::load_roles_json::bb3" -> "cfg::lessons::load_roles_json::bb4" [label="Drop"];
+  "cfg::lessons::load_roles_json::bb5" -> "cfg::lessons::load_roles_json::bb6" [label="Drop"];
+}

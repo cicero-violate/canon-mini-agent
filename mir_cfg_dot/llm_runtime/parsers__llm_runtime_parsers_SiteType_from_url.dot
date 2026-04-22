@@ -1,0 +1,30 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1822 {
+    label="llm_runtime::parsers::SiteType::from_url";
+    "cfg::llm_runtime::parsers::SiteType::from_url::bb0" [label="bb0\nCall"];
+    "cfg::llm_runtime::parsers::SiteType::from_url::bb1" [label="bb1\nSwitchInt"];
+    "cfg::llm_runtime::parsers::SiteType::from_url::bb2" [label="bb2\nGoto"];
+    "cfg::llm_runtime::parsers::SiteType::from_url::bb3" [label="bb3\nCall"];
+    "cfg::llm_runtime::parsers::SiteType::from_url::bb4" [label="bb4\nSwitchInt"];
+    "cfg::llm_runtime::parsers::SiteType::from_url::bb5" [label="bb5\nGoto"];
+    "cfg::llm_runtime::parsers::SiteType::from_url::bb6" [label="bb6\nCall"];
+    "cfg::llm_runtime::parsers::SiteType::from_url::bb7" [label="bb7\nSwitchInt"];
+    "cfg::llm_runtime::parsers::SiteType::from_url::bb8" [label="bb8\nGoto"];
+    "cfg::llm_runtime::parsers::SiteType::from_url::bb9" [label="bb9\nGoto"];
+    "cfg::llm_runtime::parsers::SiteType::from_url::bb10" [label="bb10\nReturn"];
+  }
+  "cfg::llm_runtime::parsers::SiteType::from_url::bb1" -> "cfg::llm_runtime::parsers::SiteType::from_url::bb3" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::SiteType::from_url::bb1" -> "cfg::llm_runtime::parsers::SiteType::from_url::bb2" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::SiteType::from_url::bb2" -> "cfg::llm_runtime::parsers::SiteType::from_url::bb10" [label="Goto"];
+  "cfg::llm_runtime::parsers::SiteType::from_url::bb4" -> "cfg::llm_runtime::parsers::SiteType::from_url::bb6" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::SiteType::from_url::bb4" -> "cfg::llm_runtime::parsers::SiteType::from_url::bb5" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::SiteType::from_url::bb5" -> "cfg::llm_runtime::parsers::SiteType::from_url::bb10" [label="Goto"];
+  "cfg::llm_runtime::parsers::SiteType::from_url::bb7" -> "cfg::llm_runtime::parsers::SiteType::from_url::bb9" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::SiteType::from_url::bb7" -> "cfg::llm_runtime::parsers::SiteType::from_url::bb8" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::SiteType::from_url::bb8" -> "cfg::llm_runtime::parsers::SiteType::from_url::bb10" [label="Goto"];
+  "cfg::llm_runtime::parsers::SiteType::from_url::bb9" -> "cfg::llm_runtime::parsers::SiteType::from_url::bb10" [label="Goto"];
+}

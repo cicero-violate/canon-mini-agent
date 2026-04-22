@@ -1,0 +1,20 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4256 {
+    label="tools::plan_op_is_terminal_ready";
+    "cfg::tools::plan_op_is_terminal_ready::bb0" [label="bb0\nCall"];
+    "cfg::tools::plan_op_is_terminal_ready::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::plan_op_is_terminal_ready::bb2" [label="bb2\nCall"];
+    "cfg::tools::plan_op_is_terminal_ready::bb3" [label="bb3\nGoto"];
+    "cfg::tools::plan_op_is_terminal_ready::bb4" [label="bb4\nCall"];
+    "cfg::tools::plan_op_is_terminal_ready::bb5" [label="bb5\nCall"];
+    "cfg::tools::plan_op_is_terminal_ready::bb6" [label="bb6\nCall"];
+    "cfg::tools::plan_op_is_terminal_ready::bb7" [label="bb7\nReturn"];
+  }
+  "cfg::tools::plan_op_is_terminal_ready::bb1" -> "cfg::tools::plan_op_is_terminal_ready::bb3" [label="SwitchInt"];
+  "cfg::tools::plan_op_is_terminal_ready::bb1" -> "cfg::tools::plan_op_is_terminal_ready::bb2" [label="SwitchInt"];
+  "cfg::tools::plan_op_is_terminal_ready::bb3" -> "cfg::tools::plan_op_is_terminal_ready::bb7" [label="Goto"];
+}

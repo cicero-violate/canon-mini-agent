@@ -1,0 +1,21 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3479 {
+    label="tool_schema::schema_diff_messages";
+    "cfg::tool_schema::schema_diff_messages::bb0" [label="bb0\nCall"];
+    "cfg::tool_schema::schema_diff_messages::bb1" [label="bb1\nCall"];
+    "cfg::tool_schema::schema_diff_messages::bb2" [label="bb2\nSwitchInt"];
+    "cfg::tool_schema::schema_diff_messages::bb3" [label="bb3\nUnreachable"];
+    "cfg::tool_schema::schema_diff_messages::bb4" [label="bb4\nCall"];
+    "cfg::tool_schema::schema_diff_messages::bb5" [label="bb5\nCall"];
+    "cfg::tool_schema::schema_diff_messages::bb6" [label="bb6\nCall"];
+    "cfg::tool_schema::schema_diff_messages::bb7" [label="bb7\nCall"];
+    "cfg::tool_schema::schema_diff_messages::bb8" [label="bb8\nReturn"];
+  }
+  "cfg::tool_schema::schema_diff_messages::bb2" -> "cfg::tool_schema::schema_diff_messages::bb5" [label="SwitchInt"];
+  "cfg::tool_schema::schema_diff_messages::bb2" -> "cfg::tool_schema::schema_diff_messages::bb4" [label="SwitchInt"];
+  "cfg::tool_schema::schema_diff_messages::bb2" -> "cfg::tool_schema::schema_diff_messages::bb3" [label="SwitchInt"];
+}

@@ -1,0 +1,14 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2592 {
+    label="prompts::rules_blocker_route";
+    "cfg::prompts::rules_blocker_route::bb0" [label="bb0\nCall"];
+    "cfg::prompts::rules_blocker_route::bb1" [label="bb1\nCall"];
+    "cfg::prompts::rules_blocker_route::bb2" [label="bb2\nCall"];
+    "cfg::prompts::rules_blocker_route::bb3" [label="bb3\nCall"];
+    "cfg::prompts::rules_blocker_route::bb4" [label="bb4\nReturn"];
+  }
+}

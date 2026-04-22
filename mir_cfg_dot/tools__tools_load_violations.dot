@@ -1,0 +1,45 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3711 {
+    label="tools::load_violations";
+    "cfg::tools::load_violations::bb0" [label="bb0\nCall"];
+    "cfg::tools::load_violations::bb1" [label="bb1\nCall"];
+    "cfg::tools::load_violations::bb2" [label="bb2\nCall"];
+    "cfg::tools::load_violations::bb3" [label="bb3\nCall"];
+    "cfg::tools::load_violations::bb4" [label="bb4\nCall"];
+    "cfg::tools::load_violations::bb5" [label="bb5\nSwitchInt"];
+    "cfg::tools::load_violations::bb6" [label="bb6\nCall"];
+    "cfg::tools::load_violations::bb7" [label="bb7\nSwitchInt"];
+    "cfg::tools::load_violations::bb8" [label="bb8\nGoto"];
+    "cfg::tools::load_violations::bb9" [label="bb9\nCall"];
+    "cfg::tools::load_violations::bb10" [label="bb10\nCall"];
+    "cfg::tools::load_violations::bb11" [label="bb11\nCall"];
+    "cfg::tools::load_violations::bb12" [label="bb12\nGoto"];
+    "cfg::tools::load_violations::bb13" [label="bb13\nCall"];
+    "cfg::tools::load_violations::bb14" [label="bb14\nCall"];
+    "cfg::tools::load_violations::bb15" [label="bb15\nCall"];
+    "cfg::tools::load_violations::bb16" [label="bb16\nDrop"];
+    "cfg::tools::load_violations::bb17" [label="bb17\nDrop"];
+    "cfg::tools::load_violations::bb18" [label="bb18\nReturn"];
+    "cfg::tools::load_violations::bb19" [label="bb19\nDrop cleanup"];
+    "cfg::tools::load_violations::bb20" [label="bb20\nDrop cleanup"];
+    "cfg::tools::load_violations::bb21" [label="bb21\nDrop cleanup"];
+    "cfg::tools::load_violations::bb22" [label="bb22\nUnwindResume cleanup"];
+    "cfg::tools::load_violations::bb23" [label="bb23\nUnreachable"];
+  }
+  "cfg::tools::load_violations::bb5" -> "cfg::tools::load_violations::bb13" [label="SwitchInt"];
+  "cfg::tools::load_violations::bb5" -> "cfg::tools::load_violations::bb6" [label="SwitchInt"];
+  "cfg::tools::load_violations::bb7" -> "cfg::tools::load_violations::bb8" [label="SwitchInt"];
+  "cfg::tools::load_violations::bb7" -> "cfg::tools::load_violations::bb9" [label="SwitchInt"];
+  "cfg::tools::load_violations::bb7" -> "cfg::tools::load_violations::bb23" [label="SwitchInt"];
+  "cfg::tools::load_violations::bb8" -> "cfg::tools::load_violations::bb17" [label="Goto"];
+  "cfg::tools::load_violations::bb12" -> "cfg::tools::load_violations::bb17" [label="Goto"];
+  "cfg::tools::load_violations::bb16" -> "cfg::tools::load_violations::bb18" [label="Drop"];
+  "cfg::tools::load_violations::bb17" -> "cfg::tools::load_violations::bb18" [label="Drop"];
+  "cfg::tools::load_violations::bb19" -> "cfg::tools::load_violations::bb20" [label="Drop"];
+  "cfg::tools::load_violations::bb20" -> "cfg::tools::load_violations::bb21" [label="Drop"];
+  "cfg::tools::load_violations::bb21" -> "cfg::tools::load_violations::bb22" [label="Drop"];
+}

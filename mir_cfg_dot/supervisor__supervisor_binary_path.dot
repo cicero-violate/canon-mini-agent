@@ -1,0 +1,44 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3274 {
+    label="supervisor::binary_path";
+    "cfg::supervisor::binary_path::bb0" [label="bb0\nSwitchInt"];
+    "cfg::supervisor::binary_path::bb1" [label="bb1\nUnreachable"];
+    "cfg::supervisor::binary_path::bb2" [label="bb2\nCall"];
+    "cfg::supervisor::binary_path::bb3" [label="bb3\nCall"];
+    "cfg::supervisor::binary_path::bb4" [label="bb4\nCall"];
+    "cfg::supervisor::binary_path::bb5" [label="bb5\nCall"];
+    "cfg::supervisor::binary_path::bb6" [label="bb6\nCall"];
+    "cfg::supervisor::binary_path::bb7" [label="bb7\nCall"];
+    "cfg::supervisor::binary_path::bb8" [label="bb8\nDrop"];
+    "cfg::supervisor::binary_path::bb9" [label="bb9\nDrop"];
+    "cfg::supervisor::binary_path::bb10" [label="bb10\nCall"];
+    "cfg::supervisor::binary_path::bb11" [label="bb11\nCall"];
+    "cfg::supervisor::binary_path::bb12" [label="bb12\nCall"];
+    "cfg::supervisor::binary_path::bb13" [label="bb13\nCall"];
+    "cfg::supervisor::binary_path::bb14" [label="bb14\nDrop"];
+    "cfg::supervisor::binary_path::bb15" [label="bb15\nDrop"];
+    "cfg::supervisor::binary_path::bb16" [label="bb16\nReturn"];
+    "cfg::supervisor::binary_path::bb17" [label="bb17\nDrop cleanup"];
+    "cfg::supervisor::binary_path::bb18" [label="bb18\nDrop cleanup"];
+    "cfg::supervisor::binary_path::bb19" [label="bb19\nDrop cleanup"];
+    "cfg::supervisor::binary_path::bb20" [label="bb20\nDrop cleanup"];
+    "cfg::supervisor::binary_path::bb21" [label="bb21\nUnwindResume cleanup"];
+  }
+  "cfg::supervisor::binary_path::bb0" -> "cfg::supervisor::binary_path::bb3" [label="SwitchInt"];
+  "cfg::supervisor::binary_path::bb0" -> "cfg::supervisor::binary_path::bb2" [label="SwitchInt"];
+  "cfg::supervisor::binary_path::bb0" -> "cfg::supervisor::binary_path::bb1" [label="SwitchInt"];
+  "cfg::supervisor::binary_path::bb8" -> "cfg::supervisor::binary_path::bb9" [label="Drop"];
+  "cfg::supervisor::binary_path::bb8" -> "cfg::supervisor::binary_path::bb20" [label="Drop"];
+  "cfg::supervisor::binary_path::bb9" -> "cfg::supervisor::binary_path::bb16" [label="Drop"];
+  "cfg::supervisor::binary_path::bb14" -> "cfg::supervisor::binary_path::bb15" [label="Drop"];
+  "cfg::supervisor::binary_path::bb14" -> "cfg::supervisor::binary_path::bb18" [label="Drop"];
+  "cfg::supervisor::binary_path::bb15" -> "cfg::supervisor::binary_path::bb16" [label="Drop"];
+  "cfg::supervisor::binary_path::bb17" -> "cfg::supervisor::binary_path::bb18" [label="Drop"];
+  "cfg::supervisor::binary_path::bb18" -> "cfg::supervisor::binary_path::bb21" [label="Drop"];
+  "cfg::supervisor::binary_path::bb19" -> "cfg::supervisor::binary_path::bb20" [label="Drop"];
+  "cfg::supervisor::binary_path::bb20" -> "cfg::supervisor::binary_path::bb21" [label="Drop"];
+}

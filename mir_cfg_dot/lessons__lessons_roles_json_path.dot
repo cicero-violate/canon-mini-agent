@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1541 {
+    label="lessons::roles_json_path";
+    "cfg::lessons::roles_json_path::bb0" [label="bb0\nCall"];
+    "cfg::lessons::roles_json_path::bb1" [label="bb1\nReturn"];
+  }
+}

@@ -1,0 +1,31 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2952 {
+    label="rename_semantic::scan_attr_ranges";
+    "cfg::rename_semantic::scan_attr_ranges::bb0" [label="bb0\nCall"];
+    "cfg::rename_semantic::scan_attr_ranges::bb1" [label="bb1\nCall"];
+    "cfg::rename_semantic::scan_attr_ranges::bb2" [label="bb2\nGoto"];
+    "cfg::rename_semantic::scan_attr_ranges::bb3" [label="bb3\nSwitchInt loop"];
+    "cfg::rename_semantic::scan_attr_ranges::bb4" [label="bb4\nCall loop"];
+    "cfg::rename_semantic::scan_attr_ranges::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::rename_semantic::scan_attr_ranges::bb6" [label="bb6\nCall loop"];
+    "cfg::rename_semantic::scan_attr_ranges::bb7" [label="bb7\nGoto loop"];
+    "cfg::rename_semantic::scan_attr_ranges::bb8" [label="bb8\nReturn loop"];
+    "cfg::rename_semantic::scan_attr_ranges::bb9" [label="bb9\nDrop cleanup loop"];
+    "cfg::rename_semantic::scan_attr_ranges::bb10" [label="bb10\nUnwindResume cleanup loop"];
+    "cfg::rename_semantic::scan_attr_ranges::bb11" [label="bb11\nUnreachable loop"];
+    "cfg::rename_semantic::scan_attr_ranges::bb12" [label="bb12\nGoto loop"];
+  }
+  "cfg::rename_semantic::scan_attr_ranges::bb2" -> "cfg::rename_semantic::scan_attr_ranges::bb3" [label="Goto"];
+  "cfg::rename_semantic::scan_attr_ranges::bb3" -> "cfg::rename_semantic::scan_attr_ranges::bb8" [label="SwitchInt"];
+  "cfg::rename_semantic::scan_attr_ranges::bb3" -> "cfg::rename_semantic::scan_attr_ranges::bb4" [label="SwitchInt"];
+  "cfg::rename_semantic::scan_attr_ranges::bb5" -> "cfg::rename_semantic::scan_attr_ranges::bb6" [label="SwitchInt"];
+  "cfg::rename_semantic::scan_attr_ranges::bb5" -> "cfg::rename_semantic::scan_attr_ranges::bb7" [label="SwitchInt"];
+  "cfg::rename_semantic::scan_attr_ranges::bb5" -> "cfg::rename_semantic::scan_attr_ranges::bb11" [label="SwitchInt"];
+  "cfg::rename_semantic::scan_attr_ranges::bb7" -> "cfg::rename_semantic::scan_attr_ranges::bb3" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::rename_semantic::scan_attr_ranges::bb9" -> "cfg::rename_semantic::scan_attr_ranges::bb10" [label="Drop"];
+  "cfg::rename_semantic::scan_attr_ranges::bb12" -> "cfg::rename_semantic::scan_attr_ranges::bb7" [color="crimson", penwidth=2, label="Goto back"];
+}

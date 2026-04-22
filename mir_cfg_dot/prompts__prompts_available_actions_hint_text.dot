@@ -1,0 +1,31 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2726 {
+    label="prompts::available_actions_hint_text";
+    "cfg::prompts::available_actions_hint_text::bb0" [label="bb0\nCall"];
+    "cfg::prompts::available_actions_hint_text::bb1" [label="bb1\nCall"];
+    "cfg::prompts::available_actions_hint_text::bb2" [label="bb2\nCall"];
+    "cfg::prompts::available_actions_hint_text::bb3" [label="bb3\nCall"];
+    "cfg::prompts::available_actions_hint_text::bb4" [label="bb4\nCall"];
+    "cfg::prompts::available_actions_hint_text::bb5" [label="bb5\nCall"];
+    "cfg::prompts::available_actions_hint_text::bb6" [label="bb6\nCall"];
+    "cfg::prompts::available_actions_hint_text::bb7" [label="bb7\nDrop"];
+    "cfg::prompts::available_actions_hint_text::bb8" [label="bb8\nCall"];
+    "cfg::prompts::available_actions_hint_text::bb9" [label="bb9\nCall"];
+    "cfg::prompts::available_actions_hint_text::bb10" [label="bb10\nCall"];
+    "cfg::prompts::available_actions_hint_text::bb11" [label="bb11\nCall"];
+    "cfg::prompts::available_actions_hint_text::bb12" [label="bb12\nDrop"];
+    "cfg::prompts::available_actions_hint_text::bb13" [label="bb13\nReturn"];
+    "cfg::prompts::available_actions_hint_text::bb14" [label="bb14\nDrop cleanup"];
+    "cfg::prompts::available_actions_hint_text::bb15" [label="bb15\nDrop cleanup"];
+    "cfg::prompts::available_actions_hint_text::bb16" [label="bb16\nUnwindResume cleanup"];
+  }
+  "cfg::prompts::available_actions_hint_text::bb7" -> "cfg::prompts::available_actions_hint_text::bb8" [label="Drop"];
+  "cfg::prompts::available_actions_hint_text::bb7" -> "cfg::prompts::available_actions_hint_text::bb14" [label="Drop"];
+  "cfg::prompts::available_actions_hint_text::bb12" -> "cfg::prompts::available_actions_hint_text::bb13" [label="Drop"];
+  "cfg::prompts::available_actions_hint_text::bb14" -> "cfg::prompts::available_actions_hint_text::bb16" [label="Drop"];
+  "cfg::prompts::available_actions_hint_text::bb15" -> "cfg::prompts::available_actions_hint_text::bb16" [label="Drop"];
+}

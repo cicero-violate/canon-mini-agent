@@ -1,0 +1,49 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4178 {
+    label="tools::build_cargo_test_summary";
+    "cfg::tools::build_cargo_test_summary::bb0" [label="bb0\nCall"];
+    "cfg::tools::build_cargo_test_summary::bb1" [label="bb1\nCall"];
+    "cfg::tools::build_cargo_test_summary::bb2" [label="bb2\nCall"];
+    "cfg::tools::build_cargo_test_summary::bb3" [label="bb3\nCall"];
+    "cfg::tools::build_cargo_test_summary::bb4" [label="bb4\nSwitchInt"];
+    "cfg::tools::build_cargo_test_summary::bb5" [label="bb5\nCall"];
+    "cfg::tools::build_cargo_test_summary::bb6" [label="bb6\nCall"];
+    "cfg::tools::build_cargo_test_summary::bb7" [label="bb7\nCall"];
+    "cfg::tools::build_cargo_test_summary::bb8" [label="bb8\nCall"];
+    "cfg::tools::build_cargo_test_summary::bb9" [label="bb9\nCall"];
+    "cfg::tools::build_cargo_test_summary::bb10" [label="bb10\nCall"];
+    "cfg::tools::build_cargo_test_summary::bb11" [label="bb11\nCall"];
+    "cfg::tools::build_cargo_test_summary::bb12" [label="bb12\nDrop"];
+    "cfg::tools::build_cargo_test_summary::bb13" [label="bb13\nSwitchInt"];
+    "cfg::tools::build_cargo_test_summary::bb14" [label="bb14\nCall"];
+    "cfg::tools::build_cargo_test_summary::bb15" [label="bb15\nCall"];
+    "cfg::tools::build_cargo_test_summary::bb16" [label="bb16\nCall"];
+    "cfg::tools::build_cargo_test_summary::bb17" [label="bb17\nCall"];
+    "cfg::tools::build_cargo_test_summary::bb18" [label="bb18\nCall"];
+    "cfg::tools::build_cargo_test_summary::bb19" [label="bb19\nCall"];
+    "cfg::tools::build_cargo_test_summary::bb20" [label="bb20\nDrop"];
+    "cfg::tools::build_cargo_test_summary::bb21" [label="bb21\nReturn"];
+    "cfg::tools::build_cargo_test_summary::bb22" [label="bb22\nDrop cleanup"];
+    "cfg::tools::build_cargo_test_summary::bb23" [label="bb23\nDrop cleanup"];
+    "cfg::tools::build_cargo_test_summary::bb24" [label="bb24\nDrop cleanup"];
+    "cfg::tools::build_cargo_test_summary::bb25" [label="bb25\nUnwindResume cleanup"];
+    "cfg::tools::build_cargo_test_summary::bb26" [label="bb26\nUnreachable"];
+  }
+  "cfg::tools::build_cargo_test_summary::bb4" -> "cfg::tools::build_cargo_test_summary::bb5" [label="SwitchInt"];
+  "cfg::tools::build_cargo_test_summary::bb4" -> "cfg::tools::build_cargo_test_summary::bb13" [label="SwitchInt"];
+  "cfg::tools::build_cargo_test_summary::bb4" -> "cfg::tools::build_cargo_test_summary::bb26" [label="SwitchInt"];
+  "cfg::tools::build_cargo_test_summary::bb12" -> "cfg::tools::build_cargo_test_summary::bb13" [label="Drop"];
+  "cfg::tools::build_cargo_test_summary::bb12" -> "cfg::tools::build_cargo_test_summary::bb24" [label="Drop"];
+  "cfg::tools::build_cargo_test_summary::bb13" -> "cfg::tools::build_cargo_test_summary::bb14" [label="SwitchInt"];
+  "cfg::tools::build_cargo_test_summary::bb13" -> "cfg::tools::build_cargo_test_summary::bb21" [label="SwitchInt"];
+  "cfg::tools::build_cargo_test_summary::bb13" -> "cfg::tools::build_cargo_test_summary::bb26" [label="SwitchInt"];
+  "cfg::tools::build_cargo_test_summary::bb20" -> "cfg::tools::build_cargo_test_summary::bb21" [label="Drop"];
+  "cfg::tools::build_cargo_test_summary::bb20" -> "cfg::tools::build_cargo_test_summary::bb24" [label="Drop"];
+  "cfg::tools::build_cargo_test_summary::bb22" -> "cfg::tools::build_cargo_test_summary::bb24" [label="Drop"];
+  "cfg::tools::build_cargo_test_summary::bb23" -> "cfg::tools::build_cargo_test_summary::bb24" [label="Drop"];
+  "cfg::tools::build_cargo_test_summary::bb24" -> "cfg::tools::build_cargo_test_summary::bb25" [label="Drop"];
+}

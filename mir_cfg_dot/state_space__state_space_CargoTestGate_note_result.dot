@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3212 {
+    label="state_space::CargoTestGate::note_result";
+    "cfg::state_space::CargoTestGate::note_result::bb0" [label="bb0\nReturn"];
+  }
+}

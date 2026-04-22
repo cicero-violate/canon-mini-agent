@@ -1,0 +1,56 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_512 {
+    label="app::verifier_confirmed_with_plan_text";
+    "cfg::app::verifier_confirmed_with_plan_text::bb0" [label="bb0\nCall"];
+    "cfg::app::verifier_confirmed_with_plan_text::bb1" [label="bb1\nSwitchInt"];
+    "cfg::app::verifier_confirmed_with_plan_text::bb2" [label="bb2\nGoto"];
+    "cfg::app::verifier_confirmed_with_plan_text::bb3" [label="bb3\nCall"];
+    "cfg::app::verifier_confirmed_with_plan_text::bb4" [label="bb4\nSwitchInt"];
+    "cfg::app::verifier_confirmed_with_plan_text::bb5" [label="bb5\nCall"];
+    "cfg::app::verifier_confirmed_with_plan_text::bb6" [label="bb6\nCall"];
+    "cfg::app::verifier_confirmed_with_plan_text::bb7" [label="bb7\nSwitchInt"];
+    "cfg::app::verifier_confirmed_with_plan_text::bb8" [label="bb8\nDrop"];
+    "cfg::app::verifier_confirmed_with_plan_text::bb9" [label="bb9\nDrop"];
+    "cfg::app::verifier_confirmed_with_plan_text::bb10" [label="bb10\nSwitchInt"];
+    "cfg::app::verifier_confirmed_with_plan_text::bb11" [label="bb11\nReturn loop"];
+    "cfg::app::verifier_confirmed_with_plan_text::bb12" [label="bb12\nDrop cleanup loop"];
+    "cfg::app::verifier_confirmed_with_plan_text::bb13" [label="bb13\nUnwindResume cleanup loop"];
+    "cfg::app::verifier_confirmed_with_plan_text::bb14" [label="bb14\nGoto loop"];
+    "cfg::app::verifier_confirmed_with_plan_text::bb15" [label="bb15\nDrop loop"];
+    "cfg::app::verifier_confirmed_with_plan_text::bb16" [label="bb16\nSwitchInt loop"];
+    "cfg::app::verifier_confirmed_with_plan_text::bb17" [label="bb17\nDrop loop"];
+    "cfg::app::verifier_confirmed_with_plan_text::bb18" [label="bb18\nDrop cleanup loop"];
+    "cfg::app::verifier_confirmed_with_plan_text::bb19" [label="bb19\nSwitchInt cleanup loop"];
+    "cfg::app::verifier_confirmed_with_plan_text::bb20" [label="bb20\nUnreachable"];
+  }
+  "cfg::app::verifier_confirmed_with_plan_text::bb1" -> "cfg::app::verifier_confirmed_with_plan_text::bb3" [label="SwitchInt"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb1" -> "cfg::app::verifier_confirmed_with_plan_text::bb2" [label="SwitchInt"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb2" -> "cfg::app::verifier_confirmed_with_plan_text::bb11" [label="Goto"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb4" -> "cfg::app::verifier_confirmed_with_plan_text::bb5" [label="SwitchInt"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb4" -> "cfg::app::verifier_confirmed_with_plan_text::bb16" [label="SwitchInt"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb4" -> "cfg::app::verifier_confirmed_with_plan_text::bb20" [label="SwitchInt"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb7" -> "cfg::app::verifier_confirmed_with_plan_text::bb8" [label="SwitchInt"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb7" -> "cfg::app::verifier_confirmed_with_plan_text::bb9" [label="SwitchInt"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb7" -> "cfg::app::verifier_confirmed_with_plan_text::bb20" [label="SwitchInt"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb8" -> "cfg::app::verifier_confirmed_with_plan_text::bb10" [label="Drop"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb8" -> "cfg::app::verifier_confirmed_with_plan_text::bb19" [label="Drop"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb9" -> "cfg::app::verifier_confirmed_with_plan_text::bb16" [label="Drop"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb9" -> "cfg::app::verifier_confirmed_with_plan_text::bb19" [label="Drop"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb10" -> "cfg::app::verifier_confirmed_with_plan_text::bb11" [label="SwitchInt"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb10" -> "cfg::app::verifier_confirmed_with_plan_text::bb17" [label="SwitchInt"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb10" -> "cfg::app::verifier_confirmed_with_plan_text::bb20" [label="SwitchInt"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb12" -> "cfg::app::verifier_confirmed_with_plan_text::bb19" [label="Drop"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb14" -> "cfg::app::verifier_confirmed_with_plan_text::bb11" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb15" -> "cfg::app::verifier_confirmed_with_plan_text::bb14" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb16" -> "cfg::app::verifier_confirmed_with_plan_text::bb14" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb16" -> "cfg::app::verifier_confirmed_with_plan_text::bb15" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb16" -> "cfg::app::verifier_confirmed_with_plan_text::bb20" [label="SwitchInt"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb17" -> "cfg::app::verifier_confirmed_with_plan_text::bb11" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb18" -> "cfg::app::verifier_confirmed_with_plan_text::bb13" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb19" -> "cfg::app::verifier_confirmed_with_plan_text::bb13" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::verifier_confirmed_with_plan_text::bb19" -> "cfg::app::verifier_confirmed_with_plan_text::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

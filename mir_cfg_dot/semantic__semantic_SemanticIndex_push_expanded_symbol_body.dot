@@ -1,0 +1,51 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3108 {
+    label="semantic::SemanticIndex::push_expanded_symbol_body";
+    "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb0" [label="bb0\nSwitchInt"];
+    "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb1" [label="bb1\nCall"];
+    "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb2" [label="bb2\nSwitchInt"];
+    "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb3" [label="bb3\nCall"];
+    "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb4" [label="bb4\nCall"];
+    "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb5" [label="bb5\nCall"];
+    "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb6" [label="bb6\nGoto"];
+    "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb7" [label="bb7\nCall loop"];
+    "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb9" [label="bb9\nUnreachable loop"];
+    "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb10" [label="bb10\nCall loop"];
+    "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb11" [label="bb11\nDrop loop"];
+    "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb12" [label="bb12\nCall loop"];
+    "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb13" [label="bb13\nCall loop"];
+    "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb14" [label="bb14\nReturn loop"];
+    "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb15" [label="bb15\nDrop cleanup loop"];
+    "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb16" [label="bb16\nUnwindResume cleanup loop"];
+    "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb17" [label="bb17\nDrop loop"];
+    "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb18" [label="bb18\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb19" [label="bb19\nDrop cleanup loop"];
+    "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb20" [label="bb20\nSwitchInt cleanup loop"];
+    "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb21" [label="bb21\nGoto loop"];
+  }
+  "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb0" -> "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb14" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb0" -> "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb1" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb2" -> "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb3" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb2" -> "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb18" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb2" -> "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb9" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb6" -> "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb7" [label="Goto"];
+  "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb8" -> "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb11" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb8" -> "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb10" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb8" -> "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb9" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb11" -> "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb18" [label="Drop"];
+  "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb11" -> "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb20" [label="Drop"];
+  "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb15" -> "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb20" [label="Drop"];
+  "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb17" -> "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb14" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb18" -> "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb14" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb18" -> "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb17" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb18" -> "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb19" -> "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb16" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb20" -> "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb16" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb20" -> "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb19" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb21" -> "cfg::semantic::SemanticIndex::push_expanded_symbol_body::bb7" [color="crimson", penwidth=2, label="Goto back"];
+}

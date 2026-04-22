@@ -1,0 +1,36 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2409 {
+    label="prompt_inputs::load_violations_projection";
+    "cfg::prompt_inputs::load_violations_projection::bb0" [label="bb0\nCall"];
+    "cfg::prompt_inputs::load_violations_projection::bb1" [label="bb1\nCall"];
+    "cfg::prompt_inputs::load_violations_projection::bb2" [label="bb2\nCall"];
+    "cfg::prompt_inputs::load_violations_projection::bb3" [label="bb3\nCall"];
+    "cfg::prompt_inputs::load_violations_projection::bb4" [label="bb4\nCall"];
+    "cfg::prompt_inputs::load_violations_projection::bb5" [label="bb5\nSwitchInt"];
+    "cfg::prompt_inputs::load_violations_projection::bb6" [label="bb6\nDrop"];
+    "cfg::prompt_inputs::load_violations_projection::bb7" [label="bb7\nCall"];
+    "cfg::prompt_inputs::load_violations_projection::bb8" [label="bb8\nCall"];
+    "cfg::prompt_inputs::load_violations_projection::bb9" [label="bb9\nSwitchInt"];
+    "cfg::prompt_inputs::load_violations_projection::bb10" [label="bb10\nUnreachable"];
+    "cfg::prompt_inputs::load_violations_projection::bb11" [label="bb11\nGoto"];
+    "cfg::prompt_inputs::load_violations_projection::bb12" [label="bb12\nGoto"];
+    "cfg::prompt_inputs::load_violations_projection::bb13" [label="bb13\nDrop"];
+    "cfg::prompt_inputs::load_violations_projection::bb14" [label="bb14\nReturn"];
+    "cfg::prompt_inputs::load_violations_projection::bb15" [label="bb15\nDrop cleanup"];
+    "cfg::prompt_inputs::load_violations_projection::bb16" [label="bb16\nUnwindResume cleanup"];
+  }
+  "cfg::prompt_inputs::load_violations_projection::bb5" -> "cfg::prompt_inputs::load_violations_projection::bb7" [label="SwitchInt"];
+  "cfg::prompt_inputs::load_violations_projection::bb5" -> "cfg::prompt_inputs::load_violations_projection::bb6" [label="SwitchInt"];
+  "cfg::prompt_inputs::load_violations_projection::bb6" -> "cfg::prompt_inputs::load_violations_projection::bb14" [label="Drop"];
+  "cfg::prompt_inputs::load_violations_projection::bb9" -> "cfg::prompt_inputs::load_violations_projection::bb11" [label="SwitchInt"];
+  "cfg::prompt_inputs::load_violations_projection::bb9" -> "cfg::prompt_inputs::load_violations_projection::bb12" [label="SwitchInt"];
+  "cfg::prompt_inputs::load_violations_projection::bb9" -> "cfg::prompt_inputs::load_violations_projection::bb10" [label="SwitchInt"];
+  "cfg::prompt_inputs::load_violations_projection::bb11" -> "cfg::prompt_inputs::load_violations_projection::bb13" [label="Goto"];
+  "cfg::prompt_inputs::load_violations_projection::bb12" -> "cfg::prompt_inputs::load_violations_projection::bb13" [label="Goto"];
+  "cfg::prompt_inputs::load_violations_projection::bb13" -> "cfg::prompt_inputs::load_violations_projection::bb14" [label="Drop"];
+  "cfg::prompt_inputs::load_violations_projection::bb15" -> "cfg::prompt_inputs::load_violations_projection::bb16" [label="Drop"];
+}

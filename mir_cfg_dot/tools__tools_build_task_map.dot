@@ -1,0 +1,40 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3807 {
+    label="tools::build_task_map";
+    "cfg::tools::build_task_map::bb0" [label="bb0\nCall"];
+    "cfg::tools::build_task_map::bb1" [label="bb1\nCall"];
+    "cfg::tools::build_task_map::bb2" [label="bb2\nGoto"];
+    "cfg::tools::build_task_map::bb3" [label="bb3\nCall loop"];
+    "cfg::tools::build_task_map::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::tools::build_task_map::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::tools::build_task_map::bb6" [label="bb6\nCall loop"];
+    "cfg::tools::build_task_map::bb7" [label="bb7\nReturn loop"];
+    "cfg::tools::build_task_map::bb8" [label="bb8\nCall loop"];
+    "cfg::tools::build_task_map::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::tools::build_task_map::bb10" [label="bb10\nCall loop"];
+    "cfg::tools::build_task_map::bb11" [label="bb11\nCall loop"];
+    "cfg::tools::build_task_map::bb12" [label="bb12\nCall loop"];
+    "cfg::tools::build_task_map::bb13" [label="bb13\nDrop loop"];
+    "cfg::tools::build_task_map::bb14" [label="bb14\nDrop cleanup loop"];
+    "cfg::tools::build_task_map::bb15" [label="bb15\nUnwindResume cleanup loop"];
+    "cfg::tools::build_task_map::bb16" [label="bb16\nDrop cleanup loop"];
+    "cfg::tools::build_task_map::bb17" [label="bb17\nSwitchInt cleanup loop"];
+  }
+  "cfg::tools::build_task_map::bb2" -> "cfg::tools::build_task_map::bb3" [label="Goto"];
+  "cfg::tools::build_task_map::bb4" -> "cfg::tools::build_task_map::bb7" [label="SwitchInt"];
+  "cfg::tools::build_task_map::bb4" -> "cfg::tools::build_task_map::bb6" [label="SwitchInt"];
+  "cfg::tools::build_task_map::bb4" -> "cfg::tools::build_task_map::bb5" [label="SwitchInt"];
+  "cfg::tools::build_task_map::bb9" -> "cfg::tools::build_task_map::bb10" [label="SwitchInt"];
+  "cfg::tools::build_task_map::bb9" -> "cfg::tools::build_task_map::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::build_task_map::bb9" -> "cfg::tools::build_task_map::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::build_task_map::bb13" -> "cfg::tools::build_task_map::bb3" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tools::build_task_map::bb13" -> "cfg::tools::build_task_map::bb14" [label="Drop"];
+  "cfg::tools::build_task_map::bb14" -> "cfg::tools::build_task_map::bb15" [label="Drop"];
+  "cfg::tools::build_task_map::bb16" -> "cfg::tools::build_task_map::bb14" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tools::build_task_map::bb17" -> "cfg::tools::build_task_map::bb14" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::build_task_map::bb17" -> "cfg::tools::build_task_map::bb16" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

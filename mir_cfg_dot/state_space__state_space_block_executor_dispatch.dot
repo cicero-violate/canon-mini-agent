@@ -1,0 +1,31 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3189 {
+    label="state_space::block_executor_dispatch";
+    "cfg::state_space::block_executor_dispatch::bb0" [label="bb0\nSwitchInt"];
+    "cfg::state_space::block_executor_dispatch::bb1" [label="bb1\nGoto loop"];
+    "cfg::state_space::block_executor_dispatch::bb2" [label="bb2\nCall loop"];
+    "cfg::state_space::block_executor_dispatch::bb3" [label="bb3\nCall loop"];
+    "cfg::state_space::block_executor_dispatch::bb4" [label="bb4\nCall loop"];
+    "cfg::state_space::block_executor_dispatch::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::state_space::block_executor_dispatch::bb6" [label="bb6\nSwitchInt loop"];
+    "cfg::state_space::block_executor_dispatch::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::state_space::block_executor_dispatch::bb8" [label="bb8\nGoto"];
+    "cfg::state_space::block_executor_dispatch::bb9" [label="bb9\nReturn"];
+    "cfg::state_space::block_executor_dispatch::bb10" [label="bb10\nUnreachable"];
+  }
+  "cfg::state_space::block_executor_dispatch::bb0" -> "cfg::state_space::block_executor_dispatch::bb2" [label="SwitchInt"];
+  "cfg::state_space::block_executor_dispatch::bb0" -> "cfg::state_space::block_executor_dispatch::bb1" [label="SwitchInt"];
+  "cfg::state_space::block_executor_dispatch::bb0" -> "cfg::state_space::block_executor_dispatch::bb10" [label="SwitchInt"];
+  "cfg::state_space::block_executor_dispatch::bb1" -> "cfg::state_space::block_executor_dispatch::bb9" [label="Goto"];
+  "cfg::state_space::block_executor_dispatch::bb5" -> "cfg::state_space::block_executor_dispatch::bb1" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::block_executor_dispatch::bb5" -> "cfg::state_space::block_executor_dispatch::bb8" [label="SwitchInt"];
+  "cfg::state_space::block_executor_dispatch::bb6" -> "cfg::state_space::block_executor_dispatch::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::block_executor_dispatch::bb6" -> "cfg::state_space::block_executor_dispatch::bb8" [label="SwitchInt"];
+  "cfg::state_space::block_executor_dispatch::bb7" -> "cfg::state_space::block_executor_dispatch::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::block_executor_dispatch::bb7" -> "cfg::state_space::block_executor_dispatch::bb8" [label="SwitchInt"];
+  "cfg::state_space::block_executor_dispatch::bb8" -> "cfg::state_space::block_executor_dispatch::bb9" [label="Goto"];
+}

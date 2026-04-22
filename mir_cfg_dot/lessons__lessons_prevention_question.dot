@@ -1,0 +1,15 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1509 {
+    label="lessons::prevention_question";
+    "cfg::lessons::prevention_question::bb0" [label="bb0\nCall"];
+    "cfg::lessons::prevention_question::bb1" [label="bb1\nCall"];
+    "cfg::lessons::prevention_question::bb2" [label="bb2\nCall"];
+    "cfg::lessons::prevention_question::bb3" [label="bb3\nCall"];
+    "cfg::lessons::prevention_question::bb4" [label="bb4\nCall"];
+    "cfg::lessons::prevention_question::bb5" [label="bb5\nReturn"];
+  }
+}

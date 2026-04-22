@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_753 {
+    label="constants::ACTIVE_TASK_ID";
+    "cfg::constants::ACTIVE_TASK_ID::bb0" [label="bb0\nCall"];
+    "cfg::constants::ACTIVE_TASK_ID::bb1" [label="bb1\nReturn"];
+  }
+}

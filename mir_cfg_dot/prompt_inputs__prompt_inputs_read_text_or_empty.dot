@@ -1,0 +1,12 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2455 {
+    label="prompt_inputs::read_text_or_empty";
+    "cfg::prompt_inputs::read_text_or_empty::bb0" [label="bb0\nCall"];
+    "cfg::prompt_inputs::read_text_or_empty::bb1" [label="bb1\nCall"];
+    "cfg::prompt_inputs::read_text_or_empty::bb2" [label="bb2\nReturn"];
+  }
+}

@@ -1,0 +1,12 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4731 {
+    label="has_flag";
+    "cfg::has_flag::bb0" [label="bb0\nCall"];
+    "cfg::has_flag::bb1" [label="bb1\nCall"];
+    "cfg::has_flag::bb2" [label="bb2\nReturn"];
+  }
+}

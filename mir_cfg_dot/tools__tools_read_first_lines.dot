@@ -1,0 +1,48 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3648 {
+    label="tools::read_first_lines";
+    "cfg::tools::read_first_lines::bb0" [label="bb0\nCall"];
+    "cfg::tools::read_first_lines::bb1" [label="bb1\nCall"];
+    "cfg::tools::read_first_lines::bb2" [label="bb2\nSwitchInt"];
+    "cfg::tools::read_first_lines::bb3" [label="bb3\nUnreachable loop"];
+    "cfg::tools::read_first_lines::bb4" [label="bb4\nCall loop"];
+    "cfg::tools::read_first_lines::bb5" [label="bb5\nCall loop"];
+    "cfg::tools::read_first_lines::bb6" [label="bb6\nCall loop"];
+    "cfg::tools::read_first_lines::bb7" [label="bb7\nCall loop"];
+    "cfg::tools::read_first_lines::bb8" [label="bb8\nCall loop"];
+    "cfg::tools::read_first_lines::bb9" [label="bb9\nCall loop"];
+    "cfg::tools::read_first_lines::bb10" [label="bb10\nGoto loop"];
+    "cfg::tools::read_first_lines::bb11" [label="bb11\nCall loop"];
+    "cfg::tools::read_first_lines::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::tools::read_first_lines::bb13" [label="bb13\nSwitchInt loop"];
+    "cfg::tools::read_first_lines::bb14" [label="bb14\nCall loop"];
+    "cfg::tools::read_first_lines::bb15" [label="bb15\nSwitchInt loop"];
+    "cfg::tools::read_first_lines::bb16" [label="bb16\nCall loop"];
+    "cfg::tools::read_first_lines::bb17" [label="bb17\nCall loop"];
+    "cfg::tools::read_first_lines::bb18" [label="bb18\nDrop loop"];
+    "cfg::tools::read_first_lines::bb19" [label="bb19\nReturn loop"];
+    "cfg::tools::read_first_lines::bb20" [label="bb20\nDrop cleanup loop"];
+    "cfg::tools::read_first_lines::bb21" [label="bb21\nDrop cleanup loop"];
+    "cfg::tools::read_first_lines::bb22" [label="bb22\nUnwindResume cleanup loop"];
+    "cfg::tools::read_first_lines::bb23" [label="bb23\nGoto loop"];
+  }
+  "cfg::tools::read_first_lines::bb2" -> "cfg::tools::read_first_lines::bb4" [label="SwitchInt"];
+  "cfg::tools::read_first_lines::bb2" -> "cfg::tools::read_first_lines::bb5" [label="SwitchInt"];
+  "cfg::tools::read_first_lines::bb2" -> "cfg::tools::read_first_lines::bb3" [label="SwitchInt"];
+  "cfg::tools::read_first_lines::bb10" -> "cfg::tools::read_first_lines::bb11" [label="Goto"];
+  "cfg::tools::read_first_lines::bb12" -> "cfg::tools::read_first_lines::bb18" [label="SwitchInt"];
+  "cfg::tools::read_first_lines::bb12" -> "cfg::tools::read_first_lines::bb13" [label="SwitchInt"];
+  "cfg::tools::read_first_lines::bb12" -> "cfg::tools::read_first_lines::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::read_first_lines::bb13" -> "cfg::tools::read_first_lines::bb14" [label="SwitchInt"];
+  "cfg::tools::read_first_lines::bb13" -> "cfg::tools::read_first_lines::bb18" [label="SwitchInt"];
+  "cfg::tools::read_first_lines::bb15" -> "cfg::tools::read_first_lines::bb16" [label="SwitchInt"];
+  "cfg::tools::read_first_lines::bb15" -> "cfg::tools::read_first_lines::bb18" [label="SwitchInt"];
+  "cfg::tools::read_first_lines::bb18" -> "cfg::tools::read_first_lines::bb19" [label="Drop"];
+  "cfg::tools::read_first_lines::bb20" -> "cfg::tools::read_first_lines::bb21" [label="Drop"];
+  "cfg::tools::read_first_lines::bb21" -> "cfg::tools::read_first_lines::bb22" [label="Drop"];
+  "cfg::tools::read_first_lines::bb23" -> "cfg::tools::read_first_lines::bb11" [color="crimson", penwidth=2, label="Goto back"];
+}

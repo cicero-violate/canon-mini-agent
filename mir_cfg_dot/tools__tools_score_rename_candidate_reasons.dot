@@ -1,0 +1,50 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3965 {
+    label="tools::score_rename_candidate_reasons";
+    "cfg::tools::score_rename_candidate_reasons::bb0" [label="bb0\nCall"];
+    "cfg::tools::score_rename_candidate_reasons::bb1" [label="bb1\nGoto"];
+    "cfg::tools::score_rename_candidate_reasons::bb2" [label="bb2\nCall loop"];
+    "cfg::tools::score_rename_candidate_reasons::bb3" [label="bb3\nSwitchInt loop"];
+    "cfg::tools::score_rename_candidate_reasons::bb4" [label="bb4\nUnreachable loop"];
+    "cfg::tools::score_rename_candidate_reasons::bb5" [label="bb5\nCall loop"];
+    "cfg::tools::score_rename_candidate_reasons::bb6" [label="bb6\nReturn loop"];
+    "cfg::tools::score_rename_candidate_reasons::bb7" [label="bb7\nCall loop"];
+    "cfg::tools::score_rename_candidate_reasons::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::tools::score_rename_candidate_reasons::bb9" [label="bb9\nAssert loop"];
+    "cfg::tools::score_rename_candidate_reasons::bb10" [label="bb10\nGoto loop"];
+    "cfg::tools::score_rename_candidate_reasons::bb11" [label="bb11\nCall loop"];
+    "cfg::tools::score_rename_candidate_reasons::bb12" [label="bb12\nCall loop"];
+    "cfg::tools::score_rename_candidate_reasons::bb13" [label="bb13\nSwitchInt loop"];
+    "cfg::tools::score_rename_candidate_reasons::bb14" [label="bb14\nAssert loop"];
+    "cfg::tools::score_rename_candidate_reasons::bb15" [label="bb15\nGoto loop"];
+    "cfg::tools::score_rename_candidate_reasons::bb16" [label="bb16\nCall loop"];
+    "cfg::tools::score_rename_candidate_reasons::bb17" [label="bb17\nCall loop"];
+    "cfg::tools::score_rename_candidate_reasons::bb18" [label="bb18\nSwitchInt loop"];
+    "cfg::tools::score_rename_candidate_reasons::bb19" [label="bb19\nAssert loop"];
+    "cfg::tools::score_rename_candidate_reasons::bb20" [label="bb20\nGoto loop"];
+    "cfg::tools::score_rename_candidate_reasons::bb21" [label="bb21\nAssert loop"];
+    "cfg::tools::score_rename_candidate_reasons::bb22" [label="bb22\nGoto loop"];
+  }
+  "cfg::tools::score_rename_candidate_reasons::bb1" -> "cfg::tools::score_rename_candidate_reasons::bb2" [label="Goto"];
+  "cfg::tools::score_rename_candidate_reasons::bb3" -> "cfg::tools::score_rename_candidate_reasons::bb6" [label="SwitchInt"];
+  "cfg::tools::score_rename_candidate_reasons::bb3" -> "cfg::tools::score_rename_candidate_reasons::bb5" [label="SwitchInt"];
+  "cfg::tools::score_rename_candidate_reasons::bb3" -> "cfg::tools::score_rename_candidate_reasons::bb4" [label="SwitchInt"];
+  "cfg::tools::score_rename_candidate_reasons::bb8" -> "cfg::tools::score_rename_candidate_reasons::bb11" [label="SwitchInt"];
+  "cfg::tools::score_rename_candidate_reasons::bb8" -> "cfg::tools::score_rename_candidate_reasons::bb9" [label="SwitchInt"];
+  "cfg::tools::score_rename_candidate_reasons::bb9" -> "cfg::tools::score_rename_candidate_reasons::bb10" [label="Assert"];
+  "cfg::tools::score_rename_candidate_reasons::bb10" -> "cfg::tools::score_rename_candidate_reasons::bb2" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::tools::score_rename_candidate_reasons::bb13" -> "cfg::tools::score_rename_candidate_reasons::bb16" [label="SwitchInt"];
+  "cfg::tools::score_rename_candidate_reasons::bb13" -> "cfg::tools::score_rename_candidate_reasons::bb14" [label="SwitchInt"];
+  "cfg::tools::score_rename_candidate_reasons::bb14" -> "cfg::tools::score_rename_candidate_reasons::bb15" [label="Assert"];
+  "cfg::tools::score_rename_candidate_reasons::bb15" -> "cfg::tools::score_rename_candidate_reasons::bb2" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::tools::score_rename_candidate_reasons::bb18" -> "cfg::tools::score_rename_candidate_reasons::bb21" [label="SwitchInt"];
+  "cfg::tools::score_rename_candidate_reasons::bb18" -> "cfg::tools::score_rename_candidate_reasons::bb19" [label="SwitchInt"];
+  "cfg::tools::score_rename_candidate_reasons::bb19" -> "cfg::tools::score_rename_candidate_reasons::bb20" [label="Assert"];
+  "cfg::tools::score_rename_candidate_reasons::bb20" -> "cfg::tools::score_rename_candidate_reasons::bb2" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::tools::score_rename_candidate_reasons::bb21" -> "cfg::tools::score_rename_candidate_reasons::bb22" [label="Assert"];
+  "cfg::tools::score_rename_candidate_reasons::bb22" -> "cfg::tools::score_rename_candidate_reasons::bb2" [color="crimson", penwidth=2, label="Goto back"];
+}

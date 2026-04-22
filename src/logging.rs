@@ -1045,6 +1045,73 @@ fn append_prompt_overflow_receipt(
     .ok()
 }
 
+fn refresh_existing_prompt_overflow_violation(
+    workspace: &std::path::Path,
+    violations_path: &std::path::Path,
+    role: &str,
+    prompt_bytes: usize,
+    report: &mut serde_json::Map<String, Value>,
+    violations: Vec<Value>,
+    existing_index: usize,
+) {
+    use crate::constants::PROMPT_OVERFLOW_BYTES;
+
+    let receipts_raw = std::fs::read_to_string(evidence_receipts_path()).unwrap_or_default();
+    let existing_receipt_id = violations[existing_index]
+        .get("evidence_receipts")
+        .and_then(|v| v.as_array())
+        .and_then(|items| items.first())
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let receipt_missing = existing_receipt_id
+        .as_deref()
+        .map_or(true, |receipt_id| !receipts_raw.contains(receipt_id));
+
+    if !receipt_missing {
+        return;
+    }
+
+    let refreshed_receipt_id = append_prompt_overflow_receipt(
+        role,
+        prompt_bytes,
+        PROMPT_OVERFLOW_BYTES,
+        violations_path,
+        true,
+    );
+
+    let mut reconciled_violations = violations;
+    if let Some(existing) = reconciled_violations.get_mut(existing_index) {
+        if let Some(existing_obj) = existing.as_object_mut() {
+            existing_obj.insert(
+                "evidence_receipts".to_string(),
+                Value::Array(
+                    refreshed_receipt_id
+                        .clone()
+                        .into_iter()
+                        .map(Value::String)
+                        .collect(),
+                ),
+            );
+            existing_obj.insert(
+                "evidence_hashes".to_string(),
+                json!([format!("prompt_bytes:{}:{}", role, prompt_bytes)]),
+            );
+            existing_obj.insert("last_validated_ms".to_string(), json!(now_ms()));
+            existing_obj.insert("freshness_status".to_string(), json!("fresh"));
+            existing_obj.insert(
+                "validated_from".to_string(),
+                json!(["runtime/prompt_bytes"]),
+            );
+        }
+    }
+    report.insert(
+        "violations".to_string(),
+        Value::Array(reconciled_violations),
+    );
+    mark_prompt_overflow_failed(report);
+    persist_prompt_overflow_report(workspace, violations_path, role, report);
+}
+
 pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, prompt_bytes: usize) {
     use crate::constants::PROMPT_OVERFLOW_BYTES;
     if prompt_bytes <= PROMPT_OVERFLOW_BYTES {
@@ -1066,61 +1133,15 @@ pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, pr
         .iter()
         .position(|v| v.get("id").and_then(|x| x.as_str()) == Some(&violation_id))
     {
-        let receipts_raw = std::fs::read_to_string(evidence_receipts_path()).unwrap_or_default();
-        let existing_receipt_id = violations[existing_index]
-            .get("evidence_receipts")
-            .and_then(|v| v.as_array())
-            .and_then(|items| items.first())
-            .and_then(|v| v.as_str())
-            .map(str::to_string);
-        let receipt_missing = existing_receipt_id
-            .as_deref()
-            .map_or(true, |receipt_id| !receipts_raw.contains(receipt_id));
-
-        if !receipt_missing {
-            return;
-        }
-
-        let refreshed_receipt_id = append_prompt_overflow_receipt(
+        refresh_existing_prompt_overflow_violation(
+            workspace,
+            &violations_path,
             role,
             prompt_bytes,
-            PROMPT_OVERFLOW_BYTES,
-            &violations_path,
-            true,
+            &mut report,
+            violations,
+            existing_index,
         );
-
-        let mut reconciled_violations = violations;
-        if let Some(existing) = reconciled_violations.get_mut(existing_index) {
-            if let Some(existing_obj) = existing.as_object_mut() {
-                existing_obj.insert(
-                    "evidence_receipts".to_string(),
-                    Value::Array(
-                        refreshed_receipt_id
-                            .clone()
-                            .into_iter()
-                            .map(Value::String)
-                            .collect(),
-                    ),
-                );
-                existing_obj.insert(
-                    "evidence_hashes".to_string(),
-                    json!([format!("prompt_bytes:{}:{}", role, prompt_bytes)]),
-                );
-                existing_obj.insert("last_validated_ms".to_string(), json!(now_ms()));
-                existing_obj.insert("freshness_status".to_string(), json!("fresh"));
-                existing_obj.insert(
-                    "validated_from".to_string(),
-                    json!(["runtime/prompt_bytes"]),
-                );
-            }
-        }
-        report.insert(
-            "violations".to_string(),
-            Value::Array(reconciled_violations),
-        );
-        mark_prompt_overflow_failed(&mut report);
-
-        persist_prompt_overflow_report(workspace, &violations_path, role, &report);
         return;
     }
 

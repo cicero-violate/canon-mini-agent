@@ -1,0 +1,28 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_326 {
+    label="app::append_external_user_message_to_prompt";
+    "cfg::app::append_external_user_message_to_prompt::bb0" [label="bb0\nCall"];
+    "cfg::app::append_external_user_message_to_prompt::bb1" [label="bb1\nCall"];
+    "cfg::app::append_external_user_message_to_prompt::bb2" [label="bb2\nCall"];
+    "cfg::app::append_external_user_message_to_prompt::bb3" [label="bb3\nCall"];
+    "cfg::app::append_external_user_message_to_prompt::bb4" [label="bb4\nCall"];
+    "cfg::app::append_external_user_message_to_prompt::bb5" [label="bb5\nCall"];
+    "cfg::app::append_external_user_message_to_prompt::bb6" [label="bb6\nCall"];
+    "cfg::app::append_external_user_message_to_prompt::bb7" [label="bb7\nCall"];
+    "cfg::app::append_external_user_message_to_prompt::bb8" [label="bb8\nCall"];
+    "cfg::app::append_external_user_message_to_prompt::bb9" [label="bb9\nCall"];
+    "cfg::app::append_external_user_message_to_prompt::bb10" [label="bb10\nCall"];
+    "cfg::app::append_external_user_message_to_prompt::bb11" [label="bb11\nCall"];
+    "cfg::app::append_external_user_message_to_prompt::bb12" [label="bb12\nCall"];
+    "cfg::app::append_external_user_message_to_prompt::bb13" [label="bb13\nDrop"];
+    "cfg::app::append_external_user_message_to_prompt::bb14" [label="bb14\nReturn"];
+    "cfg::app::append_external_user_message_to_prompt::bb15" [label="bb15\nDrop cleanup"];
+    "cfg::app::append_external_user_message_to_prompt::bb16" [label="bb16\nUnwindResume cleanup"];
+  }
+  "cfg::app::append_external_user_message_to_prompt::bb13" -> "cfg::app::append_external_user_message_to_prompt::bb14" [label="Drop"];
+  "cfg::app::append_external_user_message_to_prompt::bb15" -> "cfg::app::append_external_user_message_to_prompt::bb16" [label="Drop"];
+}

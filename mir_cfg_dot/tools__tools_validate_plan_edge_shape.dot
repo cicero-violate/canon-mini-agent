@@ -1,0 +1,19 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4217 {
+    label="tools::validate_plan_edge_shape";
+    "cfg::tools::validate_plan_edge_shape::bb0" [label="bb0\nCall"];
+    "cfg::tools::validate_plan_edge_shape::bb1" [label="bb1\nCall"];
+    "cfg::tools::validate_plan_edge_shape::bb2" [label="bb2\nSwitchInt"];
+    "cfg::tools::validate_plan_edge_shape::bb3" [label="bb3\nUnreachable"];
+    "cfg::tools::validate_plan_edge_shape::bb4" [label="bb4\nCall"];
+    "cfg::tools::validate_plan_edge_shape::bb5" [label="bb5\nCall"];
+    "cfg::tools::validate_plan_edge_shape::bb6" [label="bb6\nReturn"];
+  }
+  "cfg::tools::validate_plan_edge_shape::bb2" -> "cfg::tools::validate_plan_edge_shape::bb4" [label="SwitchInt"];
+  "cfg::tools::validate_plan_edge_shape::bb2" -> "cfg::tools::validate_plan_edge_shape::bb5" [label="SwitchInt"];
+  "cfg::tools::validate_plan_edge_shape::bb2" -> "cfg::tools::validate_plan_edge_shape::bb3" [label="SwitchInt"];
+}

@@ -1,0 +1,56 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3826 {
+    label="tools::load_cargo_test_failure_scan";
+    "cfg::tools::load_cargo_test_failure_scan::bb0" [label="bb0\nCall"];
+    "cfg::tools::load_cargo_test_failure_scan::bb1" [label="bb1\nCall"];
+    "cfg::tools::load_cargo_test_failure_scan::bb2" [label="bb2\nCall"];
+    "cfg::tools::load_cargo_test_failure_scan::bb3" [label="bb3\nSwitchInt"];
+    "cfg::tools::load_cargo_test_failure_scan::bb4" [label="bb4\nCall"];
+    "cfg::tools::load_cargo_test_failure_scan::bb5" [label="bb5\nSwitchInt"];
+    "cfg::tools::load_cargo_test_failure_scan::bb6" [label="bb6\nCall"];
+    "cfg::tools::load_cargo_test_failure_scan::bb7" [label="bb7\nAssert"];
+    "cfg::tools::load_cargo_test_failure_scan::bb8" [label="bb8\nCall"];
+    "cfg::tools::load_cargo_test_failure_scan::bb9" [label="bb9\nCall"];
+    "cfg::tools::load_cargo_test_failure_scan::bb10" [label="bb10\nDrop"];
+    "cfg::tools::load_cargo_test_failure_scan::bb11" [label="bb11\nDrop"];
+    "cfg::tools::load_cargo_test_failure_scan::bb12" [label="bb12\nGoto cleanup"];
+    "cfg::tools::load_cargo_test_failure_scan::bb13" [label="bb13\nReturn loop"];
+    "cfg::tools::load_cargo_test_failure_scan::bb14" [label="bb14\nDrop cleanup loop"];
+    "cfg::tools::load_cargo_test_failure_scan::bb15" [label="bb15\nDrop cleanup loop"];
+    "cfg::tools::load_cargo_test_failure_scan::bb16" [label="bb16\nDrop cleanup loop"];
+    "cfg::tools::load_cargo_test_failure_scan::bb17" [label="bb17\nUnwindResume cleanup loop"];
+    "cfg::tools::load_cargo_test_failure_scan::bb18" [label="bb18\nDrop loop"];
+    "cfg::tools::load_cargo_test_failure_scan::bb19" [label="bb19\nSwitchInt loop"];
+    "cfg::tools::load_cargo_test_failure_scan::bb20" [label="bb20\nDrop cleanup loop"];
+    "cfg::tools::load_cargo_test_failure_scan::bb21" [label="bb21\nSwitchInt cleanup loop"];
+    "cfg::tools::load_cargo_test_failure_scan::bb22" [label="bb22\nUnreachable"];
+  }
+  "cfg::tools::load_cargo_test_failure_scan::bb3" -> "cfg::tools::load_cargo_test_failure_scan::bb4" [label="SwitchInt"];
+  "cfg::tools::load_cargo_test_failure_scan::bb3" -> "cfg::tools::load_cargo_test_failure_scan::bb13" [label="SwitchInt"];
+  "cfg::tools::load_cargo_test_failure_scan::bb3" -> "cfg::tools::load_cargo_test_failure_scan::bb22" [label="SwitchInt"];
+  "cfg::tools::load_cargo_test_failure_scan::bb5" -> "cfg::tools::load_cargo_test_failure_scan::bb6" [label="SwitchInt"];
+  "cfg::tools::load_cargo_test_failure_scan::bb5" -> "cfg::tools::load_cargo_test_failure_scan::bb19" [label="SwitchInt"];
+  "cfg::tools::load_cargo_test_failure_scan::bb5" -> "cfg::tools::load_cargo_test_failure_scan::bb22" [label="SwitchInt"];
+  "cfg::tools::load_cargo_test_failure_scan::bb7" -> "cfg::tools::load_cargo_test_failure_scan::bb8" [label="Assert"];
+  "cfg::tools::load_cargo_test_failure_scan::bb7" -> "cfg::tools::load_cargo_test_failure_scan::bb14" [label="Assert"];
+  "cfg::tools::load_cargo_test_failure_scan::bb10" -> "cfg::tools::load_cargo_test_failure_scan::bb11" [label="Drop"];
+  "cfg::tools::load_cargo_test_failure_scan::bb10" -> "cfg::tools::load_cargo_test_failure_scan::bb12" [label="Drop"];
+  "cfg::tools::load_cargo_test_failure_scan::bb11" -> "cfg::tools::load_cargo_test_failure_scan::bb19" [label="Drop"];
+  "cfg::tools::load_cargo_test_failure_scan::bb11" -> "cfg::tools::load_cargo_test_failure_scan::bb21" [label="Drop"];
+  "cfg::tools::load_cargo_test_failure_scan::bb12" -> "cfg::tools::load_cargo_test_failure_scan::bb14" [label="Goto"];
+  "cfg::tools::load_cargo_test_failure_scan::bb14" -> "cfg::tools::load_cargo_test_failure_scan::bb21" [label="Drop"];
+  "cfg::tools::load_cargo_test_failure_scan::bb15" -> "cfg::tools::load_cargo_test_failure_scan::bb16" [label="Drop"];
+  "cfg::tools::load_cargo_test_failure_scan::bb16" -> "cfg::tools::load_cargo_test_failure_scan::bb17" [label="Drop"];
+  "cfg::tools::load_cargo_test_failure_scan::bb18" -> "cfg::tools::load_cargo_test_failure_scan::bb13" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tools::load_cargo_test_failure_scan::bb18" -> "cfg::tools::load_cargo_test_failure_scan::bb15" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tools::load_cargo_test_failure_scan::bb19" -> "cfg::tools::load_cargo_test_failure_scan::bb13" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::load_cargo_test_failure_scan::bb19" -> "cfg::tools::load_cargo_test_failure_scan::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::load_cargo_test_failure_scan::bb19" -> "cfg::tools::load_cargo_test_failure_scan::bb22" [label="SwitchInt"];
+  "cfg::tools::load_cargo_test_failure_scan::bb20" -> "cfg::tools::load_cargo_test_failure_scan::bb15" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tools::load_cargo_test_failure_scan::bb21" -> "cfg::tools::load_cargo_test_failure_scan::bb15" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::load_cargo_test_failure_scan::bb21" -> "cfg::tools::load_cargo_test_failure_scan::bb20" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

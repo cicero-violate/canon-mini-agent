@@ -1,0 +1,32 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2164 {
+    label="logging::mark_prompt_overflow_failed";
+    "cfg::logging::mark_prompt_overflow_failed::bb0" [label="bb0\nCall"];
+    "cfg::logging::mark_prompt_overflow_failed::bb1" [label="bb1\nCall"];
+    "cfg::logging::mark_prompt_overflow_failed::bb2" [label="bb2\nCall"];
+    "cfg::logging::mark_prompt_overflow_failed::bb3" [label="bb3\nCall"];
+    "cfg::logging::mark_prompt_overflow_failed::bb4" [label="bb4\nDrop"];
+    "cfg::logging::mark_prompt_overflow_failed::bb5" [label="bb5\nCall"];
+    "cfg::logging::mark_prompt_overflow_failed::bb6" [label="bb6\nCall"];
+    "cfg::logging::mark_prompt_overflow_failed::bb7" [label="bb7\nCall"];
+    "cfg::logging::mark_prompt_overflow_failed::bb8" [label="bb8\nCall"];
+    "cfg::logging::mark_prompt_overflow_failed::bb9" [label="bb9\nCall"];
+    "cfg::logging::mark_prompt_overflow_failed::bb10" [label="bb10\nReturn"];
+    "cfg::logging::mark_prompt_overflow_failed::bb11" [label="bb11\nUnwindResume cleanup loop"];
+    "cfg::logging::mark_prompt_overflow_failed::bb12" [label="bb12\nDrop cleanup loop"];
+    "cfg::logging::mark_prompt_overflow_failed::bb13" [label="bb13\nSwitchInt cleanup loop"];
+    "cfg::logging::mark_prompt_overflow_failed::bb14" [label="bb14\nDrop cleanup loop"];
+    "cfg::logging::mark_prompt_overflow_failed::bb15" [label="bb15\nSwitchInt cleanup loop"];
+  }
+  "cfg::logging::mark_prompt_overflow_failed::bb4" -> "cfg::logging::mark_prompt_overflow_failed::bb5" [label="Drop"];
+  "cfg::logging::mark_prompt_overflow_failed::bb12" -> "cfg::logging::mark_prompt_overflow_failed::bb11" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::logging::mark_prompt_overflow_failed::bb13" -> "cfg::logging::mark_prompt_overflow_failed::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::logging::mark_prompt_overflow_failed::bb13" -> "cfg::logging::mark_prompt_overflow_failed::bb12" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::logging::mark_prompt_overflow_failed::bb14" -> "cfg::logging::mark_prompt_overflow_failed::bb11" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::logging::mark_prompt_overflow_failed::bb15" -> "cfg::logging::mark_prompt_overflow_failed::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::logging::mark_prompt_overflow_failed::bb15" -> "cfg::logging::mark_prompt_overflow_failed::bb14" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

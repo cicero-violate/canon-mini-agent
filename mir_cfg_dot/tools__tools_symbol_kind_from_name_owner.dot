@@ -1,0 +1,50 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3920 {
+    label="tools::symbol_kind_from_name_owner";
+    "cfg::tools::symbol_kind_from_name_owner::bb0" [label="bb0\nSwitchInt"];
+    "cfg::tools::symbol_kind_from_name_owner::bb1" [label="bb1\nGoto"];
+    "cfg::tools::symbol_kind_from_name_owner::bb2" [label="bb2\nGoto"];
+    "cfg::tools::symbol_kind_from_name_owner::bb3" [label="bb3\nGoto"];
+    "cfg::tools::symbol_kind_from_name_owner::bb4" [label="bb4\nGoto"];
+    "cfg::tools::symbol_kind_from_name_owner::bb5" [label="bb5\nGoto"];
+    "cfg::tools::symbol_kind_from_name_owner::bb6" [label="bb6\nGoto"];
+    "cfg::tools::symbol_kind_from_name_owner::bb7" [label="bb7\nGoto"];
+    "cfg::tools::symbol_kind_from_name_owner::bb8" [label="bb8\nGoto"];
+    "cfg::tools::symbol_kind_from_name_owner::bb9" [label="bb9\nGoto"];
+    "cfg::tools::symbol_kind_from_name_owner::bb10" [label="bb10\nGoto"];
+    "cfg::tools::symbol_kind_from_name_owner::bb11" [label="bb11\nGoto"];
+    "cfg::tools::symbol_kind_from_name_owner::bb12" [label="bb12\nGoto"];
+    "cfg::tools::symbol_kind_from_name_owner::bb13" [label="bb13\nGoto"];
+    "cfg::tools::symbol_kind_from_name_owner::bb14" [label="bb14\nReturn"];
+  }
+  "cfg::tools::symbol_kind_from_name_owner::bb0" -> "cfg::tools::symbol_kind_from_name_owner::bb8" [label="SwitchInt"];
+  "cfg::tools::symbol_kind_from_name_owner::bb0" -> "cfg::tools::symbol_kind_from_name_owner::bb11" [label="SwitchInt"];
+  "cfg::tools::symbol_kind_from_name_owner::bb0" -> "cfg::tools::symbol_kind_from_name_owner::bb13" [label="SwitchInt"];
+  "cfg::tools::symbol_kind_from_name_owner::bb0" -> "cfg::tools::symbol_kind_from_name_owner::bb6" [label="SwitchInt"];
+  "cfg::tools::symbol_kind_from_name_owner::bb0" -> "cfg::tools::symbol_kind_from_name_owner::bb3" [label="SwitchInt"];
+  "cfg::tools::symbol_kind_from_name_owner::bb0" -> "cfg::tools::symbol_kind_from_name_owner::bb7" [label="SwitchInt"];
+  "cfg::tools::symbol_kind_from_name_owner::bb0" -> "cfg::tools::symbol_kind_from_name_owner::bb12" [label="SwitchInt"];
+  "cfg::tools::symbol_kind_from_name_owner::bb0" -> "cfg::tools::symbol_kind_from_name_owner::bb10" [label="SwitchInt"];
+  "cfg::tools::symbol_kind_from_name_owner::bb0" -> "cfg::tools::symbol_kind_from_name_owner::bb9" [label="SwitchInt"];
+  "cfg::tools::symbol_kind_from_name_owner::bb0" -> "cfg::tools::symbol_kind_from_name_owner::bb2" [label="SwitchInt"];
+  "cfg::tools::symbol_kind_from_name_owner::bb0" -> "cfg::tools::symbol_kind_from_name_owner::bb5" [label="SwitchInt"];
+  "cfg::tools::symbol_kind_from_name_owner::bb0" -> "cfg::tools::symbol_kind_from_name_owner::bb4" [label="SwitchInt"];
+  "cfg::tools::symbol_kind_from_name_owner::bb0" -> "cfg::tools::symbol_kind_from_name_owner::bb1" [label="SwitchInt"];
+  "cfg::tools::symbol_kind_from_name_owner::bb1" -> "cfg::tools::symbol_kind_from_name_owner::bb14" [label="Goto"];
+  "cfg::tools::symbol_kind_from_name_owner::bb2" -> "cfg::tools::symbol_kind_from_name_owner::bb14" [label="Goto"];
+  "cfg::tools::symbol_kind_from_name_owner::bb3" -> "cfg::tools::symbol_kind_from_name_owner::bb14" [label="Goto"];
+  "cfg::tools::symbol_kind_from_name_owner::bb4" -> "cfg::tools::symbol_kind_from_name_owner::bb14" [label="Goto"];
+  "cfg::tools::symbol_kind_from_name_owner::bb5" -> "cfg::tools::symbol_kind_from_name_owner::bb14" [label="Goto"];
+  "cfg::tools::symbol_kind_from_name_owner::bb6" -> "cfg::tools::symbol_kind_from_name_owner::bb14" [label="Goto"];
+  "cfg::tools::symbol_kind_from_name_owner::bb7" -> "cfg::tools::symbol_kind_from_name_owner::bb14" [label="Goto"];
+  "cfg::tools::symbol_kind_from_name_owner::bb8" -> "cfg::tools::symbol_kind_from_name_owner::bb14" [label="Goto"];
+  "cfg::tools::symbol_kind_from_name_owner::bb9" -> "cfg::tools::symbol_kind_from_name_owner::bb14" [label="Goto"];
+  "cfg::tools::symbol_kind_from_name_owner::bb10" -> "cfg::tools::symbol_kind_from_name_owner::bb14" [label="Goto"];
+  "cfg::tools::symbol_kind_from_name_owner::bb11" -> "cfg::tools::symbol_kind_from_name_owner::bb14" [label="Goto"];
+  "cfg::tools::symbol_kind_from_name_owner::bb12" -> "cfg::tools::symbol_kind_from_name_owner::bb14" [label="Goto"];
+  "cfg::tools::symbol_kind_from_name_owner::bb13" -> "cfg::tools::symbol_kind_from_name_owner::bb14" [label="Goto"];
+}

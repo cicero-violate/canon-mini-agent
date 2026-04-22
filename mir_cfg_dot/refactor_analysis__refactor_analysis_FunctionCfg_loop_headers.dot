@@ -1,0 +1,53 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2868 {
+    label="refactor_analysis::FunctionCfg::loop_headers";
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb0" [label="bb0\nCall"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb1" [label="bb1\nCall"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb2" [label="bb2\nGoto"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb3" [label="bb3\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb6" [label="bb6\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb7" [label="bb7\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb8" [label="bb8\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb9" [label="bb9\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb10" [label="bb10\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb11" [label="bb11\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb13" [label="bb13\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb14" [label="bb14\nDrop loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb15" [label="bb15\nSwitchInt loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb16" [label="bb16\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb17" [label="bb17\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb18" [label="bb18\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb19" [label="bb19\nSwitchInt loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb20" [label="bb20\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb21" [label="bb21\nReturn loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb22" [label="bb22\nDrop cleanup loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb23" [label="bb23\nDrop cleanup loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb24" [label="bb24\nUnwindResume cleanup loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb25" [label="bb25\nGoto loop"];
+    "cfg::refactor_analysis::FunctionCfg::loop_headers::bb26" [label="bb26\nGoto loop"];
+  }
+  "cfg::refactor_analysis::FunctionCfg::loop_headers::bb2" -> "cfg::refactor_analysis::FunctionCfg::loop_headers::bb3" [label="Goto"];
+  "cfg::refactor_analysis::FunctionCfg::loop_headers::bb4" -> "cfg::refactor_analysis::FunctionCfg::loop_headers::bb7" [label="SwitchInt"];
+  "cfg::refactor_analysis::FunctionCfg::loop_headers::bb4" -> "cfg::refactor_analysis::FunctionCfg::loop_headers::bb6" [label="SwitchInt"];
+  "cfg::refactor_analysis::FunctionCfg::loop_headers::bb4" -> "cfg::refactor_analysis::FunctionCfg::loop_headers::bb5" [label="SwitchInt"];
+  "cfg::refactor_analysis::FunctionCfg::loop_headers::bb12" -> "cfg::refactor_analysis::FunctionCfg::loop_headers::bb14" [label="SwitchInt"];
+  "cfg::refactor_analysis::FunctionCfg::loop_headers::bb12" -> "cfg::refactor_analysis::FunctionCfg::loop_headers::bb13" [label="SwitchInt"];
+  "cfg::refactor_analysis::FunctionCfg::loop_headers::bb14" -> "cfg::refactor_analysis::FunctionCfg::loop_headers::bb3" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::refactor_analysis::FunctionCfg::loop_headers::bb14" -> "cfg::refactor_analysis::FunctionCfg::loop_headers::bb23" [label="Drop"];
+  "cfg::refactor_analysis::FunctionCfg::loop_headers::bb15" -> "cfg::refactor_analysis::FunctionCfg::loop_headers::bb21" [label="SwitchInt"];
+  "cfg::refactor_analysis::FunctionCfg::loop_headers::bb15" -> "cfg::refactor_analysis::FunctionCfg::loop_headers::bb16" [label="SwitchInt"];
+  "cfg::refactor_analysis::FunctionCfg::loop_headers::bb19" -> "cfg::refactor_analysis::FunctionCfg::loop_headers::bb20" [label="SwitchInt"];
+  "cfg::refactor_analysis::FunctionCfg::loop_headers::bb19" -> "cfg::refactor_analysis::FunctionCfg::loop_headers::bb21" [label="SwitchInt"];
+  "cfg::refactor_analysis::FunctionCfg::loop_headers::bb19" -> "cfg::refactor_analysis::FunctionCfg::loop_headers::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::refactor_analysis::FunctionCfg::loop_headers::bb22" -> "cfg::refactor_analysis::FunctionCfg::loop_headers::bb23" [label="Drop"];
+  "cfg::refactor_analysis::FunctionCfg::loop_headers::bb23" -> "cfg::refactor_analysis::FunctionCfg::loop_headers::bb24" [label="Drop"];
+  "cfg::refactor_analysis::FunctionCfg::loop_headers::bb25" -> "cfg::refactor_analysis::FunctionCfg::loop_headers::bb14" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::refactor_analysis::FunctionCfg::loop_headers::bb26" -> "cfg::refactor_analysis::FunctionCfg::loop_headers::bb21" [color="crimson", penwidth=2, label="Goto back"];
+}

@@ -1,0 +1,20 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1139 {
+    label="invalid_action::validate_message_payload_summary";
+    "cfg::invalid_action::validate_message_payload_summary::bb0" [label="bb0\nCall"];
+    "cfg::invalid_action::validate_message_payload_summary::bb1" [label="bb1\nCall"];
+    "cfg::invalid_action::validate_message_payload_summary::bb2" [label="bb2\nCall"];
+    "cfg::invalid_action::validate_message_payload_summary::bb3" [label="bb3\nCall"];
+    "cfg::invalid_action::validate_message_payload_summary::bb4" [label="bb4\nCall"];
+    "cfg::invalid_action::validate_message_payload_summary::bb5" [label="bb5\nSwitchInt"];
+    "cfg::invalid_action::validate_message_payload_summary::bb6" [label="bb6\nCall"];
+    "cfg::invalid_action::validate_message_payload_summary::bb7" [label="bb7\nCall"];
+    "cfg::invalid_action::validate_message_payload_summary::bb8" [label="bb8\nReturn"];
+  }
+  "cfg::invalid_action::validate_message_payload_summary::bb5" -> "cfg::invalid_action::validate_message_payload_summary::bb8" [label="SwitchInt"];
+  "cfg::invalid_action::validate_message_payload_summary::bb5" -> "cfg::invalid_action::validate_message_payload_summary::bb6" [label="SwitchInt"];
+}

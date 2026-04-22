@@ -1,0 +1,53 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2260 {
+    label="objectives::extract_status";
+    "cfg::objectives::extract_status::bb0" [label="bb0\nCall"];
+    "cfg::objectives::extract_status::bb1" [label="bb1\nCall"];
+    "cfg::objectives::extract_status::bb2" [label="bb2\nCall"];
+    "cfg::objectives::extract_status::bb3" [label="bb3\nCall"];
+    "cfg::objectives::extract_status::bb4" [label="bb4\nSwitchInt"];
+    "cfg::objectives::extract_status::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::objectives::extract_status::bb6" [label="bb6\nCall loop"];
+    "cfg::objectives::extract_status::bb7" [label="bb7\nCall loop"];
+    "cfg::objectives::extract_status::bb8" [label="bb8\nAssert loop"];
+    "cfg::objectives::extract_status::bb9" [label="bb9\nCall loop"];
+    "cfg::objectives::extract_status::bb10" [label="bb10\nCall loop"];
+    "cfg::objectives::extract_status::bb11" [label="bb11\nCall loop"];
+    "cfg::objectives::extract_status::bb12" [label="bb12\nCall loop"];
+    "cfg::objectives::extract_status::bb13" [label="bb13\nCall loop"];
+    "cfg::objectives::extract_status::bb14" [label="bb14\nCall loop"];
+    "cfg::objectives::extract_status::bb15" [label="bb15\nCall loop"];
+    "cfg::objectives::extract_status::bb16" [label="bb16\nCall loop"];
+    "cfg::objectives::extract_status::bb17" [label="bb17\nCall loop"];
+    "cfg::objectives::extract_status::bb18" [label="bb18\nCall loop"];
+    "cfg::objectives::extract_status::bb19" [label="bb19\nCall loop"];
+    "cfg::objectives::extract_status::bb20" [label="bb20\nSwitchInt loop"];
+    "cfg::objectives::extract_status::bb21" [label="bb21\nCall"];
+    "cfg::objectives::extract_status::bb22" [label="bb22\nCall"];
+    "cfg::objectives::extract_status::bb23" [label="bb23\nCall"];
+    "cfg::objectives::extract_status::bb24" [label="bb24\nDrop"];
+    "cfg::objectives::extract_status::bb25" [label="bb25\nDrop loop"];
+    "cfg::objectives::extract_status::bb26" [label="bb26\nReturn loop"];
+    "cfg::objectives::extract_status::bb27" [label="bb27\nDrop cleanup loop"];
+    "cfg::objectives::extract_status::bb28" [label="bb28\nUnwindResume cleanup loop"];
+    "cfg::objectives::extract_status::bb29" [label="bb29\nGoto loop"];
+    "cfg::objectives::extract_status::bb30" [label="bb30\nGoto loop"];
+  }
+  "cfg::objectives::extract_status::bb4" -> "cfg::objectives::extract_status::bb6" [label="SwitchInt"];
+  "cfg::objectives::extract_status::bb4" -> "cfg::objectives::extract_status::bb7" [label="SwitchInt"];
+  "cfg::objectives::extract_status::bb4" -> "cfg::objectives::extract_status::bb5" [label="SwitchInt"];
+  "cfg::objectives::extract_status::bb8" -> "cfg::objectives::extract_status::bb9" [label="Assert"];
+  "cfg::objectives::extract_status::bb8" -> "cfg::objectives::extract_status::bb27" [label="Assert"];
+  "cfg::objectives::extract_status::bb20" -> "cfg::objectives::extract_status::bb21" [label="SwitchInt"];
+  "cfg::objectives::extract_status::bb20" -> "cfg::objectives::extract_status::bb22" [label="SwitchInt"];
+  "cfg::objectives::extract_status::bb20" -> "cfg::objectives::extract_status::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::objectives::extract_status::bb24" -> "cfg::objectives::extract_status::bb26" [label="Drop"];
+  "cfg::objectives::extract_status::bb25" -> "cfg::objectives::extract_status::bb26" [label="Drop"];
+  "cfg::objectives::extract_status::bb27" -> "cfg::objectives::extract_status::bb28" [label="Drop"];
+  "cfg::objectives::extract_status::bb29" -> "cfg::objectives::extract_status::bb25" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::objectives::extract_status::bb30" -> "cfg::objectives::extract_status::bb25" [color="crimson", penwidth=2, label="Goto back"];
+}

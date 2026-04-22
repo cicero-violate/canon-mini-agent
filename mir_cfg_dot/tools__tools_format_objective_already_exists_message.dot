@@ -1,0 +1,17 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3658 {
+    label="tools::format_objective_already_exists_message";
+    "cfg::tools::format_objective_already_exists_message::bb0" [label="bb0\nCall"];
+    "cfg::tools::format_objective_already_exists_message::bb1" [label="bb1\nCall"];
+    "cfg::tools::format_objective_already_exists_message::bb2" [label="bb2\nCall"];
+    "cfg::tools::format_objective_already_exists_message::bb3" [label="bb3\nCall"];
+    "cfg::tools::format_objective_already_exists_message::bb4" [label="bb4\nCall"];
+    "cfg::tools::format_objective_already_exists_message::bb5" [label="bb5\nCall"];
+    "cfg::tools::format_objective_already_exists_message::bb6" [label="bb6\nCall"];
+    "cfg::tools::format_objective_already_exists_message::bb7" [label="bb7\nReturn"];
+  }
+}

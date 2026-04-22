@@ -1,0 +1,20 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_169 {
+    label="app::load_cargo_test_failures";
+    "cfg::app::load_cargo_test_failures::bb0" [label="bb0\nCall"];
+    "cfg::app::load_cargo_test_failures::bb1" [label="bb1\nCall"];
+    "cfg::app::load_cargo_test_failures::bb2" [label="bb2\nCall"];
+    "cfg::app::load_cargo_test_failures::bb3" [label="bb3\nCall"];
+    "cfg::app::load_cargo_test_failures::bb4" [label="bb4\nCall"];
+    "cfg::app::load_cargo_test_failures::bb5" [label="bb5\nDrop"];
+    "cfg::app::load_cargo_test_failures::bb6" [label="bb6\nReturn"];
+    "cfg::app::load_cargo_test_failures::bb7" [label="bb7\nDrop cleanup"];
+    "cfg::app::load_cargo_test_failures::bb8" [label="bb8\nUnwindResume cleanup"];
+  }
+  "cfg::app::load_cargo_test_failures::bb5" -> "cfg::app::load_cargo_test_failures::bb6" [label="Drop"];
+  "cfg::app::load_cargo_test_failures::bb7" -> "cfg::app::load_cargo_test_failures::bb8" [label="Drop"];
+}

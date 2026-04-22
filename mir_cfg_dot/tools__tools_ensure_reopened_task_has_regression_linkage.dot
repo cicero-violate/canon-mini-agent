@@ -1,0 +1,21 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4206 {
+    label="tools::ensure_reopened_task_has_regression_linkage";
+    "cfg::tools::ensure_reopened_task_has_regression_linkage::bb0" [label="bb0\nCall"];
+    "cfg::tools::ensure_reopened_task_has_regression_linkage::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::ensure_reopened_task_has_regression_linkage::bb2" [label="bb2\nCall"];
+    "cfg::tools::ensure_reopened_task_has_regression_linkage::bb3" [label="bb3\nCall"];
+    "cfg::tools::ensure_reopened_task_has_regression_linkage::bb4" [label="bb4\nCall"];
+    "cfg::tools::ensure_reopened_task_has_regression_linkage::bb5" [label="bb5\nGoto"];
+    "cfg::tools::ensure_reopened_task_has_regression_linkage::bb6" [label="bb6\nGoto"];
+    "cfg::tools::ensure_reopened_task_has_regression_linkage::bb7" [label="bb7\nReturn"];
+  }
+  "cfg::tools::ensure_reopened_task_has_regression_linkage::bb1" -> "cfg::tools::ensure_reopened_task_has_regression_linkage::bb6" [label="SwitchInt"];
+  "cfg::tools::ensure_reopened_task_has_regression_linkage::bb1" -> "cfg::tools::ensure_reopened_task_has_regression_linkage::bb2" [label="SwitchInt"];
+  "cfg::tools::ensure_reopened_task_has_regression_linkage::bb5" -> "cfg::tools::ensure_reopened_task_has_regression_linkage::bb7" [label="Goto"];
+  "cfg::tools::ensure_reopened_task_has_regression_linkage::bb6" -> "cfg::tools::ensure_reopened_task_has_regression_linkage::bb7" [label="Goto"];
+}

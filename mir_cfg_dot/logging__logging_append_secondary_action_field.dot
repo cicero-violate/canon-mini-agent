@@ -1,0 +1,31 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2097 {
+    label="logging::append_secondary_action_field";
+    "cfg::logging::append_secondary_action_field::bb0" [label="bb0\nCall"];
+    "cfg::logging::append_secondary_action_field::bb1" [label="bb1\nCall"];
+    "cfg::logging::append_secondary_action_field::bb2" [label="bb2\nCall"];
+    "cfg::logging::append_secondary_action_field::bb3" [label="bb3\nSwitchInt"];
+    "cfg::logging::append_secondary_action_field::bb4" [label="bb4\nCall"];
+    "cfg::logging::append_secondary_action_field::bb5" [label="bb5\nCall"];
+    "cfg::logging::append_secondary_action_field::bb6" [label="bb6\nDrop"];
+    "cfg::logging::append_secondary_action_field::bb7" [label="bb7\nGoto"];
+    "cfg::logging::append_secondary_action_field::bb8" [label="bb8\nUnwindResume cleanup loop"];
+    "cfg::logging::append_secondary_action_field::bb9" [label="bb9\nReturn loop"];
+    "cfg::logging::append_secondary_action_field::bb10" [label="bb10\nDrop cleanup loop"];
+    "cfg::logging::append_secondary_action_field::bb11" [label="bb11\nSwitchInt cleanup loop"];
+    "cfg::logging::append_secondary_action_field::bb12" [label="bb12\nUnreachable"];
+  }
+  "cfg::logging::append_secondary_action_field::bb3" -> "cfg::logging::append_secondary_action_field::bb4" [label="SwitchInt"];
+  "cfg::logging::append_secondary_action_field::bb3" -> "cfg::logging::append_secondary_action_field::bb9" [label="SwitchInt"];
+  "cfg::logging::append_secondary_action_field::bb3" -> "cfg::logging::append_secondary_action_field::bb12" [label="SwitchInt"];
+  "cfg::logging::append_secondary_action_field::bb6" -> "cfg::logging::append_secondary_action_field::bb7" [label="Drop"];
+  "cfg::logging::append_secondary_action_field::bb6" -> "cfg::logging::append_secondary_action_field::bb11" [label="Drop"];
+  "cfg::logging::append_secondary_action_field::bb7" -> "cfg::logging::append_secondary_action_field::bb9" [label="Goto"];
+  "cfg::logging::append_secondary_action_field::bb10" -> "cfg::logging::append_secondary_action_field::bb8" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::logging::append_secondary_action_field::bb11" -> "cfg::logging::append_secondary_action_field::bb8" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::logging::append_secondary_action_field::bb11" -> "cfg::logging::append_secondary_action_field::bb10" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

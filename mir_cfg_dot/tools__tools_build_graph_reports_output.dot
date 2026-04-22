@@ -1,0 +1,38 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4162 {
+    label="tools::build_graph_reports_output";
+    "cfg::tools::build_graph_reports_output::bb0" [label="bb0\nCall"];
+    "cfg::tools::build_graph_reports_output::bb1" [label="bb1\nCall"];
+    "cfg::tools::build_graph_reports_output::bb2" [label="bb2\nCall"];
+    "cfg::tools::build_graph_reports_output::bb3" [label="bb3\nCall"];
+    "cfg::tools::build_graph_reports_output::bb4" [label="bb4\nSwitchInt"];
+    "cfg::tools::build_graph_reports_output::bb5" [label="bb5\nUnreachable"];
+    "cfg::tools::build_graph_reports_output::bb6" [label="bb6\nCall"];
+    "cfg::tools::build_graph_reports_output::bb7" [label="bb7\nCall"];
+    "cfg::tools::build_graph_reports_output::bb8" [label="bb8\nDrop"];
+    "cfg::tools::build_graph_reports_output::bb9" [label="bb9\nCall"];
+    "cfg::tools::build_graph_reports_output::bb10" [label="bb10\nCall"];
+    "cfg::tools::build_graph_reports_output::bb11" [label="bb11\nCall"];
+    "cfg::tools::build_graph_reports_output::bb12" [label="bb12\nCall"];
+    "cfg::tools::build_graph_reports_output::bb13" [label="bb13\nCall"];
+    "cfg::tools::build_graph_reports_output::bb14" [label="bb14\nDrop"];
+    "cfg::tools::build_graph_reports_output::bb15" [label="bb15\nDrop"];
+    "cfg::tools::build_graph_reports_output::bb16" [label="bb16\nReturn"];
+    "cfg::tools::build_graph_reports_output::bb17" [label="bb17\nDrop cleanup"];
+    "cfg::tools::build_graph_reports_output::bb18" [label="bb18\nDrop cleanup"];
+    "cfg::tools::build_graph_reports_output::bb19" [label="bb19\nUnwindResume cleanup"];
+  }
+  "cfg::tools::build_graph_reports_output::bb4" -> "cfg::tools::build_graph_reports_output::bb6" [label="SwitchInt"];
+  "cfg::tools::build_graph_reports_output::bb4" -> "cfg::tools::build_graph_reports_output::bb7" [label="SwitchInt"];
+  "cfg::tools::build_graph_reports_output::bb4" -> "cfg::tools::build_graph_reports_output::bb5" [label="SwitchInt"];
+  "cfg::tools::build_graph_reports_output::bb8" -> "cfg::tools::build_graph_reports_output::bb16" [label="Drop"];
+  "cfg::tools::build_graph_reports_output::bb14" -> "cfg::tools::build_graph_reports_output::bb15" [label="Drop"];
+  "cfg::tools::build_graph_reports_output::bb14" -> "cfg::tools::build_graph_reports_output::bb18" [label="Drop"];
+  "cfg::tools::build_graph_reports_output::bb15" -> "cfg::tools::build_graph_reports_output::bb16" [label="Drop"];
+  "cfg::tools::build_graph_reports_output::bb17" -> "cfg::tools::build_graph_reports_output::bb18" [label="Drop"];
+  "cfg::tools::build_graph_reports_output::bb18" -> "cfg::tools::build_graph_reports_output::bb19" [label="Drop"];
+}

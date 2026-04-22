@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_404 {
+    label="app::continue_executor_completion";
+    "cfg::app::continue_executor_completion::bb0" [label="bb0\nReturn"];
+  }
+}

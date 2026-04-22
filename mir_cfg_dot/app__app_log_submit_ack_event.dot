@@ -1,0 +1,25 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_224 {
+    label="app::log_submit_ack_event";
+    "cfg::app::log_submit_ack_event::bb0" [label="bb0\nCall"];
+    "cfg::app::log_submit_ack_event::bb1" [label="bb1\nCall"];
+    "cfg::app::log_submit_ack_event::bb2" [label="bb2\nCall"];
+    "cfg::app::log_submit_ack_event::bb3" [label="bb3\nCall"];
+    "cfg::app::log_submit_ack_event::bb4" [label="bb4\nCall"];
+    "cfg::app::log_submit_ack_event::bb5" [label="bb5\nDrop"];
+    "cfg::app::log_submit_ack_event::bb6" [label="bb6\nReturn"];
+    "cfg::app::log_submit_ack_event::bb7" [label="bb7\nDrop cleanup loop"];
+    "cfg::app::log_submit_ack_event::bb8" [label="bb8\nUnwindResume cleanup loop"];
+    "cfg::app::log_submit_ack_event::bb9" [label="bb9\nDrop cleanup loop"];
+    "cfg::app::log_submit_ack_event::bb10" [label="bb10\nSwitchInt cleanup loop"];
+  }
+  "cfg::app::log_submit_ack_event::bb5" -> "cfg::app::log_submit_ack_event::bb6" [label="Drop"];
+  "cfg::app::log_submit_ack_event::bb7" -> "cfg::app::log_submit_ack_event::bb8" [label="Drop"];
+  "cfg::app::log_submit_ack_event::bb9" -> "cfg::app::log_submit_ack_event::bb7" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::log_submit_ack_event::bb10" -> "cfg::app::log_submit_ack_event::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::log_submit_ack_event::bb10" -> "cfg::app::log_submit_ack_event::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

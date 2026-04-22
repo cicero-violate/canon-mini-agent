@@ -1,0 +1,25 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2500 {
+    label="prompt_inputs::load_executor_diff_inputs";
+    "cfg::prompt_inputs::load_executor_diff_inputs::bb0" [label="bb0\nCall"];
+    "cfg::prompt_inputs::load_executor_diff_inputs::bb1" [label="bb1\nCall"];
+    "cfg::prompt_inputs::load_executor_diff_inputs::bb2" [label="bb2\nCall"];
+    "cfg::prompt_inputs::load_executor_diff_inputs::bb3" [label="bb3\nCall"];
+    "cfg::prompt_inputs::load_executor_diff_inputs::bb4" [label="bb4\nDrop"];
+    "cfg::prompt_inputs::load_executor_diff_inputs::bb5" [label="bb5\nReturn"];
+    "cfg::prompt_inputs::load_executor_diff_inputs::bb6" [label="bb6\nDrop cleanup"];
+    "cfg::prompt_inputs::load_executor_diff_inputs::bb7" [label="bb7\nUnwindResume cleanup loop"];
+    "cfg::prompt_inputs::load_executor_diff_inputs::bb8" [label="bb8\nDrop cleanup loop"];
+    "cfg::prompt_inputs::load_executor_diff_inputs::bb9" [label="bb9\nSwitchInt cleanup loop"];
+  }
+  "cfg::prompt_inputs::load_executor_diff_inputs::bb4" -> "cfg::prompt_inputs::load_executor_diff_inputs::bb5" [label="Drop"];
+  "cfg::prompt_inputs::load_executor_diff_inputs::bb4" -> "cfg::prompt_inputs::load_executor_diff_inputs::bb6" [label="Drop"];
+  "cfg::prompt_inputs::load_executor_diff_inputs::bb6" -> "cfg::prompt_inputs::load_executor_diff_inputs::bb9" [label="Drop"];
+  "cfg::prompt_inputs::load_executor_diff_inputs::bb8" -> "cfg::prompt_inputs::load_executor_diff_inputs::bb7" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::prompt_inputs::load_executor_diff_inputs::bb9" -> "cfg::prompt_inputs::load_executor_diff_inputs::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompt_inputs::load_executor_diff_inputs::bb9" -> "cfg::prompt_inputs::load_executor_diff_inputs::bb8" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

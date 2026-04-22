@@ -1,0 +1,48 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1474 {
+    label="lessons::prune_excess_pending";
+    "cfg::lessons::prune_excess_pending::bb0" [label="bb0\nCall"];
+    "cfg::lessons::prune_excess_pending::bb1" [label="bb1\nGoto"];
+    "cfg::lessons::prune_excess_pending::bb2" [label="bb2\nCall loop"];
+    "cfg::lessons::prune_excess_pending::bb3" [label="bb3\nSwitchInt loop"];
+    "cfg::lessons::prune_excess_pending::bb4" [label="bb4\nUnreachable loop"];
+    "cfg::lessons::prune_excess_pending::bb5" [label="bb5\nCall loop"];
+    "cfg::lessons::prune_excess_pending::bb6" [label="bb6\nReturn loop"];
+    "cfg::lessons::prune_excess_pending::bb7" [label="bb7\nCall loop"];
+    "cfg::lessons::prune_excess_pending::bb8" [label="bb8\nCall loop"];
+    "cfg::lessons::prune_excess_pending::bb9" [label="bb9\nCall loop"];
+    "cfg::lessons::prune_excess_pending::bb10" [label="bb10\nCall loop"];
+    "cfg::lessons::prune_excess_pending::bb11" [label="bb11\nCall loop"];
+    "cfg::lessons::prune_excess_pending::bb12" [label="bb12\nCall loop"];
+    "cfg::lessons::prune_excess_pending::bb13" [label="bb13\nSwitchInt loop"];
+    "cfg::lessons::prune_excess_pending::bb14" [label="bb14\nDrop loop"];
+    "cfg::lessons::prune_excess_pending::bb15" [label="bb15\nCall loop"];
+    "cfg::lessons::prune_excess_pending::bb16" [label="bb16\nCall loop"];
+    "cfg::lessons::prune_excess_pending::bb17" [label="bb17\nCall loop"];
+    "cfg::lessons::prune_excess_pending::bb18" [label="bb18\nCall loop"];
+    "cfg::lessons::prune_excess_pending::bb19" [label="bb19\nCall loop"];
+    "cfg::lessons::prune_excess_pending::bb20" [label="bb20\nCall loop"];
+    "cfg::lessons::prune_excess_pending::bb21" [label="bb21\nCall loop"];
+    "cfg::lessons::prune_excess_pending::bb22" [label="bb22\nDrop loop"];
+    "cfg::lessons::prune_excess_pending::bb23" [label="bb23\nDrop loop"];
+    "cfg::lessons::prune_excess_pending::bb24" [label="bb24\nDrop cleanup"];
+    "cfg::lessons::prune_excess_pending::bb25" [label="bb25\nDrop cleanup"];
+    "cfg::lessons::prune_excess_pending::bb26" [label="bb26\nUnwindResume cleanup"];
+  }
+  "cfg::lessons::prune_excess_pending::bb1" -> "cfg::lessons::prune_excess_pending::bb2" [label="Goto"];
+  "cfg::lessons::prune_excess_pending::bb3" -> "cfg::lessons::prune_excess_pending::bb6" [label="SwitchInt"];
+  "cfg::lessons::prune_excess_pending::bb3" -> "cfg::lessons::prune_excess_pending::bb5" [label="SwitchInt"];
+  "cfg::lessons::prune_excess_pending::bb3" -> "cfg::lessons::prune_excess_pending::bb4" [label="SwitchInt"];
+  "cfg::lessons::prune_excess_pending::bb13" -> "cfg::lessons::prune_excess_pending::bb15" [label="SwitchInt"];
+  "cfg::lessons::prune_excess_pending::bb13" -> "cfg::lessons::prune_excess_pending::bb14" [label="SwitchInt"];
+  "cfg::lessons::prune_excess_pending::bb14" -> "cfg::lessons::prune_excess_pending::bb2" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::lessons::prune_excess_pending::bb22" -> "cfg::lessons::prune_excess_pending::bb23" [label="Drop"];
+  "cfg::lessons::prune_excess_pending::bb22" -> "cfg::lessons::prune_excess_pending::bb25" [label="Drop"];
+  "cfg::lessons::prune_excess_pending::bb23" -> "cfg::lessons::prune_excess_pending::bb2" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::lessons::prune_excess_pending::bb24" -> "cfg::lessons::prune_excess_pending::bb25" [label="Drop"];
+  "cfg::lessons::prune_excess_pending::bb25" -> "cfg::lessons::prune_excess_pending::bb26" [label="Drop"];
+}

@@ -1,0 +1,25 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4020 {
+    label="tools::apply_patch_diagnostics_target_path";
+    "cfg::tools::apply_patch_diagnostics_target_path::bb0" [label="bb0\nCall"];
+    "cfg::tools::apply_patch_diagnostics_target_path::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::apply_patch_diagnostics_target_path::bb2" [label="bb2\nGoto"];
+    "cfg::tools::apply_patch_diagnostics_target_path::bb3" [label="bb3\nCall"];
+    "cfg::tools::apply_patch_diagnostics_target_path::bb4" [label="bb4\nCall"];
+    "cfg::tools::apply_patch_diagnostics_target_path::bb5" [label="bb5\nCall"];
+    "cfg::tools::apply_patch_diagnostics_target_path::bb6" [label="bb6\nCall"];
+    "cfg::tools::apply_patch_diagnostics_target_path::bb7" [label="bb7\nDrop"];
+    "cfg::tools::apply_patch_diagnostics_target_path::bb8" [label="bb8\nReturn"];
+    "cfg::tools::apply_patch_diagnostics_target_path::bb9" [label="bb9\nDrop cleanup"];
+    "cfg::tools::apply_patch_diagnostics_target_path::bb10" [label="bb10\nUnwindResume cleanup"];
+  }
+  "cfg::tools::apply_patch_diagnostics_target_path::bb1" -> "cfg::tools::apply_patch_diagnostics_target_path::bb3" [label="SwitchInt"];
+  "cfg::tools::apply_patch_diagnostics_target_path::bb1" -> "cfg::tools::apply_patch_diagnostics_target_path::bb2" [label="SwitchInt"];
+  "cfg::tools::apply_patch_diagnostics_target_path::bb2" -> "cfg::tools::apply_patch_diagnostics_target_path::bb8" [label="Goto"];
+  "cfg::tools::apply_patch_diagnostics_target_path::bb7" -> "cfg::tools::apply_patch_diagnostics_target_path::bb8" [label="Drop"];
+  "cfg::tools::apply_patch_diagnostics_target_path::bb9" -> "cfg::tools::apply_patch_diagnostics_target_path::bb10" [label="Drop"];
+}

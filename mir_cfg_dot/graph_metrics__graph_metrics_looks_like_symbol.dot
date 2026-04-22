@@ -1,0 +1,17 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_949 {
+    label="graph_metrics::looks_like_symbol";
+    "cfg::graph_metrics::looks_like_symbol::bb0" [label="bb0\nCall"];
+    "cfg::graph_metrics::looks_like_symbol::bb1" [label="bb1\nSwitchInt"];
+    "cfg::graph_metrics::looks_like_symbol::bb2" [label="bb2\nGoto"];
+    "cfg::graph_metrics::looks_like_symbol::bb3" [label="bb3\nCall"];
+    "cfg::graph_metrics::looks_like_symbol::bb4" [label="bb4\nReturn"];
+  }
+  "cfg::graph_metrics::looks_like_symbol::bb1" -> "cfg::graph_metrics::looks_like_symbol::bb3" [label="SwitchInt"];
+  "cfg::graph_metrics::looks_like_symbol::bb1" -> "cfg::graph_metrics::looks_like_symbol::bb2" [label="SwitchInt"];
+  "cfg::graph_metrics::looks_like_symbol::bb2" -> "cfg::graph_metrics::looks_like_symbol::bb4" [label="Goto"];
+}

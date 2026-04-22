@@ -1,0 +1,13 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_950 {
+    label="graph_metrics::sanitize_fragment";
+    "cfg::graph_metrics::sanitize_fragment::bb0" [label="bb0\nCall"];
+    "cfg::graph_metrics::sanitize_fragment::bb1" [label="bb1\nCall"];
+    "cfg::graph_metrics::sanitize_fragment::bb2" [label="bb2\nCall"];
+    "cfg::graph_metrics::sanitize_fragment::bb3" [label="bb3\nReturn"];
+  }
+}

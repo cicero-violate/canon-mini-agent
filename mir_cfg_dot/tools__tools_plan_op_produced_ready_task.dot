@@ -1,0 +1,42 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4243 {
+    label="tools::plan_op_produced_ready_task";
+    "cfg::tools::plan_op_produced_ready_task::bb0" [label="bb0\nCall"];
+    "cfg::tools::plan_op_produced_ready_task::bb1" [label="bb1\nGoto loop"];
+    "cfg::tools::plan_op_produced_ready_task::bb2" [label="bb2\nCall loop"];
+    "cfg::tools::plan_op_produced_ready_task::bb3" [label="bb3\nCall loop"];
+    "cfg::tools::plan_op_produced_ready_task::bb4" [label="bb4\nCall loop"];
+    "cfg::tools::plan_op_produced_ready_task::bb5" [label="bb5\nCall loop"];
+    "cfg::tools::plan_op_produced_ready_task::bb6" [label="bb6\nCall loop"];
+    "cfg::tools::plan_op_produced_ready_task::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::tools::plan_op_produced_ready_task::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::tools::plan_op_produced_ready_task::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::tools::plan_op_produced_ready_task::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::tools::plan_op_produced_ready_task::bb11" [label="bb11\nCall"];
+    "cfg::tools::plan_op_produced_ready_task::bb12" [label="bb12\nCall"];
+    "cfg::tools::plan_op_produced_ready_task::bb13" [label="bb13\nCall"];
+    "cfg::tools::plan_op_produced_ready_task::bb14" [label="bb14\nCall"];
+    "cfg::tools::plan_op_produced_ready_task::bb15" [label="bb15\nCall"];
+    "cfg::tools::plan_op_produced_ready_task::bb16" [label="bb16\nCall"];
+    "cfg::tools::plan_op_produced_ready_task::bb17" [label="bb17\nCall"];
+    "cfg::tools::plan_op_produced_ready_task::bb18" [label="bb18\nCall"];
+    "cfg::tools::plan_op_produced_ready_task::bb19" [label="bb19\nCall"];
+    "cfg::tools::plan_op_produced_ready_task::bb20" [label="bb20\nCall"];
+    "cfg::tools::plan_op_produced_ready_task::bb21" [label="bb21\nCall"];
+    "cfg::tools::plan_op_produced_ready_task::bb22" [label="bb22\nCall"];
+    "cfg::tools::plan_op_produced_ready_task::bb23" [label="bb23\nReturn"];
+  }
+  "cfg::tools::plan_op_produced_ready_task::bb1" -> "cfg::tools::plan_op_produced_ready_task::bb23" [label="Goto"];
+  "cfg::tools::plan_op_produced_ready_task::bb7" -> "cfg::tools::plan_op_produced_ready_task::bb1" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::plan_op_produced_ready_task::bb7" -> "cfg::tools::plan_op_produced_ready_task::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::plan_op_produced_ready_task::bb8" -> "cfg::tools::plan_op_produced_ready_task::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::plan_op_produced_ready_task::bb8" -> "cfg::tools::plan_op_produced_ready_task::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::plan_op_produced_ready_task::bb9" -> "cfg::tools::plan_op_produced_ready_task::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::plan_op_produced_ready_task::bb9" -> "cfg::tools::plan_op_produced_ready_task::bb11" [label="SwitchInt"];
+  "cfg::tools::plan_op_produced_ready_task::bb10" -> "cfg::tools::plan_op_produced_ready_task::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::plan_op_produced_ready_task::bb10" -> "cfg::tools::plan_op_produced_ready_task::bb11" [label="SwitchInt"];
+}

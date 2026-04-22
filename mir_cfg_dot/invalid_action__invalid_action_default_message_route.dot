@@ -1,0 +1,45 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1052 {
+    label="invalid_action::default_message_route";
+    "cfg::invalid_action::default_message_route::bb0" [label="bb0\nCall"];
+    "cfg::invalid_action::default_message_route::bb1" [label="bb1\nSwitchInt"];
+    "cfg::invalid_action::default_message_route::bb2" [label="bb2\nCall"];
+    "cfg::invalid_action::default_message_route::bb3" [label="bb3\nGoto"];
+    "cfg::invalid_action::default_message_route::bb4" [label="bb4\nCall"];
+    "cfg::invalid_action::default_message_route::bb5" [label="bb5\nSwitchInt"];
+    "cfg::invalid_action::default_message_route::bb6" [label="bb6\nCall"];
+    "cfg::invalid_action::default_message_route::bb7" [label="bb7\nGoto"];
+    "cfg::invalid_action::default_message_route::bb8" [label="bb8\nCall"];
+    "cfg::invalid_action::default_message_route::bb9" [label="bb9\nSwitchInt"];
+    "cfg::invalid_action::default_message_route::bb10" [label="bb10\nCall"];
+    "cfg::invalid_action::default_message_route::bb11" [label="bb11\nGoto"];
+    "cfg::invalid_action::default_message_route::bb12" [label="bb12\nCall"];
+    "cfg::invalid_action::default_message_route::bb13" [label="bb13\nSwitchInt"];
+    "cfg::invalid_action::default_message_route::bb14" [label="bb14\nCall"];
+    "cfg::invalid_action::default_message_route::bb15" [label="bb15\nSwitchInt"];
+    "cfg::invalid_action::default_message_route::bb16" [label="bb16\nCall"];
+    "cfg::invalid_action::default_message_route::bb17" [label="bb17\nGoto"];
+    "cfg::invalid_action::default_message_route::bb18" [label="bb18\nCall"];
+    "cfg::invalid_action::default_message_route::bb19" [label="bb19\nGoto"];
+    "cfg::invalid_action::default_message_route::bb20" [label="bb20\nReturn"];
+  }
+  "cfg::invalid_action::default_message_route::bb1" -> "cfg::invalid_action::default_message_route::bb4" [label="SwitchInt"];
+  "cfg::invalid_action::default_message_route::bb1" -> "cfg::invalid_action::default_message_route::bb2" [label="SwitchInt"];
+  "cfg::invalid_action::default_message_route::bb3" -> "cfg::invalid_action::default_message_route::bb20" [label="Goto"];
+  "cfg::invalid_action::default_message_route::bb5" -> "cfg::invalid_action::default_message_route::bb8" [label="SwitchInt"];
+  "cfg::invalid_action::default_message_route::bb5" -> "cfg::invalid_action::default_message_route::bb6" [label="SwitchInt"];
+  "cfg::invalid_action::default_message_route::bb7" -> "cfg::invalid_action::default_message_route::bb20" [label="Goto"];
+  "cfg::invalid_action::default_message_route::bb9" -> "cfg::invalid_action::default_message_route::bb12" [label="SwitchInt"];
+  "cfg::invalid_action::default_message_route::bb9" -> "cfg::invalid_action::default_message_route::bb10" [label="SwitchInt"];
+  "cfg::invalid_action::default_message_route::bb11" -> "cfg::invalid_action::default_message_route::bb20" [label="Goto"];
+  "cfg::invalid_action::default_message_route::bb13" -> "cfg::invalid_action::default_message_route::bb14" [label="SwitchInt"];
+  "cfg::invalid_action::default_message_route::bb13" -> "cfg::invalid_action::default_message_route::bb16" [label="SwitchInt"];
+  "cfg::invalid_action::default_message_route::bb15" -> "cfg::invalid_action::default_message_route::bb18" [label="SwitchInt"];
+  "cfg::invalid_action::default_message_route::bb15" -> "cfg::invalid_action::default_message_route::bb16" [label="SwitchInt"];
+  "cfg::invalid_action::default_message_route::bb17" -> "cfg::invalid_action::default_message_route::bb20" [label="Goto"];
+  "cfg::invalid_action::default_message_route::bb19" -> "cfg::invalid_action::default_message_route::bb20" [label="Goto"];
+}

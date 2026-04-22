@@ -1,0 +1,41 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4170 {
+    label="tools::build_cached_failed_tests_command";
+    "cfg::tools::build_cached_failed_tests_command::bb0" [label="bb0\nCall"];
+    "cfg::tools::build_cached_failed_tests_command::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::build_cached_failed_tests_command::bb2" [label="bb2\nGoto"];
+    "cfg::tools::build_cached_failed_tests_command::bb3" [label="bb3\nCall"];
+    "cfg::tools::build_cached_failed_tests_command::bb4" [label="bb4\nCall"];
+    "cfg::tools::build_cached_failed_tests_command::bb5" [label="bb5\nGoto"];
+    "cfg::tools::build_cached_failed_tests_command::bb6" [label="bb6\nCall loop"];
+    "cfg::tools::build_cached_failed_tests_command::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::tools::build_cached_failed_tests_command::bb8" [label="bb8\nUnreachable loop"];
+    "cfg::tools::build_cached_failed_tests_command::bb9" [label="bb9\nCall loop"];
+    "cfg::tools::build_cached_failed_tests_command::bb10" [label="bb10\nCall loop"];
+    "cfg::tools::build_cached_failed_tests_command::bb11" [label="bb11\nCall loop"];
+    "cfg::tools::build_cached_failed_tests_command::bb12" [label="bb12\nCall loop"];
+    "cfg::tools::build_cached_failed_tests_command::bb13" [label="bb13\nCall loop"];
+    "cfg::tools::build_cached_failed_tests_command::bb14" [label="bb14\nCall loop"];
+    "cfg::tools::build_cached_failed_tests_command::bb15" [label="bb15\nCall loop"];
+    "cfg::tools::build_cached_failed_tests_command::bb16" [label="bb16\nCall loop"];
+    "cfg::tools::build_cached_failed_tests_command::bb17" [label="bb17\nDrop loop"];
+    "cfg::tools::build_cached_failed_tests_command::bb18" [label="bb18\nReturn loop"];
+    "cfg::tools::build_cached_failed_tests_command::bb19" [label="bb19\nDrop cleanup loop"];
+    "cfg::tools::build_cached_failed_tests_command::bb20" [label="bb20\nUnwindResume cleanup loop"];
+    "cfg::tools::build_cached_failed_tests_command::bb21" [label="bb21\nGoto loop"];
+  }
+  "cfg::tools::build_cached_failed_tests_command::bb1" -> "cfg::tools::build_cached_failed_tests_command::bb3" [label="SwitchInt"];
+  "cfg::tools::build_cached_failed_tests_command::bb1" -> "cfg::tools::build_cached_failed_tests_command::bb2" [label="SwitchInt"];
+  "cfg::tools::build_cached_failed_tests_command::bb2" -> "cfg::tools::build_cached_failed_tests_command::bb18" [label="Goto"];
+  "cfg::tools::build_cached_failed_tests_command::bb5" -> "cfg::tools::build_cached_failed_tests_command::bb6" [label="Goto"];
+  "cfg::tools::build_cached_failed_tests_command::bb7" -> "cfg::tools::build_cached_failed_tests_command::bb10" [label="SwitchInt"];
+  "cfg::tools::build_cached_failed_tests_command::bb7" -> "cfg::tools::build_cached_failed_tests_command::bb9" [label="SwitchInt"];
+  "cfg::tools::build_cached_failed_tests_command::bb7" -> "cfg::tools::build_cached_failed_tests_command::bb8" [label="SwitchInt"];
+  "cfg::tools::build_cached_failed_tests_command::bb17" -> "cfg::tools::build_cached_failed_tests_command::bb18" [label="Drop"];
+  "cfg::tools::build_cached_failed_tests_command::bb19" -> "cfg::tools::build_cached_failed_tests_command::bb20" [label="Drop"];
+  "cfg::tools::build_cached_failed_tests_command::bb21" -> "cfg::tools::build_cached_failed_tests_command::bb6" [color="crimson", penwidth=2, label="Goto back"];
+}

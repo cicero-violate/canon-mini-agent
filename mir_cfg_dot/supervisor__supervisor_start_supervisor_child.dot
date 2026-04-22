@@ -1,0 +1,41 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3344 {
+    label="supervisor::start_supervisor_child";
+    "cfg::supervisor::start_supervisor_child::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::start_supervisor_child::bb1" [label="bb1\nCall"];
+    "cfg::supervisor::start_supervisor_child::bb2" [label="bb2\nSwitchInt"];
+    "cfg::supervisor::start_supervisor_child::bb3" [label="bb3\nUnreachable"];
+    "cfg::supervisor::start_supervisor_child::bb4" [label="bb4\nCall"];
+    "cfg::supervisor::start_supervisor_child::bb5" [label="bb5\nCall"];
+    "cfg::supervisor::start_supervisor_child::bb6" [label="bb6\nGoto"];
+    "cfg::supervisor::start_supervisor_child::bb7" [label="bb7\nCall"];
+    "cfg::supervisor::start_supervisor_child::bb8" [label="bb8\nCall"];
+    "cfg::supervisor::start_supervisor_child::bb9" [label="bb9\nCall"];
+    "cfg::supervisor::start_supervisor_child::bb10" [label="bb10\nCall"];
+    "cfg::supervisor::start_supervisor_child::bb11" [label="bb11\nCall"];
+    "cfg::supervisor::start_supervisor_child::bb12" [label="bb12\nCall"];
+    "cfg::supervisor::start_supervisor_child::bb13" [label="bb13\nCall"];
+    "cfg::supervisor::start_supervisor_child::bb14" [label="bb14\nCall"];
+    "cfg::supervisor::start_supervisor_child::bb15" [label="bb15\nGoto"];
+    "cfg::supervisor::start_supervisor_child::bb16" [label="bb16\nReturn"];
+    "cfg::supervisor::start_supervisor_child::bb17" [label="bb17\nDrop cleanup"];
+    "cfg::supervisor::start_supervisor_child::bb18" [label="bb18\nDrop cleanup"];
+    "cfg::supervisor::start_supervisor_child::bb19" [label="bb19\nUnwindResume cleanup loop"];
+    "cfg::supervisor::start_supervisor_child::bb20" [label="bb20\nDrop cleanup loop"];
+    "cfg::supervisor::start_supervisor_child::bb21" [label="bb21\nSwitchInt cleanup loop"];
+  }
+  "cfg::supervisor::start_supervisor_child::bb2" -> "cfg::supervisor::start_supervisor_child::bb4" [label="SwitchInt"];
+  "cfg::supervisor::start_supervisor_child::bb2" -> "cfg::supervisor::start_supervisor_child::bb5" [label="SwitchInt"];
+  "cfg::supervisor::start_supervisor_child::bb2" -> "cfg::supervisor::start_supervisor_child::bb3" [label="SwitchInt"];
+  "cfg::supervisor::start_supervisor_child::bb6" -> "cfg::supervisor::start_supervisor_child::bb16" [label="Goto"];
+  "cfg::supervisor::start_supervisor_child::bb15" -> "cfg::supervisor::start_supervisor_child::bb16" [label="Goto"];
+  "cfg::supervisor::start_supervisor_child::bb17" -> "cfg::supervisor::start_supervisor_child::bb18" [label="Drop"];
+  "cfg::supervisor::start_supervisor_child::bb18" -> "cfg::supervisor::start_supervisor_child::bb21" [label="Drop"];
+  "cfg::supervisor::start_supervisor_child::bb20" -> "cfg::supervisor::start_supervisor_child::bb19" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::supervisor::start_supervisor_child::bb21" -> "cfg::supervisor::start_supervisor_child::bb19" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::supervisor::start_supervisor_child::bb21" -> "cfg::supervisor::start_supervisor_child::bb20" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

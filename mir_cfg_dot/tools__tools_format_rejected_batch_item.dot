@@ -1,0 +1,17 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4569 {
+    label="tools::format_rejected_batch_item";
+    "cfg::tools::format_rejected_batch_item::bb0" [label="bb0\nCall"];
+    "cfg::tools::format_rejected_batch_item::bb1" [label="bb1\nCall"];
+    "cfg::tools::format_rejected_batch_item::bb2" [label="bb2\nCall"];
+    "cfg::tools::format_rejected_batch_item::bb3" [label="bb3\nCall"];
+    "cfg::tools::format_rejected_batch_item::bb4" [label="bb4\nCall"];
+    "cfg::tools::format_rejected_batch_item::bb5" [label="bb5\nCall"];
+    "cfg::tools::format_rejected_batch_item::bb6" [label="bb6\nCall"];
+    "cfg::tools::format_rejected_batch_item::bb7" [label="bb7\nReturn"];
+  }
+}

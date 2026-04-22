@@ -1,0 +1,19 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4505 {
+    label="tools::load_semantic";
+    "cfg::tools::load_semantic::bb0" [label="bb0\nCall"];
+    "cfg::tools::load_semantic::bb1" [label="bb1\nCall"];
+    "cfg::tools::load_semantic::bb2" [label="bb2\nCall"];
+    "cfg::tools::load_semantic::bb3" [label="bb3\nCall"];
+    "cfg::tools::load_semantic::bb4" [label="bb4\nDrop"];
+    "cfg::tools::load_semantic::bb5" [label="bb5\nReturn"];
+    "cfg::tools::load_semantic::bb6" [label="bb6\nDrop cleanup"];
+    "cfg::tools::load_semantic::bb7" [label="bb7\nUnwindResume cleanup"];
+  }
+  "cfg::tools::load_semantic::bb4" -> "cfg::tools::load_semantic::bb5" [label="Drop"];
+  "cfg::tools::load_semantic::bb6" -> "cfg::tools::load_semantic::bb7" [label="Drop"];
+}

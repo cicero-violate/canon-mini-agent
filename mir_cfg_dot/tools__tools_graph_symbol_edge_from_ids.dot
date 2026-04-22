@@ -1,0 +1,58 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4146 {
+    label="tools::graph_symbol_edge_from_ids";
+    "cfg::tools::graph_symbol_edge_from_ids::bb0" [label="bb0\nCall"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb1" [label="bb1\nCall"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb2" [label="bb2\nCall"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb3" [label="bb3\nSwitchInt"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb4" [label="bb4\nDrop"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb5" [label="bb5\nCall"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb6" [label="bb6\nCall"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb7" [label="bb7\nCall"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb8" [label="bb8\nCall"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb9" [label="bb9\nSwitchInt"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb10" [label="bb10\nCall"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb11" [label="bb11\nCall"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb12" [label="bb12\nCall"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb13" [label="bb13\nCall"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb14" [label="bb14\nCall"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb15" [label="bb15\nCall"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb16" [label="bb16\nDrop"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb17" [label="bb17\nDrop"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb18" [label="bb18\nCall"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb19" [label="bb19\nCall"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb20" [label="bb20\nCall"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb21" [label="bb21\nCall"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb22" [label="bb22\nCall"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb23" [label="bb23\nCall"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb24" [label="bb24\nDrop loop"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb25" [label="bb25\nReturn loop"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb26" [label="bb26\nDrop cleanup loop"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb27" [label="bb27\nDrop cleanup loop"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb28" [label="bb28\nDrop cleanup loop"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb29" [label="bb29\nUnwindResume cleanup loop"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb30" [label="bb30\nUnreachable loop"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb31" [label="bb31\nGoto loop"];
+    "cfg::tools::graph_symbol_edge_from_ids::bb32" [label="bb32\nGoto loop"];
+  }
+  "cfg::tools::graph_symbol_edge_from_ids::bb3" -> "cfg::tools::graph_symbol_edge_from_ids::bb5" [label="SwitchInt"];
+  "cfg::tools::graph_symbol_edge_from_ids::bb3" -> "cfg::tools::graph_symbol_edge_from_ids::bb4" [label="SwitchInt"];
+  "cfg::tools::graph_symbol_edge_from_ids::bb4" -> "cfg::tools::graph_symbol_edge_from_ids::bb25" [label="Drop"];
+  "cfg::tools::graph_symbol_edge_from_ids::bb9" -> "cfg::tools::graph_symbol_edge_from_ids::bb10" [label="SwitchInt"];
+  "cfg::tools::graph_symbol_edge_from_ids::bb9" -> "cfg::tools::graph_symbol_edge_from_ids::bb19" [label="SwitchInt"];
+  "cfg::tools::graph_symbol_edge_from_ids::bb9" -> "cfg::tools::graph_symbol_edge_from_ids::bb30" [label="SwitchInt"];
+  "cfg::tools::graph_symbol_edge_from_ids::bb16" -> "cfg::tools::graph_symbol_edge_from_ids::bb17" [label="Drop"];
+  "cfg::tools::graph_symbol_edge_from_ids::bb16" -> "cfg::tools::graph_symbol_edge_from_ids::bb27" [label="Drop"];
+  "cfg::tools::graph_symbol_edge_from_ids::bb17" -> "cfg::tools::graph_symbol_edge_from_ids::bb18" [label="Drop"];
+  "cfg::tools::graph_symbol_edge_from_ids::bb17" -> "cfg::tools::graph_symbol_edge_from_ids::bb28" [label="Drop"];
+  "cfg::tools::graph_symbol_edge_from_ids::bb24" -> "cfg::tools::graph_symbol_edge_from_ids::bb25" [label="Drop"];
+  "cfg::tools::graph_symbol_edge_from_ids::bb26" -> "cfg::tools::graph_symbol_edge_from_ids::bb27" [label="Drop"];
+  "cfg::tools::graph_symbol_edge_from_ids::bb27" -> "cfg::tools::graph_symbol_edge_from_ids::bb28" [label="Drop"];
+  "cfg::tools::graph_symbol_edge_from_ids::bb28" -> "cfg::tools::graph_symbol_edge_from_ids::bb29" [label="Drop"];
+  "cfg::tools::graph_symbol_edge_from_ids::bb31" -> "cfg::tools::graph_symbol_edge_from_ids::bb24" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::tools::graph_symbol_edge_from_ids::bb32" -> "cfg::tools::graph_symbol_edge_from_ids::bb24" [color="crimson", penwidth=2, label="Goto back"];
+}

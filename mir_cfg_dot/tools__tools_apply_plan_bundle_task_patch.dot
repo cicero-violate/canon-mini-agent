@@ -1,0 +1,43 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4367 {
+    label="tools::apply_plan_bundle_task_patch";
+    "cfg::tools::apply_plan_bundle_task_patch::bb0" [label="bb0\nCall"];
+    "cfg::tools::apply_plan_bundle_task_patch::bb1" [label="bb1\nCall"];
+    "cfg::tools::apply_plan_bundle_task_patch::bb2" [label="bb2\nSwitchInt"];
+    "cfg::tools::apply_plan_bundle_task_patch::bb3" [label="bb3\nUnreachable loop"];
+    "cfg::tools::apply_plan_bundle_task_patch::bb4" [label="bb4\nCall loop"];
+    "cfg::tools::apply_plan_bundle_task_patch::bb5" [label="bb5\nCall loop"];
+    "cfg::tools::apply_plan_bundle_task_patch::bb6" [label="bb6\nGoto loop"];
+    "cfg::tools::apply_plan_bundle_task_patch::bb7" [label="bb7\nCall loop"];
+    "cfg::tools::apply_plan_bundle_task_patch::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::tools::apply_plan_bundle_task_patch::bb9" [label="bb9\nCall loop"];
+    "cfg::tools::apply_plan_bundle_task_patch::bb10" [label="bb10\nGoto loop"];
+    "cfg::tools::apply_plan_bundle_task_patch::bb11" [label="bb11\nSwitchInt loop"];
+    "cfg::tools::apply_plan_bundle_task_patch::bb12" [label="bb12\nCall loop"];
+    "cfg::tools::apply_plan_bundle_task_patch::bb13" [label="bb13\nCall loop"];
+    "cfg::tools::apply_plan_bundle_task_patch::bb14" [label="bb14\nCall loop"];
+    "cfg::tools::apply_plan_bundle_task_patch::bb15" [label="bb15\nDrop loop"];
+    "cfg::tools::apply_plan_bundle_task_patch::bb16" [label="bb16\nReturn"];
+    "cfg::tools::apply_plan_bundle_task_patch::bb17" [label="bb17\nUnwindResume cleanup loop"];
+    "cfg::tools::apply_plan_bundle_task_patch::bb18" [label="bb18\nDrop cleanup loop"];
+    "cfg::tools::apply_plan_bundle_task_patch::bb19" [label="bb19\nSwitchInt cleanup loop"];
+  }
+  "cfg::tools::apply_plan_bundle_task_patch::bb2" -> "cfg::tools::apply_plan_bundle_task_patch::bb4" [label="SwitchInt"];
+  "cfg::tools::apply_plan_bundle_task_patch::bb2" -> "cfg::tools::apply_plan_bundle_task_patch::bb5" [label="SwitchInt"];
+  "cfg::tools::apply_plan_bundle_task_patch::bb2" -> "cfg::tools::apply_plan_bundle_task_patch::bb3" [label="SwitchInt"];
+  "cfg::tools::apply_plan_bundle_task_patch::bb6" -> "cfg::tools::apply_plan_bundle_task_patch::bb7" [label="Goto"];
+  "cfg::tools::apply_plan_bundle_task_patch::bb8" -> "cfg::tools::apply_plan_bundle_task_patch::bb10" [label="SwitchInt"];
+  "cfg::tools::apply_plan_bundle_task_patch::bb8" -> "cfg::tools::apply_plan_bundle_task_patch::bb9" [label="SwitchInt"];
+  "cfg::tools::apply_plan_bundle_task_patch::bb8" -> "cfg::tools::apply_plan_bundle_task_patch::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::apply_plan_bundle_task_patch::bb10" -> "cfg::tools::apply_plan_bundle_task_patch::bb16" [label="Goto"];
+  "cfg::tools::apply_plan_bundle_task_patch::bb11" -> "cfg::tools::apply_plan_bundle_task_patch::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::apply_plan_bundle_task_patch::bb11" -> "cfg::tools::apply_plan_bundle_task_patch::bb12" [label="SwitchInt"];
+  "cfg::tools::apply_plan_bundle_task_patch::bb15" -> "cfg::tools::apply_plan_bundle_task_patch::bb7" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tools::apply_plan_bundle_task_patch::bb18" -> "cfg::tools::apply_plan_bundle_task_patch::bb17" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tools::apply_plan_bundle_task_patch::bb19" -> "cfg::tools::apply_plan_bundle_task_patch::bb17" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::apply_plan_bundle_task_patch::bb19" -> "cfg::tools::apply_plan_bundle_task_patch::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

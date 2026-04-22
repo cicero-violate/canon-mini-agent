@@ -1,0 +1,22 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1032 {
+    label="inter_complexity::priority_from_score";
+    "cfg::inter_complexity::priority_from_score::bb0" [label="bb0\nSwitchInt"];
+    "cfg::inter_complexity::priority_from_score::bb1" [label="bb1\nGoto"];
+    "cfg::inter_complexity::priority_from_score::bb2" [label="bb2\nSwitchInt"];
+    "cfg::inter_complexity::priority_from_score::bb3" [label="bb3\nGoto"];
+    "cfg::inter_complexity::priority_from_score::bb4" [label="bb4\nGoto"];
+    "cfg::inter_complexity::priority_from_score::bb5" [label="bb5\nReturn"];
+  }
+  "cfg::inter_complexity::priority_from_score::bb0" -> "cfg::inter_complexity::priority_from_score::bb2" [label="SwitchInt"];
+  "cfg::inter_complexity::priority_from_score::bb0" -> "cfg::inter_complexity::priority_from_score::bb1" [label="SwitchInt"];
+  "cfg::inter_complexity::priority_from_score::bb1" -> "cfg::inter_complexity::priority_from_score::bb5" [label="Goto"];
+  "cfg::inter_complexity::priority_from_score::bb2" -> "cfg::inter_complexity::priority_from_score::bb4" [label="SwitchInt"];
+  "cfg::inter_complexity::priority_from_score::bb2" -> "cfg::inter_complexity::priority_from_score::bb3" [label="SwitchInt"];
+  "cfg::inter_complexity::priority_from_score::bb3" -> "cfg::inter_complexity::priority_from_score::bb5" [label="Goto"];
+  "cfg::inter_complexity::priority_from_score::bb4" -> "cfg::inter_complexity::priority_from_score::bb5" [label="Goto"];
+}

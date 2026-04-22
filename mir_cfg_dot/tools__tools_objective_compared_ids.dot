@@ -1,0 +1,13 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3653 {
+    label="tools::objective_compared_ids";
+    "cfg::tools::objective_compared_ids::bb0" [label="bb0\nCall"];
+    "cfg::tools::objective_compared_ids::bb1" [label="bb1\nCall"];
+    "cfg::tools::objective_compared_ids::bb2" [label="bb2\nCall"];
+    "cfg::tools::objective_compared_ids::bb3" [label="bb3\nReturn"];
+  }
+}

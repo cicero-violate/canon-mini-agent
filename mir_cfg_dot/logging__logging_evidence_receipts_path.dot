@@ -1,0 +1,13 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2138 {
+    label="logging::evidence_receipts_path";
+    "cfg::logging::evidence_receipts_path::bb0" [label="bb0\nCall"];
+    "cfg::logging::evidence_receipts_path::bb1" [label="bb1\nCall"];
+    "cfg::logging::evidence_receipts_path::bb2" [label="bb2\nCall"];
+    "cfg::logging::evidence_receipts_path::bb3" [label="bb3\nReturn"];
+  }
+}

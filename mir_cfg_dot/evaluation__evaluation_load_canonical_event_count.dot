@@ -1,0 +1,27 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_831 {
+    label="evaluation::load_canonical_event_count";
+    "cfg::evaluation::load_canonical_event_count::bb0" [label="bb0\nCall"];
+    "cfg::evaluation::load_canonical_event_count::bb1" [label="bb1\nCall"];
+    "cfg::evaluation::load_canonical_event_count::bb2" [label="bb2\nCall"];
+    "cfg::evaluation::load_canonical_event_count::bb3" [label="bb3\nDrop"];
+    "cfg::evaluation::load_canonical_event_count::bb4" [label="bb4\nCall"];
+    "cfg::evaluation::load_canonical_event_count::bb5" [label="bb5\nCall"];
+    "cfg::evaluation::load_canonical_event_count::bb6" [label="bb6\nCall"];
+    "cfg::evaluation::load_canonical_event_count::bb7" [label="bb7\nReturn"];
+    "cfg::evaluation::load_canonical_event_count::bb8" [label="bb8\nDrop cleanup"];
+    "cfg::evaluation::load_canonical_event_count::bb9" [label="bb9\nUnwindResume cleanup loop"];
+    "cfg::evaluation::load_canonical_event_count::bb10" [label="bb10\nDrop cleanup loop"];
+    "cfg::evaluation::load_canonical_event_count::bb11" [label="bb11\nSwitchInt cleanup loop"];
+  }
+  "cfg::evaluation::load_canonical_event_count::bb3" -> "cfg::evaluation::load_canonical_event_count::bb4" [label="Drop"];
+  "cfg::evaluation::load_canonical_event_count::bb3" -> "cfg::evaluation::load_canonical_event_count::bb11" [label="Drop"];
+  "cfg::evaluation::load_canonical_event_count::bb8" -> "cfg::evaluation::load_canonical_event_count::bb9" [label="Drop"];
+  "cfg::evaluation::load_canonical_event_count::bb10" -> "cfg::evaluation::load_canonical_event_count::bb9" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::evaluation::load_canonical_event_count::bb11" -> "cfg::evaluation::load_canonical_event_count::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::evaluation::load_canonical_event_count::bb11" -> "cfg::evaluation::load_canonical_event_count::bb10" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

@@ -1,0 +1,22 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3822 {
+    label="tools::update_plan_sorted_successor_indegree";
+    "cfg::tools::update_plan_sorted_successor_indegree::bb0" [label="bb0\nCall"];
+    "cfg::tools::update_plan_sorted_successor_indegree::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::update_plan_sorted_successor_indegree::bb2" [label="bb2\nCall"];
+    "cfg::tools::update_plan_sorted_successor_indegree::bb3" [label="bb3\nSwitchInt"];
+    "cfg::tools::update_plan_sorted_successor_indegree::bb4" [label="bb4\nCall"];
+    "cfg::tools::update_plan_sorted_successor_indegree::bb5" [label="bb5\nCall"];
+    "cfg::tools::update_plan_sorted_successor_indegree::bb6" [label="bb6\nReturn"];
+    "cfg::tools::update_plan_sorted_successor_indegree::bb7" [label="bb7\nUnreachable"];
+  }
+  "cfg::tools::update_plan_sorted_successor_indegree::bb1" -> "cfg::tools::update_plan_sorted_successor_indegree::bb2" [label="SwitchInt"];
+  "cfg::tools::update_plan_sorted_successor_indegree::bb1" -> "cfg::tools::update_plan_sorted_successor_indegree::bb6" [label="SwitchInt"];
+  "cfg::tools::update_plan_sorted_successor_indegree::bb1" -> "cfg::tools::update_plan_sorted_successor_indegree::bb7" [label="SwitchInt"];
+  "cfg::tools::update_plan_sorted_successor_indegree::bb3" -> "cfg::tools::update_plan_sorted_successor_indegree::bb6" [label="SwitchInt"];
+  "cfg::tools::update_plan_sorted_successor_indegree::bb3" -> "cfg::tools::update_plan_sorted_successor_indegree::bb4" [label="SwitchInt"];
+}

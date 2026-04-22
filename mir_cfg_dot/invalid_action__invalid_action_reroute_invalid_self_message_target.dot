@@ -1,0 +1,51 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1171 {
+    label="invalid_action::reroute_invalid_self_message_target";
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb0" [label="bb0\nCall"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb1" [label="bb1\nCall"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb2" [label="bb2\nCall"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb3" [label="bb3\nCall"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb4" [label="bb4\nCall"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb5" [label="bb5\nCall"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb6" [label="bb6\nCall"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb7" [label="bb7\nSwitchInt"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb8" [label="bb8\nCall"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb9" [label="bb9\nSwitchInt"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb10" [label="bb10\nGoto"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb11" [label="bb11\nCall"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb12" [label="bb12\nSwitchInt"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb13" [label="bb13\nGoto"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb14" [label="bb14\nCall"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb15" [label="bb15\nSwitchInt"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb16" [label="bb16\nCall"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb17" [label="bb17\nSwitchInt"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb18" [label="bb18\nCall"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb19" [label="bb19\nSwitchInt"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb20" [label="bb20\nGoto"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb21" [label="bb21\nGoto"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb22" [label="bb22\nCall"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb23" [label="bb23\nGoto"];
+    "cfg::invalid_action::reroute_invalid_self_message_target::bb24" [label="bb24\nReturn"];
+  }
+  "cfg::invalid_action::reroute_invalid_self_message_target::bb7" -> "cfg::invalid_action::reroute_invalid_self_message_target::bb8" [label="SwitchInt"];
+  "cfg::invalid_action::reroute_invalid_self_message_target::bb7" -> "cfg::invalid_action::reroute_invalid_self_message_target::bb10" [label="SwitchInt"];
+  "cfg::invalid_action::reroute_invalid_self_message_target::bb9" -> "cfg::invalid_action::reroute_invalid_self_message_target::bb11" [label="SwitchInt"];
+  "cfg::invalid_action::reroute_invalid_self_message_target::bb9" -> "cfg::invalid_action::reroute_invalid_self_message_target::bb10" [label="SwitchInt"];
+  "cfg::invalid_action::reroute_invalid_self_message_target::bb10" -> "cfg::invalid_action::reroute_invalid_self_message_target::bb24" [label="Goto"];
+  "cfg::invalid_action::reroute_invalid_self_message_target::bb12" -> "cfg::invalid_action::reroute_invalid_self_message_target::bb14" [label="SwitchInt"];
+  "cfg::invalid_action::reroute_invalid_self_message_target::bb12" -> "cfg::invalid_action::reroute_invalid_self_message_target::bb13" [label="SwitchInt"];
+  "cfg::invalid_action::reroute_invalid_self_message_target::bb13" -> "cfg::invalid_action::reroute_invalid_self_message_target::bb24" [label="Goto"];
+  "cfg::invalid_action::reroute_invalid_self_message_target::bb15" -> "cfg::invalid_action::reroute_invalid_self_message_target::bb22" [label="SwitchInt"];
+  "cfg::invalid_action::reroute_invalid_self_message_target::bb15" -> "cfg::invalid_action::reroute_invalid_self_message_target::bb16" [label="SwitchInt"];
+  "cfg::invalid_action::reroute_invalid_self_message_target::bb17" -> "cfg::invalid_action::reroute_invalid_self_message_target::bb18" [label="SwitchInt"];
+  "cfg::invalid_action::reroute_invalid_self_message_target::bb17" -> "cfg::invalid_action::reroute_invalid_self_message_target::bb20" [label="SwitchInt"];
+  "cfg::invalid_action::reroute_invalid_self_message_target::bb19" -> "cfg::invalid_action::reroute_invalid_self_message_target::bb21" [label="SwitchInt"];
+  "cfg::invalid_action::reroute_invalid_self_message_target::bb19" -> "cfg::invalid_action::reroute_invalid_self_message_target::bb20" [label="SwitchInt"];
+  "cfg::invalid_action::reroute_invalid_self_message_target::bb20" -> "cfg::invalid_action::reroute_invalid_self_message_target::bb24" [label="Goto"];
+  "cfg::invalid_action::reroute_invalid_self_message_target::bb21" -> "cfg::invalid_action::reroute_invalid_self_message_target::bb24" [label="Goto"];
+  "cfg::invalid_action::reroute_invalid_self_message_target::bb23" -> "cfg::invalid_action::reroute_invalid_self_message_target::bb24" [label="Goto"];
+}

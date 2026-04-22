@@ -1,0 +1,41 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_855 {
+    label="evolution::save_snapshot_for_state_dir";
+    "cfg::evolution::save_snapshot_for_state_dir::bb0" [label="bb0\nCall"];
+    "cfg::evolution::save_snapshot_for_state_dir::bb1" [label="bb1\nCall"];
+    "cfg::evolution::save_snapshot_for_state_dir::bb2" [label="bb2\nCall"];
+    "cfg::evolution::save_snapshot_for_state_dir::bb3" [label="bb3\nSwitchInt"];
+    "cfg::evolution::save_snapshot_for_state_dir::bb4" [label="bb4\nUnreachable loop"];
+    "cfg::evolution::save_snapshot_for_state_dir::bb5" [label="bb5\nCall loop"];
+    "cfg::evolution::save_snapshot_for_state_dir::bb6" [label="bb6\nCall loop"];
+    "cfg::evolution::save_snapshot_for_state_dir::bb7" [label="bb7\nCall loop"];
+    "cfg::evolution::save_snapshot_for_state_dir::bb8" [label="bb8\nCall loop"];
+    "cfg::evolution::save_snapshot_for_state_dir::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::evolution::save_snapshot_for_state_dir::bb10" [label="bb10\nCall"];
+    "cfg::evolution::save_snapshot_for_state_dir::bb11" [label="bb11\nCall"];
+    "cfg::evolution::save_snapshot_for_state_dir::bb12" [label="bb12\nDrop"];
+    "cfg::evolution::save_snapshot_for_state_dir::bb13" [label="bb13\nCall"];
+    "cfg::evolution::save_snapshot_for_state_dir::bb14" [label="bb14\nDrop"];
+    "cfg::evolution::save_snapshot_for_state_dir::bb15" [label="bb15\nReturn"];
+    "cfg::evolution::save_snapshot_for_state_dir::bb16" [label="bb16\nDrop cleanup loop"];
+    "cfg::evolution::save_snapshot_for_state_dir::bb17" [label="bb17\nUnwindResume cleanup loop"];
+    "cfg::evolution::save_snapshot_for_state_dir::bb18" [label="bb18\nDrop cleanup loop"];
+    "cfg::evolution::save_snapshot_for_state_dir::bb19" [label="bb19\nSwitchInt cleanup loop"];
+  }
+  "cfg::evolution::save_snapshot_for_state_dir::bb3" -> "cfg::evolution::save_snapshot_for_state_dir::bb5" [label="SwitchInt"];
+  "cfg::evolution::save_snapshot_for_state_dir::bb3" -> "cfg::evolution::save_snapshot_for_state_dir::bb6" [label="SwitchInt"];
+  "cfg::evolution::save_snapshot_for_state_dir::bb3" -> "cfg::evolution::save_snapshot_for_state_dir::bb4" [label="SwitchInt"];
+  "cfg::evolution::save_snapshot_for_state_dir::bb9" -> "cfg::evolution::save_snapshot_for_state_dir::bb10" [label="SwitchInt"];
+  "cfg::evolution::save_snapshot_for_state_dir::bb9" -> "cfg::evolution::save_snapshot_for_state_dir::bb11" [label="SwitchInt"];
+  "cfg::evolution::save_snapshot_for_state_dir::bb9" -> "cfg::evolution::save_snapshot_for_state_dir::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::evolution::save_snapshot_for_state_dir::bb12" -> "cfg::evolution::save_snapshot_for_state_dir::bb15" [label="Drop"];
+  "cfg::evolution::save_snapshot_for_state_dir::bb14" -> "cfg::evolution::save_snapshot_for_state_dir::bb15" [label="Drop"];
+  "cfg::evolution::save_snapshot_for_state_dir::bb16" -> "cfg::evolution::save_snapshot_for_state_dir::bb17" [label="Drop"];
+  "cfg::evolution::save_snapshot_for_state_dir::bb18" -> "cfg::evolution::save_snapshot_for_state_dir::bb16" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::evolution::save_snapshot_for_state_dir::bb19" -> "cfg::evolution::save_snapshot_for_state_dir::bb16" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::evolution::save_snapshot_for_state_dir::bb19" -> "cfg::evolution::save_snapshot_for_state_dir::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

@@ -1,0 +1,19 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3419 {
+    label="tool_schema::predicted_action_name_list";
+    "cfg::tool_schema::predicted_action_name_list::bb0" [label="bb0\nCall"];
+    "cfg::tool_schema::predicted_action_name_list::bb1" [label="bb1\nCall"];
+    "cfg::tool_schema::predicted_action_name_list::bb2" [label="bb2\nCall"];
+    "cfg::tool_schema::predicted_action_name_list::bb3" [label="bb3\nCall"];
+    "cfg::tool_schema::predicted_action_name_list::bb4" [label="bb4\nDrop"];
+    "cfg::tool_schema::predicted_action_name_list::bb5" [label="bb5\nReturn"];
+    "cfg::tool_schema::predicted_action_name_list::bb6" [label="bb6\nDrop cleanup"];
+    "cfg::tool_schema::predicted_action_name_list::bb7" [label="bb7\nUnwindResume cleanup"];
+  }
+  "cfg::tool_schema::predicted_action_name_list::bb4" -> "cfg::tool_schema::predicted_action_name_list::bb5" [label="Drop"];
+  "cfg::tool_schema::predicted_action_name_list::bb6" -> "cfg::tool_schema::predicted_action_name_list::bb7" [label="Drop"];
+}

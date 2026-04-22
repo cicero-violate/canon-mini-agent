@@ -1,0 +1,48 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2520 {
+    label="prompt_inputs::build_verifier_role_prompt";
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb0" [label="bb0\nCall"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb1" [label="bb1\nCall"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb2" [label="bb2\nSwitchInt"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb3" [label="bb3\nUnreachable loop"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb4" [label="bb4\nCall loop"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb5" [label="bb5\nCall loop"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb6" [label="bb6\nCall loop"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb8" [label="bb8\nCall"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb9" [label="bb9\nCall"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb10" [label="bb10\nDrop"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb11" [label="bb11\nCall"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb12" [label="bb12\nCall"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb13" [label="bb13\nCall"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb14" [label="bb14\nCall"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb15" [label="bb15\nCall"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb16" [label="bb16\nDrop"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb17" [label="bb17\nDrop"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb18" [label="bb18\nDrop"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb19" [label="bb19\nReturn"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb20" [label="bb20\nDrop cleanup"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb21" [label="bb21\nDrop cleanup"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb22" [label="bb22\nDrop cleanup"];
+    "cfg::prompt_inputs::build_verifier_role_prompt::bb23" [label="bb23\nUnwindResume cleanup"];
+  }
+  "cfg::prompt_inputs::build_verifier_role_prompt::bb2" -> "cfg::prompt_inputs::build_verifier_role_prompt::bb4" [label="SwitchInt"];
+  "cfg::prompt_inputs::build_verifier_role_prompt::bb2" -> "cfg::prompt_inputs::build_verifier_role_prompt::bb5" [label="SwitchInt"];
+  "cfg::prompt_inputs::build_verifier_role_prompt::bb2" -> "cfg::prompt_inputs::build_verifier_role_prompt::bb3" [label="SwitchInt"];
+  "cfg::prompt_inputs::build_verifier_role_prompt::bb7" -> "cfg::prompt_inputs::build_verifier_role_prompt::bb8" [label="SwitchInt"];
+  "cfg::prompt_inputs::build_verifier_role_prompt::bb7" -> "cfg::prompt_inputs::build_verifier_role_prompt::bb9" [label="SwitchInt"];
+  "cfg::prompt_inputs::build_verifier_role_prompt::bb7" -> "cfg::prompt_inputs::build_verifier_role_prompt::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompt_inputs::build_verifier_role_prompt::bb10" -> "cfg::prompt_inputs::build_verifier_role_prompt::bb19" [label="Drop"];
+  "cfg::prompt_inputs::build_verifier_role_prompt::bb16" -> "cfg::prompt_inputs::build_verifier_role_prompt::bb17" [label="Drop"];
+  "cfg::prompt_inputs::build_verifier_role_prompt::bb16" -> "cfg::prompt_inputs::build_verifier_role_prompt::bb21" [label="Drop"];
+  "cfg::prompt_inputs::build_verifier_role_prompt::bb17" -> "cfg::prompt_inputs::build_verifier_role_prompt::bb18" [label="Drop"];
+  "cfg::prompt_inputs::build_verifier_role_prompt::bb17" -> "cfg::prompt_inputs::build_verifier_role_prompt::bb22" [label="Drop"];
+  "cfg::prompt_inputs::build_verifier_role_prompt::bb18" -> "cfg::prompt_inputs::build_verifier_role_prompt::bb19" [label="Drop"];
+  "cfg::prompt_inputs::build_verifier_role_prompt::bb20" -> "cfg::prompt_inputs::build_verifier_role_prompt::bb21" [label="Drop"];
+  "cfg::prompt_inputs::build_verifier_role_prompt::bb21" -> "cfg::prompt_inputs::build_verifier_role_prompt::bb22" [label="Drop"];
+  "cfg::prompt_inputs::build_verifier_role_prompt::bb22" -> "cfg::prompt_inputs::build_verifier_role_prompt::bb23" [label="Drop"];
+}

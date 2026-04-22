@@ -1,0 +1,33 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3176 {
+    label="state_space::decide_bootstrap_phase";
+    "cfg::state_space::decide_bootstrap_phase::bb0" [label="bb0\nCall"];
+    "cfg::state_space::decide_bootstrap_phase::bb1" [label="bb1\nGoto loop"];
+    "cfg::state_space::decide_bootstrap_phase::bb2" [label="bb2\nCall loop"];
+    "cfg::state_space::decide_bootstrap_phase::bb3" [label="bb3\nCall loop"];
+    "cfg::state_space::decide_bootstrap_phase::bb4" [label="bb4\nCall loop"];
+    "cfg::state_space::decide_bootstrap_phase::bb5" [label="bb5\nCall loop"];
+    "cfg::state_space::decide_bootstrap_phase::bb6" [label="bb6\nCall loop"];
+    "cfg::state_space::decide_bootstrap_phase::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::state_space::decide_bootstrap_phase::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::state_space::decide_bootstrap_phase::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::state_space::decide_bootstrap_phase::bb10" [label="bb10\nGoto"];
+    "cfg::state_space::decide_bootstrap_phase::bb11" [label="bb11\nGoto"];
+    "cfg::state_space::decide_bootstrap_phase::bb12" [label="bb12\nGoto"];
+    "cfg::state_space::decide_bootstrap_phase::bb13" [label="bb13\nReturn"];
+  }
+  "cfg::state_space::decide_bootstrap_phase::bb1" -> "cfg::state_space::decide_bootstrap_phase::bb13" [label="Goto"];
+  "cfg::state_space::decide_bootstrap_phase::bb7" -> "cfg::state_space::decide_bootstrap_phase::bb1" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::decide_bootstrap_phase::bb7" -> "cfg::state_space::decide_bootstrap_phase::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::decide_bootstrap_phase::bb8" -> "cfg::state_space::decide_bootstrap_phase::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::decide_bootstrap_phase::bb8" -> "cfg::state_space::decide_bootstrap_phase::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::decide_bootstrap_phase::bb9" -> "cfg::state_space::decide_bootstrap_phase::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::decide_bootstrap_phase::bb9" -> "cfg::state_space::decide_bootstrap_phase::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::decide_bootstrap_phase::bb10" -> "cfg::state_space::decide_bootstrap_phase::bb13" [label="Goto"];
+  "cfg::state_space::decide_bootstrap_phase::bb11" -> "cfg::state_space::decide_bootstrap_phase::bb13" [label="Goto"];
+  "cfg::state_space::decide_bootstrap_phase::bb12" -> "cfg::state_space::decide_bootstrap_phase::bb13" [label="Goto"];
+}

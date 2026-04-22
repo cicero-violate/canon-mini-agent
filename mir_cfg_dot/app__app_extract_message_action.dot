@@ -1,0 +1,47 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_349 {
+    label="app::extract_message_action";
+    "cfg::app::extract_message_action::bb0" [label="bb0\nCall"];
+    "cfg::app::extract_message_action::bb1" [label="bb1\nCall"];
+    "cfg::app::extract_message_action::bb2" [label="bb2\nSwitchInt"];
+    "cfg::app::extract_message_action::bb3" [label="bb3\nUnreachable loop"];
+    "cfg::app::extract_message_action::bb4" [label="bb4\nCall loop"];
+    "cfg::app::extract_message_action::bb5" [label="bb5\nCall loop"];
+    "cfg::app::extract_message_action::bb6" [label="bb6\nAssert loop"];
+    "cfg::app::extract_message_action::bb7" [label="bb7\nCall loop"];
+    "cfg::app::extract_message_action::bb8" [label="bb8\nCall loop"];
+    "cfg::app::extract_message_action::bb9" [label="bb9\nCall loop"];
+    "cfg::app::extract_message_action::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::app::extract_message_action::bb11" [label="bb11\nGoto loop"];
+    "cfg::app::extract_message_action::bb12" [label="bb12\nCall loop"];
+    "cfg::app::extract_message_action::bb13" [label="bb13\nCall loop"];
+    "cfg::app::extract_message_action::bb14" [label="bb14\nSwitchInt loop"];
+    "cfg::app::extract_message_action::bb15" [label="bb15\nCall"];
+    "cfg::app::extract_message_action::bb16" [label="bb16\nCall"];
+    "cfg::app::extract_message_action::bb17" [label="bb17\nCall"];
+    "cfg::app::extract_message_action::bb18" [label="bb18\nCall"];
+    "cfg::app::extract_message_action::bb19" [label="bb19\nSwitchInt"];
+    "cfg::app::extract_message_action::bb20" [label="bb20\nGoto"];
+    "cfg::app::extract_message_action::bb21" [label="bb21\nCall"];
+    "cfg::app::extract_message_action::bb22" [label="bb22\nGoto"];
+    "cfg::app::extract_message_action::bb23" [label="bb23\nReturn"];
+  }
+  "cfg::app::extract_message_action::bb2" -> "cfg::app::extract_message_action::bb4" [label="SwitchInt"];
+  "cfg::app::extract_message_action::bb2" -> "cfg::app::extract_message_action::bb5" [label="SwitchInt"];
+  "cfg::app::extract_message_action::bb2" -> "cfg::app::extract_message_action::bb3" [label="SwitchInt"];
+  "cfg::app::extract_message_action::bb6" -> "cfg::app::extract_message_action::bb7" [label="Assert"];
+  "cfg::app::extract_message_action::bb10" -> "cfg::app::extract_message_action::bb12" [label="SwitchInt"];
+  "cfg::app::extract_message_action::bb10" -> "cfg::app::extract_message_action::bb11" [label="SwitchInt"];
+  "cfg::app::extract_message_action::bb11" -> "cfg::app::extract_message_action::bb23" [label="Goto"];
+  "cfg::app::extract_message_action::bb14" -> "cfg::app::extract_message_action::bb15" [label="SwitchInt"];
+  "cfg::app::extract_message_action::bb14" -> "cfg::app::extract_message_action::bb16" [label="SwitchInt"];
+  "cfg::app::extract_message_action::bb14" -> "cfg::app::extract_message_action::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::extract_message_action::bb19" -> "cfg::app::extract_message_action::bb21" [label="SwitchInt"];
+  "cfg::app::extract_message_action::bb19" -> "cfg::app::extract_message_action::bb20" [label="SwitchInt"];
+  "cfg::app::extract_message_action::bb20" -> "cfg::app::extract_message_action::bb23" [label="Goto"];
+  "cfg::app::extract_message_action::bb22" -> "cfg::app::extract_message_action::bb23" [label="Goto"];
+}

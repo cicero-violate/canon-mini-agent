@@ -1,0 +1,24 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_592 {
+    label="blockers::append_blocker";
+    "cfg::blockers::append_blocker::bb0" [label="bb0\nCall"];
+    "cfg::blockers::append_blocker::bb1" [label="bb1\nSwitchInt"];
+    "cfg::blockers::append_blocker::bb2" [label="bb2\nCall"];
+    "cfg::blockers::append_blocker::bb3" [label="bb3\nCall"];
+    "cfg::blockers::append_blocker::bb4" [label="bb4\nCall"];
+    "cfg::blockers::append_blocker::bb5" [label="bb5\nDrop"];
+    "cfg::blockers::append_blocker::bb6" [label="bb6\nDrop cleanup"];
+    "cfg::blockers::append_blocker::bb7" [label="bb7\nUnwindResume cleanup"];
+    "cfg::blockers::append_blocker::bb8" [label="bb8\nReturn"];
+    "cfg::blockers::append_blocker::bb9" [label="bb9\nUnreachable"];
+  }
+  "cfg::blockers::append_blocker::bb1" -> "cfg::blockers::append_blocker::bb2" [label="SwitchInt"];
+  "cfg::blockers::append_blocker::bb1" -> "cfg::blockers::append_blocker::bb8" [label="SwitchInt"];
+  "cfg::blockers::append_blocker::bb1" -> "cfg::blockers::append_blocker::bb9" [label="SwitchInt"];
+  "cfg::blockers::append_blocker::bb5" -> "cfg::blockers::append_blocker::bb8" [label="Drop"];
+  "cfg::blockers::append_blocker::bb6" -> "cfg::blockers::append_blocker::bb7" [label="Drop"];
+}

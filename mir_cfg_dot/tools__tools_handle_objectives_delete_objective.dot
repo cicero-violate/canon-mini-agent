@@ -1,0 +1,40 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3700 {
+    label="tools::handle_objectives_delete_objective";
+    "cfg::tools::handle_objectives_delete_objective::bb0" [label="bb0\nCall"];
+    "cfg::tools::handle_objectives_delete_objective::bb1" [label="bb1\nCall"];
+    "cfg::tools::handle_objectives_delete_objective::bb2" [label="bb2\nSwitchInt"];
+    "cfg::tools::handle_objectives_delete_objective::bb3" [label="bb3\nUnreachable"];
+    "cfg::tools::handle_objectives_delete_objective::bb4" [label="bb4\nCall"];
+    "cfg::tools::handle_objectives_delete_objective::bb5" [label="bb5\nCall"];
+    "cfg::tools::handle_objectives_delete_objective::bb6" [label="bb6\nCall"];
+    "cfg::tools::handle_objectives_delete_objective::bb7" [label="bb7\nCall"];
+    "cfg::tools::handle_objectives_delete_objective::bb8" [label="bb8\nCall"];
+    "cfg::tools::handle_objectives_delete_objective::bb9" [label="bb9\nCall"];
+    "cfg::tools::handle_objectives_delete_objective::bb10" [label="bb10\nCall"];
+    "cfg::tools::handle_objectives_delete_objective::bb11" [label="bb11\nSwitchInt"];
+    "cfg::tools::handle_objectives_delete_objective::bb12" [label="bb12\nCall"];
+    "cfg::tools::handle_objectives_delete_objective::bb13" [label="bb13\nCall"];
+    "cfg::tools::handle_objectives_delete_objective::bb14" [label="bb14\nDrop"];
+    "cfg::tools::handle_objectives_delete_objective::bb15" [label="bb15\nCall"];
+    "cfg::tools::handle_objectives_delete_objective::bb16" [label="bb16\nCall"];
+    "cfg::tools::handle_objectives_delete_objective::bb17" [label="bb17\nCall"];
+    "cfg::tools::handle_objectives_delete_objective::bb18" [label="bb18\nCall"];
+    "cfg::tools::handle_objectives_delete_objective::bb19" [label="bb19\nDrop"];
+    "cfg::tools::handle_objectives_delete_objective::bb20" [label="bb20\nReturn"];
+    "cfg::tools::handle_objectives_delete_objective::bb21" [label="bb21\nDrop cleanup"];
+    "cfg::tools::handle_objectives_delete_objective::bb22" [label="bb22\nUnwindResume cleanup"];
+  }
+  "cfg::tools::handle_objectives_delete_objective::bb2" -> "cfg::tools::handle_objectives_delete_objective::bb4" [label="SwitchInt"];
+  "cfg::tools::handle_objectives_delete_objective::bb2" -> "cfg::tools::handle_objectives_delete_objective::bb5" [label="SwitchInt"];
+  "cfg::tools::handle_objectives_delete_objective::bb2" -> "cfg::tools::handle_objectives_delete_objective::bb3" [label="SwitchInt"];
+  "cfg::tools::handle_objectives_delete_objective::bb11" -> "cfg::tools::handle_objectives_delete_objective::bb15" [label="SwitchInt"];
+  "cfg::tools::handle_objectives_delete_objective::bb11" -> "cfg::tools::handle_objectives_delete_objective::bb12" [label="SwitchInt"];
+  "cfg::tools::handle_objectives_delete_objective::bb14" -> "cfg::tools::handle_objectives_delete_objective::bb20" [label="Drop"];
+  "cfg::tools::handle_objectives_delete_objective::bb19" -> "cfg::tools::handle_objectives_delete_objective::bb20" [label="Drop"];
+  "cfg::tools::handle_objectives_delete_objective::bb21" -> "cfg::tools::handle_objectives_delete_objective::bb22" [label="Drop"];
+}

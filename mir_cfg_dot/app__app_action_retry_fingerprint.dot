@@ -1,0 +1,41 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_511 {
+    label="app::action_retry_fingerprint";
+    "cfg::app::action_retry_fingerprint::bb0" [label="bb0\nCall"];
+    "cfg::app::action_retry_fingerprint::bb1" [label="bb1\nCall"];
+    "cfg::app::action_retry_fingerprint::bb2" [label="bb2\nSwitchInt"];
+    "cfg::app::action_retry_fingerprint::bb3" [label="bb3\nCall"];
+    "cfg::app::action_retry_fingerprint::bb4" [label="bb4\nGoto"];
+    "cfg::app::action_retry_fingerprint::bb5" [label="bb5\nCall loop"];
+    "cfg::app::action_retry_fingerprint::bb6" [label="bb6\nSwitchInt loop"];
+    "cfg::app::action_retry_fingerprint::bb7" [label="bb7\nUnreachable loop"];
+    "cfg::app::action_retry_fingerprint::bb8" [label="bb8\nCall loop"];
+    "cfg::app::action_retry_fingerprint::bb9" [label="bb9\nDrop loop"];
+    "cfg::app::action_retry_fingerprint::bb10" [label="bb10\nDrop loop"];
+    "cfg::app::action_retry_fingerprint::bb11" [label="bb11\nCall"];
+    "cfg::app::action_retry_fingerprint::bb12" [label="bb12\nCall"];
+    "cfg::app::action_retry_fingerprint::bb13" [label="bb13\nDrop"];
+    "cfg::app::action_retry_fingerprint::bb14" [label="bb14\nReturn"];
+    "cfg::app::action_retry_fingerprint::bb15" [label="bb15\nDrop cleanup"];
+    "cfg::app::action_retry_fingerprint::bb16" [label="bb16\nDrop cleanup"];
+    "cfg::app::action_retry_fingerprint::bb17" [label="bb17\nUnwindResume cleanup"];
+  }
+  "cfg::app::action_retry_fingerprint::bb2" -> "cfg::app::action_retry_fingerprint::bb3" [label="SwitchInt"];
+  "cfg::app::action_retry_fingerprint::bb2" -> "cfg::app::action_retry_fingerprint::bb11" [label="SwitchInt"];
+  "cfg::app::action_retry_fingerprint::bb2" -> "cfg::app::action_retry_fingerprint::bb7" [label="SwitchInt"];
+  "cfg::app::action_retry_fingerprint::bb4" -> "cfg::app::action_retry_fingerprint::bb5" [label="Goto"];
+  "cfg::app::action_retry_fingerprint::bb6" -> "cfg::app::action_retry_fingerprint::bb9" [label="SwitchInt"];
+  "cfg::app::action_retry_fingerprint::bb6" -> "cfg::app::action_retry_fingerprint::bb8" [label="SwitchInt"];
+  "cfg::app::action_retry_fingerprint::bb6" -> "cfg::app::action_retry_fingerprint::bb7" [label="SwitchInt"];
+  "cfg::app::action_retry_fingerprint::bb9" -> "cfg::app::action_retry_fingerprint::bb11" [label="Drop"];
+  "cfg::app::action_retry_fingerprint::bb9" -> "cfg::app::action_retry_fingerprint::bb16" [label="Drop"];
+  "cfg::app::action_retry_fingerprint::bb10" -> "cfg::app::action_retry_fingerprint::bb5" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::action_retry_fingerprint::bb10" -> "cfg::app::action_retry_fingerprint::bb15" [label="Drop"];
+  "cfg::app::action_retry_fingerprint::bb13" -> "cfg::app::action_retry_fingerprint::bb14" [label="Drop"];
+  "cfg::app::action_retry_fingerprint::bb15" -> "cfg::app::action_retry_fingerprint::bb16" [label="Drop"];
+  "cfg::app::action_retry_fingerprint::bb16" -> "cfg::app::action_retry_fingerprint::bb17" [label="Drop"];
+}

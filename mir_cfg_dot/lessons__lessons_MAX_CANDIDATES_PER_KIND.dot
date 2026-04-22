@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1400 {
+    label="lessons::MAX_CANDIDATES_PER_KIND";
+    "cfg::lessons::MAX_CANDIDATES_PER_KIND::bb0" [label="bb0\nReturn"];
+  }
+}

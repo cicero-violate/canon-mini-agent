@@ -1,0 +1,51 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_820 {
+    label="evaluation::load_issue_counts";
+    "cfg::evaluation::load_issue_counts::bb0" [label="bb0\nCall"];
+    "cfg::evaluation::load_issue_counts::bb1" [label="bb1\nCall"];
+    "cfg::evaluation::load_issue_counts::bb2" [label="bb2\nCall"];
+    "cfg::evaluation::load_issue_counts::bb3" [label="bb3\nGoto"];
+    "cfg::evaluation::load_issue_counts::bb4" [label="bb4\nCall loop"];
+    "cfg::evaluation::load_issue_counts::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::evaluation::load_issue_counts::bb6" [label="bb6\nUnreachable loop"];
+    "cfg::evaluation::load_issue_counts::bb7" [label="bb7\nCall loop"];
+    "cfg::evaluation::load_issue_counts::bb8" [label="bb8\nCall loop"];
+    "cfg::evaluation::load_issue_counts::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::evaluation::load_issue_counts::bb10" [label="bb10\nCall loop"];
+    "cfg::evaluation::load_issue_counts::bb11" [label="bb11\nCall loop"];
+    "cfg::evaluation::load_issue_counts::bb12" [label="bb12\nCall loop"];
+    "cfg::evaluation::load_issue_counts::bb13" [label="bb13\nAssert loop"];
+    "cfg::evaluation::load_issue_counts::bb14" [label="bb14\nGoto loop"];
+    "cfg::evaluation::load_issue_counts::bb15" [label="bb15\nCall"];
+    "cfg::evaluation::load_issue_counts::bb16" [label="bb16\nCall"];
+    "cfg::evaluation::load_issue_counts::bb17" [label="bb17\nCall"];
+    "cfg::evaluation::load_issue_counts::bb18" [label="bb18\nCall"];
+    "cfg::evaluation::load_issue_counts::bb19" [label="bb19\nCall"];
+    "cfg::evaluation::load_issue_counts::bb20" [label="bb20\nCall"];
+    "cfg::evaluation::load_issue_counts::bb21" [label="bb21\nCall"];
+    "cfg::evaluation::load_issue_counts::bb22" [label="bb22\nDrop"];
+    "cfg::evaluation::load_issue_counts::bb23" [label="bb23\nDrop"];
+    "cfg::evaluation::load_issue_counts::bb24" [label="bb24\nReturn"];
+    "cfg::evaluation::load_issue_counts::bb25" [label="bb25\nDrop cleanup"];
+    "cfg::evaluation::load_issue_counts::bb26" [label="bb26\nDrop cleanup"];
+    "cfg::evaluation::load_issue_counts::bb27" [label="bb27\nUnwindResume cleanup"];
+  }
+  "cfg::evaluation::load_issue_counts::bb3" -> "cfg::evaluation::load_issue_counts::bb4" [label="Goto"];
+  "cfg::evaluation::load_issue_counts::bb5" -> "cfg::evaluation::load_issue_counts::bb8" [label="SwitchInt"];
+  "cfg::evaluation::load_issue_counts::bb5" -> "cfg::evaluation::load_issue_counts::bb7" [label="SwitchInt"];
+  "cfg::evaluation::load_issue_counts::bb5" -> "cfg::evaluation::load_issue_counts::bb6" [label="SwitchInt"];
+  "cfg::evaluation::load_issue_counts::bb9" -> "cfg::evaluation::load_issue_counts::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::evaluation::load_issue_counts::bb9" -> "cfg::evaluation::load_issue_counts::bb10" [label="SwitchInt"];
+  "cfg::evaluation::load_issue_counts::bb13" -> "cfg::evaluation::load_issue_counts::bb14" [label="Assert"];
+  "cfg::evaluation::load_issue_counts::bb13" -> "cfg::evaluation::load_issue_counts::bb25" [label="Assert"];
+  "cfg::evaluation::load_issue_counts::bb14" -> "cfg::evaluation::load_issue_counts::bb4" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::evaluation::load_issue_counts::bb22" -> "cfg::evaluation::load_issue_counts::bb23" [label="Drop"];
+  "cfg::evaluation::load_issue_counts::bb22" -> "cfg::evaluation::load_issue_counts::bb26" [label="Drop"];
+  "cfg::evaluation::load_issue_counts::bb23" -> "cfg::evaluation::load_issue_counts::bb24" [label="Drop"];
+  "cfg::evaluation::load_issue_counts::bb25" -> "cfg::evaluation::load_issue_counts::bb26" [label="Drop"];
+  "cfg::evaluation::load_issue_counts::bb26" -> "cfg::evaluation::load_issue_counts::bb27" [label="Drop"];
+}

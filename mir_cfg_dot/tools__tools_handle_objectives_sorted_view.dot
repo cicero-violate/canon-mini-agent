@@ -1,0 +1,32 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3679 {
+    label="tools::handle_objectives_sorted_view";
+    "cfg::tools::handle_objectives_sorted_view::bb0" [label="bb0\nCall"];
+    "cfg::tools::handle_objectives_sorted_view::bb1" [label="bb1\nCall"];
+    "cfg::tools::handle_objectives_sorted_view::bb2" [label="bb2\nSwitchInt"];
+    "cfg::tools::handle_objectives_sorted_view::bb3" [label="bb3\nUnreachable"];
+    "cfg::tools::handle_objectives_sorted_view::bb4" [label="bb4\nCall"];
+    "cfg::tools::handle_objectives_sorted_view::bb5" [label="bb5\nCall"];
+    "cfg::tools::handle_objectives_sorted_view::bb6" [label="bb6\nCall"];
+    "cfg::tools::handle_objectives_sorted_view::bb7" [label="bb7\nCall"];
+    "cfg::tools::handle_objectives_sorted_view::bb8" [label="bb8\nCall"];
+    "cfg::tools::handle_objectives_sorted_view::bb9" [label="bb9\nDrop"];
+    "cfg::tools::handle_objectives_sorted_view::bb10" [label="bb10\nReturn"];
+    "cfg::tools::handle_objectives_sorted_view::bb11" [label="bb11\nDrop cleanup loop"];
+    "cfg::tools::handle_objectives_sorted_view::bb12" [label="bb12\nUnwindResume cleanup loop"];
+    "cfg::tools::handle_objectives_sorted_view::bb13" [label="bb13\nDrop cleanup loop"];
+    "cfg::tools::handle_objectives_sorted_view::bb14" [label="bb14\nSwitchInt cleanup loop"];
+  }
+  "cfg::tools::handle_objectives_sorted_view::bb2" -> "cfg::tools::handle_objectives_sorted_view::bb4" [label="SwitchInt"];
+  "cfg::tools::handle_objectives_sorted_view::bb2" -> "cfg::tools::handle_objectives_sorted_view::bb5" [label="SwitchInt"];
+  "cfg::tools::handle_objectives_sorted_view::bb2" -> "cfg::tools::handle_objectives_sorted_view::bb3" [label="SwitchInt"];
+  "cfg::tools::handle_objectives_sorted_view::bb9" -> "cfg::tools::handle_objectives_sorted_view::bb10" [label="Drop"];
+  "cfg::tools::handle_objectives_sorted_view::bb11" -> "cfg::tools::handle_objectives_sorted_view::bb12" [label="Drop"];
+  "cfg::tools::handle_objectives_sorted_view::bb13" -> "cfg::tools::handle_objectives_sorted_view::bb11" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tools::handle_objectives_sorted_view::bb14" -> "cfg::tools::handle_objectives_sorted_view::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::handle_objectives_sorted_view::bb14" -> "cfg::tools::handle_objectives_sorted_view::bb13" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

@@ -1,0 +1,12 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_812 {
+    label="evaluation::reward_alignment_score";
+    "cfg::evaluation::reward_alignment_score::bb0" [label="bb0\nCall"];
+    "cfg::evaluation::reward_alignment_score::bb1" [label="bb1\nCall"];
+    "cfg::evaluation::reward_alignment_score::bb2" [label="bb2\nReturn"];
+  }
+}

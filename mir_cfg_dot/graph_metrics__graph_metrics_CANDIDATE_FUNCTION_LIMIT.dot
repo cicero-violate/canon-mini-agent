@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_937 {
+    label="graph_metrics::CANDIDATE_FUNCTION_LIMIT";
+    "cfg::graph_metrics::CANDIDATE_FUNCTION_LIMIT::bb0" [label="bb0\nReturn"];
+  }
+}

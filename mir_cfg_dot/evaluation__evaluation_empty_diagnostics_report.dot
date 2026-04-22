@@ -1,0 +1,21 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_834 {
+    label="evaluation::empty_diagnostics_report";
+    "cfg::evaluation::empty_diagnostics_report::bb0" [label="bb0\nCall"];
+    "cfg::evaluation::empty_diagnostics_report::bb1" [label="bb1\nCall"];
+    "cfg::evaluation::empty_diagnostics_report::bb2" [label="bb2\nCall"];
+    "cfg::evaluation::empty_diagnostics_report::bb3" [label="bb3\nCall"];
+    "cfg::evaluation::empty_diagnostics_report::bb4" [label="bb4\nReturn"];
+    "cfg::evaluation::empty_diagnostics_report::bb5" [label="bb5\nDrop cleanup"];
+    "cfg::evaluation::empty_diagnostics_report::bb6" [label="bb6\nDrop cleanup"];
+    "cfg::evaluation::empty_diagnostics_report::bb7" [label="bb7\nDrop cleanup"];
+    "cfg::evaluation::empty_diagnostics_report::bb8" [label="bb8\nUnwindResume cleanup"];
+  }
+  "cfg::evaluation::empty_diagnostics_report::bb5" -> "cfg::evaluation::empty_diagnostics_report::bb6" [label="Drop"];
+  "cfg::evaluation::empty_diagnostics_report::bb6" -> "cfg::evaluation::empty_diagnostics_report::bb7" [label="Drop"];
+  "cfg::evaluation::empty_diagnostics_report::bb7" -> "cfg::evaluation::empty_diagnostics_report::bb8" [label="Drop"];
+}

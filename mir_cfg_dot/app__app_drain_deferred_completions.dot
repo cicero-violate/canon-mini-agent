@@ -1,0 +1,41 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_234 {
+    label="app::drain_deferred_completions";
+    "cfg::app::drain_deferred_completions::bb0" [label="bb0\nCall"];
+    "cfg::app::drain_deferred_completions::bb1" [label="bb1\nGoto"];
+    "cfg::app::drain_deferred_completions::bb2" [label="bb2\nCall loop"];
+    "cfg::app::drain_deferred_completions::bb3" [label="bb3\nSwitchInt loop"];
+    "cfg::app::drain_deferred_completions::bb4" [label="bb4\nUnreachable loop"];
+    "cfg::app::drain_deferred_completions::bb5" [label="bb5\nCall loop"];
+    "cfg::app::drain_deferred_completions::bb6" [label="bb6\nReturn loop"];
+    "cfg::app::drain_deferred_completions::bb7" [label="bb7\nCall loop"];
+    "cfg::app::drain_deferred_completions::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::app::drain_deferred_completions::bb9" [label="bb9\nCall loop"];
+    "cfg::app::drain_deferred_completions::bb10" [label="bb10\nCall loop"];
+    "cfg::app::drain_deferred_completions::bb11" [label="bb11\nSwitchInt loop"];
+    "cfg::app::drain_deferred_completions::bb12" [label="bb12\nCall loop"];
+    "cfg::app::drain_deferred_completions::bb13" [label="bb13\nSwitchInt loop"];
+    "cfg::app::drain_deferred_completions::bb14" [label="bb14\nGoto loop"];
+    "cfg::app::drain_deferred_completions::bb15" [label="bb15\nCall loop"];
+    "cfg::app::drain_deferred_completions::bb16" [label="bb16\nCall loop"];
+    "cfg::app::drain_deferred_completions::bb17" [label="bb17\nSwitchInt loop"];
+  }
+  "cfg::app::drain_deferred_completions::bb1" -> "cfg::app::drain_deferred_completions::bb2" [label="Goto"];
+  "cfg::app::drain_deferred_completions::bb3" -> "cfg::app::drain_deferred_completions::bb6" [label="SwitchInt"];
+  "cfg::app::drain_deferred_completions::bb3" -> "cfg::app::drain_deferred_completions::bb5" [label="SwitchInt"];
+  "cfg::app::drain_deferred_completions::bb3" -> "cfg::app::drain_deferred_completions::bb4" [label="SwitchInt"];
+  "cfg::app::drain_deferred_completions::bb8" -> "cfg::app::drain_deferred_completions::bb9" [label="SwitchInt"];
+  "cfg::app::drain_deferred_completions::bb8" -> "cfg::app::drain_deferred_completions::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::drain_deferred_completions::bb11" -> "cfg::app::drain_deferred_completions::bb12" [label="SwitchInt"];
+  "cfg::app::drain_deferred_completions::bb11" -> "cfg::app::drain_deferred_completions::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::drain_deferred_completions::bb11" -> "cfg::app::drain_deferred_completions::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::drain_deferred_completions::bb13" -> "cfg::app::drain_deferred_completions::bb15" [label="SwitchInt"];
+  "cfg::app::drain_deferred_completions::bb13" -> "cfg::app::drain_deferred_completions::bb14" [label="SwitchInt"];
+  "cfg::app::drain_deferred_completions::bb14" -> "cfg::app::drain_deferred_completions::bb15" [label="Goto"];
+  "cfg::app::drain_deferred_completions::bb17" -> "cfg::app::drain_deferred_completions::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::drain_deferred_completions::bb17" -> "cfg::app::drain_deferred_completions::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

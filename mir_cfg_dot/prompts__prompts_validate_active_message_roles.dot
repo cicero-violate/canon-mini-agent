@@ -1,0 +1,40 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2687 {
+    label="prompts::validate_active_message_roles";
+    "cfg::prompts::validate_active_message_roles::bb0" [label="bb0\nSwitchInt"];
+    "cfg::prompts::validate_active_message_roles::bb1" [label="bb1\nGoto"];
+    "cfg::prompts::validate_active_message_roles::bb2" [label="bb2\nGoto"];
+    "cfg::prompts::validate_active_message_roles::bb3" [label="bb3\nSwitchInt"];
+    "cfg::prompts::validate_active_message_roles::bb4" [label="bb4\nGoto"];
+    "cfg::prompts::validate_active_message_roles::bb5" [label="bb5\nGoto"];
+    "cfg::prompts::validate_active_message_roles::bb6" [label="bb6\nSwitchInt"];
+    "cfg::prompts::validate_active_message_roles::bb7" [label="bb7\nSwitchInt"];
+    "cfg::prompts::validate_active_message_roles::bb8" [label="bb8\nCall"];
+    "cfg::prompts::validate_active_message_roles::bb9" [label="bb9\nCall"];
+    "cfg::prompts::validate_active_message_roles::bb10" [label="bb10\nGoto"];
+    "cfg::prompts::validate_active_message_roles::bb11" [label="bb11\nGoto"];
+    "cfg::prompts::validate_active_message_roles::bb12" [label="bb12\nReturn"];
+  }
+  "cfg::prompts::validate_active_message_roles::bb0" -> "cfg::prompts::validate_active_message_roles::bb2" [label="SwitchInt"];
+  "cfg::prompts::validate_active_message_roles::bb0" -> "cfg::prompts::validate_active_message_roles::bb2" [label="SwitchInt"];
+  "cfg::prompts::validate_active_message_roles::bb0" -> "cfg::prompts::validate_active_message_roles::bb2" [label="SwitchInt"];
+  "cfg::prompts::validate_active_message_roles::bb0" -> "cfg::prompts::validate_active_message_roles::bb1" [label="SwitchInt"];
+  "cfg::prompts::validate_active_message_roles::bb1" -> "cfg::prompts::validate_active_message_roles::bb3" [label="Goto"];
+  "cfg::prompts::validate_active_message_roles::bb2" -> "cfg::prompts::validate_active_message_roles::bb3" [label="Goto"];
+  "cfg::prompts::validate_active_message_roles::bb3" -> "cfg::prompts::validate_active_message_roles::bb5" [label="SwitchInt"];
+  "cfg::prompts::validate_active_message_roles::bb3" -> "cfg::prompts::validate_active_message_roles::bb5" [label="SwitchInt"];
+  "cfg::prompts::validate_active_message_roles::bb3" -> "cfg::prompts::validate_active_message_roles::bb5" [label="SwitchInt"];
+  "cfg::prompts::validate_active_message_roles::bb3" -> "cfg::prompts::validate_active_message_roles::bb4" [label="SwitchInt"];
+  "cfg::prompts::validate_active_message_roles::bb4" -> "cfg::prompts::validate_active_message_roles::bb6" [label="Goto"];
+  "cfg::prompts::validate_active_message_roles::bb5" -> "cfg::prompts::validate_active_message_roles::bb6" [label="Goto"];
+  "cfg::prompts::validate_active_message_roles::bb6" -> "cfg::prompts::validate_active_message_roles::bb8" [label="SwitchInt"];
+  "cfg::prompts::validate_active_message_roles::bb6" -> "cfg::prompts::validate_active_message_roles::bb7" [label="SwitchInt"];
+  "cfg::prompts::validate_active_message_roles::bb7" -> "cfg::prompts::validate_active_message_roles::bb8" [label="SwitchInt"];
+  "cfg::prompts::validate_active_message_roles::bb7" -> "cfg::prompts::validate_active_message_roles::bb11" [label="SwitchInt"];
+  "cfg::prompts::validate_active_message_roles::bb10" -> "cfg::prompts::validate_active_message_roles::bb12" [label="Goto"];
+  "cfg::prompts::validate_active_message_roles::bb11" -> "cfg::prompts::validate_active_message_roles::bb12" [label="Goto"];
+}

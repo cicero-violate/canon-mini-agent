@@ -1,0 +1,39 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3740 {
+    label="tools::build_evidence_receipt";
+    "cfg::tools::build_evidence_receipt::bb0" [label="bb0\nCall"];
+    "cfg::tools::build_evidence_receipt::bb1" [label="bb1\nCall"];
+    "cfg::tools::build_evidence_receipt::bb2" [label="bb2\nCall"];
+    "cfg::tools::build_evidence_receipt::bb3" [label="bb3\nCall"];
+    "cfg::tools::build_evidence_receipt::bb4" [label="bb4\nCall"];
+    "cfg::tools::build_evidence_receipt::bb5" [label="bb5\nCall"];
+    "cfg::tools::build_evidence_receipt::bb6" [label="bb6\nReturn"];
+    "cfg::tools::build_evidence_receipt::bb7" [label="bb7\nDrop cleanup"];
+    "cfg::tools::build_evidence_receipt::bb8" [label="bb8\nDrop cleanup"];
+    "cfg::tools::build_evidence_receipt::bb9" [label="bb9\nDrop cleanup"];
+    "cfg::tools::build_evidence_receipt::bb10" [label="bb10\nDrop cleanup"];
+    "cfg::tools::build_evidence_receipt::bb11" [label="bb11\nDrop cleanup"];
+    "cfg::tools::build_evidence_receipt::bb12" [label="bb12\nDrop cleanup"];
+    "cfg::tools::build_evidence_receipt::bb13" [label="bb13\nSwitchInt cleanup loop"];
+    "cfg::tools::build_evidence_receipt::bb14" [label="bb14\nUnwindResume cleanup loop"];
+    "cfg::tools::build_evidence_receipt::bb15" [label="bb15\nDrop cleanup loop"];
+    "cfg::tools::build_evidence_receipt::bb16" [label="bb16\nSwitchInt cleanup loop"];
+    "cfg::tools::build_evidence_receipt::bb17" [label="bb17\nDrop cleanup loop"];
+  }
+  "cfg::tools::build_evidence_receipt::bb7" -> "cfg::tools::build_evidence_receipt::bb8" [label="Drop"];
+  "cfg::tools::build_evidence_receipt::bb8" -> "cfg::tools::build_evidence_receipt::bb9" [label="Drop"];
+  "cfg::tools::build_evidence_receipt::bb9" -> "cfg::tools::build_evidence_receipt::bb10" [label="Drop"];
+  "cfg::tools::build_evidence_receipt::bb10" -> "cfg::tools::build_evidence_receipt::bb11" [label="Drop"];
+  "cfg::tools::build_evidence_receipt::bb11" -> "cfg::tools::build_evidence_receipt::bb12" [label="Drop"];
+  "cfg::tools::build_evidence_receipt::bb12" -> "cfg::tools::build_evidence_receipt::bb16" [label="Drop"];
+  "cfg::tools::build_evidence_receipt::bb13" -> "cfg::tools::build_evidence_receipt::bb14" [label="SwitchInt"];
+  "cfg::tools::build_evidence_receipt::bb13" -> "cfg::tools::build_evidence_receipt::bb17" [label="SwitchInt"];
+  "cfg::tools::build_evidence_receipt::bb15" -> "cfg::tools::build_evidence_receipt::bb13" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tools::build_evidence_receipt::bb16" -> "cfg::tools::build_evidence_receipt::bb13" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::build_evidence_receipt::bb16" -> "cfg::tools::build_evidence_receipt::bb15" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::build_evidence_receipt::bb17" -> "cfg::tools::build_evidence_receipt::bb14" [color="crimson", penwidth=2, label="Drop back"];
+}

@@ -1,0 +1,25 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_428 {
+    label="app::AgentCompletion::into_summary";
+    "cfg::app::AgentCompletion::into_summary::bb0" [label="bb0\nSwitchInt"];
+    "cfg::app::AgentCompletion::into_summary::bb1" [label="bb1\nUnreachable loop"];
+    "cfg::app::AgentCompletion::into_summary::bb2" [label="bb2\nGoto loop"];
+    "cfg::app::AgentCompletion::into_summary::bb3" [label="bb3\nGoto loop"];
+    "cfg::app::AgentCompletion::into_summary::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::app::AgentCompletion::into_summary::bb5" [label="bb5\nReturn loop"];
+    "cfg::app::AgentCompletion::into_summary::bb6" [label="bb6\nDrop loop"];
+  }
+  "cfg::app::AgentCompletion::into_summary::bb0" -> "cfg::app::AgentCompletion::into_summary::bb3" [label="SwitchInt"];
+  "cfg::app::AgentCompletion::into_summary::bb0" -> "cfg::app::AgentCompletion::into_summary::bb2" [label="SwitchInt"];
+  "cfg::app::AgentCompletion::into_summary::bb0" -> "cfg::app::AgentCompletion::into_summary::bb1" [label="SwitchInt"];
+  "cfg::app::AgentCompletion::into_summary::bb2" -> "cfg::app::AgentCompletion::into_summary::bb4" [label="Goto"];
+  "cfg::app::AgentCompletion::into_summary::bb3" -> "cfg::app::AgentCompletion::into_summary::bb4" [label="Goto"];
+  "cfg::app::AgentCompletion::into_summary::bb4" -> "cfg::app::AgentCompletion::into_summary::bb5" [label="SwitchInt"];
+  "cfg::app::AgentCompletion::into_summary::bb4" -> "cfg::app::AgentCompletion::into_summary::bb6" [label="SwitchInt"];
+  "cfg::app::AgentCompletion::into_summary::bb4" -> "cfg::app::AgentCompletion::into_summary::bb1" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::AgentCompletion::into_summary::bb6" -> "cfg::app::AgentCompletion::into_summary::bb5" [color="crimson", penwidth=2, label="Drop back"];
+}

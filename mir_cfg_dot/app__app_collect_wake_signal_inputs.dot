@@ -1,0 +1,49 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_373 {
+    label="app::collect_wake_signal_inputs";
+    "cfg::app::collect_wake_signal_inputs::bb0" [label="bb0\nCall"];
+    "cfg::app::collect_wake_signal_inputs::bb1" [label="bb1\nCall"];
+    "cfg::app::collect_wake_signal_inputs::bb2" [label="bb2\nCall"];
+    "cfg::app::collect_wake_signal_inputs::bb3" [label="bb3\nGoto"];
+    "cfg::app::collect_wake_signal_inputs::bb4" [label="bb4\nCall loop"];
+    "cfg::app::collect_wake_signal_inputs::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::app::collect_wake_signal_inputs::bb6" [label="bb6\nUnreachable loop"];
+    "cfg::app::collect_wake_signal_inputs::bb7" [label="bb7\nCall loop"];
+    "cfg::app::collect_wake_signal_inputs::bb8" [label="bb8\nReturn loop"];
+    "cfg::app::collect_wake_signal_inputs::bb9" [label="bb9\nCall loop"];
+    "cfg::app::collect_wake_signal_inputs::bb10" [label="bb10\nGoto loop"];
+    "cfg::app::collect_wake_signal_inputs::bb11" [label="bb11\nCall loop"];
+    "cfg::app::collect_wake_signal_inputs::bb12" [label="bb12\nGoto loop"];
+    "cfg::app::collect_wake_signal_inputs::bb13" [label="bb13\nSwitchInt loop"];
+    "cfg::app::collect_wake_signal_inputs::bb14" [label="bb14\nSwitchInt loop"];
+    "cfg::app::collect_wake_signal_inputs::bb15" [label="bb15\nCall loop"];
+    "cfg::app::collect_wake_signal_inputs::bb16" [label="bb16\nSwitchInt loop"];
+    "cfg::app::collect_wake_signal_inputs::bb17" [label="bb17\nCall loop"];
+    "cfg::app::collect_wake_signal_inputs::bb18" [label="bb18\nCall loop"];
+    "cfg::app::collect_wake_signal_inputs::bb19" [label="bb19\nCall loop"];
+    "cfg::app::collect_wake_signal_inputs::bb20" [label="bb20\nDrop loop"];
+    "cfg::app::collect_wake_signal_inputs::bb21" [label="bb21\nDrop cleanup"];
+    "cfg::app::collect_wake_signal_inputs::bb22" [label="bb22\nDrop cleanup"];
+    "cfg::app::collect_wake_signal_inputs::bb23" [label="bb23\nUnwindResume cleanup"];
+  }
+  "cfg::app::collect_wake_signal_inputs::bb3" -> "cfg::app::collect_wake_signal_inputs::bb4" [label="Goto"];
+  "cfg::app::collect_wake_signal_inputs::bb5" -> "cfg::app::collect_wake_signal_inputs::bb8" [label="SwitchInt"];
+  "cfg::app::collect_wake_signal_inputs::bb5" -> "cfg::app::collect_wake_signal_inputs::bb7" [label="SwitchInt"];
+  "cfg::app::collect_wake_signal_inputs::bb5" -> "cfg::app::collect_wake_signal_inputs::bb6" [label="SwitchInt"];
+  "cfg::app::collect_wake_signal_inputs::bb10" -> "cfg::app::collect_wake_signal_inputs::bb15" [label="Goto"];
+  "cfg::app::collect_wake_signal_inputs::bb12" -> "cfg::app::collect_wake_signal_inputs::bb15" [label="Goto"];
+  "cfg::app::collect_wake_signal_inputs::bb13" -> "cfg::app::collect_wake_signal_inputs::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::collect_wake_signal_inputs::bb13" -> "cfg::app::collect_wake_signal_inputs::bb12" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::collect_wake_signal_inputs::bb14" -> "cfg::app::collect_wake_signal_inputs::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::collect_wake_signal_inputs::bb14" -> "cfg::app::collect_wake_signal_inputs::bb10" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::collect_wake_signal_inputs::bb16" -> "cfg::app::collect_wake_signal_inputs::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::collect_wake_signal_inputs::bb16" -> "cfg::app::collect_wake_signal_inputs::bb17" [label="SwitchInt"];
+  "cfg::app::collect_wake_signal_inputs::bb20" -> "cfg::app::collect_wake_signal_inputs::bb4" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::collect_wake_signal_inputs::bb20" -> "cfg::app::collect_wake_signal_inputs::bb21" [label="Drop"];
+  "cfg::app::collect_wake_signal_inputs::bb21" -> "cfg::app::collect_wake_signal_inputs::bb22" [label="Drop"];
+  "cfg::app::collect_wake_signal_inputs::bb22" -> "cfg::app::collect_wake_signal_inputs::bb23" [label="Drop"];
+}

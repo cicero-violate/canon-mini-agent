@@ -1,0 +1,19 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4637 {
+    label="events::Event::is_control";
+    "cfg::events::Event::is_control::bb0" [label="bb0\nSwitchInt"];
+    "cfg::events::Event::is_control::bb1" [label="bb1\nGoto"];
+    "cfg::events::Event::is_control::bb2" [label="bb2\nGoto"];
+    "cfg::events::Event::is_control::bb3" [label="bb3\nReturn"];
+    "cfg::events::Event::is_control::bb4" [label="bb4\nUnreachable"];
+  }
+  "cfg::events::Event::is_control::bb0" -> "cfg::events::Event::is_control::bb2" [label="SwitchInt"];
+  "cfg::events::Event::is_control::bb0" -> "cfg::events::Event::is_control::bb1" [label="SwitchInt"];
+  "cfg::events::Event::is_control::bb0" -> "cfg::events::Event::is_control::bb4" [label="SwitchInt"];
+  "cfg::events::Event::is_control::bb1" -> "cfg::events::Event::is_control::bb3" [label="Goto"];
+  "cfg::events::Event::is_control::bb2" -> "cfg::events::Event::is_control::bb3" [label="Goto"];
+}

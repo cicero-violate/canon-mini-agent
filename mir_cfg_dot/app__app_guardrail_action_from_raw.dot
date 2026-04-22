@@ -1,0 +1,26 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_266 {
+    label="app::guardrail_action_from_raw";
+    "cfg::app::guardrail_action_from_raw::bb0" [label="bb0\nCall"];
+    "cfg::app::guardrail_action_from_raw::bb1" [label="bb1\nSwitchInt"];
+    "cfg::app::guardrail_action_from_raw::bb2" [label="bb2\nCall"];
+    "cfg::app::guardrail_action_from_raw::bb3" [label="bb3\nGoto"];
+    "cfg::app::guardrail_action_from_raw::bb4" [label="bb4\nCall"];
+    "cfg::app::guardrail_action_from_raw::bb5" [label="bb5\nSwitchInt"];
+    "cfg::app::guardrail_action_from_raw::bb6" [label="bb6\nCall"];
+    "cfg::app::guardrail_action_from_raw::bb7" [label="bb7\nGoto"];
+    "cfg::app::guardrail_action_from_raw::bb8" [label="bb8\nGoto"];
+    "cfg::app::guardrail_action_from_raw::bb9" [label="bb9\nReturn"];
+  }
+  "cfg::app::guardrail_action_from_raw::bb1" -> "cfg::app::guardrail_action_from_raw::bb4" [label="SwitchInt"];
+  "cfg::app::guardrail_action_from_raw::bb1" -> "cfg::app::guardrail_action_from_raw::bb2" [label="SwitchInt"];
+  "cfg::app::guardrail_action_from_raw::bb3" -> "cfg::app::guardrail_action_from_raw::bb9" [label="Goto"];
+  "cfg::app::guardrail_action_from_raw::bb5" -> "cfg::app::guardrail_action_from_raw::bb8" [label="SwitchInt"];
+  "cfg::app::guardrail_action_from_raw::bb5" -> "cfg::app::guardrail_action_from_raw::bb6" [label="SwitchInt"];
+  "cfg::app::guardrail_action_from_raw::bb7" -> "cfg::app::guardrail_action_from_raw::bb9" [label="Goto"];
+  "cfg::app::guardrail_action_from_raw::bb8" -> "cfg::app::guardrail_action_from_raw::bb9" [label="Goto"];
+}

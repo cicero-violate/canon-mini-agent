@@ -1,0 +1,19 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3789 {
+    label="tools::parse_issues_file_allow_empty";
+    "cfg::tools::parse_issues_file_allow_empty::bb0" [label="bb0\nCall"];
+    "cfg::tools::parse_issues_file_allow_empty::bb1" [label="bb1\nCall"];
+    "cfg::tools::parse_issues_file_allow_empty::bb2" [label="bb2\nSwitchInt"];
+    "cfg::tools::parse_issues_file_allow_empty::bb3" [label="bb3\nCall"];
+    "cfg::tools::parse_issues_file_allow_empty::bb4" [label="bb4\nGoto"];
+    "cfg::tools::parse_issues_file_allow_empty::bb5" [label="bb5\nCall"];
+    "cfg::tools::parse_issues_file_allow_empty::bb6" [label="bb6\nReturn"];
+  }
+  "cfg::tools::parse_issues_file_allow_empty::bb2" -> "cfg::tools::parse_issues_file_allow_empty::bb5" [label="SwitchInt"];
+  "cfg::tools::parse_issues_file_allow_empty::bb2" -> "cfg::tools::parse_issues_file_allow_empty::bb3" [label="SwitchInt"];
+  "cfg::tools::parse_issues_file_allow_empty::bb4" -> "cfg::tools::parse_issues_file_allow_empty::bb6" [label="Goto"];
+}

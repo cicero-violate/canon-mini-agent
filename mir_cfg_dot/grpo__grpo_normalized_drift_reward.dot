@@ -1,0 +1,13 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_902 {
+    label="grpo::normalized_drift_reward";
+    "cfg::grpo::normalized_drift_reward::bb0" [label="bb0\nCall"];
+    "cfg::grpo::normalized_drift_reward::bb1" [label="bb1\nCall"];
+    "cfg::grpo::normalized_drift_reward::bb2" [label="bb2\nCall"];
+    "cfg::grpo::normalized_drift_reward::bb3" [label="bb3\nReturn"];
+  }
+}

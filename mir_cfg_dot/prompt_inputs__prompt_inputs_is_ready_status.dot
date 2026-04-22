@@ -1,0 +1,18 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2467 {
+    label="prompt_inputs::is_ready_status";
+    "cfg::prompt_inputs::is_ready_status::bb0" [label="bb0\nCall"];
+    "cfg::prompt_inputs::is_ready_status::bb1" [label="bb1\nCall"];
+    "cfg::prompt_inputs::is_ready_status::bb2" [label="bb2\nCall"];
+    "cfg::prompt_inputs::is_ready_status::bb3" [label="bb3\nDrop"];
+    "cfg::prompt_inputs::is_ready_status::bb4" [label="bb4\nReturn"];
+    "cfg::prompt_inputs::is_ready_status::bb5" [label="bb5\nDrop cleanup"];
+    "cfg::prompt_inputs::is_ready_status::bb6" [label="bb6\nUnwindResume cleanup"];
+  }
+  "cfg::prompt_inputs::is_ready_status::bb3" -> "cfg::prompt_inputs::is_ready_status::bb4" [label="Drop"];
+  "cfg::prompt_inputs::is_ready_status::bb5" -> "cfg::prompt_inputs::is_ready_status::bb6" [label="Drop"];
+}

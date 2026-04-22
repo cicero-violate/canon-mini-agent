@@ -1,0 +1,58 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4653 {
+    label="system_state::SystemState::as_kv_map";
+    "cfg::system_state::SystemState::as_kv_map::bb0" [label="bb0\nCall"];
+    "cfg::system_state::SystemState::as_kv_map::bb1" [label="bb1\nCall"];
+    "cfg::system_state::SystemState::as_kv_map::bb2" [label="bb2\nCall"];
+    "cfg::system_state::SystemState::as_kv_map::bb3" [label="bb3\nCall"];
+    "cfg::system_state::SystemState::as_kv_map::bb4" [label="bb4\nDrop"];
+    "cfg::system_state::SystemState::as_kv_map::bb5" [label="bb5\nCall"];
+    "cfg::system_state::SystemState::as_kv_map::bb6" [label="bb6\nCall"];
+    "cfg::system_state::SystemState::as_kv_map::bb7" [label="bb7\nCall"];
+    "cfg::system_state::SystemState::as_kv_map::bb8" [label="bb8\nDrop"];
+    "cfg::system_state::SystemState::as_kv_map::bb9" [label="bb9\nCall"];
+    "cfg::system_state::SystemState::as_kv_map::bb10" [label="bb10\nCall"];
+    "cfg::system_state::SystemState::as_kv_map::bb11" [label="bb11\nCall"];
+    "cfg::system_state::SystemState::as_kv_map::bb12" [label="bb12\nDrop"];
+    "cfg::system_state::SystemState::as_kv_map::bb13" [label="bb13\nCall"];
+    "cfg::system_state::SystemState::as_kv_map::bb14" [label="bb14\nCall"];
+    "cfg::system_state::SystemState::as_kv_map::bb15" [label="bb15\nCall"];
+    "cfg::system_state::SystemState::as_kv_map::bb16" [label="bb16\nDrop"];
+    "cfg::system_state::SystemState::as_kv_map::bb17" [label="bb17\nReturn"];
+    "cfg::system_state::SystemState::as_kv_map::bb18" [label="bb18\nDrop cleanup loop"];
+    "cfg::system_state::SystemState::as_kv_map::bb19" [label="bb19\nUnwindResume cleanup loop"];
+    "cfg::system_state::SystemState::as_kv_map::bb20" [label="bb20\nDrop cleanup loop"];
+    "cfg::system_state::SystemState::as_kv_map::bb21" [label="bb21\nSwitchInt cleanup loop"];
+    "cfg::system_state::SystemState::as_kv_map::bb22" [label="bb22\nDrop cleanup loop"];
+    "cfg::system_state::SystemState::as_kv_map::bb23" [label="bb23\nSwitchInt cleanup loop"];
+    "cfg::system_state::SystemState::as_kv_map::bb24" [label="bb24\nDrop cleanup loop"];
+    "cfg::system_state::SystemState::as_kv_map::bb25" [label="bb25\nSwitchInt cleanup loop"];
+    "cfg::system_state::SystemState::as_kv_map::bb26" [label="bb26\nDrop cleanup loop"];
+    "cfg::system_state::SystemState::as_kv_map::bb27" [label="bb27\nSwitchInt cleanup loop"];
+  }
+  "cfg::system_state::SystemState::as_kv_map::bb4" -> "cfg::system_state::SystemState::as_kv_map::bb5" [label="Drop"];
+  "cfg::system_state::SystemState::as_kv_map::bb4" -> "cfg::system_state::SystemState::as_kv_map::bb18" [label="Drop"];
+  "cfg::system_state::SystemState::as_kv_map::bb8" -> "cfg::system_state::SystemState::as_kv_map::bb9" [label="Drop"];
+  "cfg::system_state::SystemState::as_kv_map::bb8" -> "cfg::system_state::SystemState::as_kv_map::bb18" [label="Drop"];
+  "cfg::system_state::SystemState::as_kv_map::bb12" -> "cfg::system_state::SystemState::as_kv_map::bb13" [label="Drop"];
+  "cfg::system_state::SystemState::as_kv_map::bb12" -> "cfg::system_state::SystemState::as_kv_map::bb18" [label="Drop"];
+  "cfg::system_state::SystemState::as_kv_map::bb16" -> "cfg::system_state::SystemState::as_kv_map::bb17" [label="Drop"];
+  "cfg::system_state::SystemState::as_kv_map::bb16" -> "cfg::system_state::SystemState::as_kv_map::bb18" [label="Drop"];
+  "cfg::system_state::SystemState::as_kv_map::bb18" -> "cfg::system_state::SystemState::as_kv_map::bb19" [label="Drop"];
+  "cfg::system_state::SystemState::as_kv_map::bb20" -> "cfg::system_state::SystemState::as_kv_map::bb18" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::system_state::SystemState::as_kv_map::bb21" -> "cfg::system_state::SystemState::as_kv_map::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::system_state::SystemState::as_kv_map::bb21" -> "cfg::system_state::SystemState::as_kv_map::bb20" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::system_state::SystemState::as_kv_map::bb22" -> "cfg::system_state::SystemState::as_kv_map::bb18" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::system_state::SystemState::as_kv_map::bb23" -> "cfg::system_state::SystemState::as_kv_map::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::system_state::SystemState::as_kv_map::bb23" -> "cfg::system_state::SystemState::as_kv_map::bb22" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::system_state::SystemState::as_kv_map::bb24" -> "cfg::system_state::SystemState::as_kv_map::bb18" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::system_state::SystemState::as_kv_map::bb25" -> "cfg::system_state::SystemState::as_kv_map::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::system_state::SystemState::as_kv_map::bb25" -> "cfg::system_state::SystemState::as_kv_map::bb24" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::system_state::SystemState::as_kv_map::bb26" -> "cfg::system_state::SystemState::as_kv_map::bb18" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::system_state::SystemState::as_kv_map::bb27" -> "cfg::system_state::SystemState::as_kv_map::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::system_state::SystemState::as_kv_map::bb27" -> "cfg::system_state::SystemState::as_kv_map::bb26" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

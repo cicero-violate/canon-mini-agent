@@ -1,0 +1,46 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_236 {
+    label="app::canonical_role_label";
+    "cfg::app::canonical_role_label::bb0" [label="bb0\nCall"];
+    "cfg::app::canonical_role_label::bb1" [label="bb1\nSwitchInt"];
+    "cfg::app::canonical_role_label::bb2" [label="bb2\nGoto"];
+    "cfg::app::canonical_role_label::bb3" [label="bb3\nCall"];
+    "cfg::app::canonical_role_label::bb4" [label="bb4\nSwitchInt"];
+    "cfg::app::canonical_role_label::bb5" [label="bb5\nGoto"];
+    "cfg::app::canonical_role_label::bb6" [label="bb6\nCall"];
+    "cfg::app::canonical_role_label::bb7" [label="bb7\nSwitchInt"];
+    "cfg::app::canonical_role_label::bb8" [label="bb8\nGoto"];
+    "cfg::app::canonical_role_label::bb9" [label="bb9\nCall"];
+    "cfg::app::canonical_role_label::bb10" [label="bb10\nSwitchInt"];
+    "cfg::app::canonical_role_label::bb11" [label="bb11\nGoto"];
+    "cfg::app::canonical_role_label::bb12" [label="bb12\nCall"];
+    "cfg::app::canonical_role_label::bb13" [label="bb13\nSwitchInt"];
+    "cfg::app::canonical_role_label::bb14" [label="bb14\nCall"];
+    "cfg::app::canonical_role_label::bb15" [label="bb15\nSwitchInt"];
+    "cfg::app::canonical_role_label::bb16" [label="bb16\nGoto"];
+    "cfg::app::canonical_role_label::bb17" [label="bb17\nGoto"];
+    "cfg::app::canonical_role_label::bb18" [label="bb18\nReturn"];
+  }
+  "cfg::app::canonical_role_label::bb1" -> "cfg::app::canonical_role_label::bb3" [label="SwitchInt"];
+  "cfg::app::canonical_role_label::bb1" -> "cfg::app::canonical_role_label::bb2" [label="SwitchInt"];
+  "cfg::app::canonical_role_label::bb2" -> "cfg::app::canonical_role_label::bb18" [label="Goto"];
+  "cfg::app::canonical_role_label::bb4" -> "cfg::app::canonical_role_label::bb6" [label="SwitchInt"];
+  "cfg::app::canonical_role_label::bb4" -> "cfg::app::canonical_role_label::bb5" [label="SwitchInt"];
+  "cfg::app::canonical_role_label::bb5" -> "cfg::app::canonical_role_label::bb18" [label="Goto"];
+  "cfg::app::canonical_role_label::bb7" -> "cfg::app::canonical_role_label::bb9" [label="SwitchInt"];
+  "cfg::app::canonical_role_label::bb7" -> "cfg::app::canonical_role_label::bb8" [label="SwitchInt"];
+  "cfg::app::canonical_role_label::bb8" -> "cfg::app::canonical_role_label::bb18" [label="Goto"];
+  "cfg::app::canonical_role_label::bb10" -> "cfg::app::canonical_role_label::bb12" [label="SwitchInt"];
+  "cfg::app::canonical_role_label::bb10" -> "cfg::app::canonical_role_label::bb11" [label="SwitchInt"];
+  "cfg::app::canonical_role_label::bb11" -> "cfg::app::canonical_role_label::bb18" [label="Goto"];
+  "cfg::app::canonical_role_label::bb13" -> "cfg::app::canonical_role_label::bb14" [label="SwitchInt"];
+  "cfg::app::canonical_role_label::bb13" -> "cfg::app::canonical_role_label::bb16" [label="SwitchInt"];
+  "cfg::app::canonical_role_label::bb15" -> "cfg::app::canonical_role_label::bb17" [label="SwitchInt"];
+  "cfg::app::canonical_role_label::bb15" -> "cfg::app::canonical_role_label::bb16" [label="SwitchInt"];
+  "cfg::app::canonical_role_label::bb16" -> "cfg::app::canonical_role_label::bb18" [label="Goto"];
+  "cfg::app::canonical_role_label::bb17" -> "cfg::app::canonical_role_label::bb18" [label="Goto"];
+}

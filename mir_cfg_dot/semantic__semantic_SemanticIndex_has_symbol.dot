@@ -1,0 +1,17 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3087 {
+    label="semantic::SemanticIndex::has_symbol";
+    "cfg::semantic::SemanticIndex::has_symbol::bb0" [label="bb0\nCall"];
+    "cfg::semantic::SemanticIndex::has_symbol::bb1" [label="bb1\nCall"];
+    "cfg::semantic::SemanticIndex::has_symbol::bb2" [label="bb2\nDrop"];
+    "cfg::semantic::SemanticIndex::has_symbol::bb3" [label="bb3\nReturn"];
+    "cfg::semantic::SemanticIndex::has_symbol::bb4" [label="bb4\nDrop cleanup"];
+    "cfg::semantic::SemanticIndex::has_symbol::bb5" [label="bb5\nUnwindResume cleanup"];
+  }
+  "cfg::semantic::SemanticIndex::has_symbol::bb2" -> "cfg::semantic::SemanticIndex::has_symbol::bb3" [label="Drop"];
+  "cfg::semantic::SemanticIndex::has_symbol::bb4" -> "cfg::semantic::SemanticIndex::has_symbol::bb5" [label="Drop"];
+}

@@ -1,0 +1,40 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1368 {
+    label="issues::read_ranked_open_issues";
+    "cfg::issues::read_ranked_open_issues::bb0" [label="bb0\nCall"];
+    "cfg::issues::read_ranked_open_issues::bb1" [label="bb1\nDrop"];
+    "cfg::issues::read_ranked_open_issues::bb2" [label="bb2\nCall"];
+    "cfg::issues::read_ranked_open_issues::bb3" [label="bb3\nCall"];
+    "cfg::issues::read_ranked_open_issues::bb4" [label="bb4\nSwitchInt"];
+    "cfg::issues::read_ranked_open_issues::bb5" [label="bb5\nCall"];
+    "cfg::issues::read_ranked_open_issues::bb6" [label="bb6\nCall"];
+    "cfg::issues::read_ranked_open_issues::bb7" [label="bb7\nCall"];
+    "cfg::issues::read_ranked_open_issues::bb8" [label="bb8\nCall"];
+    "cfg::issues::read_ranked_open_issues::bb9" [label="bb9\nSwitchInt"];
+    "cfg::issues::read_ranked_open_issues::bb10" [label="bb10\nCall"];
+    "cfg::issues::read_ranked_open_issues::bb11" [label="bb11\nCall"];
+    "cfg::issues::read_ranked_open_issues::bb12" [label="bb12\nCall"];
+    "cfg::issues::read_ranked_open_issues::bb13" [label="bb13\nCall"];
+    "cfg::issues::read_ranked_open_issues::bb14" [label="bb14\nGoto"];
+    "cfg::issues::read_ranked_open_issues::bb15" [label="bb15\nDrop loop"];
+    "cfg::issues::read_ranked_open_issues::bb16" [label="bb16\nReturn loop"];
+    "cfg::issues::read_ranked_open_issues::bb17" [label="bb17\nDrop cleanup loop"];
+    "cfg::issues::read_ranked_open_issues::bb18" [label="bb18\nUnwindResume cleanup loop"];
+    "cfg::issues::read_ranked_open_issues::bb19" [label="bb19\nGoto loop"];
+    "cfg::issues::read_ranked_open_issues::bb20" [label="bb20\nGoto loop"];
+  }
+  "cfg::issues::read_ranked_open_issues::bb1" -> "cfg::issues::read_ranked_open_issues::bb2" [label="Drop"];
+  "cfg::issues::read_ranked_open_issues::bb4" -> "cfg::issues::read_ranked_open_issues::bb6" [label="SwitchInt"];
+  "cfg::issues::read_ranked_open_issues::bb4" -> "cfg::issues::read_ranked_open_issues::bb5" [label="SwitchInt"];
+  "cfg::issues::read_ranked_open_issues::bb9" -> "cfg::issues::read_ranked_open_issues::bb11" [label="SwitchInt"];
+  "cfg::issues::read_ranked_open_issues::bb9" -> "cfg::issues::read_ranked_open_issues::bb10" [label="SwitchInt"];
+  "cfg::issues::read_ranked_open_issues::bb14" -> "cfg::issues::read_ranked_open_issues::bb16" [label="Goto"];
+  "cfg::issues::read_ranked_open_issues::bb15" -> "cfg::issues::read_ranked_open_issues::bb16" [label="Drop"];
+  "cfg::issues::read_ranked_open_issues::bb17" -> "cfg::issues::read_ranked_open_issues::bb18" [label="Drop"];
+  "cfg::issues::read_ranked_open_issues::bb19" -> "cfg::issues::read_ranked_open_issues::bb15" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::issues::read_ranked_open_issues::bb20" -> "cfg::issues::read_ranked_open_issues::bb15" [color="crimson", penwidth=2, label="Goto back"];
+}

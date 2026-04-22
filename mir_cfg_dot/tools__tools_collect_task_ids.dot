@@ -1,0 +1,33 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4423 {
+    label="tools::collect_task_ids";
+    "cfg::tools::collect_task_ids::bb0" [label="bb0\nCall"];
+    "cfg::tools::collect_task_ids::bb1" [label="bb1\nCall"];
+    "cfg::tools::collect_task_ids::bb2" [label="bb2\nGoto"];
+    "cfg::tools::collect_task_ids::bb3" [label="bb3\nCall loop"];
+    "cfg::tools::collect_task_ids::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::tools::collect_task_ids::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::tools::collect_task_ids::bb6" [label="bb6\nCall loop"];
+    "cfg::tools::collect_task_ids::bb7" [label="bb7\nReturn loop"];
+    "cfg::tools::collect_task_ids::bb8" [label="bb8\nCall loop"];
+    "cfg::tools::collect_task_ids::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::tools::collect_task_ids::bb10" [label="bb10\nCall loop"];
+    "cfg::tools::collect_task_ids::bb11" [label="bb11\nCall loop"];
+    "cfg::tools::collect_task_ids::bb12" [label="bb12\nDrop cleanup loop"];
+    "cfg::tools::collect_task_ids::bb13" [label="bb13\nUnwindResume cleanup loop"];
+    "cfg::tools::collect_task_ids::bb14" [label="bb14\nGoto loop"];
+  }
+  "cfg::tools::collect_task_ids::bb2" -> "cfg::tools::collect_task_ids::bb3" [label="Goto"];
+  "cfg::tools::collect_task_ids::bb4" -> "cfg::tools::collect_task_ids::bb7" [label="SwitchInt"];
+  "cfg::tools::collect_task_ids::bb4" -> "cfg::tools::collect_task_ids::bb6" [label="SwitchInt"];
+  "cfg::tools::collect_task_ids::bb4" -> "cfg::tools::collect_task_ids::bb5" [label="SwitchInt"];
+  "cfg::tools::collect_task_ids::bb9" -> "cfg::tools::collect_task_ids::bb10" [label="SwitchInt"];
+  "cfg::tools::collect_task_ids::bb9" -> "cfg::tools::collect_task_ids::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::collect_task_ids::bb9" -> "cfg::tools::collect_task_ids::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::collect_task_ids::bb12" -> "cfg::tools::collect_task_ids::bb13" [label="Drop"];
+  "cfg::tools::collect_task_ids::bb14" -> "cfg::tools::collect_task_ids::bb3" [color="crimson", penwidth=2, label="Goto back"];
+}

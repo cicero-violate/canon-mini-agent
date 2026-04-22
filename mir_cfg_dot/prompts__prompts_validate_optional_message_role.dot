@@ -1,0 +1,45 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2684 {
+    label="prompts::validate_optional_message_role";
+    "cfg::prompts::validate_optional_message_role::bb0" [label="bb0\nCall"];
+    "cfg::prompts::validate_optional_message_role::bb1" [label="bb1\nCall"];
+    "cfg::prompts::validate_optional_message_role::bb2" [label="bb2\nSwitchInt"];
+    "cfg::prompts::validate_optional_message_role::bb3" [label="bb3\nCall"];
+    "cfg::prompts::validate_optional_message_role::bb4" [label="bb4\nGoto"];
+    "cfg::prompts::validate_optional_message_role::bb5" [label="bb5\nGoto loop"];
+    "cfg::prompts::validate_optional_message_role::bb6" [label="bb6\nCall loop"];
+    "cfg::prompts::validate_optional_message_role::bb7" [label="bb7\nCall loop"];
+    "cfg::prompts::validate_optional_message_role::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::prompts::validate_optional_message_role::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::prompts::validate_optional_message_role::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::prompts::validate_optional_message_role::bb11" [label="bb11\nGoto"];
+    "cfg::prompts::validate_optional_message_role::bb12" [label="bb12\nSwitchInt"];
+    "cfg::prompts::validate_optional_message_role::bb13" [label="bb13\nCall"];
+    "cfg::prompts::validate_optional_message_role::bb14" [label="bb14\nCall"];
+    "cfg::prompts::validate_optional_message_role::bb15" [label="bb15\nCall"];
+    "cfg::prompts::validate_optional_message_role::bb16" [label="bb16\nGoto"];
+    "cfg::prompts::validate_optional_message_role::bb17" [label="bb17\nGoto"];
+    "cfg::prompts::validate_optional_message_role::bb18" [label="bb18\nReturn"];
+    "cfg::prompts::validate_optional_message_role::bb19" [label="bb19\nUnreachable"];
+  }
+  "cfg::prompts::validate_optional_message_role::bb2" -> "cfg::prompts::validate_optional_message_role::bb3" [label="SwitchInt"];
+  "cfg::prompts::validate_optional_message_role::bb2" -> "cfg::prompts::validate_optional_message_role::bb4" [label="SwitchInt"];
+  "cfg::prompts::validate_optional_message_role::bb2" -> "cfg::prompts::validate_optional_message_role::bb19" [label="SwitchInt"];
+  "cfg::prompts::validate_optional_message_role::bb4" -> "cfg::prompts::validate_optional_message_role::bb18" [label="Goto"];
+  "cfg::prompts::validate_optional_message_role::bb5" -> "cfg::prompts::validate_optional_message_role::bb12" [label="Goto"];
+  "cfg::prompts::validate_optional_message_role::bb8" -> "cfg::prompts::validate_optional_message_role::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompts::validate_optional_message_role::bb8" -> "cfg::prompts::validate_optional_message_role::bb11" [label="SwitchInt"];
+  "cfg::prompts::validate_optional_message_role::bb9" -> "cfg::prompts::validate_optional_message_role::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompts::validate_optional_message_role::bb9" -> "cfg::prompts::validate_optional_message_role::bb11" [label="SwitchInt"];
+  "cfg::prompts::validate_optional_message_role::bb10" -> "cfg::prompts::validate_optional_message_role::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompts::validate_optional_message_role::bb10" -> "cfg::prompts::validate_optional_message_role::bb11" [label="SwitchInt"];
+  "cfg::prompts::validate_optional_message_role::bb11" -> "cfg::prompts::validate_optional_message_role::bb12" [label="Goto"];
+  "cfg::prompts::validate_optional_message_role::bb12" -> "cfg::prompts::validate_optional_message_role::bb13" [label="SwitchInt"];
+  "cfg::prompts::validate_optional_message_role::bb12" -> "cfg::prompts::validate_optional_message_role::bb17" [label="SwitchInt"];
+  "cfg::prompts::validate_optional_message_role::bb16" -> "cfg::prompts::validate_optional_message_role::bb18" [label="Goto"];
+  "cfg::prompts::validate_optional_message_role::bb17" -> "cfg::prompts::validate_optional_message_role::bb18" [label="Goto"];
+}

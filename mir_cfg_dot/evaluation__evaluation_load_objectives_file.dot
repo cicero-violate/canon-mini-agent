@@ -1,0 +1,21 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_825 {
+    label="evaluation::load_objectives_file";
+    "cfg::evaluation::load_objectives_file::bb0" [label="bb0\nCall"];
+    "cfg::evaluation::load_objectives_file::bb1" [label="bb1\nCall"];
+    "cfg::evaluation::load_objectives_file::bb2" [label="bb2\nCall"];
+    "cfg::evaluation::load_objectives_file::bb3" [label="bb3\nCall"];
+    "cfg::evaluation::load_objectives_file::bb4" [label="bb4\nCall"];
+    "cfg::evaluation::load_objectives_file::bb5" [label="bb5\nCall"];
+    "cfg::evaluation::load_objectives_file::bb6" [label="bb6\nDrop"];
+    "cfg::evaluation::load_objectives_file::bb7" [label="bb7\nReturn"];
+    "cfg::evaluation::load_objectives_file::bb8" [label="bb8\nDrop cleanup"];
+    "cfg::evaluation::load_objectives_file::bb9" [label="bb9\nUnwindResume cleanup"];
+  }
+  "cfg::evaluation::load_objectives_file::bb6" -> "cfg::evaluation::load_objectives_file::bb7" [label="Drop"];
+  "cfg::evaluation::load_objectives_file::bb8" -> "cfg::evaluation::load_objectives_file::bb9" [label="Drop"];
+}

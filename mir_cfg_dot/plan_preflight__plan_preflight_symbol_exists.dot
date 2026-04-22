@@ -1,0 +1,12 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2313 {
+    label="plan_preflight::symbol_exists";
+    "cfg::plan_preflight::symbol_exists::bb0" [label="bb0\nCall"];
+    "cfg::plan_preflight::symbol_exists::bb1" [label="bb1\nCall"];
+    "cfg::plan_preflight::symbol_exists::bb2" [label="bb2\nReturn"];
+  }
+}

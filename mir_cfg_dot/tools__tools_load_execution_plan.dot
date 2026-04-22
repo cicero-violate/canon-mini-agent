@@ -1,0 +1,28 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4485 {
+    label="tools::load_execution_plan";
+    "cfg::tools::load_execution_plan::bb0" [label="bb0\nCall"];
+    "cfg::tools::load_execution_plan::bb1" [label="bb1\nCall"];
+    "cfg::tools::load_execution_plan::bb2" [label="bb2\nCall"];
+    "cfg::tools::load_execution_plan::bb3" [label="bb3\nCall"];
+    "cfg::tools::load_execution_plan::bb4" [label="bb4\nSwitchInt"];
+    "cfg::tools::load_execution_plan::bb5" [label="bb5\nUnreachable"];
+    "cfg::tools::load_execution_plan::bb6" [label="bb6\nCall"];
+    "cfg::tools::load_execution_plan::bb7" [label="bb7\nCall"];
+    "cfg::tools::load_execution_plan::bb8" [label="bb8\nCall"];
+    "cfg::tools::load_execution_plan::bb9" [label="bb9\nCall"];
+    "cfg::tools::load_execution_plan::bb10" [label="bb10\nDrop"];
+    "cfg::tools::load_execution_plan::bb11" [label="bb11\nReturn"];
+    "cfg::tools::load_execution_plan::bb12" [label="bb12\nDrop cleanup"];
+    "cfg::tools::load_execution_plan::bb13" [label="bb13\nUnwindResume cleanup"];
+  }
+  "cfg::tools::load_execution_plan::bb4" -> "cfg::tools::load_execution_plan::bb6" [label="SwitchInt"];
+  "cfg::tools::load_execution_plan::bb4" -> "cfg::tools::load_execution_plan::bb7" [label="SwitchInt"];
+  "cfg::tools::load_execution_plan::bb4" -> "cfg::tools::load_execution_plan::bb5" [label="SwitchInt"];
+  "cfg::tools::load_execution_plan::bb10" -> "cfg::tools::load_execution_plan::bb11" [label="Drop"];
+  "cfg::tools::load_execution_plan::bb12" -> "cfg::tools::load_execution_plan::bb13" [label="Drop"];
+}

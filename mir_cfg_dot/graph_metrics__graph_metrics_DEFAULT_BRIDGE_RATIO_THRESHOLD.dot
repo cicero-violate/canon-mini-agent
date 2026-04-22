@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_936 {
+    label="graph_metrics::DEFAULT_BRIDGE_RATIO_THRESHOLD";
+    "cfg::graph_metrics::DEFAULT_BRIDGE_RATIO_THRESHOLD::bb0" [label="bb0\nReturn"];
+  }
+}

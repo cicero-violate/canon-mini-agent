@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1023 {
+    label="inter_complexity::MAX_DUPLICATE_SYMBOLS_IN_ISSUE";
+    "cfg::inter_complexity::MAX_DUPLICATE_SYMBOLS_IN_ISSUE::bb0" [label="bb0\nReturn"];
+  }
+}

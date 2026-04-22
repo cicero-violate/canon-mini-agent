@@ -1,0 +1,41 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4176 {
+    label="tools::append_cargo_test_failure_section";
+    "cfg::tools::append_cargo_test_failure_section::bb0" [label="bb0\nCall"];
+    "cfg::tools::append_cargo_test_failure_section::bb1" [label="bb1\nCall"];
+    "cfg::tools::append_cargo_test_failure_section::bb2" [label="bb2\nSwitchInt"];
+    "cfg::tools::append_cargo_test_failure_section::bb3" [label="bb3\nCall"];
+    "cfg::tools::append_cargo_test_failure_section::bb4" [label="bb4\nSwitchInt"];
+    "cfg::tools::append_cargo_test_failure_section::bb5" [label="bb5\nCall"];
+    "cfg::tools::append_cargo_test_failure_section::bb6" [label="bb6\nCall"];
+    "cfg::tools::append_cargo_test_failure_section::bb7" [label="bb7\nGoto"];
+    "cfg::tools::append_cargo_test_failure_section::bb8" [label="bb8\nCall loop"];
+    "cfg::tools::append_cargo_test_failure_section::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::tools::append_cargo_test_failure_section::bb10" [label="bb10\nUnreachable loop"];
+    "cfg::tools::append_cargo_test_failure_section::bb11" [label="bb11\nCall loop"];
+    "cfg::tools::append_cargo_test_failure_section::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::tools::append_cargo_test_failure_section::bb13" [label="bb13\nCall loop"];
+    "cfg::tools::append_cargo_test_failure_section::bb14" [label="bb14\nSwitchInt loop"];
+    "cfg::tools::append_cargo_test_failure_section::bb15" [label="bb15\nCall loop"];
+    "cfg::tools::append_cargo_test_failure_section::bb16" [label="bb16\nCall loop"];
+    "cfg::tools::append_cargo_test_failure_section::bb17" [label="bb17\nReturn"];
+  }
+  "cfg::tools::append_cargo_test_failure_section::bb2" -> "cfg::tools::append_cargo_test_failure_section::bb3" [label="SwitchInt"];
+  "cfg::tools::append_cargo_test_failure_section::bb2" -> "cfg::tools::append_cargo_test_failure_section::bb17" [label="SwitchInt"];
+  "cfg::tools::append_cargo_test_failure_section::bb2" -> "cfg::tools::append_cargo_test_failure_section::bb10" [label="SwitchInt"];
+  "cfg::tools::append_cargo_test_failure_section::bb4" -> "cfg::tools::append_cargo_test_failure_section::bb5" [label="SwitchInt"];
+  "cfg::tools::append_cargo_test_failure_section::bb4" -> "cfg::tools::append_cargo_test_failure_section::bb17" [label="SwitchInt"];
+  "cfg::tools::append_cargo_test_failure_section::bb7" -> "cfg::tools::append_cargo_test_failure_section::bb8" [label="Goto"];
+  "cfg::tools::append_cargo_test_failure_section::bb9" -> "cfg::tools::append_cargo_test_failure_section::bb17" [label="SwitchInt"];
+  "cfg::tools::append_cargo_test_failure_section::bb9" -> "cfg::tools::append_cargo_test_failure_section::bb11" [label="SwitchInt"];
+  "cfg::tools::append_cargo_test_failure_section::bb9" -> "cfg::tools::append_cargo_test_failure_section::bb10" [label="SwitchInt"];
+  "cfg::tools::append_cargo_test_failure_section::bb12" -> "cfg::tools::append_cargo_test_failure_section::bb13" [label="SwitchInt"];
+  "cfg::tools::append_cargo_test_failure_section::bb12" -> "cfg::tools::append_cargo_test_failure_section::bb8" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::append_cargo_test_failure_section::bb12" -> "cfg::tools::append_cargo_test_failure_section::bb10" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::append_cargo_test_failure_section::bb14" -> "cfg::tools::append_cargo_test_failure_section::bb16" [label="SwitchInt"];
+  "cfg::tools::append_cargo_test_failure_section::bb14" -> "cfg::tools::append_cargo_test_failure_section::bb15" [label="SwitchInt"];
+}

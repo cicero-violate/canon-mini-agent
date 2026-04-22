@@ -1,0 +1,41 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_254 {
+    label="app::build_checkpoint_lane_snapshots";
+    "cfg::app::build_checkpoint_lane_snapshots::bb0" [label="bb0\nCall"];
+    "cfg::app::build_checkpoint_lane_snapshots::bb1" [label="bb1\nCall"];
+    "cfg::app::build_checkpoint_lane_snapshots::bb2" [label="bb2\nGoto"];
+    "cfg::app::build_checkpoint_lane_snapshots::bb3" [label="bb3\nCall loop"];
+    "cfg::app::build_checkpoint_lane_snapshots::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::app::build_checkpoint_lane_snapshots::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::app::build_checkpoint_lane_snapshots::bb6" [label="bb6\nCall loop"];
+    "cfg::app::build_checkpoint_lane_snapshots::bb7" [label="bb7\nReturn loop"];
+    "cfg::app::build_checkpoint_lane_snapshots::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::app::build_checkpoint_lane_snapshots::bb9" [label="bb9\nCall loop"];
+    "cfg::app::build_checkpoint_lane_snapshots::bb10" [label="bb10\nCall loop"];
+    "cfg::app::build_checkpoint_lane_snapshots::bb11" [label="bb11\nCall loop"];
+    "cfg::app::build_checkpoint_lane_snapshots::bb12" [label="bb12\nCall loop"];
+    "cfg::app::build_checkpoint_lane_snapshots::bb13" [label="bb13\nCall loop"];
+    "cfg::app::build_checkpoint_lane_snapshots::bb14" [label="bb14\nDrop cleanup loop"];
+    "cfg::app::build_checkpoint_lane_snapshots::bb15" [label="bb15\nDrop cleanup loop"];
+    "cfg::app::build_checkpoint_lane_snapshots::bb16" [label="bb16\nDrop cleanup loop"];
+    "cfg::app::build_checkpoint_lane_snapshots::bb17" [label="bb17\nDrop cleanup loop"];
+    "cfg::app::build_checkpoint_lane_snapshots::bb18" [label="bb18\nUnwindResume cleanup loop"];
+    "cfg::app::build_checkpoint_lane_snapshots::bb19" [label="bb19\nGoto loop"];
+  }
+  "cfg::app::build_checkpoint_lane_snapshots::bb2" -> "cfg::app::build_checkpoint_lane_snapshots::bb3" [label="Goto"];
+  "cfg::app::build_checkpoint_lane_snapshots::bb4" -> "cfg::app::build_checkpoint_lane_snapshots::bb7" [label="SwitchInt"];
+  "cfg::app::build_checkpoint_lane_snapshots::bb4" -> "cfg::app::build_checkpoint_lane_snapshots::bb6" [label="SwitchInt"];
+  "cfg::app::build_checkpoint_lane_snapshots::bb4" -> "cfg::app::build_checkpoint_lane_snapshots::bb5" [label="SwitchInt"];
+  "cfg::app::build_checkpoint_lane_snapshots::bb8" -> "cfg::app::build_checkpoint_lane_snapshots::bb9" [label="SwitchInt"];
+  "cfg::app::build_checkpoint_lane_snapshots::bb8" -> "cfg::app::build_checkpoint_lane_snapshots::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::build_checkpoint_lane_snapshots::bb8" -> "cfg::app::build_checkpoint_lane_snapshots::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::build_checkpoint_lane_snapshots::bb14" -> "cfg::app::build_checkpoint_lane_snapshots::bb15" [label="Drop"];
+  "cfg::app::build_checkpoint_lane_snapshots::bb15" -> "cfg::app::build_checkpoint_lane_snapshots::bb16" [label="Drop"];
+  "cfg::app::build_checkpoint_lane_snapshots::bb16" -> "cfg::app::build_checkpoint_lane_snapshots::bb17" [label="Drop"];
+  "cfg::app::build_checkpoint_lane_snapshots::bb17" -> "cfg::app::build_checkpoint_lane_snapshots::bb18" [label="Drop"];
+  "cfg::app::build_checkpoint_lane_snapshots::bb19" -> "cfg::app::build_checkpoint_lane_snapshots::bb3" [color="crimson", penwidth=2, label="Goto back"];
+}

@@ -1,0 +1,24 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3184 {
+    label="state_space::check_completion_tab";
+    "cfg::state_space::check_completion_tab::bb0" [label="bb0\nSwitchInt"];
+    "cfg::state_space::check_completion_tab::bb1" [label="bb1\nUnreachable"];
+    "cfg::state_space::check_completion_tab::bb2" [label="bb2\nGoto"];
+    "cfg::state_space::check_completion_tab::bb3" [label="bb3\nSwitchInt"];
+    "cfg::state_space::check_completion_tab::bb4" [label="bb4\nGoto"];
+    "cfg::state_space::check_completion_tab::bb5" [label="bb5\nGoto"];
+    "cfg::state_space::check_completion_tab::bb6" [label="bb6\nReturn"];
+  }
+  "cfg::state_space::check_completion_tab::bb0" -> "cfg::state_space::check_completion_tab::bb2" [label="SwitchInt"];
+  "cfg::state_space::check_completion_tab::bb0" -> "cfg::state_space::check_completion_tab::bb3" [label="SwitchInt"];
+  "cfg::state_space::check_completion_tab::bb0" -> "cfg::state_space::check_completion_tab::bb1" [label="SwitchInt"];
+  "cfg::state_space::check_completion_tab::bb2" -> "cfg::state_space::check_completion_tab::bb6" [label="Goto"];
+  "cfg::state_space::check_completion_tab::bb3" -> "cfg::state_space::check_completion_tab::bb5" [label="SwitchInt"];
+  "cfg::state_space::check_completion_tab::bb3" -> "cfg::state_space::check_completion_tab::bb4" [label="SwitchInt"];
+  "cfg::state_space::check_completion_tab::bb4" -> "cfg::state_space::check_completion_tab::bb6" [label="Goto"];
+  "cfg::state_space::check_completion_tab::bb5" -> "cfg::state_space::check_completion_tab::bb6" [label="Goto"];
+}

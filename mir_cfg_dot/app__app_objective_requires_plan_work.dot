@@ -1,0 +1,40 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_505 {
+    label="app::objective_requires_plan_work";
+    "cfg::app::objective_requires_plan_work::bb0" [label="bb0\nCall"];
+    "cfg::app::objective_requires_plan_work::bb1" [label="bb1\nCall"];
+    "cfg::app::objective_requires_plan_work::bb2" [label="bb2\nSwitchInt"];
+    "cfg::app::objective_requires_plan_work::bb3" [label="bb3\nCall"];
+    "cfg::app::objective_requires_plan_work::bb4" [label="bb4\nGoto loop"];
+    "cfg::app::objective_requires_plan_work::bb5" [label="bb5\nCall loop"];
+    "cfg::app::objective_requires_plan_work::bb6" [label="bb6\nSwitchInt loop"];
+    "cfg::app::objective_requires_plan_work::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::app::objective_requires_plan_work::bb8" [label="bb8\nGoto"];
+    "cfg::app::objective_requires_plan_work::bb9" [label="bb9\nSwitchInt"];
+    "cfg::app::objective_requires_plan_work::bb10" [label="bb10\nDrop"];
+    "cfg::app::objective_requires_plan_work::bb11" [label="bb11\nCall"];
+    "cfg::app::objective_requires_plan_work::bb12" [label="bb12\nDrop"];
+    "cfg::app::objective_requires_plan_work::bb13" [label="bb13\nReturn"];
+    "cfg::app::objective_requires_plan_work::bb14" [label="bb14\nDrop cleanup"];
+    "cfg::app::objective_requires_plan_work::bb15" [label="bb15\nUnwindResume cleanup"];
+    "cfg::app::objective_requires_plan_work::bb16" [label="bb16\nUnreachable"];
+  }
+  "cfg::app::objective_requires_plan_work::bb2" -> "cfg::app::objective_requires_plan_work::bb3" [label="SwitchInt"];
+  "cfg::app::objective_requires_plan_work::bb2" -> "cfg::app::objective_requires_plan_work::bb11" [label="SwitchInt"];
+  "cfg::app::objective_requires_plan_work::bb2" -> "cfg::app::objective_requires_plan_work::bb16" [label="SwitchInt"];
+  "cfg::app::objective_requires_plan_work::bb4" -> "cfg::app::objective_requires_plan_work::bb9" [label="Goto"];
+  "cfg::app::objective_requires_plan_work::bb6" -> "cfg::app::objective_requires_plan_work::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::objective_requires_plan_work::bb6" -> "cfg::app::objective_requires_plan_work::bb8" [label="SwitchInt"];
+  "cfg::app::objective_requires_plan_work::bb7" -> "cfg::app::objective_requires_plan_work::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::objective_requires_plan_work::bb7" -> "cfg::app::objective_requires_plan_work::bb8" [label="SwitchInt"];
+  "cfg::app::objective_requires_plan_work::bb8" -> "cfg::app::objective_requires_plan_work::bb9" [label="Goto"];
+  "cfg::app::objective_requires_plan_work::bb9" -> "cfg::app::objective_requires_plan_work::bb11" [label="SwitchInt"];
+  "cfg::app::objective_requires_plan_work::bb9" -> "cfg::app::objective_requires_plan_work::bb10" [label="SwitchInt"];
+  "cfg::app::objective_requires_plan_work::bb10" -> "cfg::app::objective_requires_plan_work::bb13" [label="Drop"];
+  "cfg::app::objective_requires_plan_work::bb12" -> "cfg::app::objective_requires_plan_work::bb13" [label="Drop"];
+  "cfg::app::objective_requires_plan_work::bb14" -> "cfg::app::objective_requires_plan_work::bb15" [label="Drop"];
+}

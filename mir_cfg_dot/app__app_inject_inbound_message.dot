@@ -1,0 +1,34 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_348 {
+    label="app::inject_inbound_message";
+    "cfg::app::inject_inbound_message::bb0" [label="bb0\nCall"];
+    "cfg::app::inject_inbound_message::bb1" [label="bb1\nSwitchInt"];
+    "cfg::app::inject_inbound_message::bb2" [label="bb2\nCall"];
+    "cfg::app::inject_inbound_message::bb3" [label="bb3\nCall"];
+    "cfg::app::inject_inbound_message::bb4" [label="bb4\nDrop"];
+    "cfg::app::inject_inbound_message::bb5" [label="bb5\nCall"];
+    "cfg::app::inject_inbound_message::bb6" [label="bb6\nSwitchInt"];
+    "cfg::app::inject_inbound_message::bb7" [label="bb7\nCall"];
+    "cfg::app::inject_inbound_message::bb8" [label="bb8\nCall"];
+    "cfg::app::inject_inbound_message::bb9" [label="bb9\nDrop"];
+    "cfg::app::inject_inbound_message::bb10" [label="bb10\nReturn"];
+    "cfg::app::inject_inbound_message::bb11" [label="bb11\nDrop cleanup"];
+    "cfg::app::inject_inbound_message::bb12" [label="bb12\nDrop cleanup"];
+    "cfg::app::inject_inbound_message::bb13" [label="bb13\nUnwindResume cleanup"];
+    "cfg::app::inject_inbound_message::bb14" [label="bb14\nUnreachable"];
+  }
+  "cfg::app::inject_inbound_message::bb1" -> "cfg::app::inject_inbound_message::bb2" [label="SwitchInt"];
+  "cfg::app::inject_inbound_message::bb1" -> "cfg::app::inject_inbound_message::bb5" [label="SwitchInt"];
+  "cfg::app::inject_inbound_message::bb1" -> "cfg::app::inject_inbound_message::bb14" [label="SwitchInt"];
+  "cfg::app::inject_inbound_message::bb4" -> "cfg::app::inject_inbound_message::bb10" [label="Drop"];
+  "cfg::app::inject_inbound_message::bb6" -> "cfg::app::inject_inbound_message::bb7" [label="SwitchInt"];
+  "cfg::app::inject_inbound_message::bb6" -> "cfg::app::inject_inbound_message::bb10" [label="SwitchInt"];
+  "cfg::app::inject_inbound_message::bb6" -> "cfg::app::inject_inbound_message::bb14" [label="SwitchInt"];
+  "cfg::app::inject_inbound_message::bb9" -> "cfg::app::inject_inbound_message::bb10" [label="Drop"];
+  "cfg::app::inject_inbound_message::bb11" -> "cfg::app::inject_inbound_message::bb13" [label="Drop"];
+  "cfg::app::inject_inbound_message::bb12" -> "cfg::app::inject_inbound_message::bb13" [label="Drop"];
+}

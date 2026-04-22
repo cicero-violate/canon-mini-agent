@@ -1,0 +1,38 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4551 {
+    label="tools::build_stage_graph_edges";
+    "cfg::tools::build_stage_graph_edges::bb0" [label="bb0\nCall"];
+    "cfg::tools::build_stage_graph_edges::bb1" [label="bb1\nCall"];
+    "cfg::tools::build_stage_graph_edges::bb2" [label="bb2\nCall"];
+    "cfg::tools::build_stage_graph_edges::bb3" [label="bb3\nCall"];
+    "cfg::tools::build_stage_graph_edges::bb4" [label="bb4\nCall"];
+    "cfg::tools::build_stage_graph_edges::bb5" [label="bb5\nCall"];
+    "cfg::tools::build_stage_graph_edges::bb6" [label="bb6\nCall"];
+    "cfg::tools::build_stage_graph_edges::bb7" [label="bb7\nCall"];
+    "cfg::tools::build_stage_graph_edges::bb8" [label="bb8\nAssert"];
+    "cfg::tools::build_stage_graph_edges::bb9" [label="bb9\nReturn loop"];
+    "cfg::tools::build_stage_graph_edges::bb10" [label="bb10\nDrop cleanup loop"];
+    "cfg::tools::build_stage_graph_edges::bb11" [label="bb11\nDrop cleanup loop"];
+    "cfg::tools::build_stage_graph_edges::bb12" [label="bb12\nDrop cleanup loop"];
+    "cfg::tools::build_stage_graph_edges::bb13" [label="bb13\nDrop cleanup loop"];
+    "cfg::tools::build_stage_graph_edges::bb14" [label="bb14\nDrop cleanup loop"];
+    "cfg::tools::build_stage_graph_edges::bb15" [label="bb15\nDrop cleanup loop"];
+    "cfg::tools::build_stage_graph_edges::bb16" [label="bb16\nDrop cleanup loop"];
+    "cfg::tools::build_stage_graph_edges::bb17" [label="bb17\nUnwindResume cleanup loop"];
+    "cfg::tools::build_stage_graph_edges::bb18" [label="bb18\nAssert loop"];
+    "cfg::tools::build_stage_graph_edges::bb19" [label="bb19\nCall loop"];
+  }
+  "cfg::tools::build_stage_graph_edges::bb8" -> "cfg::tools::build_stage_graph_edges::bb18" [label="Assert"];
+  "cfg::tools::build_stage_graph_edges::bb10" -> "cfg::tools::build_stage_graph_edges::bb11" [label="Drop"];
+  "cfg::tools::build_stage_graph_edges::bb11" -> "cfg::tools::build_stage_graph_edges::bb12" [label="Drop"];
+  "cfg::tools::build_stage_graph_edges::bb12" -> "cfg::tools::build_stage_graph_edges::bb13" [label="Drop"];
+  "cfg::tools::build_stage_graph_edges::bb13" -> "cfg::tools::build_stage_graph_edges::bb14" [label="Drop"];
+  "cfg::tools::build_stage_graph_edges::bb14" -> "cfg::tools::build_stage_graph_edges::bb15" [label="Drop"];
+  "cfg::tools::build_stage_graph_edges::bb15" -> "cfg::tools::build_stage_graph_edges::bb16" [label="Drop"];
+  "cfg::tools::build_stage_graph_edges::bb16" -> "cfg::tools::build_stage_graph_edges::bb17" [label="Drop"];
+  "cfg::tools::build_stage_graph_edges::bb18" -> "cfg::tools::build_stage_graph_edges::bb19" [label="Assert"];
+}

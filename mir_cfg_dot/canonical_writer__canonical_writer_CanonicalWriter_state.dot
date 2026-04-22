@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4624 {
+    label="canonical_writer::CanonicalWriter::state";
+    "cfg::canonical_writer::CanonicalWriter::state::bb0" [label="bb0\nReturn"];
+  }
+}

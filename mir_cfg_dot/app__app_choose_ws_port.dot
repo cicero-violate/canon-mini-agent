@@ -1,0 +1,47 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_162 {
+    label="app::choose_ws_port";
+    "cfg::app::choose_ws_port::bb0" [label="bb0\nCall"];
+    "cfg::app::choose_ws_port::bb1" [label="bb1\nSwitchInt"];
+    "cfg::app::choose_ws_port::bb2" [label="bb2\nCall"];
+    "cfg::app::choose_ws_port::bb3" [label="bb3\nCall"];
+    "cfg::app::choose_ws_port::bb4" [label="bb4\nCall"];
+    "cfg::app::choose_ws_port::bb5" [label="bb5\nSwitchInt"];
+    "cfg::app::choose_ws_port::bb6" [label="bb6\nUnreachable loop"];
+    "cfg::app::choose_ws_port::bb7" [label="bb7\nGoto loop"];
+    "cfg::app::choose_ws_port::bb8" [label="bb8\nCall loop"];
+    "cfg::app::choose_ws_port::bb9" [label="bb9\nCall loop"];
+    "cfg::app::choose_ws_port::bb10" [label="bb10\nGoto loop"];
+    "cfg::app::choose_ws_port::bb11" [label="bb11\nCall loop"];
+    "cfg::app::choose_ws_port::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::app::choose_ws_port::bb13" [label="bb13\nCall loop"];
+    "cfg::app::choose_ws_port::bb14" [label="bb14\nCall loop"];
+    "cfg::app::choose_ws_port::bb15" [label="bb15\nSwitchInt loop"];
+    "cfg::app::choose_ws_port::bb16" [label="bb16\nGoto"];
+    "cfg::app::choose_ws_port::bb17" [label="bb17\nCall"];
+    "cfg::app::choose_ws_port::bb18" [label="bb18\nCall"];
+    "cfg::app::choose_ws_port::bb19" [label="bb19\nCall"];
+    "cfg::app::choose_ws_port::bb20" [label="bb20\nCall"];
+    "cfg::app::choose_ws_port::bb21" [label="bb21\nGoto"];
+    "cfg::app::choose_ws_port::bb22" [label="bb22\nReturn"];
+  }
+  "cfg::app::choose_ws_port::bb1" -> "cfg::app::choose_ws_port::bb2" [label="SwitchInt"];
+  "cfg::app::choose_ws_port::bb1" -> "cfg::app::choose_ws_port::bb9" [label="SwitchInt"];
+  "cfg::app::choose_ws_port::bb1" -> "cfg::app::choose_ws_port::bb6" [label="SwitchInt"];
+  "cfg::app::choose_ws_port::bb5" -> "cfg::app::choose_ws_port::bb7" [label="SwitchInt"];
+  "cfg::app::choose_ws_port::bb5" -> "cfg::app::choose_ws_port::bb8" [label="SwitchInt"];
+  "cfg::app::choose_ws_port::bb5" -> "cfg::app::choose_ws_port::bb6" [label="SwitchInt"];
+  "cfg::app::choose_ws_port::bb7" -> "cfg::app::choose_ws_port::bb22" [label="Goto"];
+  "cfg::app::choose_ws_port::bb10" -> "cfg::app::choose_ws_port::bb11" [label="Goto"];
+  "cfg::app::choose_ws_port::bb12" -> "cfg::app::choose_ws_port::bb14" [label="SwitchInt"];
+  "cfg::app::choose_ws_port::bb12" -> "cfg::app::choose_ws_port::bb13" [label="SwitchInt"];
+  "cfg::app::choose_ws_port::bb12" -> "cfg::app::choose_ws_port::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::choose_ws_port::bb15" -> "cfg::app::choose_ws_port::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::choose_ws_port::bb15" -> "cfg::app::choose_ws_port::bb16" [label="SwitchInt"];
+  "cfg::app::choose_ws_port::bb16" -> "cfg::app::choose_ws_port::bb22" [label="Goto"];
+  "cfg::app::choose_ws_port::bb21" -> "cfg::app::choose_ws_port::bb22" [label="Goto"];
+}

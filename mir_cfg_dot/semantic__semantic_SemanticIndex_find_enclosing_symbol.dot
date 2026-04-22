@@ -1,0 +1,43 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3079 {
+    label="semantic::SemanticIndex::find_enclosing_symbol";
+    "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb0" [label="bb0\nCall"];
+    "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb1" [label="bb1\nGoto"];
+    "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb2" [label="bb2\nCall loop"];
+    "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb3" [label="bb3\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb4" [label="bb4\nUnreachable loop"];
+    "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb6" [label="bb6\nCall loop"];
+    "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb7" [label="bb7\nCall loop"];
+    "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb11" [label="bb11\nAssert loop"];
+    "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb12" [label="bb12\nCall loop"];
+    "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb13" [label="bb13\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb14" [label="bb14\nCall loop"];
+    "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb15" [label="bb15\nGoto loop"];
+    "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb16" [label="bb16\nReturn"];
+  }
+  "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb1" -> "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb2" [label="Goto"];
+  "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb3" -> "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb6" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb3" -> "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb5" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb3" -> "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb4" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb5" -> "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb7" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb5" -> "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb5" -> "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb8" -> "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb8" -> "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb9" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb9" -> "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb9" -> "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb10" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb10" -> "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb10" -> "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb11" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb11" -> "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb12" [label="Assert"];
+  "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb13" -> "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb13" -> "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb14" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb15" -> "cfg::semantic::SemanticIndex::find_enclosing_symbol::bb2" [color="crimson", penwidth=2, label="Goto back"];
+}

@@ -1,0 +1,38 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1210 {
+    label="invariants::handle_invariants_action_with_writer";
+    "cfg::invariants::handle_invariants_action_with_writer::bb0" [label="bb0\nCall"];
+    "cfg::invariants::handle_invariants_action_with_writer::bb1" [label="bb1\nCall"];
+    "cfg::invariants::handle_invariants_action_with_writer::bb2" [label="bb2\nCall"];
+    "cfg::invariants::handle_invariants_action_with_writer::bb3" [label="bb3\nCall"];
+    "cfg::invariants::handle_invariants_action_with_writer::bb4" [label="bb4\nCall loop"];
+    "cfg::invariants::handle_invariants_action_with_writer::bb5" [label="bb5\nCall loop"];
+    "cfg::invariants::handle_invariants_action_with_writer::bb6" [label="bb6\nCall loop"];
+    "cfg::invariants::handle_invariants_action_with_writer::bb7" [label="bb7\nCall loop"];
+    "cfg::invariants::handle_invariants_action_with_writer::bb8" [label="bb8\nCall loop"];
+    "cfg::invariants::handle_invariants_action_with_writer::bb9" [label="bb9\nCall loop"];
+    "cfg::invariants::handle_invariants_action_with_writer::bb10" [label="bb10\nCall loop"];
+    "cfg::invariants::handle_invariants_action_with_writer::bb11" [label="bb11\nCall loop"];
+    "cfg::invariants::handle_invariants_action_with_writer::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::invariants::handle_invariants_action_with_writer::bb13" [label="bb13\nSwitchInt loop"];
+    "cfg::invariants::handle_invariants_action_with_writer::bb14" [label="bb14\nSwitchInt loop"];
+    "cfg::invariants::handle_invariants_action_with_writer::bb15" [label="bb15\nSwitchInt loop"];
+    "cfg::invariants::handle_invariants_action_with_writer::bb16" [label="bb16\nCall"];
+    "cfg::invariants::handle_invariants_action_with_writer::bb17" [label="bb17\nCall"];
+    "cfg::invariants::handle_invariants_action_with_writer::bb18" [label="bb18\nGoto"];
+    "cfg::invariants::handle_invariants_action_with_writer::bb19" [label="bb19\nReturn"];
+  }
+  "cfg::invariants::handle_invariants_action_with_writer::bb12" -> "cfg::invariants::handle_invariants_action_with_writer::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::handle_invariants_action_with_writer::bb12" -> "cfg::invariants::handle_invariants_action_with_writer::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::handle_invariants_action_with_writer::bb13" -> "cfg::invariants::handle_invariants_action_with_writer::bb10" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::handle_invariants_action_with_writer::bb13" -> "cfg::invariants::handle_invariants_action_with_writer::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::handle_invariants_action_with_writer::bb14" -> "cfg::invariants::handle_invariants_action_with_writer::bb8" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::handle_invariants_action_with_writer::bb14" -> "cfg::invariants::handle_invariants_action_with_writer::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::handle_invariants_action_with_writer::bb15" -> "cfg::invariants::handle_invariants_action_with_writer::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::handle_invariants_action_with_writer::bb15" -> "cfg::invariants::handle_invariants_action_with_writer::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::handle_invariants_action_with_writer::bb18" -> "cfg::invariants::handle_invariants_action_with_writer::bb19" [label="Goto"];
+}

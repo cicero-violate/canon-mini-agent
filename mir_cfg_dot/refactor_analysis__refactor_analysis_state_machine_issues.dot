@@ -1,0 +1,20 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2794 {
+    label="refactor_analysis::state_machine_issues";
+    "cfg::refactor_analysis::state_machine_issues::bb0" [label="bb0\nCall"];
+    "cfg::refactor_analysis::state_machine_issues::bb1" [label="bb1\nCall"];
+    "cfg::refactor_analysis::state_machine_issues::bb2" [label="bb2\nCall"];
+    "cfg::refactor_analysis::state_machine_issues::bb3" [label="bb3\nCall"];
+    "cfg::refactor_analysis::state_machine_issues::bb4" [label="bb4\nCall"];
+    "cfg::refactor_analysis::state_machine_issues::bb5" [label="bb5\nCall"];
+    "cfg::refactor_analysis::state_machine_issues::bb6" [label="bb6\nCall"];
+    "cfg::refactor_analysis::state_machine_issues::bb7" [label="bb7\nReturn"];
+    "cfg::refactor_analysis::state_machine_issues::bb8" [label="bb8\nDrop cleanup"];
+    "cfg::refactor_analysis::state_machine_issues::bb9" [label="bb9\nUnwindResume cleanup"];
+  }
+  "cfg::refactor_analysis::state_machine_issues::bb8" -> "cfg::refactor_analysis::state_machine_issues::bb9" [label="Drop"];
+}

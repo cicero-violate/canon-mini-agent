@@ -1,0 +1,55 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2091 {
+    label="logging::inject_action_fields";
+    "cfg::logging::inject_action_fields::bb0" [label="bb0\nCall"];
+    "cfg::logging::inject_action_fields::bb1" [label="bb1\nSwitchInt"];
+    "cfg::logging::inject_action_fields::bb2" [label="bb2\nCall"];
+    "cfg::logging::inject_action_fields::bb3" [label="bb3\nCall"];
+    "cfg::logging::inject_action_fields::bb4" [label="bb4\nCall"];
+    "cfg::logging::inject_action_fields::bb5" [label="bb5\nCall"];
+    "cfg::logging::inject_action_fields::bb6" [label="bb6\nCall"];
+    "cfg::logging::inject_action_fields::bb7" [label="bb7\nCall"];
+    "cfg::logging::inject_action_fields::bb8" [label="bb8\nCall"];
+    "cfg::logging::inject_action_fields::bb9" [label="bb9\nCall"];
+    "cfg::logging::inject_action_fields::bb10" [label="bb10\nCall"];
+    "cfg::logging::inject_action_fields::bb11" [label="bb11\nCall"];
+    "cfg::logging::inject_action_fields::bb12" [label="bb12\nCall"];
+    "cfg::logging::inject_action_fields::bb13" [label="bb13\nCall"];
+    "cfg::logging::inject_action_fields::bb14" [label="bb14\nCall"];
+    "cfg::logging::inject_action_fields::bb15" [label="bb15\nCall"];
+    "cfg::logging::inject_action_fields::bb16" [label="bb16\nCall"];
+    "cfg::logging::inject_action_fields::bb17" [label="bb17\nCall"];
+    "cfg::logging::inject_action_fields::bb18" [label="bb18\nCall"];
+    "cfg::logging::inject_action_fields::bb19" [label="bb19\nCall"];
+    "cfg::logging::inject_action_fields::bb20" [label="bb20\nCall"];
+    "cfg::logging::inject_action_fields::bb21" [label="bb21\nCall"];
+    "cfg::logging::inject_action_fields::bb22" [label="bb22\nCall"];
+    "cfg::logging::inject_action_fields::bb23" [label="bb23\nSwitchInt"];
+    "cfg::logging::inject_action_fields::bb24" [label="bb24\nCall"];
+    "cfg::logging::inject_action_fields::bb25" [label="bb25\nCall"];
+    "cfg::logging::inject_action_fields::bb26" [label="bb26\nCall"];
+    "cfg::logging::inject_action_fields::bb27" [label="bb27\nCall"];
+    "cfg::logging::inject_action_fields::bb28" [label="bb28\nCall"];
+    "cfg::logging::inject_action_fields::bb29" [label="bb29\nCall"];
+    "cfg::logging::inject_action_fields::bb30" [label="bb30\nCall"];
+    "cfg::logging::inject_action_fields::bb31" [label="bb31\nCall"];
+    "cfg::logging::inject_action_fields::bb32" [label="bb32\nCall"];
+    "cfg::logging::inject_action_fields::bb33" [label="bb33\nCall"];
+    "cfg::logging::inject_action_fields::bb34" [label="bb34\nCall"];
+    "cfg::logging::inject_action_fields::bb35" [label="bb35\nCall"];
+    "cfg::logging::inject_action_fields::bb36" [label="bb36\nCall"];
+    "cfg::logging::inject_action_fields::bb37" [label="bb37\nCall"];
+    "cfg::logging::inject_action_fields::bb38" [label="bb38\nCall"];
+    "cfg::logging::inject_action_fields::bb39" [label="bb39\nReturn"];
+    "cfg::logging::inject_action_fields::bb40" [label="bb40\nUnreachable"];
+  }
+  "cfg::logging::inject_action_fields::bb1" -> "cfg::logging::inject_action_fields::bb2" [label="SwitchInt"];
+  "cfg::logging::inject_action_fields::bb1" -> "cfg::logging::inject_action_fields::bb39" [label="SwitchInt"];
+  "cfg::logging::inject_action_fields::bb1" -> "cfg::logging::inject_action_fields::bb40" [label="SwitchInt"];
+  "cfg::logging::inject_action_fields::bb23" -> "cfg::logging::inject_action_fields::bb39" [label="SwitchInt"];
+  "cfg::logging::inject_action_fields::bb23" -> "cfg::logging::inject_action_fields::bb24" [label="SwitchInt"];
+}

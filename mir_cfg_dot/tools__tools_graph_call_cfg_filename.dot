@@ -1,0 +1,18 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4135 {
+    label="tools::graph_call_cfg_filename";
+    "cfg::tools::graph_call_cfg_filename::bb0" [label="bb0\nCall"];
+    "cfg::tools::graph_call_cfg_filename::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::graph_call_cfg_filename::bb2" [label="bb2\nGoto"];
+    "cfg::tools::graph_call_cfg_filename::bb3" [label="bb3\nGoto"];
+    "cfg::tools::graph_call_cfg_filename::bb4" [label="bb4\nReturn"];
+  }
+  "cfg::tools::graph_call_cfg_filename::bb1" -> "cfg::tools::graph_call_cfg_filename::bb3" [label="SwitchInt"];
+  "cfg::tools::graph_call_cfg_filename::bb1" -> "cfg::tools::graph_call_cfg_filename::bb2" [label="SwitchInt"];
+  "cfg::tools::graph_call_cfg_filename::bb2" -> "cfg::tools::graph_call_cfg_filename::bb4" [label="Goto"];
+  "cfg::tools::graph_call_cfg_filename::bb3" -> "cfg::tools::graph_call_cfg_filename::bb4" [label="Goto"];
+}

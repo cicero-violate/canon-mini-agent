@@ -1,0 +1,15 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3612 {
+    label="tools::patch_targets";
+    "cfg::tools::patch_targets::bb0" [label="bb0\nCall"];
+    "cfg::tools::patch_targets::bb1" [label="bb1\nCall"];
+    "cfg::tools::patch_targets::bb2" [label="bb2\nCall"];
+    "cfg::tools::patch_targets::bb3" [label="bb3\nCall"];
+    "cfg::tools::patch_targets::bb4" [label="bb4\nCall"];
+    "cfg::tools::patch_targets::bb5" [label="bb5\nReturn"];
+  }
+}

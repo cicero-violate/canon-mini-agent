@@ -1,0 +1,40 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1014 {
+    label="inter_complexity::append_duplicate_issues";
+    "cfg::inter_complexity::append_duplicate_issues::bb0" [label="bb0\nCall"];
+    "cfg::inter_complexity::append_duplicate_issues::bb1" [label="bb1\nGoto"];
+    "cfg::inter_complexity::append_duplicate_issues::bb2" [label="bb2\nCall loop"];
+    "cfg::inter_complexity::append_duplicate_issues::bb3" [label="bb3\nSwitchInt loop"];
+    "cfg::inter_complexity::append_duplicate_issues::bb4" [label="bb4\nUnreachable loop"];
+    "cfg::inter_complexity::append_duplicate_issues::bb5" [label="bb5\nCall loop"];
+    "cfg::inter_complexity::append_duplicate_issues::bb6" [label="bb6\nReturn loop"];
+    "cfg::inter_complexity::append_duplicate_issues::bb7" [label="bb7\nCall loop"];
+    "cfg::inter_complexity::append_duplicate_issues::bb8" [label="bb8\nCall loop"];
+    "cfg::inter_complexity::append_duplicate_issues::bb9" [label="bb9\nCall loop"];
+    "cfg::inter_complexity::append_duplicate_issues::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::inter_complexity::append_duplicate_issues::bb11" [label="bb11\nCall loop"];
+    "cfg::inter_complexity::append_duplicate_issues::bb12" [label="bb12\nAssert loop"];
+    "cfg::inter_complexity::append_duplicate_issues::bb13" [label="bb13\nGoto loop"];
+    "cfg::inter_complexity::append_duplicate_issues::bb14" [label="bb14\nDrop loop"];
+    "cfg::inter_complexity::append_duplicate_issues::bb15" [label="bb15\nDrop cleanup"];
+    "cfg::inter_complexity::append_duplicate_issues::bb16" [label="bb16\nDrop cleanup"];
+    "cfg::inter_complexity::append_duplicate_issues::bb17" [label="bb17\nUnwindResume cleanup"];
+  }
+  "cfg::inter_complexity::append_duplicate_issues::bb1" -> "cfg::inter_complexity::append_duplicate_issues::bb2" [label="Goto"];
+  "cfg::inter_complexity::append_duplicate_issues::bb3" -> "cfg::inter_complexity::append_duplicate_issues::bb6" [label="SwitchInt"];
+  "cfg::inter_complexity::append_duplicate_issues::bb3" -> "cfg::inter_complexity::append_duplicate_issues::bb5" [label="SwitchInt"];
+  "cfg::inter_complexity::append_duplicate_issues::bb3" -> "cfg::inter_complexity::append_duplicate_issues::bb4" [label="SwitchInt"];
+  "cfg::inter_complexity::append_duplicate_issues::bb10" -> "cfg::inter_complexity::append_duplicate_issues::bb11" [label="SwitchInt"];
+  "cfg::inter_complexity::append_duplicate_issues::bb10" -> "cfg::inter_complexity::append_duplicate_issues::bb14" [label="SwitchInt"];
+  "cfg::inter_complexity::append_duplicate_issues::bb10" -> "cfg::inter_complexity::append_duplicate_issues::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::inter_complexity::append_duplicate_issues::bb12" -> "cfg::inter_complexity::append_duplicate_issues::bb13" [label="Assert"];
+  "cfg::inter_complexity::append_duplicate_issues::bb12" -> "cfg::inter_complexity::append_duplicate_issues::bb15" [label="Assert"];
+  "cfg::inter_complexity::append_duplicate_issues::bb13" -> "cfg::inter_complexity::append_duplicate_issues::bb14" [label="Goto"];
+  "cfg::inter_complexity::append_duplicate_issues::bb14" -> "cfg::inter_complexity::append_duplicate_issues::bb2" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::inter_complexity::append_duplicate_issues::bb15" -> "cfg::inter_complexity::append_duplicate_issues::bb17" [label="Drop"];
+  "cfg::inter_complexity::append_duplicate_issues::bb16" -> "cfg::inter_complexity::append_duplicate_issues::bb17" [label="Drop"];
+}

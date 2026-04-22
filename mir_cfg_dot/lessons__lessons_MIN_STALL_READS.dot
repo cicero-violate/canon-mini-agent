@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1399 {
+    label="lessons::MIN_STALL_READS";
+    "cfg::lessons::MIN_STALL_READS::bb0" [label="bb0\nReturn"];
+  }
+}

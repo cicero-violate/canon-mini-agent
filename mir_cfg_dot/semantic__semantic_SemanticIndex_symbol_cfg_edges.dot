@@ -1,0 +1,38 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3050 {
+    label="semantic::SemanticIndex::symbol_cfg_edges";
+    "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb0" [label="bb0\nCall"];
+    "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb1" [label="bb1\nSwitchInt"];
+    "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb2" [label="bb2\nDrop"];
+    "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb3" [label="bb3\nDrop"];
+    "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb4" [label="bb4\nCall"];
+    "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb5" [label="bb5\nCall"];
+    "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb6" [label="bb6\nCall"];
+    "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb7" [label="bb7\nCall"];
+    "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb8" [label="bb8\nCall"];
+    "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb9" [label="bb9\nCall"];
+    "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb10" [label="bb10\nCall"];
+    "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb11" [label="bb11\nCall"];
+    "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb12" [label="bb12\nCall"];
+    "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb13" [label="bb13\nCall"];
+    "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb14" [label="bb14\nCall"];
+    "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb15" [label="bb15\nDrop"];
+    "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb16" [label="bb16\nReturn"];
+    "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb17" [label="bb17\nDrop cleanup"];
+    "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb18" [label="bb18\nDrop cleanup"];
+    "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb19" [label="bb19\nUnwindResume cleanup"];
+    "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb20" [label="bb20\nUnreachable"];
+  }
+  "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb1" -> "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb2" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb1" -> "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb3" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb1" -> "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb20" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb2" -> "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb5" [label="Drop"];
+  "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb3" -> "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb4" [label="Drop"];
+  "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb15" -> "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb16" [label="Drop"];
+  "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb17" -> "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb18" [label="Drop"];
+  "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb18" -> "cfg::semantic::SemanticIndex::symbol_cfg_edges::bb19" [label="Drop"];
+}

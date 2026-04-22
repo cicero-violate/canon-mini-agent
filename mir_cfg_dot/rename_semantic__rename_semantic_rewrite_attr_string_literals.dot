@@ -1,0 +1,58 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2956 {
+    label="rename_semantic::rewrite_attr_string_literals";
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb0" [label="bb0\nCall"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb1" [label="bb1\nCall"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb2" [label="bb2\nCall"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb3" [label="bb3\nCall"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb4" [label="bb4\nCall"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb5" [label="bb5\nCall"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb6" [label="bb6\nSwitchInt"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb7" [label="bb7\nCall"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb8" [label="bb8\nDrop"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb9" [label="bb9\nCall"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb10" [label="bb10\nCall"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb11" [label="bb11\nCall"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb12" [label="bb12\nCall"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb13" [label="bb13\nGoto"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb14" [label="bb14\nCall loop"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb15" [label="bb15\nSwitchInt loop"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb16" [label="bb16\nUnreachable loop"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb17" [label="bb17\nCall loop"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb18" [label="bb18\nDrop loop"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb19" [label="bb19\nCall loop"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb20" [label="bb20\nDrop loop"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb21" [label="bb21\nDrop loop"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb22" [label="bb22\nReturn loop"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb23" [label="bb23\nDrop cleanup loop"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb24" [label="bb24\nDrop cleanup loop"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb25" [label="bb25\nDrop cleanup loop"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb26" [label="bb26\nUnwindResume cleanup loop"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb27" [label="bb27\nDrop cleanup loop"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb28" [label="bb28\nSwitchInt cleanup loop"];
+    "cfg::rename_semantic::rewrite_attr_string_literals::bb29" [label="bb29\nGoto loop"];
+  }
+  "cfg::rename_semantic::rewrite_attr_string_literals::bb6" -> "cfg::rename_semantic::rewrite_attr_string_literals::bb9" [label="SwitchInt"];
+  "cfg::rename_semantic::rewrite_attr_string_literals::bb6" -> "cfg::rename_semantic::rewrite_attr_string_literals::bb7" [label="SwitchInt"];
+  "cfg::rename_semantic::rewrite_attr_string_literals::bb8" -> "cfg::rename_semantic::rewrite_attr_string_literals::bb21" [label="Drop"];
+  "cfg::rename_semantic::rewrite_attr_string_literals::bb8" -> "cfg::rename_semantic::rewrite_attr_string_literals::bb25" [label="Drop"];
+  "cfg::rename_semantic::rewrite_attr_string_literals::bb13" -> "cfg::rename_semantic::rewrite_attr_string_literals::bb14" [label="Goto"];
+  "cfg::rename_semantic::rewrite_attr_string_literals::bb15" -> "cfg::rename_semantic::rewrite_attr_string_literals::bb18" [label="SwitchInt"];
+  "cfg::rename_semantic::rewrite_attr_string_literals::bb15" -> "cfg::rename_semantic::rewrite_attr_string_literals::bb17" [label="SwitchInt"];
+  "cfg::rename_semantic::rewrite_attr_string_literals::bb15" -> "cfg::rename_semantic::rewrite_attr_string_literals::bb16" [label="SwitchInt"];
+  "cfg::rename_semantic::rewrite_attr_string_literals::bb18" -> "cfg::rename_semantic::rewrite_attr_string_literals::bb20" [label="Drop"];
+  "cfg::rename_semantic::rewrite_attr_string_literals::bb18" -> "cfg::rename_semantic::rewrite_attr_string_literals::bb24" [label="Drop"];
+  "cfg::rename_semantic::rewrite_attr_string_literals::bb20" -> "cfg::rename_semantic::rewrite_attr_string_literals::bb22" [label="Drop"];
+  "cfg::rename_semantic::rewrite_attr_string_literals::bb21" -> "cfg::rename_semantic::rewrite_attr_string_literals::bb22" [label="Drop"];
+  "cfg::rename_semantic::rewrite_attr_string_literals::bb23" -> "cfg::rename_semantic::rewrite_attr_string_literals::bb24" [label="Drop"];
+  "cfg::rename_semantic::rewrite_attr_string_literals::bb24" -> "cfg::rename_semantic::rewrite_attr_string_literals::bb28" [label="Drop"];
+  "cfg::rename_semantic::rewrite_attr_string_literals::bb25" -> "cfg::rename_semantic::rewrite_attr_string_literals::bb26" [label="Drop"];
+  "cfg::rename_semantic::rewrite_attr_string_literals::bb27" -> "cfg::rename_semantic::rewrite_attr_string_literals::bb25" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::rename_semantic::rewrite_attr_string_literals::bb28" -> "cfg::rename_semantic::rewrite_attr_string_literals::bb25" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::rename_semantic::rewrite_attr_string_literals::bb28" -> "cfg::rename_semantic::rewrite_attr_string_literals::bb27" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::rename_semantic::rewrite_attr_string_literals::bb29" -> "cfg::rename_semantic::rewrite_attr_string_literals::bb14" [color="crimson", penwidth=2, label="Goto back"];
+}

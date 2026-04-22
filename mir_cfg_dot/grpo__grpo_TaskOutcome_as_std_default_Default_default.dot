@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_886 {
+    label="<grpo::TaskOutcome as std::default::Default>::default";
+    "cfg::<grpo::TaskOutcome as std::default::Default>::default::bb0" [label="bb0\nCall"];
+    "cfg::<grpo::TaskOutcome as std::default::Default>::default::bb1" [label="bb1\nReturn"];
+  }
+}

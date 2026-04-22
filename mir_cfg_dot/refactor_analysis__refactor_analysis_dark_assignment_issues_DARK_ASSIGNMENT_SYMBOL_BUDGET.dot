@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2826 {
+    label="refactor_analysis::dark_assignment_issues::DARK_ASSIGNMENT_SYMBOL_BUDGET";
+    "cfg::refactor_analysis::dark_assignment_issues::DARK_ASSIGNMENT_SYMBOL_BUDGET::bb0" [label="bb0\nReturn"];
+  }
+}

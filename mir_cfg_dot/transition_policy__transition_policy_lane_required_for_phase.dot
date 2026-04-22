@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4708 {
+    label="transition_policy::lane_required_for_phase";
+    "cfg::transition_policy::lane_required_for_phase::bb0" [label="bb0\nCall"];
+    "cfg::transition_policy::lane_required_for_phase::bb1" [label="bb1\nReturn"];
+  }
+}

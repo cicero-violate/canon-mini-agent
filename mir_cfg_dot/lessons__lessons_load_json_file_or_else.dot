@@ -1,0 +1,20 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1490 {
+    label="lessons::load_json_file_or_else";
+    "cfg::lessons::load_json_file_or_else::bb0" [label="bb0\nCall"];
+    "cfg::lessons::load_json_file_or_else::bb1" [label="bb1\nCall"];
+    "cfg::lessons::load_json_file_or_else::bb2" [label="bb2\nCall"];
+    "cfg::lessons::load_json_file_or_else::bb3" [label="bb3\nCall"];
+    "cfg::lessons::load_json_file_or_else::bb4" [label="bb4\nReturn"];
+    "cfg::lessons::load_json_file_or_else::bb5" [label="bb5\nUnwindResume cleanup loop"];
+    "cfg::lessons::load_json_file_or_else::bb6" [label="bb6\nDrop cleanup loop"];
+    "cfg::lessons::load_json_file_or_else::bb7" [label="bb7\nSwitchInt cleanup loop"];
+  }
+  "cfg::lessons::load_json_file_or_else::bb6" -> "cfg::lessons::load_json_file_or_else::bb5" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::lessons::load_json_file_or_else::bb7" -> "cfg::lessons::load_json_file_or_else::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::lessons::load_json_file_or_else::bb7" -> "cfg::lessons::load_json_file_or_else::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

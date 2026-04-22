@@ -1,0 +1,33 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1441 {
+    label="lessons::detect_success_sequences";
+    "cfg::lessons::detect_success_sequences::bb0" [label="bb0\nCall"];
+    "cfg::lessons::detect_success_sequences::bb1" [label="bb1\nCall"];
+    "cfg::lessons::detect_success_sequences::bb2" [label="bb2\nCall"];
+    "cfg::lessons::detect_success_sequences::bb3" [label="bb3\nCall"];
+    "cfg::lessons::detect_success_sequences::bb4" [label="bb4\nCall"];
+    "cfg::lessons::detect_success_sequences::bb5" [label="bb5\nCall"];
+    "cfg::lessons::detect_success_sequences::bb6" [label="bb6\nDrop"];
+    "cfg::lessons::detect_success_sequences::bb7" [label="bb7\nReturn"];
+    "cfg::lessons::detect_success_sequences::bb8" [label="bb8\nDrop cleanup"];
+    "cfg::lessons::detect_success_sequences::bb9" [label="bb9\nSwitchInt cleanup loop"];
+    "cfg::lessons::detect_success_sequences::bb10" [label="bb10\nDrop cleanup loop"];
+    "cfg::lessons::detect_success_sequences::bb11" [label="bb11\nUnwindResume cleanup loop"];
+    "cfg::lessons::detect_success_sequences::bb12" [label="bb12\nDrop cleanup loop"];
+    "cfg::lessons::detect_success_sequences::bb13" [label="bb13\nSwitchInt cleanup loop"];
+    "cfg::lessons::detect_success_sequences::bb14" [label="bb14\nDrop cleanup loop"];
+  }
+  "cfg::lessons::detect_success_sequences::bb6" -> "cfg::lessons::detect_success_sequences::bb7" [label="Drop"];
+  "cfg::lessons::detect_success_sequences::bb8" -> "cfg::lessons::detect_success_sequences::bb13" [label="Drop"];
+  "cfg::lessons::detect_success_sequences::bb9" -> "cfg::lessons::detect_success_sequences::bb10" [label="SwitchInt"];
+  "cfg::lessons::detect_success_sequences::bb9" -> "cfg::lessons::detect_success_sequences::bb14" [label="SwitchInt"];
+  "cfg::lessons::detect_success_sequences::bb10" -> "cfg::lessons::detect_success_sequences::bb11" [label="Drop"];
+  "cfg::lessons::detect_success_sequences::bb12" -> "cfg::lessons::detect_success_sequences::bb9" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::lessons::detect_success_sequences::bb13" -> "cfg::lessons::detect_success_sequences::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::lessons::detect_success_sequences::bb13" -> "cfg::lessons::detect_success_sequences::bb12" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::lessons::detect_success_sequences::bb14" -> "cfg::lessons::detect_success_sequences::bb10" [color="crimson", penwidth=2, label="Drop back"];
+}

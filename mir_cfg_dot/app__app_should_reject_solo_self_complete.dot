@@ -1,0 +1,35 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_507 {
+    label="app::should_reject_solo_self_complete";
+    "cfg::app::should_reject_solo_self_complete::bb0" [label="bb0\nCall"];
+    "cfg::app::should_reject_solo_self_complete::bb1" [label="bb1\nCall"];
+    "cfg::app::should_reject_solo_self_complete::bb2" [label="bb2\nCall"];
+    "cfg::app::should_reject_solo_self_complete::bb3" [label="bb3\nSwitchInt"];
+    "cfg::app::should_reject_solo_self_complete::bb4" [label="bb4\nCall"];
+    "cfg::app::should_reject_solo_self_complete::bb5" [label="bb5\nGoto"];
+    "cfg::app::should_reject_solo_self_complete::bb6" [label="bb6\nCall"];
+    "cfg::app::should_reject_solo_self_complete::bb7" [label="bb7\nCall"];
+    "cfg::app::should_reject_solo_self_complete::bb8" [label="bb8\nSwitchInt"];
+    "cfg::app::should_reject_solo_self_complete::bb9" [label="bb9\nGoto"];
+    "cfg::app::should_reject_solo_self_complete::bb10" [label="bb10\nCall"];
+    "cfg::app::should_reject_solo_self_complete::bb11" [label="bb11\nSwitchInt"];
+    "cfg::app::should_reject_solo_self_complete::bb12" [label="bb12\nCall"];
+    "cfg::app::should_reject_solo_self_complete::bb13" [label="bb13\nGoto"];
+    "cfg::app::should_reject_solo_self_complete::bb14" [label="bb14\nGoto"];
+    "cfg::app::should_reject_solo_self_complete::bb15" [label="bb15\nReturn"];
+  }
+  "cfg::app::should_reject_solo_self_complete::bb3" -> "cfg::app::should_reject_solo_self_complete::bb5" [label="SwitchInt"];
+  "cfg::app::should_reject_solo_self_complete::bb3" -> "cfg::app::should_reject_solo_self_complete::bb4" [label="SwitchInt"];
+  "cfg::app::should_reject_solo_self_complete::bb5" -> "cfg::app::should_reject_solo_self_complete::bb8" [label="Goto"];
+  "cfg::app::should_reject_solo_self_complete::bb8" -> "cfg::app::should_reject_solo_self_complete::bb9" [label="SwitchInt"];
+  "cfg::app::should_reject_solo_self_complete::bb8" -> "cfg::app::should_reject_solo_self_complete::bb10" [label="SwitchInt"];
+  "cfg::app::should_reject_solo_self_complete::bb9" -> "cfg::app::should_reject_solo_self_complete::bb15" [label="Goto"];
+  "cfg::app::should_reject_solo_self_complete::bb11" -> "cfg::app::should_reject_solo_self_complete::bb13" [label="SwitchInt"];
+  "cfg::app::should_reject_solo_self_complete::bb11" -> "cfg::app::should_reject_solo_self_complete::bb12" [label="SwitchInt"];
+  "cfg::app::should_reject_solo_self_complete::bb13" -> "cfg::app::should_reject_solo_self_complete::bb15" [label="Goto"];
+  "cfg::app::should_reject_solo_self_complete::bb14" -> "cfg::app::should_reject_solo_self_complete::bb15" [label="Goto"];
+}

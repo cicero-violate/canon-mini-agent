@@ -1,0 +1,52 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2721 {
+    label="prompts::derive_next_action_hint";
+    "cfg::prompts::derive_next_action_hint::bb0" [label="bb0\nCall"];
+    "cfg::prompts::derive_next_action_hint::bb1" [label="bb1\nCall"];
+    "cfg::prompts::derive_next_action_hint::bb2" [label="bb2\nCall"];
+    "cfg::prompts::derive_next_action_hint::bb3" [label="bb3\nSwitchInt"];
+    "cfg::prompts::derive_next_action_hint::bb4" [label="bb4\nCall"];
+    "cfg::prompts::derive_next_action_hint::bb5" [label="bb5\nCall"];
+    "cfg::prompts::derive_next_action_hint::bb6" [label="bb6\nSwitchInt"];
+    "cfg::prompts::derive_next_action_hint::bb7" [label="bb7\nCall"];
+    "cfg::prompts::derive_next_action_hint::bb8" [label="bb8\nCall"];
+    "cfg::prompts::derive_next_action_hint::bb9" [label="bb9\nSwitchInt"];
+    "cfg::prompts::derive_next_action_hint::bb10" [label="bb10\nGoto"];
+    "cfg::prompts::derive_next_action_hint::bb11" [label="bb11\nCall"];
+    "cfg::prompts::derive_next_action_hint::bb12" [label="bb12\nSwitchInt"];
+    "cfg::prompts::derive_next_action_hint::bb13" [label="bb13\nGoto"];
+    "cfg::prompts::derive_next_action_hint::bb14" [label="bb14\nCall"];
+    "cfg::prompts::derive_next_action_hint::bb15" [label="bb15\nCall"];
+    "cfg::prompts::derive_next_action_hint::bb16" [label="bb16\nSwitchInt"];
+    "cfg::prompts::derive_next_action_hint::bb17" [label="bb17\nCall"];
+    "cfg::prompts::derive_next_action_hint::bb18" [label="bb18\nGoto"];
+    "cfg::prompts::derive_next_action_hint::bb19" [label="bb19\nCall"];
+    "cfg::prompts::derive_next_action_hint::bb20" [label="bb20\nDrop"];
+    "cfg::prompts::derive_next_action_hint::bb21" [label="bb21\nDrop"];
+    "cfg::prompts::derive_next_action_hint::bb22" [label="bb22\nReturn"];
+    "cfg::prompts::derive_next_action_hint::bb23" [label="bb23\nDrop cleanup"];
+    "cfg::prompts::derive_next_action_hint::bb24" [label="bb24\nUnwindResume cleanup"];
+    "cfg::prompts::derive_next_action_hint::bb25" [label="bb25\nUnreachable"];
+  }
+  "cfg::prompts::derive_next_action_hint::bb3" -> "cfg::prompts::derive_next_action_hint::bb4" [label="SwitchInt"];
+  "cfg::prompts::derive_next_action_hint::bb3" -> "cfg::prompts::derive_next_action_hint::bb10" [label="SwitchInt"];
+  "cfg::prompts::derive_next_action_hint::bb6" -> "cfg::prompts::derive_next_action_hint::bb7" [label="SwitchInt"];
+  "cfg::prompts::derive_next_action_hint::bb6" -> "cfg::prompts::derive_next_action_hint::bb10" [label="SwitchInt"];
+  "cfg::prompts::derive_next_action_hint::bb9" -> "cfg::prompts::derive_next_action_hint::bb11" [label="SwitchInt"];
+  "cfg::prompts::derive_next_action_hint::bb9" -> "cfg::prompts::derive_next_action_hint::bb10" [label="SwitchInt"];
+  "cfg::prompts::derive_next_action_hint::bb10" -> "cfg::prompts::derive_next_action_hint::bb21" [label="Goto"];
+  "cfg::prompts::derive_next_action_hint::bb12" -> "cfg::prompts::derive_next_action_hint::bb14" [label="SwitchInt"];
+  "cfg::prompts::derive_next_action_hint::bb12" -> "cfg::prompts::derive_next_action_hint::bb13" [label="SwitchInt"];
+  "cfg::prompts::derive_next_action_hint::bb13" -> "cfg::prompts::derive_next_action_hint::bb21" [label="Goto"];
+  "cfg::prompts::derive_next_action_hint::bb16" -> "cfg::prompts::derive_next_action_hint::bb17" [label="SwitchInt"];
+  "cfg::prompts::derive_next_action_hint::bb16" -> "cfg::prompts::derive_next_action_hint::bb19" [label="SwitchInt"];
+  "cfg::prompts::derive_next_action_hint::bb16" -> "cfg::prompts::derive_next_action_hint::bb25" [label="SwitchInt"];
+  "cfg::prompts::derive_next_action_hint::bb18" -> "cfg::prompts::derive_next_action_hint::bb21" [label="Goto"];
+  "cfg::prompts::derive_next_action_hint::bb20" -> "cfg::prompts::derive_next_action_hint::bb22" [label="Drop"];
+  "cfg::prompts::derive_next_action_hint::bb21" -> "cfg::prompts::derive_next_action_hint::bb22" [label="Drop"];
+  "cfg::prompts::derive_next_action_hint::bb23" -> "cfg::prompts::derive_next_action_hint::bb24" [label="Drop"];
+}

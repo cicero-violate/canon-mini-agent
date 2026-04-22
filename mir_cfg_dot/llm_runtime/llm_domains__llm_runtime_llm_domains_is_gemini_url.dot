@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1814 {
+    label="llm_runtime::llm_domains::is_gemini_url";
+    "cfg::llm_runtime::llm_domains::is_gemini_url::bb0" [label="bb0\nCall"];
+    "cfg::llm_runtime::llm_domains::is_gemini_url::bb1" [label="bb1\nReturn"];
+  }
+}

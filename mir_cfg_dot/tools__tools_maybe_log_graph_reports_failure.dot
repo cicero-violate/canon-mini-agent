@@ -1,0 +1,14 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4164 {
+    label="tools::maybe_log_graph_reports_failure";
+    "cfg::tools::maybe_log_graph_reports_failure::bb0" [label="bb0\nSwitchInt"];
+    "cfg::tools::maybe_log_graph_reports_failure::bb1" [label="bb1\nCall"];
+    "cfg::tools::maybe_log_graph_reports_failure::bb2" [label="bb2\nReturn"];
+  }
+  "cfg::tools::maybe_log_graph_reports_failure::bb0" -> "cfg::tools::maybe_log_graph_reports_failure::bb1" [label="SwitchInt"];
+  "cfg::tools::maybe_log_graph_reports_failure::bb0" -> "cfg::tools::maybe_log_graph_reports_failure::bb2" [label="SwitchInt"];
+}

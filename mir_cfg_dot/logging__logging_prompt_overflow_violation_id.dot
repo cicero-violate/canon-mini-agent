@@ -1,0 +1,27 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2162 {
+    label="logging::prompt_overflow_violation_id";
+    "cfg::logging::prompt_overflow_violation_id::bb0" [label="bb0\nCall"];
+    "cfg::logging::prompt_overflow_violation_id::bb1" [label="bb1\nCall"];
+    "cfg::logging::prompt_overflow_violation_id::bb2" [label="bb2\nCall"];
+    "cfg::logging::prompt_overflow_violation_id::bb3" [label="bb3\nCall"];
+    "cfg::logging::prompt_overflow_violation_id::bb4" [label="bb4\nCall"];
+    "cfg::logging::prompt_overflow_violation_id::bb5" [label="bb5\nCall"];
+    "cfg::logging::prompt_overflow_violation_id::bb6" [label="bb6\nDrop"];
+    "cfg::logging::prompt_overflow_violation_id::bb7" [label="bb7\nDrop"];
+    "cfg::logging::prompt_overflow_violation_id::bb8" [label="bb8\nCall"];
+    "cfg::logging::prompt_overflow_violation_id::bb9" [label="bb9\nReturn"];
+    "cfg::logging::prompt_overflow_violation_id::bb10" [label="bb10\nDrop cleanup"];
+    "cfg::logging::prompt_overflow_violation_id::bb11" [label="bb11\nDrop cleanup"];
+    "cfg::logging::prompt_overflow_violation_id::bb12" [label="bb12\nUnwindResume cleanup"];
+  }
+  "cfg::logging::prompt_overflow_violation_id::bb6" -> "cfg::logging::prompt_overflow_violation_id::bb7" [label="Drop"];
+  "cfg::logging::prompt_overflow_violation_id::bb6" -> "cfg::logging::prompt_overflow_violation_id::bb11" [label="Drop"];
+  "cfg::logging::prompt_overflow_violation_id::bb7" -> "cfg::logging::prompt_overflow_violation_id::bb8" [label="Drop"];
+  "cfg::logging::prompt_overflow_violation_id::bb10" -> "cfg::logging::prompt_overflow_violation_id::bb11" [label="Drop"];
+  "cfg::logging::prompt_overflow_violation_id::bb11" -> "cfg::logging::prompt_overflow_violation_id::bb12" [label="Drop"];
+}

@@ -1,0 +1,16 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3489 {
+    label="tool_schema::schema_error_field";
+    "cfg::tool_schema::schema_error_field::bb0" [label="bb0\nCall"];
+    "cfg::tool_schema::schema_error_field::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tool_schema::schema_error_field::bb2" [label="bb2\nCall"];
+    "cfg::tool_schema::schema_error_field::bb3" [label="bb3\nCall"];
+    "cfg::tool_schema::schema_error_field::bb4" [label="bb4\nReturn"];
+  }
+  "cfg::tool_schema::schema_error_field::bb1" -> "cfg::tool_schema::schema_error_field::bb3" [label="SwitchInt"];
+  "cfg::tool_schema::schema_error_field::bb1" -> "cfg::tool_schema::schema_error_field::bb2" [label="SwitchInt"];
+}

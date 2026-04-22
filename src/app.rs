@@ -1255,6 +1255,7 @@ fn preflight_executor_dispatch(
     };
     if ready_count == "0" {
         writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+        apply_scheduled_phase_if_changed(writer, Some("planner"));
         return Some(true);
     }
     if !evaluate_executor_route_gates(writer, ready_count) {
@@ -1281,6 +1282,7 @@ fn preflight_executor_dispatch(
             "[orchestrate] executor bootstrap: ready tasks exist but no lane work is seeded; waking planner"
         );
         writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+        apply_scheduled_phase_if_changed(writer, Some("planner"));
         return Some(true);
     }
 
@@ -2290,6 +2292,11 @@ fn save_checkpoint(
         verifier_summary: state.verifier_summary.clone(),
         verifier_pending_results: resume_items,
     };
+    if let Ok(snapshot_json) = serde_json::to_string(&checkpoint) {
+        writer.apply(ControlEvent::CheckpointSnapshotSet {
+            snapshot_json: snapshot_json.clone(),
+        });
+    }
     // Use a plain atomic write instead of persist_agent_state_projection.
     // persist_agent_state_projection records two artifact-write tlog events (start + end)
     // AFTER checkpoint_tlog_seq is captured, causing checkpoint_tlog_seq to always lag
@@ -2361,6 +2368,20 @@ fn recover_verifier_item_from_executor_post_restart(
 }
 
 fn load_checkpoint(workspace: &Path) -> Option<OrchestratorCheckpoint> {
+    let tlog_path = PathBuf::from(crate::constants::agent_state_dir()).join("tlog.ndjson");
+    if tlog_path.exists() {
+        if let Ok(state) = Tlog::replay(&tlog_path, SystemState::new(&[], 0)) {
+            let raw = state.checkpoint_snapshot_json.trim();
+            if !raw.is_empty() {
+                if let Ok(cp) = serde_json::from_str::<OrchestratorCheckpoint>(raw) {
+                    if cp.workspace.is_empty() || cp.workspace == workspace.to_string_lossy().as_ref()
+                    {
+                        return Some(cp);
+                    }
+                }
+            }
+        }
+    }
     let path = checkpoint_path(workspace);
     let raw = std::fs::read_to_string(path).ok()?;
     let cp: OrchestratorCheckpoint = serde_json::from_str(&raw).ok()?;
@@ -3795,12 +3816,12 @@ fn persist_planner_blocker_message(writer: &mut CanonicalWriter, action: &Value)
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let _ = std::fs::create_dir_all(agent_state_dir);
     if !evidence.is_empty() {
-        let evidence_path = agent_state_dir.join("last_planner_blocker_evidence.txt");
-        if let Ok(prev) = std::fs::read_to_string(&evidence_path) {
-            if prev.trim() == evidence {
-                return false;
-            }
+        let evidence_hash = artifact_write_signature(&["planner_blocker_evidence", &evidence]);
+        if writer.state().planner_blocker_evidence_hash == evidence_hash {
+            return false;
         }
+        writer.apply(ControlEvent::PlannerBlockerEvidenceSet { evidence_hash });
+        let evidence_path = agent_state_dir.join("last_planner_blocker_evidence.txt");
         let _ = std::fs::write(&evidence_path, &evidence);
     }
     persist_planner_message(writer, action);
@@ -6032,6 +6053,13 @@ pub async fn run() -> Result<()> {
         };
         let tlog = Tlog::open(&tlog_path);
         let mut writer = CanonicalWriter::try_new(system_state, tlog, workspace.clone())?;
+        writer.apply(ControlEvent::OrchestratorModeSet {
+            mode: if solo_mode {
+                "single".to_string()
+            } else {
+                "orchestrate".to_string()
+            },
+        });
         if writer.state().objectives_json.trim().is_empty() {
             let (seed_path, seed_contents) = crate::objectives::load_bootstrap_objectives_seed(&workspace);
             writer.apply(ControlEvent::ObjectivesInitialized {
@@ -6835,6 +6863,7 @@ pub async fn run() -> Result<()> {
             }
 
             if !cycle_progress {
+                writer.apply(ControlEvent::OrchestratorIdlePulse { ts_ms: now_ms() });
                 let _ = std::fs::write(cycle_idle_marker_path(), "idle\n");
                 tokio::time::sleep(std::time::Duration::from_millis(SERVICE_POLL_MS)).await;
             }
@@ -6872,6 +6901,9 @@ pub async fn run() -> Result<()> {
         let system_state = Tlog::replay(&tlog_path, initial_system_state.clone())
             .unwrap_or(initial_system_state);
         let mut writer = CanonicalWriter::new(system_state, Tlog::open(&tlog_path), workspace.clone());
+        writer.apply(ControlEvent::OrchestratorModeSet {
+            mode: "single".to_string(),
+        });
 
         let cargo_test_failures = load_cargo_test_failures(&workspace);
         let initial_prompt =
@@ -6899,6 +6931,7 @@ pub async fn run() -> Result<()> {
             0,
         )
         .await?;
+        writer.apply(ControlEvent::OrchestratorIdlePulse { ts_ms: now_ms() });
         let _ = std::fs::write(cycle_idle_marker_path(), "idle\n");
         println!("message: {}", reason.into_summary());
         Ok(())

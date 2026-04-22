@@ -1,0 +1,46 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2581 {
+    label="prompts::parse_predicted_action_names";
+    "cfg::prompts::parse_predicted_action_names::bb0" [label="bb0\nSwitchInt"];
+    "cfg::prompts::parse_predicted_action_names::bb1" [label="bb1\nCall"];
+    "cfg::prompts::parse_predicted_action_names::bb2" [label="bb2\nCall"];
+    "cfg::prompts::parse_predicted_action_names::bb3" [label="bb3\nSwitchInt"];
+    "cfg::prompts::parse_predicted_action_names::bb4" [label="bb4\nSwitchInt"];
+    "cfg::prompts::parse_predicted_action_names::bb5" [label="bb5\nCall loop"];
+    "cfg::prompts::parse_predicted_action_names::bb6" [label="bb6\nCall loop"];
+    "cfg::prompts::parse_predicted_action_names::bb7" [label="bb7\nCall loop"];
+    "cfg::prompts::parse_predicted_action_names::bb8" [label="bb8\nCall loop"];
+    "cfg::prompts::parse_predicted_action_names::bb9" [label="bb9\nCall loop"];
+    "cfg::prompts::parse_predicted_action_names::bb10" [label="bb10\nDrop loop"];
+    "cfg::prompts::parse_predicted_action_names::bb11" [label="bb11\nReturn loop"];
+    "cfg::prompts::parse_predicted_action_names::bb12" [label="bb12\nDrop cleanup loop"];
+    "cfg::prompts::parse_predicted_action_names::bb13" [label="bb13\nUnwindResume cleanup loop"];
+    "cfg::prompts::parse_predicted_action_names::bb14" [label="bb14\nCall loop"];
+    "cfg::prompts::parse_predicted_action_names::bb15" [label="bb15\nDrop loop"];
+    "cfg::prompts::parse_predicted_action_names::bb16" [label="bb16\nCall loop"];
+    "cfg::prompts::parse_predicted_action_names::bb17" [label="bb17\nDrop loop"];
+    "cfg::prompts::parse_predicted_action_names::bb18" [label="bb18\nSwitchInt loop"];
+    "cfg::prompts::parse_predicted_action_names::bb19" [label="bb19\nUnreachable"];
+  }
+  "cfg::prompts::parse_predicted_action_names::bb0" -> "cfg::prompts::parse_predicted_action_names::bb2" [label="SwitchInt"];
+  "cfg::prompts::parse_predicted_action_names::bb0" -> "cfg::prompts::parse_predicted_action_names::bb1" [label="SwitchInt"];
+  "cfg::prompts::parse_predicted_action_names::bb0" -> "cfg::prompts::parse_predicted_action_names::bb19" [label="SwitchInt"];
+  "cfg::prompts::parse_predicted_action_names::bb3" -> "cfg::prompts::parse_predicted_action_names::bb4" [label="SwitchInt"];
+  "cfg::prompts::parse_predicted_action_names::bb3" -> "cfg::prompts::parse_predicted_action_names::bb18" [label="SwitchInt"];
+  "cfg::prompts::parse_predicted_action_names::bb3" -> "cfg::prompts::parse_predicted_action_names::bb19" [label="SwitchInt"];
+  "cfg::prompts::parse_predicted_action_names::bb4" -> "cfg::prompts::parse_predicted_action_names::bb14" [label="SwitchInt"];
+  "cfg::prompts::parse_predicted_action_names::bb4" -> "cfg::prompts::parse_predicted_action_names::bb15" [label="SwitchInt"];
+  "cfg::prompts::parse_predicted_action_names::bb4" -> "cfg::prompts::parse_predicted_action_names::bb19" [label="SwitchInt"];
+  "cfg::prompts::parse_predicted_action_names::bb10" -> "cfg::prompts::parse_predicted_action_names::bb11" [label="Drop"];
+  "cfg::prompts::parse_predicted_action_names::bb12" -> "cfg::prompts::parse_predicted_action_names::bb13" [label="Drop"];
+  "cfg::prompts::parse_predicted_action_names::bb15" -> "cfg::prompts::parse_predicted_action_names::bb14" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::prompts::parse_predicted_action_names::bb15" -> "cfg::prompts::parse_predicted_action_names::bb12" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::prompts::parse_predicted_action_names::bb17" -> "cfg::prompts::parse_predicted_action_names::bb16" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::prompts::parse_predicted_action_names::bb18" -> "cfg::prompts::parse_predicted_action_names::bb16" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompts::parse_predicted_action_names::bb18" -> "cfg::prompts::parse_predicted_action_names::bb17" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompts::parse_predicted_action_names::bb18" -> "cfg::prompts::parse_predicted_action_names::bb19" [label="SwitchInt"];
+}

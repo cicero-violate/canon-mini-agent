@@ -1,0 +1,20 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3516 {
+    label="tool_schema::first_missing_field_for_action::require_one_of";
+    "cfg::tool_schema::first_missing_field_for_action::require_one_of::bb0" [label="bb0\nCall"];
+    "cfg::tool_schema::first_missing_field_for_action::require_one_of::bb1" [label="bb1\nCall"];
+    "cfg::tool_schema::first_missing_field_for_action::require_one_of::bb2" [label="bb2\nCall"];
+    "cfg::tool_schema::first_missing_field_for_action::require_one_of::bb3" [label="bb3\nSwitchInt"];
+    "cfg::tool_schema::first_missing_field_for_action::require_one_of::bb4" [label="bb4\nGoto"];
+    "cfg::tool_schema::first_missing_field_for_action::require_one_of::bb5" [label="bb5\nCall"];
+    "cfg::tool_schema::first_missing_field_for_action::require_one_of::bb6" [label="bb6\nCall"];
+    "cfg::tool_schema::first_missing_field_for_action::require_one_of::bb7" [label="bb7\nReturn"];
+  }
+  "cfg::tool_schema::first_missing_field_for_action::require_one_of::bb3" -> "cfg::tool_schema::first_missing_field_for_action::require_one_of::bb5" [label="SwitchInt"];
+  "cfg::tool_schema::first_missing_field_for_action::require_one_of::bb3" -> "cfg::tool_schema::first_missing_field_for_action::require_one_of::bb4" [label="SwitchInt"];
+  "cfg::tool_schema::first_missing_field_for_action::require_one_of::bb4" -> "cfg::tool_schema::first_missing_field_for_action::require_one_of::bb7" [label="Goto"];
+}

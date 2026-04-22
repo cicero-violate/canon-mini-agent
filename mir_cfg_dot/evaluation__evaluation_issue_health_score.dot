@@ -1,0 +1,17 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_815 {
+    label="evaluation::issue_health_score";
+    "cfg::evaluation::issue_health_score::bb0" [label="bb0\nSwitchInt"];
+    "cfg::evaluation::issue_health_score::bb1" [label="bb1\nGoto"];
+    "cfg::evaluation::issue_health_score::bb2" [label="bb2\nCall"];
+    "cfg::evaluation::issue_health_score::bb3" [label="bb3\nCall"];
+    "cfg::evaluation::issue_health_score::bb4" [label="bb4\nReturn"];
+  }
+  "cfg::evaluation::issue_health_score::bb0" -> "cfg::evaluation::issue_health_score::bb2" [label="SwitchInt"];
+  "cfg::evaluation::issue_health_score::bb0" -> "cfg::evaluation::issue_health_score::bb1" [label="SwitchInt"];
+  "cfg::evaluation::issue_health_score::bb1" -> "cfg::evaluation::issue_health_score::bb4" [label="Goto"];
+}

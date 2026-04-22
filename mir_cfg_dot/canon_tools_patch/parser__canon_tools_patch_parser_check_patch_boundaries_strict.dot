@@ -1,0 +1,27 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_635 {
+    label="canon_tools_patch::parser::check_patch_boundaries_strict";
+    "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb0" [label="bb0\nSwitchInt"];
+    "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb1" [label="bb1\nSwitchInt"];
+    "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb2" [label="bb2\nUnreachable loop"];
+    "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb3" [label="bb3\nSwitchInt loop"];
+    "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb4" [label="bb4\nGoto"];
+    "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb5" [label="bb5\nGoto"];
+    "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb6" [label="bb6\nGoto"];
+    "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb7" [label="bb7\nCall"];
+    "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb8" [label="bb8\nReturn"];
+  }
+  "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb0" -> "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb1" [label="SwitchInt"];
+  "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb0" -> "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb6" [label="SwitchInt"];
+  "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb1" -> "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb3" [label="SwitchInt"];
+  "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb1" -> "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb5" [label="SwitchInt"];
+  "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb3" -> "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb3" -> "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb4" [label="SwitchInt"];
+  "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb4" -> "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb7" [label="Goto"];
+  "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb5" -> "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb7" [label="Goto"];
+  "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb6" -> "cfg::canon_tools_patch::parser::check_patch_boundaries_strict::bb7" [label="Goto"];
+}

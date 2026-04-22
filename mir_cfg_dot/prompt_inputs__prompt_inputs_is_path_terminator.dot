@@ -1,0 +1,33 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2488 {
+    label="prompt_inputs::is_path_terminator";
+    "cfg::prompt_inputs::is_path_terminator::bb0" [label="bb0\nCall"];
+    "cfg::prompt_inputs::is_path_terminator::bb1" [label="bb1\nSwitchInt"];
+    "cfg::prompt_inputs::is_path_terminator::bb2" [label="bb2\nSwitchInt"];
+    "cfg::prompt_inputs::is_path_terminator::bb3" [label="bb3\nGoto"];
+    "cfg::prompt_inputs::is_path_terminator::bb4" [label="bb4\nGoto"];
+    "cfg::prompt_inputs::is_path_terminator::bb5" [label="bb5\nSwitchInt"];
+    "cfg::prompt_inputs::is_path_terminator::bb6" [label="bb6\nGoto"];
+    "cfg::prompt_inputs::is_path_terminator::bb7" [label="bb7\nGoto"];
+    "cfg::prompt_inputs::is_path_terminator::bb8" [label="bb8\nReturn"];
+  }
+  "cfg::prompt_inputs::is_path_terminator::bb1" -> "cfg::prompt_inputs::is_path_terminator::bb2" [label="SwitchInt"];
+  "cfg::prompt_inputs::is_path_terminator::bb1" -> "cfg::prompt_inputs::is_path_terminator::bb6" [label="SwitchInt"];
+  "cfg::prompt_inputs::is_path_terminator::bb2" -> "cfg::prompt_inputs::is_path_terminator::bb4" [label="SwitchInt"];
+  "cfg::prompt_inputs::is_path_terminator::bb2" -> "cfg::prompt_inputs::is_path_terminator::bb4" [label="SwitchInt"];
+  "cfg::prompt_inputs::is_path_terminator::bb2" -> "cfg::prompt_inputs::is_path_terminator::bb4" [label="SwitchInt"];
+  "cfg::prompt_inputs::is_path_terminator::bb2" -> "cfg::prompt_inputs::is_path_terminator::bb4" [label="SwitchInt"];
+  "cfg::prompt_inputs::is_path_terminator::bb2" -> "cfg::prompt_inputs::is_path_terminator::bb4" [label="SwitchInt"];
+  "cfg::prompt_inputs::is_path_terminator::bb2" -> "cfg::prompt_inputs::is_path_terminator::bb4" [label="SwitchInt"];
+  "cfg::prompt_inputs::is_path_terminator::bb2" -> "cfg::prompt_inputs::is_path_terminator::bb3" [label="SwitchInt"];
+  "cfg::prompt_inputs::is_path_terminator::bb3" -> "cfg::prompt_inputs::is_path_terminator::bb5" [label="Goto"];
+  "cfg::prompt_inputs::is_path_terminator::bb4" -> "cfg::prompt_inputs::is_path_terminator::bb5" [label="Goto"];
+  "cfg::prompt_inputs::is_path_terminator::bb5" -> "cfg::prompt_inputs::is_path_terminator::bb7" [label="SwitchInt"];
+  "cfg::prompt_inputs::is_path_terminator::bb5" -> "cfg::prompt_inputs::is_path_terminator::bb6" [label="SwitchInt"];
+  "cfg::prompt_inputs::is_path_terminator::bb6" -> "cfg::prompt_inputs::is_path_terminator::bb8" [label="Goto"];
+  "cfg::prompt_inputs::is_path_terminator::bb7" -> "cfg::prompt_inputs::is_path_terminator::bb8" [label="Goto"];
+}

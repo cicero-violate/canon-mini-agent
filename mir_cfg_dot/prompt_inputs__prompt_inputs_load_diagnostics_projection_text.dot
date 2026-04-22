@@ -1,0 +1,42 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2407 {
+    label="prompt_inputs::load_diagnostics_projection_text";
+    "cfg::prompt_inputs::load_diagnostics_projection_text::bb0" [label="bb0\nCall"];
+    "cfg::prompt_inputs::load_diagnostics_projection_text::bb1" [label="bb1\nCall"];
+    "cfg::prompt_inputs::load_diagnostics_projection_text::bb2" [label="bb2\nCall"];
+    "cfg::prompt_inputs::load_diagnostics_projection_text::bb3" [label="bb3\nCall"];
+    "cfg::prompt_inputs::load_diagnostics_projection_text::bb4" [label="bb4\nCall"];
+    "cfg::prompt_inputs::load_diagnostics_projection_text::bb5" [label="bb5\nCall"];
+    "cfg::prompt_inputs::load_diagnostics_projection_text::bb6" [label="bb6\nSwitchInt"];
+    "cfg::prompt_inputs::load_diagnostics_projection_text::bb7" [label="bb7\nCall"];
+    "cfg::prompt_inputs::load_diagnostics_projection_text::bb8" [label="bb8\nCall"];
+    "cfg::prompt_inputs::load_diagnostics_projection_text::bb9" [label="bb9\nCall"];
+    "cfg::prompt_inputs::load_diagnostics_projection_text::bb10" [label="bb10\nSwitchInt"];
+    "cfg::prompt_inputs::load_diagnostics_projection_text::bb11" [label="bb11\nDrop"];
+    "cfg::prompt_inputs::load_diagnostics_projection_text::bb12" [label="bb12\nGoto"];
+    "cfg::prompt_inputs::load_diagnostics_projection_text::bb13" [label="bb13\nDrop"];
+    "cfg::prompt_inputs::load_diagnostics_projection_text::bb14" [label="bb14\nCall"];
+    "cfg::prompt_inputs::load_diagnostics_projection_text::bb15" [label="bb15\nCall"];
+    "cfg::prompt_inputs::load_diagnostics_projection_text::bb16" [label="bb16\nDrop"];
+    "cfg::prompt_inputs::load_diagnostics_projection_text::bb17" [label="bb17\nReturn"];
+    "cfg::prompt_inputs::load_diagnostics_projection_text::bb18" [label="bb18\nDrop cleanup"];
+    "cfg::prompt_inputs::load_diagnostics_projection_text::bb19" [label="bb19\nDrop cleanup"];
+    "cfg::prompt_inputs::load_diagnostics_projection_text::bb20" [label="bb20\nUnwindResume cleanup"];
+  }
+  "cfg::prompt_inputs::load_diagnostics_projection_text::bb6" -> "cfg::prompt_inputs::load_diagnostics_projection_text::bb7" [label="SwitchInt"];
+  "cfg::prompt_inputs::load_diagnostics_projection_text::bb6" -> "cfg::prompt_inputs::load_diagnostics_projection_text::bb14" [label="SwitchInt"];
+  "cfg::prompt_inputs::load_diagnostics_projection_text::bb10" -> "cfg::prompt_inputs::load_diagnostics_projection_text::bb13" [label="SwitchInt"];
+  "cfg::prompt_inputs::load_diagnostics_projection_text::bb10" -> "cfg::prompt_inputs::load_diagnostics_projection_text::bb11" [label="SwitchInt"];
+  "cfg::prompt_inputs::load_diagnostics_projection_text::bb11" -> "cfg::prompt_inputs::load_diagnostics_projection_text::bb12" [label="Drop"];
+  "cfg::prompt_inputs::load_diagnostics_projection_text::bb11" -> "cfg::prompt_inputs::load_diagnostics_projection_text::bb19" [label="Drop"];
+  "cfg::prompt_inputs::load_diagnostics_projection_text::bb12" -> "cfg::prompt_inputs::load_diagnostics_projection_text::bb17" [label="Goto"];
+  "cfg::prompt_inputs::load_diagnostics_projection_text::bb13" -> "cfg::prompt_inputs::load_diagnostics_projection_text::bb14" [label="Drop"];
+  "cfg::prompt_inputs::load_diagnostics_projection_text::bb13" -> "cfg::prompt_inputs::load_diagnostics_projection_text::bb19" [label="Drop"];
+  "cfg::prompt_inputs::load_diagnostics_projection_text::bb16" -> "cfg::prompt_inputs::load_diagnostics_projection_text::bb17" [label="Drop"];
+  "cfg::prompt_inputs::load_diagnostics_projection_text::bb18" -> "cfg::prompt_inputs::load_diagnostics_projection_text::bb19" [label="Drop"];
+  "cfg::prompt_inputs::load_diagnostics_projection_text::bb19" -> "cfg::prompt_inputs::load_diagnostics_projection_text::bb20" [label="Drop"];
+}

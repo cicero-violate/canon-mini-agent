@@ -1,0 +1,44 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3185 {
+    label="state_space::decide_active_blocker";
+    "cfg::state_space::decide_active_blocker::bb0" [label="bb0\nSwitchInt"];
+    "cfg::state_space::decide_active_blocker::bb1" [label="bb1\nSwitchInt"];
+    "cfg::state_space::decide_active_blocker::bb2" [label="bb2\nSwitchInt"];
+    "cfg::state_space::decide_active_blocker::bb3" [label="bb3\nGoto loop"];
+    "cfg::state_space::decide_active_blocker::bb4" [label="bb4\nCall loop"];
+    "cfg::state_space::decide_active_blocker::bb5" [label="bb5\nGoto loop"];
+    "cfg::state_space::decide_active_blocker::bb6" [label="bb6\nSwitchInt loop"];
+    "cfg::state_space::decide_active_blocker::bb7" [label="bb7\nSwitchInt"];
+    "cfg::state_space::decide_active_blocker::bb8" [label="bb8\nCall"];
+    "cfg::state_space::decide_active_blocker::bb9" [label="bb9\nSwitchInt"];
+    "cfg::state_space::decide_active_blocker::bb10" [label="bb10\nGoto"];
+    "cfg::state_space::decide_active_blocker::bb11" [label="bb11\nCall"];
+    "cfg::state_space::decide_active_blocker::bb12" [label="bb12\nGoto"];
+    "cfg::state_space::decide_active_blocker::bb13" [label="bb13\nCall"];
+    "cfg::state_space::decide_active_blocker::bb14" [label="bb14\nGoto"];
+    "cfg::state_space::decide_active_blocker::bb15" [label="bb15\nReturn"];
+    "cfg::state_space::decide_active_blocker::bb16" [label="bb16\nUnreachable"];
+  }
+  "cfg::state_space::decide_active_blocker::bb0" -> "cfg::state_space::decide_active_blocker::bb13" [label="SwitchInt"];
+  "cfg::state_space::decide_active_blocker::bb0" -> "cfg::state_space::decide_active_blocker::bb1" [label="SwitchInt"];
+  "cfg::state_space::decide_active_blocker::bb1" -> "cfg::state_space::decide_active_blocker::bb2" [label="SwitchInt"];
+  "cfg::state_space::decide_active_blocker::bb1" -> "cfg::state_space::decide_active_blocker::bb8" [label="SwitchInt"];
+  "cfg::state_space::decide_active_blocker::bb2" -> "cfg::state_space::decide_active_blocker::bb4" [label="SwitchInt"];
+  "cfg::state_space::decide_active_blocker::bb2" -> "cfg::state_space::decide_active_blocker::bb3" [label="SwitchInt"];
+  "cfg::state_space::decide_active_blocker::bb2" -> "cfg::state_space::decide_active_blocker::bb16" [label="SwitchInt"];
+  "cfg::state_space::decide_active_blocker::bb3" -> "cfg::state_space::decide_active_blocker::bb7" [label="Goto"];
+  "cfg::state_space::decide_active_blocker::bb5" -> "cfg::state_space::decide_active_blocker::bb7" [label="Goto"];
+  "cfg::state_space::decide_active_blocker::bb6" -> "cfg::state_space::decide_active_blocker::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::decide_active_blocker::bb6" -> "cfg::state_space::decide_active_blocker::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::decide_active_blocker::bb7" -> "cfg::state_space::decide_active_blocker::bb13" [label="SwitchInt"];
+  "cfg::state_space::decide_active_blocker::bb7" -> "cfg::state_space::decide_active_blocker::bb8" [label="SwitchInt"];
+  "cfg::state_space::decide_active_blocker::bb9" -> "cfg::state_space::decide_active_blocker::bb11" [label="SwitchInt"];
+  "cfg::state_space::decide_active_blocker::bb9" -> "cfg::state_space::decide_active_blocker::bb10" [label="SwitchInt"];
+  "cfg::state_space::decide_active_blocker::bb10" -> "cfg::state_space::decide_active_blocker::bb12" [label="Goto"];
+  "cfg::state_space::decide_active_blocker::bb12" -> "cfg::state_space::decide_active_blocker::bb15" [label="Goto"];
+  "cfg::state_space::decide_active_blocker::bb14" -> "cfg::state_space::decide_active_blocker::bb15" [label="Goto"];
+}

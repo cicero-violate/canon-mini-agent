@@ -1,0 +1,18 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2617 {
+    label="prompts::role_rules_with_overrides";
+    "cfg::prompts::role_rules_with_overrides::bb0" [label="bb0\nCall"];
+    "cfg::prompts::role_rules_with_overrides::bb1" [label="bb1\nCall"];
+    "cfg::prompts::role_rules_with_overrides::bb2" [label="bb2\nCall"];
+    "cfg::prompts::role_rules_with_overrides::bb3" [label="bb3\nCall"];
+    "cfg::prompts::role_rules_with_overrides::bb4" [label="bb4\nCall"];
+    "cfg::prompts::role_rules_with_overrides::bb5" [label="bb5\nReturn"];
+    "cfg::prompts::role_rules_with_overrides::bb6" [label="bb6\nDrop cleanup"];
+    "cfg::prompts::role_rules_with_overrides::bb7" [label="bb7\nUnwindResume cleanup"];
+  }
+  "cfg::prompts::role_rules_with_overrides::bb6" -> "cfg::prompts::role_rules_with_overrides::bb7" [label="Drop"];
+}

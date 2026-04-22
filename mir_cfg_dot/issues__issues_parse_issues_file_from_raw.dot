@@ -1,0 +1,19 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1343 {
+    label="issues::parse_issues_file_from_raw";
+    "cfg::issues::parse_issues_file_from_raw::bb0" [label="bb0\nCall"];
+    "cfg::issues::parse_issues_file_from_raw::bb1" [label="bb1\nCall"];
+    "cfg::issues::parse_issues_file_from_raw::bb2" [label="bb2\nSwitchInt"];
+    "cfg::issues::parse_issues_file_from_raw::bb3" [label="bb3\nGoto"];
+    "cfg::issues::parse_issues_file_from_raw::bb4" [label="bb4\nCall"];
+    "cfg::issues::parse_issues_file_from_raw::bb5" [label="bb5\nCall"];
+    "cfg::issues::parse_issues_file_from_raw::bb6" [label="bb6\nReturn"];
+  }
+  "cfg::issues::parse_issues_file_from_raw::bb2" -> "cfg::issues::parse_issues_file_from_raw::bb4" [label="SwitchInt"];
+  "cfg::issues::parse_issues_file_from_raw::bb2" -> "cfg::issues::parse_issues_file_from_raw::bb3" [label="SwitchInt"];
+  "cfg::issues::parse_issues_file_from_raw::bb3" -> "cfg::issues::parse_issues_file_from_raw::bb6" [label="Goto"];
+}

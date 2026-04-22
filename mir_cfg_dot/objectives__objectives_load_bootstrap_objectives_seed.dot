@@ -1,0 +1,44 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2247 {
+    label="objectives::load_bootstrap_objectives_seed";
+    "cfg::objectives::load_bootstrap_objectives_seed::bb0" [label="bb0\nCall"];
+    "cfg::objectives::load_bootstrap_objectives_seed::bb1" [label="bb1\nCall"];
+    "cfg::objectives::load_bootstrap_objectives_seed::bb2" [label="bb2\nCall"];
+    "cfg::objectives::load_bootstrap_objectives_seed::bb3" [label="bb3\nCall"];
+    "cfg::objectives::load_bootstrap_objectives_seed::bb4" [label="bb4\nCall"];
+    "cfg::objectives::load_bootstrap_objectives_seed::bb5" [label="bb5\nCall"];
+    "cfg::objectives::load_bootstrap_objectives_seed::bb6" [label="bb6\nCall"];
+    "cfg::objectives::load_bootstrap_objectives_seed::bb7" [label="bb7\nSwitchInt"];
+    "cfg::objectives::load_bootstrap_objectives_seed::bb8" [label="bb8\nCall"];
+    "cfg::objectives::load_bootstrap_objectives_seed::bb9" [label="bb9\nCall"];
+    "cfg::objectives::load_bootstrap_objectives_seed::bb10" [label="bb10\nCall"];
+    "cfg::objectives::load_bootstrap_objectives_seed::bb11" [label="bb11\nDrop"];
+    "cfg::objectives::load_bootstrap_objectives_seed::bb12" [label="bb12\nGoto"];
+    "cfg::objectives::load_bootstrap_objectives_seed::bb13" [label="bb13\nSwitchInt"];
+    "cfg::objectives::load_bootstrap_objectives_seed::bb14" [label="bb14\nReturn loop"];
+    "cfg::objectives::load_bootstrap_objectives_seed::bb15" [label="bb15\nDrop cleanup loop"];
+    "cfg::objectives::load_bootstrap_objectives_seed::bb16" [label="bb16\nDrop cleanup loop"];
+    "cfg::objectives::load_bootstrap_objectives_seed::bb17" [label="bb17\nUnwindResume cleanup loop"];
+    "cfg::objectives::load_bootstrap_objectives_seed::bb18" [label="bb18\nDrop loop"];
+    "cfg::objectives::load_bootstrap_objectives_seed::bb19" [label="bb19\nDrop cleanup loop"];
+    "cfg::objectives::load_bootstrap_objectives_seed::bb20" [label="bb20\nSwitchInt cleanup loop"];
+  }
+  "cfg::objectives::load_bootstrap_objectives_seed::bb7" -> "cfg::objectives::load_bootstrap_objectives_seed::bb12" [label="SwitchInt"];
+  "cfg::objectives::load_bootstrap_objectives_seed::bb7" -> "cfg::objectives::load_bootstrap_objectives_seed::bb8" [label="SwitchInt"];
+  "cfg::objectives::load_bootstrap_objectives_seed::bb11" -> "cfg::objectives::load_bootstrap_objectives_seed::bb13" [label="Drop"];
+  "cfg::objectives::load_bootstrap_objectives_seed::bb11" -> "cfg::objectives::load_bootstrap_objectives_seed::bb16" [label="Drop"];
+  "cfg::objectives::load_bootstrap_objectives_seed::bb12" -> "cfg::objectives::load_bootstrap_objectives_seed::bb13" [label="Goto"];
+  "cfg::objectives::load_bootstrap_objectives_seed::bb13" -> "cfg::objectives::load_bootstrap_objectives_seed::bb14" [label="SwitchInt"];
+  "cfg::objectives::load_bootstrap_objectives_seed::bb13" -> "cfg::objectives::load_bootstrap_objectives_seed::bb18" [label="SwitchInt"];
+  "cfg::objectives::load_bootstrap_objectives_seed::bb15" -> "cfg::objectives::load_bootstrap_objectives_seed::bb16" [label="Drop"];
+  "cfg::objectives::load_bootstrap_objectives_seed::bb16" -> "cfg::objectives::load_bootstrap_objectives_seed::bb20" [label="Drop"];
+  "cfg::objectives::load_bootstrap_objectives_seed::bb18" -> "cfg::objectives::load_bootstrap_objectives_seed::bb14" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::objectives::load_bootstrap_objectives_seed::bb18" -> "cfg::objectives::load_bootstrap_objectives_seed::bb20" [label="Drop"];
+  "cfg::objectives::load_bootstrap_objectives_seed::bb19" -> "cfg::objectives::load_bootstrap_objectives_seed::bb17" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::objectives::load_bootstrap_objectives_seed::bb20" -> "cfg::objectives::load_bootstrap_objectives_seed::bb17" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::objectives::load_bootstrap_objectives_seed::bb20" -> "cfg::objectives::load_bootstrap_objectives_seed::bb19" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

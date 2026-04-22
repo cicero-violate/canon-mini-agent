@@ -1,0 +1,27 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3222 {
+    label="structured_questions::select_questions";
+    "cfg::structured_questions::select_questions::bb0" [label="bb0\nCall"];
+    "cfg::structured_questions::select_questions::bb1" [label="bb1\nAssert"];
+    "cfg::structured_questions::select_questions::bb2" [label="bb2\nAssert"];
+    "cfg::structured_questions::select_questions::bb3" [label="bb3\nAssert"];
+    "cfg::structured_questions::select_questions::bb4" [label="bb4\nAssert"];
+    "cfg::structured_questions::select_questions::bb5" [label="bb5\nAssert"];
+    "cfg::structured_questions::select_questions::bb6" [label="bb6\nAssert"];
+    "cfg::structured_questions::select_questions::bb7" [label="bb7\nAssert"];
+    "cfg::structured_questions::select_questions::bb8" [label="bb8\nAssert"];
+    "cfg::structured_questions::select_questions::bb9" [label="bb9\nReturn"];
+  }
+  "cfg::structured_questions::select_questions::bb1" -> "cfg::structured_questions::select_questions::bb2" [label="Assert"];
+  "cfg::structured_questions::select_questions::bb2" -> "cfg::structured_questions::select_questions::bb3" [label="Assert"];
+  "cfg::structured_questions::select_questions::bb3" -> "cfg::structured_questions::select_questions::bb4" [label="Assert"];
+  "cfg::structured_questions::select_questions::bb4" -> "cfg::structured_questions::select_questions::bb5" [label="Assert"];
+  "cfg::structured_questions::select_questions::bb5" -> "cfg::structured_questions::select_questions::bb6" [label="Assert"];
+  "cfg::structured_questions::select_questions::bb6" -> "cfg::structured_questions::select_questions::bb7" [label="Assert"];
+  "cfg::structured_questions::select_questions::bb7" -> "cfg::structured_questions::select_questions::bb8" [label="Assert"];
+  "cfg::structured_questions::select_questions::bb8" -> "cfg::structured_questions::select_questions::bb9" [label="Assert"];
+}

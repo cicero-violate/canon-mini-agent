@@ -1,0 +1,41 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2607 {
+    label="prompts::format_bullets";
+    "cfg::prompts::format_bullets::bb0" [label="bb0\nCall"];
+    "cfg::prompts::format_bullets::bb1" [label="bb1\nCall"];
+    "cfg::prompts::format_bullets::bb2" [label="bb2\nGoto"];
+    "cfg::prompts::format_bullets::bb3" [label="bb3\nCall loop"];
+    "cfg::prompts::format_bullets::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::prompts::format_bullets::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::prompts::format_bullets::bb6" [label="bb6\nCall loop"];
+    "cfg::prompts::format_bullets::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::prompts::format_bullets::bb8" [label="bb8\nCall loop"];
+    "cfg::prompts::format_bullets::bb9" [label="bb9\nCall loop"];
+    "cfg::prompts::format_bullets::bb10" [label="bb10\nCall loop"];
+    "cfg::prompts::format_bullets::bb11" [label="bb11\nCall loop"];
+    "cfg::prompts::format_bullets::bb12" [label="bb12\nCall loop"];
+    "cfg::prompts::format_bullets::bb13" [label="bb13\nCall loop"];
+    "cfg::prompts::format_bullets::bb14" [label="bb14\nCall loop"];
+    "cfg::prompts::format_bullets::bb15" [label="bb15\nDrop loop"];
+    "cfg::prompts::format_bullets::bb16" [label="bb16\nReturn loop"];
+    "cfg::prompts::format_bullets::bb17" [label="bb17\nDrop cleanup loop"];
+    "cfg::prompts::format_bullets::bb18" [label="bb18\nUnwindResume cleanup loop"];
+    "cfg::prompts::format_bullets::bb19" [label="bb19\nGoto loop"];
+    "cfg::prompts::format_bullets::bb20" [label="bb20\nGoto loop"];
+  }
+  "cfg::prompts::format_bullets::bb2" -> "cfg::prompts::format_bullets::bb3" [label="Goto"];
+  "cfg::prompts::format_bullets::bb4" -> "cfg::prompts::format_bullets::bb7" [label="SwitchInt"];
+  "cfg::prompts::format_bullets::bb4" -> "cfg::prompts::format_bullets::bb6" [label="SwitchInt"];
+  "cfg::prompts::format_bullets::bb4" -> "cfg::prompts::format_bullets::bb5" [label="SwitchInt"];
+  "cfg::prompts::format_bullets::bb7" -> "cfg::prompts::format_bullets::bb10" [label="SwitchInt"];
+  "cfg::prompts::format_bullets::bb7" -> "cfg::prompts::format_bullets::bb12" [label="SwitchInt"];
+  "cfg::prompts::format_bullets::bb7" -> "cfg::prompts::format_bullets::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompts::format_bullets::bb15" -> "cfg::prompts::format_bullets::bb16" [label="Drop"];
+  "cfg::prompts::format_bullets::bb17" -> "cfg::prompts::format_bullets::bb18" [label="Drop"];
+  "cfg::prompts::format_bullets::bb19" -> "cfg::prompts::format_bullets::bb3" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::prompts::format_bullets::bb20" -> "cfg::prompts::format_bullets::bb12" [color="crimson", penwidth=2, label="Goto back"];
+}

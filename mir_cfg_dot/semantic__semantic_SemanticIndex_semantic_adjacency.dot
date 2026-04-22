@@ -1,0 +1,31 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3141 {
+    label="semantic::SemanticIndex::semantic_adjacency";
+    "cfg::semantic::SemanticIndex::semantic_adjacency::bb0" [label="bb0\nCall"];
+    "cfg::semantic::SemanticIndex::semantic_adjacency::bb1" [label="bb1\nCall"];
+    "cfg::semantic::SemanticIndex::semantic_adjacency::bb2" [label="bb2\nGoto"];
+    "cfg::semantic::SemanticIndex::semantic_adjacency::bb3" [label="bb3\nCall loop"];
+    "cfg::semantic::SemanticIndex::semantic_adjacency::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::semantic_adjacency::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::semantic::SemanticIndex::semantic_adjacency::bb6" [label="bb6\nCall loop"];
+    "cfg::semantic::SemanticIndex::semantic_adjacency::bb7" [label="bb7\nReturn loop"];
+    "cfg::semantic::SemanticIndex::semantic_adjacency::bb8" [label="bb8\nCall loop"];
+    "cfg::semantic::SemanticIndex::semantic_adjacency::bb9" [label="bb9\nCall loop"];
+    "cfg::semantic::SemanticIndex::semantic_adjacency::bb10" [label="bb10\nCall loop"];
+    "cfg::semantic::SemanticIndex::semantic_adjacency::bb11" [label="bb11\nCall loop"];
+    "cfg::semantic::SemanticIndex::semantic_adjacency::bb12" [label="bb12\nCall loop"];
+    "cfg::semantic::SemanticIndex::semantic_adjacency::bb13" [label="bb13\nDrop cleanup loop"];
+    "cfg::semantic::SemanticIndex::semantic_adjacency::bb14" [label="bb14\nUnwindResume cleanup loop"];
+    "cfg::semantic::SemanticIndex::semantic_adjacency::bb15" [label="bb15\nGoto loop"];
+  }
+  "cfg::semantic::SemanticIndex::semantic_adjacency::bb2" -> "cfg::semantic::SemanticIndex::semantic_adjacency::bb3" [label="Goto"];
+  "cfg::semantic::SemanticIndex::semantic_adjacency::bb4" -> "cfg::semantic::SemanticIndex::semantic_adjacency::bb7" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::semantic_adjacency::bb4" -> "cfg::semantic::SemanticIndex::semantic_adjacency::bb6" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::semantic_adjacency::bb4" -> "cfg::semantic::SemanticIndex::semantic_adjacency::bb5" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::semantic_adjacency::bb13" -> "cfg::semantic::SemanticIndex::semantic_adjacency::bb14" [label="Drop"];
+  "cfg::semantic::SemanticIndex::semantic_adjacency::bb15" -> "cfg::semantic::SemanticIndex::semantic_adjacency::bb3" [color="crimson", penwidth=2, label="Goto back"];
+}

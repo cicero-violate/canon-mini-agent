@@ -1,0 +1,35 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3083 {
+    label="semantic::SemanticIndex::reconstruct_path";
+    "cfg::semantic::SemanticIndex::reconstruct_path::bb0" [label="bb0\nCall"];
+    "cfg::semantic::SemanticIndex::reconstruct_path::bb1" [label="bb1\nGoto"];
+    "cfg::semantic::SemanticIndex::reconstruct_path::bb2" [label="bb2\nCall loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path::bb3" [label="bb3\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path::bb4" [label="bb4\nGoto loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path::bb5" [label="bb5\nCall loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path::bb6" [label="bb6\nGoto loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path::bb7" [label="bb7\nCall loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path::bb8" [label="bb8\nCall loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path::bb10" [label="bb10\nCall loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path::bb11" [label="bb11\nCall loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path::bb12" [label="bb12\nGoto loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path::bb13" [label="bb13\nCall"];
+    "cfg::semantic::SemanticIndex::reconstruct_path::bb14" [label="bb14\nReturn"];
+    "cfg::semantic::SemanticIndex::reconstruct_path::bb15" [label="bb15\nDrop cleanup"];
+    "cfg::semantic::SemanticIndex::reconstruct_path::bb16" [label="bb16\nUnwindResume cleanup"];
+  }
+  "cfg::semantic::SemanticIndex::reconstruct_path::bb1" -> "cfg::semantic::SemanticIndex::reconstruct_path::bb2" [label="Goto"];
+  "cfg::semantic::SemanticIndex::reconstruct_path::bb3" -> "cfg::semantic::SemanticIndex::reconstruct_path::bb5" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::reconstruct_path::bb3" -> "cfg::semantic::SemanticIndex::reconstruct_path::bb4" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::reconstruct_path::bb4" -> "cfg::semantic::SemanticIndex::reconstruct_path::bb7" [label="Goto"];
+  "cfg::semantic::SemanticIndex::reconstruct_path::bb6" -> "cfg::semantic::SemanticIndex::reconstruct_path::bb7" [label="Goto"];
+  "cfg::semantic::SemanticIndex::reconstruct_path::bb9" -> "cfg::semantic::SemanticIndex::reconstruct_path::bb11" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::reconstruct_path::bb9" -> "cfg::semantic::SemanticIndex::reconstruct_path::bb10" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::reconstruct_path::bb12" -> "cfg::semantic::SemanticIndex::reconstruct_path::bb2" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::semantic::SemanticIndex::reconstruct_path::bb15" -> "cfg::semantic::SemanticIndex::reconstruct_path::bb16" [label="Drop"];
+}

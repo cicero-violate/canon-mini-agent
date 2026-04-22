@@ -1,0 +1,14 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1622 {
+    label="llm_runtime::chromium_backend::lease_token_from_value";
+    "cfg::llm_runtime::chromium_backend::lease_token_from_value::bb0" [label="bb0\nCall"];
+    "cfg::llm_runtime::chromium_backend::lease_token_from_value::bb1" [label="bb1\nCall"];
+    "cfg::llm_runtime::chromium_backend::lease_token_from_value::bb2" [label="bb2\nCall"];
+    "cfg::llm_runtime::chromium_backend::lease_token_from_value::bb3" [label="bb3\nCall"];
+    "cfg::llm_runtime::chromium_backend::lease_token_from_value::bb4" [label="bb4\nReturn"];
+  }
+}

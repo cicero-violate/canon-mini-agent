@@ -1,0 +1,22 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1037 {
+    label="inter_complexity::issue_title";
+    "cfg::inter_complexity::issue_title::bb0" [label="bb0\nCall"];
+    "cfg::inter_complexity::issue_title::bb1" [label="bb1\nSwitchInt"];
+    "cfg::inter_complexity::issue_title::bb2" [label="bb2\nCall"];
+    "cfg::inter_complexity::issue_title::bb3" [label="bb3\nCall"];
+    "cfg::inter_complexity::issue_title::bb4" [label="bb4\nCall"];
+    "cfg::inter_complexity::issue_title::bb5" [label="bb5\nCall"];
+    "cfg::inter_complexity::issue_title::bb6" [label="bb6\nCall"];
+    "cfg::inter_complexity::issue_title::bb7" [label="bb7\nCall"];
+    "cfg::inter_complexity::issue_title::bb8" [label="bb8\nCall"];
+    "cfg::inter_complexity::issue_title::bb9" [label="bb9\nCall"];
+    "cfg::inter_complexity::issue_title::bb10" [label="bb10\nReturn"];
+  }
+  "cfg::inter_complexity::issue_title::bb1" -> "cfg::inter_complexity::issue_title::bb6" [label="SwitchInt"];
+  "cfg::inter_complexity::issue_title::bb1" -> "cfg::inter_complexity::issue_title::bb2" [label="SwitchInt"];
+}

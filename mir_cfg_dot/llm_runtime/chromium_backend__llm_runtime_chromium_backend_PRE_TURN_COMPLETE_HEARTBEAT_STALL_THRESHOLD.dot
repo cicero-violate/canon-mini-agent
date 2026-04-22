@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1599 {
+    label="llm_runtime::chromium_backend::PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD";
+    "cfg::llm_runtime::chromium_backend::PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD::bb0" [label="bb0\nReturn"];
+  }
+}

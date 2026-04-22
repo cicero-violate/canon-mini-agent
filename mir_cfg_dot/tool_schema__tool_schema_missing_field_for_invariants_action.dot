@@ -1,0 +1,34 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3540 {
+    label="tool_schema::missing_field_for_invariants_action";
+    "cfg::tool_schema::missing_field_for_invariants_action::bb0" [label="bb0\nCall"];
+    "cfg::tool_schema::missing_field_for_invariants_action::bb1" [label="bb1\nCall"];
+    "cfg::tool_schema::missing_field_for_invariants_action::bb2" [label="bb2\nCall"];
+    "cfg::tool_schema::missing_field_for_invariants_action::bb3" [label="bb3\nCall"];
+    "cfg::tool_schema::missing_field_for_invariants_action::bb4" [label="bb4\nGoto loop"];
+    "cfg::tool_schema::missing_field_for_invariants_action::bb5" [label="bb5\nGoto loop"];
+    "cfg::tool_schema::missing_field_for_invariants_action::bb6" [label="bb6\nCall loop"];
+    "cfg::tool_schema::missing_field_for_invariants_action::bb7" [label="bb7\nCall loop"];
+    "cfg::tool_schema::missing_field_for_invariants_action::bb8" [label="bb8\nCall loop"];
+    "cfg::tool_schema::missing_field_for_invariants_action::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::tool_schema::missing_field_for_invariants_action::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::tool_schema::missing_field_for_invariants_action::bb11" [label="bb11\nSwitchInt loop"];
+    "cfg::tool_schema::missing_field_for_invariants_action::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::tool_schema::missing_field_for_invariants_action::bb13" [label="bb13\nCall"];
+    "cfg::tool_schema::missing_field_for_invariants_action::bb14" [label="bb14\nReturn"];
+  }
+  "cfg::tool_schema::missing_field_for_invariants_action::bb4" -> "cfg::tool_schema::missing_field_for_invariants_action::bb14" [label="Goto"];
+  "cfg::tool_schema::missing_field_for_invariants_action::bb5" -> "cfg::tool_schema::missing_field_for_invariants_action::bb14" [label="Goto"];
+  "cfg::tool_schema::missing_field_for_invariants_action::bb9" -> "cfg::tool_schema::missing_field_for_invariants_action::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tool_schema::missing_field_for_invariants_action::bb9" -> "cfg::tool_schema::missing_field_for_invariants_action::bb13" [label="SwitchInt"];
+  "cfg::tool_schema::missing_field_for_invariants_action::bb10" -> "cfg::tool_schema::missing_field_for_invariants_action::bb8" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tool_schema::missing_field_for_invariants_action::bb10" -> "cfg::tool_schema::missing_field_for_invariants_action::bb13" [label="SwitchInt"];
+  "cfg::tool_schema::missing_field_for_invariants_action::bb11" -> "cfg::tool_schema::missing_field_for_invariants_action::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tool_schema::missing_field_for_invariants_action::bb11" -> "cfg::tool_schema::missing_field_for_invariants_action::bb13" [label="SwitchInt"];
+  "cfg::tool_schema::missing_field_for_invariants_action::bb12" -> "cfg::tool_schema::missing_field_for_invariants_action::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tool_schema::missing_field_for_invariants_action::bb12" -> "cfg::tool_schema::missing_field_for_invariants_action::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

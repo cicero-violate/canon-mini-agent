@@ -1,0 +1,47 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3626 {
+    label="tools::restore_file_snapshot";
+    "cfg::tools::restore_file_snapshot::bb0" [label="bb0\nSwitchInt"];
+    "cfg::tools::restore_file_snapshot::bb1" [label="bb1\nCall"];
+    "cfg::tools::restore_file_snapshot::bb2" [label="bb2\nSwitchInt"];
+    "cfg::tools::restore_file_snapshot::bb3" [label="bb3\nCall"];
+    "cfg::tools::restore_file_snapshot::bb4" [label="bb4\nCall"];
+    "cfg::tools::restore_file_snapshot::bb5" [label="bb5\nSwitchInt"];
+    "cfg::tools::restore_file_snapshot::bb6" [label="bb6\nUnreachable loop"];
+    "cfg::tools::restore_file_snapshot::bb7" [label="bb7\nCall loop"];
+    "cfg::tools::restore_file_snapshot::bb8" [label="bb8\nCall loop"];
+    "cfg::tools::restore_file_snapshot::bb9" [label="bb9\nCall loop"];
+    "cfg::tools::restore_file_snapshot::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::tools::restore_file_snapshot::bb11" [label="bb11\nCall loop"];
+    "cfg::tools::restore_file_snapshot::bb12" [label="bb12\nCall loop"];
+    "cfg::tools::restore_file_snapshot::bb13" [label="bb13\nSwitchInt loop"];
+    "cfg::tools::restore_file_snapshot::bb14" [label="bb14\nCall loop"];
+    "cfg::tools::restore_file_snapshot::bb15" [label="bb15\nCall loop"];
+    "cfg::tools::restore_file_snapshot::bb16" [label="bb16\nSwitchInt loop"];
+    "cfg::tools::restore_file_snapshot::bb17" [label="bb17\nCall"];
+    "cfg::tools::restore_file_snapshot::bb18" [label="bb18\nGoto"];
+    "cfg::tools::restore_file_snapshot::bb19" [label="bb19\nReturn"];
+  }
+  "cfg::tools::restore_file_snapshot::bb0" -> "cfg::tools::restore_file_snapshot::bb1" [label="SwitchInt"];
+  "cfg::tools::restore_file_snapshot::bb0" -> "cfg::tools::restore_file_snapshot::bb12" [label="SwitchInt"];
+  "cfg::tools::restore_file_snapshot::bb0" -> "cfg::tools::restore_file_snapshot::bb6" [label="SwitchInt"];
+  "cfg::tools::restore_file_snapshot::bb2" -> "cfg::tools::restore_file_snapshot::bb3" [label="SwitchInt"];
+  "cfg::tools::restore_file_snapshot::bb2" -> "cfg::tools::restore_file_snapshot::bb8" [label="SwitchInt"];
+  "cfg::tools::restore_file_snapshot::bb2" -> "cfg::tools::restore_file_snapshot::bb6" [label="SwitchInt"];
+  "cfg::tools::restore_file_snapshot::bb5" -> "cfg::tools::restore_file_snapshot::bb8" [label="SwitchInt"];
+  "cfg::tools::restore_file_snapshot::bb5" -> "cfg::tools::restore_file_snapshot::bb7" [label="SwitchInt"];
+  "cfg::tools::restore_file_snapshot::bb5" -> "cfg::tools::restore_file_snapshot::bb6" [label="SwitchInt"];
+  "cfg::tools::restore_file_snapshot::bb10" -> "cfg::tools::restore_file_snapshot::bb18" [label="SwitchInt"];
+  "cfg::tools::restore_file_snapshot::bb10" -> "cfg::tools::restore_file_snapshot::bb11" [label="SwitchInt"];
+  "cfg::tools::restore_file_snapshot::bb10" -> "cfg::tools::restore_file_snapshot::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::restore_file_snapshot::bb13" -> "cfg::tools::restore_file_snapshot::bb18" [label="SwitchInt"];
+  "cfg::tools::restore_file_snapshot::bb13" -> "cfg::tools::restore_file_snapshot::bb14" [label="SwitchInt"];
+  "cfg::tools::restore_file_snapshot::bb16" -> "cfg::tools::restore_file_snapshot::bb18" [label="SwitchInt"];
+  "cfg::tools::restore_file_snapshot::bb16" -> "cfg::tools::restore_file_snapshot::bb17" [label="SwitchInt"];
+  "cfg::tools::restore_file_snapshot::bb16" -> "cfg::tools::restore_file_snapshot::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::restore_file_snapshot::bb18" -> "cfg::tools::restore_file_snapshot::bb19" [label="Goto"];
+}

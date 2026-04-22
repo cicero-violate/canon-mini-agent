@@ -1,0 +1,21 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3123 {
+    label="semantic::SemanticIndex::direct_callee_paths";
+    "cfg::semantic::SemanticIndex::direct_callee_paths::bb0" [label="bb0\nCall"];
+    "cfg::semantic::SemanticIndex::direct_callee_paths::bb1" [label="bb1\nCall"];
+    "cfg::semantic::SemanticIndex::direct_callee_paths::bb2" [label="bb2\nCall"];
+    "cfg::semantic::SemanticIndex::direct_callee_paths::bb3" [label="bb3\nCall"];
+    "cfg::semantic::SemanticIndex::direct_callee_paths::bb4" [label="bb4\nCall"];
+    "cfg::semantic::SemanticIndex::direct_callee_paths::bb5" [label="bb5\nCall"];
+    "cfg::semantic::SemanticIndex::direct_callee_paths::bb6" [label="bb6\nCall"];
+    "cfg::semantic::SemanticIndex::direct_callee_paths::bb7" [label="bb7\nCall"];
+    "cfg::semantic::SemanticIndex::direct_callee_paths::bb8" [label="bb8\nReturn"];
+    "cfg::semantic::SemanticIndex::direct_callee_paths::bb9" [label="bb9\nDrop cleanup"];
+    "cfg::semantic::SemanticIndex::direct_callee_paths::bb10" [label="bb10\nUnwindResume cleanup"];
+  }
+  "cfg::semantic::SemanticIndex::direct_callee_paths::bb9" -> "cfg::semantic::SemanticIndex::direct_callee_paths::bb10" [label="Drop"];
+}

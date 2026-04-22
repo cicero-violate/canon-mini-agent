@@ -1,0 +1,32 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3302 {
+    label="supervisor::run_cmd";
+    "cfg::supervisor::run_cmd::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::run_cmd::bb1" [label="bb1\nCall"];
+    "cfg::supervisor::run_cmd::bb2" [label="bb2\nCall"];
+    "cfg::supervisor::run_cmd::bb3" [label="bb3\nCall"];
+    "cfg::supervisor::run_cmd::bb4" [label="bb4\nCall"];
+    "cfg::supervisor::run_cmd::bb5" [label="bb5\nCall"];
+    "cfg::supervisor::run_cmd::bb6" [label="bb6\nSwitchInt"];
+    "cfg::supervisor::run_cmd::bb7" [label="bb7\nUnreachable"];
+    "cfg::supervisor::run_cmd::bb8" [label="bb8\nDrop"];
+    "cfg::supervisor::run_cmd::bb9" [label="bb9\nCall"];
+    "cfg::supervisor::run_cmd::bb10" [label="bb10\nDrop"];
+    "cfg::supervisor::run_cmd::bb11" [label="bb11\nCall"];
+    "cfg::supervisor::run_cmd::bb12" [label="bb12\nGoto"];
+    "cfg::supervisor::run_cmd::bb13" [label="bb13\nReturn"];
+    "cfg::supervisor::run_cmd::bb14" [label="bb14\nDrop cleanup"];
+    "cfg::supervisor::run_cmd::bb15" [label="bb15\nUnwindResume cleanup"];
+  }
+  "cfg::supervisor::run_cmd::bb6" -> "cfg::supervisor::run_cmd::bb8" [label="SwitchInt"];
+  "cfg::supervisor::run_cmd::bb6" -> "cfg::supervisor::run_cmd::bb9" [label="SwitchInt"];
+  "cfg::supervisor::run_cmd::bb6" -> "cfg::supervisor::run_cmd::bb7" [label="SwitchInt"];
+  "cfg::supervisor::run_cmd::bb8" -> "cfg::supervisor::run_cmd::bb11" [label="Drop"];
+  "cfg::supervisor::run_cmd::bb10" -> "cfg::supervisor::run_cmd::bb13" [label="Drop"];
+  "cfg::supervisor::run_cmd::bb12" -> "cfg::supervisor::run_cmd::bb13" [label="Goto"];
+  "cfg::supervisor::run_cmd::bb14" -> "cfg::supervisor::run_cmd::bb15" [label="Drop"];
+}

@@ -1,0 +1,27 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2225 {
+    label="md_convert::strip_bullet";
+    "cfg::md_convert::strip_bullet::bb0" [label="bb0\nCall"];
+    "cfg::md_convert::strip_bullet::bb1" [label="bb1\nCall"];
+    "cfg::md_convert::strip_bullet::bb2" [label="bb2\nSwitchInt"];
+    "cfg::md_convert::strip_bullet::bb3" [label="bb3\nCall"];
+    "cfg::md_convert::strip_bullet::bb4" [label="bb4\nCall"];
+    "cfg::md_convert::strip_bullet::bb5" [label="bb5\nCall"];
+    "cfg::md_convert::strip_bullet::bb6" [label="bb6\nSwitchInt"];
+    "cfg::md_convert::strip_bullet::bb7" [label="bb7\nCall"];
+    "cfg::md_convert::strip_bullet::bb8" [label="bb8\nCall"];
+    "cfg::md_convert::strip_bullet::bb9" [label="bb9\nCall"];
+    "cfg::md_convert::strip_bullet::bb10" [label="bb10\nReturn"];
+    "cfg::md_convert::strip_bullet::bb11" [label="bb11\nUnreachable"];
+  }
+  "cfg::md_convert::strip_bullet::bb2" -> "cfg::md_convert::strip_bullet::bb3" [label="SwitchInt"];
+  "cfg::md_convert::strip_bullet::bb2" -> "cfg::md_convert::strip_bullet::bb5" [label="SwitchInt"];
+  "cfg::md_convert::strip_bullet::bb2" -> "cfg::md_convert::strip_bullet::bb11" [label="SwitchInt"];
+  "cfg::md_convert::strip_bullet::bb6" -> "cfg::md_convert::strip_bullet::bb7" [label="SwitchInt"];
+  "cfg::md_convert::strip_bullet::bb6" -> "cfg::md_convert::strip_bullet::bb9" [label="SwitchInt"];
+  "cfg::md_convert::strip_bullet::bb6" -> "cfg::md_convert::strip_bullet::bb11" [label="SwitchInt"];
+}

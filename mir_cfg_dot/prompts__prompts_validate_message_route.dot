@@ -1,0 +1,22 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2686 {
+    label="prompts::validate_message_route";
+    "cfg::prompts::validate_message_route::bb0" [label="bb0\nCall"];
+    "cfg::prompts::validate_message_route::bb1" [label="bb1\nCall"];
+    "cfg::prompts::validate_message_route::bb2" [label="bb2\nCall"];
+    "cfg::prompts::validate_message_route::bb3" [label="bb3\nSwitchInt"];
+    "cfg::prompts::validate_message_route::bb4" [label="bb4\nCall"];
+    "cfg::prompts::validate_message_route::bb5" [label="bb5\nCall"];
+    "cfg::prompts::validate_message_route::bb6" [label="bb6\nGoto"];
+    "cfg::prompts::validate_message_route::bb7" [label="bb7\nGoto"];
+    "cfg::prompts::validate_message_route::bb8" [label="bb8\nReturn"];
+  }
+  "cfg::prompts::validate_message_route::bb3" -> "cfg::prompts::validate_message_route::bb7" [label="SwitchInt"];
+  "cfg::prompts::validate_message_route::bb3" -> "cfg::prompts::validate_message_route::bb4" [label="SwitchInt"];
+  "cfg::prompts::validate_message_route::bb6" -> "cfg::prompts::validate_message_route::bb8" [label="Goto"];
+  "cfg::prompts::validate_message_route::bb7" -> "cfg::prompts::validate_message_route::bb8" [label="Goto"];
+}

@@ -1,0 +1,25 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1761 {
+    label="llm_runtime::chromium_backend::release_tab_locked";
+    "cfg::llm_runtime::chromium_backend::release_tab_locked::bb0" [label="bb0\nSwitchInt"];
+    "cfg::llm_runtime::chromium_backend::release_tab_locked::bb1" [label="bb1\nCall"];
+    "cfg::llm_runtime::chromium_backend::release_tab_locked::bb2" [label="bb2\nCall"];
+    "cfg::llm_runtime::chromium_backend::release_tab_locked::bb3" [label="bb3\nCall"];
+    "cfg::llm_runtime::chromium_backend::release_tab_locked::bb4" [label="bb4\nCall"];
+    "cfg::llm_runtime::chromium_backend::release_tab_locked::bb5" [label="bb5\nDrop"];
+    "cfg::llm_runtime::chromium_backend::release_tab_locked::bb6" [label="bb6\nCall"];
+    "cfg::llm_runtime::chromium_backend::release_tab_locked::bb7" [label="bb7\nCall"];
+    "cfg::llm_runtime::chromium_backend::release_tab_locked::bb8" [label="bb8\nCall"];
+    "cfg::llm_runtime::chromium_backend::release_tab_locked::bb9" [label="bb9\nCall"];
+    "cfg::llm_runtime::chromium_backend::release_tab_locked::bb10" [label="bb10\nCall"];
+    "cfg::llm_runtime::chromium_backend::release_tab_locked::bb11" [label="bb11\nCall"];
+    "cfg::llm_runtime::chromium_backend::release_tab_locked::bb12" [label="bb12\nReturn"];
+  }
+  "cfg::llm_runtime::chromium_backend::release_tab_locked::bb0" -> "cfg::llm_runtime::chromium_backend::release_tab_locked::bb6" [label="SwitchInt"];
+  "cfg::llm_runtime::chromium_backend::release_tab_locked::bb0" -> "cfg::llm_runtime::chromium_backend::release_tab_locked::bb1" [label="SwitchInt"];
+  "cfg::llm_runtime::chromium_backend::release_tab_locked::bb5" -> "cfg::llm_runtime::chromium_backend::release_tab_locked::bb12" [label="Drop"];
+}

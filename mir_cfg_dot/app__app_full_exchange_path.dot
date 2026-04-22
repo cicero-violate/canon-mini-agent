@@ -1,0 +1,33 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_391 {
+    label="app::full_exchange_path";
+    "cfg::app::full_exchange_path::bb0" [label="bb0\nCall"];
+    "cfg::app::full_exchange_path::bb1" [label="bb1\nCall"];
+    "cfg::app::full_exchange_path::bb2" [label="bb2\nCall"];
+    "cfg::app::full_exchange_path::bb3" [label="bb3\nCall"];
+    "cfg::app::full_exchange_path::bb4" [label="bb4\nCall"];
+    "cfg::app::full_exchange_path::bb5" [label="bb5\nCall"];
+    "cfg::app::full_exchange_path::bb6" [label="bb6\nCall"];
+    "cfg::app::full_exchange_path::bb7" [label="bb7\nCall"];
+    "cfg::app::full_exchange_path::bb8" [label="bb8\nCall"];
+    "cfg::app::full_exchange_path::bb9" [label="bb9\nCall"];
+    "cfg::app::full_exchange_path::bb10" [label="bb10\nCall"];
+    "cfg::app::full_exchange_path::bb11" [label="bb11\nCall"];
+    "cfg::app::full_exchange_path::bb12" [label="bb12\nCall"];
+    "cfg::app::full_exchange_path::bb13" [label="bb13\nDrop"];
+    "cfg::app::full_exchange_path::bb14" [label="bb14\nDrop"];
+    "cfg::app::full_exchange_path::bb15" [label="bb15\nReturn"];
+    "cfg::app::full_exchange_path::bb16" [label="bb16\nDrop cleanup"];
+    "cfg::app::full_exchange_path::bb17" [label="bb17\nDrop cleanup"];
+    "cfg::app::full_exchange_path::bb18" [label="bb18\nUnwindResume cleanup"];
+  }
+  "cfg::app::full_exchange_path::bb13" -> "cfg::app::full_exchange_path::bb14" [label="Drop"];
+  "cfg::app::full_exchange_path::bb13" -> "cfg::app::full_exchange_path::bb17" [label="Drop"];
+  "cfg::app::full_exchange_path::bb14" -> "cfg::app::full_exchange_path::bb15" [label="Drop"];
+  "cfg::app::full_exchange_path::bb16" -> "cfg::app::full_exchange_path::bb17" [label="Drop"];
+  "cfg::app::full_exchange_path::bb17" -> "cfg::app::full_exchange_path::bb18" [label="Drop"];
+}

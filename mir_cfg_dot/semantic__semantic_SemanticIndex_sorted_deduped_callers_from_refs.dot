@@ -1,0 +1,17 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3105 {
+    label="semantic::SemanticIndex::sorted_deduped_callers_from_refs";
+    "cfg::semantic::SemanticIndex::sorted_deduped_callers_from_refs::bb0" [label="bb0\nCall"];
+    "cfg::semantic::SemanticIndex::sorted_deduped_callers_from_refs::bb1" [label="bb1\nCall"];
+    "cfg::semantic::SemanticIndex::sorted_deduped_callers_from_refs::bb2" [label="bb2\nCall"];
+    "cfg::semantic::SemanticIndex::sorted_deduped_callers_from_refs::bb3" [label="bb3\nCall"];
+    "cfg::semantic::SemanticIndex::sorted_deduped_callers_from_refs::bb4" [label="bb4\nReturn"];
+    "cfg::semantic::SemanticIndex::sorted_deduped_callers_from_refs::bb5" [label="bb5\nDrop cleanup"];
+    "cfg::semantic::SemanticIndex::sorted_deduped_callers_from_refs::bb6" [label="bb6\nUnwindResume cleanup"];
+  }
+  "cfg::semantic::SemanticIndex::sorted_deduped_callers_from_refs::bb5" -> "cfg::semantic::SemanticIndex::sorted_deduped_callers_from_refs::bb6" [label="Drop"];
+}

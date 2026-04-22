@@ -1,0 +1,40 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_381 {
+    label="app::invariant_id_from_reason";
+    "cfg::app::invariant_id_from_reason::bb0" [label="bb0\nCall"];
+    "cfg::app::invariant_id_from_reason::bb1" [label="bb1\nCall"];
+    "cfg::app::invariant_id_from_reason::bb2" [label="bb2\nSwitchInt"];
+    "cfg::app::invariant_id_from_reason::bb3" [label="bb3\nUnreachable loop"];
+    "cfg::app::invariant_id_from_reason::bb4" [label="bb4\nAssert loop"];
+    "cfg::app::invariant_id_from_reason::bb5" [label="bb5\nCall loop"];
+    "cfg::app::invariant_id_from_reason::bb6" [label="bb6\nCall loop"];
+    "cfg::app::invariant_id_from_reason::bb7" [label="bb7\nCall loop"];
+    "cfg::app::invariant_id_from_reason::bb8" [label="bb8\nCall loop"];
+    "cfg::app::invariant_id_from_reason::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::app::invariant_id_from_reason::bb10" [label="bb10\nAssert"];
+    "cfg::app::invariant_id_from_reason::bb11" [label="bb11\nCall"];
+    "cfg::app::invariant_id_from_reason::bb12" [label="bb12\nCall"];
+    "cfg::app::invariant_id_from_reason::bb13" [label="bb13\nCall"];
+    "cfg::app::invariant_id_from_reason::bb14" [label="bb14\nCall"];
+    "cfg::app::invariant_id_from_reason::bb15" [label="bb15\nSwitchInt"];
+    "cfg::app::invariant_id_from_reason::bb16" [label="bb16\nGoto"];
+    "cfg::app::invariant_id_from_reason::bb17" [label="bb17\nGoto"];
+    "cfg::app::invariant_id_from_reason::bb18" [label="bb18\nReturn"];
+  }
+  "cfg::app::invariant_id_from_reason::bb2" -> "cfg::app::invariant_id_from_reason::bb4" [label="SwitchInt"];
+  "cfg::app::invariant_id_from_reason::bb2" -> "cfg::app::invariant_id_from_reason::bb5" [label="SwitchInt"];
+  "cfg::app::invariant_id_from_reason::bb2" -> "cfg::app::invariant_id_from_reason::bb3" [label="SwitchInt"];
+  "cfg::app::invariant_id_from_reason::bb4" -> "cfg::app::invariant_id_from_reason::bb6" [label="Assert"];
+  "cfg::app::invariant_id_from_reason::bb9" -> "cfg::app::invariant_id_from_reason::bb10" [label="SwitchInt"];
+  "cfg::app::invariant_id_from_reason::bb9" -> "cfg::app::invariant_id_from_reason::bb11" [label="SwitchInt"];
+  "cfg::app::invariant_id_from_reason::bb9" -> "cfg::app::invariant_id_from_reason::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::invariant_id_from_reason::bb10" -> "cfg::app::invariant_id_from_reason::bb12" [label="Assert"];
+  "cfg::app::invariant_id_from_reason::bb15" -> "cfg::app::invariant_id_from_reason::bb17" [label="SwitchInt"];
+  "cfg::app::invariant_id_from_reason::bb15" -> "cfg::app::invariant_id_from_reason::bb16" [label="SwitchInt"];
+  "cfg::app::invariant_id_from_reason::bb16" -> "cfg::app::invariant_id_from_reason::bb18" [label="Goto"];
+  "cfg::app::invariant_id_from_reason::bb17" -> "cfg::app::invariant_id_from_reason::bb18" [label="Goto"];
+}

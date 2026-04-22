@@ -1,0 +1,30 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4715 {
+    label="transition_policy::validate_pending_phase";
+    "cfg::transition_policy::validate_pending_phase::bb0" [label="bb0\nSwitchInt"];
+    "cfg::transition_policy::validate_pending_phase::bb1" [label="bb1\nCall"];
+    "cfg::transition_policy::validate_pending_phase::bb2" [label="bb2\nCall"];
+    "cfg::transition_policy::validate_pending_phase::bb3" [label="bb3\nSwitchInt"];
+    "cfg::transition_policy::validate_pending_phase::bb4" [label="bb4\nCall"];
+    "cfg::transition_policy::validate_pending_phase::bb5" [label="bb5\nSwitchInt"];
+    "cfg::transition_policy::validate_pending_phase::bb6" [label="bb6\nGoto"];
+    "cfg::transition_policy::validate_pending_phase::bb7" [label="bb7\nCall"];
+    "cfg::transition_policy::validate_pending_phase::bb8" [label="bb8\nCall"];
+    "cfg::transition_policy::validate_pending_phase::bb9" [label="bb9\nCall"];
+    "cfg::transition_policy::validate_pending_phase::bb10" [label="bb10\nCall"];
+    "cfg::transition_policy::validate_pending_phase::bb11" [label="bb11\nGoto"];
+    "cfg::transition_policy::validate_pending_phase::bb12" [label="bb12\nReturn"];
+  }
+  "cfg::transition_policy::validate_pending_phase::bb0" -> "cfg::transition_policy::validate_pending_phase::bb1" [label="SwitchInt"];
+  "cfg::transition_policy::validate_pending_phase::bb0" -> "cfg::transition_policy::validate_pending_phase::bb6" [label="SwitchInt"];
+  "cfg::transition_policy::validate_pending_phase::bb3" -> "cfg::transition_policy::validate_pending_phase::bb4" [label="SwitchInt"];
+  "cfg::transition_policy::validate_pending_phase::bb3" -> "cfg::transition_policy::validate_pending_phase::bb6" [label="SwitchInt"];
+  "cfg::transition_policy::validate_pending_phase::bb5" -> "cfg::transition_policy::validate_pending_phase::bb7" [label="SwitchInt"];
+  "cfg::transition_policy::validate_pending_phase::bb5" -> "cfg::transition_policy::validate_pending_phase::bb6" [label="SwitchInt"];
+  "cfg::transition_policy::validate_pending_phase::bb6" -> "cfg::transition_policy::validate_pending_phase::bb12" [label="Goto"];
+  "cfg::transition_policy::validate_pending_phase::bb11" -> "cfg::transition_policy::validate_pending_phase::bb12" [label="Goto"];
+}

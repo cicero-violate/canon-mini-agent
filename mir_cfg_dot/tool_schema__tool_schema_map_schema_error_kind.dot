@@ -1,0 +1,47 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3485 {
+    label="tool_schema::map_schema_error_kind";
+    "cfg::tool_schema::map_schema_error_kind::bb0" [label="bb0\nSwitchInt"];
+    "cfg::tool_schema::map_schema_error_kind::bb1" [label="bb1\nCall"];
+    "cfg::tool_schema::map_schema_error_kind::bb2" [label="bb2\nCall"];
+    "cfg::tool_schema::map_schema_error_kind::bb3" [label="bb3\nCall"];
+    "cfg::tool_schema::map_schema_error_kind::bb4" [label="bb4\nCall"];
+    "cfg::tool_schema::map_schema_error_kind::bb5" [label="bb5\nCall"];
+    "cfg::tool_schema::map_schema_error_kind::bb6" [label="bb6\nCall"];
+    "cfg::tool_schema::map_schema_error_kind::bb7" [label="bb7\nCall"];
+    "cfg::tool_schema::map_schema_error_kind::bb8" [label="bb8\nCall"];
+    "cfg::tool_schema::map_schema_error_kind::bb9" [label="bb9\nCall"];
+    "cfg::tool_schema::map_schema_error_kind::bb10" [label="bb10\nCall"];
+    "cfg::tool_schema::map_schema_error_kind::bb11" [label="bb11\nCall"];
+    "cfg::tool_schema::map_schema_error_kind::bb12" [label="bb12\nCall"];
+    "cfg::tool_schema::map_schema_error_kind::bb13" [label="bb13\nCall"];
+    "cfg::tool_schema::map_schema_error_kind::bb14" [label="bb14\nCall"];
+    "cfg::tool_schema::map_schema_error_kind::bb15" [label="bb15\nCall"];
+    "cfg::tool_schema::map_schema_error_kind::bb16" [label="bb16\nCall"];
+    "cfg::tool_schema::map_schema_error_kind::bb17" [label="bb17\nDrop"];
+    "cfg::tool_schema::map_schema_error_kind::bb18" [label="bb18\nCall"];
+    "cfg::tool_schema::map_schema_error_kind::bb19" [label="bb19\nCall"];
+    "cfg::tool_schema::map_schema_error_kind::bb20" [label="bb20\nCall"];
+    "cfg::tool_schema::map_schema_error_kind::bb21" [label="bb21\nCall"];
+    "cfg::tool_schema::map_schema_error_kind::bb22" [label="bb22\nReturn"];
+    "cfg::tool_schema::map_schema_error_kind::bb23" [label="bb23\nDrop cleanup"];
+    "cfg::tool_schema::map_schema_error_kind::bb24" [label="bb24\nUnwindResume cleanup"];
+  }
+  "cfg::tool_schema::map_schema_error_kind::bb0" -> "cfg::tool_schema::map_schema_error_kind::bb2" [label="SwitchInt"];
+  "cfg::tool_schema::map_schema_error_kind::bb0" -> "cfg::tool_schema::map_schema_error_kind::bb3" [label="SwitchInt"];
+  "cfg::tool_schema::map_schema_error_kind::bb0" -> "cfg::tool_schema::map_schema_error_kind::bb4" [label="SwitchInt"];
+  "cfg::tool_schema::map_schema_error_kind::bb0" -> "cfg::tool_schema::map_schema_error_kind::bb5" [label="SwitchInt"];
+  "cfg::tool_schema::map_schema_error_kind::bb0" -> "cfg::tool_schema::map_schema_error_kind::bb6" [label="SwitchInt"];
+  "cfg::tool_schema::map_schema_error_kind::bb0" -> "cfg::tool_schema::map_schema_error_kind::bb5" [label="SwitchInt"];
+  "cfg::tool_schema::map_schema_error_kind::bb0" -> "cfg::tool_schema::map_schema_error_kind::bb7" [label="SwitchInt"];
+  "cfg::tool_schema::map_schema_error_kind::bb0" -> "cfg::tool_schema::map_schema_error_kind::bb3" [label="SwitchInt"];
+  "cfg::tool_schema::map_schema_error_kind::bb0" -> "cfg::tool_schema::map_schema_error_kind::bb9" [label="SwitchInt"];
+  "cfg::tool_schema::map_schema_error_kind::bb0" -> "cfg::tool_schema::map_schema_error_kind::bb8" [label="SwitchInt"];
+  "cfg::tool_schema::map_schema_error_kind::bb0" -> "cfg::tool_schema::map_schema_error_kind::bb1" [label="SwitchInt"];
+  "cfg::tool_schema::map_schema_error_kind::bb17" -> "cfg::tool_schema::map_schema_error_kind::bb22" [label="Drop"];
+  "cfg::tool_schema::map_schema_error_kind::bb23" -> "cfg::tool_schema::map_schema_error_kind::bb24" [label="Drop"];
+}

@@ -1,0 +1,46 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1999 {
+    label="llm_runtime::ws_server::spawn";
+    "cfg::llm_runtime::ws_server::spawn::bb0" [label="bb0\nCall"];
+    "cfg::llm_runtime::ws_server::spawn::bb1" [label="bb1\nCall"];
+    "cfg::llm_runtime::ws_server::spawn::bb2" [label="bb2\nSwitchInt"];
+    "cfg::llm_runtime::ws_server::spawn::bb3" [label="bb3\nCall loop"];
+    "cfg::llm_runtime::ws_server::spawn::bb4" [label="bb4\nCall loop"];
+    "cfg::llm_runtime::ws_server::spawn::bb5" [label="bb5\nCall loop"];
+    "cfg::llm_runtime::ws_server::spawn::bb6" [label="bb6\nSwitchInt loop"];
+    "cfg::llm_runtime::ws_server::spawn::bb7" [label="bb7\nCall"];
+    "cfg::llm_runtime::ws_server::spawn::bb8" [label="bb8\nGoto"];
+    "cfg::llm_runtime::ws_server::spawn::bb9" [label="bb9\nCall"];
+    "cfg::llm_runtime::ws_server::spawn::bb10" [label="bb10\nCall"];
+    "cfg::llm_runtime::ws_server::spawn::bb11" [label="bb11\nGoto"];
+    "cfg::llm_runtime::ws_server::spawn::bb12" [label="bb12\nDrop"];
+    "cfg::llm_runtime::ws_server::spawn::bb13" [label="bb13\nCall"];
+    "cfg::llm_runtime::ws_server::spawn::bb14" [label="bb14\nDrop"];
+    "cfg::llm_runtime::ws_server::spawn::bb15" [label="bb15\nReturn"];
+    "cfg::llm_runtime::ws_server::spawn::bb16" [label="bb16\nDrop cleanup"];
+    "cfg::llm_runtime::ws_server::spawn::bb17" [label="bb17\nDrop cleanup loop"];
+    "cfg::llm_runtime::ws_server::spawn::bb18" [label="bb18\nUnwindResume cleanup loop"];
+    "cfg::llm_runtime::ws_server::spawn::bb19" [label="bb19\nDrop cleanup loop"];
+    "cfg::llm_runtime::ws_server::spawn::bb20" [label="bb20\nSwitchInt cleanup loop"];
+    "cfg::llm_runtime::ws_server::spawn::bb21" [label="bb21\nUnreachable"];
+  }
+  "cfg::llm_runtime::ws_server::spawn::bb2" -> "cfg::llm_runtime::ws_server::spawn::bb4" [label="SwitchInt"];
+  "cfg::llm_runtime::ws_server::spawn::bb2" -> "cfg::llm_runtime::ws_server::spawn::bb3" [label="SwitchInt"];
+  "cfg::llm_runtime::ws_server::spawn::bb2" -> "cfg::llm_runtime::ws_server::spawn::bb21" [label="SwitchInt"];
+  "cfg::llm_runtime::ws_server::spawn::bb6" -> "cfg::llm_runtime::ws_server::spawn::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::llm_runtime::ws_server::spawn::bb6" -> "cfg::llm_runtime::ws_server::spawn::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::llm_runtime::ws_server::spawn::bb8" -> "cfg::llm_runtime::ws_server::spawn::bb12" [label="Goto"];
+  "cfg::llm_runtime::ws_server::spawn::bb11" -> "cfg::llm_runtime::ws_server::spawn::bb12" [label="Goto"];
+  "cfg::llm_runtime::ws_server::spawn::bb12" -> "cfg::llm_runtime::ws_server::spawn::bb13" [label="Drop"];
+  "cfg::llm_runtime::ws_server::spawn::bb12" -> "cfg::llm_runtime::ws_server::spawn::bb20" [label="Drop"];
+  "cfg::llm_runtime::ws_server::spawn::bb14" -> "cfg::llm_runtime::ws_server::spawn::bb15" [label="Drop"];
+  "cfg::llm_runtime::ws_server::spawn::bb16" -> "cfg::llm_runtime::ws_server::spawn::bb17" [label="Drop"];
+  "cfg::llm_runtime::ws_server::spawn::bb17" -> "cfg::llm_runtime::ws_server::spawn::bb18" [label="Drop"];
+  "cfg::llm_runtime::ws_server::spawn::bb19" -> "cfg::llm_runtime::ws_server::spawn::bb17" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::llm_runtime::ws_server::spawn::bb20" -> "cfg::llm_runtime::ws_server::spawn::bb17" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::llm_runtime::ws_server::spawn::bb20" -> "cfg::llm_runtime::ws_server::spawn::bb19" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

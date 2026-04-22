@@ -1,0 +1,47 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4108 {
+    label="tools::parse_rustc_graph_filter";
+    "cfg::tools::parse_rustc_graph_filter::bb0" [label="bb0\nCall"];
+    "cfg::tools::parse_rustc_graph_filter::bb1" [label="bb1\nCall"];
+    "cfg::tools::parse_rustc_graph_filter::bb2" [label="bb2\nSwitchInt"];
+    "cfg::tools::parse_rustc_graph_filter::bb3" [label="bb3\nGoto"];
+    "cfg::tools::parse_rustc_graph_filter::bb4" [label="bb4\nCall"];
+    "cfg::tools::parse_rustc_graph_filter::bb5" [label="bb5\nGoto"];
+    "cfg::tools::parse_rustc_graph_filter::bb6" [label="bb6\nCall loop"];
+    "cfg::tools::parse_rustc_graph_filter::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::tools::parse_rustc_graph_filter::bb8" [label="bb8\nUnreachable loop"];
+    "cfg::tools::parse_rustc_graph_filter::bb9" [label="bb9\nCall loop"];
+    "cfg::tools::parse_rustc_graph_filter::bb10" [label="bb10\nDrop loop"];
+    "cfg::tools::parse_rustc_graph_filter::bb11" [label="bb11\nSwitchInt loop"];
+    "cfg::tools::parse_rustc_graph_filter::bb12" [label="bb12\nCall loop"];
+    "cfg::tools::parse_rustc_graph_filter::bb13" [label="bb13\nCall loop"];
+    "cfg::tools::parse_rustc_graph_filter::bb14" [label="bb14\nSwitchInt loop"];
+    "cfg::tools::parse_rustc_graph_filter::bb15" [label="bb15\nCall"];
+    "cfg::tools::parse_rustc_graph_filter::bb16" [label="bb16\nDrop"];
+    "cfg::tools::parse_rustc_graph_filter::bb17" [label="bb17\nCall"];
+    "cfg::tools::parse_rustc_graph_filter::bb18" [label="bb18\nGoto"];
+    "cfg::tools::parse_rustc_graph_filter::bb19" [label="bb19\nReturn"];
+    "cfg::tools::parse_rustc_graph_filter::bb20" [label="bb20\nDrop cleanup"];
+    "cfg::tools::parse_rustc_graph_filter::bb21" [label="bb21\nUnwindResume cleanup"];
+  }
+  "cfg::tools::parse_rustc_graph_filter::bb2" -> "cfg::tools::parse_rustc_graph_filter::bb4" [label="SwitchInt"];
+  "cfg::tools::parse_rustc_graph_filter::bb2" -> "cfg::tools::parse_rustc_graph_filter::bb3" [label="SwitchInt"];
+  "cfg::tools::parse_rustc_graph_filter::bb3" -> "cfg::tools::parse_rustc_graph_filter::bb19" [label="Goto"];
+  "cfg::tools::parse_rustc_graph_filter::bb5" -> "cfg::tools::parse_rustc_graph_filter::bb6" [label="Goto"];
+  "cfg::tools::parse_rustc_graph_filter::bb7" -> "cfg::tools::parse_rustc_graph_filter::bb10" [label="SwitchInt"];
+  "cfg::tools::parse_rustc_graph_filter::bb7" -> "cfg::tools::parse_rustc_graph_filter::bb9" [label="SwitchInt"];
+  "cfg::tools::parse_rustc_graph_filter::bb7" -> "cfg::tools::parse_rustc_graph_filter::bb8" [label="SwitchInt"];
+  "cfg::tools::parse_rustc_graph_filter::bb10" -> "cfg::tools::parse_rustc_graph_filter::bb17" [label="Drop"];
+  "cfg::tools::parse_rustc_graph_filter::bb11" -> "cfg::tools::parse_rustc_graph_filter::bb12" [label="SwitchInt"];
+  "cfg::tools::parse_rustc_graph_filter::bb11" -> "cfg::tools::parse_rustc_graph_filter::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::parse_rustc_graph_filter::bb11" -> "cfg::tools::parse_rustc_graph_filter::bb8" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::parse_rustc_graph_filter::bb14" -> "cfg::tools::parse_rustc_graph_filter::bb15" [label="SwitchInt"];
+  "cfg::tools::parse_rustc_graph_filter::bb14" -> "cfg::tools::parse_rustc_graph_filter::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::parse_rustc_graph_filter::bb16" -> "cfg::tools::parse_rustc_graph_filter::bb19" [label="Drop"];
+  "cfg::tools::parse_rustc_graph_filter::bb18" -> "cfg::tools::parse_rustc_graph_filter::bb19" [label="Goto"];
+  "cfg::tools::parse_rustc_graph_filter::bb20" -> "cfg::tools::parse_rustc_graph_filter::bb21" [label="Drop"];
+}

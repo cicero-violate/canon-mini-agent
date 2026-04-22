@@ -1,0 +1,21 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_823 {
+    label="evaluation::diagnostics_repair_pressure";
+    "cfg::evaluation::diagnostics_repair_pressure::bb0" [label="bb0\nCall"];
+    "cfg::evaluation::diagnostics_repair_pressure::bb1" [label="bb1\nSwitchInt"];
+    "cfg::evaluation::diagnostics_repair_pressure::bb2" [label="bb2\nGoto"];
+    "cfg::evaluation::diagnostics_repair_pressure::bb3" [label="bb3\nCall"];
+    "cfg::evaluation::diagnostics_repair_pressure::bb4" [label="bb4\nCall"];
+    "cfg::evaluation::diagnostics_repair_pressure::bb5" [label="bb5\nCall"];
+    "cfg::evaluation::diagnostics_repair_pressure::bb6" [label="bb6\nCall"];
+    "cfg::evaluation::diagnostics_repair_pressure::bb7" [label="bb7\nCall"];
+    "cfg::evaluation::diagnostics_repair_pressure::bb8" [label="bb8\nReturn"];
+  }
+  "cfg::evaluation::diagnostics_repair_pressure::bb1" -> "cfg::evaluation::diagnostics_repair_pressure::bb3" [label="SwitchInt"];
+  "cfg::evaluation::diagnostics_repair_pressure::bb1" -> "cfg::evaluation::diagnostics_repair_pressure::bb2" [label="SwitchInt"];
+  "cfg::evaluation::diagnostics_repair_pressure::bb2" -> "cfg::evaluation::diagnostics_repair_pressure::bb8" [label="Goto"];
+}

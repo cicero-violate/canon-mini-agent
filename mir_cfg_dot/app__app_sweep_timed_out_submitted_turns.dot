@@ -1,0 +1,32 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_200 {
+    label="app::sweep_timed_out_submitted_turns";
+    "cfg::app::sweep_timed_out_submitted_turns::bb0" [label="bb0\nCall"];
+    "cfg::app::sweep_timed_out_submitted_turns::bb1" [label="bb1\nSwitchInt"];
+    "cfg::app::sweep_timed_out_submitted_turns::bb2" [label="bb2\nCall"];
+    "cfg::app::sweep_timed_out_submitted_turns::bb3" [label="bb3\nCall"];
+    "cfg::app::sweep_timed_out_submitted_turns::bb4" [label="bb4\nGoto"];
+    "cfg::app::sweep_timed_out_submitted_turns::bb5" [label="bb5\nCall loop"];
+    "cfg::app::sweep_timed_out_submitted_turns::bb6" [label="bb6\nSwitchInt loop"];
+    "cfg::app::sweep_timed_out_submitted_turns::bb7" [label="bb7\nUnreachable loop"];
+    "cfg::app::sweep_timed_out_submitted_turns::bb8" [label="bb8\nCall loop"];
+    "cfg::app::sweep_timed_out_submitted_turns::bb9" [label="bb9\nDrop loop"];
+    "cfg::app::sweep_timed_out_submitted_turns::bb10" [label="bb10\nReturn loop"];
+    "cfg::app::sweep_timed_out_submitted_turns::bb11" [label="bb11\nDrop cleanup loop"];
+    "cfg::app::sweep_timed_out_submitted_turns::bb12" [label="bb12\nUnwindResume cleanup loop"];
+    "cfg::app::sweep_timed_out_submitted_turns::bb13" [label="bb13\nGoto loop"];
+  }
+  "cfg::app::sweep_timed_out_submitted_turns::bb1" -> "cfg::app::sweep_timed_out_submitted_turns::bb2" [label="SwitchInt"];
+  "cfg::app::sweep_timed_out_submitted_turns::bb1" -> "cfg::app::sweep_timed_out_submitted_turns::bb10" [label="SwitchInt"];
+  "cfg::app::sweep_timed_out_submitted_turns::bb4" -> "cfg::app::sweep_timed_out_submitted_turns::bb5" [label="Goto"];
+  "cfg::app::sweep_timed_out_submitted_turns::bb6" -> "cfg::app::sweep_timed_out_submitted_turns::bb9" [label="SwitchInt"];
+  "cfg::app::sweep_timed_out_submitted_turns::bb6" -> "cfg::app::sweep_timed_out_submitted_turns::bb8" [label="SwitchInt"];
+  "cfg::app::sweep_timed_out_submitted_turns::bb6" -> "cfg::app::sweep_timed_out_submitted_turns::bb7" [label="SwitchInt"];
+  "cfg::app::sweep_timed_out_submitted_turns::bb9" -> "cfg::app::sweep_timed_out_submitted_turns::bb10" [label="Drop"];
+  "cfg::app::sweep_timed_out_submitted_turns::bb11" -> "cfg::app::sweep_timed_out_submitted_turns::bb12" [label="Drop"];
+  "cfg::app::sweep_timed_out_submitted_turns::bb13" -> "cfg::app::sweep_timed_out_submitted_turns::bb5" [color="crimson", penwidth=2, label="Goto back"];
+}

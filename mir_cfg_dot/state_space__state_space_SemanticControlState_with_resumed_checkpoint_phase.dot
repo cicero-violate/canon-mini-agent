@@ -1,0 +1,23 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3196 {
+    label="state_space::SemanticControlState::with_resumed_checkpoint_phase";
+    "cfg::state_space::SemanticControlState::with_resumed_checkpoint_phase::bb0" [label="bb0\nCall"];
+    "cfg::state_space::SemanticControlState::with_resumed_checkpoint_phase::bb1" [label="bb1\nCall"];
+    "cfg::state_space::SemanticControlState::with_resumed_checkpoint_phase::bb2" [label="bb2\nDrop"];
+    "cfg::state_space::SemanticControlState::with_resumed_checkpoint_phase::bb3" [label="bb3\nReturn"];
+    "cfg::state_space::SemanticControlState::with_resumed_checkpoint_phase::bb4" [label="bb4\nDrop cleanup"];
+    "cfg::state_space::SemanticControlState::with_resumed_checkpoint_phase::bb5" [label="bb5\nUnwindResume cleanup loop"];
+    "cfg::state_space::SemanticControlState::with_resumed_checkpoint_phase::bb6" [label="bb6\nDrop cleanup loop"];
+    "cfg::state_space::SemanticControlState::with_resumed_checkpoint_phase::bb7" [label="bb7\nSwitchInt cleanup loop"];
+  }
+  "cfg::state_space::SemanticControlState::with_resumed_checkpoint_phase::bb2" -> "cfg::state_space::SemanticControlState::with_resumed_checkpoint_phase::bb3" [label="Drop"];
+  "cfg::state_space::SemanticControlState::with_resumed_checkpoint_phase::bb2" -> "cfg::state_space::SemanticControlState::with_resumed_checkpoint_phase::bb4" [label="Drop"];
+  "cfg::state_space::SemanticControlState::with_resumed_checkpoint_phase::bb4" -> "cfg::state_space::SemanticControlState::with_resumed_checkpoint_phase::bb7" [label="Drop"];
+  "cfg::state_space::SemanticControlState::with_resumed_checkpoint_phase::bb6" -> "cfg::state_space::SemanticControlState::with_resumed_checkpoint_phase::bb5" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::state_space::SemanticControlState::with_resumed_checkpoint_phase::bb7" -> "cfg::state_space::SemanticControlState::with_resumed_checkpoint_phase::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::SemanticControlState::with_resumed_checkpoint_phase::bb7" -> "cfg::state_space::SemanticControlState::with_resumed_checkpoint_phase::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

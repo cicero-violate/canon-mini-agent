@@ -1,0 +1,54 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3948 {
+    label="tools::parse_symbols_rename_candidates_paths";
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb0" [label="bb0\nCall"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb1" [label="bb1\nCall"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb2" [label="bb2\nCall"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb3" [label="bb3\nCall"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb4" [label="bb4\nCall"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb5" [label="bb5\nCall"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb6" [label="bb6\nCall"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb7" [label="bb7\nCall"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb8" [label="bb8\nCall"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb9" [label="bb9\nCall"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb10" [label="bb10\nCall"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb11" [label="bb11\nSwitchInt"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb12" [label="bb12\nUnreachable loop"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb13" [label="bb13\nCall loop"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb14" [label="bb14\nCall loop"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb15" [label="bb15\nCall loop"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb16" [label="bb16\nCall loop"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb17" [label="bb17\nSwitchInt loop"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb18" [label="bb18\nGoto"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb19" [label="bb19\nCall"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb20" [label="bb20\nDrop"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb21" [label="bb21\nDrop loop"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb22" [label="bb22\nDrop loop"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb23" [label="bb23\nReturn loop"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb24" [label="bb24\nDrop cleanup loop"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb25" [label="bb25\nDrop cleanup loop"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb26" [label="bb26\nDrop cleanup loop"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb27" [label="bb27\nUnwindResume cleanup loop"];
+    "cfg::tools::parse_symbols_rename_candidates_paths::bb28" [label="bb28\nGoto loop"];
+  }
+  "cfg::tools::parse_symbols_rename_candidates_paths::bb11" -> "cfg::tools::parse_symbols_rename_candidates_paths::bb13" [label="SwitchInt"];
+  "cfg::tools::parse_symbols_rename_candidates_paths::bb11" -> "cfg::tools::parse_symbols_rename_candidates_paths::bb14" [label="SwitchInt"];
+  "cfg::tools::parse_symbols_rename_candidates_paths::bb11" -> "cfg::tools::parse_symbols_rename_candidates_paths::bb12" [label="SwitchInt"];
+  "cfg::tools::parse_symbols_rename_candidates_paths::bb17" -> "cfg::tools::parse_symbols_rename_candidates_paths::bb18" [label="SwitchInt"];
+  "cfg::tools::parse_symbols_rename_candidates_paths::bb17" -> "cfg::tools::parse_symbols_rename_candidates_paths::bb19" [label="SwitchInt"];
+  "cfg::tools::parse_symbols_rename_candidates_paths::bb17" -> "cfg::tools::parse_symbols_rename_candidates_paths::bb12" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::parse_symbols_rename_candidates_paths::bb18" -> "cfg::tools::parse_symbols_rename_candidates_paths::bb23" [label="Goto"];
+  "cfg::tools::parse_symbols_rename_candidates_paths::bb20" -> "cfg::tools::parse_symbols_rename_candidates_paths::bb21" [label="Drop"];
+  "cfg::tools::parse_symbols_rename_candidates_paths::bb20" -> "cfg::tools::parse_symbols_rename_candidates_paths::bb25" [label="Drop"];
+  "cfg::tools::parse_symbols_rename_candidates_paths::bb21" -> "cfg::tools::parse_symbols_rename_candidates_paths::bb22" [label="Drop"];
+  "cfg::tools::parse_symbols_rename_candidates_paths::bb21" -> "cfg::tools::parse_symbols_rename_candidates_paths::bb26" [label="Drop"];
+  "cfg::tools::parse_symbols_rename_candidates_paths::bb22" -> "cfg::tools::parse_symbols_rename_candidates_paths::bb23" [label="Drop"];
+  "cfg::tools::parse_symbols_rename_candidates_paths::bb24" -> "cfg::tools::parse_symbols_rename_candidates_paths::bb25" [label="Drop"];
+  "cfg::tools::parse_symbols_rename_candidates_paths::bb25" -> "cfg::tools::parse_symbols_rename_candidates_paths::bb26" [label="Drop"];
+  "cfg::tools::parse_symbols_rename_candidates_paths::bb26" -> "cfg::tools::parse_symbols_rename_candidates_paths::bb27" [label="Drop"];
+  "cfg::tools::parse_symbols_rename_candidates_paths::bb28" -> "cfg::tools::parse_symbols_rename_candidates_paths::bb21" [color="crimson", penwidth=2, label="Goto back"];
+}

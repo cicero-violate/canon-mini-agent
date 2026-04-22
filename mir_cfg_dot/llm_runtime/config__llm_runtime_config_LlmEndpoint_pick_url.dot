@@ -1,0 +1,22 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1792 {
+    label="llm_runtime::config::LlmEndpoint::pick_url";
+    "cfg::llm_runtime::config::LlmEndpoint::pick_url::bb0" [label="bb0\nCall"];
+    "cfg::llm_runtime::config::LlmEndpoint::pick_url::bb1" [label="bb1\nSwitchInt"];
+    "cfg::llm_runtime::config::LlmEndpoint::pick_url::bb2" [label="bb2\nAssert"];
+    "cfg::llm_runtime::config::LlmEndpoint::pick_url::bb3" [label="bb3\nGoto"];
+    "cfg::llm_runtime::config::LlmEndpoint::pick_url::bb4" [label="bb4\nCall"];
+    "cfg::llm_runtime::config::LlmEndpoint::pick_url::bb5" [label="bb5\nCall"];
+    "cfg::llm_runtime::config::LlmEndpoint::pick_url::bb6" [label="bb6\nGoto"];
+    "cfg::llm_runtime::config::LlmEndpoint::pick_url::bb7" [label="bb7\nReturn"];
+  }
+  "cfg::llm_runtime::config::LlmEndpoint::pick_url::bb1" -> "cfg::llm_runtime::config::LlmEndpoint::pick_url::bb3" [label="SwitchInt"];
+  "cfg::llm_runtime::config::LlmEndpoint::pick_url::bb1" -> "cfg::llm_runtime::config::LlmEndpoint::pick_url::bb2" [label="SwitchInt"];
+  "cfg::llm_runtime::config::LlmEndpoint::pick_url::bb2" -> "cfg::llm_runtime::config::LlmEndpoint::pick_url::bb4" [label="Assert"];
+  "cfg::llm_runtime::config::LlmEndpoint::pick_url::bb3" -> "cfg::llm_runtime::config::LlmEndpoint::pick_url::bb7" [label="Goto"];
+  "cfg::llm_runtime::config::LlmEndpoint::pick_url::bb6" -> "cfg::llm_runtime::config::LlmEndpoint::pick_url::bb7" [label="Goto"];
+}

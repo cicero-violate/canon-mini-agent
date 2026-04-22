@@ -1,0 +1,32 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3041 {
+    label="semantic::SemanticIndex::symbol_statements";
+    "cfg::semantic::SemanticIndex::symbol_statements::bb0" [label="bb0\nCall"];
+    "cfg::semantic::SemanticIndex::symbol_statements::bb1" [label="bb1\nSwitchInt"];
+    "cfg::semantic::SemanticIndex::symbol_statements::bb2" [label="bb2\nDrop"];
+    "cfg::semantic::SemanticIndex::symbol_statements::bb3" [label="bb3\nDrop"];
+    "cfg::semantic::SemanticIndex::symbol_statements::bb4" [label="bb4\nCall"];
+    "cfg::semantic::SemanticIndex::symbol_statements::bb5" [label="bb5\nCall"];
+    "cfg::semantic::SemanticIndex::symbol_statements::bb6" [label="bb6\nCall"];
+    "cfg::semantic::SemanticIndex::symbol_statements::bb7" [label="bb7\nCall"];
+    "cfg::semantic::SemanticIndex::symbol_statements::bb8" [label="bb8\nCall"];
+    "cfg::semantic::SemanticIndex::symbol_statements::bb9" [label="bb9\nCall"];
+    "cfg::semantic::SemanticIndex::symbol_statements::bb10" [label="bb10\nCall"];
+    "cfg::semantic::SemanticIndex::symbol_statements::bb11" [label="bb11\nGoto"];
+    "cfg::semantic::SemanticIndex::symbol_statements::bb12" [label="bb12\nReturn"];
+    "cfg::semantic::SemanticIndex::symbol_statements::bb13" [label="bb13\nDrop cleanup"];
+    "cfg::semantic::SemanticIndex::symbol_statements::bb14" [label="bb14\nUnwindResume cleanup"];
+    "cfg::semantic::SemanticIndex::symbol_statements::bb15" [label="bb15\nUnreachable"];
+  }
+  "cfg::semantic::SemanticIndex::symbol_statements::bb1" -> "cfg::semantic::SemanticIndex::symbol_statements::bb2" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::symbol_statements::bb1" -> "cfg::semantic::SemanticIndex::symbol_statements::bb3" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::symbol_statements::bb1" -> "cfg::semantic::SemanticIndex::symbol_statements::bb15" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::symbol_statements::bb2" -> "cfg::semantic::SemanticIndex::symbol_statements::bb5" [label="Drop"];
+  "cfg::semantic::SemanticIndex::symbol_statements::bb3" -> "cfg::semantic::SemanticIndex::symbol_statements::bb4" [label="Drop"];
+  "cfg::semantic::SemanticIndex::symbol_statements::bb11" -> "cfg::semantic::SemanticIndex::symbol_statements::bb12" [label="Goto"];
+  "cfg::semantic::SemanticIndex::symbol_statements::bb13" -> "cfg::semantic::SemanticIndex::symbol_statements::bb14" [label="Drop"];
+}

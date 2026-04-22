@@ -1,0 +1,13 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4268 {
+    label="tools::get_tasks_array";
+    "cfg::tools::get_tasks_array::bb0" [label="bb0\nCall"];
+    "cfg::tools::get_tasks_array::bb1" [label="bb1\nCall"];
+    "cfg::tools::get_tasks_array::bb2" [label="bb2\nCall"];
+    "cfg::tools::get_tasks_array::bb3" [label="bb3\nReturn"];
+  }
+}

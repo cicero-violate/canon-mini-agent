@@ -1,0 +1,42 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3392 {
+    label="supervisor::collect_failure_signals";
+    "cfg::supervisor::collect_failure_signals::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::collect_failure_signals::bb1" [label="bb1\nCall"];
+    "cfg::supervisor::collect_failure_signals::bb2" [label="bb2\nCall"];
+    "cfg::supervisor::collect_failure_signals::bb3" [label="bb3\nSwitchInt"];
+    "cfg::supervisor::collect_failure_signals::bb4" [label="bb4\nCall"];
+    "cfg::supervisor::collect_failure_signals::bb5" [label="bb5\nCall"];
+    "cfg::supervisor::collect_failure_signals::bb6" [label="bb6\nCall"];
+    "cfg::supervisor::collect_failure_signals::bb7" [label="bb7\nCall loop"];
+    "cfg::supervisor::collect_failure_signals::bb8" [label="bb8\nCall loop"];
+    "cfg::supervisor::collect_failure_signals::bb9" [label="bb9\nCall loop"];
+    "cfg::supervisor::collect_failure_signals::bb10" [label="bb10\nDrop loop"];
+    "cfg::supervisor::collect_failure_signals::bb11" [label="bb11\nReturn loop"];
+    "cfg::supervisor::collect_failure_signals::bb12" [label="bb12\nDrop cleanup loop"];
+    "cfg::supervisor::collect_failure_signals::bb13" [label="bb13\nUnwindResume cleanup loop"];
+    "cfg::supervisor::collect_failure_signals::bb14" [label="bb14\nDrop cleanup loop"];
+    "cfg::supervisor::collect_failure_signals::bb15" [label="bb15\nSwitchInt cleanup loop"];
+    "cfg::supervisor::collect_failure_signals::bb16" [label="bb16\nDrop cleanup loop"];
+    "cfg::supervisor::collect_failure_signals::bb17" [label="bb17\nSwitchInt cleanup loop"];
+    "cfg::supervisor::collect_failure_signals::bb18" [label="bb18\nUnreachable loop"];
+    "cfg::supervisor::collect_failure_signals::bb19" [label="bb19\nGoto loop"];
+  }
+  "cfg::supervisor::collect_failure_signals::bb3" -> "cfg::supervisor::collect_failure_signals::bb4" [label="SwitchInt"];
+  "cfg::supervisor::collect_failure_signals::bb3" -> "cfg::supervisor::collect_failure_signals::bb7" [label="SwitchInt"];
+  "cfg::supervisor::collect_failure_signals::bb3" -> "cfg::supervisor::collect_failure_signals::bb18" [label="SwitchInt"];
+  "cfg::supervisor::collect_failure_signals::bb10" -> "cfg::supervisor::collect_failure_signals::bb11" [label="Drop"];
+  "cfg::supervisor::collect_failure_signals::bb10" -> "cfg::supervisor::collect_failure_signals::bb15" [label="Drop"];
+  "cfg::supervisor::collect_failure_signals::bb12" -> "cfg::supervisor::collect_failure_signals::bb15" [label="Drop"];
+  "cfg::supervisor::collect_failure_signals::bb14" -> "cfg::supervisor::collect_failure_signals::bb17" [label="Drop"];
+  "cfg::supervisor::collect_failure_signals::bb15" -> "cfg::supervisor::collect_failure_signals::bb17" [label="SwitchInt"];
+  "cfg::supervisor::collect_failure_signals::bb15" -> "cfg::supervisor::collect_failure_signals::bb14" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::supervisor::collect_failure_signals::bb16" -> "cfg::supervisor::collect_failure_signals::bb13" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::supervisor::collect_failure_signals::bb17" -> "cfg::supervisor::collect_failure_signals::bb13" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::supervisor::collect_failure_signals::bb17" -> "cfg::supervisor::collect_failure_signals::bb16" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::supervisor::collect_failure_signals::bb19" -> "cfg::supervisor::collect_failure_signals::bb7" [color="crimson", penwidth=2, label="Goto back"];
+}

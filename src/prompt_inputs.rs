@@ -170,6 +170,11 @@ fn infer_tlog_lane_indices(events: &[crate::events::Event]) -> Vec<usize> {
                 | crate::events::ControlEvent::WakeSignalConsumed { .. }
                 | crate::events::ControlEvent::WakeSignalQueued { .. }
                 | crate::events::ControlEvent::InboundMessageQueued { .. }
+                | crate::events::ControlEvent::RustPatchVerificationRequested { .. }
+                | crate::events::ControlEvent::OrchestratorModeSet { .. }
+                | crate::events::ControlEvent::OrchestratorIdlePulse { .. }
+                | crate::events::ControlEvent::CheckpointSnapshotSet { .. }
+                | crate::events::ControlEvent::PlannerBlockerEvidenceSet { .. }
                 | crate::events::ControlEvent::LastPlanTextSet { .. }
                 | crate::events::ControlEvent::LastExecutorDiffSet { .. }
                 | crate::events::ControlEvent::LastSoloPlanTextSet { .. }
@@ -211,6 +216,15 @@ fn control_event_kind_name(event: &crate::events::ControlEvent) -> &'static str 
         crate::events::ControlEvent::WakeSignalConsumed { .. } => "wake_signal_consumed",
         crate::events::ControlEvent::WakeSignalQueued { .. } => "wake_signal_queued",
         crate::events::ControlEvent::InboundMessageQueued { .. } => "inbound_message_queued",
+        crate::events::ControlEvent::RustPatchVerificationRequested { .. } => {
+            "rust_patch_verification_requested"
+        }
+        crate::events::ControlEvent::OrchestratorModeSet { .. } => "orchestrator_mode_set",
+        crate::events::ControlEvent::OrchestratorIdlePulse { .. } => "orchestrator_idle_pulse",
+        crate::events::ControlEvent::CheckpointSnapshotSet { .. } => "checkpoint_snapshot_set",
+        crate::events::ControlEvent::PlannerBlockerEvidenceSet { .. } => {
+            "planner_blocker_evidence_set"
+        }
         crate::events::ControlEvent::LastPlanTextSet { .. } => "last_plan_text_set",
         crate::events::ControlEvent::LastExecutorDiffSet { .. } => "last_executor_diff_set",
         crate::events::ControlEvent::LastSoloPlanTextSet { .. } => "last_solo_plan_text_set",

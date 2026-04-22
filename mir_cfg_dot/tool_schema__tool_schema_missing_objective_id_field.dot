@@ -1,0 +1,25 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3523 {
+    label="tool_schema::missing_objective_id_field";
+    "cfg::tool_schema::missing_objective_id_field::bb0" [label="bb0\nCall"];
+    "cfg::tool_schema::missing_objective_id_field::bb1" [label="bb1\nCall"];
+    "cfg::tool_schema::missing_objective_id_field::bb2" [label="bb2\nSwitchInt"];
+    "cfg::tool_schema::missing_objective_id_field::bb3" [label="bb3\nCall"];
+    "cfg::tool_schema::missing_objective_id_field::bb4" [label="bb4\nCall"];
+    "cfg::tool_schema::missing_objective_id_field::bb5" [label="bb5\nSwitchInt"];
+    "cfg::tool_schema::missing_objective_id_field::bb6" [label="bb6\nCall"];
+    "cfg::tool_schema::missing_objective_id_field::bb7" [label="bb7\nGoto"];
+    "cfg::tool_schema::missing_objective_id_field::bb8" [label="bb8\nGoto"];
+    "cfg::tool_schema::missing_objective_id_field::bb9" [label="bb9\nReturn"];
+  }
+  "cfg::tool_schema::missing_objective_id_field::bb2" -> "cfg::tool_schema::missing_objective_id_field::bb8" [label="SwitchInt"];
+  "cfg::tool_schema::missing_objective_id_field::bb2" -> "cfg::tool_schema::missing_objective_id_field::bb3" [label="SwitchInt"];
+  "cfg::tool_schema::missing_objective_id_field::bb5" -> "cfg::tool_schema::missing_objective_id_field::bb8" [label="SwitchInt"];
+  "cfg::tool_schema::missing_objective_id_field::bb5" -> "cfg::tool_schema::missing_objective_id_field::bb6" [label="SwitchInt"];
+  "cfg::tool_schema::missing_objective_id_field::bb7" -> "cfg::tool_schema::missing_objective_id_field::bb9" [label="Goto"];
+  "cfg::tool_schema::missing_objective_id_field::bb8" -> "cfg::tool_schema::missing_objective_id_field::bb9" [label="Goto"];
+}

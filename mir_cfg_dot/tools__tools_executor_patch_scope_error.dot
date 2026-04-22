@@ -1,0 +1,50 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3861 {
+    label="tools::executor_patch_scope_error";
+    "cfg::tools::executor_patch_scope_error::bb0" [label="bb0\nSwitchInt"];
+    "cfg::tools::executor_patch_scope_error::bb1" [label="bb1\nGoto"];
+    "cfg::tools::executor_patch_scope_error::bb2" [label="bb2\nGoto"];
+    "cfg::tools::executor_patch_scope_error::bb3" [label="bb3\nSwitchInt"];
+    "cfg::tools::executor_patch_scope_error::bb4" [label="bb4\nGoto"];
+    "cfg::tools::executor_patch_scope_error::bb5" [label="bb5\nGoto"];
+    "cfg::tools::executor_patch_scope_error::bb6" [label="bb6\nSwitchInt"];
+    "cfg::tools::executor_patch_scope_error::bb7" [label="bb7\nSwitchInt"];
+    "cfg::tools::executor_patch_scope_error::bb8" [label="bb8\nSwitchInt"];
+    "cfg::tools::executor_patch_scope_error::bb9" [label="bb9\nSwitchInt"];
+    "cfg::tools::executor_patch_scope_error::bb10" [label="bb10\nSwitchInt"];
+    "cfg::tools::executor_patch_scope_error::bb11" [label="bb11\nSwitchInt"];
+    "cfg::tools::executor_patch_scope_error::bb12" [label="bb12\nSwitchInt"];
+    "cfg::tools::executor_patch_scope_error::bb13" [label="bb13\nCall"];
+    "cfg::tools::executor_patch_scope_error::bb14" [label="bb14\nGoto"];
+    "cfg::tools::executor_patch_scope_error::bb15" [label="bb15\nGoto"];
+    "cfg::tools::executor_patch_scope_error::bb16" [label="bb16\nReturn"];
+  }
+  "cfg::tools::executor_patch_scope_error::bb0" -> "cfg::tools::executor_patch_scope_error::bb2" [label="SwitchInt"];
+  "cfg::tools::executor_patch_scope_error::bb0" -> "cfg::tools::executor_patch_scope_error::bb1" [label="SwitchInt"];
+  "cfg::tools::executor_patch_scope_error::bb1" -> "cfg::tools::executor_patch_scope_error::bb3" [label="Goto"];
+  "cfg::tools::executor_patch_scope_error::bb2" -> "cfg::tools::executor_patch_scope_error::bb3" [label="Goto"];
+  "cfg::tools::executor_patch_scope_error::bb3" -> "cfg::tools::executor_patch_scope_error::bb5" [label="SwitchInt"];
+  "cfg::tools::executor_patch_scope_error::bb3" -> "cfg::tools::executor_patch_scope_error::bb4" [label="SwitchInt"];
+  "cfg::tools::executor_patch_scope_error::bb4" -> "cfg::tools::executor_patch_scope_error::bb6" [label="Goto"];
+  "cfg::tools::executor_patch_scope_error::bb5" -> "cfg::tools::executor_patch_scope_error::bb6" [label="Goto"];
+  "cfg::tools::executor_patch_scope_error::bb6" -> "cfg::tools::executor_patch_scope_error::bb7" [label="SwitchInt"];
+  "cfg::tools::executor_patch_scope_error::bb6" -> "cfg::tools::executor_patch_scope_error::bb13" [label="SwitchInt"];
+  "cfg::tools::executor_patch_scope_error::bb7" -> "cfg::tools::executor_patch_scope_error::bb8" [label="SwitchInt"];
+  "cfg::tools::executor_patch_scope_error::bb7" -> "cfg::tools::executor_patch_scope_error::bb13" [label="SwitchInt"];
+  "cfg::tools::executor_patch_scope_error::bb8" -> "cfg::tools::executor_patch_scope_error::bb9" [label="SwitchInt"];
+  "cfg::tools::executor_patch_scope_error::bb8" -> "cfg::tools::executor_patch_scope_error::bb13" [label="SwitchInt"];
+  "cfg::tools::executor_patch_scope_error::bb9" -> "cfg::tools::executor_patch_scope_error::bb10" [label="SwitchInt"];
+  "cfg::tools::executor_patch_scope_error::bb9" -> "cfg::tools::executor_patch_scope_error::bb13" [label="SwitchInt"];
+  "cfg::tools::executor_patch_scope_error::bb10" -> "cfg::tools::executor_patch_scope_error::bb11" [label="SwitchInt"];
+  "cfg::tools::executor_patch_scope_error::bb10" -> "cfg::tools::executor_patch_scope_error::bb13" [label="SwitchInt"];
+  "cfg::tools::executor_patch_scope_error::bb11" -> "cfg::tools::executor_patch_scope_error::bb12" [label="SwitchInt"];
+  "cfg::tools::executor_patch_scope_error::bb11" -> "cfg::tools::executor_patch_scope_error::bb13" [label="SwitchInt"];
+  "cfg::tools::executor_patch_scope_error::bb12" -> "cfg::tools::executor_patch_scope_error::bb15" [label="SwitchInt"];
+  "cfg::tools::executor_patch_scope_error::bb12" -> "cfg::tools::executor_patch_scope_error::bb13" [label="SwitchInt"];
+  "cfg::tools::executor_patch_scope_error::bb14" -> "cfg::tools::executor_patch_scope_error::bb16" [label="Goto"];
+  "cfg::tools::executor_patch_scope_error::bb15" -> "cfg::tools::executor_patch_scope_error::bb16" [label="Goto"];
+}

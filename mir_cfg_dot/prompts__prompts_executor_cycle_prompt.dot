@@ -1,0 +1,40 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2623 {
+    label="prompts::executor_cycle_prompt";
+    "cfg::prompts::executor_cycle_prompt::bb0" [label="bb0\nCall"];
+    "cfg::prompts::executor_cycle_prompt::bb1" [label="bb1\nCall"];
+    "cfg::prompts::executor_cycle_prompt::bb2" [label="bb2\nCall"];
+    "cfg::prompts::executor_cycle_prompt::bb3" [label="bb3\nCall"];
+    "cfg::prompts::executor_cycle_prompt::bb4" [label="bb4\nSwitchInt"];
+    "cfg::prompts::executor_cycle_prompt::bb5" [label="bb5\nCall"];
+    "cfg::prompts::executor_cycle_prompt::bb6" [label="bb6\nCall"];
+    "cfg::prompts::executor_cycle_prompt::bb7" [label="bb7\nSwitchInt"];
+    "cfg::prompts::executor_cycle_prompt::bb8" [label="bb8\nCall"];
+    "cfg::prompts::executor_cycle_prompt::bb9" [label="bb9\nCall"];
+    "cfg::prompts::executor_cycle_prompt::bb10" [label="bb10\nCall"];
+    "cfg::prompts::executor_cycle_prompt::bb11" [label="bb11\nCall"];
+    "cfg::prompts::executor_cycle_prompt::bb12" [label="bb12\nCall"];
+    "cfg::prompts::executor_cycle_prompt::bb13" [label="bb13\nCall"];
+    "cfg::prompts::executor_cycle_prompt::bb14" [label="bb14\nCall"];
+    "cfg::prompts::executor_cycle_prompt::bb15" [label="bb15\nCall"];
+    "cfg::prompts::executor_cycle_prompt::bb16" [label="bb16\nCall"];
+    "cfg::prompts::executor_cycle_prompt::bb17" [label="bb17\nCall"];
+    "cfg::prompts::executor_cycle_prompt::bb18" [label="bb18\nCall"];
+    "cfg::prompts::executor_cycle_prompt::bb19" [label="bb19\nCall"];
+    "cfg::prompts::executor_cycle_prompt::bb20" [label="bb20\nCall"];
+    "cfg::prompts::executor_cycle_prompt::bb21" [label="bb21\nDrop"];
+    "cfg::prompts::executor_cycle_prompt::bb22" [label="bb22\nReturn"];
+    "cfg::prompts::executor_cycle_prompt::bb23" [label="bb23\nDrop cleanup"];
+    "cfg::prompts::executor_cycle_prompt::bb24" [label="bb24\nUnwindResume cleanup"];
+  }
+  "cfg::prompts::executor_cycle_prompt::bb4" -> "cfg::prompts::executor_cycle_prompt::bb5" [label="SwitchInt"];
+  "cfg::prompts::executor_cycle_prompt::bb4" -> "cfg::prompts::executor_cycle_prompt::bb8" [label="SwitchInt"];
+  "cfg::prompts::executor_cycle_prompt::bb7" -> "cfg::prompts::executor_cycle_prompt::bb9" [label="SwitchInt"];
+  "cfg::prompts::executor_cycle_prompt::bb7" -> "cfg::prompts::executor_cycle_prompt::bb8" [label="SwitchInt"];
+  "cfg::prompts::executor_cycle_prompt::bb21" -> "cfg::prompts::executor_cycle_prompt::bb22" [label="Drop"];
+  "cfg::prompts::executor_cycle_prompt::bb23" -> "cfg::prompts::executor_cycle_prompt::bb24" [label="Drop"];
+}

@@ -1,0 +1,52 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3181 {
+    label="state_space::scheduled_phase_resume_done";
+    "cfg::state_space::scheduled_phase_resume_done::bb0" [label="bb0\nCall"];
+    "cfg::state_space::scheduled_phase_resume_done::bb1" [label="bb1\nGoto loop"];
+    "cfg::state_space::scheduled_phase_resume_done::bb2" [label="bb2\nGoto loop"];
+    "cfg::state_space::scheduled_phase_resume_done::bb3" [label="bb3\nCall loop"];
+    "cfg::state_space::scheduled_phase_resume_done::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::state_space::scheduled_phase_resume_done::bb5" [label="bb5\nCall loop"];
+    "cfg::state_space::scheduled_phase_resume_done::bb6" [label="bb6\nGoto loop"];
+    "cfg::state_space::scheduled_phase_resume_done::bb7" [label="bb7\nCall loop"];
+    "cfg::state_space::scheduled_phase_resume_done::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::state_space::scheduled_phase_resume_done::bb9" [label="bb9\nCall loop"];
+    "cfg::state_space::scheduled_phase_resume_done::bb10" [label="bb10\nGoto loop"];
+    "cfg::state_space::scheduled_phase_resume_done::bb11" [label="bb11\nSwitchInt loop"];
+    "cfg::state_space::scheduled_phase_resume_done::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::state_space::scheduled_phase_resume_done::bb13" [label="bb13\nSwitchInt loop"];
+    "cfg::state_space::scheduled_phase_resume_done::bb14" [label="bb14\nSwitchInt loop"];
+    "cfg::state_space::scheduled_phase_resume_done::bb15" [label="bb15\nSwitchInt loop"];
+    "cfg::state_space::scheduled_phase_resume_done::bb16" [label="bb16\nGoto"];
+    "cfg::state_space::scheduled_phase_resume_done::bb17" [label="bb17\nGoto"];
+    "cfg::state_space::scheduled_phase_resume_done::bb18" [label="bb18\nGoto"];
+    "cfg::state_space::scheduled_phase_resume_done::bb19" [label="bb19\nGoto"];
+    "cfg::state_space::scheduled_phase_resume_done::bb20" [label="bb20\nReturn"];
+  }
+  "cfg::state_space::scheduled_phase_resume_done::bb1" -> "cfg::state_space::scheduled_phase_resume_done::bb20" [label="Goto"];
+  "cfg::state_space::scheduled_phase_resume_done::bb2" -> "cfg::state_space::scheduled_phase_resume_done::bb20" [label="Goto"];
+  "cfg::state_space::scheduled_phase_resume_done::bb4" -> "cfg::state_space::scheduled_phase_resume_done::bb17" [label="SwitchInt"];
+  "cfg::state_space::scheduled_phase_resume_done::bb4" -> "cfg::state_space::scheduled_phase_resume_done::bb16" [label="SwitchInt"];
+  "cfg::state_space::scheduled_phase_resume_done::bb6" -> "cfg::state_space::scheduled_phase_resume_done::bb20" [label="Goto"];
+  "cfg::state_space::scheduled_phase_resume_done::bb8" -> "cfg::state_space::scheduled_phase_resume_done::bb18" [label="SwitchInt"];
+  "cfg::state_space::scheduled_phase_resume_done::bb8" -> "cfg::state_space::scheduled_phase_resume_done::bb19" [label="SwitchInt"];
+  "cfg::state_space::scheduled_phase_resume_done::bb10" -> "cfg::state_space::scheduled_phase_resume_done::bb20" [label="Goto"];
+  "cfg::state_space::scheduled_phase_resume_done::bb11" -> "cfg::state_space::scheduled_phase_resume_done::bb1" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::scheduled_phase_resume_done::bb11" -> "cfg::state_space::scheduled_phase_resume_done::bb10" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::scheduled_phase_resume_done::bb12" -> "cfg::state_space::scheduled_phase_resume_done::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::scheduled_phase_resume_done::bb12" -> "cfg::state_space::scheduled_phase_resume_done::bb8" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::scheduled_phase_resume_done::bb13" -> "cfg::state_space::scheduled_phase_resume_done::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::scheduled_phase_resume_done::bb13" -> "cfg::state_space::scheduled_phase_resume_done::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::scheduled_phase_resume_done::bb14" -> "cfg::state_space::scheduled_phase_resume_done::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::scheduled_phase_resume_done::bb14" -> "cfg::state_space::scheduled_phase_resume_done::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::scheduled_phase_resume_done::bb15" -> "cfg::state_space::scheduled_phase_resume_done::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::scheduled_phase_resume_done::bb15" -> "cfg::state_space::scheduled_phase_resume_done::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::scheduled_phase_resume_done::bb16" -> "cfg::state_space::scheduled_phase_resume_done::bb20" [label="Goto"];
+  "cfg::state_space::scheduled_phase_resume_done::bb17" -> "cfg::state_space::scheduled_phase_resume_done::bb20" [label="Goto"];
+  "cfg::state_space::scheduled_phase_resume_done::bb18" -> "cfg::state_space::scheduled_phase_resume_done::bb20" [label="Goto"];
+  "cfg::state_space::scheduled_phase_resume_done::bb19" -> "cfg::state_space::scheduled_phase_resume_done::bb20" [label="Goto"];
+}

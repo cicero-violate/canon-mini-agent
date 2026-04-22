@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1911 {
+    label="llm_runtime::response_router::response_router_resolve";
+    "cfg::llm_runtime::response_router::response_router_resolve::bb0" [label="bb0\nReturn"];
+  }
+}

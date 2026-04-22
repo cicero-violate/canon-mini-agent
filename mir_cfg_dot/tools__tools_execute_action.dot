@@ -1,0 +1,20 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4572 {
+    label="tools::execute_action";
+    "cfg::tools::execute_action::bb0" [label="bb0\nCall"];
+    "cfg::tools::execute_action::bb1" [label="bb1\nCall"];
+    "cfg::tools::execute_action::bb2" [label="bb2\nCall"];
+    "cfg::tools::execute_action::bb3" [label="bb3\nCall"];
+    "cfg::tools::execute_action::bb4" [label="bb4\nCall"];
+    "cfg::tools::execute_action::bb5" [label="bb5\nDrop"];
+    "cfg::tools::execute_action::bb6" [label="bb6\nReturn"];
+    "cfg::tools::execute_action::bb7" [label="bb7\nDrop cleanup"];
+    "cfg::tools::execute_action::bb8" [label="bb8\nUnwindResume cleanup"];
+  }
+  "cfg::tools::execute_action::bb5" -> "cfg::tools::execute_action::bb6" [label="Drop"];
+  "cfg::tools::execute_action::bb7" -> "cfg::tools::execute_action::bb8" [label="Drop"];
+}

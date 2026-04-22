@@ -1,0 +1,31 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3609 {
+    label="tools::value_type_name";
+    "cfg::tools::value_type_name::bb0" [label="bb0\nSwitchInt"];
+    "cfg::tools::value_type_name::bb1" [label="bb1\nUnreachable"];
+    "cfg::tools::value_type_name::bb2" [label="bb2\nGoto"];
+    "cfg::tools::value_type_name::bb3" [label="bb3\nGoto"];
+    "cfg::tools::value_type_name::bb4" [label="bb4\nGoto"];
+    "cfg::tools::value_type_name::bb5" [label="bb5\nGoto"];
+    "cfg::tools::value_type_name::bb6" [label="bb6\nGoto"];
+    "cfg::tools::value_type_name::bb7" [label="bb7\nGoto"];
+    "cfg::tools::value_type_name::bb8" [label="bb8\nReturn"];
+  }
+  "cfg::tools::value_type_name::bb0" -> "cfg::tools::value_type_name::bb7" [label="SwitchInt"];
+  "cfg::tools::value_type_name::bb0" -> "cfg::tools::value_type_name::bb6" [label="SwitchInt"];
+  "cfg::tools::value_type_name::bb0" -> "cfg::tools::value_type_name::bb5" [label="SwitchInt"];
+  "cfg::tools::value_type_name::bb0" -> "cfg::tools::value_type_name::bb4" [label="SwitchInt"];
+  "cfg::tools::value_type_name::bb0" -> "cfg::tools::value_type_name::bb3" [label="SwitchInt"];
+  "cfg::tools::value_type_name::bb0" -> "cfg::tools::value_type_name::bb2" [label="SwitchInt"];
+  "cfg::tools::value_type_name::bb0" -> "cfg::tools::value_type_name::bb1" [label="SwitchInt"];
+  "cfg::tools::value_type_name::bb2" -> "cfg::tools::value_type_name::bb8" [label="Goto"];
+  "cfg::tools::value_type_name::bb3" -> "cfg::tools::value_type_name::bb8" [label="Goto"];
+  "cfg::tools::value_type_name::bb4" -> "cfg::tools::value_type_name::bb8" [label="Goto"];
+  "cfg::tools::value_type_name::bb5" -> "cfg::tools::value_type_name::bb8" [label="Goto"];
+  "cfg::tools::value_type_name::bb6" -> "cfg::tools::value_type_name::bb8" [label="Goto"];
+  "cfg::tools::value_type_name::bb7" -> "cfg::tools::value_type_name::bb8" [label="Goto"];
+}

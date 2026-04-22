@@ -1,0 +1,25 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1311 {
+    label="invariants::status_rank";
+    "cfg::invariants::status_rank::bb0" [label="bb0\nSwitchInt"];
+    "cfg::invariants::status_rank::bb1" [label="bb1\nUnreachable"];
+    "cfg::invariants::status_rank::bb2" [label="bb2\nGoto"];
+    "cfg::invariants::status_rank::bb3" [label="bb3\nGoto"];
+    "cfg::invariants::status_rank::bb4" [label="bb4\nGoto"];
+    "cfg::invariants::status_rank::bb5" [label="bb5\nGoto"];
+    "cfg::invariants::status_rank::bb6" [label="bb6\nReturn"];
+  }
+  "cfg::invariants::status_rank::bb0" -> "cfg::invariants::status_rank::bb5" [label="SwitchInt"];
+  "cfg::invariants::status_rank::bb0" -> "cfg::invariants::status_rank::bb4" [label="SwitchInt"];
+  "cfg::invariants::status_rank::bb0" -> "cfg::invariants::status_rank::bb3" [label="SwitchInt"];
+  "cfg::invariants::status_rank::bb0" -> "cfg::invariants::status_rank::bb2" [label="SwitchInt"];
+  "cfg::invariants::status_rank::bb0" -> "cfg::invariants::status_rank::bb1" [label="SwitchInt"];
+  "cfg::invariants::status_rank::bb2" -> "cfg::invariants::status_rank::bb6" [label="Goto"];
+  "cfg::invariants::status_rank::bb3" -> "cfg::invariants::status_rank::bb6" [label="Goto"];
+  "cfg::invariants::status_rank::bb4" -> "cfg::invariants::status_rank::bb6" [label="Goto"];
+  "cfg::invariants::status_rank::bb5" -> "cfg::invariants::status_rank::bb6" [label="Goto"];
+}

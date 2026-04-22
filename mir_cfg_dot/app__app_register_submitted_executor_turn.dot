@@ -1,0 +1,29 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_192 {
+    label="app::register_submitted_executor_turn";
+    "cfg::app::register_submitted_executor_turn::bb0" [label="bb0\nCall"];
+    "cfg::app::register_submitted_executor_turn::bb1" [label="bb1\nCall"];
+    "cfg::app::register_submitted_executor_turn::bb2" [label="bb2\nCall"];
+    "cfg::app::register_submitted_executor_turn::bb3" [label="bb3\nCall"];
+    "cfg::app::register_submitted_executor_turn::bb4" [label="bb4\nCall"];
+    "cfg::app::register_submitted_executor_turn::bb5" [label="bb5\nCall"];
+    "cfg::app::register_submitted_executor_turn::bb6" [label="bb6\nDrop"];
+    "cfg::app::register_submitted_executor_turn::bb7" [label="bb7\nReturn"];
+    "cfg::app::register_submitted_executor_turn::bb8" [label="bb8\nDrop cleanup"];
+    "cfg::app::register_submitted_executor_turn::bb9" [label="bb9\nDrop cleanup"];
+    "cfg::app::register_submitted_executor_turn::bb10" [label="bb10\nUnwindResume cleanup loop"];
+    "cfg::app::register_submitted_executor_turn::bb11" [label="bb11\nDrop cleanup loop"];
+    "cfg::app::register_submitted_executor_turn::bb12" [label="bb12\nSwitchInt cleanup loop"];
+  }
+  "cfg::app::register_submitted_executor_turn::bb6" -> "cfg::app::register_submitted_executor_turn::bb7" [label="Drop"];
+  "cfg::app::register_submitted_executor_turn::bb6" -> "cfg::app::register_submitted_executor_turn::bb12" [label="Drop"];
+  "cfg::app::register_submitted_executor_turn::bb8" -> "cfg::app::register_submitted_executor_turn::bb9" [label="Drop"];
+  "cfg::app::register_submitted_executor_turn::bb9" -> "cfg::app::register_submitted_executor_turn::bb12" [label="Drop"];
+  "cfg::app::register_submitted_executor_turn::bb11" -> "cfg::app::register_submitted_executor_turn::bb10" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::register_submitted_executor_turn::bb12" -> "cfg::app::register_submitted_executor_turn::bb10" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::register_submitted_executor_turn::bb12" -> "cfg::app::register_submitted_executor_turn::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

@@ -1,0 +1,41 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_364 {
+    label="app::lane_has_stale_executor_claim";
+    "cfg::app::lane_has_stale_executor_claim::bb0" [label="bb0\nCall"];
+    "cfg::app::lane_has_stale_executor_claim::bb1" [label="bb1\nSwitchInt"];
+    "cfg::app::lane_has_stale_executor_claim::bb2" [label="bb2\nSwitchInt"];
+    "cfg::app::lane_has_stale_executor_claim::bb3" [label="bb3\nGoto"];
+    "cfg::app::lane_has_stale_executor_claim::bb4" [label="bb4\nCall"];
+    "cfg::app::lane_has_stale_executor_claim::bb5" [label="bb5\nSwitchInt"];
+    "cfg::app::lane_has_stale_executor_claim::bb6" [label="bb6\nGoto"];
+    "cfg::app::lane_has_stale_executor_claim::bb7" [label="bb7\nCall"];
+    "cfg::app::lane_has_stale_executor_claim::bb8" [label="bb8\nSwitchInt"];
+    "cfg::app::lane_has_stale_executor_claim::bb9" [label="bb9\nCall"];
+    "cfg::app::lane_has_stale_executor_claim::bb10" [label="bb10\nSwitchInt"];
+    "cfg::app::lane_has_stale_executor_claim::bb11" [label="bb11\nGoto"];
+    "cfg::app::lane_has_stale_executor_claim::bb12" [label="bb12\nCall"];
+    "cfg::app::lane_has_stale_executor_claim::bb13" [label="bb13\nCall"];
+    "cfg::app::lane_has_stale_executor_claim::bb14" [label="bb14\nGoto"];
+    "cfg::app::lane_has_stale_executor_claim::bb15" [label="bb15\nReturn"];
+    "cfg::app::lane_has_stale_executor_claim::bb16" [label="bb16\nUnreachable"];
+  }
+  "cfg::app::lane_has_stale_executor_claim::bb1" -> "cfg::app::lane_has_stale_executor_claim::bb2" [label="SwitchInt"];
+  "cfg::app::lane_has_stale_executor_claim::bb1" -> "cfg::app::lane_has_stale_executor_claim::bb3" [label="SwitchInt"];
+  "cfg::app::lane_has_stale_executor_claim::bb1" -> "cfg::app::lane_has_stale_executor_claim::bb16" [label="SwitchInt"];
+  "cfg::app::lane_has_stale_executor_claim::bb2" -> "cfg::app::lane_has_stale_executor_claim::bb4" [label="SwitchInt"];
+  "cfg::app::lane_has_stale_executor_claim::bb2" -> "cfg::app::lane_has_stale_executor_claim::bb6" [label="SwitchInt"];
+  "cfg::app::lane_has_stale_executor_claim::bb3" -> "cfg::app::lane_has_stale_executor_claim::bb15" [label="Goto"];
+  "cfg::app::lane_has_stale_executor_claim::bb5" -> "cfg::app::lane_has_stale_executor_claim::bb7" [label="SwitchInt"];
+  "cfg::app::lane_has_stale_executor_claim::bb5" -> "cfg::app::lane_has_stale_executor_claim::bb6" [label="SwitchInt"];
+  "cfg::app::lane_has_stale_executor_claim::bb6" -> "cfg::app::lane_has_stale_executor_claim::bb15" [label="Goto"];
+  "cfg::app::lane_has_stale_executor_claim::bb8" -> "cfg::app::lane_has_stale_executor_claim::bb9" [label="SwitchInt"];
+  "cfg::app::lane_has_stale_executor_claim::bb8" -> "cfg::app::lane_has_stale_executor_claim::bb11" [label="SwitchInt"];
+  "cfg::app::lane_has_stale_executor_claim::bb10" -> "cfg::app::lane_has_stale_executor_claim::bb12" [label="SwitchInt"];
+  "cfg::app::lane_has_stale_executor_claim::bb10" -> "cfg::app::lane_has_stale_executor_claim::bb11" [label="SwitchInt"];
+  "cfg::app::lane_has_stale_executor_claim::bb11" -> "cfg::app::lane_has_stale_executor_claim::bb15" [label="Goto"];
+  "cfg::app::lane_has_stale_executor_claim::bb14" -> "cfg::app::lane_has_stale_executor_claim::bb15" [label="Goto"];
+}

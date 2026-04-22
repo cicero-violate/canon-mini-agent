@@ -1,0 +1,18 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3484 {
+    label="tool_schema::map_schema_error";
+    "cfg::tool_schema::map_schema_error::bb0" [label="bb0\nCall"];
+    "cfg::tool_schema::map_schema_error::bb1" [label="bb1\nCall"];
+    "cfg::tool_schema::map_schema_error::bb2" [label="bb2\nCall"];
+    "cfg::tool_schema::map_schema_error::bb3" [label="bb3\nDrop"];
+    "cfg::tool_schema::map_schema_error::bb4" [label="bb4\nReturn"];
+    "cfg::tool_schema::map_schema_error::bb5" [label="bb5\nDrop cleanup"];
+    "cfg::tool_schema::map_schema_error::bb6" [label="bb6\nUnwindResume cleanup"];
+  }
+  "cfg::tool_schema::map_schema_error::bb3" -> "cfg::tool_schema::map_schema_error::bb4" [label="Drop"];
+  "cfg::tool_schema::map_schema_error::bb5" -> "cfg::tool_schema::map_schema_error::bb6" [label="Drop"];
+}

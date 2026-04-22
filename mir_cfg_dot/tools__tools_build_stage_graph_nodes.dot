@@ -1,0 +1,35 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4550 {
+    label="tools::build_stage_graph_nodes";
+    "cfg::tools::build_stage_graph_nodes::bb0" [label="bb0\nCall"];
+    "cfg::tools::build_stage_graph_nodes::bb1" [label="bb1\nCall"];
+    "cfg::tools::build_stage_graph_nodes::bb2" [label="bb2\nCall"];
+    "cfg::tools::build_stage_graph_nodes::bb3" [label="bb3\nCall"];
+    "cfg::tools::build_stage_graph_nodes::bb4" [label="bb4\nCall"];
+    "cfg::tools::build_stage_graph_nodes::bb5" [label="bb5\nCall"];
+    "cfg::tools::build_stage_graph_nodes::bb6" [label="bb6\nCall"];
+    "cfg::tools::build_stage_graph_nodes::bb7" [label="bb7\nAssert"];
+    "cfg::tools::build_stage_graph_nodes::bb8" [label="bb8\nReturn loop"];
+    "cfg::tools::build_stage_graph_nodes::bb9" [label="bb9\nDrop cleanup loop"];
+    "cfg::tools::build_stage_graph_nodes::bb10" [label="bb10\nDrop cleanup loop"];
+    "cfg::tools::build_stage_graph_nodes::bb11" [label="bb11\nDrop cleanup loop"];
+    "cfg::tools::build_stage_graph_nodes::bb12" [label="bb12\nDrop cleanup loop"];
+    "cfg::tools::build_stage_graph_nodes::bb13" [label="bb13\nDrop cleanup loop"];
+    "cfg::tools::build_stage_graph_nodes::bb14" [label="bb14\nDrop cleanup loop"];
+    "cfg::tools::build_stage_graph_nodes::bb15" [label="bb15\nUnwindResume cleanup loop"];
+    "cfg::tools::build_stage_graph_nodes::bb16" [label="bb16\nAssert loop"];
+    "cfg::tools::build_stage_graph_nodes::bb17" [label="bb17\nCall loop"];
+  }
+  "cfg::tools::build_stage_graph_nodes::bb7" -> "cfg::tools::build_stage_graph_nodes::bb16" [label="Assert"];
+  "cfg::tools::build_stage_graph_nodes::bb9" -> "cfg::tools::build_stage_graph_nodes::bb10" [label="Drop"];
+  "cfg::tools::build_stage_graph_nodes::bb10" -> "cfg::tools::build_stage_graph_nodes::bb11" [label="Drop"];
+  "cfg::tools::build_stage_graph_nodes::bb11" -> "cfg::tools::build_stage_graph_nodes::bb12" [label="Drop"];
+  "cfg::tools::build_stage_graph_nodes::bb12" -> "cfg::tools::build_stage_graph_nodes::bb13" [label="Drop"];
+  "cfg::tools::build_stage_graph_nodes::bb13" -> "cfg::tools::build_stage_graph_nodes::bb14" [label="Drop"];
+  "cfg::tools::build_stage_graph_nodes::bb14" -> "cfg::tools::build_stage_graph_nodes::bb15" [label="Drop"];
+  "cfg::tools::build_stage_graph_nodes::bb16" -> "cfg::tools::build_stage_graph_nodes::bb17" [label="Assert"];
+}

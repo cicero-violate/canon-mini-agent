@@ -1,0 +1,40 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4447 {
+    label="tools::exec_run_command_capture";
+    "cfg::tools::exec_run_command_capture::bb0" [label="bb0\nCall"];
+    "cfg::tools::exec_run_command_capture::bb1" [label="bb1\nCall"];
+    "cfg::tools::exec_run_command_capture::bb2" [label="bb2\nCall"];
+    "cfg::tools::exec_run_command_capture::bb3" [label="bb3\nCall"];
+    "cfg::tools::exec_run_command_capture::bb4" [label="bb4\nCall"];
+    "cfg::tools::exec_run_command_capture::bb5" [label="bb5\nCall"];
+    "cfg::tools::exec_run_command_capture::bb6" [label="bb6\nCall"];
+    "cfg::tools::exec_run_command_capture::bb7" [label="bb7\nSwitchInt"];
+    "cfg::tools::exec_run_command_capture::bb8" [label="bb8\nUnreachable"];
+    "cfg::tools::exec_run_command_capture::bb9" [label="bb9\nDrop"];
+    "cfg::tools::exec_run_command_capture::bb10" [label="bb10\nCall"];
+    "cfg::tools::exec_run_command_capture::bb11" [label="bb11\nDrop"];
+    "cfg::tools::exec_run_command_capture::bb12" [label="bb12\nCall"];
+    "cfg::tools::exec_run_command_capture::bb13" [label="bb13\nCall"];
+    "cfg::tools::exec_run_command_capture::bb14" [label="bb14\nCall"];
+    "cfg::tools::exec_run_command_capture::bb15" [label="bb15\nDrop"];
+    "cfg::tools::exec_run_command_capture::bb16" [label="bb16\nReturn"];
+    "cfg::tools::exec_run_command_capture::bb17" [label="bb17\nDrop cleanup"];
+    "cfg::tools::exec_run_command_capture::bb18" [label="bb18\nDrop cleanup"];
+    "cfg::tools::exec_run_command_capture::bb19" [label="bb19\nDrop cleanup"];
+    "cfg::tools::exec_run_command_capture::bb20" [label="bb20\nUnwindResume cleanup"];
+  }
+  "cfg::tools::exec_run_command_capture::bb7" -> "cfg::tools::exec_run_command_capture::bb9" [label="SwitchInt"];
+  "cfg::tools::exec_run_command_capture::bb7" -> "cfg::tools::exec_run_command_capture::bb10" [label="SwitchInt"];
+  "cfg::tools::exec_run_command_capture::bb7" -> "cfg::tools::exec_run_command_capture::bb8" [label="SwitchInt"];
+  "cfg::tools::exec_run_command_capture::bb9" -> "cfg::tools::exec_run_command_capture::bb12" [label="Drop"];
+  "cfg::tools::exec_run_command_capture::bb9" -> "cfg::tools::exec_run_command_capture::bb18" [label="Drop"];
+  "cfg::tools::exec_run_command_capture::bb11" -> "cfg::tools::exec_run_command_capture::bb16" [label="Drop"];
+  "cfg::tools::exec_run_command_capture::bb15" -> "cfg::tools::exec_run_command_capture::bb16" [label="Drop"];
+  "cfg::tools::exec_run_command_capture::bb17" -> "cfg::tools::exec_run_command_capture::bb18" [label="Drop"];
+  "cfg::tools::exec_run_command_capture::bb18" -> "cfg::tools::exec_run_command_capture::bb20" [label="Drop"];
+  "cfg::tools::exec_run_command_capture::bb19" -> "cfg::tools::exec_run_command_capture::bb20" [label="Drop"];
+}

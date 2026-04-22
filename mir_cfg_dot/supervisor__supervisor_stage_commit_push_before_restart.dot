@@ -1,0 +1,24 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3305 {
+    label="supervisor::stage_commit_push_before_restart";
+    "cfg::supervisor::stage_commit_push_before_restart::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::stage_commit_push_before_restart::bb1" [label="bb1\nCall"];
+    "cfg::supervisor::stage_commit_push_before_restart::bb2" [label="bb2\nCall"];
+    "cfg::supervisor::stage_commit_push_before_restart::bb3" [label="bb3\nCall"];
+    "cfg::supervisor::stage_commit_push_before_restart::bb4" [label="bb4\nSwitchInt"];
+    "cfg::supervisor::stage_commit_push_before_restart::bb5" [label="bb5\nCall"];
+    "cfg::supervisor::stage_commit_push_before_restart::bb6" [label="bb6\nCall"];
+    "cfg::supervisor::stage_commit_push_before_restart::bb7" [label="bb7\nCall"];
+    "cfg::supervisor::stage_commit_push_before_restart::bb8" [label="bb8\nSwitchInt"];
+    "cfg::supervisor::stage_commit_push_before_restart::bb9" [label="bb9\nCall"];
+    "cfg::supervisor::stage_commit_push_before_restart::bb10" [label="bb10\nReturn"];
+  }
+  "cfg::supervisor::stage_commit_push_before_restart::bb4" -> "cfg::supervisor::stage_commit_push_before_restart::bb10" [label="SwitchInt"];
+  "cfg::supervisor::stage_commit_push_before_restart::bb4" -> "cfg::supervisor::stage_commit_push_before_restart::bb5" [label="SwitchInt"];
+  "cfg::supervisor::stage_commit_push_before_restart::bb8" -> "cfg::supervisor::stage_commit_push_before_restart::bb10" [label="SwitchInt"];
+  "cfg::supervisor::stage_commit_push_before_restart::bb8" -> "cfg::supervisor::stage_commit_push_before_restart::bb9" [label="SwitchInt"];
+}

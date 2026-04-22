@@ -1,0 +1,51 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3779 {
+    label="tools::delete_issue";
+    "cfg::tools::delete_issue::bb0" [label="bb0\nCall"];
+    "cfg::tools::delete_issue::bb1" [label="bb1\nCall"];
+    "cfg::tools::delete_issue::bb2" [label="bb2\nCall"];
+    "cfg::tools::delete_issue::bb3" [label="bb3\nCall"];
+    "cfg::tools::delete_issue::bb4" [label="bb4\nSwitchInt"];
+    "cfg::tools::delete_issue::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::tools::delete_issue::bb6" [label="bb6\nCall loop"];
+    "cfg::tools::delete_issue::bb7" [label="bb7\nCall loop"];
+    "cfg::tools::delete_issue::bb8" [label="bb8\nCall loop"];
+    "cfg::tools::delete_issue::bb9" [label="bb9\nCall loop"];
+    "cfg::tools::delete_issue::bb10" [label="bb10\nCall loop"];
+    "cfg::tools::delete_issue::bb11" [label="bb11\nCall loop"];
+    "cfg::tools::delete_issue::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::tools::delete_issue::bb13" [label="bb13\nCall loop"];
+    "cfg::tools::delete_issue::bb14" [label="bb14\nCall loop"];
+    "cfg::tools::delete_issue::bb15" [label="bb15\nCall loop"];
+    "cfg::tools::delete_issue::bb16" [label="bb16\nGoto loop"];
+    "cfg::tools::delete_issue::bb17" [label="bb17\nCall loop"];
+    "cfg::tools::delete_issue::bb18" [label="bb18\nCall loop"];
+    "cfg::tools::delete_issue::bb19" [label="bb19\nSwitchInt loop"];
+    "cfg::tools::delete_issue::bb20" [label="bb20\nCall"];
+    "cfg::tools::delete_issue::bb21" [label="bb21\nCall"];
+    "cfg::tools::delete_issue::bb22" [label="bb22\nCall"];
+    "cfg::tools::delete_issue::bb23" [label="bb23\nDrop"];
+    "cfg::tools::delete_issue::bb24" [label="bb24\nDrop loop"];
+    "cfg::tools::delete_issue::bb25" [label="bb25\nReturn loop"];
+    "cfg::tools::delete_issue::bb26" [label="bb26\nDrop cleanup loop"];
+    "cfg::tools::delete_issue::bb27" [label="bb27\nUnwindResume cleanup loop"];
+    "cfg::tools::delete_issue::bb28" [label="bb28\nGoto loop"];
+  }
+  "cfg::tools::delete_issue::bb4" -> "cfg::tools::delete_issue::bb6" [label="SwitchInt"];
+  "cfg::tools::delete_issue::bb4" -> "cfg::tools::delete_issue::bb7" [label="SwitchInt"];
+  "cfg::tools::delete_issue::bb4" -> "cfg::tools::delete_issue::bb5" [label="SwitchInt"];
+  "cfg::tools::delete_issue::bb12" -> "cfg::tools::delete_issue::bb17" [label="SwitchInt"];
+  "cfg::tools::delete_issue::bb12" -> "cfg::tools::delete_issue::bb13" [label="SwitchInt"];
+  "cfg::tools::delete_issue::bb16" -> "cfg::tools::delete_issue::bb24" [label="Goto"];
+  "cfg::tools::delete_issue::bb19" -> "cfg::tools::delete_issue::bb20" [label="SwitchInt"];
+  "cfg::tools::delete_issue::bb19" -> "cfg::tools::delete_issue::bb21" [label="SwitchInt"];
+  "cfg::tools::delete_issue::bb19" -> "cfg::tools::delete_issue::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::delete_issue::bb23" -> "cfg::tools::delete_issue::bb25" [label="Drop"];
+  "cfg::tools::delete_issue::bb24" -> "cfg::tools::delete_issue::bb25" [label="Drop"];
+  "cfg::tools::delete_issue::bb26" -> "cfg::tools::delete_issue::bb27" [label="Drop"];
+  "cfg::tools::delete_issue::bb28" -> "cfg::tools::delete_issue::bb24" [color="crimson", penwidth=2, label="Goto back"];
+}

@@ -1,0 +1,34 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2501 {
+    label="prompt_inputs::planner_objectives_text";
+    "cfg::prompt_inputs::planner_objectives_text::bb0" [label="bb0\nCall"];
+    "cfg::prompt_inputs::planner_objectives_text::bb1" [label="bb1\nCall"];
+    "cfg::prompt_inputs::planner_objectives_text::bb2" [label="bb2\nSwitchInt"];
+    "cfg::prompt_inputs::planner_objectives_text::bb3" [label="bb3\nCall"];
+    "cfg::prompt_inputs::planner_objectives_text::bb4" [label="bb4\nCall"];
+    "cfg::prompt_inputs::planner_objectives_text::bb5" [label="bb5\nCall"];
+    "cfg::prompt_inputs::planner_objectives_text::bb6" [label="bb6\nCall"];
+    "cfg::prompt_inputs::planner_objectives_text::bb7" [label="bb7\nCall"];
+    "cfg::prompt_inputs::planner_objectives_text::bb8" [label="bb8\nGoto"];
+    "cfg::prompt_inputs::planner_objectives_text::bb9" [label="bb9\nGoto"];
+    "cfg::prompt_inputs::planner_objectives_text::bb10" [label="bb10\nSwitchInt"];
+    "cfg::prompt_inputs::planner_objectives_text::bb11" [label="bb11\nReturn loop"];
+    "cfg::prompt_inputs::planner_objectives_text::bb12" [label="bb12\nDrop cleanup loop"];
+    "cfg::prompt_inputs::planner_objectives_text::bb13" [label="bb13\nDrop cleanup loop"];
+    "cfg::prompt_inputs::planner_objectives_text::bb14" [label="bb14\nUnwindResume cleanup loop"];
+    "cfg::prompt_inputs::planner_objectives_text::bb15" [label="bb15\nDrop loop"];
+  }
+  "cfg::prompt_inputs::planner_objectives_text::bb2" -> "cfg::prompt_inputs::planner_objectives_text::bb9" [label="SwitchInt"];
+  "cfg::prompt_inputs::planner_objectives_text::bb2" -> "cfg::prompt_inputs::planner_objectives_text::bb3" [label="SwitchInt"];
+  "cfg::prompt_inputs::planner_objectives_text::bb8" -> "cfg::prompt_inputs::planner_objectives_text::bb10" [label="Goto"];
+  "cfg::prompt_inputs::planner_objectives_text::bb9" -> "cfg::prompt_inputs::planner_objectives_text::bb10" [label="Goto"];
+  "cfg::prompt_inputs::planner_objectives_text::bb10" -> "cfg::prompt_inputs::planner_objectives_text::bb11" [label="SwitchInt"];
+  "cfg::prompt_inputs::planner_objectives_text::bb10" -> "cfg::prompt_inputs::planner_objectives_text::bb15" [label="SwitchInt"];
+  "cfg::prompt_inputs::planner_objectives_text::bb12" -> "cfg::prompt_inputs::planner_objectives_text::bb13" [label="Drop"];
+  "cfg::prompt_inputs::planner_objectives_text::bb13" -> "cfg::prompt_inputs::planner_objectives_text::bb14" [label="Drop"];
+  "cfg::prompt_inputs::planner_objectives_text::bb15" -> "cfg::prompt_inputs::planner_objectives_text::bb11" [color="crimson", penwidth=2, label="Drop back"];
+}

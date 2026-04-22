@@ -1,0 +1,34 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_195 {
+    label="app::sweep_timed_out_executor_submits";
+    "cfg::app::sweep_timed_out_executor_submits::bb0" [label="bb0\nCall"];
+    "cfg::app::sweep_timed_out_executor_submits::bb1" [label="bb1\nSwitchInt"];
+    "cfg::app::sweep_timed_out_executor_submits::bb2" [label="bb2\nCall"];
+    "cfg::app::sweep_timed_out_executor_submits::bb3" [label="bb3\nCall"];
+    "cfg::app::sweep_timed_out_executor_submits::bb4" [label="bb4\nCall"];
+    "cfg::app::sweep_timed_out_executor_submits::bb5" [label="bb5\nCall"];
+    "cfg::app::sweep_timed_out_executor_submits::bb6" [label="bb6\nGoto"];
+    "cfg::app::sweep_timed_out_executor_submits::bb7" [label="bb7\nCall loop"];
+    "cfg::app::sweep_timed_out_executor_submits::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::app::sweep_timed_out_executor_submits::bb9" [label="bb9\nUnreachable loop"];
+    "cfg::app::sweep_timed_out_executor_submits::bb10" [label="bb10\nCall loop"];
+    "cfg::app::sweep_timed_out_executor_submits::bb11" [label="bb11\nDrop loop"];
+    "cfg::app::sweep_timed_out_executor_submits::bb12" [label="bb12\nReturn loop"];
+    "cfg::app::sweep_timed_out_executor_submits::bb13" [label="bb13\nDrop cleanup loop"];
+    "cfg::app::sweep_timed_out_executor_submits::bb14" [label="bb14\nUnwindResume cleanup loop"];
+    "cfg::app::sweep_timed_out_executor_submits::bb15" [label="bb15\nGoto loop"];
+  }
+  "cfg::app::sweep_timed_out_executor_submits::bb1" -> "cfg::app::sweep_timed_out_executor_submits::bb2" [label="SwitchInt"];
+  "cfg::app::sweep_timed_out_executor_submits::bb1" -> "cfg::app::sweep_timed_out_executor_submits::bb12" [label="SwitchInt"];
+  "cfg::app::sweep_timed_out_executor_submits::bb6" -> "cfg::app::sweep_timed_out_executor_submits::bb7" [label="Goto"];
+  "cfg::app::sweep_timed_out_executor_submits::bb8" -> "cfg::app::sweep_timed_out_executor_submits::bb11" [label="SwitchInt"];
+  "cfg::app::sweep_timed_out_executor_submits::bb8" -> "cfg::app::sweep_timed_out_executor_submits::bb10" [label="SwitchInt"];
+  "cfg::app::sweep_timed_out_executor_submits::bb8" -> "cfg::app::sweep_timed_out_executor_submits::bb9" [label="SwitchInt"];
+  "cfg::app::sweep_timed_out_executor_submits::bb11" -> "cfg::app::sweep_timed_out_executor_submits::bb12" [label="Drop"];
+  "cfg::app::sweep_timed_out_executor_submits::bb13" -> "cfg::app::sweep_timed_out_executor_submits::bb14" [label="Drop"];
+  "cfg::app::sweep_timed_out_executor_submits::bb15" -> "cfg::app::sweep_timed_out_executor_submits::bb7" [color="crimson", penwidth=2, label="Goto back"];
+}

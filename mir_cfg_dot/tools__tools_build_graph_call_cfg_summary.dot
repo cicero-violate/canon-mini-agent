@@ -1,0 +1,54 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4133 {
+    label="tools::build_graph_call_cfg_summary";
+    "cfg::tools::build_graph_call_cfg_summary::bb0" [label="bb0\nCall"];
+    "cfg::tools::build_graph_call_cfg_summary::bb1" [label="bb1\nCall"];
+    "cfg::tools::build_graph_call_cfg_summary::bb2" [label="bb2\nCall"];
+    "cfg::tools::build_graph_call_cfg_summary::bb3" [label="bb3\nCall"];
+    "cfg::tools::build_graph_call_cfg_summary::bb4" [label="bb4\nCall"];
+    "cfg::tools::build_graph_call_cfg_summary::bb5" [label="bb5\nCall"];
+    "cfg::tools::build_graph_call_cfg_summary::bb6" [label="bb6\nCall"];
+    "cfg::tools::build_graph_call_cfg_summary::bb7" [label="bb7\nCall"];
+    "cfg::tools::build_graph_call_cfg_summary::bb8" [label="bb8\nSwitchInt"];
+    "cfg::tools::build_graph_call_cfg_summary::bb9" [label="bb9\nCall"];
+    "cfg::tools::build_graph_call_cfg_summary::bb10" [label="bb10\nCall"];
+    "cfg::tools::build_graph_call_cfg_summary::bb11" [label="bb11\nSwitchInt loop"];
+    "cfg::tools::build_graph_call_cfg_summary::bb12" [label="bb12\nCall loop"];
+    "cfg::tools::build_graph_call_cfg_summary::bb13" [label="bb13\nCall loop"];
+    "cfg::tools::build_graph_call_cfg_summary::bb14" [label="bb14\nCall loop"];
+    "cfg::tools::build_graph_call_cfg_summary::bb15" [label="bb15\nCall loop"];
+    "cfg::tools::build_graph_call_cfg_summary::bb16" [label="bb16\nCall loop"];
+    "cfg::tools::build_graph_call_cfg_summary::bb17" [label="bb17\nCall loop"];
+    "cfg::tools::build_graph_call_cfg_summary::bb18" [label="bb18\nCall loop"];
+    "cfg::tools::build_graph_call_cfg_summary::bb19" [label="bb19\nCall loop"];
+    "cfg::tools::build_graph_call_cfg_summary::bb20" [label="bb20\nDrop loop"];
+    "cfg::tools::build_graph_call_cfg_summary::bb21" [label="bb21\nCall loop"];
+    "cfg::tools::build_graph_call_cfg_summary::bb22" [label="bb22\nSwitchInt loop"];
+    "cfg::tools::build_graph_call_cfg_summary::bb23" [label="bb23\nCall loop"];
+    "cfg::tools::build_graph_call_cfg_summary::bb24" [label="bb24\nCall loop"];
+    "cfg::tools::build_graph_call_cfg_summary::bb25" [label="bb25\nReturn loop"];
+    "cfg::tools::build_graph_call_cfg_summary::bb26" [label="bb26\nDrop cleanup loop"];
+    "cfg::tools::build_graph_call_cfg_summary::bb27" [label="bb27\nDrop cleanup loop"];
+    "cfg::tools::build_graph_call_cfg_summary::bb28" [label="bb28\nUnwindResume cleanup loop"];
+    "cfg::tools::build_graph_call_cfg_summary::bb29" [label="bb29\nUnreachable loop"];
+    "cfg::tools::build_graph_call_cfg_summary::bb30" [label="bb30\nGoto loop"];
+    "cfg::tools::build_graph_call_cfg_summary::bb31" [label="bb31\nGoto loop"];
+  }
+  "cfg::tools::build_graph_call_cfg_summary::bb8" -> "cfg::tools::build_graph_call_cfg_summary::bb9" [label="SwitchInt"];
+  "cfg::tools::build_graph_call_cfg_summary::bb8" -> "cfg::tools::build_graph_call_cfg_summary::bb11" [label="SwitchInt"];
+  "cfg::tools::build_graph_call_cfg_summary::bb11" -> "cfg::tools::build_graph_call_cfg_summary::bb12" [label="SwitchInt"];
+  "cfg::tools::build_graph_call_cfg_summary::bb11" -> "cfg::tools::build_graph_call_cfg_summary::bb25" [label="SwitchInt"];
+  "cfg::tools::build_graph_call_cfg_summary::bb11" -> "cfg::tools::build_graph_call_cfg_summary::bb29" [label="SwitchInt"];
+  "cfg::tools::build_graph_call_cfg_summary::bb20" -> "cfg::tools::build_graph_call_cfg_summary::bb21" [label="Drop"];
+  "cfg::tools::build_graph_call_cfg_summary::bb20" -> "cfg::tools::build_graph_call_cfg_summary::bb27" [label="Drop"];
+  "cfg::tools::build_graph_call_cfg_summary::bb22" -> "cfg::tools::build_graph_call_cfg_summary::bb23" [label="SwitchInt"];
+  "cfg::tools::build_graph_call_cfg_summary::bb22" -> "cfg::tools::build_graph_call_cfg_summary::bb25" [label="SwitchInt"];
+  "cfg::tools::build_graph_call_cfg_summary::bb26" -> "cfg::tools::build_graph_call_cfg_summary::bb27" [label="Drop"];
+  "cfg::tools::build_graph_call_cfg_summary::bb27" -> "cfg::tools::build_graph_call_cfg_summary::bb28" [label="Drop"];
+  "cfg::tools::build_graph_call_cfg_summary::bb30" -> "cfg::tools::build_graph_call_cfg_summary::bb11" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::tools::build_graph_call_cfg_summary::bb31" -> "cfg::tools::build_graph_call_cfg_summary::bb25" [color="crimson", penwidth=2, label="Goto back"];
+}

@@ -1,0 +1,24 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4543 {
+    label="tools::write_stage_graph";
+    "cfg::tools::write_stage_graph::bb0" [label="bb0\nCall"];
+    "cfg::tools::write_stage_graph::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::write_stage_graph::bb2" [label="bb2\nCall"];
+    "cfg::tools::write_stage_graph::bb3" [label="bb3\nCall"];
+    "cfg::tools::write_stage_graph::bb4" [label="bb4\nCall"];
+    "cfg::tools::write_stage_graph::bb5" [label="bb5\nDrop"];
+    "cfg::tools::write_stage_graph::bb6" [label="bb6\nDrop cleanup"];
+    "cfg::tools::write_stage_graph::bb7" [label="bb7\nReturn"];
+    "cfg::tools::write_stage_graph::bb8" [label="bb8\nUnwindResume cleanup"];
+    "cfg::tools::write_stage_graph::bb9" [label="bb9\nUnreachable"];
+  }
+  "cfg::tools::write_stage_graph::bb1" -> "cfg::tools::write_stage_graph::bb2" [label="SwitchInt"];
+  "cfg::tools::write_stage_graph::bb1" -> "cfg::tools::write_stage_graph::bb7" [label="SwitchInt"];
+  "cfg::tools::write_stage_graph::bb1" -> "cfg::tools::write_stage_graph::bb9" [label="SwitchInt"];
+  "cfg::tools::write_stage_graph::bb5" -> "cfg::tools::write_stage_graph::bb7" [label="Drop"];
+  "cfg::tools::write_stage_graph::bb6" -> "cfg::tools::write_stage_graph::bb8" [label="Drop"];
+}

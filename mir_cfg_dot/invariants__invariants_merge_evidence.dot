@@ -1,0 +1,58 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1280 {
+    label="invariants::merge_evidence";
+    "cfg::invariants::merge_evidence::bb0" [label="bb0\nCall"];
+    "cfg::invariants::merge_evidence::bb1" [label="bb1\nCall"];
+    "cfg::invariants::merge_evidence::bb2" [label="bb2\nCall"];
+    "cfg::invariants::merge_evidence::bb3" [label="bb3\nCall"];
+    "cfg::invariants::merge_evidence::bb4" [label="bb4\nCall"];
+    "cfg::invariants::merge_evidence::bb5" [label="bb5\nCall"];
+    "cfg::invariants::merge_evidence::bb6" [label="bb6\nCall"];
+    "cfg::invariants::merge_evidence::bb7" [label="bb7\nCall"];
+    "cfg::invariants::merge_evidence::bb8" [label="bb8\nGoto"];
+    "cfg::invariants::merge_evidence::bb9" [label="bb9\nCall loop"];
+    "cfg::invariants::merge_evidence::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::invariants::merge_evidence::bb11" [label="bb11\nUnreachable loop"];
+    "cfg::invariants::merge_evidence::bb12" [label="bb12\nCall loop"];
+    "cfg::invariants::merge_evidence::bb13" [label="bb13\nCall loop"];
+    "cfg::invariants::merge_evidence::bb14" [label="bb14\nCall loop"];
+    "cfg::invariants::merge_evidence::bb15" [label="bb15\nSwitchInt loop"];
+    "cfg::invariants::merge_evidence::bb16" [label="bb16\nCall loop"];
+    "cfg::invariants::merge_evidence::bb17" [label="bb17\nCall loop"];
+    "cfg::invariants::merge_evidence::bb18" [label="bb18\nCall loop"];
+    "cfg::invariants::merge_evidence::bb19" [label="bb19\nSwitchInt loop"];
+    "cfg::invariants::merge_evidence::bb20" [label="bb20\nDrop"];
+    "cfg::invariants::merge_evidence::bb21" [label="bb21\nDrop"];
+    "cfg::invariants::merge_evidence::bb22" [label="bb22\nGoto cleanup"];
+    "cfg::invariants::merge_evidence::bb23" [label="bb23\nDrop"];
+    "cfg::invariants::merge_evidence::bb24" [label="bb24\nReturn"];
+    "cfg::invariants::merge_evidence::bb25" [label="bb25\nDrop cleanup loop"];
+    "cfg::invariants::merge_evidence::bb26" [label="bb26\nDrop cleanup loop"];
+    "cfg::invariants::merge_evidence::bb27" [label="bb27\nUnwindResume cleanup loop"];
+    "cfg::invariants::merge_evidence::bb28" [label="bb28\nDrop cleanup loop"];
+    "cfg::invariants::merge_evidence::bb29" [label="bb29\nSwitchInt cleanup loop"];
+  }
+  "cfg::invariants::merge_evidence::bb8" -> "cfg::invariants::merge_evidence::bb9" [label="Goto"];
+  "cfg::invariants::merge_evidence::bb10" -> "cfg::invariants::merge_evidence::bb20" [label="SwitchInt"];
+  "cfg::invariants::merge_evidence::bb10" -> "cfg::invariants::merge_evidence::bb12" [label="SwitchInt"];
+  "cfg::invariants::merge_evidence::bb10" -> "cfg::invariants::merge_evidence::bb11" [label="SwitchInt"];
+  "cfg::invariants::merge_evidence::bb15" -> "cfg::invariants::merge_evidence::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::merge_evidence::bb15" -> "cfg::invariants::merge_evidence::bb16" [label="SwitchInt"];
+  "cfg::invariants::merge_evidence::bb19" -> "cfg::invariants::merge_evidence::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::merge_evidence::bb19" -> "cfg::invariants::merge_evidence::bb20" [label="SwitchInt"];
+  "cfg::invariants::merge_evidence::bb20" -> "cfg::invariants::merge_evidence::bb21" [label="Drop"];
+  "cfg::invariants::merge_evidence::bb20" -> "cfg::invariants::merge_evidence::bb22" [label="Drop"];
+  "cfg::invariants::merge_evidence::bb21" -> "cfg::invariants::merge_evidence::bb23" [label="Drop"];
+  "cfg::invariants::merge_evidence::bb21" -> "cfg::invariants::merge_evidence::bb26" [label="Drop"];
+  "cfg::invariants::merge_evidence::bb22" -> "cfg::invariants::merge_evidence::bb29" [label="Goto"];
+  "cfg::invariants::merge_evidence::bb23" -> "cfg::invariants::merge_evidence::bb24" [label="Drop"];
+  "cfg::invariants::merge_evidence::bb25" -> "cfg::invariants::merge_evidence::bb26" [label="Drop"];
+  "cfg::invariants::merge_evidence::bb26" -> "cfg::invariants::merge_evidence::bb27" [label="Drop"];
+  "cfg::invariants::merge_evidence::bb28" -> "cfg::invariants::merge_evidence::bb25" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::invariants::merge_evidence::bb29" -> "cfg::invariants::merge_evidence::bb25" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::merge_evidence::bb29" -> "cfg::invariants::merge_evidence::bb28" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

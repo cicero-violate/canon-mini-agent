@@ -1,0 +1,25 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3927 {
+    label="tools::is_ignored_dir_entry";
+    "cfg::tools::is_ignored_dir_entry::bb0" [label="bb0\nCall"];
+    "cfg::tools::is_ignored_dir_entry::bb1" [label="bb1\nCall"];
+    "cfg::tools::is_ignored_dir_entry::bb2" [label="bb2\nCall"];
+    "cfg::tools::is_ignored_dir_entry::bb3" [label="bb3\nCall"];
+    "cfg::tools::is_ignored_dir_entry::bb4" [label="bb4\nCall"];
+    "cfg::tools::is_ignored_dir_entry::bb5" [label="bb5\nDrop"];
+    "cfg::tools::is_ignored_dir_entry::bb6" [label="bb6\nDrop"];
+    "cfg::tools::is_ignored_dir_entry::bb7" [label="bb7\nReturn"];
+    "cfg::tools::is_ignored_dir_entry::bb8" [label="bb8\nDrop cleanup"];
+    "cfg::tools::is_ignored_dir_entry::bb9" [label="bb9\nDrop cleanup"];
+    "cfg::tools::is_ignored_dir_entry::bb10" [label="bb10\nUnwindResume cleanup"];
+  }
+  "cfg::tools::is_ignored_dir_entry::bb5" -> "cfg::tools::is_ignored_dir_entry::bb6" [label="Drop"];
+  "cfg::tools::is_ignored_dir_entry::bb5" -> "cfg::tools::is_ignored_dir_entry::bb9" [label="Drop"];
+  "cfg::tools::is_ignored_dir_entry::bb6" -> "cfg::tools::is_ignored_dir_entry::bb7" [label="Drop"];
+  "cfg::tools::is_ignored_dir_entry::bb8" -> "cfg::tools::is_ignored_dir_entry::bb9" [label="Drop"];
+  "cfg::tools::is_ignored_dir_entry::bb9" -> "cfg::tools::is_ignored_dir_entry::bb10" [label="Drop"];
+}

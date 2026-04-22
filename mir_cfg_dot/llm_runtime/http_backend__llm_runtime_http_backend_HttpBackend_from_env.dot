@@ -1,0 +1,20 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1805 {
+    label="llm_runtime::http_backend::HttpBackend::from_env";
+    "cfg::llm_runtime::http_backend::HttpBackend::from_env::bb0" [label="bb0\nCall"];
+    "cfg::llm_runtime::http_backend::HttpBackend::from_env::bb1" [label="bb1\nCall"];
+    "cfg::llm_runtime::http_backend::HttpBackend::from_env::bb2" [label="bb2\nCall"];
+    "cfg::llm_runtime::http_backend::HttpBackend::from_env::bb3" [label="bb3\nCall"];
+    "cfg::llm_runtime::http_backend::HttpBackend::from_env::bb4" [label="bb4\nCall"];
+    "cfg::llm_runtime::http_backend::HttpBackend::from_env::bb5" [label="bb5\nReturn"];
+    "cfg::llm_runtime::http_backend::HttpBackend::from_env::bb6" [label="bb6\nDrop cleanup"];
+    "cfg::llm_runtime::http_backend::HttpBackend::from_env::bb7" [label="bb7\nDrop cleanup"];
+    "cfg::llm_runtime::http_backend::HttpBackend::from_env::bb8" [label="bb8\nUnwindResume cleanup"];
+  }
+  "cfg::llm_runtime::http_backend::HttpBackend::from_env::bb6" -> "cfg::llm_runtime::http_backend::HttpBackend::from_env::bb7" [label="Drop"];
+  "cfg::llm_runtime::http_backend::HttpBackend::from_env::bb7" -> "cfg::llm_runtime::http_backend::HttpBackend::from_env::bb8" [label="Drop"];
+}

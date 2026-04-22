@@ -1,0 +1,32 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1529 {
+    label="lessons::apply_promoted_lessons";
+    "cfg::lessons::apply_promoted_lessons::bb0" [label="bb0\nCall"];
+    "cfg::lessons::apply_promoted_lessons::bb1" [label="bb1\nSwitchInt"];
+    "cfg::lessons::apply_promoted_lessons::bb2" [label="bb2\nUnreachable"];
+    "cfg::lessons::apply_promoted_lessons::bb3" [label="bb3\nCall"];
+    "cfg::lessons::apply_promoted_lessons::bb4" [label="bb4\nSwitchInt"];
+    "cfg::lessons::apply_promoted_lessons::bb5" [label="bb5\nCall"];
+    "cfg::lessons::apply_promoted_lessons::bb6" [label="bb6\nCall"];
+    "cfg::lessons::apply_promoted_lessons::bb7" [label="bb7\nCall"];
+    "cfg::lessons::apply_promoted_lessons::bb8" [label="bb8\nGoto"];
+    "cfg::lessons::apply_promoted_lessons::bb9" [label="bb9\nCall"];
+    "cfg::lessons::apply_promoted_lessons::bb10" [label="bb10\nCall"];
+    "cfg::lessons::apply_promoted_lessons::bb11" [label="bb11\nDrop"];
+    "cfg::lessons::apply_promoted_lessons::bb12" [label="bb12\nDrop cleanup"];
+    "cfg::lessons::apply_promoted_lessons::bb13" [label="bb13\nReturn"];
+    "cfg::lessons::apply_promoted_lessons::bb14" [label="bb14\nUnwindResume cleanup"];
+  }
+  "cfg::lessons::apply_promoted_lessons::bb1" -> "cfg::lessons::apply_promoted_lessons::bb4" [label="SwitchInt"];
+  "cfg::lessons::apply_promoted_lessons::bb1" -> "cfg::lessons::apply_promoted_lessons::bb3" [label="SwitchInt"];
+  "cfg::lessons::apply_promoted_lessons::bb1" -> "cfg::lessons::apply_promoted_lessons::bb2" [label="SwitchInt"];
+  "cfg::lessons::apply_promoted_lessons::bb4" -> "cfg::lessons::apply_promoted_lessons::bb8" [label="SwitchInt"];
+  "cfg::lessons::apply_promoted_lessons::bb4" -> "cfg::lessons::apply_promoted_lessons::bb5" [label="SwitchInt"];
+  "cfg::lessons::apply_promoted_lessons::bb8" -> "cfg::lessons::apply_promoted_lessons::bb13" [label="Goto"];
+  "cfg::lessons::apply_promoted_lessons::bb11" -> "cfg::lessons::apply_promoted_lessons::bb13" [label="Drop"];
+  "cfg::lessons::apply_promoted_lessons::bb12" -> "cfg::lessons::apply_promoted_lessons::bb14" [label="Drop"];
+}

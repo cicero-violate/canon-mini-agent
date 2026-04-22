@@ -1,0 +1,39 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2285 {
+    label="orchestrator_seam::has_actionable_objectives";
+    "cfg::orchestrator_seam::has_actionable_objectives::bb0" [label="bb0\nCall"];
+    "cfg::orchestrator_seam::has_actionable_objectives::bb1" [label="bb1\nSwitchInt"];
+    "cfg::orchestrator_seam::has_actionable_objectives::bb2" [label="bb2\nSwitchInt"];
+    "cfg::orchestrator_seam::has_actionable_objectives::bb3" [label="bb3\nCall loop"];
+    "cfg::orchestrator_seam::has_actionable_objectives::bb4" [label="bb4\nCall loop"];
+    "cfg::orchestrator_seam::has_actionable_objectives::bb5" [label="bb5\nDrop loop"];
+    "cfg::orchestrator_seam::has_actionable_objectives::bb6" [label="bb6\nReturn loop"];
+    "cfg::orchestrator_seam::has_actionable_objectives::bb7" [label="bb7\nDrop cleanup loop"];
+    "cfg::orchestrator_seam::has_actionable_objectives::bb8" [label="bb8\nUnwindResume cleanup loop"];
+    "cfg::orchestrator_seam::has_actionable_objectives::bb9" [label="bb9\nCall loop"];
+    "cfg::orchestrator_seam::has_actionable_objectives::bb10" [label="bb10\nDrop loop"];
+    "cfg::orchestrator_seam::has_actionable_objectives::bb11" [label="bb11\nGoto loop"];
+    "cfg::orchestrator_seam::has_actionable_objectives::bb12" [label="bb12\nDrop loop"];
+    "cfg::orchestrator_seam::has_actionable_objectives::bb13" [label="bb13\nSwitchInt loop"];
+    "cfg::orchestrator_seam::has_actionable_objectives::bb14" [label="bb14\nUnreachable"];
+  }
+  "cfg::orchestrator_seam::has_actionable_objectives::bb1" -> "cfg::orchestrator_seam::has_actionable_objectives::bb2" [label="SwitchInt"];
+  "cfg::orchestrator_seam::has_actionable_objectives::bb1" -> "cfg::orchestrator_seam::has_actionable_objectives::bb13" [label="SwitchInt"];
+  "cfg::orchestrator_seam::has_actionable_objectives::bb1" -> "cfg::orchestrator_seam::has_actionable_objectives::bb14" [label="SwitchInt"];
+  "cfg::orchestrator_seam::has_actionable_objectives::bb2" -> "cfg::orchestrator_seam::has_actionable_objectives::bb9" [label="SwitchInt"];
+  "cfg::orchestrator_seam::has_actionable_objectives::bb2" -> "cfg::orchestrator_seam::has_actionable_objectives::bb10" [label="SwitchInt"];
+  "cfg::orchestrator_seam::has_actionable_objectives::bb2" -> "cfg::orchestrator_seam::has_actionable_objectives::bb14" [label="SwitchInt"];
+  "cfg::orchestrator_seam::has_actionable_objectives::bb5" -> "cfg::orchestrator_seam::has_actionable_objectives::bb6" [label="Drop"];
+  "cfg::orchestrator_seam::has_actionable_objectives::bb7" -> "cfg::orchestrator_seam::has_actionable_objectives::bb8" [label="Drop"];
+  "cfg::orchestrator_seam::has_actionable_objectives::bb10" -> "cfg::orchestrator_seam::has_actionable_objectives::bb9" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::orchestrator_seam::has_actionable_objectives::bb10" -> "cfg::orchestrator_seam::has_actionable_objectives::bb7" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::orchestrator_seam::has_actionable_objectives::bb11" -> "cfg::orchestrator_seam::has_actionable_objectives::bb6" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::orchestrator_seam::has_actionable_objectives::bb12" -> "cfg::orchestrator_seam::has_actionable_objectives::bb11" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::orchestrator_seam::has_actionable_objectives::bb13" -> "cfg::orchestrator_seam::has_actionable_objectives::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::orchestrator_seam::has_actionable_objectives::bb13" -> "cfg::orchestrator_seam::has_actionable_objectives::bb12" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::orchestrator_seam::has_actionable_objectives::bb13" -> "cfg::orchestrator_seam::has_actionable_objectives::bb14" [label="SwitchInt"];
+}

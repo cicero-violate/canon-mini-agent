@@ -1,0 +1,38 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1073 {
+    label="invalid_action::unsupported_action_templates";
+    "cfg::invalid_action::unsupported_action_templates::bb0" [label="bb0\nCall"];
+    "cfg::invalid_action::unsupported_action_templates::bb1" [label="bb1\nAssert"];
+    "cfg::invalid_action::unsupported_action_templates::bb2" [label="bb2\nCall loop"];
+    "cfg::invalid_action::unsupported_action_templates::bb3" [label="bb3\nCall loop"];
+    "cfg::invalid_action::unsupported_action_templates::bb4" [label="bb4\nCall loop"];
+    "cfg::invalid_action::unsupported_action_templates::bb5" [label="bb5\nCall loop"];
+    "cfg::invalid_action::unsupported_action_templates::bb6" [label="bb6\nCall loop"];
+    "cfg::invalid_action::unsupported_action_templates::bb7" [label="bb7\nCall loop"];
+    "cfg::invalid_action::unsupported_action_templates::bb8" [label="bb8\nCall loop"];
+    "cfg::invalid_action::unsupported_action_templates::bb9" [label="bb9\nCall loop"];
+    "cfg::invalid_action::unsupported_action_templates::bb10" [label="bb10\nCall loop"];
+    "cfg::invalid_action::unsupported_action_templates::bb11" [label="bb11\nCall loop"];
+    "cfg::invalid_action::unsupported_action_templates::bb12" [label="bb12\nCall loop"];
+    "cfg::invalid_action::unsupported_action_templates::bb13" [label="bb13\nCall loop"];
+    "cfg::invalid_action::unsupported_action_templates::bb14" [label="bb14\nDrop loop"];
+    "cfg::invalid_action::unsupported_action_templates::bb15" [label="bb15\nCall loop"];
+    "cfg::invalid_action::unsupported_action_templates::bb16" [label="bb16\nCall loop"];
+    "cfg::invalid_action::unsupported_action_templates::bb17" [label="bb17\nReturn loop"];
+    "cfg::invalid_action::unsupported_action_templates::bb18" [label="bb18\nDrop cleanup loop"];
+    "cfg::invalid_action::unsupported_action_templates::bb19" [label="bb19\nDrop cleanup loop"];
+    "cfg::invalid_action::unsupported_action_templates::bb20" [label="bb20\nUnwindResume cleanup loop"];
+    "cfg::invalid_action::unsupported_action_templates::bb21" [label="bb21\nAssert loop"];
+    "cfg::invalid_action::unsupported_action_templates::bb22" [label="bb22\nCall loop"];
+  }
+  "cfg::invalid_action::unsupported_action_templates::bb1" -> "cfg::invalid_action::unsupported_action_templates::bb21" [label="Assert"];
+  "cfg::invalid_action::unsupported_action_templates::bb14" -> "cfg::invalid_action::unsupported_action_templates::bb15" [label="Drop"];
+  "cfg::invalid_action::unsupported_action_templates::bb14" -> "cfg::invalid_action::unsupported_action_templates::bb19" [label="Drop"];
+  "cfg::invalid_action::unsupported_action_templates::bb18" -> "cfg::invalid_action::unsupported_action_templates::bb19" [label="Drop"];
+  "cfg::invalid_action::unsupported_action_templates::bb19" -> "cfg::invalid_action::unsupported_action_templates::bb20" [label="Drop"];
+  "cfg::invalid_action::unsupported_action_templates::bb21" -> "cfg::invalid_action::unsupported_action_templates::bb22" [label="Assert"];
+}

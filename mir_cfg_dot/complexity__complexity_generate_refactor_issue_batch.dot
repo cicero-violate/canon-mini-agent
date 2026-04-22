@@ -1,0 +1,52 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_716 {
+    label="complexity::generate_refactor_issue_batch";
+    "cfg::complexity::generate_refactor_issue_batch::bb0" [label="bb0\nCall"];
+    "cfg::complexity::generate_refactor_issue_batch::bb1" [label="bb1\nDrop"];
+    "cfg::complexity::generate_refactor_issue_batch::bb2" [label="bb2\nCall"];
+    "cfg::complexity::generate_refactor_issue_batch::bb3" [label="bb3\nDrop"];
+    "cfg::complexity::generate_refactor_issue_batch::bb4" [label="bb4\nCall"];
+    "cfg::complexity::generate_refactor_issue_batch::bb5" [label="bb5\nDrop"];
+    "cfg::complexity::generate_refactor_issue_batch::bb6" [label="bb6\nCall"];
+    "cfg::complexity::generate_refactor_issue_batch::bb7" [label="bb7\nDrop"];
+    "cfg::complexity::generate_refactor_issue_batch::bb8" [label="bb8\nCall"];
+    "cfg::complexity::generate_refactor_issue_batch::bb9" [label="bb9\nDrop"];
+    "cfg::complexity::generate_refactor_issue_batch::bb10" [label="bb10\nCall"];
+    "cfg::complexity::generate_refactor_issue_batch::bb11" [label="bb11\nDrop"];
+    "cfg::complexity::generate_refactor_issue_batch::bb12" [label="bb12\nCall"];
+    "cfg::complexity::generate_refactor_issue_batch::bb13" [label="bb13\nDrop"];
+    "cfg::complexity::generate_refactor_issue_batch::bb14" [label="bb14\nCall"];
+    "cfg::complexity::generate_refactor_issue_batch::bb15" [label="bb15\nDrop"];
+    "cfg::complexity::generate_refactor_issue_batch::bb16" [label="bb16\nCall"];
+    "cfg::complexity::generate_refactor_issue_batch::bb17" [label="bb17\nDrop"];
+    "cfg::complexity::generate_refactor_issue_batch::bb18" [label="bb18\nCall"];
+    "cfg::complexity::generate_refactor_issue_batch::bb19" [label="bb19\nDrop"];
+    "cfg::complexity::generate_refactor_issue_batch::bb20" [label="bb20\nCall"];
+    "cfg::complexity::generate_refactor_issue_batch::bb21" [label="bb21\nDrop"];
+    "cfg::complexity::generate_refactor_issue_batch::bb22" [label="bb22\nCall"];
+    "cfg::complexity::generate_refactor_issue_batch::bb23" [label="bb23\nDrop"];
+    "cfg::complexity::generate_refactor_issue_batch::bb24" [label="bb24\nCall"];
+    "cfg::complexity::generate_refactor_issue_batch::bb25" [label="bb25\nDrop"];
+    "cfg::complexity::generate_refactor_issue_batch::bb26" [label="bb26\nCall"];
+    "cfg::complexity::generate_refactor_issue_batch::bb27" [label="bb27\nDrop"];
+    "cfg::complexity::generate_refactor_issue_batch::bb28" [label="bb28\nReturn"];
+  }
+  "cfg::complexity::generate_refactor_issue_batch::bb1" -> "cfg::complexity::generate_refactor_issue_batch::bb2" [label="Drop"];
+  "cfg::complexity::generate_refactor_issue_batch::bb3" -> "cfg::complexity::generate_refactor_issue_batch::bb4" [label="Drop"];
+  "cfg::complexity::generate_refactor_issue_batch::bb5" -> "cfg::complexity::generate_refactor_issue_batch::bb6" [label="Drop"];
+  "cfg::complexity::generate_refactor_issue_batch::bb7" -> "cfg::complexity::generate_refactor_issue_batch::bb8" [label="Drop"];
+  "cfg::complexity::generate_refactor_issue_batch::bb9" -> "cfg::complexity::generate_refactor_issue_batch::bb10" [label="Drop"];
+  "cfg::complexity::generate_refactor_issue_batch::bb11" -> "cfg::complexity::generate_refactor_issue_batch::bb12" [label="Drop"];
+  "cfg::complexity::generate_refactor_issue_batch::bb13" -> "cfg::complexity::generate_refactor_issue_batch::bb14" [label="Drop"];
+  "cfg::complexity::generate_refactor_issue_batch::bb15" -> "cfg::complexity::generate_refactor_issue_batch::bb16" [label="Drop"];
+  "cfg::complexity::generate_refactor_issue_batch::bb17" -> "cfg::complexity::generate_refactor_issue_batch::bb18" [label="Drop"];
+  "cfg::complexity::generate_refactor_issue_batch::bb19" -> "cfg::complexity::generate_refactor_issue_batch::bb20" [label="Drop"];
+  "cfg::complexity::generate_refactor_issue_batch::bb21" -> "cfg::complexity::generate_refactor_issue_batch::bb22" [label="Drop"];
+  "cfg::complexity::generate_refactor_issue_batch::bb23" -> "cfg::complexity::generate_refactor_issue_batch::bb24" [label="Drop"];
+  "cfg::complexity::generate_refactor_issue_batch::bb25" -> "cfg::complexity::generate_refactor_issue_batch::bb26" [label="Drop"];
+  "cfg::complexity::generate_refactor_issue_batch::bb27" -> "cfg::complexity::generate_refactor_issue_batch::bb28" [label="Drop"];
+}

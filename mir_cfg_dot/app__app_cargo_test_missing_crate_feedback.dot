@@ -1,0 +1,18 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_293 {
+    label="app::cargo_test_missing_crate_feedback";
+    "cfg::app::cargo_test_missing_crate_feedback::bb0" [label="bb0\nCall"];
+    "cfg::app::cargo_test_missing_crate_feedback::bb1" [label="bb1\nCall"];
+    "cfg::app::cargo_test_missing_crate_feedback::bb2" [label="bb2\nCall"];
+    "cfg::app::cargo_test_missing_crate_feedback::bb3" [label="bb3\nCall"];
+    "cfg::app::cargo_test_missing_crate_feedback::bb4" [label="bb4\nCall"];
+    "cfg::app::cargo_test_missing_crate_feedback::bb5" [label="bb5\nReturn"];
+    "cfg::app::cargo_test_missing_crate_feedback::bb6" [label="bb6\nDrop cleanup"];
+    "cfg::app::cargo_test_missing_crate_feedback::bb7" [label="bb7\nUnwindResume cleanup"];
+  }
+  "cfg::app::cargo_test_missing_crate_feedback::bb6" -> "cfg::app::cargo_test_missing_crate_feedback::bb7" [label="Drop"];
+}

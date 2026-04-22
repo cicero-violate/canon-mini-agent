@@ -1,0 +1,55 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4570 {
+    label="tools::append_batch_item_result";
+    "cfg::tools::append_batch_item_result::bb0" [label="bb0\nCall"];
+    "cfg::tools::append_batch_item_result::bb1" [label="bb1\nCall"];
+    "cfg::tools::append_batch_item_result::bb2" [label="bb2\nCall"];
+    "cfg::tools::append_batch_item_result::bb3" [label="bb3\nCall"];
+    "cfg::tools::append_batch_item_result::bb4" [label="bb4\nCall"];
+    "cfg::tools::append_batch_item_result::bb5" [label="bb5\nCall"];
+    "cfg::tools::append_batch_item_result::bb6" [label="bb6\nCall"];
+    "cfg::tools::append_batch_item_result::bb7" [label="bb7\nCall"];
+    "cfg::tools::append_batch_item_result::bb8" [label="bb8\nDrop"];
+    "cfg::tools::append_batch_item_result::bb9" [label="bb9\nCall"];
+    "cfg::tools::append_batch_item_result::bb10" [label="bb10\nSwitchInt"];
+    "cfg::tools::append_batch_item_result::bb11" [label="bb11\nUnreachable loop"];
+    "cfg::tools::append_batch_item_result::bb12" [label="bb12\nCall loop"];
+    "cfg::tools::append_batch_item_result::bb13" [label="bb13\nCall loop"];
+    "cfg::tools::append_batch_item_result::bb14" [label="bb14\nCall loop"];
+    "cfg::tools::append_batch_item_result::bb15" [label="bb15\nDrop loop"];
+    "cfg::tools::append_batch_item_result::bb16" [label="bb16\nCall loop"];
+    "cfg::tools::append_batch_item_result::bb17" [label="bb17\nCall loop"];
+    "cfg::tools::append_batch_item_result::bb18" [label="bb18\nCall loop"];
+    "cfg::tools::append_batch_item_result::bb19" [label="bb19\nCall loop"];
+    "cfg::tools::append_batch_item_result::bb20" [label="bb20\nCall loop"];
+    "cfg::tools::append_batch_item_result::bb21" [label="bb21\nDrop loop"];
+    "cfg::tools::append_batch_item_result::bb22" [label="bb22\nDrop loop"];
+    "cfg::tools::append_batch_item_result::bb23" [label="bb23\nReturn loop"];
+    "cfg::tools::append_batch_item_result::bb24" [label="bb24\nDrop cleanup loop"];
+    "cfg::tools::append_batch_item_result::bb25" [label="bb25\nDrop cleanup loop"];
+    "cfg::tools::append_batch_item_result::bb26" [label="bb26\nDrop cleanup loop"];
+    "cfg::tools::append_batch_item_result::bb27" [label="bb27\nDrop cleanup loop"];
+    "cfg::tools::append_batch_item_result::bb28" [label="bb28\nUnwindResume cleanup loop"];
+    "cfg::tools::append_batch_item_result::bb29" [label="bb29\nCall loop"];
+    "cfg::tools::append_batch_item_result::bb30" [label="bb30\nSwitchInt loop"];
+  }
+  "cfg::tools::append_batch_item_result::bb8" -> "cfg::tools::append_batch_item_result::bb9" [label="Drop"];
+  "cfg::tools::append_batch_item_result::bb10" -> "cfg::tools::append_batch_item_result::bb13" [label="SwitchInt"];
+  "cfg::tools::append_batch_item_result::bb10" -> "cfg::tools::append_batch_item_result::bb12" [label="SwitchInt"];
+  "cfg::tools::append_batch_item_result::bb10" -> "cfg::tools::append_batch_item_result::bb11" [label="SwitchInt"];
+  "cfg::tools::append_batch_item_result::bb15" -> "cfg::tools::append_batch_item_result::bb30" [label="Drop"];
+  "cfg::tools::append_batch_item_result::bb21" -> "cfg::tools::append_batch_item_result::bb22" [label="Drop"];
+  "cfg::tools::append_batch_item_result::bb21" -> "cfg::tools::append_batch_item_result::bb25" [label="Drop"];
+  "cfg::tools::append_batch_item_result::bb22" -> "cfg::tools::append_batch_item_result::bb30" [label="Drop"];
+  "cfg::tools::append_batch_item_result::bb24" -> "cfg::tools::append_batch_item_result::bb25" [label="Drop"];
+  "cfg::tools::append_batch_item_result::bb25" -> "cfg::tools::append_batch_item_result::bb28" [label="Drop"];
+  "cfg::tools::append_batch_item_result::bb26" -> "cfg::tools::append_batch_item_result::bb28" [label="Drop"];
+  "cfg::tools::append_batch_item_result::bb27" -> "cfg::tools::append_batch_item_result::bb28" [label="Drop"];
+  "cfg::tools::append_batch_item_result::bb30" -> "cfg::tools::append_batch_item_result::bb29" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::append_batch_item_result::bb30" -> "cfg::tools::append_batch_item_result::bb29" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::append_batch_item_result::bb30" -> "cfg::tools::append_batch_item_result::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

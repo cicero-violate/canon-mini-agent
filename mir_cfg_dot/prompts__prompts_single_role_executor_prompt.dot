@@ -1,0 +1,57 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2626 {
+    label="prompts::single_role_executor_prompt";
+    "cfg::prompts::single_role_executor_prompt::bb0" [label="bb0\nCall"];
+    "cfg::prompts::single_role_executor_prompt::bb1" [label="bb1\nCall"];
+    "cfg::prompts::single_role_executor_prompt::bb2" [label="bb2\nCall"];
+    "cfg::prompts::single_role_executor_prompt::bb3" [label="bb3\nCall"];
+    "cfg::prompts::single_role_executor_prompt::bb4" [label="bb4\nCall"];
+    "cfg::prompts::single_role_executor_prompt::bb5" [label="bb5\nCall"];
+    "cfg::prompts::single_role_executor_prompt::bb6" [label="bb6\nCall"];
+    "cfg::prompts::single_role_executor_prompt::bb7" [label="bb7\nCall"];
+    "cfg::prompts::single_role_executor_prompt::bb8" [label="bb8\nCall"];
+    "cfg::prompts::single_role_executor_prompt::bb9" [label="bb9\nCall"];
+    "cfg::prompts::single_role_executor_prompt::bb10" [label="bb10\nCall"];
+    "cfg::prompts::single_role_executor_prompt::bb11" [label="bb11\nCall"];
+    "cfg::prompts::single_role_executor_prompt::bb12" [label="bb12\nCall"];
+    "cfg::prompts::single_role_executor_prompt::bb13" [label="bb13\nCall"];
+    "cfg::prompts::single_role_executor_prompt::bb14" [label="bb14\nCall"];
+    "cfg::prompts::single_role_executor_prompt::bb15" [label="bb15\nCall"];
+    "cfg::prompts::single_role_executor_prompt::bb16" [label="bb16\nAssert"];
+    "cfg::prompts::single_role_executor_prompt::bb17" [label="bb17\nCall loop"];
+    "cfg::prompts::single_role_executor_prompt::bb18" [label="bb18\nCall loop"];
+    "cfg::prompts::single_role_executor_prompt::bb19" [label="bb19\nCall loop"];
+    "cfg::prompts::single_role_executor_prompt::bb20" [label="bb20\nCall loop"];
+    "cfg::prompts::single_role_executor_prompt::bb21" [label="bb21\nDrop loop"];
+    "cfg::prompts::single_role_executor_prompt::bb22" [label="bb22\nDrop loop"];
+    "cfg::prompts::single_role_executor_prompt::bb23" [label="bb23\nDrop loop"];
+    "cfg::prompts::single_role_executor_prompt::bb24" [label="bb24\nDrop loop"];
+    "cfg::prompts::single_role_executor_prompt::bb25" [label="bb25\nReturn loop"];
+    "cfg::prompts::single_role_executor_prompt::bb26" [label="bb26\nDrop cleanup loop"];
+    "cfg::prompts::single_role_executor_prompt::bb27" [label="bb27\nDrop cleanup loop"];
+    "cfg::prompts::single_role_executor_prompt::bb28" [label="bb28\nDrop cleanup loop"];
+    "cfg::prompts::single_role_executor_prompt::bb29" [label="bb29\nDrop cleanup loop"];
+    "cfg::prompts::single_role_executor_prompt::bb30" [label="bb30\nDrop cleanup loop"];
+    "cfg::prompts::single_role_executor_prompt::bb31" [label="bb31\nUnwindResume cleanup loop"];
+    "cfg::prompts::single_role_executor_prompt::bb32" [label="bb32\nAssert loop"];
+    "cfg::prompts::single_role_executor_prompt::bb33" [label="bb33\nCall loop"];
+  }
+  "cfg::prompts::single_role_executor_prompt::bb16" -> "cfg::prompts::single_role_executor_prompt::bb32" [label="Assert"];
+  "cfg::prompts::single_role_executor_prompt::bb21" -> "cfg::prompts::single_role_executor_prompt::bb22" [label="Drop"];
+  "cfg::prompts::single_role_executor_prompt::bb21" -> "cfg::prompts::single_role_executor_prompt::bb28" [label="Drop"];
+  "cfg::prompts::single_role_executor_prompt::bb22" -> "cfg::prompts::single_role_executor_prompt::bb23" [label="Drop"];
+  "cfg::prompts::single_role_executor_prompt::bb22" -> "cfg::prompts::single_role_executor_prompt::bb29" [label="Drop"];
+  "cfg::prompts::single_role_executor_prompt::bb23" -> "cfg::prompts::single_role_executor_prompt::bb24" [label="Drop"];
+  "cfg::prompts::single_role_executor_prompt::bb23" -> "cfg::prompts::single_role_executor_prompt::bb30" [label="Drop"];
+  "cfg::prompts::single_role_executor_prompt::bb24" -> "cfg::prompts::single_role_executor_prompt::bb25" [label="Drop"];
+  "cfg::prompts::single_role_executor_prompt::bb26" -> "cfg::prompts::single_role_executor_prompt::bb28" [label="Drop"];
+  "cfg::prompts::single_role_executor_prompt::bb27" -> "cfg::prompts::single_role_executor_prompt::bb28" [label="Drop"];
+  "cfg::prompts::single_role_executor_prompt::bb28" -> "cfg::prompts::single_role_executor_prompt::bb29" [label="Drop"];
+  "cfg::prompts::single_role_executor_prompt::bb29" -> "cfg::prompts::single_role_executor_prompt::bb30" [label="Drop"];
+  "cfg::prompts::single_role_executor_prompt::bb30" -> "cfg::prompts::single_role_executor_prompt::bb31" [label="Drop"];
+  "cfg::prompts::single_role_executor_prompt::bb32" -> "cfg::prompts::single_role_executor_prompt::bb33" [label="Assert"];
+}

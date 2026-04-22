@@ -1,0 +1,13 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3381 {
+    label="supervisor::extract_symbol_tokens";
+    "cfg::supervisor::extract_symbol_tokens::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::extract_symbol_tokens::bb1" [label="bb1\nCall"];
+    "cfg::supervisor::extract_symbol_tokens::bb2" [label="bb2\nCall"];
+    "cfg::supervisor::extract_symbol_tokens::bb3" [label="bb3\nReturn"];
+  }
+}

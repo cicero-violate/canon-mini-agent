@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1809 {
+    label="llm_runtime::llm_domains::CHATGPT_GG_BASE";
+    "cfg::llm_runtime::llm_domains::CHATGPT_GG_BASE::bb0" [label="bb0\nReturn"];
+  }
+}

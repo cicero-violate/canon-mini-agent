@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1228 {
+    label="invariants::generate_invariant_issues::ACTION_SURFACE_ID";
+    "cfg::invariants::generate_invariant_issues::ACTION_SURFACE_ID::bb0" [label="bb0\nReturn"];
+  }
+}

@@ -1,0 +1,29 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4435 {
+    label="tools::looks_like_long_running_command";
+    "cfg::tools::looks_like_long_running_command::bb0" [label="bb0\nCall"];
+    "cfg::tools::looks_like_long_running_command::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::looks_like_long_running_command::bb2" [label="bb2\nCall"];
+    "cfg::tools::looks_like_long_running_command::bb3" [label="bb3\nSwitchInt"];
+    "cfg::tools::looks_like_long_running_command::bb4" [label="bb4\nCall"];
+    "cfg::tools::looks_like_long_running_command::bb5" [label="bb5\nSwitchInt"];
+    "cfg::tools::looks_like_long_running_command::bb6" [label="bb6\nCall"];
+    "cfg::tools::looks_like_long_running_command::bb7" [label="bb7\nSwitchInt"];
+    "cfg::tools::looks_like_long_running_command::bb8" [label="bb8\nGoto"];
+    "cfg::tools::looks_like_long_running_command::bb9" [label="bb9\nCall"];
+    "cfg::tools::looks_like_long_running_command::bb10" [label="bb10\nReturn"];
+  }
+  "cfg::tools::looks_like_long_running_command::bb1" -> "cfg::tools::looks_like_long_running_command::bb2" [label="SwitchInt"];
+  "cfg::tools::looks_like_long_running_command::bb1" -> "cfg::tools::looks_like_long_running_command::bb8" [label="SwitchInt"];
+  "cfg::tools::looks_like_long_running_command::bb3" -> "cfg::tools::looks_like_long_running_command::bb4" [label="SwitchInt"];
+  "cfg::tools::looks_like_long_running_command::bb3" -> "cfg::tools::looks_like_long_running_command::bb8" [label="SwitchInt"];
+  "cfg::tools::looks_like_long_running_command::bb5" -> "cfg::tools::looks_like_long_running_command::bb6" [label="SwitchInt"];
+  "cfg::tools::looks_like_long_running_command::bb5" -> "cfg::tools::looks_like_long_running_command::bb8" [label="SwitchInt"];
+  "cfg::tools::looks_like_long_running_command::bb7" -> "cfg::tools::looks_like_long_running_command::bb9" [label="SwitchInt"];
+  "cfg::tools::looks_like_long_running_command::bb7" -> "cfg::tools::looks_like_long_running_command::bb8" [label="SwitchInt"];
+  "cfg::tools::looks_like_long_running_command::bb8" -> "cfg::tools::looks_like_long_running_command::bb10" [label="Goto"];
+}

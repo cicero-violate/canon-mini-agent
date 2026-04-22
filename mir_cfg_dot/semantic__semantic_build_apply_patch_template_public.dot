@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3171 {
+    label="semantic::build_apply_patch_template_public";
+    "cfg::semantic::build_apply_patch_template_public::bb0" [label="bb0\nCall"];
+    "cfg::semantic::build_apply_patch_template_public::bb1" [label="bb1\nReturn"];
+  }
+}

@@ -1,0 +1,36 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3751 {
+    label="tools::apply_issue_freshness";
+    "cfg::tools::apply_issue_freshness::bb0" [label="bb0\nCall"];
+    "cfg::tools::apply_issue_freshness::bb1" [label="bb1\nDrop"];
+    "cfg::tools::apply_issue_freshness::bb2" [label="bb2\nCall"];
+    "cfg::tools::apply_issue_freshness::bb3" [label="bb3\nGoto cleanup"];
+    "cfg::tools::apply_issue_freshness::bb4" [label="bb4\nCall"];
+    "cfg::tools::apply_issue_freshness::bb5" [label="bb5\nDrop"];
+    "cfg::tools::apply_issue_freshness::bb6" [label="bb6\nCall"];
+    "cfg::tools::apply_issue_freshness::bb7" [label="bb7\nGoto cleanup"];
+    "cfg::tools::apply_issue_freshness::bb8" [label="bb8\nDrop"];
+    "cfg::tools::apply_issue_freshness::bb9" [label="bb9\nCall"];
+    "cfg::tools::apply_issue_freshness::bb10" [label="bb10\nGoto cleanup"];
+    "cfg::tools::apply_issue_freshness::bb11" [label="bb11\nDrop"];
+    "cfg::tools::apply_issue_freshness::bb12" [label="bb12\nReturn"];
+    "cfg::tools::apply_issue_freshness::bb13" [label="bb13\nGoto cleanup"];
+    "cfg::tools::apply_issue_freshness::bb14" [label="bb14\nUnwindResume cleanup"];
+  }
+  "cfg::tools::apply_issue_freshness::bb1" -> "cfg::tools::apply_issue_freshness::bb2" [label="Drop"];
+  "cfg::tools::apply_issue_freshness::bb1" -> "cfg::tools::apply_issue_freshness::bb3" [label="Drop"];
+  "cfg::tools::apply_issue_freshness::bb3" -> "cfg::tools::apply_issue_freshness::bb14" [label="Goto"];
+  "cfg::tools::apply_issue_freshness::bb5" -> "cfg::tools::apply_issue_freshness::bb6" [label="Drop"];
+  "cfg::tools::apply_issue_freshness::bb5" -> "cfg::tools::apply_issue_freshness::bb7" [label="Drop"];
+  "cfg::tools::apply_issue_freshness::bb7" -> "cfg::tools::apply_issue_freshness::bb14" [label="Goto"];
+  "cfg::tools::apply_issue_freshness::bb8" -> "cfg::tools::apply_issue_freshness::bb9" [label="Drop"];
+  "cfg::tools::apply_issue_freshness::bb8" -> "cfg::tools::apply_issue_freshness::bb10" [label="Drop"];
+  "cfg::tools::apply_issue_freshness::bb10" -> "cfg::tools::apply_issue_freshness::bb14" [label="Goto"];
+  "cfg::tools::apply_issue_freshness::bb11" -> "cfg::tools::apply_issue_freshness::bb12" [label="Drop"];
+  "cfg::tools::apply_issue_freshness::bb11" -> "cfg::tools::apply_issue_freshness::bb13" [label="Drop"];
+  "cfg::tools::apply_issue_freshness::bb13" -> "cfg::tools::apply_issue_freshness::bb14" [label="Goto"];
+}

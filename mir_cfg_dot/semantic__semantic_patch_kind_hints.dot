@@ -1,0 +1,35 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3169 {
+    label="semantic::patch_kind_hints";
+    "cfg::semantic::patch_kind_hints::bb0" [label="bb0\nSwitchInt"];
+    "cfg::semantic::patch_kind_hints::bb1" [label="bb1\nUnreachable loop"];
+    "cfg::semantic::patch_kind_hints::bb2" [label="bb2\nSwitchInt loop"];
+    "cfg::semantic::patch_kind_hints::bb3" [label="bb3\nGoto"];
+    "cfg::semantic::patch_kind_hints::bb4" [label="bb4\nGoto"];
+    "cfg::semantic::patch_kind_hints::bb5" [label="bb5\nGoto"];
+    "cfg::semantic::patch_kind_hints::bb6" [label="bb6\nGoto"];
+    "cfg::semantic::patch_kind_hints::bb7" [label="bb7\nGoto"];
+    "cfg::semantic::patch_kind_hints::bb8" [label="bb8\nGoto"];
+    "cfg::semantic::patch_kind_hints::bb9" [label="bb9\nReturn"];
+  }
+  "cfg::semantic::patch_kind_hints::bb0" -> "cfg::semantic::patch_kind_hints::bb3" [label="SwitchInt"];
+  "cfg::semantic::patch_kind_hints::bb0" -> "cfg::semantic::patch_kind_hints::bb2" [label="SwitchInt"];
+  "cfg::semantic::patch_kind_hints::bb0" -> "cfg::semantic::patch_kind_hints::bb1" [label="SwitchInt"];
+  "cfg::semantic::patch_kind_hints::bb2" -> "cfg::semantic::patch_kind_hints::bb8" [label="SwitchInt"];
+  "cfg::semantic::patch_kind_hints::bb2" -> "cfg::semantic::patch_kind_hints::bb7" [label="SwitchInt"];
+  "cfg::semantic::patch_kind_hints::bb2" -> "cfg::semantic::patch_kind_hints::bb6" [label="SwitchInt"];
+  "cfg::semantic::patch_kind_hints::bb2" -> "cfg::semantic::patch_kind_hints::bb5" [label="SwitchInt"];
+  "cfg::semantic::patch_kind_hints::bb2" -> "cfg::semantic::patch_kind_hints::bb4" [label="SwitchInt"];
+  "cfg::semantic::patch_kind_hints::bb2" -> "cfg::semantic::patch_kind_hints::bb3" [label="SwitchInt"];
+  "cfg::semantic::patch_kind_hints::bb2" -> "cfg::semantic::patch_kind_hints::bb1" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::patch_kind_hints::bb3" -> "cfg::semantic::patch_kind_hints::bb9" [label="Goto"];
+  "cfg::semantic::patch_kind_hints::bb4" -> "cfg::semantic::patch_kind_hints::bb9" [label="Goto"];
+  "cfg::semantic::patch_kind_hints::bb5" -> "cfg::semantic::patch_kind_hints::bb9" [label="Goto"];
+  "cfg::semantic::patch_kind_hints::bb6" -> "cfg::semantic::patch_kind_hints::bb9" [label="Goto"];
+  "cfg::semantic::patch_kind_hints::bb7" -> "cfg::semantic::patch_kind_hints::bb9" [label="Goto"];
+  "cfg::semantic::patch_kind_hints::bb8" -> "cfg::semantic::patch_kind_hints::bb9" [label="Goto"];
+}

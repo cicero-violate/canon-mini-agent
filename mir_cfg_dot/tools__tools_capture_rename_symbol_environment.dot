@@ -1,0 +1,35 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4002 {
+    label="tools::capture_rename_symbol_environment";
+    "cfg::tools::capture_rename_symbol_environment::bb0" [label="bb0\nCall"];
+    "cfg::tools::capture_rename_symbol_environment::bb1" [label="bb1\nCall"];
+    "cfg::tools::capture_rename_symbol_environment::bb2" [label="bb2\nCall"];
+    "cfg::tools::capture_rename_symbol_environment::bb3" [label="bb3\nDrop"];
+    "cfg::tools::capture_rename_symbol_environment::bb4" [label="bb4\nCall"];
+    "cfg::tools::capture_rename_symbol_environment::bb5" [label="bb5\nCall"];
+    "cfg::tools::capture_rename_symbol_environment::bb6" [label="bb6\nCall"];
+    "cfg::tools::capture_rename_symbol_environment::bb7" [label="bb7\nDrop"];
+    "cfg::tools::capture_rename_symbol_environment::bb8" [label="bb8\nCall"];
+    "cfg::tools::capture_rename_symbol_environment::bb9" [label="bb9\nCall"];
+    "cfg::tools::capture_rename_symbol_environment::bb10" [label="bb10\nSwitchInt"];
+    "cfg::tools::capture_rename_symbol_environment::bb11" [label="bb11\nUnreachable"];
+    "cfg::tools::capture_rename_symbol_environment::bb12" [label="bb12\nGoto"];
+    "cfg::tools::capture_rename_symbol_environment::bb13" [label="bb13\nCall"];
+    "cfg::tools::capture_rename_symbol_environment::bb14" [label="bb14\nReturn"];
+    "cfg::tools::capture_rename_symbol_environment::bb15" [label="bb15\nDrop cleanup"];
+    "cfg::tools::capture_rename_symbol_environment::bb16" [label="bb16\nDrop cleanup"];
+    "cfg::tools::capture_rename_symbol_environment::bb17" [label="bb17\nUnwindResume cleanup"];
+  }
+  "cfg::tools::capture_rename_symbol_environment::bb3" -> "cfg::tools::capture_rename_symbol_environment::bb4" [label="Drop"];
+  "cfg::tools::capture_rename_symbol_environment::bb7" -> "cfg::tools::capture_rename_symbol_environment::bb8" [label="Drop"];
+  "cfg::tools::capture_rename_symbol_environment::bb10" -> "cfg::tools::capture_rename_symbol_environment::bb12" [label="SwitchInt"];
+  "cfg::tools::capture_rename_symbol_environment::bb10" -> "cfg::tools::capture_rename_symbol_environment::bb13" [label="SwitchInt"];
+  "cfg::tools::capture_rename_symbol_environment::bb10" -> "cfg::tools::capture_rename_symbol_environment::bb11" [label="SwitchInt"];
+  "cfg::tools::capture_rename_symbol_environment::bb12" -> "cfg::tools::capture_rename_symbol_environment::bb14" [label="Goto"];
+  "cfg::tools::capture_rename_symbol_environment::bb15" -> "cfg::tools::capture_rename_symbol_environment::bb17" [label="Drop"];
+  "cfg::tools::capture_rename_symbol_environment::bb16" -> "cfg::tools::capture_rename_symbol_environment::bb17" [label="Drop"];
+}

@@ -1,0 +1,37 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_702 {
+    label="complexity::collect_complexity_items";
+    "cfg::complexity::collect_complexity_items::bb0" [label="bb0\nCall"];
+    "cfg::complexity::collect_complexity_items::bb1" [label="bb1\nCall"];
+    "cfg::complexity::collect_complexity_items::bb2" [label="bb2\nCall"];
+    "cfg::complexity::collect_complexity_items::bb3" [label="bb3\nGoto"];
+    "cfg::complexity::collect_complexity_items::bb4" [label="bb4\nCall loop"];
+    "cfg::complexity::collect_complexity_items::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::complexity::collect_complexity_items::bb6" [label="bb6\nUnreachable loop"];
+    "cfg::complexity::collect_complexity_items::bb7" [label="bb7\nCall loop"];
+    "cfg::complexity::collect_complexity_items::bb8" [label="bb8\nDrop loop"];
+    "cfg::complexity::collect_complexity_items::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::complexity::collect_complexity_items::bb10" [label="bb10\nCall loop"];
+    "cfg::complexity::collect_complexity_items::bb11" [label="bb11\nReturn loop"];
+    "cfg::complexity::collect_complexity_items::bb12" [label="bb12\nDrop cleanup loop"];
+    "cfg::complexity::collect_complexity_items::bb13" [label="bb13\nDrop cleanup loop"];
+    "cfg::complexity::collect_complexity_items::bb14" [label="bb14\nUnwindResume cleanup loop"];
+    "cfg::complexity::collect_complexity_items::bb15" [label="bb15\nGoto loop"];
+  }
+  "cfg::complexity::collect_complexity_items::bb3" -> "cfg::complexity::collect_complexity_items::bb4" [label="Goto"];
+  "cfg::complexity::collect_complexity_items::bb5" -> "cfg::complexity::collect_complexity_items::bb8" [label="SwitchInt"];
+  "cfg::complexity::collect_complexity_items::bb5" -> "cfg::complexity::collect_complexity_items::bb7" [label="SwitchInt"];
+  "cfg::complexity::collect_complexity_items::bb5" -> "cfg::complexity::collect_complexity_items::bb6" [label="SwitchInt"];
+  "cfg::complexity::collect_complexity_items::bb8" -> "cfg::complexity::collect_complexity_items::bb11" [label="Drop"];
+  "cfg::complexity::collect_complexity_items::bb8" -> "cfg::complexity::collect_complexity_items::bb13" [label="Drop"];
+  "cfg::complexity::collect_complexity_items::bb9" -> "cfg::complexity::collect_complexity_items::bb10" [label="SwitchInt"];
+  "cfg::complexity::collect_complexity_items::bb9" -> "cfg::complexity::collect_complexity_items::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::complexity::collect_complexity_items::bb9" -> "cfg::complexity::collect_complexity_items::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::complexity::collect_complexity_items::bb12" -> "cfg::complexity::collect_complexity_items::bb13" [label="Drop"];
+  "cfg::complexity::collect_complexity_items::bb13" -> "cfg::complexity::collect_complexity_items::bb14" [label="Drop"];
+  "cfg::complexity::collect_complexity_items::bb15" -> "cfg::complexity::collect_complexity_items::bb4" [color="crimson", penwidth=2, label="Goto back"];
+}

@@ -1,0 +1,50 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4095 {
+    label="tools::format_graph_backed_hir_output";
+    "cfg::tools::format_graph_backed_hir_output::bb0" [label="bb0\nSwitchInt"];
+    "cfg::tools::format_graph_backed_hir_output::bb1" [label="bb1\nCall"];
+    "cfg::tools::format_graph_backed_hir_output::bb2" [label="bb2\nSwitchInt"];
+    "cfg::tools::format_graph_backed_hir_output::bb3" [label="bb3\nUnreachable"];
+    "cfg::tools::format_graph_backed_hir_output::bb4" [label="bb4\nCall"];
+    "cfg::tools::format_graph_backed_hir_output::bb5" [label="bb5\nGoto"];
+    "cfg::tools::format_graph_backed_hir_output::bb6" [label="bb6\nCall"];
+    "cfg::tools::format_graph_backed_hir_output::bb7" [label="bb7\nCall"];
+    "cfg::tools::format_graph_backed_hir_output::bb8" [label="bb8\nCall"];
+    "cfg::tools::format_graph_backed_hir_output::bb9" [label="bb9\nCall"];
+    "cfg::tools::format_graph_backed_hir_output::bb10" [label="bb10\nDrop"];
+    "cfg::tools::format_graph_backed_hir_output::bb11" [label="bb11\nCall"];
+    "cfg::tools::format_graph_backed_hir_output::bb12" [label="bb12\nCall"];
+    "cfg::tools::format_graph_backed_hir_output::bb13" [label="bb13\nCall"];
+    "cfg::tools::format_graph_backed_hir_output::bb14" [label="bb14\nCall"];
+    "cfg::tools::format_graph_backed_hir_output::bb15" [label="bb15\nCall"];
+    "cfg::tools::format_graph_backed_hir_output::bb16" [label="bb16\nCall"];
+    "cfg::tools::format_graph_backed_hir_output::bb17" [label="bb17\nCall"];
+    "cfg::tools::format_graph_backed_hir_output::bb18" [label="bb18\nCall"];
+    "cfg::tools::format_graph_backed_hir_output::bb19" [label="bb19\nCall"];
+    "cfg::tools::format_graph_backed_hir_output::bb20" [label="bb20\nCall"];
+    "cfg::tools::format_graph_backed_hir_output::bb21" [label="bb21\nCall"];
+    "cfg::tools::format_graph_backed_hir_output::bb22" [label="bb22\nCall"];
+    "cfg::tools::format_graph_backed_hir_output::bb23" [label="bb23\nCall"];
+    "cfg::tools::format_graph_backed_hir_output::bb24" [label="bb24\nCall"];
+    "cfg::tools::format_graph_backed_hir_output::bb25" [label="bb25\nDrop"];
+    "cfg::tools::format_graph_backed_hir_output::bb26" [label="bb26\nReturn"];
+    "cfg::tools::format_graph_backed_hir_output::bb27" [label="bb27\nDrop cleanup"];
+    "cfg::tools::format_graph_backed_hir_output::bb28" [label="bb28\nDrop cleanup"];
+    "cfg::tools::format_graph_backed_hir_output::bb29" [label="bb29\nUnwindResume cleanup"];
+  }
+  "cfg::tools::format_graph_backed_hir_output::bb0" -> "cfg::tools::format_graph_backed_hir_output::bb1" [label="SwitchInt"];
+  "cfg::tools::format_graph_backed_hir_output::bb0" -> "cfg::tools::format_graph_backed_hir_output::bb11" [label="SwitchInt"];
+  "cfg::tools::format_graph_backed_hir_output::bb0" -> "cfg::tools::format_graph_backed_hir_output::bb3" [label="SwitchInt"];
+  "cfg::tools::format_graph_backed_hir_output::bb2" -> "cfg::tools::format_graph_backed_hir_output::bb5" [label="SwitchInt"];
+  "cfg::tools::format_graph_backed_hir_output::bb2" -> "cfg::tools::format_graph_backed_hir_output::bb4" [label="SwitchInt"];
+  "cfg::tools::format_graph_backed_hir_output::bb2" -> "cfg::tools::format_graph_backed_hir_output::bb3" [label="SwitchInt"];
+  "cfg::tools::format_graph_backed_hir_output::bb5" -> "cfg::tools::format_graph_backed_hir_output::bb12" [label="Goto"];
+  "cfg::tools::format_graph_backed_hir_output::bb10" -> "cfg::tools::format_graph_backed_hir_output::bb12" [label="Drop"];
+  "cfg::tools::format_graph_backed_hir_output::bb25" -> "cfg::tools::format_graph_backed_hir_output::bb26" [label="Drop"];
+  "cfg::tools::format_graph_backed_hir_output::bb27" -> "cfg::tools::format_graph_backed_hir_output::bb29" [label="Drop"];
+  "cfg::tools::format_graph_backed_hir_output::bb28" -> "cfg::tools::format_graph_backed_hir_output::bb29" [label="Drop"];
+}

@@ -1,0 +1,51 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_487 {
+    label="app::trace_executor_completion_processed";
+    "cfg::app::trace_executor_completion_processed::bb0" [label="bb0\nCall"];
+    "cfg::app::trace_executor_completion_processed::bb1" [label="bb1\nCall"];
+    "cfg::app::trace_executor_completion_processed::bb2" [label="bb2\nCall"];
+    "cfg::app::trace_executor_completion_processed::bb3" [label="bb3\nCall"];
+    "cfg::app::trace_executor_completion_processed::bb4" [label="bb4\nCall"];
+    "cfg::app::trace_executor_completion_processed::bb5" [label="bb5\nDrop"];
+    "cfg::app::trace_executor_completion_processed::bb6" [label="bb6\nCall"];
+    "cfg::app::trace_executor_completion_processed::bb7" [label="bb7\nCall"];
+    "cfg::app::trace_executor_completion_processed::bb8" [label="bb8\nCall"];
+    "cfg::app::trace_executor_completion_processed::bb9" [label="bb9\nCall"];
+    "cfg::app::trace_executor_completion_processed::bb10" [label="bb10\nDrop"];
+    "cfg::app::trace_executor_completion_processed::bb11" [label="bb11\nCall"];
+    "cfg::app::trace_executor_completion_processed::bb12" [label="bb12\nCall"];
+    "cfg::app::trace_executor_completion_processed::bb13" [label="bb13\nCall"];
+    "cfg::app::trace_executor_completion_processed::bb14" [label="bb14\nCall"];
+    "cfg::app::trace_executor_completion_processed::bb15" [label="bb15\nDrop"];
+    "cfg::app::trace_executor_completion_processed::bb16" [label="bb16\nCall"];
+    "cfg::app::trace_executor_completion_processed::bb17" [label="bb17\nReturn"];
+    "cfg::app::trace_executor_completion_processed::bb18" [label="bb18\nDrop cleanup loop"];
+    "cfg::app::trace_executor_completion_processed::bb19" [label="bb19\nUnwindResume cleanup loop"];
+    "cfg::app::trace_executor_completion_processed::bb20" [label="bb20\nDrop cleanup loop"];
+    "cfg::app::trace_executor_completion_processed::bb21" [label="bb21\nSwitchInt cleanup loop"];
+    "cfg::app::trace_executor_completion_processed::bb22" [label="bb22\nDrop cleanup loop"];
+    "cfg::app::trace_executor_completion_processed::bb23" [label="bb23\nSwitchInt cleanup loop"];
+    "cfg::app::trace_executor_completion_processed::bb24" [label="bb24\nDrop cleanup loop"];
+    "cfg::app::trace_executor_completion_processed::bb25" [label="bb25\nSwitchInt cleanup loop"];
+  }
+  "cfg::app::trace_executor_completion_processed::bb5" -> "cfg::app::trace_executor_completion_processed::bb6" [label="Drop"];
+  "cfg::app::trace_executor_completion_processed::bb5" -> "cfg::app::trace_executor_completion_processed::bb18" [label="Drop"];
+  "cfg::app::trace_executor_completion_processed::bb10" -> "cfg::app::trace_executor_completion_processed::bb11" [label="Drop"];
+  "cfg::app::trace_executor_completion_processed::bb10" -> "cfg::app::trace_executor_completion_processed::bb18" [label="Drop"];
+  "cfg::app::trace_executor_completion_processed::bb15" -> "cfg::app::trace_executor_completion_processed::bb16" [label="Drop"];
+  "cfg::app::trace_executor_completion_processed::bb15" -> "cfg::app::trace_executor_completion_processed::bb18" [label="Drop"];
+  "cfg::app::trace_executor_completion_processed::bb18" -> "cfg::app::trace_executor_completion_processed::bb19" [label="Drop"];
+  "cfg::app::trace_executor_completion_processed::bb20" -> "cfg::app::trace_executor_completion_processed::bb18" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::trace_executor_completion_processed::bb21" -> "cfg::app::trace_executor_completion_processed::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::trace_executor_completion_processed::bb21" -> "cfg::app::trace_executor_completion_processed::bb20" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::trace_executor_completion_processed::bb22" -> "cfg::app::trace_executor_completion_processed::bb18" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::trace_executor_completion_processed::bb23" -> "cfg::app::trace_executor_completion_processed::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::trace_executor_completion_processed::bb23" -> "cfg::app::trace_executor_completion_processed::bb22" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::trace_executor_completion_processed::bb24" -> "cfg::app::trace_executor_completion_processed::bb18" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::trace_executor_completion_processed::bb25" -> "cfg::app::trace_executor_completion_processed::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::trace_executor_completion_processed::bb25" -> "cfg::app::trace_executor_completion_processed::bb24" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

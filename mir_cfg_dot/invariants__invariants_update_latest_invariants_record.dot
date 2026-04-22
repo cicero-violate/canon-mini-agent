@@ -1,0 +1,41 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1312 {
+    label="invariants::update_latest_invariants_record";
+    "cfg::invariants::update_latest_invariants_record::bb0" [label="bb0\nCall"];
+    "cfg::invariants::update_latest_invariants_record::bb1" [label="bb1\nSwitchInt"];
+    "cfg::invariants::update_latest_invariants_record::bb2" [label="bb2\nUnreachable"];
+    "cfg::invariants::update_latest_invariants_record::bb3" [label="bb3\nGoto"];
+    "cfg::invariants::update_latest_invariants_record::bb4" [label="bb4\nGoto"];
+    "cfg::invariants::update_latest_invariants_record::bb5" [label="bb5\nSwitchInt"];
+    "cfg::invariants::update_latest_invariants_record::bb6" [label="bb6\nDrop"];
+    "cfg::invariants::update_latest_invariants_record::bb7" [label="bb7\nGoto"];
+    "cfg::invariants::update_latest_invariants_record::bb8" [label="bb8\nGoto cleanup"];
+    "cfg::invariants::update_latest_invariants_record::bb9" [label="bb9\nSwitchInt"];
+    "cfg::invariants::update_latest_invariants_record::bb10" [label="bb10\nReturn loop"];
+    "cfg::invariants::update_latest_invariants_record::bb11" [label="bb11\nUnwindResume cleanup loop"];
+    "cfg::invariants::update_latest_invariants_record::bb12" [label="bb12\nDrop loop"];
+    "cfg::invariants::update_latest_invariants_record::bb13" [label="bb13\nDrop cleanup loop"];
+    "cfg::invariants::update_latest_invariants_record::bb14" [label="bb14\nSwitchInt cleanup loop"];
+  }
+  "cfg::invariants::update_latest_invariants_record::bb1" -> "cfg::invariants::update_latest_invariants_record::bb4" [label="SwitchInt"];
+  "cfg::invariants::update_latest_invariants_record::bb1" -> "cfg::invariants::update_latest_invariants_record::bb3" [label="SwitchInt"];
+  "cfg::invariants::update_latest_invariants_record::bb1" -> "cfg::invariants::update_latest_invariants_record::bb2" [label="SwitchInt"];
+  "cfg::invariants::update_latest_invariants_record::bb3" -> "cfg::invariants::update_latest_invariants_record::bb5" [label="Goto"];
+  "cfg::invariants::update_latest_invariants_record::bb4" -> "cfg::invariants::update_latest_invariants_record::bb5" [label="Goto"];
+  "cfg::invariants::update_latest_invariants_record::bb5" -> "cfg::invariants::update_latest_invariants_record::bb9" [label="SwitchInt"];
+  "cfg::invariants::update_latest_invariants_record::bb5" -> "cfg::invariants::update_latest_invariants_record::bb6" [label="SwitchInt"];
+  "cfg::invariants::update_latest_invariants_record::bb6" -> "cfg::invariants::update_latest_invariants_record::bb7" [label="Drop"];
+  "cfg::invariants::update_latest_invariants_record::bb6" -> "cfg::invariants::update_latest_invariants_record::bb8" [label="Drop"];
+  "cfg::invariants::update_latest_invariants_record::bb7" -> "cfg::invariants::update_latest_invariants_record::bb9" [label="Goto"];
+  "cfg::invariants::update_latest_invariants_record::bb8" -> "cfg::invariants::update_latest_invariants_record::bb14" [label="Goto"];
+  "cfg::invariants::update_latest_invariants_record::bb9" -> "cfg::invariants::update_latest_invariants_record::bb10" [label="SwitchInt"];
+  "cfg::invariants::update_latest_invariants_record::bb9" -> "cfg::invariants::update_latest_invariants_record::bb12" [label="SwitchInt"];
+  "cfg::invariants::update_latest_invariants_record::bb12" -> "cfg::invariants::update_latest_invariants_record::bb10" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::invariants::update_latest_invariants_record::bb13" -> "cfg::invariants::update_latest_invariants_record::bb11" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::invariants::update_latest_invariants_record::bb14" -> "cfg::invariants::update_latest_invariants_record::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::update_latest_invariants_record::bb14" -> "cfg::invariants::update_latest_invariants_record::bb13" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

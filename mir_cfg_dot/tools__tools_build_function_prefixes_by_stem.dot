@@ -1,0 +1,43 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3953 {
+    label="tools::build_function_prefixes_by_stem";
+    "cfg::tools::build_function_prefixes_by_stem::bb0" [label="bb0\nCall"];
+    "cfg::tools::build_function_prefixes_by_stem::bb1" [label="bb1\nCall"];
+    "cfg::tools::build_function_prefixes_by_stem::bb2" [label="bb2\nGoto"];
+    "cfg::tools::build_function_prefixes_by_stem::bb3" [label="bb3\nCall loop"];
+    "cfg::tools::build_function_prefixes_by_stem::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::tools::build_function_prefixes_by_stem::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::tools::build_function_prefixes_by_stem::bb6" [label="bb6\nCall loop"];
+    "cfg::tools::build_function_prefixes_by_stem::bb7" [label="bb7\nReturn loop"];
+    "cfg::tools::build_function_prefixes_by_stem::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::tools::build_function_prefixes_by_stem::bb9" [label="bb9\nCall loop"];
+    "cfg::tools::build_function_prefixes_by_stem::bb10" [label="bb10\nCall loop"];
+    "cfg::tools::build_function_prefixes_by_stem::bb11" [label="bb11\nSwitchInt loop"];
+    "cfg::tools::build_function_prefixes_by_stem::bb12" [label="bb12\nCall loop"];
+    "cfg::tools::build_function_prefixes_by_stem::bb13" [label="bb13\nCall loop"];
+    "cfg::tools::build_function_prefixes_by_stem::bb14" [label="bb14\nCall loop"];
+    "cfg::tools::build_function_prefixes_by_stem::bb15" [label="bb15\nCall loop"];
+    "cfg::tools::build_function_prefixes_by_stem::bb16" [label="bb16\nDrop cleanup loop"];
+    "cfg::tools::build_function_prefixes_by_stem::bb17" [label="bb17\nUnwindResume cleanup loop"];
+    "cfg::tools::build_function_prefixes_by_stem::bb18" [label="bb18\nSwitchInt loop"];
+    "cfg::tools::build_function_prefixes_by_stem::bb19" [label="bb19\nGoto loop"];
+  }
+  "cfg::tools::build_function_prefixes_by_stem::bb2" -> "cfg::tools::build_function_prefixes_by_stem::bb3" [label="Goto"];
+  "cfg::tools::build_function_prefixes_by_stem::bb4" -> "cfg::tools::build_function_prefixes_by_stem::bb7" [label="SwitchInt"];
+  "cfg::tools::build_function_prefixes_by_stem::bb4" -> "cfg::tools::build_function_prefixes_by_stem::bb6" [label="SwitchInt"];
+  "cfg::tools::build_function_prefixes_by_stem::bb4" -> "cfg::tools::build_function_prefixes_by_stem::bb5" [label="SwitchInt"];
+  "cfg::tools::build_function_prefixes_by_stem::bb8" -> "cfg::tools::build_function_prefixes_by_stem::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::build_function_prefixes_by_stem::bb8" -> "cfg::tools::build_function_prefixes_by_stem::bb9" [label="SwitchInt"];
+  "cfg::tools::build_function_prefixes_by_stem::bb11" -> "cfg::tools::build_function_prefixes_by_stem::bb12" [label="SwitchInt"];
+  "cfg::tools::build_function_prefixes_by_stem::bb11" -> "cfg::tools::build_function_prefixes_by_stem::bb18" [label="SwitchInt"];
+  "cfg::tools::build_function_prefixes_by_stem::bb11" -> "cfg::tools::build_function_prefixes_by_stem::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::build_function_prefixes_by_stem::bb16" -> "cfg::tools::build_function_prefixes_by_stem::bb17" [label="Drop"];
+  "cfg::tools::build_function_prefixes_by_stem::bb18" -> "cfg::tools::build_function_prefixes_by_stem::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::build_function_prefixes_by_stem::bb18" -> "cfg::tools::build_function_prefixes_by_stem::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::build_function_prefixes_by_stem::bb18" -> "cfg::tools::build_function_prefixes_by_stem::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::build_function_prefixes_by_stem::bb19" -> "cfg::tools::build_function_prefixes_by_stem::bb18" [color="crimson", penwidth=2, label="Goto back"];
+}

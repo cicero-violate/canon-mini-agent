@@ -1,0 +1,12 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3198 {
+    label="state_space::SemanticControlState::executor_dispatch_blocked";
+    "cfg::state_space::SemanticControlState::executor_dispatch_blocked::bb0" [label="bb0\nCall"];
+    "cfg::state_space::SemanticControlState::executor_dispatch_blocked::bb1" [label="bb1\nCall"];
+    "cfg::state_space::SemanticControlState::executor_dispatch_blocked::bb2" [label="bb2\nReturn"];
+  }
+}

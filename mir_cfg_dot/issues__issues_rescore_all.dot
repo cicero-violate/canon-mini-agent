@@ -1,0 +1,29 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1367 {
+    label="issues::rescore_all";
+    "cfg::issues::rescore_all::bb0" [label="bb0\nCall"];
+    "cfg::issues::rescore_all::bb1" [label="bb1\nCall"];
+    "cfg::issues::rescore_all::bb2" [label="bb2\nGoto"];
+    "cfg::issues::rescore_all::bb3" [label="bb3\nCall loop"];
+    "cfg::issues::rescore_all::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::issues::rescore_all::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::issues::rescore_all::bb6" [label="bb6\nCall loop"];
+    "cfg::issues::rescore_all::bb7" [label="bb7\nDrop loop"];
+    "cfg::issues::rescore_all::bb8" [label="bb8\nCall loop"];
+    "cfg::issues::rescore_all::bb9" [label="bb9\nGoto loop"];
+    "cfg::issues::rescore_all::bb10" [label="bb10\nReturn"];
+    "cfg::issues::rescore_all::bb11" [label="bb11\nDrop cleanup"];
+    "cfg::issues::rescore_all::bb12" [label="bb12\nUnwindResume cleanup"];
+  }
+  "cfg::issues::rescore_all::bb2" -> "cfg::issues::rescore_all::bb3" [label="Goto"];
+  "cfg::issues::rescore_all::bb4" -> "cfg::issues::rescore_all::bb7" [label="SwitchInt"];
+  "cfg::issues::rescore_all::bb4" -> "cfg::issues::rescore_all::bb6" [label="SwitchInt"];
+  "cfg::issues::rescore_all::bb4" -> "cfg::issues::rescore_all::bb5" [label="SwitchInt"];
+  "cfg::issues::rescore_all::bb7" -> "cfg::issues::rescore_all::bb10" [label="Drop"];
+  "cfg::issues::rescore_all::bb9" -> "cfg::issues::rescore_all::bb3" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::issues::rescore_all::bb11" -> "cfg::issues::rescore_all::bb12" [label="Drop"];
+}

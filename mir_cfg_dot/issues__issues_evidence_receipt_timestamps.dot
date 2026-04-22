@@ -1,0 +1,25 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1347 {
+    label="issues::evidence_receipt_timestamps";
+    "cfg::issues::evidence_receipt_timestamps::bb0" [label="bb0\nCall"];
+    "cfg::issues::evidence_receipt_timestamps::bb1" [label="bb1\nCall"];
+    "cfg::issues::evidence_receipt_timestamps::bb2" [label="bb2\nCall"];
+    "cfg::issues::evidence_receipt_timestamps::bb3" [label="bb3\nCall"];
+    "cfg::issues::evidence_receipt_timestamps::bb4" [label="bb4\nCall"];
+    "cfg::issues::evidence_receipt_timestamps::bb5" [label="bb5\nCall"];
+    "cfg::issues::evidence_receipt_timestamps::bb6" [label="bb6\nCall"];
+    "cfg::issues::evidence_receipt_timestamps::bb7" [label="bb7\nCall"];
+    "cfg::issues::evidence_receipt_timestamps::bb8" [label="bb8\nCall"];
+    "cfg::issues::evidence_receipt_timestamps::bb9" [label="bb9\nCall"];
+    "cfg::issues::evidence_receipt_timestamps::bb10" [label="bb10\nDrop"];
+    "cfg::issues::evidence_receipt_timestamps::bb11" [label="bb11\nReturn"];
+    "cfg::issues::evidence_receipt_timestamps::bb12" [label="bb12\nDrop cleanup"];
+    "cfg::issues::evidence_receipt_timestamps::bb13" [label="bb13\nUnwindResume cleanup"];
+  }
+  "cfg::issues::evidence_receipt_timestamps::bb10" -> "cfg::issues::evidence_receipt_timestamps::bb11" [label="Drop"];
+  "cfg::issues::evidence_receipt_timestamps::bb12" -> "cfg::issues::evidence_receipt_timestamps::bb13" [label="Drop"];
+}

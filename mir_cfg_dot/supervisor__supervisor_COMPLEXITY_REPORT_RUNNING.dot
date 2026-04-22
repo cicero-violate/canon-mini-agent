@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3270 {
+    label="supervisor::COMPLEXITY_REPORT_RUNNING";
+    "cfg::supervisor::COMPLEXITY_REPORT_RUNNING::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::COMPLEXITY_REPORT_RUNNING::bb1" [label="bb1\nReturn"];
+  }
+}

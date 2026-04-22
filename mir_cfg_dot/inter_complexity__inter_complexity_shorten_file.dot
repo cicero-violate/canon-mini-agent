@@ -1,0 +1,24 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1031 {
+    label="inter_complexity::shorten_file";
+    "cfg::inter_complexity::shorten_file::bb0" [label="bb0\nCall"];
+    "cfg::inter_complexity::shorten_file::bb1" [label="bb1\nSwitchInt"];
+    "cfg::inter_complexity::shorten_file::bb2" [label="bb2\nAssert"];
+    "cfg::inter_complexity::shorten_file::bb3" [label="bb3\nCall"];
+    "cfg::inter_complexity::shorten_file::bb4" [label="bb4\nCall"];
+    "cfg::inter_complexity::shorten_file::bb5" [label="bb5\nCall"];
+    "cfg::inter_complexity::shorten_file::bb6" [label="bb6\nCall"];
+    "cfg::inter_complexity::shorten_file::bb7" [label="bb7\nCall"];
+    "cfg::inter_complexity::shorten_file::bb8" [label="bb8\nCall"];
+    "cfg::inter_complexity::shorten_file::bb9" [label="bb9\nReturn"];
+    "cfg::inter_complexity::shorten_file::bb10" [label="bb10\nUnreachable"];
+  }
+  "cfg::inter_complexity::shorten_file::bb1" -> "cfg::inter_complexity::shorten_file::bb2" [label="SwitchInt"];
+  "cfg::inter_complexity::shorten_file::bb1" -> "cfg::inter_complexity::shorten_file::bb5" [label="SwitchInt"];
+  "cfg::inter_complexity::shorten_file::bb1" -> "cfg::inter_complexity::shorten_file::bb10" [label="SwitchInt"];
+  "cfg::inter_complexity::shorten_file::bb2" -> "cfg::inter_complexity::shorten_file::bb3" [label="Assert"];
+}

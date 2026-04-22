@@ -1,0 +1,39 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_506 {
+    label="app::has_actionable_objectives";
+    "cfg::app::has_actionable_objectives::bb0" [label="bb0\nCall"];
+    "cfg::app::has_actionable_objectives::bb1" [label="bb1\nSwitchInt"];
+    "cfg::app::has_actionable_objectives::bb2" [label="bb2\nSwitchInt"];
+    "cfg::app::has_actionable_objectives::bb3" [label="bb3\nCall loop"];
+    "cfg::app::has_actionable_objectives::bb4" [label="bb4\nCall loop"];
+    "cfg::app::has_actionable_objectives::bb5" [label="bb5\nDrop loop"];
+    "cfg::app::has_actionable_objectives::bb6" [label="bb6\nReturn loop"];
+    "cfg::app::has_actionable_objectives::bb7" [label="bb7\nDrop cleanup loop"];
+    "cfg::app::has_actionable_objectives::bb8" [label="bb8\nUnwindResume cleanup loop"];
+    "cfg::app::has_actionable_objectives::bb9" [label="bb9\nCall loop"];
+    "cfg::app::has_actionable_objectives::bb10" [label="bb10\nDrop loop"];
+    "cfg::app::has_actionable_objectives::bb11" [label="bb11\nGoto loop"];
+    "cfg::app::has_actionable_objectives::bb12" [label="bb12\nDrop loop"];
+    "cfg::app::has_actionable_objectives::bb13" [label="bb13\nSwitchInt loop"];
+    "cfg::app::has_actionable_objectives::bb14" [label="bb14\nUnreachable"];
+  }
+  "cfg::app::has_actionable_objectives::bb1" -> "cfg::app::has_actionable_objectives::bb2" [label="SwitchInt"];
+  "cfg::app::has_actionable_objectives::bb1" -> "cfg::app::has_actionable_objectives::bb13" [label="SwitchInt"];
+  "cfg::app::has_actionable_objectives::bb1" -> "cfg::app::has_actionable_objectives::bb14" [label="SwitchInt"];
+  "cfg::app::has_actionable_objectives::bb2" -> "cfg::app::has_actionable_objectives::bb9" [label="SwitchInt"];
+  "cfg::app::has_actionable_objectives::bb2" -> "cfg::app::has_actionable_objectives::bb10" [label="SwitchInt"];
+  "cfg::app::has_actionable_objectives::bb2" -> "cfg::app::has_actionable_objectives::bb14" [label="SwitchInt"];
+  "cfg::app::has_actionable_objectives::bb5" -> "cfg::app::has_actionable_objectives::bb6" [label="Drop"];
+  "cfg::app::has_actionable_objectives::bb7" -> "cfg::app::has_actionable_objectives::bb8" [label="Drop"];
+  "cfg::app::has_actionable_objectives::bb10" -> "cfg::app::has_actionable_objectives::bb9" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::has_actionable_objectives::bb10" -> "cfg::app::has_actionable_objectives::bb7" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::has_actionable_objectives::bb11" -> "cfg::app::has_actionable_objectives::bb6" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::app::has_actionable_objectives::bb12" -> "cfg::app::has_actionable_objectives::bb11" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::has_actionable_objectives::bb13" -> "cfg::app::has_actionable_objectives::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::has_actionable_objectives::bb13" -> "cfg::app::has_actionable_objectives::bb12" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::has_actionable_objectives::bb13" -> "cfg::app::has_actionable_objectives::bb14" [label="SwitchInt"];
+}

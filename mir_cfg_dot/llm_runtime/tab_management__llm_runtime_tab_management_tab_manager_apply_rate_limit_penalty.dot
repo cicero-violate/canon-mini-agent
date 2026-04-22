@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1949 {
+    label="llm_runtime::tab_management::tab_manager_apply_rate_limit_penalty";
+    "cfg::llm_runtime::tab_management::tab_manager_apply_rate_limit_penalty::bb0" [label="bb0\nReturn"];
+  }
+}

@@ -1,0 +1,46 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2059 {
+    label="logging::append_action_log_record";
+    "cfg::logging::append_action_log_record::bb0" [label="bb0\nCall"];
+    "cfg::logging::append_action_log_record::bb1" [label="bb1\nCall"];
+    "cfg::logging::append_action_log_record::bb2" [label="bb2\nCall"];
+    "cfg::logging::append_action_log_record::bb3" [label="bb3\nCall"];
+    "cfg::logging::append_action_log_record::bb4" [label="bb4\nCall"];
+    "cfg::logging::append_action_log_record::bb5" [label="bb5\nSwitchInt"];
+    "cfg::logging::append_action_log_record::bb6" [label="bb6\nUnreachable loop"];
+    "cfg::logging::append_action_log_record::bb7" [label="bb7\nCall loop"];
+    "cfg::logging::append_action_log_record::bb8" [label="bb8\nCall loop"];
+    "cfg::logging::append_action_log_record::bb9" [label="bb9\nCall loop"];
+    "cfg::logging::append_action_log_record::bb10" [label="bb10\nCall loop"];
+    "cfg::logging::append_action_log_record::bb11" [label="bb11\nSwitchInt loop"];
+    "cfg::logging::append_action_log_record::bb12" [label="bb12\nDrop"];
+    "cfg::logging::append_action_log_record::bb13" [label="bb13\nCall"];
+    "cfg::logging::append_action_log_record::bb14" [label="bb14\nDrop"];
+    "cfg::logging::append_action_log_record::bb15" [label="bb15\nDrop"];
+    "cfg::logging::append_action_log_record::bb16" [label="bb16\nDrop loop"];
+    "cfg::logging::append_action_log_record::bb17" [label="bb17\nReturn loop"];
+    "cfg::logging::append_action_log_record::bb18" [label="bb18\nDrop cleanup loop"];
+    "cfg::logging::append_action_log_record::bb19" [label="bb19\nDrop cleanup loop"];
+    "cfg::logging::append_action_log_record::bb20" [label="bb20\nUnwindResume cleanup loop"];
+    "cfg::logging::append_action_log_record::bb21" [label="bb21\nGoto loop"];
+  }
+  "cfg::logging::append_action_log_record::bb5" -> "cfg::logging::append_action_log_record::bb7" [label="SwitchInt"];
+  "cfg::logging::append_action_log_record::bb5" -> "cfg::logging::append_action_log_record::bb8" [label="SwitchInt"];
+  "cfg::logging::append_action_log_record::bb5" -> "cfg::logging::append_action_log_record::bb6" [label="SwitchInt"];
+  "cfg::logging::append_action_log_record::bb11" -> "cfg::logging::append_action_log_record::bb12" [label="SwitchInt"];
+  "cfg::logging::append_action_log_record::bb11" -> "cfg::logging::append_action_log_record::bb13" [label="SwitchInt"];
+  "cfg::logging::append_action_log_record::bb11" -> "cfg::logging::append_action_log_record::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::logging::append_action_log_record::bb12" -> "cfg::logging::append_action_log_record::bb15" [label="Drop"];
+  "cfg::logging::append_action_log_record::bb12" -> "cfg::logging::append_action_log_record::bb19" [label="Drop"];
+  "cfg::logging::append_action_log_record::bb14" -> "cfg::logging::append_action_log_record::bb16" [label="Drop"];
+  "cfg::logging::append_action_log_record::bb14" -> "cfg::logging::append_action_log_record::bb19" [label="Drop"];
+  "cfg::logging::append_action_log_record::bb15" -> "cfg::logging::append_action_log_record::bb17" [label="Drop"];
+  "cfg::logging::append_action_log_record::bb16" -> "cfg::logging::append_action_log_record::bb17" [label="Drop"];
+  "cfg::logging::append_action_log_record::bb18" -> "cfg::logging::append_action_log_record::bb19" [label="Drop"];
+  "cfg::logging::append_action_log_record::bb19" -> "cfg::logging::append_action_log_record::bb20" [label="Drop"];
+  "cfg::logging::append_action_log_record::bb21" -> "cfg::logging::append_action_log_record::bb16" [color="crimson", penwidth=2, label="Goto back"];
+}

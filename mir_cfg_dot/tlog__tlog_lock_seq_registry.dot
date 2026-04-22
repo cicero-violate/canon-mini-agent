@@ -1,0 +1,13 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4682 {
+    label="tlog::lock_seq_registry";
+    "cfg::tlog::lock_seq_registry::bb0" [label="bb0\nCall"];
+    "cfg::tlog::lock_seq_registry::bb1" [label="bb1\nCall"];
+    "cfg::tlog::lock_seq_registry::bb2" [label="bb2\nCall"];
+    "cfg::tlog::lock_seq_registry::bb3" [label="bb3\nReturn"];
+  }
+}

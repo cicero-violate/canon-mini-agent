@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1402 {
+    label="<lessons::CandidateStatus as std::default::Default>::default";
+    "cfg::<lessons::CandidateStatus as std::default::Default>::default::bb0" [label="bb0\nReturn"];
+  }
+}

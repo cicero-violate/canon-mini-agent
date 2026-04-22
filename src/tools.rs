@@ -79,9 +79,15 @@ fn rust_patch_verification_flag_path() -> PathBuf {
     Path::new(crate::constants::agent_state_dir()).join("rust_patch_verification_requested.flag")
 }
 
-fn request_rust_patch_verification_if_needed(patch_targets: &[&str]) {
+fn request_rust_patch_verification_if_needed(
+    patch_targets: &[&str],
+    mut writer: Option<&mut CanonicalWriter>,
+) {
     if !patch_targets_include_rust_sources(patch_targets) {
         return;
+    }
+    if let Some(w) = writer.as_deref_mut() {
+        w.apply(ControlEvent::RustPatchVerificationRequested { requested: true });
     }
     let flag_path = rust_patch_verification_flag_path();
     if let Some(parent) = flag_path.parent() {
@@ -1783,14 +1789,16 @@ fn load_cargo_test_failure_scan(out: &str) -> (Option<PathBuf>, String) {
 }
 
 fn collect_stalled_test_name(stalled_tests: &mut BTreeSet<String>, stripped: &str) {
-    for suffix in [
+    let stalled_name = [
         " has been running for over 60 seconds",
         " has been running for over 30 seconds",
         " has been running for over 10 seconds",
-    ] {
-        if let Some(name) = stripped.strip_suffix(suffix) {
-            stalled_tests.insert(name.trim().to_string());
-        }
+    ]
+    .into_iter()
+    .find_map(|suffix| stripped.strip_suffix(suffix));
+
+    if let Some(name) = stalled_name {
+        stalled_tests.insert(name.trim().to_string());
     }
 }
 
@@ -2308,8 +2316,13 @@ fn handle_message_action(
         ));
     }
 
-    if let Some(result) =
-        suppress_redundant_planner_blocker(role, msg_type, &payload, agent_state_dir)
+    if let Some(result) = suppress_redundant_planner_blocker(
+        role,
+        msg_type,
+        &payload,
+        agent_state_dir,
+        writer.as_deref_mut(),
+    )
     {
         return Ok(result);
     }
@@ -2361,6 +2374,7 @@ fn suppress_redundant_planner_blocker(
     msg_type: &str,
     payload: &Value,
     agent_state_dir: &Path,
+    mut writer: Option<&mut CanonicalWriter>,
 ) -> Option<(bool, String)> {
     if role != "planner" || msg_type != "blocker" {
         return None;
@@ -2374,9 +2388,9 @@ fn suppress_redundant_planner_blocker(
     if evidence.is_empty() {
         return None;
     }
-    let evidence_path = agent_state_dir.join("last_planner_blocker_evidence.txt");
-    if let Ok(prev) = std::fs::read_to_string(&evidence_path) {
-        if prev.trim() == evidence {
+    let evidence_hash = artifact_write_signature(&["planner_blocker_evidence", &evidence]);
+    if let Some(w) = writer.as_deref_mut() {
+        if w.state().planner_blocker_evidence_hash == evidence_hash {
             return Some((
                 false,
                 "Error executing action: planner blocker suppressed: evidence unchanged. \
@@ -2384,7 +2398,23 @@ fn suppress_redundant_planner_blocker(
                     .to_string(),
             ));
         }
+        w.apply(ControlEvent::PlannerBlockerEvidenceSet {
+            evidence_hash: evidence_hash.clone(),
+        });
+    } else {
+        let evidence_path = agent_state_dir.join("last_planner_blocker_evidence.txt");
+        if let Ok(prev) = std::fs::read_to_string(&evidence_path) {
+            if prev.trim() == evidence {
+                return Some((
+                    false,
+                    "Error executing action: planner blocker suppressed: evidence unchanged. \
+                     Retry with materially updated evidence or choose a different action."
+                        .to_string(),
+                ));
+            }
+        }
     }
+    let evidence_path = agent_state_dir.join("last_planner_blocker_evidence.txt");
     let _ = std::fs::write(evidence_path, evidence);
     None
 }
@@ -3931,7 +3961,7 @@ fn handle_apply_patch_action(
         return Ok((false, msg));
     }
     let patch_targets = patch_targets(patch);
-    request_rust_patch_verification_if_needed(&patch_targets);
+    request_rust_patch_verification_if_needed(&patch_targets, writer.as_deref_mut());
     let patch_signature = artifact_write_signature(&[
         "apply_patch",
         role,
@@ -4085,10 +4115,10 @@ fn snapshot_patch_targets(
 fn restore_patch_snapshots(
     snapshots: &std::collections::BTreeMap<PathBuf, Option<Vec<u8>>>,
 ) -> Result<()> {
-    for (path, snapshot) in snapshots.iter().rev() {
-        restore_file_snapshot(path, snapshot)?;
-    }
-    Ok(())
+    snapshots
+        .iter()
+        .rev()
+        .try_for_each(|(path, snapshot)| restore_file_snapshot(path, snapshot))
 }
 
 fn handle_apply_patch_failure(
@@ -5561,10 +5591,9 @@ fn reject_plan_action_field(
 }
 
 fn require_plan_action_fields(action: &Value, normalized_op: &str, fields: &[&str]) -> Result<()> {
-    for field in fields {
-        require_plan_action_field(action, normalized_op, field)?;
-    }
-    Ok(())
+    fields
+        .iter()
+        .try_for_each(|field| require_plan_action_field(action, normalized_op, field))
 }
 
 fn reject_plan_action_fields(

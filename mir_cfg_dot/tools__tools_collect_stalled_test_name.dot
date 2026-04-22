@@ -1,0 +1,34 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3827 {
+    label="tools::collect_stalled_test_name";
+    "cfg::tools::collect_stalled_test_name::bb0" [label="bb0\nCall"];
+    "cfg::tools::collect_stalled_test_name::bb1" [label="bb1\nGoto"];
+    "cfg::tools::collect_stalled_test_name::bb2" [label="bb2\nCall loop"];
+    "cfg::tools::collect_stalled_test_name::bb3" [label="bb3\nSwitchInt loop"];
+    "cfg::tools::collect_stalled_test_name::bb4" [label="bb4\nUnreachable loop"];
+    "cfg::tools::collect_stalled_test_name::bb5" [label="bb5\nCall loop"];
+    "cfg::tools::collect_stalled_test_name::bb6" [label="bb6\nDrop loop"];
+    "cfg::tools::collect_stalled_test_name::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::tools::collect_stalled_test_name::bb8" [label="bb8\nCall loop"];
+    "cfg::tools::collect_stalled_test_name::bb9" [label="bb9\nCall loop"];
+    "cfg::tools::collect_stalled_test_name::bb10" [label="bb10\nCall loop"];
+    "cfg::tools::collect_stalled_test_name::bb11" [label="bb11\nReturn loop"];
+    "cfg::tools::collect_stalled_test_name::bb12" [label="bb12\nDrop cleanup loop"];
+    "cfg::tools::collect_stalled_test_name::bb13" [label="bb13\nUnwindResume cleanup loop"];
+    "cfg::tools::collect_stalled_test_name::bb14" [label="bb14\nGoto loop"];
+  }
+  "cfg::tools::collect_stalled_test_name::bb1" -> "cfg::tools::collect_stalled_test_name::bb2" [label="Goto"];
+  "cfg::tools::collect_stalled_test_name::bb3" -> "cfg::tools::collect_stalled_test_name::bb6" [label="SwitchInt"];
+  "cfg::tools::collect_stalled_test_name::bb3" -> "cfg::tools::collect_stalled_test_name::bb5" [label="SwitchInt"];
+  "cfg::tools::collect_stalled_test_name::bb3" -> "cfg::tools::collect_stalled_test_name::bb4" [label="SwitchInt"];
+  "cfg::tools::collect_stalled_test_name::bb6" -> "cfg::tools::collect_stalled_test_name::bb11" [label="Drop"];
+  "cfg::tools::collect_stalled_test_name::bb7" -> "cfg::tools::collect_stalled_test_name::bb8" [label="SwitchInt"];
+  "cfg::tools::collect_stalled_test_name::bb7" -> "cfg::tools::collect_stalled_test_name::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::collect_stalled_test_name::bb7" -> "cfg::tools::collect_stalled_test_name::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::collect_stalled_test_name::bb12" -> "cfg::tools::collect_stalled_test_name::bb13" [label="Drop"];
+  "cfg::tools::collect_stalled_test_name::bb14" -> "cfg::tools::collect_stalled_test_name::bb2" [color="crimson", penwidth=2, label="Goto back"];
+}

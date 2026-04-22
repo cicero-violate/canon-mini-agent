@@ -1,0 +1,14 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1166 {
+    label="invalid_action::missing_predicted_next_actions";
+    "cfg::invalid_action::missing_predicted_next_actions::bb0" [label="bb0\nCall"];
+    "cfg::invalid_action::missing_predicted_next_actions::bb1" [label="bb1\nCall"];
+    "cfg::invalid_action::missing_predicted_next_actions::bb2" [label="bb2\nCall"];
+    "cfg::invalid_action::missing_predicted_next_actions::bb3" [label="bb3\nCall"];
+    "cfg::invalid_action::missing_predicted_next_actions::bb4" [label="bb4\nReturn"];
+  }
+}

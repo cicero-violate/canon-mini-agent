@@ -1,0 +1,22 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2772 {
+    label="refactor_analysis::issue_scan_context";
+    "cfg::refactor_analysis::issue_scan_context::bb0" [label="bb0\nCall"];
+    "cfg::refactor_analysis::issue_scan_context::bb1" [label="bb1\nCall"];
+    "cfg::refactor_analysis::issue_scan_context::bb2" [label="bb2\nCall"];
+    "cfg::refactor_analysis::issue_scan_context::bb3" [label="bb3\nCall"];
+    "cfg::refactor_analysis::issue_scan_context::bb4" [label="bb4\nCall"];
+    "cfg::refactor_analysis::issue_scan_context::bb5" [label="bb5\nCall"];
+    "cfg::refactor_analysis::issue_scan_context::bb6" [label="bb6\nCall"];
+    "cfg::refactor_analysis::issue_scan_context::bb7" [label="bb7\nCall"];
+    "cfg::refactor_analysis::issue_scan_context::bb8" [label="bb8\nCall"];
+    "cfg::refactor_analysis::issue_scan_context::bb9" [label="bb9\nReturn"];
+    "cfg::refactor_analysis::issue_scan_context::bb10" [label="bb10\nDrop cleanup"];
+    "cfg::refactor_analysis::issue_scan_context::bb11" [label="bb11\nUnwindResume cleanup"];
+  }
+  "cfg::refactor_analysis::issue_scan_context::bb10" -> "cfg::refactor_analysis::issue_scan_context::bb11" [label="Drop"];
+}

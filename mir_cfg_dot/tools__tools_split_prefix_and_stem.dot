@@ -1,0 +1,38 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3945 {
+    label="tools::split_prefix_and_stem";
+    "cfg::tools::split_prefix_and_stem::bb0" [label="bb0\nCall"];
+    "cfg::tools::split_prefix_and_stem::bb1" [label="bb1\nGoto"];
+    "cfg::tools::split_prefix_and_stem::bb2" [label="bb2\nCall loop"];
+    "cfg::tools::split_prefix_and_stem::bb3" [label="bb3\nSwitchInt loop"];
+    "cfg::tools::split_prefix_and_stem::bb4" [label="bb4\nUnreachable loop"];
+    "cfg::tools::split_prefix_and_stem::bb5" [label="bb5\nCall loop"];
+    "cfg::tools::split_prefix_and_stem::bb6" [label="bb6\nDrop loop"];
+    "cfg::tools::split_prefix_and_stem::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::tools::split_prefix_and_stem::bb8" [label="bb8\nCall loop"];
+    "cfg::tools::split_prefix_and_stem::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::tools::split_prefix_and_stem::bb10" [label="bb10\nCall"];
+    "cfg::tools::split_prefix_and_stem::bb11" [label="bb11\nDrop"];
+    "cfg::tools::split_prefix_and_stem::bb12" [label="bb12\nGoto"];
+    "cfg::tools::split_prefix_and_stem::bb13" [label="bb13\nReturn"];
+    "cfg::tools::split_prefix_and_stem::bb14" [label="bb14\nDrop cleanup"];
+    "cfg::tools::split_prefix_and_stem::bb15" [label="bb15\nUnwindResume cleanup"];
+  }
+  "cfg::tools::split_prefix_and_stem::bb1" -> "cfg::tools::split_prefix_and_stem::bb2" [label="Goto"];
+  "cfg::tools::split_prefix_and_stem::bb3" -> "cfg::tools::split_prefix_and_stem::bb6" [label="SwitchInt"];
+  "cfg::tools::split_prefix_and_stem::bb3" -> "cfg::tools::split_prefix_and_stem::bb5" [label="SwitchInt"];
+  "cfg::tools::split_prefix_and_stem::bb3" -> "cfg::tools::split_prefix_and_stem::bb4" [label="SwitchInt"];
+  "cfg::tools::split_prefix_and_stem::bb6" -> "cfg::tools::split_prefix_and_stem::bb12" [label="Drop"];
+  "cfg::tools::split_prefix_and_stem::bb7" -> "cfg::tools::split_prefix_and_stem::bb8" [label="SwitchInt"];
+  "cfg::tools::split_prefix_and_stem::bb7" -> "cfg::tools::split_prefix_and_stem::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::split_prefix_and_stem::bb7" -> "cfg::tools::split_prefix_and_stem::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::split_prefix_and_stem::bb9" -> "cfg::tools::split_prefix_and_stem::bb10" [label="SwitchInt"];
+  "cfg::tools::split_prefix_and_stem::bb9" -> "cfg::tools::split_prefix_and_stem::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::split_prefix_and_stem::bb11" -> "cfg::tools::split_prefix_and_stem::bb13" [label="Drop"];
+  "cfg::tools::split_prefix_and_stem::bb12" -> "cfg::tools::split_prefix_and_stem::bb13" [label="Goto"];
+  "cfg::tools::split_prefix_and_stem::bb14" -> "cfg::tools::split_prefix_and_stem::bb15" [label="Drop"];
+}

@@ -1,0 +1,29 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1024 {
+    label="inter_complexity::summarize_duplicate_symbols";
+    "cfg::inter_complexity::summarize_duplicate_symbols::bb0" [label="bb0\nSwitchInt"];
+    "cfg::inter_complexity::summarize_duplicate_symbols::bb1" [label="bb1\nCall"];
+    "cfg::inter_complexity::summarize_duplicate_symbols::bb2" [label="bb2\nCall"];
+    "cfg::inter_complexity::summarize_duplicate_symbols::bb3" [label="bb3\nCall"];
+    "cfg::inter_complexity::summarize_duplicate_symbols::bb4" [label="bb4\nAssert"];
+    "cfg::inter_complexity::summarize_duplicate_symbols::bb5" [label="bb5\nCall"];
+    "cfg::inter_complexity::summarize_duplicate_symbols::bb6" [label="bb6\nCall"];
+    "cfg::inter_complexity::summarize_duplicate_symbols::bb7" [label="bb7\nCall"];
+    "cfg::inter_complexity::summarize_duplicate_symbols::bb8" [label="bb8\nCall"];
+    "cfg::inter_complexity::summarize_duplicate_symbols::bb9" [label="bb9\nCall"];
+    "cfg::inter_complexity::summarize_duplicate_symbols::bb10" [label="bb10\nDrop"];
+    "cfg::inter_complexity::summarize_duplicate_symbols::bb11" [label="bb11\nReturn"];
+    "cfg::inter_complexity::summarize_duplicate_symbols::bb12" [label="bb12\nDrop cleanup"];
+    "cfg::inter_complexity::summarize_duplicate_symbols::bb13" [label="bb13\nUnwindResume cleanup"];
+  }
+  "cfg::inter_complexity::summarize_duplicate_symbols::bb0" -> "cfg::inter_complexity::summarize_duplicate_symbols::bb2" [label="SwitchInt"];
+  "cfg::inter_complexity::summarize_duplicate_symbols::bb0" -> "cfg::inter_complexity::summarize_duplicate_symbols::bb1" [label="SwitchInt"];
+  "cfg::inter_complexity::summarize_duplicate_symbols::bb4" -> "cfg::inter_complexity::summarize_duplicate_symbols::bb5" [label="Assert"];
+  "cfg::inter_complexity::summarize_duplicate_symbols::bb4" -> "cfg::inter_complexity::summarize_duplicate_symbols::bb12" [label="Assert"];
+  "cfg::inter_complexity::summarize_duplicate_symbols::bb10" -> "cfg::inter_complexity::summarize_duplicate_symbols::bb11" [label="Drop"];
+  "cfg::inter_complexity::summarize_duplicate_symbols::bb12" -> "cfg::inter_complexity::summarize_duplicate_symbols::bb13" [label="Drop"];
+}

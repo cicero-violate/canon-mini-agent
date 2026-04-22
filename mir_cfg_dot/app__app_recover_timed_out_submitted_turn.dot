@@ -1,0 +1,27 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_199 {
+    label="app::recover_timed_out_submitted_turn";
+    "cfg::app::recover_timed_out_submitted_turn::bb0" [label="bb0\nCall"];
+    "cfg::app::recover_timed_out_submitted_turn::bb1" [label="bb1\nSwitchInt"];
+    "cfg::app::recover_timed_out_submitted_turn::bb2" [label="bb2\nCall"];
+    "cfg::app::recover_timed_out_submitted_turn::bb3" [label="bb3\nCall"];
+    "cfg::app::recover_timed_out_submitted_turn::bb4" [label="bb4\nCall"];
+    "cfg::app::recover_timed_out_submitted_turn::bb5" [label="bb5\nCall"];
+    "cfg::app::recover_timed_out_submitted_turn::bb6" [label="bb6\nCall"];
+    "cfg::app::recover_timed_out_submitted_turn::bb7" [label="bb7\nCall"];
+    "cfg::app::recover_timed_out_submitted_turn::bb8" [label="bb8\nDrop"];
+    "cfg::app::recover_timed_out_submitted_turn::bb9" [label="bb9\nReturn"];
+    "cfg::app::recover_timed_out_submitted_turn::bb10" [label="bb10\nDrop cleanup"];
+    "cfg::app::recover_timed_out_submitted_turn::bb11" [label="bb11\nUnwindResume cleanup"];
+    "cfg::app::recover_timed_out_submitted_turn::bb12" [label="bb12\nUnreachable"];
+  }
+  "cfg::app::recover_timed_out_submitted_turn::bb1" -> "cfg::app::recover_timed_out_submitted_turn::bb2" [label="SwitchInt"];
+  "cfg::app::recover_timed_out_submitted_turn::bb1" -> "cfg::app::recover_timed_out_submitted_turn::bb9" [label="SwitchInt"];
+  "cfg::app::recover_timed_out_submitted_turn::bb1" -> "cfg::app::recover_timed_out_submitted_turn::bb12" [label="SwitchInt"];
+  "cfg::app::recover_timed_out_submitted_turn::bb8" -> "cfg::app::recover_timed_out_submitted_turn::bb9" [label="Drop"];
+  "cfg::app::recover_timed_out_submitted_turn::bb10" -> "cfg::app::recover_timed_out_submitted_turn::bb11" [label="Drop"];
+}

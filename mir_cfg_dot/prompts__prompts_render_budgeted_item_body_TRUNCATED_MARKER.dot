@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2566 {
+    label="prompts::render_budgeted_item_body::TRUNCATED_MARKER";
+    "cfg::prompts::render_budgeted_item_body::TRUNCATED_MARKER::bb0" [label="bb0\nReturn"];
+  }
+}

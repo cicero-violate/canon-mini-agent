@@ -1,0 +1,47 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2460 {
+    label="prompt_inputs::render_lessons_list";
+    "cfg::prompt_inputs::render_lessons_list::bb0" [label="bb0\nCall"];
+    "cfg::prompt_inputs::render_lessons_list::bb1" [label="bb1\nCall"];
+    "cfg::prompt_inputs::render_lessons_list::bb2" [label="bb2\nCall"];
+    "cfg::prompt_inputs::render_lessons_list::bb3" [label="bb3\nCall"];
+    "cfg::prompt_inputs::render_lessons_list::bb4" [label="bb4\nCall"];
+    "cfg::prompt_inputs::render_lessons_list::bb5" [label="bb5\nCall"];
+    "cfg::prompt_inputs::render_lessons_list::bb6" [label="bb6\nSwitchInt"];
+    "cfg::prompt_inputs::render_lessons_list::bb7" [label="bb7\nDrop"];
+    "cfg::prompt_inputs::render_lessons_list::bb8" [label="bb8\nCall"];
+    "cfg::prompt_inputs::render_lessons_list::bb9" [label="bb9\nCall"];
+    "cfg::prompt_inputs::render_lessons_list::bb10" [label="bb10\nCall"];
+    "cfg::prompt_inputs::render_lessons_list::bb11" [label="bb11\nCall"];
+    "cfg::prompt_inputs::render_lessons_list::bb12" [label="bb12\nCall"];
+    "cfg::prompt_inputs::render_lessons_list::bb13" [label="bb13\nCall"];
+    "cfg::prompt_inputs::render_lessons_list::bb14" [label="bb14\nCall"];
+    "cfg::prompt_inputs::render_lessons_list::bb15" [label="bb15\nCall"];
+    "cfg::prompt_inputs::render_lessons_list::bb16" [label="bb16\nCall"];
+    "cfg::prompt_inputs::render_lessons_list::bb17" [label="bb17\nCall"];
+    "cfg::prompt_inputs::render_lessons_list::bb18" [label="bb18\nDrop"];
+    "cfg::prompt_inputs::render_lessons_list::bb19" [label="bb19\nDrop"];
+    "cfg::prompt_inputs::render_lessons_list::bb20" [label="bb20\nCall"];
+    "cfg::prompt_inputs::render_lessons_list::bb21" [label="bb21\nDrop"];
+    "cfg::prompt_inputs::render_lessons_list::bb22" [label="bb22\nReturn"];
+    "cfg::prompt_inputs::render_lessons_list::bb23" [label="bb23\nDrop cleanup"];
+    "cfg::prompt_inputs::render_lessons_list::bb24" [label="bb24\nDrop cleanup"];
+    "cfg::prompt_inputs::render_lessons_list::bb25" [label="bb25\nDrop cleanup"];
+    "cfg::prompt_inputs::render_lessons_list::bb26" [label="bb26\nUnwindResume cleanup"];
+  }
+  "cfg::prompt_inputs::render_lessons_list::bb6" -> "cfg::prompt_inputs::render_lessons_list::bb8" [label="SwitchInt"];
+  "cfg::prompt_inputs::render_lessons_list::bb6" -> "cfg::prompt_inputs::render_lessons_list::bb7" [label="SwitchInt"];
+  "cfg::prompt_inputs::render_lessons_list::bb7" -> "cfg::prompt_inputs::render_lessons_list::bb22" [label="Drop"];
+  "cfg::prompt_inputs::render_lessons_list::bb18" -> "cfg::prompt_inputs::render_lessons_list::bb19" [label="Drop"];
+  "cfg::prompt_inputs::render_lessons_list::bb18" -> "cfg::prompt_inputs::render_lessons_list::bb24" [label="Drop"];
+  "cfg::prompt_inputs::render_lessons_list::bb19" -> "cfg::prompt_inputs::render_lessons_list::bb20" [label="Drop"];
+  "cfg::prompt_inputs::render_lessons_list::bb19" -> "cfg::prompt_inputs::render_lessons_list::bb25" [label="Drop"];
+  "cfg::prompt_inputs::render_lessons_list::bb21" -> "cfg::prompt_inputs::render_lessons_list::bb22" [label="Drop"];
+  "cfg::prompt_inputs::render_lessons_list::bb23" -> "cfg::prompt_inputs::render_lessons_list::bb24" [label="Drop"];
+  "cfg::prompt_inputs::render_lessons_list::bb24" -> "cfg::prompt_inputs::render_lessons_list::bb25" [label="Drop"];
+  "cfg::prompt_inputs::render_lessons_list::bb25" -> "cfg::prompt_inputs::render_lessons_list::bb26" [label="Drop"];
+}

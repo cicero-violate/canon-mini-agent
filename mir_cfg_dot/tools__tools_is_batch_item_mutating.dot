@@ -1,0 +1,47 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4559 {
+    label="tools::is_batch_item_mutating";
+    "cfg::tools::is_batch_item_mutating::bb0" [label="bb0\nCall"];
+    "cfg::tools::is_batch_item_mutating::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::is_batch_item_mutating::bb2" [label="bb2\nGoto"];
+    "cfg::tools::is_batch_item_mutating::bb3" [label="bb3\nCall"];
+    "cfg::tools::is_batch_item_mutating::bb4" [label="bb4\nCall"];
+    "cfg::tools::is_batch_item_mutating::bb5" [label="bb5\nCall"];
+    "cfg::tools::is_batch_item_mutating::bb6" [label="bb6\nCall"];
+    "cfg::tools::is_batch_item_mutating::bb7" [label="bb7\nGoto loop"];
+    "cfg::tools::is_batch_item_mutating::bb8" [label="bb8\nCall loop"];
+    "cfg::tools::is_batch_item_mutating::bb9" [label="bb9\nCall loop"];
+    "cfg::tools::is_batch_item_mutating::bb10" [label="bb10\nCall loop"];
+    "cfg::tools::is_batch_item_mutating::bb11" [label="bb11\nCall loop"];
+    "cfg::tools::is_batch_item_mutating::bb12" [label="bb12\nCall loop"];
+    "cfg::tools::is_batch_item_mutating::bb13" [label="bb13\nCall loop"];
+    "cfg::tools::is_batch_item_mutating::bb14" [label="bb14\nCall loop"];
+    "cfg::tools::is_batch_item_mutating::bb15" [label="bb15\nSwitchInt loop"];
+    "cfg::tools::is_batch_item_mutating::bb16" [label="bb16\nSwitchInt loop"];
+    "cfg::tools::is_batch_item_mutating::bb17" [label="bb17\nSwitchInt loop"];
+    "cfg::tools::is_batch_item_mutating::bb18" [label="bb18\nSwitchInt loop"];
+    "cfg::tools::is_batch_item_mutating::bb19" [label="bb19\nSwitchInt"];
+    "cfg::tools::is_batch_item_mutating::bb20" [label="bb20\nCall"];
+    "cfg::tools::is_batch_item_mutating::bb21" [label="bb21\nGoto"];
+    "cfg::tools::is_batch_item_mutating::bb22" [label="bb22\nReturn"];
+  }
+  "cfg::tools::is_batch_item_mutating::bb1" -> "cfg::tools::is_batch_item_mutating::bb3" [label="SwitchInt"];
+  "cfg::tools::is_batch_item_mutating::bb1" -> "cfg::tools::is_batch_item_mutating::bb2" [label="SwitchInt"];
+  "cfg::tools::is_batch_item_mutating::bb2" -> "cfg::tools::is_batch_item_mutating::bb22" [label="Goto"];
+  "cfg::tools::is_batch_item_mutating::bb7" -> "cfg::tools::is_batch_item_mutating::bb22" [label="Goto"];
+  "cfg::tools::is_batch_item_mutating::bb15" -> "cfg::tools::is_batch_item_mutating::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::is_batch_item_mutating::bb15" -> "cfg::tools::is_batch_item_mutating::bb14" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::is_batch_item_mutating::bb16" -> "cfg::tools::is_batch_item_mutating::bb13" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::is_batch_item_mutating::bb16" -> "cfg::tools::is_batch_item_mutating::bb12" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::is_batch_item_mutating::bb17" -> "cfg::tools::is_batch_item_mutating::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::is_batch_item_mutating::bb17" -> "cfg::tools::is_batch_item_mutating::bb10" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::is_batch_item_mutating::bb18" -> "cfg::tools::is_batch_item_mutating::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::is_batch_item_mutating::bb18" -> "cfg::tools::is_batch_item_mutating::bb8" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::is_batch_item_mutating::bb19" -> "cfg::tools::is_batch_item_mutating::bb21" [label="SwitchInt"];
+  "cfg::tools::is_batch_item_mutating::bb19" -> "cfg::tools::is_batch_item_mutating::bb20" [label="SwitchInt"];
+  "cfg::tools::is_batch_item_mutating::bb21" -> "cfg::tools::is_batch_item_mutating::bb22" [label="Goto"];
+}

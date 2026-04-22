@@ -1,0 +1,54 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4137 {
+    label="tools::build_graph_symbol_preview";
+    "cfg::tools::build_graph_symbol_preview::bb0" [label="bb0\nCall"];
+    "cfg::tools::build_graph_symbol_preview::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::build_graph_symbol_preview::bb2" [label="bb2\nCall"];
+    "cfg::tools::build_graph_symbol_preview::bb3" [label="bb3\nCall"];
+    "cfg::tools::build_graph_symbol_preview::bb4" [label="bb4\nGoto"];
+    "cfg::tools::build_graph_symbol_preview::bb5" [label="bb5\nCall"];
+    "cfg::tools::build_graph_symbol_preview::bb6" [label="bb6\nSwitchInt"];
+    "cfg::tools::build_graph_symbol_preview::bb7" [label="bb7\nUnreachable loop"];
+    "cfg::tools::build_graph_symbol_preview::bb8" [label="bb8\nCall loop"];
+    "cfg::tools::build_graph_symbol_preview::bb9" [label="bb9\nCall loop"];
+    "cfg::tools::build_graph_symbol_preview::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::tools::build_graph_symbol_preview::bb11" [label="bb11\nCall loop"];
+    "cfg::tools::build_graph_symbol_preview::bb12" [label="bb12\nGoto loop"];
+    "cfg::tools::build_graph_symbol_preview::bb13" [label="bb13\nCall loop"];
+    "cfg::tools::build_graph_symbol_preview::bb14" [label="bb14\nCall loop"];
+    "cfg::tools::build_graph_symbol_preview::bb15" [label="bb15\nCall loop"];
+    "cfg::tools::build_graph_symbol_preview::bb16" [label="bb16\nCall loop"];
+    "cfg::tools::build_graph_symbol_preview::bb17" [label="bb17\nCall loop"];
+    "cfg::tools::build_graph_symbol_preview::bb18" [label="bb18\nSwitchInt loop"];
+    "cfg::tools::build_graph_symbol_preview::bb19" [label="bb19\nDrop"];
+    "cfg::tools::build_graph_symbol_preview::bb20" [label="bb20\nCall"];
+    "cfg::tools::build_graph_symbol_preview::bb21" [label="bb21\nDrop"];
+    "cfg::tools::build_graph_symbol_preview::bb22" [label="bb22\nDrop"];
+    "cfg::tools::build_graph_symbol_preview::bb23" [label="bb23\nReturn"];
+    "cfg::tools::build_graph_symbol_preview::bb24" [label="bb24\nDrop cleanup"];
+    "cfg::tools::build_graph_symbol_preview::bb25" [label="bb25\nDrop cleanup"];
+    "cfg::tools::build_graph_symbol_preview::bb26" [label="bb26\nUnwindResume cleanup"];
+  }
+  "cfg::tools::build_graph_symbol_preview::bb1" -> "cfg::tools::build_graph_symbol_preview::bb3" [label="SwitchInt"];
+  "cfg::tools::build_graph_symbol_preview::bb1" -> "cfg::tools::build_graph_symbol_preview::bb2" [label="SwitchInt"];
+  "cfg::tools::build_graph_symbol_preview::bb4" -> "cfg::tools::build_graph_symbol_preview::bb23" [label="Goto"];
+  "cfg::tools::build_graph_symbol_preview::bb6" -> "cfg::tools::build_graph_symbol_preview::bb8" [label="SwitchInt"];
+  "cfg::tools::build_graph_symbol_preview::bb6" -> "cfg::tools::build_graph_symbol_preview::bb9" [label="SwitchInt"];
+  "cfg::tools::build_graph_symbol_preview::bb6" -> "cfg::tools::build_graph_symbol_preview::bb7" [label="SwitchInt"];
+  "cfg::tools::build_graph_symbol_preview::bb10" -> "cfg::tools::build_graph_symbol_preview::bb13" [label="SwitchInt"];
+  "cfg::tools::build_graph_symbol_preview::bb10" -> "cfg::tools::build_graph_symbol_preview::bb11" [label="SwitchInt"];
+  "cfg::tools::build_graph_symbol_preview::bb12" -> "cfg::tools::build_graph_symbol_preview::bb22" [label="Goto"];
+  "cfg::tools::build_graph_symbol_preview::bb18" -> "cfg::tools::build_graph_symbol_preview::bb19" [label="SwitchInt"];
+  "cfg::tools::build_graph_symbol_preview::bb18" -> "cfg::tools::build_graph_symbol_preview::bb20" [label="SwitchInt"];
+  "cfg::tools::build_graph_symbol_preview::bb18" -> "cfg::tools::build_graph_symbol_preview::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::build_graph_symbol_preview::bb19" -> "cfg::tools::build_graph_symbol_preview::bb23" [label="Drop"];
+  "cfg::tools::build_graph_symbol_preview::bb21" -> "cfg::tools::build_graph_symbol_preview::bb22" [label="Drop"];
+  "cfg::tools::build_graph_symbol_preview::bb21" -> "cfg::tools::build_graph_symbol_preview::bb25" [label="Drop"];
+  "cfg::tools::build_graph_symbol_preview::bb22" -> "cfg::tools::build_graph_symbol_preview::bb23" [label="Drop"];
+  "cfg::tools::build_graph_symbol_preview::bb24" -> "cfg::tools::build_graph_symbol_preview::bb25" [label="Drop"];
+  "cfg::tools::build_graph_symbol_preview::bb25" -> "cfg::tools::build_graph_symbol_preview::bb26" [label="Drop"];
+}

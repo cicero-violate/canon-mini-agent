@@ -1,0 +1,19 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3130 {
+    label="semantic::SemanticIndex::path_frequency_score";
+    "cfg::semantic::SemanticIndex::path_frequency_score::bb0" [label="bb0\nSwitchInt"];
+    "cfg::semantic::SemanticIndex::path_frequency_score::bb1" [label="bb1\nGoto"];
+    "cfg::semantic::SemanticIndex::path_frequency_score::bb2" [label="bb2\nCall"];
+    "cfg::semantic::SemanticIndex::path_frequency_score::bb3" [label="bb3\nCall"];
+    "cfg::semantic::SemanticIndex::path_frequency_score::bb4" [label="bb4\nCall"];
+    "cfg::semantic::SemanticIndex::path_frequency_score::bb5" [label="bb5\nCall"];
+    "cfg::semantic::SemanticIndex::path_frequency_score::bb6" [label="bb6\nReturn"];
+  }
+  "cfg::semantic::SemanticIndex::path_frequency_score::bb0" -> "cfg::semantic::SemanticIndex::path_frequency_score::bb2" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::path_frequency_score::bb0" -> "cfg::semantic::SemanticIndex::path_frequency_score::bb1" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::path_frequency_score::bb1" -> "cfg::semantic::SemanticIndex::path_frequency_score::bb6" [label="Goto"];
+}

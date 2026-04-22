@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1996 {
+    label="llm_runtime::ws_server::WsBridge::take_completed_turns";
+    "cfg::llm_runtime::ws_server::WsBridge::take_completed_turns::bb0" [label="bb0\nReturn"];
+  }
+}

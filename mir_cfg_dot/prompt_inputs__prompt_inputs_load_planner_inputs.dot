@@ -1,0 +1,50 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2504 {
+    label="prompt_inputs::load_planner_inputs";
+    "cfg::prompt_inputs::load_planner_inputs::bb0" [label="bb0\nCall"];
+    "cfg::prompt_inputs::load_planner_inputs::bb1" [label="bb1\nCall"];
+    "cfg::prompt_inputs::load_planner_inputs::bb2" [label="bb2\nCall"];
+    "cfg::prompt_inputs::load_planner_inputs::bb3" [label="bb3\nCall"];
+    "cfg::prompt_inputs::load_planner_inputs::bb4" [label="bb4\nCall"];
+    "cfg::prompt_inputs::load_planner_inputs::bb5" [label="bb5\nCall"];
+    "cfg::prompt_inputs::load_planner_inputs::bb6" [label="bb6\nCall"];
+    "cfg::prompt_inputs::load_planner_inputs::bb7" [label="bb7\nReturn"];
+    "cfg::prompt_inputs::load_planner_inputs::bb8" [label="bb8\nDrop cleanup"];
+    "cfg::prompt_inputs::load_planner_inputs::bb9" [label="bb9\nSwitchInt cleanup loop"];
+    "cfg::prompt_inputs::load_planner_inputs::bb10" [label="bb10\nUnwindResume cleanup loop"];
+    "cfg::prompt_inputs::load_planner_inputs::bb11" [label="bb11\nDrop cleanup loop"];
+    "cfg::prompt_inputs::load_planner_inputs::bb12" [label="bb12\nSwitchInt cleanup loop"];
+    "cfg::prompt_inputs::load_planner_inputs::bb13" [label="bb13\nDrop cleanup loop"];
+    "cfg::prompt_inputs::load_planner_inputs::bb14" [label="bb14\nSwitchInt cleanup loop"];
+    "cfg::prompt_inputs::load_planner_inputs::bb15" [label="bb15\nDrop cleanup loop"];
+    "cfg::prompt_inputs::load_planner_inputs::bb16" [label="bb16\nSwitchInt cleanup loop"];
+    "cfg::prompt_inputs::load_planner_inputs::bb17" [label="bb17\nDrop cleanup loop"];
+    "cfg::prompt_inputs::load_planner_inputs::bb18" [label="bb18\nDrop cleanup loop"];
+    "cfg::prompt_inputs::load_planner_inputs::bb19" [label="bb19\nSwitchInt cleanup loop"];
+    "cfg::prompt_inputs::load_planner_inputs::bb20" [label="bb20\nDrop cleanup loop"];
+    "cfg::prompt_inputs::load_planner_inputs::bb21" [label="bb21\nSwitchInt cleanup loop"];
+  }
+  "cfg::prompt_inputs::load_planner_inputs::bb8" -> "cfg::prompt_inputs::load_planner_inputs::bb12" [label="Drop"];
+  "cfg::prompt_inputs::load_planner_inputs::bb9" -> "cfg::prompt_inputs::load_planner_inputs::bb19" [label="SwitchInt"];
+  "cfg::prompt_inputs::load_planner_inputs::bb9" -> "cfg::prompt_inputs::load_planner_inputs::bb17" [label="SwitchInt"];
+  "cfg::prompt_inputs::load_planner_inputs::bb11" -> "cfg::prompt_inputs::load_planner_inputs::bb14" [label="Drop"];
+  "cfg::prompt_inputs::load_planner_inputs::bb12" -> "cfg::prompt_inputs::load_planner_inputs::bb14" [label="SwitchInt"];
+  "cfg::prompt_inputs::load_planner_inputs::bb12" -> "cfg::prompt_inputs::load_planner_inputs::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompt_inputs::load_planner_inputs::bb13" -> "cfg::prompt_inputs::load_planner_inputs::bb16" [label="Drop"];
+  "cfg::prompt_inputs::load_planner_inputs::bb14" -> "cfg::prompt_inputs::load_planner_inputs::bb16" [label="SwitchInt"];
+  "cfg::prompt_inputs::load_planner_inputs::bb14" -> "cfg::prompt_inputs::load_planner_inputs::bb13" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompt_inputs::load_planner_inputs::bb15" -> "cfg::prompt_inputs::load_planner_inputs::bb9" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::prompt_inputs::load_planner_inputs::bb16" -> "cfg::prompt_inputs::load_planner_inputs::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompt_inputs::load_planner_inputs::bb16" -> "cfg::prompt_inputs::load_planner_inputs::bb15" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompt_inputs::load_planner_inputs::bb17" -> "cfg::prompt_inputs::load_planner_inputs::bb19" [label="Drop"];
+  "cfg::prompt_inputs::load_planner_inputs::bb18" -> "cfg::prompt_inputs::load_planner_inputs::bb21" [label="Drop"];
+  "cfg::prompt_inputs::load_planner_inputs::bb19" -> "cfg::prompt_inputs::load_planner_inputs::bb21" [label="SwitchInt"];
+  "cfg::prompt_inputs::load_planner_inputs::bb19" -> "cfg::prompt_inputs::load_planner_inputs::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompt_inputs::load_planner_inputs::bb20" -> "cfg::prompt_inputs::load_planner_inputs::bb10" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::prompt_inputs::load_planner_inputs::bb21" -> "cfg::prompt_inputs::load_planner_inputs::bb10" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompt_inputs::load_planner_inputs::bb21" -> "cfg::prompt_inputs::load_planner_inputs::bb20" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

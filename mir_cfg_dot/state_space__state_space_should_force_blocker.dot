@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3203 {
+    label="state_space::should_force_blocker";
+    "cfg::state_space::should_force_blocker::bb0" [label="bb0\nReturn"];
+  }
+}

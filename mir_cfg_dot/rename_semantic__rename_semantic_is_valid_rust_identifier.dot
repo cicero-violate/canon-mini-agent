@@ -1,0 +1,29 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2937 {
+    label="rename_semantic::is_valid_rust_identifier";
+    "cfg::rename_semantic::is_valid_rust_identifier::bb0" [label="bb0\nCall"];
+    "cfg::rename_semantic::is_valid_rust_identifier::bb1" [label="bb1\nCall"];
+    "cfg::rename_semantic::is_valid_rust_identifier::bb2" [label="bb2\nSwitchInt"];
+    "cfg::rename_semantic::is_valid_rust_identifier::bb3" [label="bb3\nSwitchInt"];
+    "cfg::rename_semantic::is_valid_rust_identifier::bb4" [label="bb4\nGoto"];
+    "cfg::rename_semantic::is_valid_rust_identifier::bb5" [label="bb5\nCall"];
+    "cfg::rename_semantic::is_valid_rust_identifier::bb6" [label="bb6\nSwitchInt"];
+    "cfg::rename_semantic::is_valid_rust_identifier::bb7" [label="bb7\nGoto"];
+    "cfg::rename_semantic::is_valid_rust_identifier::bb8" [label="bb8\nCall"];
+    "cfg::rename_semantic::is_valid_rust_identifier::bb9" [label="bb9\nReturn"];
+    "cfg::rename_semantic::is_valid_rust_identifier::bb10" [label="bb10\nUnreachable"];
+  }
+  "cfg::rename_semantic::is_valid_rust_identifier::bb2" -> "cfg::rename_semantic::is_valid_rust_identifier::bb3" [label="SwitchInt"];
+  "cfg::rename_semantic::is_valid_rust_identifier::bb2" -> "cfg::rename_semantic::is_valid_rust_identifier::bb4" [label="SwitchInt"];
+  "cfg::rename_semantic::is_valid_rust_identifier::bb2" -> "cfg::rename_semantic::is_valid_rust_identifier::bb10" [label="SwitchInt"];
+  "cfg::rename_semantic::is_valid_rust_identifier::bb3" -> "cfg::rename_semantic::is_valid_rust_identifier::bb5" [label="SwitchInt"];
+  "cfg::rename_semantic::is_valid_rust_identifier::bb3" -> "cfg::rename_semantic::is_valid_rust_identifier::bb8" [label="SwitchInt"];
+  "cfg::rename_semantic::is_valid_rust_identifier::bb4" -> "cfg::rename_semantic::is_valid_rust_identifier::bb9" [label="Goto"];
+  "cfg::rename_semantic::is_valid_rust_identifier::bb6" -> "cfg::rename_semantic::is_valid_rust_identifier::bb7" [label="SwitchInt"];
+  "cfg::rename_semantic::is_valid_rust_identifier::bb6" -> "cfg::rename_semantic::is_valid_rust_identifier::bb8" [label="SwitchInt"];
+  "cfg::rename_semantic::is_valid_rust_identifier::bb7" -> "cfg::rename_semantic::is_valid_rust_identifier::bb9" [label="Goto"];
+}

@@ -1,0 +1,48 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3380 {
+    label="supervisor::check_test_gate";
+    "cfg::supervisor::check_test_gate::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::check_test_gate::bb1" [label="bb1\nSwitchInt"];
+    "cfg::supervisor::check_test_gate::bb2" [label="bb2\nCall"];
+    "cfg::supervisor::check_test_gate::bb3" [label="bb3\nCall"];
+    "cfg::supervisor::check_test_gate::bb4" [label="bb4\nCall"];
+    "cfg::supervisor::check_test_gate::bb5" [label="bb5\nGoto"];
+    "cfg::supervisor::check_test_gate::bb6" [label="bb6\nCall"];
+    "cfg::supervisor::check_test_gate::bb7" [label="bb7\nCall"];
+    "cfg::supervisor::check_test_gate::bb8" [label="bb8\nSwitchInt"];
+    "cfg::supervisor::check_test_gate::bb9" [label="bb9\nUnreachable"];
+    "cfg::supervisor::check_test_gate::bb10" [label="bb10\nSwitchInt"];
+    "cfg::supervisor::check_test_gate::bb11" [label="bb11\nCall"];
+    "cfg::supervisor::check_test_gate::bb12" [label="bb12\nCall"];
+    "cfg::supervisor::check_test_gate::bb13" [label="bb13\nCall"];
+    "cfg::supervisor::check_test_gate::bb14" [label="bb14\nCall"];
+    "cfg::supervisor::check_test_gate::bb15" [label="bb15\nGoto"];
+    "cfg::supervisor::check_test_gate::bb16" [label="bb16\nCall"];
+    "cfg::supervisor::check_test_gate::bb17" [label="bb17\nGoto"];
+    "cfg::supervisor::check_test_gate::bb18" [label="bb18\nCall"];
+    "cfg::supervisor::check_test_gate::bb19" [label="bb19\nCall"];
+    "cfg::supervisor::check_test_gate::bb20" [label="bb20\nDrop"];
+    "cfg::supervisor::check_test_gate::bb21" [label="bb21\nGoto loop"];
+    "cfg::supervisor::check_test_gate::bb22" [label="bb22\nReturn loop"];
+    "cfg::supervisor::check_test_gate::bb23" [label="bb23\nDrop cleanup loop"];
+    "cfg::supervisor::check_test_gate::bb24" [label="bb24\nCall loop"];
+    "cfg::supervisor::check_test_gate::bb25" [label="bb25\nUnwindResume cleanup"];
+  }
+  "cfg::supervisor::check_test_gate::bb1" -> "cfg::supervisor::check_test_gate::bb3" [label="SwitchInt"];
+  "cfg::supervisor::check_test_gate::bb1" -> "cfg::supervisor::check_test_gate::bb2" [label="SwitchInt"];
+  "cfg::supervisor::check_test_gate::bb5" -> "cfg::supervisor::check_test_gate::bb22" [label="Goto"];
+  "cfg::supervisor::check_test_gate::bb8" -> "cfg::supervisor::check_test_gate::bb10" [label="SwitchInt"];
+  "cfg::supervisor::check_test_gate::bb8" -> "cfg::supervisor::check_test_gate::bb11" [label="SwitchInt"];
+  "cfg::supervisor::check_test_gate::bb8" -> "cfg::supervisor::check_test_gate::bb9" [label="SwitchInt"];
+  "cfg::supervisor::check_test_gate::bb10" -> "cfg::supervisor::check_test_gate::bb12" [label="SwitchInt"];
+  "cfg::supervisor::check_test_gate::bb10" -> "cfg::supervisor::check_test_gate::bb13" [label="SwitchInt"];
+  "cfg::supervisor::check_test_gate::bb15" -> "cfg::supervisor::check_test_gate::bb24" [label="Goto"];
+  "cfg::supervisor::check_test_gate::bb17" -> "cfg::supervisor::check_test_gate::bb24" [label="Goto"];
+  "cfg::supervisor::check_test_gate::bb20" -> "cfg::supervisor::check_test_gate::bb24" [label="Drop"];
+  "cfg::supervisor::check_test_gate::bb21" -> "cfg::supervisor::check_test_gate::bb22" [label="Goto"];
+  "cfg::supervisor::check_test_gate::bb23" -> "cfg::supervisor::check_test_gate::bb25" [label="Drop"];
+}

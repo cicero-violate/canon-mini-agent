@@ -1,0 +1,40 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2279 {
+    label="orchestrator_seam::new_probe_writer";
+    "cfg::orchestrator_seam::new_probe_writer::bb0" [label="bb0\nCall"];
+    "cfg::orchestrator_seam::new_probe_writer::bb1" [label="bb1\nCall"];
+    "cfg::orchestrator_seam::new_probe_writer::bb2" [label="bb2\nCall"];
+    "cfg::orchestrator_seam::new_probe_writer::bb3" [label="bb3\nCall"];
+    "cfg::orchestrator_seam::new_probe_writer::bb4" [label="bb4\nDrop"];
+    "cfg::orchestrator_seam::new_probe_writer::bb5" [label="bb5\nCall"];
+    "cfg::orchestrator_seam::new_probe_writer::bb6" [label="bb6\nCall"];
+    "cfg::orchestrator_seam::new_probe_writer::bb7" [label="bb7\nCall"];
+    "cfg::orchestrator_seam::new_probe_writer::bb8" [label="bb8\nCall"];
+    "cfg::orchestrator_seam::new_probe_writer::bb9" [label="bb9\nCall"];
+    "cfg::orchestrator_seam::new_probe_writer::bb10" [label="bb10\nCall"];
+    "cfg::orchestrator_seam::new_probe_writer::bb11" [label="bb11\nReturn"];
+    "cfg::orchestrator_seam::new_probe_writer::bb12" [label="bb12\nDrop cleanup loop"];
+    "cfg::orchestrator_seam::new_probe_writer::bb13" [label="bb13\nDrop cleanup loop"];
+    "cfg::orchestrator_seam::new_probe_writer::bb14" [label="bb14\nDrop cleanup loop"];
+    "cfg::orchestrator_seam::new_probe_writer::bb15" [label="bb15\nUnwindResume cleanup loop"];
+    "cfg::orchestrator_seam::new_probe_writer::bb16" [label="bb16\nDrop cleanup loop"];
+    "cfg::orchestrator_seam::new_probe_writer::bb17" [label="bb17\nSwitchInt cleanup loop"];
+    "cfg::orchestrator_seam::new_probe_writer::bb18" [label="bb18\nDrop cleanup loop"];
+    "cfg::orchestrator_seam::new_probe_writer::bb19" [label="bb19\nSwitchInt cleanup loop"];
+  }
+  "cfg::orchestrator_seam::new_probe_writer::bb4" -> "cfg::orchestrator_seam::new_probe_writer::bb5" [label="Drop"];
+  "cfg::orchestrator_seam::new_probe_writer::bb4" -> "cfg::orchestrator_seam::new_probe_writer::bb12" [label="Drop"];
+  "cfg::orchestrator_seam::new_probe_writer::bb12" -> "cfg::orchestrator_seam::new_probe_writer::bb14" [label="Drop"];
+  "cfg::orchestrator_seam::new_probe_writer::bb13" -> "cfg::orchestrator_seam::new_probe_writer::bb14" [label="Drop"];
+  "cfg::orchestrator_seam::new_probe_writer::bb14" -> "cfg::orchestrator_seam::new_probe_writer::bb15" [label="Drop"];
+  "cfg::orchestrator_seam::new_probe_writer::bb16" -> "cfg::orchestrator_seam::new_probe_writer::bb19" [label="Drop"];
+  "cfg::orchestrator_seam::new_probe_writer::bb17" -> "cfg::orchestrator_seam::new_probe_writer::bb19" [label="SwitchInt"];
+  "cfg::orchestrator_seam::new_probe_writer::bb17" -> "cfg::orchestrator_seam::new_probe_writer::bb16" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::orchestrator_seam::new_probe_writer::bb18" -> "cfg::orchestrator_seam::new_probe_writer::bb12" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::orchestrator_seam::new_probe_writer::bb19" -> "cfg::orchestrator_seam::new_probe_writer::bb12" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::orchestrator_seam::new_probe_writer::bb19" -> "cfg::orchestrator_seam::new_probe_writer::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

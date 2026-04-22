@@ -1,0 +1,25 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4568 {
+    label="tools::append_rejected_batch_item";
+    "cfg::tools::append_rejected_batch_item::bb0" [label="bb0\nCall"];
+    "cfg::tools::append_rejected_batch_item::bb1" [label="bb1\nCall"];
+    "cfg::tools::append_rejected_batch_item::bb2" [label="bb2\nCall"];
+    "cfg::tools::append_rejected_batch_item::bb3" [label="bb3\nCall"];
+    "cfg::tools::append_rejected_batch_item::bb4" [label="bb4\nCall"];
+    "cfg::tools::append_rejected_batch_item::bb5" [label="bb5\nDrop"];
+    "cfg::tools::append_rejected_batch_item::bb6" [label="bb6\nDrop"];
+    "cfg::tools::append_rejected_batch_item::bb7" [label="bb7\nReturn"];
+    "cfg::tools::append_rejected_batch_item::bb8" [label="bb8\nDrop cleanup"];
+    "cfg::tools::append_rejected_batch_item::bb9" [label="bb9\nDrop cleanup"];
+    "cfg::tools::append_rejected_batch_item::bb10" [label="bb10\nUnwindResume cleanup"];
+  }
+  "cfg::tools::append_rejected_batch_item::bb5" -> "cfg::tools::append_rejected_batch_item::bb6" [label="Drop"];
+  "cfg::tools::append_rejected_batch_item::bb5" -> "cfg::tools::append_rejected_batch_item::bb9" [label="Drop"];
+  "cfg::tools::append_rejected_batch_item::bb6" -> "cfg::tools::append_rejected_batch_item::bb7" [label="Drop"];
+  "cfg::tools::append_rejected_batch_item::bb8" -> "cfg::tools::append_rejected_batch_item::bb9" [label="Drop"];
+  "cfg::tools::append_rejected_batch_item::bb9" -> "cfg::tools::append_rejected_batch_item::bb10" [label="Drop"];
+}

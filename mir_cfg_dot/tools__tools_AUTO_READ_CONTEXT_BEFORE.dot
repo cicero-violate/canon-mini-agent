@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3868 {
+    label="tools::AUTO_READ_CONTEXT_BEFORE";
+    "cfg::tools::AUTO_READ_CONTEXT_BEFORE::bb0" [label="bb0\nReturn"];
+  }
+}

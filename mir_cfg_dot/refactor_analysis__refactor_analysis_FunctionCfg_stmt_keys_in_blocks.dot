@@ -1,0 +1,41 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2862 {
+    label="refactor_analysis::FunctionCfg::stmt_keys_in_blocks";
+    "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb0" [label="bb0\nCall"];
+    "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb1" [label="bb1\nCall"];
+    "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb2" [label="bb2\nGoto"];
+    "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb3" [label="bb3\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb6" [label="bb6\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb7" [label="bb7\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb9" [label="bb9\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb10" [label="bb10\nGoto loop"];
+    "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb11" [label="bb11\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb13" [label="bb13\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb14" [label="bb14\nCall loop"];
+    "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb15" [label="bb15\nReturn loop"];
+    "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb16" [label="bb16\nDrop cleanup loop"];
+    "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb17" [label="bb17\nUnwindResume cleanup loop"];
+    "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb18" [label="bb18\nGoto loop"];
+  }
+  "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb2" -> "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb3" [label="Goto"];
+  "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb4" -> "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb7" [label="SwitchInt"];
+  "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb4" -> "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb6" [label="SwitchInt"];
+  "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb4" -> "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb5" [label="SwitchInt"];
+  "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb8" -> "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb9" [label="SwitchInt"];
+  "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb8" -> "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb8" -> "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb10" -> "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb11" [label="Goto"];
+  "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb12" -> "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb12" -> "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb13" [label="SwitchInt"];
+  "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb12" -> "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb16" -> "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb17" [label="Drop"];
+  "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb18" -> "cfg::refactor_analysis::FunctionCfg::stmt_keys_in_blocks::bb11" [color="crimson", penwidth=2, label="Goto back"];
+}

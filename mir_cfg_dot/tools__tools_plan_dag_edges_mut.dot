@@ -1,0 +1,23 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4378 {
+    label="tools::plan_dag_edges_mut";
+    "cfg::tools::plan_dag_edges_mut::bb0" [label="bb0\nCall"];
+    "cfg::tools::plan_dag_edges_mut::bb1" [label="bb1\nCall"];
+    "cfg::tools::plan_dag_edges_mut::bb2" [label="bb2\nCall"];
+    "cfg::tools::plan_dag_edges_mut::bb3" [label="bb3\nCall"];
+    "cfg::tools::plan_dag_edges_mut::bb4" [label="bb4\nSwitchInt"];
+    "cfg::tools::plan_dag_edges_mut::bb5" [label="bb5\nUnreachable"];
+    "cfg::tools::plan_dag_edges_mut::bb6" [label="bb6\nCall"];
+    "cfg::tools::plan_dag_edges_mut::bb7" [label="bb7\nCall"];
+    "cfg::tools::plan_dag_edges_mut::bb8" [label="bb8\nCall"];
+    "cfg::tools::plan_dag_edges_mut::bb9" [label="bb9\nCall"];
+    "cfg::tools::plan_dag_edges_mut::bb10" [label="bb10\nReturn"];
+  }
+  "cfg::tools::plan_dag_edges_mut::bb4" -> "cfg::tools::plan_dag_edges_mut::bb6" [label="SwitchInt"];
+  "cfg::tools::plan_dag_edges_mut::bb4" -> "cfg::tools::plan_dag_edges_mut::bb7" [label="SwitchInt"];
+  "cfg::tools::plan_dag_edges_mut::bb4" -> "cfg::tools::plan_dag_edges_mut::bb5" [label="SwitchInt"];
+}

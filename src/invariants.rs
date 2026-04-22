@@ -748,10 +748,12 @@ fn actor_kind_from_role(role: &str) -> &'static str {
 /// Called after op_enforce: ensures the in-memory Enforced status is stable.
 /// (Gate hardening happens in app.rs based on status == Enforced.)
 fn update_gate_enforcement(file: &mut EnforcedInvariantsFile) {
-    for inv in file.invariants.iter_mut() {
-        if inv.status == InvariantStatus::Enforced && inv.gates.is_empty() {
-            inv.gates = default_gates_for_conditions(&inv.state_conditions);
-        }
+    for inv in file
+        .invariants
+        .iter_mut()
+        .filter(|inv| inv.status == InvariantStatus::Enforced && inv.gates.is_empty())
+    {
+        inv.gates = default_gates_for_conditions(&inv.state_conditions);
     }
 }
 

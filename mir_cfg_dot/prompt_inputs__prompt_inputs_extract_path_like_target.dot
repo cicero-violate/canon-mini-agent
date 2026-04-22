@@ -1,0 +1,44 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2489 {
+    label="prompt_inputs::extract_path_like_target";
+    "cfg::prompt_inputs::extract_path_like_target::bb0" [label="bb0\nCall"];
+    "cfg::prompt_inputs::extract_path_like_target::bb1" [label="bb1\nGoto"];
+    "cfg::prompt_inputs::extract_path_like_target::bb2" [label="bb2\nCall loop"];
+    "cfg::prompt_inputs::extract_path_like_target::bb3" [label="bb3\nSwitchInt loop"];
+    "cfg::prompt_inputs::extract_path_like_target::bb4" [label="bb4\nUnreachable loop"];
+    "cfg::prompt_inputs::extract_path_like_target::bb5" [label="bb5\nCall loop"];
+    "cfg::prompt_inputs::extract_path_like_target::bb6" [label="bb6\nDrop loop"];
+    "cfg::prompt_inputs::extract_path_like_target::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::prompt_inputs::extract_path_like_target::bb8" [label="bb8\nCall loop"];
+    "cfg::prompt_inputs::extract_path_like_target::bb9" [label="bb9\nCall loop"];
+    "cfg::prompt_inputs::extract_path_like_target::bb10" [label="bb10\nCall loop"];
+    "cfg::prompt_inputs::extract_path_like_target::bb11" [label="bb11\nCall loop"];
+    "cfg::prompt_inputs::extract_path_like_target::bb12" [label="bb12\nCall loop"];
+    "cfg::prompt_inputs::extract_path_like_target::bb13" [label="bb13\nCall loop"];
+    "cfg::prompt_inputs::extract_path_like_target::bb14" [label="bb14\nCall loop"];
+    "cfg::prompt_inputs::extract_path_like_target::bb15" [label="bb15\nSwitchInt loop"];
+    "cfg::prompt_inputs::extract_path_like_target::bb16" [label="bb16\nCall"];
+    "cfg::prompt_inputs::extract_path_like_target::bb17" [label="bb17\nDrop"];
+    "cfg::prompt_inputs::extract_path_like_target::bb18" [label="bb18\nGoto"];
+    "cfg::prompt_inputs::extract_path_like_target::bb19" [label="bb19\nReturn"];
+    "cfg::prompt_inputs::extract_path_like_target::bb20" [label="bb20\nDrop cleanup"];
+    "cfg::prompt_inputs::extract_path_like_target::bb21" [label="bb21\nUnwindResume cleanup"];
+  }
+  "cfg::prompt_inputs::extract_path_like_target::bb1" -> "cfg::prompt_inputs::extract_path_like_target::bb2" [label="Goto"];
+  "cfg::prompt_inputs::extract_path_like_target::bb3" -> "cfg::prompt_inputs::extract_path_like_target::bb6" [label="SwitchInt"];
+  "cfg::prompt_inputs::extract_path_like_target::bb3" -> "cfg::prompt_inputs::extract_path_like_target::bb5" [label="SwitchInt"];
+  "cfg::prompt_inputs::extract_path_like_target::bb3" -> "cfg::prompt_inputs::extract_path_like_target::bb4" [label="SwitchInt"];
+  "cfg::prompt_inputs::extract_path_like_target::bb6" -> "cfg::prompt_inputs::extract_path_like_target::bb18" [label="Drop"];
+  "cfg::prompt_inputs::extract_path_like_target::bb7" -> "cfg::prompt_inputs::extract_path_like_target::bb8" [label="SwitchInt"];
+  "cfg::prompt_inputs::extract_path_like_target::bb7" -> "cfg::prompt_inputs::extract_path_like_target::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompt_inputs::extract_path_like_target::bb7" -> "cfg::prompt_inputs::extract_path_like_target::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompt_inputs::extract_path_like_target::bb15" -> "cfg::prompt_inputs::extract_path_like_target::bb16" [label="SwitchInt"];
+  "cfg::prompt_inputs::extract_path_like_target::bb15" -> "cfg::prompt_inputs::extract_path_like_target::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompt_inputs::extract_path_like_target::bb17" -> "cfg::prompt_inputs::extract_path_like_target::bb19" [label="Drop"];
+  "cfg::prompt_inputs::extract_path_like_target::bb18" -> "cfg::prompt_inputs::extract_path_like_target::bb19" [label="Goto"];
+  "cfg::prompt_inputs::extract_path_like_target::bb20" -> "cfg::prompt_inputs::extract_path_like_target::bb21" [label="Drop"];
+}

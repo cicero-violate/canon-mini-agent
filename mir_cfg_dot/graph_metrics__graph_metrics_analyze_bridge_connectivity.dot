@@ -1,0 +1,34 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_942 {
+    label="graph_metrics::analyze_bridge_connectivity";
+    "cfg::graph_metrics::analyze_bridge_connectivity::bb0" [label="bb0\nCall"];
+    "cfg::graph_metrics::analyze_bridge_connectivity::bb1" [label="bb1\nCall"];
+    "cfg::graph_metrics::analyze_bridge_connectivity::bb2" [label="bb2\nSwitchInt"];
+    "cfg::graph_metrics::analyze_bridge_connectivity::bb3" [label="bb3\nUnreachable"];
+    "cfg::graph_metrics::analyze_bridge_connectivity::bb4" [label="bb4\nCall"];
+    "cfg::graph_metrics::analyze_bridge_connectivity::bb5" [label="bb5\nCall"];
+    "cfg::graph_metrics::analyze_bridge_connectivity::bb6" [label="bb6\nCall"];
+    "cfg::graph_metrics::analyze_bridge_connectivity::bb7" [label="bb7\nCall"];
+    "cfg::graph_metrics::analyze_bridge_connectivity::bb8" [label="bb8\nCall"];
+    "cfg::graph_metrics::analyze_bridge_connectivity::bb9" [label="bb9\nCall"];
+    "cfg::graph_metrics::analyze_bridge_connectivity::bb10" [label="bb10\nCall"];
+    "cfg::graph_metrics::analyze_bridge_connectivity::bb11" [label="bb11\nCall"];
+    "cfg::graph_metrics::analyze_bridge_connectivity::bb12" [label="bb12\nCall"];
+    "cfg::graph_metrics::analyze_bridge_connectivity::bb13" [label="bb13\nCall"];
+    "cfg::graph_metrics::analyze_bridge_connectivity::bb14" [label="bb14\nDrop"];
+    "cfg::graph_metrics::analyze_bridge_connectivity::bb15" [label="bb15\nReturn"];
+    "cfg::graph_metrics::analyze_bridge_connectivity::bb16" [label="bb16\nDrop cleanup"];
+    "cfg::graph_metrics::analyze_bridge_connectivity::bb17" [label="bb17\nDrop cleanup"];
+    "cfg::graph_metrics::analyze_bridge_connectivity::bb18" [label="bb18\nUnwindResume cleanup"];
+  }
+  "cfg::graph_metrics::analyze_bridge_connectivity::bb2" -> "cfg::graph_metrics::analyze_bridge_connectivity::bb4" [label="SwitchInt"];
+  "cfg::graph_metrics::analyze_bridge_connectivity::bb2" -> "cfg::graph_metrics::analyze_bridge_connectivity::bb5" [label="SwitchInt"];
+  "cfg::graph_metrics::analyze_bridge_connectivity::bb2" -> "cfg::graph_metrics::analyze_bridge_connectivity::bb3" [label="SwitchInt"];
+  "cfg::graph_metrics::analyze_bridge_connectivity::bb14" -> "cfg::graph_metrics::analyze_bridge_connectivity::bb15" [label="Drop"];
+  "cfg::graph_metrics::analyze_bridge_connectivity::bb16" -> "cfg::graph_metrics::analyze_bridge_connectivity::bb17" [label="Drop"];
+  "cfg::graph_metrics::analyze_bridge_connectivity::bb17" -> "cfg::graph_metrics::analyze_bridge_connectivity::bb18" [label="Drop"];
+}

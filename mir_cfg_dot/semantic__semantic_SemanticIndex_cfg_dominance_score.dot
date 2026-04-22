@@ -1,0 +1,51 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3129 {
+    label="semantic::SemanticIndex::cfg_dominance_score";
+    "cfg::semantic::SemanticIndex::cfg_dominance_score::bb0" [label="bb0\nCall"];
+    "cfg::semantic::SemanticIndex::cfg_dominance_score::bb1" [label="bb1\nCall"];
+    "cfg::semantic::SemanticIndex::cfg_dominance_score::bb2" [label="bb2\nGoto"];
+    "cfg::semantic::SemanticIndex::cfg_dominance_score::bb3" [label="bb3\nCall loop"];
+    "cfg::semantic::SemanticIndex::cfg_dominance_score::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::cfg_dominance_score::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::semantic::SemanticIndex::cfg_dominance_score::bb6" [label="bb6\nCall loop"];
+    "cfg::semantic::SemanticIndex::cfg_dominance_score::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::cfg_dominance_score::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::cfg_dominance_score::bb9" [label="bb9\nCall loop"];
+    "cfg::semantic::SemanticIndex::cfg_dominance_score::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::cfg_dominance_score::bb11" [label="bb11\nAssert loop"];
+    "cfg::semantic::SemanticIndex::cfg_dominance_score::bb12" [label="bb12\nCall loop"];
+    "cfg::semantic::SemanticIndex::cfg_dominance_score::bb13" [label="bb13\nCall loop"];
+    "cfg::semantic::SemanticIndex::cfg_dominance_score::bb14" [label="bb14\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::cfg_dominance_score::bb15" [label="bb15\nAssert loop"];
+    "cfg::semantic::SemanticIndex::cfg_dominance_score::bb16" [label="bb16\nGoto loop"];
+    "cfg::semantic::SemanticIndex::cfg_dominance_score::bb17" [label="bb17\nDrop"];
+    "cfg::semantic::SemanticIndex::cfg_dominance_score::bb18" [label="bb18\nDrop"];
+    "cfg::semantic::SemanticIndex::cfg_dominance_score::bb19" [label="bb19\nReturn"];
+    "cfg::semantic::SemanticIndex::cfg_dominance_score::bb20" [label="bb20\nDrop cleanup"];
+    "cfg::semantic::SemanticIndex::cfg_dominance_score::bb21" [label="bb21\nUnwindResume cleanup"];
+  }
+  "cfg::semantic::SemanticIndex::cfg_dominance_score::bb2" -> "cfg::semantic::SemanticIndex::cfg_dominance_score::bb3" [label="Goto"];
+  "cfg::semantic::SemanticIndex::cfg_dominance_score::bb4" -> "cfg::semantic::SemanticIndex::cfg_dominance_score::bb7" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::cfg_dominance_score::bb4" -> "cfg::semantic::SemanticIndex::cfg_dominance_score::bb6" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::cfg_dominance_score::bb4" -> "cfg::semantic::SemanticIndex::cfg_dominance_score::bb5" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::cfg_dominance_score::bb7" -> "cfg::semantic::SemanticIndex::cfg_dominance_score::bb18" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::cfg_dominance_score::bb7" -> "cfg::semantic::SemanticIndex::cfg_dominance_score::bb17" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::cfg_dominance_score::bb8" -> "cfg::semantic::SemanticIndex::cfg_dominance_score::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::cfg_dominance_score::bb8" -> "cfg::semantic::SemanticIndex::cfg_dominance_score::bb9" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::cfg_dominance_score::bb10" -> "cfg::semantic::SemanticIndex::cfg_dominance_score::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::cfg_dominance_score::bb10" -> "cfg::semantic::SemanticIndex::cfg_dominance_score::bb11" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::cfg_dominance_score::bb11" -> "cfg::semantic::SemanticIndex::cfg_dominance_score::bb12" [label="Assert"];
+  "cfg::semantic::SemanticIndex::cfg_dominance_score::bb11" -> "cfg::semantic::SemanticIndex::cfg_dominance_score::bb20" [label="Assert"];
+  "cfg::semantic::SemanticIndex::cfg_dominance_score::bb14" -> "cfg::semantic::SemanticIndex::cfg_dominance_score::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::cfg_dominance_score::bb14" -> "cfg::semantic::SemanticIndex::cfg_dominance_score::bb15" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::cfg_dominance_score::bb15" -> "cfg::semantic::SemanticIndex::cfg_dominance_score::bb16" [label="Assert"];
+  "cfg::semantic::SemanticIndex::cfg_dominance_score::bb15" -> "cfg::semantic::SemanticIndex::cfg_dominance_score::bb20" [label="Assert"];
+  "cfg::semantic::SemanticIndex::cfg_dominance_score::bb16" -> "cfg::semantic::SemanticIndex::cfg_dominance_score::bb3" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::semantic::SemanticIndex::cfg_dominance_score::bb17" -> "cfg::semantic::SemanticIndex::cfg_dominance_score::bb19" [label="Drop"];
+  "cfg::semantic::SemanticIndex::cfg_dominance_score::bb18" -> "cfg::semantic::SemanticIndex::cfg_dominance_score::bb19" [label="Drop"];
+  "cfg::semantic::SemanticIndex::cfg_dominance_score::bb20" -> "cfg::semantic::SemanticIndex::cfg_dominance_score::bb21" [label="Drop"];
+}

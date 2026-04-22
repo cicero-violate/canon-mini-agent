@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_264 {
+    label="app::read_executor_progress_signals::DIVERGENCE_WINDOW_MS";
+    "cfg::app::read_executor_progress_signals::DIVERGENCE_WINDOW_MS::bb0" [label="bb0\nReturn"];
+  }
+}

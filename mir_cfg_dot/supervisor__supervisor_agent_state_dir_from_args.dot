@@ -1,0 +1,33 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3291 {
+    label="supervisor::agent_state_dir_from_args";
+    "cfg::supervisor::agent_state_dir_from_args::bb0" [label="bb0\nGoto"];
+    "cfg::supervisor::agent_state_dir_from_args::bb1" [label="bb1\nAssert loop"];
+    "cfg::supervisor::agent_state_dir_from_args::bb2" [label="bb2\nSwitchInt loop"];
+    "cfg::supervisor::agent_state_dir_from_args::bb3" [label="bb3\nAssert loop"];
+    "cfg::supervisor::agent_state_dir_from_args::bb4" [label="bb4\nCall loop"];
+    "cfg::supervisor::agent_state_dir_from_args::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::supervisor::agent_state_dir_from_args::bb6" [label="bb6\nAssert loop"];
+    "cfg::supervisor::agent_state_dir_from_args::bb7" [label="bb7\nAssert loop"];
+    "cfg::supervisor::agent_state_dir_from_args::bb8" [label="bb8\nCall loop"];
+    "cfg::supervisor::agent_state_dir_from_args::bb9" [label="bb9\nAssert loop"];
+    "cfg::supervisor::agent_state_dir_from_args::bb10" [label="bb10\nGoto loop"];
+    "cfg::supervisor::agent_state_dir_from_args::bb11" [label="bb11\nCall"];
+    "cfg::supervisor::agent_state_dir_from_args::bb12" [label="bb12\nReturn"];
+  }
+  "cfg::supervisor::agent_state_dir_from_args::bb0" -> "cfg::supervisor::agent_state_dir_from_args::bb1" [label="Goto"];
+  "cfg::supervisor::agent_state_dir_from_args::bb1" -> "cfg::supervisor::agent_state_dir_from_args::bb2" [label="Assert"];
+  "cfg::supervisor::agent_state_dir_from_args::bb2" -> "cfg::supervisor::agent_state_dir_from_args::bb11" [label="SwitchInt"];
+  "cfg::supervisor::agent_state_dir_from_args::bb2" -> "cfg::supervisor::agent_state_dir_from_args::bb3" [label="SwitchInt"];
+  "cfg::supervisor::agent_state_dir_from_args::bb3" -> "cfg::supervisor::agent_state_dir_from_args::bb4" [label="Assert"];
+  "cfg::supervisor::agent_state_dir_from_args::bb5" -> "cfg::supervisor::agent_state_dir_from_args::bb9" [label="SwitchInt"];
+  "cfg::supervisor::agent_state_dir_from_args::bb5" -> "cfg::supervisor::agent_state_dir_from_args::bb6" [label="SwitchInt"];
+  "cfg::supervisor::agent_state_dir_from_args::bb6" -> "cfg::supervisor::agent_state_dir_from_args::bb7" [label="Assert"];
+  "cfg::supervisor::agent_state_dir_from_args::bb7" -> "cfg::supervisor::agent_state_dir_from_args::bb8" [label="Assert"];
+  "cfg::supervisor::agent_state_dir_from_args::bb9" -> "cfg::supervisor::agent_state_dir_from_args::bb10" [label="Assert"];
+  "cfg::supervisor::agent_state_dir_from_args::bb10" -> "cfg::supervisor::agent_state_dir_from_args::bb1" [color="crimson", penwidth=2, label="Goto back"];
+}

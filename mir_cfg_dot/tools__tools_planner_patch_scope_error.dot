@@ -1,0 +1,41 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3863 {
+    label="tools::planner_patch_scope_error";
+    "cfg::tools::planner_patch_scope_error::bb0" [label="bb0\nSwitchInt"];
+    "cfg::tools::planner_patch_scope_error::bb1" [label="bb1\nCall"];
+    "cfg::tools::planner_patch_scope_error::bb2" [label="bb2\nGoto"];
+    "cfg::tools::planner_patch_scope_error::bb3" [label="bb3\nSwitchInt"];
+    "cfg::tools::planner_patch_scope_error::bb4" [label="bb4\nSwitchInt"];
+    "cfg::tools::planner_patch_scope_error::bb5" [label="bb5\nCall"];
+    "cfg::tools::planner_patch_scope_error::bb6" [label="bb6\nCall"];
+    "cfg::tools::planner_patch_scope_error::bb7" [label="bb7\nSwitchInt"];
+    "cfg::tools::planner_patch_scope_error::bb8" [label="bb8\nCall"];
+    "cfg::tools::planner_patch_scope_error::bb9" [label="bb9\nGoto"];
+    "cfg::tools::planner_patch_scope_error::bb10" [label="bb10\nSwitchInt"];
+    "cfg::tools::planner_patch_scope_error::bb11" [label="bb11\nSwitchInt"];
+    "cfg::tools::planner_patch_scope_error::bb12" [label="bb12\nGoto"];
+    "cfg::tools::planner_patch_scope_error::bb13" [label="bb13\nCall"];
+    "cfg::tools::planner_patch_scope_error::bb14" [label="bb14\nGoto"];
+    "cfg::tools::planner_patch_scope_error::bb15" [label="bb15\nReturn"];
+  }
+  "cfg::tools::planner_patch_scope_error::bb0" -> "cfg::tools::planner_patch_scope_error::bb3" [label="SwitchInt"];
+  "cfg::tools::planner_patch_scope_error::bb0" -> "cfg::tools::planner_patch_scope_error::bb1" [label="SwitchInt"];
+  "cfg::tools::planner_patch_scope_error::bb2" -> "cfg::tools::planner_patch_scope_error::bb15" [label="Goto"];
+  "cfg::tools::planner_patch_scope_error::bb3" -> "cfg::tools::planner_patch_scope_error::bb4" [label="SwitchInt"];
+  "cfg::tools::planner_patch_scope_error::bb3" -> "cfg::tools::planner_patch_scope_error::bb8" [label="SwitchInt"];
+  "cfg::tools::planner_patch_scope_error::bb4" -> "cfg::tools::planner_patch_scope_error::bb5" [label="SwitchInt"];
+  "cfg::tools::planner_patch_scope_error::bb4" -> "cfg::tools::planner_patch_scope_error::bb8" [label="SwitchInt"];
+  "cfg::tools::planner_patch_scope_error::bb7" -> "cfg::tools::planner_patch_scope_error::bb10" [label="SwitchInt"];
+  "cfg::tools::planner_patch_scope_error::bb7" -> "cfg::tools::planner_patch_scope_error::bb8" [label="SwitchInt"];
+  "cfg::tools::planner_patch_scope_error::bb9" -> "cfg::tools::planner_patch_scope_error::bb15" [label="Goto"];
+  "cfg::tools::planner_patch_scope_error::bb10" -> "cfg::tools::planner_patch_scope_error::bb11" [label="SwitchInt"];
+  "cfg::tools::planner_patch_scope_error::bb10" -> "cfg::tools::planner_patch_scope_error::bb12" [label="SwitchInt"];
+  "cfg::tools::planner_patch_scope_error::bb11" -> "cfg::tools::planner_patch_scope_error::bb13" [label="SwitchInt"];
+  "cfg::tools::planner_patch_scope_error::bb11" -> "cfg::tools::planner_patch_scope_error::bb12" [label="SwitchInt"];
+  "cfg::tools::planner_patch_scope_error::bb12" -> "cfg::tools::planner_patch_scope_error::bb15" [label="Goto"];
+  "cfg::tools::planner_patch_scope_error::bb14" -> "cfg::tools::planner_patch_scope_error::bb15" [label="Goto"];
+}

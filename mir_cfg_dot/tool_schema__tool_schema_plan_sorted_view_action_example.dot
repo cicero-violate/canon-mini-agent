@@ -1,0 +1,51 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3429 {
+    label="tool_schema::plan_sorted_view_action_example";
+    "cfg::tool_schema::plan_sorted_view_action_example::bb0" [label="bb0\nCall"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb1" [label="bb1\nCall"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb2" [label="bb2\nCall"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb3" [label="bb3\nCall"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb4" [label="bb4\nCall"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb5" [label="bb5\nDrop"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb6" [label="bb6\nCall"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb7" [label="bb7\nCall"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb8" [label="bb8\nCall"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb9" [label="bb9\nCall"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb10" [label="bb10\nDrop"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb11" [label="bb11\nCall"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb12" [label="bb12\nCall"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb13" [label="bb13\nCall"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb14" [label="bb14\nCall"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb15" [label="bb15\nDrop"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb16" [label="bb16\nCall"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb17" [label="bb17\nReturn"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb18" [label="bb18\nDrop cleanup loop"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb19" [label="bb19\nUnwindResume cleanup loop"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb20" [label="bb20\nDrop cleanup loop"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb21" [label="bb21\nSwitchInt cleanup loop"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb22" [label="bb22\nDrop cleanup loop"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb23" [label="bb23\nSwitchInt cleanup loop"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb24" [label="bb24\nDrop cleanup loop"];
+    "cfg::tool_schema::plan_sorted_view_action_example::bb25" [label="bb25\nSwitchInt cleanup loop"];
+  }
+  "cfg::tool_schema::plan_sorted_view_action_example::bb5" -> "cfg::tool_schema::plan_sorted_view_action_example::bb6" [label="Drop"];
+  "cfg::tool_schema::plan_sorted_view_action_example::bb5" -> "cfg::tool_schema::plan_sorted_view_action_example::bb18" [label="Drop"];
+  "cfg::tool_schema::plan_sorted_view_action_example::bb10" -> "cfg::tool_schema::plan_sorted_view_action_example::bb11" [label="Drop"];
+  "cfg::tool_schema::plan_sorted_view_action_example::bb10" -> "cfg::tool_schema::plan_sorted_view_action_example::bb18" [label="Drop"];
+  "cfg::tool_schema::plan_sorted_view_action_example::bb15" -> "cfg::tool_schema::plan_sorted_view_action_example::bb16" [label="Drop"];
+  "cfg::tool_schema::plan_sorted_view_action_example::bb15" -> "cfg::tool_schema::plan_sorted_view_action_example::bb18" [label="Drop"];
+  "cfg::tool_schema::plan_sorted_view_action_example::bb18" -> "cfg::tool_schema::plan_sorted_view_action_example::bb19" [label="Drop"];
+  "cfg::tool_schema::plan_sorted_view_action_example::bb20" -> "cfg::tool_schema::plan_sorted_view_action_example::bb18" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tool_schema::plan_sorted_view_action_example::bb21" -> "cfg::tool_schema::plan_sorted_view_action_example::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tool_schema::plan_sorted_view_action_example::bb21" -> "cfg::tool_schema::plan_sorted_view_action_example::bb20" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tool_schema::plan_sorted_view_action_example::bb22" -> "cfg::tool_schema::plan_sorted_view_action_example::bb18" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tool_schema::plan_sorted_view_action_example::bb23" -> "cfg::tool_schema::plan_sorted_view_action_example::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tool_schema::plan_sorted_view_action_example::bb23" -> "cfg::tool_schema::plan_sorted_view_action_example::bb22" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tool_schema::plan_sorted_view_action_example::bb24" -> "cfg::tool_schema::plan_sorted_view_action_example::bb18" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tool_schema::plan_sorted_view_action_example::bb25" -> "cfg::tool_schema::plan_sorted_view_action_example::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tool_schema::plan_sorted_view_action_example::bb25" -> "cfg::tool_schema::plan_sorted_view_action_example::bb24" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

@@ -1,0 +1,33 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3204 {
+    label="state_space::is_verifier_specific_blocker";
+    "cfg::state_space::is_verifier_specific_blocker::bb0" [label="bb0\nCall"];
+    "cfg::state_space::is_verifier_specific_blocker::bb1" [label="bb1\nCall"];
+    "cfg::state_space::is_verifier_specific_blocker::bb2" [label="bb2\nCall"];
+    "cfg::state_space::is_verifier_specific_blocker::bb3" [label="bb3\nCall"];
+    "cfg::state_space::is_verifier_specific_blocker::bb4" [label="bb4\nCall"];
+    "cfg::state_space::is_verifier_specific_blocker::bb5" [label="bb5\nCall"];
+    "cfg::state_space::is_verifier_specific_blocker::bb6" [label="bb6\nDrop"];
+    "cfg::state_space::is_verifier_specific_blocker::bb7" [label="bb7\nDrop"];
+    "cfg::state_space::is_verifier_specific_blocker::bb8" [label="bb8\nCall"];
+    "cfg::state_space::is_verifier_specific_blocker::bb9" [label="bb9\nCall"];
+    "cfg::state_space::is_verifier_specific_blocker::bb10" [label="bb10\nCall"];
+    "cfg::state_space::is_verifier_specific_blocker::bb11" [label="bb11\nDrop"];
+    "cfg::state_space::is_verifier_specific_blocker::bb12" [label="bb12\nReturn"];
+    "cfg::state_space::is_verifier_specific_blocker::bb13" [label="bb13\nDrop cleanup"];
+    "cfg::state_space::is_verifier_specific_blocker::bb14" [label="bb14\nDrop cleanup"];
+    "cfg::state_space::is_verifier_specific_blocker::bb15" [label="bb15\nDrop cleanup"];
+    "cfg::state_space::is_verifier_specific_blocker::bb16" [label="bb16\nUnwindResume cleanup"];
+  }
+  "cfg::state_space::is_verifier_specific_blocker::bb6" -> "cfg::state_space::is_verifier_specific_blocker::bb7" [label="Drop"];
+  "cfg::state_space::is_verifier_specific_blocker::bb6" -> "cfg::state_space::is_verifier_specific_blocker::bb15" [label="Drop"];
+  "cfg::state_space::is_verifier_specific_blocker::bb7" -> "cfg::state_space::is_verifier_specific_blocker::bb8" [label="Drop"];
+  "cfg::state_space::is_verifier_specific_blocker::bb11" -> "cfg::state_space::is_verifier_specific_blocker::bb12" [label="Drop"];
+  "cfg::state_space::is_verifier_specific_blocker::bb13" -> "cfg::state_space::is_verifier_specific_blocker::bb16" [label="Drop"];
+  "cfg::state_space::is_verifier_specific_blocker::bb14" -> "cfg::state_space::is_verifier_specific_blocker::bb15" [label="Drop"];
+  "cfg::state_space::is_verifier_specific_blocker::bb15" -> "cfg::state_space::is_verifier_specific_blocker::bb16" [label="Drop"];
+}

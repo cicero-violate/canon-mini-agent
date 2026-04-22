@@ -63,6 +63,21 @@ pub struct SystemState {
     /// Replaces last_message_to_*.json files as the authoritative message source.
     #[serde(default)]
     pub inbound_messages_pending: HashMap<String, String>,
+    /// Canonical supervisor build/test verification gate.
+    #[serde(default)]
+    pub rust_patch_verification_requested: bool,
+    /// Canonical orchestrator mode (`orchestrate` or `single`).
+    #[serde(default)]
+    pub orchestrator_mode: String,
+    /// Canonical idle pulse timestamp in Unix epoch millis.
+    #[serde(default)]
+    pub orchestrator_idle_ts_ms: u64,
+    /// Canonical serialized checkpoint snapshot for resume.
+    #[serde(default)]
+    pub checkpoint_snapshot_json: String,
+    /// Canonical hash of the last planner blocker evidence payload.
+    #[serde(default)]
+    pub planner_blocker_evidence_hash: String,
 
     // Rolling diff/plan state fed back into prompts
     pub last_plan_text: String,
@@ -253,6 +268,21 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
         ControlEvent::InboundMessageQueued { role, content, .. } => {
             s.inbound_messages_pending
                 .insert(role.clone(), content.clone());
+        }
+        ControlEvent::RustPatchVerificationRequested { requested } => {
+            s.rust_patch_verification_requested = *requested;
+        }
+        ControlEvent::OrchestratorModeSet { mode } => {
+            s.orchestrator_mode = mode.clone();
+        }
+        ControlEvent::OrchestratorIdlePulse { ts_ms } => {
+            s.orchestrator_idle_ts_ms = *ts_ms;
+        }
+        ControlEvent::CheckpointSnapshotSet { snapshot_json } => {
+            s.checkpoint_snapshot_json = snapshot_json.clone();
+        }
+        ControlEvent::PlannerBlockerEvidenceSet { evidence_hash } => {
+            s.planner_blocker_evidence_hash = evidence_hash.clone();
         }
         ControlEvent::LastPlanTextSet { text } => {
             s.last_plan_text = text.clone();

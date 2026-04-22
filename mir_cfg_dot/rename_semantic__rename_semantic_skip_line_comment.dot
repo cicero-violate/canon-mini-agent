@@ -1,0 +1,26 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2948 {
+    label="rename_semantic::skip_line_comment";
+    "cfg::rename_semantic::skip_line_comment::bb0" [label="bb0\nAssert"];
+    "cfg::rename_semantic::skip_line_comment::bb1" [label="bb1\nGoto"];
+    "cfg::rename_semantic::skip_line_comment::bb2" [label="bb2\nSwitchInt loop"];
+    "cfg::rename_semantic::skip_line_comment::bb3" [label="bb3\nAssert loop"];
+    "cfg::rename_semantic::skip_line_comment::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::rename_semantic::skip_line_comment::bb5" [label="bb5\nAssert loop"];
+    "cfg::rename_semantic::skip_line_comment::bb6" [label="bb6\nGoto loop"];
+    "cfg::rename_semantic::skip_line_comment::bb7" [label="bb7\nReturn"];
+  }
+  "cfg::rename_semantic::skip_line_comment::bb0" -> "cfg::rename_semantic::skip_line_comment::bb1" [label="Assert"];
+  "cfg::rename_semantic::skip_line_comment::bb1" -> "cfg::rename_semantic::skip_line_comment::bb2" [label="Goto"];
+  "cfg::rename_semantic::skip_line_comment::bb2" -> "cfg::rename_semantic::skip_line_comment::bb7" [label="SwitchInt"];
+  "cfg::rename_semantic::skip_line_comment::bb2" -> "cfg::rename_semantic::skip_line_comment::bb3" [label="SwitchInt"];
+  "cfg::rename_semantic::skip_line_comment::bb3" -> "cfg::rename_semantic::skip_line_comment::bb4" [label="Assert"];
+  "cfg::rename_semantic::skip_line_comment::bb4" -> "cfg::rename_semantic::skip_line_comment::bb7" [label="SwitchInt"];
+  "cfg::rename_semantic::skip_line_comment::bb4" -> "cfg::rename_semantic::skip_line_comment::bb5" [label="SwitchInt"];
+  "cfg::rename_semantic::skip_line_comment::bb5" -> "cfg::rename_semantic::skip_line_comment::bb6" [label="Assert"];
+  "cfg::rename_semantic::skip_line_comment::bb6" -> "cfg::rename_semantic::skip_line_comment::bb2" [color="crimson", penwidth=2, label="Goto back"];
+}

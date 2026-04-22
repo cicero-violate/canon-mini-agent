@@ -1,0 +1,24 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1143 {
+    label="invalid_action::validate_blocker_payload_placement";
+    "cfg::invalid_action::validate_blocker_payload_placement::bb0" [label="bb0\nCall"];
+    "cfg::invalid_action::validate_blocker_payload_placement::bb1" [label="bb1\nSwitchInt"];
+    "cfg::invalid_action::validate_blocker_payload_placement::bb2" [label="bb2\nCall"];
+    "cfg::invalid_action::validate_blocker_payload_placement::bb3" [label="bb3\nSwitchInt"];
+    "cfg::invalid_action::validate_blocker_payload_placement::bb4" [label="bb4\nCall"];
+    "cfg::invalid_action::validate_blocker_payload_placement::bb5" [label="bb5\nSwitchInt"];
+    "cfg::invalid_action::validate_blocker_payload_placement::bb6" [label="bb6\nCall"];
+    "cfg::invalid_action::validate_blocker_payload_placement::bb7" [label="bb7\nCall"];
+    "cfg::invalid_action::validate_blocker_payload_placement::bb8" [label="bb8\nReturn"];
+  }
+  "cfg::invalid_action::validate_blocker_payload_placement::bb1" -> "cfg::invalid_action::validate_blocker_payload_placement::bb2" [label="SwitchInt"];
+  "cfg::invalid_action::validate_blocker_payload_placement::bb1" -> "cfg::invalid_action::validate_blocker_payload_placement::bb6" [label="SwitchInt"];
+  "cfg::invalid_action::validate_blocker_payload_placement::bb3" -> "cfg::invalid_action::validate_blocker_payload_placement::bb4" [label="SwitchInt"];
+  "cfg::invalid_action::validate_blocker_payload_placement::bb3" -> "cfg::invalid_action::validate_blocker_payload_placement::bb6" [label="SwitchInt"];
+  "cfg::invalid_action::validate_blocker_payload_placement::bb5" -> "cfg::invalid_action::validate_blocker_payload_placement::bb8" [label="SwitchInt"];
+  "cfg::invalid_action::validate_blocker_payload_placement::bb5" -> "cfg::invalid_action::validate_blocker_payload_placement::bb6" [label="SwitchInt"];
+}

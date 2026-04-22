@@ -1,0 +1,14 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4463 {
+    label="tools::ctx_spawn";
+    "cfg::tools::ctx_spawn::bb0" [label="bb0\nCall"];
+    "cfg::tools::ctx_spawn::bb1" [label="bb1\nCall"];
+    "cfg::tools::ctx_spawn::bb2" [label="bb2\nCall"];
+    "cfg::tools::ctx_spawn::bb3" [label="bb3\nCall"];
+    "cfg::tools::ctx_spawn::bb4" [label="bb4\nReturn"];
+  }
+}

@@ -1,0 +1,28 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3623 {
+    label="tools::fnv1a64";
+    "cfg::tools::fnv1a64::bb0" [label="bb0\nCall"];
+    "cfg::tools::fnv1a64::bb1" [label="bb1\nCall"];
+    "cfg::tools::fnv1a64::bb2" [label="bb2\nGoto"];
+    "cfg::tools::fnv1a64::bb3" [label="bb3\nCall loop"];
+    "cfg::tools::fnv1a64::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::tools::fnv1a64::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::tools::fnv1a64::bb6" [label="bb6\nCall loop"];
+    "cfg::tools::fnv1a64::bb7" [label="bb7\nCall loop"];
+    "cfg::tools::fnv1a64::bb8" [label="bb8\nCall loop"];
+    "cfg::tools::fnv1a64::bb9" [label="bb9\nGoto loop"];
+    "cfg::tools::fnv1a64::bb10" [label="bb10\nCall"];
+    "cfg::tools::fnv1a64::bb11" [label="bb11\nCall"];
+    "cfg::tools::fnv1a64::bb12" [label="bb12\nCall"];
+    "cfg::tools::fnv1a64::bb13" [label="bb13\nReturn"];
+  }
+  "cfg::tools::fnv1a64::bb2" -> "cfg::tools::fnv1a64::bb3" [label="Goto"];
+  "cfg::tools::fnv1a64::bb4" -> "cfg::tools::fnv1a64::bb7" [label="SwitchInt"];
+  "cfg::tools::fnv1a64::bb4" -> "cfg::tools::fnv1a64::bb6" [label="SwitchInt"];
+  "cfg::tools::fnv1a64::bb4" -> "cfg::tools::fnv1a64::bb5" [label="SwitchInt"];
+  "cfg::tools::fnv1a64::bb9" -> "cfg::tools::fnv1a64::bb3" [color="crimson", penwidth=2, label="Goto back"];
+}

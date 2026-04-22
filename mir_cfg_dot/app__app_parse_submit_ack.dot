@@ -1,0 +1,57 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_459 {
+    label="app::parse_submit_ack";
+    "cfg::app::parse_submit_ack::bb0" [label="bb0\nCall"];
+    "cfg::app::parse_submit_ack::bb1" [label="bb1\nCall"];
+    "cfg::app::parse_submit_ack::bb2" [label="bb2\nCall"];
+    "cfg::app::parse_submit_ack::bb3" [label="bb3\nSwitchInt"];
+    "cfg::app::parse_submit_ack::bb4" [label="bb4\nUnreachable loop"];
+    "cfg::app::parse_submit_ack::bb5" [label="bb5\nCall loop"];
+    "cfg::app::parse_submit_ack::bb6" [label="bb6\nCall loop"];
+    "cfg::app::parse_submit_ack::bb7" [label="bb7\nCall loop"];
+    "cfg::app::parse_submit_ack::bb8" [label="bb8\nCall loop"];
+    "cfg::app::parse_submit_ack::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::app::parse_submit_ack::bb10" [label="bb10\nGoto loop"];
+    "cfg::app::parse_submit_ack::bb11" [label="bb11\nCall loop"];
+    "cfg::app::parse_submit_ack::bb12" [label="bb12\nCall loop"];
+    "cfg::app::parse_submit_ack::bb13" [label="bb13\nCall loop"];
+    "cfg::app::parse_submit_ack::bb14" [label="bb14\nSwitchInt loop"];
+    "cfg::app::parse_submit_ack::bb15" [label="bb15\nCall loop"];
+    "cfg::app::parse_submit_ack::bb16" [label="bb16\nCall loop"];
+    "cfg::app::parse_submit_ack::bb17" [label="bb17\nCall loop"];
+    "cfg::app::parse_submit_ack::bb18" [label="bb18\nCall loop"];
+    "cfg::app::parse_submit_ack::bb19" [label="bb19\nSwitchInt loop"];
+    "cfg::app::parse_submit_ack::bb20" [label="bb20\nCall"];
+    "cfg::app::parse_submit_ack::bb21" [label="bb21\nCall"];
+    "cfg::app::parse_submit_ack::bb22" [label="bb22\nCall"];
+    "cfg::app::parse_submit_ack::bb23" [label="bb23\nCall"];
+    "cfg::app::parse_submit_ack::bb24" [label="bb24\nDrop"];
+    "cfg::app::parse_submit_ack::bb25" [label="bb25\nDrop loop"];
+    "cfg::app::parse_submit_ack::bb26" [label="bb26\nReturn loop"];
+    "cfg::app::parse_submit_ack::bb27" [label="bb27\nDrop cleanup loop"];
+    "cfg::app::parse_submit_ack::bb28" [label="bb28\nUnwindResume cleanup loop"];
+    "cfg::app::parse_submit_ack::bb29" [label="bb29\nGoto loop"];
+    "cfg::app::parse_submit_ack::bb30" [label="bb30\nGoto loop"];
+  }
+  "cfg::app::parse_submit_ack::bb3" -> "cfg::app::parse_submit_ack::bb5" [label="SwitchInt"];
+  "cfg::app::parse_submit_ack::bb3" -> "cfg::app::parse_submit_ack::bb6" [label="SwitchInt"];
+  "cfg::app::parse_submit_ack::bb3" -> "cfg::app::parse_submit_ack::bb4" [label="SwitchInt"];
+  "cfg::app::parse_submit_ack::bb9" -> "cfg::app::parse_submit_ack::bb11" [label="SwitchInt"];
+  "cfg::app::parse_submit_ack::bb9" -> "cfg::app::parse_submit_ack::bb10" [label="SwitchInt"];
+  "cfg::app::parse_submit_ack::bb10" -> "cfg::app::parse_submit_ack::bb25" [label="Goto"];
+  "cfg::app::parse_submit_ack::bb14" -> "cfg::app::parse_submit_ack::bb15" [label="SwitchInt"];
+  "cfg::app::parse_submit_ack::bb14" -> "cfg::app::parse_submit_ack::bb16" [label="SwitchInt"];
+  "cfg::app::parse_submit_ack::bb14" -> "cfg::app::parse_submit_ack::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::parse_submit_ack::bb19" -> "cfg::app::parse_submit_ack::bb20" [label="SwitchInt"];
+  "cfg::app::parse_submit_ack::bb19" -> "cfg::app::parse_submit_ack::bb21" [label="SwitchInt"];
+  "cfg::app::parse_submit_ack::bb19" -> "cfg::app::parse_submit_ack::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::parse_submit_ack::bb24" -> "cfg::app::parse_submit_ack::bb26" [label="Drop"];
+  "cfg::app::parse_submit_ack::bb25" -> "cfg::app::parse_submit_ack::bb26" [label="Drop"];
+  "cfg::app::parse_submit_ack::bb27" -> "cfg::app::parse_submit_ack::bb28" [label="Drop"];
+  "cfg::app::parse_submit_ack::bb29" -> "cfg::app::parse_submit_ack::bb25" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::app::parse_submit_ack::bb30" -> "cfg::app::parse_submit_ack::bb25" [color="crimson", penwidth=2, label="Goto back"];
+}

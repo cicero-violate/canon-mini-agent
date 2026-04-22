@@ -1,0 +1,49 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2656 {
+    label="prompts::plan_task_objective_id";
+    "cfg::prompts::plan_task_objective_id::bb0" [label="bb0\nCall"];
+    "cfg::prompts::plan_task_objective_id::bb1" [label="bb1\nCall"];
+    "cfg::prompts::plan_task_objective_id::bb2" [label="bb2\nCall"];
+    "cfg::prompts::plan_task_objective_id::bb3" [label="bb3\nCall"];
+    "cfg::prompts::plan_task_objective_id::bb4" [label="bb4\nCall"];
+    "cfg::prompts::plan_task_objective_id::bb5" [label="bb5\nCall"];
+    "cfg::prompts::plan_task_objective_id::bb6" [label="bb6\nSwitchInt"];
+    "cfg::prompts::plan_task_objective_id::bb7" [label="bb7\nUnreachable loop"];
+    "cfg::prompts::plan_task_objective_id::bb8" [label="bb8\nCall loop"];
+    "cfg::prompts::plan_task_objective_id::bb9" [label="bb9\nCall loop"];
+    "cfg::prompts::plan_task_objective_id::bb10" [label="bb10\nCall loop"];
+    "cfg::prompts::plan_task_objective_id::bb11" [label="bb11\nCall loop"];
+    "cfg::prompts::plan_task_objective_id::bb12" [label="bb12\nCall loop"];
+    "cfg::prompts::plan_task_objective_id::bb13" [label="bb13\nSwitchInt loop"];
+    "cfg::prompts::plan_task_objective_id::bb14" [label="bb14\nCall"];
+    "cfg::prompts::plan_task_objective_id::bb15" [label="bb15\nCall"];
+    "cfg::prompts::plan_task_objective_id::bb16" [label="bb16\nDrop"];
+    "cfg::prompts::plan_task_objective_id::bb17" [label="bb17\nCall"];
+    "cfg::prompts::plan_task_objective_id::bb18" [label="bb18\nCall"];
+    "cfg::prompts::plan_task_objective_id::bb19" [label="bb19\nCall"];
+    "cfg::prompts::plan_task_objective_id::bb20" [label="bb20\nCall"];
+    "cfg::prompts::plan_task_objective_id::bb21" [label="bb21\nCall"];
+    "cfg::prompts::plan_task_objective_id::bb22" [label="bb22\nDrop"];
+    "cfg::prompts::plan_task_objective_id::bb23" [label="bb23\nDrop"];
+    "cfg::prompts::plan_task_objective_id::bb24" [label="bb24\nReturn"];
+    "cfg::prompts::plan_task_objective_id::bb25" [label="bb25\nDrop cleanup"];
+    "cfg::prompts::plan_task_objective_id::bb26" [label="bb26\nDrop cleanup"];
+    "cfg::prompts::plan_task_objective_id::bb27" [label="bb27\nUnwindResume cleanup"];
+  }
+  "cfg::prompts::plan_task_objective_id::bb6" -> "cfg::prompts::plan_task_objective_id::bb8" [label="SwitchInt"];
+  "cfg::prompts::plan_task_objective_id::bb6" -> "cfg::prompts::plan_task_objective_id::bb9" [label="SwitchInt"];
+  "cfg::prompts::plan_task_objective_id::bb6" -> "cfg::prompts::plan_task_objective_id::bb7" [label="SwitchInt"];
+  "cfg::prompts::plan_task_objective_id::bb13" -> "cfg::prompts::plan_task_objective_id::bb14" [label="SwitchInt"];
+  "cfg::prompts::plan_task_objective_id::bb13" -> "cfg::prompts::plan_task_objective_id::bb15" [label="SwitchInt"];
+  "cfg::prompts::plan_task_objective_id::bb13" -> "cfg::prompts::plan_task_objective_id::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompts::plan_task_objective_id::bb16" -> "cfg::prompts::plan_task_objective_id::bb24" [label="Drop"];
+  "cfg::prompts::plan_task_objective_id::bb22" -> "cfg::prompts::plan_task_objective_id::bb23" [label="Drop"];
+  "cfg::prompts::plan_task_objective_id::bb22" -> "cfg::prompts::plan_task_objective_id::bb26" [label="Drop"];
+  "cfg::prompts::plan_task_objective_id::bb23" -> "cfg::prompts::plan_task_objective_id::bb24" [label="Drop"];
+  "cfg::prompts::plan_task_objective_id::bb25" -> "cfg::prompts::plan_task_objective_id::bb26" [label="Drop"];
+  "cfg::prompts::plan_task_objective_id::bb26" -> "cfg::prompts::plan_task_objective_id::bb27" [label="Drop"];
+}

@@ -1,0 +1,16 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1038 {
+    label="inter_complexity::issue_kind";
+    "cfg::inter_complexity::issue_kind::bb0" [label="bb0\nCall"];
+    "cfg::inter_complexity::issue_kind::bb1" [label="bb1\nSwitchInt"];
+    "cfg::inter_complexity::issue_kind::bb2" [label="bb2\nCall"];
+    "cfg::inter_complexity::issue_kind::bb3" [label="bb3\nCall"];
+    "cfg::inter_complexity::issue_kind::bb4" [label="bb4\nReturn"];
+  }
+  "cfg::inter_complexity::issue_kind::bb1" -> "cfg::inter_complexity::issue_kind::bb3" [label="SwitchInt"];
+  "cfg::inter_complexity::issue_kind::bb1" -> "cfg::inter_complexity::issue_kind::bb2" [label="SwitchInt"];
+}

@@ -1,0 +1,13 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2052 {
+    label="logging::parse_action_from_text";
+    "cfg::logging::parse_action_from_text::bb0" [label="bb0\nCall"];
+    "cfg::logging::parse_action_from_text::bb1" [label="bb1\nCall"];
+    "cfg::logging::parse_action_from_text::bb2" [label="bb2\nCall"];
+    "cfg::logging::parse_action_from_text::bb3" [label="bb3\nReturn"];
+  }
+}

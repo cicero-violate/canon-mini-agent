@@ -1,0 +1,52 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3318 {
+    label="supervisor::semantic_graph_is_stale";
+    "cfg::supervisor::semantic_graph_is_stale::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::semantic_graph_is_stale::bb1" [label="bb1\nCall"];
+    "cfg::supervisor::semantic_graph_is_stale::bb2" [label="bb2\nCall"];
+    "cfg::supervisor::semantic_graph_is_stale::bb3" [label="bb3\nCall"];
+    "cfg::supervisor::semantic_graph_is_stale::bb4" [label="bb4\nDrop"];
+    "cfg::supervisor::semantic_graph_is_stale::bb5" [label="bb5\nCall"];
+    "cfg::supervisor::semantic_graph_is_stale::bb6" [label="bb6\nCall"];
+    "cfg::supervisor::semantic_graph_is_stale::bb7" [label="bb7\nSwitchInt"];
+    "cfg::supervisor::semantic_graph_is_stale::bb8" [label="bb8\nCall"];
+    "cfg::supervisor::semantic_graph_is_stale::bb9" [label="bb9\nGoto"];
+    "cfg::supervisor::semantic_graph_is_stale::bb10" [label="bb10\nCall"];
+    "cfg::supervisor::semantic_graph_is_stale::bb11" [label="bb11\nSwitchInt"];
+    "cfg::supervisor::semantic_graph_is_stale::bb12" [label="bb12\nCall"];
+    "cfg::supervisor::semantic_graph_is_stale::bb13" [label="bb13\nGoto"];
+    "cfg::supervisor::semantic_graph_is_stale::bb14" [label="bb14\nDrop"];
+    "cfg::supervisor::semantic_graph_is_stale::bb15" [label="bb15\nDrop"];
+    "cfg::supervisor::semantic_graph_is_stale::bb16" [label="bb16\nDrop"];
+    "cfg::supervisor::semantic_graph_is_stale::bb17" [label="bb17\nDrop"];
+    "cfg::supervisor::semantic_graph_is_stale::bb18" [label="bb18\nReturn"];
+    "cfg::supervisor::semantic_graph_is_stale::bb19" [label="bb19\nDrop cleanup"];
+    "cfg::supervisor::semantic_graph_is_stale::bb20" [label="bb20\nDrop cleanup"];
+    "cfg::supervisor::semantic_graph_is_stale::bb21" [label="bb21\nDrop cleanup"];
+    "cfg::supervisor::semantic_graph_is_stale::bb22" [label="bb22\nUnwindResume cleanup"];
+    "cfg::supervisor::semantic_graph_is_stale::bb23" [label="bb23\nUnreachable"];
+  }
+  "cfg::supervisor::semantic_graph_is_stale::bb4" -> "cfg::supervisor::semantic_graph_is_stale::bb5" [label="Drop"];
+  "cfg::supervisor::semantic_graph_is_stale::bb4" -> "cfg::supervisor::semantic_graph_is_stale::bb19" [label="Drop"];
+  "cfg::supervisor::semantic_graph_is_stale::bb7" -> "cfg::supervisor::semantic_graph_is_stale::bb8" [label="SwitchInt"];
+  "cfg::supervisor::semantic_graph_is_stale::bb7" -> "cfg::supervisor::semantic_graph_is_stale::bb9" [label="SwitchInt"];
+  "cfg::supervisor::semantic_graph_is_stale::bb7" -> "cfg::supervisor::semantic_graph_is_stale::bb23" [label="SwitchInt"];
+  "cfg::supervisor::semantic_graph_is_stale::bb9" -> "cfg::supervisor::semantic_graph_is_stale::bb16" [label="Goto"];
+  "cfg::supervisor::semantic_graph_is_stale::bb11" -> "cfg::supervisor::semantic_graph_is_stale::bb12" [label="SwitchInt"];
+  "cfg::supervisor::semantic_graph_is_stale::bb11" -> "cfg::supervisor::semantic_graph_is_stale::bb13" [label="SwitchInt"];
+  "cfg::supervisor::semantic_graph_is_stale::bb11" -> "cfg::supervisor::semantic_graph_is_stale::bb23" [label="SwitchInt"];
+  "cfg::supervisor::semantic_graph_is_stale::bb13" -> "cfg::supervisor::semantic_graph_is_stale::bb16" [label="Goto"];
+  "cfg::supervisor::semantic_graph_is_stale::bb14" -> "cfg::supervisor::semantic_graph_is_stale::bb15" [label="Drop"];
+  "cfg::supervisor::semantic_graph_is_stale::bb14" -> "cfg::supervisor::semantic_graph_is_stale::bb21" [label="Drop"];
+  "cfg::supervisor::semantic_graph_is_stale::bb15" -> "cfg::supervisor::semantic_graph_is_stale::bb18" [label="Drop"];
+  "cfg::supervisor::semantic_graph_is_stale::bb16" -> "cfg::supervisor::semantic_graph_is_stale::bb17" [label="Drop"];
+  "cfg::supervisor::semantic_graph_is_stale::bb16" -> "cfg::supervisor::semantic_graph_is_stale::bb21" [label="Drop"];
+  "cfg::supervisor::semantic_graph_is_stale::bb17" -> "cfg::supervisor::semantic_graph_is_stale::bb18" [label="Drop"];
+  "cfg::supervisor::semantic_graph_is_stale::bb19" -> "cfg::supervisor::semantic_graph_is_stale::bb21" [label="Drop"];
+  "cfg::supervisor::semantic_graph_is_stale::bb20" -> "cfg::supervisor::semantic_graph_is_stale::bb21" [label="Drop"];
+  "cfg::supervisor::semantic_graph_is_stale::bb21" -> "cfg::supervisor::semantic_graph_is_stale::bb22" [label="Drop"];
+}

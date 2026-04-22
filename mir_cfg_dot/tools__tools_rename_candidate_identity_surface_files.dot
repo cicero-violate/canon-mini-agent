@@ -1,0 +1,12 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3955 {
+    label="tools::rename_candidate_identity_surface_files";
+    "cfg::tools::rename_candidate_identity_surface_files::bb0" [label="bb0\nCall"];
+    "cfg::tools::rename_candidate_identity_surface_files::bb1" [label="bb1\nCall"];
+    "cfg::tools::rename_candidate_identity_surface_files::bb2" [label="bb2\nReturn"];
+  }
+}

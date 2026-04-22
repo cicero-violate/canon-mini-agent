@@ -1,0 +1,44 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_478 {
+    label="app::parse_completed_turn";
+    "cfg::app::parse_completed_turn::bb0" [label="bb0\nCall"];
+    "cfg::app::parse_completed_turn::bb1" [label="bb1\nCall"];
+    "cfg::app::parse_completed_turn::bb2" [label="bb2\nCall"];
+    "cfg::app::parse_completed_turn::bb3" [label="bb3\nSwitchInt"];
+    "cfg::app::parse_completed_turn::bb4" [label="bb4\nUnreachable loop"];
+    "cfg::app::parse_completed_turn::bb5" [label="bb5\nCall loop"];
+    "cfg::app::parse_completed_turn::bb6" [label="bb6\nCall loop"];
+    "cfg::app::parse_completed_turn::bb7" [label="bb7\nCall loop"];
+    "cfg::app::parse_completed_turn::bb8" [label="bb8\nCall loop"];
+    "cfg::app::parse_completed_turn::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::app::parse_completed_turn::bb10" [label="bb10\nCall loop"];
+    "cfg::app::parse_completed_turn::bb11" [label="bb11\nCall loop"];
+    "cfg::app::parse_completed_turn::bb12" [label="bb12\nCall loop"];
+    "cfg::app::parse_completed_turn::bb13" [label="bb13\nCall loop"];
+    "cfg::app::parse_completed_turn::bb14" [label="bb14\nSwitchInt loop"];
+    "cfg::app::parse_completed_turn::bb15" [label="bb15\nCall"];
+    "cfg::app::parse_completed_turn::bb16" [label="bb16\nCall"];
+    "cfg::app::parse_completed_turn::bb17" [label="bb17\nCall"];
+    "cfg::app::parse_completed_turn::bb18" [label="bb18\nCall"];
+    "cfg::app::parse_completed_turn::bb19" [label="bb19\nCall"];
+    "cfg::app::parse_completed_turn::bb20" [label="bb20\nGoto"];
+    "cfg::app::parse_completed_turn::bb21" [label="bb21\nReturn"];
+    "cfg::app::parse_completed_turn::bb22" [label="bb22\nDrop cleanup"];
+    "cfg::app::parse_completed_turn::bb23" [label="bb23\nUnwindResume cleanup"];
+  }
+  "cfg::app::parse_completed_turn::bb3" -> "cfg::app::parse_completed_turn::bb5" [label="SwitchInt"];
+  "cfg::app::parse_completed_turn::bb3" -> "cfg::app::parse_completed_turn::bb6" [label="SwitchInt"];
+  "cfg::app::parse_completed_turn::bb3" -> "cfg::app::parse_completed_turn::bb4" [label="SwitchInt"];
+  "cfg::app::parse_completed_turn::bb9" -> "cfg::app::parse_completed_turn::bb10" [label="SwitchInt"];
+  "cfg::app::parse_completed_turn::bb9" -> "cfg::app::parse_completed_turn::bb11" [label="SwitchInt"];
+  "cfg::app::parse_completed_turn::bb9" -> "cfg::app::parse_completed_turn::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::parse_completed_turn::bb14" -> "cfg::app::parse_completed_turn::bb15" [label="SwitchInt"];
+  "cfg::app::parse_completed_turn::bb14" -> "cfg::app::parse_completed_turn::bb16" [label="SwitchInt"];
+  "cfg::app::parse_completed_turn::bb14" -> "cfg::app::parse_completed_turn::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::parse_completed_turn::bb20" -> "cfg::app::parse_completed_turn::bb21" [label="Goto"];
+  "cfg::app::parse_completed_turn::bb22" -> "cfg::app::parse_completed_turn::bb23" [label="Drop"];
+}

@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3293 {
+    label="supervisor::rust_patch_verification_flag_path";
+    "cfg::supervisor::rust_patch_verification_flag_path::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::rust_patch_verification_flag_path::bb1" [label="bb1\nReturn"];
+  }
+}

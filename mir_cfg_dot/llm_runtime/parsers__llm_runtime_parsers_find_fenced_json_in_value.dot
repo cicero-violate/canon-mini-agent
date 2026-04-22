@@ -1,0 +1,24 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1899 {
+    label="llm_runtime::parsers::find_fenced_json_in_value";
+    "cfg::llm_runtime::parsers::find_fenced_json_in_value::bb0" [label="bb0\nSwitchInt"];
+    "cfg::llm_runtime::parsers::find_fenced_json_in_value::bb1" [label="bb1\nGoto"];
+    "cfg::llm_runtime::parsers::find_fenced_json_in_value::bb2" [label="bb2\nCall"];
+    "cfg::llm_runtime::parsers::find_fenced_json_in_value::bb3" [label="bb3\nCall"];
+    "cfg::llm_runtime::parsers::find_fenced_json_in_value::bb4" [label="bb4\nCall"];
+    "cfg::llm_runtime::parsers::find_fenced_json_in_value::bb5" [label="bb5\nCall"];
+    "cfg::llm_runtime::parsers::find_fenced_json_in_value::bb6" [label="bb6\nCall"];
+    "cfg::llm_runtime::parsers::find_fenced_json_in_value::bb7" [label="bb7\nCall"];
+    "cfg::llm_runtime::parsers::find_fenced_json_in_value::bb8" [label="bb8\nCall"];
+    "cfg::llm_runtime::parsers::find_fenced_json_in_value::bb9" [label="bb9\nReturn"];
+  }
+  "cfg::llm_runtime::parsers::find_fenced_json_in_value::bb0" -> "cfg::llm_runtime::parsers::find_fenced_json_in_value::bb4" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::find_fenced_json_in_value::bb0" -> "cfg::llm_runtime::parsers::find_fenced_json_in_value::bb3" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::find_fenced_json_in_value::bb0" -> "cfg::llm_runtime::parsers::find_fenced_json_in_value::bb2" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::find_fenced_json_in_value::bb0" -> "cfg::llm_runtime::parsers::find_fenced_json_in_value::bb1" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::find_fenced_json_in_value::bb1" -> "cfg::llm_runtime::parsers::find_fenced_json_in_value::bb9" [label="Goto"];
+}

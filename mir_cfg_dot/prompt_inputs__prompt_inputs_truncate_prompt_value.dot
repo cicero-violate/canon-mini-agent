@@ -1,0 +1,37 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2383 {
+    label="prompt_inputs::truncate_prompt_value";
+    "cfg::prompt_inputs::truncate_prompt_value::bb0" [label="bb0\nCall"];
+    "cfg::prompt_inputs::truncate_prompt_value::bb1" [label="bb1\nCall"];
+    "cfg::prompt_inputs::truncate_prompt_value::bb2" [label="bb2\nCall"];
+    "cfg::prompt_inputs::truncate_prompt_value::bb3" [label="bb3\nCall"];
+    "cfg::prompt_inputs::truncate_prompt_value::bb4" [label="bb4\nCall"];
+    "cfg::prompt_inputs::truncate_prompt_value::bb5" [label="bb5\nGoto"];
+    "cfg::prompt_inputs::truncate_prompt_value::bb6" [label="bb6\nCall loop"];
+    "cfg::prompt_inputs::truncate_prompt_value::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::prompt_inputs::truncate_prompt_value::bb8" [label="bb8\nUnreachable loop"];
+    "cfg::prompt_inputs::truncate_prompt_value::bb9" [label="bb9\nCall loop"];
+    "cfg::prompt_inputs::truncate_prompt_value::bb10" [label="bb10\nCall loop"];
+    "cfg::prompt_inputs::truncate_prompt_value::bb11" [label="bb11\nCall loop"];
+    "cfg::prompt_inputs::truncate_prompt_value::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::prompt_inputs::truncate_prompt_value::bb13" [label="bb13\nCall loop"];
+    "cfg::prompt_inputs::truncate_prompt_value::bb14" [label="bb14\nReturn loop"];
+    "cfg::prompt_inputs::truncate_prompt_value::bb15" [label="bb15\nDrop cleanup loop"];
+    "cfg::prompt_inputs::truncate_prompt_value::bb16" [label="bb16\nUnwindResume cleanup loop"];
+    "cfg::prompt_inputs::truncate_prompt_value::bb17" [label="bb17\nGoto loop"];
+    "cfg::prompt_inputs::truncate_prompt_value::bb18" [label="bb18\nGoto loop"];
+  }
+  "cfg::prompt_inputs::truncate_prompt_value::bb5" -> "cfg::prompt_inputs::truncate_prompt_value::bb6" [label="Goto"];
+  "cfg::prompt_inputs::truncate_prompt_value::bb7" -> "cfg::prompt_inputs::truncate_prompt_value::bb10" [label="SwitchInt"];
+  "cfg::prompt_inputs::truncate_prompt_value::bb7" -> "cfg::prompt_inputs::truncate_prompt_value::bb9" [label="SwitchInt"];
+  "cfg::prompt_inputs::truncate_prompt_value::bb7" -> "cfg::prompt_inputs::truncate_prompt_value::bb8" [label="SwitchInt"];
+  "cfg::prompt_inputs::truncate_prompt_value::bb12" -> "cfg::prompt_inputs::truncate_prompt_value::bb14" [label="SwitchInt"];
+  "cfg::prompt_inputs::truncate_prompt_value::bb12" -> "cfg::prompt_inputs::truncate_prompt_value::bb13" [label="SwitchInt"];
+  "cfg::prompt_inputs::truncate_prompt_value::bb15" -> "cfg::prompt_inputs::truncate_prompt_value::bb16" [label="Drop"];
+  "cfg::prompt_inputs::truncate_prompt_value::bb17" -> "cfg::prompt_inputs::truncate_prompt_value::bb6" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::prompt_inputs::truncate_prompt_value::bb18" -> "cfg::prompt_inputs::truncate_prompt_value::bb14" [color="crimson", penwidth=2, label="Goto back"];
+}

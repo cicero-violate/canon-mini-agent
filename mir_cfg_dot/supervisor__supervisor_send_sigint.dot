@@ -1,0 +1,24 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3288 {
+    label="supervisor::send_sigint";
+    "cfg::supervisor::send_sigint::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::send_sigint::bb1" [label="bb1\nCall"];
+    "cfg::supervisor::send_sigint::bb2" [label="bb2\nCall"];
+    "cfg::supervisor::send_sigint::bb3" [label="bb3\nCall"];
+    "cfg::supervisor::send_sigint::bb4" [label="bb4\nCall"];
+    "cfg::supervisor::send_sigint::bb5" [label="bb5\nCall"];
+    "cfg::supervisor::send_sigint::bb6" [label="bb6\nDrop"];
+    "cfg::supervisor::send_sigint::bb7" [label="bb7\nDrop"];
+    "cfg::supervisor::send_sigint::bb8" [label="bb8\nReturn"];
+    "cfg::supervisor::send_sigint::bb9" [label="bb9\nDrop cleanup"];
+    "cfg::supervisor::send_sigint::bb10" [label="bb10\nUnwindResume cleanup"];
+  }
+  "cfg::supervisor::send_sigint::bb6" -> "cfg::supervisor::send_sigint::bb7" [label="Drop"];
+  "cfg::supervisor::send_sigint::bb6" -> "cfg::supervisor::send_sigint::bb9" [label="Drop"];
+  "cfg::supervisor::send_sigint::bb7" -> "cfg::supervisor::send_sigint::bb8" [label="Drop"];
+  "cfg::supervisor::send_sigint::bb9" -> "cfg::supervisor::send_sigint::bb10" [label="Drop"];
+}

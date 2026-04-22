@@ -1,0 +1,14 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_667 {
+    label="canon_tools_patch::io_apply_patch_error";
+    "cfg::canon_tools_patch::io_apply_patch_error::bb0" [label="bb0\nCall"];
+    "cfg::canon_tools_patch::io_apply_patch_error::bb1" [label="bb1\nReturn"];
+    "cfg::canon_tools_patch::io_apply_patch_error::bb2" [label="bb2\nDrop cleanup"];
+    "cfg::canon_tools_patch::io_apply_patch_error::bb3" [label="bb3\nUnwindResume cleanup"];
+  }
+  "cfg::canon_tools_patch::io_apply_patch_error::bb2" -> "cfg::canon_tools_patch::io_apply_patch_error::bb3" [label="Drop"];
+}

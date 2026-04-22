@@ -1,0 +1,22 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1013 {
+    label="inter_complexity::hotspot_location";
+    "cfg::inter_complexity::hotspot_location::bb0" [label="bb0\nCall"];
+    "cfg::inter_complexity::hotspot_location::bb1" [label="bb1\nCall"];
+    "cfg::inter_complexity::hotspot_location::bb2" [label="bb2\nCall"];
+    "cfg::inter_complexity::hotspot_location::bb3" [label="bb3\nCall"];
+    "cfg::inter_complexity::hotspot_location::bb4" [label="bb4\nCall"];
+    "cfg::inter_complexity::hotspot_location::bb5" [label="bb5\nCall"];
+    "cfg::inter_complexity::hotspot_location::bb6" [label="bb6\nCall"];
+    "cfg::inter_complexity::hotspot_location::bb7" [label="bb7\nDrop"];
+    "cfg::inter_complexity::hotspot_location::bb8" [label="bb8\nReturn"];
+    "cfg::inter_complexity::hotspot_location::bb9" [label="bb9\nDrop cleanup"];
+    "cfg::inter_complexity::hotspot_location::bb10" [label="bb10\nUnwindResume cleanup"];
+  }
+  "cfg::inter_complexity::hotspot_location::bb7" -> "cfg::inter_complexity::hotspot_location::bb8" [label="Drop"];
+  "cfg::inter_complexity::hotspot_location::bb9" -> "cfg::inter_complexity::hotspot_location::bb10" [label="Drop"];
+}

@@ -1,0 +1,45 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2226 {
+    label="md_convert::slugify";
+    "cfg::md_convert::slugify::bb0" [label="bb0\nCall"];
+    "cfg::md_convert::slugify::bb1" [label="bb1\nCall"];
+    "cfg::md_convert::slugify::bb2" [label="bb2\nCall"];
+    "cfg::md_convert::slugify::bb3" [label="bb3\nGoto"];
+    "cfg::md_convert::slugify::bb4" [label="bb4\nCall loop"];
+    "cfg::md_convert::slugify::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::md_convert::slugify::bb6" [label="bb6\nUnreachable loop"];
+    "cfg::md_convert::slugify::bb7" [label="bb7\nCall loop"];
+    "cfg::md_convert::slugify::bb8" [label="bb8\nCall loop"];
+    "cfg::md_convert::slugify::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::md_convert::slugify::bb10" [label="bb10\nCall loop"];
+    "cfg::md_convert::slugify::bb11" [label="bb11\nCall loop"];
+    "cfg::md_convert::slugify::bb12" [label="bb12\nCall loop"];
+    "cfg::md_convert::slugify::bb13" [label="bb13\nCall loop"];
+    "cfg::md_convert::slugify::bb14" [label="bb14\nSwitchInt loop"];
+    "cfg::md_convert::slugify::bb15" [label="bb15\nCall loop"];
+    "cfg::md_convert::slugify::bb16" [label="bb16\nCall loop"];
+    "cfg::md_convert::slugify::bb17" [label="bb17\nCall loop"];
+    "cfg::md_convert::slugify::bb18" [label="bb18\nDrop loop"];
+    "cfg::md_convert::slugify::bb19" [label="bb19\nReturn loop"];
+    "cfg::md_convert::slugify::bb20" [label="bb20\nDrop cleanup loop"];
+    "cfg::md_convert::slugify::bb21" [label="bb21\nUnwindResume cleanup loop"];
+    "cfg::md_convert::slugify::bb22" [label="bb22\nGoto loop"];
+    "cfg::md_convert::slugify::bb23" [label="bb23\nGoto loop"];
+  }
+  "cfg::md_convert::slugify::bb3" -> "cfg::md_convert::slugify::bb4" [label="Goto"];
+  "cfg::md_convert::slugify::bb5" -> "cfg::md_convert::slugify::bb8" [label="SwitchInt"];
+  "cfg::md_convert::slugify::bb5" -> "cfg::md_convert::slugify::bb7" [label="SwitchInt"];
+  "cfg::md_convert::slugify::bb5" -> "cfg::md_convert::slugify::bb6" [label="SwitchInt"];
+  "cfg::md_convert::slugify::bb9" -> "cfg::md_convert::slugify::bb12" [label="SwitchInt"];
+  "cfg::md_convert::slugify::bb9" -> "cfg::md_convert::slugify::bb10" [label="SwitchInt"];
+  "cfg::md_convert::slugify::bb14" -> "cfg::md_convert::slugify::bb15" [label="SwitchInt"];
+  "cfg::md_convert::slugify::bb14" -> "cfg::md_convert::slugify::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::md_convert::slugify::bb18" -> "cfg::md_convert::slugify::bb19" [label="Drop"];
+  "cfg::md_convert::slugify::bb20" -> "cfg::md_convert::slugify::bb21" [label="Drop"];
+  "cfg::md_convert::slugify::bb22" -> "cfg::md_convert::slugify::bb4" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::md_convert::slugify::bb23" -> "cfg::md_convert::slugify::bb4" [color="crimson", penwidth=2, label="Goto back"];
+}

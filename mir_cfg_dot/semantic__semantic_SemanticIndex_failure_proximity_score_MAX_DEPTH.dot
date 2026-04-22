@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3133 {
+    label="semantic::SemanticIndex::failure_proximity_score::MAX_DEPTH";
+    "cfg::semantic::SemanticIndex::failure_proximity_score::MAX_DEPTH::bb0" [label="bb0\nReturn"];
+  }
+}

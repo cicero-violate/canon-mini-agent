@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2436 {
+    label="prompt_inputs::LessonEntry::is_pending";
+    "cfg::prompt_inputs::LessonEntry::is_pending::bb0" [label="bb0\nCall"];
+    "cfg::prompt_inputs::LessonEntry::is_pending::bb1" [label="bb1\nReturn"];
+  }
+}

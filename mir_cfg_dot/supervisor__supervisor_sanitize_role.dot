@@ -1,0 +1,19 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3365 {
+    label="supervisor::sanitize_role";
+    "cfg::supervisor::sanitize_role::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::sanitize_role::bb1" [label="bb1\nCall"];
+    "cfg::supervisor::sanitize_role::bb2" [label="bb2\nCall"];
+    "cfg::supervisor::sanitize_role::bb3" [label="bb3\nCall"];
+    "cfg::supervisor::sanitize_role::bb4" [label="bb4\nDrop"];
+    "cfg::supervisor::sanitize_role::bb5" [label="bb5\nReturn"];
+    "cfg::supervisor::sanitize_role::bb6" [label="bb6\nDrop cleanup"];
+    "cfg::supervisor::sanitize_role::bb7" [label="bb7\nUnwindResume cleanup"];
+  }
+  "cfg::supervisor::sanitize_role::bb4" -> "cfg::supervisor::sanitize_role::bb5" [label="Drop"];
+  "cfg::supervisor::sanitize_role::bb6" -> "cfg::supervisor::sanitize_role::bb7" [label="Drop"];
+}

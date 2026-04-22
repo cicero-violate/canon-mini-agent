@@ -1,0 +1,56 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4299 {
+    label="tools::handle_plan_set_plan_status";
+    "cfg::tools::handle_plan_set_plan_status::bb0" [label="bb0\nCall"];
+    "cfg::tools::handle_plan_set_plan_status::bb1" [label="bb1\nCall"];
+    "cfg::tools::handle_plan_set_plan_status::bb2" [label="bb2\nCall"];
+    "cfg::tools::handle_plan_set_plan_status::bb3" [label="bb3\nCall"];
+    "cfg::tools::handle_plan_set_plan_status::bb4" [label="bb4\nSwitchInt"];
+    "cfg::tools::handle_plan_set_plan_status::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::tools::handle_plan_set_plan_status::bb6" [label="bb6\nCall loop"];
+    "cfg::tools::handle_plan_set_plan_status::bb7" [label="bb7\nCall loop"];
+    "cfg::tools::handle_plan_set_plan_status::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::tools::handle_plan_set_plan_status::bb9" [label="bb9\nCall loop"];
+    "cfg::tools::handle_plan_set_plan_status::bb10" [label="bb10\nCall loop"];
+    "cfg::tools::handle_plan_set_plan_status::bb11" [label="bb11\nCall loop"];
+    "cfg::tools::handle_plan_set_plan_status::bb12" [label="bb12\nCall loop"];
+    "cfg::tools::handle_plan_set_plan_status::bb13" [label="bb13\nSwitchInt loop"];
+    "cfg::tools::handle_plan_set_plan_status::bb14" [label="bb14\nCall"];
+    "cfg::tools::handle_plan_set_plan_status::bb15" [label="bb15\nCall"];
+    "cfg::tools::handle_plan_set_plan_status::bb16" [label="bb16\nCall"];
+    "cfg::tools::handle_plan_set_plan_status::bb17" [label="bb17\nCall"];
+    "cfg::tools::handle_plan_set_plan_status::bb18" [label="bb18\nSwitchInt"];
+    "cfg::tools::handle_plan_set_plan_status::bb19" [label="bb19\nCall"];
+    "cfg::tools::handle_plan_set_plan_status::bb20" [label="bb20\nCall"];
+    "cfg::tools::handle_plan_set_plan_status::bb21" [label="bb21\nGoto"];
+    "cfg::tools::handle_plan_set_plan_status::bb22" [label="bb22\nCall"];
+    "cfg::tools::handle_plan_set_plan_status::bb23" [label="bb23\nCall"];
+    "cfg::tools::handle_plan_set_plan_status::bb24" [label="bb24\nCall"];
+    "cfg::tools::handle_plan_set_plan_status::bb25" [label="bb25\nDrop"];
+    "cfg::tools::handle_plan_set_plan_status::bb26" [label="bb26\nGoto"];
+    "cfg::tools::handle_plan_set_plan_status::bb27" [label="bb27\nReturn"];
+    "cfg::tools::handle_plan_set_plan_status::bb28" [label="bb28\nUnwindResume cleanup loop"];
+    "cfg::tools::handle_plan_set_plan_status::bb29" [label="bb29\nDrop cleanup loop"];
+    "cfg::tools::handle_plan_set_plan_status::bb30" [label="bb30\nSwitchInt cleanup loop"];
+  }
+  "cfg::tools::handle_plan_set_plan_status::bb4" -> "cfg::tools::handle_plan_set_plan_status::bb6" [label="SwitchInt"];
+  "cfg::tools::handle_plan_set_plan_status::bb4" -> "cfg::tools::handle_plan_set_plan_status::bb7" [label="SwitchInt"];
+  "cfg::tools::handle_plan_set_plan_status::bb4" -> "cfg::tools::handle_plan_set_plan_status::bb5" [label="SwitchInt"];
+  "cfg::tools::handle_plan_set_plan_status::bb8" -> "cfg::tools::handle_plan_set_plan_status::bb22" [label="SwitchInt"];
+  "cfg::tools::handle_plan_set_plan_status::bb8" -> "cfg::tools::handle_plan_set_plan_status::bb9" [label="SwitchInt"];
+  "cfg::tools::handle_plan_set_plan_status::bb13" -> "cfg::tools::handle_plan_set_plan_status::bb14" [label="SwitchInt"];
+  "cfg::tools::handle_plan_set_plan_status::bb13" -> "cfg::tools::handle_plan_set_plan_status::bb15" [label="SwitchInt"];
+  "cfg::tools::handle_plan_set_plan_status::bb13" -> "cfg::tools::handle_plan_set_plan_status::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::handle_plan_set_plan_status::bb18" -> "cfg::tools::handle_plan_set_plan_status::bb22" [label="SwitchInt"];
+  "cfg::tools::handle_plan_set_plan_status::bb18" -> "cfg::tools::handle_plan_set_plan_status::bb19" [label="SwitchInt"];
+  "cfg::tools::handle_plan_set_plan_status::bb21" -> "cfg::tools::handle_plan_set_plan_status::bb27" [label="Goto"];
+  "cfg::tools::handle_plan_set_plan_status::bb25" -> "cfg::tools::handle_plan_set_plan_status::bb26" [label="Drop"];
+  "cfg::tools::handle_plan_set_plan_status::bb26" -> "cfg::tools::handle_plan_set_plan_status::bb27" [label="Goto"];
+  "cfg::tools::handle_plan_set_plan_status::bb29" -> "cfg::tools::handle_plan_set_plan_status::bb28" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tools::handle_plan_set_plan_status::bb30" -> "cfg::tools::handle_plan_set_plan_status::bb28" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::handle_plan_set_plan_status::bb30" -> "cfg::tools::handle_plan_set_plan_status::bb29" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

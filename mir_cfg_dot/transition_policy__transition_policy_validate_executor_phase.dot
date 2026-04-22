@@ -1,0 +1,17 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4713 {
+    label="transition_policy::validate_executor_phase";
+    "cfg::transition_policy::validate_executor_phase::bb0" [label="bb0\nSwitchInt"];
+    "cfg::transition_policy::validate_executor_phase::bb1" [label="bb1\nCall"];
+    "cfg::transition_policy::validate_executor_phase::bb2" [label="bb2\nCall"];
+    "cfg::transition_policy::validate_executor_phase::bb3" [label="bb3\nReturn"];
+    "cfg::transition_policy::validate_executor_phase::bb4" [label="bb4\nUnreachable"];
+  }
+  "cfg::transition_policy::validate_executor_phase::bb0" -> "cfg::transition_policy::validate_executor_phase::bb1" [label="SwitchInt"];
+  "cfg::transition_policy::validate_executor_phase::bb0" -> "cfg::transition_policy::validate_executor_phase::bb2" [label="SwitchInt"];
+  "cfg::transition_policy::validate_executor_phase::bb0" -> "cfg::transition_policy::validate_executor_phase::bb4" [label="SwitchInt"];
+}

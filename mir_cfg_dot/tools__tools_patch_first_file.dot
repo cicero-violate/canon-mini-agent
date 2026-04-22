@@ -1,0 +1,35 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3610 {
+    label="tools::patch_first_file";
+    "cfg::tools::patch_first_file::bb0" [label="bb0\nCall"];
+    "cfg::tools::patch_first_file::bb1" [label="bb1\nCall"];
+    "cfg::tools::patch_first_file::bb2" [label="bb2\nGoto"];
+    "cfg::tools::patch_first_file::bb3" [label="bb3\nCall loop"];
+    "cfg::tools::patch_first_file::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::tools::patch_first_file::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::tools::patch_first_file::bb6" [label="bb6\nCall loop"];
+    "cfg::tools::patch_first_file::bb7" [label="bb7\nGoto loop"];
+    "cfg::tools::patch_first_file::bb8" [label="bb8\nCall loop"];
+    "cfg::tools::patch_first_file::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::tools::patch_first_file::bb10" [label="bb10\nCall loop"];
+    "cfg::tools::patch_first_file::bb11" [label="bb11\nCall loop"];
+    "cfg::tools::patch_first_file::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::tools::patch_first_file::bb13" [label="bb13\nGoto"];
+    "cfg::tools::patch_first_file::bb14" [label="bb14\nReturn"];
+  }
+  "cfg::tools::patch_first_file::bb2" -> "cfg::tools::patch_first_file::bb3" [label="Goto"];
+  "cfg::tools::patch_first_file::bb4" -> "cfg::tools::patch_first_file::bb7" [label="SwitchInt"];
+  "cfg::tools::patch_first_file::bb4" -> "cfg::tools::patch_first_file::bb6" [label="SwitchInt"];
+  "cfg::tools::patch_first_file::bb4" -> "cfg::tools::patch_first_file::bb5" [label="SwitchInt"];
+  "cfg::tools::patch_first_file::bb7" -> "cfg::tools::patch_first_file::bb14" [label="Goto"];
+  "cfg::tools::patch_first_file::bb9" -> "cfg::tools::patch_first_file::bb10" [label="SwitchInt"];
+  "cfg::tools::patch_first_file::bb9" -> "cfg::tools::patch_first_file::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::patch_first_file::bb9" -> "cfg::tools::patch_first_file::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::patch_first_file::bb12" -> "cfg::tools::patch_first_file::bb13" [label="SwitchInt"];
+  "cfg::tools::patch_first_file::bb12" -> "cfg::tools::patch_first_file::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::patch_first_file::bb13" -> "cfg::tools::patch_first_file::bb14" [label="Goto"];
+}

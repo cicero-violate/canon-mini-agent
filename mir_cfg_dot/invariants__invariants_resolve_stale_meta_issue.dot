@@ -1,0 +1,55 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1237 {
+    label="invariants::resolve_stale_meta_issue";
+    "cfg::invariants::resolve_stale_meta_issue::bb0" [label="bb0\nCall"];
+    "cfg::invariants::resolve_stale_meta_issue::bb1" [label="bb1\nCall"];
+    "cfg::invariants::resolve_stale_meta_issue::bb2" [label="bb2\nCall"];
+    "cfg::invariants::resolve_stale_meta_issue::bb3" [label="bb3\nCall"];
+    "cfg::invariants::resolve_stale_meta_issue::bb4" [label="bb4\nCall"];
+    "cfg::invariants::resolve_stale_meta_issue::bb5" [label="bb5\nGoto"];
+    "cfg::invariants::resolve_stale_meta_issue::bb6" [label="bb6\nCall loop"];
+    "cfg::invariants::resolve_stale_meta_issue::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::invariants::resolve_stale_meta_issue::bb8" [label="bb8\nUnreachable loop"];
+    "cfg::invariants::resolve_stale_meta_issue::bb9" [label="bb9\nCall loop"];
+    "cfg::invariants::resolve_stale_meta_issue::bb10" [label="bb10\nReturn loop"];
+    "cfg::invariants::resolve_stale_meta_issue::bb11" [label="bb11\nSwitchInt loop"];
+    "cfg::invariants::resolve_stale_meta_issue::bb12" [label="bb12\nCall loop"];
+    "cfg::invariants::resolve_stale_meta_issue::bb13" [label="bb13\nSwitchInt loop"];
+    "cfg::invariants::resolve_stale_meta_issue::bb14" [label="bb14\nCall loop"];
+    "cfg::invariants::resolve_stale_meta_issue::bb15" [label="bb15\nDrop loop"];
+    "cfg::invariants::resolve_stale_meta_issue::bb16" [label="bb16\nCall loop"];
+    "cfg::invariants::resolve_stale_meta_issue::bb17" [label="bb17\nGoto cleanup loop"];
+    "cfg::invariants::resolve_stale_meta_issue::bb18" [label="bb18\nDrop loop"];
+    "cfg::invariants::resolve_stale_meta_issue::bb19" [label="bb19\nCall loop"];
+    "cfg::invariants::resolve_stale_meta_issue::bb20" [label="bb20\nGoto cleanup loop"];
+    "cfg::invariants::resolve_stale_meta_issue::bb21" [label="bb21\nCall loop"];
+    "cfg::invariants::resolve_stale_meta_issue::bb22" [label="bb22\nCall loop"];
+    "cfg::invariants::resolve_stale_meta_issue::bb23" [label="bb23\nCall loop"];
+    "cfg::invariants::resolve_stale_meta_issue::bb24" [label="bb24\nSwitchInt loop"];
+    "cfg::invariants::resolve_stale_meta_issue::bb25" [label="bb25\nCall loop"];
+    "cfg::invariants::resolve_stale_meta_issue::bb26" [label="bb26\nCall loop"];
+    "cfg::invariants::resolve_stale_meta_issue::bb27" [label="bb27\nGoto loop"];
+    "cfg::invariants::resolve_stale_meta_issue::bb28" [label="bb28\nUnwindResume cleanup"];
+  }
+  "cfg::invariants::resolve_stale_meta_issue::bb5" -> "cfg::invariants::resolve_stale_meta_issue::bb6" [label="Goto"];
+  "cfg::invariants::resolve_stale_meta_issue::bb7" -> "cfg::invariants::resolve_stale_meta_issue::bb10" [label="SwitchInt"];
+  "cfg::invariants::resolve_stale_meta_issue::bb7" -> "cfg::invariants::resolve_stale_meta_issue::bb9" [label="SwitchInt"];
+  "cfg::invariants::resolve_stale_meta_issue::bb7" -> "cfg::invariants::resolve_stale_meta_issue::bb8" [label="SwitchInt"];
+  "cfg::invariants::resolve_stale_meta_issue::bb11" -> "cfg::invariants::resolve_stale_meta_issue::bb12" [label="SwitchInt"];
+  "cfg::invariants::resolve_stale_meta_issue::bb11" -> "cfg::invariants::resolve_stale_meta_issue::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::resolve_stale_meta_issue::bb13" -> "cfg::invariants::resolve_stale_meta_issue::bb14" [label="SwitchInt"];
+  "cfg::invariants::resolve_stale_meta_issue::bb13" -> "cfg::invariants::resolve_stale_meta_issue::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::resolve_stale_meta_issue::bb15" -> "cfg::invariants::resolve_stale_meta_issue::bb16" [label="Drop"];
+  "cfg::invariants::resolve_stale_meta_issue::bb15" -> "cfg::invariants::resolve_stale_meta_issue::bb17" [label="Drop"];
+  "cfg::invariants::resolve_stale_meta_issue::bb17" -> "cfg::invariants::resolve_stale_meta_issue::bb28" [label="Goto"];
+  "cfg::invariants::resolve_stale_meta_issue::bb18" -> "cfg::invariants::resolve_stale_meta_issue::bb19" [label="Drop"];
+  "cfg::invariants::resolve_stale_meta_issue::bb18" -> "cfg::invariants::resolve_stale_meta_issue::bb20" [label="Drop"];
+  "cfg::invariants::resolve_stale_meta_issue::bb20" -> "cfg::invariants::resolve_stale_meta_issue::bb28" [label="Goto"];
+  "cfg::invariants::resolve_stale_meta_issue::bb24" -> "cfg::invariants::resolve_stale_meta_issue::bb25" [label="SwitchInt"];
+  "cfg::invariants::resolve_stale_meta_issue::bb24" -> "cfg::invariants::resolve_stale_meta_issue::bb27" [label="SwitchInt"];
+  "cfg::invariants::resolve_stale_meta_issue::bb27" -> "cfg::invariants::resolve_stale_meta_issue::bb6" [color="crimson", penwidth=2, label="Goto back"];
+}

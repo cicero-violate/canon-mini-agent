@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4563 {
+    label="tools::handle_batch_action::MAX_BATCH";
+    "cfg::tools::handle_batch_action::MAX_BATCH::bb0" [label="bb0\nReturn"];
+  }
+}

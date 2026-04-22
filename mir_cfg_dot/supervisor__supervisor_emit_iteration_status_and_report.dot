@@ -1,0 +1,30 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3326 {
+    label="supervisor::emit_iteration_status_and_report";
+    "cfg::supervisor::emit_iteration_status_and_report::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::emit_iteration_status_and_report::bb1" [label="bb1\nCall"];
+    "cfg::supervisor::emit_iteration_status_and_report::bb2" [label="bb2\nCall"];
+    "cfg::supervisor::emit_iteration_status_and_report::bb3" [label="bb3\nCall"];
+    "cfg::supervisor::emit_iteration_status_and_report::bb4" [label="bb4\nCall"];
+    "cfg::supervisor::emit_iteration_status_and_report::bb5" [label="bb5\nCall"];
+    "cfg::supervisor::emit_iteration_status_and_report::bb6" [label="bb6\nCall"];
+    "cfg::supervisor::emit_iteration_status_and_report::bb7" [label="bb7\nCall"];
+    "cfg::supervisor::emit_iteration_status_and_report::bb8" [label="bb8\nCall"];
+    "cfg::supervisor::emit_iteration_status_and_report::bb9" [label="bb9\nCall"];
+    "cfg::supervisor::emit_iteration_status_and_report::bb10" [label="bb10\nCall"];
+    "cfg::supervisor::emit_iteration_status_and_report::bb11" [label="bb11\nCall"];
+    "cfg::supervisor::emit_iteration_status_and_report::bb12" [label="bb12\nCall"];
+    "cfg::supervisor::emit_iteration_status_and_report::bb13" [label="bb13\nCall"];
+    "cfg::supervisor::emit_iteration_status_and_report::bb14" [label="bb14\nReturn"];
+    "cfg::supervisor::emit_iteration_status_and_report::bb15" [label="bb15\nUnwindResume cleanup loop"];
+    "cfg::supervisor::emit_iteration_status_and_report::bb16" [label="bb16\nDrop cleanup loop"];
+    "cfg::supervisor::emit_iteration_status_and_report::bb17" [label="bb17\nSwitchInt cleanup loop"];
+  }
+  "cfg::supervisor::emit_iteration_status_and_report::bb16" -> "cfg::supervisor::emit_iteration_status_and_report::bb15" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::supervisor::emit_iteration_status_and_report::bb17" -> "cfg::supervisor::emit_iteration_status_and_report::bb15" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::supervisor::emit_iteration_status_and_report::bb17" -> "cfg::supervisor::emit_iteration_status_and_report::bb16" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

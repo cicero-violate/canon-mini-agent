@@ -1,0 +1,12 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1605 {
+    label="llm_runtime::chromium_backend::chromium_autolaunch_log_path";
+    "cfg::llm_runtime::chromium_backend::chromium_autolaunch_log_path::bb0" [label="bb0\nCall"];
+    "cfg::llm_runtime::chromium_backend::chromium_autolaunch_log_path::bb1" [label="bb1\nCall"];
+    "cfg::llm_runtime::chromium_backend::chromium_autolaunch_log_path::bb2" [label="bb2\nReturn"];
+  }
+}

@@ -1,0 +1,25 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2219 {
+    label="md_convert::ObjectiveBuilder::new";
+    "cfg::md_convert::ObjectiveBuilder::new::bb0" [label="bb0\nCall"];
+    "cfg::md_convert::ObjectiveBuilder::new::bb1" [label="bb1\nCall"];
+    "cfg::md_convert::ObjectiveBuilder::new::bb2" [label="bb2\nCall"];
+    "cfg::md_convert::ObjectiveBuilder::new::bb3" [label="bb3\nCall"];
+    "cfg::md_convert::ObjectiveBuilder::new::bb4" [label="bb4\nCall"];
+    "cfg::md_convert::ObjectiveBuilder::new::bb5" [label="bb5\nCall"];
+    "cfg::md_convert::ObjectiveBuilder::new::bb6" [label="bb6\nReturn"];
+    "cfg::md_convert::ObjectiveBuilder::new::bb7" [label="bb7\nDrop cleanup"];
+    "cfg::md_convert::ObjectiveBuilder::new::bb8" [label="bb8\nDrop cleanup"];
+    "cfg::md_convert::ObjectiveBuilder::new::bb9" [label="bb9\nDrop cleanup"];
+    "cfg::md_convert::ObjectiveBuilder::new::bb10" [label="bb10\nDrop cleanup"];
+    "cfg::md_convert::ObjectiveBuilder::new::bb11" [label="bb11\nUnwindResume cleanup"];
+  }
+  "cfg::md_convert::ObjectiveBuilder::new::bb7" -> "cfg::md_convert::ObjectiveBuilder::new::bb8" [label="Drop"];
+  "cfg::md_convert::ObjectiveBuilder::new::bb8" -> "cfg::md_convert::ObjectiveBuilder::new::bb9" [label="Drop"];
+  "cfg::md_convert::ObjectiveBuilder::new::bb9" -> "cfg::md_convert::ObjectiveBuilder::new::bb10" [label="Drop"];
+  "cfg::md_convert::ObjectiveBuilder::new::bb10" -> "cfg::md_convert::ObjectiveBuilder::new::bb11" [label="Drop"];
+}

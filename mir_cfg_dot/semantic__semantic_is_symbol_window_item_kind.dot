@@ -1,0 +1,28 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3164 {
+    label="semantic::is_symbol_window_item_kind";
+    "cfg::semantic::is_symbol_window_item_kind::bb0" [label="bb0\nSwitchInt"];
+    "cfg::semantic::is_symbol_window_item_kind::bb1" [label="bb1\nGoto"];
+    "cfg::semantic::is_symbol_window_item_kind::bb2" [label="bb2\nGoto"];
+    "cfg::semantic::is_symbol_window_item_kind::bb3" [label="bb3\nReturn"];
+  }
+  "cfg::semantic::is_symbol_window_item_kind::bb0" -> "cfg::semantic::is_symbol_window_item_kind::bb2" [label="SwitchInt"];
+  "cfg::semantic::is_symbol_window_item_kind::bb0" -> "cfg::semantic::is_symbol_window_item_kind::bb2" [label="SwitchInt"];
+  "cfg::semantic::is_symbol_window_item_kind::bb0" -> "cfg::semantic::is_symbol_window_item_kind::bb2" [label="SwitchInt"];
+  "cfg::semantic::is_symbol_window_item_kind::bb0" -> "cfg::semantic::is_symbol_window_item_kind::bb2" [label="SwitchInt"];
+  "cfg::semantic::is_symbol_window_item_kind::bb0" -> "cfg::semantic::is_symbol_window_item_kind::bb2" [label="SwitchInt"];
+  "cfg::semantic::is_symbol_window_item_kind::bb0" -> "cfg::semantic::is_symbol_window_item_kind::bb2" [label="SwitchInt"];
+  "cfg::semantic::is_symbol_window_item_kind::bb0" -> "cfg::semantic::is_symbol_window_item_kind::bb2" [label="SwitchInt"];
+  "cfg::semantic::is_symbol_window_item_kind::bb0" -> "cfg::semantic::is_symbol_window_item_kind::bb2" [label="SwitchInt"];
+  "cfg::semantic::is_symbol_window_item_kind::bb0" -> "cfg::semantic::is_symbol_window_item_kind::bb2" [label="SwitchInt"];
+  "cfg::semantic::is_symbol_window_item_kind::bb0" -> "cfg::semantic::is_symbol_window_item_kind::bb2" [label="SwitchInt"];
+  "cfg::semantic::is_symbol_window_item_kind::bb0" -> "cfg::semantic::is_symbol_window_item_kind::bb2" [label="SwitchInt"];
+  "cfg::semantic::is_symbol_window_item_kind::bb0" -> "cfg::semantic::is_symbol_window_item_kind::bb2" [label="SwitchInt"];
+  "cfg::semantic::is_symbol_window_item_kind::bb0" -> "cfg::semantic::is_symbol_window_item_kind::bb1" [label="SwitchInt"];
+  "cfg::semantic::is_symbol_window_item_kind::bb1" -> "cfg::semantic::is_symbol_window_item_kind::bb3" [label="Goto"];
+  "cfg::semantic::is_symbol_window_item_kind::bb2" -> "cfg::semantic::is_symbol_window_item_kind::bb3" [label="Goto"];
+}

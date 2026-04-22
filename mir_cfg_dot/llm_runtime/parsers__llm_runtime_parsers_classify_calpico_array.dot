@@ -1,0 +1,36 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1876 {
+    label="llm_runtime::parsers::classify_calpico_array";
+    "cfg::llm_runtime::parsers::classify_calpico_array::bb0" [label="bb0\nCall"];
+    "cfg::llm_runtime::parsers::classify_calpico_array::bb1" [label="bb1\nGoto"];
+    "cfg::llm_runtime::parsers::classify_calpico_array::bb2" [label="bb2\nCall loop"];
+    "cfg::llm_runtime::parsers::classify_calpico_array::bb3" [label="bb3\nSwitchInt loop"];
+    "cfg::llm_runtime::parsers::classify_calpico_array::bb4" [label="bb4\nUnreachable loop"];
+    "cfg::llm_runtime::parsers::classify_calpico_array::bb5" [label="bb5\nCall loop"];
+    "cfg::llm_runtime::parsers::classify_calpico_array::bb6" [label="bb6\nGoto loop"];
+    "cfg::llm_runtime::parsers::classify_calpico_array::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::llm_runtime::parsers::classify_calpico_array::bb8" [label="bb8\nGoto loop"];
+    "cfg::llm_runtime::parsers::classify_calpico_array::bb9" [label="bb9\nGoto loop"];
+    "cfg::llm_runtime::parsers::classify_calpico_array::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::llm_runtime::parsers::classify_calpico_array::bb11" [label="bb11\nGoto loop"];
+    "cfg::llm_runtime::parsers::classify_calpico_array::bb12" [label="bb12\nDrop loop"];
+    "cfg::llm_runtime::parsers::classify_calpico_array::bb13" [label="bb13\nReturn"];
+  }
+  "cfg::llm_runtime::parsers::classify_calpico_array::bb1" -> "cfg::llm_runtime::parsers::classify_calpico_array::bb2" [label="Goto"];
+  "cfg::llm_runtime::parsers::classify_calpico_array::bb3" -> "cfg::llm_runtime::parsers::classify_calpico_array::bb6" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::classify_calpico_array::bb3" -> "cfg::llm_runtime::parsers::classify_calpico_array::bb5" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::classify_calpico_array::bb3" -> "cfg::llm_runtime::parsers::classify_calpico_array::bb4" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::classify_calpico_array::bb6" -> "cfg::llm_runtime::parsers::classify_calpico_array::bb13" [label="Goto"];
+  "cfg::llm_runtime::parsers::classify_calpico_array::bb7" -> "cfg::llm_runtime::parsers::classify_calpico_array::bb9" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::classify_calpico_array::bb7" -> "cfg::llm_runtime::parsers::classify_calpico_array::bb8" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::classify_calpico_array::bb8" -> "cfg::llm_runtime::parsers::classify_calpico_array::bb10" [label="Goto"];
+  "cfg::llm_runtime::parsers::classify_calpico_array::bb9" -> "cfg::llm_runtime::parsers::classify_calpico_array::bb10" [label="Goto"];
+  "cfg::llm_runtime::parsers::classify_calpico_array::bb10" -> "cfg::llm_runtime::parsers::classify_calpico_array::bb11" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::classify_calpico_array::bb10" -> "cfg::llm_runtime::parsers::classify_calpico_array::bb12" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::classify_calpico_array::bb11" -> "cfg::llm_runtime::parsers::classify_calpico_array::bb13" [label="Goto"];
+  "cfg::llm_runtime::parsers::classify_calpico_array::bb12" -> "cfg::llm_runtime::parsers::classify_calpico_array::bb2" [color="crimson", penwidth=2, label="Drop back"];
+}

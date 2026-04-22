@@ -1,0 +1,13 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3197 {
+    label="state_space::SemanticControlState::phase_gates";
+    "cfg::state_space::SemanticControlState::phase_gates::bb0" [label="bb0\nCall"];
+    "cfg::state_space::SemanticControlState::phase_gates::bb1" [label="bb1\nCall"];
+    "cfg::state_space::SemanticControlState::phase_gates::bb2" [label="bb2\nCall"];
+    "cfg::state_space::SemanticControlState::phase_gates::bb3" [label="bb3\nReturn"];
+  }
+}

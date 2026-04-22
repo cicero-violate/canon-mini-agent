@@ -1,0 +1,43 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1285 {
+    label="invariants::prune_excess";
+    "cfg::invariants::prune_excess::bb0" [label="bb0\nCall"];
+    "cfg::invariants::prune_excess::bb1" [label="bb1\nCall"];
+    "cfg::invariants::prune_excess::bb2" [label="bb2\nCall"];
+    "cfg::invariants::prune_excess::bb3" [label="bb3\nCall"];
+    "cfg::invariants::prune_excess::bb4" [label="bb4\nCall"];
+    "cfg::invariants::prune_excess::bb5" [label="bb5\nCall"];
+    "cfg::invariants::prune_excess::bb6" [label="bb6\nCall"];
+    "cfg::invariants::prune_excess::bb7" [label="bb7\nCall"];
+    "cfg::invariants::prune_excess::bb8" [label="bb8\nCall"];
+    "cfg::invariants::prune_excess::bb9" [label="bb9\nSwitchInt"];
+    "cfg::invariants::prune_excess::bb10" [label="bb10\nCall"];
+    "cfg::invariants::prune_excess::bb11" [label="bb11\nCall"];
+    "cfg::invariants::prune_excess::bb12" [label="bb12\nCall"];
+    "cfg::invariants::prune_excess::bb13" [label="bb13\nCall"];
+    "cfg::invariants::prune_excess::bb14" [label="bb14\nCall"];
+    "cfg::invariants::prune_excess::bb15" [label="bb15\nDrop"];
+    "cfg::invariants::prune_excess::bb16" [label="bb16\nSwitchInt"];
+    "cfg::invariants::prune_excess::bb17" [label="bb17\nReturn loop"];
+    "cfg::invariants::prune_excess::bb18" [label="bb18\nDrop cleanup loop"];
+    "cfg::invariants::prune_excess::bb19" [label="bb19\nUnwindResume cleanup loop"];
+    "cfg::invariants::prune_excess::bb20" [label="bb20\nDrop loop"];
+    "cfg::invariants::prune_excess::bb21" [label="bb21\nDrop cleanup loop"];
+    "cfg::invariants::prune_excess::bb22" [label="bb22\nSwitchInt cleanup loop"];
+  }
+  "cfg::invariants::prune_excess::bb9" -> "cfg::invariants::prune_excess::bb16" [label="SwitchInt"];
+  "cfg::invariants::prune_excess::bb9" -> "cfg::invariants::prune_excess::bb10" [label="SwitchInt"];
+  "cfg::invariants::prune_excess::bb15" -> "cfg::invariants::prune_excess::bb16" [label="Drop"];
+  "cfg::invariants::prune_excess::bb15" -> "cfg::invariants::prune_excess::bb22" [label="Drop"];
+  "cfg::invariants::prune_excess::bb16" -> "cfg::invariants::prune_excess::bb17" [label="SwitchInt"];
+  "cfg::invariants::prune_excess::bb16" -> "cfg::invariants::prune_excess::bb20" [label="SwitchInt"];
+  "cfg::invariants::prune_excess::bb18" -> "cfg::invariants::prune_excess::bb22" [label="Drop"];
+  "cfg::invariants::prune_excess::bb20" -> "cfg::invariants::prune_excess::bb17" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::invariants::prune_excess::bb21" -> "cfg::invariants::prune_excess::bb19" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::invariants::prune_excess::bb22" -> "cfg::invariants::prune_excess::bb19" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::prune_excess::bb22" -> "cfg::invariants::prune_excess::bb21" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

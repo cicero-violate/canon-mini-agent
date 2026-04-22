@@ -1,0 +1,52 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1243 {
+    label="invariants::actor_kind_from_role";
+    "cfg::invariants::actor_kind_from_role::bb0" [label="bb0\nCall"];
+    "cfg::invariants::actor_kind_from_role::bb1" [label="bb1\nSwitchInt"];
+    "cfg::invariants::actor_kind_from_role::bb2" [label="bb2\nGoto"];
+    "cfg::invariants::actor_kind_from_role::bb3" [label="bb3\nCall"];
+    "cfg::invariants::actor_kind_from_role::bb4" [label="bb4\nSwitchInt"];
+    "cfg::invariants::actor_kind_from_role::bb5" [label="bb5\nGoto"];
+    "cfg::invariants::actor_kind_from_role::bb6" [label="bb6\nCall"];
+    "cfg::invariants::actor_kind_from_role::bb7" [label="bb7\nSwitchInt"];
+    "cfg::invariants::actor_kind_from_role::bb8" [label="bb8\nGoto"];
+    "cfg::invariants::actor_kind_from_role::bb9" [label="bb9\nCall"];
+    "cfg::invariants::actor_kind_from_role::bb10" [label="bb10\nSwitchInt"];
+    "cfg::invariants::actor_kind_from_role::bb11" [label="bb11\nGoto"];
+    "cfg::invariants::actor_kind_from_role::bb12" [label="bb12\nCall"];
+    "cfg::invariants::actor_kind_from_role::bb13" [label="bb13\nSwitchInt"];
+    "cfg::invariants::actor_kind_from_role::bb14" [label="bb14\nCall"];
+    "cfg::invariants::actor_kind_from_role::bb15" [label="bb15\nSwitchInt"];
+    "cfg::invariants::actor_kind_from_role::bb16" [label="bb16\nGoto"];
+    "cfg::invariants::actor_kind_from_role::bb17" [label="bb17\nCall"];
+    "cfg::invariants::actor_kind_from_role::bb18" [label="bb18\nSwitchInt"];
+    "cfg::invariants::actor_kind_from_role::bb19" [label="bb19\nGoto"];
+    "cfg::invariants::actor_kind_from_role::bb20" [label="bb20\nGoto"];
+    "cfg::invariants::actor_kind_from_role::bb21" [label="bb21\nReturn"];
+  }
+  "cfg::invariants::actor_kind_from_role::bb1" -> "cfg::invariants::actor_kind_from_role::bb3" [label="SwitchInt"];
+  "cfg::invariants::actor_kind_from_role::bb1" -> "cfg::invariants::actor_kind_from_role::bb2" [label="SwitchInt"];
+  "cfg::invariants::actor_kind_from_role::bb2" -> "cfg::invariants::actor_kind_from_role::bb21" [label="Goto"];
+  "cfg::invariants::actor_kind_from_role::bb4" -> "cfg::invariants::actor_kind_from_role::bb6" [label="SwitchInt"];
+  "cfg::invariants::actor_kind_from_role::bb4" -> "cfg::invariants::actor_kind_from_role::bb5" [label="SwitchInt"];
+  "cfg::invariants::actor_kind_from_role::bb5" -> "cfg::invariants::actor_kind_from_role::bb21" [label="Goto"];
+  "cfg::invariants::actor_kind_from_role::bb7" -> "cfg::invariants::actor_kind_from_role::bb9" [label="SwitchInt"];
+  "cfg::invariants::actor_kind_from_role::bb7" -> "cfg::invariants::actor_kind_from_role::bb8" [label="SwitchInt"];
+  "cfg::invariants::actor_kind_from_role::bb8" -> "cfg::invariants::actor_kind_from_role::bb21" [label="Goto"];
+  "cfg::invariants::actor_kind_from_role::bb10" -> "cfg::invariants::actor_kind_from_role::bb12" [label="SwitchInt"];
+  "cfg::invariants::actor_kind_from_role::bb10" -> "cfg::invariants::actor_kind_from_role::bb11" [label="SwitchInt"];
+  "cfg::invariants::actor_kind_from_role::bb11" -> "cfg::invariants::actor_kind_from_role::bb21" [label="Goto"];
+  "cfg::invariants::actor_kind_from_role::bb13" -> "cfg::invariants::actor_kind_from_role::bb14" [label="SwitchInt"];
+  "cfg::invariants::actor_kind_from_role::bb13" -> "cfg::invariants::actor_kind_from_role::bb16" [label="SwitchInt"];
+  "cfg::invariants::actor_kind_from_role::bb15" -> "cfg::invariants::actor_kind_from_role::bb17" [label="SwitchInt"];
+  "cfg::invariants::actor_kind_from_role::bb15" -> "cfg::invariants::actor_kind_from_role::bb16" [label="SwitchInt"];
+  "cfg::invariants::actor_kind_from_role::bb16" -> "cfg::invariants::actor_kind_from_role::bb21" [label="Goto"];
+  "cfg::invariants::actor_kind_from_role::bb18" -> "cfg::invariants::actor_kind_from_role::bb20" [label="SwitchInt"];
+  "cfg::invariants::actor_kind_from_role::bb18" -> "cfg::invariants::actor_kind_from_role::bb19" [label="SwitchInt"];
+  "cfg::invariants::actor_kind_from_role::bb19" -> "cfg::invariants::actor_kind_from_role::bb21" [label="Goto"];
+  "cfg::invariants::actor_kind_from_role::bb20" -> "cfg::invariants::actor_kind_from_role::bb21" [label="Goto"];
+}

@@ -1,0 +1,44 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1859 {
+    label="llm_runtime::parsers::classify_chatgpt_group";
+    "cfg::llm_runtime::parsers::classify_chatgpt_group::bb0" [label="bb0\nCall"];
+    "cfg::llm_runtime::parsers::classify_chatgpt_group::bb1" [label="bb1\nCall"];
+    "cfg::llm_runtime::parsers::classify_chatgpt_group::bb2" [label="bb2\nCall"];
+    "cfg::llm_runtime::parsers::classify_chatgpt_group::bb3" [label="bb3\nCall"];
+    "cfg::llm_runtime::parsers::classify_chatgpt_group::bb4" [label="bb4\nSwitchInt"];
+    "cfg::llm_runtime::parsers::classify_chatgpt_group::bb5" [label="bb5\nGoto"];
+    "cfg::llm_runtime::parsers::classify_chatgpt_group::bb6" [label="bb6\nCall"];
+    "cfg::llm_runtime::parsers::classify_chatgpt_group::bb7" [label="bb7\nSwitchInt"];
+    "cfg::llm_runtime::parsers::classify_chatgpt_group::bb8" [label="bb8\nUnreachable loop"];
+    "cfg::llm_runtime::parsers::classify_chatgpt_group::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::llm_runtime::parsers::classify_chatgpt_group::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::llm_runtime::parsers::classify_chatgpt_group::bb11" [label="bb11\nDrop loop"];
+    "cfg::llm_runtime::parsers::classify_chatgpt_group::bb12" [label="bb12\nReturn loop"];
+    "cfg::llm_runtime::parsers::classify_chatgpt_group::bb13" [label="bb13\nDrop cleanup loop"];
+    "cfg::llm_runtime::parsers::classify_chatgpt_group::bb14" [label="bb14\nUnwindResume cleanup loop"];
+    "cfg::llm_runtime::parsers::classify_chatgpt_group::bb15" [label="bb15\nDrop loop"];
+    "cfg::llm_runtime::parsers::classify_chatgpt_group::bb16" [label="bb16\nCall loop"];
+    "cfg::llm_runtime::parsers::classify_chatgpt_group::bb17" [label="bb17\nDrop loop"];
+  }
+  "cfg::llm_runtime::parsers::classify_chatgpt_group::bb4" -> "cfg::llm_runtime::parsers::classify_chatgpt_group::bb6" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::classify_chatgpt_group::bb4" -> "cfg::llm_runtime::parsers::classify_chatgpt_group::bb5" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::classify_chatgpt_group::bb5" -> "cfg::llm_runtime::parsers::classify_chatgpt_group::bb12" [label="Goto"];
+  "cfg::llm_runtime::parsers::classify_chatgpt_group::bb7" -> "cfg::llm_runtime::parsers::classify_chatgpt_group::bb10" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::classify_chatgpt_group::bb7" -> "cfg::llm_runtime::parsers::classify_chatgpt_group::bb9" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::classify_chatgpt_group::bb7" -> "cfg::llm_runtime::parsers::classify_chatgpt_group::bb8" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::classify_chatgpt_group::bb9" -> "cfg::llm_runtime::parsers::classify_chatgpt_group::bb12" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::classify_chatgpt_group::bb9" -> "cfg::llm_runtime::parsers::classify_chatgpt_group::bb15" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::classify_chatgpt_group::bb9" -> "cfg::llm_runtime::parsers::classify_chatgpt_group::bb8" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::llm_runtime::parsers::classify_chatgpt_group::bb10" -> "cfg::llm_runtime::parsers::classify_chatgpt_group::bb16" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::classify_chatgpt_group::bb10" -> "cfg::llm_runtime::parsers::classify_chatgpt_group::bb17" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::classify_chatgpt_group::bb10" -> "cfg::llm_runtime::parsers::classify_chatgpt_group::bb8" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::llm_runtime::parsers::classify_chatgpt_group::bb11" -> "cfg::llm_runtime::parsers::classify_chatgpt_group::bb12" [label="Drop"];
+  "cfg::llm_runtime::parsers::classify_chatgpt_group::bb13" -> "cfg::llm_runtime::parsers::classify_chatgpt_group::bb14" [label="Drop"];
+  "cfg::llm_runtime::parsers::classify_chatgpt_group::bb15" -> "cfg::llm_runtime::parsers::classify_chatgpt_group::bb12" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::llm_runtime::parsers::classify_chatgpt_group::bb17" -> "cfg::llm_runtime::parsers::classify_chatgpt_group::bb16" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::llm_runtime::parsers::classify_chatgpt_group::bb17" -> "cfg::llm_runtime::parsers::classify_chatgpt_group::bb13" [color="crimson", penwidth=2, label="Drop back"];
+}

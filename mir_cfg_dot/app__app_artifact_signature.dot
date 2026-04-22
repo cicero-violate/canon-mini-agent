@@ -1,0 +1,17 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_249 {
+    label="app::artifact_signature";
+    "cfg::app::artifact_signature::bb0" [label="bb0\nCall"];
+    "cfg::app::artifact_signature::bb1" [label="bb1\nCall"];
+    "cfg::app::artifact_signature::bb2" [label="bb2\nCall"];
+    "cfg::app::artifact_signature::bb3" [label="bb3\nCall"];
+    "cfg::app::artifact_signature::bb4" [label="bb4\nCall"];
+    "cfg::app::artifact_signature::bb5" [label="bb5\nCall"];
+    "cfg::app::artifact_signature::bb6" [label="bb6\nCall"];
+    "cfg::app::artifact_signature::bb7" [label="bb7\nReturn"];
+  }
+}

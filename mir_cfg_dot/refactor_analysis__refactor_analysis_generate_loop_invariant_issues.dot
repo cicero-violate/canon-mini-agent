@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2787 {
+    label="refactor_analysis::generate_loop_invariant_issues";
+    "cfg::refactor_analysis::generate_loop_invariant_issues::bb0" [label="bb0\nCall"];
+    "cfg::refactor_analysis::generate_loop_invariant_issues::bb1" [label="bb1\nReturn"];
+  }
+}

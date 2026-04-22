@@ -1,0 +1,46 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1353 {
+    label="issues::workspace_target_exists";
+    "cfg::issues::workspace_target_exists::bb0" [label="bb0\nCall"];
+    "cfg::issues::workspace_target_exists::bb1" [label="bb1\nCall"];
+    "cfg::issues::workspace_target_exists::bb2" [label="bb2\nSwitchInt"];
+    "cfg::issues::workspace_target_exists::bb3" [label="bb3\nUnreachable"];
+    "cfg::issues::workspace_target_exists::bb4" [label="bb4\nCall"];
+    "cfg::issues::workspace_target_exists::bb5" [label="bb5\nCall"];
+    "cfg::issues::workspace_target_exists::bb6" [label="bb6\nGoto"];
+    "cfg::issues::workspace_target_exists::bb7" [label="bb7\nCall"];
+    "cfg::issues::workspace_target_exists::bb8" [label="bb8\nSwitchInt"];
+    "cfg::issues::workspace_target_exists::bb9" [label="bb9\nCall"];
+    "cfg::issues::workspace_target_exists::bb10" [label="bb10\nCall"];
+    "cfg::issues::workspace_target_exists::bb11" [label="bb11\nCall loop"];
+    "cfg::issues::workspace_target_exists::bb12" [label="bb12\nCall loop"];
+    "cfg::issues::workspace_target_exists::bb13" [label="bb13\nDrop loop"];
+    "cfg::issues::workspace_target_exists::bb14" [label="bb14\nGoto loop"];
+    "cfg::issues::workspace_target_exists::bb15" [label="bb15\nReturn loop"];
+    "cfg::issues::workspace_target_exists::bb16" [label="bb16\nDrop cleanup loop"];
+    "cfg::issues::workspace_target_exists::bb17" [label="bb17\nUnwindResume cleanup loop"];
+    "cfg::issues::workspace_target_exists::bb18" [label="bb18\nDrop cleanup loop"];
+    "cfg::issues::workspace_target_exists::bb19" [label="bb19\nSwitchInt cleanup loop"];
+    "cfg::issues::workspace_target_exists::bb20" [label="bb20\nGoto loop"];
+    "cfg::issues::workspace_target_exists::bb21" [label="bb21\nGoto loop"];
+  }
+  "cfg::issues::workspace_target_exists::bb2" -> "cfg::issues::workspace_target_exists::bb4" [label="SwitchInt"];
+  "cfg::issues::workspace_target_exists::bb2" -> "cfg::issues::workspace_target_exists::bb5" [label="SwitchInt"];
+  "cfg::issues::workspace_target_exists::bb2" -> "cfg::issues::workspace_target_exists::bb3" [label="SwitchInt"];
+  "cfg::issues::workspace_target_exists::bb6" -> "cfg::issues::workspace_target_exists::bb15" [label="Goto"];
+  "cfg::issues::workspace_target_exists::bb8" -> "cfg::issues::workspace_target_exists::bb10" [label="SwitchInt"];
+  "cfg::issues::workspace_target_exists::bb8" -> "cfg::issues::workspace_target_exists::bb9" [label="SwitchInt"];
+  "cfg::issues::workspace_target_exists::bb13" -> "cfg::issues::workspace_target_exists::bb14" [label="Drop"];
+  "cfg::issues::workspace_target_exists::bb13" -> "cfg::issues::workspace_target_exists::bb19" [label="Drop"];
+  "cfg::issues::workspace_target_exists::bb14" -> "cfg::issues::workspace_target_exists::bb15" [label="Goto"];
+  "cfg::issues::workspace_target_exists::bb16" -> "cfg::issues::workspace_target_exists::bb19" [label="Drop"];
+  "cfg::issues::workspace_target_exists::bb18" -> "cfg::issues::workspace_target_exists::bb17" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::issues::workspace_target_exists::bb19" -> "cfg::issues::workspace_target_exists::bb17" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::issues::workspace_target_exists::bb19" -> "cfg::issues::workspace_target_exists::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::issues::workspace_target_exists::bb20" -> "cfg::issues::workspace_target_exists::bb11" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::issues::workspace_target_exists::bb21" -> "cfg::issues::workspace_target_exists::bb11" [color="crimson", penwidth=2, label="Goto back"];
+}

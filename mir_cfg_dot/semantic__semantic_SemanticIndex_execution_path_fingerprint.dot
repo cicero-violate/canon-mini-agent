@@ -1,0 +1,31 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3120 {
+    label="semantic::SemanticIndex::execution_path_fingerprint";
+    "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb0" [label="bb0\nCall"];
+    "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb1" [label="bb1\nCall"];
+    "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb2" [label="bb2\nCall"];
+    "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb3" [label="bb3\nCall"];
+    "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb4" [label="bb4\nCall"];
+    "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb5" [label="bb5\nDrop"];
+    "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb6" [label="bb6\nCall"];
+    "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb7" [label="bb7\nCall"];
+    "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb8" [label="bb8\nCall"];
+    "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb9" [label="bb9\nCall"];
+    "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb10" [label="bb10\nCall"];
+    "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb11" [label="bb11\nCall"];
+    "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb12" [label="bb12\nDrop"];
+    "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb13" [label="bb13\nReturn"];
+    "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb14" [label="bb14\nDrop cleanup"];
+    "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb15" [label="bb15\nDrop cleanup"];
+    "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb16" [label="bb16\nUnwindResume cleanup"];
+  }
+  "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb5" -> "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb6" [label="Drop"];
+  "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb5" -> "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb14" [label="Drop"];
+  "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb12" -> "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb13" [label="Drop"];
+  "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb14" -> "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb16" [label="Drop"];
+  "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb15" -> "cfg::semantic::SemanticIndex::execution_path_fingerprint::bb16" [label="Drop"];
+}

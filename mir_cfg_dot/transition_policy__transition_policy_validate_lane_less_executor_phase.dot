@@ -1,0 +1,24 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4714 {
+    label="transition_policy::validate_lane_less_executor_phase";
+    "cfg::transition_policy::validate_lane_less_executor_phase::bb0" [label="bb0\nCall"];
+    "cfg::transition_policy::validate_lane_less_executor_phase::bb1" [label="bb1\nSwitchInt"];
+    "cfg::transition_policy::validate_lane_less_executor_phase::bb2" [label="bb2\nCall"];
+    "cfg::transition_policy::validate_lane_less_executor_phase::bb3" [label="bb3\nCall"];
+    "cfg::transition_policy::validate_lane_less_executor_phase::bb4" [label="bb4\nSwitchInt"];
+    "cfg::transition_policy::validate_lane_less_executor_phase::bb5" [label="bb5\nGoto"];
+    "cfg::transition_policy::validate_lane_less_executor_phase::bb6" [label="bb6\nCall"];
+    "cfg::transition_policy::validate_lane_less_executor_phase::bb7" [label="bb7\nGoto"];
+    "cfg::transition_policy::validate_lane_less_executor_phase::bb8" [label="bb8\nReturn"];
+  }
+  "cfg::transition_policy::validate_lane_less_executor_phase::bb1" -> "cfg::transition_policy::validate_lane_less_executor_phase::bb2" [label="SwitchInt"];
+  "cfg::transition_policy::validate_lane_less_executor_phase::bb1" -> "cfg::transition_policy::validate_lane_less_executor_phase::bb5" [label="SwitchInt"];
+  "cfg::transition_policy::validate_lane_less_executor_phase::bb4" -> "cfg::transition_policy::validate_lane_less_executor_phase::bb6" [label="SwitchInt"];
+  "cfg::transition_policy::validate_lane_less_executor_phase::bb4" -> "cfg::transition_policy::validate_lane_less_executor_phase::bb5" [label="SwitchInt"];
+  "cfg::transition_policy::validate_lane_less_executor_phase::bb5" -> "cfg::transition_policy::validate_lane_less_executor_phase::bb8" [label="Goto"];
+  "cfg::transition_policy::validate_lane_less_executor_phase::bb7" -> "cfg::transition_policy::validate_lane_less_executor_phase::bb8" [label="Goto"];
+}

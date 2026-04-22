@@ -1,0 +1,38 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1354 {
+    label="issues::has_issue_freshness_metadata";
+    "cfg::issues::has_issue_freshness_metadata::bb0" [label="bb0\nCall"];
+    "cfg::issues::has_issue_freshness_metadata::bb1" [label="bb1\nCall"];
+    "cfg::issues::has_issue_freshness_metadata::bb2" [label="bb2\nCall"];
+    "cfg::issues::has_issue_freshness_metadata::bb3" [label="bb3\nSwitchInt"];
+    "cfg::issues::has_issue_freshness_metadata::bb4" [label="bb4\nSwitchInt"];
+    "cfg::issues::has_issue_freshness_metadata::bb5" [label="bb5\nCall"];
+    "cfg::issues::has_issue_freshness_metadata::bb6" [label="bb6\nCall"];
+    "cfg::issues::has_issue_freshness_metadata::bb7" [label="bb7\nCall"];
+    "cfg::issues::has_issue_freshness_metadata::bb8" [label="bb8\nSwitchInt"];
+    "cfg::issues::has_issue_freshness_metadata::bb9" [label="bb9\nCall"];
+    "cfg::issues::has_issue_freshness_metadata::bb10" [label="bb10\nSwitchInt"];
+    "cfg::issues::has_issue_freshness_metadata::bb11" [label="bb11\nCall"];
+    "cfg::issues::has_issue_freshness_metadata::bb12" [label="bb12\nSwitchInt"];
+    "cfg::issues::has_issue_freshness_metadata::bb13" [label="bb13\nCall"];
+    "cfg::issues::has_issue_freshness_metadata::bb14" [label="bb14\nGoto"];
+    "cfg::issues::has_issue_freshness_metadata::bb15" [label="bb15\nGoto"];
+    "cfg::issues::has_issue_freshness_metadata::bb16" [label="bb16\nReturn"];
+  }
+  "cfg::issues::has_issue_freshness_metadata::bb3" -> "cfg::issues::has_issue_freshness_metadata::bb14" [label="SwitchInt"];
+  "cfg::issues::has_issue_freshness_metadata::bb3" -> "cfg::issues::has_issue_freshness_metadata::bb4" [label="SwitchInt"];
+  "cfg::issues::has_issue_freshness_metadata::bb4" -> "cfg::issues::has_issue_freshness_metadata::bb5" [label="SwitchInt"];
+  "cfg::issues::has_issue_freshness_metadata::bb4" -> "cfg::issues::has_issue_freshness_metadata::bb14" [label="SwitchInt"];
+  "cfg::issues::has_issue_freshness_metadata::bb8" -> "cfg::issues::has_issue_freshness_metadata::bb14" [label="SwitchInt"];
+  "cfg::issues::has_issue_freshness_metadata::bb8" -> "cfg::issues::has_issue_freshness_metadata::bb9" [label="SwitchInt"];
+  "cfg::issues::has_issue_freshness_metadata::bb10" -> "cfg::issues::has_issue_freshness_metadata::bb14" [label="SwitchInt"];
+  "cfg::issues::has_issue_freshness_metadata::bb10" -> "cfg::issues::has_issue_freshness_metadata::bb11" [label="SwitchInt"];
+  "cfg::issues::has_issue_freshness_metadata::bb12" -> "cfg::issues::has_issue_freshness_metadata::bb14" [label="SwitchInt"];
+  "cfg::issues::has_issue_freshness_metadata::bb12" -> "cfg::issues::has_issue_freshness_metadata::bb13" [label="SwitchInt"];
+  "cfg::issues::has_issue_freshness_metadata::bb14" -> "cfg::issues::has_issue_freshness_metadata::bb16" [label="Goto"];
+  "cfg::issues::has_issue_freshness_metadata::bb15" -> "cfg::issues::has_issue_freshness_metadata::bb16" [label="Goto"];
+}

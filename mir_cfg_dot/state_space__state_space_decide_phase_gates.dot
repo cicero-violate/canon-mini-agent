@@ -1,0 +1,42 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3202 {
+    label="state_space::decide_phase_gates";
+    "cfg::state_space::decide_phase_gates::bb0" [label="bb0\nSwitchInt"];
+    "cfg::state_space::decide_phase_gates::bb1" [label="bb1\nCall"];
+    "cfg::state_space::decide_phase_gates::bb2" [label="bb2\nGoto"];
+    "cfg::state_space::decide_phase_gates::bb3" [label="bb3\nCall"];
+    "cfg::state_space::decide_phase_gates::bb4" [label="bb4\nSwitchInt"];
+    "cfg::state_space::decide_phase_gates::bb5" [label="bb5\nCall"];
+    "cfg::state_space::decide_phase_gates::bb6" [label="bb6\nGoto"];
+    "cfg::state_space::decide_phase_gates::bb7" [label="bb7\nSwitchInt"];
+    "cfg::state_space::decide_phase_gates::bb8" [label="bb8\nCall"];
+    "cfg::state_space::decide_phase_gates::bb9" [label="bb9\nGoto"];
+    "cfg::state_space::decide_phase_gates::bb10" [label="bb10\nSwitchInt"];
+    "cfg::state_space::decide_phase_gates::bb11" [label="bb11\nGoto loop"];
+    "cfg::state_space::decide_phase_gates::bb12" [label="bb12\nCall loop"];
+    "cfg::state_space::decide_phase_gates::bb13" [label="bb13\nGoto loop"];
+    "cfg::state_space::decide_phase_gates::bb14" [label="bb14\nSwitchInt loop"];
+    "cfg::state_space::decide_phase_gates::bb15" [label="bb15\nReturn"];
+    "cfg::state_space::decide_phase_gates::bb16" [label="bb16\nUnreachable"];
+  }
+  "cfg::state_space::decide_phase_gates::bb0" -> "cfg::state_space::decide_phase_gates::bb2" [label="SwitchInt"];
+  "cfg::state_space::decide_phase_gates::bb0" -> "cfg::state_space::decide_phase_gates::bb1" [label="SwitchInt"];
+  "cfg::state_space::decide_phase_gates::bb2" -> "cfg::state_space::decide_phase_gates::bb3" [label="Goto"];
+  "cfg::state_space::decide_phase_gates::bb4" -> "cfg::state_space::decide_phase_gates::bb6" [label="SwitchInt"];
+  "cfg::state_space::decide_phase_gates::bb4" -> "cfg::state_space::decide_phase_gates::bb5" [label="SwitchInt"];
+  "cfg::state_space::decide_phase_gates::bb6" -> "cfg::state_space::decide_phase_gates::bb7" [label="Goto"];
+  "cfg::state_space::decide_phase_gates::bb7" -> "cfg::state_space::decide_phase_gates::bb9" [label="SwitchInt"];
+  "cfg::state_space::decide_phase_gates::bb7" -> "cfg::state_space::decide_phase_gates::bb8" [label="SwitchInt"];
+  "cfg::state_space::decide_phase_gates::bb9" -> "cfg::state_space::decide_phase_gates::bb10" [label="Goto"];
+  "cfg::state_space::decide_phase_gates::bb10" -> "cfg::state_space::decide_phase_gates::bb12" [label="SwitchInt"];
+  "cfg::state_space::decide_phase_gates::bb10" -> "cfg::state_space::decide_phase_gates::bb11" [label="SwitchInt"];
+  "cfg::state_space::decide_phase_gates::bb10" -> "cfg::state_space::decide_phase_gates::bb16" [label="SwitchInt"];
+  "cfg::state_space::decide_phase_gates::bb11" -> "cfg::state_space::decide_phase_gates::bb15" [label="Goto"];
+  "cfg::state_space::decide_phase_gates::bb13" -> "cfg::state_space::decide_phase_gates::bb15" [label="Goto"];
+  "cfg::state_space::decide_phase_gates::bb14" -> "cfg::state_space::decide_phase_gates::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::state_space::decide_phase_gates::bb14" -> "cfg::state_space::decide_phase_gates::bb13" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

@@ -1,0 +1,57 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3146 {
+    label="semantic::SemanticIndex::reconstruct_path_owned";
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb0" [label="bb0\nCall"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb1" [label="bb1\nCall"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb2" [label="bb2\nCall loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb3" [label="bb3\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb4" [label="bb4\nGoto loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb5" [label="bb5\nCall loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb6" [label="bb6\nCall loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb7" [label="bb7\nGoto loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb8" [label="bb8\nCall loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb9" [label="bb9\nCall loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb10" [label="bb10\nCall loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb11" [label="bb11\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb12" [label="bb12\nCall loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb13" [label="bb13\nCall loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb14" [label="bb14\nCall loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb15" [label="bb15\nDrop loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb16" [label="bb16\nGoto loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb17" [label="bb17\nGoto cleanup loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb18" [label="bb18\nCall loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb19" [label="bb19\nDrop loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb20" [label="bb20\nReturn loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb21" [label="bb21\nDrop cleanup loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb22" [label="bb22\nUnwindResume cleanup loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb23" [label="bb23\nDrop cleanup loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb24" [label="bb24\nSwitchInt cleanup loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb25" [label="bb25\nDrop cleanup loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb26" [label="bb26\nSwitchInt cleanup loop"];
+    "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb27" [label="bb27\nGoto loop"];
+  }
+  "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb3" -> "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb5" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb3" -> "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb4" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb4" -> "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb8" [label="Goto"];
+  "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb7" -> "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb8" [label="Goto"];
+  "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb11" -> "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb13" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb11" -> "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb12" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb15" -> "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb16" [label="Drop"];
+  "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb15" -> "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb17" [label="Drop"];
+  "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb16" -> "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb2" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb17" -> "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb24" [label="Goto"];
+  "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb19" -> "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb20" [label="Drop"];
+  "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb19" -> "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb26" [label="Drop"];
+  "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb21" -> "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb26" [label="Drop"];
+  "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb23" -> "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb21" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb24" -> "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb21" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb24" -> "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb23" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb25" -> "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb22" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb26" -> "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb22" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb26" -> "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb25" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb27" -> "cfg::semantic::SemanticIndex::reconstruct_path_owned::bb2" [color="crimson", penwidth=2, label="Goto back"];
+}

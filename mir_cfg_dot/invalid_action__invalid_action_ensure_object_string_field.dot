@@ -1,0 +1,29 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1165 {
+    label="invalid_action::ensure_object_string_field";
+    "cfg::invalid_action::ensure_object_string_field::bb0" [label="bb0\nCall"];
+    "cfg::invalid_action::ensure_object_string_field::bb1" [label="bb1\nSwitchInt"];
+    "cfg::invalid_action::ensure_object_string_field::bb2" [label="bb2\nGoto"];
+    "cfg::invalid_action::ensure_object_string_field::bb3" [label="bb3\nCall"];
+    "cfg::invalid_action::ensure_object_string_field::bb4" [label="bb4\nCall"];
+    "cfg::invalid_action::ensure_object_string_field::bb5" [label="bb5\nCall"];
+    "cfg::invalid_action::ensure_object_string_field::bb6" [label="bb6\nDrop"];
+    "cfg::invalid_action::ensure_object_string_field::bb7" [label="bb7\nGoto"];
+    "cfg::invalid_action::ensure_object_string_field::bb8" [label="bb8\nReturn"];
+    "cfg::invalid_action::ensure_object_string_field::bb9" [label="bb9\nUnwindResume cleanup loop"];
+    "cfg::invalid_action::ensure_object_string_field::bb10" [label="bb10\nDrop cleanup loop"];
+    "cfg::invalid_action::ensure_object_string_field::bb11" [label="bb11\nSwitchInt cleanup loop"];
+  }
+  "cfg::invalid_action::ensure_object_string_field::bb1" -> "cfg::invalid_action::ensure_object_string_field::bb3" [label="SwitchInt"];
+  "cfg::invalid_action::ensure_object_string_field::bb1" -> "cfg::invalid_action::ensure_object_string_field::bb2" [label="SwitchInt"];
+  "cfg::invalid_action::ensure_object_string_field::bb2" -> "cfg::invalid_action::ensure_object_string_field::bb8" [label="Goto"];
+  "cfg::invalid_action::ensure_object_string_field::bb6" -> "cfg::invalid_action::ensure_object_string_field::bb7" [label="Drop"];
+  "cfg::invalid_action::ensure_object_string_field::bb7" -> "cfg::invalid_action::ensure_object_string_field::bb8" [label="Goto"];
+  "cfg::invalid_action::ensure_object_string_field::bb10" -> "cfg::invalid_action::ensure_object_string_field::bb9" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::invalid_action::ensure_object_string_field::bb11" -> "cfg::invalid_action::ensure_object_string_field::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invalid_action::ensure_object_string_field::bb11" -> "cfg::invalid_action::ensure_object_string_field::bb10" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

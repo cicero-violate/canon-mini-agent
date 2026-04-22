@@ -1,0 +1,58 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4266 {
+    label="tools::handle_plan_fast_paths";
+    "cfg::tools::handle_plan_fast_paths::bb0" [label="bb0\nCall"];
+    "cfg::tools::handle_plan_fast_paths::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::handle_plan_fast_paths::bb2" [label="bb2\nCall"];
+    "cfg::tools::handle_plan_fast_paths::bb3" [label="bb3\nCall"];
+    "cfg::tools::handle_plan_fast_paths::bb4" [label="bb4\nSwitchInt"];
+    "cfg::tools::handle_plan_fast_paths::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::tools::handle_plan_fast_paths::bb6" [label="bb6\nGoto loop"];
+    "cfg::tools::handle_plan_fast_paths::bb7" [label="bb7\nCall loop"];
+    "cfg::tools::handle_plan_fast_paths::bb8" [label="bb8\nCall loop"];
+    "cfg::tools::handle_plan_fast_paths::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::tools::handle_plan_fast_paths::bb10" [label="bb10\nCall loop"];
+    "cfg::tools::handle_plan_fast_paths::bb11" [label="bb11\nCall loop"];
+    "cfg::tools::handle_plan_fast_paths::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::tools::handle_plan_fast_paths::bb13" [label="bb13\nCall loop"];
+    "cfg::tools::handle_plan_fast_paths::bb14" [label="bb14\nCall loop"];
+    "cfg::tools::handle_plan_fast_paths::bb15" [label="bb15\nSwitchInt loop"];
+    "cfg::tools::handle_plan_fast_paths::bb16" [label="bb16\nCall loop"];
+    "cfg::tools::handle_plan_fast_paths::bb17" [label="bb17\nCall loop"];
+    "cfg::tools::handle_plan_fast_paths::bb18" [label="bb18\nSwitchInt loop"];
+    "cfg::tools::handle_plan_fast_paths::bb19" [label="bb19\nGoto loop"];
+    "cfg::tools::handle_plan_fast_paths::bb20" [label="bb20\nCall loop"];
+    "cfg::tools::handle_plan_fast_paths::bb21" [label="bb21\nCall loop"];
+    "cfg::tools::handle_plan_fast_paths::bb22" [label="bb22\nCall loop"];
+    "cfg::tools::handle_plan_fast_paths::bb23" [label="bb23\nSwitchInt loop"];
+    "cfg::tools::handle_plan_fast_paths::bb24" [label="bb24\nGoto"];
+    "cfg::tools::handle_plan_fast_paths::bb25" [label="bb25\nCall"];
+    "cfg::tools::handle_plan_fast_paths::bb26" [label="bb26\nGoto"];
+    "cfg::tools::handle_plan_fast_paths::bb27" [label="bb27\nReturn"];
+  }
+  "cfg::tools::handle_plan_fast_paths::bb1" -> "cfg::tools::handle_plan_fast_paths::bb8" [label="SwitchInt"];
+  "cfg::tools::handle_plan_fast_paths::bb1" -> "cfg::tools::handle_plan_fast_paths::bb2" [label="SwitchInt"];
+  "cfg::tools::handle_plan_fast_paths::bb4" -> "cfg::tools::handle_plan_fast_paths::bb6" [label="SwitchInt"];
+  "cfg::tools::handle_plan_fast_paths::bb4" -> "cfg::tools::handle_plan_fast_paths::bb7" [label="SwitchInt"];
+  "cfg::tools::handle_plan_fast_paths::bb4" -> "cfg::tools::handle_plan_fast_paths::bb5" [label="SwitchInt"];
+  "cfg::tools::handle_plan_fast_paths::bb6" -> "cfg::tools::handle_plan_fast_paths::bb27" [label="Goto"];
+  "cfg::tools::handle_plan_fast_paths::bb9" -> "cfg::tools::handle_plan_fast_paths::bb26" [label="SwitchInt"];
+  "cfg::tools::handle_plan_fast_paths::bb9" -> "cfg::tools::handle_plan_fast_paths::bb10" [label="SwitchInt"];
+  "cfg::tools::handle_plan_fast_paths::bb12" -> "cfg::tools::handle_plan_fast_paths::bb21" [label="SwitchInt"];
+  "cfg::tools::handle_plan_fast_paths::bb12" -> "cfg::tools::handle_plan_fast_paths::bb13" [label="SwitchInt"];
+  "cfg::tools::handle_plan_fast_paths::bb15" -> "cfg::tools::handle_plan_fast_paths::bb21" [label="SwitchInt"];
+  "cfg::tools::handle_plan_fast_paths::bb15" -> "cfg::tools::handle_plan_fast_paths::bb16" [label="SwitchInt"];
+  "cfg::tools::handle_plan_fast_paths::bb18" -> "cfg::tools::handle_plan_fast_paths::bb19" [label="SwitchInt"];
+  "cfg::tools::handle_plan_fast_paths::bb18" -> "cfg::tools::handle_plan_fast_paths::bb20" [label="SwitchInt"];
+  "cfg::tools::handle_plan_fast_paths::bb18" -> "cfg::tools::handle_plan_fast_paths::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::handle_plan_fast_paths::bb19" -> "cfg::tools::handle_plan_fast_paths::bb27" [label="Goto"];
+  "cfg::tools::handle_plan_fast_paths::bb23" -> "cfg::tools::handle_plan_fast_paths::bb24" [label="SwitchInt"];
+  "cfg::tools::handle_plan_fast_paths::bb23" -> "cfg::tools::handle_plan_fast_paths::bb25" [label="SwitchInt"];
+  "cfg::tools::handle_plan_fast_paths::bb23" -> "cfg::tools::handle_plan_fast_paths::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::handle_plan_fast_paths::bb24" -> "cfg::tools::handle_plan_fast_paths::bb27" [label="Goto"];
+  "cfg::tools::handle_plan_fast_paths::bb26" -> "cfg::tools::handle_plan_fast_paths::bb27" [label="Goto"];
+}

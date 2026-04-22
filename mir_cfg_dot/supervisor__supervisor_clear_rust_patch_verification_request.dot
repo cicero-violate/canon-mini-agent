@@ -1,0 +1,14 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3295 {
+    label="supervisor::clear_rust_patch_verification_request";
+    "cfg::supervisor::clear_rust_patch_verification_request::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::clear_rust_patch_verification_request::bb1" [label="bb1\nCall"];
+    "cfg::supervisor::clear_rust_patch_verification_request::bb2" [label="bb2\nDrop"];
+    "cfg::supervisor::clear_rust_patch_verification_request::bb3" [label="bb3\nReturn"];
+  }
+  "cfg::supervisor::clear_rust_patch_verification_request::bb2" -> "cfg::supervisor::clear_rust_patch_verification_request::bb3" [label="Drop"];
+}

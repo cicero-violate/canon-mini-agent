@@ -1,0 +1,55 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3958 {
+    label="tools::should_skip_rename_candidate_symbol";
+    "cfg::tools::should_skip_rename_candidate_symbol::bb0" [label="bb0\nCall"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb2" [label="bb2\nGoto"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb3" [label="bb3\nCall"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb4" [label="bb4\nSwitchInt"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb5" [label="bb5\nCall"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb6" [label="bb6\nCall"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb7" [label="bb7\nGoto loop"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb8" [label="bb8\nCall loop"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb9" [label="bb9\nCall loop"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb10" [label="bb10\nCall loop"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb11" [label="bb11\nSwitchInt loop"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb13" [label="bb13\nSwitchInt loop"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb14" [label="bb14\nSwitchInt loop"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb15" [label="bb15\nGoto"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb16" [label="bb16\nSwitchInt"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb17" [label="bb17\nGoto"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb18" [label="bb18\nCall"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb19" [label="bb19\nCall"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb20" [label="bb20\nSwitchInt"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb21" [label="bb21\nCall"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb22" [label="bb22\nGoto"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb23" [label="bb23\nCall"];
+    "cfg::tools::should_skip_rename_candidate_symbol::bb24" [label="bb24\nReturn"];
+  }
+  "cfg::tools::should_skip_rename_candidate_symbol::bb1" -> "cfg::tools::should_skip_rename_candidate_symbol::bb3" [label="SwitchInt"];
+  "cfg::tools::should_skip_rename_candidate_symbol::bb1" -> "cfg::tools::should_skip_rename_candidate_symbol::bb2" [label="SwitchInt"];
+  "cfg::tools::should_skip_rename_candidate_symbol::bb2" -> "cfg::tools::should_skip_rename_candidate_symbol::bb24" [label="Goto"];
+  "cfg::tools::should_skip_rename_candidate_symbol::bb4" -> "cfg::tools::should_skip_rename_candidate_symbol::bb18" [label="SwitchInt"];
+  "cfg::tools::should_skip_rename_candidate_symbol::bb4" -> "cfg::tools::should_skip_rename_candidate_symbol::bb5" [label="SwitchInt"];
+  "cfg::tools::should_skip_rename_candidate_symbol::bb7" -> "cfg::tools::should_skip_rename_candidate_symbol::bb16" [label="Goto"];
+  "cfg::tools::should_skip_rename_candidate_symbol::bb11" -> "cfg::tools::should_skip_rename_candidate_symbol::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::should_skip_rename_candidate_symbol::bb11" -> "cfg::tools::should_skip_rename_candidate_symbol::bb15" [label="SwitchInt"];
+  "cfg::tools::should_skip_rename_candidate_symbol::bb12" -> "cfg::tools::should_skip_rename_candidate_symbol::bb10" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::should_skip_rename_candidate_symbol::bb12" -> "cfg::tools::should_skip_rename_candidate_symbol::bb15" [label="SwitchInt"];
+  "cfg::tools::should_skip_rename_candidate_symbol::bb13" -> "cfg::tools::should_skip_rename_candidate_symbol::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::should_skip_rename_candidate_symbol::bb13" -> "cfg::tools::should_skip_rename_candidate_symbol::bb15" [label="SwitchInt"];
+  "cfg::tools::should_skip_rename_candidate_symbol::bb14" -> "cfg::tools::should_skip_rename_candidate_symbol::bb8" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::should_skip_rename_candidate_symbol::bb14" -> "cfg::tools::should_skip_rename_candidate_symbol::bb15" [label="SwitchInt"];
+  "cfg::tools::should_skip_rename_candidate_symbol::bb15" -> "cfg::tools::should_skip_rename_candidate_symbol::bb16" [label="Goto"];
+  "cfg::tools::should_skip_rename_candidate_symbol::bb16" -> "cfg::tools::should_skip_rename_candidate_symbol::bb18" [label="SwitchInt"];
+  "cfg::tools::should_skip_rename_candidate_symbol::bb16" -> "cfg::tools::should_skip_rename_candidate_symbol::bb17" [label="SwitchInt"];
+  "cfg::tools::should_skip_rename_candidate_symbol::bb17" -> "cfg::tools::should_skip_rename_candidate_symbol::bb24" [label="Goto"];
+  "cfg::tools::should_skip_rename_candidate_symbol::bb20" -> "cfg::tools::should_skip_rename_candidate_symbol::bb22" [label="SwitchInt"];
+  "cfg::tools::should_skip_rename_candidate_symbol::bb20" -> "cfg::tools::should_skip_rename_candidate_symbol::bb21" [label="SwitchInt"];
+  "cfg::tools::should_skip_rename_candidate_symbol::bb22" -> "cfg::tools::should_skip_rename_candidate_symbol::bb24" [label="Goto"];
+}

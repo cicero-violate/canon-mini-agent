@@ -1,0 +1,23 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4277 {
+    label="tools::get_edges_array_mut";
+    "cfg::tools::get_edges_array_mut::bb0" [label="bb0\nCall"];
+    "cfg::tools::get_edges_array_mut::bb1" [label="bb1\nCall"];
+    "cfg::tools::get_edges_array_mut::bb2" [label="bb2\nCall"];
+    "cfg::tools::get_edges_array_mut::bb3" [label="bb3\nCall"];
+    "cfg::tools::get_edges_array_mut::bb4" [label="bb4\nSwitchInt"];
+    "cfg::tools::get_edges_array_mut::bb5" [label="bb5\nUnreachable"];
+    "cfg::tools::get_edges_array_mut::bb6" [label="bb6\nCall"];
+    "cfg::tools::get_edges_array_mut::bb7" [label="bb7\nCall"];
+    "cfg::tools::get_edges_array_mut::bb8" [label="bb8\nCall"];
+    "cfg::tools::get_edges_array_mut::bb9" [label="bb9\nCall"];
+    "cfg::tools::get_edges_array_mut::bb10" [label="bb10\nReturn"];
+  }
+  "cfg::tools::get_edges_array_mut::bb4" -> "cfg::tools::get_edges_array_mut::bb6" [label="SwitchInt"];
+  "cfg::tools::get_edges_array_mut::bb4" -> "cfg::tools::get_edges_array_mut::bb7" [label="SwitchInt"];
+  "cfg::tools::get_edges_array_mut::bb4" -> "cfg::tools::get_edges_array_mut::bb5" [label="SwitchInt"];
+}

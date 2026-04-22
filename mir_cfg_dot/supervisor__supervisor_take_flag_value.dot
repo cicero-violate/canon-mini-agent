@@ -1,0 +1,13 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3360 {
+    label="supervisor::take_flag_value";
+    "cfg::supervisor::take_flag_value::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::take_flag_value::bb1" [label="bb1\nCall"];
+    "cfg::supervisor::take_flag_value::bb2" [label="bb2\nCall"];
+    "cfg::supervisor::take_flag_value::bb3" [label="bb3\nReturn"];
+  }
+}

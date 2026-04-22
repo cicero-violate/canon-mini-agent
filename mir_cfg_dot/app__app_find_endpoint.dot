@@ -1,0 +1,13 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_446 {
+    label="app::find_endpoint";
+    "cfg::app::find_endpoint::bb0" [label="bb0\nCall"];
+    "cfg::app::find_endpoint::bb1" [label="bb1\nCall"];
+    "cfg::app::find_endpoint::bb2" [label="bb2\nCall"];
+    "cfg::app::find_endpoint::bb3" [label="bb3\nReturn"];
+  }
+}

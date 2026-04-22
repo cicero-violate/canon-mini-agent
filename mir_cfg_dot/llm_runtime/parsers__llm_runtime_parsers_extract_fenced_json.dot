@@ -1,0 +1,37 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1900 {
+    label="llm_runtime::parsers::extract_fenced_json";
+    "cfg::llm_runtime::parsers::extract_fenced_json::bb0" [label="bb0\nCall"];
+    "cfg::llm_runtime::parsers::extract_fenced_json::bb1" [label="bb1\nCall"];
+    "cfg::llm_runtime::parsers::extract_fenced_json::bb2" [label="bb2\nSwitchInt"];
+    "cfg::llm_runtime::parsers::extract_fenced_json::bb3" [label="bb3\nUnreachable loop"];
+    "cfg::llm_runtime::parsers::extract_fenced_json::bb4" [label="bb4\nCall loop"];
+    "cfg::llm_runtime::parsers::extract_fenced_json::bb5" [label="bb5\nCall loop"];
+    "cfg::llm_runtime::parsers::extract_fenced_json::bb6" [label="bb6\nCall loop"];
+    "cfg::llm_runtime::parsers::extract_fenced_json::bb7" [label="bb7\nCall loop"];
+    "cfg::llm_runtime::parsers::extract_fenced_json::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::llm_runtime::parsers::extract_fenced_json::bb9" [label="bb9\nSwitchInt"];
+    "cfg::llm_runtime::parsers::extract_fenced_json::bb10" [label="bb10\nCall"];
+    "cfg::llm_runtime::parsers::extract_fenced_json::bb11" [label="bb11\nGoto"];
+    "cfg::llm_runtime::parsers::extract_fenced_json::bb12" [label="bb12\nAssert"];
+    "cfg::llm_runtime::parsers::extract_fenced_json::bb13" [label="bb13\nCall"];
+    "cfg::llm_runtime::parsers::extract_fenced_json::bb14" [label="bb14\nCall"];
+    "cfg::llm_runtime::parsers::extract_fenced_json::bb15" [label="bb15\nGoto"];
+    "cfg::llm_runtime::parsers::extract_fenced_json::bb16" [label="bb16\nReturn"];
+  }
+  "cfg::llm_runtime::parsers::extract_fenced_json::bb2" -> "cfg::llm_runtime::parsers::extract_fenced_json::bb4" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::extract_fenced_json::bb2" -> "cfg::llm_runtime::parsers::extract_fenced_json::bb5" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::extract_fenced_json::bb2" -> "cfg::llm_runtime::parsers::extract_fenced_json::bb3" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::extract_fenced_json::bb8" -> "cfg::llm_runtime::parsers::extract_fenced_json::bb9" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::extract_fenced_json::bb8" -> "cfg::llm_runtime::parsers::extract_fenced_json::bb10" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::extract_fenced_json::bb8" -> "cfg::llm_runtime::parsers::extract_fenced_json::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::llm_runtime::parsers::extract_fenced_json::bb9" -> "cfg::llm_runtime::parsers::extract_fenced_json::bb12" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::extract_fenced_json::bb9" -> "cfg::llm_runtime::parsers::extract_fenced_json::bb11" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::extract_fenced_json::bb11" -> "cfg::llm_runtime::parsers::extract_fenced_json::bb16" [label="Goto"];
+  "cfg::llm_runtime::parsers::extract_fenced_json::bb12" -> "cfg::llm_runtime::parsers::extract_fenced_json::bb13" [label="Assert"];
+  "cfg::llm_runtime::parsers::extract_fenced_json::bb15" -> "cfg::llm_runtime::parsers::extract_fenced_json::bb16" [label="Goto"];
+}

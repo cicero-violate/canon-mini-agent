@@ -1,0 +1,28 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2587 {
+    label="prompts::prompt_intro";
+    "cfg::prompts::prompt_intro::bb0" [label="bb0\nSwitchInt"];
+    "cfg::prompts::prompt_intro::bb1" [label="bb1\nUnreachable"];
+    "cfg::prompts::prompt_intro::bb2" [label="bb2\nGoto"];
+    "cfg::prompts::prompt_intro::bb3" [label="bb3\nGoto"];
+    "cfg::prompts::prompt_intro::bb4" [label="bb4\nGoto"];
+    "cfg::prompts::prompt_intro::bb5" [label="bb5\nGoto"];
+    "cfg::prompts::prompt_intro::bb6" [label="bb6\nGoto"];
+    "cfg::prompts::prompt_intro::bb7" [label="bb7\nReturn"];
+  }
+  "cfg::prompts::prompt_intro::bb0" -> "cfg::prompts::prompt_intro::bb6" [label="SwitchInt"];
+  "cfg::prompts::prompt_intro::bb0" -> "cfg::prompts::prompt_intro::bb5" [label="SwitchInt"];
+  "cfg::prompts::prompt_intro::bb0" -> "cfg::prompts::prompt_intro::bb4" [label="SwitchInt"];
+  "cfg::prompts::prompt_intro::bb0" -> "cfg::prompts::prompt_intro::bb3" [label="SwitchInt"];
+  "cfg::prompts::prompt_intro::bb0" -> "cfg::prompts::prompt_intro::bb2" [label="SwitchInt"];
+  "cfg::prompts::prompt_intro::bb0" -> "cfg::prompts::prompt_intro::bb1" [label="SwitchInt"];
+  "cfg::prompts::prompt_intro::bb2" -> "cfg::prompts::prompt_intro::bb7" [label="Goto"];
+  "cfg::prompts::prompt_intro::bb3" -> "cfg::prompts::prompt_intro::bb7" [label="Goto"];
+  "cfg::prompts::prompt_intro::bb4" -> "cfg::prompts::prompt_intro::bb7" [label="Goto"];
+  "cfg::prompts::prompt_intro::bb5" -> "cfg::prompts::prompt_intro::bb7" [label="Goto"];
+  "cfg::prompts::prompt_intro::bb6" -> "cfg::prompts::prompt_intro::bb7" [label="Goto"];
+}

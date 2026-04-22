@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_605 {
+    label="blockers::try_append_blocker_with_writer::LOCK";
+    "cfg::blockers::try_append_blocker_with_writer::LOCK::bb0" [label="bb0\nCall"];
+    "cfg::blockers::try_append_blocker_with_writer::LOCK::bb1" [label="bb1\nReturn"];
+  }
+}

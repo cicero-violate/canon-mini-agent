@@ -1,0 +1,45 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2280 {
+    label="orchestrator_seam::finish_probe";
+    "cfg::orchestrator_seam::finish_probe::bb0" [label="bb0\nCall"];
+    "cfg::orchestrator_seam::finish_probe::bb1" [label="bb1\nCall"];
+    "cfg::orchestrator_seam::finish_probe::bb2" [label="bb2\nCall"];
+    "cfg::orchestrator_seam::finish_probe::bb3" [label="bb3\nSwitchInt"];
+    "cfg::orchestrator_seam::finish_probe::bb4" [label="bb4\nUnreachable"];
+    "cfg::orchestrator_seam::finish_probe::bb5" [label="bb5\nCall"];
+    "cfg::orchestrator_seam::finish_probe::bb6" [label="bb6\nCall"];
+    "cfg::orchestrator_seam::finish_probe::bb7" [label="bb7\nDrop"];
+    "cfg::orchestrator_seam::finish_probe::bb8" [label="bb8\nCall"];
+    "cfg::orchestrator_seam::finish_probe::bb9" [label="bb9\nDrop"];
+    "cfg::orchestrator_seam::finish_probe::bb10" [label="bb10\nDrop"];
+    "cfg::orchestrator_seam::finish_probe::bb11" [label="bb11\nReturn"];
+    "cfg::orchestrator_seam::finish_probe::bb12" [label="bb12\nDrop cleanup"];
+    "cfg::orchestrator_seam::finish_probe::bb13" [label="bb13\nDrop cleanup"];
+    "cfg::orchestrator_seam::finish_probe::bb14" [label="bb14\nSwitchInt cleanup loop"];
+    "cfg::orchestrator_seam::finish_probe::bb15" [label="bb15\nDrop cleanup loop"];
+    "cfg::orchestrator_seam::finish_probe::bb16" [label="bb16\nUnwindResume cleanup loop"];
+    "cfg::orchestrator_seam::finish_probe::bb17" [label="bb17\nDrop cleanup loop"];
+    "cfg::orchestrator_seam::finish_probe::bb18" [label="bb18\nSwitchInt cleanup loop"];
+    "cfg::orchestrator_seam::finish_probe::bb19" [label="bb19\nDrop cleanup loop"];
+  }
+  "cfg::orchestrator_seam::finish_probe::bb3" -> "cfg::orchestrator_seam::finish_probe::bb5" [label="SwitchInt"];
+  "cfg::orchestrator_seam::finish_probe::bb3" -> "cfg::orchestrator_seam::finish_probe::bb6" [label="SwitchInt"];
+  "cfg::orchestrator_seam::finish_probe::bb3" -> "cfg::orchestrator_seam::finish_probe::bb4" [label="SwitchInt"];
+  "cfg::orchestrator_seam::finish_probe::bb7" -> "cfg::orchestrator_seam::finish_probe::bb10" [label="Drop"];
+  "cfg::orchestrator_seam::finish_probe::bb7" -> "cfg::orchestrator_seam::finish_probe::bb15" [label="Drop"];
+  "cfg::orchestrator_seam::finish_probe::bb9" -> "cfg::orchestrator_seam::finish_probe::bb11" [label="Drop"];
+  "cfg::orchestrator_seam::finish_probe::bb10" -> "cfg::orchestrator_seam::finish_probe::bb11" [label="Drop"];
+  "cfg::orchestrator_seam::finish_probe::bb12" -> "cfg::orchestrator_seam::finish_probe::bb13" [label="Drop"];
+  "cfg::orchestrator_seam::finish_probe::bb13" -> "cfg::orchestrator_seam::finish_probe::bb18" [label="Drop"];
+  "cfg::orchestrator_seam::finish_probe::bb14" -> "cfg::orchestrator_seam::finish_probe::bb15" [label="SwitchInt"];
+  "cfg::orchestrator_seam::finish_probe::bb14" -> "cfg::orchestrator_seam::finish_probe::bb19" [label="SwitchInt"];
+  "cfg::orchestrator_seam::finish_probe::bb15" -> "cfg::orchestrator_seam::finish_probe::bb16" [label="Drop"];
+  "cfg::orchestrator_seam::finish_probe::bb17" -> "cfg::orchestrator_seam::finish_probe::bb14" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::orchestrator_seam::finish_probe::bb18" -> "cfg::orchestrator_seam::finish_probe::bb14" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::orchestrator_seam::finish_probe::bb18" -> "cfg::orchestrator_seam::finish_probe::bb17" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::orchestrator_seam::finish_probe::bb19" -> "cfg::orchestrator_seam::finish_probe::bb15" [color="crimson", penwidth=2, label="Drop back"];
+}

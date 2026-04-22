@@ -1,0 +1,16 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_191 {
+    label="app::requeue_lane_after_submit_recovery";
+    "cfg::app::requeue_lane_after_submit_recovery::bb0" [label="bb0\nCall"];
+    "cfg::app::requeue_lane_after_submit_recovery::bb1" [label="bb1\nCall"];
+    "cfg::app::requeue_lane_after_submit_recovery::bb2" [label="bb2\nCall"];
+    "cfg::app::requeue_lane_after_submit_recovery::bb3" [label="bb3\nDrop"];
+    "cfg::app::requeue_lane_after_submit_recovery::bb4" [label="bb4\nCall"];
+    "cfg::app::requeue_lane_after_submit_recovery::bb5" [label="bb5\nReturn"];
+  }
+  "cfg::app::requeue_lane_after_submit_recovery::bb3" -> "cfg::app::requeue_lane_after_submit_recovery::bb4" [label="Drop"];
+}

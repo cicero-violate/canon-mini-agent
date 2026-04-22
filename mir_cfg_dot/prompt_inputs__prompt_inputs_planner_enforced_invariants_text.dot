@@ -1,0 +1,18 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2503 {
+    label="prompt_inputs::planner_enforced_invariants_text";
+    "cfg::prompt_inputs::planner_enforced_invariants_text::bb0" [label="bb0\nCall"];
+    "cfg::prompt_inputs::planner_enforced_invariants_text::bb1" [label="bb1\nCall"];
+    "cfg::prompt_inputs::planner_enforced_invariants_text::bb2" [label="bb2\nCall"];
+    "cfg::prompt_inputs::planner_enforced_invariants_text::bb3" [label="bb3\nDrop"];
+    "cfg::prompt_inputs::planner_enforced_invariants_text::bb4" [label="bb4\nReturn"];
+    "cfg::prompt_inputs::planner_enforced_invariants_text::bb5" [label="bb5\nDrop cleanup"];
+    "cfg::prompt_inputs::planner_enforced_invariants_text::bb6" [label="bb6\nUnwindResume cleanup"];
+  }
+  "cfg::prompt_inputs::planner_enforced_invariants_text::bb3" -> "cfg::prompt_inputs::planner_enforced_invariants_text::bb4" [label="Drop"];
+  "cfg::prompt_inputs::planner_enforced_invariants_text::bb5" -> "cfg::prompt_inputs::planner_enforced_invariants_text::bb6" [label="Drop"];
+}

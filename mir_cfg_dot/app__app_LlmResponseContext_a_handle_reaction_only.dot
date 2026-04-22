@@ -1,0 +1,53 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_403 {
+    label="app::LlmResponseContext::<'a>::handle_reaction_only";
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb0" [label="bb0\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb1" [label="bb1\nSwitchInt"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb2" [label="bb2\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb3" [label="bb3\nGoto"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb4" [label="bb4\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb5" [label="bb5\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb6" [label="bb6\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb7" [label="bb7\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb8" [label="bb8\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb9" [label="bb9\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb10" [label="bb10\nDrop"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb11" [label="bb11\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb12" [label="bb12\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb13" [label="bb13\nSwitchInt"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb14" [label="bb14\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb15" [label="bb15\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb16" [label="bb16\nDrop"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb17" [label="bb17\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb18" [label="bb18\nGoto cleanup"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb19" [label="bb19\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb20" [label="bb20\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb21" [label="bb21\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb22" [label="bb22\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb23" [label="bb23\nGoto"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb24" [label="bb24\nReturn"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb25" [label="bb25\nDrop cleanup loop"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb26" [label="bb26\nUnwindResume cleanup loop"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb27" [label="bb27\nDrop cleanup loop"];
+    "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb28" [label="bb28\nSwitchInt cleanup loop"];
+  }
+  "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb1" -> "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb3" [label="SwitchInt"];
+  "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb1" -> "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb2" [label="SwitchInt"];
+  "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb3" -> "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb24" [label="Goto"];
+  "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb10" -> "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb11" [label="Drop"];
+  "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb10" -> "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb25" [label="Drop"];
+  "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb13" -> "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb14" [label="SwitchInt"];
+  "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb13" -> "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb23" [label="SwitchInt"];
+  "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb16" -> "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb17" [label="Drop"];
+  "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb16" -> "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb18" [label="Drop"];
+  "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb18" -> "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb26" [label="Goto"];
+  "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb23" -> "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb24" [label="Goto"];
+  "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb25" -> "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb26" [label="Drop"];
+  "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb27" -> "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb25" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb28" -> "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb25" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb28" -> "cfg::app::LlmResponseContext::<'a>::handle_reaction_only::bb27" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

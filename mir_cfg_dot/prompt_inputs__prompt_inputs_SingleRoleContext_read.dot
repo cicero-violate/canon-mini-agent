@@ -1,0 +1,40 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2517 {
+    label="prompt_inputs::SingleRoleContext::<'_>::read";
+    "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb0" [label="bb0\nSwitchInt"];
+    "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb1" [label="bb1\nUnreachable loop"];
+    "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb2" [label="bb2\nCall loop"];
+    "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb3" [label="bb3\nCall loop"];
+    "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb4" [label="bb4\nCall loop"];
+    "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb5" [label="bb5\nCall loop"];
+    "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb6" [label="bb6\nCall loop"];
+    "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb7" [label="bb7\nCall loop"];
+    "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb8" [label="bb8\nCall loop"];
+    "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb9" [label="bb9\nDrop loop"];
+    "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb10" [label="bb10\nCall loop"];
+    "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb11" [label="bb11\nSwitchInt loop"];
+    "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb12" [label="bb12\nGoto"];
+    "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb13" [label="bb13\nCall"];
+    "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb14" [label="bb14\nGoto"];
+    "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb15" [label="bb15\nReturn"];
+    "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb16" [label="bb16\nDrop cleanup"];
+    "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb17" [label="bb17\nUnwindResume cleanup"];
+  }
+  "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb0" -> "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb6" [label="SwitchInt"];
+  "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb0" -> "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb5" [label="SwitchInt"];
+  "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb0" -> "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb4" [label="SwitchInt"];
+  "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb0" -> "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb3" [label="SwitchInt"];
+  "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb0" -> "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb2" [label="SwitchInt"];
+  "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb0" -> "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb1" [label="SwitchInt"];
+  "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb9" -> "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb14" [label="Drop"];
+  "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb11" -> "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb12" [label="SwitchInt"];
+  "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb11" -> "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb13" [label="SwitchInt"];
+  "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb11" -> "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb1" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb12" -> "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb14" [label="Goto"];
+  "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb14" -> "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb15" [label="Goto"];
+  "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb16" -> "cfg::prompt_inputs::SingleRoleContext::<'_>::read::bb17" [label="Drop"];
+}

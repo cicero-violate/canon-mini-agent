@@ -1,0 +1,22 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1485 {
+    label="lessons::mark_candidate_status";
+    "cfg::lessons::mark_candidate_status::bb0" [label="bb0\nCall"];
+    "cfg::lessons::mark_candidate_status::bb1" [label="bb1\nCall"];
+    "cfg::lessons::mark_candidate_status::bb2" [label="bb2\nCall"];
+    "cfg::lessons::mark_candidate_status::bb3" [label="bb3\nSwitchInt"];
+    "cfg::lessons::mark_candidate_status::bb4" [label="bb4\nGoto"];
+    "cfg::lessons::mark_candidate_status::bb5" [label="bb5\nGoto"];
+    "cfg::lessons::mark_candidate_status::bb6" [label="bb6\nReturn"];
+    "cfg::lessons::mark_candidate_status::bb7" [label="bb7\nUnreachable"];
+  }
+  "cfg::lessons::mark_candidate_status::bb3" -> "cfg::lessons::mark_candidate_status::bb4" [label="SwitchInt"];
+  "cfg::lessons::mark_candidate_status::bb3" -> "cfg::lessons::mark_candidate_status::bb5" [label="SwitchInt"];
+  "cfg::lessons::mark_candidate_status::bb3" -> "cfg::lessons::mark_candidate_status::bb7" [label="SwitchInt"];
+  "cfg::lessons::mark_candidate_status::bb4" -> "cfg::lessons::mark_candidate_status::bb6" [label="Goto"];
+  "cfg::lessons::mark_candidate_status::bb5" -> "cfg::lessons::mark_candidate_status::bb6" [label="Goto"];
+}

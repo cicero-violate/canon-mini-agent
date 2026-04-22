@@ -1,0 +1,14 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_712 {
+    label="complexity::enqueue_grpo_extraction";
+    "cfg::complexity::enqueue_grpo_extraction::bb0" [label="bb0\nCall"];
+    "cfg::complexity::enqueue_grpo_extraction::bb1" [label="bb1\nCall"];
+    "cfg::complexity::enqueue_grpo_extraction::bb2" [label="bb2\nDrop"];
+    "cfg::complexity::enqueue_grpo_extraction::bb3" [label="bb3\nReturn"];
+  }
+  "cfg::complexity::enqueue_grpo_extraction::bb2" -> "cfg::complexity::enqueue_grpo_extraction::bb3" [label="Drop"];
+}

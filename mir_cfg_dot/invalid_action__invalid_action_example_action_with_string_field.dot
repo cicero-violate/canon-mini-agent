@@ -1,0 +1,36 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1085 {
+    label="invalid_action::example_action_with_string_field";
+    "cfg::invalid_action::example_action_with_string_field::bb0" [label="bb0\nCall"];
+    "cfg::invalid_action::example_action_with_string_field::bb1" [label="bb1\nCall"];
+    "cfg::invalid_action::example_action_with_string_field::bb2" [label="bb2\nCall"];
+    "cfg::invalid_action::example_action_with_string_field::bb3" [label="bb3\nCall"];
+    "cfg::invalid_action::example_action_with_string_field::bb4" [label="bb4\nDrop"];
+    "cfg::invalid_action::example_action_with_string_field::bb5" [label="bb5\nCall"];
+    "cfg::invalid_action::example_action_with_string_field::bb6" [label="bb6\nCall"];
+    "cfg::invalid_action::example_action_with_string_field::bb7" [label="bb7\nCall"];
+    "cfg::invalid_action::example_action_with_string_field::bb8" [label="bb8\nDrop"];
+    "cfg::invalid_action::example_action_with_string_field::bb9" [label="bb9\nReturn"];
+    "cfg::invalid_action::example_action_with_string_field::bb10" [label="bb10\nDrop cleanup loop"];
+    "cfg::invalid_action::example_action_with_string_field::bb11" [label="bb11\nUnwindResume cleanup loop"];
+    "cfg::invalid_action::example_action_with_string_field::bb12" [label="bb12\nDrop cleanup loop"];
+    "cfg::invalid_action::example_action_with_string_field::bb13" [label="bb13\nSwitchInt cleanup loop"];
+    "cfg::invalid_action::example_action_with_string_field::bb14" [label="bb14\nDrop cleanup loop"];
+    "cfg::invalid_action::example_action_with_string_field::bb15" [label="bb15\nSwitchInt cleanup loop"];
+  }
+  "cfg::invalid_action::example_action_with_string_field::bb4" -> "cfg::invalid_action::example_action_with_string_field::bb5" [label="Drop"];
+  "cfg::invalid_action::example_action_with_string_field::bb4" -> "cfg::invalid_action::example_action_with_string_field::bb10" [label="Drop"];
+  "cfg::invalid_action::example_action_with_string_field::bb8" -> "cfg::invalid_action::example_action_with_string_field::bb9" [label="Drop"];
+  "cfg::invalid_action::example_action_with_string_field::bb8" -> "cfg::invalid_action::example_action_with_string_field::bb10" [label="Drop"];
+  "cfg::invalid_action::example_action_with_string_field::bb10" -> "cfg::invalid_action::example_action_with_string_field::bb11" [label="Drop"];
+  "cfg::invalid_action::example_action_with_string_field::bb12" -> "cfg::invalid_action::example_action_with_string_field::bb10" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::invalid_action::example_action_with_string_field::bb13" -> "cfg::invalid_action::example_action_with_string_field::bb10" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invalid_action::example_action_with_string_field::bb13" -> "cfg::invalid_action::example_action_with_string_field::bb12" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invalid_action::example_action_with_string_field::bb14" -> "cfg::invalid_action::example_action_with_string_field::bb10" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::invalid_action::example_action_with_string_field::bb15" -> "cfg::invalid_action::example_action_with_string_field::bb10" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invalid_action::example_action_with_string_field::bb15" -> "cfg::invalid_action::example_action_with_string_field::bb14" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

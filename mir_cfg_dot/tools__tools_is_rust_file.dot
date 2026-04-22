@@ -1,0 +1,13 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3928 {
+    label="tools::is_rust_file";
+    "cfg::tools::is_rust_file::bb0" [label="bb0\nCall"];
+    "cfg::tools::is_rust_file::bb1" [label="bb1\nCall"];
+    "cfg::tools::is_rust_file::bb2" [label="bb2\nCall"];
+    "cfg::tools::is_rust_file::bb3" [label="bb3\nReturn"];
+  }
+}

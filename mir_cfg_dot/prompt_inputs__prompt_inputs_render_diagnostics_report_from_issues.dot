@@ -1,0 +1,25 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2496 {
+    label="prompt_inputs::render_diagnostics_report_from_issues";
+    "cfg::prompt_inputs::render_diagnostics_report_from_issues::bb0" [label="bb0\nCall"];
+    "cfg::prompt_inputs::render_diagnostics_report_from_issues::bb1" [label="bb1\nCall"];
+    "cfg::prompt_inputs::render_diagnostics_report_from_issues::bb2" [label="bb2\nCall"];
+    "cfg::prompt_inputs::render_diagnostics_report_from_issues::bb3" [label="bb3\nCall"];
+    "cfg::prompt_inputs::render_diagnostics_report_from_issues::bb4" [label="bb4\nCall"];
+    "cfg::prompt_inputs::render_diagnostics_report_from_issues::bb5" [label="bb5\nDrop"];
+    "cfg::prompt_inputs::render_diagnostics_report_from_issues::bb6" [label="bb6\nDrop"];
+    "cfg::prompt_inputs::render_diagnostics_report_from_issues::bb7" [label="bb7\nReturn"];
+    "cfg::prompt_inputs::render_diagnostics_report_from_issues::bb8" [label="bb8\nDrop cleanup"];
+    "cfg::prompt_inputs::render_diagnostics_report_from_issues::bb9" [label="bb9\nDrop cleanup"];
+    "cfg::prompt_inputs::render_diagnostics_report_from_issues::bb10" [label="bb10\nUnwindResume cleanup"];
+  }
+  "cfg::prompt_inputs::render_diagnostics_report_from_issues::bb5" -> "cfg::prompt_inputs::render_diagnostics_report_from_issues::bb6" [label="Drop"];
+  "cfg::prompt_inputs::render_diagnostics_report_from_issues::bb5" -> "cfg::prompt_inputs::render_diagnostics_report_from_issues::bb9" [label="Drop"];
+  "cfg::prompt_inputs::render_diagnostics_report_from_issues::bb6" -> "cfg::prompt_inputs::render_diagnostics_report_from_issues::bb7" [label="Drop"];
+  "cfg::prompt_inputs::render_diagnostics_report_from_issues::bb8" -> "cfg::prompt_inputs::render_diagnostics_report_from_issues::bb9" [label="Drop"];
+  "cfg::prompt_inputs::render_diagnostics_report_from_issues::bb9" -> "cfg::prompt_inputs::render_diagnostics_report_from_issues::bb10" [label="Drop"];
+}

@@ -1,0 +1,22 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_959 {
+    label="graph_metrics::priority_from_ratio";
+    "cfg::graph_metrics::priority_from_ratio::bb0" [label="bb0\nSwitchInt"];
+    "cfg::graph_metrics::priority_from_ratio::bb1" [label="bb1\nGoto"];
+    "cfg::graph_metrics::priority_from_ratio::bb2" [label="bb2\nSwitchInt"];
+    "cfg::graph_metrics::priority_from_ratio::bb3" [label="bb3\nGoto"];
+    "cfg::graph_metrics::priority_from_ratio::bb4" [label="bb4\nGoto"];
+    "cfg::graph_metrics::priority_from_ratio::bb5" [label="bb5\nReturn"];
+  }
+  "cfg::graph_metrics::priority_from_ratio::bb0" -> "cfg::graph_metrics::priority_from_ratio::bb2" [label="SwitchInt"];
+  "cfg::graph_metrics::priority_from_ratio::bb0" -> "cfg::graph_metrics::priority_from_ratio::bb1" [label="SwitchInt"];
+  "cfg::graph_metrics::priority_from_ratio::bb1" -> "cfg::graph_metrics::priority_from_ratio::bb5" [label="Goto"];
+  "cfg::graph_metrics::priority_from_ratio::bb2" -> "cfg::graph_metrics::priority_from_ratio::bb4" [label="SwitchInt"];
+  "cfg::graph_metrics::priority_from_ratio::bb2" -> "cfg::graph_metrics::priority_from_ratio::bb3" [label="SwitchInt"];
+  "cfg::graph_metrics::priority_from_ratio::bb3" -> "cfg::graph_metrics::priority_from_ratio::bb5" [label="Goto"];
+  "cfg::graph_metrics::priority_from_ratio::bb4" -> "cfg::graph_metrics::priority_from_ratio::bb5" [label="Goto"];
+}

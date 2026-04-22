@@ -1,0 +1,24 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3922 {
+    label="tools::collect_rust_file_root";
+    "cfg::tools::collect_rust_file_root::bb0" [label="bb0\nCall"];
+    "cfg::tools::collect_rust_file_root::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::collect_rust_file_root::bb2" [label="bb2\nCall"];
+    "cfg::tools::collect_rust_file_root::bb3" [label="bb3\nGoto"];
+    "cfg::tools::collect_rust_file_root::bb4" [label="bb4\nSwitchInt"];
+    "cfg::tools::collect_rust_file_root::bb5" [label="bb5\nCall"];
+    "cfg::tools::collect_rust_file_root::bb6" [label="bb6\nCall"];
+    "cfg::tools::collect_rust_file_root::bb7" [label="bb7\nGoto"];
+    "cfg::tools::collect_rust_file_root::bb8" [label="bb8\nReturn"];
+  }
+  "cfg::tools::collect_rust_file_root::bb1" -> "cfg::tools::collect_rust_file_root::bb3" [label="SwitchInt"];
+  "cfg::tools::collect_rust_file_root::bb1" -> "cfg::tools::collect_rust_file_root::bb2" [label="SwitchInt"];
+  "cfg::tools::collect_rust_file_root::bb3" -> "cfg::tools::collect_rust_file_root::bb8" [label="Goto"];
+  "cfg::tools::collect_rust_file_root::bb4" -> "cfg::tools::collect_rust_file_root::bb7" [label="SwitchInt"];
+  "cfg::tools::collect_rust_file_root::bb4" -> "cfg::tools::collect_rust_file_root::bb5" [label="SwitchInt"];
+  "cfg::tools::collect_rust_file_root::bb7" -> "cfg::tools::collect_rust_file_root::bb8" [label="Goto"];
+}

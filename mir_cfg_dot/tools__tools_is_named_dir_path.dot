@@ -1,0 +1,26 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3635 {
+    label="tools::is_named_dir_path";
+    "cfg::tools::is_named_dir_path::bb0" [label="bb0\nCall"];
+    "cfg::tools::is_named_dir_path::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::is_named_dir_path::bb2" [label="bb2\nGoto"];
+    "cfg::tools::is_named_dir_path::bb3" [label="bb3\nCall"];
+    "cfg::tools::is_named_dir_path::bb4" [label="bb4\nCall"];
+    "cfg::tools::is_named_dir_path::bb5" [label="bb5\nCall"];
+    "cfg::tools::is_named_dir_path::bb6" [label="bb6\nCall"];
+    "cfg::tools::is_named_dir_path::bb7" [label="bb7\nCall"];
+    "cfg::tools::is_named_dir_path::bb8" [label="bb8\nDrop"];
+    "cfg::tools::is_named_dir_path::bb9" [label="bb9\nReturn"];
+    "cfg::tools::is_named_dir_path::bb10" [label="bb10\nDrop cleanup"];
+    "cfg::tools::is_named_dir_path::bb11" [label="bb11\nUnwindResume cleanup"];
+  }
+  "cfg::tools::is_named_dir_path::bb1" -> "cfg::tools::is_named_dir_path::bb3" [label="SwitchInt"];
+  "cfg::tools::is_named_dir_path::bb1" -> "cfg::tools::is_named_dir_path::bb2" [label="SwitchInt"];
+  "cfg::tools::is_named_dir_path::bb2" -> "cfg::tools::is_named_dir_path::bb9" [label="Goto"];
+  "cfg::tools::is_named_dir_path::bb8" -> "cfg::tools::is_named_dir_path::bb9" [label="Drop"];
+  "cfg::tools::is_named_dir_path::bb10" -> "cfg::tools::is_named_dir_path::bb11" [label="Drop"];
+}

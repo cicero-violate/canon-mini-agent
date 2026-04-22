@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4194 {
+    label="tools::PlanOp::VALID_OPS";
+    "cfg::tools::PlanOp::VALID_OPS::bb0" [label="bb0\nReturn"];
+  }
+}

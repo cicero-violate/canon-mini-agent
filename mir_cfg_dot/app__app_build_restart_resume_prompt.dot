@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_445 {
+    label="app::build_restart_resume_prompt";
+    "cfg::app::build_restart_resume_prompt::bb0" [label="bb0\nCall"];
+    "cfg::app::build_restart_resume_prompt::bb1" [label="bb1\nReturn"];
+  }
+}

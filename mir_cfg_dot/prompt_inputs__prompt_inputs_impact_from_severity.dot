@@ -1,0 +1,25 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2486 {
+    label="prompt_inputs::impact_from_severity";
+    "cfg::prompt_inputs::impact_from_severity::bb0" [label="bb0\nSwitchInt"];
+    "cfg::prompt_inputs::impact_from_severity::bb1" [label="bb1\nUnreachable"];
+    "cfg::prompt_inputs::impact_from_severity::bb2" [label="bb2\nGoto"];
+    "cfg::prompt_inputs::impact_from_severity::bb3" [label="bb3\nGoto"];
+    "cfg::prompt_inputs::impact_from_severity::bb4" [label="bb4\nGoto"];
+    "cfg::prompt_inputs::impact_from_severity::bb5" [label="bb5\nGoto"];
+    "cfg::prompt_inputs::impact_from_severity::bb6" [label="bb6\nReturn"];
+  }
+  "cfg::prompt_inputs::impact_from_severity::bb0" -> "cfg::prompt_inputs::impact_from_severity::bb5" [label="SwitchInt"];
+  "cfg::prompt_inputs::impact_from_severity::bb0" -> "cfg::prompt_inputs::impact_from_severity::bb4" [label="SwitchInt"];
+  "cfg::prompt_inputs::impact_from_severity::bb0" -> "cfg::prompt_inputs::impact_from_severity::bb3" [label="SwitchInt"];
+  "cfg::prompt_inputs::impact_from_severity::bb0" -> "cfg::prompt_inputs::impact_from_severity::bb2" [label="SwitchInt"];
+  "cfg::prompt_inputs::impact_from_severity::bb0" -> "cfg::prompt_inputs::impact_from_severity::bb1" [label="SwitchInt"];
+  "cfg::prompt_inputs::impact_from_severity::bb2" -> "cfg::prompt_inputs::impact_from_severity::bb6" [label="Goto"];
+  "cfg::prompt_inputs::impact_from_severity::bb3" -> "cfg::prompt_inputs::impact_from_severity::bb6" [label="Goto"];
+  "cfg::prompt_inputs::impact_from_severity::bb4" -> "cfg::prompt_inputs::impact_from_severity::bb6" [label="Goto"];
+  "cfg::prompt_inputs::impact_from_severity::bb5" -> "cfg::prompt_inputs::impact_from_severity::bb6" [label="Goto"];
+}

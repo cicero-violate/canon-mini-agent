@@ -1,0 +1,43 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4586 {
+    label="tools::execute_logged_action";
+    "cfg::tools::execute_logged_action::bb0" [label="bb0\nCall"];
+    "cfg::tools::execute_logged_action::bb1" [label="bb1\nCall"];
+    "cfg::tools::execute_logged_action::bb2" [label="bb2\nCall"];
+    "cfg::tools::execute_logged_action::bb3" [label="bb3\nSwitchInt"];
+    "cfg::tools::execute_logged_action::bb4" [label="bb4\nUnreachable loop"];
+    "cfg::tools::execute_logged_action::bb5" [label="bb5\nCall loop"];
+    "cfg::tools::execute_logged_action::bb6" [label="bb6\nCall loop"];
+    "cfg::tools::execute_logged_action::bb7" [label="bb7\nCall loop"];
+    "cfg::tools::execute_logged_action::bb8" [label="bb8\nCall loop"];
+    "cfg::tools::execute_logged_action::bb9" [label="bb9\nGoto loop"];
+    "cfg::tools::execute_logged_action::bb10" [label="bb10\nCall loop"];
+    "cfg::tools::execute_logged_action::bb11" [label="bb11\nCall loop"];
+    "cfg::tools::execute_logged_action::bb12" [label="bb12\nCall loop"];
+    "cfg::tools::execute_logged_action::bb13" [label="bb13\nCall loop"];
+    "cfg::tools::execute_logged_action::bb14" [label="bb14\nCall loop"];
+    "cfg::tools::execute_logged_action::bb15" [label="bb15\nCall loop"];
+    "cfg::tools::execute_logged_action::bb16" [label="bb16\nDrop loop"];
+    "cfg::tools::execute_logged_action::bb17" [label="bb17\nDrop cleanup loop"];
+    "cfg::tools::execute_logged_action::bb18" [label="bb18\nDrop cleanup loop"];
+    "cfg::tools::execute_logged_action::bb19" [label="bb19\nDrop cleanup loop"];
+    "cfg::tools::execute_logged_action::bb20" [label="bb20\nReturn loop"];
+    "cfg::tools::execute_logged_action::bb21" [label="bb21\nSwitchInt loop"];
+    "cfg::tools::execute_logged_action::bb22" [label="bb22\nUnwindResume cleanup"];
+  }
+  "cfg::tools::execute_logged_action::bb3" -> "cfg::tools::execute_logged_action::bb6" [label="SwitchInt"];
+  "cfg::tools::execute_logged_action::bb3" -> "cfg::tools::execute_logged_action::bb5" [label="SwitchInt"];
+  "cfg::tools::execute_logged_action::bb3" -> "cfg::tools::execute_logged_action::bb4" [label="SwitchInt"];
+  "cfg::tools::execute_logged_action::bb9" -> "cfg::tools::execute_logged_action::bb21" [label="Goto"];
+  "cfg::tools::execute_logged_action::bb16" -> "cfg::tools::execute_logged_action::bb21" [label="Drop"];
+  "cfg::tools::execute_logged_action::bb17" -> "cfg::tools::execute_logged_action::bb18" [label="Drop"];
+  "cfg::tools::execute_logged_action::bb18" -> "cfg::tools::execute_logged_action::bb22" [label="Drop"];
+  "cfg::tools::execute_logged_action::bb19" -> "cfg::tools::execute_logged_action::bb22" [label="Drop"];
+  "cfg::tools::execute_logged_action::bb21" -> "cfg::tools::execute_logged_action::bb20" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::execute_logged_action::bb21" -> "cfg::tools::execute_logged_action::bb20" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::execute_logged_action::bb21" -> "cfg::tools::execute_logged_action::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

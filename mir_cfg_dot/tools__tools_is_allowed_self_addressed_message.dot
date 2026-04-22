@@ -1,0 +1,35 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3899 {
+    label="tools::is_allowed_self_addressed_message";
+    "cfg::tools::is_allowed_self_addressed_message::bb0" [label="bb0\nCall"];
+    "cfg::tools::is_allowed_self_addressed_message::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::is_allowed_self_addressed_message::bb2" [label="bb2\nCall"];
+    "cfg::tools::is_allowed_self_addressed_message::bb3" [label="bb3\nSwitchInt"];
+    "cfg::tools::is_allowed_self_addressed_message::bb4" [label="bb4\nCall"];
+    "cfg::tools::is_allowed_self_addressed_message::bb5" [label="bb5\nCall"];
+    "cfg::tools::is_allowed_self_addressed_message::bb6" [label="bb6\nCall"];
+    "cfg::tools::is_allowed_self_addressed_message::bb7" [label="bb7\nSwitchInt"];
+    "cfg::tools::is_allowed_self_addressed_message::bb8" [label="bb8\nCall"];
+    "cfg::tools::is_allowed_self_addressed_message::bb9" [label="bb9\nCall"];
+    "cfg::tools::is_allowed_self_addressed_message::bb10" [label="bb10\nCall"];
+    "cfg::tools::is_allowed_self_addressed_message::bb11" [label="bb11\nSwitchInt"];
+    "cfg::tools::is_allowed_self_addressed_message::bb12" [label="bb12\nCall"];
+    "cfg::tools::is_allowed_self_addressed_message::bb13" [label="bb13\nGoto"];
+    "cfg::tools::is_allowed_self_addressed_message::bb14" [label="bb14\nCall"];
+    "cfg::tools::is_allowed_self_addressed_message::bb15" [label="bb15\nCall"];
+    "cfg::tools::is_allowed_self_addressed_message::bb16" [label="bb16\nReturn"];
+  }
+  "cfg::tools::is_allowed_self_addressed_message::bb1" -> "cfg::tools::is_allowed_self_addressed_message::bb13" [label="SwitchInt"];
+  "cfg::tools::is_allowed_self_addressed_message::bb1" -> "cfg::tools::is_allowed_self_addressed_message::bb2" [label="SwitchInt"];
+  "cfg::tools::is_allowed_self_addressed_message::bb3" -> "cfg::tools::is_allowed_self_addressed_message::bb13" [label="SwitchInt"];
+  "cfg::tools::is_allowed_self_addressed_message::bb3" -> "cfg::tools::is_allowed_self_addressed_message::bb4" [label="SwitchInt"];
+  "cfg::tools::is_allowed_self_addressed_message::bb7" -> "cfg::tools::is_allowed_self_addressed_message::bb13" [label="SwitchInt"];
+  "cfg::tools::is_allowed_self_addressed_message::bb7" -> "cfg::tools::is_allowed_self_addressed_message::bb8" [label="SwitchInt"];
+  "cfg::tools::is_allowed_self_addressed_message::bb11" -> "cfg::tools::is_allowed_self_addressed_message::bb13" [label="SwitchInt"];
+  "cfg::tools::is_allowed_self_addressed_message::bb11" -> "cfg::tools::is_allowed_self_addressed_message::bb12" [label="SwitchInt"];
+  "cfg::tools::is_allowed_self_addressed_message::bb13" -> "cfg::tools::is_allowed_self_addressed_message::bb16" [label="Goto"];
+}

@@ -1,0 +1,49 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4109 {
+    label="tools::cargo_test_totals_summary";
+    "cfg::tools::cargo_test_totals_summary::bb0" [label="bb0\nCall"];
+    "cfg::tools::cargo_test_totals_summary::bb1" [label="bb1\nCall"];
+    "cfg::tools::cargo_test_totals_summary::bb2" [label="bb2\nCall"];
+    "cfg::tools::cargo_test_totals_summary::bb3" [label="bb3\nGoto"];
+    "cfg::tools::cargo_test_totals_summary::bb4" [label="bb4\nCall loop"];
+    "cfg::tools::cargo_test_totals_summary::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::tools::cargo_test_totals_summary::bb6" [label="bb6\nUnreachable loop"];
+    "cfg::tools::cargo_test_totals_summary::bb7" [label="bb7\nCall loop"];
+    "cfg::tools::cargo_test_totals_summary::bb8" [label="bb8\nCall loop"];
+    "cfg::tools::cargo_test_totals_summary::bb9" [label="bb9\nCall loop"];
+    "cfg::tools::cargo_test_totals_summary::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::tools::cargo_test_totals_summary::bb11" [label="bb11\nCall loop"];
+    "cfg::tools::cargo_test_totals_summary::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::tools::cargo_test_totals_summary::bb13" [label="bb13\nCall loop"];
+    "cfg::tools::cargo_test_totals_summary::bb14" [label="bb14\nSwitchInt loop"];
+    "cfg::tools::cargo_test_totals_summary::bb15" [label="bb15\nCall loop"];
+    "cfg::tools::cargo_test_totals_summary::bb16" [label="bb16\nSwitchInt loop"];
+    "cfg::tools::cargo_test_totals_summary::bb17" [label="bb17\nCall loop"];
+    "cfg::tools::cargo_test_totals_summary::bb18" [label="bb18\nCall loop"];
+    "cfg::tools::cargo_test_totals_summary::bb19" [label="bb19\nCall loop"];
+    "cfg::tools::cargo_test_totals_summary::bb20" [label="bb20\nDrop loop"];
+    "cfg::tools::cargo_test_totals_summary::bb21" [label="bb21\nReturn loop"];
+    "cfg::tools::cargo_test_totals_summary::bb22" [label="bb22\nDrop cleanup loop"];
+    "cfg::tools::cargo_test_totals_summary::bb23" [label="bb23\nUnwindResume cleanup loop"];
+    "cfg::tools::cargo_test_totals_summary::bb24" [label="bb24\nGoto loop"];
+  }
+  "cfg::tools::cargo_test_totals_summary::bb3" -> "cfg::tools::cargo_test_totals_summary::bb4" [label="Goto"];
+  "cfg::tools::cargo_test_totals_summary::bb5" -> "cfg::tools::cargo_test_totals_summary::bb8" [label="SwitchInt"];
+  "cfg::tools::cargo_test_totals_summary::bb5" -> "cfg::tools::cargo_test_totals_summary::bb7" [label="SwitchInt"];
+  "cfg::tools::cargo_test_totals_summary::bb5" -> "cfg::tools::cargo_test_totals_summary::bb6" [label="SwitchInt"];
+  "cfg::tools::cargo_test_totals_summary::bb10" -> "cfg::tools::cargo_test_totals_summary::bb11" [label="SwitchInt"];
+  "cfg::tools::cargo_test_totals_summary::bb10" -> "cfg::tools::cargo_test_totals_summary::bb17" [label="SwitchInt"];
+  "cfg::tools::cargo_test_totals_summary::bb12" -> "cfg::tools::cargo_test_totals_summary::bb13" [label="SwitchInt"];
+  "cfg::tools::cargo_test_totals_summary::bb12" -> "cfg::tools::cargo_test_totals_summary::bb17" [label="SwitchInt"];
+  "cfg::tools::cargo_test_totals_summary::bb14" -> "cfg::tools::cargo_test_totals_summary::bb15" [label="SwitchInt"];
+  "cfg::tools::cargo_test_totals_summary::bb14" -> "cfg::tools::cargo_test_totals_summary::bb17" [label="SwitchInt"];
+  "cfg::tools::cargo_test_totals_summary::bb16" -> "cfg::tools::cargo_test_totals_summary::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::cargo_test_totals_summary::bb16" -> "cfg::tools::cargo_test_totals_summary::bb17" [label="SwitchInt"];
+  "cfg::tools::cargo_test_totals_summary::bb20" -> "cfg::tools::cargo_test_totals_summary::bb21" [label="Drop"];
+  "cfg::tools::cargo_test_totals_summary::bb22" -> "cfg::tools::cargo_test_totals_summary::bb23" [label="Drop"];
+  "cfg::tools::cargo_test_totals_summary::bb24" -> "cfg::tools::cargo_test_totals_summary::bb4" [color="crimson", penwidth=2, label="Goto back"];
+}

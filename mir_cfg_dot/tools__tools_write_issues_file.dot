@@ -1,0 +1,16 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3795 {
+    label="tools::write_issues_file";
+    "cfg::tools::write_issues_file::bb0" [label="bb0\nCall"];
+    "cfg::tools::write_issues_file::bb1" [label="bb1\nCall"];
+    "cfg::tools::write_issues_file::bb2" [label="bb2\nCall"];
+    "cfg::tools::write_issues_file::bb3" [label="bb3\nCall"];
+    "cfg::tools::write_issues_file::bb4" [label="bb4\nCall"];
+    "cfg::tools::write_issues_file::bb5" [label="bb5\nCall"];
+    "cfg::tools::write_issues_file::bb6" [label="bb6\nReturn"];
+  }
+}

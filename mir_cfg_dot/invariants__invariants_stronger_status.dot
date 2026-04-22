@@ -1,0 +1,19 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1310 {
+    label="invariants::stronger_status";
+    "cfg::invariants::stronger_status::bb0" [label="bb0\nCall"];
+    "cfg::invariants::stronger_status::bb1" [label="bb1\nCall"];
+    "cfg::invariants::stronger_status::bb2" [label="bb2\nSwitchInt"];
+    "cfg::invariants::stronger_status::bb3" [label="bb3\nGoto"];
+    "cfg::invariants::stronger_status::bb4" [label="bb4\nGoto"];
+    "cfg::invariants::stronger_status::bb5" [label="bb5\nReturn"];
+  }
+  "cfg::invariants::stronger_status::bb2" -> "cfg::invariants::stronger_status::bb4" [label="SwitchInt"];
+  "cfg::invariants::stronger_status::bb2" -> "cfg::invariants::stronger_status::bb3" [label="SwitchInt"];
+  "cfg::invariants::stronger_status::bb3" -> "cfg::invariants::stronger_status::bb5" [label="Goto"];
+  "cfg::invariants::stronger_status::bb4" -> "cfg::invariants::stronger_status::bb5" [label="Goto"];
+}

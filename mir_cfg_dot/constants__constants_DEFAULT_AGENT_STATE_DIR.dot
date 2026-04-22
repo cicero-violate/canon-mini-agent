@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_764 {
+    label="constants::DEFAULT_AGENT_STATE_DIR";
+    "cfg::constants::DEFAULT_AGENT_STATE_DIR::bb0" [label="bb0\nReturn"];
+  }
+}

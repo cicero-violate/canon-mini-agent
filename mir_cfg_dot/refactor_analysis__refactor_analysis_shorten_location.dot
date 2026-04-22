@@ -1,0 +1,34 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2926 {
+    label="refactor_analysis::shorten_location";
+    "cfg::refactor_analysis::shorten_location::bb0" [label="bb0\nCall"];
+    "cfg::refactor_analysis::shorten_location::bb1" [label="bb1\nSwitchInt"];
+    "cfg::refactor_analysis::shorten_location::bb2" [label="bb2\nAssert"];
+    "cfg::refactor_analysis::shorten_location::bb3" [label="bb3\nCall"];
+    "cfg::refactor_analysis::shorten_location::bb4" [label="bb4\nCall"];
+    "cfg::refactor_analysis::shorten_location::bb5" [label="bb5\nCall"];
+    "cfg::refactor_analysis::shorten_location::bb6" [label="bb6\nCall"];
+    "cfg::refactor_analysis::shorten_location::bb7" [label="bb7\nCall"];
+    "cfg::refactor_analysis::shorten_location::bb8" [label="bb8\nCall"];
+    "cfg::refactor_analysis::shorten_location::bb9" [label="bb9\nCall"];
+    "cfg::refactor_analysis::shorten_location::bb10" [label="bb10\nCall"];
+    "cfg::refactor_analysis::shorten_location::bb11" [label="bb11\nCall"];
+    "cfg::refactor_analysis::shorten_location::bb12" [label="bb12\nCall"];
+    "cfg::refactor_analysis::shorten_location::bb13" [label="bb13\nCall"];
+    "cfg::refactor_analysis::shorten_location::bb14" [label="bb14\nDrop"];
+    "cfg::refactor_analysis::shorten_location::bb15" [label="bb15\nReturn"];
+    "cfg::refactor_analysis::shorten_location::bb16" [label="bb16\nDrop cleanup"];
+    "cfg::refactor_analysis::shorten_location::bb17" [label="bb17\nUnwindResume cleanup"];
+    "cfg::refactor_analysis::shorten_location::bb18" [label="bb18\nUnreachable"];
+  }
+  "cfg::refactor_analysis::shorten_location::bb1" -> "cfg::refactor_analysis::shorten_location::bb2" [label="SwitchInt"];
+  "cfg::refactor_analysis::shorten_location::bb1" -> "cfg::refactor_analysis::shorten_location::bb5" [label="SwitchInt"];
+  "cfg::refactor_analysis::shorten_location::bb1" -> "cfg::refactor_analysis::shorten_location::bb18" [label="SwitchInt"];
+  "cfg::refactor_analysis::shorten_location::bb2" -> "cfg::refactor_analysis::shorten_location::bb3" [label="Assert"];
+  "cfg::refactor_analysis::shorten_location::bb14" -> "cfg::refactor_analysis::shorten_location::bb15" [label="Drop"];
+  "cfg::refactor_analysis::shorten_location::bb16" -> "cfg::refactor_analysis::shorten_location::bb17" [label="Drop"];
+}

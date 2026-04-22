@@ -1,0 +1,25 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1224 {
+    label="invariants::read_enforced_invariants";
+    "cfg::invariants::read_enforced_invariants::bb0" [label="bb0\nCall"];
+    "cfg::invariants::read_enforced_invariants::bb1" [label="bb1\nCall"];
+    "cfg::invariants::read_enforced_invariants::bb2" [label="bb2\nSwitchInt"];
+    "cfg::invariants::read_enforced_invariants::bb3" [label="bb3\nCall"];
+    "cfg::invariants::read_enforced_invariants::bb4" [label="bb4\nDrop"];
+    "cfg::invariants::read_enforced_invariants::bb5" [label="bb5\nCall"];
+    "cfg::invariants::read_enforced_invariants::bb6" [label="bb6\nCall"];
+    "cfg::invariants::read_enforced_invariants::bb7" [label="bb7\nDrop"];
+    "cfg::invariants::read_enforced_invariants::bb8" [label="bb8\nReturn"];
+    "cfg::invariants::read_enforced_invariants::bb9" [label="bb9\nDrop cleanup"];
+    "cfg::invariants::read_enforced_invariants::bb10" [label="bb10\nUnwindResume cleanup"];
+  }
+  "cfg::invariants::read_enforced_invariants::bb2" -> "cfg::invariants::read_enforced_invariants::bb5" [label="SwitchInt"];
+  "cfg::invariants::read_enforced_invariants::bb2" -> "cfg::invariants::read_enforced_invariants::bb3" [label="SwitchInt"];
+  "cfg::invariants::read_enforced_invariants::bb4" -> "cfg::invariants::read_enforced_invariants::bb8" [label="Drop"];
+  "cfg::invariants::read_enforced_invariants::bb7" -> "cfg::invariants::read_enforced_invariants::bb8" [label="Drop"];
+  "cfg::invariants::read_enforced_invariants::bb9" -> "cfg::invariants::read_enforced_invariants::bb10" [label="Drop"];
+}

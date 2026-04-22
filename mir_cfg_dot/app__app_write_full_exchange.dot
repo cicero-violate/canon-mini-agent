@@ -1,0 +1,32 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_392 {
+    label="app::write_full_exchange";
+    "cfg::app::write_full_exchange::bb0" [label="bb0\nCall"];
+    "cfg::app::write_full_exchange::bb1" [label="bb1\nCall"];
+    "cfg::app::write_full_exchange::bb2" [label="bb2\nCall"];
+    "cfg::app::write_full_exchange::bb3" [label="bb3\nSwitchInt"];
+    "cfg::app::write_full_exchange::bb4" [label="bb4\nCall"];
+    "cfg::app::write_full_exchange::bb5" [label="bb5\nDrop"];
+    "cfg::app::write_full_exchange::bb6" [label="bb6\nCall"];
+    "cfg::app::write_full_exchange::bb7" [label="bb7\nDrop"];
+    "cfg::app::write_full_exchange::bb8" [label="bb8\nReturn"];
+    "cfg::app::write_full_exchange::bb9" [label="bb9\nUnwindResume cleanup loop"];
+    "cfg::app::write_full_exchange::bb10" [label="bb10\nDrop cleanup loop"];
+    "cfg::app::write_full_exchange::bb11" [label="bb11\nSwitchInt cleanup loop"];
+    "cfg::app::write_full_exchange::bb12" [label="bb12\nUnreachable"];
+  }
+  "cfg::app::write_full_exchange::bb3" -> "cfg::app::write_full_exchange::bb4" [label="SwitchInt"];
+  "cfg::app::write_full_exchange::bb3" -> "cfg::app::write_full_exchange::bb6" [label="SwitchInt"];
+  "cfg::app::write_full_exchange::bb3" -> "cfg::app::write_full_exchange::bb12" [label="SwitchInt"];
+  "cfg::app::write_full_exchange::bb5" -> "cfg::app::write_full_exchange::bb6" [label="Drop"];
+  "cfg::app::write_full_exchange::bb5" -> "cfg::app::write_full_exchange::bb11" [label="Drop"];
+  "cfg::app::write_full_exchange::bb7" -> "cfg::app::write_full_exchange::bb8" [label="Drop"];
+  "cfg::app::write_full_exchange::bb7" -> "cfg::app::write_full_exchange::bb11" [label="Drop"];
+  "cfg::app::write_full_exchange::bb10" -> "cfg::app::write_full_exchange::bb9" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::write_full_exchange::bb11" -> "cfg::app::write_full_exchange::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::write_full_exchange::bb11" -> "cfg::app::write_full_exchange::bb10" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

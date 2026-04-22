@@ -1,0 +1,39 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1077 {
+    label="invalid_action::corrective_invalid_action_prompt";
+    "cfg::invalid_action::corrective_invalid_action_prompt::bb0" [label="bb0\nCall"];
+    "cfg::invalid_action::corrective_invalid_action_prompt::bb1" [label="bb1\nSwitchInt"];
+    "cfg::invalid_action::corrective_invalid_action_prompt::bb2" [label="bb2\nCall"];
+    "cfg::invalid_action::corrective_invalid_action_prompt::bb3" [label="bb3\nCall"];
+    "cfg::invalid_action::corrective_invalid_action_prompt::bb4" [label="bb4\nCall"];
+    "cfg::invalid_action::corrective_invalid_action_prompt::bb5" [label="bb5\nCall"];
+    "cfg::invalid_action::corrective_invalid_action_prompt::bb6" [label="bb6\nGoto"];
+    "cfg::invalid_action::corrective_invalid_action_prompt::bb7" [label="bb7\nCall"];
+    "cfg::invalid_action::corrective_invalid_action_prompt::bb8" [label="bb8\nCall"];
+    "cfg::invalid_action::corrective_invalid_action_prompt::bb9" [label="bb9\nSwitchInt"];
+    "cfg::invalid_action::corrective_invalid_action_prompt::bb10" [label="bb10\nCall"];
+    "cfg::invalid_action::corrective_invalid_action_prompt::bb11" [label="bb11\nGoto"];
+    "cfg::invalid_action::corrective_invalid_action_prompt::bb12" [label="bb12\nCall"];
+    "cfg::invalid_action::corrective_invalid_action_prompt::bb13" [label="bb13\nSwitchInt"];
+    "cfg::invalid_action::corrective_invalid_action_prompt::bb14" [label="bb14\nCall"];
+    "cfg::invalid_action::corrective_invalid_action_prompt::bb15" [label="bb15\nGoto"];
+    "cfg::invalid_action::corrective_invalid_action_prompt::bb16" [label="bb16\nGoto"];
+    "cfg::invalid_action::corrective_invalid_action_prompt::bb17" [label="bb17\nReturn"];
+    "cfg::invalid_action::corrective_invalid_action_prompt::bb18" [label="bb18\nUnreachable"];
+  }
+  "cfg::invalid_action::corrective_invalid_action_prompt::bb1" -> "cfg::invalid_action::corrective_invalid_action_prompt::bb7" [label="SwitchInt"];
+  "cfg::invalid_action::corrective_invalid_action_prompt::bb1" -> "cfg::invalid_action::corrective_invalid_action_prompt::bb2" [label="SwitchInt"];
+  "cfg::invalid_action::corrective_invalid_action_prompt::bb6" -> "cfg::invalid_action::corrective_invalid_action_prompt::bb17" [label="Goto"];
+  "cfg::invalid_action::corrective_invalid_action_prompt::bb9" -> "cfg::invalid_action::corrective_invalid_action_prompt::bb10" [label="SwitchInt"];
+  "cfg::invalid_action::corrective_invalid_action_prompt::bb9" -> "cfg::invalid_action::corrective_invalid_action_prompt::bb12" [label="SwitchInt"];
+  "cfg::invalid_action::corrective_invalid_action_prompt::bb9" -> "cfg::invalid_action::corrective_invalid_action_prompt::bb18" [label="SwitchInt"];
+  "cfg::invalid_action::corrective_invalid_action_prompt::bb11" -> "cfg::invalid_action::corrective_invalid_action_prompt::bb17" [label="Goto"];
+  "cfg::invalid_action::corrective_invalid_action_prompt::bb13" -> "cfg::invalid_action::corrective_invalid_action_prompt::bb16" [label="SwitchInt"];
+  "cfg::invalid_action::corrective_invalid_action_prompt::bb13" -> "cfg::invalid_action::corrective_invalid_action_prompt::bb14" [label="SwitchInt"];
+  "cfg::invalid_action::corrective_invalid_action_prompt::bb15" -> "cfg::invalid_action::corrective_invalid_action_prompt::bb17" [label="Goto"];
+  "cfg::invalid_action::corrective_invalid_action_prompt::bb16" -> "cfg::invalid_action::corrective_invalid_action_prompt::bb17" [label="Goto"];
+}

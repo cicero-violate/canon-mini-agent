@@ -1,0 +1,16 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2875 {
+    label="refactor_analysis::FunctionCfg::stmt_dominates";
+    "cfg::refactor_analysis::FunctionCfg::stmt_dominates::bb0" [label="bb0\nSwitchInt"];
+    "cfg::refactor_analysis::FunctionCfg::stmt_dominates::bb1" [label="bb1\nGoto"];
+    "cfg::refactor_analysis::FunctionCfg::stmt_dominates::bb2" [label="bb2\nCall"];
+    "cfg::refactor_analysis::FunctionCfg::stmt_dominates::bb3" [label="bb3\nReturn"];
+  }
+  "cfg::refactor_analysis::FunctionCfg::stmt_dominates::bb0" -> "cfg::refactor_analysis::FunctionCfg::stmt_dominates::bb2" [label="SwitchInt"];
+  "cfg::refactor_analysis::FunctionCfg::stmt_dominates::bb0" -> "cfg::refactor_analysis::FunctionCfg::stmt_dominates::bb1" [label="SwitchInt"];
+  "cfg::refactor_analysis::FunctionCfg::stmt_dominates::bb1" -> "cfg::refactor_analysis::FunctionCfg::stmt_dominates::bb3" [label="Goto"];
+}

@@ -1,0 +1,54 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1278 {
+    label="invariants::collect_evidence_samples";
+    "cfg::invariants::collect_evidence_samples::bb0" [label="bb0\nCall"];
+    "cfg::invariants::collect_evidence_samples::bb1" [label="bb1\nCall"];
+    "cfg::invariants::collect_evidence_samples::bb2" [label="bb2\nCall"];
+    "cfg::invariants::collect_evidence_samples::bb3" [label="bb3\nCall"];
+    "cfg::invariants::collect_evidence_samples::bb4" [label="bb4\nCall"];
+    "cfg::invariants::collect_evidence_samples::bb5" [label="bb5\nCall"];
+    "cfg::invariants::collect_evidence_samples::bb6" [label="bb6\nCall"];
+    "cfg::invariants::collect_evidence_samples::bb7" [label="bb7\nGoto"];
+    "cfg::invariants::collect_evidence_samples::bb8" [label="bb8\nCall loop"];
+    "cfg::invariants::collect_evidence_samples::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::invariants::collect_evidence_samples::bb10" [label="bb10\nUnreachable loop"];
+    "cfg::invariants::collect_evidence_samples::bb11" [label="bb11\nCall loop"];
+    "cfg::invariants::collect_evidence_samples::bb12" [label="bb12\nCall loop"];
+    "cfg::invariants::collect_evidence_samples::bb13" [label="bb13\nCall loop"];
+    "cfg::invariants::collect_evidence_samples::bb14" [label="bb14\nSwitchInt loop"];
+    "cfg::invariants::collect_evidence_samples::bb15" [label="bb15\nCall loop"];
+    "cfg::invariants::collect_evidence_samples::bb16" [label="bb16\nCall loop"];
+    "cfg::invariants::collect_evidence_samples::bb17" [label="bb17\nCall loop"];
+    "cfg::invariants::collect_evidence_samples::bb18" [label="bb18\nSwitchInt loop"];
+    "cfg::invariants::collect_evidence_samples::bb19" [label="bb19\nDrop"];
+    "cfg::invariants::collect_evidence_samples::bb20" [label="bb20\nDrop"];
+    "cfg::invariants::collect_evidence_samples::bb21" [label="bb21\nReturn"];
+    "cfg::invariants::collect_evidence_samples::bb22" [label="bb22\nDrop cleanup"];
+    "cfg::invariants::collect_evidence_samples::bb23" [label="bb23\nDrop cleanup"];
+    "cfg::invariants::collect_evidence_samples::bb24" [label="bb24\nDrop cleanup loop"];
+    "cfg::invariants::collect_evidence_samples::bb25" [label="bb25\nUnwindResume cleanup loop"];
+    "cfg::invariants::collect_evidence_samples::bb26" [label="bb26\nDrop cleanup loop"];
+    "cfg::invariants::collect_evidence_samples::bb27" [label="bb27\nSwitchInt cleanup loop"];
+  }
+  "cfg::invariants::collect_evidence_samples::bb7" -> "cfg::invariants::collect_evidence_samples::bb8" [label="Goto"];
+  "cfg::invariants::collect_evidence_samples::bb9" -> "cfg::invariants::collect_evidence_samples::bb19" [label="SwitchInt"];
+  "cfg::invariants::collect_evidence_samples::bb9" -> "cfg::invariants::collect_evidence_samples::bb11" [label="SwitchInt"];
+  "cfg::invariants::collect_evidence_samples::bb9" -> "cfg::invariants::collect_evidence_samples::bb10" [label="SwitchInt"];
+  "cfg::invariants::collect_evidence_samples::bb14" -> "cfg::invariants::collect_evidence_samples::bb8" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::collect_evidence_samples::bb14" -> "cfg::invariants::collect_evidence_samples::bb15" [label="SwitchInt"];
+  "cfg::invariants::collect_evidence_samples::bb18" -> "cfg::invariants::collect_evidence_samples::bb8" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::collect_evidence_samples::bb18" -> "cfg::invariants::collect_evidence_samples::bb19" [label="SwitchInt"];
+  "cfg::invariants::collect_evidence_samples::bb19" -> "cfg::invariants::collect_evidence_samples::bb20" [label="Drop"];
+  "cfg::invariants::collect_evidence_samples::bb19" -> "cfg::invariants::collect_evidence_samples::bb23" [label="Drop"];
+  "cfg::invariants::collect_evidence_samples::bb20" -> "cfg::invariants::collect_evidence_samples::bb21" [label="Drop"];
+  "cfg::invariants::collect_evidence_samples::bb22" -> "cfg::invariants::collect_evidence_samples::bb23" [label="Drop"];
+  "cfg::invariants::collect_evidence_samples::bb23" -> "cfg::invariants::collect_evidence_samples::bb27" [label="Drop"];
+  "cfg::invariants::collect_evidence_samples::bb24" -> "cfg::invariants::collect_evidence_samples::bb25" [label="Drop"];
+  "cfg::invariants::collect_evidence_samples::bb26" -> "cfg::invariants::collect_evidence_samples::bb24" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::invariants::collect_evidence_samples::bb27" -> "cfg::invariants::collect_evidence_samples::bb24" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::collect_evidence_samples::bb27" -> "cfg::invariants::collect_evidence_samples::bb26" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

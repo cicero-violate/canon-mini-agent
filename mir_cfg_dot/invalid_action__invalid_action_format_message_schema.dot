@@ -1,0 +1,56 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1069 {
+    label="invalid_action::format_message_schema";
+    "cfg::invalid_action::format_message_schema::bb0" [label="bb0\nCall"];
+    "cfg::invalid_action::format_message_schema::bb1" [label="bb1\nCall"];
+    "cfg::invalid_action::format_message_schema::bb2" [label="bb2\nAssert"];
+    "cfg::invalid_action::format_message_schema::bb3" [label="bb3\nCall loop"];
+    "cfg::invalid_action::format_message_schema::bb4" [label="bb4\nGoto loop"];
+    "cfg::invalid_action::format_message_schema::bb5" [label="bb5\nCall loop"];
+    "cfg::invalid_action::format_message_schema::bb6" [label="bb6\nSwitchInt loop"];
+    "cfg::invalid_action::format_message_schema::bb7" [label="bb7\nUnreachable loop"];
+    "cfg::invalid_action::format_message_schema::bb8" [label="bb8\nCall loop"];
+    "cfg::invalid_action::format_message_schema::bb9" [label="bb9\nCall loop"];
+    "cfg::invalid_action::format_message_schema::bb10" [label="bb10\nCall loop"];
+    "cfg::invalid_action::format_message_schema::bb11" [label="bb11\nCall loop"];
+    "cfg::invalid_action::format_message_schema::bb12" [label="bb12\nCall loop"];
+    "cfg::invalid_action::format_message_schema::bb13" [label="bb13\nCall loop"];
+    "cfg::invalid_action::format_message_schema::bb14" [label="bb14\nCall loop"];
+    "cfg::invalid_action::format_message_schema::bb15" [label="bb15\nCall loop"];
+    "cfg::invalid_action::format_message_schema::bb16" [label="bb16\nCall loop"];
+    "cfg::invalid_action::format_message_schema::bb17" [label="bb17\nCall loop"];
+    "cfg::invalid_action::format_message_schema::bb18" [label="bb18\nCall loop"];
+    "cfg::invalid_action::format_message_schema::bb19" [label="bb19\nCall loop"];
+    "cfg::invalid_action::format_message_schema::bb20" [label="bb20\nCall loop"];
+    "cfg::invalid_action::format_message_schema::bb21" [label="bb21\nCall loop"];
+    "cfg::invalid_action::format_message_schema::bb22" [label="bb22\nCall loop"];
+    "cfg::invalid_action::format_message_schema::bb23" [label="bb23\nCall loop"];
+    "cfg::invalid_action::format_message_schema::bb24" [label="bb24\nDrop loop"];
+    "cfg::invalid_action::format_message_schema::bb25" [label="bb25\nDrop loop"];
+    "cfg::invalid_action::format_message_schema::bb26" [label="bb26\nReturn loop"];
+    "cfg::invalid_action::format_message_schema::bb27" [label="bb27\nDrop cleanup loop"];
+    "cfg::invalid_action::format_message_schema::bb28" [label="bb28\nDrop cleanup loop"];
+    "cfg::invalid_action::format_message_schema::bb29" [label="bb29\nDrop cleanup loop"];
+    "cfg::invalid_action::format_message_schema::bb30" [label="bb30\nUnwindResume cleanup loop"];
+    "cfg::invalid_action::format_message_schema::bb31" [label="bb31\nAssert loop"];
+    "cfg::invalid_action::format_message_schema::bb32" [label="bb32\nCall loop"];
+    "cfg::invalid_action::format_message_schema::bb33" [label="bb33\nGoto loop"];
+  }
+  "cfg::invalid_action::format_message_schema::bb2" -> "cfg::invalid_action::format_message_schema::bb31" [label="Assert"];
+  "cfg::invalid_action::format_message_schema::bb4" -> "cfg::invalid_action::format_message_schema::bb5" [label="Goto"];
+  "cfg::invalid_action::format_message_schema::bb6" -> "cfg::invalid_action::format_message_schema::bb9" [label="SwitchInt"];
+  "cfg::invalid_action::format_message_schema::bb6" -> "cfg::invalid_action::format_message_schema::bb8" [label="SwitchInt"];
+  "cfg::invalid_action::format_message_schema::bb6" -> "cfg::invalid_action::format_message_schema::bb7" [label="SwitchInt"];
+  "cfg::invalid_action::format_message_schema::bb24" -> "cfg::invalid_action::format_message_schema::bb25" [label="Drop"];
+  "cfg::invalid_action::format_message_schema::bb24" -> "cfg::invalid_action::format_message_schema::bb28" [label="Drop"];
+  "cfg::invalid_action::format_message_schema::bb25" -> "cfg::invalid_action::format_message_schema::bb26" [label="Drop"];
+  "cfg::invalid_action::format_message_schema::bb27" -> "cfg::invalid_action::format_message_schema::bb28" [label="Drop"];
+  "cfg::invalid_action::format_message_schema::bb28" -> "cfg::invalid_action::format_message_schema::bb30" [label="Drop"];
+  "cfg::invalid_action::format_message_schema::bb29" -> "cfg::invalid_action::format_message_schema::bb30" [label="Drop"];
+  "cfg::invalid_action::format_message_schema::bb31" -> "cfg::invalid_action::format_message_schema::bb32" [label="Assert"];
+  "cfg::invalid_action::format_message_schema::bb33" -> "cfg::invalid_action::format_message_schema::bb5" [color="crimson", penwidth=2, label="Goto back"];
+}

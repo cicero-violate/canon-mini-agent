@@ -1,0 +1,32 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4130 {
+    label="tools::collect_graph_call_cfg_preview_data";
+    "cfg::tools::collect_graph_call_cfg_preview_data::bb0" [label="bb0\nCall"];
+    "cfg::tools::collect_graph_call_cfg_preview_data::bb1" [label="bb1\nCall"];
+    "cfg::tools::collect_graph_call_cfg_preview_data::bb2" [label="bb2\nSwitchInt"];
+    "cfg::tools::collect_graph_call_cfg_preview_data::bb3" [label="bb3\nUnreachable loop"];
+    "cfg::tools::collect_graph_call_cfg_preview_data::bb4" [label="bb4\nCall loop"];
+    "cfg::tools::collect_graph_call_cfg_preview_data::bb5" [label="bb5\nCall loop"];
+    "cfg::tools::collect_graph_call_cfg_preview_data::bb6" [label="bb6\nCall loop"];
+    "cfg::tools::collect_graph_call_cfg_preview_data::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::tools::collect_graph_call_cfg_preview_data::bb8" [label="bb8\nGoto"];
+    "cfg::tools::collect_graph_call_cfg_preview_data::bb9" [label="bb9\nCall"];
+    "cfg::tools::collect_graph_call_cfg_preview_data::bb10" [label="bb10\nDrop"];
+    "cfg::tools::collect_graph_call_cfg_preview_data::bb11" [label="bb11\nReturn"];
+    "cfg::tools::collect_graph_call_cfg_preview_data::bb12" [label="bb12\nDrop cleanup"];
+    "cfg::tools::collect_graph_call_cfg_preview_data::bb13" [label="bb13\nUnwindResume cleanup"];
+  }
+  "cfg::tools::collect_graph_call_cfg_preview_data::bb2" -> "cfg::tools::collect_graph_call_cfg_preview_data::bb4" [label="SwitchInt"];
+  "cfg::tools::collect_graph_call_cfg_preview_data::bb2" -> "cfg::tools::collect_graph_call_cfg_preview_data::bb5" [label="SwitchInt"];
+  "cfg::tools::collect_graph_call_cfg_preview_data::bb2" -> "cfg::tools::collect_graph_call_cfg_preview_data::bb3" [label="SwitchInt"];
+  "cfg::tools::collect_graph_call_cfg_preview_data::bb7" -> "cfg::tools::collect_graph_call_cfg_preview_data::bb8" [label="SwitchInt"];
+  "cfg::tools::collect_graph_call_cfg_preview_data::bb7" -> "cfg::tools::collect_graph_call_cfg_preview_data::bb9" [label="SwitchInt"];
+  "cfg::tools::collect_graph_call_cfg_preview_data::bb7" -> "cfg::tools::collect_graph_call_cfg_preview_data::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::collect_graph_call_cfg_preview_data::bb8" -> "cfg::tools::collect_graph_call_cfg_preview_data::bb11" [label="Goto"];
+  "cfg::tools::collect_graph_call_cfg_preview_data::bb10" -> "cfg::tools::collect_graph_call_cfg_preview_data::bb11" [label="Drop"];
+  "cfg::tools::collect_graph_call_cfg_preview_data::bb12" -> "cfg::tools::collect_graph_call_cfg_preview_data::bb13" [label="Drop"];
+}

@@ -1,0 +1,19 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4431 {
+    label="tools::contains_token_pair";
+    "cfg::tools::contains_token_pair::bb0" [label="bb0\nCall"];
+    "cfg::tools::contains_token_pair::bb1" [label="bb1\nCall"];
+    "cfg::tools::contains_token_pair::bb2" [label="bb2\nCall"];
+    "cfg::tools::contains_token_pair::bb3" [label="bb3\nCall"];
+    "cfg::tools::contains_token_pair::bb4" [label="bb4\nDrop"];
+    "cfg::tools::contains_token_pair::bb5" [label="bb5\nReturn"];
+    "cfg::tools::contains_token_pair::bb6" [label="bb6\nDrop cleanup"];
+    "cfg::tools::contains_token_pair::bb7" [label="bb7\nUnwindResume cleanup"];
+  }
+  "cfg::tools::contains_token_pair::bb4" -> "cfg::tools::contains_token_pair::bb5" [label="Drop"];
+  "cfg::tools::contains_token_pair::bb6" -> "cfg::tools::contains_token_pair::bb7" [label="Drop"];
+}

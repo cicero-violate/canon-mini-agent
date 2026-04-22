@@ -1,0 +1,24 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1124 {
+    label="invalid_action::push_type_mismatch_if_present";
+    "cfg::invalid_action::push_type_mismatch_if_present::bb0" [label="bb0\nSwitchInt"];
+    "cfg::invalid_action::push_type_mismatch_if_present::bb1" [label="bb1\nCall"];
+    "cfg::invalid_action::push_type_mismatch_if_present::bb2" [label="bb2\nSwitchInt"];
+    "cfg::invalid_action::push_type_mismatch_if_present::bb3" [label="bb3\nCall"];
+    "cfg::invalid_action::push_type_mismatch_if_present::bb4" [label="bb4\nCall"];
+    "cfg::invalid_action::push_type_mismatch_if_present::bb5" [label="bb5\nCall"];
+    "cfg::invalid_action::push_type_mismatch_if_present::bb6" [label="bb6\nCall"];
+    "cfg::invalid_action::push_type_mismatch_if_present::bb7" [label="bb7\nCall"];
+    "cfg::invalid_action::push_type_mismatch_if_present::bb8" [label="bb8\nReturn"];
+    "cfg::invalid_action::push_type_mismatch_if_present::bb9" [label="bb9\nUnreachable"];
+  }
+  "cfg::invalid_action::push_type_mismatch_if_present::bb0" -> "cfg::invalid_action::push_type_mismatch_if_present::bb1" [label="SwitchInt"];
+  "cfg::invalid_action::push_type_mismatch_if_present::bb0" -> "cfg::invalid_action::push_type_mismatch_if_present::bb8" [label="SwitchInt"];
+  "cfg::invalid_action::push_type_mismatch_if_present::bb0" -> "cfg::invalid_action::push_type_mismatch_if_present::bb9" [label="SwitchInt"];
+  "cfg::invalid_action::push_type_mismatch_if_present::bb2" -> "cfg::invalid_action::push_type_mismatch_if_present::bb3" [label="SwitchInt"];
+  "cfg::invalid_action::push_type_mismatch_if_present::bb2" -> "cfg::invalid_action::push_type_mismatch_if_present::bb8" [label="SwitchInt"];
+}

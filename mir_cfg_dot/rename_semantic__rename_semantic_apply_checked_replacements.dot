@@ -1,0 +1,20 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2968 {
+    label="rename_semantic::apply_checked_replacements";
+    "cfg::rename_semantic::apply_checked_replacements::bb0" [label="bb0\nCall"];
+    "cfg::rename_semantic::apply_checked_replacements::bb1" [label="bb1\nCall"];
+    "cfg::rename_semantic::apply_checked_replacements::bb2" [label="bb2\nCall"];
+    "cfg::rename_semantic::apply_checked_replacements::bb3" [label="bb3\nCall"];
+    "cfg::rename_semantic::apply_checked_replacements::bb4" [label="bb4\nCall"];
+    "cfg::rename_semantic::apply_checked_replacements::bb5" [label="bb5\nDrop"];
+    "cfg::rename_semantic::apply_checked_replacements::bb6" [label="bb6\nReturn"];
+    "cfg::rename_semantic::apply_checked_replacements::bb7" [label="bb7\nDrop cleanup"];
+    "cfg::rename_semantic::apply_checked_replacements::bb8" [label="bb8\nUnwindResume cleanup"];
+  }
+  "cfg::rename_semantic::apply_checked_replacements::bb5" -> "cfg::rename_semantic::apply_checked_replacements::bb6" [label="Drop"];
+  "cfg::rename_semantic::apply_checked_replacements::bb7" -> "cfg::rename_semantic::apply_checked_replacements::bb8" [label="Drop"];
+}

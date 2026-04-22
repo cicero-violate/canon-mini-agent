@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3194 {
+    label="state_space::SemanticControlState::verifier_view";
+    "cfg::state_space::SemanticControlState::verifier_view::bb0" [label="bb0\nReturn"];
+  }
+}

@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1700 {
+    label="llm_runtime::chromium_backend::ChromiumBackend::do_submit_only";
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::do_submit_only::bb0" [label="bb0\nReturn"];
+  }
+}

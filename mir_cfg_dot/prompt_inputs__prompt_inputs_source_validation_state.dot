@@ -1,0 +1,39 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2485 {
+    label="prompt_inputs::source_validation_state";
+    "cfg::prompt_inputs::source_validation_state::bb0" [label="bb0\nSwitchInt"];
+    "cfg::prompt_inputs::source_validation_state::bb1" [label="bb1\nUnreachable loop"];
+    "cfg::prompt_inputs::source_validation_state::bb2" [label="bb2\nSwitchInt loop"];
+    "cfg::prompt_inputs::source_validation_state::bb3" [label="bb3\nCall"];
+    "cfg::prompt_inputs::source_validation_state::bb4" [label="bb4\nCall"];
+    "cfg::prompt_inputs::source_validation_state::bb5" [label="bb5\nSwitchInt"];
+    "cfg::prompt_inputs::source_validation_state::bb6" [label="bb6\nCall"];
+    "cfg::prompt_inputs::source_validation_state::bb7" [label="bb7\nSwitchInt"];
+    "cfg::prompt_inputs::source_validation_state::bb8" [label="bb8\nCall"];
+    "cfg::prompt_inputs::source_validation_state::bb9" [label="bb9\nCall"];
+    "cfg::prompt_inputs::source_validation_state::bb10" [label="bb10\nCall"];
+    "cfg::prompt_inputs::source_validation_state::bb11" [label="bb11\nCall"];
+    "cfg::prompt_inputs::source_validation_state::bb12" [label="bb12\nCall"];
+    "cfg::prompt_inputs::source_validation_state::bb13" [label="bb13\nCall"];
+    "cfg::prompt_inputs::source_validation_state::bb14" [label="bb14\nCall"];
+    "cfg::prompt_inputs::source_validation_state::bb15" [label="bb15\nCall"];
+    "cfg::prompt_inputs::source_validation_state::bb16" [label="bb16\nCall"];
+    "cfg::prompt_inputs::source_validation_state::bb17" [label="bb17\nCall"];
+    "cfg::prompt_inputs::source_validation_state::bb18" [label="bb18\nReturn"];
+  }
+  "cfg::prompt_inputs::source_validation_state::bb0" -> "cfg::prompt_inputs::source_validation_state::bb2" [label="SwitchInt"];
+  "cfg::prompt_inputs::source_validation_state::bb0" -> "cfg::prompt_inputs::source_validation_state::bb3" [label="SwitchInt"];
+  "cfg::prompt_inputs::source_validation_state::bb0" -> "cfg::prompt_inputs::source_validation_state::bb1" [label="SwitchInt"];
+  "cfg::prompt_inputs::source_validation_state::bb2" -> "cfg::prompt_inputs::source_validation_state::bb17" [label="SwitchInt"];
+  "cfg::prompt_inputs::source_validation_state::bb2" -> "cfg::prompt_inputs::source_validation_state::bb16" [label="SwitchInt"];
+  "cfg::prompt_inputs::source_validation_state::bb2" -> "cfg::prompt_inputs::source_validation_state::bb15" [label="SwitchInt"];
+  "cfg::prompt_inputs::source_validation_state::bb2" -> "cfg::prompt_inputs::source_validation_state::bb1" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompt_inputs::source_validation_state::bb5" -> "cfg::prompt_inputs::source_validation_state::bb9" [label="SwitchInt"];
+  "cfg::prompt_inputs::source_validation_state::bb5" -> "cfg::prompt_inputs::source_validation_state::bb6" [label="SwitchInt"];
+  "cfg::prompt_inputs::source_validation_state::bb7" -> "cfg::prompt_inputs::source_validation_state::bb9" [label="SwitchInt"];
+  "cfg::prompt_inputs::source_validation_state::bb7" -> "cfg::prompt_inputs::source_validation_state::bb8" [label="SwitchInt"];
+}

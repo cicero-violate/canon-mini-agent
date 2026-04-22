@@ -1,0 +1,14 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3961 {
+    label="tools::other_prefixes";
+    "cfg::tools::other_prefixes::bb0" [label="bb0\nCall"];
+    "cfg::tools::other_prefixes::bb1" [label="bb1\nCall"];
+    "cfg::tools::other_prefixes::bb2" [label="bb2\nCall"];
+    "cfg::tools::other_prefixes::bb3" [label="bb3\nCall"];
+    "cfg::tools::other_prefixes::bb4" [label="bb4\nReturn"];
+  }
+}

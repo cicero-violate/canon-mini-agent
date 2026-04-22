@@ -1,0 +1,12 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2860 {
+    label="refactor_analysis::FunctionCfg::block_terminator";
+    "cfg::refactor_analysis::FunctionCfg::block_terminator::bb0" [label="bb0\nCall"];
+    "cfg::refactor_analysis::FunctionCfg::block_terminator::bb1" [label="bb1\nCall"];
+    "cfg::refactor_analysis::FunctionCfg::block_terminator::bb2" [label="bb2\nReturn"];
+  }
+}

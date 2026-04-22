@@ -1,0 +1,26 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3820 {
+    label="tools::take_next_ready_plan_node";
+    "cfg::tools::take_next_ready_plan_node::bb0" [label="bb0\nCall"];
+    "cfg::tools::take_next_ready_plan_node::bb1" [label="bb1\nCall"];
+    "cfg::tools::take_next_ready_plan_node::bb2" [label="bb2\nCall"];
+    "cfg::tools::take_next_ready_plan_node::bb3" [label="bb3\nCall"];
+    "cfg::tools::take_next_ready_plan_node::bb4" [label="bb4\nSwitchInt"];
+    "cfg::tools::take_next_ready_plan_node::bb5" [label="bb5\nUnreachable"];
+    "cfg::tools::take_next_ready_plan_node::bb6" [label="bb6\nCall"];
+    "cfg::tools::take_next_ready_plan_node::bb7" [label="bb7\nCall"];
+    "cfg::tools::take_next_ready_plan_node::bb8" [label="bb8\nGoto"];
+    "cfg::tools::take_next_ready_plan_node::bb9" [label="bb9\nReturn"];
+    "cfg::tools::take_next_ready_plan_node::bb10" [label="bb10\nDrop cleanup"];
+    "cfg::tools::take_next_ready_plan_node::bb11" [label="bb11\nUnwindResume cleanup"];
+  }
+  "cfg::tools::take_next_ready_plan_node::bb4" -> "cfg::tools::take_next_ready_plan_node::bb6" [label="SwitchInt"];
+  "cfg::tools::take_next_ready_plan_node::bb4" -> "cfg::tools::take_next_ready_plan_node::bb7" [label="SwitchInt"];
+  "cfg::tools::take_next_ready_plan_node::bb4" -> "cfg::tools::take_next_ready_plan_node::bb5" [label="SwitchInt"];
+  "cfg::tools::take_next_ready_plan_node::bb8" -> "cfg::tools::take_next_ready_plan_node::bb9" [label="Goto"];
+  "cfg::tools::take_next_ready_plan_node::bb10" -> "cfg::tools::take_next_ready_plan_node::bb11" [label="Drop"];
+}

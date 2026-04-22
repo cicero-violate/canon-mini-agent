@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1991 {
+    label="llm_runtime::ws_server::WsBridge::new";
+    "cfg::llm_runtime::ws_server::WsBridge::new::bb0" [label="bb0\nReturn"];
+  }
+}

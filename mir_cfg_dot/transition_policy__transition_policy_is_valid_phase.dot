@@ -1,0 +1,34 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4700 {
+    label="transition_policy::is_valid_phase";
+    "cfg::transition_policy::is_valid_phase::bb0" [label="bb0\nCall"];
+    "cfg::transition_policy::is_valid_phase::bb1" [label="bb1\nGoto loop"];
+    "cfg::transition_policy::is_valid_phase::bb2" [label="bb2\nCall loop"];
+    "cfg::transition_policy::is_valid_phase::bb3" [label="bb3\nCall loop"];
+    "cfg::transition_policy::is_valid_phase::bb4" [label="bb4\nCall loop"];
+    "cfg::transition_policy::is_valid_phase::bb5" [label="bb5\nCall loop"];
+    "cfg::transition_policy::is_valid_phase::bb6" [label="bb6\nSwitchInt loop"];
+    "cfg::transition_policy::is_valid_phase::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::transition_policy::is_valid_phase::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::transition_policy::is_valid_phase::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::transition_policy::is_valid_phase::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::transition_policy::is_valid_phase::bb11" [label="bb11\nGoto"];
+    "cfg::transition_policy::is_valid_phase::bb12" [label="bb12\nReturn"];
+  }
+  "cfg::transition_policy::is_valid_phase::bb1" -> "cfg::transition_policy::is_valid_phase::bb12" [label="Goto"];
+  "cfg::transition_policy::is_valid_phase::bb6" -> "cfg::transition_policy::is_valid_phase::bb1" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::transition_policy::is_valid_phase::bb6" -> "cfg::transition_policy::is_valid_phase::bb11" [label="SwitchInt"];
+  "cfg::transition_policy::is_valid_phase::bb7" -> "cfg::transition_policy::is_valid_phase::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::transition_policy::is_valid_phase::bb7" -> "cfg::transition_policy::is_valid_phase::bb11" [label="SwitchInt"];
+  "cfg::transition_policy::is_valid_phase::bb8" -> "cfg::transition_policy::is_valid_phase::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::transition_policy::is_valid_phase::bb8" -> "cfg::transition_policy::is_valid_phase::bb11" [label="SwitchInt"];
+  "cfg::transition_policy::is_valid_phase::bb9" -> "cfg::transition_policy::is_valid_phase::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::transition_policy::is_valid_phase::bb9" -> "cfg::transition_policy::is_valid_phase::bb11" [label="SwitchInt"];
+  "cfg::transition_policy::is_valid_phase::bb10" -> "cfg::transition_policy::is_valid_phase::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::transition_policy::is_valid_phase::bb10" -> "cfg::transition_policy::is_valid_phase::bb11" [label="SwitchInt"];
+  "cfg::transition_policy::is_valid_phase::bb11" -> "cfg::transition_policy::is_valid_phase::bb12" [label="Goto"];
+}

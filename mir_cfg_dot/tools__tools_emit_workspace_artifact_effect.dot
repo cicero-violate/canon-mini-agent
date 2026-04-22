@@ -1,0 +1,45 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3627 {
+    label="tools::emit_workspace_artifact_effect";
+    "cfg::tools::emit_workspace_artifact_effect::bb0" [label="bb0\nSwitchInt"];
+    "cfg::tools::emit_workspace_artifact_effect::bb1" [label="bb1\nCall"];
+    "cfg::tools::emit_workspace_artifact_effect::bb2" [label="bb2\nCall"];
+    "cfg::tools::emit_workspace_artifact_effect::bb3" [label="bb3\nCall"];
+    "cfg::tools::emit_workspace_artifact_effect::bb4" [label="bb4\nCall"];
+    "cfg::tools::emit_workspace_artifact_effect::bb5" [label="bb5\nCall"];
+    "cfg::tools::emit_workspace_artifact_effect::bb6" [label="bb6\nGoto"];
+    "cfg::tools::emit_workspace_artifact_effect::bb7" [label="bb7\nCall"];
+    "cfg::tools::emit_workspace_artifact_effect::bb8" [label="bb8\nCall"];
+    "cfg::tools::emit_workspace_artifact_effect::bb9" [label="bb9\nCall"];
+    "cfg::tools::emit_workspace_artifact_effect::bb10" [label="bb10\nCall"];
+    "cfg::tools::emit_workspace_artifact_effect::bb11" [label="bb11\nCall"];
+    "cfg::tools::emit_workspace_artifact_effect::bb12" [label="bb12\nGoto"];
+    "cfg::tools::emit_workspace_artifact_effect::bb13" [label="bb13\nCall"];
+    "cfg::tools::emit_workspace_artifact_effect::bb14" [label="bb14\nReturn"];
+    "cfg::tools::emit_workspace_artifact_effect::bb15" [label="bb15\nDrop cleanup"];
+    "cfg::tools::emit_workspace_artifact_effect::bb16" [label="bb16\nDrop cleanup"];
+    "cfg::tools::emit_workspace_artifact_effect::bb17" [label="bb17\nDrop cleanup"];
+    "cfg::tools::emit_workspace_artifact_effect::bb18" [label="bb18\nDrop cleanup"];
+    "cfg::tools::emit_workspace_artifact_effect::bb19" [label="bb19\nDrop cleanup"];
+    "cfg::tools::emit_workspace_artifact_effect::bb20" [label="bb20\nDrop cleanup"];
+    "cfg::tools::emit_workspace_artifact_effect::bb21" [label="bb21\nDrop cleanup"];
+    "cfg::tools::emit_workspace_artifact_effect::bb22" [label="bb22\nDrop cleanup"];
+    "cfg::tools::emit_workspace_artifact_effect::bb23" [label="bb23\nUnwindResume cleanup"];
+  }
+  "cfg::tools::emit_workspace_artifact_effect::bb0" -> "cfg::tools::emit_workspace_artifact_effect::bb7" [label="SwitchInt"];
+  "cfg::tools::emit_workspace_artifact_effect::bb0" -> "cfg::tools::emit_workspace_artifact_effect::bb1" [label="SwitchInt"];
+  "cfg::tools::emit_workspace_artifact_effect::bb6" -> "cfg::tools::emit_workspace_artifact_effect::bb13" [label="Goto"];
+  "cfg::tools::emit_workspace_artifact_effect::bb12" -> "cfg::tools::emit_workspace_artifact_effect::bb13" [label="Goto"];
+  "cfg::tools::emit_workspace_artifact_effect::bb15" -> "cfg::tools::emit_workspace_artifact_effect::bb16" [label="Drop"];
+  "cfg::tools::emit_workspace_artifact_effect::bb16" -> "cfg::tools::emit_workspace_artifact_effect::bb17" [label="Drop"];
+  "cfg::tools::emit_workspace_artifact_effect::bb17" -> "cfg::tools::emit_workspace_artifact_effect::bb18" [label="Drop"];
+  "cfg::tools::emit_workspace_artifact_effect::bb18" -> "cfg::tools::emit_workspace_artifact_effect::bb23" [label="Drop"];
+  "cfg::tools::emit_workspace_artifact_effect::bb19" -> "cfg::tools::emit_workspace_artifact_effect::bb20" [label="Drop"];
+  "cfg::tools::emit_workspace_artifact_effect::bb20" -> "cfg::tools::emit_workspace_artifact_effect::bb21" [label="Drop"];
+  "cfg::tools::emit_workspace_artifact_effect::bb21" -> "cfg::tools::emit_workspace_artifact_effect::bb22" [label="Drop"];
+  "cfg::tools::emit_workspace_artifact_effect::bb22" -> "cfg::tools::emit_workspace_artifact_effect::bb23" [label="Drop"];
+}

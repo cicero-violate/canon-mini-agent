@@ -1,0 +1,50 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2593 {
+    label="prompts::rules_section";
+    "cfg::prompts::rules_section::bb0" [label="bb0\nCall"];
+    "cfg::prompts::rules_section::bb1" [label="bb1\nCall"];
+    "cfg::prompts::rules_section::bb2" [label="bb2\nGoto"];
+    "cfg::prompts::rules_section::bb3" [label="bb3\nCall loop"];
+    "cfg::prompts::rules_section::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::prompts::rules_section::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::prompts::rules_section::bb6" [label="bb6\nCall loop"];
+    "cfg::prompts::rules_section::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::prompts::rules_section::bb8" [label="bb8\nCall loop"];
+    "cfg::prompts::rules_section::bb9" [label="bb9\nCall loop"];
+    "cfg::prompts::rules_section::bb10" [label="bb10\nCall loop"];
+    "cfg::prompts::rules_section::bb11" [label="bb11\nCall loop"];
+    "cfg::prompts::rules_section::bb12" [label="bb12\nDrop loop"];
+    "cfg::prompts::rules_section::bb13" [label="bb13\nCall loop"];
+    "cfg::prompts::rules_section::bb14" [label="bb14\nCall loop"];
+    "cfg::prompts::rules_section::bb15" [label="bb15\nCall loop"];
+    "cfg::prompts::rules_section::bb16" [label="bb16\nCall loop"];
+    "cfg::prompts::rules_section::bb17" [label="bb17\nDrop loop"];
+    "cfg::prompts::rules_section::bb18" [label="bb18\nReturn loop"];
+    "cfg::prompts::rules_section::bb19" [label="bb19\nDrop cleanup loop"];
+    "cfg::prompts::rules_section::bb20" [label="bb20\nDrop cleanup loop"];
+    "cfg::prompts::rules_section::bb21" [label="bb21\nDrop cleanup loop"];
+    "cfg::prompts::rules_section::bb22" [label="bb22\nUnwindResume cleanup loop"];
+    "cfg::prompts::rules_section::bb23" [label="bb23\nGoto loop"];
+    "cfg::prompts::rules_section::bb24" [label="bb24\nGoto loop"];
+  }
+  "cfg::prompts::rules_section::bb2" -> "cfg::prompts::rules_section::bb3" [label="Goto"];
+  "cfg::prompts::rules_section::bb4" -> "cfg::prompts::rules_section::bb7" [label="SwitchInt"];
+  "cfg::prompts::rules_section::bb4" -> "cfg::prompts::rules_section::bb6" [label="SwitchInt"];
+  "cfg::prompts::rules_section::bb4" -> "cfg::prompts::rules_section::bb5" [label="SwitchInt"];
+  "cfg::prompts::rules_section::bb7" -> "cfg::prompts::rules_section::bb9" [label="SwitchInt"];
+  "cfg::prompts::rules_section::bb7" -> "cfg::prompts::rules_section::bb14" [label="SwitchInt"];
+  "cfg::prompts::rules_section::bb7" -> "cfg::prompts::rules_section::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompts::rules_section::bb12" -> "cfg::prompts::rules_section::bb13" [label="Drop"];
+  "cfg::prompts::rules_section::bb12" -> "cfg::prompts::rules_section::bb21" [label="Drop"];
+  "cfg::prompts::rules_section::bb17" -> "cfg::prompts::rules_section::bb18" [label="Drop"];
+  "cfg::prompts::rules_section::bb17" -> "cfg::prompts::rules_section::bb21" [label="Drop"];
+  "cfg::prompts::rules_section::bb19" -> "cfg::prompts::rules_section::bb21" [label="Drop"];
+  "cfg::prompts::rules_section::bb20" -> "cfg::prompts::rules_section::bb21" [label="Drop"];
+  "cfg::prompts::rules_section::bb21" -> "cfg::prompts::rules_section::bb22" [label="Drop"];
+  "cfg::prompts::rules_section::bb23" -> "cfg::prompts::rules_section::bb3" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::prompts::rules_section::bb24" -> "cfg::prompts::rules_section::bb14" [color="crimson", penwidth=2, label="Goto back"];
+}

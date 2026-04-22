@@ -1,0 +1,12 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3628 {
+    label="tools::try_emit_workspace_artifact_effect";
+    "cfg::tools::try_emit_workspace_artifact_effect::bb0" [label="bb0\nCall"];
+    "cfg::tools::try_emit_workspace_artifact_effect::bb1" [label="bb1\nCall"];
+    "cfg::tools::try_emit_workspace_artifact_effect::bb2" [label="bb2\nReturn"];
+  }
+}

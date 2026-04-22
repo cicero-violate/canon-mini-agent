@@ -1,0 +1,31 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4068 {
+    label="tools::restore_patch_snapshots";
+    "cfg::tools::restore_patch_snapshots::bb0" [label="bb0\nCall"];
+    "cfg::tools::restore_patch_snapshots::bb1" [label="bb1\nCall"];
+    "cfg::tools::restore_patch_snapshots::bb2" [label="bb2\nCall"];
+    "cfg::tools::restore_patch_snapshots::bb3" [label="bb3\nGoto"];
+    "cfg::tools::restore_patch_snapshots::bb4" [label="bb4\nCall loop"];
+    "cfg::tools::restore_patch_snapshots::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::tools::restore_patch_snapshots::bb6" [label="bb6\nUnreachable loop"];
+    "cfg::tools::restore_patch_snapshots::bb7" [label="bb7\nCall loop"];
+    "cfg::tools::restore_patch_snapshots::bb8" [label="bb8\nGoto loop"];
+    "cfg::tools::restore_patch_snapshots::bb9" [label="bb9\nCall loop"];
+    "cfg::tools::restore_patch_snapshots::bb10" [label="bb10\nCall loop"];
+    "cfg::tools::restore_patch_snapshots::bb11" [label="bb11\nSwitchInt loop"];
+    "cfg::tools::restore_patch_snapshots::bb12" [label="bb12\nCall"];
+    "cfg::tools::restore_patch_snapshots::bb13" [label="bb13\nReturn"];
+  }
+  "cfg::tools::restore_patch_snapshots::bb3" -> "cfg::tools::restore_patch_snapshots::bb4" [label="Goto"];
+  "cfg::tools::restore_patch_snapshots::bb5" -> "cfg::tools::restore_patch_snapshots::bb8" [label="SwitchInt"];
+  "cfg::tools::restore_patch_snapshots::bb5" -> "cfg::tools::restore_patch_snapshots::bb7" [label="SwitchInt"];
+  "cfg::tools::restore_patch_snapshots::bb5" -> "cfg::tools::restore_patch_snapshots::bb6" [label="SwitchInt"];
+  "cfg::tools::restore_patch_snapshots::bb8" -> "cfg::tools::restore_patch_snapshots::bb13" [label="Goto"];
+  "cfg::tools::restore_patch_snapshots::bb11" -> "cfg::tools::restore_patch_snapshots::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::restore_patch_snapshots::bb11" -> "cfg::tools::restore_patch_snapshots::bb12" [label="SwitchInt"];
+  "cfg::tools::restore_patch_snapshots::bb11" -> "cfg::tools::restore_patch_snapshots::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

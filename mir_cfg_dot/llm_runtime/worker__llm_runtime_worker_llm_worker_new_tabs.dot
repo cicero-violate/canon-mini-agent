@@ -1,0 +1,13 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1976 {
+    label="llm_runtime::worker::llm_worker_new_tabs";
+    "cfg::llm_runtime::worker::llm_worker_new_tabs::bb0" [label="bb0\nCall"];
+    "cfg::llm_runtime::worker::llm_worker_new_tabs::bb1" [label="bb1\nCall"];
+    "cfg::llm_runtime::worker::llm_worker_new_tabs::bb2" [label="bb2\nCall"];
+    "cfg::llm_runtime::worker::llm_worker_new_tabs::bb3" [label="bb3\nReturn"];
+  }
+}

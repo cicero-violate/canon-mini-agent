@@ -1,0 +1,42 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3969 {
+    label="tools::write_rename_candidates_payload";
+    "cfg::tools::write_rename_candidates_payload::bb0" [label="bb0\nCall"];
+    "cfg::tools::write_rename_candidates_payload::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::write_rename_candidates_payload::bb2" [label="bb2\nCall"];
+    "cfg::tools::write_rename_candidates_payload::bb3" [label="bb3\nCall"];
+    "cfg::tools::write_rename_candidates_payload::bb4" [label="bb4\nCall"];
+    "cfg::tools::write_rename_candidates_payload::bb5" [label="bb5\nSwitchInt"];
+    "cfg::tools::write_rename_candidates_payload::bb6" [label="bb6\nUnreachable loop"];
+    "cfg::tools::write_rename_candidates_payload::bb7" [label="bb7\nCall loop"];
+    "cfg::tools::write_rename_candidates_payload::bb8" [label="bb8\nCall loop"];
+    "cfg::tools::write_rename_candidates_payload::bb9" [label="bb9\nCall loop"];
+    "cfg::tools::write_rename_candidates_payload::bb10" [label="bb10\nCall loop"];
+    "cfg::tools::write_rename_candidates_payload::bb11" [label="bb11\nSwitchInt loop"];
+    "cfg::tools::write_rename_candidates_payload::bb12" [label="bb12\nCall loop"];
+    "cfg::tools::write_rename_candidates_payload::bb13" [label="bb13\nCall loop"];
+    "cfg::tools::write_rename_candidates_payload::bb14" [label="bb14\nCall loop"];
+    "cfg::tools::write_rename_candidates_payload::bb15" [label="bb15\nCall loop"];
+    "cfg::tools::write_rename_candidates_payload::bb16" [label="bb16\nSwitchInt loop"];
+    "cfg::tools::write_rename_candidates_payload::bb17" [label="bb17\nGoto"];
+    "cfg::tools::write_rename_candidates_payload::bb18" [label="bb18\nCall"];
+    "cfg::tools::write_rename_candidates_payload::bb19" [label="bb19\nReturn"];
+  }
+  "cfg::tools::write_rename_candidates_payload::bb1" -> "cfg::tools::write_rename_candidates_payload::bb2" [label="SwitchInt"];
+  "cfg::tools::write_rename_candidates_payload::bb1" -> "cfg::tools::write_rename_candidates_payload::bb8" [label="SwitchInt"];
+  "cfg::tools::write_rename_candidates_payload::bb1" -> "cfg::tools::write_rename_candidates_payload::bb6" [label="SwitchInt"];
+  "cfg::tools::write_rename_candidates_payload::bb5" -> "cfg::tools::write_rename_candidates_payload::bb8" [label="SwitchInt"];
+  "cfg::tools::write_rename_candidates_payload::bb5" -> "cfg::tools::write_rename_candidates_payload::bb7" [label="SwitchInt"];
+  "cfg::tools::write_rename_candidates_payload::bb5" -> "cfg::tools::write_rename_candidates_payload::bb6" [label="SwitchInt"];
+  "cfg::tools::write_rename_candidates_payload::bb11" -> "cfg::tools::write_rename_candidates_payload::bb12" [label="SwitchInt"];
+  "cfg::tools::write_rename_candidates_payload::bb11" -> "cfg::tools::write_rename_candidates_payload::bb13" [label="SwitchInt"];
+  "cfg::tools::write_rename_candidates_payload::bb11" -> "cfg::tools::write_rename_candidates_payload::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::write_rename_candidates_payload::bb16" -> "cfg::tools::write_rename_candidates_payload::bb17" [label="SwitchInt"];
+  "cfg::tools::write_rename_candidates_payload::bb16" -> "cfg::tools::write_rename_candidates_payload::bb18" [label="SwitchInt"];
+  "cfg::tools::write_rename_candidates_payload::bb16" -> "cfg::tools::write_rename_candidates_payload::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::write_rename_candidates_payload::bb17" -> "cfg::tools::write_rename_candidates_payload::bb19" [label="Goto"];
+}

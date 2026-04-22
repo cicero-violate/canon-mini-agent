@@ -1,0 +1,55 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2584 {
+    label="prompts::dedup_action_names_preserve_order";
+    "cfg::prompts::dedup_action_names_preserve_order::bb0" [label="bb0\nCall"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb1" [label="bb1\nCall"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb2" [label="bb2\nGoto"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb3" [label="bb3\nCall loop"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb6" [label="bb6\nCall loop"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb7" [label="bb7\nDrop loop"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb8" [label="bb8\nCall loop"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb9" [label="bb9\nCall loop"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb11" [label="bb11\nCall loop"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb13" [label="bb13\nGoto loop"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb14" [label="bb14\nReturn loop"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb15" [label="bb15\nDrop cleanup loop"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb16" [label="bb16\nDrop cleanup loop"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb17" [label="bb17\nUnwindResume cleanup loop"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb18" [label="bb18\nDrop loop"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb19" [label="bb19\nDrop cleanup loop"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb20" [label="bb20\nSwitchInt cleanup loop"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb21" [label="bb21\nDrop cleanup loop"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb22" [label="bb22\nSwitchInt cleanup loop"];
+    "cfg::prompts::dedup_action_names_preserve_order::bb23" [label="bb23\nGoto loop"];
+  }
+  "cfg::prompts::dedup_action_names_preserve_order::bb2" -> "cfg::prompts::dedup_action_names_preserve_order::bb3" [label="Goto"];
+  "cfg::prompts::dedup_action_names_preserve_order::bb4" -> "cfg::prompts::dedup_action_names_preserve_order::bb7" [label="SwitchInt"];
+  "cfg::prompts::dedup_action_names_preserve_order::bb4" -> "cfg::prompts::dedup_action_names_preserve_order::bb6" [label="SwitchInt"];
+  "cfg::prompts::dedup_action_names_preserve_order::bb4" -> "cfg::prompts::dedup_action_names_preserve_order::bb5" [label="SwitchInt"];
+  "cfg::prompts::dedup_action_names_preserve_order::bb7" -> "cfg::prompts::dedup_action_names_preserve_order::bb14" [label="Drop"];
+  "cfg::prompts::dedup_action_names_preserve_order::bb7" -> "cfg::prompts::dedup_action_names_preserve_order::bb16" [label="Drop"];
+  "cfg::prompts::dedup_action_names_preserve_order::bb10" -> "cfg::prompts::dedup_action_names_preserve_order::bb11" [label="SwitchInt"];
+  "cfg::prompts::dedup_action_names_preserve_order::bb10" -> "cfg::prompts::dedup_action_names_preserve_order::bb12" [label="SwitchInt"];
+  "cfg::prompts::dedup_action_names_preserve_order::bb12" -> "cfg::prompts::dedup_action_names_preserve_order::bb13" [label="SwitchInt"];
+  "cfg::prompts::dedup_action_names_preserve_order::bb12" -> "cfg::prompts::dedup_action_names_preserve_order::bb18" [label="SwitchInt"];
+  "cfg::prompts::dedup_action_names_preserve_order::bb13" -> "cfg::prompts::dedup_action_names_preserve_order::bb3" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::prompts::dedup_action_names_preserve_order::bb15" -> "cfg::prompts::dedup_action_names_preserve_order::bb16" [label="Drop"];
+  "cfg::prompts::dedup_action_names_preserve_order::bb16" -> "cfg::prompts::dedup_action_names_preserve_order::bb22" [label="Drop"];
+  "cfg::prompts::dedup_action_names_preserve_order::bb18" -> "cfg::prompts::dedup_action_names_preserve_order::bb13" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::prompts::dedup_action_names_preserve_order::bb18" -> "cfg::prompts::dedup_action_names_preserve_order::bb15" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::prompts::dedup_action_names_preserve_order::bb19" -> "cfg::prompts::dedup_action_names_preserve_order::bb15" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::prompts::dedup_action_names_preserve_order::bb20" -> "cfg::prompts::dedup_action_names_preserve_order::bb15" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompts::dedup_action_names_preserve_order::bb20" -> "cfg::prompts::dedup_action_names_preserve_order::bb19" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompts::dedup_action_names_preserve_order::bb21" -> "cfg::prompts::dedup_action_names_preserve_order::bb17" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::prompts::dedup_action_names_preserve_order::bb22" -> "cfg::prompts::dedup_action_names_preserve_order::bb17" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompts::dedup_action_names_preserve_order::bb22" -> "cfg::prompts::dedup_action_names_preserve_order::bb21" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::prompts::dedup_action_names_preserve_order::bb23" -> "cfg::prompts::dedup_action_names_preserve_order::bb12" [color="crimson", penwidth=2, label="Goto back"];
+}

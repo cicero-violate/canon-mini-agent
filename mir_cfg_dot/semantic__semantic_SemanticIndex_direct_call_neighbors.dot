@@ -1,0 +1,52 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3103 {
+    label="semantic::SemanticIndex::direct_call_neighbors";
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb0" [label="bb0\nCall"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb1" [label="bb1\nCall"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb2" [label="bb2\nCall"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb3" [label="bb3\nGoto"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb4" [label="bb4\nCall loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb6" [label="bb6\nUnreachable loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb7" [label="bb7\nCall loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb8" [label="bb8\nCall loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb10" [label="bb10\nCall loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb11" [label="bb11\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb12" [label="bb12\nCall loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb13" [label="bb13\nCall loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb14" [label="bb14\nCall loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb15" [label="bb15\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb16" [label="bb16\nCall loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb17" [label="bb17\nCall loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb18" [label="bb18\nCall loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb19" [label="bb19\nCall loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb20" [label="bb20\nCall loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb21" [label="bb21\nCall loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb22" [label="bb22\nCall loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb23" [label="bb23\nReturn loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb24" [label="bb24\nDrop cleanup loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb25" [label="bb25\nDrop cleanup loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb26" [label="bb26\nUnwindResume cleanup loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb27" [label="bb27\nGoto loop"];
+    "cfg::semantic::SemanticIndex::direct_call_neighbors::bb28" [label="bb28\nGoto loop"];
+  }
+  "cfg::semantic::SemanticIndex::direct_call_neighbors::bb3" -> "cfg::semantic::SemanticIndex::direct_call_neighbors::bb4" [label="Goto"];
+  "cfg::semantic::SemanticIndex::direct_call_neighbors::bb5" -> "cfg::semantic::SemanticIndex::direct_call_neighbors::bb8" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::direct_call_neighbors::bb5" -> "cfg::semantic::SemanticIndex::direct_call_neighbors::bb7" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::direct_call_neighbors::bb5" -> "cfg::semantic::SemanticIndex::direct_call_neighbors::bb6" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::direct_call_neighbors::bb9" -> "cfg::semantic::SemanticIndex::direct_call_neighbors::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::direct_call_neighbors::bb9" -> "cfg::semantic::SemanticIndex::direct_call_neighbors::bb10" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::direct_call_neighbors::bb11" -> "cfg::semantic::SemanticIndex::direct_call_neighbors::bb14" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::direct_call_neighbors::bb11" -> "cfg::semantic::SemanticIndex::direct_call_neighbors::bb12" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::direct_call_neighbors::bb15" -> "cfg::semantic::SemanticIndex::direct_call_neighbors::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::direct_call_neighbors::bb15" -> "cfg::semantic::SemanticIndex::direct_call_neighbors::bb16" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::direct_call_neighbors::bb24" -> "cfg::semantic::SemanticIndex::direct_call_neighbors::bb25" [label="Drop"];
+  "cfg::semantic::SemanticIndex::direct_call_neighbors::bb25" -> "cfg::semantic::SemanticIndex::direct_call_neighbors::bb26" [label="Drop"];
+  "cfg::semantic::SemanticIndex::direct_call_neighbors::bb27" -> "cfg::semantic::SemanticIndex::direct_call_neighbors::bb14" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::semantic::SemanticIndex::direct_call_neighbors::bb28" -> "cfg::semantic::SemanticIndex::direct_call_neighbors::bb4" [color="crimson", penwidth=2, label="Goto back"];
+}

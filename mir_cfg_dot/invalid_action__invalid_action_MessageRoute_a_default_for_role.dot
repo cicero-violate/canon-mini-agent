@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1061 {
+    label="invalid_action::MessageRoute::<'a>::default_for_role";
+    "cfg::invalid_action::MessageRoute::<'a>::default_for_role::bb0" [label="bb0\nCall"];
+    "cfg::invalid_action::MessageRoute::<'a>::default_for_role::bb1" [label="bb1\nReturn"];
+  }
+}

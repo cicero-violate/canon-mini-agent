@@ -1,0 +1,27 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2730 {
+    label="prompts::render_action_result_sections";
+    "cfg::prompts::render_action_result_sections::bb0" [label="bb0\nCall"];
+    "cfg::prompts::render_action_result_sections::bb1" [label="bb1\nCall"];
+    "cfg::prompts::render_action_result_sections::bb2" [label="bb2\nCall"];
+    "cfg::prompts::render_action_result_sections::bb3" [label="bb3\nCall"];
+    "cfg::prompts::render_action_result_sections::bb4" [label="bb4\nCall"];
+    "cfg::prompts::render_action_result_sections::bb5" [label="bb5\nCall"];
+    "cfg::prompts::render_action_result_sections::bb6" [label="bb6\nCall"];
+    "cfg::prompts::render_action_result_sections::bb7" [label="bb7\nDrop"];
+    "cfg::prompts::render_action_result_sections::bb8" [label="bb8\nDrop"];
+    "cfg::prompts::render_action_result_sections::bb9" [label="bb9\nReturn"];
+    "cfg::prompts::render_action_result_sections::bb10" [label="bb10\nDrop cleanup"];
+    "cfg::prompts::render_action_result_sections::bb11" [label="bb11\nDrop cleanup"];
+    "cfg::prompts::render_action_result_sections::bb12" [label="bb12\nUnwindResume cleanup"];
+  }
+  "cfg::prompts::render_action_result_sections::bb7" -> "cfg::prompts::render_action_result_sections::bb8" [label="Drop"];
+  "cfg::prompts::render_action_result_sections::bb7" -> "cfg::prompts::render_action_result_sections::bb11" [label="Drop"];
+  "cfg::prompts::render_action_result_sections::bb8" -> "cfg::prompts::render_action_result_sections::bb9" [label="Drop"];
+  "cfg::prompts::render_action_result_sections::bb10" -> "cfg::prompts::render_action_result_sections::bb11" [label="Drop"];
+  "cfg::prompts::render_action_result_sections::bb11" -> "cfg::prompts::render_action_result_sections::bb12" [label="Drop"];
+}

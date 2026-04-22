@@ -1,0 +1,30 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3328 {
+    label="supervisor::trigger_complexity_report_status_async";
+    "cfg::supervisor::trigger_complexity_report_status_async::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::trigger_complexity_report_status_async::bb1" [label="bb1\nCall"];
+    "cfg::supervisor::trigger_complexity_report_status_async::bb2" [label="bb2\nCall"];
+    "cfg::supervisor::trigger_complexity_report_status_async::bb3" [label="bb3\nSwitchInt"];
+    "cfg::supervisor::trigger_complexity_report_status_async::bb4" [label="bb4\nCall"];
+    "cfg::supervisor::trigger_complexity_report_status_async::bb5" [label="bb5\nCall"];
+    "cfg::supervisor::trigger_complexity_report_status_async::bb6" [label="bb6\nDrop"];
+    "cfg::supervisor::trigger_complexity_report_status_async::bb7" [label="bb7\nCall"];
+    "cfg::supervisor::trigger_complexity_report_status_async::bb8" [label="bb8\nDrop"];
+    "cfg::supervisor::trigger_complexity_report_status_async::bb9" [label="bb9\nReturn"];
+    "cfg::supervisor::trigger_complexity_report_status_async::bb10" [label="bb10\nUnwindResume cleanup loop"];
+    "cfg::supervisor::trigger_complexity_report_status_async::bb11" [label="bb11\nDrop cleanup loop"];
+    "cfg::supervisor::trigger_complexity_report_status_async::bb12" [label="bb12\nSwitchInt cleanup loop"];
+  }
+  "cfg::supervisor::trigger_complexity_report_status_async::bb3" -> "cfg::supervisor::trigger_complexity_report_status_async::bb7" [label="SwitchInt"];
+  "cfg::supervisor::trigger_complexity_report_status_async::bb3" -> "cfg::supervisor::trigger_complexity_report_status_async::bb4" [label="SwitchInt"];
+  "cfg::supervisor::trigger_complexity_report_status_async::bb6" -> "cfg::supervisor::trigger_complexity_report_status_async::bb9" [label="Drop"];
+  "cfg::supervisor::trigger_complexity_report_status_async::bb8" -> "cfg::supervisor::trigger_complexity_report_status_async::bb9" [label="Drop"];
+  "cfg::supervisor::trigger_complexity_report_status_async::bb8" -> "cfg::supervisor::trigger_complexity_report_status_async::bb12" [label="Drop"];
+  "cfg::supervisor::trigger_complexity_report_status_async::bb11" -> "cfg::supervisor::trigger_complexity_report_status_async::bb10" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::supervisor::trigger_complexity_report_status_async::bb12" -> "cfg::supervisor::trigger_complexity_report_status_async::bb10" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::supervisor::trigger_complexity_report_status_async::bb12" -> "cfg::supervisor::trigger_complexity_report_status_async::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

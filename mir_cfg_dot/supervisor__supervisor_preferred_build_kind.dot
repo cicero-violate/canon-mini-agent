@@ -1,0 +1,17 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3306 {
+    label="supervisor::preferred_build_kind";
+    "cfg::supervisor::preferred_build_kind::bb0" [label="bb0\nSwitchInt"];
+    "cfg::supervisor::preferred_build_kind::bb1" [label="bb1\nGoto"];
+    "cfg::supervisor::preferred_build_kind::bb2" [label="bb2\nGoto"];
+    "cfg::supervisor::preferred_build_kind::bb3" [label="bb3\nReturn"];
+  }
+  "cfg::supervisor::preferred_build_kind::bb0" -> "cfg::supervisor::preferred_build_kind::bb2" [label="SwitchInt"];
+  "cfg::supervisor::preferred_build_kind::bb0" -> "cfg::supervisor::preferred_build_kind::bb1" [label="SwitchInt"];
+  "cfg::supervisor::preferred_build_kind::bb1" -> "cfg::supervisor::preferred_build_kind::bb3" [label="Goto"];
+  "cfg::supervisor::preferred_build_kind::bb2" -> "cfg::supervisor::preferred_build_kind::bb3" [label="Goto"];
+}

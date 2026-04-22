@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1395 {
+    label="lessons::MAX_LINES_TO_SCAN";
+    "cfg::lessons::MAX_LINES_TO_SCAN::bb0" [label="bb0\nReturn"];
+  }
+}

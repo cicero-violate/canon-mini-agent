@@ -1,0 +1,52 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1669 {
+    label="llm_runtime::chromium_backend::ChromiumBackend::spawn";
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb0" [label="bb0\nCall"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb1" [label="bb1\nCall"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb2" [label="bb2\nCall"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb3" [label="bb3\nCall"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb4" [label="bb4\nCall"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb5" [label="bb5\nCall"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb6" [label="bb6\nCall"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb7" [label="bb7\nCall"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb8" [label="bb8\nCall"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb9" [label="bb9\nCall"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb10" [label="bb10\nCall"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb11" [label="bb11\nCall"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb12" [label="bb12\nCall"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb13" [label="bb13\nCall"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb14" [label="bb14\nCall"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb15" [label="bb15\nCall"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb16" [label="bb16\nCall"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb17" [label="bb17\nCall"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb18" [label="bb18\nDrop"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb19" [label="bb19\nCall"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb20" [label="bb20\nCall"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb21" [label="bb21\nDrop"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb22" [label="bb22\nReturn"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb23" [label="bb23\nDrop cleanup"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb24" [label="bb24\nDrop cleanup"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb25" [label="bb25\nDrop cleanup"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb26" [label="bb26\nDrop cleanup"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb27" [label="bb27\nDrop cleanup"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb28" [label="bb28\nUnwindResume cleanup loop"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb29" [label="bb29\nDrop cleanup loop"];
+    "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb30" [label="bb30\nSwitchInt cleanup loop"];
+  }
+  "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb18" -> "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb19" [label="Drop"];
+  "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb18" -> "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb24" [label="Drop"];
+  "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb21" -> "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb22" [label="Drop"];
+  "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb21" -> "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb24" [label="Drop"];
+  "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb23" -> "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb24" [label="Drop"];
+  "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb24" -> "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb30" [label="Drop"];
+  "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb25" -> "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb26" [label="Drop"];
+  "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb26" -> "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb27" [label="Drop"];
+  "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb27" -> "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb30" [label="Drop"];
+  "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb29" -> "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb28" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb30" -> "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb28" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb30" -> "cfg::llm_runtime::chromium_backend::ChromiumBackend::spawn::bb29" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

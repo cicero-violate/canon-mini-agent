@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1830 {
+    label="llm_runtime::parsers::FrameAssembler::set_site";
+    "cfg::llm_runtime::parsers::FrameAssembler::set_site::bb0" [label="bb0\nReturn"];
+  }
+}

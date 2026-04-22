@@ -1,0 +1,34 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2947 {
+    label="rename_semantic::skip_quoted_string";
+    "cfg::rename_semantic::skip_quoted_string::bb0" [label="bb0\nAssert"];
+    "cfg::rename_semantic::skip_quoted_string::bb1" [label="bb1\nGoto"];
+    "cfg::rename_semantic::skip_quoted_string::bb2" [label="bb2\nSwitchInt loop"];
+    "cfg::rename_semantic::skip_quoted_string::bb3" [label="bb3\nAssert loop"];
+    "cfg::rename_semantic::skip_quoted_string::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::rename_semantic::skip_quoted_string::bb5" [label="bb5\nAssert loop"];
+    "cfg::rename_semantic::skip_quoted_string::bb6" [label="bb6\nCall loop"];
+    "cfg::rename_semantic::skip_quoted_string::bb7" [label="bb7\nGoto loop"];
+    "cfg::rename_semantic::skip_quoted_string::bb8" [label="bb8\nAssert loop"];
+    "cfg::rename_semantic::skip_quoted_string::bb9" [label="bb9\nAssert loop"];
+    "cfg::rename_semantic::skip_quoted_string::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::rename_semantic::skip_quoted_string::bb11" [label="bb11\nReturn"];
+  }
+  "cfg::rename_semantic::skip_quoted_string::bb0" -> "cfg::rename_semantic::skip_quoted_string::bb1" [label="Assert"];
+  "cfg::rename_semantic::skip_quoted_string::bb1" -> "cfg::rename_semantic::skip_quoted_string::bb2" [label="Goto"];
+  "cfg::rename_semantic::skip_quoted_string::bb2" -> "cfg::rename_semantic::skip_quoted_string::bb11" [label="SwitchInt"];
+  "cfg::rename_semantic::skip_quoted_string::bb2" -> "cfg::rename_semantic::skip_quoted_string::bb3" [label="SwitchInt"];
+  "cfg::rename_semantic::skip_quoted_string::bb3" -> "cfg::rename_semantic::skip_quoted_string::bb4" [label="Assert"];
+  "cfg::rename_semantic::skip_quoted_string::bb4" -> "cfg::rename_semantic::skip_quoted_string::bb8" [label="SwitchInt"];
+  "cfg::rename_semantic::skip_quoted_string::bb4" -> "cfg::rename_semantic::skip_quoted_string::bb5" [label="SwitchInt"];
+  "cfg::rename_semantic::skip_quoted_string::bb5" -> "cfg::rename_semantic::skip_quoted_string::bb6" [label="Assert"];
+  "cfg::rename_semantic::skip_quoted_string::bb7" -> "cfg::rename_semantic::skip_quoted_string::bb2" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::rename_semantic::skip_quoted_string::bb8" -> "cfg::rename_semantic::skip_quoted_string::bb9" [label="Assert"];
+  "cfg::rename_semantic::skip_quoted_string::bb9" -> "cfg::rename_semantic::skip_quoted_string::bb10" [label="Assert"];
+  "cfg::rename_semantic::skip_quoted_string::bb10" -> "cfg::rename_semantic::skip_quoted_string::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::rename_semantic::skip_quoted_string::bb10" -> "cfg::rename_semantic::skip_quoted_string::bb11" [label="SwitchInt"];
+}

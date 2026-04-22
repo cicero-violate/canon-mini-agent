@@ -1,0 +1,14 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2649 {
+    label="prompts::action_intent";
+    "cfg::prompts::action_intent::bb0" [label="bb0\nCall"];
+    "cfg::prompts::action_intent::bb1" [label="bb1\nCall"];
+    "cfg::prompts::action_intent::bb2" [label="bb2\nCall"];
+    "cfg::prompts::action_intent::bb3" [label="bb3\nCall"];
+    "cfg::prompts::action_intent::bb4" [label="bb4\nReturn"];
+  }
+}

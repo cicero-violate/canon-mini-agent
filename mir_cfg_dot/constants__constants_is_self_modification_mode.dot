@@ -1,0 +1,29 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_771 {
+    label="constants::is_self_modification_mode";
+    "cfg::constants::is_self_modification_mode::bb0" [label="bb0\nCall"];
+    "cfg::constants::is_self_modification_mode::bb1" [label="bb1\nCall"];
+    "cfg::constants::is_self_modification_mode::bb2" [label="bb2\nCall"];
+    "cfg::constants::is_self_modification_mode::bb3" [label="bb3\nCall"];
+    "cfg::constants::is_self_modification_mode::bb4" [label="bb4\nSwitchInt"];
+    "cfg::constants::is_self_modification_mode::bb5" [label="bb5\nUnreachable"];
+    "cfg::constants::is_self_modification_mode::bb6" [label="bb6\nGoto"];
+    "cfg::constants::is_self_modification_mode::bb7" [label="bb7\nCall"];
+    "cfg::constants::is_self_modification_mode::bb8" [label="bb8\nCall"];
+    "cfg::constants::is_self_modification_mode::bb9" [label="bb9\nCall"];
+    "cfg::constants::is_self_modification_mode::bb10" [label="bb10\nDrop"];
+    "cfg::constants::is_self_modification_mode::bb11" [label="bb11\nReturn"];
+    "cfg::constants::is_self_modification_mode::bb12" [label="bb12\nDrop cleanup"];
+    "cfg::constants::is_self_modification_mode::bb13" [label="bb13\nUnwindResume cleanup"];
+  }
+  "cfg::constants::is_self_modification_mode::bb4" -> "cfg::constants::is_self_modification_mode::bb6" [label="SwitchInt"];
+  "cfg::constants::is_self_modification_mode::bb4" -> "cfg::constants::is_self_modification_mode::bb7" [label="SwitchInt"];
+  "cfg::constants::is_self_modification_mode::bb4" -> "cfg::constants::is_self_modification_mode::bb5" [label="SwitchInt"];
+  "cfg::constants::is_self_modification_mode::bb6" -> "cfg::constants::is_self_modification_mode::bb11" [label="Goto"];
+  "cfg::constants::is_self_modification_mode::bb10" -> "cfg::constants::is_self_modification_mode::bb11" [label="Drop"];
+  "cfg::constants::is_self_modification_mode::bb12" -> "cfg::constants::is_self_modification_mode::bb13" [label="Drop"];
+}

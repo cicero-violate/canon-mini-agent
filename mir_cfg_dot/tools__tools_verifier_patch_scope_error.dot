@@ -1,0 +1,34 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3862 {
+    label="tools::verifier_patch_scope_error";
+    "cfg::tools::verifier_patch_scope_error::bb0" [label="bb0\nSwitchInt"];
+    "cfg::tools::verifier_patch_scope_error::bb1" [label="bb1\nCall"];
+    "cfg::tools::verifier_patch_scope_error::bb2" [label="bb2\nGoto"];
+    "cfg::tools::verifier_patch_scope_error::bb3" [label="bb3\nSwitchInt"];
+    "cfg::tools::verifier_patch_scope_error::bb4" [label="bb4\nSwitchInt"];
+    "cfg::tools::verifier_patch_scope_error::bb5" [label="bb5\nSwitchInt"];
+    "cfg::tools::verifier_patch_scope_error::bb6" [label="bb6\nSwitchInt"];
+    "cfg::tools::verifier_patch_scope_error::bb7" [label="bb7\nCall"];
+    "cfg::tools::verifier_patch_scope_error::bb8" [label="bb8\nCall"];
+    "cfg::tools::verifier_patch_scope_error::bb9" [label="bb9\nGoto"];
+    "cfg::tools::verifier_patch_scope_error::bb10" [label="bb10\nGoto"];
+    "cfg::tools::verifier_patch_scope_error::bb11" [label="bb11\nReturn"];
+  }
+  "cfg::tools::verifier_patch_scope_error::bb0" -> "cfg::tools::verifier_patch_scope_error::bb3" [label="SwitchInt"];
+  "cfg::tools::verifier_patch_scope_error::bb0" -> "cfg::tools::verifier_patch_scope_error::bb1" [label="SwitchInt"];
+  "cfg::tools::verifier_patch_scope_error::bb2" -> "cfg::tools::verifier_patch_scope_error::bb11" [label="Goto"];
+  "cfg::tools::verifier_patch_scope_error::bb3" -> "cfg::tools::verifier_patch_scope_error::bb4" [label="SwitchInt"];
+  "cfg::tools::verifier_patch_scope_error::bb3" -> "cfg::tools::verifier_patch_scope_error::bb8" [label="SwitchInt"];
+  "cfg::tools::verifier_patch_scope_error::bb4" -> "cfg::tools::verifier_patch_scope_error::bb5" [label="SwitchInt"];
+  "cfg::tools::verifier_patch_scope_error::bb4" -> "cfg::tools::verifier_patch_scope_error::bb8" [label="SwitchInt"];
+  "cfg::tools::verifier_patch_scope_error::bb5" -> "cfg::tools::verifier_patch_scope_error::bb6" [label="SwitchInt"];
+  "cfg::tools::verifier_patch_scope_error::bb5" -> "cfg::tools::verifier_patch_scope_error::bb8" [label="SwitchInt"];
+  "cfg::tools::verifier_patch_scope_error::bb6" -> "cfg::tools::verifier_patch_scope_error::bb7" [label="SwitchInt"];
+  "cfg::tools::verifier_patch_scope_error::bb6" -> "cfg::tools::verifier_patch_scope_error::bb8" [label="SwitchInt"];
+  "cfg::tools::verifier_patch_scope_error::bb9" -> "cfg::tools::verifier_patch_scope_error::bb11" [label="Goto"];
+  "cfg::tools::verifier_patch_scope_error::bb10" -> "cfg::tools::verifier_patch_scope_error::bb11" [label="Goto"];
+}

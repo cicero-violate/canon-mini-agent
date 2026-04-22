@@ -1,0 +1,14 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3101 {
+    label="semantic::SemanticIndex::semantic_triples";
+    "cfg::semantic::SemanticIndex::semantic_triples::bb0" [label="bb0\nCall"];
+    "cfg::semantic::SemanticIndex::semantic_triples::bb1" [label="bb1\nCall"];
+    "cfg::semantic::SemanticIndex::semantic_triples::bb2" [label="bb2\nCall"];
+    "cfg::semantic::SemanticIndex::semantic_triples::bb3" [label="bb3\nCall"];
+    "cfg::semantic::SemanticIndex::semantic_triples::bb4" [label="bb4\nReturn"];
+  }
+}

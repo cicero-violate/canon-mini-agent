@@ -1,0 +1,33 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1269 {
+    label="invariants::fingerprint_id";
+    "cfg::invariants::fingerprint_id::bb0" [label="bb0\nCall"];
+    "cfg::invariants::fingerprint_id::bb1" [label="bb1\nCall"];
+    "cfg::invariants::fingerprint_id::bb2" [label="bb2\nCall"];
+    "cfg::invariants::fingerprint_id::bb3" [label="bb3\nCall"];
+    "cfg::invariants::fingerprint_id::bb4" [label="bb4\nCall"];
+    "cfg::invariants::fingerprint_id::bb5" [label="bb5\nCall"];
+    "cfg::invariants::fingerprint_id::bb6" [label="bb6\nCall"];
+    "cfg::invariants::fingerprint_id::bb7" [label="bb7\nCall"];
+    "cfg::invariants::fingerprint_id::bb8" [label="bb8\nCall"];
+    "cfg::invariants::fingerprint_id::bb9" [label="bb9\nCall"];
+    "cfg::invariants::fingerprint_id::bb10" [label="bb10\nCall"];
+    "cfg::invariants::fingerprint_id::bb11" [label="bb11\nCall"];
+    "cfg::invariants::fingerprint_id::bb12" [label="bb12\nCall"];
+    "cfg::invariants::fingerprint_id::bb13" [label="bb13\nDrop"];
+    "cfg::invariants::fingerprint_id::bb14" [label="bb14\nDrop"];
+    "cfg::invariants::fingerprint_id::bb15" [label="bb15\nReturn"];
+    "cfg::invariants::fingerprint_id::bb16" [label="bb16\nDrop cleanup"];
+    "cfg::invariants::fingerprint_id::bb17" [label="bb17\nDrop cleanup"];
+    "cfg::invariants::fingerprint_id::bb18" [label="bb18\nUnwindResume cleanup"];
+  }
+  "cfg::invariants::fingerprint_id::bb13" -> "cfg::invariants::fingerprint_id::bb14" [label="Drop"];
+  "cfg::invariants::fingerprint_id::bb13" -> "cfg::invariants::fingerprint_id::bb17" [label="Drop"];
+  "cfg::invariants::fingerprint_id::bb14" -> "cfg::invariants::fingerprint_id::bb15" [label="Drop"];
+  "cfg::invariants::fingerprint_id::bb16" -> "cfg::invariants::fingerprint_id::bb17" [label="Drop"];
+  "cfg::invariants::fingerprint_id::bb17" -> "cfg::invariants::fingerprint_id::bb18" [label="Drop"];
+}

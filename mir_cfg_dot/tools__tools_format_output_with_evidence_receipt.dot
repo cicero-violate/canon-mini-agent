@@ -1,0 +1,26 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3743 {
+    label="tools::format_output_with_evidence_receipt";
+    "cfg::tools::format_output_with_evidence_receipt::bb0" [label="bb0\nSwitchInt"];
+    "cfg::tools::format_output_with_evidence_receipt::bb1" [label="bb1\nUnreachable"];
+    "cfg::tools::format_output_with_evidence_receipt::bb2" [label="bb2\nCall"];
+    "cfg::tools::format_output_with_evidence_receipt::bb3" [label="bb3\nCall"];
+    "cfg::tools::format_output_with_evidence_receipt::bb4" [label="bb4\nCall"];
+    "cfg::tools::format_output_with_evidence_receipt::bb5" [label="bb5\nCall"];
+    "cfg::tools::format_output_with_evidence_receipt::bb6" [label="bb6\nCall"];
+    "cfg::tools::format_output_with_evidence_receipt::bb7" [label="bb7\nCall"];
+    "cfg::tools::format_output_with_evidence_receipt::bb8" [label="bb8\nCall"];
+    "cfg::tools::format_output_with_evidence_receipt::bb9" [label="bb9\nCall"];
+    "cfg::tools::format_output_with_evidence_receipt::bb10" [label="bb10\nCall"];
+    "cfg::tools::format_output_with_evidence_receipt::bb11" [label="bb11\nCall"];
+    "cfg::tools::format_output_with_evidence_receipt::bb12" [label="bb12\nCall"];
+    "cfg::tools::format_output_with_evidence_receipt::bb13" [label="bb13\nReturn"];
+  }
+  "cfg::tools::format_output_with_evidence_receipt::bb0" -> "cfg::tools::format_output_with_evidence_receipt::bb2" [label="SwitchInt"];
+  "cfg::tools::format_output_with_evidence_receipt::bb0" -> "cfg::tools::format_output_with_evidence_receipt::bb3" [label="SwitchInt"];
+  "cfg::tools::format_output_with_evidence_receipt::bb0" -> "cfg::tools::format_output_with_evidence_receipt::bb1" [label="SwitchInt"];
+}

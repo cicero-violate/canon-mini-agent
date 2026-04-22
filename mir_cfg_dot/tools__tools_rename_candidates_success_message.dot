@@ -1,0 +1,16 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3964 {
+    label="tools::rename_candidates_success_message";
+    "cfg::tools::rename_candidates_success_message::bb0" [label="bb0\nCall"];
+    "cfg::tools::rename_candidates_success_message::bb1" [label="bb1\nCall"];
+    "cfg::tools::rename_candidates_success_message::bb2" [label="bb2\nCall"];
+    "cfg::tools::rename_candidates_success_message::bb3" [label="bb3\nCall"];
+    "cfg::tools::rename_candidates_success_message::bb4" [label="bb4\nCall"];
+    "cfg::tools::rename_candidates_success_message::bb5" [label="bb5\nCall"];
+    "cfg::tools::rename_candidates_success_message::bb6" [label="bb6\nReturn"];
+  }
+}

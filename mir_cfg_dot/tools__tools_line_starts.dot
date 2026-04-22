@@ -1,0 +1,39 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3918 {
+    label="tools::line_starts";
+    "cfg::tools::line_starts::bb0" [label="bb0\nCall"];
+    "cfg::tools::line_starts::bb1" [label="bb1\nAssert"];
+    "cfg::tools::line_starts::bb2" [label="bb2\nCall loop"];
+    "cfg::tools::line_starts::bb3" [label="bb3\nCall loop"];
+    "cfg::tools::line_starts::bb4" [label="bb4\nCall loop"];
+    "cfg::tools::line_starts::bb5" [label="bb5\nGoto loop"];
+    "cfg::tools::line_starts::bb6" [label="bb6\nCall loop"];
+    "cfg::tools::line_starts::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::tools::line_starts::bb8" [label="bb8\nUnreachable loop"];
+    "cfg::tools::line_starts::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::tools::line_starts::bb10" [label="bb10\nReturn loop"];
+    "cfg::tools::line_starts::bb11" [label="bb11\nAssert loop"];
+    "cfg::tools::line_starts::bb12" [label="bb12\nCall loop"];
+    "cfg::tools::line_starts::bb13" [label="bb13\nDrop cleanup loop"];
+    "cfg::tools::line_starts::bb14" [label="bb14\nUnwindResume cleanup loop"];
+    "cfg::tools::line_starts::bb15" [label="bb15\nAssert loop"];
+    "cfg::tools::line_starts::bb16" [label="bb16\nCall loop"];
+    "cfg::tools::line_starts::bb17" [label="bb17\nGoto loop"];
+  }
+  "cfg::tools::line_starts::bb1" -> "cfg::tools::line_starts::bb15" [label="Assert"];
+  "cfg::tools::line_starts::bb5" -> "cfg::tools::line_starts::bb6" [label="Goto"];
+  "cfg::tools::line_starts::bb7" -> "cfg::tools::line_starts::bb10" [label="SwitchInt"];
+  "cfg::tools::line_starts::bb7" -> "cfg::tools::line_starts::bb9" [label="SwitchInt"];
+  "cfg::tools::line_starts::bb7" -> "cfg::tools::line_starts::bb8" [label="SwitchInt"];
+  "cfg::tools::line_starts::bb9" -> "cfg::tools::line_starts::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::line_starts::bb9" -> "cfg::tools::line_starts::bb11" [label="SwitchInt"];
+  "cfg::tools::line_starts::bb11" -> "cfg::tools::line_starts::bb12" [label="Assert"];
+  "cfg::tools::line_starts::bb11" -> "cfg::tools::line_starts::bb13" [label="Assert"];
+  "cfg::tools::line_starts::bb13" -> "cfg::tools::line_starts::bb14" [label="Drop"];
+  "cfg::tools::line_starts::bb15" -> "cfg::tools::line_starts::bb16" [label="Assert"];
+  "cfg::tools::line_starts::bb17" -> "cfg::tools::line_starts::bb6" [color="crimson", penwidth=2, label="Goto back"];
+}

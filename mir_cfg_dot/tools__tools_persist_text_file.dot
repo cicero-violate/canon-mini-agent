@@ -1,0 +1,22 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4006 {
+    label="tools::persist_text_file";
+    "cfg::tools::persist_text_file::bb0" [label="bb0\nCall"];
+    "cfg::tools::persist_text_file::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::persist_text_file::bb2" [label="bb2\nCall"];
+    "cfg::tools::persist_text_file::bb3" [label="bb3\nDrop"];
+    "cfg::tools::persist_text_file::bb4" [label="bb4\nCall"];
+    "cfg::tools::persist_text_file::bb5" [label="bb5\nDrop"];
+    "cfg::tools::persist_text_file::bb6" [label="bb6\nReturn"];
+    "cfg::tools::persist_text_file::bb7" [label="bb7\nUnreachable"];
+  }
+  "cfg::tools::persist_text_file::bb1" -> "cfg::tools::persist_text_file::bb2" [label="SwitchInt"];
+  "cfg::tools::persist_text_file::bb1" -> "cfg::tools::persist_text_file::bb4" [label="SwitchInt"];
+  "cfg::tools::persist_text_file::bb1" -> "cfg::tools::persist_text_file::bb7" [label="SwitchInt"];
+  "cfg::tools::persist_text_file::bb3" -> "cfg::tools::persist_text_file::bb4" [label="Drop"];
+  "cfg::tools::persist_text_file::bb5" -> "cfg::tools::persist_text_file::bb6" [label="Drop"];
+}

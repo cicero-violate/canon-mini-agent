@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_739 {
+    label="constants::ISSUES_FILE";
+    "cfg::constants::ISSUES_FILE::bb0" [label="bb0\nReturn"];
+  }
+}

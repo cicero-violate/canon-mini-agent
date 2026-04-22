@@ -1,0 +1,47 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3107 {
+    label="semantic::SemanticIndex::push_neighborhood_section";
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb0" [label="bb0\nCall"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb1" [label="bb1\nCall"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb2" [label="bb2\nCall"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb3" [label="bb3\nCall"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb4" [label="bb4\nCall"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb5" [label="bb5\nCall"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb6" [label="bb6\nCall"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb7" [label="bb7\nDrop"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb8" [label="bb8\nCall"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb9" [label="bb9\nGoto"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb10" [label="bb10\nCall loop"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb11" [label="bb11\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb12" [label="bb12\nUnreachable loop"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb13" [label="bb13\nCall loop"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb14" [label="bb14\nReturn loop"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb15" [label="bb15\nCall loop"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb16" [label="bb16\nCall loop"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb17" [label="bb17\nCall loop"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb18" [label="bb18\nDrop loop"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb19" [label="bb19\nCall loop"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb20" [label="bb20\nCall loop"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb21" [label="bb21\nCall loop"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb22" [label="bb22\nDrop loop"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb23" [label="bb23\nCall loop"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb24" [label="bb24\nDrop cleanup"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb25" [label="bb25\nDrop cleanup"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb26" [label="bb26\nDrop cleanup"];
+    "cfg::semantic::SemanticIndex::push_neighborhood_section::bb27" [label="bb27\nUnwindResume cleanup"];
+  }
+  "cfg::semantic::SemanticIndex::push_neighborhood_section::bb7" -> "cfg::semantic::SemanticIndex::push_neighborhood_section::bb8" [label="Drop"];
+  "cfg::semantic::SemanticIndex::push_neighborhood_section::bb9" -> "cfg::semantic::SemanticIndex::push_neighborhood_section::bb10" [label="Goto"];
+  "cfg::semantic::SemanticIndex::push_neighborhood_section::bb11" -> "cfg::semantic::SemanticIndex::push_neighborhood_section::bb14" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::push_neighborhood_section::bb11" -> "cfg::semantic::SemanticIndex::push_neighborhood_section::bb13" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::push_neighborhood_section::bb11" -> "cfg::semantic::SemanticIndex::push_neighborhood_section::bb12" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::push_neighborhood_section::bb18" -> "cfg::semantic::SemanticIndex::push_neighborhood_section::bb19" [label="Drop"];
+  "cfg::semantic::SemanticIndex::push_neighborhood_section::bb22" -> "cfg::semantic::SemanticIndex::push_neighborhood_section::bb23" [label="Drop"];
+  "cfg::semantic::SemanticIndex::push_neighborhood_section::bb24" -> "cfg::semantic::SemanticIndex::push_neighborhood_section::bb27" [label="Drop"];
+  "cfg::semantic::SemanticIndex::push_neighborhood_section::bb25" -> "cfg::semantic::SemanticIndex::push_neighborhood_section::bb27" [label="Drop"];
+  "cfg::semantic::SemanticIndex::push_neighborhood_section::bb26" -> "cfg::semantic::SemanticIndex::push_neighborhood_section::bb27" [label="Drop"];
+}

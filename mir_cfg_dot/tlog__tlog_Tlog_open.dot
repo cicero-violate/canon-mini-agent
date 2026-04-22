@@ -1,0 +1,41 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4688 {
+    label="tlog::Tlog::open";
+    "cfg::tlog::Tlog::open::bb0" [label="bb0\nCall"];
+    "cfg::tlog::Tlog::open::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tlog::Tlog::open::bb2" [label="bb2\nCall"];
+    "cfg::tlog::Tlog::open::bb3" [label="bb3\nDrop"];
+    "cfg::tlog::Tlog::open::bb4" [label="bb4\nCall"];
+    "cfg::tlog::Tlog::open::bb5" [label="bb5\nCall"];
+    "cfg::tlog::Tlog::open::bb6" [label="bb6\nCall"];
+    "cfg::tlog::Tlog::open::bb7" [label="bb7\nCall"];
+    "cfg::tlog::Tlog::open::bb8" [label="bb8\nCall"];
+    "cfg::tlog::Tlog::open::bb9" [label="bb9\nCall"];
+    "cfg::tlog::Tlog::open::bb10" [label="bb10\nCall"];
+    "cfg::tlog::Tlog::open::bb11" [label="bb11\nCall"];
+    "cfg::tlog::Tlog::open::bb12" [label="bb12\nDrop"];
+    "cfg::tlog::Tlog::open::bb13" [label="bb13\nCall"];
+    "cfg::tlog::Tlog::open::bb14" [label="bb14\nReturn"];
+    "cfg::tlog::Tlog::open::bb15" [label="bb15\nDrop cleanup"];
+    "cfg::tlog::Tlog::open::bb16" [label="bb16\nDrop cleanup"];
+    "cfg::tlog::Tlog::open::bb17" [label="bb17\nUnwindResume cleanup loop"];
+    "cfg::tlog::Tlog::open::bb18" [label="bb18\nDrop cleanup loop"];
+    "cfg::tlog::Tlog::open::bb19" [label="bb19\nSwitchInt cleanup loop"];
+    "cfg::tlog::Tlog::open::bb20" [label="bb20\nUnreachable"];
+  }
+  "cfg::tlog::Tlog::open::bb1" -> "cfg::tlog::Tlog::open::bb2" [label="SwitchInt"];
+  "cfg::tlog::Tlog::open::bb1" -> "cfg::tlog::Tlog::open::bb4" [label="SwitchInt"];
+  "cfg::tlog::Tlog::open::bb1" -> "cfg::tlog::Tlog::open::bb20" [label="SwitchInt"];
+  "cfg::tlog::Tlog::open::bb3" -> "cfg::tlog::Tlog::open::bb4" [label="Drop"];
+  "cfg::tlog::Tlog::open::bb12" -> "cfg::tlog::Tlog::open::bb13" [label="Drop"];
+  "cfg::tlog::Tlog::open::bb12" -> "cfg::tlog::Tlog::open::bb19" [label="Drop"];
+  "cfg::tlog::Tlog::open::bb15" -> "cfg::tlog::Tlog::open::bb19" [label="Drop"];
+  "cfg::tlog::Tlog::open::bb16" -> "cfg::tlog::Tlog::open::bb19" [label="Drop"];
+  "cfg::tlog::Tlog::open::bb18" -> "cfg::tlog::Tlog::open::bb17" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tlog::Tlog::open::bb19" -> "cfg::tlog::Tlog::open::bb17" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tlog::Tlog::open::bb19" -> "cfg::tlog::Tlog::open::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

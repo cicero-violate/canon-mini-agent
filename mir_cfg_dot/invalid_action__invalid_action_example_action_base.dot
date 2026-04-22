@@ -1,0 +1,47 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1084 {
+    label="invalid_action::example_action_base";
+    "cfg::invalid_action::example_action_base::bb0" [label="bb0\nCall"];
+    "cfg::invalid_action::example_action_base::bb1" [label="bb1\nCall"];
+    "cfg::invalid_action::example_action_base::bb2" [label="bb2\nCall"];
+    "cfg::invalid_action::example_action_base::bb3" [label="bb3\nCall"];
+    "cfg::invalid_action::example_action_base::bb4" [label="bb4\nDrop"];
+    "cfg::invalid_action::example_action_base::bb5" [label="bb5\nCall"];
+    "cfg::invalid_action::example_action_base::bb6" [label="bb6\nCall"];
+    "cfg::invalid_action::example_action_base::bb7" [label="bb7\nCall"];
+    "cfg::invalid_action::example_action_base::bb8" [label="bb8\nDrop"];
+    "cfg::invalid_action::example_action_base::bb9" [label="bb9\nCall"];
+    "cfg::invalid_action::example_action_base::bb10" [label="bb10\nCall"];
+    "cfg::invalid_action::example_action_base::bb11" [label="bb11\nCall"];
+    "cfg::invalid_action::example_action_base::bb12" [label="bb12\nDrop"];
+    "cfg::invalid_action::example_action_base::bb13" [label="bb13\nReturn"];
+    "cfg::invalid_action::example_action_base::bb14" [label="bb14\nDrop cleanup loop"];
+    "cfg::invalid_action::example_action_base::bb15" [label="bb15\nUnwindResume cleanup loop"];
+    "cfg::invalid_action::example_action_base::bb16" [label="bb16\nDrop cleanup loop"];
+    "cfg::invalid_action::example_action_base::bb17" [label="bb17\nSwitchInt cleanup loop"];
+    "cfg::invalid_action::example_action_base::bb18" [label="bb18\nDrop cleanup loop"];
+    "cfg::invalid_action::example_action_base::bb19" [label="bb19\nSwitchInt cleanup loop"];
+    "cfg::invalid_action::example_action_base::bb20" [label="bb20\nDrop cleanup loop"];
+    "cfg::invalid_action::example_action_base::bb21" [label="bb21\nSwitchInt cleanup loop"];
+  }
+  "cfg::invalid_action::example_action_base::bb4" -> "cfg::invalid_action::example_action_base::bb5" [label="Drop"];
+  "cfg::invalid_action::example_action_base::bb4" -> "cfg::invalid_action::example_action_base::bb14" [label="Drop"];
+  "cfg::invalid_action::example_action_base::bb8" -> "cfg::invalid_action::example_action_base::bb9" [label="Drop"];
+  "cfg::invalid_action::example_action_base::bb8" -> "cfg::invalid_action::example_action_base::bb14" [label="Drop"];
+  "cfg::invalid_action::example_action_base::bb12" -> "cfg::invalid_action::example_action_base::bb13" [label="Drop"];
+  "cfg::invalid_action::example_action_base::bb12" -> "cfg::invalid_action::example_action_base::bb14" [label="Drop"];
+  "cfg::invalid_action::example_action_base::bb14" -> "cfg::invalid_action::example_action_base::bb15" [label="Drop"];
+  "cfg::invalid_action::example_action_base::bb16" -> "cfg::invalid_action::example_action_base::bb14" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::invalid_action::example_action_base::bb17" -> "cfg::invalid_action::example_action_base::bb14" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invalid_action::example_action_base::bb17" -> "cfg::invalid_action::example_action_base::bb16" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invalid_action::example_action_base::bb18" -> "cfg::invalid_action::example_action_base::bb14" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::invalid_action::example_action_base::bb19" -> "cfg::invalid_action::example_action_base::bb14" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invalid_action::example_action_base::bb19" -> "cfg::invalid_action::example_action_base::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invalid_action::example_action_base::bb20" -> "cfg::invalid_action::example_action_base::bb14" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::invalid_action::example_action_base::bb21" -> "cfg::invalid_action::example_action_base::bb14" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invalid_action::example_action_base::bb21" -> "cfg::invalid_action::example_action_base::bb20" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

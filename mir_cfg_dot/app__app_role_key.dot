@@ -1,0 +1,24 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_164 {
+    label="app::role_key";
+    "cfg::app::role_key::bb0" [label="bb0\nCall"];
+    "cfg::app::role_key::bb1" [label="bb1\nSwitchInt"];
+    "cfg::app::role_key::bb2" [label="bb2\nGoto"];
+    "cfg::app::role_key::bb3" [label="bb3\nCall"];
+    "cfg::app::role_key::bb4" [label="bb4\nSwitchInt"];
+    "cfg::app::role_key::bb5" [label="bb5\nGoto"];
+    "cfg::app::role_key::bb6" [label="bb6\nGoto"];
+    "cfg::app::role_key::bb7" [label="bb7\nReturn"];
+  }
+  "cfg::app::role_key::bb1" -> "cfg::app::role_key::bb3" [label="SwitchInt"];
+  "cfg::app::role_key::bb1" -> "cfg::app::role_key::bb2" [label="SwitchInt"];
+  "cfg::app::role_key::bb2" -> "cfg::app::role_key::bb7" [label="Goto"];
+  "cfg::app::role_key::bb4" -> "cfg::app::role_key::bb6" [label="SwitchInt"];
+  "cfg::app::role_key::bb4" -> "cfg::app::role_key::bb5" [label="SwitchInt"];
+  "cfg::app::role_key::bb5" -> "cfg::app::role_key::bb7" [label="Goto"];
+  "cfg::app::role_key::bb6" -> "cfg::app::role_key::bb7" [label="Goto"];
+}

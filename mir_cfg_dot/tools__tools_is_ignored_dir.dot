@@ -1,0 +1,34 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3930 {
+    label="tools::is_ignored_dir";
+    "cfg::tools::is_ignored_dir::bb0" [label="bb0\nCall"];
+    "cfg::tools::is_ignored_dir::bb1" [label="bb1\nGoto loop"];
+    "cfg::tools::is_ignored_dir::bb2" [label="bb2\nCall loop"];
+    "cfg::tools::is_ignored_dir::bb3" [label="bb3\nCall loop"];
+    "cfg::tools::is_ignored_dir::bb4" [label="bb4\nCall loop"];
+    "cfg::tools::is_ignored_dir::bb5" [label="bb5\nCall loop"];
+    "cfg::tools::is_ignored_dir::bb6" [label="bb6\nSwitchInt loop"];
+    "cfg::tools::is_ignored_dir::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::tools::is_ignored_dir::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::tools::is_ignored_dir::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::tools::is_ignored_dir::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::tools::is_ignored_dir::bb11" [label="bb11\nGoto"];
+    "cfg::tools::is_ignored_dir::bb12" [label="bb12\nReturn"];
+  }
+  "cfg::tools::is_ignored_dir::bb1" -> "cfg::tools::is_ignored_dir::bb12" [label="Goto"];
+  "cfg::tools::is_ignored_dir::bb6" -> "cfg::tools::is_ignored_dir::bb1" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::is_ignored_dir::bb6" -> "cfg::tools::is_ignored_dir::bb11" [label="SwitchInt"];
+  "cfg::tools::is_ignored_dir::bb7" -> "cfg::tools::is_ignored_dir::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::is_ignored_dir::bb7" -> "cfg::tools::is_ignored_dir::bb11" [label="SwitchInt"];
+  "cfg::tools::is_ignored_dir::bb8" -> "cfg::tools::is_ignored_dir::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::is_ignored_dir::bb8" -> "cfg::tools::is_ignored_dir::bb11" [label="SwitchInt"];
+  "cfg::tools::is_ignored_dir::bb9" -> "cfg::tools::is_ignored_dir::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::is_ignored_dir::bb9" -> "cfg::tools::is_ignored_dir::bb11" [label="SwitchInt"];
+  "cfg::tools::is_ignored_dir::bb10" -> "cfg::tools::is_ignored_dir::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::is_ignored_dir::bb10" -> "cfg::tools::is_ignored_dir::bb11" [label="SwitchInt"];
+  "cfg::tools::is_ignored_dir::bb11" -> "cfg::tools::is_ignored_dir::bb12" [label="Goto"];
+}

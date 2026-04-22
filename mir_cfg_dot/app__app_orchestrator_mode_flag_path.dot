@@ -1,0 +1,19 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_248 {
+    label="app::orchestrator_mode_flag_path";
+    "cfg::app::orchestrator_mode_flag_path::bb0" [label="bb0\nCall"];
+    "cfg::app::orchestrator_mode_flag_path::bb1" [label="bb1\nCall"];
+    "cfg::app::orchestrator_mode_flag_path::bb2" [label="bb2\nCall"];
+    "cfg::app::orchestrator_mode_flag_path::bb3" [label="bb3\nCall"];
+    "cfg::app::orchestrator_mode_flag_path::bb4" [label="bb4\nDrop"];
+    "cfg::app::orchestrator_mode_flag_path::bb5" [label="bb5\nReturn"];
+    "cfg::app::orchestrator_mode_flag_path::bb6" [label="bb6\nDrop cleanup"];
+    "cfg::app::orchestrator_mode_flag_path::bb7" [label="bb7\nUnwindResume cleanup"];
+  }
+  "cfg::app::orchestrator_mode_flag_path::bb4" -> "cfg::app::orchestrator_mode_flag_path::bb5" [label="Drop"];
+  "cfg::app::orchestrator_mode_flag_path::bb6" -> "cfg::app::orchestrator_mode_flag_path::bb7" [label="Drop"];
+}

@@ -1,0 +1,19 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3156 {
+    label="semantic::edge_relation";
+    "cfg::semantic::edge_relation::bb0" [label="bb0\nCall"];
+    "cfg::semantic::edge_relation::bb1" [label="bb1\nSwitchInt"];
+    "cfg::semantic::edge_relation::bb2" [label="bb2\nGoto"];
+    "cfg::semantic::edge_relation::bb3" [label="bb3\nCall"];
+    "cfg::semantic::edge_relation::bb4" [label="bb4\nGoto"];
+    "cfg::semantic::edge_relation::bb5" [label="bb5\nReturn"];
+  }
+  "cfg::semantic::edge_relation::bb1" -> "cfg::semantic::edge_relation::bb3" [label="SwitchInt"];
+  "cfg::semantic::edge_relation::bb1" -> "cfg::semantic::edge_relation::bb2" [label="SwitchInt"];
+  "cfg::semantic::edge_relation::bb2" -> "cfg::semantic::edge_relation::bb5" [label="Goto"];
+  "cfg::semantic::edge_relation::bb4" -> "cfg::semantic::edge_relation::bb5" [label="Goto"];
+}

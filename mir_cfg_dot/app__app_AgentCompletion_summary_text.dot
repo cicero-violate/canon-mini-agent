@@ -1,0 +1,21 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_427 {
+    label="app::AgentCompletion::summary_text";
+    "cfg::app::AgentCompletion::summary_text::bb0" [label="bb0\nSwitchInt"];
+    "cfg::app::AgentCompletion::summary_text::bb1" [label="bb1\nUnreachable"];
+    "cfg::app::AgentCompletion::summary_text::bb2" [label="bb2\nCall"];
+    "cfg::app::AgentCompletion::summary_text::bb3" [label="bb3\nCall"];
+    "cfg::app::AgentCompletion::summary_text::bb4" [label="bb4\nGoto"];
+    "cfg::app::AgentCompletion::summary_text::bb5" [label="bb5\nGoto"];
+    "cfg::app::AgentCompletion::summary_text::bb6" [label="bb6\nReturn"];
+  }
+  "cfg::app::AgentCompletion::summary_text::bb0" -> "cfg::app::AgentCompletion::summary_text::bb3" [label="SwitchInt"];
+  "cfg::app::AgentCompletion::summary_text::bb0" -> "cfg::app::AgentCompletion::summary_text::bb2" [label="SwitchInt"];
+  "cfg::app::AgentCompletion::summary_text::bb0" -> "cfg::app::AgentCompletion::summary_text::bb1" [label="SwitchInt"];
+  "cfg::app::AgentCompletion::summary_text::bb4" -> "cfg::app::AgentCompletion::summary_text::bb6" [label="Goto"];
+  "cfg::app::AgentCompletion::summary_text::bb5" -> "cfg::app::AgentCompletion::summary_text::bb6" [label="Goto"];
+}

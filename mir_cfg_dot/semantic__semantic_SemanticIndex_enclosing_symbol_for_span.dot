@@ -1,0 +1,49 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3147 {
+    label="semantic::SemanticIndex::enclosing_symbol_for_span";
+    "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb0" [label="bb0\nCall"];
+    "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb1" [label="bb1\nGoto"];
+    "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb2" [label="bb2\nCall loop"];
+    "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb3" [label="bb3\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb4" [label="bb4\nUnreachable loop"];
+    "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb5" [label="bb5\nCall loop"];
+    "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb6" [label="bb6\nCall loop"];
+    "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb8" [label="bb8\nCall loop"];
+    "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb11" [label="bb11\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb12" [label="bb12\nCall loop"];
+    "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb13" [label="bb13\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb14" [label="bb14\nSwitchInt loop"];
+    "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb15" [label="bb15\nCall loop"];
+    "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb16" [label="bb16\nGoto loop"];
+    "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb17" [label="bb17\nCall loop"];
+    "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb18" [label="bb18\nGoto loop"];
+    "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb19" [label="bb19\nReturn"];
+  }
+  "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb1" -> "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb2" [label="Goto"];
+  "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb3" -> "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb6" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb3" -> "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb5" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb3" -> "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb4" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb7" -> "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb8" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb7" -> "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb7" -> "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb9" -> "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb10" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb9" -> "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb10" -> "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb10" -> "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb11" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb11" -> "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb11" -> "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb12" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb13" -> "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb15" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb13" -> "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb14" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb13" -> "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb14" -> "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb14" -> "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb17" [label="SwitchInt"];
+  "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb16" -> "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb2" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb18" -> "cfg::semantic::SemanticIndex::enclosing_symbol_for_span::bb2" [color="crimson", penwidth=2, label="Goto back"];
+}

@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2060 {
+    label="logging::append_action_log_record::LOG_MUTEX";
+    "cfg::logging::append_action_log_record::LOG_MUTEX::bb0" [label="bb0\nCall"];
+    "cfg::logging::append_action_log_record::LOG_MUTEX::bb1" [label="bb1\nReturn"];
+  }
+}

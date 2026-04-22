@@ -1,0 +1,38 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3273 {
+    label="supervisor::find_workspace_root";
+    "cfg::supervisor::find_workspace_root::bb0" [label="bb0\nGoto"];
+    "cfg::supervisor::find_workspace_root::bb1" [label="bb1\nSwitchInt loop"];
+    "cfg::supervisor::find_workspace_root::bb2" [label="bb2\nCall loop"];
+    "cfg::supervisor::find_workspace_root::bb3" [label="bb3\nCall loop"];
+    "cfg::supervisor::find_workspace_root::bb4" [label="bb4\nCall loop"];
+    "cfg::supervisor::find_workspace_root::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::supervisor::find_workspace_root::bb6" [label="bb6\nDrop loop"];
+    "cfg::supervisor::find_workspace_root::bb7" [label="bb7\nCall loop"];
+    "cfg::supervisor::find_workspace_root::bb8" [label="bb8\nGoto loop"];
+    "cfg::supervisor::find_workspace_root::bb9" [label="bb9\nDrop loop"];
+    "cfg::supervisor::find_workspace_root::bb10" [label="bb10\nCall loop"];
+    "cfg::supervisor::find_workspace_root::bb11" [label="bb11\nGoto loop"];
+    "cfg::supervisor::find_workspace_root::bb12" [label="bb12\nGoto"];
+    "cfg::supervisor::find_workspace_root::bb13" [label="bb13\nReturn"];
+    "cfg::supervisor::find_workspace_root::bb14" [label="bb14\nDrop cleanup"];
+    "cfg::supervisor::find_workspace_root::bb15" [label="bb15\nUnwindResume cleanup"];
+    "cfg::supervisor::find_workspace_root::bb16" [label="bb16\nUnreachable"];
+  }
+  "cfg::supervisor::find_workspace_root::bb0" -> "cfg::supervisor::find_workspace_root::bb1" [label="Goto"];
+  "cfg::supervisor::find_workspace_root::bb1" -> "cfg::supervisor::find_workspace_root::bb2" [label="SwitchInt"];
+  "cfg::supervisor::find_workspace_root::bb1" -> "cfg::supervisor::find_workspace_root::bb12" [label="SwitchInt"];
+  "cfg::supervisor::find_workspace_root::bb1" -> "cfg::supervisor::find_workspace_root::bb16" [label="SwitchInt"];
+  "cfg::supervisor::find_workspace_root::bb5" -> "cfg::supervisor::find_workspace_root::bb9" [label="SwitchInt"];
+  "cfg::supervisor::find_workspace_root::bb5" -> "cfg::supervisor::find_workspace_root::bb6" [label="SwitchInt"];
+  "cfg::supervisor::find_workspace_root::bb6" -> "cfg::supervisor::find_workspace_root::bb7" [label="Drop"];
+  "cfg::supervisor::find_workspace_root::bb8" -> "cfg::supervisor::find_workspace_root::bb13" [label="Goto"];
+  "cfg::supervisor::find_workspace_root::bb9" -> "cfg::supervisor::find_workspace_root::bb10" [label="Drop"];
+  "cfg::supervisor::find_workspace_root::bb11" -> "cfg::supervisor::find_workspace_root::bb1" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::supervisor::find_workspace_root::bb12" -> "cfg::supervisor::find_workspace_root::bb13" [label="Goto"];
+  "cfg::supervisor::find_workspace_root::bb14" -> "cfg::supervisor::find_workspace_root::bb15" [label="Drop"];
+}

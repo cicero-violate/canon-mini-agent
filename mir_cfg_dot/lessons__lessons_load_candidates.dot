@@ -1,0 +1,18 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1494 {
+    label="lessons::load_candidates";
+    "cfg::lessons::load_candidates::bb0" [label="bb0\nCall"];
+    "cfg::lessons::load_candidates::bb1" [label="bb1\nCall"];
+    "cfg::lessons::load_candidates::bb2" [label="bb2\nCall"];
+    "cfg::lessons::load_candidates::bb3" [label="bb3\nDrop"];
+    "cfg::lessons::load_candidates::bb4" [label="bb4\nReturn"];
+    "cfg::lessons::load_candidates::bb5" [label="bb5\nDrop cleanup"];
+    "cfg::lessons::load_candidates::bb6" [label="bb6\nUnwindResume cleanup"];
+  }
+  "cfg::lessons::load_candidates::bb3" -> "cfg::lessons::load_candidates::bb4" [label="Drop"];
+  "cfg::lessons::load_candidates::bb5" -> "cfg::lessons::load_candidates::bb6" [label="Drop"];
+}

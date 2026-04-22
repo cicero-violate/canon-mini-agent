@@ -1,0 +1,27 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_835 {
+    label="evaluation::is_open";
+    "cfg::evaluation::is_open::bb0" [label="bb0\nCall"];
+    "cfg::evaluation::is_open::bb1" [label="bb1\nCall"];
+    "cfg::evaluation::is_open::bb2" [label="bb2\nGoto loop"];
+    "cfg::evaluation::is_open::bb3" [label="bb3\nCall loop"];
+    "cfg::evaluation::is_open::bb4" [label="bb4\nCall loop"];
+    "cfg::evaluation::is_open::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::evaluation::is_open::bb6" [label="bb6\nSwitchInt loop"];
+    "cfg::evaluation::is_open::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::evaluation::is_open::bb8" [label="bb8\nGoto"];
+    "cfg::evaluation::is_open::bb9" [label="bb9\nReturn"];
+  }
+  "cfg::evaluation::is_open::bb2" -> "cfg::evaluation::is_open::bb9" [label="Goto"];
+  "cfg::evaluation::is_open::bb5" -> "cfg::evaluation::is_open::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::evaluation::is_open::bb5" -> "cfg::evaluation::is_open::bb8" [label="SwitchInt"];
+  "cfg::evaluation::is_open::bb6" -> "cfg::evaluation::is_open::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::evaluation::is_open::bb6" -> "cfg::evaluation::is_open::bb8" [label="SwitchInt"];
+  "cfg::evaluation::is_open::bb7" -> "cfg::evaluation::is_open::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::evaluation::is_open::bb7" -> "cfg::evaluation::is_open::bb8" [label="SwitchInt"];
+  "cfg::evaluation::is_open::bb8" -> "cfg::evaluation::is_open::bb9" [label="Goto"];
+}

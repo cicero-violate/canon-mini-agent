@@ -1,0 +1,24 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1202 {
+    label="invariants::maybe_synthesize_invariants";
+    "cfg::invariants::maybe_synthesize_invariants::bb0" [label="bb0\nCall"];
+    "cfg::invariants::maybe_synthesize_invariants::bb1" [label="bb1\nSwitchInt"];
+    "cfg::invariants::maybe_synthesize_invariants::bb2" [label="bb2\nCall"];
+    "cfg::invariants::maybe_synthesize_invariants::bb3" [label="bb3\nCall"];
+    "cfg::invariants::maybe_synthesize_invariants::bb4" [label="bb4\nCall"];
+    "cfg::invariants::maybe_synthesize_invariants::bb5" [label="bb5\nDrop"];
+    "cfg::invariants::maybe_synthesize_invariants::bb6" [label="bb6\nDrop cleanup"];
+    "cfg::invariants::maybe_synthesize_invariants::bb7" [label="bb7\nReturn"];
+    "cfg::invariants::maybe_synthesize_invariants::bb8" [label="bb8\nUnwindResume cleanup"];
+    "cfg::invariants::maybe_synthesize_invariants::bb9" [label="bb9\nUnreachable"];
+  }
+  "cfg::invariants::maybe_synthesize_invariants::bb1" -> "cfg::invariants::maybe_synthesize_invariants::bb2" [label="SwitchInt"];
+  "cfg::invariants::maybe_synthesize_invariants::bb1" -> "cfg::invariants::maybe_synthesize_invariants::bb7" [label="SwitchInt"];
+  "cfg::invariants::maybe_synthesize_invariants::bb1" -> "cfg::invariants::maybe_synthesize_invariants::bb9" [label="SwitchInt"];
+  "cfg::invariants::maybe_synthesize_invariants::bb5" -> "cfg::invariants::maybe_synthesize_invariants::bb7" [label="Drop"];
+  "cfg::invariants::maybe_synthesize_invariants::bb6" -> "cfg::invariants::maybe_synthesize_invariants::bb8" [label="Drop"];
+}

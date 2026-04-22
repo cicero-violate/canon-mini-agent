@@ -1,0 +1,30 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1131 {
+    label="invalid_action::add_unique_schema_diff";
+    "cfg::invalid_action::add_unique_schema_diff::bb0" [label="bb0\nCall"];
+    "cfg::invalid_action::add_unique_schema_diff::bb1" [label="bb1\nCall"];
+    "cfg::invalid_action::add_unique_schema_diff::bb2" [label="bb2\nCall"];
+    "cfg::invalid_action::add_unique_schema_diff::bb3" [label="bb3\nSwitchInt"];
+    "cfg::invalid_action::add_unique_schema_diff::bb4" [label="bb4\nCall"];
+    "cfg::invalid_action::add_unique_schema_diff::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::invalid_action::add_unique_schema_diff::bb6" [label="bb6\nReturn loop"];
+    "cfg::invalid_action::add_unique_schema_diff::bb7" [label="bb7\nUnwindResume cleanup loop"];
+    "cfg::invalid_action::add_unique_schema_diff::bb8" [label="bb8\nDrop loop"];
+    "cfg::invalid_action::add_unique_schema_diff::bb9" [label="bb9\nDrop cleanup loop"];
+    "cfg::invalid_action::add_unique_schema_diff::bb10" [label="bb10\nSwitchInt cleanup loop"];
+    "cfg::invalid_action::add_unique_schema_diff::bb11" [label="bb11\nGoto loop"];
+  }
+  "cfg::invalid_action::add_unique_schema_diff::bb3" -> "cfg::invalid_action::add_unique_schema_diff::bb4" [label="SwitchInt"];
+  "cfg::invalid_action::add_unique_schema_diff::bb3" -> "cfg::invalid_action::add_unique_schema_diff::bb5" [label="SwitchInt"];
+  "cfg::invalid_action::add_unique_schema_diff::bb5" -> "cfg::invalid_action::add_unique_schema_diff::bb6" [label="SwitchInt"];
+  "cfg::invalid_action::add_unique_schema_diff::bb5" -> "cfg::invalid_action::add_unique_schema_diff::bb8" [label="SwitchInt"];
+  "cfg::invalid_action::add_unique_schema_diff::bb8" -> "cfg::invalid_action::add_unique_schema_diff::bb6" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::invalid_action::add_unique_schema_diff::bb9" -> "cfg::invalid_action::add_unique_schema_diff::bb7" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::invalid_action::add_unique_schema_diff::bb10" -> "cfg::invalid_action::add_unique_schema_diff::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invalid_action::add_unique_schema_diff::bb10" -> "cfg::invalid_action::add_unique_schema_diff::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invalid_action::add_unique_schema_diff::bb11" -> "cfg::invalid_action::add_unique_schema_diff::bb5" [color="crimson", penwidth=2, label="Goto back"];
+}

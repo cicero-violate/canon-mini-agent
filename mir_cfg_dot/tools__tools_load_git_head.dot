@@ -1,0 +1,52 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4003 {
+    label="tools::load_git_head";
+    "cfg::tools::load_git_head::bb0" [label="bb0\nSwitchInt"];
+    "cfg::tools::load_git_head::bb1" [label="bb1\nCall"];
+    "cfg::tools::load_git_head::bb2" [label="bb2\nGoto"];
+    "cfg::tools::load_git_head::bb3" [label="bb3\nCall"];
+    "cfg::tools::load_git_head::bb4" [label="bb4\nCall"];
+    "cfg::tools::load_git_head::bb5" [label="bb5\nCall"];
+    "cfg::tools::load_git_head::bb6" [label="bb6\nCall"];
+    "cfg::tools::load_git_head::bb7" [label="bb7\nCall"];
+    "cfg::tools::load_git_head::bb8" [label="bb8\nCall"];
+    "cfg::tools::load_git_head::bb9" [label="bb9\nSwitchInt"];
+    "cfg::tools::load_git_head::bb10" [label="bb10\nUnreachable"];
+    "cfg::tools::load_git_head::bb11" [label="bb11\nDrop"];
+    "cfg::tools::load_git_head::bb12" [label="bb12\nCall"];
+    "cfg::tools::load_git_head::bb13" [label="bb13\nDrop"];
+    "cfg::tools::load_git_head::bb14" [label="bb14\nCall"];
+    "cfg::tools::load_git_head::bb15" [label="bb15\nCall"];
+    "cfg::tools::load_git_head::bb16" [label="bb16\nCall"];
+    "cfg::tools::load_git_head::bb17" [label="bb17\nCall"];
+    "cfg::tools::load_git_head::bb18" [label="bb18\nCall"];
+    "cfg::tools::load_git_head::bb19" [label="bb19\nDrop"];
+    "cfg::tools::load_git_head::bb20" [label="bb20\nDrop"];
+    "cfg::tools::load_git_head::bb21" [label="bb21\nReturn"];
+    "cfg::tools::load_git_head::bb22" [label="bb22\nDrop cleanup"];
+    "cfg::tools::load_git_head::bb23" [label="bb23\nDrop cleanup"];
+    "cfg::tools::load_git_head::bb24" [label="bb24\nDrop cleanup"];
+    "cfg::tools::load_git_head::bb25" [label="bb25\nDrop cleanup"];
+    "cfg::tools::load_git_head::bb26" [label="bb26\nUnwindResume cleanup"];
+  }
+  "cfg::tools::load_git_head::bb0" -> "cfg::tools::load_git_head::bb1" [label="SwitchInt"];
+  "cfg::tools::load_git_head::bb0" -> "cfg::tools::load_git_head::bb3" [label="SwitchInt"];
+  "cfg::tools::load_git_head::bb2" -> "cfg::tools::load_git_head::bb21" [label="Goto"];
+  "cfg::tools::load_git_head::bb9" -> "cfg::tools::load_git_head::bb11" [label="SwitchInt"];
+  "cfg::tools::load_git_head::bb9" -> "cfg::tools::load_git_head::bb12" [label="SwitchInt"];
+  "cfg::tools::load_git_head::bb9" -> "cfg::tools::load_git_head::bb10" [label="SwitchInt"];
+  "cfg::tools::load_git_head::bb11" -> "cfg::tools::load_git_head::bb14" [label="Drop"];
+  "cfg::tools::load_git_head::bb11" -> "cfg::tools::load_git_head::bb24" [label="Drop"];
+  "cfg::tools::load_git_head::bb13" -> "cfg::tools::load_git_head::bb21" [label="Drop"];
+  "cfg::tools::load_git_head::bb19" -> "cfg::tools::load_git_head::bb20" [label="Drop"];
+  "cfg::tools::load_git_head::bb19" -> "cfg::tools::load_git_head::bb23" [label="Drop"];
+  "cfg::tools::load_git_head::bb20" -> "cfg::tools::load_git_head::bb21" [label="Drop"];
+  "cfg::tools::load_git_head::bb22" -> "cfg::tools::load_git_head::bb23" [label="Drop"];
+  "cfg::tools::load_git_head::bb23" -> "cfg::tools::load_git_head::bb26" [label="Drop"];
+  "cfg::tools::load_git_head::bb24" -> "cfg::tools::load_git_head::bb26" [label="Drop"];
+  "cfg::tools::load_git_head::bb25" -> "cfg::tools::load_git_head::bb26" [label="Drop"];
+}

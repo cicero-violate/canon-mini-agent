@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2837 {
+    label="refactor_analysis::loop_invariant_issues::LOOP_INVARIANT_SYMBOL_BUDGET";
+    "cfg::refactor_analysis::loop_invariant_issues::LOOP_INVARIANT_SYMBOL_BUDGET::bb0" [label="bb0\nReturn"];
+  }
+}

@@ -1,0 +1,29 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4576 {
+    label="tools::sanitize_inbound_target";
+    "cfg::tools::sanitize_inbound_target::bb0" [label="bb0\nCall"];
+    "cfg::tools::sanitize_inbound_target::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::sanitize_inbound_target::bb2" [label="bb2\nCall"];
+    "cfg::tools::sanitize_inbound_target::bb3" [label="bb3\nSwitchInt"];
+    "cfg::tools::sanitize_inbound_target::bb4" [label="bb4\nCall"];
+    "cfg::tools::sanitize_inbound_target::bb5" [label="bb5\nCall"];
+    "cfg::tools::sanitize_inbound_target::bb6" [label="bb6\nSwitchInt"];
+    "cfg::tools::sanitize_inbound_target::bb7" [label="bb7\nCall"];
+    "cfg::tools::sanitize_inbound_target::bb8" [label="bb8\nSwitchInt"];
+    "cfg::tools::sanitize_inbound_target::bb9" [label="bb9\nCall"];
+    "cfg::tools::sanitize_inbound_target::bb10" [label="bb10\nCall"];
+    "cfg::tools::sanitize_inbound_target::bb11" [label="bb11\nReturn"];
+  }
+  "cfg::tools::sanitize_inbound_target::bb1" -> "cfg::tools::sanitize_inbound_target::bb2" [label="SwitchInt"];
+  "cfg::tools::sanitize_inbound_target::bb1" -> "cfg::tools::sanitize_inbound_target::bb4" [label="SwitchInt"];
+  "cfg::tools::sanitize_inbound_target::bb3" -> "cfg::tools::sanitize_inbound_target::bb5" [label="SwitchInt"];
+  "cfg::tools::sanitize_inbound_target::bb3" -> "cfg::tools::sanitize_inbound_target::bb4" [label="SwitchInt"];
+  "cfg::tools::sanitize_inbound_target::bb6" -> "cfg::tools::sanitize_inbound_target::bb7" [label="SwitchInt"];
+  "cfg::tools::sanitize_inbound_target::bb6" -> "cfg::tools::sanitize_inbound_target::bb9" [label="SwitchInt"];
+  "cfg::tools::sanitize_inbound_target::bb8" -> "cfg::tools::sanitize_inbound_target::bb10" [label="SwitchInt"];
+  "cfg::tools::sanitize_inbound_target::bb8" -> "cfg::tools::sanitize_inbound_target::bb9" [label="SwitchInt"];
+}

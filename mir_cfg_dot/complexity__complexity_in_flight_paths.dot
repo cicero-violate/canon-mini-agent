@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_707 {
+    label="complexity::in_flight_paths";
+    "cfg::complexity::in_flight_paths::bb0" [label="bb0\nCall"];
+    "cfg::complexity::in_flight_paths::bb1" [label="bb1\nReturn"];
+  }
+}

@@ -1,0 +1,31 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_197 {
+    label="app::timed_out_submitted_turns";
+    "cfg::app::timed_out_submitted_turns::bb0" [label="bb0\nCall"];
+    "cfg::app::timed_out_submitted_turns::bb1" [label="bb1\nCall"];
+    "cfg::app::timed_out_submitted_turns::bb2" [label="bb2\nCall"];
+    "cfg::app::timed_out_submitted_turns::bb3" [label="bb3\nGoto"];
+    "cfg::app::timed_out_submitted_turns::bb4" [label="bb4\nCall loop"];
+    "cfg::app::timed_out_submitted_turns::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::app::timed_out_submitted_turns::bb6" [label="bb6\nUnreachable loop"];
+    "cfg::app::timed_out_submitted_turns::bb7" [label="bb7\nCall loop"];
+    "cfg::app::timed_out_submitted_turns::bb8" [label="bb8\nReturn loop"];
+    "cfg::app::timed_out_submitted_turns::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::app::timed_out_submitted_turns::bb10" [label="bb10\nCall loop"];
+    "cfg::app::timed_out_submitted_turns::bb11" [label="bb11\nDrop cleanup loop"];
+    "cfg::app::timed_out_submitted_turns::bb12" [label="bb12\nUnwindResume cleanup loop"];
+    "cfg::app::timed_out_submitted_turns::bb13" [label="bb13\nGoto loop"];
+  }
+  "cfg::app::timed_out_submitted_turns::bb3" -> "cfg::app::timed_out_submitted_turns::bb4" [label="Goto"];
+  "cfg::app::timed_out_submitted_turns::bb5" -> "cfg::app::timed_out_submitted_turns::bb8" [label="SwitchInt"];
+  "cfg::app::timed_out_submitted_turns::bb5" -> "cfg::app::timed_out_submitted_turns::bb7" [label="SwitchInt"];
+  "cfg::app::timed_out_submitted_turns::bb5" -> "cfg::app::timed_out_submitted_turns::bb6" [label="SwitchInt"];
+  "cfg::app::timed_out_submitted_turns::bb9" -> "cfg::app::timed_out_submitted_turns::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::timed_out_submitted_turns::bb9" -> "cfg::app::timed_out_submitted_turns::bb10" [label="SwitchInt"];
+  "cfg::app::timed_out_submitted_turns::bb11" -> "cfg::app::timed_out_submitted_turns::bb12" [label="Drop"];
+  "cfg::app::timed_out_submitted_turns::bb13" -> "cfg::app::timed_out_submitted_turns::bb4" [color="crimson", penwidth=2, label="Goto back"];
+}

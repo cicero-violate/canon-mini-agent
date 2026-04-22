@@ -1,0 +1,37 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_759 {
+    label="constants::set_workspace";
+    "cfg::constants::set_workspace::bb0" [label="bb0\nCall"];
+    "cfg::constants::set_workspace::bb1" [label="bb1\nCall"];
+    "cfg::constants::set_workspace::bb2" [label="bb2\nCall"];
+    "cfg::constants::set_workspace::bb3" [label="bb3\nCall"];
+    "cfg::constants::set_workspace::bb4" [label="bb4\nSwitchInt"];
+    "cfg::constants::set_workspace::bb5" [label="bb5\nCall"];
+    "cfg::constants::set_workspace::bb6" [label="bb6\nDrop"];
+    "cfg::constants::set_workspace::bb7" [label="bb7\nSwitchInt"];
+    "cfg::constants::set_workspace::bb8" [label="bb8\nDrop cleanup"];
+    "cfg::constants::set_workspace::bb9" [label="bb9\nUnwindResume cleanup loop"];
+    "cfg::constants::set_workspace::bb10" [label="bb10\nReturn loop"];
+    "cfg::constants::set_workspace::bb11" [label="bb11\nDrop loop"];
+    "cfg::constants::set_workspace::bb12" [label="bb12\nDrop cleanup loop"];
+    "cfg::constants::set_workspace::bb13" [label="bb13\nSwitchInt cleanup loop"];
+    "cfg::constants::set_workspace::bb14" [label="bb14\nUnreachable"];
+  }
+  "cfg::constants::set_workspace::bb4" -> "cfg::constants::set_workspace::bb5" [label="SwitchInt"];
+  "cfg::constants::set_workspace::bb4" -> "cfg::constants::set_workspace::bb7" [label="SwitchInt"];
+  "cfg::constants::set_workspace::bb4" -> "cfg::constants::set_workspace::bb14" [label="SwitchInt"];
+  "cfg::constants::set_workspace::bb6" -> "cfg::constants::set_workspace::bb7" [label="Drop"];
+  "cfg::constants::set_workspace::bb6" -> "cfg::constants::set_workspace::bb13" [label="Drop"];
+  "cfg::constants::set_workspace::bb7" -> "cfg::constants::set_workspace::bb10" [label="SwitchInt"];
+  "cfg::constants::set_workspace::bb7" -> "cfg::constants::set_workspace::bb11" [label="SwitchInt"];
+  "cfg::constants::set_workspace::bb7" -> "cfg::constants::set_workspace::bb14" [label="SwitchInt"];
+  "cfg::constants::set_workspace::bb8" -> "cfg::constants::set_workspace::bb13" [label="Drop"];
+  "cfg::constants::set_workspace::bb11" -> "cfg::constants::set_workspace::bb10" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::constants::set_workspace::bb12" -> "cfg::constants::set_workspace::bb9" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::constants::set_workspace::bb13" -> "cfg::constants::set_workspace::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::constants::set_workspace::bb13" -> "cfg::constants::set_workspace::bb12" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

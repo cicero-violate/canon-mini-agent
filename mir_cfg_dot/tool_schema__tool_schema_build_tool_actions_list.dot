@@ -1,0 +1,21 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3443 {
+    label="tool_schema::build_tool_actions_list";
+    "cfg::tool_schema::build_tool_actions_list::bb0" [label="bb0\nCall"];
+    "cfg::tool_schema::build_tool_actions_list::bb1" [label="bb1\nCall"];
+    "cfg::tool_schema::build_tool_actions_list::bb2" [label="bb2\nCall"];
+    "cfg::tool_schema::build_tool_actions_list::bb3" [label="bb3\nAssert"];
+    "cfg::tool_schema::build_tool_actions_list::bb4" [label="bb4\nReturn loop"];
+    "cfg::tool_schema::build_tool_actions_list::bb5" [label="bb5\nDrop cleanup loop"];
+    "cfg::tool_schema::build_tool_actions_list::bb6" [label="bb6\nUnwindResume cleanup loop"];
+    "cfg::tool_schema::build_tool_actions_list::bb7" [label="bb7\nAssert loop"];
+    "cfg::tool_schema::build_tool_actions_list::bb8" [label="bb8\nCall loop"];
+  }
+  "cfg::tool_schema::build_tool_actions_list::bb3" -> "cfg::tool_schema::build_tool_actions_list::bb7" [label="Assert"];
+  "cfg::tool_schema::build_tool_actions_list::bb5" -> "cfg::tool_schema::build_tool_actions_list::bb6" [label="Drop"];
+  "cfg::tool_schema::build_tool_actions_list::bb7" -> "cfg::tool_schema::build_tool_actions_list::bb8" [label="Assert"];
+}

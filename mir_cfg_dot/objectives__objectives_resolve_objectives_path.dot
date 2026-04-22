@@ -1,0 +1,46 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2240 {
+    label="objectives::resolve_objectives_path";
+    "cfg::objectives::resolve_objectives_path::bb0" [label="bb0\nCall"];
+    "cfg::objectives::resolve_objectives_path::bb1" [label="bb1\nCall"];
+    "cfg::objectives::resolve_objectives_path::bb2" [label="bb2\nCall"];
+    "cfg::objectives::resolve_objectives_path::bb3" [label="bb3\nSwitchInt"];
+    "cfg::objectives::resolve_objectives_path::bb4" [label="bb4\nGoto"];
+    "cfg::objectives::resolve_objectives_path::bb5" [label="bb5\nCall"];
+    "cfg::objectives::resolve_objectives_path::bb6" [label="bb6\nCall"];
+    "cfg::objectives::resolve_objectives_path::bb7" [label="bb7\nCall"];
+    "cfg::objectives::resolve_objectives_path::bb8" [label="bb8\nSwitchInt"];
+    "cfg::objectives::resolve_objectives_path::bb9" [label="bb9\nGoto"];
+    "cfg::objectives::resolve_objectives_path::bb10" [label="bb10\nDrop"];
+    "cfg::objectives::resolve_objectives_path::bb11" [label="bb11\nGoto"];
+    "cfg::objectives::resolve_objectives_path::bb12" [label="bb12\nGoto loop"];
+    "cfg::objectives::resolve_objectives_path::bb13" [label="bb13\nReturn loop"];
+    "cfg::objectives::resolve_objectives_path::bb14" [label="bb14\nDrop cleanup loop"];
+    "cfg::objectives::resolve_objectives_path::bb15" [label="bb15\nUnwindResume cleanup loop"];
+    "cfg::objectives::resolve_objectives_path::bb16" [label="bb16\nDrop loop"];
+    "cfg::objectives::resolve_objectives_path::bb17" [label="bb17\nSwitchInt loop"];
+    "cfg::objectives::resolve_objectives_path::bb18" [label="bb18\nDrop cleanup loop"];
+    "cfg::objectives::resolve_objectives_path::bb19" [label="bb19\nSwitchInt cleanup loop"];
+  }
+  "cfg::objectives::resolve_objectives_path::bb3" -> "cfg::objectives::resolve_objectives_path::bb5" [label="SwitchInt"];
+  "cfg::objectives::resolve_objectives_path::bb3" -> "cfg::objectives::resolve_objectives_path::bb4" [label="SwitchInt"];
+  "cfg::objectives::resolve_objectives_path::bb4" -> "cfg::objectives::resolve_objectives_path::bb17" [label="Goto"];
+  "cfg::objectives::resolve_objectives_path::bb8" -> "cfg::objectives::resolve_objectives_path::bb10" [label="SwitchInt"];
+  "cfg::objectives::resolve_objectives_path::bb8" -> "cfg::objectives::resolve_objectives_path::bb9" [label="SwitchInt"];
+  "cfg::objectives::resolve_objectives_path::bb9" -> "cfg::objectives::resolve_objectives_path::bb17" [label="Goto"];
+  "cfg::objectives::resolve_objectives_path::bb10" -> "cfg::objectives::resolve_objectives_path::bb11" [label="Drop"];
+  "cfg::objectives::resolve_objectives_path::bb10" -> "cfg::objectives::resolve_objectives_path::bb19" [label="Drop"];
+  "cfg::objectives::resolve_objectives_path::bb11" -> "cfg::objectives::resolve_objectives_path::bb13" [label="Goto"];
+  "cfg::objectives::resolve_objectives_path::bb12" -> "cfg::objectives::resolve_objectives_path::bb13" [label="Goto"];
+  "cfg::objectives::resolve_objectives_path::bb14" -> "cfg::objectives::resolve_objectives_path::bb19" [label="Drop"];
+  "cfg::objectives::resolve_objectives_path::bb16" -> "cfg::objectives::resolve_objectives_path::bb12" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::objectives::resolve_objectives_path::bb17" -> "cfg::objectives::resolve_objectives_path::bb12" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::objectives::resolve_objectives_path::bb17" -> "cfg::objectives::resolve_objectives_path::bb16" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::objectives::resolve_objectives_path::bb18" -> "cfg::objectives::resolve_objectives_path::bb15" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::objectives::resolve_objectives_path::bb19" -> "cfg::objectives::resolve_objectives_path::bb15" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::objectives::resolve_objectives_path::bb19" -> "cfg::objectives::resolve_objectives_path::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

@@ -1,0 +1,26 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4434 {
+    label="tools::starts_direct_debug_binary";
+    "cfg::tools::starts_direct_debug_binary::bb0" [label="bb0\nCall"];
+    "cfg::tools::starts_direct_debug_binary::bb1" [label="bb1\nCall"];
+    "cfg::tools::starts_direct_debug_binary::bb2" [label="bb2\nCall"];
+    "cfg::tools::starts_direct_debug_binary::bb3" [label="bb3\nCall"];
+    "cfg::tools::starts_direct_debug_binary::bb4" [label="bb4\nDrop"];
+    "cfg::tools::starts_direct_debug_binary::bb5" [label="bb5\nCall"];
+    "cfg::tools::starts_direct_debug_binary::bb6" [label="bb6\nSwitchInt"];
+    "cfg::tools::starts_direct_debug_binary::bb7" [label="bb7\nGoto"];
+    "cfg::tools::starts_direct_debug_binary::bb8" [label="bb8\nCall"];
+    "cfg::tools::starts_direct_debug_binary::bb9" [label="bb9\nReturn"];
+    "cfg::tools::starts_direct_debug_binary::bb10" [label="bb10\nDrop cleanup"];
+    "cfg::tools::starts_direct_debug_binary::bb11" [label="bb11\nUnwindResume cleanup"];
+  }
+  "cfg::tools::starts_direct_debug_binary::bb4" -> "cfg::tools::starts_direct_debug_binary::bb5" [label="Drop"];
+  "cfg::tools::starts_direct_debug_binary::bb6" -> "cfg::tools::starts_direct_debug_binary::bb8" [label="SwitchInt"];
+  "cfg::tools::starts_direct_debug_binary::bb6" -> "cfg::tools::starts_direct_debug_binary::bb7" [label="SwitchInt"];
+  "cfg::tools::starts_direct_debug_binary::bb7" -> "cfg::tools::starts_direct_debug_binary::bb9" [label="Goto"];
+  "cfg::tools::starts_direct_debug_binary::bb10" -> "cfg::tools::starts_direct_debug_binary::bb11" [label="Drop"];
+}

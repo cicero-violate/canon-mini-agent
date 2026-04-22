@@ -1,0 +1,47 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4470 {
+    label="tools::safe_join";
+    "cfg::tools::safe_join::bb0" [label="bb0\nCall"];
+    "cfg::tools::safe_join::bb1" [label="bb1\nCall"];
+    "cfg::tools::safe_join::bb2" [label="bb2\nSwitchInt"];
+    "cfg::tools::safe_join::bb3" [label="bb3\nCall"];
+    "cfg::tools::safe_join::bb4" [label="bb4\nSwitchInt"];
+    "cfg::tools::safe_join::bb5" [label="bb5\nCall"];
+    "cfg::tools::safe_join::bb6" [label="bb6\nGoto"];
+    "cfg::tools::safe_join::bb7" [label="bb7\nCall"];
+    "cfg::tools::safe_join::bb8" [label="bb8\nSwitchInt"];
+    "cfg::tools::safe_join::bb9" [label="bb9\nCall"];
+    "cfg::tools::safe_join::bb10" [label="bb10\nGoto"];
+    "cfg::tools::safe_join::bb11" [label="bb11\nCall"];
+    "cfg::tools::safe_join::bb12" [label="bb12\nCall"];
+    "cfg::tools::safe_join::bb13" [label="bb13\nCall"];
+    "cfg::tools::safe_join::bb14" [label="bb14\nGoto"];
+    "cfg::tools::safe_join::bb15" [label="bb15\nCall"];
+    "cfg::tools::safe_join::bb16" [label="bb16\nCall"];
+    "cfg::tools::safe_join::bb17" [label="bb17\nSwitchInt"];
+    "cfg::tools::safe_join::bb18" [label="bb18\nCall"];
+    "cfg::tools::safe_join::bb19" [label="bb19\nCall"];
+    "cfg::tools::safe_join::bb20" [label="bb20\nCall"];
+    "cfg::tools::safe_join::bb21" [label="bb21\nGoto"];
+    "cfg::tools::safe_join::bb22" [label="bb22\nCall"];
+    "cfg::tools::safe_join::bb23" [label="bb23\nGoto"];
+    "cfg::tools::safe_join::bb24" [label="bb24\nReturn"];
+  }
+  "cfg::tools::safe_join::bb2" -> "cfg::tools::safe_join::bb15" [label="SwitchInt"];
+  "cfg::tools::safe_join::bb2" -> "cfg::tools::safe_join::bb3" [label="SwitchInt"];
+  "cfg::tools::safe_join::bb4" -> "cfg::tools::safe_join::bb7" [label="SwitchInt"];
+  "cfg::tools::safe_join::bb4" -> "cfg::tools::safe_join::bb5" [label="SwitchInt"];
+  "cfg::tools::safe_join::bb6" -> "cfg::tools::safe_join::bb24" [label="Goto"];
+  "cfg::tools::safe_join::bb8" -> "cfg::tools::safe_join::bb11" [label="SwitchInt"];
+  "cfg::tools::safe_join::bb8" -> "cfg::tools::safe_join::bb9" [label="SwitchInt"];
+  "cfg::tools::safe_join::bb10" -> "cfg::tools::safe_join::bb24" [label="Goto"];
+  "cfg::tools::safe_join::bb14" -> "cfg::tools::safe_join::bb24" [label="Goto"];
+  "cfg::tools::safe_join::bb17" -> "cfg::tools::safe_join::bb22" [label="SwitchInt"];
+  "cfg::tools::safe_join::bb17" -> "cfg::tools::safe_join::bb18" [label="SwitchInt"];
+  "cfg::tools::safe_join::bb21" -> "cfg::tools::safe_join::bb24" [label="Goto"];
+  "cfg::tools::safe_join::bb23" -> "cfg::tools::safe_join::bb24" [label="Goto"];
+}

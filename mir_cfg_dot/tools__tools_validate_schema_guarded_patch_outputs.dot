@@ -1,0 +1,48 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4027 {
+    label="tools::validate_schema_guarded_patch_outputs";
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb0" [label="bb0\nCall"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb1" [label="bb1\nGoto"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb2" [label="bb2\nCall loop"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb3" [label="bb3\nSwitchInt loop"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb4" [label="bb4\nUnreachable loop"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb5" [label="bb5\nCall loop"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb6" [label="bb6\nGoto loop"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb7" [label="bb7\nCall loop"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb8" [label="bb8\nCall loop"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb9" [label="bb9\nCall loop"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb10" [label="bb10\nCall loop"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb11" [label="bb11\nCall loop"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb13" [label="bb13\nCall loop"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb14" [label="bb14\nCall loop"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb15" [label="bb15\nCall loop"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb16" [label="bb16\nDrop loop"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb17" [label="bb17\nDrop loop"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb18" [label="bb18\nReturn"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb19" [label="bb19\nDrop cleanup loop"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb20" [label="bb20\nDrop cleanup loop"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb21" [label="bb21\nUnwindResume cleanup loop"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb22" [label="bb22\nDrop cleanup loop"];
+    "cfg::tools::validate_schema_guarded_patch_outputs::bb23" [label="bb23\nSwitchInt cleanup loop"];
+  }
+  "cfg::tools::validate_schema_guarded_patch_outputs::bb1" -> "cfg::tools::validate_schema_guarded_patch_outputs::bb2" [label="Goto"];
+  "cfg::tools::validate_schema_guarded_patch_outputs::bb3" -> "cfg::tools::validate_schema_guarded_patch_outputs::bb6" [label="SwitchInt"];
+  "cfg::tools::validate_schema_guarded_patch_outputs::bb3" -> "cfg::tools::validate_schema_guarded_patch_outputs::bb5" [label="SwitchInt"];
+  "cfg::tools::validate_schema_guarded_patch_outputs::bb3" -> "cfg::tools::validate_schema_guarded_patch_outputs::bb4" [label="SwitchInt"];
+  "cfg::tools::validate_schema_guarded_patch_outputs::bb6" -> "cfg::tools::validate_schema_guarded_patch_outputs::bb18" [label="Goto"];
+  "cfg::tools::validate_schema_guarded_patch_outputs::bb12" -> "cfg::tools::validate_schema_guarded_patch_outputs::bb13" [label="SwitchInt"];
+  "cfg::tools::validate_schema_guarded_patch_outputs::bb12" -> "cfg::tools::validate_schema_guarded_patch_outputs::bb17" [label="SwitchInt"];
+  "cfg::tools::validate_schema_guarded_patch_outputs::bb12" -> "cfg::tools::validate_schema_guarded_patch_outputs::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::validate_schema_guarded_patch_outputs::bb16" -> "cfg::tools::validate_schema_guarded_patch_outputs::bb18" [label="Drop"];
+  "cfg::tools::validate_schema_guarded_patch_outputs::bb17" -> "cfg::tools::validate_schema_guarded_patch_outputs::bb2" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tools::validate_schema_guarded_patch_outputs::bb19" -> "cfg::tools::validate_schema_guarded_patch_outputs::bb21" [label="Drop"];
+  "cfg::tools::validate_schema_guarded_patch_outputs::bb20" -> "cfg::tools::validate_schema_guarded_patch_outputs::bb21" [label="Drop"];
+  "cfg::tools::validate_schema_guarded_patch_outputs::bb22" -> "cfg::tools::validate_schema_guarded_patch_outputs::bb19" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tools::validate_schema_guarded_patch_outputs::bb23" -> "cfg::tools::validate_schema_guarded_patch_outputs::bb19" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::validate_schema_guarded_patch_outputs::bb23" -> "cfg::tools::validate_schema_guarded_patch_outputs::bb22" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

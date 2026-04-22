@@ -1,0 +1,12 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4211 {
+    label="tools::require_plan_action_fields";
+    "cfg::tools::require_plan_action_fields::bb0" [label="bb0\nCall"];
+    "cfg::tools::require_plan_action_fields::bb1" [label="bb1\nCall"];
+    "cfg::tools::require_plan_action_fields::bb2" [label="bb2\nReturn"];
+  }
+}

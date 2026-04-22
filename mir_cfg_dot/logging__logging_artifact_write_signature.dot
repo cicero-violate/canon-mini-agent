@@ -1,0 +1,17 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2146 {
+    label="logging::artifact_write_signature";
+    "cfg::logging::artifact_write_signature::bb0" [label="bb0\nCall"];
+    "cfg::logging::artifact_write_signature::bb1" [label="bb1\nCall"];
+    "cfg::logging::artifact_write_signature::bb2" [label="bb2\nCall"];
+    "cfg::logging::artifact_write_signature::bb3" [label="bb3\nCall"];
+    "cfg::logging::artifact_write_signature::bb4" [label="bb4\nCall"];
+    "cfg::logging::artifact_write_signature::bb5" [label="bb5\nCall"];
+    "cfg::logging::artifact_write_signature::bb6" [label="bb6\nCall"];
+    "cfg::logging::artifact_write_signature::bb7" [label="bb7\nReturn"];
+  }
+}

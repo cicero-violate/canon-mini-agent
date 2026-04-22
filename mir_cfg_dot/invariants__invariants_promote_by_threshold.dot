@@ -1,0 +1,44 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1281 {
+    label="invariants::promote_by_threshold";
+    "cfg::invariants::promote_by_threshold::bb0" [label="bb0\nCall"];
+    "cfg::invariants::promote_by_threshold::bb1" [label="bb1\nCall"];
+    "cfg::invariants::promote_by_threshold::bb2" [label="bb2\nCall"];
+    "cfg::invariants::promote_by_threshold::bb3" [label="bb3\nGoto"];
+    "cfg::invariants::promote_by_threshold::bb4" [label="bb4\nCall loop"];
+    "cfg::invariants::promote_by_threshold::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::invariants::promote_by_threshold::bb6" [label="bb6\nUnreachable loop"];
+    "cfg::invariants::promote_by_threshold::bb7" [label="bb7\nCall loop"];
+    "cfg::invariants::promote_by_threshold::bb8" [label="bb8\nReturn loop"];
+    "cfg::invariants::promote_by_threshold::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::invariants::promote_by_threshold::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::invariants::promote_by_threshold::bb11" [label="bb11\nCall loop"];
+    "cfg::invariants::promote_by_threshold::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::invariants::promote_by_threshold::bb13" [label="bb13\nCall loop"];
+    "cfg::invariants::promote_by_threshold::bb14" [label="bb14\nCall loop"];
+    "cfg::invariants::promote_by_threshold::bb15" [label="bb15\nDrop loop"];
+    "cfg::invariants::promote_by_threshold::bb16" [label="bb16\nGoto loop"];
+    "cfg::invariants::promote_by_threshold::bb17" [label="bb17\nUnwindResume cleanup loop"];
+    "cfg::invariants::promote_by_threshold::bb18" [label="bb18\nCall loop"];
+    "cfg::invariants::promote_by_threshold::bb19" [label="bb19\nCall loop"];
+    "cfg::invariants::promote_by_threshold::bb20" [label="bb20\nCall loop"];
+    "cfg::invariants::promote_by_threshold::bb21" [label="bb21\nCall loop"];
+  }
+  "cfg::invariants::promote_by_threshold::bb3" -> "cfg::invariants::promote_by_threshold::bb4" [label="Goto"];
+  "cfg::invariants::promote_by_threshold::bb5" -> "cfg::invariants::promote_by_threshold::bb8" [label="SwitchInt"];
+  "cfg::invariants::promote_by_threshold::bb5" -> "cfg::invariants::promote_by_threshold::bb7" [label="SwitchInt"];
+  "cfg::invariants::promote_by_threshold::bb5" -> "cfg::invariants::promote_by_threshold::bb6" [label="SwitchInt"];
+  "cfg::invariants::promote_by_threshold::bb9" -> "cfg::invariants::promote_by_threshold::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::promote_by_threshold::bb9" -> "cfg::invariants::promote_by_threshold::bb10" [label="SwitchInt"];
+  "cfg::invariants::promote_by_threshold::bb10" -> "cfg::invariants::promote_by_threshold::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::promote_by_threshold::bb10" -> "cfg::invariants::promote_by_threshold::bb11" [label="SwitchInt"];
+  "cfg::invariants::promote_by_threshold::bb12" -> "cfg::invariants::promote_by_threshold::bb18" [label="SwitchInt"];
+  "cfg::invariants::promote_by_threshold::bb12" -> "cfg::invariants::promote_by_threshold::bb13" [label="SwitchInt"];
+  "cfg::invariants::promote_by_threshold::bb15" -> "cfg::invariants::promote_by_threshold::bb16" [label="Drop"];
+  "cfg::invariants::promote_by_threshold::bb15" -> "cfg::invariants::promote_by_threshold::bb17" [label="Drop"];
+  "cfg::invariants::promote_by_threshold::bb16" -> "cfg::invariants::promote_by_threshold::bb18" [label="Goto"];
+}

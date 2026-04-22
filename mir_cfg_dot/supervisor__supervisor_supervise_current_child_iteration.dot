@@ -1,0 +1,45 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3338 {
+    label="supervisor::supervise_current_child_iteration";
+    "cfg::supervisor::supervise_current_child_iteration::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::supervise_current_child_iteration::bb1" [label="bb1\nSwitchInt"];
+    "cfg::supervisor::supervise_current_child_iteration::bb2" [label="bb2\nGoto"];
+    "cfg::supervisor::supervise_current_child_iteration::bb3" [label="bb3\nCall"];
+    "cfg::supervisor::supervise_current_child_iteration::bb4" [label="bb4\nCall"];
+    "cfg::supervisor::supervise_current_child_iteration::bb5" [label="bb5\nCall"];
+    "cfg::supervisor::supervise_current_child_iteration::bb6" [label="bb6\nSwitchInt"];
+    "cfg::supervisor::supervise_current_child_iteration::bb7" [label="bb7\nUnreachable loop"];
+    "cfg::supervisor::supervise_current_child_iteration::bb8" [label="bb8\nCall loop"];
+    "cfg::supervisor::supervise_current_child_iteration::bb9" [label="bb9\nCall loop"];
+    "cfg::supervisor::supervise_current_child_iteration::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::supervisor::supervise_current_child_iteration::bb11" [label="bb11\nGoto loop"];
+    "cfg::supervisor::supervise_current_child_iteration::bb12" [label="bb12\nCall loop"];
+    "cfg::supervisor::supervise_current_child_iteration::bb13" [label="bb13\nCall loop"];
+    "cfg::supervisor::supervise_current_child_iteration::bb14" [label="bb14\nSwitchInt loop"];
+    "cfg::supervisor::supervise_current_child_iteration::bb15" [label="bb15\nSwitchInt"];
+    "cfg::supervisor::supervise_current_child_iteration::bb16" [label="bb16\nCall"];
+    "cfg::supervisor::supervise_current_child_iteration::bb17" [label="bb17\nReturn loop"];
+    "cfg::supervisor::supervise_current_child_iteration::bb18" [label="bb18\nGoto loop"];
+    "cfg::supervisor::supervise_current_child_iteration::bb19" [label="bb19\nGoto loop"];
+  }
+  "cfg::supervisor::supervise_current_child_iteration::bb1" -> "cfg::supervisor::supervise_current_child_iteration::bb3" [label="SwitchInt"];
+  "cfg::supervisor::supervise_current_child_iteration::bb1" -> "cfg::supervisor::supervise_current_child_iteration::bb2" [label="SwitchInt"];
+  "cfg::supervisor::supervise_current_child_iteration::bb2" -> "cfg::supervisor::supervise_current_child_iteration::bb17" [label="Goto"];
+  "cfg::supervisor::supervise_current_child_iteration::bb6" -> "cfg::supervisor::supervise_current_child_iteration::bb8" [label="SwitchInt"];
+  "cfg::supervisor::supervise_current_child_iteration::bb6" -> "cfg::supervisor::supervise_current_child_iteration::bb9" [label="SwitchInt"];
+  "cfg::supervisor::supervise_current_child_iteration::bb6" -> "cfg::supervisor::supervise_current_child_iteration::bb7" [label="SwitchInt"];
+  "cfg::supervisor::supervise_current_child_iteration::bb10" -> "cfg::supervisor::supervise_current_child_iteration::bb12" [label="SwitchInt"];
+  "cfg::supervisor::supervise_current_child_iteration::bb10" -> "cfg::supervisor::supervise_current_child_iteration::bb11" [label="SwitchInt"];
+  "cfg::supervisor::supervise_current_child_iteration::bb11" -> "cfg::supervisor::supervise_current_child_iteration::bb17" [label="Goto"];
+  "cfg::supervisor::supervise_current_child_iteration::bb14" -> "cfg::supervisor::supervise_current_child_iteration::bb15" [label="SwitchInt"];
+  "cfg::supervisor::supervise_current_child_iteration::bb14" -> "cfg::supervisor::supervise_current_child_iteration::bb16" [label="SwitchInt"];
+  "cfg::supervisor::supervise_current_child_iteration::bb14" -> "cfg::supervisor::supervise_current_child_iteration::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::supervisor::supervise_current_child_iteration::bb15" -> "cfg::supervisor::supervise_current_child_iteration::bb19" [label="SwitchInt"];
+  "cfg::supervisor::supervise_current_child_iteration::bb15" -> "cfg::supervisor::supervise_current_child_iteration::bb18" [label="SwitchInt"];
+  "cfg::supervisor::supervise_current_child_iteration::bb18" -> "cfg::supervisor::supervise_current_child_iteration::bb17" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::supervisor::supervise_current_child_iteration::bb19" -> "cfg::supervisor::supervise_current_child_iteration::bb17" [color="crimson", penwidth=2, label="Goto back"];
+}

@@ -1,0 +1,24 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_904 {
+    label="grpo::parse_task_id_from_json";
+    "cfg::grpo::parse_task_id_from_json::bb0" [label="bb0\nCall"];
+    "cfg::grpo::parse_task_id_from_json::bb1" [label="bb1\nCall"];
+    "cfg::grpo::parse_task_id_from_json::bb2" [label="bb2\nSwitchInt"];
+    "cfg::grpo::parse_task_id_from_json::bb3" [label="bb3\nUnreachable"];
+    "cfg::grpo::parse_task_id_from_json::bb4" [label="bb4\nCall"];
+    "cfg::grpo::parse_task_id_from_json::bb5" [label="bb5\nCall"];
+    "cfg::grpo::parse_task_id_from_json::bb6" [label="bb6\nDrop"];
+    "cfg::grpo::parse_task_id_from_json::bb7" [label="bb7\nReturn"];
+    "cfg::grpo::parse_task_id_from_json::bb8" [label="bb8\nDrop cleanup"];
+    "cfg::grpo::parse_task_id_from_json::bb9" [label="bb9\nUnwindResume cleanup"];
+  }
+  "cfg::grpo::parse_task_id_from_json::bb2" -> "cfg::grpo::parse_task_id_from_json::bb4" [label="SwitchInt"];
+  "cfg::grpo::parse_task_id_from_json::bb2" -> "cfg::grpo::parse_task_id_from_json::bb5" [label="SwitchInt"];
+  "cfg::grpo::parse_task_id_from_json::bb2" -> "cfg::grpo::parse_task_id_from_json::bb3" [label="SwitchInt"];
+  "cfg::grpo::parse_task_id_from_json::bb6" -> "cfg::grpo::parse_task_id_from_json::bb7" [label="Drop"];
+  "cfg::grpo::parse_task_id_from_json::bb8" -> "cfg::grpo::parse_task_id_from_json::bb9" [label="Drop"];
+}

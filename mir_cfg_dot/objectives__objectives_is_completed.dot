@@ -1,0 +1,50 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2259 {
+    label="objectives::is_completed";
+    "cfg::objectives::is_completed::bb0" [label="bb0\nCall"];
+    "cfg::objectives::is_completed::bb1" [label="bb1\nCall"];
+    "cfg::objectives::is_completed::bb2" [label="bb2\nCall"];
+    "cfg::objectives::is_completed::bb3" [label="bb3\nSwitchInt"];
+    "cfg::objectives::is_completed::bb4" [label="bb4\nCall"];
+    "cfg::objectives::is_completed::bb5" [label="bb5\nCall"];
+    "cfg::objectives::is_completed::bb6" [label="bb6\nCall"];
+    "cfg::objectives::is_completed::bb7" [label="bb7\nCall"];
+    "cfg::objectives::is_completed::bb8" [label="bb8\nGoto"];
+    "cfg::objectives::is_completed::bb9" [label="bb9\nCall"];
+    "cfg::objectives::is_completed::bb10" [label="bb10\nCall"];
+    "cfg::objectives::is_completed::bb11" [label="bb11\nSwitchInt"];
+    "cfg::objectives::is_completed::bb12" [label="bb12\nGoto loop"];
+    "cfg::objectives::is_completed::bb13" [label="bb13\nCall loop"];
+    "cfg::objectives::is_completed::bb14" [label="bb14\nCall loop"];
+    "cfg::objectives::is_completed::bb15" [label="bb15\nCall loop"];
+    "cfg::objectives::is_completed::bb16" [label="bb16\nSwitchInt loop"];
+    "cfg::objectives::is_completed::bb17" [label="bb17\nSwitchInt loop"];
+    "cfg::objectives::is_completed::bb18" [label="bb18\nSwitchInt loop"];
+    "cfg::objectives::is_completed::bb19" [label="bb19\nGoto"];
+    "cfg::objectives::is_completed::bb20" [label="bb20\nDrop"];
+    "cfg::objectives::is_completed::bb21" [label="bb21\nReturn"];
+    "cfg::objectives::is_completed::bb22" [label="bb22\nDrop cleanup"];
+    "cfg::objectives::is_completed::bb23" [label="bb23\nUnwindResume cleanup"];
+    "cfg::objectives::is_completed::bb24" [label="bb24\nUnreachable"];
+  }
+  "cfg::objectives::is_completed::bb3" -> "cfg::objectives::is_completed::bb5" [label="SwitchInt"];
+  "cfg::objectives::is_completed::bb3" -> "cfg::objectives::is_completed::bb4" [label="SwitchInt"];
+  "cfg::objectives::is_completed::bb8" -> "cfg::objectives::is_completed::bb10" [label="Goto"];
+  "cfg::objectives::is_completed::bb11" -> "cfg::objectives::is_completed::bb13" [label="SwitchInt"];
+  "cfg::objectives::is_completed::bb11" -> "cfg::objectives::is_completed::bb12" [label="SwitchInt"];
+  "cfg::objectives::is_completed::bb11" -> "cfg::objectives::is_completed::bb24" [label="SwitchInt"];
+  "cfg::objectives::is_completed::bb12" -> "cfg::objectives::is_completed::bb20" [label="Goto"];
+  "cfg::objectives::is_completed::bb16" -> "cfg::objectives::is_completed::bb12" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::objectives::is_completed::bb16" -> "cfg::objectives::is_completed::bb19" [label="SwitchInt"];
+  "cfg::objectives::is_completed::bb17" -> "cfg::objectives::is_completed::bb15" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::objectives::is_completed::bb17" -> "cfg::objectives::is_completed::bb19" [label="SwitchInt"];
+  "cfg::objectives::is_completed::bb18" -> "cfg::objectives::is_completed::bb14" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::objectives::is_completed::bb18" -> "cfg::objectives::is_completed::bb19" [label="SwitchInt"];
+  "cfg::objectives::is_completed::bb19" -> "cfg::objectives::is_completed::bb20" [label="Goto"];
+  "cfg::objectives::is_completed::bb20" -> "cfg::objectives::is_completed::bb21" [label="Drop"];
+  "cfg::objectives::is_completed::bb22" -> "cfg::objectives::is_completed::bb23" [label="Drop"];
+}

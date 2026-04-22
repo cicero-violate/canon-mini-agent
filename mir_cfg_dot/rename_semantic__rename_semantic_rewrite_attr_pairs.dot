@@ -1,0 +1,30 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2971 {
+    label="rename_semantic::rewrite_attr_pairs";
+    "cfg::rename_semantic::rewrite_attr_pairs::bb0" [label="bb0\nCall"];
+    "cfg::rename_semantic::rewrite_attr_pairs::bb1" [label="bb1\nCall"];
+    "cfg::rename_semantic::rewrite_attr_pairs::bb2" [label="bb2\nCall"];
+    "cfg::rename_semantic::rewrite_attr_pairs::bb3" [label="bb3\nCall"];
+    "cfg::rename_semantic::rewrite_attr_pairs::bb4" [label="bb4\nCall"];
+    "cfg::rename_semantic::rewrite_attr_pairs::bb5" [label="bb5\nCall"];
+    "cfg::rename_semantic::rewrite_attr_pairs::bb6" [label="bb6\nCall"];
+    "cfg::rename_semantic::rewrite_attr_pairs::bb7" [label="bb7\nCall"];
+    "cfg::rename_semantic::rewrite_attr_pairs::bb8" [label="bb8\nCall"];
+    "cfg::rename_semantic::rewrite_attr_pairs::bb9" [label="bb9\nDrop"];
+    "cfg::rename_semantic::rewrite_attr_pairs::bb10" [label="bb10\nReturn"];
+    "cfg::rename_semantic::rewrite_attr_pairs::bb11" [label="bb11\nDrop cleanup"];
+    "cfg::rename_semantic::rewrite_attr_pairs::bb12" [label="bb12\nUnwindResume cleanup loop"];
+    "cfg::rename_semantic::rewrite_attr_pairs::bb13" [label="bb13\nDrop cleanup loop"];
+    "cfg::rename_semantic::rewrite_attr_pairs::bb14" [label="bb14\nSwitchInt cleanup loop"];
+  }
+  "cfg::rename_semantic::rewrite_attr_pairs::bb9" -> "cfg::rename_semantic::rewrite_attr_pairs::bb10" [label="Drop"];
+  "cfg::rename_semantic::rewrite_attr_pairs::bb9" -> "cfg::rename_semantic::rewrite_attr_pairs::bb14" [label="Drop"];
+  "cfg::rename_semantic::rewrite_attr_pairs::bb11" -> "cfg::rename_semantic::rewrite_attr_pairs::bb14" [label="Drop"];
+  "cfg::rename_semantic::rewrite_attr_pairs::bb13" -> "cfg::rename_semantic::rewrite_attr_pairs::bb12" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::rename_semantic::rewrite_attr_pairs::bb14" -> "cfg::rename_semantic::rewrite_attr_pairs::bb12" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::rename_semantic::rewrite_attr_pairs::bb14" -> "cfg::rename_semantic::rewrite_attr_pairs::bb13" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

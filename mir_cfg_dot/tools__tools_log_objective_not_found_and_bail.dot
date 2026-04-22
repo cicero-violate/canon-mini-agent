@@ -1,0 +1,22 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3677 {
+    label="tools::log_objective_not_found_and_bail";
+    "cfg::tools::log_objective_not_found_and_bail::bb0" [label="bb0\nCall"];
+    "cfg::tools::log_objective_not_found_and_bail::bb1" [label="bb1\nCall"];
+    "cfg::tools::log_objective_not_found_and_bail::bb2" [label="bb2\nCall"];
+    "cfg::tools::log_objective_not_found_and_bail::bb3" [label="bb3\nCall"];
+    "cfg::tools::log_objective_not_found_and_bail::bb4" [label="bb4\nCall"];
+    "cfg::tools::log_objective_not_found_and_bail::bb5" [label="bb5\nDrop"];
+    "cfg::tools::log_objective_not_found_and_bail::bb6" [label="bb6\nCall"];
+    "cfg::tools::log_objective_not_found_and_bail::bb7" [label="bb7\nCall"];
+    "cfg::tools::log_objective_not_found_and_bail::bb8" [label="bb8\nReturn"];
+    "cfg::tools::log_objective_not_found_and_bail::bb9" [label="bb9\nDrop cleanup"];
+    "cfg::tools::log_objective_not_found_and_bail::bb10" [label="bb10\nUnwindResume cleanup"];
+  }
+  "cfg::tools::log_objective_not_found_and_bail::bb5" -> "cfg::tools::log_objective_not_found_and_bail::bb6" [label="Drop"];
+  "cfg::tools::log_objective_not_found_and_bail::bb9" -> "cfg::tools::log_objective_not_found_and_bail::bb10" [label="Drop"];
+}

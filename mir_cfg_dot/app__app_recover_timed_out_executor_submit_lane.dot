@@ -1,0 +1,20 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_194 {
+    label="app::recover_timed_out_executor_submit_lane";
+    "cfg::app::recover_timed_out_executor_submit_lane::bb0" [label="bb0\nCall"];
+    "cfg::app::recover_timed_out_executor_submit_lane::bb1" [label="bb1\nSwitchInt"];
+    "cfg::app::recover_timed_out_executor_submit_lane::bb2" [label="bb2\nCall"];
+    "cfg::app::recover_timed_out_executor_submit_lane::bb3" [label="bb3\nCall loop"];
+    "cfg::app::recover_timed_out_executor_submit_lane::bb4" [label="bb4\nCall loop"];
+    "cfg::app::recover_timed_out_executor_submit_lane::bb5" [label="bb5\nReturn loop"];
+    "cfg::app::recover_timed_out_executor_submit_lane::bb6" [label="bb6\nCall loop"];
+    "cfg::app::recover_timed_out_executor_submit_lane::bb7" [label="bb7\nUnreachable"];
+  }
+  "cfg::app::recover_timed_out_executor_submit_lane::bb1" -> "cfg::app::recover_timed_out_executor_submit_lane::bb2" [label="SwitchInt"];
+  "cfg::app::recover_timed_out_executor_submit_lane::bb1" -> "cfg::app::recover_timed_out_executor_submit_lane::bb6" [label="SwitchInt"];
+  "cfg::app::recover_timed_out_executor_submit_lane::bb1" -> "cfg::app::recover_timed_out_executor_submit_lane::bb7" [label="SwitchInt"];
+}

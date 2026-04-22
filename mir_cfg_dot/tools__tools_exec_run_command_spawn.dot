@@ -1,0 +1,46 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4445 {
+    label="tools::exec_run_command_spawn";
+    "cfg::tools::exec_run_command_spawn::bb0" [label="bb0\nCall"];
+    "cfg::tools::exec_run_command_spawn::bb1" [label="bb1\nCall"];
+    "cfg::tools::exec_run_command_spawn::bb2" [label="bb2\nCall"];
+    "cfg::tools::exec_run_command_spawn::bb3" [label="bb3\nCall"];
+    "cfg::tools::exec_run_command_spawn::bb4" [label="bb4\nCall"];
+    "cfg::tools::exec_run_command_spawn::bb5" [label="bb5\nCall"];
+    "cfg::tools::exec_run_command_spawn::bb6" [label="bb6\nCall"];
+    "cfg::tools::exec_run_command_spawn::bb7" [label="bb7\nCall"];
+    "cfg::tools::exec_run_command_spawn::bb8" [label="bb8\nCall"];
+    "cfg::tools::exec_run_command_spawn::bb9" [label="bb9\nCall"];
+    "cfg::tools::exec_run_command_spawn::bb10" [label="bb10\nCall"];
+    "cfg::tools::exec_run_command_spawn::bb11" [label="bb11\nCall"];
+    "cfg::tools::exec_run_command_spawn::bb12" [label="bb12\nCall"];
+    "cfg::tools::exec_run_command_spawn::bb13" [label="bb13\nSwitchInt"];
+    "cfg::tools::exec_run_command_spawn::bb14" [label="bb14\nUnreachable"];
+    "cfg::tools::exec_run_command_spawn::bb15" [label="bb15\nDrop"];
+    "cfg::tools::exec_run_command_spawn::bb16" [label="bb16\nCall"];
+    "cfg::tools::exec_run_command_spawn::bb17" [label="bb17\nDrop"];
+    "cfg::tools::exec_run_command_spawn::bb18" [label="bb18\nCall"];
+    "cfg::tools::exec_run_command_spawn::bb19" [label="bb19\nCall"];
+    "cfg::tools::exec_run_command_spawn::bb20" [label="bb20\nCall"];
+    "cfg::tools::exec_run_command_spawn::bb21" [label="bb21\nCall"];
+    "cfg::tools::exec_run_command_spawn::bb22" [label="bb22\nCall"];
+    "cfg::tools::exec_run_command_spawn::bb23" [label="bb23\nDrop"];
+    "cfg::tools::exec_run_command_spawn::bb24" [label="bb24\nReturn"];
+    "cfg::tools::exec_run_command_spawn::bb25" [label="bb25\nDrop cleanup"];
+    "cfg::tools::exec_run_command_spawn::bb26" [label="bb26\nDrop cleanup"];
+    "cfg::tools::exec_run_command_spawn::bb27" [label="bb27\nUnwindResume cleanup"];
+  }
+  "cfg::tools::exec_run_command_spawn::bb13" -> "cfg::tools::exec_run_command_spawn::bb15" [label="SwitchInt"];
+  "cfg::tools::exec_run_command_spawn::bb13" -> "cfg::tools::exec_run_command_spawn::bb16" [label="SwitchInt"];
+  "cfg::tools::exec_run_command_spawn::bb13" -> "cfg::tools::exec_run_command_spawn::bb14" [label="SwitchInt"];
+  "cfg::tools::exec_run_command_spawn::bb15" -> "cfg::tools::exec_run_command_spawn::bb18" [label="Drop"];
+  "cfg::tools::exec_run_command_spawn::bb15" -> "cfg::tools::exec_run_command_spawn::bb25" [label="Drop"];
+  "cfg::tools::exec_run_command_spawn::bb17" -> "cfg::tools::exec_run_command_spawn::bb24" [label="Drop"];
+  "cfg::tools::exec_run_command_spawn::bb23" -> "cfg::tools::exec_run_command_spawn::bb24" [label="Drop"];
+  "cfg::tools::exec_run_command_spawn::bb25" -> "cfg::tools::exec_run_command_spawn::bb27" [label="Drop"];
+  "cfg::tools::exec_run_command_spawn::bb26" -> "cfg::tools::exec_run_command_spawn::bb27" [label="Drop"];
+}

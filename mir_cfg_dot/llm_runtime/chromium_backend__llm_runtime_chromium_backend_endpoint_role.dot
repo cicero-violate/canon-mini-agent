@@ -1,0 +1,13 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1614 {
+    label="llm_runtime::chromium_backend::endpoint_role";
+    "cfg::llm_runtime::chromium_backend::endpoint_role::bb0" [label="bb0\nCall"];
+    "cfg::llm_runtime::chromium_backend::endpoint_role::bb1" [label="bb1\nCall"];
+    "cfg::llm_runtime::chromium_backend::endpoint_role::bb2" [label="bb2\nCall"];
+    "cfg::llm_runtime::chromium_backend::endpoint_role::bb3" [label="bb3\nReturn"];
+  }
+}

@@ -1,0 +1,56 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_233 {
+    label="app::recover_failed_continuation";
+    "cfg::app::recover_failed_continuation::bb0" [label="bb0\nCall"];
+    "cfg::app::recover_failed_continuation::bb1" [label="bb1\nCall"];
+    "cfg::app::recover_failed_continuation::bb2" [label="bb2\nCall"];
+    "cfg::app::recover_failed_continuation::bb3" [label="bb3\nCall"];
+    "cfg::app::recover_failed_continuation::bb4" [label="bb4\nCall"];
+    "cfg::app::recover_failed_continuation::bb5" [label="bb5\nCall"];
+    "cfg::app::recover_failed_continuation::bb6" [label="bb6\nCall"];
+    "cfg::app::recover_failed_continuation::bb7" [label="bb7\nCall"];
+    "cfg::app::recover_failed_continuation::bb8" [label="bb8\nCall"];
+    "cfg::app::recover_failed_continuation::bb9" [label="bb9\nCall"];
+    "cfg::app::recover_failed_continuation::bb10" [label="bb10\nCall"];
+    "cfg::app::recover_failed_continuation::bb11" [label="bb11\nCall"];
+    "cfg::app::recover_failed_continuation::bb12" [label="bb12\nCall"];
+    "cfg::app::recover_failed_continuation::bb13" [label="bb13\nCall"];
+    "cfg::app::recover_failed_continuation::bb14" [label="bb14\nCall"];
+    "cfg::app::recover_failed_continuation::bb15" [label="bb15\nDrop"];
+    "cfg::app::recover_failed_continuation::bb16" [label="bb16\nCall"];
+    "cfg::app::recover_failed_continuation::bb17" [label="bb17\nCall"];
+    "cfg::app::recover_failed_continuation::bb18" [label="bb18\nCall"];
+    "cfg::app::recover_failed_continuation::bb19" [label="bb19\nCall"];
+    "cfg::app::recover_failed_continuation::bb20" [label="bb20\nDrop"];
+    "cfg::app::recover_failed_continuation::bb21" [label="bb21\nCall"];
+    "cfg::app::recover_failed_continuation::bb22" [label="bb22\nDrop"];
+    "cfg::app::recover_failed_continuation::bb23" [label="bb23\nCall"];
+    "cfg::app::recover_failed_continuation::bb24" [label="bb24\nCall"];
+    "cfg::app::recover_failed_continuation::bb25" [label="bb25\nCall"];
+    "cfg::app::recover_failed_continuation::bb26" [label="bb26\nReturn"];
+    "cfg::app::recover_failed_continuation::bb27" [label="bb27\nDrop cleanup loop"];
+    "cfg::app::recover_failed_continuation::bb28" [label="bb28\nDrop cleanup loop"];
+    "cfg::app::recover_failed_continuation::bb29" [label="bb29\nUnwindResume cleanup loop"];
+    "cfg::app::recover_failed_continuation::bb30" [label="bb30\nDrop cleanup loop"];
+    "cfg::app::recover_failed_continuation::bb31" [label="bb31\nSwitchInt cleanup loop"];
+    "cfg::app::recover_failed_continuation::bb32" [label="bb32\nDrop cleanup loop"];
+    "cfg::app::recover_failed_continuation::bb33" [label="bb33\nSwitchInt cleanup loop"];
+  }
+  "cfg::app::recover_failed_continuation::bb15" -> "cfg::app::recover_failed_continuation::bb16" [label="Drop"];
+  "cfg::app::recover_failed_continuation::bb15" -> "cfg::app::recover_failed_continuation::bb27" [label="Drop"];
+  "cfg::app::recover_failed_continuation::bb20" -> "cfg::app::recover_failed_continuation::bb21" [label="Drop"];
+  "cfg::app::recover_failed_continuation::bb20" -> "cfg::app::recover_failed_continuation::bb27" [label="Drop"];
+  "cfg::app::recover_failed_continuation::bb22" -> "cfg::app::recover_failed_continuation::bb23" [label="Drop"];
+  "cfg::app::recover_failed_continuation::bb27" -> "cfg::app::recover_failed_continuation::bb28" [label="Drop"];
+  "cfg::app::recover_failed_continuation::bb28" -> "cfg::app::recover_failed_continuation::bb29" [label="Drop"];
+  "cfg::app::recover_failed_continuation::bb30" -> "cfg::app::recover_failed_continuation::bb27" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::recover_failed_continuation::bb31" -> "cfg::app::recover_failed_continuation::bb27" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::recover_failed_continuation::bb31" -> "cfg::app::recover_failed_continuation::bb30" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::recover_failed_continuation::bb32" -> "cfg::app::recover_failed_continuation::bb27" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::recover_failed_continuation::bb33" -> "cfg::app::recover_failed_continuation::bb27" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::recover_failed_continuation::bb33" -> "cfg::app::recover_failed_continuation::bb32" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

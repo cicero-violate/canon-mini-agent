@@ -1,0 +1,48 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3340 {
+    label="supervisor::handle_child_exit_status";
+    "cfg::supervisor::handle_child_exit_status::bb0" [label="bb0\nSwitchInt"];
+    "cfg::supervisor::handle_child_exit_status::bb1" [label="bb1\nGoto"];
+    "cfg::supervisor::handle_child_exit_status::bb2" [label="bb2\nCall"];
+    "cfg::supervisor::handle_child_exit_status::bb3" [label="bb3\nCall"];
+    "cfg::supervisor::handle_child_exit_status::bb4" [label="bb4\nCall"];
+    "cfg::supervisor::handle_child_exit_status::bb5" [label="bb5\nCall"];
+    "cfg::supervisor::handle_child_exit_status::bb6" [label="bb6\nSwitchInt"];
+    "cfg::supervisor::handle_child_exit_status::bb7" [label="bb7\nCall"];
+    "cfg::supervisor::handle_child_exit_status::bb8" [label="bb8\nCall"];
+    "cfg::supervisor::handle_child_exit_status::bb9" [label="bb9\nCall"];
+    "cfg::supervisor::handle_child_exit_status::bb10" [label="bb10\nCall"];
+    "cfg::supervisor::handle_child_exit_status::bb11" [label="bb11\nCall"];
+    "cfg::supervisor::handle_child_exit_status::bb12" [label="bb12\nCall"];
+    "cfg::supervisor::handle_child_exit_status::bb13" [label="bb13\nCall"];
+    "cfg::supervisor::handle_child_exit_status::bb14" [label="bb14\nCall"];
+    "cfg::supervisor::handle_child_exit_status::bb15" [label="bb15\nCall"];
+    "cfg::supervisor::handle_child_exit_status::bb16" [label="bb16\nCall"];
+    "cfg::supervisor::handle_child_exit_status::bb17" [label="bb17\nCall"];
+    "cfg::supervisor::handle_child_exit_status::bb18" [label="bb18\nCall"];
+    "cfg::supervisor::handle_child_exit_status::bb19" [label="bb19\nCall"];
+    "cfg::supervisor::handle_child_exit_status::bb20" [label="bb20\nCall"];
+    "cfg::supervisor::handle_child_exit_status::bb21" [label="bb21\nDrop"];
+    "cfg::supervisor::handle_child_exit_status::bb22" [label="bb22\nDrop"];
+    "cfg::supervisor::handle_child_exit_status::bb23" [label="bb23\nReturn"];
+    "cfg::supervisor::handle_child_exit_status::bb24" [label="bb24\nDrop cleanup"];
+    "cfg::supervisor::handle_child_exit_status::bb25" [label="bb25\nDrop cleanup"];
+    "cfg::supervisor::handle_child_exit_status::bb26" [label="bb26\nUnwindResume cleanup"];
+    "cfg::supervisor::handle_child_exit_status::bb27" [label="bb27\nUnreachable"];
+  }
+  "cfg::supervisor::handle_child_exit_status::bb0" -> "cfg::supervisor::handle_child_exit_status::bb2" [label="SwitchInt"];
+  "cfg::supervisor::handle_child_exit_status::bb0" -> "cfg::supervisor::handle_child_exit_status::bb1" [label="SwitchInt"];
+  "cfg::supervisor::handle_child_exit_status::bb0" -> "cfg::supervisor::handle_child_exit_status::bb27" [label="SwitchInt"];
+  "cfg::supervisor::handle_child_exit_status::bb1" -> "cfg::supervisor::handle_child_exit_status::bb23" [label="Goto"];
+  "cfg::supervisor::handle_child_exit_status::bb6" -> "cfg::supervisor::handle_child_exit_status::bb10" [label="SwitchInt"];
+  "cfg::supervisor::handle_child_exit_status::bb6" -> "cfg::supervisor::handle_child_exit_status::bb7" [label="SwitchInt"];
+  "cfg::supervisor::handle_child_exit_status::bb21" -> "cfg::supervisor::handle_child_exit_status::bb22" [label="Drop"];
+  "cfg::supervisor::handle_child_exit_status::bb21" -> "cfg::supervisor::handle_child_exit_status::bb25" [label="Drop"];
+  "cfg::supervisor::handle_child_exit_status::bb22" -> "cfg::supervisor::handle_child_exit_status::bb23" [label="Drop"];
+  "cfg::supervisor::handle_child_exit_status::bb24" -> "cfg::supervisor::handle_child_exit_status::bb25" [label="Drop"];
+  "cfg::supervisor::handle_child_exit_status::bb25" -> "cfg::supervisor::handle_child_exit_status::bb26" [label="Drop"];
+}

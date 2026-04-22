@@ -1,0 +1,13 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3521 {
+    label="tool_schema::missing_field_in_action";
+    "cfg::tool_schema::missing_field_in_action::bb0" [label="bb0\nCall"];
+    "cfg::tool_schema::missing_field_in_action::bb1" [label="bb1\nCall"];
+    "cfg::tool_schema::missing_field_in_action::bb2" [label="bb2\nCall"];
+    "cfg::tool_schema::missing_field_in_action::bb3" [label="bb3\nReturn"];
+  }
+}

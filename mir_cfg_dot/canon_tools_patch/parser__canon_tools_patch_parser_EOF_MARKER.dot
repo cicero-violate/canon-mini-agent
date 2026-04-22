@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_621 {
+    label="canon_tools_patch::parser::EOF_MARKER";
+    "cfg::canon_tools_patch::parser::EOF_MARKER::bb0" [label="bb0\nReturn"];
+  }
+}

@@ -1,0 +1,24 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3661 {
+    label="tools::sort_objectives_for_view";
+    "cfg::tools::sort_objectives_for_view::bb0" [label="bb0\nCall"];
+    "cfg::tools::sort_objectives_for_view::bb1" [label="bb1\nCall"];
+    "cfg::tools::sort_objectives_for_view::bb2" [label="bb2\nSwitchInt"];
+    "cfg::tools::sort_objectives_for_view::bb3" [label="bb3\nCall"];
+    "cfg::tools::sort_objectives_for_view::bb4" [label="bb4\nCall"];
+    "cfg::tools::sort_objectives_for_view::bb5" [label="bb5\nCall"];
+    "cfg::tools::sort_objectives_for_view::bb6" [label="bb6\nDrop"];
+    "cfg::tools::sort_objectives_for_view::bb7" [label="bb7\nGoto"];
+    "cfg::tools::sort_objectives_for_view::bb8" [label="bb8\nUnwindResume cleanup"];
+    "cfg::tools::sort_objectives_for_view::bb9" [label="bb9\nReturn"];
+  }
+  "cfg::tools::sort_objectives_for_view::bb2" -> "cfg::tools::sort_objectives_for_view::bb3" [label="SwitchInt"];
+  "cfg::tools::sort_objectives_for_view::bb2" -> "cfg::tools::sort_objectives_for_view::bb9" [label="SwitchInt"];
+  "cfg::tools::sort_objectives_for_view::bb6" -> "cfg::tools::sort_objectives_for_view::bb7" [label="Drop"];
+  "cfg::tools::sort_objectives_for_view::bb6" -> "cfg::tools::sort_objectives_for_view::bb8" [label="Drop"];
+  "cfg::tools::sort_objectives_for_view::bb7" -> "cfg::tools::sort_objectives_for_view::bb9" [label="Goto"];
+}

@@ -1,0 +1,36 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2205 {
+    label="md_convert::objective_h2_section";
+    "cfg::md_convert::objective_h2_section::bb0" [label="bb0\nCall"];
+    "cfg::md_convert::objective_h2_section::bb1" [label="bb1\nSwitchInt"];
+    "cfg::md_convert::objective_h2_section::bb2" [label="bb2\nGoto"];
+    "cfg::md_convert::objective_h2_section::bb3" [label="bb3\nCall"];
+    "cfg::md_convert::objective_h2_section::bb4" [label="bb4\nSwitchInt"];
+    "cfg::md_convert::objective_h2_section::bb5" [label="bb5\nGoto"];
+    "cfg::md_convert::objective_h2_section::bb6" [label="bb6\nCall"];
+    "cfg::md_convert::objective_h2_section::bb7" [label="bb7\nSwitchInt"];
+    "cfg::md_convert::objective_h2_section::bb8" [label="bb8\nGoto"];
+    "cfg::md_convert::objective_h2_section::bb9" [label="bb9\nCall"];
+    "cfg::md_convert::objective_h2_section::bb10" [label="bb10\nSwitchInt"];
+    "cfg::md_convert::objective_h2_section::bb11" [label="bb11\nGoto"];
+    "cfg::md_convert::objective_h2_section::bb12" [label="bb12\nGoto"];
+    "cfg::md_convert::objective_h2_section::bb13" [label="bb13\nReturn"];
+  }
+  "cfg::md_convert::objective_h2_section::bb1" -> "cfg::md_convert::objective_h2_section::bb3" [label="SwitchInt"];
+  "cfg::md_convert::objective_h2_section::bb1" -> "cfg::md_convert::objective_h2_section::bb2" [label="SwitchInt"];
+  "cfg::md_convert::objective_h2_section::bb2" -> "cfg::md_convert::objective_h2_section::bb13" [label="Goto"];
+  "cfg::md_convert::objective_h2_section::bb4" -> "cfg::md_convert::objective_h2_section::bb6" [label="SwitchInt"];
+  "cfg::md_convert::objective_h2_section::bb4" -> "cfg::md_convert::objective_h2_section::bb5" [label="SwitchInt"];
+  "cfg::md_convert::objective_h2_section::bb5" -> "cfg::md_convert::objective_h2_section::bb13" [label="Goto"];
+  "cfg::md_convert::objective_h2_section::bb7" -> "cfg::md_convert::objective_h2_section::bb9" [label="SwitchInt"];
+  "cfg::md_convert::objective_h2_section::bb7" -> "cfg::md_convert::objective_h2_section::bb8" [label="SwitchInt"];
+  "cfg::md_convert::objective_h2_section::bb8" -> "cfg::md_convert::objective_h2_section::bb13" [label="Goto"];
+  "cfg::md_convert::objective_h2_section::bb10" -> "cfg::md_convert::objective_h2_section::bb12" [label="SwitchInt"];
+  "cfg::md_convert::objective_h2_section::bb10" -> "cfg::md_convert::objective_h2_section::bb11" [label="SwitchInt"];
+  "cfg::md_convert::objective_h2_section::bb11" -> "cfg::md_convert::objective_h2_section::bb13" [label="Goto"];
+  "cfg::md_convert::objective_h2_section::bb12" -> "cfg::md_convert::objective_h2_section::bb13" [label="Goto"];
+}

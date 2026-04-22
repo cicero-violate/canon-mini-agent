@@ -1,0 +1,13 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4282 {
+    label="tools::edge_exists";
+    "cfg::tools::edge_exists::bb0" [label="bb0\nCall"];
+    "cfg::tools::edge_exists::bb1" [label="bb1\nCall"];
+    "cfg::tools::edge_exists::bb2" [label="bb2\nCall"];
+    "cfg::tools::edge_exists::bb3" [label="bb3\nReturn"];
+  }
+}

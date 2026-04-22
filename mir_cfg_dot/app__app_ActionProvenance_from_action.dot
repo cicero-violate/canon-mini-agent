@@ -1,0 +1,21 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_295 {
+    label="app::ActionProvenance::from_action";
+    "cfg::app::ActionProvenance::from_action::bb0" [label="bb0\nCall"];
+    "cfg::app::ActionProvenance::from_action::bb1" [label="bb1\nCall"];
+    "cfg::app::ActionProvenance::from_action::bb2" [label="bb2\nCall"];
+    "cfg::app::ActionProvenance::from_action::bb3" [label="bb3\nCall"];
+    "cfg::app::ActionProvenance::from_action::bb4" [label="bb4\nCall"];
+    "cfg::app::ActionProvenance::from_action::bb5" [label="bb5\nCall"];
+    "cfg::app::ActionProvenance::from_action::bb6" [label="bb6\nReturn"];
+    "cfg::app::ActionProvenance::from_action::bb7" [label="bb7\nDrop cleanup"];
+    "cfg::app::ActionProvenance::from_action::bb8" [label="bb8\nDrop cleanup"];
+    "cfg::app::ActionProvenance::from_action::bb9" [label="bb9\nUnwindResume cleanup"];
+  }
+  "cfg::app::ActionProvenance::from_action::bb7" -> "cfg::app::ActionProvenance::from_action::bb8" [label="Drop"];
+  "cfg::app::ActionProvenance::from_action::bb8" -> "cfg::app::ActionProvenance::from_action::bb9" [label="Drop"];
+}

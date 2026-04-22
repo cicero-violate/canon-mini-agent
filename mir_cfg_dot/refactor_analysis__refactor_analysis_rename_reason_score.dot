@@ -1,0 +1,50 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2824 {
+    label="refactor_analysis::rename_reason_score";
+    "cfg::refactor_analysis::rename_reason_score::bb0" [label="bb0\nCall"];
+    "cfg::refactor_analysis::rename_reason_score::bb1" [label="bb1\nGoto"];
+    "cfg::refactor_analysis::rename_reason_score::bb2" [label="bb2\nCall loop"];
+    "cfg::refactor_analysis::rename_reason_score::bb3" [label="bb3\nSwitchInt loop"];
+    "cfg::refactor_analysis::rename_reason_score::bb4" [label="bb4\nUnreachable loop"];
+    "cfg::refactor_analysis::rename_reason_score::bb5" [label="bb5\nCall loop"];
+    "cfg::refactor_analysis::rename_reason_score::bb6" [label="bb6\nReturn loop"];
+    "cfg::refactor_analysis::rename_reason_score::bb7" [label="bb7\nCall loop"];
+    "cfg::refactor_analysis::rename_reason_score::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::refactor_analysis::rename_reason_score::bb9" [label="bb9\nAssert loop"];
+    "cfg::refactor_analysis::rename_reason_score::bb10" [label="bb10\nGoto loop"];
+    "cfg::refactor_analysis::rename_reason_score::bb11" [label="bb11\nCall loop"];
+    "cfg::refactor_analysis::rename_reason_score::bb12" [label="bb12\nCall loop"];
+    "cfg::refactor_analysis::rename_reason_score::bb13" [label="bb13\nSwitchInt loop"];
+    "cfg::refactor_analysis::rename_reason_score::bb14" [label="bb14\nAssert loop"];
+    "cfg::refactor_analysis::rename_reason_score::bb15" [label="bb15\nGoto loop"];
+    "cfg::refactor_analysis::rename_reason_score::bb16" [label="bb16\nCall loop"];
+    "cfg::refactor_analysis::rename_reason_score::bb17" [label="bb17\nCall loop"];
+    "cfg::refactor_analysis::rename_reason_score::bb18" [label="bb18\nSwitchInt loop"];
+    "cfg::refactor_analysis::rename_reason_score::bb19" [label="bb19\nAssert loop"];
+    "cfg::refactor_analysis::rename_reason_score::bb20" [label="bb20\nGoto loop"];
+    "cfg::refactor_analysis::rename_reason_score::bb21" [label="bb21\nAssert loop"];
+    "cfg::refactor_analysis::rename_reason_score::bb22" [label="bb22\nGoto loop"];
+  }
+  "cfg::refactor_analysis::rename_reason_score::bb1" -> "cfg::refactor_analysis::rename_reason_score::bb2" [label="Goto"];
+  "cfg::refactor_analysis::rename_reason_score::bb3" -> "cfg::refactor_analysis::rename_reason_score::bb6" [label="SwitchInt"];
+  "cfg::refactor_analysis::rename_reason_score::bb3" -> "cfg::refactor_analysis::rename_reason_score::bb5" [label="SwitchInt"];
+  "cfg::refactor_analysis::rename_reason_score::bb3" -> "cfg::refactor_analysis::rename_reason_score::bb4" [label="SwitchInt"];
+  "cfg::refactor_analysis::rename_reason_score::bb8" -> "cfg::refactor_analysis::rename_reason_score::bb11" [label="SwitchInt"];
+  "cfg::refactor_analysis::rename_reason_score::bb8" -> "cfg::refactor_analysis::rename_reason_score::bb9" [label="SwitchInt"];
+  "cfg::refactor_analysis::rename_reason_score::bb9" -> "cfg::refactor_analysis::rename_reason_score::bb10" [label="Assert"];
+  "cfg::refactor_analysis::rename_reason_score::bb10" -> "cfg::refactor_analysis::rename_reason_score::bb2" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::refactor_analysis::rename_reason_score::bb13" -> "cfg::refactor_analysis::rename_reason_score::bb16" [label="SwitchInt"];
+  "cfg::refactor_analysis::rename_reason_score::bb13" -> "cfg::refactor_analysis::rename_reason_score::bb14" [label="SwitchInt"];
+  "cfg::refactor_analysis::rename_reason_score::bb14" -> "cfg::refactor_analysis::rename_reason_score::bb15" [label="Assert"];
+  "cfg::refactor_analysis::rename_reason_score::bb15" -> "cfg::refactor_analysis::rename_reason_score::bb2" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::refactor_analysis::rename_reason_score::bb18" -> "cfg::refactor_analysis::rename_reason_score::bb21" [label="SwitchInt"];
+  "cfg::refactor_analysis::rename_reason_score::bb18" -> "cfg::refactor_analysis::rename_reason_score::bb19" [label="SwitchInt"];
+  "cfg::refactor_analysis::rename_reason_score::bb19" -> "cfg::refactor_analysis::rename_reason_score::bb20" [label="Assert"];
+  "cfg::refactor_analysis::rename_reason_score::bb20" -> "cfg::refactor_analysis::rename_reason_score::bb2" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::refactor_analysis::rename_reason_score::bb21" -> "cfg::refactor_analysis::rename_reason_score::bb22" [label="Assert"];
+  "cfg::refactor_analysis::rename_reason_score::bb22" -> "cfg::refactor_analysis::rename_reason_score::bb2" [color="crimson", penwidth=2, label="Goto back"];
+}

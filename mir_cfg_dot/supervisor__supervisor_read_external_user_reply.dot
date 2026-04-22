@@ -1,0 +1,46 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3373 {
+    label="supervisor::read_external_user_reply";
+    "cfg::supervisor::read_external_user_reply::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::read_external_user_reply::bb1" [label="bb1\nCall"];
+    "cfg::supervisor::read_external_user_reply::bb2" [label="bb2\nSwitchInt"];
+    "cfg::supervisor::read_external_user_reply::bb3" [label="bb3\nUnreachable"];
+    "cfg::supervisor::read_external_user_reply::bb4" [label="bb4\nCall"];
+    "cfg::supervisor::read_external_user_reply::bb5" [label="bb5\nGoto"];
+    "cfg::supervisor::read_external_user_reply::bb6" [label="bb6\nCall"];
+    "cfg::supervisor::read_external_user_reply::bb7" [label="bb7\nSwitchInt"];
+    "cfg::supervisor::read_external_user_reply::bb8" [label="bb8\nDrop"];
+    "cfg::supervisor::read_external_user_reply::bb9" [label="bb9\nCall"];
+    "cfg::supervisor::read_external_user_reply::bb10" [label="bb10\nDrop loop"];
+    "cfg::supervisor::read_external_user_reply::bb11" [label="bb11\nReturn loop"];
+    "cfg::supervisor::read_external_user_reply::bb12" [label="bb12\nDrop cleanup loop"];
+    "cfg::supervisor::read_external_user_reply::bb13" [label="bb13\nDrop cleanup loop"];
+    "cfg::supervisor::read_external_user_reply::bb14" [label="bb14\nUnwindResume cleanup loop"];
+    "cfg::supervisor::read_external_user_reply::bb15" [label="bb15\nSwitchInt cleanup loop"];
+    "cfg::supervisor::read_external_user_reply::bb16" [label="bb16\nDrop cleanup loop"];
+    "cfg::supervisor::read_external_user_reply::bb17" [label="bb17\nSwitchInt cleanup loop"];
+    "cfg::supervisor::read_external_user_reply::bb18" [label="bb18\nGoto loop"];
+  }
+  "cfg::supervisor::read_external_user_reply::bb2" -> "cfg::supervisor::read_external_user_reply::bb5" [label="SwitchInt"];
+  "cfg::supervisor::read_external_user_reply::bb2" -> "cfg::supervisor::read_external_user_reply::bb4" [label="SwitchInt"];
+  "cfg::supervisor::read_external_user_reply::bb2" -> "cfg::supervisor::read_external_user_reply::bb3" [label="SwitchInt"];
+  "cfg::supervisor::read_external_user_reply::bb5" -> "cfg::supervisor::read_external_user_reply::bb10" [label="Goto"];
+  "cfg::supervisor::read_external_user_reply::bb7" -> "cfg::supervisor::read_external_user_reply::bb9" [label="SwitchInt"];
+  "cfg::supervisor::read_external_user_reply::bb7" -> "cfg::supervisor::read_external_user_reply::bb8" [label="SwitchInt"];
+  "cfg::supervisor::read_external_user_reply::bb8" -> "cfg::supervisor::read_external_user_reply::bb10" [label="Drop"];
+  "cfg::supervisor::read_external_user_reply::bb8" -> "cfg::supervisor::read_external_user_reply::bb12" [label="Drop"];
+  "cfg::supervisor::read_external_user_reply::bb10" -> "cfg::supervisor::read_external_user_reply::bb11" [label="Drop"];
+  "cfg::supervisor::read_external_user_reply::bb10" -> "cfg::supervisor::read_external_user_reply::bb17" [label="Drop"];
+  "cfg::supervisor::read_external_user_reply::bb12" -> "cfg::supervisor::read_external_user_reply::bb17" [label="Drop"];
+  "cfg::supervisor::read_external_user_reply::bb13" -> "cfg::supervisor::read_external_user_reply::bb14" [label="Drop"];
+  "cfg::supervisor::read_external_user_reply::bb15" -> "cfg::supervisor::read_external_user_reply::bb14" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::supervisor::read_external_user_reply::bb15" -> "cfg::supervisor::read_external_user_reply::bb16" [label="SwitchInt"];
+  "cfg::supervisor::read_external_user_reply::bb16" -> "cfg::supervisor::read_external_user_reply::bb14" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::supervisor::read_external_user_reply::bb17" -> "cfg::supervisor::read_external_user_reply::bb14" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::supervisor::read_external_user_reply::bb17" -> "cfg::supervisor::read_external_user_reply::bb15" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::supervisor::read_external_user_reply::bb18" -> "cfg::supervisor::read_external_user_reply::bb10" [color="crimson", penwidth=2, label="Goto back"];
+}

@@ -1,0 +1,48 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2287 {
+    label="orchestrator_seam::probe_verifier_followup";
+    "cfg::orchestrator_seam::probe_verifier_followup::bb0" [label="bb0\nCall"];
+    "cfg::orchestrator_seam::probe_verifier_followup::bb1" [label="bb1\nCall"];
+    "cfg::orchestrator_seam::probe_verifier_followup::bb2" [label="bb2\nCall"];
+    "cfg::orchestrator_seam::probe_verifier_followup::bb3" [label="bb3\nSwitchInt"];
+    "cfg::orchestrator_seam::probe_verifier_followup::bb4" [label="bb4\nUnreachable"];
+    "cfg::orchestrator_seam::probe_verifier_followup::bb5" [label="bb5\nCall"];
+    "cfg::orchestrator_seam::probe_verifier_followup::bb6" [label="bb6\nCall"];
+    "cfg::orchestrator_seam::probe_verifier_followup::bb7" [label="bb7\nDrop"];
+    "cfg::orchestrator_seam::probe_verifier_followup::bb8" [label="bb8\nGoto"];
+    "cfg::orchestrator_seam::probe_verifier_followup::bb9" [label="bb9\nDrop"];
+    "cfg::orchestrator_seam::probe_verifier_followup::bb10" [label="bb10\nDrop"];
+    "cfg::orchestrator_seam::probe_verifier_followup::bb11" [label="bb11\nGoto"];
+    "cfg::orchestrator_seam::probe_verifier_followup::bb12" [label="bb12\nReturn"];
+    "cfg::orchestrator_seam::probe_verifier_followup::bb13" [label="bb13\nUnwindResume cleanup loop"];
+    "cfg::orchestrator_seam::probe_verifier_followup::bb14" [label="bb14\nDrop cleanup loop"];
+    "cfg::orchestrator_seam::probe_verifier_followup::bb15" [label="bb15\nSwitchInt cleanup loop"];
+    "cfg::orchestrator_seam::probe_verifier_followup::bb16" [label="bb16\nDrop cleanup loop"];
+    "cfg::orchestrator_seam::probe_verifier_followup::bb17" [label="bb17\nSwitchInt cleanup loop"];
+    "cfg::orchestrator_seam::probe_verifier_followup::bb18" [label="bb18\nDrop cleanup loop"];
+    "cfg::orchestrator_seam::probe_verifier_followup::bb19" [label="bb19\nSwitchInt cleanup loop"];
+  }
+  "cfg::orchestrator_seam::probe_verifier_followup::bb3" -> "cfg::orchestrator_seam::probe_verifier_followup::bb5" [label="SwitchInt"];
+  "cfg::orchestrator_seam::probe_verifier_followup::bb3" -> "cfg::orchestrator_seam::probe_verifier_followup::bb6" [label="SwitchInt"];
+  "cfg::orchestrator_seam::probe_verifier_followup::bb3" -> "cfg::orchestrator_seam::probe_verifier_followup::bb4" [label="SwitchInt"];
+  "cfg::orchestrator_seam::probe_verifier_followup::bb7" -> "cfg::orchestrator_seam::probe_verifier_followup::bb9" [label="Drop"];
+  "cfg::orchestrator_seam::probe_verifier_followup::bb7" -> "cfg::orchestrator_seam::probe_verifier_followup::bb17" [label="Drop"];
+  "cfg::orchestrator_seam::probe_verifier_followup::bb8" -> "cfg::orchestrator_seam::probe_verifier_followup::bb12" [label="Goto"];
+  "cfg::orchestrator_seam::probe_verifier_followup::bb9" -> "cfg::orchestrator_seam::probe_verifier_followup::bb10" [label="Drop"];
+  "cfg::orchestrator_seam::probe_verifier_followup::bb9" -> "cfg::orchestrator_seam::probe_verifier_followup::bb19" [label="Drop"];
+  "cfg::orchestrator_seam::probe_verifier_followup::bb10" -> "cfg::orchestrator_seam::probe_verifier_followup::bb11" [label="Drop"];
+  "cfg::orchestrator_seam::probe_verifier_followup::bb11" -> "cfg::orchestrator_seam::probe_verifier_followup::bb12" [label="Goto"];
+  "cfg::orchestrator_seam::probe_verifier_followup::bb14" -> "cfg::orchestrator_seam::probe_verifier_followup::bb17" [label="Drop"];
+  "cfg::orchestrator_seam::probe_verifier_followup::bb15" -> "cfg::orchestrator_seam::probe_verifier_followup::bb17" [label="SwitchInt"];
+  "cfg::orchestrator_seam::probe_verifier_followup::bb15" -> "cfg::orchestrator_seam::probe_verifier_followup::bb14" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::orchestrator_seam::probe_verifier_followup::bb16" -> "cfg::orchestrator_seam::probe_verifier_followup::bb19" [label="Drop"];
+  "cfg::orchestrator_seam::probe_verifier_followup::bb17" -> "cfg::orchestrator_seam::probe_verifier_followup::bb19" [label="SwitchInt"];
+  "cfg::orchestrator_seam::probe_verifier_followup::bb17" -> "cfg::orchestrator_seam::probe_verifier_followup::bb16" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::orchestrator_seam::probe_verifier_followup::bb18" -> "cfg::orchestrator_seam::probe_verifier_followup::bb13" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::orchestrator_seam::probe_verifier_followup::bb19" -> "cfg::orchestrator_seam::probe_verifier_followup::bb13" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::orchestrator_seam::probe_verifier_followup::bb19" -> "cfg::orchestrator_seam::probe_verifier_followup::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

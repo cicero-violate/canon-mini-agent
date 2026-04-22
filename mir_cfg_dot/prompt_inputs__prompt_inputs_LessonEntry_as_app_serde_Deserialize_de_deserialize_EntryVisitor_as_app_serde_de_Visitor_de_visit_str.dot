@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2447 {
+    label="<<prompt_inputs::LessonEntry as app::_::_serde::Deserialize<'de>>::deserialize::EntryVisitor as app::_::_serde::de::Visitor<'de>>::visit_str";
+    "cfg::<<prompt_inputs::LessonEntry as app::_::_serde::Deserialize<'de>>::deserialize::EntryVisitor as app::_::_serde::de::Visitor<'de>>::visit_str::bb0" [label="bb0\nCall"];
+    "cfg::<<prompt_inputs::LessonEntry as app::_::_serde::Deserialize<'de>>::deserialize::EntryVisitor as app::_::_serde::de::Visitor<'de>>::visit_str::bb1" [label="bb1\nReturn"];
+  }
+}

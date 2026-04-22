@@ -1,0 +1,21 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2250 {
+    label="objectives::load_runtime_objectives_json";
+    "cfg::objectives::load_runtime_objectives_json::bb0" [label="bb0\nCall"];
+    "cfg::objectives::load_runtime_objectives_json::bb1" [label="bb1\nSwitchInt"];
+    "cfg::objectives::load_runtime_objectives_json::bb2" [label="bb2\nGoto"];
+    "cfg::objectives::load_runtime_objectives_json::bb3" [label="bb3\nCall"];
+    "cfg::objectives::load_runtime_objectives_json::bb4" [label="bb4\nDrop"];
+    "cfg::objectives::load_runtime_objectives_json::bb5" [label="bb5\nReturn"];
+    "cfg::objectives::load_runtime_objectives_json::bb6" [label="bb6\nUnreachable"];
+  }
+  "cfg::objectives::load_runtime_objectives_json::bb1" -> "cfg::objectives::load_runtime_objectives_json::bb2" [label="SwitchInt"];
+  "cfg::objectives::load_runtime_objectives_json::bb1" -> "cfg::objectives::load_runtime_objectives_json::bb3" [label="SwitchInt"];
+  "cfg::objectives::load_runtime_objectives_json::bb1" -> "cfg::objectives::load_runtime_objectives_json::bb6" [label="SwitchInt"];
+  "cfg::objectives::load_runtime_objectives_json::bb2" -> "cfg::objectives::load_runtime_objectives_json::bb5" [label="Goto"];
+  "cfg::objectives::load_runtime_objectives_json::bb4" -> "cfg::objectives::load_runtime_objectives_json::bb5" [label="Drop"];
+}

@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1397 {
+    label="lessons::MIN_BIGRAM_OCCURRENCES";
+    "cfg::lessons::MIN_BIGRAM_OCCURRENCES::bb0" [label="bb0\nReturn"];
+  }
+}

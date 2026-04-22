@@ -1,0 +1,14 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1025 {
+    label="inter_complexity::actionable_duplicate_symbols";
+    "cfg::inter_complexity::actionable_duplicate_symbols::bb0" [label="bb0\nCall"];
+    "cfg::inter_complexity::actionable_duplicate_symbols::bb1" [label="bb1\nCall"];
+    "cfg::inter_complexity::actionable_duplicate_symbols::bb2" [label="bb2\nCall"];
+    "cfg::inter_complexity::actionable_duplicate_symbols::bb3" [label="bb3\nCall"];
+    "cfg::inter_complexity::actionable_duplicate_symbols::bb4" [label="bb4\nReturn"];
+  }
+}

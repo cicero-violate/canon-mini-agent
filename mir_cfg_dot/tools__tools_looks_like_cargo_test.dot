@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4433 {
+    label="tools::looks_like_cargo_test";
+    "cfg::tools::looks_like_cargo_test::bb0" [label="bb0\nCall"];
+    "cfg::tools::looks_like_cargo_test::bb1" [label="bb1\nReturn"];
+  }
+}

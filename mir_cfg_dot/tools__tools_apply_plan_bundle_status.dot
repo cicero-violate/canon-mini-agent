@@ -1,0 +1,28 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4365 {
+    label="tools::apply_plan_bundle_status";
+    "cfg::tools::apply_plan_bundle_status::bb0" [label="bb0\nCall"];
+    "cfg::tools::apply_plan_bundle_status::bb1" [label="bb1\nCall"];
+    "cfg::tools::apply_plan_bundle_status::bb2" [label="bb2\nSwitchInt"];
+    "cfg::tools::apply_plan_bundle_status::bb3" [label="bb3\nCall"];
+    "cfg::tools::apply_plan_bundle_status::bb4" [label="bb4\nCall"];
+    "cfg::tools::apply_plan_bundle_status::bb5" [label="bb5\nCall"];
+    "cfg::tools::apply_plan_bundle_status::bb6" [label="bb6\nDrop"];
+    "cfg::tools::apply_plan_bundle_status::bb7" [label="bb7\nReturn"];
+    "cfg::tools::apply_plan_bundle_status::bb8" [label="bb8\nUnwindResume cleanup loop"];
+    "cfg::tools::apply_plan_bundle_status::bb9" [label="bb9\nDrop cleanup loop"];
+    "cfg::tools::apply_plan_bundle_status::bb10" [label="bb10\nSwitchInt cleanup loop"];
+    "cfg::tools::apply_plan_bundle_status::bb11" [label="bb11\nUnreachable"];
+  }
+  "cfg::tools::apply_plan_bundle_status::bb2" -> "cfg::tools::apply_plan_bundle_status::bb3" [label="SwitchInt"];
+  "cfg::tools::apply_plan_bundle_status::bb2" -> "cfg::tools::apply_plan_bundle_status::bb7" [label="SwitchInt"];
+  "cfg::tools::apply_plan_bundle_status::bb2" -> "cfg::tools::apply_plan_bundle_status::bb11" [label="SwitchInt"];
+  "cfg::tools::apply_plan_bundle_status::bb6" -> "cfg::tools::apply_plan_bundle_status::bb7" [label="Drop"];
+  "cfg::tools::apply_plan_bundle_status::bb9" -> "cfg::tools::apply_plan_bundle_status::bb8" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tools::apply_plan_bundle_status::bb10" -> "cfg::tools::apply_plan_bundle_status::bb8" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::apply_plan_bundle_status::bb10" -> "cfg::tools::apply_plan_bundle_status::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

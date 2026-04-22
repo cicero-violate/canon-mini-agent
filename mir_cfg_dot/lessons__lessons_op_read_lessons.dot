@@ -1,0 +1,53 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1418 {
+    label="lessons::op_read_lessons";
+    "cfg::lessons::op_read_lessons::bb0" [label="bb0\nCall"];
+    "cfg::lessons::op_read_lessons::bb1" [label="bb1\nCall"];
+    "cfg::lessons::op_read_lessons::bb2" [label="bb2\nCall"];
+    "cfg::lessons::op_read_lessons::bb3" [label="bb3\nSwitchInt"];
+    "cfg::lessons::op_read_lessons::bb4" [label="bb4\nDrop"];
+    "cfg::lessons::op_read_lessons::bb5" [label="bb5\nCall"];
+    "cfg::lessons::op_read_lessons::bb6" [label="bb6\nGoto"];
+    "cfg::lessons::op_read_lessons::bb7" [label="bb7\nDrop"];
+    "cfg::lessons::op_read_lessons::bb8" [label="bb8\nCall"];
+    "cfg::lessons::op_read_lessons::bb9" [label="bb9\nCall"];
+    "cfg::lessons::op_read_lessons::bb10" [label="bb10\nSwitchInt"];
+    "cfg::lessons::op_read_lessons::bb11" [label="bb11\nUnreachable"];
+    "cfg::lessons::op_read_lessons::bb12" [label="bb12\nCall"];
+    "cfg::lessons::op_read_lessons::bb13" [label="bb13\nCall"];
+    "cfg::lessons::op_read_lessons::bb14" [label="bb14\nCall"];
+    "cfg::lessons::op_read_lessons::bb15" [label="bb15\nCall"];
+    "cfg::lessons::op_read_lessons::bb16" [label="bb16\nCall"];
+    "cfg::lessons::op_read_lessons::bb17" [label="bb17\nDrop"];
+    "cfg::lessons::op_read_lessons::bb18" [label="bb18\nDrop"];
+    "cfg::lessons::op_read_lessons::bb19" [label="bb19\nDrop loop"];
+    "cfg::lessons::op_read_lessons::bb20" [label="bb20\nReturn loop"];
+    "cfg::lessons::op_read_lessons::bb21" [label="bb21\nDrop cleanup loop"];
+    "cfg::lessons::op_read_lessons::bb22" [label="bb22\nDrop cleanup loop"];
+    "cfg::lessons::op_read_lessons::bb23" [label="bb23\nDrop cleanup loop"];
+    "cfg::lessons::op_read_lessons::bb24" [label="bb24\nUnwindResume cleanup loop"];
+    "cfg::lessons::op_read_lessons::bb25" [label="bb25\nGoto loop"];
+  }
+  "cfg::lessons::op_read_lessons::bb3" -> "cfg::lessons::op_read_lessons::bb7" [label="SwitchInt"];
+  "cfg::lessons::op_read_lessons::bb3" -> "cfg::lessons::op_read_lessons::bb4" [label="SwitchInt"];
+  "cfg::lessons::op_read_lessons::bb4" -> "cfg::lessons::op_read_lessons::bb5" [label="Drop"];
+  "cfg::lessons::op_read_lessons::bb4" -> "cfg::lessons::op_read_lessons::bb23" [label="Drop"];
+  "cfg::lessons::op_read_lessons::bb6" -> "cfg::lessons::op_read_lessons::bb19" [label="Goto"];
+  "cfg::lessons::op_read_lessons::bb7" -> "cfg::lessons::op_read_lessons::bb8" [label="Drop"];
+  "cfg::lessons::op_read_lessons::bb7" -> "cfg::lessons::op_read_lessons::bb23" [label="Drop"];
+  "cfg::lessons::op_read_lessons::bb10" -> "cfg::lessons::op_read_lessons::bb12" [label="SwitchInt"];
+  "cfg::lessons::op_read_lessons::bb10" -> "cfg::lessons::op_read_lessons::bb13" [label="SwitchInt"];
+  "cfg::lessons::op_read_lessons::bb10" -> "cfg::lessons::op_read_lessons::bb11" [label="SwitchInt"];
+  "cfg::lessons::op_read_lessons::bb17" -> "cfg::lessons::op_read_lessons::bb18" [label="Drop"];
+  "cfg::lessons::op_read_lessons::bb17" -> "cfg::lessons::op_read_lessons::bb23" [label="Drop"];
+  "cfg::lessons::op_read_lessons::bb18" -> "cfg::lessons::op_read_lessons::bb20" [label="Drop"];
+  "cfg::lessons::op_read_lessons::bb19" -> "cfg::lessons::op_read_lessons::bb20" [label="Drop"];
+  "cfg::lessons::op_read_lessons::bb21" -> "cfg::lessons::op_read_lessons::bb23" [label="Drop"];
+  "cfg::lessons::op_read_lessons::bb22" -> "cfg::lessons::op_read_lessons::bb23" [label="Drop"];
+  "cfg::lessons::op_read_lessons::bb23" -> "cfg::lessons::op_read_lessons::bb24" [label="Drop"];
+  "cfg::lessons::op_read_lessons::bb25" -> "cfg::lessons::op_read_lessons::bb19" [color="crimson", penwidth=2, label="Goto back"];
+}

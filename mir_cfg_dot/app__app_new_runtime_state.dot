@@ -1,0 +1,32 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_457 {
+    label="app::new_runtime_state";
+    "cfg::app::new_runtime_state::bb0" [label="bb0\nCall"];
+    "cfg::app::new_runtime_state::bb1" [label="bb1\nCall"];
+    "cfg::app::new_runtime_state::bb2" [label="bb2\nGoto"];
+    "cfg::app::new_runtime_state::bb3" [label="bb3\nCall loop"];
+    "cfg::app::new_runtime_state::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::app::new_runtime_state::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::app::new_runtime_state::bb6" [label="bb6\nCall loop"];
+    "cfg::app::new_runtime_state::bb7" [label="bb7\nCall loop"];
+    "cfg::app::new_runtime_state::bb8" [label="bb8\nCall loop"];
+    "cfg::app::new_runtime_state::bb9" [label="bb9\nDrop loop"];
+    "cfg::app::new_runtime_state::bb10" [label="bb10\nCall"];
+    "cfg::app::new_runtime_state::bb11" [label="bb11\nReturn"];
+    "cfg::app::new_runtime_state::bb12" [label="bb12\nDrop cleanup"];
+    "cfg::app::new_runtime_state::bb13" [label="bb13\nDrop cleanup"];
+    "cfg::app::new_runtime_state::bb14" [label="bb14\nUnwindResume cleanup"];
+  }
+  "cfg::app::new_runtime_state::bb2" -> "cfg::app::new_runtime_state::bb3" [label="Goto"];
+  "cfg::app::new_runtime_state::bb4" -> "cfg::app::new_runtime_state::bb7" [label="SwitchInt"];
+  "cfg::app::new_runtime_state::bb4" -> "cfg::app::new_runtime_state::bb6" [label="SwitchInt"];
+  "cfg::app::new_runtime_state::bb4" -> "cfg::app::new_runtime_state::bb5" [label="SwitchInt"];
+  "cfg::app::new_runtime_state::bb9" -> "cfg::app::new_runtime_state::bb3" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::new_runtime_state::bb9" -> "cfg::app::new_runtime_state::bb13" [label="Drop"];
+  "cfg::app::new_runtime_state::bb12" -> "cfg::app::new_runtime_state::bb13" [label="Drop"];
+  "cfg::app::new_runtime_state::bb13" -> "cfg::app::new_runtime_state::bb14" [label="Drop"];
+}

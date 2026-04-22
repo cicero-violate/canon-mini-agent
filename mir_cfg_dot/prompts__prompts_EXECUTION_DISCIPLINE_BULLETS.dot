@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2605 {
+    label="prompts::EXECUTION_DISCIPLINE_BULLETS";
+    "cfg::prompts::EXECUTION_DISCIPLINE_BULLETS::bb0" [label="bb0\nReturn"];
+  }
+}

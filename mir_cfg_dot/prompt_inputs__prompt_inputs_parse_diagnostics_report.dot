@@ -1,0 +1,12 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2406 {
+    label="prompt_inputs::parse_diagnostics_report";
+    "cfg::prompt_inputs::parse_diagnostics_report::bb0" [label="bb0\nCall"];
+    "cfg::prompt_inputs::parse_diagnostics_report::bb1" [label="bb1\nCall"];
+    "cfg::prompt_inputs::parse_diagnostics_report::bb2" [label="bb2\nReturn"];
+  }
+}

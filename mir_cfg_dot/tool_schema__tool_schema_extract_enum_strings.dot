@@ -1,0 +1,42 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3442 {
+    label="tool_schema::extract_enum_strings";
+    "cfg::tool_schema::extract_enum_strings::bb0" [label="bb0\nCall"];
+    "cfg::tool_schema::extract_enum_strings::bb1" [label="bb1\nCall"];
+    "cfg::tool_schema::extract_enum_strings::bb2" [label="bb2\nSwitchInt"];
+    "cfg::tool_schema::extract_enum_strings::bb3" [label="bb3\nUnreachable loop"];
+    "cfg::tool_schema::extract_enum_strings::bb4" [label="bb4\nCall loop"];
+    "cfg::tool_schema::extract_enum_strings::bb5" [label="bb5\nCall loop"];
+    "cfg::tool_schema::extract_enum_strings::bb6" [label="bb6\nCall loop"];
+    "cfg::tool_schema::extract_enum_strings::bb7" [label="bb7\nCall loop"];
+    "cfg::tool_schema::extract_enum_strings::bb8" [label="bb8\nGoto loop"];
+    "cfg::tool_schema::extract_enum_strings::bb9" [label="bb9\nCall loop"];
+    "cfg::tool_schema::extract_enum_strings::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::tool_schema::extract_enum_strings::bb11" [label="bb11\nCall loop"];
+    "cfg::tool_schema::extract_enum_strings::bb12" [label="bb12\nGoto loop"];
+    "cfg::tool_schema::extract_enum_strings::bb13" [label="bb13\nSwitchInt loop"];
+    "cfg::tool_schema::extract_enum_strings::bb14" [label="bb14\nCall loop"];
+    "cfg::tool_schema::extract_enum_strings::bb15" [label="bb15\nCall loop"];
+    "cfg::tool_schema::extract_enum_strings::bb16" [label="bb16\nReturn loop"];
+    "cfg::tool_schema::extract_enum_strings::bb17" [label="bb17\nDrop cleanup loop"];
+    "cfg::tool_schema::extract_enum_strings::bb18" [label="bb18\nUnwindResume cleanup loop"];
+    "cfg::tool_schema::extract_enum_strings::bb19" [label="bb19\nGoto loop"];
+  }
+  "cfg::tool_schema::extract_enum_strings::bb2" -> "cfg::tool_schema::extract_enum_strings::bb4" [label="SwitchInt"];
+  "cfg::tool_schema::extract_enum_strings::bb2" -> "cfg::tool_schema::extract_enum_strings::bb5" [label="SwitchInt"];
+  "cfg::tool_schema::extract_enum_strings::bb2" -> "cfg::tool_schema::extract_enum_strings::bb3" [label="SwitchInt"];
+  "cfg::tool_schema::extract_enum_strings::bb8" -> "cfg::tool_schema::extract_enum_strings::bb9" [label="Goto"];
+  "cfg::tool_schema::extract_enum_strings::bb10" -> "cfg::tool_schema::extract_enum_strings::bb12" [label="SwitchInt"];
+  "cfg::tool_schema::extract_enum_strings::bb10" -> "cfg::tool_schema::extract_enum_strings::bb11" [label="SwitchInt"];
+  "cfg::tool_schema::extract_enum_strings::bb10" -> "cfg::tool_schema::extract_enum_strings::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tool_schema::extract_enum_strings::bb12" -> "cfg::tool_schema::extract_enum_strings::bb16" [label="Goto"];
+  "cfg::tool_schema::extract_enum_strings::bb13" -> "cfg::tool_schema::extract_enum_strings::bb14" [label="SwitchInt"];
+  "cfg::tool_schema::extract_enum_strings::bb13" -> "cfg::tool_schema::extract_enum_strings::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tool_schema::extract_enum_strings::bb13" -> "cfg::tool_schema::extract_enum_strings::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tool_schema::extract_enum_strings::bb17" -> "cfg::tool_schema::extract_enum_strings::bb18" [label="Drop"];
+  "cfg::tool_schema::extract_enum_strings::bb19" -> "cfg::tool_schema::extract_enum_strings::bb9" [color="crimson", penwidth=2, label="Goto back"];
+}

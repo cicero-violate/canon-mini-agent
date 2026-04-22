@@ -1,0 +1,39 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_395 {
+    label="app::LlmResponseContext::<'a>::record_effect";
+    "cfg::app::LlmResponseContext::<'a>::record_effect::bb0" [label="bb0\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::record_effect::bb1" [label="bb1\nSwitchInt"];
+    "cfg::app::LlmResponseContext::<'a>::record_effect::bb2" [label="bb2\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::record_effect::bb3" [label="bb3\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::record_effect::bb4" [label="bb4\nSwitchInt"];
+    "cfg::app::LlmResponseContext::<'a>::record_effect::bb5" [label="bb5\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::record_effect::bb6" [label="bb6\nDrop"];
+    "cfg::app::LlmResponseContext::<'a>::record_effect::bb7" [label="bb7\nSwitchInt"];
+    "cfg::app::LlmResponseContext::<'a>::record_effect::bb8" [label="bb8\nReturn loop"];
+    "cfg::app::LlmResponseContext::<'a>::record_effect::bb9" [label="bb9\nUnwindResume cleanup loop"];
+    "cfg::app::LlmResponseContext::<'a>::record_effect::bb10" [label="bb10\nDrop loop"];
+    "cfg::app::LlmResponseContext::<'a>::record_effect::bb11" [label="bb11\nDrop cleanup loop"];
+    "cfg::app::LlmResponseContext::<'a>::record_effect::bb12" [label="bb12\nSwitchInt cleanup loop"];
+    "cfg::app::LlmResponseContext::<'a>::record_effect::bb13" [label="bb13\nUnreachable loop"];
+    "cfg::app::LlmResponseContext::<'a>::record_effect::bb14" [label="bb14\nGoto loop"];
+  }
+  "cfg::app::LlmResponseContext::<'a>::record_effect::bb1" -> "cfg::app::LlmResponseContext::<'a>::record_effect::bb2" [label="SwitchInt"];
+  "cfg::app::LlmResponseContext::<'a>::record_effect::bb1" -> "cfg::app::LlmResponseContext::<'a>::record_effect::bb3" [label="SwitchInt"];
+  "cfg::app::LlmResponseContext::<'a>::record_effect::bb1" -> "cfg::app::LlmResponseContext::<'a>::record_effect::bb13" [label="SwitchInt"];
+  "cfg::app::LlmResponseContext::<'a>::record_effect::bb4" -> "cfg::app::LlmResponseContext::<'a>::record_effect::bb5" [label="SwitchInt"];
+  "cfg::app::LlmResponseContext::<'a>::record_effect::bb4" -> "cfg::app::LlmResponseContext::<'a>::record_effect::bb7" [label="SwitchInt"];
+  "cfg::app::LlmResponseContext::<'a>::record_effect::bb4" -> "cfg::app::LlmResponseContext::<'a>::record_effect::bb13" [label="SwitchInt"];
+  "cfg::app::LlmResponseContext::<'a>::record_effect::bb6" -> "cfg::app::LlmResponseContext::<'a>::record_effect::bb7" [label="Drop"];
+  "cfg::app::LlmResponseContext::<'a>::record_effect::bb6" -> "cfg::app::LlmResponseContext::<'a>::record_effect::bb12" [label="Drop"];
+  "cfg::app::LlmResponseContext::<'a>::record_effect::bb7" -> "cfg::app::LlmResponseContext::<'a>::record_effect::bb8" [label="SwitchInt"];
+  "cfg::app::LlmResponseContext::<'a>::record_effect::bb7" -> "cfg::app::LlmResponseContext::<'a>::record_effect::bb10" [label="SwitchInt"];
+  "cfg::app::LlmResponseContext::<'a>::record_effect::bb10" -> "cfg::app::LlmResponseContext::<'a>::record_effect::bb8" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::LlmResponseContext::<'a>::record_effect::bb11" -> "cfg::app::LlmResponseContext::<'a>::record_effect::bb9" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::LlmResponseContext::<'a>::record_effect::bb12" -> "cfg::app::LlmResponseContext::<'a>::record_effect::bb9" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::LlmResponseContext::<'a>::record_effect::bb12" -> "cfg::app::LlmResponseContext::<'a>::record_effect::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::LlmResponseContext::<'a>::record_effect::bb14" -> "cfg::app::LlmResponseContext::<'a>::record_effect::bb8" [color="crimson", penwidth=2, label="Goto back"];
+}

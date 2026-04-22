@@ -1,0 +1,31 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2894 {
+    label="refactor_analysis::is_return_or_arg_local";
+    "cfg::refactor_analysis::is_return_or_arg_local::bb0" [label="bb0\nCall"];
+    "cfg::refactor_analysis::is_return_or_arg_local::bb1" [label="bb1\nCall"];
+    "cfg::refactor_analysis::is_return_or_arg_local::bb2" [label="bb2\nSwitchInt"];
+    "cfg::refactor_analysis::is_return_or_arg_local::bb3" [label="bb3\nSwitchInt"];
+    "cfg::refactor_analysis::is_return_or_arg_local::bb4" [label="bb4\nGoto"];
+    "cfg::refactor_analysis::is_return_or_arg_local::bb5" [label="bb5\nGoto"];
+    "cfg::refactor_analysis::is_return_or_arg_local::bb6" [label="bb6\nSwitchInt"];
+    "cfg::refactor_analysis::is_return_or_arg_local::bb7" [label="bb7\nGoto"];
+    "cfg::refactor_analysis::is_return_or_arg_local::bb8" [label="bb8\nGoto"];
+    "cfg::refactor_analysis::is_return_or_arg_local::bb9" [label="bb9\nReturn"];
+    "cfg::refactor_analysis::is_return_or_arg_local::bb10" [label="bb10\nUnreachable"];
+  }
+  "cfg::refactor_analysis::is_return_or_arg_local::bb2" -> "cfg::refactor_analysis::is_return_or_arg_local::bb3" [label="SwitchInt"];
+  "cfg::refactor_analysis::is_return_or_arg_local::bb2" -> "cfg::refactor_analysis::is_return_or_arg_local::bb4" [label="SwitchInt"];
+  "cfg::refactor_analysis::is_return_or_arg_local::bb2" -> "cfg::refactor_analysis::is_return_or_arg_local::bb10" [label="SwitchInt"];
+  "cfg::refactor_analysis::is_return_or_arg_local::bb3" -> "cfg::refactor_analysis::is_return_or_arg_local::bb6" [label="SwitchInt"];
+  "cfg::refactor_analysis::is_return_or_arg_local::bb3" -> "cfg::refactor_analysis::is_return_or_arg_local::bb5" [label="SwitchInt"];
+  "cfg::refactor_analysis::is_return_or_arg_local::bb4" -> "cfg::refactor_analysis::is_return_or_arg_local::bb9" [label="Goto"];
+  "cfg::refactor_analysis::is_return_or_arg_local::bb5" -> "cfg::refactor_analysis::is_return_or_arg_local::bb9" [label="Goto"];
+  "cfg::refactor_analysis::is_return_or_arg_local::bb6" -> "cfg::refactor_analysis::is_return_or_arg_local::bb8" [label="SwitchInt"];
+  "cfg::refactor_analysis::is_return_or_arg_local::bb6" -> "cfg::refactor_analysis::is_return_or_arg_local::bb7" [label="SwitchInt"];
+  "cfg::refactor_analysis::is_return_or_arg_local::bb7" -> "cfg::refactor_analysis::is_return_or_arg_local::bb9" [label="Goto"];
+  "cfg::refactor_analysis::is_return_or_arg_local::bb8" -> "cfg::refactor_analysis::is_return_or_arg_local::bb9" [label="Goto"];
+}

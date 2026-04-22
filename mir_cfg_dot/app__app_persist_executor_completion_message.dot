@@ -1,0 +1,48 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_498 {
+    label="app::persist_executor_completion_message";
+    "cfg::app::persist_executor_completion_message::bb0" [label="bb0\nCall"];
+    "cfg::app::persist_executor_completion_message::bb1" [label="bb1\nCall"];
+    "cfg::app::persist_executor_completion_message::bb2" [label="bb2\nCall"];
+    "cfg::app::persist_executor_completion_message::bb3" [label="bb3\nCall"];
+    "cfg::app::persist_executor_completion_message::bb4" [label="bb4\nCall"];
+    "cfg::app::persist_executor_completion_message::bb5" [label="bb5\nCall"];
+    "cfg::app::persist_executor_completion_message::bb6" [label="bb6\nCall"];
+    "cfg::app::persist_executor_completion_message::bb7" [label="bb7\nCall"];
+    "cfg::app::persist_executor_completion_message::bb8" [label="bb8\nCall"];
+    "cfg::app::persist_executor_completion_message::bb9" [label="bb9\nCall"];
+    "cfg::app::persist_executor_completion_message::bb10" [label="bb10\nSwitchInt"];
+    "cfg::app::persist_executor_completion_message::bb11" [label="bb11\nCall"];
+    "cfg::app::persist_executor_completion_message::bb12" [label="bb12\nCall"];
+    "cfg::app::persist_executor_completion_message::bb13" [label="bb13\nDrop"];
+    "cfg::app::persist_executor_completion_message::bb14" [label="bb14\nCall"];
+    "cfg::app::persist_executor_completion_message::bb15" [label="bb15\nCall"];
+    "cfg::app::persist_executor_completion_message::bb16" [label="bb16\nCall"];
+    "cfg::app::persist_executor_completion_message::bb17" [label="bb17\nDrop"];
+    "cfg::app::persist_executor_completion_message::bb18" [label="bb18\nCall"];
+    "cfg::app::persist_executor_completion_message::bb19" [label="bb19\nCall"];
+    "cfg::app::persist_executor_completion_message::bb20" [label="bb20\nCall"];
+    "cfg::app::persist_executor_completion_message::bb21" [label="bb21\nDrop"];
+    "cfg::app::persist_executor_completion_message::bb22" [label="bb22\nDrop"];
+    "cfg::app::persist_executor_completion_message::bb23" [label="bb23\nReturn"];
+    "cfg::app::persist_executor_completion_message::bb24" [label="bb24\nDrop cleanup"];
+    "cfg::app::persist_executor_completion_message::bb25" [label="bb25\nDrop cleanup"];
+    "cfg::app::persist_executor_completion_message::bb26" [label="bb26\nDrop cleanup"];
+    "cfg::app::persist_executor_completion_message::bb27" [label="bb27\nUnwindResume cleanup"];
+  }
+  "cfg::app::persist_executor_completion_message::bb10" -> "cfg::app::persist_executor_completion_message::bb14" [label="SwitchInt"];
+  "cfg::app::persist_executor_completion_message::bb10" -> "cfg::app::persist_executor_completion_message::bb11" [label="SwitchInt"];
+  "cfg::app::persist_executor_completion_message::bb13" -> "cfg::app::persist_executor_completion_message::bb23" [label="Drop"];
+  "cfg::app::persist_executor_completion_message::bb17" -> "cfg::app::persist_executor_completion_message::bb18" [label="Drop"];
+  "cfg::app::persist_executor_completion_message::bb17" -> "cfg::app::persist_executor_completion_message::bb24" [label="Drop"];
+  "cfg::app::persist_executor_completion_message::bb21" -> "cfg::app::persist_executor_completion_message::bb22" [label="Drop"];
+  "cfg::app::persist_executor_completion_message::bb21" -> "cfg::app::persist_executor_completion_message::bb26" [label="Drop"];
+  "cfg::app::persist_executor_completion_message::bb22" -> "cfg::app::persist_executor_completion_message::bb23" [label="Drop"];
+  "cfg::app::persist_executor_completion_message::bb24" -> "cfg::app::persist_executor_completion_message::bb26" [label="Drop"];
+  "cfg::app::persist_executor_completion_message::bb25" -> "cfg::app::persist_executor_completion_message::bb26" [label="Drop"];
+  "cfg::app::persist_executor_completion_message::bb26" -> "cfg::app::persist_executor_completion_message::bb27" [label="Drop"];
+}

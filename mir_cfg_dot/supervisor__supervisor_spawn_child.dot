@@ -1,0 +1,54 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3282 {
+    label="supervisor::spawn_child";
+    "cfg::supervisor::spawn_child::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::spawn_child::bb1" [label="bb1\nCall"];
+    "cfg::supervisor::spawn_child::bb2" [label="bb2\nCall"];
+    "cfg::supervisor::spawn_child::bb3" [label="bb3\nCall"];
+    "cfg::supervisor::spawn_child::bb4" [label="bb4\nCall"];
+    "cfg::supervisor::spawn_child::bb5" [label="bb5\nCall"];
+    "cfg::supervisor::spawn_child::bb6" [label="bb6\nCall"];
+    "cfg::supervisor::spawn_child::bb7" [label="bb7\nCall"];
+    "cfg::supervisor::spawn_child::bb8" [label="bb8\nCall"];
+    "cfg::supervisor::spawn_child::bb9" [label="bb9\nCall"];
+    "cfg::supervisor::spawn_child::bb10" [label="bb10\nCall"];
+    "cfg::supervisor::spawn_child::bb11" [label="bb11\nSwitchInt"];
+    "cfg::supervisor::spawn_child::bb12" [label="bb12\nUnreachable loop"];
+    "cfg::supervisor::spawn_child::bb13" [label="bb13\nCall loop"];
+    "cfg::supervisor::spawn_child::bb14" [label="bb14\nCall loop"];
+    "cfg::supervisor::spawn_child::bb15" [label="bb15\nDrop loop"];
+    "cfg::supervisor::spawn_child::bb16" [label="bb16\nSwitchInt loop"];
+    "cfg::supervisor::spawn_child::bb17" [label="bb17\nCall loop"];
+    "cfg::supervisor::spawn_child::bb18" [label="bb18\nDrop loop"];
+    "cfg::supervisor::spawn_child::bb19" [label="bb19\nSwitchInt loop"];
+    "cfg::supervisor::spawn_child::bb20" [label="bb20\nCall loop"];
+    "cfg::supervisor::spawn_child::bb21" [label="bb21\nDrop loop"];
+    "cfg::supervisor::spawn_child::bb22" [label="bb22\nReturn loop"];
+    "cfg::supervisor::spawn_child::bb23" [label="bb23\nDrop cleanup loop"];
+    "cfg::supervisor::spawn_child::bb24" [label="bb24\nDrop cleanup loop"];
+    "cfg::supervisor::spawn_child::bb25" [label="bb25\nUnwindResume cleanup loop"];
+    "cfg::supervisor::spawn_child::bb26" [label="bb26\nCall loop"];
+    "cfg::supervisor::spawn_child::bb27" [label="bb27\nDrop loop"];
+  }
+  "cfg::supervisor::spawn_child::bb11" -> "cfg::supervisor::spawn_child::bb13" [label="SwitchInt"];
+  "cfg::supervisor::spawn_child::bb11" -> "cfg::supervisor::spawn_child::bb14" [label="SwitchInt"];
+  "cfg::supervisor::spawn_child::bb11" -> "cfg::supervisor::spawn_child::bb12" [label="SwitchInt"];
+  "cfg::supervisor::spawn_child::bb15" -> "cfg::supervisor::spawn_child::bb22" [label="Drop"];
+  "cfg::supervisor::spawn_child::bb16" -> "cfg::supervisor::spawn_child::bb17" [label="SwitchInt"];
+  "cfg::supervisor::spawn_child::bb16" -> "cfg::supervisor::spawn_child::bb26" [label="SwitchInt"];
+  "cfg::supervisor::spawn_child::bb16" -> "cfg::supervisor::spawn_child::bb12" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::supervisor::spawn_child::bb18" -> "cfg::supervisor::spawn_child::bb26" [label="Drop"];
+  "cfg::supervisor::spawn_child::bb18" -> "cfg::supervisor::spawn_child::bb23" [label="Drop"];
+  "cfg::supervisor::spawn_child::bb19" -> "cfg::supervisor::spawn_child::bb20" [label="SwitchInt"];
+  "cfg::supervisor::spawn_child::bb19" -> "cfg::supervisor::spawn_child::bb27" [label="SwitchInt"];
+  "cfg::supervisor::spawn_child::bb19" -> "cfg::supervisor::spawn_child::bb12" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::supervisor::spawn_child::bb21" -> "cfg::supervisor::spawn_child::bb27" [label="Drop"];
+  "cfg::supervisor::spawn_child::bb21" -> "cfg::supervisor::spawn_child::bb23" [label="Drop"];
+  "cfg::supervisor::spawn_child::bb23" -> "cfg::supervisor::spawn_child::bb24" [label="Drop"];
+  "cfg::supervisor::spawn_child::bb24" -> "cfg::supervisor::spawn_child::bb25" [label="Drop"];
+  "cfg::supervisor::spawn_child::bb27" -> "cfg::supervisor::spawn_child::bb22" [color="crimson", penwidth=2, label="Drop back"];
+}

@@ -1,0 +1,22 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1127 {
+    label="invalid_action::push_missing_or_unknown_action";
+    "cfg::invalid_action::push_missing_or_unknown_action::bb0" [label="bb0\nCall"];
+    "cfg::invalid_action::push_missing_or_unknown_action::bb1" [label="bb1\nCall"];
+    "cfg::invalid_action::push_missing_or_unknown_action::bb2" [label="bb2\nCall"];
+    "cfg::invalid_action::push_missing_or_unknown_action::bb3" [label="bb3\nCall"];
+    "cfg::invalid_action::push_missing_or_unknown_action::bb4" [label="bb4\nCall"];
+    "cfg::invalid_action::push_missing_or_unknown_action::bb5" [label="bb5\nSwitchInt"];
+    "cfg::invalid_action::push_missing_or_unknown_action::bb6" [label="bb6\nCall"];
+    "cfg::invalid_action::push_missing_or_unknown_action::bb7" [label="bb7\nCall"];
+    "cfg::invalid_action::push_missing_or_unknown_action::bb8" [label="bb8\nCall"];
+    "cfg::invalid_action::push_missing_or_unknown_action::bb9" [label="bb9\nCall"];
+    "cfg::invalid_action::push_missing_or_unknown_action::bb10" [label="bb10\nReturn"];
+  }
+  "cfg::invalid_action::push_missing_or_unknown_action::bb5" -> "cfg::invalid_action::push_missing_or_unknown_action::bb6" [label="SwitchInt"];
+  "cfg::invalid_action::push_missing_or_unknown_action::bb5" -> "cfg::invalid_action::push_missing_or_unknown_action::bb10" [label="SwitchInt"];
+}

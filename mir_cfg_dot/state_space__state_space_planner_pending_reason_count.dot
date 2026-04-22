@@ -1,0 +1,28 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3208 {
+    label="state_space::planner_pending_reason_count";
+    "cfg::state_space::planner_pending_reason_count::bb0" [label="bb0\nSwitchInt"];
+    "cfg::state_space::planner_pending_reason_count::bb1" [label="bb1\nGoto"];
+    "cfg::state_space::planner_pending_reason_count::bb2" [label="bb2\nGoto"];
+    "cfg::state_space::planner_pending_reason_count::bb3" [label="bb3\nCall"];
+    "cfg::state_space::planner_pending_reason_count::bb4" [label="bb4\nSwitchInt"];
+    "cfg::state_space::planner_pending_reason_count::bb5" [label="bb5\nGoto"];
+    "cfg::state_space::planner_pending_reason_count::bb6" [label="bb6\nGoto"];
+    "cfg::state_space::planner_pending_reason_count::bb7" [label="bb7\nCall"];
+    "cfg::state_space::planner_pending_reason_count::bb8" [label="bb8\nAssert"];
+    "cfg::state_space::planner_pending_reason_count::bb9" [label="bb9\nReturn"];
+  }
+  "cfg::state_space::planner_pending_reason_count::bb0" -> "cfg::state_space::planner_pending_reason_count::bb2" [label="SwitchInt"];
+  "cfg::state_space::planner_pending_reason_count::bb0" -> "cfg::state_space::planner_pending_reason_count::bb1" [label="SwitchInt"];
+  "cfg::state_space::planner_pending_reason_count::bb1" -> "cfg::state_space::planner_pending_reason_count::bb3" [label="Goto"];
+  "cfg::state_space::planner_pending_reason_count::bb2" -> "cfg::state_space::planner_pending_reason_count::bb3" [label="Goto"];
+  "cfg::state_space::planner_pending_reason_count::bb4" -> "cfg::state_space::planner_pending_reason_count::bb6" [label="SwitchInt"];
+  "cfg::state_space::planner_pending_reason_count::bb4" -> "cfg::state_space::planner_pending_reason_count::bb5" [label="SwitchInt"];
+  "cfg::state_space::planner_pending_reason_count::bb5" -> "cfg::state_space::planner_pending_reason_count::bb7" [label="Goto"];
+  "cfg::state_space::planner_pending_reason_count::bb6" -> "cfg::state_space::planner_pending_reason_count::bb7" [label="Goto"];
+  "cfg::state_space::planner_pending_reason_count::bb8" -> "cfg::state_space::planner_pending_reason_count::bb9" [label="Assert"];
+}

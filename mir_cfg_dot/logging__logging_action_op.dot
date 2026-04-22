@@ -1,0 +1,23 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2087 {
+    label="logging::action_op";
+    "cfg::logging::action_op::bb0" [label="bb0\nCall"];
+    "cfg::logging::action_op::bb1" [label="bb1\nCall"];
+    "cfg::logging::action_op::bb2" [label="bb2\nCall"];
+    "cfg::logging::action_op::bb3" [label="bb3\nSwitchInt"];
+    "cfg::logging::action_op::bb4" [label="bb4\nUnreachable"];
+    "cfg::logging::action_op::bb5" [label="bb5\nCall"];
+    "cfg::logging::action_op::bb6" [label="bb6\nCall"];
+    "cfg::logging::action_op::bb7" [label="bb7\nCall"];
+    "cfg::logging::action_op::bb8" [label="bb8\nGoto"];
+    "cfg::logging::action_op::bb9" [label="bb9\nReturn"];
+  }
+  "cfg::logging::action_op::bb3" -> "cfg::logging::action_op::bb5" [label="SwitchInt"];
+  "cfg::logging::action_op::bb3" -> "cfg::logging::action_op::bb6" [label="SwitchInt"];
+  "cfg::logging::action_op::bb3" -> "cfg::logging::action_op::bb4" [label="SwitchInt"];
+  "cfg::logging::action_op::bb8" -> "cfg::logging::action_op::bb9" [label="Goto"];
+}

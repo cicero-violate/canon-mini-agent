@@ -1,0 +1,33 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_375 {
+    label="app::normalize_executor_completion_target";
+    "cfg::app::normalize_executor_completion_target::bb0" [label="bb0\nCall"];
+    "cfg::app::normalize_executor_completion_target::bb1" [label="bb1\nSwitchInt"];
+    "cfg::app::normalize_executor_completion_target::bb2" [label="bb2\nCall"];
+    "cfg::app::normalize_executor_completion_target::bb3" [label="bb3\nCall"];
+    "cfg::app::normalize_executor_completion_target::bb4" [label="bb4\nGoto"];
+    "cfg::app::normalize_executor_completion_target::bb5" [label="bb5\nCall"];
+    "cfg::app::normalize_executor_completion_target::bb6" [label="bb6\nSwitchInt"];
+    "cfg::app::normalize_executor_completion_target::bb7" [label="bb7\nCall"];
+    "cfg::app::normalize_executor_completion_target::bb8" [label="bb8\nSwitchInt"];
+    "cfg::app::normalize_executor_completion_target::bb9" [label="bb9\nCall"];
+    "cfg::app::normalize_executor_completion_target::bb10" [label="bb10\nCall"];
+    "cfg::app::normalize_executor_completion_target::bb11" [label="bb11\nCall"];
+    "cfg::app::normalize_executor_completion_target::bb12" [label="bb12\nGoto"];
+    "cfg::app::normalize_executor_completion_target::bb13" [label="bb13\nGoto"];
+    "cfg::app::normalize_executor_completion_target::bb14" [label="bb14\nReturn"];
+  }
+  "cfg::app::normalize_executor_completion_target::bb1" -> "cfg::app::normalize_executor_completion_target::bb5" [label="SwitchInt"];
+  "cfg::app::normalize_executor_completion_target::bb1" -> "cfg::app::normalize_executor_completion_target::bb2" [label="SwitchInt"];
+  "cfg::app::normalize_executor_completion_target::bb4" -> "cfg::app::normalize_executor_completion_target::bb14" [label="Goto"];
+  "cfg::app::normalize_executor_completion_target::bb6" -> "cfg::app::normalize_executor_completion_target::bb7" [label="SwitchInt"];
+  "cfg::app::normalize_executor_completion_target::bb6" -> "cfg::app::normalize_executor_completion_target::bb13" [label="SwitchInt"];
+  "cfg::app::normalize_executor_completion_target::bb8" -> "cfg::app::normalize_executor_completion_target::bb9" [label="SwitchInt"];
+  "cfg::app::normalize_executor_completion_target::bb8" -> "cfg::app::normalize_executor_completion_target::bb13" [label="SwitchInt"];
+  "cfg::app::normalize_executor_completion_target::bb12" -> "cfg::app::normalize_executor_completion_target::bb14" [label="Goto"];
+  "cfg::app::normalize_executor_completion_target::bb13" -> "cfg::app::normalize_executor_completion_target::bb14" [label="Goto"];
+}

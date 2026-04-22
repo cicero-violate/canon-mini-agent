@@ -1,0 +1,19 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_209 {
+    label="app::dispatch_executor_submits";
+    "cfg::app::dispatch_executor_submits::bb0" [label="bb0\nCall"];
+    "cfg::app::dispatch_executor_submits::bb1" [label="bb1\nSwitchInt"];
+    "cfg::app::dispatch_executor_submits::bb2" [label="bb2\nGoto"];
+    "cfg::app::dispatch_executor_submits::bb3" [label="bb3\nCall"];
+    "cfg::app::dispatch_executor_submits::bb4" [label="bb4\nReturn"];
+    "cfg::app::dispatch_executor_submits::bb5" [label="bb5\nUnreachable"];
+  }
+  "cfg::app::dispatch_executor_submits::bb1" -> "cfg::app::dispatch_executor_submits::bb2" [label="SwitchInt"];
+  "cfg::app::dispatch_executor_submits::bb1" -> "cfg::app::dispatch_executor_submits::bb3" [label="SwitchInt"];
+  "cfg::app::dispatch_executor_submits::bb1" -> "cfg::app::dispatch_executor_submits::bb5" [label="SwitchInt"];
+  "cfg::app::dispatch_executor_submits::bb2" -> "cfg::app::dispatch_executor_submits::bb4" [label="Goto"];
+}

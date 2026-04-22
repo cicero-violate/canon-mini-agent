@@ -1,0 +1,18 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3165 {
+    label="semantic::shorten_display_path";
+    "cfg::semantic::shorten_display_path::bb0" [label="bb0\nCall"];
+    "cfg::semantic::shorten_display_path::bb1" [label="bb1\nSwitchInt"];
+    "cfg::semantic::shorten_display_path::bb2" [label="bb2\nCall"];
+    "cfg::semantic::shorten_display_path::bb3" [label="bb3\nCall"];
+    "cfg::semantic::shorten_display_path::bb4" [label="bb4\nReturn"];
+    "cfg::semantic::shorten_display_path::bb5" [label="bb5\nUnreachable"];
+  }
+  "cfg::semantic::shorten_display_path::bb1" -> "cfg::semantic::shorten_display_path::bb2" [label="SwitchInt"];
+  "cfg::semantic::shorten_display_path::bb1" -> "cfg::semantic::shorten_display_path::bb3" [label="SwitchInt"];
+  "cfg::semantic::shorten_display_path::bb1" -> "cfg::semantic::shorten_display_path::bb5" [label="SwitchInt"];
+}

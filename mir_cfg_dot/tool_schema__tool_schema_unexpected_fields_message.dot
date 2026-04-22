@@ -1,0 +1,20 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3488 {
+    label="tool_schema::unexpected_fields_message";
+    "cfg::tool_schema::unexpected_fields_message::bb0" [label="bb0\nCall"];
+    "cfg::tool_schema::unexpected_fields_message::bb1" [label="bb1\nCall"];
+    "cfg::tool_schema::unexpected_fields_message::bb2" [label="bb2\nCall"];
+    "cfg::tool_schema::unexpected_fields_message::bb3" [label="bb3\nCall"];
+    "cfg::tool_schema::unexpected_fields_message::bb4" [label="bb4\nDrop"];
+    "cfg::tool_schema::unexpected_fields_message::bb5" [label="bb5\nCall"];
+    "cfg::tool_schema::unexpected_fields_message::bb6" [label="bb6\nReturn"];
+    "cfg::tool_schema::unexpected_fields_message::bb7" [label="bb7\nDrop cleanup"];
+    "cfg::tool_schema::unexpected_fields_message::bb8" [label="bb8\nUnwindResume cleanup"];
+  }
+  "cfg::tool_schema::unexpected_fields_message::bb4" -> "cfg::tool_schema::unexpected_fields_message::bb5" [label="Drop"];
+  "cfg::tool_schema::unexpected_fields_message::bb7" -> "cfg::tool_schema::unexpected_fields_message::bb8" [label="Drop"];
+}

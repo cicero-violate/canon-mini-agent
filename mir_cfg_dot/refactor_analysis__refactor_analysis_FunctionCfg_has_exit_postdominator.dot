@@ -1,0 +1,13 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2870 {
+    label="refactor_analysis::FunctionCfg::has_exit_postdominator";
+    "cfg::refactor_analysis::FunctionCfg::has_exit_postdominator::bb0" [label="bb0\nCall"];
+    "cfg::refactor_analysis::FunctionCfg::has_exit_postdominator::bb1" [label="bb1\nCall"];
+    "cfg::refactor_analysis::FunctionCfg::has_exit_postdominator::bb2" [label="bb2\nCall"];
+    "cfg::refactor_analysis::FunctionCfg::has_exit_postdominator::bb3" [label="bb3\nReturn"];
+  }
+}

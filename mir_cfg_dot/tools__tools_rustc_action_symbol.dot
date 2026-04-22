@@ -1,0 +1,24 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4093 {
+    label="tools::rustc_action_symbol";
+    "cfg::tools::rustc_action_symbol::bb0" [label="bb0\nCall"];
+    "cfg::tools::rustc_action_symbol::bb1" [label="bb1\nCall"];
+    "cfg::tools::rustc_action_symbol::bb2" [label="bb2\nCall"];
+    "cfg::tools::rustc_action_symbol::bb3" [label="bb3\nCall"];
+    "cfg::tools::rustc_action_symbol::bb4" [label="bb4\nCall"];
+    "cfg::tools::rustc_action_symbol::bb5" [label="bb5\nSwitchInt"];
+    "cfg::tools::rustc_action_symbol::bb6" [label="bb6\nGoto"];
+    "cfg::tools::rustc_action_symbol::bb7" [label="bb7\nCall"];
+    "cfg::tools::rustc_action_symbol::bb8" [label="bb8\nCall"];
+    "cfg::tools::rustc_action_symbol::bb9" [label="bb9\nGoto"];
+    "cfg::tools::rustc_action_symbol::bb10" [label="bb10\nReturn"];
+  }
+  "cfg::tools::rustc_action_symbol::bb5" -> "cfg::tools::rustc_action_symbol::bb7" [label="SwitchInt"];
+  "cfg::tools::rustc_action_symbol::bb5" -> "cfg::tools::rustc_action_symbol::bb6" [label="SwitchInt"];
+  "cfg::tools::rustc_action_symbol::bb6" -> "cfg::tools::rustc_action_symbol::bb10" [label="Goto"];
+  "cfg::tools::rustc_action_symbol::bb9" -> "cfg::tools::rustc_action_symbol::bb10" [label="Goto"];
+}

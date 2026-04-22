@@ -1,0 +1,30 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2243 {
+    label="objectives::read_objectives_compact_for_workspace";
+    "cfg::objectives::read_objectives_compact_for_workspace::bb0" [label="bb0\nCall"];
+    "cfg::objectives::read_objectives_compact_for_workspace::bb1" [label="bb1\nSwitchInt"];
+    "cfg::objectives::read_objectives_compact_for_workspace::bb2" [label="bb2\nCall"];
+    "cfg::objectives::read_objectives_compact_for_workspace::bb3" [label="bb3\nCall"];
+    "cfg::objectives::read_objectives_compact_for_workspace::bb4" [label="bb4\nDrop"];
+    "cfg::objectives::read_objectives_compact_for_workspace::bb5" [label="bb5\nCall"];
+    "cfg::objectives::read_objectives_compact_for_workspace::bb6" [label="bb6\nCall"];
+    "cfg::objectives::read_objectives_compact_for_workspace::bb7" [label="bb7\nCall"];
+    "cfg::objectives::read_objectives_compact_for_workspace::bb8" [label="bb8\nDrop"];
+    "cfg::objectives::read_objectives_compact_for_workspace::bb9" [label="bb9\nReturn"];
+    "cfg::objectives::read_objectives_compact_for_workspace::bb10" [label="bb10\nDrop cleanup"];
+    "cfg::objectives::read_objectives_compact_for_workspace::bb11" [label="bb11\nDrop cleanup"];
+    "cfg::objectives::read_objectives_compact_for_workspace::bb12" [label="bb12\nUnwindResume cleanup"];
+    "cfg::objectives::read_objectives_compact_for_workspace::bb13" [label="bb13\nUnreachable"];
+  }
+  "cfg::objectives::read_objectives_compact_for_workspace::bb1" -> "cfg::objectives::read_objectives_compact_for_workspace::bb2" [label="SwitchInt"];
+  "cfg::objectives::read_objectives_compact_for_workspace::bb1" -> "cfg::objectives::read_objectives_compact_for_workspace::bb5" [label="SwitchInt"];
+  "cfg::objectives::read_objectives_compact_for_workspace::bb1" -> "cfg::objectives::read_objectives_compact_for_workspace::bb13" [label="SwitchInt"];
+  "cfg::objectives::read_objectives_compact_for_workspace::bb4" -> "cfg::objectives::read_objectives_compact_for_workspace::bb9" [label="Drop"];
+  "cfg::objectives::read_objectives_compact_for_workspace::bb8" -> "cfg::objectives::read_objectives_compact_for_workspace::bb9" [label="Drop"];
+  "cfg::objectives::read_objectives_compact_for_workspace::bb10" -> "cfg::objectives::read_objectives_compact_for_workspace::bb12" [label="Drop"];
+  "cfg::objectives::read_objectives_compact_for_workspace::bb11" -> "cfg::objectives::read_objectives_compact_for_workspace::bb12" [label="Drop"];
+}

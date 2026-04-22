@@ -1,0 +1,15 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_146 {
+    label="app::push_created_path";
+    "cfg::app::push_created_path::bb0" [label="bb0\nSwitchInt"];
+    "cfg::app::push_created_path::bb1" [label="bb1\nCall"];
+    "cfg::app::push_created_path::bb2" [label="bb2\nCall"];
+    "cfg::app::push_created_path::bb3" [label="bb3\nReturn"];
+  }
+  "cfg::app::push_created_path::bb0" -> "cfg::app::push_created_path::bb3" [label="SwitchInt"];
+  "cfg::app::push_created_path::bb0" -> "cfg::app::push_created_path::bb1" [label="SwitchInt"];
+}

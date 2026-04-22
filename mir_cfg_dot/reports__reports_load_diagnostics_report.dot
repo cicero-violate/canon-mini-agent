@@ -1,0 +1,57 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2994 {
+    label="reports::load_diagnostics_report";
+    "cfg::reports::load_diagnostics_report::bb0" [label="bb0\nCall"];
+    "cfg::reports::load_diagnostics_report::bb1" [label="bb1\nCall"];
+    "cfg::reports::load_diagnostics_report::bb2" [label="bb2\nCall"];
+    "cfg::reports::load_diagnostics_report::bb3" [label="bb3\nCall"];
+    "cfg::reports::load_diagnostics_report::bb4" [label="bb4\nCall"];
+    "cfg::reports::load_diagnostics_report::bb5" [label="bb5\nCall"];
+    "cfg::reports::load_diagnostics_report::bb6" [label="bb6\nCall"];
+    "cfg::reports::load_diagnostics_report::bb7" [label="bb7\nSwitchInt"];
+    "cfg::reports::load_diagnostics_report::bb8" [label="bb8\nCall"];
+    "cfg::reports::load_diagnostics_report::bb9" [label="bb9\nCall"];
+    "cfg::reports::load_diagnostics_report::bb10" [label="bb10\nSwitchInt"];
+    "cfg::reports::load_diagnostics_report::bb11" [label="bb11\nSwitchInt"];
+    "cfg::reports::load_diagnostics_report::bb12" [label="bb12\nSwitchInt"];
+    "cfg::reports::load_diagnostics_report::bb13" [label="bb13\nCall loop"];
+    "cfg::reports::load_diagnostics_report::bb14" [label="bb14\nDrop loop"];
+    "cfg::reports::load_diagnostics_report::bb15" [label="bb15\nDrop loop"];
+    "cfg::reports::load_diagnostics_report::bb16" [label="bb16\nDrop loop"];
+    "cfg::reports::load_diagnostics_report::bb17" [label="bb17\nReturn loop"];
+    "cfg::reports::load_diagnostics_report::bb18" [label="bb18\nDrop cleanup loop"];
+    "cfg::reports::load_diagnostics_report::bb19" [label="bb19\nDrop cleanup loop"];
+    "cfg::reports::load_diagnostics_report::bb20" [label="bb20\nUnwindResume cleanup loop"];
+    "cfg::reports::load_diagnostics_report::bb21" [label="bb21\nDrop loop"];
+    "cfg::reports::load_diagnostics_report::bb22" [label="bb22\nDrop loop"];
+    "cfg::reports::load_diagnostics_report::bb23" [label="bb23\nDrop loop"];
+    "cfg::reports::load_diagnostics_report::bb24" [label="bb24\nUnreachable"];
+  }
+  "cfg::reports::load_diagnostics_report::bb7" -> "cfg::reports::load_diagnostics_report::bb8" [label="SwitchInt"];
+  "cfg::reports::load_diagnostics_report::bb7" -> "cfg::reports::load_diagnostics_report::bb13" [label="SwitchInt"];
+  "cfg::reports::load_diagnostics_report::bb10" -> "cfg::reports::load_diagnostics_report::bb11" [label="SwitchInt"];
+  "cfg::reports::load_diagnostics_report::bb10" -> "cfg::reports::load_diagnostics_report::bb12" [label="SwitchInt"];
+  "cfg::reports::load_diagnostics_report::bb10" -> "cfg::reports::load_diagnostics_report::bb24" [label="SwitchInt"];
+  "cfg::reports::load_diagnostics_report::bb11" -> "cfg::reports::load_diagnostics_report::bb22" [label="SwitchInt"];
+  "cfg::reports::load_diagnostics_report::bb11" -> "cfg::reports::load_diagnostics_report::bb23" [label="SwitchInt"];
+  "cfg::reports::load_diagnostics_report::bb11" -> "cfg::reports::load_diagnostics_report::bb24" [label="SwitchInt"];
+  "cfg::reports::load_diagnostics_report::bb12" -> "cfg::reports::load_diagnostics_report::bb13" [label="SwitchInt"];
+  "cfg::reports::load_diagnostics_report::bb12" -> "cfg::reports::load_diagnostics_report::bb21" [label="SwitchInt"];
+  "cfg::reports::load_diagnostics_report::bb12" -> "cfg::reports::load_diagnostics_report::bb24" [label="SwitchInt"];
+  "cfg::reports::load_diagnostics_report::bb14" -> "cfg::reports::load_diagnostics_report::bb15" [label="Drop"];
+  "cfg::reports::load_diagnostics_report::bb14" -> "cfg::reports::load_diagnostics_report::bb19" [label="Drop"];
+  "cfg::reports::load_diagnostics_report::bb15" -> "cfg::reports::load_diagnostics_report::bb17" [label="Drop"];
+  "cfg::reports::load_diagnostics_report::bb16" -> "cfg::reports::load_diagnostics_report::bb17" [label="Drop"];
+  "cfg::reports::load_diagnostics_report::bb18" -> "cfg::reports::load_diagnostics_report::bb19" [label="Drop"];
+  "cfg::reports::load_diagnostics_report::bb19" -> "cfg::reports::load_diagnostics_report::bb20" [label="Drop"];
+  "cfg::reports::load_diagnostics_report::bb21" -> "cfg::reports::load_diagnostics_report::bb13" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::reports::load_diagnostics_report::bb21" -> "cfg::reports::load_diagnostics_report::bb18" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::reports::load_diagnostics_report::bb22" -> "cfg::reports::load_diagnostics_report::bb16" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::reports::load_diagnostics_report::bb22" -> "cfg::reports::load_diagnostics_report::bb19" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::reports::load_diagnostics_report::bb23" -> "cfg::reports::load_diagnostics_report::bb22" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::reports::load_diagnostics_report::bb23" -> "cfg::reports::load_diagnostics_report::bb18" [color="crimson", penwidth=2, label="Drop back"];
+}

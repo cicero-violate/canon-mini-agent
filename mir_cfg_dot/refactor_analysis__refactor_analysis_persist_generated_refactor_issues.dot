@@ -1,0 +1,24 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2776 {
+    label="refactor_analysis::persist_generated_refactor_issues";
+    "cfg::refactor_analysis::persist_generated_refactor_issues::bb0" [label="bb0\nSwitchInt"];
+    "cfg::refactor_analysis::persist_generated_refactor_issues::bb1" [label="bb1\nCall"];
+    "cfg::refactor_analysis::persist_generated_refactor_issues::bb2" [label="bb2\nCall"];
+    "cfg::refactor_analysis::persist_generated_refactor_issues::bb3" [label="bb3\nCall"];
+    "cfg::refactor_analysis::persist_generated_refactor_issues::bb4" [label="bb4\nSwitchInt"];
+    "cfg::refactor_analysis::persist_generated_refactor_issues::bb5" [label="bb5\nUnreachable"];
+    "cfg::refactor_analysis::persist_generated_refactor_issues::bb6" [label="bb6\nCall"];
+    "cfg::refactor_analysis::persist_generated_refactor_issues::bb7" [label="bb7\nGoto"];
+    "cfg::refactor_analysis::persist_generated_refactor_issues::bb8" [label="bb8\nReturn"];
+  }
+  "cfg::refactor_analysis::persist_generated_refactor_issues::bb0" -> "cfg::refactor_analysis::persist_generated_refactor_issues::bb7" [label="SwitchInt"];
+  "cfg::refactor_analysis::persist_generated_refactor_issues::bb0" -> "cfg::refactor_analysis::persist_generated_refactor_issues::bb1" [label="SwitchInt"];
+  "cfg::refactor_analysis::persist_generated_refactor_issues::bb4" -> "cfg::refactor_analysis::persist_generated_refactor_issues::bb7" [label="SwitchInt"];
+  "cfg::refactor_analysis::persist_generated_refactor_issues::bb4" -> "cfg::refactor_analysis::persist_generated_refactor_issues::bb6" [label="SwitchInt"];
+  "cfg::refactor_analysis::persist_generated_refactor_issues::bb4" -> "cfg::refactor_analysis::persist_generated_refactor_issues::bb5" [label="SwitchInt"];
+  "cfg::refactor_analysis::persist_generated_refactor_issues::bb7" -> "cfg::refactor_analysis::persist_generated_refactor_issues::bb8" [label="Goto"];
+}

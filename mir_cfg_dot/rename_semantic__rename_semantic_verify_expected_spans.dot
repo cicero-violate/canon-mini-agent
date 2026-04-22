@@ -1,0 +1,45 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2966 {
+    label="rename_semantic::verify_expected_spans";
+    "cfg::rename_semantic::verify_expected_spans::bb0" [label="bb0\nCall"];
+    "cfg::rename_semantic::verify_expected_spans::bb1" [label="bb1\nGoto"];
+    "cfg::rename_semantic::verify_expected_spans::bb2" [label="bb2\nCall loop"];
+    "cfg::rename_semantic::verify_expected_spans::bb3" [label="bb3\nSwitchInt loop"];
+    "cfg::rename_semantic::verify_expected_spans::bb4" [label="bb4\nUnreachable loop"];
+    "cfg::rename_semantic::verify_expected_spans::bb5" [label="bb5\nCall loop"];
+    "cfg::rename_semantic::verify_expected_spans::bb6" [label="bb6\nGoto loop"];
+    "cfg::rename_semantic::verify_expected_spans::bb7" [label="bb7\nCall loop"];
+    "cfg::rename_semantic::verify_expected_spans::bb8" [label="bb8\nCall loop"];
+    "cfg::rename_semantic::verify_expected_spans::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::rename_semantic::verify_expected_spans::bb10" [label="bb10\nCall loop"];
+    "cfg::rename_semantic::verify_expected_spans::bb11" [label="bb11\nCall loop"];
+    "cfg::rename_semantic::verify_expected_spans::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::rename_semantic::verify_expected_spans::bb13" [label="bb13\nCall"];
+    "cfg::rename_semantic::verify_expected_spans::bb14" [label="bb14\nCall"];
+    "cfg::rename_semantic::verify_expected_spans::bb15" [label="bb15\nCall"];
+    "cfg::rename_semantic::verify_expected_spans::bb16" [label="bb16\nCall"];
+    "cfg::rename_semantic::verify_expected_spans::bb17" [label="bb17\nCall"];
+    "cfg::rename_semantic::verify_expected_spans::bb18" [label="bb18\nCall"];
+    "cfg::rename_semantic::verify_expected_spans::bb19" [label="bb19\nCall"];
+    "cfg::rename_semantic::verify_expected_spans::bb20" [label="bb20\nCall"];
+    "cfg::rename_semantic::verify_expected_spans::bb21" [label="bb21\nCall"];
+    "cfg::rename_semantic::verify_expected_spans::bb22" [label="bb22\nCall"];
+    "cfg::rename_semantic::verify_expected_spans::bb23" [label="bb23\nGoto"];
+    "cfg::rename_semantic::verify_expected_spans::bb24" [label="bb24\nReturn"];
+  }
+  "cfg::rename_semantic::verify_expected_spans::bb1" -> "cfg::rename_semantic::verify_expected_spans::bb2" [label="Goto"];
+  "cfg::rename_semantic::verify_expected_spans::bb3" -> "cfg::rename_semantic::verify_expected_spans::bb6" [label="SwitchInt"];
+  "cfg::rename_semantic::verify_expected_spans::bb3" -> "cfg::rename_semantic::verify_expected_spans::bb5" [label="SwitchInt"];
+  "cfg::rename_semantic::verify_expected_spans::bb3" -> "cfg::rename_semantic::verify_expected_spans::bb4" [label="SwitchInt"];
+  "cfg::rename_semantic::verify_expected_spans::bb6" -> "cfg::rename_semantic::verify_expected_spans::bb24" [label="Goto"];
+  "cfg::rename_semantic::verify_expected_spans::bb9" -> "cfg::rename_semantic::verify_expected_spans::bb10" [label="SwitchInt"];
+  "cfg::rename_semantic::verify_expected_spans::bb9" -> "cfg::rename_semantic::verify_expected_spans::bb11" [label="SwitchInt"];
+  "cfg::rename_semantic::verify_expected_spans::bb9" -> "cfg::rename_semantic::verify_expected_spans::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::rename_semantic::verify_expected_spans::bb12" -> "cfg::rename_semantic::verify_expected_spans::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::rename_semantic::verify_expected_spans::bb12" -> "cfg::rename_semantic::verify_expected_spans::bb13" [label="SwitchInt"];
+  "cfg::rename_semantic::verify_expected_spans::bb23" -> "cfg::rename_semantic::verify_expected_spans::bb24" [label="Goto"];
+}

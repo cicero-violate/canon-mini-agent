@@ -1,0 +1,44 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_374 {
+    label="app::record_canonical_inbound_message";
+    "cfg::app::record_canonical_inbound_message::bb0" [label="bb0\nCall"];
+    "cfg::app::record_canonical_inbound_message::bb1" [label="bb1\nCall"];
+    "cfg::app::record_canonical_inbound_message::bb2" [label="bb2\nCall"];
+    "cfg::app::record_canonical_inbound_message::bb3" [label="bb3\nCall"];
+    "cfg::app::record_canonical_inbound_message::bb4" [label="bb4\nDrop"];
+    "cfg::app::record_canonical_inbound_message::bb5" [label="bb5\nCall"];
+    "cfg::app::record_canonical_inbound_message::bb6" [label="bb6\nCall"];
+    "cfg::app::record_canonical_inbound_message::bb7" [label="bb7\nCall"];
+    "cfg::app::record_canonical_inbound_message::bb8" [label="bb8\nCall"];
+    "cfg::app::record_canonical_inbound_message::bb9" [label="bb9\nCall"];
+    "cfg::app::record_canonical_inbound_message::bb10" [label="bb10\nCall"];
+    "cfg::app::record_canonical_inbound_message::bb11" [label="bb11\nSwitchInt"];
+    "cfg::app::record_canonical_inbound_message::bb12" [label="bb12\nUnreachable"];
+    "cfg::app::record_canonical_inbound_message::bb13" [label="bb13\nGoto"];
+    "cfg::app::record_canonical_inbound_message::bb14" [label="bb14\nCall"];
+    "cfg::app::record_canonical_inbound_message::bb15" [label="bb15\nDrop"];
+    "cfg::app::record_canonical_inbound_message::bb16" [label="bb16\nReturn"];
+    "cfg::app::record_canonical_inbound_message::bb17" [label="bb17\nDrop cleanup"];
+    "cfg::app::record_canonical_inbound_message::bb18" [label="bb18\nDrop cleanup"];
+    "cfg::app::record_canonical_inbound_message::bb19" [label="bb19\nDrop cleanup"];
+    "cfg::app::record_canonical_inbound_message::bb20" [label="bb20\nDrop cleanup"];
+    "cfg::app::record_canonical_inbound_message::bb21" [label="bb21\nDrop cleanup"];
+    "cfg::app::record_canonical_inbound_message::bb22" [label="bb22\nUnwindResume cleanup"];
+  }
+  "cfg::app::record_canonical_inbound_message::bb4" -> "cfg::app::record_canonical_inbound_message::bb5" [label="Drop"];
+  "cfg::app::record_canonical_inbound_message::bb4" -> "cfg::app::record_canonical_inbound_message::bb20" [label="Drop"];
+  "cfg::app::record_canonical_inbound_message::bb11" -> "cfg::app::record_canonical_inbound_message::bb13" [label="SwitchInt"];
+  "cfg::app::record_canonical_inbound_message::bb11" -> "cfg::app::record_canonical_inbound_message::bb14" [label="SwitchInt"];
+  "cfg::app::record_canonical_inbound_message::bb11" -> "cfg::app::record_canonical_inbound_message::bb12" [label="SwitchInt"];
+  "cfg::app::record_canonical_inbound_message::bb13" -> "cfg::app::record_canonical_inbound_message::bb16" [label="Goto"];
+  "cfg::app::record_canonical_inbound_message::bb15" -> "cfg::app::record_canonical_inbound_message::bb16" [label="Drop"];
+  "cfg::app::record_canonical_inbound_message::bb17" -> "cfg::app::record_canonical_inbound_message::bb18" [label="Drop"];
+  "cfg::app::record_canonical_inbound_message::bb18" -> "cfg::app::record_canonical_inbound_message::bb19" [label="Drop"];
+  "cfg::app::record_canonical_inbound_message::bb19" -> "cfg::app::record_canonical_inbound_message::bb20" [label="Drop"];
+  "cfg::app::record_canonical_inbound_message::bb20" -> "cfg::app::record_canonical_inbound_message::bb22" [label="Drop"];
+  "cfg::app::record_canonical_inbound_message::bb21" -> "cfg::app::record_canonical_inbound_message::bb22" [label="Drop"];
+}

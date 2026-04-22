@@ -1,0 +1,23 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4209 {
+    label="tools::require_plan_action_field";
+    "cfg::tools::require_plan_action_field::bb0" [label="bb0\nCall"];
+    "cfg::tools::require_plan_action_field::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::require_plan_action_field::bb2" [label="bb2\nGoto"];
+    "cfg::tools::require_plan_action_field::bb3" [label="bb3\nCall"];
+    "cfg::tools::require_plan_action_field::bb4" [label="bb4\nCall"];
+    "cfg::tools::require_plan_action_field::bb5" [label="bb5\nCall"];
+    "cfg::tools::require_plan_action_field::bb6" [label="bb6\nCall"];
+    "cfg::tools::require_plan_action_field::bb7" [label="bb7\nCall"];
+    "cfg::tools::require_plan_action_field::bb8" [label="bb8\nGoto"];
+    "cfg::tools::require_plan_action_field::bb9" [label="bb9\nReturn"];
+  }
+  "cfg::tools::require_plan_action_field::bb1" -> "cfg::tools::require_plan_action_field::bb3" [label="SwitchInt"];
+  "cfg::tools::require_plan_action_field::bb1" -> "cfg::tools::require_plan_action_field::bb2" [label="SwitchInt"];
+  "cfg::tools::require_plan_action_field::bb2" -> "cfg::tools::require_plan_action_field::bb9" [label="Goto"];
+  "cfg::tools::require_plan_action_field::bb8" -> "cfg::tools::require_plan_action_field::bb9" [label="Goto"];
+}

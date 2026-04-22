@@ -1,0 +1,14 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1326 {
+    label="invariants::open_tail_reader::MAX_BYTES";
+    "cfg::invariants::open_tail_reader::MAX_BYTES::bb0" [label="bb0\nAssert"];
+    "cfg::invariants::open_tail_reader::MAX_BYTES::bb1" [label="bb1\nAssert"];
+    "cfg::invariants::open_tail_reader::MAX_BYTES::bb2" [label="bb2\nReturn"];
+  }
+  "cfg::invariants::open_tail_reader::MAX_BYTES::bb0" -> "cfg::invariants::open_tail_reader::MAX_BYTES::bb1" [label="Assert"];
+  "cfg::invariants::open_tail_reader::MAX_BYTES::bb1" -> "cfg::invariants::open_tail_reader::MAX_BYTES::bb2" [label="Assert"];
+}

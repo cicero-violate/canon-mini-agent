@@ -1,0 +1,49 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4128 {
+    label="tools::run_graph_call_cfg_bin";
+    "cfg::tools::run_graph_call_cfg_bin::bb0" [label="bb0\nCall"];
+    "cfg::tools::run_graph_call_cfg_bin::bb1" [label="bb1\nCall"];
+    "cfg::tools::run_graph_call_cfg_bin::bb2" [label="bb2\nCall"];
+    "cfg::tools::run_graph_call_cfg_bin::bb3" [label="bb3\nCall"];
+    "cfg::tools::run_graph_call_cfg_bin::bb4" [label="bb4\nCall"];
+    "cfg::tools::run_graph_call_cfg_bin::bb5" [label="bb5\nCall"];
+    "cfg::tools::run_graph_call_cfg_bin::bb6" [label="bb6\nCall"];
+    "cfg::tools::run_graph_call_cfg_bin::bb7" [label="bb7\nCall"];
+    "cfg::tools::run_graph_call_cfg_bin::bb8" [label="bb8\nCall"];
+    "cfg::tools::run_graph_call_cfg_bin::bb9" [label="bb9\nSwitchInt"];
+    "cfg::tools::run_graph_call_cfg_bin::bb10" [label="bb10\nUnreachable"];
+    "cfg::tools::run_graph_call_cfg_bin::bb11" [label="bb11\nCall"];
+    "cfg::tools::run_graph_call_cfg_bin::bb12" [label="bb12\nCall"];
+    "cfg::tools::run_graph_call_cfg_bin::bb13" [label="bb13\nDrop"];
+    "cfg::tools::run_graph_call_cfg_bin::bb14" [label="bb14\nCall"];
+    "cfg::tools::run_graph_call_cfg_bin::bb15" [label="bb15\nCall"];
+    "cfg::tools::run_graph_call_cfg_bin::bb16" [label="bb16\nCall"];
+    "cfg::tools::run_graph_call_cfg_bin::bb17" [label="bb17\nCall"];
+    "cfg::tools::run_graph_call_cfg_bin::bb18" [label="bb18\nCall"];
+    "cfg::tools::run_graph_call_cfg_bin::bb19" [label="bb19\nCall"];
+    "cfg::tools::run_graph_call_cfg_bin::bb20" [label="bb20\nCall"];
+    "cfg::tools::run_graph_call_cfg_bin::bb21" [label="bb21\nSwitchInt"];
+    "cfg::tools::run_graph_call_cfg_bin::bb22" [label="bb22\nCall"];
+    "cfg::tools::run_graph_call_cfg_bin::bb23" [label="bb23\nCall"];
+    "cfg::tools::run_graph_call_cfg_bin::bb24" [label="bb24\nDrop loop"];
+    "cfg::tools::run_graph_call_cfg_bin::bb25" [label="bb25\nReturn loop"];
+    "cfg::tools::run_graph_call_cfg_bin::bb26" [label="bb26\nDrop cleanup loop"];
+    "cfg::tools::run_graph_call_cfg_bin::bb27" [label="bb27\nDrop cleanup loop"];
+    "cfg::tools::run_graph_call_cfg_bin::bb28" [label="bb28\nUnwindResume cleanup loop"];
+    "cfg::tools::run_graph_call_cfg_bin::bb29" [label="bb29\nGoto loop"];
+  }
+  "cfg::tools::run_graph_call_cfg_bin::bb9" -> "cfg::tools::run_graph_call_cfg_bin::bb11" [label="SwitchInt"];
+  "cfg::tools::run_graph_call_cfg_bin::bb9" -> "cfg::tools::run_graph_call_cfg_bin::bb12" [label="SwitchInt"];
+  "cfg::tools::run_graph_call_cfg_bin::bb9" -> "cfg::tools::run_graph_call_cfg_bin::bb10" [label="SwitchInt"];
+  "cfg::tools::run_graph_call_cfg_bin::bb13" -> "cfg::tools::run_graph_call_cfg_bin::bb25" [label="Drop"];
+  "cfg::tools::run_graph_call_cfg_bin::bb21" -> "cfg::tools::run_graph_call_cfg_bin::bb22" [label="SwitchInt"];
+  "cfg::tools::run_graph_call_cfg_bin::bb21" -> "cfg::tools::run_graph_call_cfg_bin::bb24" [label="SwitchInt"];
+  "cfg::tools::run_graph_call_cfg_bin::bb24" -> "cfg::tools::run_graph_call_cfg_bin::bb25" [label="Drop"];
+  "cfg::tools::run_graph_call_cfg_bin::bb26" -> "cfg::tools::run_graph_call_cfg_bin::bb27" [label="Drop"];
+  "cfg::tools::run_graph_call_cfg_bin::bb27" -> "cfg::tools::run_graph_call_cfg_bin::bb28" [label="Drop"];
+  "cfg::tools::run_graph_call_cfg_bin::bb29" -> "cfg::tools::run_graph_call_cfg_bin::bb24" [color="crimson", penwidth=2, label="Goto back"];
+}

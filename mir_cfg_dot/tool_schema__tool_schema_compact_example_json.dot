@@ -1,0 +1,17 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3421 {
+    label="tool_schema::compact_example_json";
+    "cfg::tool_schema::compact_example_json::bb0" [label="bb0\nCall"];
+    "cfg::tool_schema::compact_example_json::bb1" [label="bb1\nCall"];
+    "cfg::tool_schema::compact_example_json::bb2" [label="bb2\nDrop"];
+    "cfg::tool_schema::compact_example_json::bb3" [label="bb3\nReturn"];
+    "cfg::tool_schema::compact_example_json::bb4" [label="bb4\nDrop cleanup"];
+    "cfg::tool_schema::compact_example_json::bb5" [label="bb5\nUnwindResume cleanup"];
+  }
+  "cfg::tool_schema::compact_example_json::bb2" -> "cfg::tool_schema::compact_example_json::bb3" [label="Drop"];
+  "cfg::tool_schema::compact_example_json::bb4" -> "cfg::tool_schema::compact_example_json::bb5" [label="Drop"];
+}

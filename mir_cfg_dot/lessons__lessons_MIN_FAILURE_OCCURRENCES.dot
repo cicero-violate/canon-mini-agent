@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1396 {
+    label="lessons::MIN_FAILURE_OCCURRENCES";
+    "cfg::lessons::MIN_FAILURE_OCCURRENCES::bb0" [label="bb0\nReturn"];
+  }
+}

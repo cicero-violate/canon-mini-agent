@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_743 {
+    label="constants::MAX_STEPS";
+    "cfg::constants::MAX_STEPS::bb0" [label="bb0\nReturn"];
+  }
+}

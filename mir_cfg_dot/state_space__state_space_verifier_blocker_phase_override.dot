@@ -1,0 +1,17 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3205 {
+    label="state_space::verifier_blocker_phase_override";
+    "cfg::state_space::verifier_blocker_phase_override::bb0" [label="bb0\nSwitchInt"];
+    "cfg::state_space::verifier_blocker_phase_override::bb1" [label="bb1\nGoto"];
+    "cfg::state_space::verifier_blocker_phase_override::bb2" [label="bb2\nGoto"];
+    "cfg::state_space::verifier_blocker_phase_override::bb3" [label="bb3\nReturn"];
+  }
+  "cfg::state_space::verifier_blocker_phase_override::bb0" -> "cfg::state_space::verifier_blocker_phase_override::bb2" [label="SwitchInt"];
+  "cfg::state_space::verifier_blocker_phase_override::bb0" -> "cfg::state_space::verifier_blocker_phase_override::bb1" [label="SwitchInt"];
+  "cfg::state_space::verifier_blocker_phase_override::bb1" -> "cfg::state_space::verifier_blocker_phase_override::bb3" [label="Goto"];
+  "cfg::state_space::verifier_blocker_phase_override::bb2" -> "cfg::state_space::verifier_blocker_phase_override::bb3" [label="Goto"];
+}

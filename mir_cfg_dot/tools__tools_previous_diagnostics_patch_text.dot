@@ -1,0 +1,22 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4022 {
+    label="tools::previous_diagnostics_patch_text";
+    "cfg::tools::previous_diagnostics_patch_text::bb0" [label="bb0\nCall"];
+    "cfg::tools::previous_diagnostics_patch_text::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::previous_diagnostics_patch_text::bb2" [label="bb2\nUnreachable"];
+    "cfg::tools::previous_diagnostics_patch_text::bb3" [label="bb3\nCall"];
+    "cfg::tools::previous_diagnostics_patch_text::bb4" [label="bb4\nCall"];
+    "cfg::tools::previous_diagnostics_patch_text::bb5" [label="bb5\nCall"];
+    "cfg::tools::previous_diagnostics_patch_text::bb6" [label="bb6\nCall"];
+    "cfg::tools::previous_diagnostics_patch_text::bb7" [label="bb7\nGoto"];
+    "cfg::tools::previous_diagnostics_patch_text::bb8" [label="bb8\nReturn"];
+  }
+  "cfg::tools::previous_diagnostics_patch_text::bb1" -> "cfg::tools::previous_diagnostics_patch_text::bb3" [label="SwitchInt"];
+  "cfg::tools::previous_diagnostics_patch_text::bb1" -> "cfg::tools::previous_diagnostics_patch_text::bb4" [label="SwitchInt"];
+  "cfg::tools::previous_diagnostics_patch_text::bb1" -> "cfg::tools::previous_diagnostics_patch_text::bb2" [label="SwitchInt"];
+  "cfg::tools::previous_diagnostics_patch_text::bb7" -> "cfg::tools::previous_diagnostics_patch_text::bb8" [label="Goto"];
+}

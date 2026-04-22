@@ -1,0 +1,13 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_872 {
+    label="drift_analysis::complexity_score";
+    "cfg::drift_analysis::complexity_score::bb0" [label="bb0\nCall"];
+    "cfg::drift_analysis::complexity_score::bb1" [label="bb1\nCall"];
+    "cfg::drift_analysis::complexity_score::bb2" [label="bb2\nCall"];
+    "cfg::drift_analysis::complexity_score::bb3" [label="bb3\nReturn"];
+  }
+}

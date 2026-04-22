@@ -1,0 +1,16 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2502 {
+    label="prompt_inputs::planner_plan_texts";
+    "cfg::prompt_inputs::planner_plan_texts::bb0" [label="bb0\nCall"];
+    "cfg::prompt_inputs::planner_plan_texts::bb1" [label="bb1\nCall"];
+    "cfg::prompt_inputs::planner_plan_texts::bb2" [label="bb2\nCall"];
+    "cfg::prompt_inputs::planner_plan_texts::bb3" [label="bb3\nReturn"];
+    "cfg::prompt_inputs::planner_plan_texts::bb4" [label="bb4\nDrop cleanup"];
+    "cfg::prompt_inputs::planner_plan_texts::bb5" [label="bb5\nUnwindResume cleanup"];
+  }
+  "cfg::prompt_inputs::planner_plan_texts::bb4" -> "cfg::prompt_inputs::planner_plan_texts::bb5" [label="Drop"];
+}

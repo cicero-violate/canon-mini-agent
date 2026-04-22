@@ -131,6 +131,37 @@ pub enum ControlEvent {
         content: String,
         signature: String,
     },
+    /// Canonical control bit used by supervisor build/test gating.
+    /// Replaces `rust_patch_verification_requested.flag` as authority.
+    RustPatchVerificationRequested {
+        requested: bool,
+    },
+    /// Canonical orchestrator mode (`orchestrate` or `single`) for supervisor policy.
+    /// Replaces `orchestrator_mode.flag` as authority.
+    OrchestratorModeSet {
+        mode: String,
+    },
+    /// Canonical idle heartbeat emitted by orchestrator loop when no progress occurs.
+    /// Replaces `orchestrator_cycle_idle.flag` mtime as authority.
+    OrchestratorIdlePulse {
+        ts_ms: u64,
+    },
+    /// Canonical checkpoint snapshot used for orchestrator resume.
+    /// Replaces `mini_agent_checkpoint.json` as authority.
+    CheckpointSnapshotSet {
+        snapshot_json: String,
+    },
+    /// Canonical signature for last planner blocker evidence.
+    /// Replaces `last_planner_blocker_evidence.txt` as authority.
+    PlannerBlockerEvidenceSet {
+        evidence_hash: String,
+    },
+    /// Canonical consumed marker for restart-resume payloads by role.
+    /// Replaces consuming `post_restart_result.json` as authority.
+    PostRestartResultConsumed {
+        role: String,
+        signature: String,
+    },
 
     // --- Submitted turn tracking (serializable subset) ---
     ExecutorTurnRegistered {
@@ -294,6 +325,18 @@ pub enum EffectEvent {
         row_count: usize,
         group_count: usize,
         mean_reward: f64,
+    },
+    /// Last completed action snapshot used to resume after process restarts.
+    PostRestartResultRecorded {
+        role: String,
+        action: String,
+        result: String,
+        step: usize,
+        tab_id: Option<u32>,
+        turn_id: Option<u64>,
+        endpoint_id: String,
+        restart_kind: String,
+        signature: String,
     },
 }
 

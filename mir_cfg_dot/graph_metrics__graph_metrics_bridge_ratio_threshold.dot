@@ -1,0 +1,15 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_943 {
+    label="graph_metrics::bridge_ratio_threshold";
+    "cfg::graph_metrics::bridge_ratio_threshold::bb0" [label="bb0\nCall"];
+    "cfg::graph_metrics::bridge_ratio_threshold::bb1" [label="bb1\nCall"];
+    "cfg::graph_metrics::bridge_ratio_threshold::bb2" [label="bb2\nCall"];
+    "cfg::graph_metrics::bridge_ratio_threshold::bb3" [label="bb3\nCall"];
+    "cfg::graph_metrics::bridge_ratio_threshold::bb4" [label="bb4\nCall"];
+    "cfg::graph_metrics::bridge_ratio_threshold::bb5" [label="bb5\nReturn"];
+  }
+}

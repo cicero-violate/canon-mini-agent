@@ -1,0 +1,54 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3834 {
+    label="tools::symbol_label";
+    "cfg::tools::symbol_label::bb0" [label="bb0\nCall"];
+    "cfg::tools::symbol_label::bb1" [label="bb1\nCall"];
+    "cfg::tools::symbol_label::bb2" [label="bb2\nSwitchInt"];
+    "cfg::tools::symbol_label::bb3" [label="bb3\nCall"];
+    "cfg::tools::symbol_label::bb4" [label="bb4\nSwitchInt"];
+    "cfg::tools::symbol_label::bb5" [label="bb5\nCall"];
+    "cfg::tools::symbol_label::bb6" [label="bb6\nSwitchInt"];
+    "cfg::tools::symbol_label::bb7" [label="bb7\nCall"];
+    "cfg::tools::symbol_label::bb8" [label="bb8\nCall"];
+    "cfg::tools::symbol_label::bb9" [label="bb9\nCall"];
+    "cfg::tools::symbol_label::bb10" [label="bb10\nCall"];
+    "cfg::tools::symbol_label::bb11" [label="bb11\nCall"];
+    "cfg::tools::symbol_label::bb12" [label="bb12\nCall"];
+    "cfg::tools::symbol_label::bb13" [label="bb13\nCall"];
+    "cfg::tools::symbol_label::bb14" [label="bb14\nCall"];
+    "cfg::tools::symbol_label::bb15" [label="bb15\nDrop"];
+    "cfg::tools::symbol_label::bb16" [label="bb16\nCall"];
+    "cfg::tools::symbol_label::bb17" [label="bb17\nCall"];
+    "cfg::tools::symbol_label::bb18" [label="bb18\nCall"];
+    "cfg::tools::symbol_label::bb19" [label="bb19\nCall"];
+    "cfg::tools::symbol_label::bb20" [label="bb20\nCall"];
+    "cfg::tools::symbol_label::bb21" [label="bb21\nCall"];
+    "cfg::tools::symbol_label::bb22" [label="bb22\nCall"];
+    "cfg::tools::symbol_label::bb23" [label="bb23\nCall"];
+    "cfg::tools::symbol_label::bb24" [label="bb24\nCall"];
+    "cfg::tools::symbol_label::bb25" [label="bb25\nDrop"];
+    "cfg::tools::symbol_label::bb26" [label="bb26\nCall"];
+    "cfg::tools::symbol_label::bb27" [label="bb27\nCall"];
+    "cfg::tools::symbol_label::bb28" [label="bb28\nReturn"];
+    "cfg::tools::symbol_label::bb29" [label="bb29\nDrop cleanup"];
+    "cfg::tools::symbol_label::bb30" [label="bb30\nDrop cleanup"];
+    "cfg::tools::symbol_label::bb31" [label="bb31\nUnwindResume cleanup"];
+    "cfg::tools::symbol_label::bb32" [label="bb32\nUnreachable"];
+  }
+  "cfg::tools::symbol_label::bb2" -> "cfg::tools::symbol_label::bb3" [label="SwitchInt"];
+  "cfg::tools::symbol_label::bb2" -> "cfg::tools::symbol_label::bb27" [label="SwitchInt"];
+  "cfg::tools::symbol_label::bb2" -> "cfg::tools::symbol_label::bb32" [label="SwitchInt"];
+  "cfg::tools::symbol_label::bb4" -> "cfg::tools::symbol_label::bb5" [label="SwitchInt"];
+  "cfg::tools::symbol_label::bb4" -> "cfg::tools::symbol_label::bb26" [label="SwitchInt"];
+  "cfg::tools::symbol_label::bb4" -> "cfg::tools::symbol_label::bb32" [label="SwitchInt"];
+  "cfg::tools::symbol_label::bb6" -> "cfg::tools::symbol_label::bb16" [label="SwitchInt"];
+  "cfg::tools::symbol_label::bb6" -> "cfg::tools::symbol_label::bb7" [label="SwitchInt"];
+  "cfg::tools::symbol_label::bb15" -> "cfg::tools::symbol_label::bb28" [label="Drop"];
+  "cfg::tools::symbol_label::bb25" -> "cfg::tools::symbol_label::bb28" [label="Drop"];
+  "cfg::tools::symbol_label::bb29" -> "cfg::tools::symbol_label::bb31" [label="Drop"];
+  "cfg::tools::symbol_label::bb30" -> "cfg::tools::symbol_label::bb31" [label="Drop"];
+}

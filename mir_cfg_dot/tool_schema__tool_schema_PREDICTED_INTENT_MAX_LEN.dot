@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3418 {
+    label="tool_schema::PREDICTED_INTENT_MAX_LEN";
+    "cfg::tool_schema::PREDICTED_INTENT_MAX_LEN::bb0" [label="bb0\nReturn"];
+  }
+}

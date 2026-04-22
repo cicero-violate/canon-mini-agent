@@ -1,0 +1,26 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3821 {
+    label="tools::drain_plan_sorted_successors";
+    "cfg::tools::drain_plan_sorted_successors::bb0" [label="bb0\nCall"];
+    "cfg::tools::drain_plan_sorted_successors::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::drain_plan_sorted_successors::bb2" [label="bb2\nCall"];
+    "cfg::tools::drain_plan_sorted_successors::bb3" [label="bb3\nGoto"];
+    "cfg::tools::drain_plan_sorted_successors::bb4" [label="bb4\nCall loop"];
+    "cfg::tools::drain_plan_sorted_successors::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::tools::drain_plan_sorted_successors::bb6" [label="bb6\nUnreachable loop"];
+    "cfg::tools::drain_plan_sorted_successors::bb7" [label="bb7\nCall loop"];
+    "cfg::tools::drain_plan_sorted_successors::bb8" [label="bb8\nCall loop"];
+    "cfg::tools::drain_plan_sorted_successors::bb9" [label="bb9\nReturn"];
+  }
+  "cfg::tools::drain_plan_sorted_successors::bb1" -> "cfg::tools::drain_plan_sorted_successors::bb2" [label="SwitchInt"];
+  "cfg::tools::drain_plan_sorted_successors::bb1" -> "cfg::tools::drain_plan_sorted_successors::bb9" [label="SwitchInt"];
+  "cfg::tools::drain_plan_sorted_successors::bb1" -> "cfg::tools::drain_plan_sorted_successors::bb6" [label="SwitchInt"];
+  "cfg::tools::drain_plan_sorted_successors::bb3" -> "cfg::tools::drain_plan_sorted_successors::bb4" [label="Goto"];
+  "cfg::tools::drain_plan_sorted_successors::bb5" -> "cfg::tools::drain_plan_sorted_successors::bb9" [label="SwitchInt"];
+  "cfg::tools::drain_plan_sorted_successors::bb5" -> "cfg::tools::drain_plan_sorted_successors::bb7" [label="SwitchInt"];
+  "cfg::tools::drain_plan_sorted_successors::bb5" -> "cfg::tools::drain_plan_sorted_successors::bb6" [label="SwitchInt"];
+}

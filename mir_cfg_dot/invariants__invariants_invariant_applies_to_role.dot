@@ -1,0 +1,18 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1207 {
+    label="invariants::invariant_applies_to_role";
+    "cfg::invariants::invariant_applies_to_role::bb0" [label="bb0\nCall"];
+    "cfg::invariants::invariant_applies_to_role::bb1" [label="bb1\nSwitchInt"];
+    "cfg::invariants::invariant_applies_to_role::bb2" [label="bb2\nCall"];
+    "cfg::invariants::invariant_applies_to_role::bb3" [label="bb3\nCall"];
+    "cfg::invariants::invariant_applies_to_role::bb4" [label="bb4\nCall"];
+    "cfg::invariants::invariant_applies_to_role::bb5" [label="bb5\nCall"];
+    "cfg::invariants::invariant_applies_to_role::bb6" [label="bb6\nReturn"];
+  }
+  "cfg::invariants::invariant_applies_to_role::bb1" -> "cfg::invariants::invariant_applies_to_role::bb3" [label="SwitchInt"];
+  "cfg::invariants::invariant_applies_to_role::bb1" -> "cfg::invariants::invariant_applies_to_role::bb2" [label="SwitchInt"];
+}

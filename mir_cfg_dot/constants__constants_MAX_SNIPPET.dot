@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_747 {
+    label="constants::MAX_SNIPPET";
+    "cfg::constants::MAX_SNIPPET::bb0" [label="bb0\nReturn"];
+  }
+}

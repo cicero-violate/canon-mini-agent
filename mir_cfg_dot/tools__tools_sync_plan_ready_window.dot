@@ -1,0 +1,45 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4227 {
+    label="tools::sync_plan_ready_window";
+    "cfg::tools::sync_plan_ready_window::bb0" [label="bb0\nCall"];
+    "cfg::tools::sync_plan_ready_window::bb1" [label="bb1\nCall"];
+    "cfg::tools::sync_plan_ready_window::bb2" [label="bb2\nCall"];
+    "cfg::tools::sync_plan_ready_window::bb3" [label="bb3\nSwitchInt"];
+    "cfg::tools::sync_plan_ready_window::bb4" [label="bb4\nUnreachable loop"];
+    "cfg::tools::sync_plan_ready_window::bb5" [label="bb5\nCall loop"];
+    "cfg::tools::sync_plan_ready_window::bb6" [label="bb6\nCall loop"];
+    "cfg::tools::sync_plan_ready_window::bb7" [label="bb7\nCall loop"];
+    "cfg::tools::sync_plan_ready_window::bb8" [label="bb8\nCall loop"];
+    "cfg::tools::sync_plan_ready_window::bb9" [label="bb9\nCall loop"];
+    "cfg::tools::sync_plan_ready_window::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::tools::sync_plan_ready_window::bb11" [label="bb11\nCall"];
+    "cfg::tools::sync_plan_ready_window::bb12" [label="bb12\nCall"];
+    "cfg::tools::sync_plan_ready_window::bb13" [label="bb13\nCall"];
+    "cfg::tools::sync_plan_ready_window::bb14" [label="bb14\nCall"];
+    "cfg::tools::sync_plan_ready_window::bb15" [label="bb15\nCall"];
+    "cfg::tools::sync_plan_ready_window::bb16" [label="bb16\nCall"];
+    "cfg::tools::sync_plan_ready_window::bb17" [label="bb17\nCall"];
+    "cfg::tools::sync_plan_ready_window::bb18" [label="bb18\nDrop"];
+    "cfg::tools::sync_plan_ready_window::bb19" [label="bb19\nGoto"];
+    "cfg::tools::sync_plan_ready_window::bb20" [label="bb20\nReturn"];
+    "cfg::tools::sync_plan_ready_window::bb21" [label="bb21\nUnwindResume cleanup loop"];
+    "cfg::tools::sync_plan_ready_window::bb22" [label="bb22\nDrop cleanup loop"];
+    "cfg::tools::sync_plan_ready_window::bb23" [label="bb23\nSwitchInt cleanup loop"];
+  }
+  "cfg::tools::sync_plan_ready_window::bb3" -> "cfg::tools::sync_plan_ready_window::bb5" [label="SwitchInt"];
+  "cfg::tools::sync_plan_ready_window::bb3" -> "cfg::tools::sync_plan_ready_window::bb6" [label="SwitchInt"];
+  "cfg::tools::sync_plan_ready_window::bb3" -> "cfg::tools::sync_plan_ready_window::bb4" [label="SwitchInt"];
+  "cfg::tools::sync_plan_ready_window::bb10" -> "cfg::tools::sync_plan_ready_window::bb11" [label="SwitchInt"];
+  "cfg::tools::sync_plan_ready_window::bb10" -> "cfg::tools::sync_plan_ready_window::bb12" [label="SwitchInt"];
+  "cfg::tools::sync_plan_ready_window::bb10" -> "cfg::tools::sync_plan_ready_window::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::sync_plan_ready_window::bb18" -> "cfg::tools::sync_plan_ready_window::bb19" [label="Drop"];
+  "cfg::tools::sync_plan_ready_window::bb18" -> "cfg::tools::sync_plan_ready_window::bb23" [label="Drop"];
+  "cfg::tools::sync_plan_ready_window::bb19" -> "cfg::tools::sync_plan_ready_window::bb20" [label="Goto"];
+  "cfg::tools::sync_plan_ready_window::bb22" -> "cfg::tools::sync_plan_ready_window::bb21" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tools::sync_plan_ready_window::bb23" -> "cfg::tools::sync_plan_ready_window::bb21" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::sync_plan_ready_window::bb23" -> "cfg::tools::sync_plan_ready_window::bb22" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

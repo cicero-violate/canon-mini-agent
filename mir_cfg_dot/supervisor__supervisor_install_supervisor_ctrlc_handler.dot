@@ -1,0 +1,31 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3342 {
+    label="supervisor::install_supervisor_ctrlc_handler";
+    "cfg::supervisor::install_supervisor_ctrlc_handler::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::install_supervisor_ctrlc_handler::bb1" [label="bb1\nCall"];
+    "cfg::supervisor::install_supervisor_ctrlc_handler::bb2" [label="bb2\nCall"];
+    "cfg::supervisor::install_supervisor_ctrlc_handler::bb3" [label="bb3\nCall"];
+    "cfg::supervisor::install_supervisor_ctrlc_handler::bb4" [label="bb4\nCall"];
+    "cfg::supervisor::install_supervisor_ctrlc_handler::bb5" [label="bb5\nSwitchInt"];
+    "cfg::supervisor::install_supervisor_ctrlc_handler::bb6" [label="bb6\nUnreachable"];
+    "cfg::supervisor::install_supervisor_ctrlc_handler::bb7" [label="bb7\nGoto"];
+    "cfg::supervisor::install_supervisor_ctrlc_handler::bb8" [label="bb8\nCall"];
+    "cfg::supervisor::install_supervisor_ctrlc_handler::bb9" [label="bb9\nGoto"];
+    "cfg::supervisor::install_supervisor_ctrlc_handler::bb10" [label="bb10\nReturn"];
+    "cfg::supervisor::install_supervisor_ctrlc_handler::bb11" [label="bb11\nUnwindResume cleanup loop"];
+    "cfg::supervisor::install_supervisor_ctrlc_handler::bb12" [label="bb12\nDrop cleanup loop"];
+    "cfg::supervisor::install_supervisor_ctrlc_handler::bb13" [label="bb13\nSwitchInt cleanup loop"];
+  }
+  "cfg::supervisor::install_supervisor_ctrlc_handler::bb5" -> "cfg::supervisor::install_supervisor_ctrlc_handler::bb7" [label="SwitchInt"];
+  "cfg::supervisor::install_supervisor_ctrlc_handler::bb5" -> "cfg::supervisor::install_supervisor_ctrlc_handler::bb8" [label="SwitchInt"];
+  "cfg::supervisor::install_supervisor_ctrlc_handler::bb5" -> "cfg::supervisor::install_supervisor_ctrlc_handler::bb6" [label="SwitchInt"];
+  "cfg::supervisor::install_supervisor_ctrlc_handler::bb7" -> "cfg::supervisor::install_supervisor_ctrlc_handler::bb10" [label="Goto"];
+  "cfg::supervisor::install_supervisor_ctrlc_handler::bb9" -> "cfg::supervisor::install_supervisor_ctrlc_handler::bb10" [label="Goto"];
+  "cfg::supervisor::install_supervisor_ctrlc_handler::bb12" -> "cfg::supervisor::install_supervisor_ctrlc_handler::bb11" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::supervisor::install_supervisor_ctrlc_handler::bb13" -> "cfg::supervisor::install_supervisor_ctrlc_handler::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::supervisor::install_supervisor_ctrlc_handler::bb13" -> "cfg::supervisor::install_supervisor_ctrlc_handler::bb12" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

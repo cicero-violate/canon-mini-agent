@@ -1,0 +1,54 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_211 {
+    label="app::dispatch_ready_executor_lanes";
+    "cfg::app::dispatch_ready_executor_lanes::bb0" [label="bb0\nCall"];
+    "cfg::app::dispatch_ready_executor_lanes::bb1" [label="bb1\nGoto"];
+    "cfg::app::dispatch_ready_executor_lanes::bb2" [label="bb2\nCall loop"];
+    "cfg::app::dispatch_ready_executor_lanes::bb3" [label="bb3\nSwitchInt loop"];
+    "cfg::app::dispatch_ready_executor_lanes::bb4" [label="bb4\nUnreachable loop"];
+    "cfg::app::dispatch_ready_executor_lanes::bb5" [label="bb5\nCall loop"];
+    "cfg::app::dispatch_ready_executor_lanes::bb6" [label="bb6\nReturn loop"];
+    "cfg::app::dispatch_ready_executor_lanes::bb7" [label="bb7\nCall loop"];
+    "cfg::app::dispatch_ready_executor_lanes::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::app::dispatch_ready_executor_lanes::bb9" [label="bb9\nGoto loop"];
+    "cfg::app::dispatch_ready_executor_lanes::bb10" [label="bb10\nCall loop"];
+    "cfg::app::dispatch_ready_executor_lanes::bb11" [label="bb11\nCall loop"];
+    "cfg::app::dispatch_ready_executor_lanes::bb12" [label="bb12\nGoto loop"];
+    "cfg::app::dispatch_ready_executor_lanes::bb13" [label="bb13\nSwitchInt loop"];
+    "cfg::app::dispatch_ready_executor_lanes::bb14" [label="bb14\nCall loop"];
+    "cfg::app::dispatch_ready_executor_lanes::bb15" [label="bb15\nSwitchInt loop"];
+    "cfg::app::dispatch_ready_executor_lanes::bb16" [label="bb16\nCall loop"];
+    "cfg::app::dispatch_ready_executor_lanes::bb17" [label="bb17\nCall loop"];
+    "cfg::app::dispatch_ready_executor_lanes::bb18" [label="bb18\nCall loop"];
+    "cfg::app::dispatch_ready_executor_lanes::bb19" [label="bb19\nGoto loop"];
+    "cfg::app::dispatch_ready_executor_lanes::bb20" [label="bb20\nUnwindResume cleanup loop"];
+    "cfg::app::dispatch_ready_executor_lanes::bb21" [label="bb21\nDrop cleanup loop"];
+    "cfg::app::dispatch_ready_executor_lanes::bb22" [label="bb22\nSwitchInt cleanup loop"];
+    "cfg::app::dispatch_ready_executor_lanes::bb23" [label="bb23\nDrop cleanup loop"];
+    "cfg::app::dispatch_ready_executor_lanes::bb24" [label="bb24\nSwitchInt cleanup loop"];
+  }
+  "cfg::app::dispatch_ready_executor_lanes::bb1" -> "cfg::app::dispatch_ready_executor_lanes::bb2" [label="Goto"];
+  "cfg::app::dispatch_ready_executor_lanes::bb3" -> "cfg::app::dispatch_ready_executor_lanes::bb6" [label="SwitchInt"];
+  "cfg::app::dispatch_ready_executor_lanes::bb3" -> "cfg::app::dispatch_ready_executor_lanes::bb5" [label="SwitchInt"];
+  "cfg::app::dispatch_ready_executor_lanes::bb3" -> "cfg::app::dispatch_ready_executor_lanes::bb4" [label="SwitchInt"];
+  "cfg::app::dispatch_ready_executor_lanes::bb8" -> "cfg::app::dispatch_ready_executor_lanes::bb10" [label="SwitchInt"];
+  "cfg::app::dispatch_ready_executor_lanes::bb8" -> "cfg::app::dispatch_ready_executor_lanes::bb9" [label="SwitchInt"];
+  "cfg::app::dispatch_ready_executor_lanes::bb9" -> "cfg::app::dispatch_ready_executor_lanes::bb13" [label="Goto"];
+  "cfg::app::dispatch_ready_executor_lanes::bb12" -> "cfg::app::dispatch_ready_executor_lanes::bb13" [label="Goto"];
+  "cfg::app::dispatch_ready_executor_lanes::bb13" -> "cfg::app::dispatch_ready_executor_lanes::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::dispatch_ready_executor_lanes::bb13" -> "cfg::app::dispatch_ready_executor_lanes::bb14" [label="SwitchInt"];
+  "cfg::app::dispatch_ready_executor_lanes::bb15" -> "cfg::app::dispatch_ready_executor_lanes::bb16" [label="SwitchInt"];
+  "cfg::app::dispatch_ready_executor_lanes::bb15" -> "cfg::app::dispatch_ready_executor_lanes::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::dispatch_ready_executor_lanes::bb15" -> "cfg::app::dispatch_ready_executor_lanes::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::dispatch_ready_executor_lanes::bb19" -> "cfg::app::dispatch_ready_executor_lanes::bb2" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::app::dispatch_ready_executor_lanes::bb21" -> "cfg::app::dispatch_ready_executor_lanes::bb24" [label="Drop"];
+  "cfg::app::dispatch_ready_executor_lanes::bb22" -> "cfg::app::dispatch_ready_executor_lanes::bb24" [label="SwitchInt"];
+  "cfg::app::dispatch_ready_executor_lanes::bb22" -> "cfg::app::dispatch_ready_executor_lanes::bb21" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::dispatch_ready_executor_lanes::bb23" -> "cfg::app::dispatch_ready_executor_lanes::bb20" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::dispatch_ready_executor_lanes::bb24" -> "cfg::app::dispatch_ready_executor_lanes::bb20" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::dispatch_ready_executor_lanes::bb24" -> "cfg::app::dispatch_ready_executor_lanes::bb23" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

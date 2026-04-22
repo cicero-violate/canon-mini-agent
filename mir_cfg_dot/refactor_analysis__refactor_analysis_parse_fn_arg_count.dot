@@ -1,0 +1,48 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2893 {
+    label="refactor_analysis::parse_fn_arg_count";
+    "cfg::refactor_analysis::parse_fn_arg_count::bb0" [label="bb0\nSwitchInt"];
+    "cfg::refactor_analysis::parse_fn_arg_count::bb1" [label="bb1\nGoto"];
+    "cfg::refactor_analysis::parse_fn_arg_count::bb2" [label="bb2\nCall"];
+    "cfg::refactor_analysis::parse_fn_arg_count::bb3" [label="bb3\nCall"];
+    "cfg::refactor_analysis::parse_fn_arg_count::bb4" [label="bb4\nSwitchInt"];
+    "cfg::refactor_analysis::parse_fn_arg_count::bb5" [label="bb5\nSwitchInt"];
+    "cfg::refactor_analysis::parse_fn_arg_count::bb6" [label="bb6\nAssert"];
+    "cfg::refactor_analysis::parse_fn_arg_count::bb7" [label="bb7\nGoto"];
+    "cfg::refactor_analysis::parse_fn_arg_count::bb8" [label="bb8\nSwitchInt"];
+    "cfg::refactor_analysis::parse_fn_arg_count::bb9" [label="bb9\nGoto"];
+    "cfg::refactor_analysis::parse_fn_arg_count::bb10" [label="bb10\nAssert"];
+    "cfg::refactor_analysis::parse_fn_arg_count::bb11" [label="bb11\nCall"];
+    "cfg::refactor_analysis::parse_fn_arg_count::bb12" [label="bb12\nCall"];
+    "cfg::refactor_analysis::parse_fn_arg_count::bb13" [label="bb13\nCall"];
+    "cfg::refactor_analysis::parse_fn_arg_count::bb14" [label="bb14\nSwitchInt"];
+    "cfg::refactor_analysis::parse_fn_arg_count::bb15" [label="bb15\nGoto"];
+    "cfg::refactor_analysis::parse_fn_arg_count::bb16" [label="bb16\nCall"];
+    "cfg::refactor_analysis::parse_fn_arg_count::bb17" [label="bb17\nCall"];
+    "cfg::refactor_analysis::parse_fn_arg_count::bb18" [label="bb18\nReturn"];
+    "cfg::refactor_analysis::parse_fn_arg_count::bb19" [label="bb19\nUnreachable"];
+  }
+  "cfg::refactor_analysis::parse_fn_arg_count::bb0" -> "cfg::refactor_analysis::parse_fn_arg_count::bb2" [label="SwitchInt"];
+  "cfg::refactor_analysis::parse_fn_arg_count::bb0" -> "cfg::refactor_analysis::parse_fn_arg_count::bb1" [label="SwitchInt"];
+  "cfg::refactor_analysis::parse_fn_arg_count::bb0" -> "cfg::refactor_analysis::parse_fn_arg_count::bb19" [label="SwitchInt"];
+  "cfg::refactor_analysis::parse_fn_arg_count::bb1" -> "cfg::refactor_analysis::parse_fn_arg_count::bb18" [label="Goto"];
+  "cfg::refactor_analysis::parse_fn_arg_count::bb4" -> "cfg::refactor_analysis::parse_fn_arg_count::bb5" [label="SwitchInt"];
+  "cfg::refactor_analysis::parse_fn_arg_count::bb4" -> "cfg::refactor_analysis::parse_fn_arg_count::bb7" [label="SwitchInt"];
+  "cfg::refactor_analysis::parse_fn_arg_count::bb4" -> "cfg::refactor_analysis::parse_fn_arg_count::bb19" [label="SwitchInt"];
+  "cfg::refactor_analysis::parse_fn_arg_count::bb5" -> "cfg::refactor_analysis::parse_fn_arg_count::bb6" [label="SwitchInt"];
+  "cfg::refactor_analysis::parse_fn_arg_count::bb5" -> "cfg::refactor_analysis::parse_fn_arg_count::bb7" [label="SwitchInt"];
+  "cfg::refactor_analysis::parse_fn_arg_count::bb5" -> "cfg::refactor_analysis::parse_fn_arg_count::bb19" [label="SwitchInt"];
+  "cfg::refactor_analysis::parse_fn_arg_count::bb6" -> "cfg::refactor_analysis::parse_fn_arg_count::bb8" [label="Assert"];
+  "cfg::refactor_analysis::parse_fn_arg_count::bb7" -> "cfg::refactor_analysis::parse_fn_arg_count::bb18" [label="Goto"];
+  "cfg::refactor_analysis::parse_fn_arg_count::bb8" -> "cfg::refactor_analysis::parse_fn_arg_count::bb10" [label="SwitchInt"];
+  "cfg::refactor_analysis::parse_fn_arg_count::bb8" -> "cfg::refactor_analysis::parse_fn_arg_count::bb9" [label="SwitchInt"];
+  "cfg::refactor_analysis::parse_fn_arg_count::bb9" -> "cfg::refactor_analysis::parse_fn_arg_count::bb18" [label="Goto"];
+  "cfg::refactor_analysis::parse_fn_arg_count::bb10" -> "cfg::refactor_analysis::parse_fn_arg_count::bb11" [label="Assert"];
+  "cfg::refactor_analysis::parse_fn_arg_count::bb14" -> "cfg::refactor_analysis::parse_fn_arg_count::bb16" [label="SwitchInt"];
+  "cfg::refactor_analysis::parse_fn_arg_count::bb14" -> "cfg::refactor_analysis::parse_fn_arg_count::bb15" [label="SwitchInt"];
+  "cfg::refactor_analysis::parse_fn_arg_count::bb15" -> "cfg::refactor_analysis::parse_fn_arg_count::bb18" [label="Goto"];
+}

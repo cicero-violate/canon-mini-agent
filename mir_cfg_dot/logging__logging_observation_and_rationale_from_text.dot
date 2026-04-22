@@ -1,0 +1,29 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2054 {
+    label="logging::observation_and_rationale_from_text";
+    "cfg::logging::observation_and_rationale_from_text::bb0" [label="bb0\nCall"];
+    "cfg::logging::observation_and_rationale_from_text::bb1" [label="bb1\nSwitchInt"];
+    "cfg::logging::observation_and_rationale_from_text::bb2" [label="bb2\nCall"];
+    "cfg::logging::observation_and_rationale_from_text::bb3" [label="bb3\nCall"];
+    "cfg::logging::observation_and_rationale_from_text::bb4" [label="bb4\nCall"];
+    "cfg::logging::observation_and_rationale_from_text::bb5" [label="bb5\nCall"];
+    "cfg::logging::observation_and_rationale_from_text::bb6" [label="bb6\nDrop"];
+    "cfg::logging::observation_and_rationale_from_text::bb7" [label="bb7\nReturn loop"];
+    "cfg::logging::observation_and_rationale_from_text::bb8" [label="bb8\nDrop cleanup loop"];
+    "cfg::logging::observation_and_rationale_from_text::bb9" [label="bb9\nDrop cleanup loop"];
+    "cfg::logging::observation_and_rationale_from_text::bb10" [label="bb10\nUnwindResume cleanup loop"];
+    "cfg::logging::observation_and_rationale_from_text::bb11" [label="bb11\nGoto loop"];
+    "cfg::logging::observation_and_rationale_from_text::bb12" [label="bb12\nUnreachable"];
+  }
+  "cfg::logging::observation_and_rationale_from_text::bb1" -> "cfg::logging::observation_and_rationale_from_text::bb2" [label="SwitchInt"];
+  "cfg::logging::observation_and_rationale_from_text::bb1" -> "cfg::logging::observation_and_rationale_from_text::bb11" [label="SwitchInt"];
+  "cfg::logging::observation_and_rationale_from_text::bb1" -> "cfg::logging::observation_and_rationale_from_text::bb12" [label="SwitchInt"];
+  "cfg::logging::observation_and_rationale_from_text::bb6" -> "cfg::logging::observation_and_rationale_from_text::bb7" [label="Drop"];
+  "cfg::logging::observation_and_rationale_from_text::bb8" -> "cfg::logging::observation_and_rationale_from_text::bb9" [label="Drop"];
+  "cfg::logging::observation_and_rationale_from_text::bb9" -> "cfg::logging::observation_and_rationale_from_text::bb10" [label="Drop"];
+  "cfg::logging::observation_and_rationale_from_text::bb11" -> "cfg::logging::observation_and_rationale_from_text::bb7" [color="crimson", penwidth=2, label="Goto back"];
+}

@@ -1,0 +1,19 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2907 {
+    label="refactor_analysis::priority_from_unreachable";
+    "cfg::refactor_analysis::priority_from_unreachable::bb0" [label="bb0\nSwitchInt"];
+    "cfg::refactor_analysis::priority_from_unreachable::bb1" [label="bb1\nCall"];
+    "cfg::refactor_analysis::priority_from_unreachable::bb2" [label="bb2\nSwitchInt"];
+    "cfg::refactor_analysis::priority_from_unreachable::bb3" [label="bb3\nCall"];
+    "cfg::refactor_analysis::priority_from_unreachable::bb4" [label="bb4\nCall"];
+    "cfg::refactor_analysis::priority_from_unreachable::bb5" [label="bb5\nReturn"];
+  }
+  "cfg::refactor_analysis::priority_from_unreachable::bb0" -> "cfg::refactor_analysis::priority_from_unreachable::bb2" [label="SwitchInt"];
+  "cfg::refactor_analysis::priority_from_unreachable::bb0" -> "cfg::refactor_analysis::priority_from_unreachable::bb1" [label="SwitchInt"];
+  "cfg::refactor_analysis::priority_from_unreachable::bb2" -> "cfg::refactor_analysis::priority_from_unreachable::bb4" [label="SwitchInt"];
+  "cfg::refactor_analysis::priority_from_unreachable::bb2" -> "cfg::refactor_analysis::priority_from_unreachable::bb3" [label="SwitchInt"];
+}

@@ -1,0 +1,18 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4005 {
+    label="tools::persist_rename_symbol_errors";
+    "cfg::tools::persist_rename_symbol_errors::bb0" [label="bb0\nCall"];
+    "cfg::tools::persist_rename_symbol_errors::bb1" [label="bb1\nCall"];
+    "cfg::tools::persist_rename_symbol_errors::bb2" [label="bb2\nCall"];
+    "cfg::tools::persist_rename_symbol_errors::bb3" [label="bb3\nDrop"];
+    "cfg::tools::persist_rename_symbol_errors::bb4" [label="bb4\nReturn"];
+    "cfg::tools::persist_rename_symbol_errors::bb5" [label="bb5\nDrop cleanup"];
+    "cfg::tools::persist_rename_symbol_errors::bb6" [label="bb6\nUnwindResume cleanup"];
+  }
+  "cfg::tools::persist_rename_symbol_errors::bb3" -> "cfg::tools::persist_rename_symbol_errors::bb4" [label="Drop"];
+  "cfg::tools::persist_rename_symbol_errors::bb5" -> "cfg::tools::persist_rename_symbol_errors::bb6" [label="Drop"];
+}

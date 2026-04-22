@@ -1,0 +1,15 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1162 {
+    label="invalid_action::object_string_present";
+    "cfg::invalid_action::object_string_present::bb0" [label="bb0\nCall"];
+    "cfg::invalid_action::object_string_present::bb1" [label="bb1\nCall"];
+    "cfg::invalid_action::object_string_present::bb2" [label="bb2\nCall"];
+    "cfg::invalid_action::object_string_present::bb3" [label="bb3\nCall"];
+    "cfg::invalid_action::object_string_present::bb4" [label="bb4\nCall"];
+    "cfg::invalid_action::object_string_present::bb5" [label="bb5\nReturn"];
+  }
+}

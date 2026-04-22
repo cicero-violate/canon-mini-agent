@@ -1,0 +1,23 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4701 {
+    label="transition_policy::require_lane";
+    "cfg::transition_policy::require_lane::bb0" [label="bb0\nCall"];
+    "cfg::transition_policy::require_lane::bb1" [label="bb1\nSwitchInt"];
+    "cfg::transition_policy::require_lane::bb2" [label="bb2\nGoto"];
+    "cfg::transition_policy::require_lane::bb3" [label="bb3\nCall"];
+    "cfg::transition_policy::require_lane::bb4" [label="bb4\nCall"];
+    "cfg::transition_policy::require_lane::bb5" [label="bb5\nCall"];
+    "cfg::transition_policy::require_lane::bb6" [label="bb6\nCall"];
+    "cfg::transition_policy::require_lane::bb7" [label="bb7\nCall"];
+    "cfg::transition_policy::require_lane::bb8" [label="bb8\nGoto"];
+    "cfg::transition_policy::require_lane::bb9" [label="bb9\nReturn"];
+  }
+  "cfg::transition_policy::require_lane::bb1" -> "cfg::transition_policy::require_lane::bb3" [label="SwitchInt"];
+  "cfg::transition_policy::require_lane::bb1" -> "cfg::transition_policy::require_lane::bb2" [label="SwitchInt"];
+  "cfg::transition_policy::require_lane::bb2" -> "cfg::transition_policy::require_lane::bb9" [label="Goto"];
+  "cfg::transition_policy::require_lane::bb8" -> "cfg::transition_policy::require_lane::bb9" [label="Goto"];
+}

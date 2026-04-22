@@ -1,0 +1,26 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2113 {
+    label="logging::log_action_result";
+    "cfg::logging::log_action_result::bb0" [label="bb0\nCall"];
+    "cfg::logging::log_action_result::bb1" [label="bb1\nSwitchInt"];
+    "cfg::logging::log_action_result::bb2" [label="bb2\nCall"];
+    "cfg::logging::log_action_result::bb3" [label="bb3\nCall"];
+    "cfg::logging::log_action_result::bb4" [label="bb4\nCall"];
+    "cfg::logging::log_action_result::bb5" [label="bb5\nCall"];
+    "cfg::logging::log_action_result::bb6" [label="bb6\nCall"];
+    "cfg::logging::log_action_result::bb7" [label="bb7\nDrop"];
+    "cfg::logging::log_action_result::bb8" [label="bb8\nDrop cleanup"];
+    "cfg::logging::log_action_result::bb9" [label="bb9\nReturn"];
+    "cfg::logging::log_action_result::bb10" [label="bb10\nUnwindResume cleanup"];
+    "cfg::logging::log_action_result::bb11" [label="bb11\nUnreachable"];
+  }
+  "cfg::logging::log_action_result::bb1" -> "cfg::logging::log_action_result::bb2" [label="SwitchInt"];
+  "cfg::logging::log_action_result::bb1" -> "cfg::logging::log_action_result::bb9" [label="SwitchInt"];
+  "cfg::logging::log_action_result::bb1" -> "cfg::logging::log_action_result::bb11" [label="SwitchInt"];
+  "cfg::logging::log_action_result::bb7" -> "cfg::logging::log_action_result::bb9" [label="Drop"];
+  "cfg::logging::log_action_result::bb8" -> "cfg::logging::log_action_result::bb10" [label="Drop"];
+}

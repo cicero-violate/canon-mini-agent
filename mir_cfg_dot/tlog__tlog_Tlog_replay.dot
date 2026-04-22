@@ -1,0 +1,39 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4694 {
+    label="tlog::Tlog::replay";
+    "cfg::tlog::Tlog::replay::bb0" [label="bb0\nCall"];
+    "cfg::tlog::Tlog::replay::bb1" [label="bb1\nCall"];
+    "cfg::tlog::Tlog::replay::bb2" [label="bb2\nSwitchInt"];
+    "cfg::tlog::Tlog::replay::bb3" [label="bb3\nUnreachable"];
+    "cfg::tlog::Tlog::replay::bb4" [label="bb4\nCall"];
+    "cfg::tlog::Tlog::replay::bb5" [label="bb5\nCall"];
+    "cfg::tlog::Tlog::replay::bb6" [label="bb6\nDrop"];
+    "cfg::tlog::Tlog::replay::bb7" [label="bb7\nCall"];
+    "cfg::tlog::Tlog::replay::bb8" [label="bb8\nCall"];
+    "cfg::tlog::Tlog::replay::bb9" [label="bb9\nDrop"];
+    "cfg::tlog::Tlog::replay::bb10" [label="bb10\nReturn"];
+    "cfg::tlog::Tlog::replay::bb11" [label="bb11\nDrop cleanup loop"];
+    "cfg::tlog::Tlog::replay::bb12" [label="bb12\nUnwindResume cleanup loop"];
+    "cfg::tlog::Tlog::replay::bb13" [label="bb13\nDrop cleanup loop"];
+    "cfg::tlog::Tlog::replay::bb14" [label="bb14\nSwitchInt cleanup loop"];
+    "cfg::tlog::Tlog::replay::bb15" [label="bb15\nDrop cleanup loop"];
+    "cfg::tlog::Tlog::replay::bb16" [label="bb16\nSwitchInt cleanup loop"];
+  }
+  "cfg::tlog::Tlog::replay::bb2" -> "cfg::tlog::Tlog::replay::bb4" [label="SwitchInt"];
+  "cfg::tlog::Tlog::replay::bb2" -> "cfg::tlog::Tlog::replay::bb5" [label="SwitchInt"];
+  "cfg::tlog::Tlog::replay::bb2" -> "cfg::tlog::Tlog::replay::bb3" [label="SwitchInt"];
+  "cfg::tlog::Tlog::replay::bb6" -> "cfg::tlog::Tlog::replay::bb10" [label="Drop"];
+  "cfg::tlog::Tlog::replay::bb9" -> "cfg::tlog::Tlog::replay::bb10" [label="Drop"];
+  "cfg::tlog::Tlog::replay::bb9" -> "cfg::tlog::Tlog::replay::bb16" [label="Drop"];
+  "cfg::tlog::Tlog::replay::bb11" -> "cfg::tlog::Tlog::replay::bb16" [label="Drop"];
+  "cfg::tlog::Tlog::replay::bb13" -> "cfg::tlog::Tlog::replay::bb11" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tlog::Tlog::replay::bb14" -> "cfg::tlog::Tlog::replay::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tlog::Tlog::replay::bb14" -> "cfg::tlog::Tlog::replay::bb13" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tlog::Tlog::replay::bb15" -> "cfg::tlog::Tlog::replay::bb12" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tlog::Tlog::replay::bb16" -> "cfg::tlog::Tlog::replay::bb12" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tlog::Tlog::replay::bb16" -> "cfg::tlog::Tlog::replay::bb15" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

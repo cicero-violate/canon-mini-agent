@@ -1,0 +1,42 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2089 {
+    label="logging::build_action_op";
+    "cfg::logging::build_action_op::bb0" [label="bb0\nCall"];
+    "cfg::logging::build_action_op::bb1" [label="bb1\nCall"];
+    "cfg::logging::build_action_op::bb2" [label="bb2\nCall"];
+    "cfg::logging::build_action_op::bb3" [label="bb3\nCall"];
+    "cfg::logging::build_action_op::bb4" [label="bb4\nCall"];
+    "cfg::logging::build_action_op::bb5" [label="bb5\nDrop"];
+    "cfg::logging::build_action_op::bb6" [label="bb6\nCall"];
+    "cfg::logging::build_action_op::bb7" [label="bb7\nCall"];
+    "cfg::logging::build_action_op::bb8" [label="bb8\nCall"];
+    "cfg::logging::build_action_op::bb9" [label="bb9\nCall"];
+    "cfg::logging::build_action_op::bb10" [label="bb10\nDrop"];
+    "cfg::logging::build_action_op::bb11" [label="bb11\nDrop"];
+    "cfg::logging::build_action_op::bb12" [label="bb12\nReturn"];
+    "cfg::logging::build_action_op::bb13" [label="bb13\nDrop cleanup loop"];
+    "cfg::logging::build_action_op::bb14" [label="bb14\nDrop cleanup loop"];
+    "cfg::logging::build_action_op::bb15" [label="bb15\nUnwindResume cleanup loop"];
+    "cfg::logging::build_action_op::bb16" [label="bb16\nDrop cleanup loop"];
+    "cfg::logging::build_action_op::bb17" [label="bb17\nSwitchInt cleanup loop"];
+    "cfg::logging::build_action_op::bb18" [label="bb18\nDrop cleanup loop"];
+    "cfg::logging::build_action_op::bb19" [label="bb19\nSwitchInt cleanup loop"];
+  }
+  "cfg::logging::build_action_op::bb5" -> "cfg::logging::build_action_op::bb6" [label="Drop"];
+  "cfg::logging::build_action_op::bb5" -> "cfg::logging::build_action_op::bb13" [label="Drop"];
+  "cfg::logging::build_action_op::bb10" -> "cfg::logging::build_action_op::bb11" [label="Drop"];
+  "cfg::logging::build_action_op::bb10" -> "cfg::logging::build_action_op::bb13" [label="Drop"];
+  "cfg::logging::build_action_op::bb11" -> "cfg::logging::build_action_op::bb12" [label="Drop"];
+  "cfg::logging::build_action_op::bb13" -> "cfg::logging::build_action_op::bb14" [label="Drop"];
+  "cfg::logging::build_action_op::bb14" -> "cfg::logging::build_action_op::bb15" [label="Drop"];
+  "cfg::logging::build_action_op::bb16" -> "cfg::logging::build_action_op::bb13" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::logging::build_action_op::bb17" -> "cfg::logging::build_action_op::bb13" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::logging::build_action_op::bb17" -> "cfg::logging::build_action_op::bb16" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::logging::build_action_op::bb18" -> "cfg::logging::build_action_op::bb13" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::logging::build_action_op::bb19" -> "cfg::logging::build_action_op::bb13" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::logging::build_action_op::bb19" -> "cfg::logging::build_action_op::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

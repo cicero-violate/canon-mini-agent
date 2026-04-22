@@ -1,0 +1,13 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4428 {
+    label="tools::shell_tokens";
+    "cfg::tools::shell_tokens::bb0" [label="bb0\nCall"];
+    "cfg::tools::shell_tokens::bb1" [label="bb1\nCall"];
+    "cfg::tools::shell_tokens::bb2" [label="bb2\nCall"];
+    "cfg::tools::shell_tokens::bb3" [label="bb3\nReturn"];
+  }
+}

@@ -1,0 +1,37 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1244 {
+    label="invariants::update_gate_enforcement";
+    "cfg::invariants::update_gate_enforcement::bb0" [label="bb0\nCall"];
+    "cfg::invariants::update_gate_enforcement::bb1" [label="bb1\nCall"];
+    "cfg::invariants::update_gate_enforcement::bb2" [label="bb2\nCall"];
+    "cfg::invariants::update_gate_enforcement::bb3" [label="bb3\nGoto"];
+    "cfg::invariants::update_gate_enforcement::bb4" [label="bb4\nCall loop"];
+    "cfg::invariants::update_gate_enforcement::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::invariants::update_gate_enforcement::bb6" [label="bb6\nUnreachable loop"];
+    "cfg::invariants::update_gate_enforcement::bb7" [label="bb7\nCall loop"];
+    "cfg::invariants::update_gate_enforcement::bb8" [label="bb8\nReturn loop"];
+    "cfg::invariants::update_gate_enforcement::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::invariants::update_gate_enforcement::bb10" [label="bb10\nCall loop"];
+    "cfg::invariants::update_gate_enforcement::bb11" [label="bb11\nSwitchInt loop"];
+    "cfg::invariants::update_gate_enforcement::bb12" [label="bb12\nCall loop"];
+    "cfg::invariants::update_gate_enforcement::bb13" [label="bb13\nCall loop"];
+    "cfg::invariants::update_gate_enforcement::bb14" [label="bb14\nDrop loop"];
+    "cfg::invariants::update_gate_enforcement::bb15" [label="bb15\nGoto loop"];
+    "cfg::invariants::update_gate_enforcement::bb16" [label="bb16\nUnwindResume cleanup"];
+  }
+  "cfg::invariants::update_gate_enforcement::bb3" -> "cfg::invariants::update_gate_enforcement::bb4" [label="Goto"];
+  "cfg::invariants::update_gate_enforcement::bb5" -> "cfg::invariants::update_gate_enforcement::bb8" [label="SwitchInt"];
+  "cfg::invariants::update_gate_enforcement::bb5" -> "cfg::invariants::update_gate_enforcement::bb7" [label="SwitchInt"];
+  "cfg::invariants::update_gate_enforcement::bb5" -> "cfg::invariants::update_gate_enforcement::bb6" [label="SwitchInt"];
+  "cfg::invariants::update_gate_enforcement::bb9" -> "cfg::invariants::update_gate_enforcement::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::update_gate_enforcement::bb9" -> "cfg::invariants::update_gate_enforcement::bb10" [label="SwitchInt"];
+  "cfg::invariants::update_gate_enforcement::bb11" -> "cfg::invariants::update_gate_enforcement::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::update_gate_enforcement::bb11" -> "cfg::invariants::update_gate_enforcement::bb12" [label="SwitchInt"];
+  "cfg::invariants::update_gate_enforcement::bb14" -> "cfg::invariants::update_gate_enforcement::bb15" [label="Drop"];
+  "cfg::invariants::update_gate_enforcement::bb14" -> "cfg::invariants::update_gate_enforcement::bb16" [label="Drop"];
+  "cfg::invariants::update_gate_enforcement::bb15" -> "cfg::invariants::update_gate_enforcement::bb4" [color="crimson", penwidth=2, label="Goto back"];
+}

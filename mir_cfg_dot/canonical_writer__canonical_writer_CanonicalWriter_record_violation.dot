@@ -1,0 +1,24 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4618 {
+    label="canonical_writer::CanonicalWriter::record_violation";
+    "cfg::canonical_writer::CanonicalWriter::record_violation::bb0" [label="bb0\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::record_violation::bb1" [label="bb1\nSwitchInt"];
+    "cfg::canonical_writer::CanonicalWriter::record_violation::bb2" [label="bb2\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::record_violation::bb3" [label="bb3\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::record_violation::bb4" [label="bb4\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::record_violation::bb5" [label="bb5\nDrop"];
+    "cfg::canonical_writer::CanonicalWriter::record_violation::bb6" [label="bb6\nDrop cleanup"];
+    "cfg::canonical_writer::CanonicalWriter::record_violation::bb7" [label="bb7\nReturn"];
+    "cfg::canonical_writer::CanonicalWriter::record_violation::bb8" [label="bb8\nUnwindResume cleanup"];
+    "cfg::canonical_writer::CanonicalWriter::record_violation::bb9" [label="bb9\nUnreachable"];
+  }
+  "cfg::canonical_writer::CanonicalWriter::record_violation::bb1" -> "cfg::canonical_writer::CanonicalWriter::record_violation::bb2" [label="SwitchInt"];
+  "cfg::canonical_writer::CanonicalWriter::record_violation::bb1" -> "cfg::canonical_writer::CanonicalWriter::record_violation::bb7" [label="SwitchInt"];
+  "cfg::canonical_writer::CanonicalWriter::record_violation::bb1" -> "cfg::canonical_writer::CanonicalWriter::record_violation::bb9" [label="SwitchInt"];
+  "cfg::canonical_writer::CanonicalWriter::record_violation::bb5" -> "cfg::canonical_writer::CanonicalWriter::record_violation::bb7" [label="Drop"];
+  "cfg::canonical_writer::CanonicalWriter::record_violation::bb6" -> "cfg::canonical_writer::CanonicalWriter::record_violation::bb8" [label="Drop"];
+}

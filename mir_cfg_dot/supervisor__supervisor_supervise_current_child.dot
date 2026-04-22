@@ -1,0 +1,31 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3330 {
+    label="supervisor::supervise_current_child";
+    "cfg::supervisor::supervise_current_child::bb0" [label="bb0\nGoto"];
+    "cfg::supervisor::supervise_current_child::bb1" [label="bb1\nCall loop"];
+    "cfg::supervisor::supervise_current_child::bb2" [label="bb2\nCall loop"];
+    "cfg::supervisor::supervise_current_child::bb3" [label="bb3\nCall loop"];
+    "cfg::supervisor::supervise_current_child::bb4" [label="bb4\nCall loop"];
+    "cfg::supervisor::supervise_current_child::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::supervisor::supervise_current_child::bb6" [label="bb6\nUnreachable loop"];
+    "cfg::supervisor::supervise_current_child::bb7" [label="bb7\nSwitchInt loop"];
+    "cfg::supervisor::supervise_current_child::bb8" [label="bb8\nCall"];
+    "cfg::supervisor::supervise_current_child::bb9" [label="bb9\nGoto"];
+    "cfg::supervisor::supervise_current_child::bb10" [label="bb10\nGoto"];
+    "cfg::supervisor::supervise_current_child::bb11" [label="bb11\nReturn"];
+  }
+  "cfg::supervisor::supervise_current_child::bb0" -> "cfg::supervisor::supervise_current_child::bb1" [label="Goto"];
+  "cfg::supervisor::supervise_current_child::bb5" -> "cfg::supervisor::supervise_current_child::bb7" [label="SwitchInt"];
+  "cfg::supervisor::supervise_current_child::bb5" -> "cfg::supervisor::supervise_current_child::bb8" [label="SwitchInt"];
+  "cfg::supervisor::supervise_current_child::bb5" -> "cfg::supervisor::supervise_current_child::bb6" [label="SwitchInt"];
+  "cfg::supervisor::supervise_current_child::bb7" -> "cfg::supervisor::supervise_current_child::bb1" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::supervisor::supervise_current_child::bb7" -> "cfg::supervisor::supervise_current_child::bb10" [label="SwitchInt"];
+  "cfg::supervisor::supervise_current_child::bb7" -> "cfg::supervisor::supervise_current_child::bb9" [label="SwitchInt"];
+  "cfg::supervisor::supervise_current_child::bb7" -> "cfg::supervisor::supervise_current_child::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::supervisor::supervise_current_child::bb9" -> "cfg::supervisor::supervise_current_child::bb11" [label="Goto"];
+  "cfg::supervisor::supervise_current_child::bb10" -> "cfg::supervisor::supervise_current_child::bb11" [label="Goto"];
+}

@@ -299,6 +299,11 @@ pub fn validate_transition(state: &SystemState, event: &ControlEvent) -> Result<
         | ControlEvent::WakeSignalConsumed { .. }
         | ControlEvent::WakeSignalQueued { .. }
         | ControlEvent::InboundMessageQueued { .. }
+        | ControlEvent::RustPatchVerificationRequested { .. }
+        | ControlEvent::OrchestratorModeSet { .. }
+        | ControlEvent::OrchestratorIdlePulse { .. }
+        | ControlEvent::CheckpointSnapshotSet { .. }
+        | ControlEvent::PlannerBlockerEvidenceSet { .. }
         | ControlEvent::LastPlanTextSet { .. }
         | ControlEvent::LastExecutorDiffSet { .. }
         | ControlEvent::LastSoloPlanTextSet { .. }

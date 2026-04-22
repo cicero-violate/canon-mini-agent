@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4729 {
+    label="set_workspace";
+    "cfg::set_workspace::bb0" [label="bb0\nCall"];
+    "cfg::set_workspace::bb1" [label="bb1\nReturn"];
+  }
+}

@@ -1,0 +1,31 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2038 {
+    label="logging::patch_summary_path";
+    "cfg::logging::patch_summary_path::bb0" [label="bb0\nCall"];
+    "cfg::logging::patch_summary_path::bb1" [label="bb1\nCall"];
+    "cfg::logging::patch_summary_path::bb2" [label="bb2\nGoto"];
+    "cfg::logging::patch_summary_path::bb3" [label="bb3\nCall loop"];
+    "cfg::logging::patch_summary_path::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::logging::patch_summary_path::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::logging::patch_summary_path::bb6" [label="bb6\nCall loop"];
+    "cfg::logging::patch_summary_path::bb7" [label="bb7\nGoto loop"];
+    "cfg::logging::patch_summary_path::bb8" [label="bb8\nCall loop"];
+    "cfg::logging::patch_summary_path::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::logging::patch_summary_path::bb10" [label="bb10\nCall"];
+    "cfg::logging::patch_summary_path::bb11" [label="bb11\nGoto"];
+    "cfg::logging::patch_summary_path::bb12" [label="bb12\nReturn"];
+  }
+  "cfg::logging::patch_summary_path::bb2" -> "cfg::logging::patch_summary_path::bb3" [label="Goto"];
+  "cfg::logging::patch_summary_path::bb4" -> "cfg::logging::patch_summary_path::bb7" [label="SwitchInt"];
+  "cfg::logging::patch_summary_path::bb4" -> "cfg::logging::patch_summary_path::bb6" [label="SwitchInt"];
+  "cfg::logging::patch_summary_path::bb4" -> "cfg::logging::patch_summary_path::bb5" [label="SwitchInt"];
+  "cfg::logging::patch_summary_path::bb7" -> "cfg::logging::patch_summary_path::bb12" [label="Goto"];
+  "cfg::logging::patch_summary_path::bb9" -> "cfg::logging::patch_summary_path::bb10" [label="SwitchInt"];
+  "cfg::logging::patch_summary_path::bb9" -> "cfg::logging::patch_summary_path::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::logging::patch_summary_path::bb9" -> "cfg::logging::patch_summary_path::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::logging::patch_summary_path::bb11" -> "cfg::logging::patch_summary_path::bb12" [label="Goto"];
+}

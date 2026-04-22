@@ -1,0 +1,49 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1076 {
+    label="invalid_action::message_schema_correction";
+    "cfg::invalid_action::message_schema_correction::bb0" [label="bb0\nCall"];
+    "cfg::invalid_action::message_schema_correction::bb1" [label="bb1\nCall"];
+    "cfg::invalid_action::message_schema_correction::bb2" [label="bb2\nCall"];
+    "cfg::invalid_action::message_schema_correction::bb3" [label="bb3\nCall"];
+    "cfg::invalid_action::message_schema_correction::bb4" [label="bb4\nCall"];
+    "cfg::invalid_action::message_schema_correction::bb5" [label="bb5\nCall"];
+    "cfg::invalid_action::message_schema_correction::bb6" [label="bb6\nCall"];
+    "cfg::invalid_action::message_schema_correction::bb7" [label="bb7\nCall"];
+    "cfg::invalid_action::message_schema_correction::bb8" [label="bb8\nCall"];
+    "cfg::invalid_action::message_schema_correction::bb9" [label="bb9\nDrop"];
+    "cfg::invalid_action::message_schema_correction::bb10" [label="bb10\nCall"];
+    "cfg::invalid_action::message_schema_correction::bb11" [label="bb11\nCall"];
+    "cfg::invalid_action::message_schema_correction::bb12" [label="bb12\nCall"];
+    "cfg::invalid_action::message_schema_correction::bb13" [label="bb13\nCall"];
+    "cfg::invalid_action::message_schema_correction::bb14" [label="bb14\nCall"];
+    "cfg::invalid_action::message_schema_correction::bb15" [label="bb15\nDrop"];
+    "cfg::invalid_action::message_schema_correction::bb16" [label="bb16\nCall"];
+    "cfg::invalid_action::message_schema_correction::bb17" [label="bb17\nCall"];
+    "cfg::invalid_action::message_schema_correction::bb18" [label="bb18\nCall"];
+    "cfg::invalid_action::message_schema_correction::bb19" [label="bb19\nDrop"];
+    "cfg::invalid_action::message_schema_correction::bb20" [label="bb20\nDrop"];
+    "cfg::invalid_action::message_schema_correction::bb21" [label="bb21\nReturn"];
+    "cfg::invalid_action::message_schema_correction::bb22" [label="bb22\nDrop cleanup"];
+    "cfg::invalid_action::message_schema_correction::bb23" [label="bb23\nDrop cleanup"];
+    "cfg::invalid_action::message_schema_correction::bb24" [label="bb24\nDrop cleanup"];
+    "cfg::invalid_action::message_schema_correction::bb25" [label="bb25\nDrop cleanup"];
+    "cfg::invalid_action::message_schema_correction::bb26" [label="bb26\nDrop cleanup"];
+    "cfg::invalid_action::message_schema_correction::bb27" [label="bb27\nUnwindResume cleanup"];
+  }
+  "cfg::invalid_action::message_schema_correction::bb9" -> "cfg::invalid_action::message_schema_correction::bb10" [label="Drop"];
+  "cfg::invalid_action::message_schema_correction::bb9" -> "cfg::invalid_action::message_schema_correction::bb25" [label="Drop"];
+  "cfg::invalid_action::message_schema_correction::bb15" -> "cfg::invalid_action::message_schema_correction::bb16" [label="Drop"];
+  "cfg::invalid_action::message_schema_correction::bb15" -> "cfg::invalid_action::message_schema_correction::bb25" [label="Drop"];
+  "cfg::invalid_action::message_schema_correction::bb19" -> "cfg::invalid_action::message_schema_correction::bb20" [label="Drop"];
+  "cfg::invalid_action::message_schema_correction::bb19" -> "cfg::invalid_action::message_schema_correction::bb25" [label="Drop"];
+  "cfg::invalid_action::message_schema_correction::bb20" -> "cfg::invalid_action::message_schema_correction::bb21" [label="Drop"];
+  "cfg::invalid_action::message_schema_correction::bb22" -> "cfg::invalid_action::message_schema_correction::bb25" [label="Drop"];
+  "cfg::invalid_action::message_schema_correction::bb23" -> "cfg::invalid_action::message_schema_correction::bb25" [label="Drop"];
+  "cfg::invalid_action::message_schema_correction::bb24" -> "cfg::invalid_action::message_schema_correction::bb25" [label="Drop"];
+  "cfg::invalid_action::message_schema_correction::bb25" -> "cfg::invalid_action::message_schema_correction::bb26" [label="Drop"];
+  "cfg::invalid_action::message_schema_correction::bb26" -> "cfg::invalid_action::message_schema_correction::bb27" [label="Drop"];
+}

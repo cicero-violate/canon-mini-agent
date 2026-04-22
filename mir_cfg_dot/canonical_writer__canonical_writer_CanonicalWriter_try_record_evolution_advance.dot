@@ -1,0 +1,17 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4622 {
+    label="canonical_writer::CanonicalWriter::try_record_evolution_advance";
+    "cfg::canonical_writer::CanonicalWriter::try_record_evolution_advance::bb0" [label="bb0\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_evolution_advance::bb1" [label="bb1\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_evolution_advance::bb2" [label="bb2\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_evolution_advance::bb3" [label="bb3\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_evolution_advance::bb4" [label="bb4\nReturn"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_evolution_advance::bb5" [label="bb5\nDrop cleanup"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_evolution_advance::bb6" [label="bb6\nUnwindResume cleanup"];
+  }
+  "cfg::canonical_writer::CanonicalWriter::try_record_evolution_advance::bb5" -> "cfg::canonical_writer::CanonicalWriter::try_record_evolution_advance::bb6" [label="Drop"];
+}

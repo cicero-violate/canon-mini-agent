@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1394 {
+    label="lessons::ACTION_LOG_SUBPATH";
+    "cfg::lessons::ACTION_LOG_SUBPATH::bb0" [label="bb0\nReturn"];
+  }
+}

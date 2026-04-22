@@ -1,0 +1,35 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3963 {
+    label="tools::finalize_rename_candidates_output";
+    "cfg::tools::finalize_rename_candidates_output::bb0" [label="bb0\nCall"];
+    "cfg::tools::finalize_rename_candidates_output::bb1" [label="bb1\nCall"];
+    "cfg::tools::finalize_rename_candidates_output::bb2" [label="bb2\nCall"];
+    "cfg::tools::finalize_rename_candidates_output::bb3" [label="bb3\nCall"];
+    "cfg::tools::finalize_rename_candidates_output::bb4" [label="bb4\nSwitchInt"];
+    "cfg::tools::finalize_rename_candidates_output::bb5" [label="bb5\nUnreachable"];
+    "cfg::tools::finalize_rename_candidates_output::bb6" [label="bb6\nCall"];
+    "cfg::tools::finalize_rename_candidates_output::bb7" [label="bb7\nCall"];
+    "cfg::tools::finalize_rename_candidates_output::bb8" [label="bb8\nDrop"];
+    "cfg::tools::finalize_rename_candidates_output::bb9" [label="bb9\nDrop"];
+    "cfg::tools::finalize_rename_candidates_output::bb10" [label="bb10\nReturn"];
+    "cfg::tools::finalize_rename_candidates_output::bb11" [label="bb11\nDrop cleanup"];
+    "cfg::tools::finalize_rename_candidates_output::bb12" [label="bb12\nUnwindResume cleanup loop"];
+    "cfg::tools::finalize_rename_candidates_output::bb13" [label="bb13\nDrop cleanup loop"];
+    "cfg::tools::finalize_rename_candidates_output::bb14" [label="bb14\nSwitchInt cleanup loop"];
+  }
+  "cfg::tools::finalize_rename_candidates_output::bb4" -> "cfg::tools::finalize_rename_candidates_output::bb6" [label="SwitchInt"];
+  "cfg::tools::finalize_rename_candidates_output::bb4" -> "cfg::tools::finalize_rename_candidates_output::bb7" [label="SwitchInt"];
+  "cfg::tools::finalize_rename_candidates_output::bb4" -> "cfg::tools::finalize_rename_candidates_output::bb5" [label="SwitchInt"];
+  "cfg::tools::finalize_rename_candidates_output::bb8" -> "cfg::tools::finalize_rename_candidates_output::bb10" [label="Drop"];
+  "cfg::tools::finalize_rename_candidates_output::bb8" -> "cfg::tools::finalize_rename_candidates_output::bb14" [label="Drop"];
+  "cfg::tools::finalize_rename_candidates_output::bb9" -> "cfg::tools::finalize_rename_candidates_output::bb10" [label="Drop"];
+  "cfg::tools::finalize_rename_candidates_output::bb9" -> "cfg::tools::finalize_rename_candidates_output::bb14" [label="Drop"];
+  "cfg::tools::finalize_rename_candidates_output::bb11" -> "cfg::tools::finalize_rename_candidates_output::bb14" [label="Drop"];
+  "cfg::tools::finalize_rename_candidates_output::bb13" -> "cfg::tools::finalize_rename_candidates_output::bb12" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tools::finalize_rename_candidates_output::bb14" -> "cfg::tools::finalize_rename_candidates_output::bb12" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::finalize_rename_candidates_output::bb14" -> "cfg::tools::finalize_rename_candidates_output::bb13" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

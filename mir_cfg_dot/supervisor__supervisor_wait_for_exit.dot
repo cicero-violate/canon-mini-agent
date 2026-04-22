@@ -1,0 +1,54 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3289 {
+    label="supervisor::wait_for_exit";
+    "cfg::supervisor::wait_for_exit::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::wait_for_exit::bb1" [label="bb1\nCall loop"];
+    "cfg::supervisor::wait_for_exit::bb2" [label="bb2\nSwitchInt loop"];
+    "cfg::supervisor::wait_for_exit::bb3" [label="bb3\nUnreachable loop"];
+    "cfg::supervisor::wait_for_exit::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::supervisor::wait_for_exit::bb5" [label="bb5\nCall loop"];
+    "cfg::supervisor::wait_for_exit::bb6" [label="bb6\nCall loop"];
+    "cfg::supervisor::wait_for_exit::bb7" [label="bb7\nGoto loop"];
+    "cfg::supervisor::wait_for_exit::bb8" [label="bb8\nCall loop"];
+    "cfg::supervisor::wait_for_exit::bb9" [label="bb9\nCall loop"];
+    "cfg::supervisor::wait_for_exit::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::supervisor::wait_for_exit::bb11" [label="bb11\nCall loop"];
+    "cfg::supervisor::wait_for_exit::bb12" [label="bb12\nCall loop"];
+    "cfg::supervisor::wait_for_exit::bb13" [label="bb13\nDrop loop"];
+    "cfg::supervisor::wait_for_exit::bb14" [label="bb14\nCall loop"];
+    "cfg::supervisor::wait_for_exit::bb15" [label="bb15\nDrop loop"];
+    "cfg::supervisor::wait_for_exit::bb16" [label="bb16\nCall loop"];
+    "cfg::supervisor::wait_for_exit::bb17" [label="bb17\nCall loop"];
+    "cfg::supervisor::wait_for_exit::bb18" [label="bb18\nCall"];
+    "cfg::supervisor::wait_for_exit::bb19" [label="bb19\nCall"];
+    "cfg::supervisor::wait_for_exit::bb20" [label="bb20\nCall"];
+    "cfg::supervisor::wait_for_exit::bb21" [label="bb21\nCall"];
+    "cfg::supervisor::wait_for_exit::bb22" [label="bb22\nCall"];
+    "cfg::supervisor::wait_for_exit::bb23" [label="bb23\nDrop"];
+    "cfg::supervisor::wait_for_exit::bb24" [label="bb24\nDrop"];
+    "cfg::supervisor::wait_for_exit::bb25" [label="bb25\nDrop cleanup"];
+    "cfg::supervisor::wait_for_exit::bb26" [label="bb26\nDrop cleanup"];
+    "cfg::supervisor::wait_for_exit::bb27" [label="bb27\nReturn"];
+    "cfg::supervisor::wait_for_exit::bb28" [label="bb28\nUnwindResume cleanup"];
+  }
+  "cfg::supervisor::wait_for_exit::bb2" -> "cfg::supervisor::wait_for_exit::bb4" [label="SwitchInt"];
+  "cfg::supervisor::wait_for_exit::bb2" -> "cfg::supervisor::wait_for_exit::bb5" [label="SwitchInt"];
+  "cfg::supervisor::wait_for_exit::bb2" -> "cfg::supervisor::wait_for_exit::bb3" [label="SwitchInt"];
+  "cfg::supervisor::wait_for_exit::bb4" -> "cfg::supervisor::wait_for_exit::bb6" [label="SwitchInt"];
+  "cfg::supervisor::wait_for_exit::bb4" -> "cfg::supervisor::wait_for_exit::bb7" [label="SwitchInt"];
+  "cfg::supervisor::wait_for_exit::bb4" -> "cfg::supervisor::wait_for_exit::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::supervisor::wait_for_exit::bb7" -> "cfg::supervisor::wait_for_exit::bb27" [label="Goto"];
+  "cfg::supervisor::wait_for_exit::bb10" -> "cfg::supervisor::wait_for_exit::bb16" [label="SwitchInt"];
+  "cfg::supervisor::wait_for_exit::bb10" -> "cfg::supervisor::wait_for_exit::bb11" [label="SwitchInt"];
+  "cfg::supervisor::wait_for_exit::bb13" -> "cfg::supervisor::wait_for_exit::bb14" [label="Drop"];
+  "cfg::supervisor::wait_for_exit::bb15" -> "cfg::supervisor::wait_for_exit::bb27" [label="Drop"];
+  "cfg::supervisor::wait_for_exit::bb23" -> "cfg::supervisor::wait_for_exit::bb24" [label="Drop"];
+  "cfg::supervisor::wait_for_exit::bb23" -> "cfg::supervisor::wait_for_exit::bb26" [label="Drop"];
+  "cfg::supervisor::wait_for_exit::bb24" -> "cfg::supervisor::wait_for_exit::bb27" [label="Drop"];
+  "cfg::supervisor::wait_for_exit::bb25" -> "cfg::supervisor::wait_for_exit::bb26" [label="Drop"];
+  "cfg::supervisor::wait_for_exit::bb26" -> "cfg::supervisor::wait_for_exit::bb28" [label="Drop"];
+}

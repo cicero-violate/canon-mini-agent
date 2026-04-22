@@ -1,0 +1,31 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3956 {
+    label="tools::collect_rename_candidates";
+    "cfg::tools::collect_rename_candidates::bb0" [label="bb0\nCall"];
+    "cfg::tools::collect_rename_candidates::bb1" [label="bb1\nCall"];
+    "cfg::tools::collect_rename_candidates::bb2" [label="bb2\nGoto"];
+    "cfg::tools::collect_rename_candidates::bb3" [label="bb3\nCall loop"];
+    "cfg::tools::collect_rename_candidates::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::tools::collect_rename_candidates::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::tools::collect_rename_candidates::bb6" [label="bb6\nCall loop"];
+    "cfg::tools::collect_rename_candidates::bb7" [label="bb7\nReturn loop"];
+    "cfg::tools::collect_rename_candidates::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::tools::collect_rename_candidates::bb9" [label="bb9\nCall loop"];
+    "cfg::tools::collect_rename_candidates::bb10" [label="bb10\nDrop cleanup loop"];
+    "cfg::tools::collect_rename_candidates::bb11" [label="bb11\nUnwindResume cleanup loop"];
+    "cfg::tools::collect_rename_candidates::bb12" [label="bb12\nGoto loop"];
+  }
+  "cfg::tools::collect_rename_candidates::bb2" -> "cfg::tools::collect_rename_candidates::bb3" [label="Goto"];
+  "cfg::tools::collect_rename_candidates::bb4" -> "cfg::tools::collect_rename_candidates::bb7" [label="SwitchInt"];
+  "cfg::tools::collect_rename_candidates::bb4" -> "cfg::tools::collect_rename_candidates::bb6" [label="SwitchInt"];
+  "cfg::tools::collect_rename_candidates::bb4" -> "cfg::tools::collect_rename_candidates::bb5" [label="SwitchInt"];
+  "cfg::tools::collect_rename_candidates::bb8" -> "cfg::tools::collect_rename_candidates::bb9" [label="SwitchInt"];
+  "cfg::tools::collect_rename_candidates::bb8" -> "cfg::tools::collect_rename_candidates::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::collect_rename_candidates::bb8" -> "cfg::tools::collect_rename_candidates::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::collect_rename_candidates::bb10" -> "cfg::tools::collect_rename_candidates::bb11" [label="Drop"];
+  "cfg::tools::collect_rename_candidates::bb12" -> "cfg::tools::collect_rename_candidates::bb3" [color="crimson", penwidth=2, label="Goto back"];
+}

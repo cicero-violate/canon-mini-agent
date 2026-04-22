@@ -1,0 +1,46 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1510 {
+    label="lessons::prevention_system_lever";
+    "cfg::lessons::prevention_system_lever::bb0" [label="bb0\nCall"];
+    "cfg::lessons::prevention_system_lever::bb1" [label="bb1\nSwitchInt"];
+    "cfg::lessons::prevention_system_lever::bb2" [label="bb2\nCall"];
+    "cfg::lessons::prevention_system_lever::bb3" [label="bb3\nSwitchInt"];
+    "cfg::lessons::prevention_system_lever::bb4" [label="bb4\nCall"];
+    "cfg::lessons::prevention_system_lever::bb5" [label="bb5\nSwitchInt"];
+    "cfg::lessons::prevention_system_lever::bb6" [label="bb6\nGoto"];
+    "cfg::lessons::prevention_system_lever::bb7" [label="bb7\nCall"];
+    "cfg::lessons::prevention_system_lever::bb8" [label="bb8\nSwitchInt"];
+    "cfg::lessons::prevention_system_lever::bb9" [label="bb9\nCall"];
+    "cfg::lessons::prevention_system_lever::bb10" [label="bb10\nSwitchInt"];
+    "cfg::lessons::prevention_system_lever::bb11" [label="bb11\nGoto"];
+    "cfg::lessons::prevention_system_lever::bb12" [label="bb12\nCall"];
+    "cfg::lessons::prevention_system_lever::bb13" [label="bb13\nSwitchInt"];
+    "cfg::lessons::prevention_system_lever::bb14" [label="bb14\nCall"];
+    "cfg::lessons::prevention_system_lever::bb15" [label="bb15\nSwitchInt"];
+    "cfg::lessons::prevention_system_lever::bb16" [label="bb16\nGoto"];
+    "cfg::lessons::prevention_system_lever::bb17" [label="bb17\nGoto"];
+    "cfg::lessons::prevention_system_lever::bb18" [label="bb18\nReturn"];
+  }
+  "cfg::lessons::prevention_system_lever::bb1" -> "cfg::lessons::prevention_system_lever::bb2" [label="SwitchInt"];
+  "cfg::lessons::prevention_system_lever::bb1" -> "cfg::lessons::prevention_system_lever::bb6" [label="SwitchInt"];
+  "cfg::lessons::prevention_system_lever::bb3" -> "cfg::lessons::prevention_system_lever::bb4" [label="SwitchInt"];
+  "cfg::lessons::prevention_system_lever::bb3" -> "cfg::lessons::prevention_system_lever::bb6" [label="SwitchInt"];
+  "cfg::lessons::prevention_system_lever::bb5" -> "cfg::lessons::prevention_system_lever::bb7" [label="SwitchInt"];
+  "cfg::lessons::prevention_system_lever::bb5" -> "cfg::lessons::prevention_system_lever::bb6" [label="SwitchInt"];
+  "cfg::lessons::prevention_system_lever::bb6" -> "cfg::lessons::prevention_system_lever::bb18" [label="Goto"];
+  "cfg::lessons::prevention_system_lever::bb8" -> "cfg::lessons::prevention_system_lever::bb12" [label="SwitchInt"];
+  "cfg::lessons::prevention_system_lever::bb8" -> "cfg::lessons::prevention_system_lever::bb9" [label="SwitchInt"];
+  "cfg::lessons::prevention_system_lever::bb10" -> "cfg::lessons::prevention_system_lever::bb12" [label="SwitchInt"];
+  "cfg::lessons::prevention_system_lever::bb10" -> "cfg::lessons::prevention_system_lever::bb11" [label="SwitchInt"];
+  "cfg::lessons::prevention_system_lever::bb11" -> "cfg::lessons::prevention_system_lever::bb18" [label="Goto"];
+  "cfg::lessons::prevention_system_lever::bb13" -> "cfg::lessons::prevention_system_lever::bb14" [label="SwitchInt"];
+  "cfg::lessons::prevention_system_lever::bb13" -> "cfg::lessons::prevention_system_lever::bb16" [label="SwitchInt"];
+  "cfg::lessons::prevention_system_lever::bb15" -> "cfg::lessons::prevention_system_lever::bb17" [label="SwitchInt"];
+  "cfg::lessons::prevention_system_lever::bb15" -> "cfg::lessons::prevention_system_lever::bb16" [label="SwitchInt"];
+  "cfg::lessons::prevention_system_lever::bb16" -> "cfg::lessons::prevention_system_lever::bb18" [label="Goto"];
+  "cfg::lessons::prevention_system_lever::bb17" -> "cfg::lessons::prevention_system_lever::bb18" [label="Goto"];
+}

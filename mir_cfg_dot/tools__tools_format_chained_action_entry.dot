@@ -1,0 +1,56 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4031 {
+    label="tools::format_chained_action_entry";
+    "cfg::tools::format_chained_action_entry::bb0" [label="bb0\nCall"];
+    "cfg::tools::format_chained_action_entry::bb1" [label="bb1\nCall"];
+    "cfg::tools::format_chained_action_entry::bb2" [label="bb2\nCall"];
+    "cfg::tools::format_chained_action_entry::bb3" [label="bb3\nCall"];
+    "cfg::tools::format_chained_action_entry::bb4" [label="bb4\nCall"];
+    "cfg::tools::format_chained_action_entry::bb5" [label="bb5\nCall"];
+    "cfg::tools::format_chained_action_entry::bb6" [label="bb6\nCall"];
+    "cfg::tools::format_chained_action_entry::bb7" [label="bb7\nSwitchInt"];
+    "cfg::tools::format_chained_action_entry::bb8" [label="bb8\nCall"];
+    "cfg::tools::format_chained_action_entry::bb9" [label="bb9\nCall"];
+    "cfg::tools::format_chained_action_entry::bb10" [label="bb10\nCall"];
+    "cfg::tools::format_chained_action_entry::bb11" [label="bb11\nCall"];
+    "cfg::tools::format_chained_action_entry::bb12" [label="bb12\nCall"];
+    "cfg::tools::format_chained_action_entry::bb13" [label="bb13\nCall"];
+    "cfg::tools::format_chained_action_entry::bb14" [label="bb14\nDrop"];
+    "cfg::tools::format_chained_action_entry::bb15" [label="bb15\nCall"];
+    "cfg::tools::format_chained_action_entry::bb16" [label="bb16\nCall"];
+    "cfg::tools::format_chained_action_entry::bb17" [label="bb17\nCall"];
+    "cfg::tools::format_chained_action_entry::bb18" [label="bb18\nGoto"];
+    "cfg::tools::format_chained_action_entry::bb19" [label="bb19\nCall loop"];
+    "cfg::tools::format_chained_action_entry::bb20" [label="bb20\nSwitchInt loop"];
+    "cfg::tools::format_chained_action_entry::bb21" [label="bb21\nUnreachable loop"];
+    "cfg::tools::format_chained_action_entry::bb22" [label="bb22\nCall loop"];
+    "cfg::tools::format_chained_action_entry::bb23" [label="bb23\nCall loop"];
+    "cfg::tools::format_chained_action_entry::bb24" [label="bb24\nCall loop"];
+    "cfg::tools::format_chained_action_entry::bb25" [label="bb25\nCall loop"];
+    "cfg::tools::format_chained_action_entry::bb26" [label="bb26\nCall loop"];
+    "cfg::tools::format_chained_action_entry::bb27" [label="bb27\nCall loop"];
+    "cfg::tools::format_chained_action_entry::bb28" [label="bb28\nDrop loop"];
+    "cfg::tools::format_chained_action_entry::bb29" [label="bb29\nReturn loop"];
+    "cfg::tools::format_chained_action_entry::bb30" [label="bb30\nDrop cleanup loop"];
+    "cfg::tools::format_chained_action_entry::bb31" [label="bb31\nDrop cleanup loop"];
+    "cfg::tools::format_chained_action_entry::bb32" [label="bb32\nUnwindResume cleanup loop"];
+    "cfg::tools::format_chained_action_entry::bb33" [label="bb33\nGoto loop"];
+  }
+  "cfg::tools::format_chained_action_entry::bb7" -> "cfg::tools::format_chained_action_entry::bb8" [label="SwitchInt"];
+  "cfg::tools::format_chained_action_entry::bb7" -> "cfg::tools::format_chained_action_entry::bb15" [label="SwitchInt"];
+  "cfg::tools::format_chained_action_entry::bb7" -> "cfg::tools::format_chained_action_entry::bb21" [label="SwitchInt"];
+  "cfg::tools::format_chained_action_entry::bb14" -> "cfg::tools::format_chained_action_entry::bb15" [label="Drop"];
+  "cfg::tools::format_chained_action_entry::bb14" -> "cfg::tools::format_chained_action_entry::bb31" [label="Drop"];
+  "cfg::tools::format_chained_action_entry::bb18" -> "cfg::tools::format_chained_action_entry::bb19" [label="Goto"];
+  "cfg::tools::format_chained_action_entry::bb20" -> "cfg::tools::format_chained_action_entry::bb23" [label="SwitchInt"];
+  "cfg::tools::format_chained_action_entry::bb20" -> "cfg::tools::format_chained_action_entry::bb22" [label="SwitchInt"];
+  "cfg::tools::format_chained_action_entry::bb20" -> "cfg::tools::format_chained_action_entry::bb21" [label="SwitchInt"];
+  "cfg::tools::format_chained_action_entry::bb28" -> "cfg::tools::format_chained_action_entry::bb29" [label="Drop"];
+  "cfg::tools::format_chained_action_entry::bb30" -> "cfg::tools::format_chained_action_entry::bb31" [label="Drop"];
+  "cfg::tools::format_chained_action_entry::bb31" -> "cfg::tools::format_chained_action_entry::bb32" [label="Drop"];
+  "cfg::tools::format_chained_action_entry::bb33" -> "cfg::tools::format_chained_action_entry::bb19" [color="crimson", penwidth=2, label="Goto back"];
+}

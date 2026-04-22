@@ -1,0 +1,20 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_958 {
+    label="graph_metrics::issue_id";
+    "cfg::graph_metrics::issue_id::bb0" [label="bb0\nCall"];
+    "cfg::graph_metrics::issue_id::bb1" [label="bb1\nCall"];
+    "cfg::graph_metrics::issue_id::bb2" [label="bb2\nCall"];
+    "cfg::graph_metrics::issue_id::bb3" [label="bb3\nCall"];
+    "cfg::graph_metrics::issue_id::bb4" [label="bb4\nDrop"];
+    "cfg::graph_metrics::issue_id::bb5" [label="bb5\nCall"];
+    "cfg::graph_metrics::issue_id::bb6" [label="bb6\nReturn"];
+    "cfg::graph_metrics::issue_id::bb7" [label="bb7\nDrop cleanup"];
+    "cfg::graph_metrics::issue_id::bb8" [label="bb8\nUnwindResume cleanup"];
+  }
+  "cfg::graph_metrics::issue_id::bb4" -> "cfg::graph_metrics::issue_id::bb5" [label="Drop"];
+  "cfg::graph_metrics::issue_id::bb7" -> "cfg::graph_metrics::issue_id::bb8" [label="Drop"];
+}

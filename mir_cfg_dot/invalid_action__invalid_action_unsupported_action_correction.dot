@@ -1,0 +1,49 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1075 {
+    label="invalid_action::unsupported_action_correction";
+    "cfg::invalid_action::unsupported_action_correction::bb0" [label="bb0\nCall"];
+    "cfg::invalid_action::unsupported_action_correction::bb1" [label="bb1\nCall"];
+    "cfg::invalid_action::unsupported_action_correction::bb2" [label="bb2\nCall"];
+    "cfg::invalid_action::unsupported_action_correction::bb3" [label="bb3\nCall"];
+    "cfg::invalid_action::unsupported_action_correction::bb4" [label="bb4\nCall"];
+    "cfg::invalid_action::unsupported_action_correction::bb5" [label="bb5\nCall"];
+    "cfg::invalid_action::unsupported_action_correction::bb6" [label="bb6\nCall"];
+    "cfg::invalid_action::unsupported_action_correction::bb7" [label="bb7\nDrop"];
+    "cfg::invalid_action::unsupported_action_correction::bb8" [label="bb8\nCall"];
+    "cfg::invalid_action::unsupported_action_correction::bb9" [label="bb9\nCall"];
+    "cfg::invalid_action::unsupported_action_correction::bb10" [label="bb10\nGoto"];
+    "cfg::invalid_action::unsupported_action_correction::bb11" [label="bb11\nCall loop"];
+    "cfg::invalid_action::unsupported_action_correction::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::invalid_action::unsupported_action_correction::bb13" [label="bb13\nUnreachable loop"];
+    "cfg::invalid_action::unsupported_action_correction::bb14" [label="bb14\nCall loop"];
+    "cfg::invalid_action::unsupported_action_correction::bb15" [label="bb15\nDrop loop"];
+    "cfg::invalid_action::unsupported_action_correction::bb16" [label="bb16\nCall loop"];
+    "cfg::invalid_action::unsupported_action_correction::bb17" [label="bb17\nCall loop"];
+    "cfg::invalid_action::unsupported_action_correction::bb18" [label="bb18\nDrop loop"];
+    "cfg::invalid_action::unsupported_action_correction::bb19" [label="bb19\nCall"];
+    "cfg::invalid_action::unsupported_action_correction::bb20" [label="bb20\nReturn"];
+    "cfg::invalid_action::unsupported_action_correction::bb21" [label="bb21\nDrop cleanup"];
+    "cfg::invalid_action::unsupported_action_correction::bb22" [label="bb22\nDrop cleanup"];
+    "cfg::invalid_action::unsupported_action_correction::bb23" [label="bb23\nDrop cleanup"];
+    "cfg::invalid_action::unsupported_action_correction::bb24" [label="bb24\nDrop cleanup"];
+    "cfg::invalid_action::unsupported_action_correction::bb25" [label="bb25\nUnwindResume cleanup"];
+  }
+  "cfg::invalid_action::unsupported_action_correction::bb7" -> "cfg::invalid_action::unsupported_action_correction::bb8" [label="Drop"];
+  "cfg::invalid_action::unsupported_action_correction::bb7" -> "cfg::invalid_action::unsupported_action_correction::bb24" [label="Drop"];
+  "cfg::invalid_action::unsupported_action_correction::bb10" -> "cfg::invalid_action::unsupported_action_correction::bb11" [label="Goto"];
+  "cfg::invalid_action::unsupported_action_correction::bb12" -> "cfg::invalid_action::unsupported_action_correction::bb15" [label="SwitchInt"];
+  "cfg::invalid_action::unsupported_action_correction::bb12" -> "cfg::invalid_action::unsupported_action_correction::bb14" [label="SwitchInt"];
+  "cfg::invalid_action::unsupported_action_correction::bb12" -> "cfg::invalid_action::unsupported_action_correction::bb13" [label="SwitchInt"];
+  "cfg::invalid_action::unsupported_action_correction::bb15" -> "cfg::invalid_action::unsupported_action_correction::bb19" [label="Drop"];
+  "cfg::invalid_action::unsupported_action_correction::bb15" -> "cfg::invalid_action::unsupported_action_correction::bb24" [label="Drop"];
+  "cfg::invalid_action::unsupported_action_correction::bb18" -> "cfg::invalid_action::unsupported_action_correction::bb11" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::invalid_action::unsupported_action_correction::bb18" -> "cfg::invalid_action::unsupported_action_correction::bb22" [label="Drop"];
+  "cfg::invalid_action::unsupported_action_correction::bb21" -> "cfg::invalid_action::unsupported_action_correction::bb22" [label="Drop"];
+  "cfg::invalid_action::unsupported_action_correction::bb22" -> "cfg::invalid_action::unsupported_action_correction::bb24" [label="Drop"];
+  "cfg::invalid_action::unsupported_action_correction::bb23" -> "cfg::invalid_action::unsupported_action_correction::bb24" [label="Drop"];
+  "cfg::invalid_action::unsupported_action_correction::bb24" -> "cfg::invalid_action::unsupported_action_correction::bb25" [label="Drop"];
+}

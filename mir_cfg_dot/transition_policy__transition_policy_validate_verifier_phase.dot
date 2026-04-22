@@ -1,0 +1,19 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4711 {
+    label="transition_policy::validate_verifier_phase";
+    "cfg::transition_policy::validate_verifier_phase::bb0" [label="bb0\nCall"];
+    "cfg::transition_policy::validate_verifier_phase::bb1" [label="bb1\nCall"];
+    "cfg::transition_policy::validate_verifier_phase::bb2" [label="bb2\nSwitchInt"];
+    "cfg::transition_policy::validate_verifier_phase::bb3" [label="bb3\nUnreachable"];
+    "cfg::transition_policy::validate_verifier_phase::bb4" [label="bb4\nCall"];
+    "cfg::transition_policy::validate_verifier_phase::bb5" [label="bb5\nCall"];
+    "cfg::transition_policy::validate_verifier_phase::bb6" [label="bb6\nReturn"];
+  }
+  "cfg::transition_policy::validate_verifier_phase::bb2" -> "cfg::transition_policy::validate_verifier_phase::bb4" [label="SwitchInt"];
+  "cfg::transition_policy::validate_verifier_phase::bb2" -> "cfg::transition_policy::validate_verifier_phase::bb5" [label="SwitchInt"];
+  "cfg::transition_policy::validate_verifier_phase::bb2" -> "cfg::transition_policy::validate_verifier_phase::bb3" [label="SwitchInt"];
+}

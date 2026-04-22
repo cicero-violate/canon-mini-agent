@@ -1,0 +1,15 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_852 {
+    label="evolution::current_evolution_for_tlog";
+    "cfg::evolution::current_evolution_for_tlog::bb0" [label="bb0\nCall"];
+    "cfg::evolution::current_evolution_for_tlog::bb1" [label="bb1\nCall"];
+    "cfg::evolution::current_evolution_for_tlog::bb2" [label="bb2\nCall"];
+    "cfg::evolution::current_evolution_for_tlog::bb3" [label="bb3\nDrop"];
+    "cfg::evolution::current_evolution_for_tlog::bb4" [label="bb4\nReturn"];
+  }
+  "cfg::evolution::current_evolution_for_tlog::bb3" -> "cfg::evolution::current_evolution_for_tlog::bb4" [label="Drop"];
+}

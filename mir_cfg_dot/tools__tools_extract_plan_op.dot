@@ -1,0 +1,28 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4307 {
+    label="tools::extract_plan_op";
+    "cfg::tools::extract_plan_op::bb0" [label="bb0\nCall"];
+    "cfg::tools::extract_plan_op::bb1" [label="bb1\nCall"];
+    "cfg::tools::extract_plan_op::bb2" [label="bb2\nCall"];
+    "cfg::tools::extract_plan_op::bb3" [label="bb3\nCall"];
+    "cfg::tools::extract_plan_op::bb4" [label="bb4\nCall"];
+    "cfg::tools::extract_plan_op::bb5" [label="bb5\nGoto loop"];
+    "cfg::tools::extract_plan_op::bb6" [label="bb6\nGoto loop"];
+    "cfg::tools::extract_plan_op::bb7" [label="bb7\nCall loop"];
+    "cfg::tools::extract_plan_op::bb8" [label="bb8\nGoto loop"];
+    "cfg::tools::extract_plan_op::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::tools::extract_plan_op::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::tools::extract_plan_op::bb11" [label="bb11\nReturn"];
+  }
+  "cfg::tools::extract_plan_op::bb5" -> "cfg::tools::extract_plan_op::bb11" [label="Goto"];
+  "cfg::tools::extract_plan_op::bb6" -> "cfg::tools::extract_plan_op::bb11" [label="Goto"];
+  "cfg::tools::extract_plan_op::bb8" -> "cfg::tools::extract_plan_op::bb11" [label="Goto"];
+  "cfg::tools::extract_plan_op::bb9" -> "cfg::tools::extract_plan_op::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::extract_plan_op::bb9" -> "cfg::tools::extract_plan_op::bb8" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::extract_plan_op::bb10" -> "cfg::tools::extract_plan_op::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::extract_plan_op::bb10" -> "cfg::tools::extract_plan_op::bb6" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

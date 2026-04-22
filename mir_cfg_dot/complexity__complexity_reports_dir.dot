@@ -1,0 +1,25 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_684 {
+    label="complexity::reports_dir";
+    "cfg::complexity::reports_dir::bb0" [label="bb0\nCall"];
+    "cfg::complexity::reports_dir::bb1" [label="bb1\nCall"];
+    "cfg::complexity::reports_dir::bb2" [label="bb2\nCall"];
+    "cfg::complexity::reports_dir::bb3" [label="bb3\nCall"];
+    "cfg::complexity::reports_dir::bb4" [label="bb4\nCall"];
+    "cfg::complexity::reports_dir::bb5" [label="bb5\nDrop"];
+    "cfg::complexity::reports_dir::bb6" [label="bb6\nDrop"];
+    "cfg::complexity::reports_dir::bb7" [label="bb7\nReturn"];
+    "cfg::complexity::reports_dir::bb8" [label="bb8\nDrop cleanup"];
+    "cfg::complexity::reports_dir::bb9" [label="bb9\nDrop cleanup"];
+    "cfg::complexity::reports_dir::bb10" [label="bb10\nUnwindResume cleanup"];
+  }
+  "cfg::complexity::reports_dir::bb5" -> "cfg::complexity::reports_dir::bb6" [label="Drop"];
+  "cfg::complexity::reports_dir::bb5" -> "cfg::complexity::reports_dir::bb9" [label="Drop"];
+  "cfg::complexity::reports_dir::bb6" -> "cfg::complexity::reports_dir::bb7" [label="Drop"];
+  "cfg::complexity::reports_dir::bb8" -> "cfg::complexity::reports_dir::bb9" [label="Drop"];
+  "cfg::complexity::reports_dir::bb9" -> "cfg::complexity::reports_dir::bb10" [label="Drop"];
+}

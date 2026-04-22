@@ -1,0 +1,43 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1342 {
+    label="issues::load_issues_file";
+    "cfg::issues::load_issues_file::bb0" [label="bb0\nCall"];
+    "cfg::issues::load_issues_file::bb1" [label="bb1\nSwitchInt"];
+    "cfg::issues::load_issues_file::bb2" [label="bb2\nGoto"];
+    "cfg::issues::load_issues_file::bb3" [label="bb3\nCall"];
+    "cfg::issues::load_issues_file::bb4" [label="bb4\nCall"];
+    "cfg::issues::load_issues_file::bb5" [label="bb5\nCall"];
+    "cfg::issues::load_issues_file::bb6" [label="bb6\nCall"];
+    "cfg::issues::load_issues_file::bb7" [label="bb7\nCall"];
+    "cfg::issues::load_issues_file::bb8" [label="bb8\nSwitchInt"];
+    "cfg::issues::load_issues_file::bb9" [label="bb9\nDrop"];
+    "cfg::issues::load_issues_file::bb10" [label="bb10\nCall"];
+    "cfg::issues::load_issues_file::bb11" [label="bb11\nDrop"];
+    "cfg::issues::load_issues_file::bb12" [label="bb12\nDrop"];
+    "cfg::issues::load_issues_file::bb13" [label="bb13\nDrop"];
+    "cfg::issues::load_issues_file::bb14" [label="bb14\nReturn"];
+    "cfg::issues::load_issues_file::bb15" [label="bb15\nDrop cleanup"];
+    "cfg::issues::load_issues_file::bb16" [label="bb16\nDrop cleanup"];
+    "cfg::issues::load_issues_file::bb17" [label="bb17\nUnwindResume cleanup"];
+    "cfg::issues::load_issues_file::bb18" [label="bb18\nUnreachable"];
+  }
+  "cfg::issues::load_issues_file::bb1" -> "cfg::issues::load_issues_file::bb2" [label="SwitchInt"];
+  "cfg::issues::load_issues_file::bb1" -> "cfg::issues::load_issues_file::bb3" [label="SwitchInt"];
+  "cfg::issues::load_issues_file::bb1" -> "cfg::issues::load_issues_file::bb18" [label="SwitchInt"];
+  "cfg::issues::load_issues_file::bb2" -> "cfg::issues::load_issues_file::bb14" [label="Goto"];
+  "cfg::issues::load_issues_file::bb8" -> "cfg::issues::load_issues_file::bb9" [label="SwitchInt"];
+  "cfg::issues::load_issues_file::bb8" -> "cfg::issues::load_issues_file::bb10" [label="SwitchInt"];
+  "cfg::issues::load_issues_file::bb8" -> "cfg::issues::load_issues_file::bb18" [label="SwitchInt"];
+  "cfg::issues::load_issues_file::bb9" -> "cfg::issues::load_issues_file::bb13" [label="Drop"];
+  "cfg::issues::load_issues_file::bb9" -> "cfg::issues::load_issues_file::bb16" [label="Drop"];
+  "cfg::issues::load_issues_file::bb11" -> "cfg::issues::load_issues_file::bb12" [label="Drop"];
+  "cfg::issues::load_issues_file::bb11" -> "cfg::issues::load_issues_file::bb16" [label="Drop"];
+  "cfg::issues::load_issues_file::bb12" -> "cfg::issues::load_issues_file::bb14" [label="Drop"];
+  "cfg::issues::load_issues_file::bb13" -> "cfg::issues::load_issues_file::bb14" [label="Drop"];
+  "cfg::issues::load_issues_file::bb15" -> "cfg::issues::load_issues_file::bb16" [label="Drop"];
+  "cfg::issues::load_issues_file::bb16" -> "cfg::issues::load_issues_file::bb17" [label="Drop"];
+}

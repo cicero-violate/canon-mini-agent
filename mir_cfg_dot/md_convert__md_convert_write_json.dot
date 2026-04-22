@@ -1,0 +1,46 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2198 {
+    label="md_convert::write_json";
+    "cfg::md_convert::write_json::bb0" [label="bb0\nCall"];
+    "cfg::md_convert::write_json::bb1" [label="bb1\nCall"];
+    "cfg::md_convert::write_json::bb2" [label="bb2\nSwitchInt"];
+    "cfg::md_convert::write_json::bb3" [label="bb3\nCall"];
+    "cfg::md_convert::write_json::bb4" [label="bb4\nDrop"];
+    "cfg::md_convert::write_json::bb5" [label="bb5\nCall"];
+    "cfg::md_convert::write_json::bb6" [label="bb6\nCall"];
+    "cfg::md_convert::write_json::bb7" [label="bb7\nSwitchInt"];
+    "cfg::md_convert::write_json::bb8" [label="bb8\nUnreachable loop"];
+    "cfg::md_convert::write_json::bb9" [label="bb9\nCall loop"];
+    "cfg::md_convert::write_json::bb10" [label="bb10\nCall loop"];
+    "cfg::md_convert::write_json::bb11" [label="bb11\nCall loop"];
+    "cfg::md_convert::write_json::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::md_convert::write_json::bb13" [label="bb13\nGoto"];
+    "cfg::md_convert::write_json::bb14" [label="bb14\nCall"];
+    "cfg::md_convert::write_json::bb15" [label="bb15\nGoto loop"];
+    "cfg::md_convert::write_json::bb16" [label="bb16\nReturn loop"];
+    "cfg::md_convert::write_json::bb17" [label="bb17\nUnwindResume cleanup loop"];
+    "cfg::md_convert::write_json::bb18" [label="bb18\nDrop cleanup loop"];
+    "cfg::md_convert::write_json::bb19" [label="bb19\nSwitchInt cleanup loop"];
+    "cfg::md_convert::write_json::bb20" [label="bb20\nGoto loop"];
+  }
+  "cfg::md_convert::write_json::bb2" -> "cfg::md_convert::write_json::bb3" [label="SwitchInt"];
+  "cfg::md_convert::write_json::bb2" -> "cfg::md_convert::write_json::bb5" [label="SwitchInt"];
+  "cfg::md_convert::write_json::bb2" -> "cfg::md_convert::write_json::bb8" [label="SwitchInt"];
+  "cfg::md_convert::write_json::bb4" -> "cfg::md_convert::write_json::bb5" [label="Drop"];
+  "cfg::md_convert::write_json::bb7" -> "cfg::md_convert::write_json::bb9" [label="SwitchInt"];
+  "cfg::md_convert::write_json::bb7" -> "cfg::md_convert::write_json::bb10" [label="SwitchInt"];
+  "cfg::md_convert::write_json::bb7" -> "cfg::md_convert::write_json::bb8" [label="SwitchInt"];
+  "cfg::md_convert::write_json::bb12" -> "cfg::md_convert::write_json::bb13" [label="SwitchInt"];
+  "cfg::md_convert::write_json::bb12" -> "cfg::md_convert::write_json::bb14" [label="SwitchInt"];
+  "cfg::md_convert::write_json::bb12" -> "cfg::md_convert::write_json::bb8" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::md_convert::write_json::bb13" -> "cfg::md_convert::write_json::bb16" [label="Goto"];
+  "cfg::md_convert::write_json::bb15" -> "cfg::md_convert::write_json::bb16" [label="Goto"];
+  "cfg::md_convert::write_json::bb18" -> "cfg::md_convert::write_json::bb17" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::md_convert::write_json::bb19" -> "cfg::md_convert::write_json::bb17" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::md_convert::write_json::bb19" -> "cfg::md_convert::write_json::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::md_convert::write_json::bb20" -> "cfg::md_convert::write_json::bb15" [color="crimson", penwidth=2, label="Goto back"];
+}

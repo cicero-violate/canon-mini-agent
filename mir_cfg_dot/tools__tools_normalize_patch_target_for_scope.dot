@@ -1,0 +1,35 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3838 {
+    label="tools::normalize_patch_target_for_scope";
+    "cfg::tools::normalize_patch_target_for_scope::bb0" [label="bb0\nCall"];
+    "cfg::tools::normalize_patch_target_for_scope::bb1" [label="bb1\nCall"];
+    "cfg::tools::normalize_patch_target_for_scope::bb2" [label="bb2\nCall"];
+    "cfg::tools::normalize_patch_target_for_scope::bb3" [label="bb3\nSwitchInt"];
+    "cfg::tools::normalize_patch_target_for_scope::bb4" [label="bb4\nCall"];
+    "cfg::tools::normalize_patch_target_for_scope::bb5" [label="bb5\nCall"];
+    "cfg::tools::normalize_patch_target_for_scope::bb6" [label="bb6\nCall"];
+    "cfg::tools::normalize_patch_target_for_scope::bb7" [label="bb7\nSwitchInt"];
+    "cfg::tools::normalize_patch_target_for_scope::bb8" [label="bb8\nCall"];
+    "cfg::tools::normalize_patch_target_for_scope::bb9" [label="bb9\nCall"];
+    "cfg::tools::normalize_patch_target_for_scope::bb10" [label="bb10\nCall"];
+    "cfg::tools::normalize_patch_target_for_scope::bb11" [label="bb11\nDrop"];
+    "cfg::tools::normalize_patch_target_for_scope::bb12" [label="bb12\nCall"];
+    "cfg::tools::normalize_patch_target_for_scope::bb13" [label="bb13\nCall"];
+    "cfg::tools::normalize_patch_target_for_scope::bb14" [label="bb14\nCall"];
+    "cfg::tools::normalize_patch_target_for_scope::bb15" [label="bb15\nReturn"];
+    "cfg::tools::normalize_patch_target_for_scope::bb16" [label="bb16\nDrop cleanup"];
+    "cfg::tools::normalize_patch_target_for_scope::bb17" [label="bb17\nUnwindResume cleanup"];
+    "cfg::tools::normalize_patch_target_for_scope::bb18" [label="bb18\nUnreachable"];
+  }
+  "cfg::tools::normalize_patch_target_for_scope::bb3" -> "cfg::tools::normalize_patch_target_for_scope::bb12" [label="SwitchInt"];
+  "cfg::tools::normalize_patch_target_for_scope::bb3" -> "cfg::tools::normalize_patch_target_for_scope::bb4" [label="SwitchInt"];
+  "cfg::tools::normalize_patch_target_for_scope::bb7" -> "cfg::tools::normalize_patch_target_for_scope::bb8" [label="SwitchInt"];
+  "cfg::tools::normalize_patch_target_for_scope::bb7" -> "cfg::tools::normalize_patch_target_for_scope::bb12" [label="SwitchInt"];
+  "cfg::tools::normalize_patch_target_for_scope::bb7" -> "cfg::tools::normalize_patch_target_for_scope::bb18" [label="SwitchInt"];
+  "cfg::tools::normalize_patch_target_for_scope::bb11" -> "cfg::tools::normalize_patch_target_for_scope::bb15" [label="Drop"];
+  "cfg::tools::normalize_patch_target_for_scope::bb16" -> "cfg::tools::normalize_patch_target_for_scope::bb17" [label="Drop"];
+}

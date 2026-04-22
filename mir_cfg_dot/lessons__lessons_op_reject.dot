@@ -1,0 +1,50 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1412 {
+    label="lessons::op_reject";
+    "cfg::lessons::op_reject::bb0" [label="bb0\nCall"];
+    "cfg::lessons::op_reject::bb1" [label="bb1\nCall"];
+    "cfg::lessons::op_reject::bb2" [label="bb2\nCall"];
+    "cfg::lessons::op_reject::bb3" [label="bb3\nCall"];
+    "cfg::lessons::op_reject::bb4" [label="bb4\nSwitchInt"];
+    "cfg::lessons::op_reject::bb5" [label="bb5\nUnreachable loop"];
+    "cfg::lessons::op_reject::bb6" [label="bb6\nCall loop"];
+    "cfg::lessons::op_reject::bb7" [label="bb7\nCall loop"];
+    "cfg::lessons::op_reject::bb8" [label="bb8\nCall loop"];
+    "cfg::lessons::op_reject::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::lessons::op_reject::bb10" [label="bb10\nCall loop"];
+    "cfg::lessons::op_reject::bb11" [label="bb11\nCall loop"];
+    "cfg::lessons::op_reject::bb12" [label="bb12\nCall loop"];
+    "cfg::lessons::op_reject::bb13" [label="bb13\nGoto loop"];
+    "cfg::lessons::op_reject::bb14" [label="bb14\nCall loop"];
+    "cfg::lessons::op_reject::bb15" [label="bb15\nCall loop"];
+    "cfg::lessons::op_reject::bb16" [label="bb16\nSwitchInt loop"];
+    "cfg::lessons::op_reject::bb17" [label="bb17\nCall"];
+    "cfg::lessons::op_reject::bb18" [label="bb18\nCall"];
+    "cfg::lessons::op_reject::bb19" [label="bb19\nCall"];
+    "cfg::lessons::op_reject::bb20" [label="bb20\nCall"];
+    "cfg::lessons::op_reject::bb21" [label="bb21\nCall"];
+    "cfg::lessons::op_reject::bb22" [label="bb22\nDrop"];
+    "cfg::lessons::op_reject::bb23" [label="bb23\nDrop loop"];
+    "cfg::lessons::op_reject::bb24" [label="bb24\nReturn loop"];
+    "cfg::lessons::op_reject::bb25" [label="bb25\nDrop cleanup loop"];
+    "cfg::lessons::op_reject::bb26" [label="bb26\nUnwindResume cleanup loop"];
+    "cfg::lessons::op_reject::bb27" [label="bb27\nGoto loop"];
+  }
+  "cfg::lessons::op_reject::bb4" -> "cfg::lessons::op_reject::bb6" [label="SwitchInt"];
+  "cfg::lessons::op_reject::bb4" -> "cfg::lessons::op_reject::bb7" [label="SwitchInt"];
+  "cfg::lessons::op_reject::bb4" -> "cfg::lessons::op_reject::bb5" [label="SwitchInt"];
+  "cfg::lessons::op_reject::bb9" -> "cfg::lessons::op_reject::bb10" [label="SwitchInt"];
+  "cfg::lessons::op_reject::bb9" -> "cfg::lessons::op_reject::bb14" [label="SwitchInt"];
+  "cfg::lessons::op_reject::bb13" -> "cfg::lessons::op_reject::bb23" [label="Goto"];
+  "cfg::lessons::op_reject::bb16" -> "cfg::lessons::op_reject::bb17" [label="SwitchInt"];
+  "cfg::lessons::op_reject::bb16" -> "cfg::lessons::op_reject::bb18" [label="SwitchInt"];
+  "cfg::lessons::op_reject::bb16" -> "cfg::lessons::op_reject::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::lessons::op_reject::bb22" -> "cfg::lessons::op_reject::bb24" [label="Drop"];
+  "cfg::lessons::op_reject::bb23" -> "cfg::lessons::op_reject::bb24" [label="Drop"];
+  "cfg::lessons::op_reject::bb25" -> "cfg::lessons::op_reject::bb26" [label="Drop"];
+  "cfg::lessons::op_reject::bb27" -> "cfg::lessons::op_reject::bb23" [color="crimson", penwidth=2, label="Goto back"];
+}

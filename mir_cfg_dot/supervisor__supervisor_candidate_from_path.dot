@@ -1,0 +1,38 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3276 {
+    label="supervisor::candidate_from_path";
+    "cfg::supervisor::candidate_from_path::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::candidate_from_path::bb1" [label="bb1\nCall"];
+    "cfg::supervisor::candidate_from_path::bb2" [label="bb2\nCall"];
+    "cfg::supervisor::candidate_from_path::bb3" [label="bb3\nSwitchInt"];
+    "cfg::supervisor::candidate_from_path::bb4" [label="bb4\nUnreachable loop"];
+    "cfg::supervisor::candidate_from_path::bb5" [label="bb5\nCall loop"];
+    "cfg::supervisor::candidate_from_path::bb6" [label="bb6\nCall loop"];
+    "cfg::supervisor::candidate_from_path::bb7" [label="bb7\nCall loop"];
+    "cfg::supervisor::candidate_from_path::bb8" [label="bb8\nCall loop"];
+    "cfg::supervisor::candidate_from_path::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::supervisor::candidate_from_path::bb10" [label="bb10\nGoto"];
+    "cfg::supervisor::candidate_from_path::bb11" [label="bb11\nCall"];
+    "cfg::supervisor::candidate_from_path::bb12" [label="bb12\nDrop loop"];
+    "cfg::supervisor::candidate_from_path::bb13" [label="bb13\nReturn loop"];
+    "cfg::supervisor::candidate_from_path::bb14" [label="bb14\nDrop cleanup loop"];
+    "cfg::supervisor::candidate_from_path::bb15" [label="bb15\nUnwindResume cleanup loop"];
+    "cfg::supervisor::candidate_from_path::bb16" [label="bb16\nGoto loop"];
+    "cfg::supervisor::candidate_from_path::bb17" [label="bb17\nGoto loop"];
+  }
+  "cfg::supervisor::candidate_from_path::bb3" -> "cfg::supervisor::candidate_from_path::bb5" [label="SwitchInt"];
+  "cfg::supervisor::candidate_from_path::bb3" -> "cfg::supervisor::candidate_from_path::bb6" [label="SwitchInt"];
+  "cfg::supervisor::candidate_from_path::bb3" -> "cfg::supervisor::candidate_from_path::bb4" [label="SwitchInt"];
+  "cfg::supervisor::candidate_from_path::bb9" -> "cfg::supervisor::candidate_from_path::bb10" [label="SwitchInt"];
+  "cfg::supervisor::candidate_from_path::bb9" -> "cfg::supervisor::candidate_from_path::bb11" [label="SwitchInt"];
+  "cfg::supervisor::candidate_from_path::bb9" -> "cfg::supervisor::candidate_from_path::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::supervisor::candidate_from_path::bb10" -> "cfg::supervisor::candidate_from_path::bb13" [label="Goto"];
+  "cfg::supervisor::candidate_from_path::bb12" -> "cfg::supervisor::candidate_from_path::bb13" [label="Drop"];
+  "cfg::supervisor::candidate_from_path::bb14" -> "cfg::supervisor::candidate_from_path::bb15" [label="Drop"];
+  "cfg::supervisor::candidate_from_path::bb16" -> "cfg::supervisor::candidate_from_path::bb12" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::supervisor::candidate_from_path::bb17" -> "cfg::supervisor::candidate_from_path::bb12" [color="crimson", penwidth=2, label="Goto back"];
+}

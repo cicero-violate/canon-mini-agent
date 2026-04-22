@@ -1,0 +1,25 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3345 {
+    label="supervisor::should_restart_for_pending_update";
+    "cfg::supervisor::should_restart_for_pending_update::bb0" [label="bb0\nSwitchInt"];
+    "cfg::supervisor::should_restart_for_pending_update::bb1" [label="bb1\nGoto"];
+    "cfg::supervisor::should_restart_for_pending_update::bb2" [label="bb2\nCall"];
+    "cfg::supervisor::should_restart_for_pending_update::bb3" [label="bb3\nCall"];
+    "cfg::supervisor::should_restart_for_pending_update::bb4" [label="bb4\nSwitchInt"];
+    "cfg::supervisor::should_restart_for_pending_update::bb5" [label="bb5\nUnreachable"];
+    "cfg::supervisor::should_restart_for_pending_update::bb6" [label="bb6\nCall"];
+    "cfg::supervisor::should_restart_for_pending_update::bb7" [label="bb7\nCall"];
+    "cfg::supervisor::should_restart_for_pending_update::bb8" [label="bb8\nCall"];
+    "cfg::supervisor::should_restart_for_pending_update::bb9" [label="bb9\nReturn"];
+  }
+  "cfg::supervisor::should_restart_for_pending_update::bb0" -> "cfg::supervisor::should_restart_for_pending_update::bb2" [label="SwitchInt"];
+  "cfg::supervisor::should_restart_for_pending_update::bb0" -> "cfg::supervisor::should_restart_for_pending_update::bb1" [label="SwitchInt"];
+  "cfg::supervisor::should_restart_for_pending_update::bb1" -> "cfg::supervisor::should_restart_for_pending_update::bb9" [label="Goto"];
+  "cfg::supervisor::should_restart_for_pending_update::bb4" -> "cfg::supervisor::should_restart_for_pending_update::bb6" [label="SwitchInt"];
+  "cfg::supervisor::should_restart_for_pending_update::bb4" -> "cfg::supervisor::should_restart_for_pending_update::bb7" [label="SwitchInt"];
+  "cfg::supervisor::should_restart_for_pending_update::bb4" -> "cfg::supervisor::should_restart_for_pending_update::bb5" [label="SwitchInt"];
+}

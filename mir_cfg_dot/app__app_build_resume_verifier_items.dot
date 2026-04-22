@@ -1,0 +1,36 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_255 {
+    label="app::build_resume_verifier_items";
+    "cfg::app::build_resume_verifier_items::bb0" [label="bb0\nCall"];
+    "cfg::app::build_resume_verifier_items::bb1" [label="bb1\nCall"];
+    "cfg::app::build_resume_verifier_items::bb2" [label="bb2\nCall"];
+    "cfg::app::build_resume_verifier_items::bb3" [label="bb3\nGoto"];
+    "cfg::app::build_resume_verifier_items::bb4" [label="bb4\nCall loop"];
+    "cfg::app::build_resume_verifier_items::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::app::build_resume_verifier_items::bb6" [label="bb6\nUnreachable loop"];
+    "cfg::app::build_resume_verifier_items::bb7" [label="bb7\nCall loop"];
+    "cfg::app::build_resume_verifier_items::bb8" [label="bb8\nReturn loop"];
+    "cfg::app::build_resume_verifier_items::bb9" [label="bb9\nCall loop"];
+    "cfg::app::build_resume_verifier_items::bb10" [label="bb10\nCall loop"];
+    "cfg::app::build_resume_verifier_items::bb11" [label="bb11\nCall loop"];
+    "cfg::app::build_resume_verifier_items::bb12" [label="bb12\nCall loop"];
+    "cfg::app::build_resume_verifier_items::bb13" [label="bb13\nCall loop"];
+    "cfg::app::build_resume_verifier_items::bb14" [label="bb14\nDrop cleanup loop"];
+    "cfg::app::build_resume_verifier_items::bb15" [label="bb15\nDrop cleanup loop"];
+    "cfg::app::build_resume_verifier_items::bb16" [label="bb16\nDrop cleanup loop"];
+    "cfg::app::build_resume_verifier_items::bb17" [label="bb17\nUnwindResume cleanup loop"];
+    "cfg::app::build_resume_verifier_items::bb18" [label="bb18\nGoto loop"];
+  }
+  "cfg::app::build_resume_verifier_items::bb3" -> "cfg::app::build_resume_verifier_items::bb4" [label="Goto"];
+  "cfg::app::build_resume_verifier_items::bb5" -> "cfg::app::build_resume_verifier_items::bb8" [label="SwitchInt"];
+  "cfg::app::build_resume_verifier_items::bb5" -> "cfg::app::build_resume_verifier_items::bb7" [label="SwitchInt"];
+  "cfg::app::build_resume_verifier_items::bb5" -> "cfg::app::build_resume_verifier_items::bb6" [label="SwitchInt"];
+  "cfg::app::build_resume_verifier_items::bb14" -> "cfg::app::build_resume_verifier_items::bb15" [label="Drop"];
+  "cfg::app::build_resume_verifier_items::bb15" -> "cfg::app::build_resume_verifier_items::bb16" [label="Drop"];
+  "cfg::app::build_resume_verifier_items::bb16" -> "cfg::app::build_resume_verifier_items::bb17" [label="Drop"];
+  "cfg::app::build_resume_verifier_items::bb18" -> "cfg::app::build_resume_verifier_items::bb4" [color="crimson", penwidth=2, label="Goto back"];
+}

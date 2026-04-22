@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1934 {
+    label="llm_runtime::tab_management::tab_manager_set_tab_id";
+    "cfg::llm_runtime::tab_management::tab_manager_set_tab_id::bb0" [label="bb0\nReturn"];
+  }
+}

@@ -1,0 +1,50 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1628 {
+    label="llm_runtime::chromium_backend::classify_transport_signal";
+    "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb0" [label="bb0\nCall"];
+    "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb1" [label="bb1\nSwitchInt"];
+    "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb2" [label="bb2\nGoto"];
+    "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb3" [label="bb3\nCall"];
+    "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb4" [label="bb4\nSwitchInt"];
+    "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb5" [label="bb5\nGoto"];
+    "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb6" [label="bb6\nCall"];
+    "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb7" [label="bb7\nSwitchInt"];
+    "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb8" [label="bb8\nGoto"];
+    "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb9" [label="bb9\nCall"];
+    "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb10" [label="bb10\nSwitchInt"];
+    "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb11" [label="bb11\nCall"];
+    "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb12" [label="bb12\nSwitchInt"];
+    "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb13" [label="bb13\nGoto"];
+    "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb14" [label="bb14\nCall"];
+    "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb15" [label="bb15\nSwitchInt"];
+    "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb16" [label="bb16\nCall"];
+    "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb17" [label="bb17\nSwitchInt"];
+    "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb18" [label="bb18\nGoto"];
+    "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb19" [label="bb19\nGoto"];
+    "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb20" [label="bb20\nReturn"];
+  }
+  "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb1" -> "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb3" [label="SwitchInt"];
+  "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb1" -> "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb2" [label="SwitchInt"];
+  "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb2" -> "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb20" [label="Goto"];
+  "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb4" -> "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb6" [label="SwitchInt"];
+  "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb4" -> "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb5" [label="SwitchInt"];
+  "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb5" -> "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb20" [label="Goto"];
+  "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb7" -> "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb9" [label="SwitchInt"];
+  "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb7" -> "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb8" [label="SwitchInt"];
+  "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb8" -> "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb20" [label="Goto"];
+  "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb10" -> "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb14" [label="SwitchInt"];
+  "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb10" -> "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb11" [label="SwitchInt"];
+  "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb12" -> "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb14" [label="SwitchInt"];
+  "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb12" -> "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb13" [label="SwitchInt"];
+  "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb13" -> "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb20" [label="Goto"];
+  "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb15" -> "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb19" [label="SwitchInt"];
+  "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb15" -> "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb16" [label="SwitchInt"];
+  "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb17" -> "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb19" [label="SwitchInt"];
+  "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb17" -> "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb18" [label="SwitchInt"];
+  "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb18" -> "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb20" [label="Goto"];
+  "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb19" -> "cfg::llm_runtime::chromium_backend::classify_transport_signal::bb20" [label="Goto"];
+}

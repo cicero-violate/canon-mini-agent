@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_263 {
+    label="app::read_executor_progress_signals::SIGNAL_LOOKBACK_RECORDS";
+    "cfg::app::read_executor_progress_signals::SIGNAL_LOOKBACK_RECORDS::bb0" [label="bb0\nReturn"];
+  }
+}

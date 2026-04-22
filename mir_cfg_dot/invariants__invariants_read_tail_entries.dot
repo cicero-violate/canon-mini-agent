@@ -1,0 +1,56 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1315 {
+    label="invariants::read_tail_entries";
+    "cfg::invariants::read_tail_entries::bb0" [label="bb0\nCall"];
+    "cfg::invariants::read_tail_entries::bb1" [label="bb1\nSwitchInt"];
+    "cfg::invariants::read_tail_entries::bb2" [label="bb2\nUnreachable"];
+    "cfg::invariants::read_tail_entries::bb3" [label="bb3\nCall"];
+    "cfg::invariants::read_tail_entries::bb4" [label="bb4\nCall"];
+    "cfg::invariants::read_tail_entries::bb5" [label="bb5\nCall"];
+    "cfg::invariants::read_tail_entries::bb6" [label="bb6\nCall"];
+    "cfg::invariants::read_tail_entries::bb7" [label="bb7\nCall"];
+    "cfg::invariants::read_tail_entries::bb8" [label="bb8\nCall"];
+    "cfg::invariants::read_tail_entries::bb9" [label="bb9\nSwitchInt"];
+    "cfg::invariants::read_tail_entries::bb10" [label="bb10\nCall"];
+    "cfg::invariants::read_tail_entries::bb11" [label="bb11\nAssert"];
+    "cfg::invariants::read_tail_entries::bb12" [label="bb12\nCall"];
+    "cfg::invariants::read_tail_entries::bb13" [label="bb13\nDrop"];
+    "cfg::invariants::read_tail_entries::bb14" [label="bb14\nGoto"];
+    "cfg::invariants::read_tail_entries::bb15" [label="bb15\nGoto cleanup"];
+    "cfg::invariants::read_tail_entries::bb16" [label="bb16\nCall"];
+    "cfg::invariants::read_tail_entries::bb17" [label="bb17\nCall"];
+    "cfg::invariants::read_tail_entries::bb18" [label="bb18\nCall"];
+    "cfg::invariants::read_tail_entries::bb19" [label="bb19\nCall"];
+    "cfg::invariants::read_tail_entries::bb20" [label="bb20\nDrop"];
+    "cfg::invariants::read_tail_entries::bb21" [label="bb21\nGoto"];
+    "cfg::invariants::read_tail_entries::bb22" [label="bb22\nReturn loop"];
+    "cfg::invariants::read_tail_entries::bb23" [label="bb23\nDrop cleanup loop"];
+    "cfg::invariants::read_tail_entries::bb24" [label="bb24\nUnwindResume cleanup loop"];
+    "cfg::invariants::read_tail_entries::bb25" [label="bb25\nGoto loop"];
+    "cfg::invariants::read_tail_entries::bb26" [label="bb26\nDrop cleanup loop"];
+    "cfg::invariants::read_tail_entries::bb27" [label="bb27\nSwitchInt cleanup loop"];
+  }
+  "cfg::invariants::read_tail_entries::bb1" -> "cfg::invariants::read_tail_entries::bb3" [label="SwitchInt"];
+  "cfg::invariants::read_tail_entries::bb1" -> "cfg::invariants::read_tail_entries::bb4" [label="SwitchInt"];
+  "cfg::invariants::read_tail_entries::bb1" -> "cfg::invariants::read_tail_entries::bb2" [label="SwitchInt"];
+  "cfg::invariants::read_tail_entries::bb9" -> "cfg::invariants::read_tail_entries::bb16" [label="SwitchInt"];
+  "cfg::invariants::read_tail_entries::bb9" -> "cfg::invariants::read_tail_entries::bb10" [label="SwitchInt"];
+  "cfg::invariants::read_tail_entries::bb11" -> "cfg::invariants::read_tail_entries::bb12" [label="Assert"];
+  "cfg::invariants::read_tail_entries::bb11" -> "cfg::invariants::read_tail_entries::bb23" [label="Assert"];
+  "cfg::invariants::read_tail_entries::bb13" -> "cfg::invariants::read_tail_entries::bb14" [label="Drop"];
+  "cfg::invariants::read_tail_entries::bb13" -> "cfg::invariants::read_tail_entries::bb15" [label="Drop"];
+  "cfg::invariants::read_tail_entries::bb14" -> "cfg::invariants::read_tail_entries::bb16" [label="Goto"];
+  "cfg::invariants::read_tail_entries::bb15" -> "cfg::invariants::read_tail_entries::bb23" [label="Goto"];
+  "cfg::invariants::read_tail_entries::bb20" -> "cfg::invariants::read_tail_entries::bb21" [label="Drop"];
+  "cfg::invariants::read_tail_entries::bb20" -> "cfg::invariants::read_tail_entries::bb27" [label="Drop"];
+  "cfg::invariants::read_tail_entries::bb21" -> "cfg::invariants::read_tail_entries::bb22" [label="Goto"];
+  "cfg::invariants::read_tail_entries::bb23" -> "cfg::invariants::read_tail_entries::bb27" [label="Drop"];
+  "cfg::invariants::read_tail_entries::bb25" -> "cfg::invariants::read_tail_entries::bb22" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::invariants::read_tail_entries::bb26" -> "cfg::invariants::read_tail_entries::bb24" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::invariants::read_tail_entries::bb27" -> "cfg::invariants::read_tail_entries::bb24" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::invariants::read_tail_entries::bb27" -> "cfg::invariants::read_tail_entries::bb26" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

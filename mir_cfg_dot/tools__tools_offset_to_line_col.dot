@@ -1,0 +1,28 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3919 {
+    label="tools::offset_to_line_col";
+    "cfg::tools::offset_to_line_col::bb0" [label="bb0\nCall"];
+    "cfg::tools::offset_to_line_col::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::offset_to_line_col::bb2" [label="bb2\nUnreachable"];
+    "cfg::tools::offset_to_line_col::bb3" [label="bb3\nCall"];
+    "cfg::tools::offset_to_line_col::bb4" [label="bb4\nGoto"];
+    "cfg::tools::offset_to_line_col::bb5" [label="bb5\nAssert"];
+    "cfg::tools::offset_to_line_col::bb6" [label="bb6\nAssert"];
+    "cfg::tools::offset_to_line_col::bb7" [label="bb7\nCall"];
+    "cfg::tools::offset_to_line_col::bb8" [label="bb8\nCall"];
+    "cfg::tools::offset_to_line_col::bb9" [label="bb9\nCall"];
+    "cfg::tools::offset_to_line_col::bb10" [label="bb10\nAssert"];
+    "cfg::tools::offset_to_line_col::bb11" [label="bb11\nReturn"];
+  }
+  "cfg::tools::offset_to_line_col::bb1" -> "cfg::tools::offset_to_line_col::bb4" [label="SwitchInt"];
+  "cfg::tools::offset_to_line_col::bb1" -> "cfg::tools::offset_to_line_col::bb3" [label="SwitchInt"];
+  "cfg::tools::offset_to_line_col::bb1" -> "cfg::tools::offset_to_line_col::bb2" [label="SwitchInt"];
+  "cfg::tools::offset_to_line_col::bb4" -> "cfg::tools::offset_to_line_col::bb5" [label="Goto"];
+  "cfg::tools::offset_to_line_col::bb5" -> "cfg::tools::offset_to_line_col::bb6" [label="Assert"];
+  "cfg::tools::offset_to_line_col::bb6" -> "cfg::tools::offset_to_line_col::bb7" [label="Assert"];
+  "cfg::tools::offset_to_line_col::bb10" -> "cfg::tools::offset_to_line_col::bb11" [label="Assert"];
+}

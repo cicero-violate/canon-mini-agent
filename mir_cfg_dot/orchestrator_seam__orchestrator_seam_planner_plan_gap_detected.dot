@@ -1,0 +1,19 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2290 {
+    label="orchestrator_seam::planner_plan_gap_detected";
+    "cfg::orchestrator_seam::planner_plan_gap_detected::bb0" [label="bb0\nCall"];
+    "cfg::orchestrator_seam::planner_plan_gap_detected::bb1" [label="bb1\nSwitchInt"];
+    "cfg::orchestrator_seam::planner_plan_gap_detected::bb2" [label="bb2\nCall"];
+    "cfg::orchestrator_seam::planner_plan_gap_detected::bb3" [label="bb3\nGoto"];
+    "cfg::orchestrator_seam::planner_plan_gap_detected::bb4" [label="bb4\nGoto"];
+    "cfg::orchestrator_seam::planner_plan_gap_detected::bb5" [label="bb5\nReturn"];
+  }
+  "cfg::orchestrator_seam::planner_plan_gap_detected::bb1" -> "cfg::orchestrator_seam::planner_plan_gap_detected::bb3" [label="SwitchInt"];
+  "cfg::orchestrator_seam::planner_plan_gap_detected::bb1" -> "cfg::orchestrator_seam::planner_plan_gap_detected::bb2" [label="SwitchInt"];
+  "cfg::orchestrator_seam::planner_plan_gap_detected::bb3" -> "cfg::orchestrator_seam::planner_plan_gap_detected::bb5" [label="Goto"];
+  "cfg::orchestrator_seam::planner_plan_gap_detected::bb4" -> "cfg::orchestrator_seam::planner_plan_gap_detected::bb5" [label="Goto"];
+}

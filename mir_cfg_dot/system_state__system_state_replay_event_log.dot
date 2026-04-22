@@ -1,0 +1,54 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4659 {
+    label="system_state::replay_event_log";
+    "cfg::system_state::replay_event_log::bb0" [label="bb0\nCall"];
+    "cfg::system_state::replay_event_log::bb1" [label="bb1\nCall"];
+    "cfg::system_state::replay_event_log::bb2" [label="bb2\nSwitchInt"];
+    "cfg::system_state::replay_event_log::bb3" [label="bb3\nUnreachable loop"];
+    "cfg::system_state::replay_event_log::bb4" [label="bb4\nCall loop"];
+    "cfg::system_state::replay_event_log::bb5" [label="bb5\nCall loop"];
+    "cfg::system_state::replay_event_log::bb6" [label="bb6\nGoto loop"];
+    "cfg::system_state::replay_event_log::bb7" [label="bb7\nCall loop"];
+    "cfg::system_state::replay_event_log::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::system_state::replay_event_log::bb9" [label="bb9\nSwitchInt loop"];
+    "cfg::system_state::replay_event_log::bb10" [label="bb10\nGoto loop"];
+    "cfg::system_state::replay_event_log::bb11" [label="bb11\nCall loop"];
+    "cfg::system_state::replay_event_log::bb12" [label="bb12\nCall loop"];
+    "cfg::system_state::replay_event_log::bb13" [label="bb13\nCall loop"];
+    "cfg::system_state::replay_event_log::bb14" [label="bb14\nSwitchInt loop"];
+    "cfg::system_state::replay_event_log::bb15" [label="bb15\nCall"];
+    "cfg::system_state::replay_event_log::bb16" [label="bb16\nDrop loop"];
+    "cfg::system_state::replay_event_log::bb17" [label="bb17\nGoto loop"];
+    "cfg::system_state::replay_event_log::bb18" [label="bb18\nReturn loop"];
+    "cfg::system_state::replay_event_log::bb19" [label="bb19\nUnwindResume cleanup loop"];
+    "cfg::system_state::replay_event_log::bb20" [label="bb20\nDrop cleanup loop"];
+    "cfg::system_state::replay_event_log::bb21" [label="bb21\nSwitchInt cleanup loop"];
+    "cfg::system_state::replay_event_log::bb22" [label="bb22\nGoto loop"];
+    "cfg::system_state::replay_event_log::bb23" [label="bb23\nGoto loop"];
+  }
+  "cfg::system_state::replay_event_log::bb2" -> "cfg::system_state::replay_event_log::bb4" [label="SwitchInt"];
+  "cfg::system_state::replay_event_log::bb2" -> "cfg::system_state::replay_event_log::bb5" [label="SwitchInt"];
+  "cfg::system_state::replay_event_log::bb2" -> "cfg::system_state::replay_event_log::bb3" [label="SwitchInt"];
+  "cfg::system_state::replay_event_log::bb6" -> "cfg::system_state::replay_event_log::bb7" [label="Goto"];
+  "cfg::system_state::replay_event_log::bb8" -> "cfg::system_state::replay_event_log::bb10" [label="SwitchInt"];
+  "cfg::system_state::replay_event_log::bb8" -> "cfg::system_state::replay_event_log::bb9" [label="SwitchInt"];
+  "cfg::system_state::replay_event_log::bb8" -> "cfg::system_state::replay_event_log::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::system_state::replay_event_log::bb9" -> "cfg::system_state::replay_event_log::bb11" [label="SwitchInt"];
+  "cfg::system_state::replay_event_log::bb9" -> "cfg::system_state::replay_event_log::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::system_state::replay_event_log::bb9" -> "cfg::system_state::replay_event_log::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::system_state::replay_event_log::bb10" -> "cfg::system_state::replay_event_log::bb18" [label="Goto"];
+  "cfg::system_state::replay_event_log::bb14" -> "cfg::system_state::replay_event_log::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::system_state::replay_event_log::bb14" -> "cfg::system_state::replay_event_log::bb15" [label="SwitchInt"];
+  "cfg::system_state::replay_event_log::bb14" -> "cfg::system_state::replay_event_log::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::system_state::replay_event_log::bb16" -> "cfg::system_state::replay_event_log::bb17" [label="Drop"];
+  "cfg::system_state::replay_event_log::bb17" -> "cfg::system_state::replay_event_log::bb18" [label="Goto"];
+  "cfg::system_state::replay_event_log::bb20" -> "cfg::system_state::replay_event_log::bb19" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::system_state::replay_event_log::bb21" -> "cfg::system_state::replay_event_log::bb19" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::system_state::replay_event_log::bb21" -> "cfg::system_state::replay_event_log::bb20" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::system_state::replay_event_log::bb22" -> "cfg::system_state::replay_event_log::bb16" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::system_state::replay_event_log::bb23" -> "cfg::system_state::replay_event_log::bb16" [color="crimson", penwidth=2, label="Goto back"];
+}

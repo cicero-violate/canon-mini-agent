@@ -1,0 +1,19 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_354 {
+    label="app::apply_planner_pending_if_changed";
+    "cfg::app::apply_planner_pending_if_changed::bb0" [label="bb0\nCall"];
+    "cfg::app::apply_planner_pending_if_changed::bb1" [label="bb1\nSwitchInt"];
+    "cfg::app::apply_planner_pending_if_changed::bb2" [label="bb2\nGoto"];
+    "cfg::app::apply_planner_pending_if_changed::bb3" [label="bb3\nCall"];
+    "cfg::app::apply_planner_pending_if_changed::bb4" [label="bb4\nGoto"];
+    "cfg::app::apply_planner_pending_if_changed::bb5" [label="bb5\nReturn"];
+  }
+  "cfg::app::apply_planner_pending_if_changed::bb1" -> "cfg::app::apply_planner_pending_if_changed::bb3" [label="SwitchInt"];
+  "cfg::app::apply_planner_pending_if_changed::bb1" -> "cfg::app::apply_planner_pending_if_changed::bb2" [label="SwitchInt"];
+  "cfg::app::apply_planner_pending_if_changed::bb2" -> "cfg::app::apply_planner_pending_if_changed::bb5" [label="Goto"];
+  "cfg::app::apply_planner_pending_if_changed::bb4" -> "cfg::app::apply_planner_pending_if_changed::bb5" [label="Goto"];
+}

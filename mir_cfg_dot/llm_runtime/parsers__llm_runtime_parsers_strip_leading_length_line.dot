@@ -1,0 +1,43 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1861 {
+    label="llm_runtime::parsers::strip_leading_length_line";
+    "cfg::llm_runtime::parsers::strip_leading_length_line::bb0" [label="bb0\nCall"];
+    "cfg::llm_runtime::parsers::strip_leading_length_line::bb1" [label="bb1\nGoto"];
+    "cfg::llm_runtime::parsers::strip_leading_length_line::bb2" [label="bb2\nCall loop"];
+    "cfg::llm_runtime::parsers::strip_leading_length_line::bb3" [label="bb3\nSwitchInt loop"];
+    "cfg::llm_runtime::parsers::strip_leading_length_line::bb4" [label="bb4\nCall loop"];
+    "cfg::llm_runtime::parsers::strip_leading_length_line::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::llm_runtime::parsers::strip_leading_length_line::bb6" [label="bb6\nCall loop"];
+    "cfg::llm_runtime::parsers::strip_leading_length_line::bb7" [label="bb7\nAssert loop"];
+    "cfg::llm_runtime::parsers::strip_leading_length_line::bb8" [label="bb8\nGoto loop"];
+    "cfg::llm_runtime::parsers::strip_leading_length_line::bb9" [label="bb9\nSwitchInt"];
+    "cfg::llm_runtime::parsers::strip_leading_length_line::bb10" [label="bb10\nSwitchInt"];
+    "cfg::llm_runtime::parsers::strip_leading_length_line::bb11" [label="bb11\nSwitchInt"];
+    "cfg::llm_runtime::parsers::strip_leading_length_line::bb12" [label="bb12\nCall"];
+    "cfg::llm_runtime::parsers::strip_leading_length_line::bb13" [label="bb13\nCall"];
+    "cfg::llm_runtime::parsers::strip_leading_length_line::bb14" [label="bb14\nGoto"];
+    "cfg::llm_runtime::parsers::strip_leading_length_line::bb15" [label="bb15\nGoto"];
+    "cfg::llm_runtime::parsers::strip_leading_length_line::bb16" [label="bb16\nReturn"];
+    "cfg::llm_runtime::parsers::strip_leading_length_line::bb17" [label="bb17\nUnreachable"];
+  }
+  "cfg::llm_runtime::parsers::strip_leading_length_line::bb1" -> "cfg::llm_runtime::parsers::strip_leading_length_line::bb2" [label="Goto"];
+  "cfg::llm_runtime::parsers::strip_leading_length_line::bb3" -> "cfg::llm_runtime::parsers::strip_leading_length_line::bb4" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::strip_leading_length_line::bb3" -> "cfg::llm_runtime::parsers::strip_leading_length_line::bb15" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::strip_leading_length_line::bb3" -> "cfg::llm_runtime::parsers::strip_leading_length_line::bb17" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::strip_leading_length_line::bb5" -> "cfg::llm_runtime::parsers::strip_leading_length_line::bb9" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::strip_leading_length_line::bb5" -> "cfg::llm_runtime::parsers::strip_leading_length_line::bb6" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::strip_leading_length_line::bb7" -> "cfg::llm_runtime::parsers::strip_leading_length_line::bb8" [label="Assert"];
+  "cfg::llm_runtime::parsers::strip_leading_length_line::bb8" -> "cfg::llm_runtime::parsers::strip_leading_length_line::bb2" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::llm_runtime::parsers::strip_leading_length_line::bb9" -> "cfg::llm_runtime::parsers::strip_leading_length_line::bb10" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::strip_leading_length_line::bb9" -> "cfg::llm_runtime::parsers::strip_leading_length_line::bb11" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::strip_leading_length_line::bb10" -> "cfg::llm_runtime::parsers::strip_leading_length_line::bb15" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::strip_leading_length_line::bb10" -> "cfg::llm_runtime::parsers::strip_leading_length_line::bb11" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::strip_leading_length_line::bb11" -> "cfg::llm_runtime::parsers::strip_leading_length_line::bb15" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::strip_leading_length_line::bb11" -> "cfg::llm_runtime::parsers::strip_leading_length_line::bb12" [label="SwitchInt"];
+  "cfg::llm_runtime::parsers::strip_leading_length_line::bb14" -> "cfg::llm_runtime::parsers::strip_leading_length_line::bb16" [label="Goto"];
+  "cfg::llm_runtime::parsers::strip_leading_length_line::bb15" -> "cfg::llm_runtime::parsers::strip_leading_length_line::bb16" [label="Goto"];
+}

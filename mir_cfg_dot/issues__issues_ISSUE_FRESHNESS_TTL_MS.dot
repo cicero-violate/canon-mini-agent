@@ -1,0 +1,14 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1341 {
+    label="issues::ISSUE_FRESHNESS_TTL_MS";
+    "cfg::issues::ISSUE_FRESHNESS_TTL_MS::bb0" [label="bb0\nAssert"];
+    "cfg::issues::ISSUE_FRESHNESS_TTL_MS::bb1" [label="bb1\nAssert"];
+    "cfg::issues::ISSUE_FRESHNESS_TTL_MS::bb2" [label="bb2\nReturn"];
+  }
+  "cfg::issues::ISSUE_FRESHNESS_TTL_MS::bb0" -> "cfg::issues::ISSUE_FRESHNESS_TTL_MS::bb1" [label="Assert"];
+  "cfg::issues::ISSUE_FRESHNESS_TTL_MS::bb1" -> "cfg::issues::ISSUE_FRESHNESS_TTL_MS::bb2" [label="Assert"];
+}

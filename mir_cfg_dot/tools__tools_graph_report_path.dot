@@ -1,0 +1,54 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4159 {
+    label="tools::graph_report_path";
+    "cfg::tools::graph_report_path::bb0" [label="bb0\nCall"];
+    "cfg::tools::graph_report_path::bb1" [label="bb1\nSwitchInt"];
+    "cfg::tools::graph_report_path::bb2" [label="bb2\nCall"];
+    "cfg::tools::graph_report_path::bb3" [label="bb3\nCall"];
+    "cfg::tools::graph_report_path::bb4" [label="bb4\nCall"];
+    "cfg::tools::graph_report_path::bb5" [label="bb5\nDrop"];
+    "cfg::tools::graph_report_path::bb6" [label="bb6\nCall"];
+    "cfg::tools::graph_report_path::bb7" [label="bb7\nCall"];
+    "cfg::tools::graph_report_path::bb8" [label="bb8\nCall"];
+    "cfg::tools::graph_report_path::bb9" [label="bb9\nDrop"];
+    "cfg::tools::graph_report_path::bb10" [label="bb10\nCall"];
+    "cfg::tools::graph_report_path::bb11" [label="bb11\nCall"];
+    "cfg::tools::graph_report_path::bb12" [label="bb12\nSwitchInt"];
+    "cfg::tools::graph_report_path::bb13" [label="bb13\nGoto"];
+    "cfg::tools::graph_report_path::bb14" [label="bb14\nCall"];
+    "cfg::tools::graph_report_path::bb15" [label="bb15\nCall"];
+    "cfg::tools::graph_report_path::bb16" [label="bb16\nCall"];
+    "cfg::tools::graph_report_path::bb17" [label="bb17\nDrop"];
+    "cfg::tools::graph_report_path::bb18" [label="bb18\nSwitchInt"];
+    "cfg::tools::graph_report_path::bb19" [label="bb19\nGoto loop"];
+    "cfg::tools::graph_report_path::bb20" [label="bb20\nReturn loop"];
+    "cfg::tools::graph_report_path::bb21" [label="bb21\nDrop cleanup loop"];
+    "cfg::tools::graph_report_path::bb22" [label="bb22\nDrop cleanup loop"];
+    "cfg::tools::graph_report_path::bb23" [label="bb23\nDrop cleanup loop"];
+    "cfg::tools::graph_report_path::bb24" [label="bb24\nDrop cleanup loop"];
+    "cfg::tools::graph_report_path::bb25" [label="bb25\nUnwindResume cleanup loop"];
+    "cfg::tools::graph_report_path::bb26" [label="bb26\nDrop loop"];
+  }
+  "cfg::tools::graph_report_path::bb1" -> "cfg::tools::graph_report_path::bb6" [label="SwitchInt"];
+  "cfg::tools::graph_report_path::bb1" -> "cfg::tools::graph_report_path::bb2" [label="SwitchInt"];
+  "cfg::tools::graph_report_path::bb5" -> "cfg::tools::graph_report_path::bb20" [label="Drop"];
+  "cfg::tools::graph_report_path::bb9" -> "cfg::tools::graph_report_path::bb10" [label="Drop"];
+  "cfg::tools::graph_report_path::bb9" -> "cfg::tools::graph_report_path::bb22" [label="Drop"];
+  "cfg::tools::graph_report_path::bb12" -> "cfg::tools::graph_report_path::bb14" [label="SwitchInt"];
+  "cfg::tools::graph_report_path::bb12" -> "cfg::tools::graph_report_path::bb13" [label="SwitchInt"];
+  "cfg::tools::graph_report_path::bb13" -> "cfg::tools::graph_report_path::bb18" [label="Goto"];
+  "cfg::tools::graph_report_path::bb17" -> "cfg::tools::graph_report_path::bb18" [label="Drop"];
+  "cfg::tools::graph_report_path::bb17" -> "cfg::tools::graph_report_path::bb22" [label="Drop"];
+  "cfg::tools::graph_report_path::bb18" -> "cfg::tools::graph_report_path::bb19" [label="SwitchInt"];
+  "cfg::tools::graph_report_path::bb18" -> "cfg::tools::graph_report_path::bb26" [label="SwitchInt"];
+  "cfg::tools::graph_report_path::bb19" -> "cfg::tools::graph_report_path::bb20" [label="Goto"];
+  "cfg::tools::graph_report_path::bb21" -> "cfg::tools::graph_report_path::bb22" [label="Drop"];
+  "cfg::tools::graph_report_path::bb22" -> "cfg::tools::graph_report_path::bb25" [label="Drop"];
+  "cfg::tools::graph_report_path::bb23" -> "cfg::tools::graph_report_path::bb25" [label="Drop"];
+  "cfg::tools::graph_report_path::bb24" -> "cfg::tools::graph_report_path::bb25" [label="Drop"];
+  "cfg::tools::graph_report_path::bb26" -> "cfg::tools::graph_report_path::bb19" [color="crimson", penwidth=2, label="Drop back"];
+}

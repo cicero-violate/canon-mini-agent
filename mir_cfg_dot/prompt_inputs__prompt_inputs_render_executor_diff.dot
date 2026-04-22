@@ -1,0 +1,35 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2533 {
+    label="prompt_inputs::render_executor_diff";
+    "cfg::prompt_inputs::render_executor_diff::bb0" [label="bb0\nCall"];
+    "cfg::prompt_inputs::render_executor_diff::bb1" [label="bb1\nCall"];
+    "cfg::prompt_inputs::render_executor_diff::bb2" [label="bb2\nCall"];
+    "cfg::prompt_inputs::render_executor_diff::bb3" [label="bb3\nCall"];
+    "cfg::prompt_inputs::render_executor_diff::bb4" [label="bb4\nGoto"];
+    "cfg::prompt_inputs::render_executor_diff::bb5" [label="bb5\nCall loop"];
+    "cfg::prompt_inputs::render_executor_diff::bb6" [label="bb6\nSwitchInt loop"];
+    "cfg::prompt_inputs::render_executor_diff::bb7" [label="bb7\nUnreachable loop"];
+    "cfg::prompt_inputs::render_executor_diff::bb8" [label="bb8\nSwitchInt loop"];
+    "cfg::prompt_inputs::render_executor_diff::bb9" [label="bb9\nCall loop"];
+    "cfg::prompt_inputs::render_executor_diff::bb10" [label="bb10\nCall loop"];
+    "cfg::prompt_inputs::render_executor_diff::bb11" [label="bb11\nCall loop"];
+    "cfg::prompt_inputs::render_executor_diff::bb12" [label="bb12\nReturn loop"];
+    "cfg::prompt_inputs::render_executor_diff::bb13" [label="bb13\nDrop cleanup loop"];
+    "cfg::prompt_inputs::render_executor_diff::bb14" [label="bb14\nUnwindResume cleanup loop"];
+    "cfg::prompt_inputs::render_executor_diff::bb15" [label="bb15\nGoto loop"];
+    "cfg::prompt_inputs::render_executor_diff::bb16" [label="bb16\nGoto loop"];
+  }
+  "cfg::prompt_inputs::render_executor_diff::bb4" -> "cfg::prompt_inputs::render_executor_diff::bb5" [label="Goto"];
+  "cfg::prompt_inputs::render_executor_diff::bb6" -> "cfg::prompt_inputs::render_executor_diff::bb12" [label="SwitchInt"];
+  "cfg::prompt_inputs::render_executor_diff::bb6" -> "cfg::prompt_inputs::render_executor_diff::bb8" [label="SwitchInt"];
+  "cfg::prompt_inputs::render_executor_diff::bb6" -> "cfg::prompt_inputs::render_executor_diff::bb7" [label="SwitchInt"];
+  "cfg::prompt_inputs::render_executor_diff::bb8" -> "cfg::prompt_inputs::render_executor_diff::bb10" [label="SwitchInt"];
+  "cfg::prompt_inputs::render_executor_diff::bb8" -> "cfg::prompt_inputs::render_executor_diff::bb9" [label="SwitchInt"];
+  "cfg::prompt_inputs::render_executor_diff::bb13" -> "cfg::prompt_inputs::render_executor_diff::bb14" [label="Drop"];
+  "cfg::prompt_inputs::render_executor_diff::bb15" -> "cfg::prompt_inputs::render_executor_diff::bb12" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::prompt_inputs::render_executor_diff::bb16" -> "cfg::prompt_inputs::render_executor_diff::bb5" [color="crimson", penwidth=2, label="Goto back"];
+}

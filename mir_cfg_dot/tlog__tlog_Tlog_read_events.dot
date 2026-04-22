@@ -1,0 +1,23 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4690 {
+    label="tlog::Tlog::read_events";
+    "cfg::tlog::Tlog::read_events::bb0" [label="bb0\nCall"];
+    "cfg::tlog::Tlog::read_events::bb1" [label="bb1\nCall"];
+    "cfg::tlog::Tlog::read_events::bb2" [label="bb2\nSwitchInt"];
+    "cfg::tlog::Tlog::read_events::bb3" [label="bb3\nUnreachable"];
+    "cfg::tlog::Tlog::read_events::bb4" [label="bb4\nCall"];
+    "cfg::tlog::Tlog::read_events::bb5" [label="bb5\nCall"];
+    "cfg::tlog::Tlog::read_events::bb6" [label="bb6\nCall"];
+    "cfg::tlog::Tlog::read_events::bb7" [label="bb7\nCall"];
+    "cfg::tlog::Tlog::read_events::bb8" [label="bb8\nGoto"];
+    "cfg::tlog::Tlog::read_events::bb9" [label="bb9\nReturn"];
+  }
+  "cfg::tlog::Tlog::read_events::bb2" -> "cfg::tlog::Tlog::read_events::bb4" [label="SwitchInt"];
+  "cfg::tlog::Tlog::read_events::bb2" -> "cfg::tlog::Tlog::read_events::bb5" [label="SwitchInt"];
+  "cfg::tlog::Tlog::read_events::bb2" -> "cfg::tlog::Tlog::read_events::bb3" [label="SwitchInt"];
+  "cfg::tlog::Tlog::read_events::bb8" -> "cfg::tlog::Tlog::read_events::bb9" [label="Goto"];
+}

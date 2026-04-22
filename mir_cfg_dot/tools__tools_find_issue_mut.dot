@@ -1,0 +1,25 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3792 {
+    label="tools::find_issue_mut";
+    "cfg::tools::find_issue_mut::bb0" [label="bb0\nCall"];
+    "cfg::tools::find_issue_mut::bb1" [label="bb1\nCall"];
+    "cfg::tools::find_issue_mut::bb2" [label="bb2\nCall"];
+    "cfg::tools::find_issue_mut::bb3" [label="bb3\nSwitchInt"];
+    "cfg::tools::find_issue_mut::bb4" [label="bb4\nCall"];
+    "cfg::tools::find_issue_mut::bb5" [label="bb5\nCall"];
+    "cfg::tools::find_issue_mut::bb6" [label="bb6\nCall"];
+    "cfg::tools::find_issue_mut::bb7" [label="bb7\nGoto"];
+    "cfg::tools::find_issue_mut::bb8" [label="bb8\nGoto"];
+    "cfg::tools::find_issue_mut::bb9" [label="bb9\nReturn"];
+    "cfg::tools::find_issue_mut::bb10" [label="bb10\nUnreachable"];
+  }
+  "cfg::tools::find_issue_mut::bb3" -> "cfg::tools::find_issue_mut::bb8" [label="SwitchInt"];
+  "cfg::tools::find_issue_mut::bb3" -> "cfg::tools::find_issue_mut::bb4" [label="SwitchInt"];
+  "cfg::tools::find_issue_mut::bb3" -> "cfg::tools::find_issue_mut::bb10" [label="SwitchInt"];
+  "cfg::tools::find_issue_mut::bb7" -> "cfg::tools::find_issue_mut::bb9" [label="Goto"];
+  "cfg::tools::find_issue_mut::bb8" -> "cfg::tools::find_issue_mut::bb9" [label="Goto"];
+}

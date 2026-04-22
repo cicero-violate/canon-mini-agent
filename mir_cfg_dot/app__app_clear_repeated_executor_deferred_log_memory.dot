@@ -1,0 +1,24 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_368 {
+    label="app::clear_repeated_executor_deferred_log_memory";
+    "cfg::app::clear_repeated_executor_deferred_log_memory::bb0" [label="bb0\nCall"];
+    "cfg::app::clear_repeated_executor_deferred_log_memory::bb1" [label="bb1\nSwitchInt"];
+    "cfg::app::clear_repeated_executor_deferred_log_memory::bb2" [label="bb2\nCall"];
+    "cfg::app::clear_repeated_executor_deferred_log_memory::bb3" [label="bb3\nCall"];
+    "cfg::app::clear_repeated_executor_deferred_log_memory::bb4" [label="bb4\nCall"];
+    "cfg::app::clear_repeated_executor_deferred_log_memory::bb5" [label="bb5\nCall"];
+    "cfg::app::clear_repeated_executor_deferred_log_memory::bb6" [label="bb6\nCall"];
+    "cfg::app::clear_repeated_executor_deferred_log_memory::bb7" [label="bb7\nDrop"];
+    "cfg::app::clear_repeated_executor_deferred_log_memory::bb8" [label="bb8\nReturn"];
+    "cfg::app::clear_repeated_executor_deferred_log_memory::bb9" [label="bb9\nDrop cleanup"];
+    "cfg::app::clear_repeated_executor_deferred_log_memory::bb10" [label="bb10\nUnwindResume cleanup"];
+  }
+  "cfg::app::clear_repeated_executor_deferred_log_memory::bb1" -> "cfg::app::clear_repeated_executor_deferred_log_memory::bb2" [label="SwitchInt"];
+  "cfg::app::clear_repeated_executor_deferred_log_memory::bb1" -> "cfg::app::clear_repeated_executor_deferred_log_memory::bb8" [label="SwitchInt"];
+  "cfg::app::clear_repeated_executor_deferred_log_memory::bb7" -> "cfg::app::clear_repeated_executor_deferred_log_memory::bb8" [label="Drop"];
+  "cfg::app::clear_repeated_executor_deferred_log_memory::bb9" -> "cfg::app::clear_repeated_executor_deferred_log_memory::bb10" [label="Drop"];
+}

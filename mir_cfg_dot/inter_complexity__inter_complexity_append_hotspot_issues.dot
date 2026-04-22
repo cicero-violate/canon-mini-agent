@@ -1,0 +1,53 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1010 {
+    label="inter_complexity::append_hotspot_issues";
+    "cfg::inter_complexity::append_hotspot_issues::bb0" [label="bb0\nCall"];
+    "cfg::inter_complexity::append_hotspot_issues::bb1" [label="bb1\nCall"];
+    "cfg::inter_complexity::append_hotspot_issues::bb2" [label="bb2\nCall"];
+    "cfg::inter_complexity::append_hotspot_issues::bb3" [label="bb3\nCall"];
+    "cfg::inter_complexity::append_hotspot_issues::bb4" [label="bb4\nGoto"];
+    "cfg::inter_complexity::append_hotspot_issues::bb5" [label="bb5\nCall loop"];
+    "cfg::inter_complexity::append_hotspot_issues::bb6" [label="bb6\nSwitchInt loop"];
+    "cfg::inter_complexity::append_hotspot_issues::bb7" [label="bb7\nUnreachable loop"];
+    "cfg::inter_complexity::append_hotspot_issues::bb8" [label="bb8\nCall loop"];
+    "cfg::inter_complexity::append_hotspot_issues::bb9" [label="bb9\nCall loop"];
+    "cfg::inter_complexity::append_hotspot_issues::bb10" [label="bb10\nSwitchInt loop"];
+    "cfg::inter_complexity::append_hotspot_issues::bb11" [label="bb11\nCall loop"];
+    "cfg::inter_complexity::append_hotspot_issues::bb12" [label="bb12\nAssert loop"];
+    "cfg::inter_complexity::append_hotspot_issues::bb13" [label="bb13\nGoto loop"];
+    "cfg::inter_complexity::append_hotspot_issues::bb14" [label="bb14\nGoto loop"];
+    "cfg::inter_complexity::append_hotspot_issues::bb15" [label="bb15\nCall loop"];
+    "cfg::inter_complexity::append_hotspot_issues::bb16" [label="bb16\nSwitchInt loop"];
+    "cfg::inter_complexity::append_hotspot_issues::bb17" [label="bb17\nSwitchInt loop"];
+    "cfg::inter_complexity::append_hotspot_issues::bb18" [label="bb18\nReturn loop"];
+    "cfg::inter_complexity::append_hotspot_issues::bb19" [label="bb19\nCall loop"];
+    "cfg::inter_complexity::append_hotspot_issues::bb20" [label="bb20\nSwitchInt loop"];
+    "cfg::inter_complexity::append_hotspot_issues::bb21" [label="bb21\nCall loop"];
+    "cfg::inter_complexity::append_hotspot_issues::bb22" [label="bb22\nAssert loop"];
+    "cfg::inter_complexity::append_hotspot_issues::bb23" [label="bb23\nGoto loop"];
+  }
+  "cfg::inter_complexity::append_hotspot_issues::bb4" -> "cfg::inter_complexity::append_hotspot_issues::bb5" [label="Goto"];
+  "cfg::inter_complexity::append_hotspot_issues::bb6" -> "cfg::inter_complexity::append_hotspot_issues::bb9" [label="SwitchInt"];
+  "cfg::inter_complexity::append_hotspot_issues::bb6" -> "cfg::inter_complexity::append_hotspot_issues::bb8" [label="SwitchInt"];
+  "cfg::inter_complexity::append_hotspot_issues::bb6" -> "cfg::inter_complexity::append_hotspot_issues::bb7" [label="SwitchInt"];
+  "cfg::inter_complexity::append_hotspot_issues::bb10" -> "cfg::inter_complexity::append_hotspot_issues::bb11" [label="SwitchInt"];
+  "cfg::inter_complexity::append_hotspot_issues::bb10" -> "cfg::inter_complexity::append_hotspot_issues::bb5" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::inter_complexity::append_hotspot_issues::bb10" -> "cfg::inter_complexity::append_hotspot_issues::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::inter_complexity::append_hotspot_issues::bb12" -> "cfg::inter_complexity::append_hotspot_issues::bb13" [label="Assert"];
+  "cfg::inter_complexity::append_hotspot_issues::bb13" -> "cfg::inter_complexity::append_hotspot_issues::bb5" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::inter_complexity::append_hotspot_issues::bb14" -> "cfg::inter_complexity::append_hotspot_issues::bb15" [label="Goto"];
+  "cfg::inter_complexity::append_hotspot_issues::bb16" -> "cfg::inter_complexity::append_hotspot_issues::bb18" [label="SwitchInt"];
+  "cfg::inter_complexity::append_hotspot_issues::bb16" -> "cfg::inter_complexity::append_hotspot_issues::bb17" [label="SwitchInt"];
+  "cfg::inter_complexity::append_hotspot_issues::bb16" -> "cfg::inter_complexity::append_hotspot_issues::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::inter_complexity::append_hotspot_issues::bb17" -> "cfg::inter_complexity::append_hotspot_issues::bb15" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::inter_complexity::append_hotspot_issues::bb17" -> "cfg::inter_complexity::append_hotspot_issues::bb19" [label="SwitchInt"];
+  "cfg::inter_complexity::append_hotspot_issues::bb20" -> "cfg::inter_complexity::append_hotspot_issues::bb21" [label="SwitchInt"];
+  "cfg::inter_complexity::append_hotspot_issues::bb20" -> "cfg::inter_complexity::append_hotspot_issues::bb15" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::inter_complexity::append_hotspot_issues::bb20" -> "cfg::inter_complexity::append_hotspot_issues::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::inter_complexity::append_hotspot_issues::bb22" -> "cfg::inter_complexity::append_hotspot_issues::bb23" [label="Assert"];
+  "cfg::inter_complexity::append_hotspot_issues::bb23" -> "cfg::inter_complexity::append_hotspot_issues::bb15" [color="crimson", penwidth=2, label="Goto back"];
+}

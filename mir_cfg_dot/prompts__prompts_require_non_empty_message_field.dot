@@ -1,0 +1,24 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2673 {
+    label="prompts::require_non_empty_message_field";
+    "cfg::prompts::require_non_empty_message_field::bb0" [label="bb0\nCall"];
+    "cfg::prompts::require_non_empty_message_field::bb1" [label="bb1\nCall"];
+    "cfg::prompts::require_non_empty_message_field::bb2" [label="bb2\nCall"];
+    "cfg::prompts::require_non_empty_message_field::bb3" [label="bb3\nCall"];
+    "cfg::prompts::require_non_empty_message_field::bb4" [label="bb4\nCall"];
+    "cfg::prompts::require_non_empty_message_field::bb5" [label="bb5\nCall"];
+    "cfg::prompts::require_non_empty_message_field::bb6" [label="bb6\nSwitchInt"];
+    "cfg::prompts::require_non_empty_message_field::bb7" [label="bb7\nUnreachable"];
+    "cfg::prompts::require_non_empty_message_field::bb8" [label="bb8\nGoto"];
+    "cfg::prompts::require_non_empty_message_field::bb9" [label="bb9\nCall"];
+    "cfg::prompts::require_non_empty_message_field::bb10" [label="bb10\nReturn"];
+  }
+  "cfg::prompts::require_non_empty_message_field::bb6" -> "cfg::prompts::require_non_empty_message_field::bb8" [label="SwitchInt"];
+  "cfg::prompts::require_non_empty_message_field::bb6" -> "cfg::prompts::require_non_empty_message_field::bb9" [label="SwitchInt"];
+  "cfg::prompts::require_non_empty_message_field::bb6" -> "cfg::prompts::require_non_empty_message_field::bb7" [label="SwitchInt"];
+  "cfg::prompts::require_non_empty_message_field::bb8" -> "cfg::prompts::require_non_empty_message_field::bb10" [label="Goto"];
+}

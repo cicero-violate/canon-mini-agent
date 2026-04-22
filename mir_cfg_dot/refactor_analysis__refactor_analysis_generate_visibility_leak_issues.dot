@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2781 {
+    label="refactor_analysis::generate_visibility_leak_issues";
+    "cfg::refactor_analysis::generate_visibility_leak_issues::bb0" [label="bb0\nCall"];
+    "cfg::refactor_analysis::generate_visibility_leak_issues::bb1" [label="bb1\nReturn"];
+  }
+}

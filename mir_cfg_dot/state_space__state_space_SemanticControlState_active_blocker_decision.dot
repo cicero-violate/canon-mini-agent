@@ -1,0 +1,13 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3195 {
+    label="state_space::SemanticControlState::active_blocker_decision";
+    "cfg::state_space::SemanticControlState::active_blocker_decision::bb0" [label="bb0\nCall"];
+    "cfg::state_space::SemanticControlState::active_blocker_decision::bb1" [label="bb1\nCall"];
+    "cfg::state_space::SemanticControlState::active_blocker_decision::bb2" [label="bb2\nCall"];
+    "cfg::state_space::SemanticControlState::active_blocker_decision::bb3" [label="bb3\nReturn"];
+  }
+}

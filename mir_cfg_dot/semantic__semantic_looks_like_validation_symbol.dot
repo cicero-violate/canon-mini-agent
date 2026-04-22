@@ -1,0 +1,18 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3161 {
+    label="semantic::looks_like_validation_symbol";
+    "cfg::semantic::looks_like_validation_symbol::bb0" [label="bb0\nCall"];
+    "cfg::semantic::looks_like_validation_symbol::bb1" [label="bb1\nCall"];
+    "cfg::semantic::looks_like_validation_symbol::bb2" [label="bb2\nCall"];
+    "cfg::semantic::looks_like_validation_symbol::bb3" [label="bb3\nDrop"];
+    "cfg::semantic::looks_like_validation_symbol::bb4" [label="bb4\nReturn"];
+    "cfg::semantic::looks_like_validation_symbol::bb5" [label="bb5\nDrop cleanup"];
+    "cfg::semantic::looks_like_validation_symbol::bb6" [label="bb6\nUnwindResume cleanup"];
+  }
+  "cfg::semantic::looks_like_validation_symbol::bb3" -> "cfg::semantic::looks_like_validation_symbol::bb4" [label="Drop"];
+  "cfg::semantic::looks_like_validation_symbol::bb5" -> "cfg::semantic::looks_like_validation_symbol::bb6" [label="Drop"];
+}

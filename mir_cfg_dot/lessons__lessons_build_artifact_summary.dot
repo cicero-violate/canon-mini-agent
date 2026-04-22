@@ -1,0 +1,19 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1487 {
+    label="lessons::build_artifact_summary";
+    "cfg::lessons::build_artifact_summary::bb0" [label="bb0\nCall"];
+    "cfg::lessons::build_artifact_summary::bb1" [label="bb1\nCall"];
+    "cfg::lessons::build_artifact_summary::bb2" [label="bb2\nCall"];
+    "cfg::lessons::build_artifact_summary::bb3" [label="bb3\nCall"];
+    "cfg::lessons::build_artifact_summary::bb4" [label="bb4\nCall"];
+    "cfg::lessons::build_artifact_summary::bb5" [label="bb5\nCall"];
+    "cfg::lessons::build_artifact_summary::bb6" [label="bb6\nCall"];
+    "cfg::lessons::build_artifact_summary::bb7" [label="bb7\nCall"];
+    "cfg::lessons::build_artifact_summary::bb8" [label="bb8\nCall"];
+    "cfg::lessons::build_artifact_summary::bb9" [label="bb9\nReturn"];
+  }
+}

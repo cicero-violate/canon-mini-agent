@@ -1,0 +1,29 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4619 {
+    label="canonical_writer::CanonicalWriter::try_record_effect";
+    "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb0" [label="bb0\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb1" [label="bb1\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb2" [label="bb2\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb3" [label="bb3\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb4" [label="bb4\nSwitchInt"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb5" [label="bb5\nUnreachable"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb6" [label="bb6\nDrop"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb7" [label="bb7\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb8" [label="bb8\nDrop"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb9" [label="bb9\nGoto"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb10" [label="bb10\nReturn"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb11" [label="bb11\nDrop cleanup"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb12" [label="bb12\nUnwindResume cleanup"];
+  }
+  "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb4" -> "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb6" [label="SwitchInt"];
+  "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb4" -> "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb7" [label="SwitchInt"];
+  "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb4" -> "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb5" [label="SwitchInt"];
+  "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb6" -> "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb9" [label="Drop"];
+  "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb8" -> "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb10" [label="Drop"];
+  "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb9" -> "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb10" [label="Goto"];
+  "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb11" -> "cfg::canonical_writer::CanonicalWriter::try_record_effect::bb12" [label="Drop"];
+}

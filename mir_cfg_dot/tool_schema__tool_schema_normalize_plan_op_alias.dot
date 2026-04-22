@@ -1,0 +1,24 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3478 {
+    label="tool_schema::normalize_plan_op_alias";
+    "cfg::tool_schema::normalize_plan_op_alias::bb0" [label="bb0\nCall"];
+    "cfg::tool_schema::normalize_plan_op_alias::bb1" [label="bb1\nGoto loop"];
+    "cfg::tool_schema::normalize_plan_op_alias::bb2" [label="bb2\nGoto loop"];
+    "cfg::tool_schema::normalize_plan_op_alias::bb3" [label="bb3\nCall loop"];
+    "cfg::tool_schema::normalize_plan_op_alias::bb4" [label="bb4\nGoto loop"];
+    "cfg::tool_schema::normalize_plan_op_alias::bb5" [label="bb5\nSwitchInt loop"];
+    "cfg::tool_schema::normalize_plan_op_alias::bb6" [label="bb6\nSwitchInt loop"];
+    "cfg::tool_schema::normalize_plan_op_alias::bb7" [label="bb7\nReturn"];
+  }
+  "cfg::tool_schema::normalize_plan_op_alias::bb1" -> "cfg::tool_schema::normalize_plan_op_alias::bb7" [label="Goto"];
+  "cfg::tool_schema::normalize_plan_op_alias::bb2" -> "cfg::tool_schema::normalize_plan_op_alias::bb7" [label="Goto"];
+  "cfg::tool_schema::normalize_plan_op_alias::bb4" -> "cfg::tool_schema::normalize_plan_op_alias::bb7" [label="Goto"];
+  "cfg::tool_schema::normalize_plan_op_alias::bb5" -> "cfg::tool_schema::normalize_plan_op_alias::bb1" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tool_schema::normalize_plan_op_alias::bb5" -> "cfg::tool_schema::normalize_plan_op_alias::bb4" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tool_schema::normalize_plan_op_alias::bb6" -> "cfg::tool_schema::normalize_plan_op_alias::bb3" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tool_schema::normalize_plan_op_alias::bb6" -> "cfg::tool_schema::normalize_plan_op_alias::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

@@ -1,0 +1,23 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3652 {
+    label="tools::objective_id_matches";
+    "cfg::tools::objective_id_matches::bb0" [label="bb0\nCall"];
+    "cfg::tools::objective_id_matches::bb1" [label="bb1\nCall"];
+    "cfg::tools::objective_id_matches::bb2" [label="bb2\nCall"];
+    "cfg::tools::objective_id_matches::bb3" [label="bb3\nDrop"];
+    "cfg::tools::objective_id_matches::bb4" [label="bb4\nDrop"];
+    "cfg::tools::objective_id_matches::bb5" [label="bb5\nReturn"];
+    "cfg::tools::objective_id_matches::bb6" [label="bb6\nDrop cleanup"];
+    "cfg::tools::objective_id_matches::bb7" [label="bb7\nDrop cleanup"];
+    "cfg::tools::objective_id_matches::bb8" [label="bb8\nUnwindResume cleanup"];
+  }
+  "cfg::tools::objective_id_matches::bb3" -> "cfg::tools::objective_id_matches::bb4" [label="Drop"];
+  "cfg::tools::objective_id_matches::bb3" -> "cfg::tools::objective_id_matches::bb7" [label="Drop"];
+  "cfg::tools::objective_id_matches::bb4" -> "cfg::tools::objective_id_matches::bb5" [label="Drop"];
+  "cfg::tools::objective_id_matches::bb6" -> "cfg::tools::objective_id_matches::bb7" [label="Drop"];
+  "cfg::tools::objective_id_matches::bb7" -> "cfg::tools::objective_id_matches::bb8" [label="Drop"];
+}

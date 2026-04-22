@@ -1,0 +1,12 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1360 {
+    label="issues::is_closed";
+    "cfg::issues::is_closed::bb0" [label="bb0\nCall"];
+    "cfg::issues::is_closed::bb1" [label="bb1\nCall"];
+    "cfg::issues::is_closed::bb2" [label="bb2\nReturn"];
+  }
+}

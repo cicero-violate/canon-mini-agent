@@ -1,0 +1,25 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1003 {
+    label="inter_complexity::load_issue_file_with_indexes";
+    "cfg::inter_complexity::load_issue_file_with_indexes::bb0" [label="bb0\nCall"];
+    "cfg::inter_complexity::load_issue_file_with_indexes::bb1" [label="bb1\nCall"];
+    "cfg::inter_complexity::load_issue_file_with_indexes::bb2" [label="bb2\nCall"];
+    "cfg::inter_complexity::load_issue_file_with_indexes::bb3" [label="bb3\nCall"];
+    "cfg::inter_complexity::load_issue_file_with_indexes::bb4" [label="bb4\nCall"];
+    "cfg::inter_complexity::load_issue_file_with_indexes::bb5" [label="bb5\nCall"];
+    "cfg::inter_complexity::load_issue_file_with_indexes::bb6" [label="bb6\nCall"];
+    "cfg::inter_complexity::load_issue_file_with_indexes::bb7" [label="bb7\nCall"];
+    "cfg::inter_complexity::load_issue_file_with_indexes::bb8" [label="bb8\nCall"];
+    "cfg::inter_complexity::load_issue_file_with_indexes::bb9" [label="bb9\nCall"];
+    "cfg::inter_complexity::load_issue_file_with_indexes::bb10" [label="bb10\nReturn"];
+    "cfg::inter_complexity::load_issue_file_with_indexes::bb11" [label="bb11\nDrop cleanup"];
+    "cfg::inter_complexity::load_issue_file_with_indexes::bb12" [label="bb12\nDrop cleanup"];
+    "cfg::inter_complexity::load_issue_file_with_indexes::bb13" [label="bb13\nUnwindResume cleanup"];
+  }
+  "cfg::inter_complexity::load_issue_file_with_indexes::bb11" -> "cfg::inter_complexity::load_issue_file_with_indexes::bb12" [label="Drop"];
+  "cfg::inter_complexity::load_issue_file_with_indexes::bb12" -> "cfg::inter_complexity::load_issue_file_with_indexes::bb13" [label="Drop"];
+}

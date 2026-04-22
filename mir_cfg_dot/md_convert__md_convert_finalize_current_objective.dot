@@ -1,0 +1,18 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2209 {
+    label="md_convert::finalize_current_objective";
+    "cfg::md_convert::finalize_current_objective::bb0" [label="bb0\nCall"];
+    "cfg::md_convert::finalize_current_objective::bb1" [label="bb1\nSwitchInt"];
+    "cfg::md_convert::finalize_current_objective::bb2" [label="bb2\nCall"];
+    "cfg::md_convert::finalize_current_objective::bb3" [label="bb3\nCall"];
+    "cfg::md_convert::finalize_current_objective::bb4" [label="bb4\nReturn"];
+    "cfg::md_convert::finalize_current_objective::bb5" [label="bb5\nUnreachable"];
+  }
+  "cfg::md_convert::finalize_current_objective::bb1" -> "cfg::md_convert::finalize_current_objective::bb2" [label="SwitchInt"];
+  "cfg::md_convert::finalize_current_objective::bb1" -> "cfg::md_convert::finalize_current_objective::bb4" [label="SwitchInt"];
+  "cfg::md_convert::finalize_current_objective::bb1" -> "cfg::md_convert::finalize_current_objective::bb5" [label="SwitchInt"];
+}

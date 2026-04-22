@@ -1,0 +1,10 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_751 {
+    label="constants::ROLE_TIMEOUT_SECS";
+    "cfg::constants::ROLE_TIMEOUT_SECS::bb0" [label="bb0\nReturn"];
+  }
+}

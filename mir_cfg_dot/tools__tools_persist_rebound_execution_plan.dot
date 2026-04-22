@@ -1,0 +1,30 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4483 {
+    label="tools::persist_rebound_execution_plan";
+    "cfg::tools::persist_rebound_execution_plan::bb0" [label="bb0\nCall"];
+    "cfg::tools::persist_rebound_execution_plan::bb1" [label="bb1\nCall"];
+    "cfg::tools::persist_rebound_execution_plan::bb2" [label="bb2\nCall"];
+    "cfg::tools::persist_rebound_execution_plan::bb3" [label="bb3\nSwitchInt"];
+    "cfg::tools::persist_rebound_execution_plan::bb4" [label="bb4\nUnreachable"];
+    "cfg::tools::persist_rebound_execution_plan::bb5" [label="bb5\nCall"];
+    "cfg::tools::persist_rebound_execution_plan::bb6" [label="bb6\nCall"];
+    "cfg::tools::persist_rebound_execution_plan::bb7" [label="bb7\nDrop"];
+    "cfg::tools::persist_rebound_execution_plan::bb8" [label="bb8\nCall"];
+    "cfg::tools::persist_rebound_execution_plan::bb9" [label="bb9\nDrop"];
+    "cfg::tools::persist_rebound_execution_plan::bb10" [label="bb10\nReturn"];
+    "cfg::tools::persist_rebound_execution_plan::bb11" [label="bb11\nDrop cleanup"];
+    "cfg::tools::persist_rebound_execution_plan::bb12" [label="bb12\nDrop cleanup"];
+    "cfg::tools::persist_rebound_execution_plan::bb13" [label="bb13\nUnwindResume cleanup"];
+  }
+  "cfg::tools::persist_rebound_execution_plan::bb3" -> "cfg::tools::persist_rebound_execution_plan::bb5" [label="SwitchInt"];
+  "cfg::tools::persist_rebound_execution_plan::bb3" -> "cfg::tools::persist_rebound_execution_plan::bb6" [label="SwitchInt"];
+  "cfg::tools::persist_rebound_execution_plan::bb3" -> "cfg::tools::persist_rebound_execution_plan::bb4" [label="SwitchInt"];
+  "cfg::tools::persist_rebound_execution_plan::bb7" -> "cfg::tools::persist_rebound_execution_plan::bb10" [label="Drop"];
+  "cfg::tools::persist_rebound_execution_plan::bb9" -> "cfg::tools::persist_rebound_execution_plan::bb10" [label="Drop"];
+  "cfg::tools::persist_rebound_execution_plan::bb11" -> "cfg::tools::persist_rebound_execution_plan::bb13" [label="Drop"];
+  "cfg::tools::persist_rebound_execution_plan::bb12" -> "cfg::tools::persist_rebound_execution_plan::bb13" [label="Drop"];
+}

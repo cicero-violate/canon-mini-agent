@@ -1,0 +1,18 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3292 {
+    label="supervisor::agent_state_flag_path";
+    "cfg::supervisor::agent_state_flag_path::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::agent_state_flag_path::bb1" [label="bb1\nCall"];
+    "cfg::supervisor::agent_state_flag_path::bb2" [label="bb2\nCall"];
+    "cfg::supervisor::agent_state_flag_path::bb3" [label="bb3\nDrop"];
+    "cfg::supervisor::agent_state_flag_path::bb4" [label="bb4\nReturn"];
+    "cfg::supervisor::agent_state_flag_path::bb5" [label="bb5\nDrop cleanup"];
+    "cfg::supervisor::agent_state_flag_path::bb6" [label="bb6\nUnwindResume cleanup"];
+  }
+  "cfg::supervisor::agent_state_flag_path::bb3" -> "cfg::supervisor::agent_state_flag_path::bb4" [label="Drop"];
+  "cfg::supervisor::agent_state_flag_path::bb5" -> "cfg::supervisor::agent_state_flag_path::bb6" [label="Drop"];
+}

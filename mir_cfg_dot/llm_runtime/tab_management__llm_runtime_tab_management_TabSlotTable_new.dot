@@ -1,0 +1,21 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_1923 {
+    label="llm_runtime::tab_management::TabSlotTable::new";
+    "cfg::llm_runtime::tab_management::TabSlotTable::new::bb0" [label="bb0\nCall"];
+    "cfg::llm_runtime::tab_management::TabSlotTable::new::bb1" [label="bb1\nCall"];
+    "cfg::llm_runtime::tab_management::TabSlotTable::new::bb2" [label="bb2\nCall"];
+    "cfg::llm_runtime::tab_management::TabSlotTable::new::bb3" [label="bb3\nCall"];
+    "cfg::llm_runtime::tab_management::TabSlotTable::new::bb4" [label="bb4\nReturn"];
+    "cfg::llm_runtime::tab_management::TabSlotTable::new::bb5" [label="bb5\nDrop cleanup"];
+    "cfg::llm_runtime::tab_management::TabSlotTable::new::bb6" [label="bb6\nDrop cleanup"];
+    "cfg::llm_runtime::tab_management::TabSlotTable::new::bb7" [label="bb7\nDrop cleanup"];
+    "cfg::llm_runtime::tab_management::TabSlotTable::new::bb8" [label="bb8\nUnwindResume cleanup"];
+  }
+  "cfg::llm_runtime::tab_management::TabSlotTable::new::bb5" -> "cfg::llm_runtime::tab_management::TabSlotTable::new::bb6" [label="Drop"];
+  "cfg::llm_runtime::tab_management::TabSlotTable::new::bb6" -> "cfg::llm_runtime::tab_management::TabSlotTable::new::bb7" [label="Drop"];
+  "cfg::llm_runtime::tab_management::TabSlotTable::new::bb7" -> "cfg::llm_runtime::tab_management::TabSlotTable::new::bb8" [label="Drop"];
+}

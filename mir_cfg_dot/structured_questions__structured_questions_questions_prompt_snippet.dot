@@ -1,0 +1,23 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3224 {
+    label="structured_questions::questions_prompt_snippet";
+    "cfg::structured_questions::questions_prompt_snippet::bb0" [label="bb0\nCall"];
+    "cfg::structured_questions::questions_prompt_snippet::bb1" [label="bb1\nAssert"];
+    "cfg::structured_questions::questions_prompt_snippet::bb2" [label="bb2\nAssert"];
+    "cfg::structured_questions::questions_prompt_snippet::bb3" [label="bb3\nAssert"];
+    "cfg::structured_questions::questions_prompt_snippet::bb4" [label="bb4\nCall"];
+    "cfg::structured_questions::questions_prompt_snippet::bb5" [label="bb5\nCall"];
+    "cfg::structured_questions::questions_prompt_snippet::bb6" [label="bb6\nCall"];
+    "cfg::structured_questions::questions_prompt_snippet::bb7" [label="bb7\nCall"];
+    "cfg::structured_questions::questions_prompt_snippet::bb8" [label="bb8\nCall"];
+    "cfg::structured_questions::questions_prompt_snippet::bb9" [label="bb9\nCall"];
+    "cfg::structured_questions::questions_prompt_snippet::bb10" [label="bb10\nReturn"];
+  }
+  "cfg::structured_questions::questions_prompt_snippet::bb1" -> "cfg::structured_questions::questions_prompt_snippet::bb2" [label="Assert"];
+  "cfg::structured_questions::questions_prompt_snippet::bb2" -> "cfg::structured_questions::questions_prompt_snippet::bb3" [label="Assert"];
+  "cfg::structured_questions::questions_prompt_snippet::bb3" -> "cfg::structured_questions::questions_prompt_snippet::bb4" [label="Assert"];
+}

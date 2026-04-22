@@ -1,0 +1,26 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3496 {
+    label="tool_schema::find_action_schema::matches_action";
+    "cfg::tool_schema::find_action_schema::matches_action::bb0" [label="bb0\nCall"];
+    "cfg::tool_schema::find_action_schema::matches_action::bb1" [label="bb1\nCall"];
+    "cfg::tool_schema::find_action_schema::matches_action::bb2" [label="bb2\nCall"];
+    "cfg::tool_schema::find_action_schema::matches_action::bb3" [label="bb3\nCall"];
+    "cfg::tool_schema::find_action_schema::matches_action::bb4" [label="bb4\nCall"];
+    "cfg::tool_schema::find_action_schema::matches_action::bb5" [label="bb5\nCall"];
+    "cfg::tool_schema::find_action_schema::matches_action::bb6" [label="bb6\nCall"];
+    "cfg::tool_schema::find_action_schema::matches_action::bb7" [label="bb7\nCall"];
+    "cfg::tool_schema::find_action_schema::matches_action::bb8" [label="bb8\nCall"];
+    "cfg::tool_schema::find_action_schema::matches_action::bb9" [label="bb9\nSwitchInt"];
+    "cfg::tool_schema::find_action_schema::matches_action::bb10" [label="bb10\nGoto"];
+    "cfg::tool_schema::find_action_schema::matches_action::bb11" [label="bb11\nGoto"];
+    "cfg::tool_schema::find_action_schema::matches_action::bb12" [label="bb12\nReturn"];
+  }
+  "cfg::tool_schema::find_action_schema::matches_action::bb9" -> "cfg::tool_schema::find_action_schema::matches_action::bb11" [label="SwitchInt"];
+  "cfg::tool_schema::find_action_schema::matches_action::bb9" -> "cfg::tool_schema::find_action_schema::matches_action::bb10" [label="SwitchInt"];
+  "cfg::tool_schema::find_action_schema::matches_action::bb10" -> "cfg::tool_schema::find_action_schema::matches_action::bb12" [label="Goto"];
+  "cfg::tool_schema::find_action_schema::matches_action::bb11" -> "cfg::tool_schema::find_action_schema::matches_action::bb12" [label="Goto"];
+}

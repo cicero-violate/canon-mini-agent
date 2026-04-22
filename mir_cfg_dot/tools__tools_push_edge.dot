@@ -1,0 +1,40 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4286 {
+    label="tools::push_edge";
+    "cfg::tools::push_edge::bb0" [label="bb0\nCall"];
+    "cfg::tools::push_edge::bb1" [label="bb1\nCall"];
+    "cfg::tools::push_edge::bb2" [label="bb2\nCall"];
+    "cfg::tools::push_edge::bb3" [label="bb3\nCall"];
+    "cfg::tools::push_edge::bb4" [label="bb4\nDrop"];
+    "cfg::tools::push_edge::bb5" [label="bb5\nCall"];
+    "cfg::tools::push_edge::bb6" [label="bb6\nCall"];
+    "cfg::tools::push_edge::bb7" [label="bb7\nCall"];
+    "cfg::tools::push_edge::bb8" [label="bb8\nDrop"];
+    "cfg::tools::push_edge::bb9" [label="bb9\nCall"];
+    "cfg::tools::push_edge::bb10" [label="bb10\nReturn"];
+    "cfg::tools::push_edge::bb11" [label="bb11\nUnwindResume cleanup loop"];
+    "cfg::tools::push_edge::bb12" [label="bb12\nDrop cleanup loop"];
+    "cfg::tools::push_edge::bb13" [label="bb13\nSwitchInt cleanup loop"];
+    "cfg::tools::push_edge::bb14" [label="bb14\nDrop cleanup loop"];
+    "cfg::tools::push_edge::bb15" [label="bb15\nSwitchInt cleanup loop"];
+    "cfg::tools::push_edge::bb16" [label="bb16\nDrop cleanup loop"];
+    "cfg::tools::push_edge::bb17" [label="bb17\nSwitchInt cleanup loop"];
+  }
+  "cfg::tools::push_edge::bb4" -> "cfg::tools::push_edge::bb5" [label="Drop"];
+  "cfg::tools::push_edge::bb4" -> "cfg::tools::push_edge::bb17" [label="Drop"];
+  "cfg::tools::push_edge::bb8" -> "cfg::tools::push_edge::bb9" [label="Drop"];
+  "cfg::tools::push_edge::bb8" -> "cfg::tools::push_edge::bb17" [label="Drop"];
+  "cfg::tools::push_edge::bb12" -> "cfg::tools::push_edge::bb17" [label="Drop"];
+  "cfg::tools::push_edge::bb13" -> "cfg::tools::push_edge::bb17" [label="SwitchInt"];
+  "cfg::tools::push_edge::bb13" -> "cfg::tools::push_edge::bb12" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::push_edge::bb14" -> "cfg::tools::push_edge::bb17" [label="Drop"];
+  "cfg::tools::push_edge::bb15" -> "cfg::tools::push_edge::bb17" [label="SwitchInt"];
+  "cfg::tools::push_edge::bb15" -> "cfg::tools::push_edge::bb14" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::push_edge::bb16" -> "cfg::tools::push_edge::bb11" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tools::push_edge::bb17" -> "cfg::tools::push_edge::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::push_edge::bb17" -> "cfg::tools::push_edge::bb16" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

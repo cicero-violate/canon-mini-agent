@@ -1,0 +1,23 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3339 {
+    label="supervisor::handle_shutdown_request";
+    "cfg::supervisor::handle_shutdown_request::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::handle_shutdown_request::bb1" [label="bb1\nSwitchInt"];
+    "cfg::supervisor::handle_shutdown_request::bb2" [label="bb2\nCall"];
+    "cfg::supervisor::handle_shutdown_request::bb3" [label="bb3\nGoto"];
+    "cfg::supervisor::handle_shutdown_request::bb4" [label="bb4\nCall"];
+    "cfg::supervisor::handle_shutdown_request::bb5" [label="bb5\nCall"];
+    "cfg::supervisor::handle_shutdown_request::bb6" [label="bb6\nCall"];
+    "cfg::supervisor::handle_shutdown_request::bb7" [label="bb7\nCall"];
+    "cfg::supervisor::handle_shutdown_request::bb8" [label="bb8\nGoto"];
+    "cfg::supervisor::handle_shutdown_request::bb9" [label="bb9\nReturn"];
+  }
+  "cfg::supervisor::handle_shutdown_request::bb1" -> "cfg::supervisor::handle_shutdown_request::bb3" [label="SwitchInt"];
+  "cfg::supervisor::handle_shutdown_request::bb1" -> "cfg::supervisor::handle_shutdown_request::bb2" [label="SwitchInt"];
+  "cfg::supervisor::handle_shutdown_request::bb3" -> "cfg::supervisor::handle_shutdown_request::bb9" [label="Goto"];
+  "cfg::supervisor::handle_shutdown_request::bb8" -> "cfg::supervisor::handle_shutdown_request::bb9" [label="Goto"];
+}

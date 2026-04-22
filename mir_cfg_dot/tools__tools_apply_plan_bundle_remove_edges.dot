@@ -1,0 +1,49 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4383 {
+    label="tools::apply_plan_bundle_remove_edges";
+    "cfg::tools::apply_plan_bundle_remove_edges::bb0" [label="bb0\nCall"];
+    "cfg::tools::apply_plan_bundle_remove_edges::bb1" [label="bb1\nCall"];
+    "cfg::tools::apply_plan_bundle_remove_edges::bb2" [label="bb2\nSwitchInt"];
+    "cfg::tools::apply_plan_bundle_remove_edges::bb3" [label="bb3\nCall"];
+    "cfg::tools::apply_plan_bundle_remove_edges::bb4" [label="bb4\nGoto"];
+    "cfg::tools::apply_plan_bundle_remove_edges::bb5" [label="bb5\nCall"];
+    "cfg::tools::apply_plan_bundle_remove_edges::bb6" [label="bb6\nSwitchInt"];
+    "cfg::tools::apply_plan_bundle_remove_edges::bb7" [label="bb7\nUnreachable loop"];
+    "cfg::tools::apply_plan_bundle_remove_edges::bb8" [label="bb8\nCall loop"];
+    "cfg::tools::apply_plan_bundle_remove_edges::bb9" [label="bb9\nCall loop"];
+    "cfg::tools::apply_plan_bundle_remove_edges::bb10" [label="bb10\nGoto loop"];
+    "cfg::tools::apply_plan_bundle_remove_edges::bb11" [label="bb11\nCall loop"];
+    "cfg::tools::apply_plan_bundle_remove_edges::bb12" [label="bb12\nSwitchInt loop"];
+    "cfg::tools::apply_plan_bundle_remove_edges::bb13" [label="bb13\nCall loop"];
+    "cfg::tools::apply_plan_bundle_remove_edges::bb14" [label="bb14\nGoto loop"];
+    "cfg::tools::apply_plan_bundle_remove_edges::bb15" [label="bb15\nCall loop"];
+    "cfg::tools::apply_plan_bundle_remove_edges::bb16" [label="bb16\nCall loop"];
+    "cfg::tools::apply_plan_bundle_remove_edges::bb17" [label="bb17\nCall loop"];
+    "cfg::tools::apply_plan_bundle_remove_edges::bb18" [label="bb18\nSwitchInt loop"];
+    "cfg::tools::apply_plan_bundle_remove_edges::bb19" [label="bb19\nSwitchInt loop"];
+    "cfg::tools::apply_plan_bundle_remove_edges::bb20" [label="bb20\nCall loop"];
+    "cfg::tools::apply_plan_bundle_remove_edges::bb21" [label="bb21\nReturn"];
+  }
+  "cfg::tools::apply_plan_bundle_remove_edges::bb2" -> "cfg::tools::apply_plan_bundle_remove_edges::bb3" [label="SwitchInt"];
+  "cfg::tools::apply_plan_bundle_remove_edges::bb2" -> "cfg::tools::apply_plan_bundle_remove_edges::bb4" [label="SwitchInt"];
+  "cfg::tools::apply_plan_bundle_remove_edges::bb2" -> "cfg::tools::apply_plan_bundle_remove_edges::bb7" [label="SwitchInt"];
+  "cfg::tools::apply_plan_bundle_remove_edges::bb4" -> "cfg::tools::apply_plan_bundle_remove_edges::bb21" [label="Goto"];
+  "cfg::tools::apply_plan_bundle_remove_edges::bb6" -> "cfg::tools::apply_plan_bundle_remove_edges::bb8" [label="SwitchInt"];
+  "cfg::tools::apply_plan_bundle_remove_edges::bb6" -> "cfg::tools::apply_plan_bundle_remove_edges::bb9" [label="SwitchInt"];
+  "cfg::tools::apply_plan_bundle_remove_edges::bb6" -> "cfg::tools::apply_plan_bundle_remove_edges::bb7" [label="SwitchInt"];
+  "cfg::tools::apply_plan_bundle_remove_edges::bb10" -> "cfg::tools::apply_plan_bundle_remove_edges::bb11" [label="Goto"];
+  "cfg::tools::apply_plan_bundle_remove_edges::bb12" -> "cfg::tools::apply_plan_bundle_remove_edges::bb14" [label="SwitchInt"];
+  "cfg::tools::apply_plan_bundle_remove_edges::bb12" -> "cfg::tools::apply_plan_bundle_remove_edges::bb13" [label="SwitchInt"];
+  "cfg::tools::apply_plan_bundle_remove_edges::bb12" -> "cfg::tools::apply_plan_bundle_remove_edges::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::apply_plan_bundle_remove_edges::bb14" -> "cfg::tools::apply_plan_bundle_remove_edges::bb21" [label="Goto"];
+  "cfg::tools::apply_plan_bundle_remove_edges::bb18" -> "cfg::tools::apply_plan_bundle_remove_edges::bb19" [label="SwitchInt"];
+  "cfg::tools::apply_plan_bundle_remove_edges::bb18" -> "cfg::tools::apply_plan_bundle_remove_edges::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::apply_plan_bundle_remove_edges::bb18" -> "cfg::tools::apply_plan_bundle_remove_edges::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::apply_plan_bundle_remove_edges::bb19" -> "cfg::tools::apply_plan_bundle_remove_edges::bb20" [label="SwitchInt"];
+  "cfg::tools::apply_plan_bundle_remove_edges::bb19" -> "cfg::tools::apply_plan_bundle_remove_edges::bb11" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::apply_plan_bundle_remove_edges::bb19" -> "cfg::tools::apply_plan_bundle_remove_edges::bb7" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

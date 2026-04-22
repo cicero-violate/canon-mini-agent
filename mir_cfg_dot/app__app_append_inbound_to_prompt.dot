@@ -1,0 +1,25 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_343 {
+    label="app::append_inbound_to_prompt";
+    "cfg::app::append_inbound_to_prompt::bb0" [label="bb0\nCall"];
+    "cfg::app::append_inbound_to_prompt::bb1" [label="bb1\nCall"];
+    "cfg::app::append_inbound_to_prompt::bb2" [label="bb2\nCall"];
+    "cfg::app::append_inbound_to_prompt::bb3" [label="bb3\nCall"];
+    "cfg::app::append_inbound_to_prompt::bb4" [label="bb4\nDrop"];
+    "cfg::app::append_inbound_to_prompt::bb5" [label="bb5\nCall"];
+    "cfg::app::append_inbound_to_prompt::bb6" [label="bb6\nCall"];
+    "cfg::app::append_inbound_to_prompt::bb7" [label="bb7\nSwitchInt"];
+    "cfg::app::append_inbound_to_prompt::bb8" [label="bb8\nCall"];
+    "cfg::app::append_inbound_to_prompt::bb9" [label="bb9\nReturn"];
+    "cfg::app::append_inbound_to_prompt::bb10" [label="bb10\nDrop cleanup"];
+    "cfg::app::append_inbound_to_prompt::bb11" [label="bb11\nUnwindResume cleanup"];
+  }
+  "cfg::app::append_inbound_to_prompt::bb4" -> "cfg::app::append_inbound_to_prompt::bb5" [label="Drop"];
+  "cfg::app::append_inbound_to_prompt::bb7" -> "cfg::app::append_inbound_to_prompt::bb9" [label="SwitchInt"];
+  "cfg::app::append_inbound_to_prompt::bb7" -> "cfg::app::append_inbound_to_prompt::bb8" [label="SwitchInt"];
+  "cfg::app::append_inbound_to_prompt::bb10" -> "cfg::app::append_inbound_to_prompt::bb11" [label="Drop"];
+}

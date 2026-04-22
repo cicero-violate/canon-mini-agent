@@ -1,0 +1,22 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3160 {
+    label="semantic::is_validation_terminator";
+    "cfg::semantic::is_validation_terminator::bb0" [label="bb0\nCall"];
+    "cfg::semantic::is_validation_terminator::bb1" [label="bb1\nGoto loop"];
+    "cfg::semantic::is_validation_terminator::bb2" [label="bb2\nCall loop"];
+    "cfg::semantic::is_validation_terminator::bb3" [label="bb3\nSwitchInt loop"];
+    "cfg::semantic::is_validation_terminator::bb4" [label="bb4\nSwitchInt loop"];
+    "cfg::semantic::is_validation_terminator::bb5" [label="bb5\nGoto"];
+    "cfg::semantic::is_validation_terminator::bb6" [label="bb6\nReturn"];
+  }
+  "cfg::semantic::is_validation_terminator::bb1" -> "cfg::semantic::is_validation_terminator::bb6" [label="Goto"];
+  "cfg::semantic::is_validation_terminator::bb3" -> "cfg::semantic::is_validation_terminator::bb1" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::is_validation_terminator::bb3" -> "cfg::semantic::is_validation_terminator::bb5" [label="SwitchInt"];
+  "cfg::semantic::is_validation_terminator::bb4" -> "cfg::semantic::is_validation_terminator::bb2" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::semantic::is_validation_terminator::bb4" -> "cfg::semantic::is_validation_terminator::bb5" [label="SwitchInt"];
+  "cfg::semantic::is_validation_terminator::bb5" -> "cfg::semantic::is_validation_terminator::bb6" [label="Goto"];
+}

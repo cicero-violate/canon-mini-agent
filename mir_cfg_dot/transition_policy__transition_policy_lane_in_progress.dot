@@ -1,0 +1,13 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4704 {
+    label="transition_policy::lane_in_progress";
+    "cfg::transition_policy::lane_in_progress::bb0" [label="bb0\nCall"];
+    "cfg::transition_policy::lane_in_progress::bb1" [label="bb1\nCall"];
+    "cfg::transition_policy::lane_in_progress::bb2" [label="bb2\nCall"];
+    "cfg::transition_policy::lane_in_progress::bb3" [label="bb3\nReturn"];
+  }
+}

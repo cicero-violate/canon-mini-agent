@@ -1,0 +1,31 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4616 {
+    label="canonical_writer::CanonicalWriter::try_record_violation";
+    "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb0" [label="bb0\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb1" [label="bb1\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb2" [label="bb2\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb3" [label="bb3\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb4" [label="bb4\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb5" [label="bb5\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb6" [label="bb6\nSwitchInt"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb7" [label="bb7\nUnreachable"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb8" [label="bb8\nDrop"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb9" [label="bb9\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb10" [label="bb10\nDrop"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb11" [label="bb11\nReturn"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb12" [label="bb12\nDrop cleanup"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb13" [label="bb13\nDrop cleanup"];
+    "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb14" [label="bb14\nUnwindResume cleanup"];
+  }
+  "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb6" -> "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb8" [label="SwitchInt"];
+  "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb6" -> "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb9" [label="SwitchInt"];
+  "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb6" -> "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb7" [label="SwitchInt"];
+  "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb8" -> "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb11" [label="Drop"];
+  "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb10" -> "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb11" [label="Drop"];
+  "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb12" -> "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb14" [label="Drop"];
+  "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb13" -> "cfg::canonical_writer::CanonicalWriter::try_record_violation::bb14" [label="Drop"];
+}

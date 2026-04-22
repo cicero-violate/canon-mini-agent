@@ -1,0 +1,17 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4125 {
+    label="tools::build_graph_call_cfg_command";
+    "cfg::tools::build_graph_call_cfg_command::bb0" [label="bb0\nCall"];
+    "cfg::tools::build_graph_call_cfg_command::bb1" [label="bb1\nCall"];
+    "cfg::tools::build_graph_call_cfg_command::bb2" [label="bb2\nCall"];
+    "cfg::tools::build_graph_call_cfg_command::bb3" [label="bb3\nCall"];
+    "cfg::tools::build_graph_call_cfg_command::bb4" [label="bb4\nCall"];
+    "cfg::tools::build_graph_call_cfg_command::bb5" [label="bb5\nCall"];
+    "cfg::tools::build_graph_call_cfg_command::bb6" [label="bb6\nCall"];
+    "cfg::tools::build_graph_call_cfg_command::bb7" [label="bb7\nReturn"];
+  }
+}

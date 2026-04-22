@@ -1,0 +1,36 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4607 {
+    label="canonical_writer::CanonicalWriter::try_new";
+    "cfg::canonical_writer::CanonicalWriter::try_new::bb0" [label="bb0\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::try_new::bb1" [label="bb1\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::try_new::bb2" [label="bb2\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::try_new::bb3" [label="bb3\nSwitchInt"];
+    "cfg::canonical_writer::CanonicalWriter::try_new::bb4" [label="bb4\nUnreachable"];
+    "cfg::canonical_writer::CanonicalWriter::try_new::bb5" [label="bb5\nGoto"];
+    "cfg::canonical_writer::CanonicalWriter::try_new::bb6" [label="bb6\nCall"];
+    "cfg::canonical_writer::CanonicalWriter::try_new::bb7" [label="bb7\nDrop"];
+    "cfg::canonical_writer::CanonicalWriter::try_new::bb8" [label="bb8\nDrop"];
+    "cfg::canonical_writer::CanonicalWriter::try_new::bb9" [label="bb9\nDrop"];
+    "cfg::canonical_writer::CanonicalWriter::try_new::bb10" [label="bb10\nReturn"];
+    "cfg::canonical_writer::CanonicalWriter::try_new::bb11" [label="bb11\nDrop cleanup"];
+    "cfg::canonical_writer::CanonicalWriter::try_new::bb12" [label="bb12\nDrop cleanup"];
+    "cfg::canonical_writer::CanonicalWriter::try_new::bb13" [label="bb13\nDrop cleanup"];
+    "cfg::canonical_writer::CanonicalWriter::try_new::bb14" [label="bb14\nUnwindResume cleanup"];
+  }
+  "cfg::canonical_writer::CanonicalWriter::try_new::bb3" -> "cfg::canonical_writer::CanonicalWriter::try_new::bb5" [label="SwitchInt"];
+  "cfg::canonical_writer::CanonicalWriter::try_new::bb3" -> "cfg::canonical_writer::CanonicalWriter::try_new::bb6" [label="SwitchInt"];
+  "cfg::canonical_writer::CanonicalWriter::try_new::bb3" -> "cfg::canonical_writer::CanonicalWriter::try_new::bb4" [label="SwitchInt"];
+  "cfg::canonical_writer::CanonicalWriter::try_new::bb5" -> "cfg::canonical_writer::CanonicalWriter::try_new::bb10" [label="Goto"];
+  "cfg::canonical_writer::CanonicalWriter::try_new::bb7" -> "cfg::canonical_writer::CanonicalWriter::try_new::bb8" [label="Drop"];
+  "cfg::canonical_writer::CanonicalWriter::try_new::bb7" -> "cfg::canonical_writer::CanonicalWriter::try_new::bb12" [label="Drop"];
+  "cfg::canonical_writer::CanonicalWriter::try_new::bb8" -> "cfg::canonical_writer::CanonicalWriter::try_new::bb9" [label="Drop"];
+  "cfg::canonical_writer::CanonicalWriter::try_new::bb8" -> "cfg::canonical_writer::CanonicalWriter::try_new::bb13" [label="Drop"];
+  "cfg::canonical_writer::CanonicalWriter::try_new::bb9" -> "cfg::canonical_writer::CanonicalWriter::try_new::bb10" [label="Drop"];
+  "cfg::canonical_writer::CanonicalWriter::try_new::bb11" -> "cfg::canonical_writer::CanonicalWriter::try_new::bb12" [label="Drop"];
+  "cfg::canonical_writer::CanonicalWriter::try_new::bb12" -> "cfg::canonical_writer::CanonicalWriter::try_new::bb13" [label="Drop"];
+  "cfg::canonical_writer::CanonicalWriter::try_new::bb13" -> "cfg::canonical_writer::CanonicalWriter::try_new::bb14" [label="Drop"];
+}

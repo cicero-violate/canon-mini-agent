@@ -1,0 +1,52 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_4028 {
+    label="tools::schema_guarded_patch_validation_failure";
+    "cfg::tools::schema_guarded_patch_validation_failure::bb0" [label="bb0\nSwitchInt"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb1" [label="bb1\nCall"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb2" [label="bb2\nCall"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb3" [label="bb3\nDrop"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb4" [label="bb4\nCall"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb5" [label="bb5\nCall"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb6" [label="bb6\nCall"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb7" [label="bb7\nCall"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb8" [label="bb8\nCall"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb9" [label="bb9\nCall"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb10" [label="bb10\nDrop"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb11" [label="bb11\nCall"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb12" [label="bb12\nCall"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb13" [label="bb13\nCall"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb14" [label="bb14\nCall"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb15" [label="bb15\nDrop"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb16" [label="bb16\nCall"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb17" [label="bb17\nReturn"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb18" [label="bb18\nDrop cleanup loop"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb19" [label="bb19\nDrop cleanup loop"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb20" [label="bb20\nUnwindResume cleanup loop"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb21" [label="bb21\nDrop cleanup loop"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb22" [label="bb22\nSwitchInt cleanup loop"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb23" [label="bb23\nDrop cleanup loop"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb24" [label="bb24\nSwitchInt cleanup loop"];
+    "cfg::tools::schema_guarded_patch_validation_failure::bb25" [label="bb25\nUnreachable"];
+  }
+  "cfg::tools::schema_guarded_patch_validation_failure::bb0" -> "cfg::tools::schema_guarded_patch_validation_failure::bb1" [label="SwitchInt"];
+  "cfg::tools::schema_guarded_patch_validation_failure::bb0" -> "cfg::tools::schema_guarded_patch_validation_failure::bb4" [label="SwitchInt"];
+  "cfg::tools::schema_guarded_patch_validation_failure::bb0" -> "cfg::tools::schema_guarded_patch_validation_failure::bb25" [label="SwitchInt"];
+  "cfg::tools::schema_guarded_patch_validation_failure::bb3" -> "cfg::tools::schema_guarded_patch_validation_failure::bb4" [label="Drop"];
+  "cfg::tools::schema_guarded_patch_validation_failure::bb3" -> "cfg::tools::schema_guarded_patch_validation_failure::bb19" [label="Drop"];
+  "cfg::tools::schema_guarded_patch_validation_failure::bb10" -> "cfg::tools::schema_guarded_patch_validation_failure::bb11" [label="Drop"];
+  "cfg::tools::schema_guarded_patch_validation_failure::bb10" -> "cfg::tools::schema_guarded_patch_validation_failure::bb18" [label="Drop"];
+  "cfg::tools::schema_guarded_patch_validation_failure::bb15" -> "cfg::tools::schema_guarded_patch_validation_failure::bb16" [label="Drop"];
+  "cfg::tools::schema_guarded_patch_validation_failure::bb15" -> "cfg::tools::schema_guarded_patch_validation_failure::bb18" [label="Drop"];
+  "cfg::tools::schema_guarded_patch_validation_failure::bb18" -> "cfg::tools::schema_guarded_patch_validation_failure::bb19" [label="Drop"];
+  "cfg::tools::schema_guarded_patch_validation_failure::bb19" -> "cfg::tools::schema_guarded_patch_validation_failure::bb20" [label="Drop"];
+  "cfg::tools::schema_guarded_patch_validation_failure::bb21" -> "cfg::tools::schema_guarded_patch_validation_failure::bb18" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tools::schema_guarded_patch_validation_failure::bb22" -> "cfg::tools::schema_guarded_patch_validation_failure::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::schema_guarded_patch_validation_failure::bb22" -> "cfg::tools::schema_guarded_patch_validation_failure::bb21" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::schema_guarded_patch_validation_failure::bb23" -> "cfg::tools::schema_guarded_patch_validation_failure::bb18" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::tools::schema_guarded_patch_validation_failure::bb24" -> "cfg::tools::schema_guarded_patch_validation_failure::bb18" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::tools::schema_guarded_patch_validation_failure::bb24" -> "cfg::tools::schema_guarded_patch_validation_failure::bb23" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

@@ -1,0 +1,27 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_402 {
+    label="app::LlmResponseContext::<'a>::log_error";
+    "cfg::app::LlmResponseContext::<'a>::log_error::bb0" [label="bb0\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::log_error::bb1" [label="bb1\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::log_error::bb2" [label="bb2\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::log_error::bb3" [label="bb3\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::log_error::bb4" [label="bb4\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::log_error::bb5" [label="bb5\nDrop"];
+    "cfg::app::LlmResponseContext::<'a>::log_error::bb6" [label="bb6\nCall"];
+    "cfg::app::LlmResponseContext::<'a>::log_error::bb7" [label="bb7\nReturn"];
+    "cfg::app::LlmResponseContext::<'a>::log_error::bb8" [label="bb8\nDrop cleanup loop"];
+    "cfg::app::LlmResponseContext::<'a>::log_error::bb9" [label="bb9\nUnwindResume cleanup loop"];
+    "cfg::app::LlmResponseContext::<'a>::log_error::bb10" [label="bb10\nDrop cleanup loop"];
+    "cfg::app::LlmResponseContext::<'a>::log_error::bb11" [label="bb11\nSwitchInt cleanup loop"];
+  }
+  "cfg::app::LlmResponseContext::<'a>::log_error::bb5" -> "cfg::app::LlmResponseContext::<'a>::log_error::bb6" [label="Drop"];
+  "cfg::app::LlmResponseContext::<'a>::log_error::bb5" -> "cfg::app::LlmResponseContext::<'a>::log_error::bb8" [label="Drop"];
+  "cfg::app::LlmResponseContext::<'a>::log_error::bb8" -> "cfg::app::LlmResponseContext::<'a>::log_error::bb9" [label="Drop"];
+  "cfg::app::LlmResponseContext::<'a>::log_error::bb10" -> "cfg::app::LlmResponseContext::<'a>::log_error::bb8" [color="crimson", penwidth=2, label="Drop back"];
+  "cfg::app::LlmResponseContext::<'a>::log_error::bb11" -> "cfg::app::LlmResponseContext::<'a>::log_error::bb8" [color="crimson", penwidth=2, label="SwitchInt back"];
+  "cfg::app::LlmResponseContext::<'a>::log_error::bb11" -> "cfg::app::LlmResponseContext::<'a>::log_error::bb10" [color="crimson", penwidth=2, label="SwitchInt back"];
+}

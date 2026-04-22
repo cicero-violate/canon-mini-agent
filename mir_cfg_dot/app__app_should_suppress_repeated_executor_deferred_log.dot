@@ -1,0 +1,25 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_366 {
+    label="app::should_suppress_repeated_executor_deferred_log";
+    "cfg::app::should_suppress_repeated_executor_deferred_log::bb0" [label="bb0\nCall"];
+    "cfg::app::should_suppress_repeated_executor_deferred_log::bb1" [label="bb1\nCall"];
+    "cfg::app::should_suppress_repeated_executor_deferred_log::bb2" [label="bb2\nCall"];
+    "cfg::app::should_suppress_repeated_executor_deferred_log::bb3" [label="bb3\nCall"];
+    "cfg::app::should_suppress_repeated_executor_deferred_log::bb4" [label="bb4\nCall"];
+    "cfg::app::should_suppress_repeated_executor_deferred_log::bb5" [label="bb5\nCall"];
+    "cfg::app::should_suppress_repeated_executor_deferred_log::bb6" [label="bb6\nCall"];
+    "cfg::app::should_suppress_repeated_executor_deferred_log::bb7" [label="bb7\nCall"];
+    "cfg::app::should_suppress_repeated_executor_deferred_log::bb8" [label="bb8\nCall"];
+    "cfg::app::should_suppress_repeated_executor_deferred_log::bb9" [label="bb9\nCall"];
+    "cfg::app::should_suppress_repeated_executor_deferred_log::bb10" [label="bb10\nDrop"];
+    "cfg::app::should_suppress_repeated_executor_deferred_log::bb11" [label="bb11\nReturn"];
+    "cfg::app::should_suppress_repeated_executor_deferred_log::bb12" [label="bb12\nDrop cleanup"];
+    "cfg::app::should_suppress_repeated_executor_deferred_log::bb13" [label="bb13\nUnwindResume cleanup"];
+  }
+  "cfg::app::should_suppress_repeated_executor_deferred_log::bb10" -> "cfg::app::should_suppress_repeated_executor_deferred_log::bb11" [label="Drop"];
+  "cfg::app::should_suppress_repeated_executor_deferred_log::bb12" -> "cfg::app::should_suppress_repeated_executor_deferred_log::bb13" [label="Drop"];
+}

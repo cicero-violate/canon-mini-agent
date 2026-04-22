@@ -1,0 +1,52 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_2580 {
+    label="prompts::role_default_schema_actions_for_role";
+    "cfg::prompts::role_default_schema_actions_for_role::bb0" [label="bb0\nCall"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb1" [label="bb1\nCall"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb2" [label="bb2\nCall"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb3" [label="bb3\nCall"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb4" [label="bb4\nSwitchInt"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb5" [label="bb5\nCall"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb6" [label="bb6\nCall"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb7" [label="bb7\nCall"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb8" [label="bb8\nSwitchInt"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb9" [label="bb9\nCall"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb10" [label="bb10\nCall"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb11" [label="bb11\nCall"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb12" [label="bb12\nSwitchInt"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb13" [label="bb13\nCall"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb14" [label="bb14\nCall"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb15" [label="bb15\nCall"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb16" [label="bb16\nSwitchInt"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb17" [label="bb17\nCall"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb18" [label="bb18\nCall"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb19" [label="bb19\nDrop loop"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb20" [label="bb20\nReturn loop"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb21" [label="bb21\nDrop cleanup loop"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb22" [label="bb22\nUnwindResume cleanup loop"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb23" [label="bb23\nGoto loop"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb24" [label="bb24\nGoto loop"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb25" [label="bb25\nGoto loop"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb26" [label="bb26\nGoto loop"];
+    "cfg::prompts::role_default_schema_actions_for_role::bb27" [label="bb27\nGoto loop"];
+  }
+  "cfg::prompts::role_default_schema_actions_for_role::bb4" -> "cfg::prompts::role_default_schema_actions_for_role::bb6" [label="SwitchInt"];
+  "cfg::prompts::role_default_schema_actions_for_role::bb4" -> "cfg::prompts::role_default_schema_actions_for_role::bb5" [label="SwitchInt"];
+  "cfg::prompts::role_default_schema_actions_for_role::bb8" -> "cfg::prompts::role_default_schema_actions_for_role::bb10" [label="SwitchInt"];
+  "cfg::prompts::role_default_schema_actions_for_role::bb8" -> "cfg::prompts::role_default_schema_actions_for_role::bb9" [label="SwitchInt"];
+  "cfg::prompts::role_default_schema_actions_for_role::bb12" -> "cfg::prompts::role_default_schema_actions_for_role::bb14" [label="SwitchInt"];
+  "cfg::prompts::role_default_schema_actions_for_role::bb12" -> "cfg::prompts::role_default_schema_actions_for_role::bb13" [label="SwitchInt"];
+  "cfg::prompts::role_default_schema_actions_for_role::bb16" -> "cfg::prompts::role_default_schema_actions_for_role::bb18" [label="SwitchInt"];
+  "cfg::prompts::role_default_schema_actions_for_role::bb16" -> "cfg::prompts::role_default_schema_actions_for_role::bb17" [label="SwitchInt"];
+  "cfg::prompts::role_default_schema_actions_for_role::bb19" -> "cfg::prompts::role_default_schema_actions_for_role::bb20" [label="Drop"];
+  "cfg::prompts::role_default_schema_actions_for_role::bb21" -> "cfg::prompts::role_default_schema_actions_for_role::bb22" [label="Drop"];
+  "cfg::prompts::role_default_schema_actions_for_role::bb23" -> "cfg::prompts::role_default_schema_actions_for_role::bb19" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::prompts::role_default_schema_actions_for_role::bb24" -> "cfg::prompts::role_default_schema_actions_for_role::bb19" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::prompts::role_default_schema_actions_for_role::bb25" -> "cfg::prompts::role_default_schema_actions_for_role::bb19" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::prompts::role_default_schema_actions_for_role::bb26" -> "cfg::prompts::role_default_schema_actions_for_role::bb19" [color="crimson", penwidth=2, label="Goto back"];
+  "cfg::prompts::role_default_schema_actions_for_role::bb27" -> "cfg::prompts::role_default_schema_actions_for_role::bb19" [color="crimson", penwidth=2, label="Goto back"];
+}

@@ -1,0 +1,34 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_3341 {
+    label="supervisor::initialize_supervisor_runtime";
+    "cfg::supervisor::initialize_supervisor_runtime::bb0" [label="bb0\nCall"];
+    "cfg::supervisor::initialize_supervisor_runtime::bb1" [label="bb1\nSwitchInt"];
+    "cfg::supervisor::initialize_supervisor_runtime::bb2" [label="bb2\nCall"];
+    "cfg::supervisor::initialize_supervisor_runtime::bb3" [label="bb3\nCall loop"];
+    "cfg::supervisor::initialize_supervisor_runtime::bb4" [label="bb4\nCall loop"];
+    "cfg::supervisor::initialize_supervisor_runtime::bb5" [label="bb5\nCall loop"];
+    "cfg::supervisor::initialize_supervisor_runtime::bb6" [label="bb6\nCall loop"];
+    "cfg::supervisor::initialize_supervisor_runtime::bb7" [label="bb7\nDrop loop"];
+    "cfg::supervisor::initialize_supervisor_runtime::bb8" [label="bb8\nDrop loop"];
+    "cfg::supervisor::initialize_supervisor_runtime::bb9" [label="bb9\nCall loop"];
+    "cfg::supervisor::initialize_supervisor_runtime::bb10" [label="bb10\nCall loop"];
+    "cfg::supervisor::initialize_supervisor_runtime::bb11" [label="bb11\nReturn loop"];
+    "cfg::supervisor::initialize_supervisor_runtime::bb12" [label="bb12\nDrop cleanup loop"];
+    "cfg::supervisor::initialize_supervisor_runtime::bb13" [label="bb13\nDrop cleanup loop"];
+    "cfg::supervisor::initialize_supervisor_runtime::bb14" [label="bb14\nUnwindResume cleanup loop"];
+    "cfg::supervisor::initialize_supervisor_runtime::bb15" [label="bb15\nCall loop"];
+    "cfg::supervisor::initialize_supervisor_runtime::bb16" [label="bb16\nUnreachable"];
+  }
+  "cfg::supervisor::initialize_supervisor_runtime::bb1" -> "cfg::supervisor::initialize_supervisor_runtime::bb2" [label="SwitchInt"];
+  "cfg::supervisor::initialize_supervisor_runtime::bb1" -> "cfg::supervisor::initialize_supervisor_runtime::bb15" [label="SwitchInt"];
+  "cfg::supervisor::initialize_supervisor_runtime::bb1" -> "cfg::supervisor::initialize_supervisor_runtime::bb16" [label="SwitchInt"];
+  "cfg::supervisor::initialize_supervisor_runtime::bb7" -> "cfg::supervisor::initialize_supervisor_runtime::bb8" [label="Drop"];
+  "cfg::supervisor::initialize_supervisor_runtime::bb7" -> "cfg::supervisor::initialize_supervisor_runtime::bb13" [label="Drop"];
+  "cfg::supervisor::initialize_supervisor_runtime::bb8" -> "cfg::supervisor::initialize_supervisor_runtime::bb9" [label="Drop"];
+  "cfg::supervisor::initialize_supervisor_runtime::bb12" -> "cfg::supervisor::initialize_supervisor_runtime::bb13" [label="Drop"];
+  "cfg::supervisor::initialize_supervisor_runtime::bb13" -> "cfg::supervisor::initialize_supervisor_runtime::bb14" [label="Drop"];
+}

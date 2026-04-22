@@ -1,0 +1,11 @@
+digraph MIR_CFG {
+  rankdir=LR;
+  graph [fontname="monospace"];
+  node [shape=box, fontname="monospace"];
+  edge [fontname="monospace"];
+  subgraph cluster_0_765 {
+    label="constants::AGENT_STATE_DIR_PATH";
+    "cfg::constants::AGENT_STATE_DIR_PATH::bb0" [label="bb0\nCall"];
+    "cfg::constants::AGENT_STATE_DIR_PATH::bb1" [label="bb1\nReturn"];
+  }
+}
