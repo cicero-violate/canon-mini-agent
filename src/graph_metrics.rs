@@ -349,7 +349,7 @@ pub fn generate_planner_loop_fragmentation_issues(workspace: &Path) -> Result<us
         let desired = build_planner_loop_fragmentation_issue(&crate_name, &idx);
         let active = desired
             .metrics
-            .get("orchestrator_count")
+            .get("owner_candidate_count")
             .and_then(|v| v.as_u64())
             .unwrap_or(0)
             > 1;
