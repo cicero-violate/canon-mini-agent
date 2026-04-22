@@ -7596,6 +7596,7 @@ mod tests {
             turn_id: Some(1),
             endpoint_id: "mini_planner_chatgpt".to_string(),
             restart_kind: "process_restart".to_string(),
+            signature: "test-signature".to_string(),
         };
         let prompt = super::build_restart_resume_prompt("planner", &resume);
         assert!(prompt.contains("SYSTEM RESTART RESUME"));
