@@ -467,6 +467,58 @@ fn count_state_transition_dispersion(idx: &SemanticIndex) -> usize {
         .count()
 }
 
+fn count_representation_fanout(idx: &SemanticIndex) -> usize {
+    let mut sources_by_symbol: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut targets_by_symbol: HashMap<String, HashSet<String>> = HashMap::new();
+    for (symbol, artifact) in idx.artifact_read_edges() {
+        sources_by_symbol
+            .entry(symbol)
+            .or_default()
+            .insert(format!("artifact::{artifact}"));
+    }
+    for (symbol, state) in idx.state_read_edges() {
+        sources_by_symbol
+            .entry(symbol)
+            .or_default()
+            .insert(format!("state::{state}"));
+    }
+    for (symbol, artifact) in idx.artifact_write_edges() {
+        targets_by_symbol
+            .entry(symbol)
+            .or_default()
+            .insert(format!("artifact::{artifact}"));
+    }
+    for (symbol, state) in idx.state_write_edges() {
+        targets_by_symbol
+            .entry(symbol)
+            .or_default()
+            .insert(format!("state::{state}"));
+    }
+
+    let mut symbols_by_pair: HashMap<(String, String), HashSet<String>> = HashMap::new();
+    for (symbol, sources) in sources_by_symbol {
+        let Some(targets) = targets_by_symbol.get(&symbol) else {
+            continue;
+        };
+        for source in &sources {
+            for target in targets {
+                if source == target {
+                    continue;
+                }
+                symbols_by_pair
+                    .entry((source.clone(), target.clone()))
+                    .or_default()
+                    .insert(symbol.clone());
+            }
+        }
+    }
+
+    symbols_by_pair
+        .into_values()
+        .filter(|symbols| symbols.len() > 1)
+        .count()
+}
+
 pub fn build_graph_verification_snapshot(workspace: &Path) -> Result<serde_json::Value> {
     let crates = SemanticIndex::available_crates(workspace);
     let mut per_crate = Vec::new();
@@ -477,6 +529,7 @@ pub fn build_graph_verification_snapshot(workspace: &Path) -> Result<serde_json:
     let mut total_artifact_writer_dispersion = 0usize;
     let mut total_error_shaping_dispersion = 0usize;
     let mut total_state_transition_dispersion = 0usize;
+    let mut total_representation_fanout = 0usize;
 
     for crate_name in crates {
         let idx = match SemanticIndex::load(workspace, &crate_name) {
@@ -506,6 +559,7 @@ pub fn build_graph_verification_snapshot(workspace: &Path) -> Result<serde_json:
         let artifact_writer_dispersion_count = count_artifact_writer_dispersion(&idx);
         let error_shaping_dispersion_count = count_error_shaping_dispersion(&idx);
         let state_transition_dispersion_count = count_state_transition_dispersion(&idx);
+        let representation_fanout_count = count_representation_fanout(&idx);
         let call_edge_count = idx.call_edges().len();
 
         total_pathways += pathway_count;
@@ -513,6 +567,7 @@ pub fn build_graph_verification_snapshot(workspace: &Path) -> Result<serde_json:
         total_artifact_writer_dispersion += artifact_writer_dispersion_count;
         total_error_shaping_dispersion += error_shaping_dispersion_count;
         total_state_transition_dispersion += state_transition_dispersion_count;
+        total_representation_fanout += representation_fanout_count;
         global_entries.extend(entries.iter().cloned());
 
         per_crate.push(json!({
@@ -524,6 +579,7 @@ pub fn build_graph_verification_snapshot(workspace: &Path) -> Result<serde_json:
             "artifact_writer_dispersion_count": artifact_writer_dispersion_count,
             "error_shaping_dispersion_count": error_shaping_dispersion_count,
             "state_transition_dispersion_count": state_transition_dispersion_count,
+            "representation_fanout_count": representation_fanout_count,
             "call_edge_count": call_edge_count,
             "top_entropy_hotspots": entries.iter().take(10).map(graph_only_entry_json).collect::<Vec<_>>(),
         }));
@@ -557,6 +613,10 @@ pub fn build_graph_verification_snapshot(workspace: &Path) -> Result<serde_json:
     totals.insert(
         "state_transition_dispersion_count".to_string(),
         json!(total_state_transition_dispersion),
+    );
+    totals.insert(
+        "representation_fanout_count".to_string(),
+        json!(total_representation_fanout),
     );
 
     Ok(json!({
@@ -615,6 +675,7 @@ pub fn build_graph_delta_report(
         "artifact_writer_dispersion_count": metric_delta(&before_totals, &after_totals, "artifact_writer_dispersion_count"),
         "error_shaping_dispersion_count": metric_delta(&before_totals, &after_totals, "error_shaping_dispersion_count"),
         "state_transition_dispersion_count": metric_delta(&before_totals, &after_totals, "state_transition_dispersion_count"),
+        "representation_fanout_count": metric_delta(&before_totals, &after_totals, "representation_fanout_count"),
     });
 
     let keys = [
@@ -624,6 +685,7 @@ pub fn build_graph_delta_report(
         "artifact_writer_dispersion_count",
         "error_shaping_dispersion_count",
         "state_transition_dispersion_count",
+        "representation_fanout_count",
     ];
     let improved_metrics = keys
         .iter()
@@ -665,6 +727,7 @@ pub fn build_graph_delta_report(
                 "artifact_writer_dispersion_count": metric_delta(&before_entry, &after_entry, "artifact_writer_dispersion_count"),
                 "error_shaping_dispersion_count": metric_delta(&before_entry, &after_entry, "error_shaping_dispersion_count"),
                 "state_transition_dispersion_count": metric_delta(&before_entry, &after_entry, "state_transition_dispersion_count"),
+                "representation_fanout_count": metric_delta(&before_entry, &after_entry, "representation_fanout_count"),
             }))
         })
         .collect::<Vec<_>>();
@@ -1002,6 +1065,8 @@ fn generate_refactor_issue_batch(workspace: &Path) {
     let _ = crate::graph_metrics::generate_planner_loop_fragmentation_issues(workspace);
     let _ = crate::graph_metrics::generate_implicit_state_machine_issues(workspace);
     let _ = crate::graph_metrics::generate_effect_boundary_leak_issues(workspace);
+    let _ = crate::graph_metrics::generate_representation_fanout_issues(workspace);
+    let _ = crate::graph_metrics::generate_cfg_region_reduction_issues(workspace);
 }
 
 fn generate_invariant_lifecycle_issues(workspace: &Path) {
@@ -1115,7 +1180,8 @@ mod tests {
                 "redundant_path_count": 30,
                 "artifact_writer_dispersion_count": 3,
                 "error_shaping_dispersion_count": 2,
-                "state_transition_dispersion_count": 4
+                "state_transition_dispersion_count": 4,
+                "representation_fanout_count": 5
             },
             "crates": [{
                 "crate": "canon_mini_agent",
@@ -1124,7 +1190,8 @@ mod tests {
                 "redundant_path_count": 30,
                 "artifact_writer_dispersion_count": 3,
                 "error_shaping_dispersion_count": 2,
-                "state_transition_dispersion_count": 4
+                "state_transition_dispersion_count": 4,
+                "representation_fanout_count": 5
             }]
         });
         let after = json!({
@@ -1135,7 +1202,8 @@ mod tests {
                 "redundant_path_count": 24,
                 "artifact_writer_dispersion_count": 2,
                 "error_shaping_dispersion_count": 1,
-                "state_transition_dispersion_count": 2
+                "state_transition_dispersion_count": 2,
+                "representation_fanout_count": 3
             },
             "crates": [{
                 "crate": "canon_mini_agent",
@@ -1144,7 +1212,8 @@ mod tests {
                 "redundant_path_count": 24,
                 "artifact_writer_dispersion_count": 2,
                 "error_shaping_dispersion_count": 1,
-                "state_transition_dispersion_count": 2
+                "state_transition_dispersion_count": 2,
+                "representation_fanout_count": 3
             }]
         });
 
@@ -1161,6 +1230,10 @@ mod tests {
         assert_eq!(
             report["per_crate"][0]["artifact_writer_dispersion_count"]["delta"].as_f64(),
             Some(-1.0)
+        );
+        assert_eq!(
+            report["metrics"]["representation_fanout_count"]["delta"].as_f64(),
+            Some(-2.0)
         );
     }
 }

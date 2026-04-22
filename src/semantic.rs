@@ -419,6 +419,20 @@ impl SemanticIndex {
             .collect()
     }
 
+    pub fn workflow_domain_edges(&self) -> Vec<(String, String)> {
+        self.graph
+            .edges
+            .iter()
+            .filter(|e| edge_relation(e) == "TouchesWorkflowDomain")
+            .map(|e| {
+                (
+                    self.edge_endpoint_path(&e.from),
+                    self.edge_endpoint_path(&e.to),
+                )
+            })
+            .collect()
+    }
+
     pub fn semantic_edges_by_relation(&self, relation: &str) -> Vec<(String, String)> {
         self.graph
             .edges

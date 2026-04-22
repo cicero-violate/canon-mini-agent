@@ -527,6 +527,166 @@ pub fn generate_effect_boundary_leak_issues(workspace: &Path) -> Result<usize> {
     Ok(mutated)
 }
 
+pub fn generate_representation_fanout_issues(workspace: &Path) -> Result<usize> {
+    let mut file: IssuesFile = load_issues_file(workspace);
+    let before = serde_json::to_value(&file)?;
+    let mut desired_ids = HashSet::new();
+    let mut mutated = 0usize;
+
+    for crate_name in SemanticIndex::available_crates(workspace) {
+        let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
+            continue;
+        };
+        let crate_name = crate_name.replace('-', "_");
+        let mut sources_by_symbol: HashMap<String, HashSet<String>> = HashMap::new();
+        let mut targets_by_symbol: HashMap<String, HashSet<String>> = HashMap::new();
+
+        for (symbol, artifact) in idx.artifact_read_edges() {
+            sources_by_symbol
+                .entry(symbol)
+                .or_default()
+                .insert(normalize_representation_domain("artifact", &artifact));
+        }
+        for (symbol, state) in idx.state_read_edges() {
+            sources_by_symbol
+                .entry(symbol)
+                .or_default()
+                .insert(normalize_representation_domain("state", &state));
+        }
+        for (symbol, artifact) in idx.artifact_write_edges() {
+            targets_by_symbol
+                .entry(symbol)
+                .or_default()
+                .insert(normalize_representation_domain("artifact", &artifact));
+        }
+        for (symbol, state) in idx.state_write_edges() {
+            targets_by_symbol
+                .entry(symbol)
+                .or_default()
+                .insert(normalize_representation_domain("state", &state));
+        }
+
+        let mut symbols_by_pair: HashMap<(String, String), Vec<String>> = HashMap::new();
+        for (symbol, sources) in sources_by_symbol {
+            let Some(targets) = targets_by_symbol.get(&symbol) else {
+                continue;
+            };
+            for source in &sources {
+                for target in targets {
+                    if source == target {
+                        continue;
+                    }
+                    symbols_by_pair
+                        .entry((source.clone(), target.clone()))
+                        .or_default()
+                        .push(symbol.clone());
+                }
+            }
+        }
+
+        for ((source, target), mut symbols) in symbols_by_pair {
+            symbols.sort();
+            symbols.dedup();
+            let issue = build_representation_fanout_issue(&crate_name, &source, &target, &symbols);
+            desired_ids.insert(issue.id.clone());
+            mutated += upsert_bridge_issue(&mut file, issue, symbols.len() > 1);
+        }
+
+        let prefix = format!("auto_representation_fanout_{crate_name}_");
+        for issue in &mut file.issues {
+            if issue.id.starts_with(&prefix)
+                && !desired_ids.contains(&issue.id)
+                && issue.status != "resolved"
+            {
+                issue.status = "resolved".to_string();
+                mutated += 1;
+            }
+        }
+    }
+
+    rescore_all(&mut file);
+    let after = serde_json::to_value(&file)?;
+    if before != after {
+        persist_issues_projection_with_writer(
+            workspace,
+            &file,
+            None,
+            "generate_representation_fanout_issues",
+        )?;
+    }
+
+    Ok(mutated)
+}
+
+pub fn generate_cfg_region_reduction_issues(workspace: &Path) -> Result<usize> {
+    let mut file: IssuesFile = load_issues_file(workspace);
+    let before = serde_json::to_value(&file)?;
+    let mut desired_ids = HashSet::new();
+    let mut mutated = 0usize;
+
+    for crate_name in SemanticIndex::available_crates(workspace) {
+        let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
+            continue;
+        };
+        let crate_name = crate_name.replace('-', "_");
+        let redundant_by_symbol: HashMap<String, usize> = idx
+            .redundant_path_pairs()
+            .into_iter()
+            .fold(HashMap::new(), |mut acc, pair| {
+                *acc.entry(pair.path_a.owner).or_insert(0) += 1;
+                acc
+            });
+
+        for summary in idx.symbol_summaries() {
+            if summary.kind != "fn" {
+                continue;
+            }
+            let symbol = summary.symbol.clone();
+            let dominance_score = idx.cfg_dominance_score(&symbol);
+            let cfg_edges = idx.symbol_cfg_edges(&symbol);
+            let back_edge_count = cfg_edges.iter().filter(|edge| edge.is_back_edge).count();
+            let redundant_path_count = redundant_by_symbol.get(&symbol).copied().unwrap_or(0);
+            let branch_score = summary.branch_score.unwrap_or(0.0);
+            let qualifies = branch_score >= 4.0
+                && dominance_score >= 0.45
+                && (back_edge_count > 0 || summary.switchint_count >= 2 || redundant_path_count > 0);
+            let issue = build_cfg_region_reduction_issue(
+                &crate_name,
+                &summary,
+                dominance_score,
+                back_edge_count,
+                redundant_path_count,
+            );
+            desired_ids.insert(issue.id.clone());
+            mutated += upsert_bridge_issue(&mut file, issue, qualifies);
+        }
+
+        let prefix = format!("auto_cfg_region_reduction_{crate_name}_");
+        for issue in &mut file.issues {
+            if issue.id.starts_with(&prefix)
+                && !desired_ids.contains(&issue.id)
+                && issue.status != "resolved"
+            {
+                issue.status = "resolved".to_string();
+                mutated += 1;
+            }
+        }
+    }
+
+    rescore_all(&mut file);
+    let after = serde_json::to_value(&file)?;
+    if before != after {
+        persist_issues_projection_with_writer(
+            workspace,
+            &file,
+            None,
+            "generate_cfg_region_reduction_issues",
+        )?;
+    }
+
+    Ok(mutated)
+}
+
 pub fn analyze_bridge_connectivity(
     workspace: &Path,
     crate_name: &str,
@@ -847,43 +1007,6 @@ fn build_state_transition_dispersion_issue(
     }
 }
 
-fn workflow_phase_for_symbol(symbol: &str) -> Option<&'static str> {
-    const WORKFLOW_PREFIXES: &[&str] = &[
-        "app::",
-        "tools::",
-        "supervisor::",
-        "canonical_writer::",
-        "transition_policy::",
-        "plan_preflight::",
-        "orchestrator_seam::",
-        "rename_semantic::",
-    ];
-    if !WORKFLOW_PREFIXES.iter().any(|prefix| symbol.starts_with(prefix)) {
-        return None;
-    }
-
-    let lower = symbol.to_ascii_lowercase();
-    if lower.contains("verify")
-        || lower.contains("verifier")
-        || lower.contains("cargo_test")
-        || lower.contains("cargo_check")
-        || lower.contains("preflight")
-    {
-        return Some("verify");
-    }
-    if lower.contains("apply")
-        || lower.contains("patch")
-        || lower.contains("rename")
-        || lower.contains("executor")
-    {
-        return Some("apply");
-    }
-    if lower.contains("planner") || lower.contains("plan_") || lower.contains("plan::") {
-        return Some("planner");
-    }
-    None
-}
-
 fn planner_loop_issue_id(crate_name: &str) -> String {
     format!(
         "auto_planner_loop_fragmentation_{}",
@@ -891,61 +1014,90 @@ fn planner_loop_issue_id(crate_name: &str) -> String {
     )
 }
 
+fn workflow_phase_from_domain(raw: &str) -> Option<String> {
+    raw.rsplit("workflow::").next().and_then(|phase| {
+        let trimmed = phase.trim();
+        if trimmed.is_empty() || trimmed == raw {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
 fn build_planner_loop_fragmentation_issue(crate_name: &str, idx: &SemanticIndex) -> Issue {
-    let summaries = idx.symbol_summaries();
-    let mut phase_by_symbol: HashMap<String, &'static str> = HashMap::new();
-    for summary in summaries {
-        if summary.kind != "fn" {
+    let summary_by_symbol: HashMap<String, crate::semantic::SymbolSummary> = idx
+        .symbol_summaries()
+        .into_iter()
+        .map(|summary| (summary.symbol.clone(), summary))
+        .collect();
+    let mut phases_by_symbol: HashMap<String, HashSet<String>> = HashMap::new();
+    for (symbol, workflow) in idx.workflow_domain_edges() {
+        let Some(phase) = workflow_phase_from_domain(&workflow) else {
             continue;
-        }
-        if let Some(phase) = workflow_phase_for_symbol(&summary.symbol) {
-            phase_by_symbol.insert(summary.symbol, phase);
+        };
+        phases_by_symbol
+            .entry(symbol)
+            .or_default()
+            .insert(phase);
+    }
+
+    let mut phase_symbols: HashMap<String, HashSet<String>> = HashMap::new();
+    for (symbol, phases) in &phases_by_symbol {
+        for phase in phases {
+            phase_symbols
+                .entry(phase.clone())
+                .or_default()
+                .insert(symbol.clone());
         }
     }
 
-    let mut phase_symbols: HashMap<&'static str, HashSet<String>> = HashMap::new();
-    for (symbol, phase) in &phase_by_symbol {
-        phase_symbols.entry(*phase).or_default().insert(symbol.clone());
-    }
-
-    let mut workflow_callers: HashMap<String, HashSet<&'static str>> = HashMap::new();
+    let mut workflow_callers: HashMap<String, HashSet<String>> = HashMap::new();
     let mut incoming_workflow: HashMap<String, usize> = HashMap::new();
     let mut outgoing_workflow: HashMap<String, usize> = HashMap::new();
     for (from, to) in idx.call_edges() {
-        let Some(_from_phase) = phase_by_symbol.get(&from).copied() else {
+        let Some(_from_phases) = phases_by_symbol.get(&from) else {
             continue;
         };
-        let Some(to_phase) = phase_by_symbol.get(&to).copied() else {
+        let Some(to_phases) = phases_by_symbol.get(&to) else {
             continue;
         };
-        workflow_callers
-            .entry(from.clone())
-            .or_default()
-            .insert(to_phase);
+        workflow_callers.entry(from.clone()).or_default().extend(to_phases.iter().cloned());
         *outgoing_workflow.entry(from).or_insert(0) += 1;
         *incoming_workflow.entry(to).or_insert(0) += 1;
     }
 
-    let mut orchestrators: Vec<(String, Vec<&'static str>, usize, usize)> = workflow_callers
-        .into_iter()
-        .filter_map(|(symbol, phases)| {
-            let mut phases_vec: Vec<&'static str> = phases.into_iter().collect();
-            phases_vec.sort();
-            let incoming = incoming_workflow.get(&symbol).copied().unwrap_or(0);
-            let outgoing = outgoing_workflow.get(&symbol).copied().unwrap_or(0);
+    let mut orchestrators: Vec<(String, Vec<String>, Vec<String>, usize, usize)> = phases_by_symbol
+        .iter()
+        .filter_map(|(symbol, direct_phases)| {
+            let mut direct_vec: Vec<String> = direct_phases.iter().cloned().collect();
+            direct_vec.sort();
+            let mut reached_vec: Vec<String> = workflow_callers
+                .get(symbol)
+                .map(|phases| phases.iter().cloned().collect())
+                .unwrap_or_default();
+            reached_vec.sort();
+            reached_vec.dedup();
+            let incoming = incoming_workflow.get(symbol).copied().unwrap_or(0);
+            let outgoing = outgoing_workflow.get(symbol).copied().unwrap_or(0);
             let root_like = incoming == 0 && outgoing > 0;
-            let multi_phase = phases_vec.len() >= 2;
-            if root_like || multi_phase {
-                Some((symbol, phases_vec, incoming, outgoing))
+            let branch_score = summary_by_symbol
+                .get(symbol)
+                .and_then(|summary| summary.branch_score)
+                .unwrap_or(0.0);
+            let coordinating =
+                outgoing >= 2 && branch_score >= 2.0 && (root_like || reached_vec.len() >= 2 || direct_vec.len() >= 2);
+            if coordinating {
+                Some((symbol.clone(), direct_vec, reached_vec, incoming, outgoing))
             } else {
                 None
             }
         })
         .collect();
     orchestrators.sort_by(|a, b| {
-        b.1.len()
-            .cmp(&a.1.len())
-            .then(b.3.cmp(&a.3))
+        (b.1.len() + b.2.len())
+            .cmp(&(a.1.len() + a.2.len()))
+            .then(b.4.cmp(&a.4))
             .then(a.0.len().cmp(&b.0.len()))
             .then(a.0.cmp(&b.0))
     });
@@ -961,19 +1113,21 @@ fn build_planner_loop_fragmentation_issue(crate_name: &str, idx: &SemanticIndex)
     let evidence = orchestrators
         .iter()
         .take(8)
-        .map(|(symbol, phases, incoming, outgoing)| {
+        .map(|(symbol, direct_phases, reached_phases, incoming, outgoing)| {
             format!(
-                "workflow orchestrator `{symbol}` reaches phases [{}] (incoming_workflow={incoming}, outgoing_workflow={outgoing})",
-                phases.join(", ")
+                "workflow orchestrator `{symbol}` touches phases [{}] and reaches [{}] (incoming_workflow={incoming}, outgoing_workflow={outgoing})",
+                direct_phases.join(", "),
+                reached_phases.join(", ")
             )
         })
         .collect::<Vec<_>>();
     let orchestrator_metrics = orchestrators
         .iter()
-        .map(|(symbol, phases, incoming, outgoing)| {
+        .map(|(symbol, direct_phases, reached_phases, incoming, outgoing)| {
             json!({
                 "symbol": symbol,
-                "phases": phases,
+                "direct_phases": direct_phases,
+                "reached_phases": reached_phases,
                 "incoming_workflow": incoming,
                 "outgoing_workflow": outgoing,
             })
@@ -991,7 +1145,7 @@ fn build_planner_loop_fragmentation_issue(crate_name: &str, idx: &SemanticIndex)
         priority: if orchestrators.len() >= 4 { "high" } else { "medium" }.to_string(),
         kind: "logic".to_string(),
         description: format!(
-            "Workflow-classified functions in crate `{crate_name}` are spread across planner/apply/verify phases \
+            "Compiler-observed workflow-domain functions in crate `{crate_name}` are spread across planner/apply/verify phases \
              without a single clear orchestrator. Detected phase counts: planner={planner_count}, \
              apply={apply_count}, verify={verify_count}. Hypothesis-grade workflow analysis found {} \
              root-like or multi-phase orchestrators.\n\n\
@@ -1126,6 +1280,46 @@ fn canonical_effect_boundary_symbol(symbol: &str) -> bool {
     CANONICAL_PREFIXES.iter().any(|prefix| symbol.starts_with(prefix))
 }
 
+fn normalize_representation_domain(kind: &str, raw: &str) -> String {
+    match kind {
+        "artifact" => format!("artifact::{}", display_artifact_domain(raw)),
+        "state" => format!("state::{}", display_state_domain(raw)),
+        _ => format!("{kind}::{raw}"),
+    }
+}
+
+fn display_representation_domain(raw: &str) -> String {
+    if let Some(rest) = raw.strip_prefix("artifact::") {
+        format!("artifact:{rest}")
+    } else if let Some(rest) = raw.strip_prefix("state::") {
+        format!("state:{rest}")
+    } else {
+        raw.to_string()
+    }
+}
+
+fn representation_fanout_issue_id(crate_name: &str, source: &str, target: &str) -> String {
+    format!(
+        "auto_representation_fanout_{}_{}",
+        sanitize_fragment(crate_name),
+        stable_hash(&format!("{crate_name}:{source}->{target}"))
+    )
+}
+
+fn canonical_representation_target(symbols: &[String]) -> String {
+    let mut ranked = symbols.to_vec();
+    ranked.sort_by(|a, b| {
+        canonical_effect_boundary_symbol(b)
+            .cmp(&canonical_effect_boundary_symbol(a))
+            .then(a.len().cmp(&b.len()))
+            .then(a.cmp(b))
+    });
+    ranked
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| "one canonical translator".to_string())
+}
+
 fn effect_boundary_leak_issue_id(crate_name: &str, module: &str) -> String {
     format!(
         "auto_effect_boundary_leak_{}_{}",
@@ -1183,6 +1377,132 @@ fn build_effect_boundary_leak_issue(
             format!("direct multi-effect work is removed from `{module}` or routed through a canonical boundary layer"),
             "remaining symbols in the module focus on orchestration or pure transformation".to_string(),
             "graph.json is regenerated and the detector reports fewer leaked effectful symbols".to_string(),
+        ],
+        evidence,
+        discovered_by: "graph_metrics_detector".to_string(),
+        ..Issue::default()
+    }
+}
+
+fn build_representation_fanout_issue(
+    crate_name: &str,
+    source: &str,
+    target: &str,
+    symbols: &[String],
+) -> Issue {
+    let display_source = display_representation_domain(source);
+    let display_target = display_representation_domain(target);
+    let canonical_target = canonical_representation_target(symbols);
+    let evidence = symbols
+        .iter()
+        .map(|symbol| format!("translation site `{symbol}` reads `{display_source}` and writes `{display_target}`"))
+        .collect::<Vec<_>>();
+
+    Issue {
+        id: representation_fanout_issue_id(crate_name, source, target),
+        title: format!(
+            "Representation fanout from `{display_source}` to `{display_target}` ({} translation sites)",
+            symbols.len()
+        ),
+        status: if symbols.len() > 1 { "open" } else { "resolved" }.to_string(),
+        priority: if symbols.len() >= 3 { "high" } else { "medium" }.to_string(),
+        kind: "logic".to_string(),
+        description: format!(
+            "Crate `{crate_name}` contains multiple translation sites from `{display_source}` to `{display_target}`. \
+             This is a hypothesis-grade representation fanout signal: the same domain conversion is implemented in several functions instead of being routed through one canonical translator.\n\n\
+             Recommended direction: keep one canonical translation entrypoint such as `{canonical_target}` and redirect the remaining sites through it."
+        ),
+        location: format!("state/rustc/{crate_name}/graph.json"),
+        scope: format!("crate:{crate_name}"),
+        metrics: json!({
+            "task": "CentralizeRepresentationTranslation",
+            "proof_tier": "hypothesis",
+            "source_domain": source,
+            "target_domain": target,
+            "translation_site_count": symbols.len(),
+            "symbols": symbols,
+            "canonical_target_candidate": canonical_target,
+        }),
+        acceptance_criteria: vec![
+            format!("one canonical translation path remains for `{display_source}` -> `{display_target}`"),
+            "other translation sites delegate to the canonical translator or are deleted".to_string(),
+            "graph.json is regenerated and the detector reports fewer translation sites for the pair".to_string(),
+        ],
+        evidence,
+        discovered_by: "graph_metrics_detector".to_string(),
+        ..Issue::default()
+    }
+}
+
+fn cfg_region_reduction_issue_id(crate_name: &str, symbol: &str) -> String {
+    format!(
+        "auto_cfg_region_reduction_{}_{}",
+        sanitize_fragment(crate_name),
+        stable_hash(&format!("{crate_name}:{symbol}"))
+    )
+}
+
+fn build_cfg_region_reduction_issue(
+    crate_name: &str,
+    summary: &crate::semantic::SymbolSummary,
+    dominance_score: f32,
+    back_edge_count: usize,
+    redundant_path_count: usize,
+) -> Issue {
+    let branch_score = summary.branch_score.unwrap_or(0.0);
+    let region_kind = if back_edge_count > 0 {
+        "loop/SCC"
+    } else if redundant_path_count > 0 {
+        "duplicate-path"
+    } else {
+        "dominator branch funnel"
+    };
+    let evidence = vec![
+        format!(
+            "branch_score={branch_score:.2}, switchint_count={}, has_back_edges={}",
+            summary.switchint_count,
+            summary.has_back_edges
+        ),
+        format!(
+            "cfg_dominance_score={dominance_score:.2}, back_edge_count={back_edge_count}, redundant_path_count={redundant_path_count}"
+        ),
+    ];
+
+    Issue {
+        id: cfg_region_reduction_issue_id(crate_name, &summary.symbol),
+        title: format!("CFG region reduction candidate in `{}`", summary.symbol),
+        status: "open".to_string(),
+        priority: if back_edge_count > 0 || redundant_path_count >= 2 {
+            "high".to_string()
+        } else {
+            "medium".to_string()
+        },
+        kind: "logic".to_string(),
+        description: format!(
+            "Function `{}` in crate `{}` contains a concentrated `{region_kind}` control region. \
+             The CFG shows enough branching pressure, dominance concentration, or loop structure to justify a focused reduction pass.\n\n\
+             Recommended direction: collapse the hot region into a smaller canonical control node, extract a transition table, or isolate the SCC behind a single dispatcher."
+            ,
+            summary.symbol,
+            crate_name
+        ),
+        location: shorten_symbol_location(summary),
+        scope: format!("crate:{crate_name}"),
+        metrics: json!({
+            "task": "ReduceCfgRegion",
+            "proof_tier": "hypothesis",
+            "symbol": summary.symbol,
+            "region_kind": region_kind,
+            "branch_score": branch_score,
+            "switchint_count": summary.switchint_count,
+            "cfg_dominance_score": dominance_score,
+            "back_edge_count": back_edge_count,
+            "redundant_path_count": redundant_path_count,
+        }),
+        acceptance_criteria: vec![
+            "the concentrated CFG region is reduced to a simpler control surface".to_string(),
+            "remaining loop or branch structure is routed through one canonical reducer or dispatcher".to_string(),
+            "graph.json is regenerated and the detector reports lower branch/back-edge pressure for the function".to_string(),
         ],
         evidence,
         discovered_by: "graph_metrics_detector".to_string(),
@@ -1390,10 +1710,12 @@ fn upsert_bridge_issue(file: &mut IssuesFile, desired: Issue, active: bool) -> u
 mod tests {
     use super::{
         analyze_bridge_connectivity, generate_artifact_writer_dispersion_issues,
+        generate_cfg_region_reduction_issues,
         generate_bridge_connectivity_issues, generate_effect_boundary_leak_issues,
         generate_error_shaping_dispersion_issues, generate_implicit_state_machine_issues,
-        generate_planner_loop_fragmentation_issues, generate_state_transition_dispersion_issues,
-        issue_id, priority_from_ratio, sanitize_fragment,
+        generate_planner_loop_fragmentation_issues, generate_representation_fanout_issues,
+        generate_state_transition_dispersion_issues, issue_id, priority_from_ratio,
+        sanitize_fragment,
     };
     use crate::constants::ISSUES_FILE;
     use serde_json::json;
@@ -1762,6 +2084,31 @@ mod tests {
             ],
             vec![
                 json!({
+                    "relation": "TouchesWorkflowDomain",
+                    "from": "app::run_planner_phase",
+                    "to": "workflow::planner",
+                }),
+                json!({
+                    "relation": "TouchesWorkflowDomain",
+                    "from": "tools::handle_apply_patch_action",
+                    "to": "workflow::apply",
+                }),
+                json!({
+                    "relation": "TouchesWorkflowDomain",
+                    "from": "tools::verify_apply_patch_crate",
+                    "to": "workflow::verify",
+                }),
+                json!({
+                    "relation": "TouchesWorkflowDomain",
+                    "from": "app::apply_wake_signals",
+                    "to": "workflow::apply",
+                }),
+                json!({
+                    "relation": "TouchesWorkflowDomain",
+                    "from": "tools::handle_plan_action",
+                    "to": "workflow::planner",
+                }),
+                json!({
                     "relation": "call",
                     "from": "app::run_planner_phase",
                     "to": "tools::handle_apply_patch_action",
@@ -1783,6 +2130,48 @@ mod tests {
                 }),
             ],
         );
+        let graph_path = workspace
+            .join("state")
+            .join("rustc")
+            .join("canon_mini_agent")
+            .join("graph.json");
+        let mut graph: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&graph_path).unwrap()).unwrap();
+        graph["cfg_nodes"] = json!({
+            "cfg::app::run_planner_phase::bb0": {
+                "owner": "app::run_planner_phase",
+                "block": 0,
+                "is_cleanup": false,
+                "terminator": "SwitchInt",
+                "statements": [],
+                "in_loop": false
+            },
+            "cfg::app::run_planner_phase::bb1": {
+                "owner": "app::run_planner_phase",
+                "block": 1,
+                "is_cleanup": false,
+                "terminator": "SwitchInt",
+                "statements": [],
+                "in_loop": false
+            },
+            "cfg::app::apply_wake_signals::bb0": {
+                "owner": "app::apply_wake_signals",
+                "block": 0,
+                "is_cleanup": false,
+                "terminator": "SwitchInt",
+                "statements": [],
+                "in_loop": false
+            },
+            "cfg::app::apply_wake_signals::bb1": {
+                "owner": "app::apply_wake_signals",
+                "block": 1,
+                "is_cleanup": false,
+                "terminator": "SwitchInt",
+                "statements": [],
+                "in_loop": false
+            }
+        });
+        fs::write(&graph_path, serde_json::to_string_pretty(&graph).unwrap()).unwrap();
 
         assert!(generate_planner_loop_fragmentation_issues(&workspace).unwrap() > 0);
         let issues = read_issues(&workspace);
@@ -1919,6 +2308,150 @@ mod tests {
             issue.metrics["module"].as_str(),
             Some("plan_preflight")
         );
+    }
+
+    #[test]
+    fn representation_fanout_emits_issue_for_repeated_translation_pair() {
+        let workspace = unique_workspace("representation-fanout");
+        write_index(&workspace, &["canon_mini_agent"]);
+        write_graph_with_edges(
+            &workspace,
+            "canon_mini_agent",
+            &[
+                "plan_preflight::try_preflight_ready_tasks",
+                "complexity::compute_and_persist_fingerprint_drift",
+            ],
+            vec![
+                json!({
+                    "relation": "ReadsArtifact",
+                    "from": "plan_preflight::try_preflight_ready_tasks",
+                    "to": "path::artifact::MASTER_PLAN_FILE",
+                }),
+                json!({
+                    "relation": "WritesArtifact",
+                    "from": "plan_preflight::try_preflight_ready_tasks",
+                    "to": "path::artifact::last_planner_blocker_evidence.txt",
+                }),
+                json!({
+                    "relation": "ReadsArtifact",
+                    "from": "complexity::compute_and_persist_fingerprint_drift",
+                    "to": "path::artifact::MASTER_PLAN_FILE",
+                }),
+                json!({
+                    "relation": "WritesArtifact",
+                    "from": "complexity::compute_and_persist_fingerprint_drift",
+                    "to": "path::artifact::last_planner_blocker_evidence.txt",
+                }),
+            ],
+        );
+
+        assert!(generate_representation_fanout_issues(&workspace).unwrap() > 0);
+        let issues = read_issues(&workspace);
+        let issue = issues
+            .iter()
+            .find(|issue| issue.id.starts_with("auto_representation_fanout_"))
+            .expect("representation fanout issue");
+        assert_eq!(issue.status, "open");
+        assert_eq!(issue.metrics["proof_tier"].as_str(), Some("hypothesis"));
+        assert_eq!(issue.metrics["translation_site_count"].as_u64(), Some(2));
+    }
+
+    #[test]
+    fn cfg_region_reduction_emits_issue_for_loop_dominated_function() {
+        let workspace = unique_workspace("cfg-region-reduction");
+        write_index(&workspace, &["canon_mini_agent"]);
+        write_graph_with_edges(
+            &workspace,
+            "canon_mini_agent",
+            &["app::apply_wake_signals"],
+            vec![],
+        );
+        let graph_path = workspace
+            .join("state")
+            .join("rustc")
+            .join("canon_mini_agent")
+            .join("graph.json");
+        let mut graph: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&graph_path).unwrap()).unwrap();
+        graph["nodes"]["app::apply_wake_signals"]["mir"] = json!({
+            "fingerprint": "fp_apply_wake_signals",
+            "blocks": 4,
+            "stmts": 8,
+        });
+        graph["cfg_nodes"] = json!({
+            "cfg::app::apply_wake_signals::bb0": {
+                "owner": "app::apply_wake_signals",
+                "block": 0,
+                "is_cleanup": false,
+                "terminator": "SwitchInt",
+                "statements": [],
+                "in_loop": false
+            },
+            "cfg::app::apply_wake_signals::bb1": {
+                "owner": "app::apply_wake_signals",
+                "block": 1,
+                "is_cleanup": false,
+                "terminator": "SwitchInt",
+                "statements": [],
+                "in_loop": true
+            },
+            "cfg::app::apply_wake_signals::bb2": {
+                "owner": "app::apply_wake_signals",
+                "block": 2,
+                "is_cleanup": false,
+                "terminator": "Goto",
+                "statements": [],
+                "in_loop": true
+            }
+        });
+        graph["cfg_edges"] = json!([
+            {
+                "relation": "normal",
+                "from": "cfg::app::apply_wake_signals::bb0",
+                "to": "cfg::app::apply_wake_signals::bb1",
+                "is_back_edge": false
+            },
+            {
+                "relation": "normal",
+                "from": "cfg::app::apply_wake_signals::bb1",
+                "to": "cfg::app::apply_wake_signals::bb2",
+                "is_back_edge": false
+            },
+            {
+                "relation": "normal",
+                "from": "cfg::app::apply_wake_signals::bb2",
+                "to": "cfg::app::apply_wake_signals::bb1",
+                "is_back_edge": true
+            }
+        ]);
+        graph["bridge_edges"] = json!([
+            {
+                "relation": "BelongsTo",
+                "from": "cfg::app::apply_wake_signals::bb0",
+                "to": "app::apply_wake_signals"
+            },
+            {
+                "relation": "BelongsTo",
+                "from": "cfg::app::apply_wake_signals::bb1",
+                "to": "app::apply_wake_signals"
+            },
+            {
+                "relation": "BelongsTo",
+                "from": "cfg::app::apply_wake_signals::bb2",
+                "to": "app::apply_wake_signals"
+            }
+        ]);
+        fs::write(&graph_path, serde_json::to_string_pretty(&graph).unwrap()).unwrap();
+
+        assert!(generate_cfg_region_reduction_issues(&workspace).unwrap() > 0);
+        let issues = read_issues(&workspace);
+        let issue = issues
+            .iter()
+            .find(|issue| issue.id.starts_with("auto_cfg_region_reduction_"))
+            .expect("cfg region issue");
+        assert_eq!(issue.status, "open");
+        assert_eq!(issue.metrics["proof_tier"].as_str(), Some("hypothesis"));
+        assert_eq!(issue.metrics["back_edge_count"].as_u64(), Some(1));
     }
 
     #[test]

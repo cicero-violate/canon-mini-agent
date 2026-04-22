@@ -53,16 +53,30 @@ Completed:
 - compiler-side alpha pathway proof tightening
 - graph-only complexity scoring from `graph.json`
 - targeted pathway issue generation from fresh artifacts
+- artifact/state read-write annotations
+- error-shaping annotations
+- transition annotations
+- proof-grade reports:
+  - `artifact_writer_dispersion`
+  - `error_shaping_dispersion`
+- hypothesis-grade reports:
+  - `state_transition_dispersion`
+  - `planner_loop_fragmentation`
+  - `implicit_state_machine`
+  - `effect_boundary_leak`
+  - `representation_fanout`
+- graph verification snapshot + delta reporting
 
 Missing:
 
-- state domains and transition edges
-- artifact/write graph
-- effect graph
-- error-shaping graph
-- planner/apply/verify loop graph
-- proof-tiered dispersion reports
-- graph-delta verification after refactors
+- explicit workflow-domain edges from compiler facts rather than symbol classification
+- SCC / dominator region reduction candidates
+- richer effect classes:
+  - process spawn
+  - network
+  - logging split from generic artifact/state IO
+- stronger transition semantics than “branches + writes state”
+- tighter proof boundary between canonical boundary modules and leak candidates
 
 ## Canonical Object
 
@@ -482,6 +496,10 @@ Acceptance:
 
 - reports emitted with evidence, canonical target, and proof tier
 
+Status:
+
+- complete
+
 ### Milestone 4: Reduction Verification
 
 Implement:
@@ -493,6 +511,10 @@ Implement:
 Acceptance:
 
 - accepted refactors show measurable graph simplification
+
+Status:
+
+- complete
 
 ### Milestone 5: Workflow / State-Machine Reports
 
@@ -506,21 +528,31 @@ Acceptance:
 
 - workflow/state reports are emitted from graph/annotation data
 
+Status:
+
+- partially complete
+- implemented:
+  - `planner_loop_fragmentation`
+  - `implicit_state_machine`
+  - `effect_boundary_leak`
+  - `representation_fanout`
+- still missing:
+  - SCC / dominator reduction candidates
+
 ## Near-Term Implementation Order
 
 Do this next, in order:
 
-1. extend wrapper/analyzer facts for artifact reads/writes
-2. extend wrapper/analyzer facts for error-shaping sites
-3. define state-domain / transition annotations
-4. implement `artifact_writer_dispersion`
-5. implement `error_shaping_dispersion`
-6. implement `state_transition_dispersion`
-7. implement graph-delta verification
+1. add explicit workflow-domain edges in the compiler facts
+2. replace symbol-name workflow classification in `planner_loop_fragmentation`
+3. add SCC / dominator region summaries to `graph.json`
+4. implement reduction-candidate reports from those summaries
+5. refine effect classes beyond generic state/artifact IO
+6. tighten `state_transition_dispersion` with richer transition semantics
 
 Do not:
 
-- add more isolated smell detectors before these land
+- add more isolated smell detectors before the remaining graph fact layers land
 - keep expanding score formulas without new fact layers
 - move policy decisions into the wrapper
 
@@ -536,11 +568,10 @@ This plan is complete enough when:
 
 ## Immediate Next Step
 
-Start with `artifact_writer_dispersion`.
+Start with explicit workflow-domain graph facts.
 
 Reason:
 
-- high-value
-- directly anti-entropy
-- easier to make proof-grade than transitions
-- builds the artifact-domain part of `GraphVNext` needed by later reports
+- current `planner_loop_fragmentation` still depends on symbol classification
+- workflow edges should be facts, not naming conventions
+- SCC / dominator reduction work will need the workflow region boundaries anyway
