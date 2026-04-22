@@ -1225,10 +1225,11 @@ pub fn generate_alpha_pathway_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Canonicalize a function signature by replacing bound variable names with
-/// positional placeholders, then returning only the `(params) -> ret` portion.
+/// positional placeholders and stripping parameter names, then returning only
+/// the `(params) -> ret` portion.
 ///
-/// `fn foo<'a, T>(x: &'a T) -> T`  →  `(x: &'L0 T0) -> T0`
-/// `fn bar<'b, U>(y: &'b U) -> U`  →  `(y: &'L0 T0) -> T0`  (same → alpha-equiv)
+/// `fn foo<'a, T>(x: &'a T) -> T`  →  `(&'L0 T0) -> T0`
+/// `fn bar<'b, U>(y: &'b U) -> U`  →  `(&'L0 T0) -> T0`  (same → alpha-equiv)
 fn canonicalize_signature(sig: &str) -> String {
     let paren_pos = sig.find('(').unwrap_or(sig.len());
     let angle_pos = sig.find('<').unwrap_or(sig.len());
@@ -1316,7 +1317,91 @@ fn canonicalize_signature(sig: &str) -> String {
     for (orig, canonical) in &mapping {
         result = result.replace(orig.as_str(), canonical.as_str());
     }
+
+    // Strip parameter names from the (params) block: `name: type` → `type`.
+    // Parameter names are not part of the function's type — removing them lets
+    // `(x: &'L0 T0)` and `(y: &'L0 T0)` canonicalize to the same string.
+    result = strip_param_names(&result);
     result
+}
+
+/// Remove `ident: ` prefixes from parameters inside the outermost `(…)` block.
+/// Scans character-by-character to stay correct across nested angle brackets.
+fn strip_param_names(body: &str) -> String {
+    let mut out = String::with_capacity(body.len());
+    let mut chars = body.char_indices().peekable();
+    let mut paren_depth = 0usize;
+
+    while let Some((_, c)) = chars.next() {
+        if c == '(' {
+            paren_depth += 1;
+            out.push(c);
+            // After `(` or `,` at depth 1, skip an optional `ident: ` prefix.
+            if paren_depth == 1 {
+                skip_param_name_prefix(&mut chars, &mut out);
+            }
+            continue;
+        }
+        if c == ')' {
+            paren_depth = paren_depth.saturating_sub(1);
+            out.push(c);
+            continue;
+        }
+        if c == ',' && paren_depth == 1 {
+            out.push(c);
+            skip_param_name_prefix(&mut chars, &mut out);
+            continue;
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Consume and discard a leading `whitespace* ident: ` sequence from `chars`,
+/// appending only the whitespace to `out` if no `ident: ` pattern is found.
+fn skip_param_name_prefix(
+    chars: &mut std::iter::Peekable<std::str::CharIndices>,
+    out: &mut String,
+) {
+    // Collect optional leading whitespace.
+    let mut ws = String::new();
+    while let Some(&(_, c)) = chars.peek() {
+        if c == ' ' || c == '\t' {
+            ws.push(c);
+            chars.next();
+        } else {
+            break;
+        }
+    }
+
+    // Collect a run of identifier characters (the potential param name).
+    let mut ident = String::new();
+    while let Some(&(_, c)) = chars.peek() {
+        if c.is_alphanumeric() || c == '_' {
+            ident.push(c);
+            chars.next();
+        } else {
+            break;
+        }
+    }
+
+    // Check for the ': ' that marks a parameter name (not '::' which is a path).
+    let is_param_name = !ident.is_empty()
+        && ident.chars().next().map(|c| c.is_lowercase() || c == '_').unwrap_or(false)
+        && matches!(chars.peek(), Some(&(_, ':')));
+
+    if is_param_name {
+        chars.next(); // consume ':'
+        // Consume optional space after ':'.
+        if matches!(chars.peek(), Some(&(_, ' '))) {
+            chars.next();
+        }
+        // Discard ws + ident + ':' — they are the param name, not part of the type.
+    } else {
+        // Not a param name pattern — emit what we collected.
+        out.push_str(&ws);
+        out.push_str(&ident);
+    }
 }
 
 pub fn alpha_pathway_issues(
