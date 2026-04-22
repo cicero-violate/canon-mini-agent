@@ -625,24 +625,10 @@ pub fn generate_logging_dispersion_issues(workspace: &Path) -> Result<usize> {
             continue;
         };
 
-        let mut by_module: HashMap<String, Vec<String>> = HashMap::new();
-        for (symbol, _) in idx.semantic_edges_by_relation("PerformsLogging") {
-            if !looks_like_symbol(&symbol) {
-                continue;
-            }
-            let module = symbol
-                .rsplit_once("::")
-                .map(|(m, _)| m.to_string())
-                .unwrap_or_else(|| symbol.clone());
-            by_module.entry(module).or_default().push(symbol);
-        }
+        let by_module = collect_effect_modules_by_relation(&idx, "PerformsLogging");
 
         let crate_name = crate_name.replace('-', "_");
-        let non_canonical_count: usize = by_module
-            .iter()
-            .filter(|(module, _)| !is_canonical_logging_module(module))
-            .map(|(_, syms)| syms.len())
-            .sum();
+        let non_canonical_count = count_symbols_outside_boundary(&by_module, is_canonical_logging_module);
         let desired = build_logging_dispersion_issue(&crate_name, &by_module);
         mutated += upsert_bridge_issue(&mut file, desired, non_canonical_count > 10);
     }
@@ -671,23 +657,10 @@ pub fn generate_process_spawn_dispersion_issues(workspace: &Path) -> Result<usiz
             continue;
         };
 
-        let mut by_module: HashMap<String, Vec<String>> = HashMap::new();
-        for (symbol, _) in idx.semantic_edges_by_relation("SpawnsProcess") {
-            if !looks_like_symbol(&symbol) {
-                continue;
-            }
-            let module = symbol
-                .rsplit_once("::")
-                .map(|(m, _)| m.to_string())
-                .unwrap_or_else(|| symbol.clone());
-            by_module.entry(module).or_default().push(symbol);
-        }
+        let by_module = collect_effect_modules_by_relation(&idx, "SpawnsProcess");
 
         let crate_name = crate_name.replace('-', "_");
-        let non_canonical_modules: usize = by_module
-            .keys()
-            .filter(|m| !is_canonical_process_boundary(m))
-            .count();
+        let non_canonical_modules = count_modules_outside_boundary(&by_module, is_canonical_process_boundary);
         let desired = build_process_spawn_dispersion_issue(&crate_name, &by_module);
         mutated += upsert_bridge_issue(&mut file, desired, non_canonical_modules > 1);
     }
@@ -716,17 +689,7 @@ pub fn generate_network_usage_dispersion_issues(workspace: &Path) -> Result<usiz
             continue;
         };
 
-        let mut by_module: HashMap<String, Vec<String>> = HashMap::new();
-        for (symbol, _) in idx.semantic_edges_by_relation("UsesNetwork") {
-            if !looks_like_symbol(&symbol) {
-                continue;
-            }
-            let module = symbol
-                .rsplit_once("::")
-                .map(|(m, _)| m.to_string())
-                .unwrap_or_else(|| symbol.clone());
-            by_module.entry(module).or_default().push(symbol);
-        }
+        let by_module = collect_effect_modules_by_relation(&idx, "UsesNetwork");
 
         let crate_name = crate_name.replace('-', "_");
         let total_symbols: usize = by_module.values().map(|v| v.len()).sum();
@@ -846,6 +809,45 @@ fn collect_representation_domains(
     }
 
     (sources_by_symbol, targets_by_symbol)
+}
+
+fn collect_effect_modules_by_relation(
+    idx: &SemanticIndex,
+    relation: &str,
+) -> HashMap<String, Vec<String>> {
+    let mut by_module: HashMap<String, Vec<String>> = HashMap::new();
+    for (symbol, _) in idx.semantic_edges_by_relation(relation) {
+        if !looks_like_symbol(&symbol) {
+            continue;
+        }
+        let module = symbol
+            .rsplit_once("::")
+            .map(|(m, _)| m.to_string())
+            .unwrap_or_else(|| symbol.clone());
+        by_module.entry(module).or_default().push(symbol);
+    }
+    by_module
+}
+
+fn count_symbols_outside_boundary(
+    by_module: &HashMap<String, Vec<String>>,
+    is_canonical: fn(&str) -> bool,
+) -> usize {
+    by_module
+        .iter()
+        .filter(|(module, _)| !is_canonical(module))
+        .map(|(_, symbols)| symbols.len())
+        .sum()
+}
+
+fn count_modules_outside_boundary(
+    by_module: &HashMap<String, Vec<String>>,
+    is_canonical: fn(&str) -> bool,
+) -> usize {
+    by_module
+        .keys()
+        .filter(|module| !is_canonical(module))
+        .count()
 }
 
 fn build_representation_symbols_by_pair(
