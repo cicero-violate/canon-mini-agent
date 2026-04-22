@@ -5,7 +5,7 @@ use crate::constants::{
     diagnostics_file, workspace, EXECUTOR_STEP_LIMIT, INVARIANTS_FILE, ISSUES_FILE,
     MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
 };
-use crate::prompt_contract::{ACTION_EMIT_LINE, OUTPUT_FORMAT_LINE};
+use crate::prompt_contract::ACTION_EMIT_LINE;
 use crate::protocol::{MessagePayload, MessageStatus, MessageType, ProtocolMessage, Role};
 use crate::tool_schema::selected_tool_protocol_schema_text;
 use crate::tool_schema::validate_tool_action;
@@ -387,70 +387,6 @@ fn status_snapshot_for(kind: AgentPromptKind) -> &'static str {
     }
 }
 
-fn rules_common_footer() -> String {
-    let agent_source = crate::constants::agent_state_dir().trim_end_matches("/agent_state");
-    let protect_rule = if crate::constants::workspace() != agent_source {
-        format!("- Never modify the canon-mini-agent source tree ({agent_source}).\n")
-    } else {
-        String::new()
-    };
-    format!(
-        "{protect_rule}\
-         - {ACTION_EMIT_LINE} Only output the JSON action.\n\
-         - Keep `predicted_next_actions[*].intent` concise (max 80 chars).\n\
-         - Mutating actions must include a non-empty `question`.\n\
-         - If blocked, emit `message` with `type=blocker`, `status=blocked`, and payload `blocker`/`evidence`/`required_action`.\n\
-         - {OUTPUT_FORMAT_LINE}"
-    )
-}
-
-fn rules_blocker_route(target: &str) -> String {
-    format!("- If blocked, send the blocker to the {target}.")
-}
-
-fn rules_section(rules: &[&str], blocker_target: Option<&str>) -> String {
-    let _ = rules;
-    let _ = blocker_target.map(rules_blocker_route);
-    let _ = rules_common_footer();
-    String::new()
-}
-
-fn role_key(kind: AgentPromptKind) -> &'static str {
-    match kind {
-        AgentPromptKind::Executor => "executor",
-        AgentPromptKind::Verifier => "verifier",
-        AgentPromptKind::Planner => "planner",
-        AgentPromptKind::Diagnostics => "planner",
-        AgentPromptKind::Solo => "solo",
-    }
-}
-
-fn load_role_overrides(kind: AgentPromptKind) -> Vec<String> {
-    let roles_path = std::path::Path::new(workspace()).join("ROLES.json");
-    let raw = match std::fs::read_to_string(&roles_path) {
-        Ok(text) => text,
-        Err(_) => return Vec::new(),
-    };
-    let value: Value = match serde_json::from_str(&raw) {
-        Ok(v) => v,
-        Err(_) => return Vec::new(),
-    };
-    let roles_obj = value
-        .get("roles")
-        .and_then(|v| v.as_object())
-        .or_else(|| value.as_object());
-    let Some(roles_obj) = roles_obj else {
-        return Vec::new();
-    };
-    let Some(rules) = roles_obj.get(role_key(kind)).and_then(|v| v.as_array()) else {
-        return Vec::new();
-    };
-    rules
-        .iter()
-        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-        .collect()
-}
-
 const VERIFIER_PROCESS: &str = "━━━ VERIFICATION PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nFor each executor claim:\n1. Use the executor result summary plus `SPEC.md` to derive the candidate obligations.\n2. Read the relevant source files to confirm the described change exists.\n3. Run cargo check or cargo test if the task involves code correctness.\n4. Judge whether the code satisfies the spec.\n5. If violations are found, write `VIOLATIONS.json` with a clear, actionable list using the enums in canon-mini-agent/src/reports.rs.\n6. Update task `status` fields in `PLAN.json` via the `plan` action (never `apply_patch`) and update any related `next_on_success` / `next_on_failure` as needed.\n7. Report a verification breakdown in `message.payload` (verified, unverified, false) with explicit items.\n8. For any control-flow or state-management claim, verify that the described behavior matches the source code and is consistent with INVARIANTS.json.";
 
 const PLANNER_PROCESS: &str = "━━━ PLANNING PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n\
@@ -541,90 +477,6 @@ fn solo_execution_discipline() -> String {
     )
 }
 
-const VERIFIER_RULES: &[&str] = &[
-    "- Be critical and thorough — verify evidence, not just the claim.",
-    "- Do not mark anything verified unless you have read the actual code and run verification commands.",
-    "- You must run `run_command` (and `cargo_test` when relevant) to validate executor claims; do not accept evidence without running checks yourself.",
-    "- Run `cargo build --workspace` before completing the cycle; fix failures before `message` with status=complete.",
-    "- Update `PLAN.json` only via the `plan` action; never use `apply_patch` for plan edits.",
-    "- Use the `violation` action to manage `VIOLATIONS.json` — ops: read | upsert | resolve | set_status | replace. Never use `apply_patch` for VIOLATIONS.json.",
-    "- Reject any claimed completion that violates INVARIANTS.json invariants.",
-    "- When using `message`, set:",
-    "  - `from`: \"Verifier\"",
-    "  - `to`: \"Planner\"",
-    "  - `type`: \"verification\" or \"failure\"",
-    "  - `status`: \"verified\" or \"failed\"",
-    "  - `payload.summary`: string",
-    "  - `payload.verified_items` / `payload.unverified_items` / `payload.false_items` as needed",
-];
-
-const PLANNER_RULES: &[&str] = &[
-    "- `PLAN.json` MUST be valid JSON following the PLAN/TASK protocol in `SPEC.md`.",
-    "- Only modify `PLAN.json` (via `plan`) and lane plans (via `apply_patch`) — never edit `src/`, `tests/`, `SPEC.md`, `VIOLATIONS.json`, or diagnostics reports.",
-    "- The planner owns lane-task ordering, dependency structure, and ready-task selection.",
-    "- Use agent_state/reports/complexity/latest.json (supervisor-generated; proxy complexity_proxy=mir_blocks) to prioritize refactors and reduce branching/duplication.",
-    "- Read `ISSUES.json` every cycle and promote top open issues into `agent_state/OBJECTIVES.json` and `PLAN.json` (or explicitly mark them resolved/wontfix with evidence). Issues are hints; objectives/plan are commitments.",
-    "- Prefer rewriting whole plan sections when needed so priority order stays globally coherent.",
-    "- Keep each executor's ready window small: 1-10 tasks maximum.",
-    "- Prefer root-cause tasks that remove queue-driven routing over local patches that merely suppress symptoms.",
-    "- Send handoff messages to executors reflecting the current ready window.",
-    "- PLAN.json is the authoritative source of truth for executor task selection. A handoff message alone is not sufficient — the task MUST be marked `ready` in PLAN.json before the executor will pick it up.",
-    "- Always use the `python` action when reading or writing any `.json` state file (PLAN.json, OBJECTIVES.json, ISSUES.json, VIOLATIONS.json, diagnostics). Never use apply_patch or run_command shell pipelines to mutate JSON; use the `plan`, `objectives`, or `issue` actions for their respective files.",
-    "- Executor tasks must only require executor-permitted actions: read_file, apply_patch, run_command, python, cargo_fmt, cargo_clippy, semantic tools, and `plan set_task_status → done` (to mark its own task complete). The executor CANNOT use `objectives`, `issue`, or `verify` actions, and cannot use any plan op other than set_task_status → done. Reserve those actions for a planner or verifier cycle.",
-    "- plan actions derived from semantic control projections must cite same-cycle source validation in `observation` and `rationale` (for example current-cycle `read_file`, `run_command`, `python`, or other verified source evidence) before mutating `PLAN.json`.",
-];
-
-fn diagnostics_rules() -> Vec<String> {
-    role_rules_with_overrides(PLANNER_RULES, AgentPromptKind::Planner)
-}
-
-fn executor_rules() -> Vec<String> {
-    let ws = crate::constants::workspace();
-    let mut rules = vec![
-        "- Always read a file before patching it — but read each file ONCE. If a read_file result for that path already appears in this session's context, its content is available — do NOT read it again. Calling read_file on an already-seen path is a stall: emit apply_patch or message instead.".to_string(),
-        "- For Rust source navigation prefer semantic tools over raw file access: semantic_map (semantic triples) → symbol_window (function body) → symbol_neighborhood / symbol_refs (call sites / references) → symbol_path (call chain). Use read_file only for non-Rust files or immediately before patching a Rust file to get line-numbered output.".to_string(),
-        "- Use list_dir only to check whether a path exists or to enumerate non-source artifacts; use semantic_map to explore Rust semantic structure. Do not invent `symbol_search`; use `symbol_refs` or `symbol_window` instead.".to_string(),
-        "- Only list_dir paths that exist under WORKSPACE; do not assume `canon-utils` exists unless WORKSPACE is `/workspace/ai_sandbox/canon`.".to_string(),
-        "- Use run_command for cargo builds, tests, and shell discovery.".to_string(),
-        "- Use cargo_fmt and cargo_clippy tools for formatting/linting. Both return exactly 3 lines (status/log/summary) and write full output under state/logs/.".to_string(),
-        "- Complexity report artifact (supervisor-generated): agent_state/reports/complexity/latest.json (proxy metric complexity_proxy=mir_blocks) for hotspot targeting.".to_string(),
-        "- Use python for structured analysis when shell pipelines are awkward.".to_string(),
-        "- Always use the `python` action when reading or inspecting any `.json` state file (PLAN.json, OBJECTIVES.json, ISSUES.json, VIOLATIONS.json, diagnostics). Never use shell tools (cat, jq, grep) to read JSON — use python.".to_string(),
-        "- Your work is scoped to the task_id provided in the planner handoff. Execute that specific task; do not pick up other PLAN.json tasks unless the planner explicitly includes them in the ready window.".to_string(),
-        "- Each action you emit must include `task_id` and `objective_id` fields matching the current task. Never omit these provenance fields.".to_string(),
-        "- When sending a `message` action, always set `\"from\": \"executor\"`. Never copy `from` values from other roles' messages in your context.".to_string(),
-        "- When blocked or complete, send your `message` to `\"planner\"` — not to `diagnostics`, `verifier`, or other roles. The planner coordinates all role dispatch.".to_string(),
-        format!("- Never operate outside {ws}."),
-        "- Never modify `SPEC.md`, `VIOLATIONS.json`, or `PLANS/default/diagnostics-default.json`.".to_string(),
-        "- The ONLY permitted PLAN.json mutation is `plan set_task_status → done` for the task you just completed. All other plan ops (create_task, update_task, add_edge, replace_plan, set_task_status→ready) are planner-only.".to_string(),
-        "- Never emit destructive commands (rm -rf, git reset --hard, git clean -f, etc.).".to_string(),
-    ];
-    rules.extend(load_role_overrides(AgentPromptKind::Executor));
-    rules
-}
-
-fn solo_rules() -> Vec<String> {
-    let ws = crate::constants::workspace();
-    let mut rules = vec![
-        "- Always read a file before patching it — but read each file ONCE. If a read_file result for that path already appears in this session's context, its content is available — do NOT read it again. Calling read_file on an already-seen path is a stall: emit apply_patch or message instead.".to_string(),
-        "- For Rust source navigation prefer semantic tools over raw file access: semantic_map (semantic triples) → symbol_window (function body) → symbol_neighborhood / symbol_refs (call sites / references) → symbol_path (call chain). Use read_file only for non-Rust files or immediately before patching a Rust file to get line-numbered output.".to_string(),
-        "- Use list_dir only to check whether a path exists or to enumerate non-source artifacts; use semantic_map to explore Rust semantic structure. Do not invent `symbol_search`; use `symbol_refs` or `symbol_window` instead.".to_string(),
-        "- Use run_command for cargo builds, tests, and shell discovery.".to_string(),
-        "- Use cargo_fmt and cargo_clippy tools for formatting/linting. Both return exactly 3 lines (status/log/summary) and write full output under state/logs/.".to_string(),
-        "- Complexity report artifact (supervisor-generated): agent_state/reports/complexity/latest.json (proxy metric complexity_proxy=mir_blocks) for hotspot targeting.".to_string(),
-        "- Run cargo build/test before `message` with status=complete when changes affect code.".to_string(),
-        "- If you rebuild canon-mini-agent, the supervisor may restart immediately in solo mode; be ready for a restart before the next step.".to_string(),
-        "- You may modify any in-workspace files when justified by evidence; use the `plan` action for PLAN.json edits.".to_string(),
-        format!("- Never operate outside {ws}."),
-        "- Never emit destructive commands (rm -rf, git reset --hard, git clean -f, etc.).".to_string(),
-        "- Use semantic tools only when they sharpen the immediate next step. Do not perform broad codebase sweeps unless the current task or failure surface requires them.".to_string(),
-        "- Solo is not the broad issue-discovery lane. Use the `issue` action only when the current step directly exposes a concrete implementation gap with file/symbol/evidence in hand.".to_string(),
-        "- When the inbound request is from `user`, prefer a bounded direct result message to `user` over broad system analysis unless a concrete execution step is clearly higher value.".to_string(),
-    ];
-    rules.extend(load_role_overrides(AgentPromptKind::Solo));
-    rules
-}
-
 fn executor_handoff() -> String {
     format_bullets(
         &format!("{EXECUTOR_PREFIX}\n"),
@@ -635,60 +487,12 @@ fn executor_handoff() -> String {
 
 fn prompt_tail(kind: AgentPromptKind) -> String {
     match kind {
-        AgentPromptKind::Executor => format_prompt_tail_with_prefix(
-            &executor_handoff(),
-            Some(&execution_discipline()),
-            &executor_rules(),
-            Some("Planner"),
-        ),
-        AgentPromptKind::Verifier => format_prompt_tail_with_prefix(
-            VERIFIER_PROCESS,
-            None,
-            &role_rules_with_overrides(VERIFIER_RULES, AgentPromptKind::Verifier),
-            Some("Planner"),
-        ),
-        AgentPromptKind::Planner => format_prompt_tail_with_prefix(
-            PLANNER_PROCESS,
-            None,
-            &role_rules_with_overrides(PLANNER_RULES, AgentPromptKind::Planner),
-            Some("Planner"),
-        ),
-        AgentPromptKind::Diagnostics => format_prompt_tail_with_prefix(
-            PLANNER_PROCESS,
-            None,
-            &diagnostics_rules(),
-            Some("Planner"),
-        ),
-        AgentPromptKind::Solo => format_prompt_tail_with_prefix(
-            &solo_execution_discipline(),
-            None,
-            &solo_rules(),
-            Some("Planner"),
-        ),
-    }
-}
-
-fn role_rules_with_overrides(base: &[&str], kind: AgentPromptKind) -> Vec<String> {
-    let mut rules: Vec<String> = base.iter().map(|s| s.to_string()).collect();
-    rules.extend(load_role_overrides(kind));
-    rules
-}
-
-fn format_prompt_tail_with_prefix(
-    prefix: &str,
-    middle: Option<&str>,
-    rules: &[String],
-    blocker_target: Option<&str>,
-) -> String {
-    let refs: Vec<&str> = rules.iter().map(|s| s.as_str()).collect();
-    match middle {
-        Some(middle) => format!(
-            "{}\n\n{}\n\n{}",
-            prefix,
-            middle,
-            rules_section(&refs, blocker_target)
-        ),
-        None => format!("{}\n\n{}", prefix, rules_section(&refs, blocker_target)),
+        AgentPromptKind::Executor => {
+            format!("{}\n\n{}", executor_handoff(), execution_discipline())
+        }
+        AgentPromptKind::Verifier => VERIFIER_PROCESS.to_string(),
+        AgentPromptKind::Planner | AgentPromptKind::Diagnostics => PLANNER_PROCESS.to_string(),
+        AgentPromptKind::Solo => solo_execution_discipline(),
     }
 }
 
@@ -1918,21 +1722,6 @@ mod tests {
     }
 
     #[test]
-    fn planner_rules_require_promoting_issues_into_objectives_and_plan() {
-        let rules = PLANNER_RULES.join("\n");
-        assert!(
-            rules.contains("Read `ISSUES.json` every cycle"),
-            "planner rules must require consuming ISSUES.json"
-        );
-        assert!(
-            rules.contains(
-                "promote top open issues into `agent_state/OBJECTIVES.json` and `PLAN.json`"
-            ),
-            "planner rules must require promoting issues into objectives/plan"
-        );
-    }
-
-    #[test]
     fn planner_system_instructions_include_tool_schema_block() {
         let prompt = system_instructions(AgentPromptKind::Planner);
         assert!(
@@ -1958,6 +1747,10 @@ mod tests {
         assert!(
             prompt.contains("do not emit `create_edge`"),
             "planner system prompt should forbid the legacy create_edge alias"
+        );
+        assert!(
+            !prompt.contains("━━━ RULES"),
+            "planner system prompt should omit the RULES section"
         );
     }
 
@@ -2112,15 +1905,6 @@ mod tests {
         assert!(prompt.contains("`issue`"));
         assert!(prompt.contains("…"));
         assert!(!prompt.contains("`batch`"));
-    }
-
-    #[test]
-    fn verifier_requires_plan_action_for_master_plan_edits() {
-        let rules = VERIFIER_RULES.join("\n");
-        assert!(
-            rules.contains("Update `PLAN.json` only via the `plan` action"),
-            "verifier rules must require plan tool for PLAN.json edits"
-        );
     }
 
     #[test]
