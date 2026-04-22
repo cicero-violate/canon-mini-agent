@@ -1119,21 +1119,47 @@ fn build_planner_loop_fragmentation_issue(crate_name: &str, idx: &SemanticIndex)
             .then(a.0.len().cmp(&b.0.len()))
             .then(a.0.cmp(&b.0))
     });
+    let mut owner_candidates: Vec<(String, Vec<String>, Vec<String>, usize, usize)> = orchestrators
+        .iter()
+        .filter(|(_, direct_phases, reached_phases, _, outgoing)| {
+            *outgoing >= 4 && (direct_phases.len() >= 3 || reached_phases.len() >= 3)
+        })
+        .cloned()
+        .collect();
+    owner_candidates.sort_by(|a, b| {
+        (b.1.len() + b.2.len())
+            .cmp(&(a.1.len() + a.2.len()))
+            .then(b.4.cmp(&a.4))
+            .then(a.0.len().cmp(&b.0.len()))
+            .then(a.0.cmp(&b.0))
+    });
 
     let phase_count = phase_symbols.len();
     let planner_count = phase_symbols.get("planner").map(|s| s.len()).unwrap_or(0);
     let apply_count = phase_symbols.get("apply").map(|s| s.len()).unwrap_or(0);
     let verify_count = phase_symbols.get("verify").map(|s| s.len()).unwrap_or(0);
-    let canonical_target = orchestrators
+    let canonical_target = owner_candidates
         .first()
+        .or_else(|| orchestrators.first())
         .map(|row| row.0.clone())
         .unwrap_or_else(|| "app::run_planner_phase".to_string());
-    let evidence = orchestrators
+    let mut evidence_rows = owner_candidates.clone();
+    for row in &orchestrators {
+        if !evidence_rows.iter().any(|existing| existing.0 == row.0) {
+            evidence_rows.push(row.clone());
+        }
+    }
+    let evidence = evidence_rows
         .iter()
         .take(8)
         .map(|(symbol, direct_phases, reached_phases, incoming, outgoing)| {
+            let role = if owner_candidates.iter().any(|row| row.0 == *symbol) {
+                "workflow owner candidate"
+            } else {
+                "strong workflow orchestrator"
+            };
             format!(
-                "workflow orchestrator `{symbol}` touches phases [{}] and reaches [{}] (incoming_workflow={incoming}, outgoing_workflow={outgoing})",
+                "{role} `{symbol}` touches phases [{}] and reaches [{}] (incoming_workflow={incoming}, outgoing_workflow={outgoing})",
                 direct_phases.join(", "),
                 reached_phases.join(", ")
             )
@@ -1151,26 +1177,39 @@ fn build_planner_loop_fragmentation_issue(crate_name: &str, idx: &SemanticIndex)
             })
         })
         .collect::<Vec<_>>();
+    let owner_candidate_metrics = owner_candidates
+        .iter()
+        .map(|(symbol, direct_phases, reached_phases, incoming, outgoing)| {
+            json!({
+                "symbol": symbol,
+                "direct_phases": direct_phases,
+                "reached_phases": reached_phases,
+                "incoming_workflow": incoming,
+                "outgoing_workflow": outgoing,
+            })
+        })
+        .collect::<Vec<_>>();
 
     Issue {
         id: planner_loop_issue_id(crate_name),
         title: format!(
-            "Planner/apply/verify fragmentation in `{}` ({} orchestrators)",
+            "Planner/apply/verify fragmentation in `{}` ({} owner candidates)",
             crate_name,
-            orchestrators.len()
+            owner_candidates.len()
         ),
-        status: if orchestrators.len() > 1 { "open" } else { "resolved" }.to_string(),
-        priority: if orchestrators.len() >= 4 { "high" } else { "medium" }.to_string(),
+        status: if owner_candidates.len() > 1 { "open" } else { "resolved" }.to_string(),
+        priority: if owner_candidates.len() >= 4 { "high" } else { "medium" }.to_string(),
         kind: "logic".to_string(),
         description: format!(
-            "Compiler-observed workflow-domain functions in crate `{crate_name}` are spread across planner/apply/verify phases \
+             "Compiler-observed workflow-domain functions in crate `{crate_name}` are spread across planner/apply/verify phases \
              without a single clear orchestrator. Detected phase counts: planner={planner_count}, \
              apply={apply_count}, verify={verify_count}. Hypothesis-grade workflow analysis found {} \
-             root-like or multi-phase orchestrators.\n\n\
+             strong orchestrators and {} owner candidates.\n\n\
              This usually means the planner/apply/verify loop is fragmented across multiple entrypoints \
              instead of one canonical control path. Consolidate orchestration around `{canonical_target}` \
              or another single workflow owner, and downgrade the remaining sites to thin delegates.",
-            orchestrators.len()
+            orchestrators.len(),
+            owner_candidates.len()
         ),
         location: format!("state/rustc/{crate_name}/graph.json"),
         scope: format!("crate:{crate_name}"),
@@ -1182,13 +1221,15 @@ fn build_planner_loop_fragmentation_issue(crate_name: &str, idx: &SemanticIndex)
             "apply_count": apply_count,
             "verify_count": verify_count,
             "orchestrator_count": orchestrators.len(),
+            "owner_candidate_count": owner_candidates.len(),
             "canonical_target_candidate": canonical_target,
             "orchestrators": orchestrator_metrics,
+            "owner_candidates": owner_candidate_metrics,
         }),
         acceptance_criteria: vec![
             "planner/apply/verify orchestration is centralized through one canonical control path".to_string(),
             "secondary workflow entrypoints are deleted or reduced to thin delegates".to_string(),
-            "graph.json is regenerated and the detector reports at most one orchestrator".to_string(),
+            "graph.json is regenerated and the detector reports at most one owner candidate".to_string(),
         ],
         evidence,
         discovered_by: "graph_metrics_detector".to_string(),

@@ -70,11 +70,15 @@ Completed:
 - initial CFG-region reduction detector:
   - `cfg_region_reduction`
 - graph verification snapshot + delta reporting
+- planner-loop orchestration detection now derives from compiler-emitted
+  workflow-domain edges rather than symbol-name classification
+- live CFG-region candidate caps validated:
+  - `50` open candidates for `canon_mini_agent`
+  - `6` open candidates for `canon_user_chat`
+  - `1` open candidate for `canon_generate_issues`
 
 Missing:
 
-- tighter planner-loop orchestration thresholds on live crate data
-- validation of live `cfg_region_reduction` candidates against fresh graph output
 - SCC / dominator region reduction candidates
 - richer effect classes:
   - process spawn
@@ -82,6 +86,7 @@ Missing:
   - logging split from generic artifact/state IO
 - stronger transition semantics than “branches + writes state”
 - tighter proof boundary between canonical boundary modules and leak candidates
+- tighter workflow-owner thresholds inside `planner_loop_fragmentation`
 
 ## Canonical Object
 
@@ -249,6 +254,7 @@ Hypothesis-grade operators:
 - state transition centralization
 - implicit state machine extraction
 - dominator region collapse
+- SCC region collapse
 - bisimilar transition fragment collapse
 - planner/apply/verify loop centralization
 - representation fanout collapse
@@ -541,20 +547,24 @@ Status:
   - `implicit_state_machine`
   - `effect_boundary_leak`
   - `representation_fanout`
-- in progress:
+- completed:
   - compiler-driven workflow-domain facts replacing symbol classification
   - initial `cfg_region_reduction` report path
 - still missing:
-  - stable live thresholds for workflow orchestrator detection
-  - confirmed live SCC / dominator reduction candidates
+  - tighter workflow-owner thresholds for live orchestrator detection
+  - decision on whether `cfg_region_reduction` should stay combined or split
+    into explicit SCC and dominator candidate families
 
 ## Near-Term Implementation Order
 
 Do this next, in order:
 
-1. tighten live `planner_loop_fragmentation` thresholds using compiler workflow facts
-2. validate live `cfg_region_reduction` candidates against fresh graph output
-3. add SCC / dominator region summaries to `graph.json` if live CFG-region signal remains too weak
+1. narrow `planner_loop_fragmentation` from 7 strong orchestrators toward the true
+   workflow owner set
+2. decide whether `cfg_region_reduction` should stay combined or split into
+   `scc_region_reduction` and `dominator_region_reduction`
+3. add SCC / dominator region summaries to `graph.json` only if the combined
+   CFG-region detector proves too coarse
 4. refine effect classes beyond generic state/artifact IO
 5. tighten `state_transition_dispersion` with richer transition semantics
 
@@ -580,6 +590,8 @@ Start with the live workflow/control critical path.
 
 Reason:
 
-- the compiler now emits workflow-domain facts, but the live planner report is still too broad
-- the next useful step is threshold correction, not more schema
-- the CFG-region detector exists; it now needs live-signal validation before expanding the graph again
+- the compiler-driven workflow migration is complete, but the live planner report
+  still surfaces 7 strong orchestrators rather than the canonical owner set
+- the CFG-region detector is live and bounded; the next decision is whether to
+  keep one combined candidate family or split SCC and dominator reports
+- the next useful step is live control-surface refinement, not more raw schema
