@@ -355,7 +355,7 @@ fn prompt_intro(kind: AgentPromptKind) -> &'static str {
 
 fn prompt_mission(kind: AgentPromptKind) -> &'static str {
     match kind {
-        AgentPromptKind::Executor => "Your job is to execute the highest-priority READY work described in planner handoff messages and the master plan.\n`SPEC.md` is the canonical contract.\nLane plans are deprecated and should not be relied on for task selection.\nPlanner validates progress against `SPEC.md` and current evidence in two-role runtime.\nYou should only work on the top 1-10 ready tasks in the current cycle, then yield.\nAll actions (`read_file`, `apply_patch`, `run_command`, `plan`, `message`, etc.) are JSON you emit in your response text — they are not function calls or external tools.\nDo not reorganize or update `SPEC.md` or plan files yourself.\nMake source changes, run checks, and report evidence in `message.payload`.",
+        AgentPromptKind::Executor => "All actions (`read_file`, `apply_patch`, `run_command`, `plan`, `message`, etc.) are JSON you emit in your response text — they are not function calls or external tools.\nMake source changes, run checks, and report evidence in `message.payload`.",
         AgentPromptKind::Verifier => "Your job is to critically review executor evidence against the codebase and judge whether the implementation satisfies `SPEC.md`.\nExecutor evidence is a hint only. The canonical truth is the codebase versus `SPEC.md`.\nIf violations are found, use the `violation` action (op=upsert) to record them in `VIOLATIONS.json`. Use `violation` op=resolve to clear violations that are no longer active. Never use `apply_patch` for VIOLATIONS.json.\nBe skeptical — do not trust executor claims at face value.",
         AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `agent_state/OBJECTIVES.json`, and the semantic-control snapshot in this prompt, then derive the master plan plus executor handoff guidance.\nThe semantic-control snapshot is the tlog-derived authority for routing/control and projects issues, violations, and invariants into one view.\nOn every cycle, re-evaluate the workspace and update `PLAN.json` via the `plan` action (emit it as JSON in your response).\nAt the end of every planner cycle, review `agent_state/OBJECTIVES.json` and add or update objectives using the `objectives` action (emit it as JSON in your response).\nAct on projected open issues from semantic control and convert the top open items into ready executor tasks.\nAll actions (`plan`, `objectives`, `issue`, `message`, `read_file`, etc.) are JSON you emit in your response text — they are not function calls or external tools.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
         AgentPromptKind::Diagnostics => "Your job is to read `SPEC.md`, `agent_state/OBJECTIVES.json`, and semantic control, then update planner-owned projections and planning state. Diagnostics is deprecated as an active role.",
@@ -374,16 +374,13 @@ fn prompt_workspace(kind: AgentPromptKind) -> String {
     }
 }
 
-fn canonical_status_snapshot() -> &'static str {
-    "Runtime law:\n- prefer replayed canonical state when caches drift\n- represent control-flow or externally visible behavior canonically\n- close loopholes before adding new features"
-}
-
 fn status_snapshot_for(kind: AgentPromptKind) -> &'static str {
     match kind {
-        AgentPromptKind::Planner | AgentPromptKind::Diagnostics => "",
-        AgentPromptKind::Executor
+        AgentPromptKind::Planner
+        | AgentPromptKind::Diagnostics
+        | AgentPromptKind::Executor
         | AgentPromptKind::Verifier
-        | AgentPromptKind::Solo => canonical_status_snapshot(),
+        | AgentPromptKind::Solo => "",
     }
 }
 
@@ -403,21 +400,13 @@ Provenance fields — include on every new task:\n\
 - `issue_refs`: array of ISSUES.json ids that motivated this task (e.g. [\"auto_mir_dup_abc123\"]). Empty array if none.\n\
 - `objective_id`: the agent_state/OBJECTIVES.json objective id this task advances (e.g. \"obj_reduce_complexity\"). Omit if no clear match.";
 
-const EXECUTOR_HANDOFF_BULLETS: &[&str] = &[
-    "files changed",
-    "commands run",
-    "outcomes / failing checks",
-    "remaining uncertainty or blockers",
-];
-
 const EXECUTOR_PREFIX: &str = "━━━ TASK COMPLETION PROTOCOL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n\
 When the task is done and tests pass:\n\
   1. Mark it done: `{\"action\":\"plan\",\"op\":\"set_task_status\",\"task_id\":\"<id>\",\"status\":\"done\",\"rationale\":\"<evidence>\"}`\n\
   2. Do NOT send a `message` — the planner is woken automatically.\n\n\
 Use `message` ONLY when:\n\
   • You are blocked by something you cannot resolve (type=blocker, status=blocked)\n\
-  • Work is genuinely incomplete and you cannot determine whether it is correct\n\n\
-When you do send a `message`, include in `message.payload`:";
+  • Work is genuinely incomplete and you cannot determine whether it is correct";
 
 const EXECUTION_DISCIPLINE_BULLETS: &[&str] = &[
     "Prefer tasks explicitly marked ready / highest priority by the planner.",
@@ -431,9 +420,7 @@ const EXECUTION_DISCIPLINE_BULLETS: &[&str] = &[
      (b) partial completions where uncertainty is too high to mark done.",
     "If an apply_patch fails, read the exact file or line range before retrying.",
     "Do not repeat the same patch attempt without new evidence from read_file, run_command, or python.",
-    "When touching routing, policy, or control-flow code, favor the authority described in INVARIANTS.json over local heuristics.",
     "Use MIR and HIR analysis to derive call graph, CFG, reachability, and dataflow when diagnosing bugs or proving fixes.",
-    "If a task conflicts with INVARIANTS.json, execute the invariant and report the conflict in `message.payload` so planner can update plan truth.",
 ];
 
 const SOLO_EXECUTION_DISCIPLINE_BULLETS: &[&str] = &[
@@ -442,9 +429,7 @@ const SOLO_EXECUTION_DISCIPLINE_BULLETS: &[&str] = &[
     "Use the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.",
     "If an apply_patch fails, read the exact file or line range before retrying.",
     "Do not repeat the same patch attempt without new evidence from read_file, run_command, or python.",
-    "When touching routing, policy, or control-flow code, favor the authority described in INVARIANTS.json over local heuristics.",
     "Use MIR and HIR analysis to derive call graph, CFG, reachability, and dataflow when diagnosing bugs or proving fixes.",
-    "If a task conflicts with INVARIANTS.json, execute the invariant and report the conflict in `message.payload` so planner can update plan truth.",
 ];
 
 fn format_bullets(header: &str, bullets: &[&str], suffix: Option<&str>) -> String {
@@ -478,11 +463,7 @@ fn solo_execution_discipline() -> String {
 }
 
 fn executor_handoff() -> String {
-    format_bullets(
-        &format!("{EXECUTOR_PREFIX}\n"),
-        EXECUTOR_HANDOFF_BULLETS,
-        Some("Read `SPEC.md` and `PLAN.json` when needed for execution context, but leave planning-file mutation to planner."),
-    )
+    EXECUTOR_PREFIX.to_string()
 }
 
 fn prompt_tail(kind: AgentPromptKind) -> String {
@@ -627,7 +608,7 @@ pub(crate) fn executor_cycle_prompt(
         latest_verify_result.to_string()
     };
     format!(
-        "TAB_ID: pending\nTURN_ID: pending\nAGENT_TYPE: EXECUTOR\n\nWORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Master plan: {MASTER_PLAN_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics: {diagnostics_file}\n\nREADY TASKS (from {MASTER_PLAN_FILE}, top-10 by plan order):\n{ready_tasks}\n\nLane plans are deprecated. Use planner handoff messages and {MASTER_PLAN_FILE} for task selection.\nLatest verifier result for lane {lane_label}:\n{verify_result}\n\nYou may send a message action to other agents at any time."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nCanonical references:\n- Spec: {SPEC_FILE}\n- Master plan: {MASTER_PLAN_FILE}\n- Violations: {VIOLATIONS_FILE}\n- Diagnostics: {diagnostics_file}\n\nREADY TASKS (from {MASTER_PLAN_FILE}, top-10 by plan order):\n{ready_tasks}\n\nLane plans are deprecated. Use planner handoff messages and {MASTER_PLAN_FILE} for task selection.\nLatest verifier result for lane {lane_label}:\n{verify_result}\n\nYou may send a message action to other agents at any time."
     )
 }
 
@@ -1794,10 +1775,9 @@ mod tests {
             prompt.contains("Action: `python`"),
             "executor system prompt should include the python schema"
         );
-        let snapshot = canonical_status_snapshot();
         assert!(
-            prompt.contains(snapshot),
-            "executor system prompt must contain canonical runtime law snapshot"
+            !prompt.contains("Runtime law:"),
+            "executor system prompt should omit the runtime law block"
         );
     }
 

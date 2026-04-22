@@ -341,12 +341,13 @@ fn classify_calpico_value(v: &Value) -> FrameResult {
             result => return result,
         }
     }
-    if obj.get("type").and_then(|t| t.as_str()) == Some("message") {
+    let kind = obj.get("type").and_then(|t| t.as_str());
+    if kind == Some("message") {
         return classify_calpico_envelope(v);
     }
-    if obj.get("role").and_then(|r| r.as_str()) == Some("assistant")
-        && obj.get("raw_messages").is_some()
-    {
+    let role = obj.get("role").and_then(|r| r.as_str());
+    let has_raw_messages = obj.get("raw_messages").is_some();
+    if role == Some("assistant") && has_raw_messages {
         return classify_calpico_message(v);
     }
     FrameResult::Ignore
