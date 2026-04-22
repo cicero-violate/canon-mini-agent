@@ -281,6 +281,36 @@ pub fn generate_error_shaping_dispersion_issues(workspace: &Path) -> Result<usiz
     Ok(mutated)
 }
 
+fn collect_state_transitions_by_domain(idx: &SemanticIndex) -> HashMap<String, HashSet<String>> {
+    let mut transitions_by_state: HashMap<String, HashSet<String>> = HashMap::new();
+    for (symbol, state) in idx.state_transition_edges() {
+        if !looks_like_symbol(&symbol) || state.trim().is_empty() {
+            continue;
+        }
+        transitions_by_state.entry(state).or_default().insert(symbol);
+    }
+    transitions_by_state
+}
+
+fn resolve_missing_state_transition_dispersion_issues(
+    file: &mut IssuesFile,
+    desired_ids: &HashSet<String>,
+    crate_name: &str,
+) -> usize {
+    let mut mutated = 0usize;
+    let prefix = format!("auto_state_transition_dispersion_{crate_name}_");
+    for issue in &mut file.issues {
+        if issue.id.starts_with(&prefix)
+            && !desired_ids.contains(&issue.id)
+            && issue.status != "resolved"
+        {
+            issue.status = "resolved".to_string();
+            mutated += 1;
+        }
+    }
+    mutated
+}
+
 pub fn generate_state_transition_dispersion_issues(workspace: &Path) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
     let before = serde_json::to_value(&file)?;
@@ -292,16 +322,8 @@ pub fn generate_state_transition_dispersion_issues(workspace: &Path) -> Result<u
             continue;
         };
 
-        let mut transitions_by_state: HashMap<String, HashSet<String>> = HashMap::new();
-        for (symbol, state) in idx.state_transition_edges() {
-            if !looks_like_symbol(&symbol) || state.trim().is_empty() {
-                continue;
-            }
-            transitions_by_state.entry(state).or_default().insert(symbol);
-        }
-
         let crate_name = crate_name.replace('-', "_");
-        for (state_domain, transitions) in transitions_by_state {
+        for (state_domain, transitions) in collect_state_transitions_by_domain(&idx) {
             let mut transitions: Vec<String> = transitions.into_iter().collect();
             transitions.sort();
             let issue =
@@ -309,17 +331,11 @@ pub fn generate_state_transition_dispersion_issues(workspace: &Path) -> Result<u
             desired_ids.insert(issue.id.clone());
             mutated += upsert_bridge_issue(&mut file, issue, transitions.len() > 1);
         }
-
-        let prefix = format!("auto_state_transition_dispersion_{crate_name}_");
-        for issue in &mut file.issues {
-            if issue.id.starts_with(&prefix)
-                && !desired_ids.contains(&issue.id)
-                && issue.status != "resolved"
-            {
-                issue.status = "resolved".to_string();
-                mutated += 1;
-            }
-        }
+        mutated += resolve_missing_state_transition_dispersion_issues(
+            &mut file,
+            &desired_ids,
+            &crate_name,
+        );
     }
 
     rescore_all(&mut file);
@@ -478,6 +494,24 @@ pub fn generate_effect_boundary_leak_issues(workspace: &Path) -> Result<usize> {
                 .entry(symbol)
                 .or_default()
                 .insert("error_shape");
+        }
+        for (symbol, _) in idx.semantic_edges_by_relation("PerformsLogging") {
+            effects_by_symbol
+                .entry(symbol)
+                .or_default()
+                .insert("logging");
+        }
+        for (symbol, _) in idx.semantic_edges_by_relation("SpawnsProcess") {
+            effects_by_symbol
+                .entry(symbol)
+                .or_default()
+                .insert("process_spawn");
+        }
+        for (symbol, _) in idx.semantic_edges_by_relation("UsesNetwork") {
+            effects_by_symbol
+                .entry(symbol)
+                .or_default()
+                .insert("network");
         }
 
         let mut by_module: HashMap<String, Vec<(String, Vec<&'static str>)>> = HashMap::new();
@@ -1081,9 +1115,11 @@ fn build_state_transition_dispersion_issue(
         priority: if transitions.len() >= 4 { "high" } else { "medium" }.to_string(),
         kind: "logic".to_string(),
         description: format!(
-            "Compiler-observed branch-plus-state-write transitions for state domain `{state_domain}` \
+            "Compiler-observed coordinated transitions for state domain `{state_domain}` \
              are distributed across multiple functions in crate `{crate_name}`: {transition_list}.\n\n\
-             Transition logic that mutates the same state domain from several unrelated sites tends to \
+             These sites are stronger than a bare branch-plus-write signal: each transition is workflow-coordinated \
+             or forms a read/write transition cycle before mutating the domain. Transition logic that mutates \
+             the same state domain from several unrelated sites tends to \
              create implicit state machines, duplicated guards, and divergent recovery semantics.\n\n\
              Extract one canonical transition layer for `{display_state}` and route these sites through it."
         ),

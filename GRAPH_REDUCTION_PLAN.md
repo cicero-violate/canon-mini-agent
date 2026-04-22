@@ -76,17 +76,26 @@ Completed:
   - `50` open candidates for `canon_mini_agent`
   - `6` open candidates for `canon_user_chat`
   - `1` open candidate for `canon_generate_issues`
+- CFG-region family split completed:
+  - `scc_region_reduction`
+  - `dominator_region_reduction`
+- planner-loop owner narrowing completed:
+  - strong orchestrators remain as evidence
+  - current canonical owner candidate converges to `tools::execute_action`
+- current live split results:
+  - `31` open `scc_region_reduction` issues
+  - `0` open `dominator_region_reduction` issues at the current threshold
+  - legacy `cfg_region_reduction` issues resolved
 
 Missing:
 
-- SCC / dominator region reduction candidates
 - richer effect classes:
   - process spawn
   - network
   - logging split from generic artifact/state IO
 - stronger transition semantics than “branches + writes state”
 - tighter proof boundary between canonical boundary modules and leak candidates
-- tighter workflow-owner thresholds inside `planner_loop_fragmentation`
+- richer dominator-funnel signal if the dominator family should emit live issues
 
 ## Canonical Object
 
@@ -549,24 +558,22 @@ Status:
   - `representation_fanout`
 - completed:
   - compiler-driven workflow-domain facts replacing symbol classification
-  - initial `cfg_region_reduction` report path
+  - split CFG-region report paths:
+    - `scc_region_reduction`
+    - `dominator_region_reduction`
 - still missing:
-  - tighter workflow-owner thresholds for live orchestrator detection
-  - decision on whether `cfg_region_reduction` should stay combined or split
-    into explicit SCC and dominator candidate families
+  - richer dominator-funnel signal if the dominator family should become live
+  - richer effect classes and stronger transition semantics
 
 ## Near-Term Implementation Order
 
 Do this next, in order:
 
-1. narrow `planner_loop_fragmentation` from 7 strong orchestrators toward the true
-   workflow owner set
-2. decide whether `cfg_region_reduction` should stay combined or split into
-   `scc_region_reduction` and `dominator_region_reduction`
-3. add SCC / dominator region summaries to `graph.json` only if the combined
-   CFG-region detector proves too coarse
-4. refine effect classes beyond generic state/artifact IO
-5. tighten `state_transition_dispersion` with richer transition semantics
+1. refine effect classes beyond generic state/artifact IO
+2. tighten `state_transition_dispersion` with richer transition semantics
+3. decide whether dominator-funnel evidence needs new compiler facts or lower-risk
+   analyzer signals
+4. only then revisit dominator-region live emission if the stronger facts justify it
 
 Do not:
 
@@ -586,12 +593,10 @@ This plan is complete enough when:
 
 ## Immediate Next Step
 
-Start with the live workflow/control critical path.
+Start with richer effect classes and stronger transition semantics.
 
 Reason:
 
-- the compiler-driven workflow migration is complete, but the live planner report
-  still surfaces 7 strong orchestrators rather than the canonical owner set
-- the CFG-region detector is live and bounded; the next decision is whether to
-  keep one combined candidate family or split SCC and dominator reports
-- the next useful step is live control-surface refinement, not more raw schema
+- planner-loop ownership now converges on one canonical owner candidate
+- CFG-region splitting is complete and only the SCC family is live at current thresholds
+- the next useful step is richer effect modeling, not more workflow/control reshaping
