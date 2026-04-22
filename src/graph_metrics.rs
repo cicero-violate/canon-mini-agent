@@ -1705,11 +1705,12 @@ fn derive_canonical_effect_boundary_modules(
     while changed {
         changed = false;
         for module in &ordered_modules {
-            let only_canonical_callers = incoming_callers_by_module
+            let has_observed_canonical_callers = incoming_callers_by_module
                 .get(module)
+                .filter(|callers| !callers.is_empty())
                 .map(|callers| callers.iter().all(|caller| canonical_modules.contains(caller)))
-                .unwrap_or(true);
-            if only_canonical_callers && canonical_modules.insert(module.clone()) {
+                .unwrap_or(false);
+            if has_observed_canonical_callers && canonical_modules.insert(module.clone()) {
                 changed = true;
             }
         }
