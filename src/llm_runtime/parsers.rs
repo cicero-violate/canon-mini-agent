@@ -249,20 +249,17 @@ fn classify_gemini(raw: &str) -> FrameResult {
     FrameResult::Ignore
 }
 fn strip_leading_length_line(input: &str) -> &str {
-    let mut chars = input.chars();
-    let mut idx = 0usize;
-    let mut saw_digit = false;
-    while let Some(c) = chars.next() {
-        if c.is_ascii_digit() {
-            saw_digit = true;
-            idx += c.len_utf8();
-            continue;
-        }
-        if (c == '\n' || c == '\r') && saw_digit {
-            let rest = input[idx..].trim_start_matches(['\r', '\n']);
-            return rest;
-        }
-        break;
+    let digit_prefix_len: usize = input
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .map(char::len_utf8)
+        .sum();
+    if digit_prefix_len == 0 {
+        return input;
+    }
+    let rest = &input[digit_prefix_len..];
+    if rest.starts_with('\n') || rest.starts_with('\r') {
+        return rest.trim_start_matches(['\r', '\n']);
     }
     input
 }
