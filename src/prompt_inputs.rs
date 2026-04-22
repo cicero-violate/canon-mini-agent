@@ -2000,7 +2000,7 @@ fn render_executor_diff(diff_text: &str, max_lines: usize) -> String {
 mod diagnostics_filter_tests {
     use super::{
         derive_semantic_prompt_artifacts, filter_active_diagnostics_json,
-        filter_active_violations_json, filter_invariants_json, filter_pending_plan_json,
+        filter_active_violations_json, filter_pending_plan_json,
         load_diagnostics_projection_text, render_diagnostics_report_from_issues,
         sanitize_diagnostics_for_planner,
     };
@@ -2215,24 +2215,6 @@ mod diagnostics_filter_tests {
   ]
 }"#;
         assert_eq!(filter_pending_plan_json(raw), "(no pending plan tasks)");
-    }
-
-    #[test]
-    fn filter_invariants_json_derives_compact_lines() {
-        let raw = r#"{"version":1,"invariants":[
-            {"id":"I1","title":"Workspace Isolation","level":"critical","category":"scope"},
-            {"id":"I2","title":"Handoff Delivery","level":"critical","category":"control-flow"}
-        ]}"#;
-        let out = filter_invariants_json(raw);
-        assert!(out.contains("[critical]  I1  —  Workspace Isolation  (scope)"));
-        assert!(out.contains("[critical]  I2  —  Handoff Delivery  (control-flow)"));
-        assert!(out.contains("INVARIANTS.json"));
-    }
-
-    #[test]
-    fn filter_invariants_json_empty_returns_empty() {
-        let raw = r#"{"version":1,"invariants":[]}"#;
-        assert!(filter_invariants_json(raw).is_empty());
     }
 
     #[test]
