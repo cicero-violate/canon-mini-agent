@@ -1660,6 +1660,14 @@ mod tests {
                 "owner": "app::apply_wake_signals",
                 "block": 1,
                 "is_cleanup": false,
+                "terminator": "SwitchInt",
+                "statements": [],
+                "in_loop": false
+            },
+            "cfg::app::apply_wake_signals::bb2": {
+                "owner": "app::apply_wake_signals",
+                "block": 2,
+                "is_cleanup": false,
                 "terminator": "Goto",
                 "statements": [],
                 "in_loop": true
@@ -1668,7 +1676,7 @@ mod tests {
         graph["cfg_edges"] = json!([
             {
                 "relation": "normal",
-                "from": "cfg::app::apply_wake_signals::bb1",
+                "from": "cfg::app::apply_wake_signals::bb2",
                 "to": "cfg::app::apply_wake_signals::bb0",
                 "is_back_edge": true
             }
