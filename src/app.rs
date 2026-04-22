@@ -1964,32 +1964,56 @@ fn drain_continuations(
 ) -> bool {
     let mut cycle_progress = false;
     while let Some(joined) = continuation_joinset.try_join_next() {
-        match joined {
-            Ok((submitted, turn_id, result, mut effect_rx)) => {
-                while let Ok(effect) = effect_rx.try_recv() {
-                    writer.record_effect(effect);
-                }
-                cycle_progress |= handle_completed_continuation(
-                    writer,
-                    verifier_pending_results,
-                    submitted,
-                    turn_id,
-                    result,
-                );
-            }
-            Err(err) => {
-                eprintln!("[orchestrate] continuation join error: {err:#}");
-                log_error_event(
-                    "orchestrate",
-                    "orchestrate",
-                    None,
-                    &format!("continuation join error: {err:#}"),
-                    Some(json!({ "stage": "continuation_join" })),
-                );
-            }
-        }
+        cycle_progress |= handle_joined_continuation(
+            writer,
+            verifier_pending_results,
+            joined,
+        );
     }
     cycle_progress
+}
+
+fn handle_joined_continuation(
+    writer: &mut CanonicalWriter,
+    verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
+    joined: std::result::Result<ContinuationJoinOutput, tokio::task::JoinError>,
+) -> bool {
+    match joined {
+        Ok((submitted, turn_id, result, mut effect_rx)) => {
+            record_continuation_effects(writer, &mut effect_rx);
+            handle_completed_continuation(
+                writer,
+                verifier_pending_results,
+                submitted,
+                turn_id,
+                result,
+            )
+        }
+        Err(err) => {
+            log_continuation_join_error(&err);
+            false
+        }
+    }
+}
+
+fn record_continuation_effects(
+    writer: &mut CanonicalWriter,
+    effect_rx: &mut UnboundedReceiver<EffectEvent>,
+) {
+    while let Ok(effect) = effect_rx.try_recv() {
+        writer.record_effect(effect);
+    }
+}
+
+fn log_continuation_join_error(err: &tokio::task::JoinError) {
+    eprintln!("[orchestrate] continuation join error: {err:#}");
+    log_error_event(
+        "orchestrate",
+        "orchestrate",
+        None,
+        &format!("continuation join error: {err:#}"),
+        Some(json!({ "stage": "continuation_join" })),
+    );
 }
 
 fn handle_completed_continuation(
@@ -2107,29 +2131,49 @@ fn drain_deferred_completions(
         if writer.state().lane_in_flight(lane_id) {
             continue;
         }
-        while let Some(deferred) = rt
-            .deferred_completions
-            .get_mut(&lane_id)
-            .and_then(|queue| queue.pop_front())
-        {
-            if handle_executor_completion(
-                deferred.submitted,
-                deferred.tab_id,
-                deferred.turn_id,
-                deferred.exec_result,
-                writer,
-                rt,
-                ctx.lanes,
-                ctx.bridge,
-                ctx.workspace,
-                continuation_joinset,
-                verifier_pending_results,
-            ) {
-                cycle_progress = true;
-            }
-            if writer.state().lane_in_flight(lane_id) {
-                break;
-            }
+        cycle_progress |= drain_lane_deferred_completions(
+            ctx,
+            writer,
+            rt,
+            continuation_joinset,
+            verifier_pending_results,
+            lane_id,
+        );
+    }
+    cycle_progress
+}
+
+fn drain_lane_deferred_completions(
+    ctx: &OrchestratorContext<'_>,
+    writer: &mut CanonicalWriter,
+    rt: &mut RuntimeState,
+    continuation_joinset: &mut tokio::task::JoinSet<ContinuationJoinOutput>,
+    verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
+    lane_id: usize,
+) -> bool {
+    let mut cycle_progress = false;
+    while let Some(deferred) = rt
+        .deferred_completions
+        .get_mut(&lane_id)
+        .and_then(|queue| queue.pop_front())
+    {
+        if handle_executor_completion(
+            deferred.submitted,
+            deferred.tab_id,
+            deferred.turn_id,
+            deferred.exec_result,
+            writer,
+            rt,
+            ctx.lanes,
+            ctx.bridge,
+            ctx.workspace,
+            continuation_joinset,
+            verifier_pending_results,
+        ) {
+            cycle_progress = true;
+        }
+        if writer.state().lane_in_flight(lane_id) {
+            break;
         }
     }
     cycle_progress
