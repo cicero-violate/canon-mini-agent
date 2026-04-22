@@ -187,6 +187,57 @@ pub fn generate_module_cohesion_issues(workspace: &Path) -> Result<usize> {
     Ok(created)
 }
 
+pub fn generate_artifact_writer_dispersion_issues(workspace: &Path) -> Result<usize> {
+    let mut file: IssuesFile = load_issues_file(workspace);
+    let before = serde_json::to_value(&file)?;
+    let mut desired_ids = HashSet::new();
+    let mut mutated = 0usize;
+
+    for crate_name in SemanticIndex::available_crates(workspace) {
+        let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
+            continue;
+        };
+
+        let mut writers_by_artifact: HashMap<String, HashSet<String>> = HashMap::new();
+        for (writer, artifact) in idx.artifact_write_edges() {
+            if !looks_like_symbol(&writer) || artifact.trim().is_empty() {
+                continue;
+            }
+            writers_by_artifact.entry(artifact).or_default().insert(writer);
+        }
+
+        let crate_name = crate_name.replace('-', "_");
+        for (artifact, writers) in writers_by_artifact {
+            let mut writers: Vec<String> = writers.into_iter().collect();
+            writers.sort();
+            let issue = build_artifact_writer_dispersion_issue(&crate_name, &artifact, &writers);
+            desired_ids.insert(issue.id.clone());
+            mutated += upsert_bridge_issue(&mut file, issue, writers.len() > 1);
+        }
+
+        let prefix = format!("auto_artifact_writer_dispersion_{crate_name}_");
+        for issue in &mut file.issues {
+            if issue.id.starts_with(&prefix) && !desired_ids.contains(&issue.id) && issue.status != "resolved" {
+                issue.status = "resolved".to_string();
+                mutated += 1;
+            }
+        }
+    }
+
+    rescore_all(&mut file);
+    let after = serde_json::to_value(&file)?;
+    if before != after {
+        persist_issues_projection_with_writer(
+            workspace,
+            &file,
+            None,
+            "generate_artifact_writer_dispersion_issues",
+        )?;
+    }
+
+    Ok(mutated)
+}
+
 pub fn analyze_bridge_connectivity(
     workspace: &Path,
     crate_name: &str,
@@ -257,6 +308,101 @@ fn stable_hash(raw: &str) -> u64 {
     let mut hasher = DefaultHasher::new();
     raw.hash(&mut hasher);
     hasher.finish()
+}
+
+fn display_artifact_domain(raw: &str) -> String {
+    let trimmed = raw.strip_prefix("artifact::").unwrap_or(raw);
+    trimmed
+        .split('/')
+        .last()
+        .unwrap_or(trimmed)
+        .rsplit("::")
+        .next()
+        .unwrap_or(trimmed)
+        .to_string()
+}
+
+fn canonical_writer_candidate(artifact: &str, writers: &[String]) -> String {
+    let artifact_hint = display_artifact_domain(artifact).to_ascii_lowercase();
+    let mut ranked = writers.to_vec();
+    ranked.sort_by(|a, b| {
+        writer_rank(a, &artifact_hint)
+            .cmp(&writer_rank(b, &artifact_hint))
+            .then(a.len().cmp(&b.len()))
+            .then(a.cmp(b))
+    });
+    ranked.into_iter().next().unwrap_or_default()
+}
+
+fn writer_rank(writer: &str, artifact_hint: &str) -> (usize, usize, usize) {
+    let lower = writer.to_ascii_lowercase();
+    let persist_bias = usize::from(!lower.contains("persist"));
+    let artifact_bias = usize::from(!lower.contains(artifact_hint));
+    let projection_bias = usize::from(!lower.contains("projection"));
+    (persist_bias, artifact_bias, projection_bias)
+}
+
+fn build_artifact_writer_dispersion_issue(
+    crate_name: &str,
+    artifact: &str,
+    writers: &[String],
+) -> Issue {
+    let display_artifact = display_artifact_domain(artifact);
+    let canonical_writer = canonical_writer_candidate(artifact, writers);
+    let canonical_short = canonical_writer
+        .rsplit("::")
+        .next()
+        .unwrap_or(&canonical_writer)
+        .to_string();
+    let evidence = writers
+        .iter()
+        .map(|writer| format!("writer `{writer}` emits `{display_artifact}`"))
+        .collect::<Vec<_>>();
+    let writer_list = writers
+        .iter()
+        .map(|writer| format!("`{writer}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    Issue {
+        id: format!(
+            "auto_artifact_writer_dispersion_{}_{}",
+            sanitize_fragment(crate_name),
+            stable_hash(&format!("{crate_name}:{artifact}"))
+        ),
+        title: format!(
+            "Artifact writer dispersion for `{display_artifact}` ({} writers)",
+            writers.len()
+        ),
+        status: if writers.len() > 1 { "open" } else { "resolved" }.to_string(),
+        priority: if writers.len() >= 4 { "high" } else { "medium" }.to_string(),
+        kind: "logic".to_string(),
+        description: format!(
+            "Artifact domain `{artifact}` in crate `{crate_name}` is written from multiple functions: {writer_list}.\n\n\
+             Persistent artifact writes should flow through one canonical entrypoint per artifact domain. \
+             Multiple writers increase state dispersion, make replay semantics harder to reason about, \
+             and encourage divergent write behavior.\n\n\
+             Recommended canonical entrypoint: `{canonical_writer}`."
+        ),
+        location: format!("state/rustc/{crate_name}/graph.json"),
+        scope: format!("crate:{crate_name}"),
+        metrics: json!({
+            "artifact": artifact,
+            "display_artifact": display_artifact,
+            "writer_count": writers.len(),
+            "writers": writers,
+            "canonical_writer_candidate": canonical_writer,
+            "task": "CentralizeArtifactWriter",
+        }),
+        acceptance_criteria: vec![
+            format!("all writes to `{display_artifact}` route through `{canonical_short}`"),
+            format!("redundant writer entrypoints for `{display_artifact}` are deleted or converted to thin delegates"),
+            "graph.json is regenerated and the detector reports at most one writer for the artifact".to_string(),
+        ],
+        evidence,
+        discovered_by: "graph_metrics_detector".to_string(),
+        ..Issue::default()
+    }
 }
 
 fn module_partition_key(summary: &crate::semantic::SymbolSummary) -> String {

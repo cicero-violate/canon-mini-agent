@@ -349,6 +349,34 @@ impl SemanticIndex {
         &self.graph.alpha_pathways
     }
 
+    pub fn artifact_write_edges(&self) -> Vec<(String, String)> {
+        self.graph
+            .edges
+            .iter()
+            .filter(|e| edge_relation(e) == "WritesArtifact")
+            .map(|e| {
+                (
+                    self.edge_endpoint_path(&e.from),
+                    self.edge_endpoint_path(&e.to),
+                )
+            })
+            .collect()
+    }
+
+    pub fn artifact_read_edges(&self) -> Vec<(String, String)> {
+        self.graph
+            .edges
+            .iter()
+            .filter(|e| edge_relation(e) == "ReadsArtifact")
+            .map(|e| {
+                (
+                    self.edge_endpoint_path(&e.from),
+                    self.edge_endpoint_path(&e.to),
+                )
+            })
+            .collect()
+    }
+
     fn non_cleanup_owned_cfg_blocks<'a>(&'a self, symbol_key: &str) -> HashSet<&'a str> {
         self.graph
             .bridge_edges

@@ -703,6 +703,7 @@ fn generate_refactor_issue_batch(workspace: &Path) {
     let _ = crate::refactor_analysis::generate_redundant_path_issues(workspace);
     let _ = crate::refactor_analysis::generate_alpha_pathway_issues(workspace);
     let _ = crate::graph_metrics::generate_module_cohesion_issues(workspace);
+    let _ = crate::graph_metrics::generate_artifact_writer_dispersion_issues(workspace);
 }
 
 fn generate_invariant_lifecycle_issues(workspace: &Path) {

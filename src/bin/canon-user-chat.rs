@@ -134,24 +134,6 @@ fn inbound_message_signature(to_key: &str, action_text: &str) -> String {
     ])
 }
 
-fn record_inbound_user_message_effect(
-    workspace: &Path,
-    to_key: &str,
-    action_text: &str,
-) -> Result<()> {
-    let signature = inbound_message_signature(to_key, action_text);
-    record_effect_for_workspace(
-        workspace,
-        EffectEvent::InboundMessageRecorded {
-            from_role: "user".to_string(),
-            to_role: to_key.to_string(),
-            message: action_text.to_string(),
-            signature,
-        },
-    )?;
-    Ok(())
-}
-
 fn write_user_message(
     workspace: &Path,
     state_dir: &Path,
@@ -161,7 +143,16 @@ fn write_user_message(
     ensure_state_dir(state_dir)?;
     let to_key = sanitize_role(to_role);
     let action_text = build_user_handoff_action_text(&to_key, message)?;
-    record_inbound_user_message_effect(workspace, &to_key, &action_text)?;
+    let signature = inbound_message_signature(&to_key, &action_text);
+    record_effect_for_workspace(
+        workspace,
+        EffectEvent::InboundMessageRecorded {
+            from_role: "user".to_string(),
+            to_role: to_key.clone(),
+            message: action_text.clone(),
+            signature,
+        },
+    )?;
     write_user_message_projections(workspace, state_dir, &to_key, &action_text)
 }
 
