@@ -300,6 +300,7 @@ fn generate_refactor_issue_batch(workspace: &Path) {
     let _ = crate::refactor_analysis::generate_dark_assignment_issues(workspace);
     let _ = crate::refactor_analysis::generate_loop_invariant_issues(workspace);
     let _ = crate::refactor_analysis::generate_redundant_path_issues(workspace);
+    let _ = crate::refactor_analysis::generate_alpha_pathway_issues(workspace);
     let _ = crate::graph_metrics::generate_module_cohesion_issues(workspace);
 }
 

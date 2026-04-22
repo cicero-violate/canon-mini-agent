@@ -1198,6 +1198,322 @@ pub fn redundant_path_issues(
     out
 }
 
+// ---------------------------------------------------------------------------
+// 5. Alpha-equivalent pathway elimination
+// ---------------------------------------------------------------------------
+//
+// Finds call chains where every function in the chain carries the same
+// alpha-equivalent type signature (identical structure up to bound-variable
+// renaming of lifetimes and generic type params — the De Bruijn sense).
+//
+// Detection strategy (no rustc dependency):
+//   1. Canonicalize each fn signature textually: extract the bound-var list
+//      from the `<...>` clause, replace each lifetime with 'L0/'L1/... and
+//      each type param with T0/T1/... in order of first appearance, then
+//      compare only the `(params) -> return` part.
+//   2. Cluster functions by canonical-signature hash.
+//   3. Within each cluster, walk call edges to find chains f₀→f₁→...→fₙ.
+//   4. Emit one ticket per chain with step-by-step agent instructions.
+
+pub fn generate_alpha_pathway_issues(workspace: &Path) -> Result<usize> {
+    generate_detector_issues(
+        workspace,
+        "generate_alpha_pathway_issues",
+        16,
+        alpha_pathway_issues,
+    )
+}
+
+/// Canonicalize a function signature by replacing bound variable names with
+/// positional placeholders, then returning only the `(params) -> ret` portion.
+///
+/// `fn foo<'a, T>(x: &'a T) -> T`  →  `(x: &'L0 T0) -> T0`
+/// `fn bar<'b, U>(y: &'b U) -> U`  →  `(y: &'L0 T0) -> T0`  (same → alpha-equiv)
+fn canonicalize_signature(sig: &str) -> String {
+    let paren_pos = sig.find('(').unwrap_or(sig.len());
+    let angle_pos = sig.find('<').unwrap_or(sig.len());
+
+    let mut mapping: Vec<(String, String)> = Vec::new();
+    let mut lt_idx = 0usize;
+    let mut ty_idx = 0usize;
+
+    if angle_pos < paren_pos {
+        // Extract the raw generics string between '<' and the matching '>'.
+        // We scan forward from angle_pos tracking depth so nested bounds like
+        // `T: Iterator<Item = U>` don't confuse us.
+        let after_open = &sig[angle_pos + 1..];
+        let mut depth = 1usize;
+        let mut close = after_open.len();
+        for (i, c) in after_open.char_indices() {
+            match c {
+                '<' => depth += 1,
+                '>' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        close = i;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let generics_str = &after_open[..close];
+
+        // Split on ',' but only at depth 0 inside the generics block.
+        let mut parts: Vec<&str> = Vec::new();
+        let mut start = 0;
+        let mut d = 0usize;
+        for (i, c) in generics_str.char_indices() {
+            match c {
+                '<' => d += 1,
+                '>' => d = d.saturating_sub(1),
+                ',' if d == 0 => {
+                    parts.push(&generics_str[start..i]);
+                    start = i + 1;
+                }
+                _ => {}
+            }
+        }
+        parts.push(&generics_str[start..]);
+
+        for part in parts {
+            let part = part.trim();
+            if part.is_empty() {
+                continue;
+            }
+            if part.starts_with('\'') {
+                let name = part.split(':').next().unwrap_or(part).trim();
+                if name != "'static" && name != "'_" {
+                    mapping.push((name.to_string(), format!("'L{lt_idx}")));
+                    lt_idx += 1;
+                }
+            } else {
+                let name = part.split(':').next().unwrap_or(part).trim();
+                // Only single-word identifiers starting with uppercase are type params.
+                if !name.is_empty()
+                    && name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                    && name.chars().all(|c| c.is_alphanumeric() || c == '_')
+                {
+                    mapping.push((name.to_string(), format!("T{ty_idx}")));
+                    ty_idx += 1;
+                }
+            }
+        }
+    }
+
+    // Nothing to canonicalize — no bound vars means no alpha-equivalence interest.
+    if mapping.is_empty() {
+        return String::new();
+    }
+
+    // Take the `(params) -> ret` portion only — function name is irrelevant.
+    let body = &sig[paren_pos..];
+
+    // Sort longest-first so `'ab` is replaced before `'a` (no partial matches).
+    mapping.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+
+    let mut result = body.to_string();
+    for (orig, canonical) in &mapping {
+        result = result.replace(orig.as_str(), canonical.as_str());
+    }
+    result
+}
+
+pub fn alpha_pathway_issues(
+    workspace: &Path,
+    crate_name: &str,
+    summaries: &[SymbolSummary],
+    limit: usize,
+) -> Vec<Issue> {
+    let Ok(idx) = SemanticIndex::load(workspace, crate_name) else {
+        return Vec::new();
+    };
+
+    // Resolve each fn symbol to a graph key and build lookups.
+    let mut summary_by_symbol: HashMap<&str, &SymbolSummary> = HashMap::new();
+    let mut key_by_symbol: HashMap<&str, String> = HashMap::new();
+    for s in summaries {
+        if s.kind != "fn" {
+            continue;
+        }
+        summary_by_symbol.insert(s.symbol.as_str(), s);
+        if let Ok(key) = idx.canonical_symbol_key(&s.symbol) {
+            key_by_symbol.insert(s.symbol.as_str(), key);
+        }
+    }
+
+    // Cluster fn symbols by canonical signature.
+    let mut by_canon: HashMap<String, Vec<&str>> = HashMap::new();
+    for (&sym, s) in &summary_by_symbol {
+        let Some(sig) = &s.signature else { continue };
+        let canon = canonicalize_signature(sig);
+        if !canon.is_empty() {
+            by_canon.entry(canon).or_default().push(sym);
+        }
+    }
+
+    let mut out = Vec::new();
+    let mut seen_chain: HashSet<String> = HashSet::new();
+
+    for (canon, cluster) in &by_canon {
+        if cluster.len() < 2 {
+            continue;
+        }
+        let cluster_set: HashSet<&str> = cluster.iter().copied().collect();
+
+        // Build intra-cluster call edges and track which symbols have an
+        // in-cluster caller (they are not chain heads).
+        let mut callee_map: HashMap<&str, Vec<&str>> = HashMap::new();
+        let mut has_in_cluster_caller: HashSet<&str> = HashSet::new();
+
+        for &sym in cluster {
+            let Some(key) = key_by_symbol.get(sym) else { continue };
+            let callees: Vec<&str> = idx
+                .direct_callee_paths(key)
+                .into_iter()
+                .filter_map(|c| cluster_set.iter().find(|&&s| s == c.as_str()).copied())
+                .collect();
+            for &callee in &callees {
+                has_in_cluster_caller.insert(callee);
+            }
+            if !callees.is_empty() {
+                callee_map.insert(sym, callees);
+            }
+        }
+
+        // Chain heads: in the cluster, have outgoing edges, no incoming from cluster.
+        let heads: Vec<&str> = cluster
+            .iter()
+            .copied()
+            .filter(|s| callee_map.contains_key(s) && !has_in_cluster_caller.contains(s))
+            .collect();
+
+        for head in heads {
+            // Walk the chain from head following first callee each step.
+            let mut chain: Vec<&str> = vec![head];
+            let mut cur = head;
+            loop {
+                let Some(callees) = callee_map.get(cur) else { break };
+                let Some(&next) = callees.first() else { break };
+                if chain.contains(&next) {
+                    break; // cycle guard
+                }
+                chain.push(next);
+                cur = next;
+            }
+            if chain.len() < 2 {
+                continue;
+            }
+
+            // Dedup: sort symbols to produce a canonical chain key.
+            let mut sorted = chain.clone();
+            sorted.sort();
+            let chain_key = sorted.join("::");
+            if !seen_chain.insert(chain_key) {
+                continue;
+            }
+
+            let head_summary = summary_by_symbol[head];
+            let chain_syms: Vec<String> = chain.iter().map(|s| s.to_string()).collect();
+            let chain_short: Vec<&str> = chain.iter().map(|s| short_name(s)).collect();
+            let chain_display = chain_short.join(" → ");
+            let canonical_head = chain[0];
+            let canonical_head_short = short_name(canonical_head);
+            let redundant_syms: Vec<&str> = chain[1..].to_vec();
+            let redundant_list = redundant_syms
+                .iter()
+                .map(|s| format!("`{}`", short_name(s)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let chain_locs: Vec<String> = chain
+                .iter()
+                .filter_map(|s| summary_by_symbol.get(s))
+                .map(|s| format!("{} at {}", s.symbol, shorten_location(&s.file, s.line)))
+                .collect();
+            let chain_depth = chain.len();
+            let id_seed = format!("{crate_name}:{}", chain_syms.join(":"));
+
+            out.push(Issue {
+                id: format!(
+                    "auto_alpha_pathway_{crate_name}_{:x}",
+                    stable_hash(&id_seed)
+                ),
+                title: format!(
+                    "Alpha-equivalent pathway: {} ({} hop{})",
+                    chain_display,
+                    chain_depth - 1,
+                    if chain_depth - 1 == 1 { "" } else { "s" }
+                ),
+                status: "open".to_string(),
+                priority: if chain_depth >= 3 {
+                    "medium".to_string()
+                } else {
+                    "low".to_string()
+                },
+                kind: "redundancy".to_string(),
+                description: format!(
+                    "Functions [{chain_display}] form a call chain in crate `{crate_name}` \
+                     where every member carries the same alpha-equivalent type signature \
+                     (canonical form: `{canon}`).\n\n\
+                     This means the chain performs the same abstract type transformation at \
+                     each hop — a redundant pathway that can be collapsed to a single symbol.\n\n\
+                     **Execution model:** Detect → Rename canonical → Redirect call sites → Delete redundant → Verify\n\n\
+                     **Step 1 — Choose the canonical symbol.**\n\
+                     `{canonical_head}` is the chain entry point and becomes the single \
+                     implementation. Rename it now if a clearer name exists \
+                     (use `cargo fix` or your editor's rename-symbol feature across the crate).\n\n\
+                     **Step 2 — Redirect call sites of redundant symbols.**\n\
+                     For each of {redundant_list}: search the codebase for every call site \
+                     (including re-exports, trait impls, and test helpers) and replace it with \
+                     a direct call to `{canonical_head}`. Update any `use` imports accordingly.\n\n\
+                     **Step 3 — Delete the redundant function definitions.**\n\
+                     Remove the `fn` definitions for {redundant_list}. If any are `pub`, \
+                     confirm no downstream crate depends on them before deletion \
+                     (check workspace `Cargo.toml` and any reverse-dependency search).\n\n\
+                     **Step 4 — Verify.**\n\
+                     Run `cargo build` and `cargo test --workspace`. \
+                     Fix any unresolved-symbol or type-mismatch errors before closing.",
+                ),
+                location: shorten_location(&head_summary.file, head_summary.line),
+                scope: format!("crate:{crate_name}"),
+                metrics: json!({
+                    "task": "EliminateAlphaPathway",
+                    "canonical_signature": canon,
+                    "chain_depth": chain_depth,
+                    "chain": chain_syms,
+                    "canonical_head": canonical_head,
+                    "redundant_symbols": redundant_syms.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+                }),
+                acceptance_criteria: vec![
+                    format!(
+                        "canonical symbol `{}` retained; renamed if a clearer name exists",
+                        canonical_head_short
+                    ),
+                    format!(
+                        "all call sites of {} redirected to `{}`",
+                        redundant_list, canonical_head_short
+                    ),
+                    format!("{} deleted from codebase", redundant_list),
+                    "cargo build and cargo test --workspace pass".to_string(),
+                ],
+                evidence: chain_locs,
+                discovered_by: "refactor_analyzer".to_string(),
+                ..Issue::default()
+            });
+        }
+    }
+
+    // Prefer longer chains (higher signal) before truncating.
+    out.sort_by(|a, b| {
+        let da = a.metrics.get("chain_depth").and_then(|v| v.as_u64()).unwrap_or(0);
+        let db = b.metrics.get("chain_depth").and_then(|v| v.as_u64()).unwrap_or(0);
+        db.cmp(&da)
+    });
+    out.truncate(limit);
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct StmtKey {
     block: usize,
@@ -2087,8 +2403,8 @@ fn shorten_location(file: &str, line: u32) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        dead_code_id, helper_extract_id, is_exempt_from_dead_code, priority_from_unreachable,
-        short_name,
+        canonicalize_signature, dead_code_id, helper_extract_id, is_exempt_from_dead_code,
+        priority_from_unreachable, short_name,
     };
 
     #[test]
@@ -2135,5 +2451,28 @@ mod tests {
             "handle_apply_patch"
         );
         assert_eq!(short_name("main"), "main");
+    }
+
+    #[test]
+    fn canonicalize_signature_normalizes_bound_vars() {
+        // 'a and 'b differ only in name — should produce identical canonical forms.
+        let a = canonicalize_signature("fn foo<'a, T>(x: &'a T) -> T");
+        let b = canonicalize_signature("fn bar<'b, U>(y: &'b U) -> U");
+        assert_eq!(a, b, "alpha-equivalent sigs must canonicalize to the same form");
+
+        // A second type param appears in position T1.
+        let c = canonicalize_signature("fn baz<'a, T, S>(x: &'a T, y: S) -> S");
+        let d = canonicalize_signature("fn qux<'z, A, B>(p: &'z A, q: B) -> B");
+        assert_eq!(c, d);
+
+        // No generics → empty (not alpha-equiv in the bound-var sense).
+        assert_eq!(canonicalize_signature("fn f(x: u32) -> u32"), "");
+    }
+
+    #[test]
+    fn canonicalize_signature_different_structures_differ() {
+        let a = canonicalize_signature("fn f<T>(x: T) -> T");
+        let b = canonicalize_signature("fn g<T>(x: T) -> ()");
+        assert_ne!(a, b);
     }
 }
