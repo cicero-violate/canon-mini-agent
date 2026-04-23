@@ -146,7 +146,7 @@ pub const ENDPOINT_SPECS: &[EndpointSpec] = &[
         urls: &[
             "https://chatgpt.com/g/g-p-69d5aab6319c8191abe0e3298935c109-canon-mini-agent/project",
             // "https://chatgpt.com/gg/69e2b1e67f188192a9ca08c2036a06ed",
-            "https://chatgpt.com/gg/69e927d762c481a3a2ae6038794f2a3a",
+            // "https://chatgpt.com/gg/69e927d762c481a3a2ae6038794f2a3a",
             // "https://chatgpt.com/gg/69d9549305a881a2a3faaff764e2d106",
             // "https://chatgpt.com/",
             // "https://chatgpt.com/gg/69d126d34dc4819d8de9cba1b209d14c",
