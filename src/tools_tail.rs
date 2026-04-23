@@ -188,6 +188,7 @@ fn execute_batch_item(
         "symbols_rename_candidates" => handle_symbols_rename_candidates_action(workspace, item),
         "symbols_prepare_rename" => handle_symbols_prepare_rename_action(workspace, item),
         "objectives" => handle_objectives_action(workspace, item),
+        "invariants" => crate::invariants::handle_invariants_action(workspace, item),
         "issue" => handle_issue_action(None, workspace, item),
         "violation" => handle_violation_action(None, workspace, item),
         "plan" => handle_plan_action(role, workspace, item),
