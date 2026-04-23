@@ -5,6 +5,7 @@ use crate::constants::{
     diagnostics_file, workspace, EXECUTOR_STEP_LIMIT, INVARIANTS_FILE, ISSUES_FILE,
     MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE,
 };
+use crate::objectives::load_master_plan_snapshot;
 use crate::prompt_contract::ACTION_EMIT_LINE;
 use crate::protocol::{BlockerPayload, MessagePayload, MessageStatus, MessageType, ProtocolMessage, Role};
 use crate::tool_schema::selected_tool_protocol_schema_text;
@@ -871,9 +872,7 @@ fn action_requires_provenance(action: &Value) -> bool {
 }
 
 fn plan_task_objective_id(task_id: &str) -> Option<String> {
-    let plan_path = std::path::Path::new(workspace()).join(MASTER_PLAN_FILE);
-    let raw = std::fs::read_to_string(plan_path).ok()?;
-    let value: Value = serde_json::from_str(&raw).ok()?;
+    let value = load_master_plan_snapshot(std::path::Path::new(workspace()));
     value
         .get("tasks")
         .and_then(|v| v.as_array())

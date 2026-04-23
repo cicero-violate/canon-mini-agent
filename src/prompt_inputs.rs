@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use crate::constants::{ISSUES_FILE, MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE};
 use crate::issues::{read_ranked_open_issues, Issue};
+use crate::objectives::load_master_plan_snapshot;
 use crate::reports::{DiagnosticsFinding, DiagnosticsReport, Impact, Severity, ViolationsReport};
 
 use crate::prompts::{
@@ -1142,17 +1143,7 @@ fn is_ready_status(status: &str) -> bool {
 ///
 /// Returns "(no ready tasks)" when PLAN.json is missing, empty, or has no ready tasks.
 pub fn read_ready_tasks(workspace: &Path, limit: usize) -> String {
-    let plan_path = workspace.join(crate::constants::MASTER_PLAN_FILE);
-    let raw = match std::fs::read_to_string(&plan_path) {
-        Ok(s) => s,
-        Err(_) => return "(no ready tasks)".to_string(),
-    };
-    if raw.trim().is_empty() {
-        return "(no ready tasks)".to_string();
-    }
-    let Ok(value) = serde_json::from_str::<Value>(&raw) else {
-        return "(no ready tasks)".to_string();
-    };
+    let value = load_master_plan_snapshot(workspace);
     let Some(tasks) = value.get("tasks").and_then(Value::as_array) else {
         return "(no ready tasks)".to_string();
     };

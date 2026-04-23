@@ -100,7 +100,6 @@ pub fn ensure_runtime_objectives_file(workspace: &Path) -> std::io::Result<PathB
     Ok(runtime)
 }
 
-#[cfg(test)]
 pub fn load_master_plan_snapshot(workspace: &Path) -> Value {
     let path = workspace_join_path(workspace, crate::constants::MASTER_PLAN_FILE);
     let raw = std::fs::read_to_string(&path).unwrap_or_default();
