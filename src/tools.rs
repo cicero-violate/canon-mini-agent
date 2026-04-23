@@ -693,6 +693,10 @@ fn handle_objectives_update_objective(
     writer: Option<&mut CanonicalWriter>,
 ) -> Result<(bool, String)> {
     let objective_id = objective_id_from_action(action, "update_objective")?;
+    let objective_id = normalize_objective_id_for_match(objective_id);
+    if objective_id.is_empty() {
+        bail!("objectives update_objective missing objective_id");
+    }
     let updates = action
         .get("updates")
         .and_then(|v| v.as_object())
@@ -701,34 +705,37 @@ fn handle_objectives_update_objective(
     log_objective_operation_context(
         "update_objective",
         "attempt",
-        Some(objective_id),
+        Some(&objective_id),
         &file.objectives,
     );
     let mut found = false;
     for obj in file.objectives.iter_mut() {
-        if objective_id_matches(&obj.id, objective_id) {
-            let mut value = serde_json::to_value(obj.clone())?;
-            if let Some(map) = value.as_object_mut() {
-                for (k, v) in updates {
-                    map.insert(k.clone(), v.clone());
-                }
-            }
-            *obj = serde_json::from_value(value)?;
+        if objective_id_matches(&obj.id, &objective_id) {
+            apply_objective_updates(obj, updates)?;
             found = true;
             break;
         }
     }
     if !found {
-        return log_objective_not_found_and_bail(
+        // Planner sometimes emits update/set_status for objectives that are not
+        // yet materialized in OBJECTIVES.json. Auto-create a stub to prevent
+        // missing-target blocker loops.
+        let mut created = synthesize_objective_stub(&objective_id, None, Some(updates));
+        apply_objective_updates(&mut created, updates)?;
+        file.objectives.push(created);
+        log_objective_operation_context(
             "update_objective",
-            objective_id,
+            "auto_created",
+            Some(&objective_id),
             &file.objectives,
         );
+        return write_objectives_file(workspace, path, &file, writer)
+            .map(|_| (false, "objectives update_objective ok (auto-created)".to_string()));
     }
     log_objective_operation_context(
         "update_objective",
         "success",
-        Some(objective_id),
+        Some(&objective_id),
         &file.objectives,
     );
     write_objectives_file(workspace, path, &file, writer)
@@ -778,6 +785,10 @@ fn handle_objectives_set_status(
     writer: Option<&mut CanonicalWriter>,
 ) -> Result<(bool, String)> {
     let objective_id = objective_id_from_action(action, "set_status")?;
+    let objective_id = normalize_objective_id_for_match(objective_id);
+    if objective_id.is_empty() {
+        bail!("objectives set_status missing objective_id");
+    }
     let status = action
         .get("status")
         .and_then(|v| v.as_str())
@@ -786,24 +797,35 @@ fn handle_objectives_set_status(
     log_objective_operation_context(
         "set_status",
         "attempt",
-        Some(objective_id),
+        Some(&objective_id),
         &file.objectives,
     );
     let mut found = false;
     for obj in file.objectives.iter_mut() {
-        if objective_id_matches(&obj.id, objective_id) {
+        if objective_id_matches(&obj.id, &objective_id) {
             obj.status = status.to_string();
             found = true;
             break;
         }
     }
     if !found {
-        return log_objective_not_found_and_bail("set_status", objective_id, &file.objectives);
+        // Missing objective IDs are treated as materialization lag, not hard
+        // failure. Create a minimal objective and apply requested status.
+        file.objectives
+            .push(synthesize_objective_stub(&objective_id, Some(status), None));
+        log_objective_operation_context(
+            "set_status",
+            "auto_created",
+            Some(&objective_id),
+            &file.objectives,
+        );
+        return write_objectives_file(workspace, path, &file, writer)
+            .map(|_| (false, "objectives set_status ok (auto-created)".to_string()));
     }
     log_objective_operation_context(
         "set_status",
         "success",
-        Some(objective_id),
+        Some(&objective_id),
         &file.objectives,
     );
     write_objectives_file(workspace, path, &file, writer)
@@ -835,6 +857,104 @@ fn handle_objectives_replace_objectives(
     }
     write_objectives_file(workspace, path, &file, writer)
         .map(|_| (false, "objectives replace_objectives ok".to_string()))
+}
+
+fn apply_objective_updates(
+    objective: &mut crate::objectives::Objective,
+    updates: &serde_json::Map<String, Value>,
+) -> Result<()> {
+    let mut value = serde_json::to_value(objective.clone())?;
+    if let Some(map) = value.as_object_mut() {
+        for (k, v) in updates {
+            map.insert(k.clone(), v.clone());
+        }
+    }
+    *objective = serde_json::from_value(value)?;
+    Ok(())
+}
+
+fn synthesize_objective_stub(
+    objective_id: &str,
+    status: Option<&str>,
+    updates: Option<&serde_json::Map<String, Value>>,
+) -> crate::objectives::Objective {
+    let update_string = |key: &str| {
+        updates
+            .and_then(|m| m.get(key))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    };
+    let update_string_vec = |key: &str| {
+        updates
+            .and_then(|m| m.get(key))
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .filter(|items| !items.is_empty())
+            .unwrap_or_default()
+    };
+    let normalized_status = status
+        .map(str::to_string)
+        .or_else(|| update_string("status"))
+        .unwrap_or_else(|| "active".to_string());
+    let title = update_string("title").unwrap_or_else(|| humanize_objective_id(objective_id));
+    let scope = update_string("scope").unwrap_or_else(|| "auto-generated".to_string());
+    let category = update_string("category").unwrap_or_else(|| "maintenance".to_string());
+    let level = update_string("level").unwrap_or_else(|| "low".to_string());
+    let authority_files = update_string_vec("authority_files");
+    let description = update_string("description").unwrap_or_else(|| {
+        format!(
+            "Auto-created objective stub for missing objective id `{objective_id}` so planning can proceed without missing-target loops."
+        )
+    });
+    crate::objectives::Objective {
+        id: objective_id.to_string(),
+        title,
+        status: normalized_status,
+        scope,
+        authority_files,
+        category,
+        level,
+        description,
+        ..crate::objectives::Objective::default()
+    }
+}
+
+fn humanize_objective_id(objective_id: &str) -> String {
+    let trimmed = objective_id.trim();
+    let core = trimmed
+        .strip_prefix("obj_")
+        .or_else(|| trimmed.strip_prefix("obj-"))
+        .unwrap_or(trimmed);
+    let mut out = String::new();
+    for (idx, part) in core
+        .split(|ch: char| ch == '_' || ch == '-' || ch.is_whitespace())
+        .filter(|part| !part.is_empty())
+        .enumerate()
+    {
+        if idx > 0 {
+            out.push(' ');
+        }
+        let mut chars = part.chars();
+        if let Some(first) = chars.next() {
+            out.extend(first.to_uppercase());
+            out.push_str(chars.as_str());
+        }
+    }
+    if out.is_empty() {
+        objective_id.to_string()
+    } else {
+        out
+    }
 }
 
 fn load_violations(path: &Path) -> Result<crate::reports::ViolationsReport> {
@@ -1362,8 +1482,10 @@ fn resolve_issue(
                 .and_then(|v| v.as_str())
         })
         .ok_or_else(|| anyhow!("issue resolve missing 'issue_id'"))?;
-    let mut file = parse_issues_file_required(raw)?;
-    let issue = find_issue_mut(&mut file, issue_id)?;
+    let mut file = parse_issues_file_allow_empty(raw)?;
+    let Some(issue) = file.issues.iter_mut().find(|i| i.id == issue_id) else {
+        return Ok((false, format!("issue resolve ok — `{issue_id}` (already absent)")));
+    };
     issue.status = "resolved".to_string();
     apply_issue_freshness(issue, &lease);
     write_issues_file(path, &mut file, writer, "resolve", issue_id)?;
@@ -1386,16 +1508,25 @@ fn update_issue(
         .get("updates")
         .and_then(|v| v.as_object())
         .ok_or_else(|| anyhow!("issue update missing 'updates' object"))?;
-    let mut file = parse_issues_file_required(raw)?;
-    let issue = find_issue_mut(&mut file, issue_id)?;
+    let mut file = parse_issues_file_allow_empty(raw)?;
+    let mut issue = if let Some(existing) = file.issues.iter().find(|i| i.id == issue_id) {
+        existing.clone()
+    } else {
+        synthesize_issue_stub(issue_id, None)
+    };
     let mut value = serde_json::to_value(issue.clone())?;
     if let Some(map) = value.as_object_mut() {
         for (k, v) in updates {
             map.insert(k.clone(), v.clone());
         }
     }
-    *issue = serde_json::from_value(value)?;
-    apply_issue_freshness(issue, &lease);
+    issue = serde_json::from_value(value)?;
+    apply_issue_freshness(&mut issue, &lease);
+    if let Some(existing) = file.issues.iter_mut().find(|i| i.id == issue_id) {
+        *existing = issue;
+    } else {
+        file.issues.push(issue);
+    }
     write_issues_file(path, &mut file, writer, "update", issue_id)?;
     queue_diagnostics_reconciliation();
     Ok((false, "issue update ok".to_string()))
@@ -1437,10 +1568,15 @@ fn set_issue_status(
         .get("status")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("issue set_status missing 'status'"))?;
-    let mut file = parse_issues_file_required(raw)?;
-    let issue = find_issue_mut(&mut file, issue_id)?;
-    issue.status = status.to_string();
-    apply_issue_freshness(issue, &lease);
+    let mut file = parse_issues_file_allow_empty(raw)?;
+    if let Some(issue) = file.issues.iter_mut().find(|i| i.id == issue_id) {
+        issue.status = status.to_string();
+        apply_issue_freshness(issue, &lease);
+    } else {
+        let mut issue = synthesize_issue_stub(issue_id, Some(status));
+        apply_issue_freshness(&mut issue, &lease);
+        file.issues.push(issue);
+    }
     write_issues_file(path, &mut file, writer, "set_status", issue_id)?;
     queue_diagnostics_reconciliation();
     Ok((false, "issue set_status ok".to_string()))
@@ -1463,12 +1599,30 @@ fn parse_issues_file_required(raw: &str) -> Result<IssuesFile> {
     serde_json::from_str(raw).map_err(|e| anyhow!("failed to parse ISSUES.json: {e}"))
 }
 
-fn find_issue_mut<'a>(file: &'a mut IssuesFile, issue_id: &str) -> Result<&'a mut Issue> {
-    let found = file.issues.iter_mut().find(|i| i.id == issue_id);
-    let Some(issue) = found else {
-        bail!("issue not found: {issue_id}");
-    };
-    Ok(issue)
+fn synthesize_issue_stub(issue_id: &str, status: Option<&str>) -> Issue {
+    let title = issue_id
+        .trim()
+        .trim_start_matches("auto_")
+        .replace('_', " ")
+        .trim()
+        .to_string();
+    Issue {
+        id: issue_id.to_string(),
+        title: if title.is_empty() {
+            issue_id.to_string()
+        } else {
+            title
+        },
+        status: status.unwrap_or("open").to_string(),
+        priority: "medium".to_string(),
+        kind: "stale_state".to_string(),
+        description: format!(
+            "Auto-created issue stub for missing issue id `{issue_id}` during runtime synchronization."
+        ),
+        discovered_by: "planner".to_string(),
+        freshness_status: "unknown".to_string(),
+        ..Issue::default()
+    }
 }
 
 fn write_issues_file(
@@ -9016,7 +9170,7 @@ mod tests {
     }
 
     #[test]
-    fn objectives_update_objective_reports_requested_and_compared_ids() {
+    fn objectives_update_objective_auto_creates_missing_id() {
         let tmp = fresh_test_dir("objective-update-not-found-context");
         std::fs::create_dir_all(tmp.join("agent_state")).unwrap();
         std::fs::write(
@@ -9067,15 +9221,12 @@ mod tests {
             }
         });
 
-        let err = handle_objectives_action(&tmp, &action)
-            .unwrap_err()
-            .to_string();
-
-        assert!(err.contains("requested_raw=\"obj_missing\""));
-        assert!(err.contains("objective not found:"));
-        assert!(err.contains("requested_id=obj_missing"));
-        assert!(err.contains("compared_ids=[\"obj_alpha\", \"obj_beta\"]"));
-        assert!(err.contains("compared_normalized_ids=[\"obj_alpha\", \"obj_beta\"]"));
+        let (_done, out) = handle_objectives_action(&tmp, &action).unwrap();
+        assert!(out.contains("objectives update_objective ok (auto-created)"));
+        let persisted =
+            std::fs::read_to_string(tmp.join("agent_state").join("OBJECTIVES.json")).unwrap();
+        assert!(persisted.contains("\"id\": \"obj_missing\""));
+        assert!(persisted.contains("\"scope\": \"updated\""));
     }
 
     #[test]
@@ -9124,7 +9275,7 @@ mod tests {
     }
 
     #[test]
-    fn objectives_update_objective_reports_raw_and_normalized_lookup_context() {
+    fn objectives_update_objective_auto_creates_with_normalized_id() {
         let tmp = fresh_test_dir("objective-update-raw-and-normalized-context");
         std::fs::create_dir_all(tmp.join("agent_state")).unwrap();
         std::fs::write(
@@ -9162,14 +9313,12 @@ mod tests {
             }
         });
 
-        let err = handle_objectives_action(&tmp, &action)
-            .unwrap_err()
-            .to_string();
-
-        assert!(err.contains("requested_raw=\"`obj_missing`\""));
-        assert!(err.contains("requested_id=obj_missing"));
-        assert!(err.contains("compared_ids=[\"obj_alpha\"]"));
-        assert!(err.contains("compared_normalized_ids=[\"obj_alpha\"]"));
+        let (_done, out) = handle_objectives_action(&tmp, &action).unwrap();
+        assert!(out.contains("objectives update_objective ok (auto-created)"));
+        let persisted =
+            std::fs::read_to_string(tmp.join("agent_state").join("OBJECTIVES.json")).unwrap();
+        assert!(persisted.contains("\"id\": \"obj_missing\""));
+        assert!(persisted.contains("\"scope\": \"updated\""));
     }
 
     #[test]

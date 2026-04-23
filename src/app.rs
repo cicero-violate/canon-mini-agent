@@ -1627,62 +1627,6 @@ fn register_late_submit_ack(
     true
 }
 
-fn log_submit_ack_timeout(
-    ctx: &OrchestratorContext<'_>,
-    lane_id: usize,
-    tab_id: u32,
-    turn_id: u64,
-) {
-    let lane_label = &ctx.lanes[lane_id].label;
-    log_submit_ack_event(
-        format!(
-            "submit ack arrived after timeout: lane={} tab_id={} turn_id={}",
-            lane_label, tab_id, turn_id
-        ),
-        json!({
-            "stage": "executor_submit_ack_timeout",
-            "lane": lane_label,
-            "tab_id": tab_id,
-            "turn_id": turn_id,
-        }),
-    );
-}
-
-fn handle_submit_ack_timeout(
-    ctx: &OrchestratorContext<'_>,
-    writer: &mut CanonicalWriter,
-    lane_id: usize,
-    tab_id: u32,
-    turn_id: u64,
-) -> bool {
-    log_submit_ack_timeout(ctx, lane_id, tab_id, turn_id);
-    crate::blockers::record_action_failure_with_writer(
-        ctx.workspace.as_path(),
-        None,
-        "executor",
-        "submit_ack_timeout",
-        &format!(
-            "submit ack timed out: lane={} tab_id={} turn_id={}",
-            ctx.lanes[lane_id].label, tab_id, turn_id
-        ),
-        None,
-    );
-    writer.apply(ControlEvent::LaneSubmitInFlightSet {
-        lane_id,
-        in_flight: false,
-    });
-    writer.apply(ControlEvent::LanePromptInFlightSet {
-        lane_id,
-        in_flight: false,
-    });
-    writer.apply(ControlEvent::LaneInProgressSet {
-        lane_id,
-        actor: None,
-    });
-    apply_lane_pending_if_changed(writer, lane_id, true);
-    false
-}
-
 fn log_submit_ack_tab_mismatch(
     ctx: &OrchestratorContext<'_>,
     lane_id: usize,
@@ -1806,10 +1750,7 @@ fn handle_executor_submit_ack_result(
             ctx, writer, rt, lane_id, &job, tab_id, turn_id, command_id,
         );
     };
-
-    if now_ms().saturating_sub(pending.started_ms) >= pending_submit_timeout_ms {
-        return handle_submit_ack_timeout(ctx, writer, lane_id, tab_id, turn_id);
-    }
+    let _ = pending_submit_timeout_ms;
 
     canonicalize_submit_ack_active_tab(ctx, writer, lane_id, tab_id);
 
@@ -6267,6 +6208,11 @@ pub async fn run() -> Result<()> {
         let contents = std::fs::read_to_string(&legacy_json)
             .or_else(|_| std::fs::read_to_string(&legacy_md))
             .unwrap_or_default();
+        let contents = if contents.trim().is_empty() {
+            "{}".to_string()
+        } else {
+            contents
+        };
         if let Some(parent) = plan_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -6287,8 +6233,18 @@ pub async fn run() -> Result<()> {
 
     if orchestrate {
         const SERVICE_POLL_MS: u64 = 500;
-        const PENDING_SUBMIT_TIMEOUT_MS: u64 = 10_000;
-        const SUBMITTED_TURN_TIMEOUT_MS: u64 = 120_000;
+        const DEFAULT_PENDING_SUBMIT_TIMEOUT_MS: u64 = 120_000;
+        const DEFAULT_SUBMITTED_TURN_TIMEOUT_MS: u64 = 240_000;
+        let pending_submit_timeout_ms = std::env::var("CANON_PENDING_SUBMIT_TIMEOUT_MS")
+            .ok()
+            .and_then(|raw| raw.trim().parse::<u64>().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(DEFAULT_PENDING_SUBMIT_TIMEOUT_MS);
+        let submitted_turn_timeout_ms = std::env::var("CANON_SUBMITTED_TURN_TIMEOUT_MS")
+            .ok()
+            .and_then(|raw| raw.trim().parse::<u64>().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(DEFAULT_SUBMITTED_TURN_TIMEOUT_MS);
 
         let solo_mode = start_role == "solo";
         let _ = std::fs::write(
@@ -6862,7 +6818,15 @@ pub async fn run() -> Result<()> {
             };
             let cargo_test_failures = load_cargo_test_failures(&workspace);
 
-            let run_planner_inline = INLINE_UNIFIED_AGENT || phase_gates.planner;
+            let runtime_executor_busy = !rt.submitted_turns.is_empty()
+                || !rt.executor_submit_inflight.is_empty()
+                || !submit_joinset.is_empty()
+                || !continuation_joinset.is_empty();
+            let run_planner_inline = if INLINE_UNIFIED_AGENT {
+                !runtime_executor_busy
+            } else {
+                phase_gates.planner
+            };
             if run_planner_inline {
                 writer.apply(ControlEvent::PhaseSet {
                     phase: "planner".to_string(),
@@ -6892,8 +6856,8 @@ pub async fn run() -> Result<()> {
                     &mut writer,
                     &mut rt,
                     now,
-                    PENDING_SUBMIT_TIMEOUT_MS,
-                    SUBMITTED_TURN_TIMEOUT_MS,
+                    pending_submit_timeout_ms,
+                    submitted_turn_timeout_ms,
                     &mut submit_joinset,
                 ) {
                     cycle_progress = true;

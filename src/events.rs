@@ -222,16 +222,15 @@ pub(crate) fn lane_id_from_control_event(event: &ControlEvent) -> Option<usize> 
 }
 
 pub(crate) fn lane_indices_from_events(events: &[Event]) -> Vec<usize> {
-    let mut lane_ids = BTreeSet::new();
-    for event in events {
-        let Event::Control { event } = event else {
-            continue;
-        };
-        if let Some(lane_id) = lane_id_from_control_event(event) {
-            lane_ids.insert(lane_id);
-        }
-    }
-    lane_ids.into_iter().collect()
+    events
+        .iter()
+        .filter_map(|event| match event {
+            Event::Control { event } => lane_id_from_control_event(event),
+            _ => None,
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 /// Side-effect events: logged for observability, never mutate `SystemState`.

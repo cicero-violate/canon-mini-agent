@@ -230,7 +230,6 @@ fn role_default_schema_actions(kind: AgentPromptKind) -> &'static [&'static str]
             "objectives",
             "issue",
             "read_file",
-            "apply_patch",
             "symbols_rename_candidates",
             "symbols_prepare_rename",
             "rename_symbol",
@@ -329,7 +328,7 @@ fn prompt_workspace(kind: AgentPromptKind) -> String {
     let ws = crate::constants::workspace();
     match kind {
         AgentPromptKind::Executor => format!("You work inside the canon workspace at {ws}. All relative file paths resolve against this workspace root."),
-        AgentPromptKind::Planner => format!("You work inside the canon workspace at {ws}. Use bash, semantic_map/symbol_window/symbol_refs (prefer over read_file for Rust source), python, and apply_patch (lane plans only) to review the current project state before reorganizing the plan."),
+        AgentPromptKind::Planner => format!("You work inside the canon workspace at {ws}. Use read_file, semantic_map/symbol_window/symbol_refs (prefer over read_file for Rust source), python, and run_command to review the current project state before reorganizing the plan. Planner role cannot use apply_patch."),
         AgentPromptKind::Solo => format!("You work inside the canon workspace at {ws}. Use the full tool suite to plan, execute, and verify changes."),
     }
 }
@@ -341,7 +340,7 @@ fn status_snapshot_for(kind: AgentPromptKind) -> &'static str {
 
 const PLANNER_PROCESS: &str = "━━━ PLANNING PROCESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n\
 ⚠ PLAN.json EDIT RULE: use ONLY the `plan` action for all PLAN.json changes. \
-apply_patch on PLAN.json is ALWAYS rejected by the runtime — retrying it wastes turns.\n\n\
+Planner role cannot use apply_patch.\n\n\
 On every planning cycle:\n\
 1. Update `PLAN.json` via the `plan` action and derive the ready-work window for each executor. Mark tasks `ready` (not `todo`) to make them executable — the executor only picks up `ready` tasks.\n\
 2. Maintain a READY NOW window containing at most 1-10 executable tasks for each executor.\n\

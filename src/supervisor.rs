@@ -381,13 +381,17 @@ fn run_cmd(root: &Path, program: &str, args: &[&str]) -> Result<bool> {
     Ok(status.success())
 }
 
+fn log_ticket_refresh(message: impl std::fmt::Display) {
+    eprintln!("[canon-mini-supervisor] {message}");
+}
+
 fn run_ticket_refresh(root: &Path, kind: BuildKind) {
     let bin = tickets_binary_path(root, kind);
     if !bin.exists() {
-        eprintln!(
-            "[canon-mini-supervisor] ticket refresh skipped (missing {}); run `cargo build` to produce it",
+        log_ticket_refresh(format!(
+            "ticket refresh skipped (missing {}); run `cargo build` to produce it",
             bin.display()
-        );
+        ));
         return;
     }
 
@@ -400,24 +404,24 @@ fn run_ticket_refresh(root: &Path, kind: BuildKind) {
         "3",
         "--prune",
     ];
-    eprintln!(
-        "[canon-mini-supervisor] pre-restart: refreshing refactor tickets via {}",
+    log_ticket_refresh(format!(
+        "pre-restart: refreshing refactor tickets via {}",
         bin.display()
-    );
+    ));
     let status = Command::new(&bin).args(args).current_dir(root).status();
     match status {
         Ok(st) if st.success() => {
-            eprintln!("[canon-mini-supervisor] ticket refresh ok");
+            log_ticket_refresh("ticket refresh ok");
         }
         Ok(st) => {
-            eprintln!(
-                "[canon-mini-supervisor] ticket refresh failed (status={st}); continuing restart"
-            );
+            log_ticket_refresh(format!(
+                "ticket refresh failed (status={st}); continuing restart"
+            ));
         }
         Err(err) => {
-            eprintln!(
-                "[canon-mini-supervisor] ticket refresh errored ({err:#}); continuing restart"
-            );
+            log_ticket_refresh(format!(
+                "ticket refresh errored ({err:#}); continuing restart"
+            ));
         }
     }
 }

@@ -555,6 +555,44 @@ impl ChromiumBackend {
         }
     }
 
+    /// ChatGPT transport currently behaves like a shared stream across stateful
+    /// tabs under load. Enforce single-flight stateful turns to prevent
+    /// cross-tab response mirroring.
+    async fn wait_for_stateful_turn_slot(
+        &self,
+        endpoint_id: &str,
+        tab_id: u32,
+        timeout_secs: u64,
+    ) -> Result<()> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+        loop {
+            let pending = {
+                let st = self.state.lock().await;
+                st.pending_turn_id
+                    .iter()
+                    .filter_map(|(pending_tab, pending_turn)| {
+                        if *pending_tab == tab_id {
+                            return None;
+                        }
+                        Some((*pending_tab, *pending_turn))
+                    })
+                    .collect::<Vec<_>>()
+            };
+            if pending.is_empty() {
+                return Ok(());
+            }
+            if std::time::Instant::now() >= deadline {
+                anyhow::bail!(
+                    "chromium: stateful turn slot timeout for endpoint={} tab={} (active_pending={})",
+                    endpoint_id,
+                    tab_id,
+                    pending.len()
+                );
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    }
+
     /// Get any available tab from the preopened pool.
     async fn pop_any_tab(&self) -> Option<u32> {
         let mut st = self.state.lock().await;
@@ -1201,6 +1239,11 @@ impl LlmBackend for ChromiumBackend {
         let (tab_id, url) = self
             .acquire_tab_and_url(endpoint_id, urls, timeout, stateful)
             .await?;
+
+        if stateful {
+            self.wait_for_stateful_turn_slot(endpoint_id, tab_id, timeout)
+                .await?;
+        }
 
         if submit_only {
             return self
