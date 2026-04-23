@@ -8400,6 +8400,103 @@ mod tests {
     }
 
     #[test]
+    fn issue_update_auto_creates_missing_issue_stub() {
+        let _guard = test_state_lock().lock().unwrap();
+        let workspace = fresh_test_dir("issue-update-auto-create");
+        let state_dir = workspace.join("agent_state");
+        write_test_evidence_receipt(&workspace, &state_dir, "rcpt-issue-update-auto-create");
+
+        let update = json!({
+            "action": "issue",
+            "op": "update",
+            "issue_id": "auto_missing_issue_update",
+            "updates": {
+                "title": "Recovered missing issue",
+                "status": "in_progress",
+                "description": "auto-created during update"
+            },
+            "evidence_receipts": ["rcpt-issue-update-auto-create"],
+            "rationale": "recover missing issue ids without hard failure",
+            "predicted_next_actions": []
+        });
+        let (_, out) = handle_issue_action(None, &workspace, &update).unwrap();
+        assert!(out.contains("issue update ok"));
+
+        let issues: IssuesFile =
+            serde_json::from_str(&std::fs::read_to_string(workspace.join(ISSUES_FILE)).unwrap())
+                .unwrap();
+        let issue = issues
+            .issues
+            .iter()
+            .find(|issue| issue.id == "auto_missing_issue_update")
+            .unwrap();
+        assert_eq!(issue.status, "in_progress");
+        assert_eq!(issue.title, "Recovered missing issue");
+        assert_eq!(issue.description, "auto-created during update");
+    }
+
+    #[test]
+    fn issue_set_status_auto_creates_missing_issue_stub() {
+        let _guard = test_state_lock().lock().unwrap();
+        let workspace = fresh_test_dir("issue-set-status-auto-create");
+        let state_dir = workspace.join("agent_state");
+        write_test_evidence_receipt(&workspace, &state_dir, "rcpt-issue-set-status-auto-create");
+
+        let set_status = json!({
+            "action": "issue",
+            "op": "set_status",
+            "issue_id": "auto_missing_issue_status",
+            "status": "resolved",
+            "evidence_receipts": ["rcpt-issue-set-status-auto-create"],
+            "rationale": "recover missing issue ids without blocker loops",
+            "predicted_next_actions": []
+        });
+        let (_, out) = handle_issue_action(None, &workspace, &set_status).unwrap();
+        assert!(out.contains("issue set_status ok"));
+
+        let issues: IssuesFile =
+            serde_json::from_str(&std::fs::read_to_string(workspace.join(ISSUES_FILE)).unwrap())
+                .unwrap();
+        let issue = issues
+            .issues
+            .iter()
+            .find(|issue| issue.id == "auto_missing_issue_status")
+            .unwrap();
+        assert_eq!(issue.status, "resolved");
+        assert_eq!(issue.kind, "stale_state");
+    }
+
+    #[test]
+    fn issue_resolve_missing_issue_is_noop() {
+        let _guard = test_state_lock().lock().unwrap();
+        let workspace = fresh_test_dir("issue-resolve-missing-noop");
+        let state_dir = workspace.join("agent_state");
+        write_test_evidence_receipt(&workspace, &state_dir, "rcpt-issue-resolve-missing-noop");
+
+        let resolve = json!({
+            "action": "issue",
+            "op": "resolve",
+            "issue_id": "auto_missing_issue_resolve",
+            "evidence_receipts": ["rcpt-issue-resolve-missing-noop"],
+            "rationale": "allow idempotent resolve against missing ids",
+            "predicted_next_actions": []
+        });
+        let (_, out) = handle_issue_action(None, &workspace, &resolve).unwrap();
+        assert!(out.contains("already absent"));
+
+        let issues_path = workspace.join(ISSUES_FILE);
+        let issues: IssuesFile = if issues_path.exists() {
+            serde_json::from_str(&std::fs::read_to_string(&issues_path).unwrap()).unwrap()
+        } else {
+            IssuesFile::default()
+        };
+        assert!(issues
+            .issues
+            .iter()
+            .all(|issue| issue.id != "auto_missing_issue_resolve"));
+    }
+
+    #[test]
     fn only_solo_result_complete_may_self_route() {
         let solo = json!({
             "action": "message",
