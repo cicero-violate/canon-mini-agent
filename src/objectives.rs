@@ -179,10 +179,13 @@ pub fn load_bootstrap_objectives_seed(workspace: &Path) -> (PathBuf, String) {
 }
 
 pub fn load_runtime_objectives_json(workspace: &Path) -> String {
+    let (path, raw) = load_bootstrap_objectives_seed(workspace);
+    if path == runtime_objectives_path(workspace) && !raw.trim().is_empty() {
+        return raw;
+    }
     if let Some(canonical) = load_canonical_objectives_json(workspace) {
         return canonical;
     }
-    let (_path, raw) = load_bootstrap_objectives_seed(workspace);
     raw
 }
 

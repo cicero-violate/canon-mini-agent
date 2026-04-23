@@ -661,9 +661,9 @@ fn classify_planner_action_result_class(completion: &AgentCompletion) -> Planner
 }
 
 fn planner_completion_allows_executor_dispatch(completion: &AgentCompletion) -> bool {
-    matches!(
+    !matches!(
         classify_planner_action_result_class(completion),
-        PlannerActionResultClass::ReadyHandoff | PlannerActionResultClass::CompleteHandoff
+        PlannerActionResultClass::BlockedHandoff
     )
 }
 
@@ -796,8 +796,10 @@ async fn run_planner_phase(
                 text: inputs.plan_text,
             });
 
-            let allow_executor_dispatch = planner_completion_allows_executor_dispatch(&result);
-            if !allow_executor_dispatch {
+            // Block executor dispatch only when the planner explicitly signals blocked.
+            // All other completions (plan ok, read results, objectives results, ready handoff)
+            // fall through to the ready_tasks_exist check below, which acts as the second gate.
+            if !planner_completion_allows_executor_dispatch(&result) {
                 writer.apply(ControlEvent::PlannerPendingSet { pending: true });
                 apply_scheduled_phase_if_changed(writer, Some("planner"));
                 return true;
@@ -3099,6 +3101,24 @@ fn enforce_executor_step_limit(
     last_result: &mut Option<String>,
     workspace: &std::path::Path,
 ) -> bool {
+    if role.starts_with("planner")
+        && executor_step_limit_exceeded(total_steps, crate::constants::PLANNER_STEP_LIMIT)
+    {
+        *error_streak = error_streak.saturating_add(1);
+        *last_result = Some(planner_step_limit_feedback());
+        crate::blockers::record_action_failure_with_writer(
+            workspace,
+            None,
+            role,
+            "step_limit",
+            &format!(
+                "planner reached step limit ({})",
+                crate::constants::PLANNER_STEP_LIMIT
+            ),
+            None,
+        );
+        return true;
+    }
     if role.starts_with("executor")
         && executor_step_limit_exceeded(total_steps, EXECUTOR_STEP_LIMIT)
     {
@@ -3120,6 +3140,45 @@ fn enforce_executor_step_limit(
 fn executor_step_limit_feedback() -> String {
     format!(
         "Step limit reached after {EXECUTOR_STEP_LIMIT} actions.\nPreferred action now: emit a `plan` status update, not a routine handoff message.\n\nPrimary path (use this unless truly blocked):\n```json\n{{\n  \"action\": \"plan\",\n  \"op\": \"set_task_status\",\n  \"task_id\": \"<active_task_id>\",\n  \"status\": \"done\" | \"in_progress\",\n  \"rationale\": \"Evidence-based completion/progress summary.\"\n}}\n```\n\nOnly if blocked/unresolvable, emit one `message` blocker:\n```json\n{{\n  \"action\": \"message\",\n  \"from\": \"executor\",\n  \"to\": \"planner\",\n  \"type\": \"blocker\",\n  \"status\": \"blocked\",\n  \"observation\": \"Progress is blocked by a concrete failure.\",\n  \"rationale\": \"Planner must resolve the blocker before more executor actions.\",\n  \"payload\": {{\n    \"summary\": \"Executor is blocked.\",\n    \"blocker\": \"Root cause\",\n    \"evidence\": \"Exact error text or failed command\",\n    \"required_action\": \"What planner should do next\"\n  }}\n}}\n```"
+    )
+}
+
+fn planner_step_limit_feedback() -> String {
+    use crate::constants::PLANNER_STEP_LIMIT;
+    format!(
+        "Planning cycle step limit reached ({PLANNER_STEP_LIMIT} actions).\n\
+         You must terminate this cycle now with exactly one `message` action.\n\n\
+         If the plan already has ready tasks, emit the executor handoff:\n\
+         ```json\n\
+         {{\n\
+           \"action\": \"message\",\n\
+           \"from\": \"planner\",\n\
+           \"to\": \"executor\",\n\
+           \"type\": \"handoff\",\n\
+           \"status\": \"ready\",\n\
+           \"observation\": \"Plan has ready tasks for execution.\",\n\
+           \"rationale\": \"Planner cycle complete; executor takes the ready work.\",\n\
+           \"predicted_next_actions\": []\n\
+         }}\n\
+         ```\n\n\
+         Only if genuinely blocked (no ready tasks, external dependency missing), emit a blocker instead:\n\
+         ```json\n\
+         {{\n\
+           \"action\": \"message\",\n\
+           \"from\": \"planner\",\n\
+           \"to\": \"executor\",\n\
+           \"type\": \"blocker\",\n\
+           \"status\": \"blocked\",\n\
+           \"observation\": \"Describe the blocking condition.\",\n\
+           \"rationale\": \"Explain what must change before execution can proceed.\",\n\
+           \"payload\": {{\n\
+             \"summary\": \"Planner is blocked.\",\n\
+             \"blocker\": \"Root cause\",\n\
+             \"required_action\": \"What must be resolved externally\"\n\
+           }},\n\
+           \"predicted_next_actions\": []\n\
+         }}\n\
+         ```"
     )
 }
 
@@ -4419,7 +4478,22 @@ async fn run_agent(
             step
         };
 
-        if role.starts_with("executor")
+        if role.starts_with("planner")
+            && executor_step_limit_exceeded(total_steps, crate::constants::PLANNER_STEP_LIMIT)
+        {
+            last_result = Some(planner_step_limit_feedback());
+            crate::blockers::record_action_failure_with_writer(
+                workspace,
+                None,
+                role,
+                "step_limit",
+                &format!(
+                    "planner reached step limit ({})",
+                    crate::constants::PLANNER_STEP_LIMIT
+                ),
+                None,
+            );
+        } else if role.starts_with("executor")
             && executor_step_limit_exceeded(total_steps, EXECUTOR_STEP_LIMIT)
         {
             last_result = Some(executor_step_limit_feedback());
