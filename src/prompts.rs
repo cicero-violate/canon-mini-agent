@@ -320,7 +320,7 @@ fn prompt_intro(kind: AgentPromptKind) -> &'static str {
 fn prompt_mission(kind: AgentPromptKind) -> &'static str {
     match kind {
         AgentPromptKind::Executor => "All actions (`read_file`, `apply_patch`, `run_command`, `plan`, `message`, etc.) are JSON you emit in your response text — they are not function calls or external tools.\nMake source changes, run checks, and report evidence in `message.payload`.",
-        AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `agent_state/OBJECTIVES.json`, and the semantic-control snapshot in this prompt, then derive the master plan plus executor handoff guidance.\nThe semantic-control snapshot is the tlog-derived authority for routing/control and projects issues, violations, and invariants into one view.\nOn every cycle, re-evaluate the workspace and update `PLAN.json` via the `plan` action (emit it as JSON in your response).\nAt the end of every planner cycle, review `agent_state/OBJECTIVES.json` and add or update objectives using the `objectives` action (emit it as JSON in your response).\nAct on projected open issues from semantic control and convert the top open items into ready executor tasks.\nAll actions (`plan`, `objectives`, `issue`, `message`, `read_file`, etc.) are JSON you emit in your response text — they are not function calls or external tools.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
+        AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `agent_state/OBJECTIVES.json`, and the semantic-control snapshot in this prompt, then derive the master plan plus executable next-step guidance for the same operational loop.\nThe semantic-control snapshot is the tlog-derived authority for routing/control and projects issues, violations, and invariants into one view.\nOn every cycle, re-evaluate the workspace and update `PLAN.json` via the `plan` action (emit it as JSON in your response).\nAt the end of every planner cycle, review `agent_state/OBJECTIVES.json` and add or update objectives using the `objectives` action (emit it as JSON in your response).\nAct on projected open issues from semantic control and convert the top open items into ready executor tasks.\nAll actions (`plan`, `objectives`, `issue`, `message`, `read_file`, etc.) are JSON you emit in your response text — they are not function calls or external tools.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
         AgentPromptKind::Solo => "Your job is to coordinate planning, execution, and verification in a single role while participating in orchestration.\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nYou may read, patch, and verify any in-workspace files when justified by evidence.\nKeep evidence tight and run checks before claiming completion.\nAt the end of every cycle — before emitting a completion message — review `agent_state/OBJECTIVES.json` and add or update objectives based on what you discovered. New objectives must include id, title, status, scope, authority_files, category, level, description, requirement, verification, and success_criteria. Use `apply_patch` to write them directly.",
     }
 }
@@ -348,7 +348,7 @@ On every planning cycle:\n\
 3. Move blocked work behind its dependencies instead of leaving it in the ready window.\n\
 4. Rewrite priorities whenever new evidence changes the critical path.\n\
 5. Write detailed, imperative tasks that include file paths and concrete actions (read/patch/test).\n\
-6. Send handoff messages to executors reflecting the updated ready window.\n\n\
+6. Keep the ready window executable immediately by the next execute phase in this same runtime loop.\n\n\
 Provenance fields — include on every new task:\n\
 - `issue_refs`: array of ISSUES.json ids that motivated this task (e.g. [\"auto_mir_dup_abc123\"]). Empty array if none.\n\
 - `objective_id`: the agent_state/OBJECTIVES.json objective id this task advances (e.g. \"obj_reduce_complexity\"). Omit if no clear match.";
@@ -481,8 +481,8 @@ pub(crate) fn planner_cycle_prompt(
         "\n\n\
          ⟹ IMMEDIATE ACTION: The projected issues in the semantic control section above are \
          pre-validated by semantic control and directly actionable. Do not stall on re-verifying \
-         them before planning. Create `plan` tasks for the top open issues now, \
-         mark them `ready`, and send an executor handoff message.\n\n\
+         them before planning. Create `plan` tasks for the top open issues now and \
+         mark them `ready` for the immediate execute phase.\n\n\
          Before completing this cycle, review {OBJECTIVES_FILE} and add or update objectives \
          for anything discovered this cycle. Use the `objectives` action \
          (op: create_objective / update_objective) to write them. \
@@ -559,7 +559,7 @@ pub(crate) fn executor_cycle_prompt(
         latest_verify_result.to_string()
     };
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nREADY TASKS (from {MASTER_PLAN_FILE}, top-10 by plan order):\n{ready_tasks}\n\nLane plans are deprecated. Use planner handoff messages and {MASTER_PLAN_FILE} for task selection.\nLatest verifier result for lane {lane_label}:\n{verify_result}\n\nYou may send a message action to other agents at any time."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nREADY TASKS (from {MASTER_PLAN_FILE}, top-10 by plan order):\n{ready_tasks}\n\nLane plans are deprecated. Use {MASTER_PLAN_FILE} and current planner-phase outputs for task selection.\nLatest verifier result for lane {lane_label}:\n{verify_result}\n\nUse `message` primarily for blocker escalation or unresolved partial completion evidence."
     )
 }
 
@@ -645,7 +645,7 @@ pub(crate) fn single_role_executor_prompt(
     let semantic_control_heading =
         "Semantic control state (tlog-derived authority + projected views)".to_string();
     let suffix = format!(
-        "\n\nLane plans are deprecated. Use planner handoff messages and {MASTER_PLAN_FILE} for task selection.\n\nDo not modify spec, plan, violations, or diagnostics.\nDo not use internal tools.\nDo not hand off work; continue execution directly in the current role flow.\nUse `message.payload` to report evidence for verifier review. {ACTION_EMIT_LINE}"
+        "\n\nLane plans are deprecated. Use {MASTER_PLAN_FILE} and current planner-phase outputs for task selection.\n\nDo not modify spec, plan, violations, or diagnostics.\nDo not use internal tools.\nDo not hand off work; continue execution directly in the current role flow.\nUse `message.payload` to report blocker escalation or unresolved partial-completion evidence. {ACTION_EMIT_LINE}"
     );
     let items = vec![PromptItem {
         heading: &semantic_control_heading,
@@ -1903,7 +1903,7 @@ mod tests {
 
     #[test]
     fn prompt_contract_constants_are_canonical() {
-        assert!(ACTION_EMIT_LINE.contains("Emit batch actions or action"));
+        assert!(ACTION_EMIT_LINE.contains("Emit batch actions."));
         assert!(ACTION_EMIT_LINE.contains("reveal chain of thought"));
         assert!(!ACTION_EMIT_LINE.contains("exactly one action"));
     }
