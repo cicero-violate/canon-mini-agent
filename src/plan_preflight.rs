@@ -138,6 +138,7 @@ fn try_preflight_ready_tasks(workspace: &Path) -> Result<Vec<PreflightBounce>> {
         // Check each candidate against any loaded index.
         let missing: Vec<String> = candidates
             .into_iter()
+            .map(|sym| canonicalize_symbol_ref(&indexes, &sym))
             .filter(|sym| !symbol_exists(&indexes, sym))
             .collect();
 
@@ -254,6 +255,62 @@ fn flush_token(token: &str, normalized_crates: &[String], out: &mut Vec<String>)
 /// Return true if `symbol` resolves in any of the loaded indexes.
 fn symbol_exists(indexes: &HashMap<String, SemanticIndex>, symbol: &str) -> bool {
     indexes.values().any(|idx| idx.has_symbol(symbol))
+}
+
+fn canonicalize_symbol_ref(indexes: &HashMap<String, SemanticIndex>, symbol: &str) -> String {
+    if symbol_exists(indexes, symbol) {
+        return symbol.to_string();
+    }
+    canonicalize_missing_owner_method_ref(indexes, symbol).unwrap_or_else(|| symbol.to_string())
+}
+
+fn canonicalize_missing_owner_method_ref(
+    indexes: &HashMap<String, SemanticIndex>,
+    symbol: &str,
+) -> Option<String> {
+    let segments: Vec<&str> = symbol.split("::").filter(|seg| !seg.is_empty()).collect();
+    if segments.len() < 3 {
+        return None;
+    }
+    let method = segments.last()?;
+    let module_prefix = segments[..segments.len() - 1].join("::");
+    let mut matches = Vec::new();
+    let method_suffix = format!("::{method}");
+    let module_start = format!("{module_prefix}::");
+
+    for index in indexes.values() {
+        for summary in index.symbol_summaries() {
+            let candidate = summary.symbol;
+            if !candidate.starts_with(&module_start) || !candidate.ends_with(&method_suffix) {
+                continue;
+            }
+            let middle_start = module_start.len();
+            let middle_end = candidate.len() - method_suffix.len();
+            if middle_end <= middle_start {
+                continue;
+            }
+            let owner = &candidate[middle_start..middle_end];
+            let owner_tail = owner.rsplit("::").next().unwrap_or(owner);
+            // Treat "module::method" misses as missing owner only when the inserted
+            // owner segment looks type-like (e.g. SemanticIndex).
+            let type_like_owner = owner_tail
+                .chars()
+                .next()
+                .map(|ch| ch.is_ascii_uppercase())
+                .unwrap_or(false);
+            if type_like_owner {
+                matches.push(candidate);
+            }
+        }
+    }
+
+    matches.sort();
+    matches.dedup();
+    if matches.len() == 1 {
+        Some(matches[0].clone())
+    } else {
+        None
+    }
 }
 
 /// Write a structured log entry for each bounce so the lessons synthesis can

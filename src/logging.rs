@@ -913,6 +913,11 @@ pub fn write_projection_with_artifact_effects(
     subject: &str,
     contents: &str,
 ) -> Result<()> {
+    if let Ok(existing) = std::fs::read_to_string(path) {
+        if stable_hash_hex(&existing) == stable_hash_hex(contents) {
+            return Ok(());
+        }
+    }
     let signature = artifact_write_signature(&[artifact, op, subject, &contents.len().to_string()]);
     let target = path.to_string_lossy().into_owned();
     record_workspace_artifact_effect(workspace, true, artifact, op, &target, subject, &signature)?;

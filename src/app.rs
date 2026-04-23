@@ -2598,13 +2598,16 @@ fn load_checkpoint(workspace: &Path) -> Option<OrchestratorCheckpoint> {
     if cp.checkpoint_tlog_seq > 0 {
         let tlog_path = PathBuf::from(crate::constants::agent_state_dir()).join("tlog.ndjson");
         let current_tlog_seq = crate::tlog::Tlog::open(&tlog_path).seq();
-        if cp.checkpoint_tlog_seq != current_tlog_seq {
+        // A newer tlog than checkpoint is expected: replay applies delta events
+        // after the checkpoint snapshot. Only reject impossible "future checkpoint"
+        // states where the checkpoint seq is ahead of the current tlog.
+        if cp.checkpoint_tlog_seq > current_tlog_seq {
             let msg = format!(
-                "checkpoint/runtime divergence: checkpoint seq {} does not match tlog seq {}",
+                "checkpoint/runtime divergence: checkpoint seq {} is ahead of tlog seq {}",
                 cp.checkpoint_tlog_seq, current_tlog_seq
             );
             eprintln!(
-                "[orchestrate] checkpoint seq {} does not match current tlog seq {} — discarding",
+                "[orchestrate] checkpoint seq {} is ahead of current tlog seq {} — discarding",
                 cp.checkpoint_tlog_seq, current_tlog_seq
             );
             crate::blockers::record_action_failure_with_writer(
@@ -6671,9 +6674,12 @@ pub async fn run() -> Result<()> {
         const EXECUTOR_STALL_PROBE_MS: u64 = 5_000;
         const EXECUTOR_STALL_STALE_MS: u64 = 45_000;
         const EXECUTOR_STALL_RECOVERY_COOLDOWN_MS: u64 = 30_000;
+        const IDLE_PULSE_COOLDOWN_MS: u64 = 5_000;
         let mut stall_count: u32 = 0;
         let mut last_executor_stall_probe_ms: u64 = 0;
         let mut last_executor_stall_recovery_ms: u64 = 0;
+        let mut last_idle_pulse_ts_ms: u64 = 0;
+        let mut last_idle_boundary_hash: Option<u64> = None;
         loop {
             let _ = std::fs::remove_file(cycle_idle_marker_path());
             let mut cycle_progress = false;
@@ -7109,8 +7115,17 @@ pub async fn run() -> Result<()> {
             }
 
             if !cycle_progress {
-                writer.apply(ControlEvent::OrchestratorIdlePulse { ts_ms: now_ms() });
-                let _ = std::fs::write(cycle_idle_marker_path(), "idle\n");
+                let idle_boundary_hash = state_hash_after;
+                let idle_now = now_ms();
+                let boundary_changed = last_idle_boundary_hash != Some(idle_boundary_hash);
+                let cooldown_elapsed =
+                    idle_now.saturating_sub(last_idle_pulse_ts_ms) >= IDLE_PULSE_COOLDOWN_MS;
+                if boundary_changed || cooldown_elapsed {
+                    writer.apply(ControlEvent::OrchestratorIdlePulse { ts_ms: idle_now });
+                    let _ = std::fs::write(cycle_idle_marker_path(), "idle\n");
+                    last_idle_pulse_ts_ms = idle_now;
+                    last_idle_boundary_hash = Some(idle_boundary_hash);
+                }
                 tokio::time::sleep(std::time::Duration::from_millis(SERVICE_POLL_MS)).await;
             }
         }

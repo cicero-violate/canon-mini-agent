@@ -1,11 +1,10 @@
 use crate::events::{EffectEvent, Event};
 use crate::system_state::{replay_event_log, SystemState};
 use anyhow::Result;
-use std::collections::HashMap;
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct TlogRecord {
@@ -27,15 +26,45 @@ pub struct Tlog {
     evolution: u64,
 }
 
-fn seq_registry() -> &'static Mutex<HashMap<PathBuf, u64>> {
-    static REGISTRY: OnceLock<Mutex<HashMap<PathBuf, u64>>> = OnceLock::new();
-    REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+struct TlogAppendLock {
+    lock_path: PathBuf,
 }
 
-fn lock_seq_registry() -> std::sync::MutexGuard<'static, HashMap<PathBuf, u64>> {
-    seq_registry()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+impl TlogAppendLock {
+    fn lock_path_for(tlog_path: &Path) -> PathBuf {
+        PathBuf::from(format!("{}.lock", tlog_path.display()))
+    }
+
+    fn acquire(tlog_path: &Path) -> Result<Self> {
+        let lock_path = Self::lock_path_for(tlog_path);
+        let start = Instant::now();
+        let timeout = Duration::from_secs(5);
+        loop {
+            match OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&lock_path)
+            {
+                Ok(_) => return Ok(Self { lock_path }),
+                Err(err) if err.kind() == ErrorKind::AlreadyExists => {
+                    if start.elapsed() >= timeout {
+                        return Err(anyhow::anyhow!(
+                            "timed out waiting for tlog append lock {}",
+                            lock_path.display()
+                        ));
+                    }
+                    std::thread::sleep(Duration::from_millis(2));
+                }
+                Err(err) => return Err(err.into()),
+            }
+        }
+    }
+}
+
+impl Drop for TlogAppendLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.lock_path);
+    }
 }
 
 fn observed_seq_floor(path: &Path) -> u64 {
@@ -70,14 +99,8 @@ impl Tlog {
             let _ = std::fs::create_dir_all(parent);
         }
         let seq = observed_seq_floor(path);
-        let path_buf = path.to_path_buf();
-        {
-            let mut registry = lock_seq_registry();
-            let entry = registry.entry(path_buf.clone()).or_insert(seq);
-            *entry = (*entry).max(seq);
-        }
         Self {
-            path: path_buf,
+            path: path.to_path_buf(),
             seq,
             evolution: crate::evolution::current_evolution_for_tlog(path),
         }
@@ -87,12 +110,9 @@ impl Tlog {
     /// Returns an error only if the write itself fails; callers may choose
     /// to log and continue rather than treating a log write failure as fatal.
     pub fn append(&mut self, event: &Event) -> Result<()> {
-        let mut registry = lock_seq_registry();
+        let _append_lock = TlogAppendLock::acquire(&self.path)?;
         let observed = observed_seq_floor(&self.path);
-        let entry = registry.entry(self.path.clone()).or_insert(observed);
-        *entry = (*entry).max(observed).max(self.seq);
-        let previous_seq = *entry;
-        let next_seq = previous_seq + 1;
+        let next_seq = observed.max(self.seq) + 1;
         let record = serde_json::json!({
             "seq": next_seq,
             "evolution": self.evolution,
@@ -103,11 +123,7 @@ impl Tlog {
             .create(true)
             .append(true)
             .open(&self.path)?;
-        if let Err(err) = writeln!(file, "{}", serde_json::to_string(&record)?) {
-            *entry = previous_seq;
-            return Err(err.into());
-        }
-        *entry = next_seq;
+        writeln!(file, "{}", serde_json::to_string(&record)?)?;
         self.seq = next_seq;
         Ok(())
     }
