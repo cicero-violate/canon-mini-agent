@@ -143,6 +143,7 @@ fn queue_executor_lane_submit(
     let bridge = ctx.bridge.clone();
     let command_id = make_command_id(&job.executor_role, "executor", 1);
     let response_timeout_secs = response_timeout_for_role(&job.executor_role);
+    rt.timed_out_executor_submits.remove(&lane_index);
     rt.executor_submit_inflight.insert(
         lane_index,
         PendingSubmitState {
@@ -327,7 +328,7 @@ fn register_late_submit_ack(
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
     lane_id: usize,
-    job: &PendingExecutorSubmit,
+    pending: PendingSubmitState,
     tab_id: u32,
     turn_id: u64,
     command_id: Option<String>,
@@ -353,9 +354,56 @@ fn register_late_submit_ack(
         lane_id,
         tab_id,
         turn_id,
-        build_late_submitted_executor_turn(writer, job, tab_id, command_id),
+        build_submitted_executor_turn(writer, &pending.job, &pending, tab_id, command_id),
     );
     true
+}
+
+fn log_late_submit_ack_command_mismatch(
+    ctx: &OrchestratorContext<'_>,
+    lane_id: usize,
+    expected_command_id: &str,
+    observed_command_id: Option<&str>,
+) {
+    let lane_label = &ctx.lanes[lane_id].label;
+    let observed = observed_command_id.unwrap_or("<missing>");
+    let message = format!(
+        "late submit ack command mismatch: lane={} expected_command_id={} observed_command_id={} (ignoring stale ack)",
+        lane_label, expected_command_id, observed
+    );
+    log_submit_ack_event(
+        message.clone(),
+        json!({
+            "stage": "executor_submit_ack_command_mismatch",
+            "lane": lane_label,
+            "expected_command_id": expected_command_id,
+            "observed_command_id": observed,
+        }),
+    );
+    crate::blockers::record_action_failure_with_writer(
+        ctx.workspace.as_path(),
+        None,
+        "executor",
+        "runtime_control_bypass",
+        &format!("runtime-only control influence: {message}"),
+        None,
+    );
+}
+
+fn take_matching_timed_out_submit(
+    ctx: &OrchestratorContext<'_>,
+    rt: &mut RuntimeState,
+    lane_id: usize,
+    command_id: Option<&str>,
+) -> Option<PendingSubmitState> {
+    let pending = rt.timed_out_executor_submits.remove(&lane_id)?;
+    if command_id == Some(pending.command_id.as_str()) {
+        return Some(pending);
+    }
+
+    log_late_submit_ack_command_mismatch(ctx, lane_id, &pending.command_id, command_id);
+    rt.timed_out_executor_submits.insert(lane_id, pending);
+    None
 }
 
 fn log_submit_ack_tab_mismatch(
@@ -404,26 +452,6 @@ fn build_submitted_executor_turn(
         actor: job.executor_role.clone(),
         endpoint_id: pending.endpoint_id.clone(),
         tabs: pending.tabs.clone(),
-        steps_used: submitted_executor_steps_used(writer, job.lane_index),
-    }
-}
-
-fn build_late_submitted_executor_turn(
-    writer: &CanonicalWriter,
-    job: &PendingExecutorSubmit,
-    tab_id: u32,
-    command_id: Option<String>,
-) -> SubmittedExecutorTurn {
-    SubmittedExecutorTurn {
-        tab_id,
-        lane: job.lane_index,
-        lane_label: job.label.clone(),
-        command_id: command_id
-            .unwrap_or_else(|| make_command_id(&job.executor_role, "executor", 1)),
-        started_ms: now_ms(),
-        actor: job.executor_role.clone(),
-        endpoint_id: job.endpoint_id.clone(),
-        tabs: job.tabs.clone(),
         steps_used: submitted_executor_steps_used(writer, job.lane_index),
     }
 }
@@ -477,8 +505,16 @@ fn handle_executor_submit_ack_result(
         // The timeout path already removed executor_submit_inflight for
         // this lane, but the submit actually succeeded.  Register the turn
         // so the completion can still be routed back to the LLM.
+        let Some(pending) = take_matching_timed_out_submit(
+            ctx,
+            rt,
+            lane_id,
+            command_id.as_deref(),
+        ) else {
+            return false;
+        };
         return register_late_submit_ack(
-            ctx, writer, rt, lane_id, &job, tab_id, turn_id, command_id,
+            ctx, writer, rt, lane_id, pending, tab_id, turn_id, command_id,
         );
     };
     let _ = pending_submit_timeout_ms;

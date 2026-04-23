@@ -661,8 +661,6 @@ fn claim_executor_submit(
         label: lane.label.clone(),
         latest_verify_result,
         executor_role,
-        endpoint_id: lane.endpoint.id.clone(),
-        tabs: lane.tabs.clone(),
     })
 }
 

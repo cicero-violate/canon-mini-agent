@@ -1,5 +1,3 @@
-// #![allow(dead_code)]
-
 pub mod app;
 pub mod blockers;
 pub mod canon_tools_patch;
@@ -17,8 +15,13 @@ pub mod invalid_action;
 pub mod invariants;
 mod issues;
 pub mod lessons;
-// Transport/runtime hot path: `app` and `llm_runtime` own the submit-ack,
-// inbound-message, and turn-lease surfaces that dominate recent tlog failures.
+// Repair priority map:
+// 1. Runtime liveness: `app` and `llm_runtime` own submit-ack, inbound-message,
+//    and turn-lease recovery surfaces that dominate recent blocker evidence.
+// 2. Authority collapse: `canonical_writer`, `tlog`, and projection loaders must
+//    remain the only trusted state path before projected JSON artifacts are used.
+// 3. Complexity burn-down: graph/refactor analyses should rank small deterministic
+//    cuts before large role or orchestration rewrites.
 pub mod llm_runtime;
 pub mod logging;
 mod md_convert;

@@ -192,6 +192,7 @@ fn requeue_lane_after_submit_recovery(
     });
     apply_lane_pending_if_changed(writer, lane_id, true);
     rt.executor_submit_inflight.remove(&lane_id);
+    rt.timed_out_executor_submits.remove(&lane_id);
     writer.apply(ControlEvent::LaneSubmitInFlightSet {
         lane_id,
         in_flight: false,
@@ -288,6 +289,7 @@ fn recover_timed_out_executor_submit_lane(
     lane_id: usize,
 ) {
     if let Some(pending) = rt.executor_submit_inflight.remove(&lane_id) {
+        rt.timed_out_executor_submits.insert(lane_id, pending.clone());
         log_timed_out_executor_submit(ctx, lane_id, pending);
     }
     writer.apply(ControlEvent::LaneSubmitInFlightSet {

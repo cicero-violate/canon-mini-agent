@@ -942,6 +942,7 @@ struct DeferredExecutorCompletion {
 struct RuntimeState {
     submitted_turns: HashMap<(u32, u64), SubmittedExecutorTurn>,
     executor_submit_inflight: HashMap<usize, PendingSubmitState>,
+    timed_out_executor_submits: HashMap<usize, PendingSubmitState>,
     deferred_completions: HashMap<usize, VecDeque<DeferredExecutorCompletion>>,
 }
 
@@ -953,6 +954,7 @@ fn new_runtime_state(lanes: &[LaneConfig]) -> RuntimeState {
     RuntimeState {
         submitted_turns: HashMap::new(),
         executor_submit_inflight: HashMap::new(),
+        timed_out_executor_submits: HashMap::new(),
         deferred_completions,
     }
 }
@@ -985,10 +987,6 @@ struct PendingExecutorSubmit {
     label: String,
     latest_verify_result: String,
     executor_role: String,
-    // Carried for late-ack recovery: allows submitted_turns registration even
-    // after executor_submit_inflight has been cleared by the timeout path.
-    endpoint_id: String,
-    tabs: TabManagerHandle,
 }
 
 fn parse_submit_ack(raw: &str) -> Option<(u32, u64, Option<String>)> {

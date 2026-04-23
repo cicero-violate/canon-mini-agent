@@ -1,5 +1,6 @@
 use crate::canonical_writer::CanonicalWriter;
 use crate::events::ControlEvent;
+use crate::objectives::{load_runtime_master_plan_json, load_runtime_objectives_json};
 use crate::system_state::SystemState;
 use crate::tlog::Tlog;
 use anyhow::Result;
@@ -100,12 +101,12 @@ pub fn probe_planner_objective_review(
 
 pub fn probe_planner_plan_gap(
     workspace: &Path,
-    objectives_path: &Path,
-    plan_path: &Path,
+    _objectives_path: &Path,
+    _plan_path: &Path,
 ) -> Result<OrchestratorProbeResult> {
     let (mut writer, tlog_path, initial) = new_probe_writer(workspace);
-    let objectives_text = std::fs::read_to_string(objectives_path).unwrap_or_default();
-    let plan_text = std::fs::read_to_string(plan_path).unwrap_or_default();
+    let objectives_text = load_runtime_objectives_json(workspace);
+    let plan_text = load_runtime_master_plan_json(workspace).unwrap_or_default();
     if planner_plan_gap_detected(&objectives_text, &plan_text) {
         writer.try_apply(ControlEvent::PlannerObjectivePlanGapQueued)?;
     }

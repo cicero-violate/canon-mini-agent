@@ -50,6 +50,10 @@ pub fn runtime_objectives_path(workspace: &Path) -> PathBuf {
     workspace_join_path(workspace, crate::constants::OBJECTIVES_FILE)
 }
 
+pub fn runtime_master_plan_path(workspace: &Path) -> PathBuf {
+    workspace_join_path(workspace, crate::constants::MASTER_PLAN_FILE)
+}
+
 pub fn legacy_objectives_path(workspace: &Path) -> PathBuf {
     workspace_join_path(workspace, LEGACY_OBJECTIVES_JSON_FILE)
 }
@@ -204,6 +208,15 @@ pub fn load_runtime_objectives_json(workspace: &Path) -> String {
         return canonical;
     }
     raw
+}
+
+pub fn load_runtime_master_plan_json(workspace: &Path) -> Option<String> {
+    let raw = std::fs::read_to_string(runtime_master_plan_path(workspace)).ok()?;
+    if raw.trim().is_empty() {
+        None
+    } else {
+        Some(raw)
+    }
 }
 
 pub fn objectives_hash(raw: &str) -> String {
