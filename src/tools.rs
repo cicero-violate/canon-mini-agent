@@ -2462,6 +2462,12 @@ fn handle_message_action(
         .trim()
         .to_lowercase()
         .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+    let planner_executor_pair =
+        (normalized_role == "planner" && normalized_to.starts_with("executor"))
+            || (normalized_to == "planner" && normalized_role.starts_with("executor"));
+    let persist_handoff_message = !planner_executor_pair
+        || status.eq_ignore_ascii_case("blocked")
+        || msg_type.eq_ignore_ascii_case("blocker");
 
     if normalized_role == normalized_to
         && !is_allowed_self_addressed_message(action, &normalized_role, &normalized_to)
@@ -2495,14 +2501,16 @@ fn handle_message_action(
         agent_state_dir,
         writer.as_deref_mut(),
     );
-    persist_inbound_message(
-        role,
-        step,
-        std::path::Path::new(crate::constants::workspace()),
-        action,
-        &full_message,
-        writer.as_deref_mut(),
-    );
+    if persist_handoff_message {
+        persist_inbound_message(
+            role,
+            step,
+            std::path::Path::new(crate::constants::workspace()),
+            action,
+            &full_message,
+            writer.as_deref_mut(),
+        );
+    }
 
     // Capture blocker messages as first-class artifact for invariant synthesis.
     if msg_type == "blocker" && status == "blocked" {

@@ -753,6 +753,8 @@ async fn run_planner_phase(
             crate::plan_preflight::preflight_ready_tasks(ctx.workspace);
 
             let lane_ids: Vec<usize> = ctx.lanes.iter().map(|l| l.index).collect();
+            let ready_tasks_exist =
+                crate::prompt_inputs::read_ready_tasks(ctx.workspace, 1) != "(no ready tasks)";
             for lane_id in lane_ids {
                 writer.apply(ControlEvent::LanePlanTextSet {
                     lane_id,
@@ -767,7 +769,7 @@ async fn run_planner_phase(
                         .unwrap_or(false);
                     (in_progress, verified)
                 };
-                if !in_progress && !verified {
+                if !in_progress && (!verified || ready_tasks_exist) {
                     writer.apply(ControlEvent::LanePendingSet {
                         lane_id,
                         pending: true,
@@ -4757,28 +4759,6 @@ async fn run_agent(
 
         match step_result {
             (true, reason) => {
-                ctx.record_effect(crate::events::EffectEvent::ActionResultRecorded {
-                    role: role.to_string(),
-                    step: step + 1,
-                    command_id: command_id.clone(),
-                    action_kind: action
-                        .get("action")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("unknown")
-                        .to_string(),
-                    task_id: action
-                        .get("task_id")
-                        .and_then(|v| v.as_str())
-                        .map(str::to_string),
-                    objective_id: action
-                        .get("objective_id")
-                        .and_then(|v| v.as_str())
-                        .map(str::to_string),
-                    ok: true,
-                    result_bytes: reason.len(),
-                    result_hash: crate::logging::stable_hash_hex(&reason),
-                    result: reason.clone(),
-                });
                 eprintln!("[{role}] message complete: {reason}");
                 return Ok(
                     if action.get("action").and_then(|v| v.as_str()) == Some("message") {
@@ -4792,29 +4772,6 @@ async fn run_agent(
                 );
             }
             (false, out) => {
-                let ok = !out.starts_with("Error executing action:");
-                ctx.record_effect(crate::events::EffectEvent::ActionResultRecorded {
-                    role: role.to_string(),
-                    step: step + 1,
-                    command_id: command_id.clone(),
-                    action_kind: action
-                        .get("action")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("unknown")
-                        .to_string(),
-                    task_id: action
-                        .get("task_id")
-                        .and_then(|v| v.as_str())
-                        .map(str::to_string),
-                    objective_id: action
-                        .get("objective_id")
-                        .and_then(|v| v.as_str())
-                        .map(str::to_string),
-                    ok,
-                    result_bytes: out.len(),
-                    result_hash: crate::logging::stable_hash_hex(&out),
-                    result: out.clone(),
-                });
                 cargo_test_gate.note_result(&kind, &out);
                 if out.starts_with("Error executing action:") {
                     if last_failed_action_fingerprint
@@ -5732,20 +5689,14 @@ fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Va
 
     if effective_to.eq_ignore_ascii_case("planner") {
         // Single operational-agent mode:
-        // executor->planner complete handoffs are observational only (no queued
-        // inter-role message dependency). Keep blocked escalations canonical.
+        // non-blocked executor->planner handoffs are phase transitions, not
+        // message-passing dependencies. Keep blocked escalations canonical.
         if status == "blocked" {
             persist_planner_message(writer, action);
         } else {
-            let workspace = Path::new(crate::constants::workspace());
-            let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
-            let _ = record_canonical_inbound_message(workspace, from_role, "planner", &action_text);
-            let planner_path = agent_state_dir.join("last_message_to_planner.json");
-            let _ = persist_agent_state_projection(
-                &planner_path,
-                &action_text,
-                "planner_handoff_message_compat",
-            );
+            writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+            writer.apply(ControlEvent::ScheduledPhaseSet { phase: None });
+            return;
         }
         writer.apply(ControlEvent::PlannerPendingSet { pending: true });
         return;
