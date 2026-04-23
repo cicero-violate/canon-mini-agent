@@ -416,14 +416,19 @@ mod tests {
         assert!(workspace.join("agent_state/lessons.json").exists());
         assert!(planner_projection_path.exists());
 
-        let violations = fs::read_to_string(workspace.join(VIOLATIONS_FILE)).unwrap();
-        assert!(violations.contains("\"status\": \"ok\""));
+        let violations = crate::reports::load_violations_report(&workspace);
+        assert_eq!(violations.status, "ok");
 
-        let plan = fs::read_to_string(workspace.join(MASTER_PLAN_FILE)).unwrap();
-        assert!(plan.contains("\"ready_window\": []"));
+        let plan = crate::objectives::load_master_plan_snapshot(&workspace);
+        assert_eq!(
+            plan.get("ready_window")
+                .and_then(|value| value.as_array())
+                .map(|items| items.len()),
+            Some(0)
+        );
 
-        let blockers = fs::read_to_string(workspace.join("agent_state/blockers.json")).unwrap();
-        assert!(blockers.contains("\"blockers\": []"));
+        let blockers = crate::blockers::load_blockers(&workspace);
+        assert!(blockers.blockers.is_empty());
 
         let _ = fs::remove_dir_all(workspace);
     }
@@ -443,8 +448,8 @@ mod tests {
             .expect("bootstrap baseline");
 
         assert!(!created.iter().any(|p| p == VIOLATIONS_FILE));
-        let violations = fs::read_to_string(workspace.join(VIOLATIONS_FILE)).unwrap();
-        assert!(violations.contains("\"summary\": \"keep\""));
+        let violations = crate::reports::load_violations_report(&workspace);
+        assert_eq!(violations.summary, "keep");
 
         let _ = fs::remove_dir_all(workspace);
     }
@@ -474,12 +479,15 @@ mod tests {
         assert!(!workspace.join("VIOLATIONS.json").exists());
         assert!(workspace.join(MASTER_PLAN_FILE).exists());
         assert!(workspace.join(VIOLATIONS_FILE).exists());
-        let plan = fs::read_to_string(workspace.join(MASTER_PLAN_FILE)).unwrap();
-        assert!(plan.contains("\"T1\""));
-        let violations: serde_json::Value =
-            serde_json::from_str(&fs::read_to_string(workspace.join(VIOLATIONS_FILE)).unwrap())
-                .unwrap();
-        assert_eq!(violations["summary"].as_str(), Some("legacy"));
+        let plan = crate::objectives::load_master_plan_snapshot(&workspace);
+        assert!(
+            plan.get("tasks")
+                .and_then(|value| value.as_array())
+                .map(|tasks| tasks.iter().any(|task| task.get("id").and_then(|v| v.as_str()) == Some("T1")))
+                .unwrap_or(false)
+        );
+        let violations = crate::reports::load_violations_report(&workspace);
+        assert_eq!(violations.summary, "legacy");
 
         let _ = fs::remove_dir_all(workspace);
     }

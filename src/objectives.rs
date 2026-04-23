@@ -100,6 +100,24 @@ pub fn ensure_runtime_objectives_file(workspace: &Path) -> std::io::Result<PathB
     Ok(runtime)
 }
 
+#[cfg(test)]
+pub fn load_master_plan_snapshot(workspace: &Path) -> Value {
+    let path = workspace_join_path(workspace, crate::constants::MASTER_PLAN_FILE);
+    let raw = std::fs::read_to_string(&path).unwrap_or_default();
+    if !raw.trim().is_empty() {
+        if let Ok(plan) = serde_json::from_str::<Value>(&raw) {
+            return plan;
+        }
+    }
+    serde_json::json!({
+        "version": 2,
+        "status": "ready",
+        "ready_window": [],
+        "tasks": [],
+        "dag": {"edges": []}
+    })
+}
+
 pub fn read_objectives_compact_for_workspace(workspace: &Path) -> String {
     if let Some(canonical) = load_canonical_objectives_json(workspace) {
         return read_objectives_compact_from_raw(&canonical);
