@@ -1,5 +1,6 @@
 mod parser;
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -102,9 +103,9 @@ fn affected_paths_from_hunks(hunks: &[Hunk]) -> Result<AffectedPaths, ApplyPatch
 }
 
 fn run_external_apply_patch(patch: &str, cwd: &Path) -> Result<(), ApplyPatchError> {
-    let child = Command::new(APPLY_PATCH_BIN)
-        .arg(patch)
+    let mut child = Command::new(APPLY_PATCH_BIN)
         .current_dir(cwd)
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -114,6 +115,15 @@ fn run_external_apply_patch(patch: &str, cwd: &Path) -> Result<(), ApplyPatchErr
                 source,
             })
         })?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(patch.as_bytes()).map_err(|source| {
+            ApplyPatchError::Io(IoError {
+                context: format!("failed to write patch text to {} stdin", APPLY_PATCH_BIN),
+                source,
+            })
+        })?;
+    }
 
     let output = child
         .wait_with_output()
