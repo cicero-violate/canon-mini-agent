@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
-use crate::constants::{ISSUES_FILE, MASTER_PLAN_FILE, SPEC_FILE, VIOLATIONS_FILE};
+use crate::constants::{ISSUES_FILE, MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE};
 use crate::issues::{read_ranked_open_issues, Issue};
 use crate::reports::{DiagnosticsFinding, DiagnosticsReport, Impact, Severity, ViolationsReport};
 
@@ -411,10 +411,18 @@ fn build_eval_header(workspace: &Path) -> String {
 
     let get_f64 = |key: &str| eval.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0);
     let overall = get_f64("overall_score");
+    let objectives_ratio = live_done_total_ratio(workspace.join(OBJECTIVES_FILE), "objectives");
+    let tasks_ratio = live_done_total_ratio(workspace.join(MASTER_PLAN_FILE), "tasks");
+    let objective_progress = objectives_ratio
+        .map(|(done, total)| ratio(done, total))
+        .unwrap_or_else(|| get_f64("objective_progress"));
+    let task_velocity = tasks_ratio
+        .map(|(done, total)| ratio(done, total))
+        .unwrap_or_else(|| get_f64("task_velocity"));
     let dims = [
-        ("objective_progress", get_f64("objective_progress")),
+        ("objective_progress", objective_progress),
         ("safety", get_f64("safety")),
-        ("task_velocity", get_f64("task_velocity")),
+        ("task_velocity", task_velocity),
         ("issue_health", get_f64("issue_health")),
     ];
 
@@ -432,17 +440,57 @@ fn build_eval_header(workspace: &Path) -> String {
         _ => "address the highest-scored issues below",
     };
 
-    let objectives = eval
-        .get("objectives")
-        .and_then(|v| v.as_str())
-        .unwrap_or("?");
-    let tasks = eval.get("tasks").and_then(|v| v.as_str()).unwrap_or("?");
+    let objectives = objectives_ratio
+        .map(|(done, total)| format!("{done}/{total}"))
+        .unwrap_or_else(|| {
+            eval.get("objectives")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?")
+                .to_string()
+        });
+    let tasks = tasks_ratio
+        .map(|(done, total)| format!("{done}/{total}"))
+        .unwrap_or_else(|| {
+            eval.get("tasks")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?")
+                .to_string()
+        });
 
     format!(
         "EVAL score={overall:.3}  weakest={weakest_name}({weakest_val:.3})  \
 objectives={objectives}  tasks={tasks}\n\
 → To raise score: {directive}\n"
     )
+}
+
+fn ratio(done: usize, total: usize) -> f64 {
+    if total == 0 {
+        0.0
+    } else {
+        done as f64 / total as f64
+    }
+}
+
+fn live_done_total_ratio(path: PathBuf, array_field: &str) -> Option<(usize, usize)> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    if raw.trim().is_empty() {
+        return None;
+    }
+    let value = serde_json::from_str::<Value>(&raw).ok()?;
+    let entries = value.get(array_field).and_then(Value::as_array)?;
+    let total = entries.len();
+    let done = entries
+        .iter()
+        .filter(|entry| {
+            entry
+                .get("status")
+                .and_then(Value::as_str)
+                .map(crate::issues::is_done_like_status)
+                .unwrap_or(false)
+        })
+        .count();
+    Some((done, total))
 }
 
 fn load_complexity_report(path: &Path) -> Option<serde_json::Value> {
@@ -1913,7 +1961,7 @@ fn render_executor_diff(diff_text: &str, max_lines: usize) -> String {
 #[cfg(test)]
 mod diagnostics_filter_tests {
     use super::{
-        derive_semantic_prompt_artifacts, filter_active_diagnostics_json,
+        build_eval_header, derive_semantic_prompt_artifacts, filter_active_diagnostics_json,
         filter_active_violations_json, filter_pending_plan_json,
         load_diagnostics_projection_text, render_diagnostics_report_from_issues,
         sanitize_diagnostics_for_planner,
@@ -2141,6 +2189,70 @@ mod diagnostics_filter_tests {
     fn filter_active_diagnostics_json_reports_none_when_empty() {
         let raw = r#"{"status":"verified","ranked_failures":[]}"#;
         assert!(filter_active_diagnostics_json(raw).is_empty());
+    }
+
+    #[test]
+    fn build_eval_header_uses_live_plan_and_objective_counts_over_stale_report_strings() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos();
+        let workspace = std::env::temp_dir().join(format!(
+            "canon-mini-agent-eval-header-live-counts-{}-{}",
+            std::process::id(),
+            unique
+        ));
+        fs::create_dir_all(workspace.join("agent_state/reports/complexity")).unwrap();
+
+        fs::write(
+            workspace.join("agent_state/reports/complexity/latest.json"),
+            r#"{
+  "eval": {
+    "overall_score": 0.032,
+    "objective_progress": 0.0,
+    "task_velocity": 0.0,
+    "issue_health": 0.62,
+    "safety": 1.0,
+    "objectives": "0/0",
+    "tasks": "0/0"
+  }
+}"#,
+        )
+        .unwrap();
+        fs::write(
+            workspace.join(OBJECTIVES_FILE),
+            r#"{
+  "version": 1,
+  "objectives": [
+    {"id":"o1","status":"done"},
+    {"id":"o2","status":"active"},
+    {"id":"o3","status":"active"}
+  ]
+}"#,
+        )
+        .unwrap();
+        fs::write(
+            workspace.join(MASTER_PLAN_FILE),
+            r#"{
+  "version": 1,
+  "tasks": [
+    {"id":"T1","status":"done"},
+    {"id":"T2","status":"ready"},
+    {"id":"T3","status":"in_progress"},
+    {"id":"T4","status":"todo"}
+  ]
+}"#,
+        )
+        .unwrap();
+
+        let header = build_eval_header(workspace.as_path());
+        assert!(header.contains("objectives=1/3"));
+        assert!(header.contains("tasks=1/4"));
+        assert!(!header.contains("objectives=0/0"));
+        assert!(!header.contains("tasks=0/0"));
     }
 
     #[test]
