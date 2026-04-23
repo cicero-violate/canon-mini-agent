@@ -4,7 +4,8 @@ use anyhow::{bail, Context, Result};
 use std::path::PathBuf;
 
 fn take_flag_value(args: &[String], name: &str) -> Option<String> {
-    args.windows(2).find(|w| w[0] == name).map(|w| w[1].clone())
+    let flag_index = args.iter().position(|arg| arg == name)?;
+    args.get(flag_index + 1).cloned()
 }
 
 fn run_selected_mode(args: &[String], workspace: &PathBuf) -> Option<Result<()>> {

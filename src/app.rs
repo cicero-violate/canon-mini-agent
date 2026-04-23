@@ -5783,9 +5783,29 @@ fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Va
         .and_then(Value::as_str)
         .unwrap_or("executor");
     let effective_to = normalize_executor_completion_target(to_role);
+    let status = action
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
 
     if effective_to.eq_ignore_ascii_case("planner") {
-        persist_planner_message(writer, action);
+        // Single operational-agent mode:
+        // executor->planner complete handoffs are observational only (no queued
+        // inter-role message dependency). Keep blocked escalations canonical.
+        if status == "blocked" {
+            persist_planner_message(writer, action);
+        } else {
+            let workspace = Path::new(crate::constants::workspace());
+            let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
+            let _ = record_canonical_inbound_message(workspace, from_role, "planner", &action_text);
+            let planner_path = agent_state_dir.join("last_message_to_planner.json");
+            let _ = persist_agent_state_projection(
+                &planner_path,
+                &action_text,
+                "planner_handoff_message_compat",
+            );
+        }
         writer.apply(ControlEvent::PlannerPendingSet { pending: true });
         return;
     }
@@ -6675,6 +6695,7 @@ pub async fn run() -> Result<()> {
         const EXECUTOR_STALL_STALE_MS: u64 = 45_000;
         const EXECUTOR_STALL_RECOVERY_COOLDOWN_MS: u64 = 30_000;
         const IDLE_PULSE_COOLDOWN_MS: u64 = 5_000;
+        const INLINE_UNIFIED_AGENT: bool = true;
         let mut stall_count: u32 = 0;
         let mut last_executor_stall_probe_ms: u64 = 0;
         let mut last_executor_stall_recovery_ms: u64 = 0;
@@ -6772,36 +6793,42 @@ pub async fn run() -> Result<()> {
             }
 
             let active_blocker = writer.state().active_blocker_to_verifier;
-            let blocker_decision = crate::state_space::ActiveBlockerDecision {
-                planner_pending: writer.state().planner_pending,
-                scheduled_phase: sanitize_phase_for_runtime(
-                    writer.state().scheduled_phase.as_deref(),
-                ),
-            };
-            let planner_suppression_changes_state = blocker_decision.planner_pending
-                != writer.state().planner_pending
-                || blocker_decision.scheduled_phase.as_deref()
-                    != writer.state().scheduled_phase.as_deref();
-            if active_blocker
-                && planner_suppression_changes_state
-                && (writer.state().planner_pending
-                    || writer.state().scheduled_phase.as_deref() == Some("planner"))
-            {
-                eprintln!("[orchestrate] planner paused: active blocker to verifier");
-                crate::blockers::record_action_failure_with_writer(
-                    workspace.as_path(),
-                    Some(&mut writer),
-                    "orchestrate",
-                    "runtime_control_bypass",
-                    "runtime-only control influence: semantic verifier-blocker state suppressed planner dispatch",
-                    None,
+            if INLINE_UNIFIED_AGENT {
+                // Single operational loop with internal plan->execute phases.
+                apply_planner_pending_if_changed(&mut writer, true);
+                apply_scheduled_phase_if_changed(&mut writer, None);
+            } else {
+                let blocker_decision = crate::state_space::ActiveBlockerDecision {
+                    planner_pending: writer.state().planner_pending,
+                    scheduled_phase: sanitize_phase_for_runtime(
+                        writer.state().scheduled_phase.as_deref(),
+                    ),
+                };
+                let planner_suppression_changes_state = blocker_decision.planner_pending
+                    != writer.state().planner_pending
+                    || blocker_decision.scheduled_phase.as_deref()
+                        != writer.state().scheduled_phase.as_deref();
+                if active_blocker
+                    && planner_suppression_changes_state
+                    && (writer.state().planner_pending
+                        || writer.state().scheduled_phase.as_deref() == Some("planner"))
+                {
+                    eprintln!("[orchestrate] planner paused: active blocker to verifier");
+                    crate::blockers::record_action_failure_with_writer(
+                        workspace.as_path(),
+                        Some(&mut writer),
+                        "orchestrate",
+                        "runtime_control_bypass",
+                        "runtime-only control influence: semantic verifier-blocker state suppressed planner dispatch",
+                        None,
+                    );
+                }
+                apply_planner_pending_if_changed(&mut writer, blocker_decision.planner_pending);
+                apply_scheduled_phase_if_changed(
+                    &mut writer,
+                    blocker_decision.scheduled_phase.as_deref(),
                 );
             }
-            apply_planner_pending_if_changed(&mut writer, blocker_decision.planner_pending);
-            apply_scheduled_phase_if_changed(
-                &mut writer,
-                blocker_decision.scheduled_phase.as_deref(),
-            );
 
             let state_hash_before = cycle_control_hash(&ControlConvergenceSnapshot {
                 state: writer.state(),
@@ -6835,7 +6862,8 @@ pub async fn run() -> Result<()> {
             };
             let cargo_test_failures = load_cargo_test_failures(&workspace);
 
-            if phase_gates.planner {
+            let run_planner_inline = INLINE_UNIFIED_AGENT || phase_gates.planner;
+            if run_planner_inline {
                 writer.apply(ControlEvent::PhaseSet {
                     phase: "planner".to_string(),
                     lane: None,
@@ -6853,7 +6881,12 @@ pub async fn run() -> Result<()> {
             }
 
             let now = now_ms();
-            if phase_gates.executor {
+            let run_executor_inline = if INLINE_UNIFIED_AGENT {
+                !active_blocker
+            } else {
+                phase_gates.executor
+            };
+            if run_executor_inline {
                 if run_executor_phase(
                     &orchestrator_ctx,
                     &mut writer,

@@ -882,98 +882,128 @@ fn save_violations(
     .map_err(|e| anyhow!("failed to write VIOLATIONS.json: {e}"))
 }
 
-fn handle_violation_action(
+fn read_violation_report(path: &Path) -> Result<(bool, String)> {
+    let report = load_violations(path)?;
+    Ok((false, serde_json::to_string_pretty(&report)?))
+}
+
+fn upsert_violation(
     mut writer: Option<&mut CanonicalWriter>,
+    path: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
+    use crate::reports::Violation;
+
+    let lease = validate_evidence_lease(action)?;
+    let v_val = action
+        .get("violation")
+        .ok_or_else(|| anyhow!("violation upsert requires a 'violation' object"))?;
+    let mut violation: Violation =
+        serde_json::from_value(v_val.clone()).map_err(|e| anyhow!("invalid violation payload: {e}"))?;
+    if violation.id.trim().is_empty() {
+        bail!("violation.id must be non-empty");
+    }
+    apply_violation_freshness(&mut violation, &lease);
+
+    let mut report = load_violations(path)?;
+    let result = if let Some(existing) = report.violations.iter_mut().find(|item| item.id == violation.id) {
+        *existing = violation.clone();
+        format!("violation upsert ok — updated `{}`", violation.id)
+    } else {
+        report.violations.push(violation.clone());
+        format!("violation upsert ok — added `{}`", violation.id)
+    };
+
+    save_violations(path, &report, writer.as_deref_mut(), "upsert", &violation.id)?;
+    Ok((false, result))
+}
+
+fn resolve_violation(
+    mut writer: Option<&mut CanonicalWriter>,
+    path: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
+    validate_evidence_lease(action)?;
+    let violation_id = action
+        .get("violation_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("violation resolve requires 'violation_id'"))?;
+    let mut report = load_violations(path)?;
+    let before = report.violations.len();
+    report.violations.retain(|violation| violation.id != violation_id);
+    if report.violations.len() == before {
+        bail!("violation not found: {violation_id}");
+    }
+    if report.violations.is_empty() {
+        report.status = "ok".to_string();
+    }
+    save_violations(path, &report, writer.as_deref_mut(), "resolve", violation_id)?;
+    Ok((
+        false,
+        format!("violation resolve ok — removed `{violation_id}`"),
+    ))
+}
+
+fn set_violation_status(
+    mut writer: Option<&mut CanonicalWriter>,
+    path: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
+    validate_evidence_lease(action)?;
+    let status = action
+        .get("status")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("violation set_status requires 'status'"))?;
+    let mut report = load_violations(path)?;
+    report.status = status.to_string();
+    if let Some(summary) = action.get("summary").and_then(|v| v.as_str()) {
+        report.summary = summary.to_string();
+    }
+    save_violations(path, &report, writer.as_deref_mut(), "set_status", status)?;
+    Ok((
+        false,
+        format!("violation set_status ok — status=`{status}`"),
+    ))
+}
+
+fn replace_violations(
+    mut writer: Option<&mut CanonicalWriter>,
+    path: &Path,
+    action: &Value,
+) -> Result<(bool, String)> {
+    use crate::reports::ViolationsReport;
+
+    let lease = validate_evidence_lease(action)?;
+    let report_value = action
+        .get("report")
+        .ok_or_else(|| anyhow!("violation replace requires a 'report' object"))?;
+    let mut report: ViolationsReport = serde_json::from_value(report_value.clone())
+        .map_err(|e| anyhow!("invalid ViolationsReport payload: {e}"))?;
+    report.violations.retain(violation_is_fresh);
+    for violation in &mut report.violations {
+        apply_violation_freshness(violation, &lease);
+    }
+    save_violations(path, &report, writer.as_deref_mut(), "replace", "report")?;
+    Ok((
+        false,
+        format!("violation replace ok — {} violation(s)", report.violations.len()),
+    ))
+}
+
+fn handle_violation_action(
+    writer: Option<&mut CanonicalWriter>,
     workspace: &Path,
     action: &Value,
 ) -> Result<(bool, String)> {
-    use crate::reports::{Violation, ViolationsReport};
     let op_raw = action.get("op").and_then(|v| v.as_str()).unwrap_or("read");
     let path = workspace.join(VIOLATIONS_FILE);
 
     match op_raw {
-        "read" => {
-            let report = load_violations(&path)?;
-            Ok((false, serde_json::to_string_pretty(&report)?))
-        }
-        "upsert" => {
-            let lease = validate_evidence_lease(action)?;
-            // Add or replace a violation by id.
-            let v_val = action
-                .get("violation")
-                .ok_or_else(|| anyhow!("violation upsert requires a 'violation' object"))?;
-            let mut v: Violation = serde_json::from_value(v_val.clone())
-                .map_err(|e| anyhow!("invalid violation payload: {e}"))?;
-            if v.id.trim().is_empty() {
-                bail!("violation.id must be non-empty");
-            }
-            apply_violation_freshness(&mut v, &lease);
-            let mut report = load_violations(&path)?;
-            if let Some(existing) = report.violations.iter_mut().find(|x| x.id == v.id) {
-                *existing = v.clone();
-                save_violations(&path, &report, writer.as_deref_mut(), "upsert", &v.id)?;
-                Ok((false, format!("violation upsert ok — updated `{}`", v.id)))
-            } else {
-                report.violations.push(v.clone());
-                save_violations(&path, &report, writer.as_deref_mut(), "upsert", &v.id)?;
-                Ok((false, format!("violation upsert ok — added `{}`", v.id)))
-            }
-        }
-        "resolve" => {
-            validate_evidence_lease(action)?;
-            let vid = action
-                .get("violation_id")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("violation resolve requires 'violation_id'"))?;
-            let mut report = load_violations(&path)?;
-            let before = report.violations.len();
-            report.violations.retain(|v| v.id != vid);
-            if report.violations.len() == before {
-                bail!("violation not found: {vid}");
-            }
-            if report.violations.is_empty() {
-                report.status = "ok".to_string();
-            }
-            save_violations(&path, &report, writer.as_deref_mut(), "resolve", vid)?;
-            Ok((false, format!("violation resolve ok — removed `{vid}`")))
-        }
-        "set_status" => {
-            validate_evidence_lease(action)?;
-            let status = action
-                .get("status")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("violation set_status requires 'status'"))?;
-            let mut report = load_violations(&path)?;
-            report.status = status.to_string();
-            if let Some(s) = action.get("summary").and_then(|v| v.as_str()) {
-                report.summary = s.to_string();
-            }
-            save_violations(&path, &report, writer.as_deref_mut(), "set_status", status)?;
-            Ok((
-                false,
-                format!("violation set_status ok — status=`{status}`"),
-            ))
-        }
-        "replace" => {
-            let lease = validate_evidence_lease(action)?;
-            let rep_val = action
-                .get("report")
-                .ok_or_else(|| anyhow!("violation replace requires a 'report' object"))?;
-            let mut report: ViolationsReport = serde_json::from_value(rep_val.clone())
-                .map_err(|e| anyhow!("invalid ViolationsReport payload: {e}"))?;
-            report.violations.retain(violation_is_fresh);
-            for violation in &mut report.violations {
-                apply_violation_freshness(violation, &lease);
-            }
-            save_violations(&path, &report, writer.as_deref_mut(), "replace", "report")?;
-            Ok((
-                false,
-                format!(
-                    "violation replace ok — {} violation(s)",
-                    report.violations.len()
-                ),
-            ))
-        }
+        "read" => read_violation_report(&path),
+        "upsert" => upsert_violation(writer, &path, action),
+        "resolve" => resolve_violation(writer, &path, action),
+        "set_status" => set_violation_status(writer, &path, action),
+        "replace" => replace_violations(writer, &path, action),
         _ => bail!(
             "unknown violation op '{op_raw}' — use: read | upsert | resolve | set_status | replace"
         ),
