@@ -558,17 +558,16 @@ enum PlannerActionResultClass {
     StayPlanner,
 }
 
-fn classify_planner_action_result_class(completion: &AgentCompletion) -> PlannerActionResultClass {
-    if let AgentCompletion::Summary(summary) = completion {
-        let text = summary.to_ascii_lowercase();
-        if text.contains("ready task") && text.contains("dispatched") {
-            return PlannerActionResultClass::ReadyHandoff;
-        }
-        return PlannerActionResultClass::StayPlanner;
+fn classify_planner_summary_result(summary: &str) -> PlannerActionResultClass {
+    let text = summary.to_ascii_lowercase();
+    if text.contains("ready task") && text.contains("dispatched") {
+        PlannerActionResultClass::ReadyHandoff
+    } else {
+        PlannerActionResultClass::StayPlanner
     }
-    let AgentCompletion::MessageAction { action, .. } = completion else {
-        return PlannerActionResultClass::StayPlanner;
-    };
+}
+
+fn classify_planner_message_result(action: &Value) -> PlannerActionResultClass {
     let status = action
         .get("status")
         .and_then(|v| v.as_str())
@@ -591,10 +590,19 @@ fn classify_planner_action_result_class(completion: &AgentCompletion) -> Planner
     PlannerActionResultClass::StayPlanner
 }
 
+fn classify_planner_action_result_class(completion: &AgentCompletion) -> PlannerActionResultClass {
+    if let AgentCompletion::Summary(summary) = completion {
+        return classify_planner_summary_result(summary);
+    }
+    let AgentCompletion::MessageAction { action, .. } = completion else {
+        return PlannerActionResultClass::StayPlanner;
+    };
+    classify_planner_message_result(action)
+}
+
 fn planner_completion_allows_executor_dispatch(completion: &AgentCompletion) -> bool {
     !matches!(
         classify_planner_action_result_class(completion),
         PlannerActionResultClass::BlockedHandoff
     )
 }
-

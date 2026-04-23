@@ -437,20 +437,33 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
     let mut created = 0usize;
 
     // ── Meta-issue 1: action surface ────────────────────────────────────────
-    // Only present when the invariants action is actually missing from the live source.
+    // Only present when the invariants action is actually missing from the live
+    // source. If ISSUES.json still shows this after the code has the dispatch +
+    // schema + prompt wiring, that issue is stale and should clear on the next
+    // analyzer run via resolve_stale_meta_issue(...).
     const ACTION_SURFACE_ID: &str = "inv_action_surface_missing";
-    let has_action_surface = source_contains_any(
+    let has_invariants_dispatch = source_contains_any(
         workspace,
         "src/tools.rs",
         &[
             "\"invariants\" => {",
             "crate::invariants::handle_invariants_action_with_writer(",
         ],
-    ) && source_contains(
-        workspace,
-        "src/tool_schema.rs",
-        "\"invariants\" => missing_field_for_invariants_action",
-    );
+    ) || (source_contains(workspace, "src/tools.rs", "include!(\"tools_tail.rs\")")
+        && source_contains_any(
+            workspace,
+            "src/tools_tail.rs",
+            &[
+                "\"invariants\" => {",
+                "crate::invariants::handle_invariants_action_with_writer(",
+            ],
+        ));
+    let has_action_surface = has_invariants_dispatch
+        && source_contains(
+            workspace,
+            "src/tool_schema.rs",
+            "\"invariants\" => missing_field_for_invariants_action",
+        );
     if !has_action_surface && !existing_ids.contains(ACTION_SURFACE_ID) {
         file.issues.push(Issue {
             id: ACTION_SURFACE_ID.to_string(),
@@ -772,13 +785,9 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
     let mut prints = Vec::new();
 
     for entry in entries {
-        // Only process failure result entries.
         let phase = entry.get("phase").and_then(|v| v.as_str()).unwrap_or("");
         let ok = entry.get("ok").and_then(|v| v.as_bool()).unwrap_or(true);
         let ts_ms = entry.get("ts_ms").and_then(|v| v.as_u64()).unwrap_or(0);
-
-        // We detect both explicit ok=false records AND known failure patterns
-        // in result text regardless of ok flag.
         let text = entry.get("text").and_then(|v| v.as_str()).unwrap_or("");
         let action = entry
             .get("action")
@@ -787,161 +796,206 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
             .unwrap_or("");
         let actor = entry.get("actor").and_then(|v| v.as_str()).unwrap_or("");
 
-        // Pattern 1: explicit tool/result failures
-        if phase == "result" && !ok {
-            if let Some(fp) = fingerprint_tool_failure(entry, actor, action, text, ts_ms) {
-                prints.push(fp);
-            }
+        if let Some(fp) = extract_tool_failure_fingerprint(entry, phase, ok, actor, action, text, ts_ms) {
+            prints.push(fp);
         }
-
-        // Pattern 2: preflight bounces (logged with ok=false and action=plan_preflight)
-        if action == "plan_preflight" && !ok {
-            prints.push(Fingerprint {
-                conditions: vec![
-                    StateCondition { key: "action".to_string(), value: "plan_preflight".to_string() },
-                    StateCondition { key: "ok".to_string(), value: "false".to_string() },
-                ],
-                predicate_text: "Planner task referenced a symbol not found in the workspace semantic graph; executor cannot execute it".to_string(),
-                ts_ms,
-                evidence: InvariantEvidenceSample {
-                    source: "agent_state/default/actions.jsonl".to_string(),
-                    ts_ms,
-                    derivation: EvidenceDerivation {
-                        rule_type: "action_log_failure".to_string(),
-                        observed_facts: Vec::new(),
-                        matched_conditions: Vec::new(),
-                    },
-                    raw: entry.clone(),
-                },
-            });
+        if let Some(fp) = extract_plan_preflight_fingerprint(entry, action, ok, ts_ms) {
+            prints.push(fp);
         }
-
-        // Pattern 3: forced executor handoffs (step-limit exceeded)
-        if action == "message" || text.contains("FORCED HANDOFF") || text.contains("step budget") {
-            if actor.starts_with("executor") && text.contains("forced")
-                || text.contains("step limit")
-                || text.contains("FORCED HANDOFF")
-            {
-                prints.push(Fingerprint {
-                    conditions: vec![
-                        StateCondition { key: "actor_kind".to_string(), value: "executor".to_string() },
-                        StateCondition { key: "error".to_string(), value: "step_limit_exceeded".to_string() },
-                    ],
-                    predicate_text: "Executor reached step limit without completing task — task scope is too large or executor is stalling".to_string(),
-                    ts_ms,
-                    evidence: InvariantEvidenceSample {
-                        source: "agent_state/default/actions.jsonl".to_string(),
-                        ts_ms,
-                        derivation: EvidenceDerivation {
-                            rule_type: "action_log_failure".to_string(),
-                            observed_facts: Vec::new(),
-                            matched_conditions: Vec::new(),
-                        },
-                        raw: entry.clone(),
-                    },
-                });
-            }
+        if let Some(fp) = extract_forced_handoff_fingerprint(entry, actor, action, text, ts_ms) {
+            prints.push(fp);
         }
-
-        // Pattern 4: read-file stalls (read_file with ok=false or consecutive read_file pattern)
-        if action == "read_file" && !ok {
-            let path = entry.get("path").and_then(|v| v.as_str()).unwrap_or("?");
-            prints.push(Fingerprint {
-                conditions: vec![
-                    StateCondition {
-                        key: "actor_kind".to_string(),
-                        value: if actor.starts_with("executor") {
-                            "executor".to_string()
-                        } else {
-                            "solo".to_string()
-                        },
-                    },
-                    StateCondition {
-                        key: "action".to_string(),
-                        value: "read_file".to_string(),
-                    },
-                    StateCondition {
-                        key: "ok".to_string(),
-                        value: "false".to_string(),
-                    },
-                ],
-                predicate_text: format!(
-                    "read_file failed (path may not exist or be outside workspace): {path}"
-                ),
-                ts_ms,
-                evidence: InvariantEvidenceSample {
-                    source: "agent_state/default/actions.jsonl".to_string(),
-                    ts_ms,
-                    derivation: EvidenceDerivation {
-                        rule_type: "action_log_failure".to_string(),
-                        observed_facts: Vec::new(),
-                        matched_conditions: Vec::new(),
-                    },
-                    raw: entry.clone(),
-                },
-            });
+        if let Some(fp) = extract_read_file_failure_fingerprint(entry, actor, action, ok, ts_ms) {
+            prints.push(fp);
         }
-
-        // Pattern 5: invalid action schema rejections
-        if text.contains("invalid action")
-            || text.contains("schema violation")
-            || text.contains("required field")
-        {
-            if phase == "result" && !ok {
-                let actor_kind = if actor.starts_with("executor") {
-                    "executor"
-                } else if actor.starts_with("planner") {
-                    "planner"
-                } else {
-                    "unknown"
-                };
-                prints.push(Fingerprint {
-                    conditions: vec![
-                        StateCondition { key: "actor_kind".to_string(), value: actor_kind.to_string() },
-                        StateCondition { key: "error".to_string(), value: "invalid_action_schema".to_string() },
-                    ],
-                    predicate_text: format!("Role `{actor_kind}` emitted a structurally invalid action — schema gate violation"),
-                    ts_ms,
-                    evidence: InvariantEvidenceSample {
-                        source: "agent_state/default/actions.jsonl".to_string(),
-                        ts_ms,
-                        derivation: EvidenceDerivation {
-                            rule_type: "action_log_failure".to_string(),
-                            observed_facts: Vec::new(),
-                            matched_conditions: Vec::new(),
-                        },
-                        raw: entry.clone(),
-                    },
-                });
-            }
+        if let Some(fp) = extract_invalid_action_fingerprint(entry, actor, phase, ok, text, ts_ms) {
+            prints.push(fp);
         }
-
-        // Pattern 6: missing-target / path-does-not-exist errors
-        if text.contains("missing_target")
-            || (text.contains("does not exist") && phase == "result" && !ok)
-        {
-            prints.push(Fingerprint {
-                conditions: vec![
-                    StateCondition { key: "actor_kind".to_string(), value: if actor.starts_with("executor") { "executor".to_string() } else { "any".to_string() } },
-                    StateCondition { key: "error".to_string(), value: "missing_target".to_string() },
-                ],
-                predicate_text: "Action targeted a path that does not exist — plan is referencing a target that has not been created yet".to_string(),
-                ts_ms,
-                evidence: InvariantEvidenceSample {
-                    source: "agent_state/default/actions.jsonl".to_string(),
-                    ts_ms,
-                    derivation: EvidenceDerivation {
-                        rule_type: "action_log_failure".to_string(),
-                        observed_facts: Vec::new(),
-                        matched_conditions: Vec::new(),
-                    },
-                    raw: entry.clone(),
-                },
-            });
+        if let Some(fp) = extract_missing_target_fingerprint(entry, actor, phase, ok, text, ts_ms) {
+            prints.push(fp);
         }
     }
 
     prints
+}
+
+fn extract_tool_failure_fingerprint(
+    entry: &Value,
+    phase: &str,
+    ok: bool,
+    actor: &str,
+    action: &str,
+    text: &str,
+    ts_ms: u64,
+) -> Option<Fingerprint> {
+    if phase == "result" && !ok {
+        return fingerprint_tool_failure(entry, actor, action, text, ts_ms);
+    }
+    None
+}
+
+fn extract_plan_preflight_fingerprint(
+    entry: &Value,
+    action: &str,
+    ok: bool,
+    ts_ms: u64,
+) -> Option<Fingerprint> {
+    if action != "plan_preflight" || ok {
+        return None;
+    }
+
+    Some(Fingerprint {
+        conditions: vec![
+            StateCondition { key: "action".to_string(), value: "plan_preflight".to_string() },
+            StateCondition { key: "ok".to_string(), value: "false".to_string() },
+        ],
+        predicate_text: "Planner task referenced a symbol not found in the workspace semantic graph; executor cannot execute it".to_string(),
+        ts_ms,
+        evidence: failure_evidence_sample(entry, ts_ms),
+    })
+}
+
+fn extract_forced_handoff_fingerprint(
+    entry: &Value,
+    actor: &str,
+    action: &str,
+    text: &str,
+    ts_ms: u64,
+) -> Option<Fingerprint> {
+    let mentions_handoff = action == "message"
+        || text.contains("FORCED HANDOFF")
+        || text.contains("step budget");
+    let is_forced = (actor.starts_with("executor") && text.contains("forced"))
+        || text.contains("step limit")
+        || text.contains("FORCED HANDOFF");
+
+    if !mentions_handoff || !is_forced {
+        return None;
+    }
+
+    Some(Fingerprint {
+        conditions: vec![
+            StateCondition { key: "actor_kind".to_string(), value: "executor".to_string() },
+            StateCondition { key: "error".to_string(), value: "step_limit_exceeded".to_string() },
+        ],
+        predicate_text: "Executor reached step limit without completing task — task scope is too large or executor is stalling".to_string(),
+        ts_ms,
+        evidence: failure_evidence_sample(entry, ts_ms),
+    })
+}
+
+fn extract_read_file_failure_fingerprint(
+    entry: &Value,
+    actor: &str,
+    action: &str,
+    ok: bool,
+    ts_ms: u64,
+) -> Option<Fingerprint> {
+    if action != "read_file" || ok {
+        return None;
+    }
+
+    let path = entry.get("path").and_then(|v| v.as_str()).unwrap_or("?");
+    let actor_kind = if actor.starts_with("executor") {
+        "executor"
+    } else {
+        "solo"
+    };
+
+    Some(Fingerprint {
+        conditions: vec![
+            StateCondition {
+                key: "actor_kind".to_string(),
+                value: actor_kind.to_string(),
+            },
+            StateCondition {
+                key: "action".to_string(),
+                value: "read_file".to_string(),
+            },
+            StateCondition {
+                key: "ok".to_string(),
+                value: "false".to_string(),
+            },
+        ],
+        predicate_text: format!(
+            "read_file failed (path may not exist or be outside workspace): {path}"
+        ),
+        ts_ms,
+        evidence: failure_evidence_sample(entry, ts_ms),
+    })
+}
+
+fn extract_invalid_action_fingerprint(
+    entry: &Value,
+    actor: &str,
+    phase: &str,
+    ok: bool,
+    text: &str,
+    ts_ms: u64,
+) -> Option<Fingerprint> {
+    let is_invalid_action = text.contains("invalid action")
+        || text.contains("schema violation")
+        || text.contains("required field");
+    if !is_invalid_action || phase != "result" || ok {
+        return None;
+    }
+
+    let actor_kind = if actor.starts_with("executor") {
+        "executor"
+    } else if actor.starts_with("planner") {
+        "planner"
+    } else {
+        "unknown"
+    };
+
+    Some(Fingerprint {
+        conditions: vec![
+            StateCondition { key: "actor_kind".to_string(), value: actor_kind.to_string() },
+            StateCondition { key: "error".to_string(), value: "invalid_action_schema".to_string() },
+        ],
+        predicate_text: format!("Role `{actor_kind}` emitted a structurally invalid action — schema gate violation"),
+        ts_ms,
+        evidence: failure_evidence_sample(entry, ts_ms),
+    })
+}
+
+fn extract_missing_target_fingerprint(
+    entry: &Value,
+    actor: &str,
+    phase: &str,
+    ok: bool,
+    text: &str,
+    ts_ms: u64,
+) -> Option<Fingerprint> {
+    let missing_target = text.contains("missing_target")
+        || (text.contains("does not exist") && phase == "result" && !ok);
+    if !missing_target {
+        return None;
+    }
+
+    let actor_kind = if actor.starts_with("executor") { "executor" } else { "any" };
+    Some(Fingerprint {
+        conditions: vec![
+            StateCondition { key: "actor_kind".to_string(), value: actor_kind.to_string() },
+            StateCondition { key: "error".to_string(), value: "missing_target".to_string() },
+        ],
+        predicate_text: "Action targeted a path that does not exist — plan is referencing a target that has not been created yet".to_string(),
+        ts_ms,
+        evidence: failure_evidence_sample(entry, ts_ms),
+    })
+}
+
+fn failure_evidence_sample(entry: &Value, ts_ms: u64) -> InvariantEvidenceSample {
+    InvariantEvidenceSample {
+        source: "agent_state/default/actions.jsonl".to_string(),
+        ts_ms,
+        derivation: EvidenceDerivation {
+            rule_type: "action_log_failure".to_string(),
+            observed_facts: Vec::new(),
+            matched_conditions: Vec::new(),
+        },
+        raw: entry.clone(),
+    }
 }
 
 fn fingerprint_tool_failure(

@@ -7,7 +7,8 @@ mod tests {
         has_actionable_objectives, inbound_message_from_user, invariant_id_from_reason,
         is_chromium_transport_error, lane_has_stale_executor_claim,
         local_transport_blocker_message, plan_has_incomplete_tasks, route_gate_blocker_message,
-        planner_completion_allows_executor_dispatch, should_reject_solo_self_complete,
+        planner_completion_allows_executor_dispatch, semantic_action_fingerprint,
+        should_reject_solo_self_complete,
         RecordedMessageKind,
         take_external_user_message_without_writer, take_inbound_message_without_writer,
         verifier_confirmed_with_plan_text, ActionProvenance,
@@ -72,19 +73,49 @@ mod tests {
         let mismatch = source
             .find("log_submit_ack_tab_mismatch(ctx, lane_id, active_tab, tab_id);")
             .expect("missing submit ack mismatch log");
-        let rebind = source[mismatch..]
-            .find("ControlEvent::ExecutorSubmitAckTabRebound {")
-            .map(|offset| mismatch + offset)
-            .expect("missing canonical submit ack tab rebound");
-        let register = source[rebind..]
+        let register = source[mismatch..]
             .find("register_submitted_executor_turn(")
-            .map(|offset| rebind + offset)
+            .map(|offset| mismatch + offset)
             .expect("missing turn registration after submit ack handling");
 
         assert!(
-            mismatch < rebind && rebind < register,
-            "submit ack mismatch must emit a canonical tab rebound before turn registration"
+            !source.contains("ControlEvent::ExecutorSubmitAckTabRebound {")
+                && mismatch < register,
+            "submit ack mismatch must be rejected before turn registration instead of rebinding the active tab"
         );
+    }
+
+    #[test]
+    fn semantic_action_fingerprint_ignores_message_summary_noise() {
+        let left = json!({
+            "action": "message",
+            "from": "planner",
+            "to": "executor",
+            "type": "handoff",
+            "status": "ready",
+            "observation": "Ready tasks queued.",
+            "rationale": "First wording.",
+            "payload": {
+                "ready_window": ["t1", "t2"],
+                "summary": "Plan is already aligned for this cycle."
+            }
+        });
+        let right = json!({
+            "action": "message",
+            "from": "planner",
+            "to": "executor",
+            "type": "handoff",
+            "status": "ready",
+            "observation": "Ready tasks queued.",
+            "rationale": "Different wording.",
+            "payload": {
+                "ready_window": ["t1", "t2"],
+                "summary": "Plan state remains consistent."
+            }
+        });
+
+        assert_eq!(semantic_action_fingerprint(&left), semantic_action_fingerprint(&right));
+        assert_ne!(action_retry_fingerprint(&left), action_retry_fingerprint(&right));
     }
 
     #[test]

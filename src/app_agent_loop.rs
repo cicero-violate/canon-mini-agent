@@ -43,6 +43,8 @@ async fn run_agent(
     let mut repeated_failed_action_fingerprint: Option<String> = None;
     let mut last_failed_action_fingerprint: Option<String> = None;
     let mut repeated_failed_action_count: usize = 0;
+    let mut last_semantic_action_fingerprint: Option<String> = None;
+    let mut repeated_semantic_action_count: usize = 0;
     let mut transient_service_retry_streak: usize = 0;
     let shutdown = shutdown_signal();
     let mut ctx = LlmResponseContext {
@@ -405,6 +407,7 @@ async fn run_agent(
         let command_id = exchange_id.clone();
         action["command_id"] = Value::String(command_id.clone());
         let action_fingerprint = action_retry_fingerprint(&action);
+        let semantic_fingerprint = semantic_action_fingerprint(&action);
 
         if repeated_failed_action_fingerprint.as_deref() == Some(action_fingerprint.as_str()) {
             crate::blockers::record_action_failure_with_writer(
@@ -502,6 +505,41 @@ async fn run_agent(
             }
             (false, out) => {
                 cargo_test_gate.note_result(&kind, &out);
+                if role.starts_with("planner") && kind == "message" {
+                    if last_semantic_action_fingerprint
+                        .as_deref()
+                        .is_some_and(|fingerprint| fingerprint == semantic_fingerprint)
+                    {
+                        repeated_semantic_action_count =
+                            repeated_semantic_action_count.saturating_add(1);
+                    } else {
+                        last_semantic_action_fingerprint = Some(semantic_fingerprint.clone());
+                        repeated_semantic_action_count = 1;
+                    }
+                } else {
+                    last_semantic_action_fingerprint = None;
+                    repeated_semantic_action_count = 0;
+                }
+
+                if role.starts_with("planner")
+                    && kind == "message"
+                    && repeated_semantic_action_count >= 3
+                {
+                    crate::blockers::record_action_failure_with_writer(
+                        workspace,
+                        None,
+                        role,
+                        "semantic_repeat_no_progress",
+                        "planner repeated the same message/handoff shape without changing plan or objective state",
+                        action.get("task_id").and_then(|v| v.as_str()),
+                    );
+                    last_result = Some(
+                        "Planner loop detected: you repeated the same message/handoff shape without changing plan or objective state. Choose a materially different action: mutate PLAN/objectives from fresh source evidence, or emit a blocker explaining why no structural update is possible.".to_string(),
+                    );
+                    step += 1;
+                    continue;
+                }
+
                 if out.starts_with("Error executing action:") {
                     if last_failed_action_fingerprint
                         .as_deref()
@@ -1046,4 +1084,3 @@ fn append_executor_completion_log(
     );
     append_action_log_record(&record)
 }
-

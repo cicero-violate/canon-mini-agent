@@ -162,6 +162,17 @@ fn log_executor_completion_observation_error(
     );
 }
 
+fn log_startup_stage_error(stage_label: &str, err: &impl std::fmt::Display) {
+    eprintln!("[canon-mini-agent] {stage_label} failed: {err:#}");
+    log_error_event(
+        "orchestrate",
+        "startup",
+        None,
+        &format!("{stage_label} failed: {err:#}"),
+        Some(json!({ "stage": "startup" })),
+    );
+}
+
 fn maybe_defer_executor_completion(
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
@@ -570,6 +581,28 @@ fn action_retry_fingerprint(action: &Value) -> String {
     serde_json::to_string(&action).unwrap_or_default()
 }
 
+fn semantic_action_fingerprint(action: &Value) -> String {
+    let mut action = action.clone();
+    if let Some(obj) = action.as_object_mut() {
+        for key in [
+            "command_id",
+            "observation",
+            "rationale",
+            "question",
+            "predicted_next_actions",
+        ] {
+            obj.remove(key);
+        }
+        if obj.get("action").and_then(|v| v.as_str()) == Some("message") {
+            if let Some(payload) = obj.get_mut("payload").and_then(|v| v.as_object_mut()) {
+                payload.remove("summary");
+                payload.remove("evidence");
+            }
+        }
+    }
+    serde_json::to_string(&action).unwrap_or_default()
+}
+
 fn verifier_confirmed_with_plan_text(reason: &str, plan_text: &str) -> bool {
     if crate::orchestrator_seam::plan_has_incomplete_tasks(plan_text) {
         return false;
@@ -880,34 +913,13 @@ pub async fn run() -> Result<()> {
         eprintln!("[canon-mini-agent] planner projection migration failed: {err:#}");
     }
     if let Err(err) = ensure_objectives_and_invariants_json(&workspace) {
-        eprintln!("[canon-mini-agent] objectives/invariants conversion failed: {err:#}");
-        log_error_event(
-            "orchestrate",
-            "startup",
-            None,
-            &format!("objectives/invariants conversion failed: {err:#}"),
-            Some(json!({ "stage": "startup" })),
-        );
+        log_startup_stage_error("objectives/invariants conversion", &err);
     }
     if let Err(err) = ensure_workspace_artifact_baseline(&workspace, &planner_projection_path) {
-        eprintln!("[canon-mini-agent] workspace artifact bootstrap failed: {err:#}");
-        log_error_event(
-            "orchestrate",
-            "startup",
-            None,
-            &format!("workspace artifact bootstrap failed: {err:#}"),
-            Some(json!({ "stage": "startup" })),
-        );
+        log_startup_stage_error("workspace artifact bootstrap", &err);
     }
     if let Err(err) = crate::issues::sweep_stale_issues(&workspace) {
-        eprintln!("[canon-mini-agent] issue staleness sweep failed: {err:#}");
-        log_error_event(
-            "orchestrate",
-            "startup",
-            None,
-            &format!("issue staleness sweep failed: {err:#}"),
-            Some(json!({ "stage": "startup" })),
-        );
+        log_startup_stage_error("issue staleness sweep", &err);
     }
 
     let shutdown = init_shutdown_signal();
@@ -1958,4 +1970,3 @@ pub async fn run() -> Result<()> {
         Ok(())
     }
 }
-

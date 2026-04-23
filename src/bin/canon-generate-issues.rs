@@ -88,6 +88,10 @@ fn run_cfg_region_mode(workspace: &Path) -> Result<()> {
         .map(|_| ())
 }
 
+fn run_cfg_region_mode_if_selected(args: &[String], workspace: &Path) -> Option<Result<()>> {
+    canon_mini_agent::has_flag(args, "--cfg-region-only").then(|| run_cfg_region_mode(workspace))
+}
+
 fn run_simple_issue_mode(args: &[String], workspace: &PathBuf) -> Option<Result<()>> {
     const SIMPLE_ISSUE_MODES: &[(&str, fn(&Path) -> Result<()>)] = &[
         (
@@ -119,15 +123,10 @@ fn run_simple_issue_mode(args: &[String], workspace: &PathBuf) -> Option<Result<
 }
 
 fn run_selected_mode(args: &[String], workspace: &PathBuf) -> Option<Result<()>> {
-    if let Some(result) = run_graph_report_mode(args, workspace) {
-        Some(result)
-    } else if let Some(result) = run_graph_issue_mode(args, workspace) {
-        Some(result)
-    } else if canon_mini_agent::has_flag(args, "--cfg-region-only") {
-        Some(run_cfg_region_mode(workspace))
-    } else {
-        run_simple_issue_mode(args, workspace)
-    }
+    run_graph_report_mode(args, workspace)
+        .or_else(|| run_graph_issue_mode(args, workspace))
+        .or_else(|| run_cfg_region_mode_if_selected(args, workspace))
+        .or_else(|| run_simple_issue_mode(args, workspace))
 }
 
 fn main() -> Result<()> {

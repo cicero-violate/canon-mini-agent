@@ -333,43 +333,51 @@ fn classify_action_kind_failure(action_kind: &str, text: &str) -> Option<ErrorCl
 }
 
 fn classify_failure_text(text: &str) -> ErrorClass {
-    if let Some(classification) = classify_permission_or_authorization_text(text) {
-        return classification;
-    }
+    classify_permission_or_authorization_text(text)
+        .or_else(|| classify_structural_failure_text(text))
+        .or_else(|| classify_terminal_failure_text(text))
+        .unwrap_or(ErrorClass::Unknown)
+}
+
+fn classify_structural_failure_text(text: &str) -> Option<ErrorClass> {
     if is_step_limit_text(text) {
-        return ErrorClass::StepLimitExceeded;
+        return Some(ErrorClass::StepLimitExceeded);
     }
     if is_invalid_schema_text(text) {
-        return ErrorClass::InvalidSchema;
+        return Some(ErrorClass::InvalidSchema);
     }
     if is_second_mutation_text(text) {
-        return ErrorClass::SecondMutationPath;
+        return Some(ErrorClass::SecondMutationPath);
     }
     if is_runtime_control_bypass_text(text) {
-        return ErrorClass::RuntimeControlBypass;
+        return Some(ErrorClass::RuntimeControlBypass);
     }
     if is_uncanonicalized_recovery_text(text) {
-        return ErrorClass::UncanonicalizedRecoveryPath;
+        return Some(ErrorClass::UncanonicalizedRecoveryPath);
     }
     if is_checkpoint_runtime_divergence_text(text) {
-        return ErrorClass::CheckpointRuntimeDivergence;
+        return Some(ErrorClass::CheckpointRuntimeDivergence);
     }
     if is_effectful_state_advance_text(text) {
-        return ErrorClass::EffectfulStateAdvanceWithoutControlEvent;
+        return Some(ErrorClass::EffectfulStateAdvanceWithoutControlEvent);
     }
     if is_ambiguous_control_event_text(text) {
-        return ErrorClass::AmbiguousControlEvent;
+        return Some(ErrorClass::AmbiguousControlEvent);
     }
+    None
+}
+
+fn classify_terminal_failure_text(text: &str) -> Option<ErrorClass> {
     if is_missing_target_text(text) {
-        return ErrorClass::MissingTarget;
+        return Some(ErrorClass::MissingTarget);
     }
     if is_timeout_text(text) {
-        return ErrorClass::LlmTimeout;
+        return Some(ErrorClass::LlmTimeout);
     }
     if is_permission_denied_text(text) {
-        return ErrorClass::PermissionDenied;
+        return Some(ErrorClass::PermissionDenied);
     }
-    ErrorClass::Unknown
+    None
 }
 
 fn classify_permission_or_authorization_text(text: &str) -> Option<ErrorClass> {

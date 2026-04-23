@@ -332,6 +332,9 @@ fn register_late_submit_ack(
     turn_id: u64,
     command_id: Option<String>,
 ) -> bool {
+    if !submit_ack_matches_active_tab(ctx, writer, lane_id, tab_id) {
+        return false;
+    }
     log_late_submit_ack(ctx, lane_id, tab_id, turn_id);
     crate::blockers::record_action_failure_with_writer(
         ctx.workspace.as_path(),
@@ -364,7 +367,7 @@ fn log_submit_ack_tab_mismatch(
     let lane_label = &ctx.lanes[lane_id].label;
     log_submit_ack_event(
         format!(
-            "submit ack tab mismatch: lane={} active_tab={} ack_tab={} (overwriting active tab)",
+            "submit ack tab mismatch: lane={} active_tab={} ack_tab={} (ignoring stale ack)",
             lane_label, active_tab, tab_id
         ),
         json!({
@@ -425,17 +428,17 @@ fn build_late_submitted_executor_turn(
     }
 }
 
-fn canonicalize_submit_ack_active_tab(
+fn submit_ack_matches_active_tab(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     lane_id: usize,
     tab_id: u32,
-) {
+) -> bool {
     let Some(active_tab) = writer.state().lane_active_tab_id(lane_id) else {
-        return;
+        return true;
     };
     if active_tab == tab_id {
-        return;
+        return true;
     }
 
     log_submit_ack_tab_mismatch(ctx, lane_id, active_tab, tab_id);
@@ -445,16 +448,12 @@ fn canonicalize_submit_ack_active_tab(
         "executor",
         "runtime_control_bypass",
         &format!(
-            "runtime-only control influence: submit ack changed lane={} active tab from {} to {}",
+            "runtime-only control influence: stale submit ack ignored for lane={} active tab stays {} while ack arrived from {}",
             ctx.lanes[lane_id].label, active_tab, tab_id
         ),
         None,
     );
-    writer.apply(ControlEvent::ExecutorSubmitAckTabRebound {
-        lane_id,
-        from_tab_id: active_tab,
-        to_tab_id: tab_id,
-    });
+    false
 }
 
 fn handle_executor_submit_ack_result(
@@ -470,6 +469,10 @@ fn handle_executor_submit_ack_result(
         return handle_missing_submit_ack(writer, rt, &job, &exec_result);
     };
 
+    if !submit_ack_matches_active_tab(ctx, writer, lane_id, tab_id) {
+        return false;
+    }
+
     let Some(pending) = rt.executor_submit_inflight.remove(&lane_id) else {
         // The timeout path already removed executor_submit_inflight for
         // this lane, but the submit actually succeeded.  Register the turn
@@ -479,8 +482,6 @@ fn handle_executor_submit_ack_result(
         );
     };
     let _ = pending_submit_timeout_ms;
-
-    canonicalize_submit_ack_active_tab(ctx, writer, lane_id, tab_id);
 
     register_submitted_executor_turn(
         writer,
@@ -969,4 +970,3 @@ fn blocker_escalation_prompt(role: &str, last_error: &str, task_context: &str) -
         context = truncate(task_context, MAX_SNIPPET),
     )
 }
-

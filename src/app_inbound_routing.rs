@@ -460,12 +460,13 @@ impl<'a> LlmResponseContext<'a> {
         }
     }
 
-    fn log_request(&mut self, step: usize, exchange_id: &str, prompt: &str, role_schema: &str) {
-        let ts_ms = crate::logging::now_ms();
-        let trimmed_role_schema = role_schema.trim_end();
-        let has_role_schema = !trimmed_role_schema.trim().is_empty();
-        let who = Self::request_log_who(self.role, has_role_schema);
-        let raw_prompt = Self::request_raw_prompt(prompt, trimmed_role_schema, has_role_schema);
+    fn log_request_message_event(
+        &self,
+        step: usize,
+        exchange_id: &str,
+        prompt: &str,
+        role_schema: &str,
+    ) {
         log_message_event(
             self.role,
             self.endpoint,
@@ -480,6 +481,15 @@ impl<'a> LlmResponseContext<'a> {
                 "prompt": truncate(prompt, MAX_SNIPPET),
             }),
         );
+    }
+
+    fn record_request_input_effect(
+        &mut self,
+        step: usize,
+        exchange_id: &str,
+        prompt: &str,
+        role_schema: &str,
+    ) {
         self.record_effect(crate::events::EffectEvent::LlmTurnInput {
             tab_id: None,
             turn_id: None,
@@ -493,6 +503,16 @@ impl<'a> LlmResponseContext<'a> {
             role_schema_bytes: role_schema.len(),
             submit_only: self.submit_only,
         });
+    }
+
+    fn log_request(&mut self, step: usize, exchange_id: &str, prompt: &str, role_schema: &str) {
+        let ts_ms = crate::logging::now_ms();
+        let trimmed_role_schema = role_schema.trim_end();
+        let has_role_schema = !trimmed_role_schema.trim().is_empty();
+        let who = Self::request_log_who(self.role, has_role_schema);
+        let raw_prompt = Self::request_raw_prompt(prompt, trimmed_role_schema, has_role_schema);
+        self.log_request_message_event(step, exchange_id, prompt, role_schema);
+        self.record_request_input_effect(step, exchange_id, prompt, role_schema);
         // Downstream debug projection: canonical effect first, flat-file snapshot second.
         write_full_exchange("sent", ts_ms, who, step, &raw_prompt);
         trace_message_forwarded(
@@ -800,4 +820,3 @@ async fn continue_executor_completion(
     )
     .await
 }
-

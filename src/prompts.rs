@@ -1078,7 +1078,11 @@ pub(crate) fn normalize_action(action: &mut Value) -> Result<()> {
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
             {
-                obj.insert(field.to_string(), Value::String(val.to_lowercase()));
+                let mut normalized = val.to_lowercase();
+                if field == "status" && normalized == "completed" {
+                    normalized = "complete".to_string();
+                }
+                obj.insert(field.to_string(), Value::String(normalized));
             }
         }
         for field in ["severity"] {
@@ -1100,6 +1104,59 @@ pub(crate) fn normalize_action(action: &mut Value) -> Result<()> {
             }
         }
         validate_message_action(action, MessageValidationMode::Basic)?;
+    } else if kind == "issue" {
+        if let Some(op) = obj
+            .get("op")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_ascii_lowercase())
+        {
+            let normalized = match op.as_str() {
+                "close" | "closed" | "resolve_issue" => Some("resolve"),
+                "create_issue" => Some("create"),
+                "update_issue" => Some("update"),
+                "delete_issue" => Some("delete"),
+                _ => None,
+            };
+            if let Some(normalized) = normalized {
+                obj.insert("op".to_string(), Value::String(normalized.to_string()));
+            }
+        }
+    } else if kind == "plan" {
+        if let Some(op) = obj
+            .get("op")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_ascii_lowercase())
+        {
+            let normalized = match op.as_str() {
+                "create_edge" => Some("add_edge"),
+                "delete_edge" => Some("remove_edge"),
+                "add_task" => Some("create_task"),
+                "replace" if obj.get("plan").is_some() => Some("replace_plan"),
+                "set_status" if obj.get("task_id").is_some() => Some("set_task_status"),
+                "set_status" => Some("set_plan_status"),
+                "add_tasks" if obj.get("plan").is_some() => Some("replace_plan"),
+                "add_tasks" => {
+                    let single_task = obj
+                        .get("tasks")
+                        .and_then(|v| v.as_array())
+                        .and_then(|tasks| (tasks.len() == 1).then(|| tasks[0].clone()));
+                    if obj.get("task").is_none() {
+                        if let Some(task) = single_task {
+                            obj.insert("task".to_string(), task);
+                        }
+                    }
+                    if obj.get("task").is_some() {
+                        Some("create_task")
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+            if let Some(normalized) = normalized {
+                obj.insert("op".to_string(), Value::String(normalized.to_string()));
+            }
+        }
     }
     Ok(())
 }
@@ -1418,6 +1475,46 @@ mod tests {
                 .len()
                 > 0
         );
+    }
+
+    #[test]
+    fn normalize_message_completed_status_to_complete() {
+        let mut action = json!({
+            "action": "message",
+            "from": "executor",
+            "to": "planner",
+            "type": "handoff",
+            "status": "completed",
+            "payload": {"summary": "done"},
+            "rationale": "normalize legacy status"
+        });
+        normalize_action(&mut action).unwrap();
+        assert_eq!(action.get("status").and_then(|v| v.as_str()), Some("complete"));
+    }
+
+    #[test]
+    fn normalize_issue_close_to_resolve() {
+        let mut action = json!({
+            "action": "issue",
+            "op": "close",
+            "issue_id": "ISSUE-1",
+            "rationale": "normalize legacy issue op"
+        });
+        normalize_action(&mut action).unwrap();
+        assert_eq!(action.get("op").and_then(|v| v.as_str()), Some("resolve"));
+    }
+
+    #[test]
+    fn normalize_plan_add_tasks_singleton_to_create_task() {
+        let mut action = json!({
+            "action": "plan",
+            "op": "add_tasks",
+            "tasks": [{"id": "T1", "title": "one task", "status": "ready"}],
+            "rationale": "normalize singleton plan add_tasks"
+        });
+        normalize_action(&mut action).unwrap();
+        assert_eq!(action.get("op").and_then(|v| v.as_str()), Some("create_task"));
+        assert!(action.get("task").is_some());
     }
 
     #[test]
