@@ -3057,7 +3057,7 @@ fn enforce_executor_step_limit(
 
 fn executor_step_limit_feedback() -> String {
     format!(
-        "Step limit reached: executor must send a message to planner after {EXECUTOR_STEP_LIMIT} actions. Send exactly one `message` action now.\n\nRequired schema:\n```json\n{{\n  \"action\": \"message\",\n  \"from\": \"executor\",\n  \"to\": \"planner\",\n  \"type\": \"handoff\" | \"blocker\",\n  \"status\": \"complete\" | \"blocked\",\n  \"observation\": \"What happened, based only on evidence.\",\n  \"rationale\": \"Why planner must act next.\",\n  \"payload\": {{\n    \"summary\": \"Short summary\",\n    \"evidence\": \"Concrete evidence or artifact paths\"\n  }}\n}}\n```\n\nExample complete handoff:\n```json\n{{\n  \"action\": \"message\",\n  \"from\": \"executor\",\n  \"to\": \"planner\",\n  \"type\": \"handoff\",\n  \"status\": \"complete\",\n  \"observation\": \"Completed the assigned executor work and gathered verification evidence.\",\n  \"rationale\": \"Planner should record completion and schedule the next ready task.\",\n  \"payload\": {{\n    \"summary\": \"Executor work is complete.\",\n    \"evidence\": \"Include files changed, commands run, and test results.\"\n  }}\n}}\n```\n\nExample blocker:\n```json\n{{\n  \"action\": \"message\",\n  \"from\": \"executor\",\n  \"to\": \"planner\",\n  \"type\": \"blocker\",\n  \"status\": \"blocked\",\n  \"observation\": \"Progress is blocked by a concrete failure.\",\n  \"rationale\": \"Planner must resolve the blocker before more executor actions.\",\n  \"payload\": {{\n    \"summary\": \"Executor is blocked.\",\n    \"blocker\": \"Root cause\",\n    \"evidence\": \"Exact error text or failed command\",\n    \"required_action\": \"What planner should do next\"\n  }}\n}}\n```"
+        "Step limit reached after {EXECUTOR_STEP_LIMIT} actions.\nPreferred action now: emit a `plan` status update, not a routine handoff message.\n\nPrimary path (use this unless truly blocked):\n```json\n{{\n  \"action\": \"plan\",\n  \"op\": \"set_task_status\",\n  \"task_id\": \"<active_task_id>\",\n  \"status\": \"done\" | \"in_progress\",\n  \"rationale\": \"Evidence-based completion/progress summary.\"\n}}\n```\n\nOnly if blocked/unresolvable, emit one `message` blocker:\n```json\n{{\n  \"action\": \"message\",\n  \"from\": \"executor\",\n  \"to\": \"planner\",\n  \"type\": \"blocker\",\n  \"status\": \"blocked\",\n  \"observation\": \"Progress is blocked by a concrete failure.\",\n  \"rationale\": \"Planner must resolve the blocker before more executor actions.\",\n  \"payload\": {{\n    \"summary\": \"Executor is blocked.\",\n    \"blocker\": \"Root cause\",\n    \"evidence\": \"Exact error text or failed command\",\n    \"required_action\": \"What planner should do next\"\n  }}\n}}\n```"
     )
 }
 
@@ -7775,13 +7775,13 @@ mod tests {
     }
 
     #[test]
-    fn executor_step_limit_feedback_includes_message_schema_and_examples() {
+    fn executor_step_limit_feedback_prefers_plan_status_update() {
         let feedback = executor_step_limit_feedback();
-        assert!(feedback.contains("\"action\": \"message\""));
-        assert!(feedback.contains("\"type\": \"handoff\" | \"blocker\""));
-        assert!(feedback.contains("\"status\": \"complete\" | \"blocked\""));
-        assert!(feedback.contains("Example complete handoff"));
-        assert!(feedback.contains("Example blocker"));
+        assert!(feedback.contains("\"action\": \"plan\""));
+        assert!(feedback.contains("\"op\": \"set_task_status\""));
+        assert!(feedback.contains("\"status\": \"done\" | \"in_progress\""));
+        assert!(feedback.contains("Only if blocked/unresolvable"));
+        assert!(feedback.contains("\"type\": \"blocker\""));
         assert!(feedback.contains("\"required_action\": \"What planner should do next\""));
     }
 
