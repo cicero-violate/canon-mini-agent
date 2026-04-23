@@ -619,6 +619,54 @@ fn livelock_pending_state(planner_pending: bool, diagnostics_pending: bool) -> V
     })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PlannerActionResultClass {
+    ReadyHandoff,
+    BlockedHandoff,
+    CompleteHandoff,
+    StayPlanner,
+}
+
+fn classify_planner_action_result_class(completion: &AgentCompletion) -> PlannerActionResultClass {
+    if let AgentCompletion::Summary(summary) = completion {
+        let text = summary.to_ascii_lowercase();
+        if text.contains("ready task") && text.contains("dispatched") {
+            return PlannerActionResultClass::ReadyHandoff;
+        }
+        return PlannerActionResultClass::StayPlanner;
+    }
+    let AgentCompletion::MessageAction { action, .. } = completion else {
+        return PlannerActionResultClass::StayPlanner;
+    };
+    let status = action
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let to_role = action
+        .get("to")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if status == "blocked" {
+        return PlannerActionResultClass::BlockedHandoff;
+    }
+    if to_role == "executor" && status == "ready" {
+        return PlannerActionResultClass::ReadyHandoff;
+    }
+    if to_role == "executor" && status == "complete" {
+        return PlannerActionResultClass::CompleteHandoff;
+    }
+    PlannerActionResultClass::StayPlanner
+}
+
+fn planner_completion_allows_executor_dispatch(completion: &AgentCompletion) -> bool {
+    matches!(
+        classify_planner_action_result_class(completion),
+        PlannerActionResultClass::ReadyHandoff | PlannerActionResultClass::CompleteHandoff
+    )
+}
+
 async fn run_planner_phase(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
@@ -747,6 +795,13 @@ async fn run_planner_phase(
             writer.apply(ControlEvent::LastPlanTextSet {
                 text: inputs.plan_text,
             });
+
+            let allow_executor_dispatch = planner_completion_allows_executor_dispatch(&result);
+            if !allow_executor_dispatch {
+                writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+                apply_scheduled_phase_if_changed(writer, Some("planner"));
+                return true;
+            }
 
             // Semantic preflight: demote ready tasks that reference symbols not
             // found in the workspace graph.
@@ -7273,11 +7328,12 @@ pub async fn run() -> Result<()> {
 mod tests {
     use super::{
         action_retry_fingerprint, canonical_recorded_message_from_tlog, collect_wake_signal_inputs,
-        ensure_workspace_artifact_baseline, executor_step_limit_feedback,
+        classify_planner_action_result_class, ensure_workspace_artifact_baseline,
+        executor_step_limit_feedback,
         has_actionable_objectives, inbound_message_from_user, invariant_id_from_reason,
         is_chromium_transport_error, lane_has_stale_executor_claim,
         local_transport_blocker_message, plan_has_incomplete_tasks, route_gate_blocker_message,
-        should_reject_solo_self_complete,
+        planner_completion_allows_executor_dispatch, should_reject_solo_self_complete,
         RecordedMessageKind,
         take_external_user_message_without_writer, take_inbound_message_without_writer,
         verifier_confirmed_with_plan_text, ActionProvenance,
@@ -7953,6 +8009,52 @@ mod tests {
         assert_eq!(state.lane_next_submit_ms(7), 42);
         assert_eq!(state.lane_steps_used_count(7), 3);
         assert_eq!(state.lane_active_tab_id(7), Some(99));
+    }
+
+    #[test]
+    fn planner_message_ready_to_executor_allows_dispatch() {
+        let completion = super::AgentCompletion::MessageAction {
+            action: json!({
+                "action": "message",
+                "to": "executor",
+                "status": "ready"
+            }),
+            summary: "ok".to_string(),
+        };
+        assert!(planner_completion_allows_executor_dispatch(&completion));
+        assert_eq!(
+            classify_planner_action_result_class(&completion),
+            super::PlannerActionResultClass::ReadyHandoff
+        );
+    }
+
+    #[test]
+    fn planner_message_blocked_keeps_planner_phase() {
+        let completion = super::AgentCompletion::MessageAction {
+            action: json!({
+                "action": "message",
+                "to": "executor",
+                "status": "blocked"
+            }),
+            summary: "blocked".to_string(),
+        };
+        assert!(!planner_completion_allows_executor_dispatch(&completion));
+        assert_eq!(
+            classify_planner_action_result_class(&completion),
+            super::PlannerActionResultClass::BlockedHandoff
+        );
+    }
+
+    #[test]
+    fn planner_summary_ready_task_dispatch_allows_executor() {
+        let completion = super::AgentCompletion::Summary(
+            "plan ok — ready task `task_1` dispatched\nplan_path: agent_state/PLAN.json".to_string(),
+        );
+        assert!(planner_completion_allows_executor_dispatch(&completion));
+        assert_eq!(
+            classify_planner_action_result_class(&completion),
+            super::PlannerActionResultClass::ReadyHandoff
+        );
     }
 
     #[test]
