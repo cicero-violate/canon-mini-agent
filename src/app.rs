@@ -2056,9 +2056,14 @@ fn handle_completed_continuation(
                 in_flight: false,
             });
             match completion {
-                AgentCompletion::MessageAction { action, .. } => {
+                AgentCompletion::MessageAction { action, summary } => {
                     finalize_executor_message_completion(writer, submitted.lane);
-                    persist_executor_completion_message(writer, &action);
+                    apply_control_from_executor_action_result(
+                        writer,
+                        submitted.lane,
+                        &action,
+                        &summary,
+                    );
                 }
                 AgentCompletion::Summary(final_exec_result) => {
                     finalize_executor_summary_without_verifier(
@@ -2108,7 +2113,7 @@ fn finalize_executor_summary_without_verifier(
         }
     });
     finalize_executor_message_completion(writer, submitted.lane);
-    persist_executor_completion_message(writer, &action);
+    apply_control_from_executor_action_result(writer, submitted.lane, &action, final_exec_result);
 }
 
 fn recover_failed_continuation(
@@ -5653,7 +5658,7 @@ fn handle_executor_completion_message_action(
         exec_result,
     );
     finalize_executor_message_completion(writer, submitted.lane);
-    persist_executor_completion_message(writer, &action);
+    apply_control_from_executor_action_result(writer, submitted.lane, &action, exec_result);
     true
 }
 
@@ -5671,6 +5676,123 @@ fn finalize_executor_message_completion(writer: &mut CanonicalWriter, lane_id: u
         lane_id,
         pending: false,
     });
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExecutorActionResultClass {
+    ReadyHandoff,
+    BlockedHandoff,
+    CompleteHandoff,
+    ToolFailPlanning,
+    ToolFailRecoverable,
+    ToolOk,
+}
+
+fn exec_result_has_cargo_check_failure(exec_result: &str) -> bool {
+    let text = exec_result.to_ascii_lowercase();
+    text.contains("cargo check failed")
+        || text.contains("error: could not compile")
+        || (text.contains("cargo check") && text.contains("error["))
+}
+
+fn classify_executor_action_result_class(
+    action: &Value,
+    exec_result: &str,
+) -> ExecutorActionResultClass {
+    let status = action
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if status == "blocked" {
+        return ExecutorActionResultClass::BlockedHandoff;
+    }
+    let action_kind = action
+        .get("action")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    if action_kind == "message" {
+        if exec_result_has_cargo_check_failure(exec_result) {
+            return ExecutorActionResultClass::ToolFailPlanning;
+        }
+        if status == "ready" {
+            return ExecutorActionResultClass::ReadyHandoff;
+        }
+        if status == "complete" {
+            return ExecutorActionResultClass::CompleteHandoff;
+        }
+        return ExecutorActionResultClass::ToolOk;
+    }
+
+    let class = crate::error_class::classify_result(action_kind, exec_result, false);
+    use crate::error_class::ErrorClass;
+    match class {
+        ErrorClass::MissingTarget
+        | ErrorClass::InvalidSchema
+        | ErrorClass::PlanPreflightFailed
+        | ErrorClass::CompileError
+        | ErrorClass::VerificationFailed
+        | ErrorClass::UnauthorizedPlanOp
+        | ErrorClass::InvalidRoute => ExecutorActionResultClass::ToolFailPlanning,
+        ErrorClass::LlmTimeout | ErrorClass::ReactionOnly => {
+            ExecutorActionResultClass::ToolFailRecoverable
+        }
+        _ => ExecutorActionResultClass::ToolOk,
+    }
+}
+
+fn synthesize_executor_blocker_handoff(action: &Value, exec_result: &str) -> Value {
+    let action_kind = action
+        .get("action")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    json!({
+        "action": "message",
+        "from": "executor",
+        "to": "planner",
+        "type": "blocker",
+        "status": "blocked",
+        "observation": "Executor produced a non-recoverable result class; planner repair is required before the next execute phase.",
+        "rationale": "Control transitions must be derived from canonical result classes, and planning-class failures are routed to planner.",
+        "payload": {
+            "summary": format!("Executor {} failed and needs planner repair", action_kind),
+            "blocker": "Executor action result mapped to planning failure class",
+            "error_class": crate::error_class::classify_result(action_kind, exec_result, false).as_key(),
+            "evidence": truncate(exec_result, 2000)
+        }
+    })
+}
+
+fn apply_control_from_executor_action_result(
+    writer: &mut CanonicalWriter,
+    lane_id: usize,
+    action: &Value,
+    exec_result: &str,
+) {
+    match classify_executor_action_result_class(action, exec_result) {
+        ExecutorActionResultClass::BlockedHandoff => {
+            persist_planner_message(writer, action);
+            writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+            writer.apply(ControlEvent::ScheduledPhaseSet { phase: None });
+        }
+        ExecutorActionResultClass::ToolFailPlanning => {
+            let blocker = synthesize_executor_blocker_handoff(action, exec_result);
+            persist_planner_message(writer, &blocker);
+            writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+            writer.apply(ControlEvent::ScheduledPhaseSet { phase: None });
+        }
+        ExecutorActionResultClass::ToolFailRecoverable => {
+            writer.apply(ControlEvent::LanePendingSet {
+                lane_id,
+                pending: true,
+            });
+        }
+        ExecutorActionResultClass::ReadyHandoff
+        | ExecutorActionResultClass::CompleteHandoff
+        | ExecutorActionResultClass::ToolOk => {
+            persist_executor_completion_message(writer, action);
+        }
+    }
 }
 
 fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Value) {
