@@ -6561,9 +6561,24 @@ pub async fn run() -> Result<()> {
                     pending: resume_decision.diagnostics_pending,
                 });
             }
-            writer.try_record_effect(crate::events::EffectEvent::CheckpointLoaded {
+            if let Err(err) = writer.try_record_effect(crate::events::EffectEvent::CheckpointLoaded {
                 phase: state.phase.clone(),
-            })?;
+            }) {
+                eprintln!(
+                    "[orchestrate] non-fatal: failed to record checkpoint_loaded effect: {err:#}"
+                );
+                log_error_event(
+                    "orchestrate",
+                    "checkpoint_loaded_effect_append",
+                    None,
+                    &format!(
+                        "non-fatal checkpoint_loaded effect append failure (continuing): {err:#}"
+                    ),
+                    Some(json!({
+                        "phase": state.phase.clone(),
+                    })),
+                );
+            }
             // On resume, DO NOT clear executor_submit_inflight.
             // Clearing inflight state while preserving active tabs and submitted_turns
             // causes valid submit_ack events to lose their pending context, triggering

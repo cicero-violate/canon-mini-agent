@@ -31,26 +31,101 @@ struct TlogAppendLock {
 }
 
 impl TlogAppendLock {
+    const LOCK_TIMEOUT: Duration = Duration::from_secs(5);
+    const OWNERLESS_LOCK_RECLAIM_AGE: Duration = Duration::from_secs(2);
+
     fn lock_path_for(tlog_path: &Path) -> PathBuf {
         PathBuf::from(format!("{}.lock", tlog_path.display()))
+    }
+
+    fn lock_owner_pid(lock_path: &Path) -> Option<u32> {
+        let raw = std::fs::read_to_string(lock_path).ok()?;
+        raw.trim().parse::<u32>().ok()
+    }
+
+    fn process_is_alive(pid: u32) -> Option<bool> {
+        if !Path::new("/proc").exists() {
+            return None;
+        }
+        Some(PathBuf::from(format!("/proc/{pid}")).exists())
+    }
+
+    fn reclaim_lock_file(lock_path: &Path) -> bool {
+        match std::fs::remove_file(lock_path) {
+            Ok(()) => true,
+            Err(err) if err.kind() == ErrorKind::NotFound => true,
+            Err(_) => false,
+        }
+    }
+
+    fn stale_ownerless_lock(lock_path: &Path) -> bool {
+        let Ok(meta) = std::fs::metadata(lock_path) else {
+            return false;
+        };
+        let Ok(modified) = meta.modified() else {
+            return false;
+        };
+        modified.elapsed().unwrap_or_default() >= Self::OWNERLESS_LOCK_RECLAIM_AGE
+    }
+
+    fn try_reclaim_stale_lock(lock_path: &Path) -> bool {
+        if let Some(owner_pid) = Self::lock_owner_pid(lock_path) {
+            if owner_pid == std::process::id() {
+                return false;
+            }
+            if matches!(Self::process_is_alive(owner_pid), Some(false)) {
+                return Self::reclaim_lock_file(lock_path);
+            }
+            return false;
+        }
+        if Self::stale_ownerless_lock(lock_path) {
+            return Self::reclaim_lock_file(lock_path);
+        }
+        false
+    }
+
+    fn lock_owner_label(lock_path: &Path) -> String {
+        match Self::lock_owner_pid(lock_path) {
+            Some(pid) => match Self::process_is_alive(pid) {
+                Some(true) => format!("pid={pid} (alive)"),
+                Some(false) => format!("pid={pid} (dead)"),
+                None => format!("pid={pid} (liveness=unknown)"),
+            },
+            None => "pid=unknown".to_string(),
+        }
+    }
+
+    fn write_owner_metadata(file: &mut std::fs::File) -> Result<()> {
+        writeln!(file, "{}", std::process::id())?;
+        file.flush()?;
+        Ok(())
     }
 
     fn acquire(tlog_path: &Path) -> Result<Self> {
         let lock_path = Self::lock_path_for(tlog_path);
         let start = Instant::now();
-        let timeout = Duration::from_secs(5);
         loop {
             match OpenOptions::new()
                 .create_new(true)
                 .write(true)
                 .open(&lock_path)
             {
-                Ok(_) => return Ok(Self { lock_path }),
+                Ok(mut file) => {
+                    if let Err(err) = Self::write_owner_metadata(&mut file) {
+                        let _ = Self::reclaim_lock_file(&lock_path);
+                        return Err(err);
+                    }
+                    return Ok(Self { lock_path });
+                }
                 Err(err) if err.kind() == ErrorKind::AlreadyExists => {
-                    if start.elapsed() >= timeout {
+                    if Self::try_reclaim_stale_lock(&lock_path) {
+                        continue;
+                    }
+                    if start.elapsed() >= Self::LOCK_TIMEOUT {
+                        let owner = Self::lock_owner_label(&lock_path);
                         return Err(anyhow::anyhow!(
-                            "timed out waiting for tlog append lock {}",
-                            lock_path.display()
+                            "timed out waiting for tlog append lock {} ({owner})",
+                            lock_path.display(),
                         ));
                     }
                     std::thread::sleep(Duration::from_millis(2));
@@ -319,5 +394,24 @@ mod tests {
         .expect("planner pending event present");
 
         assert!(!latest);
+    }
+
+    #[test]
+    fn append_reclaims_stale_lock_from_dead_pid() {
+        if !Path::new("/proc").exists() {
+            return;
+        }
+
+        let dir = TestDir::new();
+        let path = dir.path().join("tlog.ndjson");
+        let lock_path = PathBuf::from(format!("{}.lock", path.display()));
+        std::fs::write(&lock_path, "999999\n").expect("seed stale lock");
+
+        let mut tlog = Tlog::open(&path);
+        tlog.append(&planner_pending_event(true))
+            .expect("append reclaims stale lock");
+
+        let records = Tlog::read_records(&path).expect("read records");
+        assert_eq!(records.len(), 1);
     }
 }
