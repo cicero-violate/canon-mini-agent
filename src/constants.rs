@@ -127,8 +127,8 @@ pub const ENDPOINT_SPECS: &[EndpointSpec] = &[
         role: "mini_planner",
         role_markdown: "builtin:planner",
         urls: &[
-            "https://chatgpt.com/g/g-p-69d5aab6319c8191abe0e3298935c109-canon-mini-agent/project",
-            // "https://chatgpt.com/gg/69e927d762c481a3a2ae6038794f2a3a",
+            // "https://chatgpt.com/g/g-p-69d5aab6319c8191abe0e3298935c109-canon-mini-agent/project",
+            "https://chatgpt.com/gg/69e927d762c481a3a2ae6038794f2a3a",
             // "https://chatgpt.com/gg/69e2b1e67f188192a9ca08c2036a06ed",
             // "https://chatgpt.com/gg/69d9549305a881a2a3faaff764e2d106",
             // "https://chatgpt.com/",
@@ -144,10 +144,10 @@ pub const ENDPOINT_SPECS: &[EndpointSpec] = &[
         role: "executor",
         role_markdown: "builtin:planner",
         urls: &[
-            "https://chatgpt.com/g/g-p-69d5aab6319c8191abe0e3298935c109-canon-mini-agent/project",
+            // "https://chatgpt.com/g/g-p-69d5aab6319c8191abe0e3298935c109-canon-mini-agent/project",
             // "https://chatgpt.com/gg/69e2b1e67f188192a9ca08c2036a06ed",
             // "https://chatgpt.com/gg/69e927d762c481a3a2ae6038794f2a3a",
-            // "https://chatgpt.com/gg/69d9549305a881a2a3faaff764e2d106",
+            "https://chatgpt.com/gg/69d9549305a881a2a3faaff764e2d106",
             // "https://chatgpt.com/",
             // "https://chatgpt.com/gg/69d126d34dc4819d8de9cba1b209d14c",
             // "https://chatgpt.com/gg/69ab7b06a5a88196bf33966df6feee02",
@@ -173,11 +173,6 @@ pub fn planner_projection_file() -> &'static str {
         .get()
         .map(String::as_str)
         .unwrap_or("agent_state/default/planner-default.json")
-}
-
-// Compatibility shims for legacy diagnostics naming.
-pub fn diagnostics_file_for_instance(instance_id: &str) -> String {
-    planner_projection_file_for_instance(instance_id)
 }
 
 pub fn diagnostics_file() -> &'static str {
