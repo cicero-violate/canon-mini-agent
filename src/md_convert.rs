@@ -460,6 +460,10 @@ fn contains_any(text: &str, needles: &[&str]) -> bool {
 
 fn categorize_objective(title: &str) -> ObjectiveCategory {
     let t = title.to_lowercase();
+    categorize_objective_text(&t)
+}
+
+fn categorize_objective_text(t: &str) -> ObjectiveCategory {
     if t.contains("eventbus") {
         ObjectiveCategory::EventBusIntegrity
     } else if t.contains("hook") {
