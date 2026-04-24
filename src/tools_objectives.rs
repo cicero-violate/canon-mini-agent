@@ -67,6 +67,24 @@ fn objective_operation_context_payload(
 ) -> serde_json::Value {
     let (requested_raw, requested_id) = objective_requested_context(requested);
     let (compared_ids, compared_normalized_ids) = objective_compared_context(objectives);
+    objective_operation_context_json(
+        op,
+        outcome,
+        requested_raw,
+        requested_id,
+        compared_ids,
+        compared_normalized_ids,
+    )
+}
+
+fn objective_operation_context_json(
+    op: &str,
+    outcome: &str,
+    requested_raw: Option<String>,
+    requested_id: Option<String>,
+    compared_ids: Vec<String>,
+    compared_normalized_ids: Vec<String>,
+) -> serde_json::Value {
     json!({
         "operation": op,
         "outcome": outcome,
