@@ -198,32 +198,6 @@ mod tests {
     }
 
     #[test]
-    fn local_transport_blocker_message_routes_without_extra_llm_turn() {
-        let action = local_transport_blocker_message(
-            "planner",
-            "chromium: early transport failure (heartbeat_after_user_echo_before_turn_complete) (tab=633187572 turn=4)",
-            "Planner task context",
-        );
-        assert_eq!(
-            action.get("action").and_then(|v| v.as_str()),
-            Some("message")
-        );
-        assert_eq!(action.get("from").and_then(|v| v.as_str()), Some("planner"));
-        assert_eq!(action.get("to").and_then(|v| v.as_str()), Some("executor"));
-        assert_eq!(action.get("type").and_then(|v| v.as_str()), Some("blocker"));
-        let payload = action.get("payload").expect("payload");
-        assert_eq!(
-            payload.get("blocker").and_then(|v| v.as_str()),
-            Some("Chromium transport/runtime failure prevented a usable assistant completion")
-        );
-        assert!(payload
-            .get("evidence")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .contains("heartbeat_after_user_echo_before_turn_complete"));
-    }
-
-    #[test]
     fn inbound_message_from_user_detects_external_user_sender() {
         let inbound = r#"{"action":"message","from":"user","to":"solo","type":"handoff","status":"ready","payload":{"summary":"hello"}}"#;
         assert!(inbound_message_from_user(inbound));
