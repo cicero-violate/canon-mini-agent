@@ -691,8 +691,27 @@ impl EffectPresence {
     }
 }
 
-fn infer_forbidden(intent: &str, effects: &[String]) -> Vec<String> {
+fn fallback_forbidden_effects(effects: &[String]) -> Vec<String> {
     let p = EffectPresence::from_effects(effects);
+    let mut out = Vec::new();
+    if !p.write {
+        out.push("fs_write".to_string());
+        out.push("state_write".to_string());
+    }
+    if !p.network {
+        out.push("uses_network".to_string());
+    }
+    if !p.process {
+        out.push("spawns_process".to_string());
+    }
+    if out.is_empty() {
+        vec!["default_overwrite".to_string()]
+    } else {
+        out
+    }
+}
+
+fn infer_forbidden(intent: &str, effects: &[String]) -> Vec<String> {
     match intent {
         "canonical_read" => vec!["fs_write".to_string(), "default_overwrite".to_string()],
         "canonical_write" => vec!["default_overwrite".to_string()],
@@ -705,24 +724,7 @@ fn infer_forbidden(intent: &str, effects: &[String]) -> Vec<String> {
             "spawns_process".to_string(),
         ],
         "transport_effect" => vec!["default_overwrite".to_string()],
-        _ => {
-            let mut out = Vec::new();
-            if !p.write {
-                out.push("fs_write".to_string());
-                out.push("state_write".to_string());
-            }
-            if !p.network {
-                out.push("uses_network".to_string());
-            }
-            if !p.process {
-                out.push("spawns_process".to_string());
-            }
-            if out.is_empty() {
-                vec!["default_overwrite".to_string()]
-            } else {
-                out
-            }
-        }
+        _ => fallback_forbidden_effects(effects),
     }
 }
 
