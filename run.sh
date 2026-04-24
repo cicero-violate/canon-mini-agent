@@ -1,6 +1,7 @@
 rm -rf /mnt/data/canon-mini-agent-extracted/canon-mini-agent/agent_state/* && cargo run -p canon-mini-agent --bin canon-mini-supervisor -- --workspace /workspace/ai_sandbox/canon-mini-agent --orchestrate --start 2>&1 | tee /mnt/data/canon-mini-agent-extracted/ai_sandbox/canon-mini-agent/agent_state/canon-mini-agent-logs.log
 
-cargo run -p canon-mini-agent --bin canon-mini-supervisor -- --workspace /workspace/ai_sandbox/canon-mini-agent --orchestrate --start 2>&1 | tee /mnt/data/canon-mini-agent-extracted/ai_sandbox/canon-mini-agent/agent_state/canon-mini-agent-logs.log
+cargo run -p canon-mini-agent --bin canon-mini-supervisor -- --workspace /workspace/ai_sandbox/canon-mini-agent --orchestrate --start 2>&1 | tee /mnt/data/canon-mini-agent-extracted/canon-mini-agent/agent_state/canon-mini-agent-logs.log
+
 
 cargo run -p canon-mini-agent --bin canon-mini-supervisor \
 -- --workspace /workspace/ai_sandbox/canon-mini-agent \
