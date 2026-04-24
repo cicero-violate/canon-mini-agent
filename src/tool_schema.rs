@@ -53,6 +53,7 @@ pub enum PredictedActionName {
     SymbolNeighborhood,
     Batch,
     Lessons,
+    Invariants,
     Violation,
 }
 
@@ -451,6 +452,8 @@ pub enum BatchableActionName {
     Objectives,
     /// Only `read` op is accepted at runtime.
     Issue,
+    /// Only `read` op is accepted at runtime.
+    Invariants,
 }
 
 /// A single sub-action inside a `batch`. Carries the same fields as the
