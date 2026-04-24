@@ -160,9 +160,13 @@ fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let workspace = workspace_from_args(&args)?;
     canon_mini_agent::set_workspace(workspace.display().to_string());
-    if let Some(result) = run_selected_mode(&args, &workspace) {
+    run_selected_mode_or_refresh(&args, &workspace)
+}
+
+fn run_selected_mode_or_refresh(args: &[String], workspace: &PathBuf) -> Result<()> {
+    if let Some(result) = run_selected_mode(args, workspace) {
         result
     } else {
-        canon_mini_agent::complexity::refresh_issue_artifacts(&workspace)
+        canon_mini_agent::complexity::refresh_issue_artifacts(workspace)
     }
 }
