@@ -1198,13 +1198,7 @@ pub fn dark_assignment_issues(
         return Vec::new();
     };
     let mut out = Vec::new();
-    let mut candidates: Vec<&SymbolSummary> = summaries
-        .iter()
-        .filter(|s| s.kind == "fn")
-        .filter(|s| s.mir_stmts.unwrap_or(0) > 4)
-        .collect();
-    candidates.sort_by_key(|s| std::cmp::Reverse(s.mir_stmts.unwrap_or(0)));
-    candidates.truncate(DARK_ASSIGNMENT_SYMBOL_BUDGET);
+    let candidates = dark_assignment_candidates(summaries, DARK_ASSIGNMENT_SYMBOL_BUDGET);
     for s in candidates {
         if out.len() >= limit {
             break;
@@ -1299,6 +1293,20 @@ pub fn dark_assignment_issues(
     }
     out.sort_by(|a, b| a.id.cmp(&b.id));
     out
+}
+
+fn dark_assignment_candidates(
+    summaries: &[SymbolSummary],
+    budget: usize,
+) -> Vec<&SymbolSummary> {
+    let mut candidates: Vec<&SymbolSummary> = summaries
+        .iter()
+        .filter(|s| s.kind == "fn")
+        .filter(|s| s.mir_stmts.unwrap_or(0) > 4)
+        .collect();
+    candidates.sort_by_key(|s| std::cmp::Reverse(s.mir_stmts.unwrap_or(0)));
+    candidates.truncate(budget);
+    candidates
 }
 
 /// Intent: diagnostic_scan
