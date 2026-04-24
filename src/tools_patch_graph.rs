@@ -297,11 +297,7 @@ fn derived_artifact_cache_complete(workspace: &Path) -> bool {
 }
 
 fn graph_content_fingerprint(path: &Path) -> Result<String> {
-    let bytes = fs::read(path)
-        .with_context(|| format!("read graph fingerprint input {}", path.display()))?;
-    let mut hasher = DefaultHasher::new();
-    bytes.hash(&mut hasher);
-    Ok(format!("len={} hash={:016x}", bytes.len(), hasher.finish()))
+    crate::semantic_contract::graph_content_fingerprint(path)
 }
 
 fn read_graph_refresh_fingerprint(workspace: &Path) -> Option<String> {

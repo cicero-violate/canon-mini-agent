@@ -1,3 +1,6 @@
+use anyhow::Context;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Default)]
@@ -52,6 +55,14 @@ pub fn graph_path(workspace: &Path) -> PathBuf {
         .join("rustc")
         .join("canon_mini_agent")
         .join("graph.json")
+}
+
+pub fn graph_content_fingerprint(path: &Path) -> anyhow::Result<String> {
+    let bytes = std::fs::read(path)
+        .with_context(|| format!("read graph fingerprint input {}", path.display()))?;
+    let mut hasher = DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    Ok(format!("len={} hash={:016x}", bytes.len(), hasher.finish()))
 }
 
 pub fn rank_out_path(workspace: &Path) -> PathBuf {
