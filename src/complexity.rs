@@ -1152,6 +1152,17 @@ fn complexity_entry_json(
 ) -> serde_json::Value {
     let file = complexity_entry_file(s);
     let identity = complexity_entry_identity(s, file);
+    complexity_entry_value(identity, s.is_directly_recursive, blocks, stmts, branch_score, proxy)
+}
+
+fn complexity_entry_value(
+    identity: ComplexityEntryIdentity,
+    is_directly_recursive: bool,
+    blocks: usize,
+    stmts: usize,
+    branch_score: Option<f64>,
+    proxy: f64,
+) -> serde_json::Value {
     json!({
         "symbol": identity.symbol,
         "file": identity.file,
@@ -1160,7 +1171,7 @@ fn complexity_entry_json(
         "mir_blocks": blocks,
         "mir_stmts": stmts,
         "branch_score": branch_score,
-        "is_directly_recursive": s.is_directly_recursive,
+        "is_directly_recursive": is_directly_recursive,
         "complexity_proxy": proxy,
     })
 }
