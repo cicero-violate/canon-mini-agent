@@ -1323,6 +1323,17 @@ fn action_requires_question(action: &Value) -> bool {
     }
 }
 
+fn normalize_plan_alias_fields(
+    obj: &mut serde_json::Map<String, Value>,
+    normalized_op: &str,
+) {
+    for field in ["op", "operation"] {
+        if obj.get(field).is_some() {
+            obj.insert(field.to_string(), Value::String(normalized_op.to_string()));
+        }
+    }
+}
+
 /// Intent: pure_transform
 /// Resource: error
 /// Inputs: &serde_json::Value
@@ -1347,15 +1358,7 @@ fn normalize_action_aliases_for_validation(action: &Value) -> Value {
     let Some(normalized_op) = op.and_then(normalize_plan_op_alias) else {
         return normalized;
     };
-    if obj.get("op").is_some() {
-        obj.insert("op".to_string(), Value::String(normalized_op.to_string()));
-    }
-    if obj.get("operation").is_some() {
-        obj.insert(
-            "operation".to_string(),
-            Value::String(normalized_op.to_string()),
-        );
-    }
+    normalize_plan_alias_fields(obj, normalized_op);
     normalized
 }
 
