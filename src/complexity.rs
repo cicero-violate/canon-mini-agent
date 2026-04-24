@@ -1123,9 +1123,10 @@ fn complexity_entry_json(
     branch_score: Option<f64>,
     proxy: f64,
 ) -> serde_json::Value {
+    let file = complexity_entry_file(s);
     json!({
         "symbol": s.symbol,
-        "file": shorten_display_path(&s.file),
+        "file": file,
         "line": s.line,
         "mir_fingerprint": s.mir_fingerprint,
         "mir_blocks": blocks,
@@ -1134,6 +1135,10 @@ fn complexity_entry_json(
         "is_directly_recursive": s.is_directly_recursive,
         "complexity_proxy": proxy,
     })
+}
+
+fn complexity_entry_file(s: &crate::semantic::SymbolSummary) -> String {
+    shorten_display_path(&s.file)
 }
 
 fn complexity_proxy(branch_score: Option<f64>, blocks: usize) -> f64 {

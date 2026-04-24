@@ -157,96 +157,91 @@ struct DocContract {
 
 fn parse_signature(signature: Option<&str>) -> (Vec<String>, Vec<String>) {
     let Some(sig) = signature.map(str::trim) else {
-        return (vec![MISSING.to_string()], vec![MISSING.to_string()]);
+        return missing_signature();
     };
     let Some(rest) = sig.strip_prefix("fn(") else {
-        return (vec![MISSING.to_string()], vec![MISSING.to_string()]);
+        return missing_signature();
     };
     let Some(close_idx) = rest.find(')') else {
-        return (vec![MISSING.to_string()], vec![MISSING.to_string()]);
+        return missing_signature();
     };
-    let input_src = rest[..close_idx].trim();
-    let inputs = if input_src.is_empty() {
-        vec!["()".to_string()]
-    } else {
-        input_src
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect::<Vec<_>>()
-    };
-    let tail = rest[close_idx + 1..].trim();
-    let outputs = if let Some(out) = tail.strip_prefix("->") {
-        let out = out.trim();
-        if out.is_empty() {
-            vec![MISSING.to_string()]
-        } else {
-            vec![out.to_string()]
-        }
-    } else {
-        vec!["()".to_string()]
-    };
-    (inputs, outputs)
+    parse_signature_parts(&rest[..close_idx], &rest[close_idx + 1..])
 }
 
 fn parse_source_decl_signature(decl: Option<&str>) -> (Vec<String>, Vec<String>) {
     let Some(decl) = decl.map(str::trim) else {
-        return (vec![MISSING.to_string()], vec![MISSING.to_string()]);
+        return missing_signature();
     };
     let Some(fn_idx) = decl.find("fn ") else {
-        return (vec![MISSING.to_string()], vec![MISSING.to_string()]);
+        return missing_signature();
     };
     let Some(open_rel) = decl[fn_idx..].find('(') else {
-        return (vec![MISSING.to_string()], vec![MISSING.to_string()]);
+        return missing_signature();
     };
     let open_idx = fn_idx + open_rel;
+    let Some(close_idx) = find_matching_paren(decl, open_idx) else {
+        return missing_signature();
+    };
+    parse_signature_parts(&decl[open_idx + 1..close_idx], clean_decl_tail(&decl[close_idx + 1..]))
+}
+
+fn missing_signature() -> (Vec<String>, Vec<String>) {
+    (vec![MISSING.to_string()], vec![MISSING.to_string()])
+}
+
+fn unit_signature_part() -> Vec<String> {
+    vec!["()".to_string()]
+}
+
+fn parse_signature_parts(input_src: &str, tail: &str) -> (Vec<String>, Vec<String>) {
+    (parse_signature_inputs(input_src), parse_signature_outputs(tail))
+}
+
+fn parse_signature_inputs(input_src: &str) -> Vec<String> {
+    let input_src = input_src.trim();
+    if input_src.is_empty() {
+        return unit_signature_part();
+    }
+    split_csv(input_src)
+}
+
+fn parse_signature_outputs(tail: &str) -> Vec<String> {
+    let Some(out) = tail.trim().strip_prefix("->") else {
+        return unit_signature_part();
+    };
+    let out = out.trim();
+    if out.is_empty() {
+        vec![MISSING.to_string()]
+    } else {
+        vec![out.to_string()]
+    }
+}
+
+fn clean_decl_tail(tail: &str) -> &str {
+    tail.split(['{', ';'])
+        .next()
+        .unwrap_or("")
+        .split(" where ")
+        .next()
+        .unwrap_or("")
+        .trim()
+}
+
+fn find_matching_paren(src: &str, open_idx: usize) -> Option<usize> {
     let mut depth = 0i32;
-    let mut close_idx = None;
-    for (idx, ch) in decl[open_idx..].char_indices() {
+    for (idx, ch) in src[open_idx..].char_indices() {
         match ch {
             '(' => depth += 1,
             ')' => {
                 depth -= 1;
                 if depth == 0 {
-                    close_idx = Some(open_idx + idx);
-                    break;
+                    return Some(open_idx + idx);
                 }
             }
             _ => {}
         }
     }
-    let Some(close_idx) = close_idx else {
-        return (vec![MISSING.to_string()], vec![MISSING.to_string()]);
-    };
-    let input_src = decl[open_idx + 1..close_idx].trim();
-    let inputs = if input_src.is_empty() {
-        vec!["()".to_string()]
-    } else {
-        input_src
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect::<Vec<_>>()
-    };
-    let tail = decl[close_idx + 1..].trim();
-    let outputs = if let Some(out) = tail.strip_prefix("->") {
-        let out = out
-            .split(['{', ';'])
-            .next()
-            .unwrap_or("")
-            .split(" where ")
-            .next()
-            .unwrap_or("")
-            .trim();
-        if out.is_empty() {
-            vec![MISSING.to_string()]
-        } else {
-            vec![out.to_string()]
-        }
-    } else {
-        vec!["()".to_string()]
-    };
-    (inputs, outputs)
+    None
 }
 
 fn parse_doc_contract(lines: &[String]) -> DocContract {
@@ -376,34 +371,44 @@ fn normalize_provenance_label(p: &str) -> String {
     }
 }
 
+fn contains_any(haystack: &str, needles: &[&str]) -> bool {
+    needles.iter().any(|needle| haystack.contains(needle))
+}
+
+fn effects_contain_any(effects: &[String], labels: &[&str]) -> bool {
+    effects.iter().any(|effect| labels.contains(&effect.as_str()))
+}
+
 fn infer_effects_from_calls(calls: &[String]) -> Vec<String> {
     let mut out = BTreeSet::new();
     for call in calls {
         let c = call.to_ascii_lowercase();
-        if c.contains("::fs::read")
-            || c.contains("::read_to_string")
-            || c.contains("::file::open")
-            || c.contains("::read_dir")
-            || c.contains("load_")
-        {
+        if contains_any(
+            &c,
+            &["::fs::read", "::read_to_string", "::file::open", "::read_dir", "load_"],
+        ) {
             out.insert("fs_read".to_string());
         }
-        if c.contains("::fs::write")
-            || c.contains("::write_all")
-            || c.contains("::file::create")
-            || c.contains("::openoptions")
-            || c.contains("save_")
-            || c.contains("persist_")
-        {
+        if contains_any(
+            &c,
+            &[
+                "::fs::write",
+                "::write_all",
+                "::file::create",
+                "::openoptions",
+                "save_",
+                "persist_",
+            ],
+        ) {
             out.insert("fs_write".to_string());
         }
-        if c.contains("log::") || c.contains("tracing::") || c.contains("eprintln!") {
+        if contains_any(&c, &["log::", "tracing::", "eprintln!"]) {
             out.insert("logging".to_string());
         }
-        if c.contains("command::new") || c.contains("spawn") {
+        if contains_any(&c, &["command::new", "spawn"]) {
             out.insert("spawns_process".to_string());
         }
-        if c.contains("http") || c.contains("reqwest") || c.contains("tcp") || c.contains("ws") {
+        if contains_any(&c, &["http", "reqwest", "tcp", "ws"]) {
             out.insert("uses_network".to_string());
         }
     }
@@ -414,45 +419,19 @@ fn infer_effects_from_symbol(symbol: &str) -> Vec<String> {
     let sym = symbol.to_ascii_lowercase();
     let mut out = BTreeSet::new();
 
-    if sym.contains("read")
-        || sym.contains("load")
-        || sym.contains("scan")
-        || sym.contains("parse_")
-        || sym.contains("from_file")
-        || sym.contains("from_path")
-    {
+    if contains_any(&sym, &["read", "load", "scan", "parse_", "from_file", "from_path"]) {
         out.insert("fs_read".to_string());
     }
-    if sym.contains("write")
-        || sym.contains("save")
-        || sym.contains("persist")
-        || sym.contains("flush")
-        || sym.contains("append")
-        || sym.contains("record")
-    {
+    if contains_any(&sym, &["write", "save", "persist", "flush", "append", "record"]) {
         out.insert("fs_write".to_string());
     }
-    if sym.contains("update")
-        || sym.contains("transition")
-        || sym.contains("set_status")
-        || sym.contains("apply_")
-        || sym.contains("consume")
-    {
+    if contains_any(&sym, &["update", "transition", "set_status", "apply_", "consume"]) {
         out.insert("state_write".to_string());
     }
-    if sym.contains("command")
-        || sym.contains("spawn")
-        || sym.contains("process")
-        || sym.contains("subprocess")
-    {
+    if contains_any(&sym, &["command", "spawn", "process", "subprocess"]) {
         out.insert("spawns_process".to_string());
     }
-    if sym.contains("http")
-        || sym.contains("chromium")
-        || sym.contains("transport")
-        || sym.contains("websocket")
-        || sym.contains("ws_")
-    {
+    if contains_any(&sym, &["http", "chromium", "transport", "websocket", "ws_"]) {
         out.insert("uses_network".to_string());
     }
 
@@ -556,99 +535,68 @@ fn resolve_source_decl(
 }
 
 fn infer_resource(calls: &[String], effects: &[String], symbol: &str) -> String {
-    let joined = calls.join(" ").to_ascii_lowercase();
-    let sym = symbol.to_ascii_lowercase();
-    if joined.contains("graph") || sym.contains("graph") {
-        return "graph.json".to_string();
+    const TEXT_RULES: &[(&[&str], &str)] = &[
+        (&["graph"], "graph.json"),
+        (&["plan"], "PLAN.json"),
+        (&["issues", "issue"], "ISSUES.json"),
+        (&["invariant"], "INVARIANTS.json"),
+        (&["tlog", "event"], "tlog.ndjson"),
+        (&["spec"], "SPEC.md"),
+        (&["objective"], "OBJECTIVES.json"),
+        (&["diagnostic"], "diagnostics"),
+        (&["message", "inbound", "outbound"], "message_frame"),
+        (&["prompt"], "prompt_context"),
+        (&["action"], "action_payload"),
+    ];
+    const EFFECT_RULES: &[(&[&str], &str)] = &[
+        (&["fs_read", "fs_write"], "filesystem"),
+        (&["state_read", "state_write"], "state"),
+        (&["uses_network"], "network"),
+        (&["spawns_process"], "process"),
+    ];
+
+    let text = format!("{} {}", calls.join(" "), symbol).to_ascii_lowercase();
+    if let Some((_, resource)) = TEXT_RULES
+        .iter()
+        .find(|(needles, _)| contains_any(&text, needles))
+    {
+        return (*resource).to_string();
     }
-    if joined.contains("plan") {
-        return "PLAN.json".to_string();
-    }
-    if joined.contains("issues") {
-        return "ISSUES.json".to_string();
-    }
-    if joined.contains("invariant") {
-        return "INVARIANTS.json".to_string();
-    }
-    if joined.contains("tlog") || joined.contains("event") {
-        return "tlog.ndjson".to_string();
-    }
-    if sym.contains("plan") {
-        return "PLAN.json".to_string();
-    }
-    if sym.contains("issue") {
-        return "ISSUES.json".to_string();
-    }
-    if sym.contains("invariant") {
-        return "INVARIANTS.json".to_string();
-    }
-    if sym.contains("spec") {
-        return "SPEC.md".to_string();
-    }
-    if sym.contains("objective") {
-        return "OBJECTIVES.json".to_string();
-    }
-    if sym.contains("diagnostic") {
-        return "diagnostics".to_string();
-    }
-    if sym.contains("message") || sym.contains("inbound") || sym.contains("outbound") {
-        return "message_frame".to_string();
-    }
-    if sym.contains("prompt") {
-        return "prompt_context".to_string();
-    }
-    if sym.contains("action") {
-        return "action_payload".to_string();
-    }
-    if effects.iter().any(|e| e == "fs_read" || e == "fs_write") {
-        return "filesystem".to_string();
-    }
-    if effects.iter().any(|e| e == "state_read" || e == "state_write") {
-        return "state".to_string();
-    }
-    if effects.iter().any(|e| e == "uses_network") {
-        return "network".to_string();
-    }
-    if effects.iter().any(|e| e == "spawns_process") {
-        return "process".to_string();
-    }
-    "memory".to_string()
+    EFFECT_RULES
+        .iter()
+        .find(|(labels, _)| effects_contain_any(effects, labels))
+        .map(|(_, resource)| (*resource).to_string())
+        .unwrap_or_else(|| "memory".to_string())
 }
 
 fn infer_intent(intent: Option<String>, effects: &[String], symbol: &str) -> String {
     if let Some(v) = intent {
-        if !v.trim().is_empty() && v != MISSING && v != "TODO" {
+        if !is_missing_contract_value(&v) {
             return v;
         }
     }
+    const SYMBOL_RULES: &[(&[&str], &str)] = &[
+        (&["validate", "check_", "assert"], "validation_gate"),
+        (&["route", "dispatch"], "route_gate"),
+        (&["scan", "analy", "diagnostic"], "diagnostic_scan"),
+        (&["repair", "init", "bootstrap"], "repair_or_initialize"),
+        (&["append", "record", "emit"], "event_append"),
+    ];
+
     let symbol = symbol.to_ascii_lowercase();
-    if symbol.contains("validate") || symbol.contains("check_") || symbol.contains("assert") {
-        return "validation_gate".to_string();
-    }
-    if symbol.contains("route") || symbol.contains("dispatch") {
-        return "route_gate".to_string();
-    }
-    if symbol.contains("scan") || symbol.contains("analy") || symbol.contains("diagnostic") {
-        return "diagnostic_scan".to_string();
-    }
-    if symbol.contains("repair") || symbol.contains("init") || symbol.contains("bootstrap") {
-        return "repair_or_initialize".to_string();
-    }
-    if symbol.contains("append") || symbol.contains("record") || symbol.contains("emit") {
-        return "event_append".to_string();
-    }
-    let has_read = effects.iter().any(|e| e == "fs_read" || e == "state_read");
-    let has_write = effects.iter().any(|e| e == "fs_write" || e == "state_write");
-    if has_read && !has_write {
-        return "canonical_read".to_string();
-    }
-    if has_write && !has_read {
-        return "canonical_write".to_string();
-    }
-    if effects
+    if let Some((_, intent)) = SYMBOL_RULES
         .iter()
-        .any(|e| e == "uses_network" || e == "spawns_process")
+        .find(|(needles, _)| contains_any(&symbol, needles))
     {
+        return (*intent).to_string();
+    }
+
+    let has_read = effects_contain_any(effects, &["fs_read", "state_read"]);
+    let has_write = effects_contain_any(effects, &["fs_write", "state_write"]);
+    if has_read ^ has_write {
+        return if has_read { "canonical_read" } else { "canonical_write" }.to_string();
+    }
+    if effects_contain_any(effects, &["uses_network", "spawns_process"]) {
         return "transport_effect".to_string();
     }
     if !has_read && !has_write {
@@ -660,11 +608,11 @@ fn infer_intent(intent: Option<String>, effects: &[String], symbol: &str) -> Str
 fn infer_failure(outputs: &[String], symbol: &str) -> String {
     let joined = outputs.join(", ");
     let sym = symbol.to_ascii_lowercase();
-    if joined.contains("Result<") || joined.contains("std::result::Result<") {
+    if contains_any(&joined, &["Result<", "std::result::Result<"]) {
         "fail_closed".to_string()
-    } else if joined.contains("Option<") || joined.contains("std::option::Option<") {
+    } else if contains_any(&joined, &["Option<", "std::option::Option<"]) {
         "propagates".to_string()
-    } else if sym.contains("try_") || sym.contains("load_") {
+    } else if contains_any(&sym, &["try_", "load_"]) {
         "fail_closed".to_string()
     } else {
         "infallible".to_string()
@@ -680,9 +628,9 @@ struct EffectPresence {
 impl EffectPresence {
     fn from_effects(effects: &[String]) -> Self {
         Self {
-            write: effects.iter().any(|e| e == "fs_write" || e == "state_write"),
-            network: effects.iter().any(|e| e == "uses_network"),
-            process: effects.iter().any(|e| e == "spawns_process"),
+            write: effects_contain_any(effects, &["fs_write", "state_write"]),
+            network: effects_contain_any(effects, &["uses_network"]),
+            process: effects_contain_any(effects, &["spawns_process"]),
         }
     }
 }
@@ -723,24 +671,28 @@ fn infer_forbidden(intent: &str, effects: &[String]) -> Vec<String> {
 }
 
 fn infer_invariants(intent: &str, effects: &[String], resource: &str) -> Vec<String> {
-    match (intent, resource) {
-        ("canonical_read", "PLAN.json") => vec!["plan_is_authoritative".to_string()],
-        ("canonical_write", "PLAN.json") => vec!["no_direct_plan_patch".to_string()],
-        ("event_append", "tlog.ndjson") => vec!["append_only_log".to_string()],
-        (_, "graph.json") => vec!["graph_is_derived_projection".to_string()],
-        ("pure_transform", _) => vec!["no_external_effects".to_string()],
-        ("validation_gate", _) => vec!["checks_must_gate_state_transition".to_string()],
-        ("route_gate", _) => vec!["route_decision_is_explicit".to_string()],
-        _ => {
-            let has_external = effects.iter().any(|e| {
-                e == "fs_write" || e == "state_write" || e == "uses_network" || e == "spawns_process"
-            });
-            if has_external {
-                vec!["side_effects_are_intentional".to_string()]
-            } else {
-                vec!["deterministic_for_same_inputs".to_string()]
-            }
-        }
+    const RULES: &[(&str, &str, &str)] = &[
+        ("canonical_read", "PLAN.json", "plan_is_authoritative"),
+        ("canonical_write", "PLAN.json", "no_direct_plan_patch"),
+        ("event_append", "tlog.ndjson", "append_only_log"),
+        ("*", "graph.json", "graph_is_derived_projection"),
+        ("pure_transform", "*", "no_external_effects"),
+        ("validation_gate", "*", "checks_must_gate_state_transition"),
+        ("route_gate", "*", "route_decision_is_explicit"),
+    ];
+    if let Some((_, _, invariant)) = RULES
+        .iter()
+        .find(|(i, r, _)| (*i == "*" || *i == intent) && (*r == "*" || *r == resource))
+    {
+        return vec![(*invariant).to_string()];
+    }
+    if effects_contain_any(
+        effects,
+        &["fs_write", "state_write", "uses_network", "spawns_process"],
+    ) {
+        vec!["side_effects_are_intentional".to_string()]
+    } else {
+        vec!["deterministic_for_same_inputs".to_string()]
     }
 }
 
