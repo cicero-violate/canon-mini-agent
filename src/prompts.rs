@@ -709,34 +709,13 @@ fn extract_json_candidate(text: &str) -> Option<String> {
     }
     let bytes = text.as_bytes();
     let start = bytes.iter().position(|&b| matches!(b, b'{' | b'['))?;
-    let mut depth: i32 = 0;
-    let mut in_string = false;
-    let mut escape = false;
-    for (offset, ch) in text[start..].char_indices() {
-        if in_string {
-            if escape {
-                escape = false;
-            } else if ch == '\\' {
-                escape = true;
-            } else if ch == '"' {
-                in_string = false;
-            }
-            continue;
-        }
-        match ch {
-            '"' => in_string = true,
-            _ if matches!(ch, '{' | '[') => depth += 1,
-            _ if matches!(ch, '}' | ']') => {
-                depth -= 1;
-                if depth == 0 {
-                    let end = start + offset + ch.len_utf8();
-                    return Some(text[start..end].trim().to_string());
-                }
-            }
-            _ => {}
-        }
+    let candidate = &text[start..];
+    let mut stream = serde_json::Deserializer::from_str(candidate).into_iter::<Value>();
+    if let Some(Ok(_)) = stream.next() {
+        let end = start + stream.byte_offset();
+        return Some(text[start..end].trim().to_string());
     }
-    Some(text[start..].trim().to_string())
+    Some(candidate.trim().to_string())
 }
 
 /// Intent: pure_transform
