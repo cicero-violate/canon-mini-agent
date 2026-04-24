@@ -1163,17 +1163,46 @@ fn complexity_entry_value(
     branch_score: Option<f64>,
     proxy: f64,
 ) -> serde_json::Value {
+    let mut value = complexity_entry_identity_value(identity);
+    add_complexity_entry_metrics(
+        &mut value,
+        is_directly_recursive,
+        blocks,
+        stmts,
+        branch_score,
+        proxy,
+    );
+    value
+}
+
+fn complexity_entry_identity_value(identity: ComplexityEntryIdentity) -> serde_json::Value {
     json!({
         "symbol": identity.symbol,
         "file": identity.file,
         "line": identity.line,
         "mir_fingerprint": identity.mir_fingerprint,
-        "mir_blocks": blocks,
-        "mir_stmts": stmts,
-        "branch_score": branch_score,
-        "is_directly_recursive": is_directly_recursive,
-        "complexity_proxy": proxy,
     })
+}
+
+fn add_complexity_entry_metrics(
+    value: &mut serde_json::Value,
+    is_directly_recursive: bool,
+    blocks: usize,
+    stmts: usize,
+    branch_score: Option<f64>,
+    proxy: f64,
+) {
+    let Some(obj) = value.as_object_mut() else {
+        return;
+    };
+    obj.insert("mir_blocks".to_string(), json!(blocks));
+    obj.insert("mir_stmts".to_string(), json!(stmts));
+    obj.insert("branch_score".to_string(), json!(branch_score));
+    obj.insert(
+        "is_directly_recursive".to_string(),
+        json!(is_directly_recursive),
+    );
+    obj.insert("complexity_proxy".to_string(), json!(proxy));
 }
 
 fn complexity_entry_file(s: &crate::semantic::SymbolSummary) -> String {
