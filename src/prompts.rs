@@ -350,11 +350,13 @@ fn prompt_graph_artifact_guidance(kind: AgentPromptKind) -> &'static str {
     match kind {
         AgentPromptKind::Executor => "Graph-first execution guidance:\n\
 - Treat `state/rustc/canon_mini_agent/graph.json` as the canonical semantic/CFG substrate.\n\
+- Use the `python` action for structured JSON/NDJSON analysis of `state/rustc/canon_mini_agent/graph.json`, `agent_state/tlog.ndjson`, `agent_state/safe_patch_candidates.json`, and `agent_state/semantic_manifest_proposals.json`; do not use raw text reads for counts, rankings, event timelines, or schema inspection.\n\
 - Use `agent_state/safe_patch_candidates.json` to prioritize merge/delete style refactors before ad-hoc edits.\n\
 - Use `agent_state/semantic_manifest_proposals.json` to preserve/repair Intent/Inputs/Outputs/Effects/Invariants contracts while editing.\n\
 - When a task references an issue family rooted in graph analysis, ground file edits and verification in these graph-derived artifacts.",
         AgentPromptKind::Planner => "Graph-first planning guidance:\n\
 - Treat `state/rustc/canon_mini_agent/graph.json` as the canonical semantic/CFG substrate.\n\
+- Use the `python` action for structured JSON/NDJSON analysis of `state/rustc/canon_mini_agent/graph.json`, `agent_state/tlog.ndjson`, `agent_state/safe_patch_candidates.json`, and `agent_state/semantic_manifest_proposals.json`; do not use raw text reads for counts, rankings, event timelines, or schema inspection.\n\
 - Prefer top-ranked entries in `agent_state/safe_patch_candidates.json` when creating ready executor tasks.\n\
 - Use `agent_state/semantic_manifest_proposals.json` to ensure tasks preserve explicit intent/contract metadata.\n\
 - When issue scores are close, favor tasks backed by graph-ranked redundancy evidence over generic heuristics.",
@@ -1968,6 +1970,24 @@ mod tests {
             !prompt.contains("Runtime law:"),
             "executor system prompt should omit the runtime law block"
         );
+    }
+
+    #[test]
+    fn planner_and_executor_require_python_for_structured_graph_artifacts() {
+        for kind in [AgentPromptKind::Planner, AgentPromptKind::Executor] {
+            let prompt = system_instructions(kind);
+            assert!(
+                prompt.contains("Use the `python` action for structured JSON/NDJSON analysis"),
+                "{kind:?} prompt must require python for structured state artifact analysis"
+            );
+            assert!(
+                prompt.contains("state/rustc/canon_mini_agent/graph.json")
+                    && prompt.contains("agent_state/tlog.ndjson")
+                    && prompt.contains("agent_state/safe_patch_candidates.json")
+                    && prompt.contains("agent_state/semantic_manifest_proposals.json"),
+                "{kind:?} prompt must name the structured artifacts that require python"
+            );
+        }
     }
 
     #[test]
