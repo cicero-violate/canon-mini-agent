@@ -196,6 +196,8 @@ fn blockers_path(workspace: &Path) -> std::path::PathBuf {
 }
 
 /// Intent: canonical_read
+/// Effects: logging
+/// Provenance: generated
 fn load_blockers_from_tlog(workspace: &Path) -> Option<BlockersFile> {
     let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
     let records = Tlog::read_records(&tlog_path).ok()?;

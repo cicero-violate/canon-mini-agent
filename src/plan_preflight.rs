@@ -79,6 +79,8 @@ pub fn preflight_ready_tasks(workspace: &Path) -> Vec<PreflightBounce> {
 // ── Implementation ────────────────────────────────────────────────────────────
 
 /// Intent: canonical_write
+/// Effects: reads_artifact, reads_state, writes_artifact, writes_state, transitions_state
+/// Provenance: generated
 fn try_preflight_ready_tasks(workspace: &Path) -> Result<Vec<PreflightBounce>> {
     let plan_path = workspace.join(crate::constants::MASTER_PLAN_FILE);
     let raw = match std::fs::read_to_string(&plan_path) {

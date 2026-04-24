@@ -111,6 +111,7 @@ fn increment_task_blocker(
 }
 
 /// Intent: canonical_write
+/// Provenance: generated
 fn apply_effect_event(
     record_seq: u64,
     event: crate::events::EffectEvent,
@@ -172,6 +173,8 @@ fn apply_effect_event(
 }
 
 /// Intent: pure_transform
+/// Effects: writes_artifact, writes_state, transitions_state, logging
+/// Provenance: generated
 pub fn extract_grpo_dataset(workspace: &Path, tlog_path: &Path) -> Result<GrpoDataset> {
     let records = crate::tlog::Tlog::read_records(tlog_path)
         .with_context(|| format!("read tlog records from {}", tlog_path.display()))?;
@@ -353,6 +356,7 @@ fn normalized_drift_reward(drift: &crate::drift_analysis::FingerprintDrift) -> f
 }
 
 /// Intent: canonical_write
+/// Provenance: generated
 fn update_outcome_from_message(message: &str, outcomes: &mut HashMap<String, TaskOutcome>) {
     let Some(json) = parse_json_payload(message) else {
         return;
@@ -371,6 +375,7 @@ fn update_outcome_from_message(message: &str, outcomes: &mut HashMap<String, Tas
 }
 
 /// Intent: canonical_write
+/// Provenance: generated
 fn update_task_outcome(
     outcomes: &mut HashMap<String, TaskOutcome>,
     task_id: String,
@@ -385,12 +390,14 @@ fn update_task_outcome(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn parse_task_id_from_json(raw: &str) -> Option<String> {
     let value = parse_json_payload(raw)?;
     extract_task_id(&value)
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn extract_task_id(value: &Value) -> Option<String> {
     value
         .get("task_id")
@@ -406,6 +413,7 @@ fn extract_task_id(value: &Value) -> Option<String> {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn extract_status(value: &Value) -> Option<String> {
     let status = value
         .get("status")
@@ -419,6 +427,7 @@ fn extract_status(value: &Value) -> Option<String> {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn parse_json_payload(raw: &str) -> Option<Value> {
     let trimmed = raw.trim();
     if let Ok(v) = serde_json::from_str::<Value>(trimmed) {

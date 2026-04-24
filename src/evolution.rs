@@ -40,6 +40,7 @@ pub fn current_evolution_for_tlog(tlog_path: &Path) -> u64 {
 }
 
 /// Intent: canonical_read
+/// Provenance: generated
 pub fn load_snapshot_for_state_dir(state_dir: &Path) -> EvolutionSnapshot {
     let path = snapshot_path_for_state_dir(state_dir);
     fs::read_to_string(path)
@@ -49,6 +50,7 @@ pub fn load_snapshot_for_state_dir(state_dir: &Path) -> EvolutionSnapshot {
 }
 
 /// Intent: canonical_write
+/// Provenance: generated
 fn save_snapshot_for_state_dir(state_dir: &Path, snapshot: &EvolutionSnapshot) -> Result<()> {
     fs::create_dir_all(state_dir)
         .with_context(|| format!("create evolution state dir: {}", state_dir.display()))?;
@@ -58,6 +60,8 @@ fn save_snapshot_for_state_dir(state_dir: &Path, snapshot: &EvolutionSnapshot) -
 }
 
 /// Intent: canonical_read
+/// Effects: spawns_process
+/// Provenance: generated
 fn read_git_output(workspace: &Path, args: &[&str]) -> Option<String> {
     if !workspace.join(".git").exists() {
         return None;

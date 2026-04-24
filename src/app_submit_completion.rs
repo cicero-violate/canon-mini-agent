@@ -1,4 +1,5 @@
 /// Intent: validation_gate
+/// Provenance: generated
 fn preflight_executor_dispatch(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
@@ -48,6 +49,7 @@ fn preflight_executor_dispatch(
 }
 
 /// Intent: transport_effect
+/// Provenance: generated
 fn dispatch_executor_submits(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
@@ -95,6 +97,7 @@ fn executor_dispatch_gate_result(
 }
 
 /// Intent: transport_effect
+/// Provenance: generated
 fn dispatch_ready_executor_lanes(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
@@ -440,6 +443,7 @@ fn submitted_executor_steps_used(writer: &CanonicalWriter, lane_id: usize) -> us
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_submitted_executor_turn(
     writer: &CanonicalWriter,
     job: &PendingExecutorSubmit,
@@ -461,6 +465,7 @@ fn build_submitted_executor_turn(
 }
 
 /// Intent: transport_effect
+/// Provenance: generated
 fn submit_ack_matches_active_tab(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
@@ -624,6 +629,7 @@ fn resolve_completed_turn_submission(
 }
 
 /// Intent: validation_gate
+/// Provenance: generated
 fn validate_registered_submitted_turn(
     writer: &mut CanonicalWriter,
     tab_id: u32,
@@ -717,6 +723,7 @@ fn trace_unmatched_executor_completion(tab_id: u32, turn_id: u64, exec_result: &
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_recovered_submitted_turn(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,

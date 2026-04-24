@@ -50,6 +50,7 @@ struct BinaryCandidate {
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 fn find_workspace_root(start: &Path) -> Option<PathBuf> {
     let mut cur = Some(start);
     while let Some(dir) = cur {
@@ -107,6 +108,8 @@ fn newest_candidate(root: &Path, prefer_release: bool) -> Result<BinaryCandidate
 }
 
 /// Intent: transport_effect
+/// Effects: spawns_process
+/// Provenance: generated
 fn spawn_child(bin: &BinaryCandidate, args: &[String]) -> Result<Child> {
     let mut cmd = Command::new(&bin.path);
     cmd.args(args)
@@ -154,6 +157,8 @@ fn spawn_child(bin: &BinaryCandidate, args: &[String]) -> Result<Child> {
 }
 
 /// Intent: transport_effect
+/// Effects: spawns_process
+/// Provenance: generated
 fn send_sigint(child: &Child) {
     let pid = child.id();
     let _ = Command::new("kill")
@@ -308,6 +313,7 @@ fn rust_patch_verification_requested(state_dir: &Path) -> bool {
 }
 
 /// Intent: transport_effect
+/// Provenance: generated
 fn clear_rust_patch_verification_request(state_dir: &Path) {
     try_apply_canonical_control_event(
         state_dir,
@@ -336,6 +342,7 @@ fn orchestrator_mode_flag_path(args: &[String]) -> PathBuf {
 }
 
 /// Intent: canonical_read
+/// Provenance: generated
 fn read_orchestrator_mode_file(path: &Path) -> Option<String> {
     std::fs::read_to_string(path)
         .ok()
@@ -343,6 +350,7 @@ fn read_orchestrator_mode_file(path: &Path) -> Option<String> {
 }
 
 /// Intent: canonical_read
+/// Provenance: generated
 fn read_orchestrator_mode(state_dir: &Path, path: &Path) -> Option<String> {
     replay_canonical_control_snapshot(state_dir)
         .and_then(|s| s.orchestrator_mode)
@@ -379,6 +387,8 @@ fn system_time_ms(ts: SystemTime) -> Option<u64> {
 }
 
 /// Intent: transport_effect
+/// Effects: spawns_process
+/// Provenance: generated
 fn run_cmd(root: &Path, program: &str, args: &[&str]) -> Result<bool> {
     let status = Command::new(program)
         .args(args)
@@ -393,6 +403,8 @@ fn log_ticket_refresh(message: impl std::fmt::Display) {
 }
 
 /// Intent: transport_effect
+/// Effects: spawns_process
+/// Provenance: generated
 fn run_ticket_refresh(root: &Path, kind: BuildKind) {
     let bin = tickets_binary_path(root, kind);
     if !bin.exists() {
@@ -817,6 +829,7 @@ fn run_supervisor_loop(
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 fn emit_iteration_status_and_report(
     exe: &str,
     root: &Path,
@@ -939,6 +952,7 @@ fn supervise_current_child_iteration(
 }
 
 /// Intent: transport_effect
+/// Provenance: generated
 fn handle_shutdown_request(shutdown: &AtomicBool, child: &mut Child) -> bool {
     if !shutdown.load(Ordering::SeqCst) {
         return false;
@@ -982,6 +996,7 @@ fn handle_child_exit_status(
 }
 
 /// Intent: repair_or_initialize
+/// Provenance: generated
 fn initialize_supervisor_runtime(
     filtered_args: &[String],
     shutdown: &Arc<AtomicBool>,
@@ -1002,6 +1017,8 @@ fn initialize_supervisor_runtime(
 }
 
 /// Intent: transport_effect
+/// Effects: spawns_process
+/// Provenance: generated
 fn install_supervisor_ctrlc_handler(
     shutdown: &Arc<AtomicBool>,
     child_pid: &Arc<AtomicU32>,
@@ -1249,6 +1266,7 @@ fn sanitize_role(role: &str) -> String {
 }
 
 /// Intent: canonical_read
+/// Provenance: generated
 fn read_user_message_cli(args: &SupervisorArgs) -> Result<Option<String>> {
     if let Some(message) = &args.user_message {
         let trimmed = message.trim().to_string();
@@ -1270,6 +1288,8 @@ fn read_user_message_cli(args: &SupervisorArgs) -> Result<Option<String>> {
 }
 
 /// Intent: canonical_write
+/// Effects: logging
+/// Provenance: generated
 fn write_external_user_message(
     workspace: &Path,
     state_dir: &Path,
@@ -1321,6 +1341,8 @@ fn external_user_message_payload(to_key: &str, message: &str) -> serde_json::Val
 }
 
 /// Intent: canonical_read
+/// Effects: reads_artifact, reads_state
+/// Provenance: generated
 fn read_external_user_reply(state_dir: &Path) -> Result<Option<String>> {
     let reply_path = state_dir.join("last_message_to_user.json");
     match fs::read_to_string(&reply_path) {
@@ -1365,6 +1387,7 @@ fn maybe_handle_user_chat_mode(args: &SupervisorArgs) -> Result<bool> {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn parse_supervisor_args() -> SupervisorArgs {
     let mut args: Vec<String> = std::env::args().collect();
     let exe = args.remove(0);

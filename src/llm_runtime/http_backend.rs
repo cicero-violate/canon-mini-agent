@@ -11,6 +11,8 @@ pub struct HttpBackend {
 
 impl HttpBackend {
     /// Intent: transport_effect
+    /// Effects: uses_network
+    /// Provenance: generated
     pub fn from_env() -> Self {
         let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
         let model =

@@ -14,6 +14,7 @@ pub struct FingerprintDrift {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 pub fn compute_fingerprint_drift(
     _workspace: &Path,
     prev_summaries: &[SymbolSummary],

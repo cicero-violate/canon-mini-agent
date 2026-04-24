@@ -210,6 +210,7 @@ fn clear_diagnostics_pending(s: &mut SystemState) {
 }
 
 /// Intent: canonical_write
+/// Provenance: generated
 fn set_lane_tab_mapping(s: &mut SystemState, lane_id: usize, tab_id: u32) {
     s.lane_active_tab.insert(lane_id, tab_id);
     s.tab_id_to_lane.insert(tab_id, lane_id);
@@ -228,6 +229,7 @@ fn reset_lane_submit_state(s: &mut SystemState, lane_id: usize) {
 }
 
 /// Intent: canonical_write
+/// Provenance: generated
 pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState {
     match e {
         ControlEvent::PhaseSet { phase, lane } => {
@@ -429,6 +431,7 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
 }
 
 /// Intent: validation_gate
+/// Provenance: generated
 pub fn validate_system_state(s: &SystemState) -> Result<(), String> {
     if s.phase.trim().is_empty() {
         return Err("system state invariant failed: phase must be non-empty".to_string());

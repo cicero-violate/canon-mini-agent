@@ -782,6 +782,7 @@ struct Fingerprint {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
     let mut prints = Vec::new();
 
@@ -821,6 +822,7 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn extract_tool_failure_fingerprint(
     entry: &Value,
     phase: &str,
@@ -837,6 +839,7 @@ fn extract_tool_failure_fingerprint(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn extract_plan_preflight_fingerprint(
     entry: &Value,
     action: &str,
@@ -859,6 +862,7 @@ fn extract_plan_preflight_fingerprint(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn extract_forced_handoff_fingerprint(
     entry: &Value,
     actor: &str,
@@ -889,6 +893,7 @@ fn extract_forced_handoff_fingerprint(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn extract_read_file_failure_fingerprint(
     entry: &Value,
     actor: &str,
@@ -931,6 +936,7 @@ fn extract_read_file_failure_fingerprint(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn extract_invalid_action_fingerprint(
     entry: &Value,
     actor: &str,
@@ -966,6 +972,7 @@ fn extract_invalid_action_fingerprint(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn extract_missing_target_fingerprint(
     entry: &Value,
     actor: &str,
@@ -1364,6 +1371,7 @@ fn invariants_path(workspace: &Path) -> std::path::PathBuf {
 }
 
 /// Intent: canonical_read
+/// Provenance: generated
 pub fn load_enforced_invariants_file(workspace: &Path) -> EnforcedInvariantsFile {
     if let Some(file) = load_invariants_from_tlog(workspace) {
         return normalize_loaded_invariants(file);
@@ -1382,6 +1390,7 @@ pub fn load_enforced_invariants_file(workspace: &Path) -> EnforcedInvariantsFile
 }
 
 /// Intent: canonical_write
+/// Provenance: generated
 pub fn persist_enforced_invariants_projection(
     workspace: &Path,
     file: &EnforcedInvariantsFile,
@@ -1391,6 +1400,8 @@ pub fn persist_enforced_invariants_projection(
 }
 
 /// Intent: canonical_write
+/// Effects: logging
+/// Provenance: generated
 pub fn persist_enforced_invariants_projection_with_writer(
     workspace: &Path,
     file: &EnforcedInvariantsFile,
@@ -1429,6 +1440,7 @@ pub fn reconcile_enforced_invariants_projection(workspace: &Path, subject: &str)
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn normalize_loaded_invariants(mut file: EnforcedInvariantsFile) -> EnforcedInvariantsFile {
     if file.version == 0 {
         file.version = 1;
@@ -1457,6 +1469,7 @@ fn normalize_loaded_invariants(mut file: EnforcedInvariantsFile) -> EnforcedInva
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn normalize_single_invariant(inv: &mut DiscoveredInvariant) {
     inv.state_conditions = canonicalize_conditions(std::mem::take(&mut inv.state_conditions));
     inv.gates = canonicalize_gates(std::mem::take(&mut inv.gates));
@@ -1546,6 +1559,8 @@ fn status_rank(status: &InvariantStatus) -> u8 {
 }
 
 /// Intent: canonical_read
+/// Effects: logging
+/// Provenance: generated
 fn load_invariants_from_tlog(workspace: &Path) -> Option<EnforcedInvariantsFile> {
     crate::tlog::Tlog::latest_effect_from_workspace(workspace, |event| match event {
         crate::events::EffectEvent::EnforcedInvariantsRecorded { file } => Some(file),
@@ -1554,6 +1569,7 @@ fn load_invariants_from_tlog(workspace: &Path) -> Option<EnforcedInvariantsFile>
 }
 
 /// Intent: canonical_read
+/// Provenance: generated
 fn read_tail_entries(log_path: &Path, max_lines: usize) -> Vec<Value> {
     let reader = match open_tail_reader(log_path) {
         Some(reader) => reader,

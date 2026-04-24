@@ -12,6 +12,7 @@ fn sanitize_phase_for_runtime(phase: Option<&str>) -> Option<String> {
 }
 
 /// Intent: canonical_write
+/// Provenance: generated
 fn write_json_if_missing_or_empty<T: Serialize>(
     workspace: &Path,
     path: &Path,
@@ -49,6 +50,7 @@ fn push_created_path(created: &mut Vec<String>, tracked_path: &str, was_created:
 }
 
 /// Intent: repair_or_initialize
+/// Provenance: generated
 fn migrate_projection_and_track(
     created: &mut Vec<String>,
     workspace: &Path,
@@ -72,6 +74,7 @@ fn migrate_projection_and_track(
 }
 
 /// Intent: canonical_write
+/// Provenance: generated
 fn write_json_baseline_and_track<T: serde::Serialize>(
     created: &mut Vec<String>,
     workspace: &Path,
@@ -89,6 +92,8 @@ fn write_json_baseline_and_track<T: serde::Serialize>(
 }
 
 /// Intent: repair_or_initialize
+/// Effects: reads_artifact, reads_state
+/// Provenance: generated
 fn ensure_workspace_artifact_baseline(
     workspace: &Path,
     planner_projection_path: &Path,
@@ -225,6 +230,7 @@ fn jstr<'a>(v: &'a Value, key: &str) -> &'a str {
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 fn find_flag_arg<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     args.windows(2)
         .find(|w| w[0] == flag)
@@ -295,6 +301,7 @@ fn response_timeout_for_role(role: &str) -> u64 {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn summarize_cargo_test_failures(raw: &str) -> String {
     let Ok(value) = serde_json::from_str::<Value>(raw) else {
         return raw.to_string();
@@ -315,6 +322,8 @@ fn summarize_cargo_test_failures(raw: &str) -> String {
 }
 
 /// Intent: canonical_read
+/// Effects: reads_artifact, reads_state
+/// Provenance: generated
 fn load_cargo_test_failures(workspace: &Path) -> String {
     let path = workspace.join("cargo_test_failures.json");
     let raw = std::fs::read_to_string(path).unwrap_or_default();
@@ -322,6 +331,7 @@ fn load_cargo_test_failures(workspace: &Path) -> String {
 }
 
 /// Intent: canonical_read
+/// Provenance: generated
 fn load_single_role_setup(
     ctx: &SingleRoleContext<'_>,
     endpoints: &[LlmEndpoint],
@@ -436,6 +446,7 @@ fn trace_orchestrator_forwarded(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_blocker_payload(
     summary: &str,
     blocker: &str,
@@ -483,6 +494,8 @@ fn cycle_control_hash(snapshot: &ControlConvergenceSnapshot<'_>) -> u64 {
 }
 
 /// Intent: diagnostic_scan
+/// Effects: writes_artifact, writes_state
+/// Provenance: generated
 fn write_livelock_report(
     agent_state_dir: &Path,
     stall_cycles: u32,
@@ -534,6 +547,7 @@ fn write_livelock_report(
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 fn build_livelock_report(
     stall_cycles: u32,
     control_surfaces: &[&str],

@@ -96,6 +96,7 @@ impl TlogAppendLock {
     }
 
     /// Intent: canonical_write
+    /// Provenance: generated
     fn write_owner_metadata(file: &mut std::fs::File) -> Result<()> {
         writeln!(file, "{}", std::process::id())?;
         file.flush()?;
@@ -205,6 +206,8 @@ impl Tlog {
     }
 
     /// Intent: canonical_read
+    /// Effects: logging
+    /// Provenance: generated
     pub fn read_events(path: &Path) -> Result<Vec<Event>> {
         Ok(Self::read_records(path)?
             .into_iter()
@@ -213,6 +216,7 @@ impl Tlog {
     }
 
     /// Intent: canonical_read
+    /// Provenance: generated
     pub fn read_records(path: &Path) -> Result<Vec<TlogRecord>> {
         if !path.exists() {
             return Ok(Vec::new());
@@ -287,6 +291,7 @@ impl Tlog {
     }
 
     /// Intent: canonical_write
+    /// Provenance: generated
     pub fn set_evolution(&mut self, evolution: u64) {
         self.evolution = evolution;
     }

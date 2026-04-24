@@ -89,6 +89,8 @@ fn artifact_signature(parts: &[&str]) -> String {
 }
 
 /// Intent: canonical_write
+/// Effects: logging
+/// Provenance: generated
 fn persist_agent_state_projection(path: &Path, contents: &str, subject: &str) -> Result<()> {
     let workspace = Path::new(crate::constants::workspace());
     let artifact = path
@@ -114,6 +116,7 @@ fn persist_agent_state_projection(path: &Path, contents: &str, subject: &str) ->
 }
 
 /// Intent: canonical_write
+/// Provenance: generated
 fn save_checkpoint(
     workspace: &Path,
     writer: &mut CanonicalWriter,
@@ -167,6 +170,7 @@ fn save_checkpoint(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_checkpoint_lane_snapshots(
     state: &SystemState,
     lanes: &[LaneConfig],
@@ -188,6 +192,7 @@ fn build_checkpoint_lane_snapshots(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_resume_verifier_items(
     lanes: &[LaneConfig],
     verifier_pending_results: &VecDeque<(SubmittedExecutorTurn, u64, String)>,
@@ -228,6 +233,8 @@ fn recover_verifier_item_from_executor_post_restart(
 }
 
 /// Intent: canonical_read
+/// Effects: logging
+/// Provenance: generated
 fn load_checkpoint(workspace: &Path) -> Option<OrchestratorCheckpoint> {
     let tlog_path = PathBuf::from(crate::constants::agent_state_dir()).join("tlog.ndjson");
     if tlog_path.exists() {
@@ -304,6 +311,8 @@ struct ExecutorProgressSignals {
 }
 
 /// Intent: canonical_read
+/// Effects: logging
+/// Provenance: generated
 fn read_executor_progress_signals(workspace: &Path, now_ms: u64) -> ExecutorProgressSignals {
     const SIGNAL_LOOKBACK_RECORDS: usize = 800;
     const DIVERGENCE_WINDOW_MS: u64 = 120_000;

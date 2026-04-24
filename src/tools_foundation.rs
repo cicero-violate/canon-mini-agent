@@ -153,6 +153,8 @@ fn record_effect_for_workspace(workspace: &Path, effect: crate::events::EffectEv
 }
 
 /// Intent: canonical_write
+/// Effects: logging
+/// Provenance: generated
 fn write_projection_with_workspace_effects(
     workspace: &Path,
     path: &Path,
@@ -279,6 +281,7 @@ fn resolve_graph_crate_name(workspace: &Path, crate_name: &str) -> Option<String
 }
 
 /// Intent: repair_or_initialize
+/// Provenance: generated
 fn ensure_graph_artifact(
     workspace: &Path,
     crate_name: &str,
@@ -313,6 +316,7 @@ fn ensure_graph_artifact(
 }
 
 /// Intent: canonical_read
+/// Provenance: generated
 fn read_first_lines(path: &Path, max_lines: usize, max_bytes: usize) -> Result<String> {
     let content = ctx_read(path)?;
     let mut out = String::new();
@@ -327,6 +331,7 @@ fn read_first_lines(path: &Path, max_lines: usize, max_bytes: usize) -> Result<S
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 fn read_json_report(path: &Path, max_bytes: usize) -> Result<String> {
     let content = ctx_read(path)?;
     let trimmed = truncate(&content, max_bytes);
@@ -334,6 +339,7 @@ fn read_json_report(path: &Path, max_bytes: usize) -> Result<String> {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn normalize_objective_id_for_match(value: &str) -> String {
     value
         .trim()

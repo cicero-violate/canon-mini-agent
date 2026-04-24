@@ -304,6 +304,7 @@ pub fn generate_hotspot_issues(workspace: &Path, top_n: usize) -> Result<usize> 
 }
 
 /// Intent: canonical_read
+/// Provenance: generated
 fn load_issue_file_with_indexes(
     workspace: &Path,
 ) -> (IssuesFile, HashSet<String>, HashSet<String>) {
@@ -330,6 +331,7 @@ fn collect_crate_analyses(workspace: &Path) -> Vec<(String, InterAnalysis)> {
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 fn append_hotspot_issues(
     file: &mut IssuesFile,
     analysis: &InterAnalysis,
@@ -359,6 +361,7 @@ fn append_hotspot_issues(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_hotspot_issue(
     entry: &InterEntry,
     crate_name: &str,
@@ -402,6 +405,7 @@ fn hotspot_location(entry: &InterEntry) -> String {
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 fn append_duplicate_issues(
     file: &mut IssuesFile,
     analysis: &InterAnalysis,
@@ -419,6 +423,7 @@ fn append_duplicate_issues(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_recursive_issue(
     entry: &InterEntry,
     crate_name: &str,
@@ -459,6 +464,7 @@ fn build_recursive_issue(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_duplicate_issue(group: &[String], existing_ids: &HashSet<String>) -> Option<Issue> {
     if group.len() < 2 {
         return None;
@@ -495,6 +501,7 @@ fn build_duplicate_issue(group: &[String], existing_ids: &HashSet<String>) -> Op
 }
 
 /// Intent: canonical_write
+/// Provenance: generated
 fn persist_if_created(workspace: &Path, file: &mut IssuesFile, created: usize) -> Result<()> {
     if created > 0 {
         rescore_all(file);
@@ -569,6 +576,7 @@ fn mir_dup_issue_id(group: &[String]) -> String {
 const MAX_DUPLICATE_SYMBOLS_IN_ISSUE: usize = 24;
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn summarize_duplicate_symbols(group: &[String]) -> String {
     if group.len() <= MAX_DUPLICATE_SYMBOLS_IN_ISSUE {
         return group.join(", ");
@@ -618,6 +626,7 @@ fn priority_from_score(score: f64) -> &'static str {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_issue_fields(
     entry: &InterEntry,
     crate_name: &str,
@@ -703,6 +712,7 @@ fn duplicate_note(entry: &InterEntry) -> String {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_issue_evidence(entry: &InterEntry, file: &str) -> Vec<String> {
     let mut evidence = vec![
         format!("inter_objective={:.3}", entry.inter_objective),

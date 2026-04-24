@@ -431,6 +431,7 @@ fn sweep_timed_out_submitted_turns(
 }
 
 /// Intent: validation_gate
+/// Provenance: generated
 fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str) -> bool {
     let ws = std::path::PathBuf::from(workspace());
     let blockers = crate::blockers::load_blockers(&ws);
@@ -634,6 +635,7 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
 }
 
 /// Intent: route_gate
+/// Provenance: generated
 fn route_gate_block_record(reason: &str) -> serde_json::Value {
     serde_json::json!({
         "kind": "invariant_gate",
@@ -647,6 +649,7 @@ fn route_gate_block_record(reason: &str) -> serde_json::Value {
 }
 
 /// Intent: route_gate
+/// Provenance: generated
 fn apply_route_gate_block(writer: &mut CanonicalWriter, ws: &std::path::Path, reason: &str) {
     eprintln!("[invariant_gate] route G_r (BLOCKED): {reason}");
     let blocker_message = route_gate_blocker_message(reason);

@@ -97,6 +97,7 @@ fn issue_scan_context(file: &IssuesFile) -> (HashSet<String>, HashSet<String>) {
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 fn persist_generated_refactor_issues(
     workspace: &Path,
     file: &mut IssuesFile,
@@ -115,6 +116,7 @@ fn persist_generated_refactor_issues(
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn generate_panic_surface_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -126,6 +128,7 @@ pub fn generate_panic_surface_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn generate_state_machine_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -137,6 +140,7 @@ pub fn generate_state_machine_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn generate_drop_complexity_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -148,6 +152,7 @@ pub fn generate_drop_complexity_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn generate_clone_pressure_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -159,6 +164,7 @@ pub fn generate_clone_pressure_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn generate_visibility_leak_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -170,6 +176,7 @@ pub fn generate_visibility_leak_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn generate_mono_explosion_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -181,6 +188,7 @@ pub fn generate_mono_explosion_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn generate_generic_overreach_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -192,6 +200,7 @@ pub fn generate_generic_overreach_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn generate_dead_impl_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -203,6 +212,7 @@ pub fn generate_dead_impl_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn generate_rename_symbol_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -214,6 +224,7 @@ pub fn generate_rename_symbol_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn generate_dark_assignment_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -225,6 +236,7 @@ pub fn generate_dark_assignment_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn generate_loop_invariant_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -236,6 +248,7 @@ pub fn generate_loop_invariant_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn generate_redundant_path_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -247,6 +260,7 @@ pub fn generate_redundant_path_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn generate_alpha_pathway_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -260,6 +274,7 @@ pub fn generate_alpha_pathway_issues(workspace: &Path) -> Result<usize> {
 type DetectorFn = fn(&Path, &str, &[SymbolSummary], usize) -> Vec<Issue>;
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 fn generate_detector_issues(
     workspace: &Path,
     subject: &str,
@@ -312,6 +327,7 @@ fn generate_detector_issues(
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 fn sorted_limited_issues(mut out: Vec<Issue>, limit: usize) -> Vec<Issue> {
     out.sort_by(|a, b| a.id.cmp(&b.id));
     out.truncate(limit);
@@ -333,6 +349,7 @@ fn occurrences_are_local_to_def(def_file: &str, occurrences: &[SymbolOccurrence]
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn panic_surface_issues(
     _workspace: &Path,
     crate_name: &str,
@@ -389,6 +406,7 @@ pub fn panic_surface_issues(
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn state_machine_issues(
     _workspace: &Path,
     crate_name: &str,
@@ -404,6 +422,7 @@ pub fn state_machine_issues(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_state_machine_issue(crate_name: &str, summary: &SymbolSummary) -> Issue {
     let blocks = summary.mir_blocks.unwrap_or(0);
     let location = shorten_location(&summary.file, summary.line);
@@ -440,6 +459,7 @@ fn build_state_machine_issue(crate_name: &str, summary: &SymbolSummary) -> Issue
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn drop_complexity_issues(
     _workspace: &Path,
     crate_name: &str,
@@ -488,6 +508,7 @@ pub fn drop_complexity_issues(
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn clone_pressure_issues(
     _workspace: &Path,
     crate_name: &str,
@@ -537,6 +558,7 @@ pub fn clone_pressure_issues(
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn visibility_leak_issues(
     workspace: &Path,
     crate_name: &str,
@@ -594,6 +616,7 @@ pub fn visibility_leak_issues(
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn mono_explosion_issues(
     _workspace: &Path,
     crate_name: &str,
@@ -656,6 +679,7 @@ pub fn mono_explosion_issues(
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn generic_overreach_issues(
     _workspace: &Path,
     crate_name: &str,
@@ -706,6 +730,7 @@ pub fn generic_overreach_issues(
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn dead_impl_issues(
     workspace: &Path,
     crate_name: &str,
@@ -769,6 +794,7 @@ pub fn dead_impl_issues(
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn rename_symbol_issues(
     _workspace: &Path,
     crate_name: &str,
@@ -946,6 +972,7 @@ fn rename_reason_score(reasons: &[String]) -> u32 {
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn dark_assignment_issues(
     workspace: &Path,
     crate_name: &str,
@@ -1059,6 +1086,7 @@ pub fn dark_assignment_issues(
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn loop_invariant_issues(
     workspace: &Path,
     crate_name: &str,
@@ -1177,6 +1205,7 @@ pub fn loop_invariant_issues(
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn redundant_path_issues(
     workspace: &Path,
     crate_name: &str,
@@ -1293,6 +1322,7 @@ pub fn redundant_path_issues(
 //   6. Emit one ticket per confirmed chain with exact agent instructions.
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn alpha_pathway_issues(
     workspace: &Path,
     crate_name: &str,
@@ -1518,6 +1548,7 @@ impl FunctionCfg {
     }
 
     /// Intent: canonical_write
+    /// Provenance: generated
     fn write_nodes(&self) -> Vec<StmtKey> {
         let mut out = Vec::new();
         for (block, data) in &self.blocks {
@@ -1679,6 +1710,7 @@ impl FunctionCfg {
     }
 
     /// Intent: diagnostic_scan
+    /// Provenance: generated
     fn reaching_definition_analysis(&self) -> ReachingDefAnalysis {
         let stmt_keys = self.all_stmt_keys();
         let mut defs_by_local: HashMap<String, HashSet<StmtKey>> = HashMap::new();
@@ -1753,6 +1785,7 @@ impl FunctionCfg {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn compute_dominators(
     entry: usize,
     blocks: &HashMap<usize, crate::semantic::SymbolCfgBlock>,
@@ -1799,6 +1832,7 @@ fn compute_dominators(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn compute_post_dominators(
     blocks: &HashMap<usize, crate::semantic::SymbolCfgBlock>,
     succ: &HashMap<usize, HashSet<usize>>,
@@ -1845,6 +1879,7 @@ fn compute_post_dominators(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn parse_fn_arg_count(signature: Option<&str>) -> usize {
     let Some(sig) = signature else { return 0 };
     let open = sig.find('(');
@@ -1925,6 +1960,7 @@ fn issue_already_tracked(
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 fn dead_code_issues(
     file: &mut IssuesFile,
     _idx: &SemanticIndex,
@@ -2017,6 +2053,7 @@ fn is_exempt_from_dead_code(symbol: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 fn branch_reduction_issues(
     file: &mut IssuesFile,
     idx: &SemanticIndex,
@@ -2093,6 +2130,7 @@ fn priority_from_unreachable(pct: usize) -> String {
 // ---------------------------------------------------------------------------
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 fn helper_extraction_issues(
     file: &mut IssuesFile,
     idx: &SemanticIndex,
@@ -2202,6 +2240,7 @@ fn helper_extraction_issues(
 // ---------------------------------------------------------------------------
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 fn call_chain_issues(
     file: &mut IssuesFile,
     summaries: &[crate::semantic::SymbolSummary],

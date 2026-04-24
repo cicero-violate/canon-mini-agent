@@ -97,6 +97,7 @@ fn action_command_summary(action: &Value) -> String {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn parse_action_from_text(text: &str) -> Option<Value> {
     parse_actions(text)
         .ok()
@@ -114,6 +115,7 @@ fn observation_and_rationale_from_text(text: &str) -> (Option<String>, Option<St
 }
 
 /// Intent: event_append
+/// Provenance: generated
 fn append_record_to_path(path: &PathBuf, record: &Value) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
@@ -130,6 +132,7 @@ fn append_record_to_path(path: &PathBuf, record: &Value) -> Result<()> {
 }
 
 /// Intent: event_append
+/// Provenance: generated
 pub(crate) fn append_action_log_record(record: &Value) -> Result<()> {
     static LOG_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
     let lock = LOG_MUTEX.get_or_init(|| Mutex::new(()));
@@ -279,6 +282,7 @@ fn action_op(action: &Value) -> Option<Value> {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_action_op(name: &str, summary: String) -> Value {
     json!({
         "name": name,
@@ -350,6 +354,7 @@ fn inject_action_fields(record: &mut Value, action: &Value) {
 }
 
 /// Intent: event_append
+/// Provenance: generated
 fn append_secondary_action_log(role: &str, action: &Value) -> Result<()> {
     static SECONDARY_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
     let lock = SECONDARY_MUTEX.get_or_init(|| Mutex::new(()));
@@ -387,6 +392,7 @@ fn append_secondary_action_log(role: &str, action: &Value) -> Result<()> {
 }
 
 /// Intent: event_append
+/// Provenance: generated
 fn append_secondary_action_field(
     record: &mut serde_json::Map<String, Value>,
     action: &Value,
@@ -429,6 +435,7 @@ fn secondary_llm_response(action: &Value) -> Option<Value> {
 }
 
 /// Intent: event_append
+/// Provenance: generated
 pub(crate) fn append_message_log(
     role: &str,
     endpoint: &LlmEndpoint,
@@ -500,6 +507,7 @@ pub(crate) fn log_message_event(
 }
 
 /// Intent: event_append
+/// Provenance: generated
 pub(crate) fn append_action_log(
     role: &str,
     endpoint: &LlmEndpoint,
@@ -551,6 +559,7 @@ pub(crate) fn log_action_event(
 }
 
 /// Intent: event_append
+/// Provenance: generated
 pub(crate) fn append_action_result_log(
     mut writer: Option<&mut CanonicalWriter>,
     role: &str,
@@ -665,6 +674,7 @@ pub fn log_error_event(
 }
 
 /// Intent: event_append
+/// Provenance: generated
 pub(crate) fn append_llm_completion_log(
     role: &str,
     endpoint: &LlmEndpoint,
@@ -694,6 +704,7 @@ pub(crate) fn append_llm_completion_log(
 }
 
 /// Intent: event_append
+/// Provenance: generated
 pub(crate) fn append_orchestration_trace(event: &str, payload: Value) {
     if LOG_PATHS.get().is_none() {
         return;
@@ -778,6 +789,7 @@ pub(crate) fn stable_hash_hex(value: &str) -> String {
 }
 
 /// Intent: event_append
+/// Provenance: generated
 fn append_evidence_receipt(
     role: &str,
     action: &str,
@@ -918,6 +930,8 @@ fn restore_file_snapshot(path: &std::path::Path, snapshot: &Option<Vec<u8>>) -> 
 }
 
 /// Intent: canonical_write
+/// Effects: logging
+/// Provenance: generated
 pub fn write_projection_with_artifact_effects(
     workspace: &std::path::Path,
     path: &std::path::Path,
@@ -979,6 +993,7 @@ pub fn record_json_projection_with_optional_writer<T: Serialize>(
 }
 
 /// Intent: repair_or_initialize
+/// Provenance: generated
 pub fn migrate_projection_if_present(
     workspace: &std::path::Path,
     legacy_rel: &str,
@@ -1012,6 +1027,7 @@ pub fn migrate_projection_if_present(
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 fn parse_prompt_overflow_report(raw: &str) -> serde_json::Map<String, Value> {
     if raw.trim().is_empty() {
         serde_json::Map::new()
@@ -1031,6 +1047,8 @@ fn prompt_overflow_violation_id(role: &str) -> String {
 }
 
 /// Intent: diagnostic_scan
+/// Effects: writes_artifact, writes_state
+/// Provenance: generated
 fn persist_prompt_overflow_report(
     workspace: &std::path::Path,
     violations_path: &std::path::Path,
@@ -1057,6 +1075,7 @@ fn mark_prompt_overflow_failed(report: &mut serde_json::Map<String, Value>) {
 }
 
 /// Intent: event_append
+/// Provenance: generated
 fn append_prompt_overflow_receipt(
     role: &str,
     prompt_bytes: usize,
@@ -1149,6 +1168,8 @@ fn refresh_existing_prompt_overflow_violation(
 }
 
 /// Intent: canonical_read
+/// Effects: reads_artifact, reads_state
+/// Provenance: generated
 pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, prompt_bytes: usize) {
     use crate::constants::PROMPT_OVERFLOW_BYTES;
     if prompt_bytes <= PROMPT_OVERFLOW_BYTES {

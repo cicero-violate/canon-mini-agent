@@ -130,6 +130,7 @@ pub struct PathRecord {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn summarize_cfg_terminators(blocks: &[&CfgNode]) -> (usize, usize, usize) {
     blocks.iter().fold((0usize, 0usize, 0usize), |mut acc, b| {
         if b.terminator.starts_with("Assert") {
@@ -622,6 +623,7 @@ impl SemanticIndex {
     }
 
     /// Intent: pure_transform
+    /// Provenance: generated
     pub fn render_execution_path_plan(
         &self,
         plan: &ExecutionPathPlan,
@@ -1103,6 +1105,7 @@ impl SemanticIndex {
     // -----------------------------------------------------------------------
 
     /// Intent: diagnostic_scan
+    /// Provenance: generated
     fn find_node(&self, symbol: &str) -> Result<&GraphNode> {
         let key = self.resolve_node_key(symbol)?;
         Ok(self.graph.nodes.get(key).unwrap())
@@ -2177,6 +2180,7 @@ fn patch_kind_hints(kind: Option<&PatchKind>) -> (&'static str, &'static str) {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 pub(crate) fn build_apply_patch_template(target: &ExecutionPatchTarget) -> Option<String> {
     let file = target.file.as_ref()?;
     let context = target.context_window.as_ref()?;
@@ -2202,6 +2206,7 @@ pub(crate) fn build_apply_patch_template(target: &ExecutionPatchTarget) -> Optio
 }
 
 /// Intent: canonical_read
+/// Provenance: generated
 fn read_context_window(file: &str, line: u32, before: usize, after: usize) -> (u32, u32, String) {
     let Ok(source) = fs::read_to_string(file) else {
         return (line, line, String::new());

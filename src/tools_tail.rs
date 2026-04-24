@@ -8,6 +8,7 @@ pub(crate) fn write_stage_graph(workspace: &Path) {
 }
 
 /// Intent: canonical_write
+/// Provenance: generated
 fn write_stage_graph_inner(workspace: &Path, out_rel: &str) -> Result<()> {
     let out_path = {
         let p = std::path::Path::new(out_rel);
@@ -60,6 +61,7 @@ fn stage_graph_edge(from: &str, to: &str, edge_type: &str) -> serde_json::Value 
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_stage_graph_nodes() -> Vec<serde_json::Value> {
     vec![
         stage_graph_node("observe.input", 0, "collect state", &[], &["state"]),
@@ -102,6 +104,7 @@ fn build_stage_graph_nodes() -> Vec<serde_json::Value> {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_stage_graph_edges() -> Vec<serde_json::Value> {
     vec![
         stage_graph_edge("observe.input", "orient.update", "call"),
@@ -115,6 +118,7 @@ fn build_stage_graph_edges() -> Vec<serde_json::Value> {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_stage_graph() -> serde_json::Value {
     serde_json::json!({
         "nodes": build_stage_graph_nodes(),
@@ -273,12 +277,14 @@ fn batch_item_op_note(item: &Value) -> String {
 }
 
 /// Intent: event_append
+/// Provenance: generated
 fn append_rejected_batch_item(out: &mut String, n: usize, total: usize, kind: &str, item: &Value) {
     let op_note = batch_item_op_note(item);
     out.push_str(&format_rejected_batch_item(n, total, kind, &op_note));
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn format_rejected_batch_item(n: usize, total: usize, kind: &str, op_note: &str) -> String {
     format!(
         "[batch {n}/{total}: REJECTED {kind}{op_note}]\n\
@@ -287,6 +293,7 @@ fn format_rejected_batch_item(n: usize, total: usize, kind: &str, op_note: &str)
 }
 
 /// Intent: event_append
+/// Provenance: generated
 fn append_batch_item_result(
     out: &mut String,
     role: &str,
@@ -306,6 +313,7 @@ fn append_batch_item_result(
 }
 
 /// Intent: event_append
+/// Provenance: generated
 fn append_batch_item_success(out: &mut String, result: &str) {
     out.push_str(result);
     if !result.ends_with('\n') {
@@ -443,6 +451,7 @@ fn resolve_inbound_message_target(role: &str, step: usize, action: &Value) -> Op
 }
 
 /// Intent: canonical_write
+/// Provenance: generated
 fn persist_inbound_message(
     role: &str,
     step: usize,
@@ -524,6 +533,7 @@ fn persist_inbound_message(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_execute_logged_action_error_text(action_kind: &str, error: &anyhow::Error) -> String {
     if action_kind == "plan" {
         format!(

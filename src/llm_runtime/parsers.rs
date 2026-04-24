@@ -51,6 +51,7 @@ impl FrameAssembler {
         }
     }
     /// Intent: canonical_write
+    /// Provenance: generated
     pub fn set_site(&mut self, site: SiteType) {
         self.site = site;
     }
@@ -486,6 +487,7 @@ fn classify_calpico_message(msg: &Value) -> FrameResult {
     FrameResult::Ignore
 }
 /// Intent: diagnostic_scan
+/// Provenance: generated
 fn find_fenced_json_in_value(v: &Value) -> Option<String> {
     match v {
         Value::String(s) => extract_fenced_json(s),
@@ -495,6 +497,7 @@ fn find_fenced_json_in_value(v: &Value) -> Option<String> {
     }
 }
 /// Intent: pure_transform
+/// Provenance: generated
 fn extract_fenced_json(text: &str) -> Option<String> {
     let start = text.find("```json")?;
     let rest = &text[start..];

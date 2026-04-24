@@ -1,4 +1,5 @@
 /// Intent: canonical_read
+/// Provenance: generated
 fn load_violations(path: &Path) -> Result<crate::reports::ViolationsReport> {
     let raw = fs::read_to_string(path).unwrap_or_default();
     if raw.trim().is_empty() {
@@ -15,6 +16,8 @@ fn load_violations(path: &Path) -> Result<crate::reports::ViolationsReport> {
 }
 
 /// Intent: canonical_write
+/// Effects: writes_artifact, writes_state, logging
+/// Provenance: generated
 fn save_violations(
     path: &Path,
     report: &crate::reports::ViolationsReport,
@@ -46,6 +49,7 @@ fn save_violations(
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 fn read_violation_report(path: &Path) -> Result<(bool, String)> {
     let report = load_violations(path)?;
     Ok((false, serde_json::to_string_pretty(&report)?))
@@ -109,6 +113,7 @@ fn resolve_violation(
 }
 
 /// Intent: canonical_write
+/// Provenance: generated
 fn set_violation_status(
     mut writer: Option<&mut CanonicalWriter>,
     path: &Path,
@@ -235,6 +240,7 @@ fn stable_hash_hex(value: &str) -> String {
 }
 
 /// Intent: event_append
+/// Provenance: generated
 fn append_evidence_receipt(
     role: &str,
     step: usize,
@@ -270,6 +276,7 @@ fn append_evidence_receipt(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_evidence_receipt(
     id: &str,
     ts_ms: u64,
@@ -295,6 +302,7 @@ fn build_evidence_receipt(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn format_output_with_evidence_receipt(
     prefix: &str,
     out: &str,
@@ -307,6 +315,7 @@ fn format_output_with_evidence_receipt(
 }
 
 /// Intent: validation_gate
+/// Provenance: generated
 fn validate_evidence_lease(action: &Value) -> Result<EvidenceLease> {
     let receipt_ids = action
         .get("evidence_receipts")
@@ -383,6 +392,7 @@ fn apply_violation_freshness(violation: &mut crate::reports::Violation, lease: &
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 fn read_open_issues(raw: &str) -> Result<(bool, String)> {
     if raw.trim().is_empty() {
         return Ok((false, "(no open issues)".to_string()));
@@ -424,6 +434,7 @@ fn create_issue(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn parse_issue_payload(issue_val: &Value) -> Result<Issue> {
     // Pre-check: collect all missing required string fields before serde attempts deserialization.
     // serde only reports the first missing field; this lists them all so the LLM can fix in one shot.
@@ -545,6 +556,7 @@ fn resolve_issue(
 }
 
 /// Intent: canonical_write
+/// Provenance: generated
 fn update_issue(
     action: &Value,
     path: &Path,
@@ -606,6 +618,7 @@ fn delete_issue(
 }
 
 /// Intent: canonical_write
+/// Provenance: generated
 fn set_issue_status(
     action: &Value,
     path: &Path,
@@ -641,6 +654,7 @@ fn queue_diagnostics_reconciliation() {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn parse_issues_file_allow_empty(raw: &str) -> Result<IssuesFile> {
     if raw.trim().is_empty() {
         Ok(IssuesFile::default())
@@ -650,6 +664,7 @@ fn parse_issues_file_allow_empty(raw: &str) -> Result<IssuesFile> {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn parse_issues_file_required(raw: &str) -> Result<IssuesFile> {
     serde_json::from_str(raw).map_err(|e| anyhow!("failed to parse ISSUES.json: {e}"))
 }
@@ -681,6 +696,7 @@ fn synthesize_issue_stub(issue_id: &str, status: Option<&str>) -> Issue {
 }
 
 /// Intent: canonical_write
+/// Provenance: generated
 fn write_issues_file(
     path: &Path,
     file: &mut IssuesFile,

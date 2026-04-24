@@ -212,6 +212,7 @@ fn invariant_status_label(status: &crate::invariants::InvariantStatus) -> &'stat
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn summarize_enforced_invariants_for_prompt(raw: &str) -> String {
     if raw.trim().is_empty() {
         return String::new();
@@ -391,12 +392,14 @@ fn live_done_total_ratio(path: PathBuf, array_field: &str) -> Option<(usize, usi
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 fn load_complexity_report(path: &Path) -> Option<serde_json::Value> {
     let raw = std::fs::read_to_string(path).ok()?;
     serde_json::from_str::<serde_json::Value>(&raw).ok()
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn summarize_ranked_open_issues_for_prompt(open_issues: &[Issue], limit: usize) -> String {
     if open_issues.is_empty() {
         return "(no open issues)".to_string();
@@ -440,6 +443,7 @@ fn summarize_ranked_open_issues_for_prompt(open_issues: &[Issue], limit: usize) 
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn summarize_violations_report_for_prompt(report: Option<&ViolationsReport>, raw: &str) -> String {
     let Some(report) = report else {
         return match raw.trim() {
@@ -481,11 +485,13 @@ enum ViolationsProjectionStatus {
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 fn parse_diagnostics_report(raw: &str) -> Option<DiagnosticsReport> {
     serde_json::from_str(raw).ok()
 }
 
 /// Intent: canonical_read
+/// Provenance: generated
 fn load_diagnostics_projection_text(workspace: &Path) -> Option<String> {
     let raw_diagnostics_text =
         read_text_or_empty(workspace.join(crate::constants::diagnostics_file()));
@@ -499,6 +505,7 @@ fn load_diagnostics_projection_text(workspace: &Path) -> Option<String> {
 }
 
 /// Intent: canonical_read
+/// Provenance: generated
 fn load_violations_projection(
     workspace: &Path,
 ) -> (Option<ViolationsReport>, ViolationsProjectionStatus) {
@@ -513,6 +520,7 @@ fn load_violations_projection(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn render_diagnostics_report_from_state(
     open_issues: &[Issue],
     violations_report: Option<&ViolationsReport>,
@@ -704,6 +712,7 @@ fn semantic_control_snapshot_hash_hex(text: &str) -> String {
 }
 
 /// Intent: canonical_read
+/// Provenance: generated
 fn read_semantic_control_snapshot_hash(path: &Path) -> Option<String> {
     let raw = std::fs::read_to_string(path).ok()?;
     let hash = raw.trim();
@@ -715,6 +724,7 @@ fn read_semantic_control_snapshot_hash(path: &Path) -> Option<String> {
 }
 
 /// Intent: canonical_write
+/// Provenance: generated
 fn write_semantic_control_snapshot_hash(path: &Path, hash: &str) {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -747,6 +757,7 @@ pub fn derive_semantic_control_prompt_state_with_delta(
 }
 
 /// Intent: canonical_read
+/// Provenance: generated
 pub fn read_semantic_control_prompt_context(workspace: &Path, issue_limit: usize) -> String {
     derive_semantic_control_prompt_state(workspace, issue_limit).control_summary
 }
@@ -881,16 +892,19 @@ fn default_encoding_instructions() -> String {
 }
 
 /// Intent: canonical_read
+/// Provenance: generated
 pub fn read_text_or_empty(path: impl AsRef<Path>) -> String {
     std::fs::read_to_string(path).unwrap_or_default()
 }
 
 /// Intent: canonical_read
+/// Provenance: generated
 pub fn read_required_text(path: impl AsRef<Path>, name: &str) -> Result<String> {
     std::fs::read_to_string(path.as_ref()).with_context(|| format!("failed to read {name}"))
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn render_lessons_list(title: &str, items: &[LessonEntry]) -> Option<String> {
     // Only show pending entries — encoded ones are already in the system source.
     let pending: Vec<&str> = items
@@ -913,6 +927,7 @@ fn render_lessons_list(title: &str, items: &[LessonEntry]) -> Option<String> {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn render_lessons_artifact(artifact: &LessonsArtifact) -> String {
     let mut sections = Vec::new();
     let summary = artifact.summary.trim();
@@ -932,6 +947,7 @@ fn render_lessons_artifact(artifact: &LessonsArtifact) -> String {
 }
 
 /// Intent: canonical_read
+/// Provenance: generated
 pub fn read_lessons_or_empty(workspace: &Path) -> String {
     let raw = read_text_or_empty(workspace.join(LESSONS_FILE));
     if !raw.trim().is_empty() {
@@ -1219,6 +1235,7 @@ pub fn filter_active_diagnostics_json(raw: &str) -> String {
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 fn parse_violations_report(raw: &str) -> Option<ViolationsReport> {
     if raw.trim().is_empty() {
         return None;
@@ -1278,6 +1295,7 @@ fn is_path_terminator(c: char) -> bool {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn extract_path_like_target(text: &str) -> Option<String> {
     for prefix in ["src/", "tests/", "PLANS/", "agent_state/", "state/"] {
         if let Some(idx) = text.find(prefix) {
@@ -1416,6 +1434,7 @@ fn derive_planner_handoff(
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 pub fn render_diagnostics_report_from_issues(workspace: &Path) -> String {
     let open_issues = read_ranked_open_issues(workspace);
     let (violations_report, violations_status) = load_violations_projection(workspace);
@@ -1511,6 +1530,7 @@ pub fn lane_summary_text(lanes: &[LaneConfig], verifier_summary: &[String]) -> S
 }
 
 /// Intent: canonical_read
+/// Provenance: generated
 pub fn load_executor_diff_inputs(
     workspace: &Path,
     last_executor_diff: &mut String,
@@ -1546,6 +1566,7 @@ fn planner_enforced_invariants_text(workspace: &Path) -> String {
 }
 
 /// Intent: canonical_read
+/// Provenance: generated
 pub fn load_planner_inputs(
     lanes: &[LaneConfig],
     workspace: &Path,
@@ -1611,6 +1632,7 @@ impl SingleRoleContext<'_> {
 }
 
 /// Intent: canonical_read
+/// Provenance: generated
 pub fn load_single_role_inputs(
     ctx: &SingleRoleContext<'_>,
     is_verifier: bool,
@@ -1646,6 +1668,7 @@ pub fn load_single_role_inputs(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 pub fn build_single_role_prompt(
     ctx: &SingleRoleContext<'_>,
     inputs: &SingleRoleInputs,
@@ -1662,6 +1685,7 @@ pub fn build_single_role_prompt(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_planner_role_prompt(
     ctx: &SingleRoleContext<'_>,
     inputs: &SingleRoleInputs,
@@ -1682,6 +1706,7 @@ fn build_planner_role_prompt(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_executor_role_prompt(ctx: &SingleRoleContext<'_>) -> Result<String> {
     let (spec, master_plan, semantic_control) = executor_role_prompt_inputs(ctx)?;
     Ok(single_role_executor_prompt(
@@ -1797,6 +1822,8 @@ fn diff_since_last_cycle(current: &str, last: &str) -> String {
 }
 
 /// Intent: transport_effect
+/// Effects: spawns_process
+/// Provenance: generated
 fn executor_diff(workspace: &Path, max_lines: usize) -> String {
     let mut cmd = std::process::Command::new("git");
     cmd.current_dir(workspace).args(["diff", "--name-only"]);
@@ -1850,6 +1877,7 @@ fn is_executor_diff_excluded(line: &str) -> bool {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn render_executor_diff(diff_text: &str, max_lines: usize) -> String {
     let mut out = String::new();
     for (idx, line) in diff_text.lines().enumerate() {

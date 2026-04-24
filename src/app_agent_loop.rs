@@ -627,6 +627,7 @@ fn write_post_restart_result(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_post_restart_result_payload(
     role: &str,
     action: &str,
@@ -873,6 +874,7 @@ fn restart_resume_banner(role: &str, resume: &PostRestartResult) -> String {
 }
 
 /// Intent: diagnostic_scan
+/// Provenance: generated
 fn find_endpoint<'a>(endpoints: &'a [LlmEndpoint], role: &str) -> Result<&'a LlmEndpoint> {
     endpoints
         .iter()
@@ -881,6 +883,7 @@ fn find_endpoint<'a>(endpoints: &'a [LlmEndpoint], role: &str) -> Result<&'a Llm
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_endpoints() -> Vec<LlmEndpoint> {
     ENDPOINT_SPECS
         .iter()
@@ -966,6 +969,7 @@ struct PendingExecutorSubmit {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn parse_submit_ack(raw: &str) -> Option<(u32, u64, Option<String>)> {
     let v: Value = serde_json::from_str(raw).ok()?;
     if v.get("submit_ack").and_then(|x| x.as_bool()) != Some(true) {
@@ -981,6 +985,7 @@ fn parse_submit_ack(raw: &str) -> Option<(u32, u64, Option<String>)> {
 }
 
 /// Intent: event_append
+/// Provenance: generated
 fn append_executor_completion_log(
     submitted: &SubmittedExecutorTurn,
     step: usize,

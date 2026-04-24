@@ -103,6 +103,8 @@ fn affected_paths_from_hunks(hunks: &[Hunk]) -> Result<AffectedPaths, ApplyPatch
 }
 
 /// Intent: transport_effect
+/// Effects: spawns_process
+/// Provenance: generated
 fn run_external_apply_patch(patch: &str, cwd: &Path) -> Result<(), ApplyPatchError> {
     let mut child = Command::new(APPLY_PATCH_BIN)
         .current_dir(cwd)

@@ -1,4 +1,5 @@
 /// Intent: canonical_write
+/// Provenance: generated
 fn apply_patch_diagnostics_target_path(role: &str, patch: &str) -> Option<String> {
     if role != "diagnostics" {
         return None;
@@ -93,6 +94,7 @@ fn reject_unvalidated_diagnostics_persistence(
 }
 
 /// Intent: validation_gate
+/// Provenance: generated
 fn validate_schema_guarded_patch_outputs(
     role: &str,
     step: usize,
@@ -154,6 +156,7 @@ fn run_patch_crate_verification_command(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn format_chained_action_entry(
     index: usize,
     action: &str,
@@ -177,6 +180,7 @@ fn format_chained_action_entry(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn format_apply_patch_action_chain(
     check_label: &str,
     check_cmd: &str,
@@ -270,6 +274,7 @@ fn verification_rebind_note(
 }
 
 /// Intent: validation_gate
+/// Provenance: generated
 fn verify_apply_patch_crate(
     role: &str,
     step: usize,
@@ -429,6 +434,7 @@ fn execution_learning_record(
 }
 
 /// Intent: event_append
+/// Provenance: generated
 fn append_python_failure_guidance(out: &mut String, cwd: &str, workspace: &Path) {
     let lowered = out.to_lowercase();
     let mut context = String::new();
@@ -826,6 +832,7 @@ fn handle_rustc_action(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_fallback_rustc_command(crate_name: &str, mode: &str, extra: &str) -> String {
     if extra.trim().is_empty() {
         format!("cargo rustc -p {crate_name} -- -Zunpretty={mode}")
@@ -867,6 +874,7 @@ fn log_fallback_rustc_failure(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn format_fallback_rustc_output(label: &str, out: &str, crate_name: &str) -> String {
     format!(
         "{label}:\n{}",
@@ -951,6 +959,7 @@ fn rustc_action_symbol(action: &Value, crate_norm: &str) -> Option<String> {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn format_graph_backed_hir_output(
     idx: &crate::semantic::SemanticIndex,
     graph_path: &Path,
@@ -977,6 +986,7 @@ fn format_graph_backed_hir_output(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn format_graph_backed_mir_output(
     idx: &crate::semantic::SemanticIndex,
     graph_path: &Path,
@@ -993,6 +1003,7 @@ fn format_graph_backed_mir_output(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn format_graph_backed_mir_symbol_output(
     idx: &crate::semantic::SemanticIndex,
     graph_path: &Path,
@@ -1039,6 +1050,7 @@ fn format_graph_backed_mir_symbol_output(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn format_graph_backed_mir_listing_output(
     idx: &crate::semantic::SemanticIndex,
     graph_path: &Path,
@@ -1078,6 +1090,7 @@ fn format_graph_backed_mir_listing_output(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn parse_rustc_graph_filter(extra: &str) -> Option<String> {
     let s = extra.trim();
     if s.is_empty() {
@@ -1115,6 +1128,7 @@ fn cargo_test_totals_summary(out: &str) -> String {
 }
 
 /// Intent: canonical_write
+/// Provenance: generated
 fn write_state_log(workspace: &Path, tool: &str, content: &str) -> Result<String> {
     let safe_tool = tool
         .chars()
@@ -1133,6 +1147,7 @@ fn write_state_log(workspace: &Path, tool: &str, content: &str) -> Result<String
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn summarize_compiler_like_output(out: &str) -> String {
     let mut errors = 0usize;
     let mut warnings = 0usize;
@@ -1205,6 +1220,7 @@ fn execute_graph_call_cfg_action(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn parse_graph_call_cfg_action_input<'a>(
     action_kind: &'a str,
     workspace: &'a Path,
@@ -1225,6 +1241,7 @@ fn parse_graph_call_cfg_action_input<'a>(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_graph_call_cfg_command(artifact_crate: &str, out_dir_str: &str) -> String {
     format!(
         "cargo run -p canon-tools-analysis --bin graph_bin -- --workspace {} --crate {} --out {}",
@@ -1283,6 +1300,7 @@ fn run_graph_call_cfg_bin(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn render_graph_call_cfg_output(
     action_kind: &str,
     out_dir: &Path,
@@ -1318,6 +1336,7 @@ fn collect_graph_call_cfg_preview_data(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn format_graph_call_cfg_output(summary: &str, bin_label: &str, bin_out: &str) -> String {
     let full_out = format!("{bin_label}:\n{}\n", truncate(bin_out, MAX_SNIPPET));
     format!("{summary}\n\nfull_output:\n{full_out}")
@@ -1348,6 +1367,7 @@ fn log_graph_call_cfg_failure(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_graph_call_cfg_summary(
     label: &str,
     out_dir_str: &str,
@@ -1398,6 +1418,7 @@ fn graph_preview_text(target_path: &Path) -> Result<String> {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_graph_symbol_preview(
     out_dir: &Path,
     target_path: &Path,
@@ -1492,6 +1513,7 @@ fn graph_symbol_edge_from_ids(
 }
 
 /// Intent: canonical_write
+/// Provenance: generated
 fn write_graph_symbol_preview_file(
     out_dir: &Path,
     action_kind: &str,
@@ -1511,6 +1533,7 @@ fn write_graph_symbol_preview_file(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn parse_graph_reports_action_input(
     action_kind: &str,
     workspace: &Path,
@@ -1536,6 +1559,7 @@ fn parse_graph_reports_action_input(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_graph_reports_command(
     artifact_crate: &str,
     out_dir_str: &str,
@@ -1601,6 +1625,7 @@ fn graph_report_path(crate_dir: &Path, action_kind: &str) -> (PathBuf, &'static 
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_graph_reports_summary(
     label: &str,
     out_dir_str: &str,
@@ -1666,6 +1691,7 @@ fn handle_graph_reports_action(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_graph_reports_output(
     label: &str,
     action_kind: &str,
@@ -1715,6 +1741,7 @@ fn maybe_log_graph_reports_failure(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_cargo_test_command(crate_name: &str, test_name: Option<&str>) -> String {
     if let Some(test_name) = test_name {
         format!("cargo test -q -p {} {} -- --exact", crate_name, test_name)
@@ -1726,6 +1753,8 @@ fn build_cargo_test_command(crate_name: &str, test_name: Option<&str>) -> String
 }
 
 /// Intent: canonical_read
+/// Effects: reads_artifact, reads_state
+/// Provenance: generated
 fn load_cached_failed_tests(workspace: &Path) -> Vec<String> {
     let path = workspace.join("cargo_test_failures.json");
     let Ok(raw) = fs::read_to_string(path) else {
@@ -1748,6 +1777,7 @@ fn load_cached_failed_tests(workspace: &Path) -> Vec<String> {
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_cached_failed_tests_command(crate_name: &str, tests: &[String]) -> Option<String> {
     if tests.is_empty() {
         return None;
@@ -1772,6 +1802,7 @@ fn cargo_test_summary_line(log_path: Option<&Path>, out: &str) -> Option<String>
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn summarize_cargo_test_log(path: &Path) -> Option<String> {
     let contents = std::fs::read_to_string(path).ok()?;
     if contents.trim().is_empty() {
@@ -1802,6 +1833,7 @@ fn cargo_test_label(summary_line: Option<&str>, spawn_ok: bool) -> &'static str 
 }
 
 /// Intent: event_append
+/// Provenance: generated
 fn append_cargo_test_failure_section(
     summary: &mut String,
     failures_json: &Value,
@@ -1828,6 +1860,7 @@ fn append_cargo_test_failure_section(
 }
 
 /// Intent: pure_transform
+/// Provenance: generated
 fn build_cargo_test_summary(
     label: &str,
     failures_json: &Value,
@@ -1866,6 +1899,8 @@ fn build_cargo_test_summary(
 }
 
 /// Intent: canonical_write
+/// Effects: writes_artifact, writes_state, transitions_state
+/// Provenance: generated
 fn handle_cargo_test_action(
     role: &str,
     step: usize,
