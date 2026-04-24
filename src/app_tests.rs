@@ -6,7 +6,7 @@ mod tests {
         executor_step_limit_feedback,
         has_actionable_objectives, inbound_message_from_user, invariant_id_from_reason,
         is_chromium_transport_error, lane_has_stale_executor_claim,
-        local_transport_blocker_message, plan_has_incomplete_tasks, route_gate_blocker_message,
+        plan_has_incomplete_tasks, route_gate_blocker_message,
         planner_completion_allows_executor_dispatch, semantic_action_fingerprint,
         should_reject_solo_self_complete,
         RecordedMessageKind,
