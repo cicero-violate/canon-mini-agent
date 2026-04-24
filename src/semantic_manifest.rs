@@ -779,60 +779,125 @@ pub fn run_with_options(
         fn_with_any_error as f64 / fn_total as f64
     };
 
-    let target =
-        out_path.unwrap_or_else(|| PathBuf::from("agent_state/semantic_manifest_proposals.json"));
+    finish_semantic_manifest_run(SemanticManifestRunFinish {
+        write_mode,
+        max_error_rate,
+        out_path,
+        graph_path,
+        graph_bytes: &bytes,
+        updated,
+        fn_total,
+        fn_with_any_error,
+        fn_error_rate: error_rate,
+        proposals,
+    })
+}
+
+struct SemanticManifestRunFinish<'a> {
+    write_mode: bool,
+    max_error_rate: Option<f64>,
+    out_path: Option<PathBuf>,
+    graph_path: PathBuf,
+    graph_bytes: &'a [u8],
+    updated: usize,
+    fn_total: usize,
+    fn_with_any_error: usize,
+    fn_error_rate: f64,
+    proposals: HashMap<String, SemanticManifest>,
+}
+
+fn finish_semantic_manifest_run(
+    finish: SemanticManifestRunFinish<'_>,
+) -> anyhow::Result<SemanticManifestRunReport> {
+    let target = finish
+        .out_path
+        .unwrap_or_else(|| PathBuf::from("agent_state/semantic_manifest_proposals.json"));
     let proposal_file = ProposalFile {
         generated_at_ms: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0),
-        graph_path: graph_path.display().to_string(),
-        fn_total,
-        fn_with_any_error,
-        fn_error_rate: error_rate,
-        proposals,
+        graph_path: finish.graph_path.display().to_string(),
+        fn_total: finish.fn_total,
+        fn_with_any_error: finish.fn_with_any_error,
+        fn_error_rate: finish.fn_error_rate,
+        proposals: finish.proposals,
     };
-    if write_mode {
-        if target == graph_path {
-            let mut raw_graph: serde_json::Value = serde_json::from_slice(&bytes)?;
-            for (node_id, manifest) in &proposal_file.proposals {
-                if let Some(node) = raw_graph
-                    .get_mut("nodes")
-                    .and_then(|nodes| nodes.get_mut(node_id))
-                    .and_then(|node| node.as_object_mut())
-                {
-                    node.insert(
-                        "semantic_manifest".to_string(),
-                        serde_json::to_value(manifest)?,
-                    );
-                }
+    write_semantic_manifest_proposals(
+        finish.write_mode,
+        &target,
+        &finish.graph_path,
+        finish.graph_bytes,
+        finish.updated,
+        &proposal_file,
+    )?;
+    report_semantic_manifest_error_rate(
+        finish.max_error_rate,
+        finish.fn_error_rate,
+        finish.fn_with_any_error,
+        finish.fn_total,
+    )?;
+    Ok(SemanticManifestRunReport {
+        updated: finish.updated,
+        fn_total: finish.fn_total,
+        fn_with_any_error: finish.fn_with_any_error,
+        fn_error_rate: finish.fn_error_rate,
+        target,
+    })
+}
+
+fn write_semantic_manifest_proposals(
+    write_mode: bool,
+    target: &Path,
+    graph_path: &Path,
+    graph_bytes: &[u8],
+    updated: usize,
+    proposal_file: &ProposalFile,
+) -> anyhow::Result<()> {
+    if !write_mode {
+        eprintln!("semantic_manifest: would write {updated} proposals (dry-run)");
+        return Ok(());
+    }
+    if target == graph_path {
+        let mut raw_graph: serde_json::Value = serde_json::from_slice(graph_bytes)?;
+        for (node_id, manifest) in &proposal_file.proposals {
+            if let Some(node) = raw_graph
+                .get_mut("nodes")
+                .and_then(|nodes| nodes.get_mut(node_id))
+                .and_then(|node| node.as_object_mut())
+            {
+                node.insert(
+                    "semantic_manifest".to_string(),
+                    serde_json::to_value(manifest)?,
+                );
             }
-            std::fs::write(&target, serde_json::to_vec_pretty(&raw_graph)?)?;
-            eprintln!(
-                "semantic_manifest: wrote {} semantic manifests into {}",
-                updated,
-                target.display()
-            );
-            return Ok(SemanticManifestRunReport {
-                updated,
-                fn_total,
-                fn_with_any_error,
-                fn_error_rate: error_rate,
-                target,
-            });
         }
-        if let Some(parent) = target.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        std::fs::write(&target, serde_json::to_vec_pretty(&proposal_file)?)?;
+        std::fs::write(target, serde_json::to_vec_pretty(&raw_graph)?)?;
         eprintln!(
-            "semantic_manifest: wrote {} proposals -> {}",
+            "semantic_manifest: wrote {} semantic manifests into {}",
             updated,
             target.display()
         );
-    } else {
-        eprintln!("semantic_manifest: would write {updated} proposals (dry-run)");
+        return Ok(());
     }
+    if let Some(parent) = target.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    std::fs::write(target, serde_json::to_vec_pretty(proposal_file)?)?;
+    eprintln!(
+        "semantic_manifest: wrote {} proposals -> {}",
+        updated,
+        target.display()
+    );
+    Ok(())
+}
+
+fn report_semantic_manifest_error_rate(
+    max_error_rate: Option<f64>,
+    error_rate: f64,
+    fn_with_any_error: usize,
+    fn_total: usize,
+) -> anyhow::Result<()> {
     eprintln!(
         "semantic_manifest: fn_error_rate={:.3} ({}/{})",
         error_rate, fn_with_any_error, fn_total
@@ -846,13 +911,7 @@ pub fn run_with_options(
             );
         }
     }
-    Ok(SemanticManifestRunReport {
-        updated,
-        fn_total,
-        fn_with_any_error,
-        fn_error_rate: error_rate,
-        target,
-    })
+    Ok(())
 }
 
 fn build_semantic_manifest_proposals(
