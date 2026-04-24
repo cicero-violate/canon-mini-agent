@@ -767,6 +767,53 @@ fn append_external_user_message_to_prompt(prompt: &mut String, inbound: &str) {
     );
 }
 
+fn executor_result_highlight_lines(executor_result: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in executor_result.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        let keep = lower.contains("action=")
+            || lower.contains("apply_patch")
+            || lower.contains("run_command")
+            || lower.contains("cargo check")
+            || lower.contains("cargo test")
+            || lower.contains(" status:")
+            || lower.contains(" ok")
+            || lower.contains(" failed")
+            || lower.contains("error:");
+        if !keep {
+            continue;
+        }
+        let normalized = truncate(trimmed, 180).to_string();
+        if out.iter().any(|existing| existing == &normalized) {
+            continue;
+        }
+        out.push(normalized);
+        if out.len() >= 10 {
+            break;
+        }
+    }
+    out
+}
+
+fn append_executor_result_summary(out: &mut String, executor_result: &str) {
+    let highlights = executor_result_highlight_lines(executor_result);
+    if highlights.is_empty() {
+        out.push_str(&format!(
+            "executor_result: {}\n",
+            truncate(executor_result.trim(), 280)
+        ));
+        return;
+    }
+    out.push_str("executor_result_highlights:\n");
+    for line in highlights {
+        out.push_str(&format!("- {line}\n"));
+    }
+}
+
 /// Intent: pure_transform
 /// Resource: error
 /// Inputs: &str, &str
@@ -812,6 +859,12 @@ fn summarize_inbound_message(inbound: &str, role: &str) -> String {
                 if !text.is_empty() {
                     out.push_str(&format!("{key}: {}\n", truncate(text, 280)));
                 }
+            }
+        }
+        if let Some(executor_result) = payload.get("executor_result").and_then(Value::as_str) {
+            let executor_result = executor_result.trim();
+            if !executor_result.is_empty() {
+                append_executor_result_summary(&mut out, executor_result);
             }
         }
     }
@@ -974,4 +1027,3 @@ fn apply_planner_pending_if_changed(writer: &mut CanonicalWriter, pending: bool)
     writer.apply(ControlEvent::PlannerPendingSet { pending });
     true
 }
-

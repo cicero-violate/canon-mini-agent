@@ -501,33 +501,22 @@ fn apply_control_from_executor_action_result(
 /// Provenance: rustc:facts + rustc:docstring
 fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Value) {
     let to_role = action.get("to").and_then(|v| v.as_str()).unwrap_or("");
+    let effective_to = normalize_executor_completion_target(to_role);
+
+    if effective_to.eq_ignore_ascii_case("planner") {
+        // Planner must receive executor completion evidence (action transcript,
+        // compile/test outcomes) even on successful handoffs.
+        persist_planner_message(writer, action);
+        writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+        writer.apply(ControlEvent::ScheduledPhaseSet { phase: None });
+        return;
+    }
+
     let action_text = serde_json::to_string_pretty(action).unwrap_or_default();
     let from_role = action
         .get("from")
         .and_then(Value::as_str)
         .unwrap_or("executor");
-    let effective_to = normalize_executor_completion_target(to_role);
-    let status = action
-        .get("status")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-
-    if effective_to.eq_ignore_ascii_case("planner") {
-        // Single operational-agent mode:
-        // non-blocked executor->planner handoffs are phase transitions, not
-        // message-passing dependencies. Keep blocked escalations canonical.
-        if status == "blocked" {
-            persist_planner_message(writer, action);
-        } else {
-            writer.apply(ControlEvent::PlannerPendingSet { pending: true });
-            writer.apply(ControlEvent::ScheduledPhaseSet { phase: None });
-            return;
-        }
-        writer.apply(ControlEvent::PlannerPendingSet { pending: true });
-        return;
-    }
-
     let to_key = effective_to
         .to_lowercase()
         .replace(|c: char| !c.is_ascii_alphanumeric(), "_");

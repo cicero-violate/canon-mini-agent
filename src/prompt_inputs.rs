@@ -321,18 +321,7 @@ fn summarize_enforced_invariants_for_prompt(raw: &str) -> String {
         return String::new();
     }
 
-    let mut discovered = 0usize;
-    let mut promoted = 0usize;
-    let mut enforced = 0usize;
-    let mut collapsed = 0usize;
-    for inv in &file.invariants {
-        match inv.status {
-            crate::invariants::InvariantStatus::Discovered => discovered += 1,
-            crate::invariants::InvariantStatus::Promoted => promoted += 1,
-            crate::invariants::InvariantStatus::Enforced => enforced += 1,
-            crate::invariants::InvariantStatus::Collapsed => collapsed += 1,
-        }
-    }
+    let counts = summarize_invariant_status_counts(&file.invariants);
 
     let mut ranked: Vec<&crate::invariants::DiscoveredInvariant> = file
         .invariants
@@ -349,11 +338,11 @@ fn summarize_enforced_invariants_for_prompt(raw: &str) -> String {
     let mut out = String::new();
     out.push_str(&format!(
         "Summary: active={} enforced={} promoted={} discovered={} collapsed={} last_synthesized_ms={}\n",
-        discovered + promoted + enforced,
-        enforced,
-        promoted,
-        discovered,
-        collapsed,
+        counts.active(),
+        counts.enforced,
+        counts.promoted,
+        counts.discovered,
+        counts.collapsed,
         file.last_synthesized_ms
     ));
     for inv in ranked.into_iter().take(8) {
@@ -374,6 +363,39 @@ fn summarize_enforced_invariants_for_prompt(raw: &str) -> String {
     }
     out.push_str("Full detail: {\"action\":\"invariants\",\"op\":\"read\"}");
     out
+}
+
+struct InvariantStatusCounts {
+    discovered: usize,
+    promoted: usize,
+    enforced: usize,
+    collapsed: usize,
+}
+
+impl InvariantStatusCounts {
+    fn active(&self) -> usize {
+        self.discovered + self.promoted + self.enforced
+    }
+}
+
+fn summarize_invariant_status_counts(
+    invariants: &[crate::invariants::DiscoveredInvariant],
+) -> InvariantStatusCounts {
+    let mut counts = InvariantStatusCounts {
+        discovered: 0,
+        promoted: 0,
+        enforced: 0,
+        collapsed: 0,
+    };
+    for inv in invariants {
+        match inv.status {
+            crate::invariants::InvariantStatus::Discovered => counts.discovered += 1,
+            crate::invariants::InvariantStatus::Promoted => counts.promoted += 1,
+            crate::invariants::InvariantStatus::Enforced => counts.enforced += 1,
+            crate::invariants::InvariantStatus::Collapsed => counts.collapsed += 1,
+        }
+    }
+    counts
 }
 
 /// Intent: pure_transform
