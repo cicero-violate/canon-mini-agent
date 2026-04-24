@@ -40,6 +40,7 @@ pub struct BridgeConnectivityStats {
     pub candidate_functions: Vec<(String, usize)>,
 }
 
+/// Intent: diagnostic_scan
 pub fn generate_bridge_connectivity_issues(workspace: &Path) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
 
@@ -77,6 +78,7 @@ fn bridge_signal_is_actionable(stats: &BridgeConnectivityStats) -> bool {
     !(stats.node_count < MIN_ACTIONABLE_BRIDGE_GRAPH_NODES && stats.candidate_functions.is_empty())
 }
 
+/// Intent: diagnostic_scan
 pub fn generate_module_cohesion_issues(workspace: &Path) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
     let existing: HashSet<String> = file.issues.iter().map(|i| i.id.clone()).collect();
@@ -251,6 +253,7 @@ fn maybe_insert_module_cohesion_issue(
     1
 }
 
+/// Intent: diagnostic_scan
 pub fn generate_artifact_writer_dispersion_issues(workspace: &Path) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
     let before = serde_json::to_value(&file)?;
@@ -300,6 +303,7 @@ fn collect_artifact_writers_by_artifact(idx: &SemanticIndex) -> HashMap<String, 
     writers_by_artifact
 }
 
+/// Intent: diagnostic_scan
 fn upsert_artifact_writer_dispersion_issues(
     file: &mut IssuesFile,
     crate_name: &str,
@@ -319,6 +323,7 @@ fn upsert_artifact_writer_dispersion_issues(
     (desired_ids, mutated)
 }
 
+/// Intent: diagnostic_scan
 fn resolve_stale_artifact_writer_dispersion_issues(
     file: &mut IssuesFile,
     crate_name: &str,
@@ -340,6 +345,7 @@ fn resolve_stale_artifact_writer_dispersion_issues(
     mutated
 }
 
+/// Intent: diagnostic_scan
 pub fn generate_error_shaping_dispersion_issues(workspace: &Path) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
     let before = serde_json::to_value(&file)?;
@@ -405,6 +411,7 @@ fn collect_state_transitions_by_domain(idx: &SemanticIndex) -> HashMap<String, H
     transitions_by_state
 }
 
+/// Intent: diagnostic_scan
 fn resolve_missing_state_transition_dispersion_issues(
     file: &mut IssuesFile,
     desired_ids: &HashSet<String>,
@@ -466,6 +473,7 @@ fn sync_state_transition_dispersion_issues_for_crate(
     mutated + resolve_missing_state_transition_dispersion_issues(file, &desired_ids, crate_name)
 }
 
+/// Intent: diagnostic_scan
 pub fn generate_state_transition_dispersion_issues(workspace: &Path) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
     let before = serde_json::to_value(&file)?;
@@ -497,6 +505,7 @@ pub fn generate_state_transition_dispersion_issues(workspace: &Path) -> Result<u
     Ok(mutated)
 }
 
+/// Intent: diagnostic_scan
 pub fn generate_planner_loop_fragmentation_issues(workspace: &Path) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
     let before = serde_json::to_value(&file)?;
@@ -539,6 +548,7 @@ fn sync_planner_loop_fragmentation_issue_for_crate(
     upsert_bridge_issue(file, desired, active)
 }
 
+/// Intent: diagnostic_scan
 pub fn generate_implicit_state_machine_issues(workspace: &Path) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
     let before = serde_json::to_value(&file)?;
@@ -585,6 +595,7 @@ fn collect_states_by_symbol(idx: &SemanticIndex) -> HashMap<String, HashSet<Stri
     states_by_symbol
 }
 
+/// Intent: diagnostic_scan
 fn upsert_implicit_state_machine_issues(
     file: &mut IssuesFile,
     crate_name: &str,
@@ -615,6 +626,7 @@ fn upsert_implicit_state_machine_issues(
     (desired_ids, mutated)
 }
 
+/// Intent: diagnostic_scan
 fn resolve_stale_implicit_state_machine_issues(
     file: &mut IssuesFile,
     crate_name: &str,
@@ -636,6 +648,7 @@ fn resolve_stale_implicit_state_machine_issues(
     mutated
 }
 
+/// Intent: diagnostic_scan
 pub fn generate_effect_boundary_leak_issues(workspace: &Path) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
     let before = serde_json::to_value(&file)?;
@@ -753,6 +766,7 @@ fn insert_effect_labels<I>(
     }
 }
 
+/// Intent: diagnostic_scan
 fn resolve_stale_effect_boundary_leak_issues(
     file: &mut IssuesFile,
     crate_name: &str,
@@ -772,18 +786,22 @@ fn resolve_stale_effect_boundary_leak_issues(
     mutated
 }
 
+/// Intent: diagnostic_scan
 pub fn generate_logging_dispersion_issues(workspace: &Path) -> Result<usize> {
     generate_effect_dispersion_issues(workspace, EffectDispersionMode::Logging)
 }
 
+/// Intent: diagnostic_scan
 pub fn generate_process_spawn_dispersion_issues(workspace: &Path) -> Result<usize> {
     generate_effect_dispersion_issues(workspace, EffectDispersionMode::ProcessSpawn)
 }
 
+/// Intent: diagnostic_scan
 pub fn generate_network_usage_dispersion_issues(workspace: &Path) -> Result<usize> {
     generate_effect_dispersion_issues(workspace, EffectDispersionMode::Network)
 }
 
+/// Intent: diagnostic_scan
 fn generate_effect_dispersion_issues(
     workspace: &Path,
     mode: EffectDispersionMode,
@@ -841,6 +859,7 @@ impl EffectDispersionMode {
         }
     }
 
+    /// Intent: canonical_write
     fn persist_label(self) -> &'static str {
         match self {
             EffectDispersionMode::Logging => "generate_logging_dispersion_issues",
@@ -849,6 +868,7 @@ impl EffectDispersionMode {
         }
     }
 
+    /// Intent: pure_transform
     fn build_issue(self, crate_name: &str, by_module: &HashMap<String, Vec<String>>) -> Issue {
         match self {
             EffectDispersionMode::Logging => build_logging_dispersion_issue(crate_name, by_module),
@@ -876,6 +896,7 @@ impl EffectDispersionMode {
     }
 }
 
+/// Intent: diagnostic_scan
 pub fn generate_representation_fanout_issues(workspace: &Path) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
     let before = serde_json::to_value(&file)?;
@@ -1015,6 +1036,7 @@ fn count_modules_outside_boundary(
         .count()
 }
 
+/// Intent: pure_transform
 fn build_representation_symbols_by_pair(
     sources_by_symbol: HashMap<String, HashSet<String>>,
     targets_by_symbol: &HashMap<String, HashSet<String>>,
@@ -1041,14 +1063,17 @@ fn build_representation_symbols_by_pair(
     symbols_by_pair
 }
 
+/// Intent: diagnostic_scan
 pub fn generate_scc_region_reduction_issues(workspace: &Path) -> Result<usize> {
     generate_region_reduction_issues(workspace, RegionReductionMode::Scc)
 }
 
+/// Intent: diagnostic_scan
 pub fn generate_dominator_region_reduction_issues(workspace: &Path) -> Result<usize> {
     generate_region_reduction_issues(workspace, RegionReductionMode::Dominator)
 }
 
+/// Intent: diagnostic_scan
 fn generate_region_reduction_issues(
     workspace: &Path,
     mode: RegionReductionMode,
@@ -1315,6 +1340,7 @@ fn writer_rank(writer: &str, artifact_hint: &str) -> (usize, usize, usize) {
     (persist_bias, artifact_bias, projection_bias)
 }
 
+/// Intent: pure_transform
 fn build_artifact_writer_dispersion_issue(
     crate_name: &str,
     artifact: &str,
@@ -1389,6 +1415,7 @@ fn display_error_style(raw: &str) -> String {
     raw.strip_prefix("error_shape::").unwrap_or(raw).to_string()
 }
 
+/// Intent: pure_transform
 fn build_error_shaping_dispersion_issue(
     crate_name: &str,
     by_style: &HashMap<String, HashSet<String>>,
@@ -1474,6 +1501,7 @@ fn display_state_domain(raw: &str) -> String {
     raw.strip_prefix("state::").unwrap_or(raw).to_string()
 }
 
+/// Intent: pure_transform
 fn build_state_transition_dispersion_issue(
     crate_name: &str,
     state_domain: &str,
@@ -1732,6 +1760,7 @@ fn planner_loop_row_metrics(rows: &[WorkflowOrchestratorRow]) -> Vec<Value> {
         .collect()
 }
 
+/// Intent: pure_transform
 fn build_planner_loop_fragmentation_issue(crate_name: &str, idx: &SemanticIndex) -> Issue {
     let summary_by_symbol: HashMap<String, crate::semantic::SymbolSummary> = idx
         .symbol_summaries()
@@ -1849,6 +1878,7 @@ fn implicit_state_machine_candidate_symbol(symbol: &str) -> bool {
         && !EXCLUDED_SUBSTRINGS.iter().any(|frag| symbol.contains(frag))
 }
 
+/// Intent: pure_transform
 fn build_implicit_state_machine_issue(
     crate_name: &str,
     summary: &crate::semantic::SymbolSummary,
@@ -1977,6 +2007,7 @@ fn symbol_module(symbol: &str) -> String {
         .unwrap_or_else(|| symbol.to_string())
 }
 
+/// Intent: pure_transform
 fn normalize_representation_domain(kind: &str, raw: &str) -> String {
     match kind {
         "artifact" => format!("artifact::{}", display_artifact_domain(raw)),
@@ -2028,6 +2059,7 @@ fn effect_boundary_leak_issue_id(crate_name: &str, module: &str) -> String {
     )
 }
 
+/// Intent: pure_transform
 fn build_effect_boundary_leak_issue(
     crate_name: &str,
     module: &str,
@@ -2084,6 +2116,7 @@ fn build_effect_boundary_leak_issue(
     }
 }
 
+/// Intent: pure_transform
 fn build_representation_fanout_issue(
     crate_name: &str,
     source: &str,
@@ -2135,6 +2168,7 @@ fn build_representation_fanout_issue(
     }
 }
 
+/// Intent: diagnostic_scan
 fn resolve_legacy_cfg_region_issues(file: &mut IssuesFile, crate_name: &str) -> usize {
     let prefix = format!("auto_cfg_region_reduction_{crate_name}_");
     let mut mutated = 0usize;
@@ -2155,6 +2189,7 @@ fn scc_region_reduction_issue_id(crate_name: &str, symbol: &str) -> String {
     )
 }
 
+/// Intent: pure_transform
 fn build_scc_region_reduction_issue(
     crate_name: &str,
     summary: &crate::semantic::SymbolSummary,
@@ -2222,6 +2257,7 @@ fn dominator_region_reduction_issue_id(crate_name: &str, symbol: &str) -> String
     )
 }
 
+/// Intent: pure_transform
 fn build_dominator_region_reduction_issue(
     crate_name: &str,
     summary: &crate::semantic::SymbolSummary,
@@ -2335,6 +2371,7 @@ fn priority_from_ratio(ratio: f64) -> &'static str {
     }
 }
 
+/// Intent: pure_transform
 fn build_bridge_issue(stats: &BridgeConnectivityStats) -> Issue {
     let issue_id = issue_id(&stats.crate_name);
     let active = stats.bridge_ratio > stats.threshold;
@@ -2439,6 +2476,7 @@ fn is_canonical_process_boundary(module: &str) -> bool {
         || module.starts_with("tools::")
 }
 
+/// Intent: pure_transform
 fn build_logging_dispersion_issue(
     crate_name: &str,
     by_module: &HashMap<String, Vec<String>>,
@@ -2519,6 +2557,7 @@ fn build_logging_dispersion_issue(
     }
 }
 
+/// Intent: pure_transform
 fn build_process_spawn_dispersion_issue(
     crate_name: &str,
     by_module: &HashMap<String, Vec<String>>,
@@ -2615,6 +2654,7 @@ fn build_process_spawn_dispersion_issue(
     }
 }
 
+/// Intent: pure_transform
 fn build_network_usage_dispersion_issue(
     crate_name: &str,
     by_module: &HashMap<String, Vec<String>>,

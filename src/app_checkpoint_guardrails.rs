@@ -88,6 +88,7 @@ fn artifact_signature(parts: &[&str]) -> String {
     format!("{:016x}", hasher.finish())
 }
 
+/// Intent: canonical_write
 fn persist_agent_state_projection(path: &Path, contents: &str, subject: &str) -> Result<()> {
     let workspace = Path::new(crate::constants::workspace());
     let artifact = path
@@ -112,6 +113,7 @@ fn persist_agent_state_projection(path: &Path, contents: &str, subject: &str) ->
     Ok(())
 }
 
+/// Intent: canonical_write
 fn save_checkpoint(
     workspace: &Path,
     writer: &mut CanonicalWriter,
@@ -164,6 +166,7 @@ fn save_checkpoint(
     Ok(())
 }
 
+/// Intent: pure_transform
 fn build_checkpoint_lane_snapshots(
     state: &SystemState,
     lanes: &[LaneConfig],
@@ -184,6 +187,7 @@ fn build_checkpoint_lane_snapshots(
     lane_snapshots
 }
 
+/// Intent: pure_transform
 fn build_resume_verifier_items(
     lanes: &[LaneConfig],
     verifier_pending_results: &VecDeque<(SubmittedExecutorTurn, u64, String)>,
@@ -223,6 +227,7 @@ fn recover_verifier_item_from_executor_post_restart(
     })
 }
 
+/// Intent: canonical_read
 fn load_checkpoint(workspace: &Path) -> Option<OrchestratorCheckpoint> {
     let tlog_path = PathBuf::from(crate::constants::agent_state_dir()).join("tlog.ndjson");
     if tlog_path.exists() {
@@ -298,6 +303,7 @@ struct ExecutorProgressSignals {
     checkpoint_divergence_blockers_recent: usize,
 }
 
+/// Intent: canonical_read
 fn read_executor_progress_signals(workspace: &Path, now_ms: u64) -> ExecutorProgressSignals {
     const SIGNAL_LOOKBACK_RECORDS: usize = 800;
     const DIVERGENCE_WINDOW_MS: u64 = 120_000;

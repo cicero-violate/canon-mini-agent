@@ -456,6 +456,7 @@ impl CargoTestGate {
     }
 }
 
+/// Intent: pure_transform
 pub fn extract_progress_path_from_result(result: &str) -> Option<String> {
     for line in result.lines() {
         let trimmed = line.trim();

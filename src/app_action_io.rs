@@ -63,6 +63,7 @@ struct InvalidActionFeedback {
     feedback: String,
 }
 
+/// Intent: pure_transform
 fn parse_action_from_raw(
     role: &str,
     endpoint: &LlmEndpoint,
@@ -176,6 +177,7 @@ fn maybe_guardrail_parse_action(
     Some(guard_action)
 }
 
+/// Intent: pure_transform
 fn extract_single_action(
     role: &str,
     step: usize,
@@ -204,6 +206,7 @@ fn extract_single_action(
     Ok(actions.into_iter().next().expect("validated single action"))
 }
 
+/// Intent: pure_transform
 fn normalize_action_or_feedback(
     role: &str,
     raw: &str,
@@ -233,6 +236,7 @@ fn normalize_action_or_feedback(
     Ok(())
 }
 
+/// Intent: validation_gate
 fn validate_action_or_feedback(
     role: &str,
     raw: &str,
@@ -326,6 +330,7 @@ impl ActionProvenance {
     }
 }
 
+/// Intent: pure_transform
 fn build_agent_prompt(
     role: &str,
     send_system_prompt: bool,
@@ -695,6 +700,7 @@ fn take_external_user_message_without_writer(role: &str) -> Option<String> {
     take_recorded_message_without_writer(role, RecordedMessageKind::ExternalUser)
 }
 
+/// Intent: event_append
 fn append_external_user_message_to_prompt(prompt: &mut String, inbound: &str) {
     let parsed = serde_json::from_str::<Value>(inbound).ok();
     let message = parsed
@@ -713,6 +719,7 @@ fn append_external_user_message_to_prompt(prompt: &mut String, inbound: &str) {
     );
 }
 
+/// Intent: pure_transform
 fn summarize_inbound_message(inbound: &str, role: &str) -> String {
     let Ok(value) = serde_json::from_str::<Value>(inbound) else {
         return truncate(inbound.trim(), 1600).to_string();
@@ -797,6 +804,7 @@ fn summarize_inbound_message(inbound: &str, role: &str) -> String {
     out.trim().to_string()
 }
 
+/// Intent: event_append
 fn append_inbound_to_prompt(prompt: &mut String, inbound: &str, role: &str) {
     prompt.push_str("\n\nInbound handoff message summary:\n");
     prompt.push_str(&summarize_inbound_message(inbound, role));
@@ -830,6 +838,7 @@ fn inject_inbound_message(prompt: &mut String, writer: &mut CanonicalWriter, rol
     }
 }
 
+/// Intent: pure_transform
 fn extract_message_action(raw: &str) -> Option<String> {
     let marker = "message_action:";
     let idx = raw.find(marker)?;

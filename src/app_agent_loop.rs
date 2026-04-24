@@ -626,6 +626,7 @@ fn write_post_restart_result(
     }
 }
 
+/// Intent: pure_transform
 fn build_post_restart_result_payload(
     role: &str,
     action: &str,
@@ -871,6 +872,7 @@ fn restart_resume_banner(role: &str, resume: &PostRestartResult) -> String {
     render_action_result_sections(&prefix, &resume.result, suffix)
 }
 
+/// Intent: diagnostic_scan
 fn find_endpoint<'a>(endpoints: &'a [LlmEndpoint], role: &str) -> Result<&'a LlmEndpoint> {
     endpoints
         .iter()
@@ -878,6 +880,7 @@ fn find_endpoint<'a>(endpoints: &'a [LlmEndpoint], role: &str) -> Result<&'a Llm
         .ok_or_else(|| anyhow!("no endpoint with role '{role}' in constants"))
 }
 
+/// Intent: pure_transform
 fn build_endpoints() -> Vec<LlmEndpoint> {
     ENDPOINT_SPECS
         .iter()
@@ -962,6 +965,7 @@ struct PendingExecutorSubmit {
     executor_role: String,
 }
 
+/// Intent: pure_transform
 fn parse_submit_ack(raw: &str) -> Option<(u32, u64, Option<String>)> {
     let v: Value = serde_json::from_str(raw).ok()?;
     if v.get("submit_ack").and_then(|x| x.as_bool()) != Some(true) {
@@ -976,6 +980,7 @@ fn parse_submit_ack(raw: &str) -> Option<(u32, u64, Option<String>)> {
     Some((tab_id, turn_id, command_id))
 }
 
+/// Intent: event_append
 fn append_executor_completion_log(
     submitted: &SubmittedExecutorTurn,
     step: usize,

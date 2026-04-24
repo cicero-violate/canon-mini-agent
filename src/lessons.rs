@@ -629,6 +629,7 @@ fn count_success_sequences(
     (bigrams, trigrams)
 }
 
+/// Intent: pure_transform
 fn build_success_sequence_candidates(
     bigrams: HashMap<(String, String, String), CandidateAggregate>,
     trigrams: HashMap<(String, String, String, String), CandidateAggregate>,
@@ -666,6 +667,7 @@ fn build_success_sequence_candidates(
     results
 }
 
+/// Intent: pure_transform
 fn build_bigram_candidate(
     role: String,
     a: String,
@@ -719,6 +721,7 @@ fn build_bigram_candidate(
     }
 }
 
+/// Intent: pure_transform
 fn build_trigram_candidate(
     role: String,
     a: String,
@@ -904,6 +907,7 @@ fn mark_candidate_status(
     }
 }
 
+/// Intent: pure_transform
 fn build_artifact_summary(artifact: &LessonsArtifact) -> String {
     let f = artifact.failures.len();
     let fix = artifact.fixes.len();
@@ -921,6 +925,7 @@ fn lessons_path(workspace: &Path) -> std::path::PathBuf {
     workspace.join(LESSONS_FILE)
 }
 
+/// Intent: canonical_read
 fn load_json_file_or_else<T, F>(path: &Path, default: F) -> T
 where
     T: serde::de::DeserializeOwned,
@@ -932,11 +937,13 @@ where
         .unwrap_or_else(default)
 }
 
+/// Intent: canonical_read
 fn load_candidates(workspace: &Path) -> LessonsCandidatesFile {
     let path = candidates_path(workspace);
     load_json_file_or_else(&path, LessonsCandidatesFile::default)
 }
 
+/// Intent: canonical_write
 fn save_candidates(workspace: &Path, cfile: &LessonsCandidatesFile) -> Result<()> {
     let path = candidates_path(workspace);
     crate::logging::record_json_projection_with_optional_writer(
@@ -951,6 +958,7 @@ fn save_candidates(workspace: &Path, cfile: &LessonsCandidatesFile) -> Result<()
     )
 }
 
+/// Intent: canonical_read
 pub fn load_lessons_artifact(workspace: &Path) -> LessonsArtifact {
     if let Some(artifact) = load_lessons_from_tlog(workspace) {
         return artifact;
@@ -965,6 +973,7 @@ pub fn load_lessons_artifact(workspace: &Path) -> LessonsArtifact {
     LessonsArtifact::default()
 }
 
+/// Intent: canonical_write
 pub fn persist_lessons_projection(
     workspace: &Path,
     artifact: &LessonsArtifact,
@@ -973,6 +982,7 @@ pub fn persist_lessons_projection(
     persist_lessons_projection_with_writer(workspace, artifact, None, subject)
 }
 
+/// Intent: canonical_write
 pub fn persist_lessons_projection_with_writer(
     workspace: &Path,
     artifact: &LessonsArtifact,
@@ -994,6 +1004,7 @@ pub fn persist_lessons_projection_with_writer(
     )
 }
 
+/// Intent: canonical_read
 fn load_lessons_from_tlog(workspace: &Path) -> Option<LessonsArtifact> {
     crate::tlog::Tlog::latest_effect_from_workspace(workspace, |event| match event {
         crate::events::EffectEvent::LessonsArtifactRecorded { artifact } => Some(artifact),
@@ -1028,6 +1039,7 @@ fn stable_id(prefix: &str, key: &str) -> String {
     )
 }
 
+/// Intent: canonical_read
 fn read_tail_entries(path: &Path, max_lines: usize) -> Vec<Value> {
     let file = match std::fs::File::open(path) {
         Ok(f) => f,
@@ -1042,6 +1054,7 @@ fn read_tail_entries(path: &Path, max_lines: usize) -> Vec<Value> {
         .collect()
 }
 
+/// Intent: pure_transform
 fn normalize_error(text: &str) -> String {
     let first_line = text
         .trim_start_matches("Error executing action: ")
@@ -1194,6 +1207,7 @@ fn prevention_system_lever(action: &str, pattern: &str) -> &'static str {
     }
 }
 
+/// Intent: pure_transform
 fn build_success_cluster_counts(
     bigrams: &HashMap<(String, String, String), CandidateAggregate>,
     trigrams: &HashMap<(String, String, String, String), CandidateAggregate>,
@@ -1476,11 +1490,13 @@ fn roles_json_path(workspace: &Path) -> std::path::PathBuf {
     workspace.join("ROLES.json")
 }
 
+/// Intent: canonical_read
 fn load_roles_json(workspace: &Path) -> serde_json::Value {
     let path = roles_json_path(workspace);
     load_json_file_or_else(&path, || serde_json::json!({"roles": {}}))
 }
 
+/// Intent: canonical_write
 fn save_roles_json(workspace: &Path, val: &serde_json::Value) -> Result<()> {
     let path = roles_json_path(workspace);
     crate::logging::record_json_projection_with_optional_writer(

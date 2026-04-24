@@ -1,3 +1,4 @@
+/// Intent: validation_gate
 fn preflight_executor_dispatch(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
@@ -46,6 +47,7 @@ fn preflight_executor_dispatch(
     None
 }
 
+/// Intent: transport_effect
 fn dispatch_executor_submits(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
@@ -92,6 +94,7 @@ fn executor_dispatch_gate_result(
     None
 }
 
+/// Intent: transport_effect
 fn dispatch_ready_executor_lanes(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
@@ -436,6 +439,7 @@ fn submitted_executor_steps_used(writer: &CanonicalWriter, lane_id: usize) -> us
     writer.state().lane_steps_used_count(lane_id)
 }
 
+/// Intent: pure_transform
 fn build_submitted_executor_turn(
     writer: &CanonicalWriter,
     job: &PendingExecutorSubmit,
@@ -456,6 +460,7 @@ fn build_submitted_executor_turn(
     }
 }
 
+/// Intent: transport_effect
 fn submit_ack_matches_active_tab(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
@@ -618,6 +623,7 @@ fn resolve_completed_turn_submission(
     )
 }
 
+/// Intent: validation_gate
 fn validate_registered_submitted_turn(
     writer: &mut CanonicalWriter,
     tab_id: u32,
@@ -710,6 +716,7 @@ fn trace_unmatched_executor_completion(tab_id: u32, turn_id: u64, exec_result: &
     );
 }
 
+/// Intent: pure_transform
 fn build_recovered_submitted_turn(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,

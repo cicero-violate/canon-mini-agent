@@ -7,6 +7,7 @@ use crate::reports::{
     ObjectiveLevel, ObjectivesReport,
 };
 
+/// Intent: repair_or_initialize
 pub fn ensure_objectives_and_invariants_json(workspace: &Path) -> Result<()> {
     let invariants_md = workspace.join(INVARIANTS_MD_FILE);
     let objectives_md = workspace.join(OBJECTIVES_MD_FILE);
@@ -28,6 +29,7 @@ pub fn ensure_objectives_and_invariants_json(workspace: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Intent: canonical_write
 fn write_json(path: &PathBuf, value: &impl serde::Serialize) -> Result<()> {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -37,6 +39,7 @@ fn write_json(path: &PathBuf, value: &impl serde::Serialize) -> Result<()> {
     Ok(())
 }
 
+/// Intent: pure_transform
 fn parse_invariants_md(text: &str) -> InvariantsReport {
     let mut invariants: Vec<Invariant> = Vec::new();
     let mut principles: Vec<String> = Vec::new();
@@ -191,6 +194,7 @@ enum InvariantSection {
     Meta,
 }
 
+/// Intent: pure_transform
 fn parse_objectives_md(text: &str) -> ObjectivesReport {
     let mut objectives: Vec<Objective> = Vec::new();
     let mut goal: Vec<String> = Vec::new();
@@ -397,6 +401,7 @@ enum ObjectiveSection {
     NonGoals,
 }
 
+/// Intent: pure_transform
 fn parse_objective_level(title: &str) -> ObjectiveLevel {
     if title.contains("🔴") || title.to_lowercase().contains("critical") {
         ObjectiveLevel::Critical

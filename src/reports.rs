@@ -110,6 +110,7 @@ pub struct DiagnosticsReport {
     pub planner_handoff: Vec<String>,
 }
 
+/// Intent: diagnostic_scan
 pub fn load_violations_report(workspace: &Path) -> ViolationsReport {
     let path = workspace.join(crate::constants::VIOLATIONS_FILE);
     let raw = std::fs::read_to_string(&path).unwrap_or_default();
@@ -125,6 +126,7 @@ pub fn load_violations_report(workspace: &Path) -> ViolationsReport {
     })
 }
 
+/// Intent: canonical_read
 fn load_violations_from_tlog(workspace: &Path) -> Option<ViolationsReport> {
     let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
     crate::tlog::Tlog::latest_record_by_seq(&tlog_path, |event| match event {
@@ -136,6 +138,7 @@ fn load_violations_from_tlog(workspace: &Path) -> Option<ViolationsReport> {
     .ok()?
 }
 
+/// Intent: canonical_write
 pub fn persist_diagnostics_projection_with_writer_to_path(
     workspace: &Path,
     report: &DiagnosticsReport,
@@ -157,6 +160,7 @@ pub fn persist_diagnostics_projection_with_writer_to_path(
     )
 }
 
+/// Intent: diagnostic_scan
 pub fn load_diagnostics_report(workspace: &Path) -> Option<DiagnosticsReport> {
     let path = workspace.join(diagnostics_file());
     let raw = std::fs::read_to_string(&path).unwrap_or_default();
@@ -168,6 +172,7 @@ pub fn load_diagnostics_report(workspace: &Path) -> Option<DiagnosticsReport> {
     load_diagnostics_from_tlog(workspace)
 }
 
+/// Intent: canonical_read
 fn load_diagnostics_from_tlog(workspace: &Path) -> Option<DiagnosticsReport> {
     let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
     crate::tlog::Tlog::latest_record_by_seq(&tlog_path, |event| match event {

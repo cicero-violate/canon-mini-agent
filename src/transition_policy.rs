@@ -65,6 +65,7 @@ fn require_in_progress_lane(state: &SystemState, lane_id: usize, phase: &str) ->
     }
 }
 
+/// Intent: validation_gate
 fn validate_verifier_phase(state: &SystemState, phase: &str, lane: Option<usize>) -> Result<(), String> {
     let lane_id = lane_required_for_phase(phase, lane)?;
     require_in_progress_lane(state, lane_id, phase)
@@ -81,6 +82,7 @@ fn require_executor_in_progress_lane(state: &SystemState, lane_id: usize) -> Res
     }
 }
 
+/// Intent: validation_gate
 fn validate_executor_phase(state: &SystemState, lane: Option<usize>) -> Result<(), String> {
     if let Some(lane_id) = lane {
         require_executor_in_progress_lane(state, lane_id)
@@ -89,6 +91,7 @@ fn validate_executor_phase(state: &SystemState, lane: Option<usize>) -> Result<(
     }
 }
 
+/// Intent: validation_gate
 fn validate_lane_less_executor_phase(state: &SystemState) -> Result<(), String> {
     if state.phase == "bootstrap" || state.scheduled_phase.as_deref() == Some("executor") {
         Ok(())
@@ -100,6 +103,7 @@ fn validate_lane_less_executor_phase(state: &SystemState) -> Result<(), String> 
     }
 }
 
+/// Intent: validation_gate
 fn validate_pending_phase(
     state: &SystemState,
     pending: bool,
@@ -117,6 +121,7 @@ fn validate_pending_phase(
     }
 }
 
+/// Intent: validation_gate
 fn validate_solo_phase(state: &SystemState) -> Result<(), String> {
     if state.scheduled_phase.as_deref() == Some("solo") || state.phase == "bootstrap" {
         Ok(())
@@ -125,6 +130,7 @@ fn validate_solo_phase(state: &SystemState) -> Result<(), String> {
     }
 }
 
+/// Intent: validation_gate
 fn validate_phase_set(
     state: &SystemState,
     phase: &str,
@@ -153,6 +159,7 @@ fn validate_phase_set(
     Ok(())
 }
 
+/// Intent: validation_gate
 fn validate_scheduled_phase(phase: &Option<String>) -> Result<(), String> {
     if let Some(phase) = phase {
         if !is_valid_phase(phase) || phase == "bootstrap" {
@@ -164,6 +171,7 @@ fn validate_scheduled_phase(phase: &Option<String>) -> Result<(), String> {
     Ok(())
 }
 
+/// Intent: validation_gate
 fn validate_lane_pending_event(
     state: &SystemState,
     lane_id: usize,
@@ -178,6 +186,7 @@ fn validate_lane_pending_event(
     Ok(())
 }
 
+/// Intent: validation_gate
 fn validate_lane_in_progress_event(
     state: &SystemState,
     lane_id: usize,
@@ -208,6 +217,7 @@ fn validate_lane_in_progress_event(
     Ok(())
 }
 
+/// Intent: validation_gate
 fn validate_verifier_summary_lane(state: &SystemState, lane_id: usize) -> Result<(), String> {
     if lane_id >= state.verifier_summary.len() {
         return Err(format!(
@@ -217,10 +227,12 @@ fn validate_verifier_summary_lane(state: &SystemState, lane_id: usize) -> Result
     Ok(())
 }
 
+/// Intent: validation_gate
 fn validate_lane_scoped_event(state: &SystemState, lane_id: usize) -> Result<(), String> {
     require_lane(state, lane_id, "lane-scoped event")
 }
 
+/// Intent: validation_gate
 fn validate_lane_submit_in_flight_event(
     state: &SystemState,
     lane_id: usize,
@@ -247,6 +259,7 @@ fn validate_lane_submit_in_flight_event(
     Ok(())
 }
 
+/// Intent: validation_gate
 fn validate_lane_prompt_in_flight_event(
     state: &SystemState,
     lane_id: usize,
@@ -259,6 +272,7 @@ fn validate_lane_prompt_in_flight_event(
     Ok(())
 }
 
+/// Intent: validation_gate
 fn validate_prompt_in_flight_entry(state: &SystemState, lane_id: usize) -> Result<(), String> {
     if !lane_in_progress(state, lane_id) {
         return Err(format!(
@@ -314,6 +328,7 @@ fn is_state_neutral_transition(event: &ControlEvent) -> bool {
     )
 }
 
+/// Intent: validation_gate
 fn validate_lane_scoped_transition(
     state: &SystemState,
     event: &ControlEvent,
@@ -350,6 +365,7 @@ fn validate_lane_scoped_transition(
     }
 }
 
+/// Intent: validation_gate
 fn validate_executor_turn_deregistered(state: &SystemState, tab_id: u32, turn_id: u64) -> Result<(), String> {
     let key = format!("{tab_id}:{turn_id}");
     if state.submitted_turn_ids.contains_key(&key) {
@@ -361,6 +377,7 @@ fn validate_executor_turn_deregistered(state: &SystemState, tab_id: u32, turn_id
     }
 }
 
+/// Intent: validation_gate
 fn validate_executor_transition(
     state: &SystemState,
     event: &ControlEvent,
@@ -417,6 +434,7 @@ fn validate_executor_transition(
     }
 }
 
+/// Intent: validation_gate
 pub fn validate_transition(state: &SystemState, event: &ControlEvent) -> Result<(), String> {
     match event {
         ControlEvent::PhaseSet { phase, lane } => {
@@ -437,6 +455,7 @@ pub fn validate_transition(state: &SystemState, event: &ControlEvent) -> Result<
     Ok(())
 }
 
+/// Intent: validation_gate
 fn validate_executor_turn_registered_transition(
     state: &SystemState,
     tab_id: u32,
@@ -477,6 +496,7 @@ fn validate_executor_turn_registered_transition(
     Ok(())
 }
 
+/// Intent: validation_gate
 fn validate_executor_completion_recovered_transition(
     state: &SystemState,
     tab_id: u32,
@@ -517,6 +537,7 @@ fn validate_executor_completion_recovered_transition(
     Ok(())
 }
 
+/// Intent: validation_gate
 fn validate_executor_tab_rebound_transition(
     state: &SystemState,
     lane_id: usize,
@@ -567,6 +588,7 @@ fn validate_executor_tab_rebound_transition(
     Ok(())
 }
 
+/// Intent: validation_gate
 fn validate_lane_active_tab_set(
     state: &SystemState,
     lane_id: usize,
@@ -585,6 +607,7 @@ fn validate_lane_active_tab_set(
     Ok(())
 }
 
+/// Intent: validation_gate
 fn validate_tab_id_to_lane_set(
     state: &SystemState,
     tab_id: &u32,

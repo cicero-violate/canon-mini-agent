@@ -3,6 +3,7 @@ use serde_json::{json, Value};
 use crate::prompts::{validate_message_action, MessageValidationMode};
 use crate::tool_schema::{action_schema_json, schema_diff_messages};
 
+/// Intent: pure_transform
 fn normalize_message_target(role: &str, target: &str) -> &'static str {
     if target == "planner" || target == "executor" {
         return if target == "planner" {
@@ -106,6 +107,7 @@ pub fn expected_message_format(from: &str, to_role: &str, msg_type: &str, status
     )
 }
 
+/// Intent: pure_transform
 pub fn format_message_schema(
     from: &str,
     to_role: &str,
@@ -623,6 +625,7 @@ fn example_symbol_workflow_action(kind: &str) -> Option<Value> {
     }
 }
 
+/// Intent: pure_transform
 fn build_symbol_workflow_example_action(
     action: &str,
     fields: &[(&str, Value)],
@@ -688,6 +691,7 @@ fn normalized_message_example_route(
         .unwrap_or_else(|| MessageRoute::default_for_role(role).into_owned_lowercase())
 }
 
+/// Intent: pure_transform
 pub fn build_invalid_action_feedback(
     raw_action: Option<&Value>,
     err_text: &str,
@@ -889,6 +893,7 @@ fn message_field_str<'a>(obj: &'a serde_json::Map<String, Value>, field: &str) -
     obj.get(field).and_then(|v| v.as_str())
 }
 
+/// Intent: route_gate
 fn collect_message_route_fields(
     schema_diff: &mut Vec<String>,
     obj: &serde_json::Map<String, Value>,
@@ -910,6 +915,7 @@ fn collect_message_route_fields(
     (msg_type, msg_status)
 }
 
+/// Intent: validation_gate
 fn validate_message_payload_summary(
     schema_diff: &mut Vec<String>,
     payload: Option<&serde_json::Map<String, Value>>,
@@ -925,6 +931,7 @@ fn validate_message_payload_summary(
     }
 }
 
+/// Intent: validation_gate
 fn validate_blocker_payload_placement(
     schema_diff: &mut Vec<String>,
     obj: &serde_json::Map<String, Value>,
@@ -940,6 +947,7 @@ fn validate_blocker_payload_placement(
     }
 }
 
+/// Intent: validation_gate
 fn validate_blocker_payload_fields(
     schema_diff: &mut Vec<String>,
     payload: Option<&serde_json::Map<String, Value>>,
@@ -1098,6 +1106,7 @@ fn object_string_present(obj: &serde_json::Map<String, Value>, field: &str) -> b
         .is_some()
 }
 
+/// Intent: repair_or_initialize
 fn ensure_object_string_field(
     obj: &mut serde_json::Map<String, Value>,
     field: &str,
@@ -1117,6 +1126,7 @@ fn missing_predicted_next_actions(obj: &serde_json::Map<String, Value>) -> bool 
         .is_none()
 }
 
+/// Intent: repair_or_initialize
 fn ensure_blocker_payload_fields(payload: &mut serde_json::Map<String, Value>) -> bool {
     let mut changed = false;
     for (field, value) in [

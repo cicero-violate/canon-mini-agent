@@ -11,6 +11,7 @@ fn objective_not_found_message(
     )
 }
 
+/// Intent: pure_transform
 fn format_objective_already_exists_message(
     requested_raw: &str,
     requested_id: &str,
@@ -82,6 +83,7 @@ fn sort_objectives_for_view(file: &mut crate::objectives::ObjectivesFile, includ
     }
 }
 
+/// Intent: pure_transform
 fn parse_objectives_file_strict(raw: &str) -> Result<crate::objectives::ObjectivesFile> {
     let file: crate::objectives::ObjectivesFile =
         serde_json::from_str(raw).map_err(|e| anyhow!("failed to parse OBJECTIVES.json: {e}"))?;
@@ -89,10 +91,12 @@ fn parse_objectives_file_strict(raw: &str) -> Result<crate::objectives::Objectiv
     Ok(file)
 }
 
+/// Intent: pure_transform
 fn parse_objectives_file_or_default(raw: &str) -> crate::objectives::ObjectivesFile {
     serde_json::from_str(raw).unwrap_or_default()
 }
 
+/// Intent: validation_gate
 fn validate_unique_objective_ids(file: &crate::objectives::ObjectivesFile) -> Result<()> {
     let mut seen: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
     for objective in &file.objectives {
@@ -112,6 +116,7 @@ fn validate_unique_objective_ids(file: &crate::objectives::ObjectivesFile) -> Re
     Ok(())
 }
 
+/// Intent: canonical_write
 fn write_objectives_file(
     workspace: &Path,
     path: &Path,

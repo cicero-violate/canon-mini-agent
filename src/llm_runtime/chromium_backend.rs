@@ -75,6 +75,7 @@ fn chromium_autolaunch_enabled() -> bool {
     }
 }
 
+/// Intent: transport_effect
 fn maybe_autolaunch_chromium() {
     if !chromium_autolaunch_enabled() {
         return;
@@ -126,6 +127,7 @@ fn maybe_autolaunch_chromium() {
     }
 }
 
+/// Intent: event_append
 fn append_jsonl(filename: &str, value: &Value) {
     let path = format!("{FRAMES_DIR}/{filename}");
     if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -139,6 +141,7 @@ fn append_jsonl(filename: &str, value: &Value) {
     }
 }
 
+/// Intent: event_append
 fn append_outbound_event(event_type: &str, payload: Value) {
     let mut event = serde_json::Map::new();
     event.insert("type".to_string(), Value::String(event_type.to_string()));
@@ -150,6 +153,7 @@ fn append_outbound_event(event_type: &str, payload: Value) {
     append_jsonl("all.jsonl", &Value::Object(event));
 }
 
+/// Intent: event_append
 fn append_inbound_boundary_event(
     state: &mut State,
     tab_id: u32,
@@ -209,6 +213,7 @@ fn init_frames_dir() {
     let _ = std::fs::create_dir_all(FRAMES_DIR);
 }
 
+/// Intent: transport_effect
 fn submit_ack_payload(tab_id: u32, turn_id: u64, lease_token: &str, source: &str) -> String {
     json!({
         "submit_ack": true,
@@ -272,6 +277,7 @@ fn classify_transport_signal(raw: &str) -> Option<&'static str> {
     None
 }
 
+/// Intent: pure_transform
 fn extract_calpico_user_message_trigger_id(raw: &str) -> Option<String> {
     let data = raw.strip_prefix("data: ").unwrap_or(raw).trim();
     let value: Value = serde_json::from_str(data).ok()?;
@@ -300,6 +306,7 @@ fn extract_calpico_user_message_trigger_id(raw: &str) -> Option<String> {
     None
 }
 
+/// Intent: pure_transform
 fn extract_calpico_heartbeat_trigger_message_id(raw: &str) -> Option<String> {
     let data = raw.strip_prefix("data: ").unwrap_or(raw).trim();
     let value: Value = serde_json::from_str(data).ok()?;
@@ -322,6 +329,7 @@ fn extract_calpico_heartbeat_trigger_message_id(raw: &str) -> Option<String> {
     None
 }
 
+/// Intent: pure_transform
 fn extract_calpico_heartbeat_progress_signature(raw: &str) -> Option<String> {
     let data = raw.strip_prefix("data: ").unwrap_or(raw).trim();
     let value: Value = serde_json::from_str(data).ok()?;
@@ -502,6 +510,7 @@ impl State {
         }
     }
 
+    /// Intent: transport_effect
     fn send_msg(&self, msg: Value) -> bool {
         if let Some(tx) = &self.out_tx {
             tx.try_send(Message::Text(msg.to_string().into())).is_ok()
@@ -1288,6 +1297,7 @@ async fn accept_loop(addr: SocketAddr, state: Arc<Mutex<State>>) {
     }
 }
 
+/// Intent: transport_effect
 async fn handle_connection(stream: tokio::net::TcpStream, state: Arc<Mutex<State>>) {
     let ws = match accept_async(stream).await {
         Ok(ws) => ws,

@@ -67,6 +67,7 @@ fn remove_nested_spans(replacements: &mut Vec<SpanReplacement>) {
     });
 }
 
+/// Intent: pure_transform
 fn normalize_replacements(file_len: usize, replacements: &mut Vec<SpanReplacement>) -> Result<()> {
     for r in replacements.iter() {
         if r.span.lo > r.span.hi {
@@ -214,6 +215,7 @@ fn consume_attr_range(bytes: &[u8], mut i: usize, n: usize) -> (usize, Option<(u
     (i, None)
 }
 
+/// Intent: diagnostic_scan
 fn scan_attr_ranges(source: &str) -> Vec<(usize, usize)> {
     let b = source.as_bytes();
     let n = b.len();
@@ -230,6 +232,7 @@ fn scan_attr_ranges(source: &str) -> Vec<(usize, usize)> {
     ranges
 }
 
+/// Intent: diagnostic_scan
 fn scan_attr_range_step(b: &[u8], i: usize, n: usize) -> (usize, Option<(usize, usize)>) {
     if i + 1 < n && b[i] == b'/' && b[i + 1] == b'/' {
         return (skip_line_comment(b, i, n), None);
@@ -286,6 +289,7 @@ fn rewrite_attr_string_literals(source: &str, old_ident: &str, new_ident: &str) 
 
 // ---------------------------------------------------------------------------
 
+/// Intent: repair_or_initialize
 fn ensure_under_workspace(workspace: &Path, file: &Path) -> Result<()> {
     if !file.is_absolute() {
         bail!(
@@ -374,6 +378,7 @@ fn collect_checked_replacements_for_rename(
     Ok(())
 }
 
+/// Intent: validation_gate
 fn verify_expected_spans(
     original: &str,
     file: &Path,

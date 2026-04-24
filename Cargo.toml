@@ -22,6 +22,16 @@ name = "canon-user-chat"
 path = "src/bin/canon-user-chat.rs"
 test = false
 
+[[bin]]
+name = "canon-rank-candidates"
+path = "src/bin/rank_candidates.rs"
+test = false
+
+[[bin]]
+name = "canon-syn-writer"
+path = "src/bin/syn_writer.rs"
+test = false
+
 [dependencies]
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }

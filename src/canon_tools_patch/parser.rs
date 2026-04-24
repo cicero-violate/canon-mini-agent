@@ -66,6 +66,7 @@ pub struct ApplyPatchArgs {
     pub workdir: Option<String>,
 }
 
+/// Intent: pure_transform
 pub fn parse_patch(patch: &str) -> Result<ApplyPatchArgs, ParseError> {
     let mode = if PARSE_IN_STRICT_MODE {
         ParseMode::Strict
@@ -80,6 +81,7 @@ enum ParseMode {
     Lenient,
 }
 
+/// Intent: pure_transform
 fn parse_patch_text(patch: &str, mode: ParseMode) -> Result<ApplyPatchArgs, ParseError> {
     let lines: Vec<&str> = patch.trim().lines().collect();
     let lines: &[&str] = match check_patch_boundaries_strict(&lines) {
@@ -171,6 +173,7 @@ fn check_patch_boundaries_lenient<'a>(
     Err(strict_error)
 }
 
+/// Intent: pure_transform
 fn parse_one_hunk(
     lines: &[&str],
     starting_line_number: usize,
@@ -291,6 +294,7 @@ fn parse_one_hunk(
     })
 }
 
+/// Intent: pure_transform
 fn parse_update_chunk(
     lines: &[&str],
     starting_line_number: usize,

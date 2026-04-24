@@ -7,6 +7,7 @@ use std::path::Path;
 
 use crate::constants::ISSUES_FILE;
 
+/// Intent: canonical_write
 pub fn persist_issues_projection_with_writer(
     workspace: &Path,
     file: &IssuesFile,
@@ -108,6 +109,7 @@ pub struct IssueSweepSummary {
     pub rewrote: bool,
 }
 
+/// Intent: canonical_read
 pub fn load_issues_file(workspace: &Path) -> IssuesFile {
     if let Some(file) = load_issues_from_tlog(workspace) {
         return file;
@@ -120,6 +122,7 @@ pub fn load_issues_file(workspace: &Path) -> IssuesFile {
     IssuesFile::default()
 }
 
+/// Intent: pure_transform
 fn parse_issues_file_from_raw(raw: &str) -> Option<IssuesFile> {
     if raw.trim().is_empty() {
         return None;
@@ -127,6 +130,7 @@ fn parse_issues_file_from_raw(raw: &str) -> Option<IssuesFile> {
     serde_json::from_str::<IssuesFile>(raw).ok()
 }
 
+/// Intent: canonical_read
 fn load_issues_from_tlog(workspace: &Path) -> Option<IssuesFile> {
     crate::tlog::Tlog::latest_effect_from_workspace(workspace, |event| match event {
         crate::events::EffectEvent::IssuesFileRecorded { file } => Some(file),
@@ -134,6 +138,7 @@ fn load_issues_from_tlog(workspace: &Path) -> Option<IssuesFile> {
     })
 }
 
+/// Intent: canonical_read
 pub fn reconcile_issues_projection(workspace: &Path, subject: &str) -> Result<bool> {
     let Some(file) = load_issues_from_tlog(workspace) else {
         return Ok(false);
@@ -148,6 +153,7 @@ pub fn reconcile_issues_projection(workspace: &Path, subject: &str) -> Result<bo
     Ok(true)
 }
 
+/// Intent: canonical_read
 fn evidence_receipt_timestamps() -> HashMap<String, u64> {
     let path = Path::new(crate::constants::agent_state_dir()).join("evidence_receipts.jsonl");
     let raw = std::fs::read_to_string(path).unwrap_or_default();
@@ -201,6 +207,7 @@ fn issue_target_looks_like_path(candidate: &str) -> bool {
     candidate.starts_with('/') || candidate.contains('/') || known_file_suffix
 }
 
+/// Intent: pure_transform
 fn normalize_issue_target_path(raw: &str) -> Option<String> {
     let candidate = trim_issue_target_candidate(raw)?;
     if let Some(path) = strip_issue_target_line_suffix(candidate) {
@@ -231,6 +238,7 @@ fn has_issue_freshness_metadata(issue: &Issue) -> bool {
         || !issue.evidence_hashes.is_empty()
 }
 
+/// Intent: event_append
 fn append_receipt_stale_reasons(
     issue: &Issue,
     receipt_ts: &HashMap<String, u64>,
@@ -305,6 +313,7 @@ fn collect_stale_reasons(
     reasons
 }
 
+/// Intent: diagnostic_scan
 pub fn sweep_stale_issues(workspace: &Path) -> Result<IssueSweepSummary> {
     let mut file = load_issues_file(workspace);
     if file.issues.is_empty() {

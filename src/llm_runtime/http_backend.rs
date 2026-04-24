@@ -10,6 +10,7 @@ pub struct HttpBackend {
 }
 
 impl HttpBackend {
+    /// Intent: transport_effect
     pub fn from_env() -> Self {
         let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
         let model =
@@ -22,6 +23,7 @@ impl HttpBackend {
     }
 }
 
+/// Intent: transport_effect
 #[async_trait]
 impl LlmBackend for HttpBackend {
     async fn send(

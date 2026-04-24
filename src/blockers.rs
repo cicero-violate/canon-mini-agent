@@ -195,6 +195,7 @@ fn blockers_path(workspace: &Path) -> std::path::PathBuf {
     crate::objectives::workspace_join_path(workspace, BLOCKERS_FILE)
 }
 
+/// Intent: canonical_read
 fn load_blockers_from_tlog(workspace: &Path) -> Option<BlockersFile> {
     let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
     let records = Tlog::read_records(&tlog_path).ok()?;

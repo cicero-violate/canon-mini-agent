@@ -83,10 +83,12 @@ fn graph_only_entry_json(entry: &GraphOnlyEntry) -> serde_json::Value {
     })
 }
 
+/// Intent: pure_transform
 fn format_graph_score_2(value: f64) -> String {
     format!("{value:.2}")
 }
 
+/// Intent: pure_transform
 fn format_graph_score_3(value: f64) -> String {
     format!("{value:.3}")
 }
@@ -99,6 +101,7 @@ fn graph_only_sort_desc(a: &GraphOnlyEntry, b: &GraphOnlyEntry) -> std::cmp::Ord
         .then(a.symbol.cmp(&b.symbol))
 }
 
+/// Intent: pure_transform
 fn normalize_by_max(value: f64, max_value: f64) -> f64 {
     if max_value <= 0.0 {
         0.0
@@ -107,6 +110,7 @@ fn normalize_by_max(value: f64, max_value: f64) -> f64 {
     }
 }
 
+/// Intent: pure_transform
 fn build_graph_only_entries(
     idx: &SemanticIndex,
     crate_name: &str,
@@ -278,6 +282,7 @@ fn build_graph_only_entries(
     entries
 }
 
+/// Intent: pure_transform
 fn compute_call_scc_sizes(
     summaries: &[crate::semantic::SymbolSummary],
     outgoing: &HashMap<String, Vec<String>>,
@@ -359,6 +364,7 @@ fn dfs_collect(
     component_sizes
 }
 
+/// Intent: diagnostic_scan
 pub fn build_graph_only_complexity_report(workspace: &Path) -> Result<serde_json::Value> {
     let crates = SemanticIndex::available_crates(workspace);
     if crates.is_empty() {
@@ -437,6 +443,7 @@ pub fn build_graph_only_complexity_report(workspace: &Path) -> Result<serde_json
     }))
 }
 
+/// Intent: diagnostic_scan
 pub fn write_graph_only_complexity_report(workspace: &Path) -> Result<PathBuf> {
     let report = build_graph_only_complexity_report(workspace)?;
     let dir = reports_dir(workspace);
@@ -537,6 +544,7 @@ fn count_representation_fanout(idx: &SemanticIndex) -> usize {
         .count()
 }
 
+/// Intent: pure_transform
 pub fn build_graph_verification_snapshot(workspace: &Path) -> Result<serde_json::Value> {
     let crates = SemanticIndex::available_crates(workspace);
     let mut per_crate = Vec::new();
@@ -647,6 +655,7 @@ pub fn build_graph_verification_snapshot(workspace: &Path) -> Result<serde_json:
     }))
 }
 
+/// Intent: canonical_write
 fn persist_graph_verification_snapshot(
     workspace: &Path,
     snapshot: &serde_json::Value,
@@ -662,6 +671,7 @@ fn persist_graph_verification_snapshot(
     Ok(latest)
 }
 
+/// Intent: canonical_write
 pub fn write_graph_verification_snapshot(workspace: &Path) -> Result<PathBuf> {
     let snapshot = build_graph_verification_snapshot(workspace)?;
     persist_graph_verification_snapshot(workspace, &snapshot)
@@ -679,6 +689,7 @@ fn metric_delta(before: &serde_json::Value, after: &serde_json::Value, key: &str
     })
 }
 
+/// Intent: diagnostic_scan
 pub fn build_graph_delta_report(
     before: &serde_json::Value,
     after: &serde_json::Value,
@@ -764,6 +775,7 @@ pub fn build_graph_delta_report(
     })
 }
 
+/// Intent: diagnostic_scan
 pub fn write_graph_delta_report(workspace: &Path) -> Result<PathBuf> {
     let latest_snapshot_path = graph_verification_snapshot_latest_path(workspace);
     let previous = fs::read_to_string(&latest_snapshot_path)
@@ -954,6 +966,7 @@ fn global_complexity_entry_value(
     })
 }
 
+/// Intent: pure_transform
 fn build_complexity_entry(
     s: &crate::semantic::SymbolSummary,
     blocks: usize,
@@ -1071,6 +1084,7 @@ fn enqueue_grpo_extraction(workspace: &Path) {
     });
 }
 
+/// Intent: diagnostic_scan
 fn generate_graph_and_hotspot_issues(workspace: &Path) {
     // Bridge-connectivity analysis: emit deterministic graph-overconnectivity issues.
     let _ = crate::graph_metrics::generate_bridge_connectivity_issues(workspace);
@@ -1110,11 +1124,13 @@ fn generate_refactor_issue_batch(workspace: &Path) {
     let _ = crate::graph_metrics::generate_dominator_region_reduction_issues(workspace);
 }
 
+/// Intent: diagnostic_scan
 fn generate_invariant_lifecycle_issues(workspace: &Path) {
     // Auto-generate invariant lifecycle issues (action surface gap, prompt injection gap, per-promoted gates)
     let _ = crate::invariants::generate_invariant_issues(workspace);
 }
 
+/// Intent: diagnostic_scan
 fn build_complexity_report(
     per_crate: Vec<serde_json::Value>,
     global_top: Vec<serde_json::Value>,
@@ -1148,6 +1164,7 @@ fn build_complexity_report(
     })
 }
 
+/// Intent: pure_transform
 fn compute_and_persist_fingerprint_drift(
     workspace: &Path,
     current_summaries: &[crate::semantic::SymbolSummary],
@@ -1195,6 +1212,7 @@ fn complexity_inter_scoring() -> serde_json::Value {
     })
 }
 
+/// Intent: diagnostic_scan
 fn persist_complexity_report(dir: &Path, report: &serde_json::Value) -> Result<PathBuf> {
     std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
     let body = serde_json::to_string_pretty(report)?;

@@ -11,6 +11,7 @@ fn sanitize_phase_for_runtime(phase: Option<&str>) -> Option<String> {
     }
 }
 
+/// Intent: canonical_write
 fn write_json_if_missing_or_empty<T: Serialize>(
     workspace: &Path,
     path: &Path,
@@ -47,6 +48,7 @@ fn push_created_path(created: &mut Vec<String>, tracked_path: &str, was_created:
     }
 }
 
+/// Intent: repair_or_initialize
 fn migrate_projection_and_track(
     created: &mut Vec<String>,
     workspace: &Path,
@@ -69,6 +71,7 @@ fn migrate_projection_and_track(
     Ok(())
 }
 
+/// Intent: canonical_write
 fn write_json_baseline_and_track<T: serde::Serialize>(
     created: &mut Vec<String>,
     workspace: &Path,
@@ -85,6 +88,7 @@ fn write_json_baseline_and_track<T: serde::Serialize>(
     Ok(())
 }
 
+/// Intent: repair_or_initialize
 fn ensure_workspace_artifact_baseline(
     workspace: &Path,
     planner_projection_path: &Path,
@@ -220,6 +224,7 @@ fn jstr<'a>(v: &'a Value, key: &str) -> &'a str {
     v.get(key).and_then(|v| v.as_str()).unwrap_or("")
 }
 
+/// Intent: diagnostic_scan
 fn find_flag_arg<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     args.windows(2)
         .find(|w| w[0] == flag)
@@ -289,6 +294,7 @@ fn response_timeout_for_role(role: &str) -> u64 {
         .unwrap_or(DEFAULT_RESPONSE_TIMEOUT_SECS)
 }
 
+/// Intent: pure_transform
 fn summarize_cargo_test_failures(raw: &str) -> String {
     let Ok(value) = serde_json::from_str::<Value>(raw) else {
         return raw.to_string();
@@ -308,12 +314,14 @@ fn summarize_cargo_test_failures(raw: &str) -> String {
     Value::Object(out).to_string()
 }
 
+/// Intent: canonical_read
 fn load_cargo_test_failures(workspace: &Path) -> String {
     let path = workspace.join("cargo_test_failures.json");
     let raw = std::fs::read_to_string(path).unwrap_or_default();
     summarize_cargo_test_failures(&raw)
 }
 
+/// Intent: canonical_read
 fn load_single_role_setup(
     ctx: &SingleRoleContext<'_>,
     endpoints: &[LlmEndpoint],
@@ -427,6 +435,7 @@ fn trace_orchestrator_forwarded(
     append_orchestration_trace("llm_message_forwarded", Value::Object(payload));
 }
 
+/// Intent: pure_transform
 fn build_blocker_payload(
     summary: &str,
     blocker: &str,
@@ -473,6 +482,7 @@ fn cycle_control_hash(snapshot: &ControlConvergenceSnapshot<'_>) -> u64 {
     hasher.finish()
 }
 
+/// Intent: diagnostic_scan
 fn write_livelock_report(
     agent_state_dir: &Path,
     stall_cycles: u32,
@@ -523,6 +533,7 @@ fn write_livelock_report(
     );
 }
 
+/// Intent: diagnostic_scan
 fn build_livelock_report(
     stall_cycles: u32,
     control_surfaces: &[&str],

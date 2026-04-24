@@ -1,3 +1,4 @@
+/// Intent: pure_transform
 fn parse_completed_turn(value: &Value) -> Option<(u32, u64, String, Option<String>)> {
     let tab_id = value.get("tab_id").and_then(|x| x.as_u64())? as u32;
     let turn_id = value.get("turn_id").and_then(|x| x.as_u64())?;
@@ -481,6 +482,7 @@ fn apply_control_from_executor_action_result(
     }
 }
 
+/// Intent: canonical_write
 fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Value) {
     let to_role = action.get("to").and_then(|v| v.as_str()).unwrap_or("");
     let action_text = serde_json::to_string_pretty(action).unwrap_or_default();
@@ -664,6 +666,7 @@ fn claim_executor_submit(
     })
 }
 
+/// Intent: transport_effect
 async fn submit_executor_turn(
     job: &PendingExecutorSubmit,
     endpoint: &LlmEndpoint,

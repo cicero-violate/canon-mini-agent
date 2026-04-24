@@ -7,6 +7,7 @@ fn handle_plan_sorted_view_action(workspace: &Path) -> Result<(bool, String)> {
     Ok((false, rendered))
 }
 
+/// Intent: canonical_read
 fn load_plan_components(
     workspace: &Path,
 ) -> Result<(serde_json::Map<String, Value>, Vec<Value>, Vec<Value>)> {
@@ -29,6 +30,7 @@ fn load_plan_components(
     Ok((obj.clone(), tasks.clone(), edges.clone()))
 }
 
+/// Intent: pure_transform
 fn build_task_map(tasks: &[Value]) -> std::collections::HashMap<String, Value> {
     let mut task_map = std::collections::HashMap::new();
     for task in tasks {
@@ -70,6 +72,7 @@ fn collect_ordered_tasks(
     ordered
 }
 
+/// Intent: pure_transform
 fn build_plan_sorted_graph_state(
     task_map: &std::collections::HashMap<String, Value>,
     edges: &[Value],
@@ -99,6 +102,7 @@ fn build_plan_sorted_graph_state(
     Ok((indegree, adj))
 }
 
+/// Intent: pure_transform
 fn render_plan_sorted_view_output(
     obj: &serde_json::Map<String, Value>,
     order: Vec<String>,
@@ -156,6 +160,7 @@ fn drain_plan_sorted_successors(
     }
 }
 
+/// Intent: canonical_write
 fn update_plan_sorted_successor_indegree(
     indegree: &mut std::collections::HashMap<String, usize>,
     ready: &mut BTreeSet<String>,
@@ -169,6 +174,7 @@ fn update_plan_sorted_successor_indegree(
     }
 }
 
+/// Intent: pure_transform
 fn extract_output_log_path(out: &str) -> Option<PathBuf> {
     for line in out.lines() {
         let trimmed = line.trim();
@@ -189,6 +195,7 @@ fn extract_output_log_path(out: &str) -> Option<PathBuf> {
     None
 }
 
+/// Intent: pure_transform
 fn parse_cargo_test_failures(out: &str) -> Value {
     let mut locations = BTreeSet::new();
     let mut failed_tests = BTreeSet::new();
@@ -252,6 +259,7 @@ fn parse_cargo_test_failures(out: &str) -> Value {
     Value::Object(payload)
 }
 
+/// Intent: pure_transform
 fn parse_cargo_test_failure_line(
     trimmed: &str,
     locations: &mut BTreeSet<String>,
@@ -308,6 +316,7 @@ fn is_cargo_test_failure_block_line(trimmed: &str) -> bool {
         || trimmed.contains("has been running for over")
 }
 
+/// Intent: canonical_read
 fn load_cargo_test_failure_scan(out: &str) -> (Option<PathBuf>, String) {
     let log_path = extract_output_log_path(out);
     let mut scan = out.to_string();
@@ -332,6 +341,7 @@ fn collect_stalled_test_name(stalled_tests: &mut BTreeSet<String>, stripped: &st
     }
 }
 
+/// Intent: canonical_read
 fn load_graph_symbols(
     graph_json: &Path,
 ) -> Result<std::collections::HashMap<u32, (String, String)>> {
@@ -363,6 +373,7 @@ fn load_graph_symbols(
     Ok(out)
 }
 
+/// Intent: canonical_read
 fn load_nodes_symbols(
     nodes_csv: &Path,
 ) -> Result<std::collections::HashMap<u32, (String, String)>> {
@@ -426,6 +437,7 @@ pub(crate) fn patch_scope_error_with_mode(
     }
 }
 
+/// Intent: pure_transform
 fn normalize_patch_target_for_scope(target: &str) -> String {
     let trimmed = target.trim();
     let target_path = Path::new(trimmed);
@@ -892,6 +904,7 @@ fn handle_message_action(
     ))
 }
 
+/// Intent: canonical_write
 fn suppress_redundant_planner_blocker(
     role: &str,
     msg_type: &str,
@@ -956,6 +969,7 @@ fn is_allowed_self_addressed_message(action: &Value, from_role: &str, to_role: &
             .is_some_and(|status| status.eq_ignore_ascii_case("complete"))
 }
 
+/// Intent: canonical_write
 fn sync_verifier_blocker_state(
     role: &str,
     to_role: &str,

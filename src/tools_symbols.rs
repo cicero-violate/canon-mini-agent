@@ -150,6 +150,7 @@ fn is_ignored_dir(name: &str) -> bool {
     )
 }
 
+/// Intent: pure_transform
 fn extract_decl_symbols(workspace: &Path, file_path: &Path, text: &str) -> Vec<SymbolEntry> {
     let parse = SourceFile::parse(text, Edition::CURRENT);
     if !parse.errors().is_empty() {
@@ -237,6 +238,7 @@ fn handle_symbols_index_action(workspace: &Path, action: &Value) -> Result<(bool
     ))
 }
 
+/// Intent: pure_transform
 fn build_symbols_index_payload(workspace: &Path, scan_root: &Path) -> Result<SymbolsIndexFile> {
     let mut files = Vec::new();
     collect_rust_files(scan_root, &mut files)?;
@@ -339,6 +341,7 @@ fn handle_symbols_rename_candidates_action(
     finalize_rename_candidates_output(candidates, &symbols_path_raw, &out_raw, &out_path)
 }
 
+/// Intent: pure_transform
 fn parse_symbols_rename_candidates_paths(
     workspace: &Path,
     action: &Value,
@@ -358,12 +361,14 @@ fn parse_symbols_rename_candidates_paths(
     Ok((symbols_path_raw, out_raw, symbols_path, out_path))
 }
 
+/// Intent: canonical_read
 fn load_symbols_index_file(symbols_path: &Path) -> Result<SymbolsIndexFile> {
     let symbols_text = fs::read_to_string(symbols_path)
         .with_context(|| format!("read {}", symbols_path.display()))?;
     serde_json::from_str(&symbols_text).context("parse symbols index json")
 }
 
+/// Intent: pure_transform
 fn build_function_prefixes_by_stem(
     symbols_file: &SymbolsIndexFile,
 ) -> std::collections::BTreeMap<String, std::collections::BTreeSet<String>> {
@@ -419,6 +424,7 @@ fn collect_rename_candidates(
     candidates
 }
 
+/// Intent: pure_transform
 fn build_rename_candidate(
     sym: &SymbolEntry,
     prefixes_by_stem: &std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
@@ -577,6 +583,7 @@ fn sort_and_dedup_rename_candidates(candidates: &mut Vec<RenameCandidate>) {
     });
 }
 
+/// Intent: canonical_write
 fn write_rename_candidates_payload(out_path: &Path, payload: &RenameCandidatesFile) -> Result<()> {
     if let Some(parent) = out_path.parent() {
         fs::create_dir_all(parent)
@@ -636,6 +643,7 @@ fn handle_symbols_prepare_rename_action(
     ))
 }
 
+/// Intent: pure_transform
 fn build_prepared_rename_action(selected: &RenameCandidate) -> Value {
     json!({
         "action": "rename_symbol",
@@ -720,6 +728,7 @@ struct RenameSymbolEnvironment {
     head: String,
 }
 
+/// Intent: pure_transform
 fn parse_rename_symbol_pairs(action: &Value, crate_name: &str) -> Result<Vec<(String, String)>> {
     reject_legacy_rename_fields(action)?;
 
@@ -742,6 +751,7 @@ fn reject_legacy_rename_fields(action: &Value) -> Result<()> {
     Ok(())
 }
 
+/// Intent: pure_transform
 fn parse_bulk_renames(arr: &[Value], crate_name: &str) -> Result<Vec<(String, String)>> {
     if arr.is_empty() {
         bail!("rename_symbol: `renames` must not be empty");
@@ -764,6 +774,7 @@ fn parse_bulk_renames(arr: &[Value], crate_name: &str) -> Result<Vec<(String, St
     Ok(pairs)
 }
 
+/// Intent: pure_transform
 fn parse_single_rename(action: &Value, crate_name: &str) -> Result<Vec<(String, String)>> {
     let old = action
         .get("old_symbol")
@@ -787,6 +798,7 @@ fn parse_single_rename(action: &Value, crate_name: &str) -> Result<Vec<(String, 
     Ok(vec![(old, new)])
 }
 
+/// Intent: pure_transform
 fn normalize_pair(crate_name: &str, old: &str, new: &str) -> Result<(String, String)> {
     let old = strip_semantic_crate_prefix(crate_name, old);
     let new = strip_semantic_crate_prefix(crate_name, new);
@@ -807,6 +819,7 @@ fn capture_rename_symbol_environment(workspace: &Path) -> Result<RenameSymbolEnv
     })
 }
 
+/// Intent: canonical_read
 fn load_git_head(workspace: &Path, in_git: bool) -> Result<String> {
     if !in_git {
         return Ok(String::new());
@@ -820,6 +833,7 @@ fn load_git_head(workspace: &Path, in_git: bool) -> Result<String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
+/// Intent: validation_gate
 fn run_post_rename_cargo_check(
     workspace: &Path,
     rename_env: &RenameSymbolEnvironment,
@@ -868,11 +882,13 @@ fn run_post_rename_cargo_check(
     );
 }
 
+/// Intent: canonical_write
 fn persist_rename_symbol_errors(workspace: &Path, compiler_output: &str) {
     let errors_path = workspace.join("state/rename_errors.txt");
     persist_text_file(&errors_path, compiler_output);
 }
 
+/// Intent: canonical_write
 fn persist_text_file(path: &Path, content: &str) {
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);

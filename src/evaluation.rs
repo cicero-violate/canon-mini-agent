@@ -76,6 +76,7 @@ pub fn task_velocity_score(completed_tasks: usize, total_tasks: usize) -> f64 {
     safe_ratio(completed_tasks as f64, total_tasks.max(1) as f64)
 }
 
+/// Intent: validation_gate
 pub fn evaluate_repo_state(
     objectives_completed: usize,
     objectives_total: usize,
@@ -93,6 +94,7 @@ pub fn evaluate_repo_state(
     }
 }
 
+/// Intent: validation_gate
 pub fn evaluate_workspace(workspace: &Path) -> EvaluationWorkspaceSnapshot {
     let objectives = load_objectives_file(workspace);
     let objectives_total = objectives.objectives.len();
@@ -132,6 +134,7 @@ pub fn evaluate_workspace(workspace: &Path) -> EvaluationWorkspaceSnapshot {
     }
 }
 
+/// Intent: canonical_read
 pub fn load_issue_counts(workspace: &Path) -> (usize, usize) {
     let issues = crate::issues::load_issues_file(workspace);
     let mut counts: HashMap<&str, usize> = HashMap::new();
@@ -163,12 +166,14 @@ pub fn diagnostics_repair_pressure(report: &DiagnosticsReport) -> f64 {
     clamp_unit(high_impact as f64 / total as f64)
 }
 
+/// Intent: canonical_read
 fn load_objectives_file(workspace: &Path) -> crate::objectives::ObjectivesFile {
     let path = crate::objectives::resolve_objectives_path(workspace);
     let raw = std::fs::read_to_string(path).unwrap_or_default();
     serde_json::from_str(&raw).unwrap_or_default()
 }
 
+/// Intent: canonical_read
 fn load_task_counts(workspace: &Path) -> (usize, usize) {
     let path = workspace.join(crate::constants::MASTER_PLAN_FILE);
     let raw = std::fs::read_to_string(path).unwrap_or_default();
@@ -192,6 +197,7 @@ fn load_task_counts(workspace: &Path) -> (usize, usize) {
     (completed, tasks.len())
 }
 
+/// Intent: canonical_read
 fn load_canonical_event_count(workspace: &Path) -> usize {
     let path = workspace.join("agent_state").join("tlog.ndjson");
     std::fs::read_to_string(path)
@@ -204,6 +210,7 @@ fn load_canonical_event_count(workspace: &Path) -> usize {
         .unwrap_or(0)
 }
 
+/// Intent: diagnostic_scan
 fn empty_diagnostics_report() -> DiagnosticsReport {
     DiagnosticsReport {
         status: "unknown".to_string(),

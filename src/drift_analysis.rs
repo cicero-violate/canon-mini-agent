@@ -13,6 +13,7 @@ pub struct FingerprintDrift {
     pub reward: f64,
 }
 
+/// Intent: pure_transform
 pub fn compute_fingerprint_drift(
     _workspace: &Path,
     prev_summaries: &[SymbolSummary],
