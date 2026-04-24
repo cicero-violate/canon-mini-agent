@@ -914,6 +914,62 @@ fn report_semantic_manifest_error_rate(
     Ok(())
 }
 
+struct DocForcedErrorFlags {
+    intent: bool,
+    resource: bool,
+    inputs: bool,
+    outputs: bool,
+    effects: bool,
+    forbidden: bool,
+    invariants: bool,
+    failure: bool,
+    provenance: bool,
+}
+
+fn doc_forced_error_flags(doc: &DocContract) -> DocForcedErrorFlags {
+    DocForcedErrorFlags {
+        intent: doc_scalar_forces_error(doc.intent.as_deref()),
+        resource: doc_scalar_forces_error(doc.resource.as_deref()),
+        inputs: doc_list_forces_error(&doc.inputs),
+        outputs: doc_list_forces_error(&doc.outputs),
+        effects: doc_list_forces_error(&doc.effects),
+        forbidden: doc_list_forces_error(&doc.forbidden),
+        invariants: doc_list_forces_error(&doc.invariants),
+        failure: doc_scalar_forces_error(doc.failure.as_deref()),
+        provenance: doc_list_forces_error(&doc.provenance),
+    }
+}
+
+fn apply_doc_forced_error_flags(manifest: &mut SemanticManifest, flags: &DocForcedErrorFlags) {
+    if flags.intent {
+        manifest.intent_class = MISSING.to_string();
+    }
+    if flags.resource {
+        manifest.resource = MISSING.to_string();
+    }
+    if flags.inputs {
+        manifest.inputs = vec![MISSING.to_string()];
+    }
+    if flags.outputs {
+        manifest.outputs = vec![MISSING.to_string()];
+    }
+    if flags.effects {
+        manifest.effects = vec![MISSING.to_string()];
+    }
+    if flags.forbidden {
+        manifest.forbidden_effects = vec![MISSING.to_string()];
+    }
+    if flags.invariants {
+        manifest.invariants = vec![MISSING.to_string()];
+    }
+    if flags.failure {
+        manifest.failure_mode = MISSING.to_string();
+    }
+    if flags.provenance {
+        manifest.provenance = vec![MISSING.to_string()];
+    }
+}
+
 fn build_semantic_manifest_proposals(
     graph: &CrateGraph,
     workspace: &Path,
@@ -930,15 +986,7 @@ fn build_semantic_manifest_proposals(
         let old = node.semantic_manifest.clone().unwrap_or_default();
         let doc_lines = resolve_doc_lines(node, &workspace, &mut src_cache);
         let doc = parse_doc_contract(&doc_lines);
-        let doc_forces_intent_error = doc_scalar_forces_error(doc.intent.as_deref());
-        let doc_forces_resource_error = doc_scalar_forces_error(doc.resource.as_deref());
-        let doc_forces_inputs_error = doc_list_forces_error(&doc.inputs);
-        let doc_forces_outputs_error = doc_list_forces_error(&doc.outputs);
-        let doc_forces_effects_error = doc_list_forces_error(&doc.effects);
-        let doc_forces_forbidden_error = doc_list_forces_error(&doc.forbidden);
-        let doc_forces_invariants_error = doc_list_forces_error(&doc.invariants);
-        let doc_forces_failure_error = doc_scalar_forces_error(doc.failure.as_deref());
-        let doc_forces_provenance_error = doc_list_forces_error(&doc.provenance);
+        let doc_error_flags = doc_forced_error_flags(&doc);
         let (sig_inputs, sig_outputs) = parse_signature(node.signature.as_deref());
         let source_decl = resolve_source_decl(node, &workspace, &mut src_cache);
         let (src_inputs, src_outputs) = parse_source_decl_signature(source_decl.as_deref());
@@ -1041,33 +1089,7 @@ fn build_semantic_manifest_proposals(
             ),
             manifest_status: String::new(),
         };
-        if doc_forces_intent_error {
-            manifest.intent_class = MISSING.to_string();
-        }
-        if doc_forces_resource_error {
-            manifest.resource = MISSING.to_string();
-        }
-        if doc_forces_inputs_error {
-            manifest.inputs = vec![MISSING.to_string()];
-        }
-        if doc_forces_outputs_error {
-            manifest.outputs = vec![MISSING.to_string()];
-        }
-        if doc_forces_effects_error {
-            manifest.effects = vec![MISSING.to_string()];
-        }
-        if doc_forces_forbidden_error {
-            manifest.forbidden_effects = vec![MISSING.to_string()];
-        }
-        if doc_forces_invariants_error {
-            manifest.invariants = vec![MISSING.to_string()];
-        }
-        if doc_forces_failure_error {
-            manifest.failure_mode = MISSING.to_string();
-        }
-        if doc_forces_provenance_error {
-            manifest.provenance = vec![MISSING.to_string()];
-        }
+        apply_doc_forced_error_flags(&mut manifest, &doc_error_flags);
         let has_error = manifest_has_error(&manifest);
         manifest.manifest_status = if has_error {
             "partial_error".to_string()
