@@ -953,7 +953,7 @@ mod tests {
             }),
             def: None,
         };
-        let doc = build_doc(&node, None, "");
+        let doc = build_doc(&node, None, None, "");
         let expected = "\
 /// Intent: canonical_read
 /// Resource: PLAN.json

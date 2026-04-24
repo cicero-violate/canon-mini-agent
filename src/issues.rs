@@ -2,7 +2,7 @@ use anyhow::Result;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::Path;
 
 use crate::constants::ISSUES_FILE;
@@ -584,6 +584,126 @@ pub fn rescore_all(file: &mut IssuesFile) {
     }
 }
 
+fn issue_family_key(issue: &Issue) -> String {
+    let id = issue.id.as_str();
+    if id.starts_with("auto_dominator_region_reduction_") {
+        return "auto_dominator_region_reduction".to_string();
+    }
+    if id.starts_with("auto_semantic_rank_candidate_") {
+        return "auto_semantic_rank_candidate".to_string();
+    }
+    if id.starts_with("auto_inter_complexity_") {
+        return "auto_inter_complexity".to_string();
+    }
+    if id.starts_with("auto_mir_dup_") {
+        return "auto_mir_dup".to_string();
+    }
+    if id.starts_with("auto_") {
+        let parts: Vec<&str> = id.split('_').collect();
+        if parts.len() >= 3 {
+            return parts[..3].join("_");
+        }
+    }
+    let who = if issue.discovered_by.trim().is_empty() {
+        "unknown"
+    } else {
+        issue.discovered_by.trim()
+    };
+    let kind = if issue.kind.trim().is_empty() {
+        "unknown"
+    } else {
+        issue.kind.trim()
+    };
+    format!("manual:{who}:{kind}")
+}
+
+fn diverse_window_policy() -> (usize, usize) {
+    let window = std::env::var("ISSUES_DIVERSITY_WINDOW")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(20)
+        .max(1);
+    let cap = std::env::var("ISSUES_DIVERSITY_PER_FAMILY_CAP")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(3)
+        .max(1);
+    (window, cap)
+}
+
+fn select_best_family(
+    buckets: &HashMap<String, VecDeque<Issue>>,
+    family_window_counts: Option<(&HashMap<String, usize>, usize)>,
+) -> Option<String> {
+    let mut best: Option<(String, f32, String)> = None;
+    for (family, queue) in buckets {
+        let Some(head) = queue.front() else {
+            continue;
+        };
+        if let Some((counts, cap)) = family_window_counts {
+            if counts.get(family).copied().unwrap_or(0) >= cap {
+                continue;
+            }
+        }
+        let candidate = (family.clone(), head.score, head.id.clone());
+        match &best {
+            None => best = Some(candidate),
+            Some((_, score, id)) => {
+                if candidate.1 > *score || (candidate.1 == *score && candidate.2 < *id) {
+                    best = Some(candidate);
+                }
+            }
+        }
+    }
+    best.map(|v| v.0)
+}
+
+fn diversify_ranked_issues_with_policy(
+    ranked_issues: Vec<Issue>,
+    top_window: usize,
+    per_family_cap: usize,
+) -> Vec<Issue> {
+    if ranked_issues.len() <= 1 || top_window == 0 || per_family_cap == 0 {
+        return ranked_issues;
+    }
+    let total = ranked_issues.len();
+    let mut buckets: HashMap<String, VecDeque<Issue>> = HashMap::new();
+    for issue in ranked_issues {
+        buckets
+            .entry(issue_family_key(&issue))
+            .or_default()
+            .push_back(issue);
+    }
+    let mut out: Vec<Issue> = Vec::with_capacity(total);
+    let mut family_window_counts: HashMap<String, usize> = HashMap::new();
+
+    while out.len() < total {
+        let in_window = out.len() < top_window;
+        let family = if in_window {
+            select_best_family(&buckets, Some((&family_window_counts, per_family_cap)))
+                .or_else(|| select_best_family(&buckets, None))
+        } else {
+            select_best_family(&buckets, None)
+        };
+        let Some(family) = family else {
+            break;
+        };
+        let Some(issue) = buckets.get_mut(&family).and_then(|queue| queue.pop_front()) else {
+            continue;
+        };
+        if in_window {
+            *family_window_counts.entry(family).or_insert(0usize) += 1;
+        }
+        out.push(issue);
+    }
+    out
+}
+
+fn diversify_ranked_issues(ranked_issues: Vec<Issue>) -> Vec<Issue> {
+    let (window, cap) = diverse_window_policy();
+    diversify_ranked_issues_with_policy(ranked_issues, window, cap)
+}
+
 /// Intent: diagnostic_scan
 /// Resource: error
 /// Inputs: &std::path::Path
@@ -613,14 +733,15 @@ pub fn read_ranked_open_issues(workspace: &Path) -> Vec<Issue> {
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| a.id.cmp(&b.id))
     });
-    file.issues
+    diversify_ranked_issues(file.issues)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        compute_issue_score, is_closed, load_issues_file, persist_issues_projection_with_writer,
-        read_ranked_open_issues, sweep_stale_issues, Issue, IssuesFile,
+        compute_issue_score, diversify_ranked_issues_with_policy, is_closed, load_issues_file,
+        persist_issues_projection_with_writer, read_ranked_open_issues, sweep_stale_issues, Issue,
+        IssuesFile,
     };
     use crate::{set_agent_state_dir, set_workspace};
     use std::path::Path;
@@ -745,6 +866,31 @@ mod tests {
         assert!(summary.contains("Top open issues"));
         assert!(summary.contains("i_high"));
         assert!(!summary.contains("i_low"));
+    }
+
+    #[test]
+    fn diversify_ranked_issues_caps_single_family_in_top_window() {
+        let ranked = vec![
+            Issue { id: "auto_dominator_region_reduction_1".to_string(), score: 0.99, ..Issue::default() },
+            Issue { id: "auto_dominator_region_reduction_2".to_string(), score: 0.98, ..Issue::default() },
+            Issue { id: "auto_dominator_region_reduction_3".to_string(), score: 0.97, ..Issue::default() },
+            Issue { id: "auto_dominator_region_reduction_4".to_string(), score: 0.96, ..Issue::default() },
+            Issue { id: "auto_semantic_rank_candidate_a".to_string(), score: 0.95, ..Issue::default() },
+            Issue { id: "auto_inter_complexity_x".to_string(), score: 0.94, ..Issue::default() },
+        ];
+        let diversified = diversify_ranked_issues_with_policy(ranked, 5, 2);
+        let top4 = &diversified[..4];
+        let dom_count = top4
+            .iter()
+            .filter(|issue| issue.id.starts_with("auto_dominator_region_reduction_"))
+            .count();
+        assert_eq!(dom_count, 2);
+        assert!(top4
+            .iter()
+            .any(|issue| issue.id.starts_with("auto_semantic_rank_candidate_")));
+        assert!(top4
+            .iter()
+            .any(|issue| issue.id.starts_with("auto_inter_complexity_")));
     }
 
     #[test]
