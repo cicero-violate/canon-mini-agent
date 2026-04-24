@@ -153,6 +153,25 @@ fn summarize_cfg_terminators(blocks: &[&CfgNode]) -> (usize, usize, usize) {
     })
 }
 
+fn summarize_call_edges<'a>(
+    edges: &'a [GraphEdge],
+) -> (HashMap<&'a str, usize>, HashMap<&'a str, usize>, HashSet<&'a str>) {
+    let mut call_in: HashMap<&str, usize> = HashMap::new();
+    let mut call_out: HashMap<&str, usize> = HashMap::new();
+    let mut self_recursive: HashSet<&str> = HashSet::new();
+    for edge in edges {
+        if !edge_is_call(edge) {
+            continue;
+        }
+        *call_out.entry(edge.from.as_str()).or_insert(0) += 1;
+        *call_in.entry(edge.to.as_str()).or_insert(0) += 1;
+        if edge.from == edge.to {
+            self_recursive.insert(edge.from.as_str());
+        }
+    }
+    (call_in, call_out, self_recursive)
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RedundantPathPair {
     pub path_a: PathRecord,
@@ -326,6 +345,21 @@ pub struct ExecutionPathPlan {
 }
 
 impl SemanticIndex {
+    fn summarize_clone_calls(&self) -> HashMap<&str, usize> {
+        let mut owner_clone_calls: HashMap<&str, usize> = HashMap::new();
+        for edge in &self.graph.edges {
+            if !edge_is_call(edge) {
+                continue;
+            }
+            let to_path = self.edge_endpoint_path(&edge.to);
+            let lower = to_path.to_ascii_lowercase();
+            if lower.contains("::clone") || lower.contains("clone::clone") {
+                *owner_clone_calls.entry(edge.from.as_str()).or_insert(0) += 1;
+            }
+        }
+        owner_clone_calls
+    }
+
     /// Intent: canonical_read
     /// Resource: error
     /// Inputs: &std::path::Path, &str
@@ -678,20 +712,7 @@ impl SemanticIndex {
 
     /// Extract a stable summary for each symbol with a definition span.
     pub fn symbol_summaries(&self) -> Vec<SymbolSummary> {
-        let mut call_in: HashMap<&str, usize> = HashMap::new();
-        let mut call_out: HashMap<&str, usize> = HashMap::new();
-        // Direct recursion: any call edge where from == to (same def_id).
-        let mut self_recursive: HashSet<&str> = HashSet::new();
-        for edge in &self.graph.edges {
-            if !edge_is_call(edge) {
-                continue;
-            }
-            *call_out.entry(edge.from.as_str()).or_insert(0) += 1;
-            *call_in.entry(edge.to.as_str()).or_insert(0) += 1;
-            if edge.from == edge.to {
-                self_recursive.insert(edge.from.as_str());
-            }
-        }
+        let (call_in, call_out, self_recursive) = summarize_call_edges(&self.graph.edges);
 
         // Group cfg_nodes by owner (def_id) for branch-score computation.
         let mut owner_to_cfg: HashMap<&str, Vec<&CfgNode>> = HashMap::new();
@@ -718,17 +739,7 @@ impl SemanticIndex {
                 owner_has_back_edges.insert(from.owner.as_str());
             }
         }
-        let mut owner_clone_calls: HashMap<&str, usize> = HashMap::new();
-        for edge in &self.graph.edges {
-            if !edge_is_call(edge) {
-                continue;
-            }
-            let to_path = self.edge_endpoint_path(&edge.to);
-            let lower = to_path.to_ascii_lowercase();
-            if lower.contains("::clone") || lower.contains("clone::clone") {
-                *owner_clone_calls.entry(edge.from.as_str()).or_insert(0) += 1;
-            }
-        }
+        let owner_clone_calls = self.summarize_clone_calls();
 
         let mut out = Vec::new();
         for (node_key, node) in &self.graph.nodes {
