@@ -58,11 +58,11 @@ fn preflight_executor_dispatch(
 /// Intent: transport_effect
 /// Resource: error
 /// Inputs: &prompt_inputs::OrchestratorContext<'_>, &mut canonical_writer::CanonicalWriter, &mut app::RuntimeState, u64, &mut tokio::task::JoinSet<(usize, app::PendingExecutorSubmit, std::result::Result<std::string::String, anyhow::Error>
-/// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Outputs: bool
+/// Effects: state_write, transport_effect
+/// Forbidden: default_overwrite
+/// Invariants: dispatch_requires_ready_lane_or_planner_wake
+/// Failure: fail_closed
 /// Provenance: rustc:facts + rustc:docstring
 fn dispatch_executor_submits(
     ctx: &OrchestratorContext<'_>,
