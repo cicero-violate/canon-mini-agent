@@ -53,19 +53,26 @@ fn log_objective_operation_context(
     requested: Option<&str>,
     objectives: &[crate::objectives::Objective],
 ) {
-    let requested_raw = requested.map(str::to_string);
-    let requested_id = requested.map(normalize_objective_id_for_match);
     append_orchestration_trace(
         "objective_operation_context",
-        json!({
-            "operation": op,
-            "outcome": outcome,
-            "requested_raw": requested_raw,
-            "requested_id": requested_id,
-            "compared_ids": objective_compared_ids(objectives),
-            "compared_normalized_ids": objective_compared_normalized_ids(objectives),
-        }),
+        objective_operation_context_payload(op, outcome, requested, objectives),
     );
+}
+
+fn objective_operation_context_payload(
+    op: &str,
+    outcome: &str,
+    requested: Option<&str>,
+    objectives: &[crate::objectives::Objective],
+) -> serde_json::Value {
+    json!({
+        "operation": op,
+        "outcome": outcome,
+        "requested_raw": requested.map(str::to_string),
+        "requested_id": requested.map(normalize_objective_id_for_match),
+        "compared_ids": objective_compared_ids(objectives),
+        "compared_normalized_ids": objective_compared_normalized_ids(objectives),
+    })
 }
 
 fn sort_objectives_for_view(file: &mut crate::objectives::ObjectivesFile, include_done: bool) {
