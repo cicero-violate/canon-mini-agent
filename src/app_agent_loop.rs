@@ -1027,6 +1027,36 @@ fn parse_submit_ack(raw: &str) -> Option<(u32, u64, Option<String>)> {
     Some((tab_id, turn_id, command_id))
 }
 
+fn parsed_completion_command_summary(action: &serde_json::Value) -> String {
+    let kind = action
+        .get("action")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    match kind {
+        "run_command" => jstr(action, "cmd").to_string(),
+        "python" => "python".to_string(),
+        "read_file" => {
+            let path = jstr(action, "path");
+            match action.get("line").and_then(|v| v.as_u64()) {
+                Some(n) => format!("read_file {}:{}", path, n),
+                None => format!("read_file {}", path),
+            }
+        }
+        "list_dir" => format!("list_dir {}", jstr(action, "path")),
+        "apply_patch" => "apply_patch".to_string(),
+        "message" => {
+            let status = jstr(action, "status");
+            let summary = action
+                .get("payload")
+                .and_then(|v| v.get("summary"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            format!("message {} {}", status, summary)
+        }
+        _ => kind.to_string(),
+    }
+}
+
 /// Intent: event_append
 /// Resource: error
 /// Inputs: &app::SubmittedExecutorTurn, usize, u64, u32, &str
@@ -1060,36 +1090,7 @@ fn append_executor_completion_log(
         .map(str::to_string);
     let parsed_command = parsed
         .as_ref()
-        .map(|action| {
-            let kind = action
-                .get("action")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
-            match kind {
-                "run_command" => jstr(action, "cmd").to_string(),
-                "python" => "python".to_string(),
-                "read_file" => {
-                    let path = jstr(action, "path");
-                    let line = action.get("line").and_then(|v| v.as_u64());
-                    match line {
-                        Some(n) => format!("read_file {}:{}", path, n),
-                        None => format!("read_file {}", path),
-                    }
-                }
-                "list_dir" => format!("list_dir {}", jstr(action, "path")),
-                "apply_patch" => "apply_patch".to_string(),
-                "message" => {
-                    let status = jstr(action, "status");
-                    let summary = action
-                        .get("payload")
-                        .and_then(|v| v.get("summary"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-                    format!("message {} {}", status, summary)
-                }
-                _ => kind.to_string(),
-            }
-        })
+        .map(parsed_completion_command_summary)
         .filter(|s| !s.is_empty());
     let record = compact_log_record(
         "llm",
