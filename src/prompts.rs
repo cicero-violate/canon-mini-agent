@@ -346,6 +346,21 @@ fn prompt_workspace(kind: AgentPromptKind) -> String {
     }
 }
 
+fn prompt_graph_artifact_guidance(kind: AgentPromptKind) -> &'static str {
+    match kind {
+        AgentPromptKind::Executor => "Graph-first execution guidance:\n\
+- Treat `state/rustc/canon_mini_agent/graph.json` as the canonical semantic/CFG substrate.\n\
+- Use `agent_state/safe_patch_candidates.json` to prioritize merge/delete style refactors before ad-hoc edits.\n\
+- Use `agent_state/semantic_manifest_proposals.json` to preserve/repair Intent/Inputs/Outputs/Effects/Invariants contracts while editing.\n\
+- When a task references an issue family rooted in graph analysis, ground file edits and verification in these graph-derived artifacts.",
+        AgentPromptKind::Planner => "Graph-first planning guidance:\n\
+- Treat `state/rustc/canon_mini_agent/graph.json` as the canonical semantic/CFG substrate.\n\
+- Prefer top-ranked entries in `agent_state/safe_patch_candidates.json` when creating ready executor tasks.\n\
+- Use `agent_state/semantic_manifest_proposals.json` to ensure tasks preserve explicit intent/contract metadata.\n\
+- When issue scores are close, favor tasks backed by graph-ranked redundancy evidence over generic heuristics.",
+    }
+}
+
 fn status_snapshot_for(kind: AgentPromptKind) -> &'static str {
     let _ = kind;
     ""
@@ -437,14 +452,18 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
     let intro = prompt_intro(kind).to_string();
     let mission = prompt_mission(kind).to_string();
     let workspace_text = prompt_workspace(kind);
+    let graph_guidance = prompt_graph_artifact_guidance(kind).to_string();
     let status_snapshot = status_snapshot_for(kind).to_string();
     let tail = prompt_tail(kind);
     let prefix = if status_snapshot.is_empty() {
-        format!("{}\n\n{}\n\n{}\n\n", intro, mission, workspace_text)
-    } else {
         format!(
             "{}\n\n{}\n\n{}\n\n{}\n\n",
-            intro, mission, workspace_text, status_snapshot
+            intro, mission, workspace_text, graph_guidance
+        )
+    } else {
+        format!(
+            "{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n",
+            intro, mission, workspace_text, graph_guidance, status_snapshot
         )
     };
     let schema_block = default_schema_block(kind);
@@ -487,6 +506,11 @@ pub(crate) fn planner_cycle_prompt(
          pre-validated by semantic control and directly actionable. Do not stall on re-verifying \
          them before planning. Create `plan` tasks for the top open issues now and \
          mark them `ready` for the immediate execute phase.\n\n\
+         Graph prioritization rule: use `agent_state/safe_patch_candidates.json` to seed the \
+         ready window with top-ranked semantic merge candidates, and use \
+         `agent_state/semantic_manifest_proposals.json` to preserve contract fields in task wording. \
+         If graph-ranked merge candidates and generic detector issues compete at similar score, \
+         schedule at least one top graph-ranked candidate in READY NOW.\n\n\
          Before completing this cycle, review {OBJECTIVES_FILE} and add or update objectives \
          for anything discovered this cycle. Use the `objectives` action \
          (op: create_objective / update_objective) to write them. \
@@ -568,7 +592,7 @@ pub(crate) fn executor_cycle_prompt(
         latest_verify_result.to_string()
     };
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nREADY TASKS (from {MASTER_PLAN_FILE}, top-10 by plan order):\n{ready_tasks}\n\nLane plans are deprecated. Use {MASTER_PLAN_FILE} and current planner-phase outputs for task selection.\nLatest verifier result for lane {lane_label}:\n{verify_result}\n\nUse `message` primarily for blocker escalation or unresolved partial completion evidence."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nREADY TASKS (from {MASTER_PLAN_FILE}, top-10 by plan order):\n{ready_tasks}\n\nLane plans are deprecated. Use {MASTER_PLAN_FILE} and current planner-phase outputs for task selection.\nGraph-first execution: consult `state/rustc/canon_mini_agent/graph.json`, `agent_state/safe_patch_candidates.json`, and `agent_state/semantic_manifest_proposals.json` before patching so edits align with ranked semantic candidates and manifest contracts.\nLatest verifier result for lane {lane_label}:\n{verify_result}\n\nUse `message` primarily for blocker escalation or unresolved partial completion evidence."
     )
 }
 
@@ -595,7 +619,7 @@ pub(crate) fn single_role_planner_prompt(
     let cargo_failures_heading =
         "Latest cargo test failures (from cargo_test_failures.json)".to_string();
     let suffix = format!(
-        "\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nOpen issues in `{issues_file}` are directly actionable when they include current-source evidence — create plan tasks that reference `issue_refs`. `{diagnostics_path}` entries with no matching {issues_file} entry are hints only.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nWhen a `plan` action is derived from projected diagnostics state, include same-cycle source validation in `observation` and `rationale` before mutating {MASTER_PLAN_FILE}.\n\nTreat stale or already-resolved projected diagnostics as non-actionable until current source evidence reconfirms them.\nIf projected diagnostics repeatedly report stale issues, create follow-up work to repair projection generation rather than reopening resolved implementation tasks."
+        "\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nOpen issues in `{issues_file}` are directly actionable when they include current-source evidence — create plan tasks that reference `issue_refs`. `{diagnostics_path}` entries with no matching {issues_file} entry are hints only.\nGraph-first rule: prioritize top-ranked items from `agent_state/safe_patch_candidates.json`, and use `agent_state/semantic_manifest_proposals.json` to keep task instructions aligned with contract metadata.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nWhen a `plan` action is derived from projected diagnostics state, include same-cycle source validation in `observation` and `rationale` before mutating {MASTER_PLAN_FILE}.\n\nTreat stale or already-resolved projected diagnostics as non-actionable until current source evidence reconfirms them.\nIf projected diagnostics repeatedly report stale issues, create follow-up work to repair projection generation rather than reopening resolved implementation tasks."
     );
     let items = [
         PromptItem {
@@ -654,7 +678,7 @@ pub(crate) fn single_role_executor_prompt(
     let semantic_control_heading =
         "Semantic control state (tlog-derived authority + projected views)".to_string();
     let suffix = format!(
-        "\n\nLane plans are deprecated. Use {MASTER_PLAN_FILE} and current planner-phase outputs for task selection.\n\nDo not modify spec, plan, violations, or diagnostics.\nDo not use internal tools.\nDo not hand off work; continue execution directly in the current role flow.\nUse `message.payload` to report blocker escalation or unresolved partial-completion evidence. {ACTION_EMIT_LINE}"
+        "\n\nLane plans are deprecated. Use {MASTER_PLAN_FILE} and current planner-phase outputs for task selection.\nGraph-first execution: prefer edits that close top entries in `agent_state/safe_patch_candidates.json`, and preserve semantic contracts from `agent_state/semantic_manifest_proposals.json` while patching.\n\nDo not modify spec, plan, violations, or diagnostics.\nDo not use internal tools.\nDo not hand off work; continue execution directly in the current role flow.\nUse `message.payload` to report blocker escalation or unresolved partial-completion evidence. {ACTION_EMIT_LINE}"
     );
     let items = vec![PromptItem {
         heading: &semantic_control_heading,

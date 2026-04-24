@@ -294,19 +294,13 @@ fn parse_signature(signature: Option<&str>) -> (Vec<String>, Vec<String>) {
 fn split_top_level_csv(v: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut start = 0usize;
-    let mut angle_depth = 0i32;
-    let mut paren_depth = 0i32;
-    let mut bracket_depth = 0i32;
+    let mut depth = 0usize;
 
     for (idx, ch) in v.char_indices() {
         match ch {
-            '<' => angle_depth += 1,
-            '>' => angle_depth = angle_depth.saturating_sub(1),
-            '(' => paren_depth += 1,
-            ')' => paren_depth = paren_depth.saturating_sub(1),
-            '[' => bracket_depth += 1,
-            ']' => bracket_depth = bracket_depth.saturating_sub(1),
-            ',' if angle_depth == 0 && paren_depth == 0 && bracket_depth == 0 => {
+            '<' | '(' | '[' => depth += 1,
+            '>' | ')' | ']' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
                 let part = v[start..idx].trim();
                 if !part.is_empty() {
                     out.push(part.to_string());
