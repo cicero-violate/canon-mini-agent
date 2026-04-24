@@ -88,6 +88,15 @@ fn artifact_signature(parts: &[&str]) -> String {
     format!("{:016x}", hasher.finish())
 }
 
+fn checkpoint_ref_json(path: &Path, checkpoint_json: &str, tlog_seq: u64) -> String {
+    let workspace = Path::new(crate::constants::workspace());
+    let artifact = path.strip_prefix(workspace).ok()
+        .map(|rel| rel.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_else(|| path.to_string_lossy().replace('\\', "/"));
+    let hash = artifact_signature(&[artifact.as_str(), checkpoint_json, &tlog_seq.to_string()]);
+    serde_json::json!({"checkpoint_ref":true,"path":artifact,"bytes":checkpoint_json.len(),"hash":hash,"tlog_seq":tlog_seq}).to_string()
+}
+
 /// Intent: canonical_write
 /// Resource: error
 /// Inputs: &std::path::Path, &str, &str
@@ -168,7 +177,7 @@ fn save_checkpoint(
     };
     if let Ok(snapshot_json) = serde_json::to_string(&checkpoint) {
         writer.apply(ControlEvent::CheckpointSnapshotSet {
-            snapshot_json: snapshot_json.clone(),
+            snapshot_json: checkpoint_ref_json(&path, &snapshot_json, writer.tlog_seq()),
         });
     }
     // Use a plain atomic write instead of persist_agent_state_projection.

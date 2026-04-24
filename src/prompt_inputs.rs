@@ -376,6 +376,15 @@ impl InvariantStatusCounts {
     fn active(&self) -> usize {
         self.discovered + self.promoted + self.enforced
     }
+
+    fn record(&mut self, status: &crate::invariants::InvariantStatus) {
+        match status {
+            crate::invariants::InvariantStatus::Discovered => self.discovered += 1,
+            crate::invariants::InvariantStatus::Promoted => self.promoted += 1,
+            crate::invariants::InvariantStatus::Enforced => self.enforced += 1,
+            crate::invariants::InvariantStatus::Collapsed => self.collapsed += 1,
+        }
+    }
 }
 
 fn summarize_invariant_status_counts(
@@ -388,12 +397,7 @@ fn summarize_invariant_status_counts(
         collapsed: 0,
     };
     for inv in invariants {
-        match inv.status {
-            crate::invariants::InvariantStatus::Discovered => counts.discovered += 1,
-            crate::invariants::InvariantStatus::Promoted => counts.promoted += 1,
-            crate::invariants::InvariantStatus::Enforced => counts.enforced += 1,
-            crate::invariants::InvariantStatus::Collapsed => counts.collapsed += 1,
-        }
+        counts.record(&inv.status);
     }
     counts
 }
