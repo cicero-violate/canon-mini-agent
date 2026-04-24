@@ -630,6 +630,27 @@ fn build_execute_logged_action_error_text(action_kind: &str, error: &anyhow::Err
     }
 }
 
+fn log_execute_logged_action_failure_event(
+    role: &str,
+    prompt_kind: &str,
+    step: usize,
+    command_id: &str,
+    action: &Value,
+    error: &anyhow::Error,
+) {
+    log_error_event(
+        role,
+        "execute_logged_action",
+        Some(step),
+        &format!("execute_logged_action error: {error}"),
+        Some(json!({
+            "prompt_kind": prompt_kind,
+            "command_id": command_id,
+            "action": action.get("action").and_then(|v| v.as_str()),
+        })),
+    );
+}
+
 fn record_execute_logged_action_failure(
     workspace: &Path,
     writer: Option<&mut CanonicalWriter>,
@@ -667,17 +688,7 @@ fn record_execute_logged_action_failure(
         false,
         &err_text,
     );
-    log_error_event(
-        role,
-        "execute_logged_action",
-        Some(step),
-        &format!("execute_logged_action error: {error}"),
-        Some(json!({
-            "prompt_kind": prompt_kind,
-            "command_id": command_id,
-            "action": action.get("action").and_then(|v| v.as_str()),
-        })),
-    );
+    log_execute_logged_action_failure_event(role, prompt_kind, step, command_id, action, error);
     err_text
 }
 
