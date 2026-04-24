@@ -1004,19 +1004,20 @@ fn is_reaction_only_response(raw: &str) -> bool {
     if extract_message_action(trimmed).is_some() {
         return false;
     }
-    if trimmed.starts_with("assistant reaction-only terminal frame") {
-        return true;
-    }
-    if trimmed.starts_with("assistant reaction-only") {
-        return true;
-    }
-    if trimmed.len() <= 8 && trimmed.chars().all(|c| !c.is_ascii_alphanumeric()) {
-        return true;
-    }
-    if !trimmed.contains('{') && !trimmed.contains('[') {
-        return true;
-    }
-    false
+    has_reaction_only_marker(trimmed) || is_short_symbol_only_text(trimmed) || has_no_json_marker(trimmed)
+}
+
+fn has_reaction_only_marker(trimmed: &str) -> bool {
+    trimmed.starts_with("assistant reaction-only terminal frame")
+        || trimmed.starts_with("assistant reaction-only")
+}
+
+fn is_short_symbol_only_text(trimmed: &str) -> bool {
+    trimmed.len() <= 8 && trimmed.chars().all(|c| !c.is_ascii_alphanumeric())
+}
+
+fn has_no_json_marker(trimmed: &str) -> bool {
+    !trimmed.contains('{') && !trimmed.contains('[')
 }
 
 fn is_transient_service_response(raw: &str) -> bool {
