@@ -1405,7 +1405,7 @@ fn in_flight_paths() -> &'static Mutex<HashSet<PathBuf>> {
     IN_FLIGHT.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
-fn enqueue_issue_task_generation(workspace: &Path) {
+pub fn enqueue_issue_task_generation(workspace: &Path) {
     let ws = workspace.to_path_buf();
     {
         let mut guard = match in_flight_paths().lock() {

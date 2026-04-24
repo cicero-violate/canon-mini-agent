@@ -100,7 +100,21 @@ pub fn record_blocker_message_with_writer(
         return;
     }
     let ts = crate::logging::now_ms();
-    let record = BlockerRecord {
+    let record = blocker_message_record(role, summary, task_id, objective_id, error_class, ts);
+    if let Err(err) = try_append_blocker_with_writer(workspace, writer, record) {
+        eprintln!("[blockers] append blocker message error: {err:#}");
+    }
+}
+
+fn blocker_message_record(
+    role: &str,
+    summary: &str,
+    task_id: Option<&str>,
+    objective_id: Option<&str>,
+    error_class: ErrorClass,
+    ts: u64,
+) -> BlockerRecord {
+    BlockerRecord {
         id: format!("blk-{role}-{}-{ts}", error_class.as_key()),
         error_class,
         actor: role.to_string(),
@@ -110,9 +124,6 @@ pub fn record_blocker_message_with_writer(
         action_kind: "message".to_string(),
         source: "blocker_message".to_string(),
         ts_ms: ts,
-    };
-    if let Err(err) = try_append_blocker_with_writer(workspace, writer, record) {
-        eprintln!("[blockers] append blocker message error: {err:#}");
     }
 }
 

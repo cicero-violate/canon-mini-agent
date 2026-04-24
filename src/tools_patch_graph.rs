@@ -284,6 +284,42 @@ fn format_apply_patch_action_chain(
     sections.join("\n\n")
 }
 
+fn graph_refresh_fingerprint_path(workspace: &Path) -> PathBuf {
+    workspace
+        .join("agent_state")
+        .join("derived_artifact_refresh.graph.fingerprint")
+}
+
+fn derived_artifact_cache_complete(workspace: &Path) -> bool {
+    workspace.join(ISSUES_FILE).exists()
+        && crate::semantic_contract::sidecar_path(workspace).exists()
+        && crate::semantic_contract::rank_out_path(workspace).exists()
+}
+
+fn graph_content_fingerprint(path: &Path) -> Result<String> {
+    let bytes = fs::read(path)
+        .with_context(|| format!("read graph fingerprint input {}", path.display()))?;
+    let mut hasher = DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    Ok(format!("len={} hash={:016x}", bytes.len(), hasher.finish()))
+}
+
+fn read_graph_refresh_fingerprint(workspace: &Path) -> Option<String> {
+    fs::read_to_string(graph_refresh_fingerprint_path(workspace))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+fn write_graph_refresh_fingerprint(workspace: &Path, fingerprint: &str) -> Result<()> {
+    let path = graph_refresh_fingerprint_path(workspace);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, format!("{fingerprint}\n"))?;
+    Ok(())
+}
+
 /// Intent: projection_refresh
 /// Resource: graph.json, safe_patch_candidates.json, semantic_manifest_proposals.json, ISSUES.json
 /// Inputs: &std::path::Path
@@ -314,6 +350,26 @@ fn refresh_derived_artifacts_after_cargo_check(workspace: &Path) -> (bool, Strin
         }
     }
 
+    let graph_fingerprint = match graph_content_fingerprint(&graph_path) {
+        Ok(fingerprint) => fingerprint,
+        Err(err) => {
+            lines.push(format!("graph fingerprint failed: {err:#}"));
+            return (false, lines.join("\n"));
+        }
+    };
+    lines.push(format!("graph fingerprint: {graph_fingerprint}"));
+
+    if read_graph_refresh_fingerprint(workspace).as_deref() == Some(graph_fingerprint.as_str())
+        && derived_artifact_cache_complete(workspace)
+    {
+        lines.push(
+            "graph fingerprint unchanged; semantic_sync and broad ISSUES.json refresh skipped"
+                .to_string(),
+        );
+        lines.push("derived artifact refresh ok".to_string());
+        return (true, lines.join("\n"));
+    }
+
     match crate::semantic_contract::run_semantic_sync(workspace) {
         Ok(report) => {
             lines.push(format!(
@@ -341,19 +397,22 @@ fn refresh_derived_artifacts_after_cargo_check(workspace: &Path) -> (bool, Strin
         }
     }
 
-    if let Err(err) = crate::complexity::refresh_issue_artifacts(workspace) {
-        lines.push(format!("issue refresh failed: {err:#}"));
+    if let Err(err) = write_graph_refresh_fingerprint(workspace, &graph_fingerprint) {
+        lines.push(format!("graph fingerprint write failed: {err:#}"));
         return (false, lines.join("\n"));
     }
+
+    crate::complexity::enqueue_issue_task_generation(workspace);
+    lines.push("ISSUES.json broad refresh queued: non-blocking".to_string());
 
     let issues_path = workspace.join(ISSUES_FILE);
     match fs::metadata(&issues_path) {
         Ok(meta) => lines.push(format!(
-            "ISSUES.json refreshed: bytes={}",
+            "ISSUES.json current projection: bytes={}",
             meta.len()
         )),
         Err(err) => {
-            lines.push(format!("ISSUES.json missing/unreadable after refresh: {err}"));
+            lines.push(format!("ISSUES.json missing/unreadable after semantic sync: {err}"));
             return (false, lines.join("\n"));
         }
     }

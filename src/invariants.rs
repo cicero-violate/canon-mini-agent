@@ -152,12 +152,12 @@ pub fn maybe_synthesize_invariants(workspace: &Path) {
 }
 
 /// Intent: validation_gate
-/// Resource: error
+/// Resource: ISSUES.json, enforced_invariants.json
 /// Inputs: &str, &std::collections::HashMap<std::string::String, std::string::String>, &std::path::Path
 /// Outputs: std::result::Result<(), std::string::String>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
+/// Effects: state_read, state_write
+/// Forbidden: uses_network, spawns_process
+/// Invariants: issues_projection_is_rescored_before_persist
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
 pub fn evaluate_invariant_gate(
