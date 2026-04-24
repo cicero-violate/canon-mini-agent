@@ -347,9 +347,16 @@ fn build_graph_only_entries(idx: &SemanticIndex, crate_name: &str) -> Vec<GraphO
         });
     }
 
-    let max = graph_only_normalization_maxima(&entries);
+    apply_graph_only_complexity_scores(&mut entries);
 
-    for entry in &mut entries {
+    entries.sort_by(graph_only_sort_desc);
+    entries
+}
+
+fn apply_graph_only_complexity_scores(entries: &mut [GraphOnlyEntry]) {
+    let max = graph_only_normalization_maxima(entries);
+
+    for entry in entries {
         let branch_norm = normalize_by_max(entry.branch_score, max.branch);
         let density_norm = normalize_by_max(entry.stmt_density, max.density);
         let transitive_norm = normalize_by_max(entry.b_transitive, max.transitive);
@@ -371,9 +378,6 @@ fn build_graph_only_entries(idx: &SemanticIndex, crate_name: &str) -> Vec<GraphO
             + 0.05 * loop_norm)
             .clamp(0.0, 1.0);
     }
-
-    entries.sort_by(graph_only_sort_desc);
-    entries
 }
 
 fn duplicate_body_counts(
