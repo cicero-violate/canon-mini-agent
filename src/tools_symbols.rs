@@ -812,15 +812,16 @@ fn parse_rename_symbol_pairs(action: &Value, crate_name: &str) -> Result<Vec<(St
 }
 
 fn reject_legacy_rename_fields(action: &Value) -> Result<()> {
-    if action.get("path").is_some()
-        || action.get("line").is_some()
-        || action.get("column").is_some()
-        || action.get("old_name").is_some()
-        || action.get("new_name").is_some()
-    {
+    if has_legacy_rename_field(action) {
         bail!("rename_symbol v2 uses `old_symbol`/`new_symbol` (or `renames`) and rustc graph spans; line/column payloads are deprecated");
     }
     Ok(())
+}
+
+fn has_legacy_rename_field(action: &Value) -> bool {
+    ["path", "line", "column", "old_name", "new_name"]
+        .iter()
+        .any(|field| action.get(field).is_some())
 }
 
 /// Intent: pure_transform
