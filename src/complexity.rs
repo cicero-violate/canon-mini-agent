@@ -70,23 +70,37 @@ fn graph_only_entry_json(entry: &GraphOnlyEntry) -> serde_json::Value {
 }
 
 fn graph_only_entry_metrics_json(entry: &GraphOnlyEntry) -> serde_json::Value {
-    json!({
-        "mir_blocks": graph_only_mir_blocks(entry),
-        "mir_stmts": graph_only_mir_stmts(entry),
-        "branch_score": graph_only_branch_score(entry),
-        "stmt_density": graph_only_stmt_density(entry),
-        "b_transitive": graph_only_b_transitive(entry),
-        "heat_score": graph_only_heat_score(entry),
-        "call_in": graph_only_call_in(entry),
-        "call_out": graph_only_call_out(entry),
-        "duplicate_body_count": graph_only_duplicate_body_count(entry),
-        "redundant_path_count": graph_only_redundant_path_count(entry),
-        "pathway_membership_count": graph_only_pathway_membership_count(entry),
-        "pathway_wrapper_count": graph_only_pathway_wrapper_count(entry),
-        "scc_size": graph_only_scc_size(entry),
-        "is_directly_recursive": graph_only_is_directly_recursive(entry),
-        "graph_complexity_score": graph_only_complexity_score(entry),
-    })
+    let mut metrics = serde_json::Map::new();
+    insert_graph_only_size_metrics(entry, &mut metrics);
+    insert_graph_only_topology_metrics(entry, &mut metrics);
+    serde_json::Value::Object(metrics)
+}
+
+fn insert_graph_only_size_metrics(
+    entry: &GraphOnlyEntry,
+    metrics: &mut serde_json::Map<String, serde_json::Value>,
+) {
+    metrics.insert("mir_blocks".to_string(), json!(graph_only_mir_blocks(entry)));
+    metrics.insert("mir_stmts".to_string(), json!(graph_only_mir_stmts(entry)));
+    metrics.insert("branch_score".to_string(), json!(graph_only_branch_score(entry)));
+    metrics.insert("stmt_density".to_string(), json!(graph_only_stmt_density(entry)));
+    metrics.insert("b_transitive".to_string(), json!(graph_only_b_transitive(entry)));
+    metrics.insert("heat_score".to_string(), json!(graph_only_heat_score(entry)));
+}
+
+fn insert_graph_only_topology_metrics(
+    entry: &GraphOnlyEntry,
+    metrics: &mut serde_json::Map<String, serde_json::Value>,
+) {
+    metrics.insert("call_in".to_string(), json!(graph_only_call_in(entry)));
+    metrics.insert("call_out".to_string(), json!(graph_only_call_out(entry)));
+    metrics.insert("duplicate_body_count".to_string(), json!(graph_only_duplicate_body_count(entry)));
+    metrics.insert("redundant_path_count".to_string(), json!(graph_only_redundant_path_count(entry)));
+    metrics.insert("pathway_membership_count".to_string(), json!(graph_only_pathway_membership_count(entry)));
+    metrics.insert("pathway_wrapper_count".to_string(), json!(graph_only_pathway_wrapper_count(entry)));
+    metrics.insert("scc_size".to_string(), json!(graph_only_scc_size(entry)));
+    metrics.insert("is_directly_recursive".to_string(), json!(graph_only_is_directly_recursive(entry)));
+    metrics.insert("graph_complexity_score".to_string(), json!(graph_only_complexity_score(entry)));
 }
 
 fn graph_only_mir_blocks(entry: &GraphOnlyEntry) -> usize { entry.mir_blocks }
