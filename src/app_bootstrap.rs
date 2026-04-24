@@ -216,39 +216,54 @@ fn ensure_workspace_artifact_baseline(
         touch_file_if_missing_or_empty(&tlog_path)? || tlog_missing_or_empty_before,
     );
 
-    let lessons_path = workspace.join("agent_state/lessons.json");
-    let lessons_ready = std::fs::metadata(&lessons_path)
-        .map(|meta| meta.is_file() && meta.len() > 0)
-        .unwrap_or(false);
-    if !lessons_ready {
-        crate::lessons::persist_lessons_projection(
-            workspace,
-            &LessonsArtifact::default(),
-            "baseline_lessons",
-        )?;
-        created.push("agent_state/lessons.json".to_string());
-    }
-
-    let planner_projection_ready = std::fs::metadata(planner_projection_path)
-        .map(|meta| meta.is_file() && meta.len() > 0)
-        .unwrap_or(false);
-    if !planner_projection_ready {
-        crate::reports::persist_diagnostics_projection_with_writer_to_path(
-            workspace,
-            &crate::reports::DiagnosticsReport {
-                status: "ok".to_string(),
-                inputs_scanned: Vec::new(),
-                ranked_failures: Vec::new(),
-                planner_handoff: Vec::new(),
-            },
-            crate::constants::planner_projection_file(),
-            None,
-            "baseline_planner_projection",
-        )?;
-        created.push(planner_projection_path.display().to_string());
-    }
+    ensure_lessons_baseline(workspace, &mut created)?;
+    ensure_planner_projection_baseline(workspace, planner_projection_path, &mut created)?;
 
     Ok(created)
+}
+
+fn artifact_file_ready(path: &Path) -> bool {
+    std::fs::metadata(path)
+        .map(|meta| meta.is_file() && meta.len() > 0)
+        .unwrap_or(false)
+}
+
+fn ensure_lessons_baseline(workspace: &Path, created: &mut Vec<String>) -> Result<()> {
+    let lessons_path = workspace.join("agent_state/lessons.json");
+    if artifact_file_ready(&lessons_path) {
+        return Ok(());
+    }
+    crate::lessons::persist_lessons_projection(
+        workspace,
+        &LessonsArtifact::default(),
+        "baseline_lessons",
+    )?;
+    created.push("agent_state/lessons.json".to_string());
+    Ok(())
+}
+
+fn ensure_planner_projection_baseline(
+    workspace: &Path,
+    planner_projection_path: &Path,
+    created: &mut Vec<String>,
+) -> Result<()> {
+    if artifact_file_ready(planner_projection_path) {
+        return Ok(());
+    }
+    crate::reports::persist_diagnostics_projection_with_writer_to_path(
+        workspace,
+        &crate::reports::DiagnosticsReport {
+            status: "ok".to_string(),
+            inputs_scanned: Vec::new(),
+            ranked_failures: Vec::new(),
+            planner_handoff: Vec::new(),
+        },
+        crate::constants::planner_projection_file(),
+        None,
+        "baseline_planner_projection",
+    )?;
+    created.push(planner_projection_path.display().to_string());
+    Ok(())
 }
 
 /// Extract a string field from a JSON object, returning `""` on missing/non-string.
