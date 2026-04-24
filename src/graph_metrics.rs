@@ -1759,51 +1759,12 @@ fn build_state_transition_dispersion_issue(
         .map(|symbol| format!("`{symbol}`"))
         .collect::<Vec<_>>()
         .join(", ");
-
-    let mut workflow_coordinated_count = 0usize;
-    let mut read_write_cycle_count = 0usize;
-    for symbol in transitions {
-        if let Some(proof_types) = coordinated_by_symbol.get(symbol) {
-            for pt in proof_types {
-                if pt == "transition::workflow_coordinated" {
-                    workflow_coordinated_count += 1;
-                } else if pt == "transition::read_write_cycle" {
-                    read_write_cycle_count += 1;
-                }
-            }
-        }
-    }
-    // Count symbols with any coordination backing (not edges — one symbol can have both proof types).
-    let coordinated_count = transitions
-        .iter()
-        .filter(|s| coordinated_by_symbol.contains_key(*s))
-        .count();
-    let all_coordinated = !transitions.is_empty() && coordinated_count == transitions.len();
-    let proof_tier = if all_coordinated {
-        "proof"
-    } else {
-        "hypothesis"
-    };
-
-    let evidence = transitions
-        .iter()
-        .map(|symbol| {
-            let coordination = coordinated_by_symbol.get(symbol).map(|pts| {
-                pts.iter()
-                    .filter_map(|pt| pt.strip_prefix("transition::"))
-                    .collect::<Vec<_>>()
-                    .join("+")
-            });
-            match coordination.as_deref() {
-                Some(proof) if !proof.is_empty() => {
-                    format!("transition site `{symbol}` mutates `{display_state}` [{proof}]")
-                }
-                _ => {
-                    format!("transition site `{symbol}` mutates `{display_state}` after branching")
-                }
-            }
-        })
-        .collect::<Vec<_>>();
+    let proof = state_transition_dispersion_proof(transitions, coordinated_by_symbol);
+    let evidence = state_transition_dispersion_evidence(
+        transitions,
+        coordinated_by_symbol,
+        &display_state,
+    );
 
     Issue {
         id: format!(
@@ -1835,11 +1796,11 @@ fn build_state_transition_dispersion_issue(
             "display_state": display_state,
             "transition_count": transitions.len(),
             "transitions": transitions,
-            "proof_tier": proof_tier,
-            "coordinates_transition_count": coordinated_count,
-            "workflow_coordinated_count": workflow_coordinated_count,
-            "read_write_cycle_count": read_write_cycle_count,
-            "all_coordinated": all_coordinated,
+            "proof_tier": proof.tier,
+            "coordinates_transition_count": proof.coordinated_count,
+            "workflow_coordinated_count": proof.workflow_coordinated_count,
+            "read_write_cycle_count": proof.read_write_cycle_count,
+            "all_coordinated": proof.all_coordinated,
         }),
         acceptance_criteria: vec![
             format!("state mutations for `{display_state}` route through one canonical transition layer"),
@@ -1849,6 +1810,75 @@ fn build_state_transition_dispersion_issue(
         evidence,
         discovered_by: "graph_metrics_detector".to_string(),
         ..Issue::default()
+    }
+}
+
+struct StateTransitionDispersionProof {
+    coordinated_count: usize,
+    workflow_coordinated_count: usize,
+    read_write_cycle_count: usize,
+    all_coordinated: bool,
+    tier: &'static str,
+}
+
+fn state_transition_dispersion_proof(
+    transitions: &[String],
+    coordinated_by_symbol: &HashMap<String, Vec<String>>,
+) -> StateTransitionDispersionProof {
+    let mut workflow_coordinated_count = 0usize;
+    let mut read_write_cycle_count = 0usize;
+    for symbol in transitions {
+        if let Some(proof_types) = coordinated_by_symbol.get(symbol) {
+            for pt in proof_types {
+                if pt == "transition::workflow_coordinated" {
+                    workflow_coordinated_count += 1;
+                } else if pt == "transition::read_write_cycle" {
+                    read_write_cycle_count += 1;
+                }
+            }
+        }
+    }
+    let coordinated_count = transitions
+        .iter()
+        .filter(|s| coordinated_by_symbol.contains_key(*s))
+        .count();
+    let all_coordinated = !transitions.is_empty() && coordinated_count == transitions.len();
+    StateTransitionDispersionProof {
+        coordinated_count,
+        workflow_coordinated_count,
+        read_write_cycle_count,
+        all_coordinated,
+        tier: if all_coordinated { "proof" } else { "hypothesis" },
+    }
+}
+
+fn state_transition_dispersion_evidence(
+    transitions: &[String],
+    coordinated_by_symbol: &HashMap<String, Vec<String>>,
+    display_state: &str,
+) -> Vec<String> {
+    transitions
+        .iter()
+        .map(|symbol| state_transition_dispersion_evidence_line(symbol, coordinated_by_symbol, display_state))
+        .collect()
+}
+
+fn state_transition_dispersion_evidence_line(
+    symbol: &str,
+    coordinated_by_symbol: &HashMap<String, Vec<String>>,
+    display_state: &str,
+) -> String {
+    let coordination = coordinated_by_symbol.get(symbol).map(|pts| {
+        pts.iter()
+            .filter_map(|pt| pt.strip_prefix("transition::"))
+            .collect::<Vec<_>>()
+            .join("+")
+    });
+    match coordination.as_deref() {
+        Some(proof) if !proof.is_empty() => {
+            format!("transition site `{symbol}` mutates `{display_state}` [{proof}]")
+        }
+        _ => format!("transition site `{symbol}` mutates `{display_state}` after branching"),
     }
 }
 
