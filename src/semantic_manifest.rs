@@ -919,13 +919,17 @@ pub fn run_with_options(options: SemanticManifestRunOptions) -> anyhow::Result<S
 fn manifest_has_error(manifest: &SemanticManifest) -> bool {
     manifest.intent_class == MISSING
         || manifest.resource == MISSING
-        || manifest.inputs.iter().any(|v| v == MISSING)
-        || manifest.outputs.iter().any(|v| v == MISSING)
-        || manifest.effects.iter().any(|v| v == MISSING)
-        || manifest.forbidden_effects.iter().any(|v| v == MISSING)
+        || contains_missing(&manifest.inputs)
+        || contains_missing(&manifest.outputs)
+        || contains_missing(&manifest.effects)
+        || contains_missing(&manifest.forbidden_effects)
         || manifest.failure_mode == MISSING
-        || manifest.invariants.iter().any(|v| v == MISSING)
-        || manifest.provenance.iter().any(|v| v == MISSING)
+        || contains_missing(&manifest.invariants)
+        || contains_missing(&manifest.provenance)
+}
+
+fn contains_missing(values: &[String]) -> bool {
+    values.iter().any(|v| v == MISSING)
 }
 
 fn index_manifest_edges(
