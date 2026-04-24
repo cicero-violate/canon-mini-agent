@@ -703,14 +703,7 @@ fn extract_json_candidate(text: &str) -> Option<String> {
         return Some(fenced.to_string());
     }
     let bytes = text.as_bytes();
-    let mut start = None;
-    for (i, &b) in bytes.iter().enumerate() {
-        if b == b'{' || b == b'[' {
-            start = Some(i);
-            break;
-        }
-    }
-    let start = start?;
+    let start = bytes.iter().position(|&b| matches!(b, b'{' | b'['))?;
     let mut depth: i32 = 0;
     let mut in_string = false;
     let mut escape = false;
@@ -727,8 +720,8 @@ fn extract_json_candidate(text: &str) -> Option<String> {
         }
         match ch {
             '"' => in_string = true,
-            '{' | '[' => depth += 1,
-            '}' | ']' => {
+            _ if matches!(ch, '{' | '[') => depth += 1,
+            _ if matches!(ch, '}' | ']') => {
                 depth -= 1;
                 if depth == 0 {
                     let end = start + offset + ch.len_utf8();
