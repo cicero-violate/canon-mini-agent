@@ -65,23 +65,39 @@ fn graph_only_entry_json(entry: &GraphOnlyEntry) -> serde_json::Value {
         "symbol": entry.symbol,
         "file": shorten_display_path(&entry.file),
         "line": entry.line,
-        "mir_blocks": entry.mir_blocks,
-        "mir_stmts": entry.mir_stmts,
-        "branch_score": format_graph_score_2(entry.branch_score),
-        "stmt_density": format_graph_score_2(entry.stmt_density),
-        "b_transitive": format_graph_score_2(entry.b_transitive),
-        "heat_score": format_graph_score_2(entry.heat_score),
-        "call_in": entry.call_in,
-        "call_out": entry.call_out,
-        "duplicate_body_count": entry.duplicate_body_count,
-        "redundant_path_count": entry.redundant_path_count,
-        "pathway_membership_count": entry.pathway_membership_count,
-        "pathway_wrapper_count": entry.pathway_wrapper_count,
-        "scc_size": entry.scc_size,
-        "is_directly_recursive": entry.is_directly_recursive,
-        "graph_complexity_score": format_graph_score_3(entry.graph_complexity_score),
+        "mir_blocks": graph_only_mir_blocks(entry),
+        "mir_stmts": graph_only_mir_stmts(entry),
+        "branch_score": graph_only_branch_score(entry),
+        "stmt_density": graph_only_stmt_density(entry),
+        "b_transitive": graph_only_b_transitive(entry),
+        "heat_score": graph_only_heat_score(entry),
+        "call_in": graph_only_call_in(entry),
+        "call_out": graph_only_call_out(entry),
+        "duplicate_body_count": graph_only_duplicate_body_count(entry),
+        "redundant_path_count": graph_only_redundant_path_count(entry),
+        "pathway_membership_count": graph_only_pathway_membership_count(entry),
+        "pathway_wrapper_count": graph_only_pathway_wrapper_count(entry),
+        "scc_size": graph_only_scc_size(entry),
+        "is_directly_recursive": graph_only_is_directly_recursive(entry),
+        "graph_complexity_score": graph_only_complexity_score(entry),
     })
 }
+
+fn graph_only_mir_blocks(entry: &GraphOnlyEntry) -> usize { entry.mir_blocks }
+fn graph_only_mir_stmts(entry: &GraphOnlyEntry) -> usize { entry.mir_stmts }
+fn graph_only_branch_score(entry: &GraphOnlyEntry) -> String { format_graph_score_2(entry.branch_score) }
+fn graph_only_stmt_density(entry: &GraphOnlyEntry) -> String { format_graph_score_2(entry.stmt_density) }
+fn graph_only_b_transitive(entry: &GraphOnlyEntry) -> String { format_graph_score_2(entry.b_transitive) }
+fn graph_only_heat_score(entry: &GraphOnlyEntry) -> String { format_graph_score_2(entry.heat_score) }
+fn graph_only_call_in(entry: &GraphOnlyEntry) -> usize { entry.call_in }
+fn graph_only_call_out(entry: &GraphOnlyEntry) -> usize { entry.call_out }
+fn graph_only_duplicate_body_count(entry: &GraphOnlyEntry) -> usize { entry.duplicate_body_count }
+fn graph_only_redundant_path_count(entry: &GraphOnlyEntry) -> usize { entry.redundant_path_count }
+fn graph_only_pathway_membership_count(entry: &GraphOnlyEntry) -> usize { entry.pathway_membership_count }
+fn graph_only_pathway_wrapper_count(entry: &GraphOnlyEntry) -> usize { entry.pathway_wrapper_count }
+fn graph_only_scc_size(entry: &GraphOnlyEntry) -> usize { entry.scc_size }
+fn graph_only_is_directly_recursive(entry: &GraphOnlyEntry) -> bool { entry.is_directly_recursive }
+fn graph_only_complexity_score(entry: &GraphOnlyEntry) -> String { format_graph_score_3(entry.graph_complexity_score) }
 
 /// Intent: pure_transform
 /// Resource: error
