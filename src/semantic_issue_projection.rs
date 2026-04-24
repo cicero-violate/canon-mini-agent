@@ -4,7 +4,9 @@ use serde_json::json;
 use std::collections::HashSet;
 use std::path::Path;
 
-use crate::issues::{load_issues_file, persist_issues_projection_with_writer, rescore_all, Issue, IssuesFile};
+use crate::issues::{
+    load_issues_file, persist_issues_projection_with_writer, rescore_all, Issue, IssuesFile,
+};
 
 const ISSUE_ID_PREFIX: &str = "auto_semantic_rank_candidate_";
 const DISCOVERED_BY: &str = "semantic_rank_projection";
@@ -65,9 +67,7 @@ fn sanitize_fragment(raw: &str) -> String {
 fn issue_id(candidate: &RankCandidate) -> String {
     let key = format!(
         "{}|{}|{}",
-        candidate.owner,
-        candidate.owner_node_id,
-        candidate.rank
+        candidate.owner, candidate.owner_node_id, candidate.rank
     );
     let hash = crate::logging::stable_hash_hex(&key);
     format!("{ISSUE_ID_PREFIX}{}", sanitize_fragment(&hash))
@@ -122,7 +122,13 @@ fn build_issue(candidate: &RankCandidate) -> Issue {
     let reasoning_preview = if candidate.reasoning.is_empty() {
         "none".to_string()
     } else {
-        candidate.reasoning.iter().take(5).cloned().collect::<Vec<_>>().join("; ")
+        candidate
+            .reasoning
+            .iter()
+            .take(5)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("; ")
     };
     let mut evidence = vec![
         format!("owner={}", candidate.owner),
@@ -176,9 +182,11 @@ fn build_issue(candidate: &RankCandidate) -> Issue {
             "redundancy_ratio": rank_signal(candidate),
         }),
         acceptance_criteria: vec![
-            "Chosen candidate is refactored into a single canonical implementation path".to_string(),
+            "Chosen candidate is refactored into a single canonical implementation path"
+                .to_string(),
             "cargo build/test passes after the refactor".to_string(),
-            "After graph regeneration, candidate no longer appears in active semantic rank output".to_string(),
+            "After graph regeneration, candidate no longer appears in active semantic rank output"
+                .to_string(),
         ],
         evidence,
         discovered_by: DISCOVERED_BY.to_string(),
@@ -259,7 +267,11 @@ fn selected_candidates(mut all: Vec<RankCandidate>) -> Vec<RankCandidate> {
     all.sort_by(|a, b| {
         action_tier(&a.recommended_action)
             .cmp(&action_tier(&b.recommended_action))
-            .then(b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal))
+            .then(
+                b.confidence
+                    .partial_cmp(&a.confidence)
+                    .unwrap_or(std::cmp::Ordering::Equal),
+            )
             .then(b.pair_count.cmp(&a.pair_count))
             .then(a.owner.cmp(&b.owner))
     });
@@ -305,7 +317,12 @@ pub fn project_semantic_rank_issues(
     let rewrote_issues = opened_or_updated > 0 || resolved_stale > 0;
     if rewrote_issues {
         rescore_all(&mut file);
-        persist_issues_projection_with_writer(workspace, &file, None, "semantic_rank_issue_projection")?;
+        persist_issues_projection_with_writer(
+            workspace,
+            &file,
+            None,
+            "semantic_rank_issue_projection",
+        )?;
     }
     Ok(SemanticIssueProjectionReport {
         selected_candidates: active_ids.len(),
@@ -319,9 +336,10 @@ pub fn project_from_cli_args(
     args: &[String],
     workspace: &Path,
 ) -> Result<SemanticIssueProjectionReport> {
-    let rank_path = args
-        .first()
-        .map(|s| workspace.join(s))
-        .unwrap_or_else(|| workspace.join("agent_state").join("safe_patch_candidates.json"));
+    let rank_path = args.first().map(|s| workspace.join(s)).unwrap_or_else(|| {
+        workspace
+            .join("agent_state")
+            .join("safe_patch_candidates.json")
+    });
     project_semantic_rank_issues(workspace, rank_path.as_path())
 }

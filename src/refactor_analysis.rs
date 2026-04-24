@@ -427,7 +427,9 @@ fn generate_detector_issues(
         0
     } else {
         let before = issues.issues.len();
-        issues.issues.retain(|issue| !stale_open_ids.contains(&issue.id));
+        issues
+            .issues
+            .retain(|issue| !stale_open_ids.contains(&issue.id));
         before.saturating_sub(issues.issues.len())
     };
 
@@ -745,7 +747,10 @@ pub fn visibility_leak_issues(
         }
         let location = shorten_location(&s.file, s.line);
         out.push(Issue {
-            id: format!("auto_visibility_leak_{crate_name}_{:x}", stable_hash(&s.symbol)),
+            id: format!(
+                "auto_visibility_leak_{crate_name}_{:x}",
+                stable_hash(&s.symbol)
+            ),
             title: format!(
                 "Visibility can be tightened for `{}`",
                 short_name(&s.symbol)
@@ -990,8 +995,10 @@ pub fn rename_symbol_issues(
     summaries: &[SymbolSummary],
     limit: usize,
 ) -> Vec<Issue> {
-    let mut fn_prefixes_by_stem: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
-        std::collections::BTreeMap::new();
+    let mut fn_prefixes_by_stem: std::collections::BTreeMap<
+        String,
+        std::collections::BTreeSet<String>,
+    > = std::collections::BTreeMap::new();
     for s in summaries {
         if s.kind != "fn" {
             continue;
@@ -1078,8 +1085,8 @@ pub fn rename_symbol_issues(
 fn rename_ambiguity_reasons(name: &str) -> Vec<String> {
     let lower = name.to_ascii_lowercase();
     let vague = [
-        "tmp", "temp", "data", "info", "item", "obj", "val", "foo", "bar", "baz", "util",
-        "helper", "thing", "stuff", "misc",
+        "tmp", "temp", "data", "info", "item", "obj", "val", "foo", "bar", "baz", "util", "helper",
+        "thing", "stuff", "misc",
     ];
     let mut reasons = Vec::new();
     if lower.len() <= 2 {
@@ -1239,7 +1246,9 @@ pub fn dark_assignment_issues(
         dark_locals.sort();
         dark_locals.dedup();
         dark_locals.truncate(8);
-        let has_exit_postdom = dark_writes.iter().all(|k| cfg.has_exit_postdominator(k.block));
+        let has_exit_postdom = dark_writes
+            .iter()
+            .all(|k| cfg.has_exit_postdominator(k.block));
         let confidence_tier = if has_exit_postdom { "high" } else { "medium" };
         out.push(Issue {
             id: format!("auto_dark_assign_{crate_name}_{:x}", stable_hash(&s.symbol)),
@@ -1339,7 +1348,15 @@ pub fn loop_invariant_issues(
                     continue;
                 }
                 if stmt.read_locals.iter().all(|local| {
-                    local_is_loop_invariant(local, key, &loop_blocks, &headers, &cfg, &rd, &invariant_set)
+                    local_is_loop_invariant(
+                        local,
+                        key,
+                        &loop_blocks,
+                        &headers,
+                        &cfg,
+                        &rd,
+                        &invariant_set,
+                    )
                 }) {
                     invariant_set.insert(key);
                     changed = true;
@@ -1499,8 +1516,16 @@ pub fn redundant_path_issues(
     // Select the highest-signal pairs before applying the limit, so low-ratio
     // pairs that appear early in graph order don't displace high-ratio ones.
     out.sort_by(|a, b| {
-        let ra = a.metrics.get("redundancy_ratio").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let rb = b.metrics.get("redundancy_ratio").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let ra = a
+            .metrics
+            .get("redundancy_ratio")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+        let rb = b
+            .metrics
+            .get("redundancy_ratio")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
         rb.partial_cmp(&ra).unwrap_or(std::cmp::Ordering::Equal)
     });
     out.truncate(limit);
@@ -1567,7 +1592,10 @@ pub fn alpha_pathway_issues(
         }
         let canonical_head = &pathway.canonical_head;
         let canonical_head_short = short_name(canonical_head);
-        let wrappers: Vec<&str> = chain[..chain.len() - 1].iter().map(String::as_str).collect();
+        let wrappers: Vec<&str> = chain[..chain.len() - 1]
+            .iter()
+            .map(String::as_str)
+            .collect();
         let chain_short: Vec<&str> = chain.iter().map(|s| short_name(s.as_str())).collect();
         let chain_display = chain_short.join(" → ");
         let wrapper_list = wrappers
@@ -1601,7 +1629,11 @@ pub fn alpha_pathway_issues(
             .chain(std::iter::once({
                 let s = summary_by_symbol.get(canonical_head.as_str());
                 match s {
-                    Some(s) => format!("canonical: `{}` at {}", canonical_head, shorten_location(&s.file, s.line)),
+                    Some(s) => format!(
+                        "canonical: `{}` at {}",
+                        canonical_head,
+                        shorten_location(&s.file, s.line)
+                    ),
                     None => format!("canonical: `{canonical_head}`"),
                 }
             }))
@@ -1615,7 +1647,10 @@ pub fn alpha_pathway_issues(
             .unwrap_or_default();
 
         out.push(Issue {
-            id: format!("auto_alpha_pathway_{crate_name}_{:x}", stable_hash(&id_seed)),
+            id: format!(
+                "auto_alpha_pathway_{crate_name}_{:x}",
+                stable_hash(&id_seed)
+            ),
             title: format!(
                 "Alpha-equivalent pathway: {} ({} confirmed wrapper{})",
                 chain_display,
@@ -1623,7 +1658,11 @@ pub fn alpha_pathway_issues(
                 if wrappers.len() == 1 { "" } else { "s" }
             ),
             status: "open".to_string(),
-            priority: if chain_depth >= 3 { "medium".to_string() } else { "low".to_string() },
+            priority: if chain_depth >= 3 {
+                "medium".to_string()
+            } else {
+                "low".to_string()
+            },
             kind: "pathway_elimination".to_string(),
             description: format!(
                 "Functions [{chain_display}] form a confirmed alpha-equivalent wrapper \
@@ -1658,8 +1697,14 @@ pub fn alpha_pathway_issues(
                 "wrapper_symbols": wrappers.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
             }),
             acceptance_criteria: vec![
-                format!("canonical implementation `{}` retained and unmodified", canonical_head_short),
-                format!("all call sites of {} redirected to `{}`", wrapper_list, canonical_head_short),
+                format!(
+                    "canonical implementation `{}` retained and unmodified",
+                    canonical_head_short
+                ),
+                format!(
+                    "all call sites of {} redirected to `{}`",
+                    wrapper_list, canonical_head_short
+                ),
                 format!("{} deleted from codebase", wrapper_list),
                 "cargo build and cargo test --workspace pass".to_string(),
             ],
@@ -1671,8 +1716,16 @@ pub fn alpha_pathway_issues(
 
     // Prefer longer chains before truncating.
     out.sort_by(|a, b| {
-        let da = a.metrics.get("chain_depth").and_then(|v| v.as_u64()).unwrap_or(0);
-        let db = b.metrics.get("chain_depth").and_then(|v| v.as_u64()).unwrap_or(0);
+        let da = a
+            .metrics
+            .get("chain_depth")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let db = b
+            .metrics
+            .get("chain_depth")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
         db.cmp(&da)
     });
     out.truncate(limit);
@@ -1710,10 +1763,16 @@ impl FunctionCfg {
         }
         let blocks: HashMap<usize, crate::semantic::SymbolCfgBlock> =
             blocks_vec.into_iter().map(|b| (b.block, b)).collect();
-        let mut succ: HashMap<usize, HashSet<usize>> =
-            blocks.keys().copied().map(|b| (b, HashSet::new())).collect();
-        let mut pred: HashMap<usize, HashSet<usize>> =
-            blocks.keys().copied().map(|b| (b, HashSet::new())).collect();
+        let mut succ: HashMap<usize, HashSet<usize>> = blocks
+            .keys()
+            .copied()
+            .map(|b| (b, HashSet::new()))
+            .collect();
+        let mut pred: HashMap<usize, HashSet<usize>> = blocks
+            .keys()
+            .copied()
+            .map(|b| (b, HashSet::new()))
+            .collect();
         for edge in idx.symbol_cfg_edges(symbol) {
             if !blocks.contains_key(&edge.from) || !blocks.contains_key(&edge.to) {
                 continue;
@@ -1877,8 +1936,12 @@ impl FunctionCfg {
     }
 
     fn live_out_per_stmt(&self) -> HashMap<StmtKey, HashSet<String>> {
-        let mut live_in_block: HashMap<usize, HashSet<String>> =
-            self.blocks.keys().copied().map(|b| (b, HashSet::new())).collect();
+        let mut live_in_block: HashMap<usize, HashSet<String>> = self
+            .blocks
+            .keys()
+            .copied()
+            .map(|b| (b, HashSet::new()))
+            .collect();
         let mut live_out_block = live_in_block.clone();
         let mut live_out_stmt: HashMap<StmtKey, HashSet<String>> = HashMap::new();
 
@@ -1946,8 +2009,11 @@ impl FunctionCfg {
         let stmt_keys = self.all_stmt_keys();
         let defs_by_local = self.defs_by_local(&stmt_keys);
 
-        let mut in_defs: HashMap<StmtKey, HashSet<StmtKey>> =
-            stmt_keys.iter().copied().map(|k| (k, HashSet::new())).collect();
+        let mut in_defs: HashMap<StmtKey, HashSet<StmtKey>> = stmt_keys
+            .iter()
+            .copied()
+            .map(|k| (k, HashSet::new()))
+            .collect();
         let mut out_defs = in_defs.clone();
         let mut changed = true;
         while changed {
@@ -1959,7 +2025,9 @@ impl FunctionCfg {
                     in_set.extend(out_defs.get(&pred).cloned().unwrap_or_default());
                 }
 
-                let Some(stmt) = self.stmt(*key) else { continue };
+                let Some(stmt) = self.stmt(*key) else {
+                    continue;
+                };
                 let mut out_set = in_set.clone();
                 if !stmt.written_local.is_empty() {
                     if let Some(kills) = defs_by_local.get(&stmt.written_local) {
@@ -1983,7 +2051,9 @@ impl FunctionCfg {
 
         let mut used_defs: HashSet<StmtKey> = HashSet::new();
         for key in &stmt_keys {
-            let Some(stmt) = self.stmt(*key) else { continue };
+            let Some(stmt) = self.stmt(*key) else {
+                continue;
+            };
             if stmt.read_locals.is_empty() {
                 continue;
             }
@@ -2156,7 +2226,10 @@ fn parse_fn_arg_count(signature: Option<&str>) -> usize {
 }
 
 fn is_return_or_arg_local(local: &str, arg_count: usize) -> bool {
-    let Some(num) = local.strip_prefix('_').and_then(|n| n.parse::<usize>().ok()) else {
+    let Some(num) = local
+        .strip_prefix('_')
+        .and_then(|n| n.parse::<usize>().ok())
+    else {
         return false;
     };
     num == 0 || (num >= 1 && num <= arg_count)
@@ -2247,7 +2320,9 @@ fn dead_code_issues(
         if issue_already_tracked(existing_ids, open_locations, &id, &location) {
             continue;
         }
-        file.issues.push(build_dead_code_issue(crate_name, s, mir_blocks, id, location));
+        file.issues.push(build_dead_code_issue(
+            crate_name, s, mir_blocks, id, location,
+        ));
         created += 1;
     }
     created
@@ -2586,7 +2661,9 @@ fn call_chain_issues(
     created
 }
 
-fn call_chain_candidate(s: &crate::semantic::SymbolSummary) -> Option<(&crate::semantic::SymbolSummary, usize)> {
+fn call_chain_candidate(
+    s: &crate::semantic::SymbolSummary,
+) -> Option<(&crate::semantic::SymbolSummary, usize)> {
     let blocks = s.mir_blocks.unwrap_or(0);
     // Pass-through: single callee, at least one caller, tiny body.
     (s.kind == "fn"
@@ -2709,5 +2786,4 @@ mod tests {
         );
         assert_eq!(short_name("main"), "main");
     }
-
 }

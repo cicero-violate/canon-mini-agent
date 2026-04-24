@@ -1,5 +1,5 @@
-use crate::complexity::write_complexity_report;
 use crate::canonical_writer::CanonicalWriter;
+use crate::complexity::write_complexity_report;
 use crate::events::ControlEvent;
 use crate::events::EffectEvent;
 use crate::logging::{
@@ -273,7 +273,9 @@ fn replay_canonical_control_snapshot(state_dir: &Path) -> Option<CanonicalContro
     if !tlog_path.exists() {
         return None;
     }
-    let tlog_mtime = fs::metadata(&tlog_path).ok().and_then(|m| m.modified().ok());
+    let tlog_mtime = fs::metadata(&tlog_path)
+        .ok()
+        .and_then(|m| m.modified().ok());
     if let Ok(guard) = canonical_control_cache().lock() {
         if let Some(cached) = guard.as_ref() {
             if cached.tlog_path == tlog_path && cached.tlog_mtime == tlog_mtime {
@@ -1419,7 +1421,8 @@ fn write_external_user_message(
 }
 
 fn external_user_message_text(to_key: &str, message: &str) -> Result<String> {
-    serde_json::to_string_pretty(&external_user_message_payload(to_key, message)).map_err(Into::into)
+    serde_json::to_string_pretty(&external_user_message_payload(to_key, message))
+        .map_err(Into::into)
 }
 
 fn external_user_message_payload(to_key: &str, message: &str) -> serde_json::Value {

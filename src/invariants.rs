@@ -509,22 +509,23 @@ fn sync_action_surface_meta_issue(
 }
 
 fn has_invariants_action_surface(workspace: &Path) -> bool {
-    let has_invariants_dispatch = source_contains_any(
-        workspace,
-        "src/tools.rs",
-        &[
-            "\"invariants\" => {",
-            "crate::invariants::handle_invariants_action_with_writer(",
-        ],
-    ) || (source_contains(workspace, "src/tools.rs", "include!(\"tools_tail.rs\")")
-        && source_contains_any(
+    let has_invariants_dispatch =
+        source_contains_any(
             workspace,
-            "src/tools_tail.rs",
+            "src/tools.rs",
             &[
                 "\"invariants\" => {",
                 "crate::invariants::handle_invariants_action_with_writer(",
             ],
-        ));
+        ) || (source_contains(workspace, "src/tools.rs", "include!(\"tools_tail.rs\")")
+            && source_contains_any(
+                workspace,
+                "src/tools_tail.rs",
+                &[
+                    "\"invariants\" => {",
+                    "crate::invariants::handle_invariants_action_with_writer(",
+                ],
+            ));
 
     has_invariants_dispatch
         && source_contains(
@@ -866,7 +867,9 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
             .unwrap_or("");
         let actor = entry.get("actor").and_then(|v| v.as_str()).unwrap_or("");
 
-        if let Some(fp) = extract_tool_failure_fingerprint(entry, phase, ok, actor, action, text, ts_ms) {
+        if let Some(fp) =
+            extract_tool_failure_fingerprint(entry, phase, ok, actor, action, text, ts_ms)
+        {
             prints.push(fp);
         }
         if let Some(fp) = extract_plan_preflight_fingerprint(entry, action, ok, ts_ms) {
@@ -959,9 +962,8 @@ fn extract_forced_handoff_fingerprint(
     text: &str,
     ts_ms: u64,
 ) -> Option<Fingerprint> {
-    let mentions_handoff = action == "message"
-        || text.contains("FORCED HANDOFF")
-        || text.contains("step budget");
+    let mentions_handoff =
+        action == "message" || text.contains("FORCED HANDOFF") || text.contains("step budget");
     let is_forced = (actor.starts_with("executor") && text.contains("forced"))
         || text.contains("step limit")
         || text.contains("FORCED HANDOFF");
@@ -1065,10 +1067,18 @@ fn extract_invalid_action_fingerprint(
 
     Some(Fingerprint {
         conditions: vec![
-            StateCondition { key: "actor_kind".to_string(), value: actor_kind.to_string() },
-            StateCondition { key: "error".to_string(), value: "invalid_action_schema".to_string() },
+            StateCondition {
+                key: "actor_kind".to_string(),
+                value: actor_kind.to_string(),
+            },
+            StateCondition {
+                key: "error".to_string(),
+                value: "invalid_action_schema".to_string(),
+            },
         ],
-        predicate_text: format!("Role `{actor_kind}` emitted a structurally invalid action — schema gate violation"),
+        predicate_text: format!(
+            "Role `{actor_kind}` emitted a structurally invalid action — schema gate violation"
+        ),
         ts_ms,
         evidence: failure_evidence_sample(entry, ts_ms),
     })
@@ -1097,7 +1107,11 @@ fn extract_missing_target_fingerprint(
         return None;
     }
 
-    let actor_kind = if actor.starts_with("executor") { "executor" } else { "any" };
+    let actor_kind = if actor.starts_with("executor") {
+        "executor"
+    } else {
+        "any"
+    };
     Some(Fingerprint {
         conditions: vec![
             StateCondition { key: "actor_kind".to_string(), value: actor_kind.to_string() },

@@ -193,15 +193,29 @@ struct EffectFlags {
 impl EffectFlags {
     fn labels(&self) -> Vec<String> {
         let mut v = Vec::new();
-        if self.reads       { v.push("reads_state".to_string()); }
-        if self.writes      { v.push("writes_state".to_string()); }
-        if self.process     { v.push("spawns_process".to_string()); }
-        if self.network     { v.push("uses_network".to_string()); }
-        if self.transitions { v.push("transitions_state".to_string()); }
+        if self.reads {
+            v.push("reads_state".to_string());
+        }
+        if self.writes {
+            v.push("writes_state".to_string());
+        }
+        if self.process {
+            v.push("spawns_process".to_string());
+        }
+        if self.network {
+            v.push("uses_network".to_string());
+        }
+        if self.transitions {
+            v.push("transitions_state".to_string());
+        }
         v
     }
-    fn is_heavy(&self) -> bool { self.process || self.network }
-    fn has_side_effects(&self) -> bool { self.writes || self.transitions || self.is_heavy() }
+    fn is_heavy(&self) -> bool {
+        self.process || self.network
+    }
+    fn has_side_effects(&self) -> bool {
+        self.writes || self.transitions || self.is_heavy()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -314,9 +328,13 @@ fn score(
 }
 
 fn action(confidence: f64) -> &'static str {
-    if confidence >= 0.75 { "safe_merge" }
-    else if confidence >= 0.45 { "investigate" }
-    else { "skip" }
+    if confidence >= 0.75 {
+        "safe_merge"
+    } else if confidence >= 0.45 {
+        "investigate"
+    } else {
+        "skip"
+    }
 }
 
 fn resolve_path(root: &Path, path: &Path) -> PathBuf {
@@ -346,12 +364,17 @@ pub fn run_with_options(
     let bytes = std::fs::read(&graph_path)
         .map_err(|e| anyhow::anyhow!("cannot read {}: {e}", graph_path.display()))?;
     let graph: CrateGraph = serde_json::from_slice(&bytes)?;
-    eprintln!("  {} nodes  {} edges  {} redundant pairs  schema_version={}",
-        graph.nodes.len(), graph.edges.len(),
-        graph.redundant_paths.len(), graph.meta.schema_version);
+    eprintln!(
+        "  {} nodes  {} edges  {} redundant pairs  schema_version={}",
+        graph.nodes.len(),
+        graph.edges.len(),
+        graph.redundant_paths.len(),
+        graph.meta.schema_version
+    );
 
     // ── path → node_id map ────────────────────────────────────────────────────
-    let path_to_id: HashMap<&str, &str> = graph.nodes
+    let path_to_id: HashMap<&str, &str> = graph
+        .nodes
         .iter()
         .map(|(id, n)| (n.path.as_str(), id.as_str()))
         .collect();
@@ -361,11 +384,21 @@ pub fn run_with_options(
     for edge in &graph.edges {
         let f = effect_map.entry(edge.from.as_str()).or_default();
         match edge.relation.as_str() {
-            "ReadsState" | "ReadsArtifact"    => { f.reads = true; }
-            "WritesState" | "WritesArtifact"  => { f.writes = true; }
-            "SpawnsProcess"                   => { f.process = true; }
-            "UsesNetwork"                     => { f.network = true; }
-            "TransitionsState"                => { f.transitions = true; }
+            "ReadsState" | "ReadsArtifact" => {
+                f.reads = true;
+            }
+            "WritesState" | "WritesArtifact" => {
+                f.writes = true;
+            }
+            "SpawnsProcess" => {
+                f.process = true;
+            }
+            "UsesNetwork" => {
+                f.network = true;
+            }
+            "TransitionsState" => {
+                f.transitions = true;
+            }
             _ => {}
         }
     }
@@ -374,7 +407,10 @@ pub fn run_with_options(
     // ── group pairs by owner path ─────────────────────────────────────────────
     let mut by_owner: HashMap<&str, Vec<&RedundantPathPair>> = HashMap::new();
     for pair in &graph.redundant_paths {
-        by_owner.entry(pair.path_a.owner.as_str()).or_default().push(pair);
+        by_owner
+            .entry(pair.path_a.owner.as_str())
+            .or_default()
+            .push(pair);
     }
 
     // ── score each owner ──────────────────────────────────────────────────────
@@ -384,38 +420,47 @@ pub fn run_with_options(
     for (owner_path, pairs) in &by_owner {
         let node_id = match path_to_id.get(owner_path) {
             Some(id) => *id,
-            None => { unmatched += 1; continue; }
+            None => {
+                unmatched += 1;
+                continue;
+            }
         };
         let node = graph.nodes.get(node_id);
-        let intent  = node.and_then(|n| n.intent_class.as_deref());
-        let prov    = node.map(|n| n.provenance.as_slice()).unwrap_or(&[]);
-        let mir_bl  = node.and_then(|n| n.mir.as_ref()).map(|m| m.blocks);
+        let intent = node.and_then(|n| n.intent_class.as_deref());
+        let prov = node.map(|n| n.provenance.as_slice()).unwrap_or(&[]);
+        let mir_bl = node.and_then(|n| n.mir.as_ref()).map(|m| m.blocks);
         let effects = effect_map.get(node_id).unwrap_or(&empty);
 
         let mut reasoning = Vec::new();
         let s = score(intent, prov, effects, pairs.len(), mir_bl, &mut reasoning);
         let confidence = (s * 100.0).round() / 100.0;
 
-        let pair_summaries: Vec<PairSummary> = pairs.iter().map(|p| {
-            use std::collections::HashSet;
-            let a: HashSet<usize> = p.path_a.blocks.iter().copied().collect();
-            let b: HashSet<usize> = p.path_b.blocks.iter().copied().collect();
-            let mut only_a: Vec<usize> = a.difference(&b).copied().collect();
-            let mut only_b: Vec<usize> = b.difference(&a).copied().collect();
-            only_a.sort_unstable();
-            only_b.sort_unstable();
-            PairSummary {
-                shared_signature: p.shared_signature,
-                blocks_a: p.path_a.blocks.clone(),
-                blocks_b: p.path_b.blocks.clone(),
-                only_in_a: only_a,
-                only_in_b: only_b,
-            }
-        }).collect();
+        let pair_summaries: Vec<PairSummary> = pairs
+            .iter()
+            .map(|p| {
+                use std::collections::HashSet;
+                let a: HashSet<usize> = p.path_a.blocks.iter().copied().collect();
+                let b: HashSet<usize> = p.path_b.blocks.iter().copied().collect();
+                let mut only_a: Vec<usize> = a.difference(&b).copied().collect();
+                let mut only_b: Vec<usize> = b.difference(&a).copied().collect();
+                only_a.sort_unstable();
+                only_b.sort_unstable();
+                PairSummary {
+                    shared_signature: p.shared_signature,
+                    blocks_a: p.path_a.blocks.clone(),
+                    blocks_b: p.path_b.blocks.clone(),
+                    only_in_a: only_a,
+                    only_in_b: only_b,
+                }
+            })
+            .collect();
 
         candidates.push(Candidate {
             rank: 0,
-            owner: node.map(|n| n.path.as_str()).unwrap_or(owner_path).to_string(),
+            owner: node
+                .map(|n| n.path.as_str())
+                .unwrap_or(owner_path)
+                .to_string(),
             owner_node_id: node_id.to_string(),
             pair_count: pairs.len(),
             confidence,
@@ -432,23 +477,43 @@ pub fn run_with_options(
 
     // ── sort: action tier → confidence desc → pair_count desc ─────────────────
     candidates.sort_by(|a, b| {
-        let tier = |s: &str| match s { "safe_merge" => 0u8, "investigate" => 1, _ => 2 };
-        tier(&a.recommended_action).cmp(&tier(&b.recommended_action))
-            .then(b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal))
+        let tier = |s: &str| match s {
+            "safe_merge" => 0u8,
+            "investigate" => 1,
+            _ => 2,
+        };
+        tier(&a.recommended_action)
+            .cmp(&tier(&b.recommended_action))
+            .then(
+                b.confidence
+                    .partial_cmp(&a.confidence)
+                    .unwrap_or(std::cmp::Ordering::Equal),
+            )
             .then(b.pair_count.cmp(&a.pair_count))
     });
     for (i, c) in candidates.iter_mut().enumerate() {
         c.rank = i + 1;
     }
 
-    let safe_merge  = candidates.iter().filter(|c| c.recommended_action == "safe_merge").count();
-    let investigate = candidates.iter().filter(|c| c.recommended_action == "investigate").count();
-    let skip        = candidates.iter().filter(|c| c.recommended_action == "skip").count();
+    let safe_merge = candidates
+        .iter()
+        .filter(|c| c.recommended_action == "safe_merge")
+        .count();
+    let investigate = candidates
+        .iter()
+        .filter(|c| c.recommended_action == "investigate")
+        .count();
+    let skip = candidates
+        .iter()
+        .filter(|c| c.recommended_action == "skip")
+        .count();
     let total_pairs: usize = candidates.iter().map(|c| c.pair_count).sum();
 
     let out = CandidatesOutput {
         generated_at_ms: SystemTime::now()
-            .duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0),
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0),
         schema_version: 1,
         graph_schema_version: graph.meta.schema_version,
         summary: Summary {
@@ -465,9 +530,15 @@ pub fn run_with_options(
     let json = serde_json::to_vec_pretty(&out)?;
     std::fs::write(&out_path, &json)?;
 
-    eprintln!("wrote {} candidates → {}", out.candidates.len(), out_path.display());
-    eprintln!("  safe_merge={}  investigate={}  skip={}  unmatched={}",
-        safe_merge, investigate, skip, unmatched);
+    eprintln!(
+        "wrote {} candidates → {}",
+        out.candidates.len(),
+        out_path.display()
+    );
+    eprintln!(
+        "  safe_merge={}  investigate={}  skip={}  unmatched={}",
+        safe_merge, investigate, skip, unmatched
+    );
 
     Ok(SemanticRankCandidatesReport {
         candidates: out.candidates.len(),

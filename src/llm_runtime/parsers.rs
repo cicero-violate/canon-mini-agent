@@ -421,7 +421,9 @@ fn classify_calpico_add_payload(payload: &Value) -> Option<FrameResult> {
     if payload.get("type").and_then(|t| t.as_str()) != Some("calpico-message-add") {
         return None;
     }
-    Some(classify_calpico_message(calpico_message_from_payload(payload)?))
+    Some(classify_calpico_message(calpico_message_from_payload(
+        payload,
+    )?))
 }
 
 fn classify_calpico_envelope(envelope: &Value) -> FrameResult {
@@ -449,7 +451,10 @@ fn assistant_final_message_text(raw_msg: &Value) -> Option<Option<&str>> {
     if author_role != "assistant" {
         return None;
     }
-    let channel = raw_msg.get("channel").and_then(|c| c.as_str()).unwrap_or("");
+    let channel = raw_msg
+        .get("channel")
+        .and_then(|c| c.as_str())
+        .unwrap_or("");
     if channel != "final" {
         return Some(None);
     }

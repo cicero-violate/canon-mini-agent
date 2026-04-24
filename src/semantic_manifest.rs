@@ -182,7 +182,10 @@ fn parse_source_decl_signature(decl: Option<&str>) -> (Vec<String>, Vec<String>)
     let Some(close_idx) = find_matching_paren(decl, open_idx) else {
         return missing_signature();
     };
-    parse_signature_parts(&decl[open_idx + 1..close_idx], clean_decl_tail(&decl[close_idx + 1..]))
+    parse_signature_parts(
+        &decl[open_idx + 1..close_idx],
+        clean_decl_tail(&decl[close_idx + 1..]),
+    )
 }
 
 fn missing_signature() -> (Vec<String>, Vec<String>) {
@@ -194,7 +197,10 @@ fn unit_signature_part() -> Vec<String> {
 }
 
 fn parse_signature_parts(input_src: &str, tail: &str) -> (Vec<String>, Vec<String>) {
-    (parse_signature_inputs(input_src), parse_signature_outputs(tail))
+    (
+        parse_signature_inputs(input_src),
+        parse_signature_outputs(tail),
+    )
 }
 
 fn parse_signature_inputs(input_src: &str) -> Vec<String> {
@@ -356,7 +362,9 @@ fn normalize_effect_label(effect: &str) -> String {
         "writes_artifact" | "WritesArtifact" => "fs_write".to_string(),
         "reads_state" | "ReadsState" => "state_read".to_string(),
         "writes_state" | "WritesState" => "state_write".to_string(),
-        "transitions_state" | "TransitionsState" | "CoordinatesTransition" => "state_write".to_string(),
+        "transitions_state" | "TransitionsState" | "CoordinatesTransition" => {
+            "state_write".to_string()
+        }
         "no_effect" | "NoEffect" | "none" => NO_EFFECT.to_string(),
         other if !other.is_empty() => other.to_string(),
         _ => MISSING.to_string(),
@@ -376,7 +384,9 @@ fn contains_any(haystack: &str, needles: &[&str]) -> bool {
 }
 
 fn effects_contain_any(effects: &[String], labels: &[&str]) -> bool {
-    effects.iter().any(|effect| labels.contains(&effect.as_str()))
+    effects
+        .iter()
+        .any(|effect| labels.contains(&effect.as_str()))
 }
 
 fn infer_effects_from_calls(calls: &[String]) -> Vec<String> {
@@ -385,7 +395,13 @@ fn infer_effects_from_calls(calls: &[String]) -> Vec<String> {
         let c = call.to_ascii_lowercase();
         if contains_any(
             &c,
-            &["::fs::read", "::read_to_string", "::file::open", "::read_dir", "load_"],
+            &[
+                "::fs::read",
+                "::read_to_string",
+                "::file::open",
+                "::read_dir",
+                "load_",
+            ],
         ) {
             out.insert("fs_read".to_string());
         }
@@ -419,13 +435,22 @@ fn infer_effects_from_symbol(symbol: &str) -> Vec<String> {
     let sym = symbol.to_ascii_lowercase();
     let mut out = BTreeSet::new();
 
-    if contains_any(&sym, &["read", "load", "scan", "parse_", "from_file", "from_path"]) {
+    if contains_any(
+        &sym,
+        &["read", "load", "scan", "parse_", "from_file", "from_path"],
+    ) {
         out.insert("fs_read".to_string());
     }
-    if contains_any(&sym, &["write", "save", "persist", "flush", "append", "record"]) {
+    if contains_any(
+        &sym,
+        &["write", "save", "persist", "flush", "append", "record"],
+    ) {
         out.insert("fs_write".to_string());
     }
-    if contains_any(&sym, &["update", "transition", "set_status", "apply_", "consume"]) {
+    if contains_any(
+        &sym,
+        &["update", "transition", "set_status", "apply_", "consume"],
+    ) {
         out.insert("state_write".to_string());
     }
     if contains_any(&sym, &["command", "spawn", "process", "subprocess"]) {
@@ -464,7 +489,11 @@ fn resolve_doc_lines(
     }
     let p = {
         let raw = PathBuf::from(&def.file);
-        if raw.is_absolute() { raw } else { workspace.join(raw) }
+        if raw.is_absolute() {
+            raw
+        } else {
+            workspace.join(raw)
+        }
     };
     let lines = src_cache.entry(p.clone()).or_insert_with(|| {
         std::fs::read_to_string(&p)
@@ -508,7 +537,11 @@ fn resolve_source_decl(
     }
     let p = {
         let raw = PathBuf::from(&def.file);
-        if raw.is_absolute() { raw } else { workspace.join(raw) }
+        if raw.is_absolute() {
+            raw
+        } else {
+            workspace.join(raw)
+        }
     };
     let lines = src_cache.entry(p.clone()).or_insert_with(|| {
         std::fs::read_to_string(&p)
@@ -531,7 +564,11 @@ fn resolve_source_decl(
             break;
         }
     }
-    if decl.is_empty() { None } else { Some(decl) }
+    if decl.is_empty() {
+        None
+    } else {
+        Some(decl)
+    }
 }
 
 fn infer_resource(calls: &[String], effects: &[String], symbol: &str) -> String {
@@ -594,7 +631,12 @@ fn infer_intent(intent: Option<String>, effects: &[String], symbol: &str) -> Str
     let has_read = effects_contain_any(effects, &["fs_read", "state_read"]);
     let has_write = effects_contain_any(effects, &["fs_write", "state_write"]);
     if has_read ^ has_write {
-        return if has_read { "canonical_read" } else { "canonical_write" }.to_string();
+        return if has_read {
+            "canonical_read"
+        } else {
+            "canonical_write"
+        }
+        .to_string();
     }
     if effects_contain_any(effects, &["uses_network", "spawns_process"]) {
         return "transport_effect".to_string();
@@ -696,7 +738,9 @@ fn infer_invariants(intent: &str, effects: &[String], resource: &str) -> Vec<Str
     }
 }
 
-pub fn run_with_options(options: SemanticManifestRunOptions) -> anyhow::Result<SemanticManifestRunReport> {
+pub fn run_with_options(
+    options: SemanticManifestRunOptions,
+) -> anyhow::Result<SemanticManifestRunReport> {
     let write_mode = options.write_mode;
     let max_error_rate = options.max_error_rate;
     let out_path = Some(options.out_path.clone());
@@ -761,7 +805,12 @@ pub fn run_with_options(options: SemanticManifestRunOptions) -> anyhow::Result<S
             Some(old.resource.clone()),
             Some(infer_resource(&calls, &normalized_effects, &symbol)),
         ]);
-        let outputs = choose_list(&[doc.outputs.clone(), sig_outputs, src_outputs, old.outputs.clone()]);
+        let outputs = choose_list(&[
+            doc.outputs.clone(),
+            sig_outputs,
+            src_outputs,
+            old.outputs.clone(),
+        ]);
         let failure_mode = choose_scalar(&[
             doc.failure.clone(),
             node.failure_mode.clone(),
@@ -769,10 +818,7 @@ pub fn run_with_options(options: SemanticManifestRunOptions) -> anyhow::Result<S
             Some(infer_failure(&outputs, &symbol)),
         ]);
         let manifest = SemanticManifest {
-            symbol: choose_scalar(&[
-                Some(symbol),
-                Some(old.symbol.clone()),
-            ]),
+            symbol: choose_scalar(&[Some(symbol), Some(old.symbol.clone())]),
             kind: choose_scalar(&[Some(node.kind.clone()), Some(old.kind.clone())]),
             file: choose_scalar(&[
                 node.def.as_ref().map(|d| d.file.clone()),
@@ -840,8 +886,8 @@ pub fn run_with_options(options: SemanticManifestRunOptions) -> anyhow::Result<S
         fn_with_any_error as f64 / fn_total as f64
     };
 
-    let target = out_path
-        .unwrap_or_else(|| PathBuf::from("agent_state/semantic_manifest_proposals.json"));
+    let target =
+        out_path.unwrap_or_else(|| PathBuf::from("agent_state/semantic_manifest_proposals.json"));
     let proposal_file = ProposalFile {
         generated_at_ms: SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -934,11 +980,23 @@ fn contains_missing(values: &[String]) -> bool {
 
 fn index_manifest_edges(
     graph: &CrateGraph,
-) -> (HashMap<String, BTreeSet<String>>, HashMap<String, BTreeSet<String>>) {
+) -> (
+    HashMap<String, BTreeSet<String>>,
+    HashMap<String, BTreeSet<String>>,
+) {
     let node_path: HashMap<String, String> = graph
         .nodes
         .iter()
-        .map(|(id, n)| (id.clone(), if n.path.is_empty() { id.clone() } else { n.path.clone() }))
+        .map(|(id, n)| {
+            (
+                id.clone(),
+                if n.path.is_empty() {
+                    id.clone()
+                } else {
+                    n.path.clone()
+                },
+            )
+        })
         .collect();
 
     let mut effects_by_owner: HashMap<String, BTreeSet<String>> = HashMap::new();
@@ -951,16 +1009,21 @@ fn index_manifest_edges(
                 .insert(lbl.to_string());
         }
         if e.relation == "Calls" {
-            calls_by_owner
-                .entry(e.from.clone())
-                .or_default()
-                .insert(node_path.get(&e.to).cloned().unwrap_or_else(|| e.to.clone()));
+            calls_by_owner.entry(e.from.clone()).or_default().insert(
+                node_path
+                    .get(&e.to)
+                    .cloned()
+                    .unwrap_or_else(|| e.to.clone()),
+            );
         }
     }
     (effects_by_owner, calls_by_owner)
 }
 
-pub fn run_from_cli_args(args: &[String], workspace: PathBuf) -> anyhow::Result<SemanticManifestRunReport> {
+pub fn run_from_cli_args(
+    args: &[String],
+    workspace: PathBuf,
+) -> anyhow::Result<SemanticManifestRunReport> {
     let write_mode = args.iter().any(|a| a == "--write");
     let max_error_rate = args
         .windows(2)

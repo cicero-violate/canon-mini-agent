@@ -1457,14 +1457,22 @@ impl SemanticIndex {
                 target.reasons.join(", ")
             ));
             if let (Some(file), Some(line)) = (&target.file, target.line) {
-                out.push_str(&format!("    source={}:{}\n", shorten_display_path(file), line));
+                out.push_str(&format!(
+                    "    source={}:{}\n",
+                    shorten_display_path(file),
+                    line
+                ));
             }
         }
         if let Some(top) = top_target {
             out.push_str("  apply_patch target:\n");
             out.push_str(&format!("    symbol={}\n", top.symbol));
             if let (Some(file), Some(line)) = (&top.file, top.line) {
-                out.push_str(&format!("    file={} line={}\n", shorten_display_path(file), line));
+                out.push_str(&format!(
+                    "    file={} line={}\n",
+                    shorten_display_path(file),
+                    line
+                ));
             }
             if let (Some(start), Some(end)) = (top.context_start, top.context_end) {
                 out.push_str(&format!("    context_window_lines={}..={}\n", start, end));
@@ -2267,7 +2275,10 @@ pub(crate) fn build_apply_patch_template(target: &ExecutionPatchTarget) -> Optio
     }
     let mut template = String::new();
     template.push_str("*** Begin Patch\n");
-    template.push_str(&format!("*** Update File: {}\n", shorten_display_path(file)));
+    template.push_str(&format!(
+        "*** Update File: {}\n",
+        shorten_display_path(file)
+    ));
     template.push_str("@@\n");
     for line in context.lines() {
         if let Some((_line_no, text)) = line.split_once(": ") {

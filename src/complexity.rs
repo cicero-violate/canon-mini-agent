@@ -113,7 +113,11 @@ fn graph_only_sort_desc(a: &GraphOnlyEntry, b: &GraphOnlyEntry) -> std::cmp::Ord
     b.graph_complexity_score
         .partial_cmp(&a.graph_complexity_score)
         .unwrap_or(std::cmp::Ordering::Equal)
-        .then(b.branch_score.partial_cmp(&a.branch_score).unwrap_or(std::cmp::Ordering::Equal))
+        .then(
+            b.branch_score
+                .partial_cmp(&a.branch_score)
+                .unwrap_or(std::cmp::Ordering::Equal),
+        )
         .then(a.symbol.cmp(&b.symbol))
 }
 
@@ -143,10 +147,7 @@ fn normalize_by_max(value: f64, max_value: f64) -> f64 {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn build_graph_only_entries(
-    idx: &SemanticIndex,
-    crate_name: &str,
-) -> Vec<GraphOnlyEntry> {
+fn build_graph_only_entries(idx: &SemanticIndex, crate_name: &str) -> Vec<GraphOnlyEntry> {
     let summaries = idx.symbol_summaries();
     let call_edges = idx.call_edges();
     let redundant_pairs = idx.redundant_path_pairs();
@@ -182,7 +183,11 @@ fn build_graph_only_entries(
         for symbol in &pathway.chain {
             *pathway_membership_count.entry(symbol.clone()).or_insert(0) += 1;
         }
-        for symbol in pathway.chain.iter().take(pathway.chain.len().saturating_sub(1)) {
+        for symbol in pathway
+            .chain
+            .iter()
+            .take(pathway.chain.len().saturating_sub(1))
+        {
             *pathway_wrapper_count.entry(symbol.clone()).or_insert(0) += 1;
         }
     }
@@ -273,24 +278,24 @@ fn build_graph_only_entries(
             max.pathway,
         );
         let loop_norm = normalize_by_max(entry.scc_size as f64, max.scc);
-        entry.graph_complexity_score = (
-            0.25 * branch_norm
-                + 0.15 * density_norm
-                + 0.20 * transitive_norm
-                + 0.15 * heat_norm
-                + 0.10 * duplicate_norm
-                + 0.05 * redundant_norm
-                + 0.05 * pathway_norm
-                + 0.05 * loop_norm
-        )
-        .clamp(0.0, 1.0);
+        entry.graph_complexity_score = (0.25 * branch_norm
+            + 0.15 * density_norm
+            + 0.20 * transitive_norm
+            + 0.15 * heat_norm
+            + 0.10 * duplicate_norm
+            + 0.05 * redundant_norm
+            + 0.05 * pathway_norm
+            + 0.05 * loop_norm)
+            .clamp(0.0, 1.0);
     }
 
     entries.sort_by(graph_only_sort_desc);
     entries
 }
 
-fn duplicate_body_counts(fingerprint_groups: &HashMap<String, Vec<String>>) -> HashMap<String, usize> {
+fn duplicate_body_counts(
+    fingerprint_groups: &HashMap<String, Vec<String>>,
+) -> HashMap<String, usize> {
     let mut duplicate_body_count = HashMap::new();
     for group in fingerprint_groups.values().filter(|group| group.len() >= 2) {
         for symbol in group {
@@ -313,9 +318,18 @@ struct GraphOnlyNormalizationMaxima {
 
 fn graph_only_normalization_maxima(entries: &[GraphOnlyEntry]) -> GraphOnlyNormalizationMaxima {
     GraphOnlyNormalizationMaxima {
-        branch: entries.iter().map(|e| e.branch_score).fold(0.0_f64, f64::max),
-        density: entries.iter().map(|e| e.stmt_density).fold(0.0_f64, f64::max),
-        transitive: entries.iter().map(|e| e.b_transitive).fold(0.0_f64, f64::max),
+        branch: entries
+            .iter()
+            .map(|e| e.branch_score)
+            .fold(0.0_f64, f64::max),
+        density: entries
+            .iter()
+            .map(|e| e.stmt_density)
+            .fold(0.0_f64, f64::max),
+        transitive: entries
+            .iter()
+            .map(|e| e.b_transitive)
+            .fold(0.0_f64, f64::max),
         heat: entries.iter().map(|e| e.heat_score).fold(0.0_f64, f64::max),
         duplicate: entries
             .iter()
@@ -329,7 +343,10 @@ fn graph_only_normalization_maxima(entries: &[GraphOnlyEntry]) -> GraphOnlyNorma
             .iter()
             .map(|e| (e.pathway_membership_count + e.pathway_wrapper_count) as f64)
             .fold(0.0_f64, f64::max),
-        scc: entries.iter().map(|e| e.scc_size as f64).fold(0.0_f64, f64::max),
+        scc: entries
+            .iter()
+            .map(|e| e.scc_size as f64)
+            .fold(0.0_f64, f64::max),
     }
 }
 
@@ -346,7 +363,7 @@ fn compute_call_scc_sizes(
     summaries: &[crate::semantic::SymbolSummary],
     outgoing: &HashMap<String, Vec<String>>,
 ) -> HashMap<String, usize> {
-fn dfs(
+    fn dfs(
         node: &str,
         graph: &HashMap<String, Vec<String>>,
         seen: &mut HashSet<String>,
@@ -370,7 +387,7 @@ fn dfs(
         }
     }
 
-fn dfs_collect(
+    fn dfs_collect(
         node: &str,
         graph: &HashMap<String, Vec<String>>,
         seen: &mut HashSet<String>,
@@ -535,7 +552,10 @@ fn count_artifact_writer_dispersion(idx: &SemanticIndex) -> usize {
         if artifact.trim().is_empty() {
             continue;
         }
-        writers_by_artifact.entry(artifact).or_default().insert(writer);
+        writers_by_artifact
+            .entry(artifact)
+            .or_default()
+            .insert(writer);
     }
     writers_by_artifact
         .into_values()
@@ -559,7 +579,10 @@ fn count_state_transition_dispersion(idx: &SemanticIndex) -> usize {
         if state.trim().is_empty() {
             continue;
         }
-        transitions_by_state.entry(state).or_default().insert(symbol);
+        transitions_by_state
+            .entry(state)
+            .or_default()
+            .insert(symbol);
     }
     transitions_by_state
         .into_values()
@@ -710,7 +733,10 @@ pub fn build_graph_verification_snapshot(workspace: &Path) -> Result<serde_json:
         json!(overall_entropy),
     );
     totals.insert("pathway_count".to_string(), json!(total_pathways));
-    totals.insert("redundant_path_count".to_string(), json!(total_redundant_paths));
+    totals.insert(
+        "redundant_path_count".to_string(),
+        json!(total_redundant_paths),
+    );
     totals.insert(
         "artifact_writer_dispersion_count".to_string(),
         json!(total_artifact_writer_dispersion),
@@ -776,7 +802,11 @@ pub fn write_graph_verification_snapshot(workspace: &Path) -> Result<PathBuf> {
     persist_graph_verification_snapshot(workspace, &snapshot)
 }
 
-fn metric_delta(before: &serde_json::Value, after: &serde_json::Value, key: &str) -> serde_json::Value {
+fn metric_delta(
+    before: &serde_json::Value,
+    after: &serde_json::Value,
+    key: &str,
+) -> serde_json::Value {
     let before_v = before.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0);
     let after_v = after.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0);
     let delta = after_v - before_v;
@@ -1055,10 +1085,7 @@ fn collect_complexity_item(
     Some(entry)
 }
 
-fn global_complexity_entry_value(
-    crate_name: &str,
-    entry: &serde_json::Value,
-) -> serde_json::Value {
+fn global_complexity_entry_value(crate_name: &str, entry: &serde_json::Value) -> serde_json::Value {
     let fields = global_complexity_entry_fields(entry);
     json!({
         "crate": crate_name,
@@ -1369,8 +1396,11 @@ fn compute_and_persist_fingerprint_drift(
         .and_then(|raw| serde_json::from_str(&raw).ok())
         .unwrap_or_default();
 
-    let drift =
-        crate::drift_analysis::compute_fingerprint_drift(workspace, &prev_summaries, current_summaries);
+    let drift = crate::drift_analysis::compute_fingerprint_drift(
+        workspace,
+        &prev_summaries,
+        current_summaries,
+    );
     let body = serde_json::to_string_pretty(current_summaries)?;
     fs::write(&snapshot, body).with_context(|| format!("write {}", snapshot.display()))?;
 

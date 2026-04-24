@@ -215,7 +215,11 @@ fn is_invalid_schema_text(text: &str) -> bool {
 fn is_second_mutation_text(text: &str) -> bool {
     contains_any(
         text,
-        &["second mutation path", "canonical state bypass", "state_mut"],
+        &[
+            "second mutation path",
+            "canonical state bypass",
+            "state_mut",
+        ],
     )
 }
 
@@ -276,7 +280,12 @@ fn is_ambiguous_control_event_text(text: &str) -> bool {
 fn is_missing_target_text(text: &str) -> bool {
     contains_any(
         text,
-        &["not found", "no such file", "missing_target", "does not exist"],
+        &[
+            "not found",
+            "no such file",
+            "missing_target",
+            "does not exist",
+        ],
     )
 }
 
@@ -334,8 +343,7 @@ fn classify_action_kind_failure(action_kind: &str, text: &str) -> Option<ErrorCl
         "reaction_only" => Some(ErrorClass::ReactionOnly),
         "executor_submit_timeout" | "submit_ack_timeout" => Some(ErrorClass::LlmTimeout),
         "repeated_failed_action" | "idle_streak" => Some(ErrorClass::InvalidSchema),
-        "cargo_test" | "cargo_clippy" | "run_command" if is_compile_failure_text(text) =>
-        {
+        "cargo_test" | "cargo_clippy" | "run_command" if is_compile_failure_text(text) => {
             Some(ErrorClass::CompileError)
         }
         "read_file" | "apply_patch" if is_permission_boundary_text(text) => {
@@ -344,9 +352,7 @@ fn classify_action_kind_failure(action_kind: &str, text: &str) -> Option<ErrorCl
         "read_file" | "apply_patch" if is_missing_target_action_text(text) => {
             Some(ErrorClass::MissingTarget)
         }
-        "plan" if is_unauthorized_plan_text(text) => {
-            Some(ErrorClass::UnauthorizedPlanOp)
-        }
+        "plan" if is_unauthorized_plan_text(text) => Some(ErrorClass::UnauthorizedPlanOp),
         _ => None,
     }
 }

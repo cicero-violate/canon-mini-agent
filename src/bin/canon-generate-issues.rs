@@ -18,9 +18,9 @@ fn run_flagged_mode<T>(
     modes: &[(&str, fn(&Path) -> Result<T>)],
     finish: fn(Result<T>) -> Result<()>,
 ) -> Option<Result<()>> {
-    modes
-        .iter()
-        .find_map(|(flag, action)| canon_mini_agent::has_flag(args, flag).then(|| finish(action(workspace))))
+    modes.iter().find_map(|(flag, action)| {
+        canon_mini_agent::has_flag(args, flag).then(|| finish(action(workspace)))
+    })
 }
 
 fn discard_generated_count(result: Result<usize>) -> Result<()> {
@@ -99,7 +99,9 @@ fn run_graph_issue_mode(args: &[String], workspace: &PathBuf) -> Option<Result<(
 
 fn run_cfg_region_mode(workspace: &Path) -> Result<()> {
     canon_mini_agent::graph_metrics::generate_scc_region_reduction_issues(workspace)
-        .and_then(|_| canon_mini_agent::graph_metrics::generate_dominator_region_reduction_issues(workspace))
+        .and_then(|_| {
+            canon_mini_agent::graph_metrics::generate_dominator_region_reduction_issues(workspace)
+        })
         .map(|_| ())
 }
 
@@ -109,27 +111,18 @@ fn run_cfg_region_mode_if_selected(args: &[String], workspace: &Path) -> Option<
 
 fn run_simple_issue_mode(args: &[String], workspace: &PathBuf) -> Option<Result<()>> {
     const SIMPLE_ISSUE_MODES: &[(&str, fn(&Path) -> Result<()>)] = &[
-        (
-            "--scc-region-only",
-            |workspace| {
-                canon_mini_agent::graph_metrics::generate_scc_region_reduction_issues(workspace)
-                    .map(|_| ())
-            },
-        ),
-        (
-            "--dominator-region-only",
-            |workspace| {
-                canon_mini_agent::graph_metrics::generate_dominator_region_reduction_issues(workspace)
-                    .map(|_| ())
-            },
-        ),
-        (
-            "--alpha-only",
-            |workspace| {
-                canon_mini_agent::refactor_analysis::generate_alpha_pathway_issues(workspace)
-                    .map(|_| ())
-            },
-        ),
+        ("--scc-region-only", |workspace| {
+            canon_mini_agent::graph_metrics::generate_scc_region_reduction_issues(workspace)
+                .map(|_| ())
+        }),
+        ("--dominator-region-only", |workspace| {
+            canon_mini_agent::graph_metrics::generate_dominator_region_reduction_issues(workspace)
+                .map(|_| ())
+        }),
+        ("--alpha-only", |workspace| {
+            canon_mini_agent::refactor_analysis::generate_alpha_pathway_issues(workspace)
+                .map(|_| ())
+        }),
     ];
 
     run_flagged_mode(args, workspace, SIMPLE_ISSUE_MODES, pass_unit_result)
@@ -151,7 +144,10 @@ fn workspace_from_args(args: &[String]) -> Result<PathBuf> {
 
 fn ensure_absolute_workspace(workspace: &Path) -> Result<()> {
     if !workspace.is_absolute() {
-        bail!("--workspace must be an absolute path, got: {}", workspace.display());
+        bail!(
+            "--workspace must be an absolute path, got: {}",
+            workspace.display()
+        );
     }
     Ok(())
 }

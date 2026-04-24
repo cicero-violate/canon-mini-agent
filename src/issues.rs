@@ -33,7 +33,12 @@ fn issue_fingerprint_map(file: &IssuesFile) -> BTreeMap<String, String> {
     file.issues
         .iter()
         .enumerate()
-        .map(|(index, issue)| (stable_issue_key(index, issue), stable_issue_fingerprint(issue)))
+        .map(|(index, issue)| {
+            (
+                stable_issue_key(index, issue),
+                stable_issue_fingerprint(issue),
+            )
+        })
         .collect()
 }
 
@@ -70,7 +75,9 @@ fn changed_issue_ids(previous: Option<&IssuesFile>, current: &IssuesFile) -> (us
             .collect::<Vec<_>>();
         return (
             ids.len(),
-            ids.into_iter().take(MAX_CHANGED_ISSUE_IDS_IN_TLOG).collect(),
+            ids.into_iter()
+                .take(MAX_CHANGED_ISSUE_IDS_IN_TLOG)
+                .collect(),
         );
     };
 
@@ -362,9 +369,8 @@ fn strip_issue_target_line_suffix(candidate: &str) -> Option<String> {
 }
 
 fn issue_target_looks_like_path(candidate: &str) -> bool {
-    let known_file_suffix = candidate.ends_with(".json")
-        || candidate.ends_with(".rs")
-        || candidate.ends_with(".md");
+    let known_file_suffix =
+        candidate.ends_with(".json") || candidate.ends_with(".rs") || candidate.ends_with(".md");
     candidate.starts_with('/') || candidate.contains('/') || known_file_suffix
 }
 
@@ -984,12 +990,36 @@ mod tests {
     #[test]
     fn diversify_ranked_issues_caps_single_family_in_top_window() {
         let ranked = vec![
-            Issue { id: "auto_dominator_region_reduction_1".to_string(), score: 0.99, ..Issue::default() },
-            Issue { id: "auto_dominator_region_reduction_2".to_string(), score: 0.98, ..Issue::default() },
-            Issue { id: "auto_dominator_region_reduction_3".to_string(), score: 0.97, ..Issue::default() },
-            Issue { id: "auto_dominator_region_reduction_4".to_string(), score: 0.96, ..Issue::default() },
-            Issue { id: "auto_semantic_rank_candidate_a".to_string(), score: 0.95, ..Issue::default() },
-            Issue { id: "auto_inter_complexity_x".to_string(), score: 0.94, ..Issue::default() },
+            Issue {
+                id: "auto_dominator_region_reduction_1".to_string(),
+                score: 0.99,
+                ..Issue::default()
+            },
+            Issue {
+                id: "auto_dominator_region_reduction_2".to_string(),
+                score: 0.98,
+                ..Issue::default()
+            },
+            Issue {
+                id: "auto_dominator_region_reduction_3".to_string(),
+                score: 0.97,
+                ..Issue::default()
+            },
+            Issue {
+                id: "auto_dominator_region_reduction_4".to_string(),
+                score: 0.96,
+                ..Issue::default()
+            },
+            Issue {
+                id: "auto_semantic_rank_candidate_a".to_string(),
+                score: 0.95,
+                ..Issue::default()
+            },
+            Issue {
+                id: "auto_inter_complexity_x".to_string(),
+                score: 0.94,
+                ..Issue::default()
+            },
         ];
         let diversified = diversify_ranked_issues_with_policy(ranked, 5, 2);
         let top4 = &diversified[..4];
@@ -1108,11 +1138,19 @@ mod tests {
                 ..Issue::default()
             }],
         };
-        persist_issues_projection_with_writer(&root, &file, None, "issues_tlog_compact_metadata_test")
-            .expect("persist issues projection");
+        persist_issues_projection_with_writer(
+            &root,
+            &file,
+            None,
+            "issues_tlog_compact_metadata_test",
+        )
+        .expect("persist issues projection");
 
         let issues_path = root.join(crate::constants::ISSUES_FILE);
-        assert!(issues_path.exists(), "projection file should still be written");
+        assert!(
+            issues_path.exists(),
+            "projection file should still be written"
+        );
 
         let recovered = load_issues_file(&root);
         assert_eq!(recovered.version, 3);

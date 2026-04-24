@@ -59,7 +59,6 @@ pub(crate) fn select_questions() -> [&'static str; 3] {
     ]
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -54,7 +54,11 @@ fn lane_required_for_phase(phase: &str, lane: Option<usize>) -> Result<usize, St
     lane.ok_or_else(|| format!("illegal transition: phase `{phase}` requires a lane"))
 }
 
-fn require_in_progress_lane(state: &SystemState, lane_id: usize, phase: &str) -> Result<(), String> {
+fn require_in_progress_lane(
+    state: &SystemState,
+    lane_id: usize,
+    phase: &str,
+) -> Result<(), String> {
     require_lane(state, lane_id, "PhaseSet")?;
     if lane_in_progress(state, lane_id) {
         Ok(())
@@ -74,7 +78,11 @@ fn require_in_progress_lane(state: &SystemState, lane_id: usize, phase: &str) ->
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn validate_verifier_phase(state: &SystemState, phase: &str, lane: Option<usize>) -> Result<(), String> {
+fn validate_verifier_phase(
+    state: &SystemState,
+    phase: &str,
+    lane: Option<usize>,
+) -> Result<(), String> {
     let lane_id = lane_required_for_phase(phase, lane)?;
     require_in_progress_lane(state, lane_id, phase)
 }
@@ -141,9 +149,7 @@ fn validate_pending_phase(
     pending: bool,
     phase_name: &str,
 ) -> Result<(), String> {
-    if pending
-        || state.scheduled_phase.as_deref() == Some(phase_name)
-        || state.phase == "bootstrap"
+    if pending || state.scheduled_phase.as_deref() == Some(phase_name) || state.phase == "bootstrap"
     {
         Ok(())
     } else {
@@ -179,11 +185,7 @@ fn validate_solo_phase(state: &SystemState) -> Result<(), String> {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn validate_phase_set(
-    state: &SystemState,
-    phase: &str,
-    lane: Option<usize>,
-) -> Result<(), String> {
+fn validate_phase_set(state: &SystemState, phase: &str, lane: Option<usize>) -> Result<(), String> {
     if !is_valid_phase(phase) {
         return Err(format!("illegal transition: invalid phase `{phase}`"));
     }
@@ -494,7 +496,11 @@ fn validate_lane_scoped_transition(
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn validate_executor_turn_deregistered(state: &SystemState, tab_id: u32, turn_id: u64) -> Result<(), String> {
+fn validate_executor_turn_deregistered(
+    state: &SystemState,
+    tab_id: u32,
+    turn_id: u64,
+) -> Result<(), String> {
     let key = format!("{tab_id}:{turn_id}");
     if state.submitted_turn_ids.contains_key(&key) {
         Ok(())
@@ -529,9 +535,9 @@ fn validate_executor_transition(
         } => Some(validate_executor_turn_registered_transition(
             state, *tab_id, *turn_id, *lane_id,
         )),
-        ControlEvent::ExecutorTurnDeregistered { tab_id, turn_id } => {
-            Some(validate_executor_turn_deregistered(state, *tab_id, *turn_id))
-        }
+        ControlEvent::ExecutorTurnDeregistered { tab_id, turn_id } => Some(
+            validate_executor_turn_deregistered(state, *tab_id, *turn_id),
+        ),
         ControlEvent::ExecutorCompletionRecovered {
             tab_id,
             turn_id,

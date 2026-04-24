@@ -6,14 +6,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
-use crate::constants::{ISSUES_FILE, MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE};
+use crate::constants::{
+    ISSUES_FILE, MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE, VIOLATIONS_FILE,
+};
 use crate::issues::{read_ranked_open_issues, Issue};
 use crate::objectives::load_master_plan_snapshot;
 use crate::reports::{DiagnosticsFinding, DiagnosticsReport, Impact, Severity, ViolationsReport};
 
-use crate::prompts::{
-    single_role_executor_prompt, single_role_planner_prompt, AgentPromptKind,
-};
+use crate::prompts::{single_role_executor_prompt, single_role_planner_prompt, AgentPromptKind};
 
 #[derive(Clone)]
 pub struct LaneConfig {
@@ -107,7 +107,11 @@ pub fn semantic_state_snapshot_from_tlog(workspace: &Path) -> String {
     const FULL_REPLAY_MAX_BYTES: u64 = 8 * 1024 * 1024;
     if let Ok(meta) = std::fs::metadata(&tlog_path) {
         if meta.len() > FULL_REPLAY_MAX_BYTES {
-            return semantic_state_snapshot_from_recent_tlog_records(workspace, &tlog_path, meta.len());
+            return semantic_state_snapshot_from_recent_tlog_records(
+                workspace,
+                &tlog_path,
+                meta.len(),
+            );
         }
     }
 
@@ -2161,9 +2165,8 @@ fn render_executor_diff(diff_text: &str, max_lines: usize) -> String {
 mod diagnostics_filter_tests {
     use super::{
         build_eval_header, derive_semantic_prompt_artifacts, filter_active_diagnostics_json,
-        filter_active_violations_json, filter_pending_plan_json,
-        load_diagnostics_projection_text, render_diagnostics_report_from_issues,
-        sanitize_diagnostics_for_planner,
+        filter_active_violations_json, filter_pending_plan_json, load_diagnostics_projection_text,
+        render_diagnostics_report_from_issues, sanitize_diagnostics_for_planner,
     };
     use crate::constants::{MASTER_PLAN_FILE, OBJECTIVES_FILE, VIOLATIONS_FILE};
     use crate::events::{EffectEvent, Event};

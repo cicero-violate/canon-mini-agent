@@ -77,10 +77,7 @@ fn assign_role_if_missing(slot: &mut PartialTurn, role: String) {
     }
 }
 
-fn mark_task_blocked_unless_complete(
-    outcomes: &mut HashMap<String, TaskOutcome>,
-    task_id: String,
-) {
+fn mark_task_blocked_unless_complete(outcomes: &mut HashMap<String, TaskOutcome>, task_id: String) {
     let entry = outcomes.entry(task_id).or_default();
     if entry.status != "complete" {
         entry.status = "blocked".to_string();
@@ -264,7 +261,11 @@ pub fn extract_grpo_dataset(workspace: &Path, tlog_path: &Path) -> Result<GrpoDa
         });
     }
 
-    rows.sort_by(|a, b| a.group_key.cmp(&b.group_key).then(a.state_seq.cmp(&b.state_seq)));
+    rows.sort_by(|a, b| {
+        a.group_key
+            .cmp(&b.group_key)
+            .then(a.state_seq.cmp(&b.state_seq))
+    });
 
     let mut group_values: HashMap<String, Vec<f64>> = HashMap::new();
     for row in &rows {
@@ -327,8 +328,8 @@ pub fn extract_grpo_dataset(workspace: &Path, tlog_path: &Path) -> Result<GrpoDa
         .with_context(|| format!("write {}", dataset_path.display()))?;
 
     let jsonl_path = state_dir.join("grpo_training_data.jsonl");
-    let mut file = fs::File::create(&jsonl_path)
-        .with_context(|| format!("write {}", jsonl_path.display()))?;
+    let mut file =
+        fs::File::create(&jsonl_path).with_context(|| format!("write {}", jsonl_path.display()))?;
     for row in &dataset.rows {
         let line = serde_json::to_string(row)?;
         writeln!(file, "{line}")?;

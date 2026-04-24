@@ -200,7 +200,8 @@ pub enum ControlEvent {
 pub(crate) fn lane_id_from_control_event(event: &ControlEvent) -> Option<usize> {
     match event {
         ControlEvent::PhaseSet {
-            lane: Some(lane_id), ..
+            lane: Some(lane_id),
+            ..
         }
         | ControlEvent::LanePendingSet { lane_id, .. }
         | ControlEvent::LaneInProgressSet { lane_id, .. }

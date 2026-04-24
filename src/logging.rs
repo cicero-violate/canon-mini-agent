@@ -198,7 +198,10 @@ fn compact_json(value: Value) -> Option<Value> {
             }
             Frame::Visit(Value::Object(fields)) => {
                 let entries = fields.into_iter().collect::<Vec<_>>();
-                let keys = entries.iter().map(|(key, _)| key.clone()).collect::<Vec<_>>();
+                let keys = entries
+                    .iter()
+                    .map(|(key, _)| key.clone())
+                    .collect::<Vec<_>>();
                 frames.push(Frame::FinishObject(keys));
                 for (_, value) in entries.into_iter().rev() {
                     frames.push(Frame::Visit(value));

@@ -36,51 +36,76 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Deserialize)]
 struct CrateGraph {
-    #[serde(default)] nodes: HashMap<String, GraphNode>,
-    #[serde(default)] edges: Vec<GraphEdge>,
+    #[serde(default)]
+    nodes: HashMap<String, GraphNode>,
+    #[serde(default)]
+    edges: Vec<GraphEdge>,
 }
 
 #[derive(Deserialize, Default)]
 struct ManifestProposalFile {
-    #[serde(default)] proposals: HashMap<String, SemanticManifest>,
+    #[serde(default)]
+    proposals: HashMap<String, SemanticManifest>,
 }
 
 #[derive(Deserialize)]
 struct GraphNode {
-    #[serde(default)] path: String,
-    #[serde(default)] kind: String,
-    #[serde(default)] signature: Option<String>,
-    #[serde(default)] intent_class: Option<String>,
-    #[serde(default)] resource: Option<String>,
-    #[serde(default)] provenance: Vec<String>,
-    #[serde(default)] docstring: Option<String>,
-    #[serde(default)] semantic_manifest: Option<SemanticManifest>,
-    #[serde(default)] def: Option<SourceSpan>,
+    #[serde(default)]
+    path: String,
+    #[serde(default)]
+    kind: String,
+    #[serde(default)]
+    signature: Option<String>,
+    #[serde(default)]
+    intent_class: Option<String>,
+    #[serde(default)]
+    resource: Option<String>,
+    #[serde(default)]
+    provenance: Vec<String>,
+    #[serde(default)]
+    docstring: Option<String>,
+    #[serde(default)]
+    semantic_manifest: Option<SemanticManifest>,
+    #[serde(default)]
+    def: Option<SourceSpan>,
 }
 
 #[derive(Deserialize, Default)]
 struct SemanticManifest {
-    #[serde(default)] intent_class: String,
-    #[serde(default)] resource: String,
-    #[serde(default)] inputs: Vec<String>,
-    #[serde(default)] outputs: Vec<String>,
-    #[serde(default)] effects: Vec<String>,
-    #[serde(default)] forbidden_effects: Vec<String>,
-    #[serde(default)] invariants: Vec<String>,
-    #[serde(default)] failure_mode: String,
-    #[serde(default)] provenance: Vec<String>,
+    #[serde(default)]
+    intent_class: String,
+    #[serde(default)]
+    resource: String,
+    #[serde(default)]
+    inputs: Vec<String>,
+    #[serde(default)]
+    outputs: Vec<String>,
+    #[serde(default)]
+    effects: Vec<String>,
+    #[serde(default)]
+    forbidden_effects: Vec<String>,
+    #[serde(default)]
+    invariants: Vec<String>,
+    #[serde(default)]
+    failure_mode: String,
+    #[serde(default)]
+    provenance: Vec<String>,
 }
 
 #[derive(Deserialize)]
 struct SourceSpan {
-    #[serde(default)] file: String,
-    #[serde(default)] line: u32,
+    #[serde(default)]
+    file: String,
+    #[serde(default)]
+    line: u32,
 }
 
 #[derive(Deserialize)]
 struct GraphEdge {
-    #[serde(default)] relation: String,
-    #[serde(default)] from: String,
+    #[serde(default)]
+    relation: String,
+    #[serde(default)]
+    from: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -147,23 +172,43 @@ struct LogAction {
 // ---------------------------------------------------------------------------
 
 struct EffectSet {
-    reads_artifact: bool, reads_state: bool,
-    writes_artifact: bool, writes_state: bool,
-    spawns_process: bool, uses_network: bool,
-    transitions_state: bool, logging: bool,
+    reads_artifact: bool,
+    reads_state: bool,
+    writes_artifact: bool,
+    writes_state: bool,
+    spawns_process: bool,
+    uses_network: bool,
+    transitions_state: bool,
+    logging: bool,
 }
 
 impl EffectSet {
     fn labels(&self) -> Vec<&'static str> {
         let mut v = Vec::new();
-        if self.reads_artifact   { v.push("reads_artifact"); }
-        if self.reads_state      { v.push("reads_state"); }
-        if self.writes_artifact  { v.push("writes_artifact"); }
-        if self.writes_state     { v.push("writes_state"); }
-        if self.transitions_state{ v.push("transitions_state"); }
-        if self.spawns_process   { v.push("spawns_process"); }
-        if self.uses_network     { v.push("uses_network"); }
-        if self.logging          { v.push("logging"); }
+        if self.reads_artifact {
+            v.push("reads_artifact");
+        }
+        if self.reads_state {
+            v.push("reads_state");
+        }
+        if self.writes_artifact {
+            v.push("writes_artifact");
+        }
+        if self.writes_state {
+            v.push("writes_state");
+        }
+        if self.transitions_state {
+            v.push("transitions_state");
+        }
+        if self.spawns_process {
+            v.push("spawns_process");
+        }
+        if self.uses_network {
+            v.push("uses_network");
+        }
+        if self.logging {
+            v.push("logging");
+        }
         v
     }
 }
@@ -172,20 +217,40 @@ fn build_effect_map(edges: &[GraphEdge]) -> HashMap<String, EffectSet> {
     let mut map: HashMap<String, EffectSet> = HashMap::new();
     for edge in edges {
         let e = map.entry(edge.from.clone()).or_insert(EffectSet {
-            reads_artifact: false, reads_state: false,
-            writes_artifact: false, writes_state: false,
-            spawns_process: false, uses_network: false,
-            transitions_state: false, logging: false,
+            reads_artifact: false,
+            reads_state: false,
+            writes_artifact: false,
+            writes_state: false,
+            spawns_process: false,
+            uses_network: false,
+            transitions_state: false,
+            logging: false,
         });
         match edge.relation.as_str() {
-            "ReadsArtifact"    => { e.reads_artifact   = true; }
-            "ReadsState"       => { e.reads_state      = true; }
-            "WritesArtifact"   => { e.writes_artifact  = true; }
-            "WritesState"      => { e.writes_state     = true; }
-            "SpawnsProcess"    => { e.spawns_process   = true; }
-            "UsesNetwork"      => { e.uses_network     = true; }
-            "TransitionsState" => { e.transitions_state = true; }
-            "PerformsLogging"  => { e.logging          = true; }
+            "ReadsArtifact" => {
+                e.reads_artifact = true;
+            }
+            "ReadsState" => {
+                e.reads_state = true;
+            }
+            "WritesArtifact" => {
+                e.writes_artifact = true;
+            }
+            "WritesState" => {
+                e.writes_state = true;
+            }
+            "SpawnsProcess" => {
+                e.spawns_process = true;
+            }
+            "UsesNetwork" => {
+                e.uses_network = true;
+            }
+            "TransitionsState" => {
+                e.transitions_state = true;
+            }
+            "PerformsLogging" => {
+                e.logging = true;
+            }
             _ => {}
         }
     }
@@ -260,7 +325,13 @@ fn build_doc(
     let manifest = proposal_manifest.or(node.semantic_manifest.as_ref());
     let intent = normalize_scalar(
         manifest
-            .and_then(|m| if m.intent_class == "error" { None } else { Some(m.intent_class.as_str()) })
+            .and_then(|m| {
+                if m.intent_class == "error" {
+                    None
+                } else {
+                    Some(m.intent_class.as_str())
+                }
+            })
             .or(node.intent_class.as_deref()),
     );
 
@@ -291,8 +362,16 @@ fn build_doc(
     let effects_labels = if !effects_from_manifest.is_empty() {
         effects_from_manifest
     } else if let Some(eff) = effects {
-        let lbs = eff.labels().into_iter().map(str::to_string).collect::<Vec<_>>();
-        if lbs.is_empty() { vec!["error".to_string()] } else { lbs }
+        let lbs = eff
+            .labels()
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        if lbs.is_empty() {
+            vec!["error".to_string()]
+        } else {
+            lbs
+        }
     } else {
         vec!["error".to_string()]
     };
@@ -309,13 +388,22 @@ fn build_doc(
             .unwrap_or_else(|| vec!["error".to_string()])
             .as_slice(),
     );
-    let failure = normalize_scalar(
-        manifest
-            .and_then(|m| if m.failure_mode == "error" { None } else { Some(m.failure_mode.as_str()) }),
-    );
+    let failure = normalize_scalar(manifest.and_then(|m| {
+        if m.failure_mode == "error" {
+            None
+        } else {
+            Some(m.failure_mode.as_str())
+        }
+    }));
     let resource = normalize_scalar(
         manifest
-            .and_then(|m| if m.resource == "error" { None } else { Some(m.resource.as_str()) })
+            .and_then(|m| {
+                if m.resource == "error" {
+                    None
+                } else {
+                    Some(m.resource.as_str())
+                }
+            })
             .or(node.resource.as_deref()),
     );
     let provenance = normalize_list(
@@ -329,11 +417,17 @@ fn build_doc(
     lines.push(format!("{indent}/// Resource: {resource}"));
     lines.push(format!("{indent}/// Inputs: {}", inputs.join(", ")));
     lines.push(format!("{indent}/// Outputs: {}", outputs.join(", ")));
-    lines.push(format!("{indent}/// Effects: {}", effects_labels.join(", ")));
+    lines.push(format!(
+        "{indent}/// Effects: {}",
+        effects_labels.join(", ")
+    ));
     lines.push(format!("{indent}/// Forbidden: {}", forbidden.join(", ")));
     lines.push(format!("{indent}/// Invariants: {}", invariants.join(", ")));
     lines.push(format!("{indent}/// Failure: {failure}"));
-    lines.push(format!("{indent}/// Provenance: {}", provenance.join(" + ")));
+    lines.push(format!(
+        "{indent}/// Provenance: {}",
+        provenance.join(" + ")
+    ));
     let mut s = lines.join("\n");
     s.push('\n');
     s
@@ -353,9 +447,13 @@ fn find_insert_point(lines: &[&str], fn_line_0: usize) -> Result<usize, &'static
     let mut scan = fn_line_0;
     while scan > 0 {
         let prev = lines[scan - 1].trim();
-        if prev.starts_with("///") || prev.starts_with("//!") { return Err("existing_doc"); }
+        if prev.starts_with("///") || prev.starts_with("//!") {
+            return Err("existing_doc");
+        }
         if prev.starts_with("#[") {
-            if !prev.contains(']') { return Err("complex_attr"); }
+            if !prev.contains(']') {
+                return Err("complex_attr");
+            }
             scan -= 1;
         } else {
             break;
@@ -369,8 +467,13 @@ fn find_intent_line(lines: &[&str], fn_line_0: usize) -> Option<usize> {
     let mut scan = fn_line_0;
     while scan > 0 {
         let prev = lines[scan - 1].trim();
-        if prev.starts_with("#[") { scan -= 1; continue; }
-        if prev.starts_with("/// Intent:") { return Some(scan - 1); }
+        if prev.starts_with("#[") {
+            scan -= 1;
+            continue;
+        }
+        if prev.starts_with("/// Intent:") {
+            return Some(scan - 1);
+        }
         return None;
     }
     None
@@ -415,14 +518,18 @@ fn find_doc_block_before_fn(lines: &[&str], fn_line_0: usize) -> Option<(usize, 
     Some((start, end))
 }
 
-fn node_has_contract_intent(node: &GraphNode, proposal_manifest: Option<&SemanticManifest>) -> bool {
+fn node_has_contract_intent(
+    node: &GraphNode,
+    proposal_manifest: Option<&SemanticManifest>,
+) -> bool {
     node.intent_class
         .as_deref()
         .map(str::trim)
         .filter(|v| !v.is_empty() && *v != "error")
         .is_some()
         || node
-            .semantic_manifest.as_ref()
+            .semantic_manifest
+            .as_ref()
             .or(proposal_manifest)
             .map(|m| m.intent_class.trim())
             .filter(|v| !v.is_empty() && *v != "error")
@@ -520,8 +627,17 @@ fn mark_actions_after_write(
     }
 }
 
-struct Insertion { insert_at: usize, text: String, fn_line: u32 }
-struct Replacement { start_idx: usize, end_idx: usize, new_text: String, fn_line: u32 }
+struct Insertion {
+    insert_at: usize,
+    text: String,
+    fn_line: u32,
+}
+struct Replacement {
+    start_idx: usize,
+    end_idx: usize,
+    new_text: String,
+    fn_line: u32,
+}
 
 fn apply_insertions(source: &str, ins: &[Insertion]) -> String {
     let mut lines: Vec<&str> = source.split('\n').collect();
@@ -537,8 +653,12 @@ fn apply_replacements(source: &str, reps: &[Replacement]) -> String {
     let mut lines: Vec<String> = source.split('\n').map(str::to_string).collect();
     for r in reps {
         if r.start_idx < lines.len() && r.start_idx < r.end_idx && r.end_idx <= lines.len() {
-            let block: Vec<String> = r.new_text.trim_end_matches('\n')
-                .split('\n').map(str::to_string).collect();
+            let block: Vec<String> = r
+                .new_text
+                .trim_end_matches('\n')
+                .split('\n')
+                .map(str::to_string)
+                .collect();
             lines.splice(r.start_idx..r.end_idx, block);
         }
     }
@@ -573,21 +693,29 @@ pub fn run_with_options(options: SynWriterRunOptions) -> anyhow::Result<SynWrite
         .unwrap_or_default();
 
     let effect_map = build_effect_map(&graph.edges);
-    let workspace_src = workspace_root.join("src").canonicalize()
+    let workspace_src = workspace_root
+        .join("src")
+        .canonicalize()
         .map_err(|e| anyhow::anyhow!("cannot resolve workspace src: {e}"))?;
 
     // Collect candidates.
-    let candidates: Vec<(&str, &GraphNode, &SourceSpan)> = graph.nodes.iter()
+    let candidates: Vec<(&str, &GraphNode, &SourceSpan)> = graph
+        .nodes
+        .iter()
         .filter(|(_, n)| n.kind == "fn")
         .filter(|(id, n)| node_has_contract_intent(n, proposal_map.get(*id)))
         .filter_map(|(id, n)| n.def.as_ref().map(|d| (id.as_str(), n, d)))
-        .filter(|(_, _, d)| d.file.ends_with(".rs") && path_under_workspace_src(&d.file, &workspace_root, &workspace_src))
+        .filter(|(_, _, d)| {
+            d.file.ends_with(".rs")
+                && path_under_workspace_src(&d.file, &workspace_root, &workspace_src)
+        })
         .filter(|(_, n, _)| {
             if rewrite_existing {
                 true
             } else if augment {
                 n.provenance.iter().any(|p| p == "rustc:docstring")
-                    && n.docstring.as_deref()
+                    && n.docstring
+                        .as_deref()
                         .map(|d| d.trim().starts_with("Intent:") && !d.contains('\n'))
                         .unwrap_or(false)
             } else {
@@ -603,9 +731,12 @@ pub fn run_with_options(options: SynWriterRunOptions) -> anyhow::Result<SynWrite
     } else {
         "generate"
     };
-    eprintln!("  {} candidates  mode={}{}",
-        candidates.len(), mode_str,
-        if write_mode { "" } else { " (dry-run)" });
+    eprintln!(
+        "  {} candidates  mode={}{}",
+        candidates.len(),
+        mode_str,
+        if write_mode { "" } else { " (dry-run)" }
+    );
 
     // Group by file, highest line first within each file.
     let mut by_file: HashMap<&str, Vec<(&str, &GraphNode, &SourceSpan)>> = HashMap::new();
@@ -614,9 +745,12 @@ pub fn run_with_options(options: SynWriterRunOptions) -> anyhow::Result<SynWrite
     }
 
     let mut log_actions: Vec<LogAction> = Vec::new();
-    let mut n_gen = 0usize; let mut n_dry = 0usize;
-    let mut n_doc = 0usize; let mut n_attr = 0usize;
-    let mut n_span = 0usize; let mut n_nc = 0usize;
+    let mut n_gen = 0usize;
+    let mut n_dry = 0usize;
+    let mut n_doc = 0usize;
+    let mut n_attr = 0usize;
+    let mut n_span = 0usize;
+    let mut n_nc = 0usize;
     let mut n_write_err = 0usize;
 
     for (file, mut nodes_in_file) in by_file {
@@ -625,7 +759,11 @@ pub fn run_with_options(options: SynWriterRunOptions) -> anyhow::Result<SynWrite
 
         let source = match std::fs::read_to_string(&file_path) {
             Ok(s) => s,
-            Err(e) => { eprintln!("  cannot read {file}: {e}"); n_span += nodes_in_file.len(); continue; }
+            Err(e) => {
+                eprintln!("  cannot read {file}: {e}");
+                n_span += nodes_in_file.len();
+                continue;
+            }
         };
         let lv: Vec<&str> = source.split('\n').collect();
         let mut insertions: Vec<Insertion> = Vec::new();
@@ -633,19 +771,33 @@ pub fn run_with_options(options: SynWriterRunOptions) -> anyhow::Result<SynWrite
         let mut pending_action_indices: Vec<usize> = Vec::new();
 
         for (node_id, node, span) in &nodes_in_file {
-            let intent  = node.intent_class.as_deref().unwrap_or("unknown");
+            let intent = node.intent_class.as_deref().unwrap_or("unknown");
             let effects = effect_map.get(*node_id);
             let raw_fn_0 = (span.line as usize).saturating_sub(1);
 
             if raw_fn_0 >= lv.len() {
                 n_span += 1;
-                log_actions.push(LogAction { status: "skip:bad_span".into(), fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: None });
+                log_actions.push(LogAction {
+                    status: "skip:bad_span".into(),
+                    fn_path: node.path.clone(),
+                    file: file.to_string(),
+                    fn_line: span.line,
+                    intent_class: intent.to_string(),
+                    generated_text: None,
+                });
                 continue;
             }
 
             let Some(fn_0) = resolve_fn_decl_line(&lv, raw_fn_0) else {
                 n_span += 1;
-                log_actions.push(LogAction { status: "skip:no_fn_decl".into(), fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: None });
+                log_actions.push(LogAction {
+                    status: "skip:no_fn_decl".into(),
+                    fn_path: node.path.clone(),
+                    file: file.to_string(),
+                    fn_line: span.line,
+                    intent_class: intent.to_string(),
+                    generated_text: None,
+                });
                 continue;
             };
 
@@ -656,26 +808,83 @@ pub fn run_with_options(options: SynWriterRunOptions) -> anyhow::Result<SynWrite
             if rewrite_existing {
                 if let Some((start_idx, end_idx)) = find_doc_block_before_fn(&lv, fn_0) {
                     if write_mode {
-                        log_actions.push(LogAction { status: "pending_write".into(), fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: Some(doc.clone()) });
+                        log_actions.push(LogAction {
+                            status: "pending_write".into(),
+                            fn_path: node.path.clone(),
+                            file: file.to_string(),
+                            fn_line: span.line,
+                            intent_class: intent.to_string(),
+                            generated_text: Some(doc.clone()),
+                        });
                         pending_action_indices.push(log_actions.len() - 1);
                     } else {
                         n_dry += 1;
-                        log_actions.push(LogAction { status: "dry_run".into(), fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: Some(doc.clone()) });
+                        log_actions.push(LogAction {
+                            status: "dry_run".into(),
+                            fn_path: node.path.clone(),
+                            file: file.to_string(),
+                            fn_line: span.line,
+                            intent_class: intent.to_string(),
+                            generated_text: Some(doc.clone()),
+                        });
                     }
-                    replacements.push(Replacement { start_idx, end_idx, new_text: doc, fn_line: span.line });
+                    replacements.push(Replacement {
+                        start_idx,
+                        end_idx,
+                        new_text: doc,
+                        fn_line: span.line,
+                    });
                 } else {
                     match find_insert_point(&lv, fn_0) {
-                        Err("complex_attr")  => { n_attr += 1; log_actions.push(LogAction { status: "skip:complex_attr".into(),  fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: None }); }
-                        Err(o)               => { n_span += 1; log_actions.push(LogAction { status: format!("skip:{o}"),         fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: None }); }
+                        Err("complex_attr") => {
+                            n_attr += 1;
+                            log_actions.push(LogAction {
+                                status: "skip:complex_attr".into(),
+                                fn_path: node.path.clone(),
+                                file: file.to_string(),
+                                fn_line: span.line,
+                                intent_class: intent.to_string(),
+                                generated_text: None,
+                            });
+                        }
+                        Err(o) => {
+                            n_span += 1;
+                            log_actions.push(LogAction {
+                                status: format!("skip:{o}"),
+                                fn_path: node.path.clone(),
+                                file: file.to_string(),
+                                fn_line: span.line,
+                                intent_class: intent.to_string(),
+                                generated_text: None,
+                            });
+                        }
                         Ok(at) => {
                             if write_mode {
-                                log_actions.push(LogAction { status: "pending_write".into(), fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: Some(doc.clone()) });
+                                log_actions.push(LogAction {
+                                    status: "pending_write".into(),
+                                    fn_path: node.path.clone(),
+                                    file: file.to_string(),
+                                    fn_line: span.line,
+                                    intent_class: intent.to_string(),
+                                    generated_text: Some(doc.clone()),
+                                });
                                 pending_action_indices.push(log_actions.len() - 1);
                             } else {
                                 n_dry += 1;
-                                log_actions.push(LogAction { status: "dry_run".into(), fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: Some(doc.clone()) });
+                                log_actions.push(LogAction {
+                                    status: "dry_run".into(),
+                                    fn_path: node.path.clone(),
+                                    file: file.to_string(),
+                                    fn_line: span.line,
+                                    intent_class: intent.to_string(),
+                                    generated_text: Some(doc.clone()),
+                                });
                             }
-                            insertions.push(Insertion { insert_at: at, text: doc, fn_line: span.line });
+                            insertions.push(Insertion {
+                                insert_at: at,
+                                text: doc,
+                                fn_line: span.line,
+                            });
                         }
                     }
                 }
@@ -683,46 +892,130 @@ pub fn run_with_options(options: SynWriterRunOptions) -> anyhow::Result<SynWrite
                 match find_intent_line(&lv, fn_0) {
                     None => {
                         n_nc += 1;
-                        log_actions.push(LogAction { status: "skip:intent_not_found".into(), fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: None });
+                        log_actions.push(LogAction {
+                            status: "skip:intent_not_found".into(),
+                            fn_path: node.path.clone(),
+                            file: file.to_string(),
+                            fn_line: span.line,
+                            intent_class: intent.to_string(),
+                            generated_text: None,
+                        });
                     }
                     Some(idx) => {
                         // Only augment if the new doc adds lines beyond just Intent:.
                         if doc.trim().lines().count() <= 1 {
                             n_nc += 1;
-                            log_actions.push(LogAction { status: "skip:no_new_fields".into(), fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: None });
+                            log_actions.push(LogAction {
+                                status: "skip:no_new_fields".into(),
+                                fn_path: node.path.clone(),
+                                file: file.to_string(),
+                                fn_line: span.line,
+                                intent_class: intent.to_string(),
+                                generated_text: None,
+                            });
                         } else {
                             if write_mode {
-                                log_actions.push(LogAction { status: "pending_write".into(), fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: Some(doc.clone()) });
+                                log_actions.push(LogAction {
+                                    status: "pending_write".into(),
+                                    fn_path: node.path.clone(),
+                                    file: file.to_string(),
+                                    fn_line: span.line,
+                                    intent_class: intent.to_string(),
+                                    generated_text: Some(doc.clone()),
+                                });
                                 pending_action_indices.push(log_actions.len() - 1);
                             } else {
                                 n_dry += 1;
-                                log_actions.push(LogAction { status: "dry_run".into(), fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: Some(doc.clone()) });
+                                log_actions.push(LogAction {
+                                    status: "dry_run".into(),
+                                    fn_path: node.path.clone(),
+                                    file: file.to_string(),
+                                    fn_line: span.line,
+                                    intent_class: intent.to_string(),
+                                    generated_text: Some(doc.clone()),
+                                });
                             }
                             let (start_idx, end_idx) = find_doc_block_range(&lv, idx);
-                            replacements.push(Replacement { start_idx, end_idx, new_text: doc, fn_line: span.line });
+                            replacements.push(Replacement {
+                                start_idx,
+                                end_idx,
+                                new_text: doc,
+                                fn_line: span.line,
+                            });
                         }
                     }
                 }
             } else {
                 match find_insert_point(&lv, fn_0) {
-                    Err("existing_doc")  => { n_doc  += 1; log_actions.push(LogAction { status: "skip:existing_doc".into(),  fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: None }); }
-                    Err("complex_attr")  => { n_attr += 1; log_actions.push(LogAction { status: "skip:complex_attr".into(),  fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: None }); }
-                    Err(o)               => { n_span += 1; log_actions.push(LogAction { status: format!("skip:{o}"),         fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: None }); }
+                    Err("existing_doc") => {
+                        n_doc += 1;
+                        log_actions.push(LogAction {
+                            status: "skip:existing_doc".into(),
+                            fn_path: node.path.clone(),
+                            file: file.to_string(),
+                            fn_line: span.line,
+                            intent_class: intent.to_string(),
+                            generated_text: None,
+                        });
+                    }
+                    Err("complex_attr") => {
+                        n_attr += 1;
+                        log_actions.push(LogAction {
+                            status: "skip:complex_attr".into(),
+                            fn_path: node.path.clone(),
+                            file: file.to_string(),
+                            fn_line: span.line,
+                            intent_class: intent.to_string(),
+                            generated_text: None,
+                        });
+                    }
+                    Err(o) => {
+                        n_span += 1;
+                        log_actions.push(LogAction {
+                            status: format!("skip:{o}"),
+                            fn_path: node.path.clone(),
+                            file: file.to_string(),
+                            fn_line: span.line,
+                            intent_class: intent.to_string(),
+                            generated_text: None,
+                        });
+                    }
                     Ok(at) => {
                         if write_mode {
-                            log_actions.push(LogAction { status: "pending_write".into(), fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: Some(doc.clone()) });
+                            log_actions.push(LogAction {
+                                status: "pending_write".into(),
+                                fn_path: node.path.clone(),
+                                file: file.to_string(),
+                                fn_line: span.line,
+                                intent_class: intent.to_string(),
+                                generated_text: Some(doc.clone()),
+                            });
                             pending_action_indices.push(log_actions.len() - 1);
                         } else {
                             n_dry += 1;
-                            log_actions.push(LogAction { status: "dry_run".into(), fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: Some(doc.clone()) });
+                            log_actions.push(LogAction {
+                                status: "dry_run".into(),
+                                fn_path: node.path.clone(),
+                                file: file.to_string(),
+                                fn_line: span.line,
+                                intent_class: intent.to_string(),
+                                generated_text: Some(doc.clone()),
+                            });
                         }
-                        insertions.push(Insertion { insert_at: at, text: doc, fn_line: span.line });
+                        insertions.push(Insertion {
+                            insert_at: at,
+                            text: doc,
+                            fn_line: span.line,
+                        });
                     }
                 }
             }
         }
 
-        let short = Path::new(file).file_name().unwrap_or_default().to_string_lossy();
+        let short = Path::new(file)
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy();
 
         if write_mode && (!insertions.is_empty() || !replacements.is_empty()) {
             let mut new_source = source.clone();
@@ -771,25 +1064,46 @@ pub fn run_with_options(options: SynWriterRunOptions) -> anyhow::Result<SynWrite
             if total > 0 {
                 eprintln!("  dry-run: {} pending in {short}", total);
                 for i in &insertions {
-                    eprintln!("    line {:4}  {}", i.fn_line, i.text.trim_end().replace('\n', " | "));
+                    eprintln!(
+                        "    line {:4}  {}",
+                        i.fn_line,
+                        i.text.trim_end().replace('\n', " | ")
+                    );
                 }
                 for r in &replacements {
-                    let tag = if rewrite_existing { "rewrite" } else if augment { "augment" } else { "replace" };
-                    eprintln!("    line {:4}  {} [{}]", r.fn_line, r.new_text.trim_end().replace('\n', " | "), tag);
+                    let tag = if rewrite_existing {
+                        "rewrite"
+                    } else if augment {
+                        "augment"
+                    } else {
+                        "replace"
+                    };
+                    eprintln!(
+                        "    line {:4}  {} [{}]",
+                        r.fn_line,
+                        r.new_text.trim_end().replace('\n', " | "),
+                        tag
+                    );
                 }
             }
         }
     }
 
     let log = WriterLog {
-        generated_at_ms: SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0),
+        generated_at_ms: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0),
         dry_run: !write_mode,
         mode: mode_str.to_string(),
         summary: LogSummary {
             candidates: candidates.len(),
-            generated: n_gen, dry_run_pending: n_dry,
-            skip_existing_doc: n_doc, skip_complex_attr: n_attr,
-            skip_bad_span: n_span, skip_no_change: n_nc,
+            generated: n_gen,
+            dry_run_pending: n_dry,
+            skip_existing_doc: n_doc,
+            skip_complex_attr: n_attr,
+            skip_bad_span: n_span,
+            skip_no_change: n_nc,
             skip_write_error: n_write_err,
         },
         actions: log_actions,
@@ -797,12 +1111,16 @@ pub fn run_with_options(options: SynWriterRunOptions) -> anyhow::Result<SynWrite
     if let Some(parent) = log_path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    if let Ok(json) = serde_json::to_vec_pretty(&log) { let _ = std::fs::write(&log_path, json); }
+    if let Ok(json) = serde_json::to_vec_pretty(&log) {
+        let _ = std::fs::write(&log_path, json);
+    }
 
     eprintln!("\n{}  mode={}  generated={}  dry_run={}  skip_doc={}  skip_attr={}  skip_nochange={}  skip_write_error={}",
         if write_mode { "WRITE" } else { "DRY-RUN" },
         mode_str, n_gen, n_dry, n_doc, n_attr, n_nc, n_write_err);
-    if !write_mode { eprintln!("re-run with --write to apply"); }
+    if !write_mode {
+        eprintln!("re-run with --write to apply");
+    }
     Ok(SynWriterRunReport {
         candidates: candidates.len(),
         generated: n_gen,
@@ -815,7 +1133,10 @@ pub fn run_with_options(options: SynWriterRunOptions) -> anyhow::Result<SynWrite
     })
 }
 
-pub fn run_from_cli_args(args: &[String], workspace_root: PathBuf) -> anyhow::Result<SynWriterRunReport> {
+pub fn run_from_cli_args(
+    args: &[String],
+    workspace_root: PathBuf,
+) -> anyhow::Result<SynWriterRunReport> {
     let write_mode = args.iter().any(|a| a == "--write");
     let augment = args.iter().any(|a| a == "--augment");
     let rewrite_existing = args.iter().any(|a| a == "--rewrite-existing");
@@ -866,7 +1187,10 @@ mod tests {
             fn_line: 3,
         }];
         let out = apply_replacements(source, &reps);
-        assert_eq!(out, "/// Intent: new\n/// Provenance: generated\nfn run() {}\n");
+        assert_eq!(
+            out,
+            "/// Intent: new\n/// Provenance: generated\nfn run() {}\n"
+        );
     }
 
     #[test]
@@ -878,16 +1202,14 @@ mod tests {
 
     #[test]
     fn mark_actions_after_write_updates_status_and_counts() {
-        let mut actions = vec![
-            LogAction {
-                status: "pending_write".to_string(),
-                fn_path: "x::f".to_string(),
-                file: "src/x.rs".to_string(),
-                fn_line: 10,
-                intent_class: "pure_transform".to_string(),
-                generated_text: Some("/// Intent: pure_transform\n".to_string()),
-            },
-        ];
+        let mut actions = vec![LogAction {
+            status: "pending_write".to_string(),
+            fn_path: "x::f".to_string(),
+            file: "src/x.rs".to_string(),
+            fn_line: 10,
+            intent_class: "pure_transform".to_string(),
+            generated_text: Some("/// Intent: pure_transform\n".to_string()),
+        }];
         let mut n_gen = 0usize;
         let mut n_write_err = 0usize;
 

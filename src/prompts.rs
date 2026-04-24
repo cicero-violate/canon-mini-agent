@@ -7,7 +7,9 @@ use crate::constants::{
 };
 use crate::objectives::load_master_plan_snapshot;
 use crate::prompt_contract::ACTION_EMIT_LINE;
-use crate::protocol::{BlockerPayload, MessagePayload, MessageStatus, MessageType, ProtocolMessage, Role};
+use crate::protocol::{
+    BlockerPayload, MessagePayload, MessageStatus, MessageType, ProtocolMessage, Role,
+};
 use crate::tool_schema::selected_tool_protocol_schema_text;
 use crate::tool_schema::validate_tool_action;
 
@@ -1608,7 +1610,10 @@ mod tests {
     fn parse_json_from_text_extracts_first_json_value() {
         let raw = "leading text {\"action\":\"message\",\"payload\":{}} trailing";
         let value = parse_json_from_text(raw).expect("expected parseable json");
-        assert_eq!(value.get("action").and_then(|v| v.as_str()), Some("message"));
+        assert_eq!(
+            value.get("action").and_then(|v| v.as_str()),
+            Some("message")
+        );
     }
 
     #[test]
@@ -1648,7 +1653,10 @@ mod tests {
             "rationale": "normalize legacy status"
         });
         normalize_action(&mut action).unwrap();
-        assert_eq!(action.get("status").and_then(|v| v.as_str()), Some("complete"));
+        assert_eq!(
+            action.get("status").and_then(|v| v.as_str()),
+            Some("complete")
+        );
     }
 
     #[test]
@@ -1672,7 +1680,10 @@ mod tests {
             "rationale": "normalize singleton plan add_tasks"
         });
         normalize_action(&mut action).unwrap();
-        assert_eq!(action.get("op").and_then(|v| v.as_str()), Some("create_task"));
+        assert_eq!(
+            action.get("op").and_then(|v| v.as_str()),
+            Some("create_task")
+        );
         assert!(action.get("task").is_some());
     }
 
@@ -1927,7 +1938,10 @@ mod tests {
     #[test]
     fn planner_system_instructions_trim_static_prompt_mass() {
         let prompt = system_instructions(AgentPromptKind::Planner);
-        assert!(prompt.len() < 24_000, "planner system prompt should stay compact");
+        assert!(
+            prompt.len() < 24_000,
+            "planner system prompt should stay compact"
+        );
         assert!(!prompt.contains("Canonical status snapshot:"));
         assert!(!prompt.contains("Open guarantees still to close:"));
     }
@@ -1954,7 +1968,9 @@ mod tests {
         assert!(!prompt.contains("Derived schemas for predicted next actions:"));
         assert!(!prompt.contains("Action contract — respond with exactly one JSON code block"));
         assert!(prompt.contains("Predicted next actions from your last turn:"));
-        assert!(prompt.contains("Compare these against the actual result above before choosing your next action."));
+        assert!(prompt.contains(
+            "Compare these against the actual result above before choosing your next action."
+        ));
         assert!(!prompt.contains("```json\n["));
     }
 
@@ -1996,7 +2012,9 @@ mod tests {
             Some(predicted),
         );
         assert!(!prompt.contains("Predicted next actions from your last turn:"));
-        assert!(!prompt.contains("Compare these against the actual result above before choosing your next action."));
+        assert!(!prompt.contains(
+            "Compare these against the actual result above before choosing your next action."
+        ));
     }
 
     #[test]
@@ -2111,10 +2129,7 @@ mod tests {
 
     #[test]
     fn no_legacy_emit_wording_in_system_instructions() {
-        let kinds = [
-            AgentPromptKind::Planner,
-            AgentPromptKind::Executor,
-        ];
+        let kinds = [AgentPromptKind::Planner, AgentPromptKind::Executor];
         for kind in kinds {
             let rendered = system_instructions(kind);
             assert!(!rendered.contains("Emit exactly one action per turn"));

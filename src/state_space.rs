@@ -291,7 +291,11 @@ impl SemanticControlState {
         }
     }
 
-    pub fn with_verifier_activity(mut self, verifier_queued: bool, verifier_in_flight: bool) -> Self {
+    pub fn with_verifier_activity(
+        mut self,
+        verifier_queued: bool,
+        verifier_in_flight: bool,
+    ) -> Self {
         self.verifier_queued = verifier_queued;
         self.verifier_in_flight = verifier_in_flight;
         self

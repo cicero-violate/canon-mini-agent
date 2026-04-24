@@ -1,10 +1,9 @@
 use crate::state_space::{
     allow_diagnostics_run, allow_named_phase_run, check_completion_endpoint, check_completion_tab,
     decide_active_blocker, decide_phase_gates, decide_post_diagnostics, decide_wake_signals,
-    executor_step_limit_exceeded, is_verifier_specific_blocker,
-    scheduled_phase_resume_done, should_force_blocker, verifier_blocker_phase_override,
-    ActiveBlockerDecision, CompletionEndpointCheck, CompletionTabCheck, PhaseGates,
-    SemanticControlState, WakeSignalInput,
+    executor_step_limit_exceeded, is_verifier_specific_blocker, scheduled_phase_resume_done,
+    should_force_blocker, verifier_blocker_phase_override, ActiveBlockerDecision,
+    CompletionEndpointCheck, CompletionTabCheck, PhaseGates, SemanticControlState, WakeSignalInput,
 };
 use crate::state_space::{
     decide_bootstrap_phase, decide_resume_phase, extract_progress_path_from_result, CargoTestGate,
@@ -121,10 +120,7 @@ fn bootstrap_phase_from_start_role() {
         decide_bootstrap_phase("planner"),
         Some("planner".to_string())
     );
-    assert_eq!(
-        decide_bootstrap_phase("diagnostics"),
-        None
-    );
+    assert_eq!(decide_bootstrap_phase("diagnostics"), None);
     assert_eq!(
         decide_bootstrap_phase("executor"),
         Some("executor".to_string())

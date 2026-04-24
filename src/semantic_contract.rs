@@ -92,35 +92,37 @@ pub fn run_semantic_sync(workspace: &Path) -> Result<SemanticSyncReport, anyhow:
     let max_error_rate_value = max_error_rate
         .as_deref()
         .and_then(|v| v.parse::<f64>().ok());
-    crate::semantic_manifest::run_with_options(crate::semantic_manifest::SemanticManifestRunOptions {
-        workspace: workspace.to_path_buf(),
-        graph_path: graph.clone(),
-        out_path: sidecar.clone(),
-        write_mode: true,
-        max_error_rate: max_error_rate_value,
-    })?;
+    crate::semantic_manifest::run_with_options(
+        crate::semantic_manifest::SemanticManifestRunOptions {
+            workspace: workspace.to_path_buf(),
+            graph_path: graph.clone(),
+            out_path: sidecar.clone(),
+            write_mode: true,
+            max_error_rate: max_error_rate_value,
+        },
+    )?;
 
     if apply_rewrites {
         crate::syn_writer::run_with_options(crate::syn_writer::SynWriterRunOptions {
             workspace_root: workspace.to_path_buf(),
             graph_path: graph.clone(),
             manifest_path: sidecar.clone(),
-            log_path: workspace
-                .join("agent_state")
-                .join("syn_writer_log.json"),
+            log_path: workspace.join("agent_state").join("syn_writer_log.json"),
             write_mode: true,
             augment: false,
             rewrite_existing: true,
         })?;
 
         // Refresh sidecar after rewrite.
-        crate::semantic_manifest::run_with_options(crate::semantic_manifest::SemanticManifestRunOptions {
-            workspace: workspace.to_path_buf(),
-            graph_path: graph.clone(),
-            out_path: sidecar.clone(),
-            write_mode: true,
-            max_error_rate: max_error_rate_value,
-        })?;
+        crate::semantic_manifest::run_with_options(
+            crate::semantic_manifest::SemanticManifestRunOptions {
+                workspace: workspace.to_path_buf(),
+                graph_path: graph.clone(),
+                out_path: sidecar.clone(),
+                write_mode: true,
+                max_error_rate: max_error_rate_value,
+            },
+        )?;
     }
 
     let rank_report = crate::semantic_rank_candidates::run_with_options(
@@ -130,11 +132,10 @@ pub fn run_semantic_sync(workspace: &Path) -> Result<SemanticSyncReport, anyhow:
             out_path: Some(rank_out),
         },
     )?;
-    let issue_projection =
-        crate::semantic_issue_projection::project_semantic_rank_issues(
-            workspace,
-            rank_report.out_path.as_path(),
-        )?;
+    let issue_projection = crate::semantic_issue_projection::project_semantic_rank_issues(
+        workspace,
+        rank_report.out_path.as_path(),
+    )?;
 
     Ok(SemanticSyncReport {
         metrics: load_semantic_manifest_metrics(workspace),

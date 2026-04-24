@@ -297,7 +297,11 @@ pub fn load_runtime_master_plan_json(workspace: &Path) -> Option<String> {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-pub fn persist_objectives_projection(workspace: &Path, raw: &str, subject: &str) -> anyhow::Result<()> {
+pub fn persist_objectives_projection(
+    workspace: &Path,
+    raw: &str,
+    subject: &str,
+) -> anyhow::Result<()> {
     crate::logging::write_projection_with_artifact_effects(
         workspace,
         &workspace.join(crate::constants::OBJECTIVES_FILE),
@@ -317,7 +321,11 @@ pub fn persist_objectives_projection(workspace: &Path, raw: &str, subject: &str)
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-pub fn reconcile_objectives_projection(workspace: &Path, canonical_raw: &str, subject: &str) -> anyhow::Result<bool> {
+pub fn reconcile_objectives_projection(
+    workspace: &Path,
+    canonical_raw: &str,
+    subject: &str,
+) -> anyhow::Result<bool> {
     let path = workspace.join(crate::constants::OBJECTIVES_FILE);
     let current = std::fs::read_to_string(&path).unwrap_or_default();
     if crate::logging::stable_hash_hex(&current) == crate::logging::stable_hash_hex(canonical_raw) {

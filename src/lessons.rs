@@ -150,8 +150,7 @@ fn op_read_candidates(workspace: &Path) -> Result<(bool, String)> {
     if !path.exists() {
         return Ok((
             false,
-            "(no lessons candidates yet — synthesis runs after the next planner cycle)"
-                .to_string(),
+            "(no lessons candidates yet — synthesis runs after the next planner cycle)".to_string(),
         ));
     }
     let raw = std::fs::read_to_string(&path)?;

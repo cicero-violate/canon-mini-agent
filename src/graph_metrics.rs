@@ -322,7 +322,10 @@ fn collect_artifact_writers_by_artifact(idx: &SemanticIndex) -> HashMap<String, 
         if !looks_like_symbol(&writer) || artifact.trim().is_empty() {
             continue;
         }
-        writers_by_artifact.entry(artifact).or_default().insert(writer);
+        writers_by_artifact
+            .entry(artifact)
+            .or_default()
+            .insert(writer);
     }
     writers_by_artifact
 }
@@ -454,7 +457,10 @@ fn collect_state_transitions_by_domain(idx: &SemanticIndex) -> HashMap<String, H
         if !looks_like_symbol(&symbol) || state.trim().is_empty() {
             continue;
         }
-        transitions_by_state.entry(state).or_default().insert(symbol);
+        transitions_by_state
+            .entry(state)
+            .or_default()
+            .insert(symbol);
     }
     transitions_by_state
 }
@@ -487,9 +493,7 @@ fn resolve_missing_state_transition_dispersion_issues(
     mutated
 }
 
-fn collect_coordinated_transitions_by_symbol(
-    idx: &SemanticIndex,
-) -> HashMap<String, Vec<String>> {
+fn collect_coordinated_transitions_by_symbol(idx: &SemanticIndex) -> HashMap<String, Vec<String>> {
     let mut coordinated_by_symbol: HashMap<String, Vec<String>> = HashMap::new();
     for (symbol, proof_type) in idx.semantic_edges_by_relation("CoordinatesTransition") {
         coordinated_by_symbol
@@ -548,11 +552,7 @@ pub fn generate_state_transition_dispersion_issues(workspace: &Path) -> Result<u
             continue;
         };
         let crate_name = crate_name.replace('-', "_");
-        mutated += sync_state_transition_dispersion_issues_for_crate(
-            &mut file,
-            &crate_name,
-            &idx,
-        );
+        mutated += sync_state_transition_dispersion_issues_for_crate(&mut file, &crate_name, &idx);
     }
 
     rescore_all(&mut file);
@@ -814,7 +814,10 @@ fn collect_effect_boundary_rows_by_module(
         let module = symbol_module(&symbol);
         let mut effects_vec: Vec<&'static str> = effects.into_iter().collect();
         effects_vec.sort();
-        by_module.entry(module).or_default().push((symbol, effects_vec));
+        by_module
+            .entry(module)
+            .or_default()
+            .push((symbol, effects_vec));
     }
 
     for rows in by_module.values_mut() {
@@ -826,9 +829,21 @@ fn collect_effect_boundary_rows_by_module(
 
 fn collect_effects_by_symbol(idx: &SemanticIndex) -> HashMap<String, HashSet<&'static str>> {
     let mut effects_by_symbol: HashMap<String, HashSet<&'static str>> = HashMap::new();
-    insert_effect_labels(&mut effects_by_symbol, idx.artifact_write_edges(), "artifact_write");
-    insert_effect_labels(&mut effects_by_symbol, idx.artifact_read_edges(), "artifact_read");
-    insert_effect_labels(&mut effects_by_symbol, idx.state_write_edges(), "state_write");
+    insert_effect_labels(
+        &mut effects_by_symbol,
+        idx.artifact_write_edges(),
+        "artifact_write",
+    );
+    insert_effect_labels(
+        &mut effects_by_symbol,
+        idx.artifact_read_edges(),
+        "artifact_read",
+    );
+    insert_effect_labels(
+        &mut effects_by_symbol,
+        idx.state_write_edges(),
+        "state_write",
+    );
     insert_effect_labels(&mut effects_by_symbol, idx.state_read_edges(), "state_read");
     insert_effect_labels(
         &mut effects_by_symbol,
@@ -1055,7 +1070,11 @@ impl EffectDispersionMode {
                 count_modules_outside_boundary(by_module, is_canonical_process_boundary) > 1
             }
             EffectDispersionMode::Network => {
-                by_module.values().map(|symbols| symbols.len()).sum::<usize>() > 0
+                by_module
+                    .values()
+                    .map(|symbols| symbols.len())
+                    .sum::<usize>()
+                    > 0
             }
         }
     }
@@ -1279,10 +1298,7 @@ pub fn generate_dominator_region_reduction_issues(workspace: &Path) -> Result<us
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn generate_region_reduction_issues(
-    workspace: &Path,
-    mode: RegionReductionMode,
-) -> Result<usize> {
+fn generate_region_reduction_issues(workspace: &Path, mode: RegionReductionMode) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
     let before = serde_json::to_value(&file)?;
     let mut desired_ids = HashSet::new();
@@ -1763,7 +1779,11 @@ fn build_state_transition_dispersion_issue(
         .filter(|s| coordinated_by_symbol.contains_key(*s))
         .count();
     let all_coordinated = !transitions.is_empty() && coordinated_count == transitions.len();
-    let proof_tier = if all_coordinated { "proof" } else { "hypothesis" };
+    let proof_tier = if all_coordinated {
+        "proof"
+    } else {
+        "hypothesis"
+    };
 
     let evidence = transitions
         .iter()
@@ -1775,12 +1795,12 @@ fn build_state_transition_dispersion_issue(
                     .join("+")
             });
             match coordination.as_deref() {
-                Some(proof) if !proof.is_empty() => format!(
-                    "transition site `{symbol}` mutates `{display_state}` [{proof}]"
-                ),
-                _ => format!(
-                    "transition site `{symbol}` mutates `{display_state}` after branching"
-                ),
+                Some(proof) if !proof.is_empty() => {
+                    format!("transition site `{symbol}` mutates `{display_state}` [{proof}]")
+                }
+                _ => {
+                    format!("transition site `{symbol}` mutates `{display_state}` after branching")
+                }
             }
         })
         .collect::<Vec<_>>();
@@ -1977,15 +1997,17 @@ fn planner_loop_evidence(
 
 fn planner_loop_row_metrics(rows: &[WorkflowOrchestratorRow]) -> Vec<Value> {
     rows.iter()
-        .map(|(symbol, direct_phases, reached_phases, incoming, outgoing)| {
-            json!({
-                "symbol": symbol,
-                "direct_phases": direct_phases,
-                "reached_phases": reached_phases,
-                "incoming_workflow": incoming,
-                "outgoing_workflow": outgoing,
-            })
-        })
+        .map(
+            |(symbol, direct_phases, reached_phases, incoming, outgoing)| {
+                json!({
+                    "symbol": symbol,
+                    "direct_phases": direct_phases,
+                    "reached_phases": reached_phases,
+                    "incoming_workflow": incoming,
+                    "outgoing_workflow": outgoing,
+                })
+            },
+        )
         .collect()
 }
 
@@ -2227,7 +2249,11 @@ fn derive_canonical_effect_boundary_modules(
             let has_observed_canonical_callers = incoming_callers_by_module
                 .get(module)
                 .filter(|callers| !callers.is_empty())
-                .map(|callers| callers.iter().all(|caller| canonical_modules.contains(caller)))
+                .map(|callers| {
+                    callers
+                        .iter()
+                        .all(|caller| canonical_modules.contains(caller))
+                })
                 .unwrap_or(false);
             if has_observed_canonical_callers && canonical_modules.insert(module.clone()) {
                 changed = true;
@@ -2238,10 +2264,7 @@ fn derive_canonical_effect_boundary_modules(
     canonical_modules
 }
 
-fn is_canonical_effect_boundary_symbol(
-    canonical_modules: &HashSet<String>,
-    symbol: &str,
-) -> bool {
+fn is_canonical_effect_boundary_symbol(canonical_modules: &HashSet<String>, symbol: &str) -> bool {
     canonical_modules.contains(&symbol_module(symbol))
 }
 
@@ -2489,12 +2512,9 @@ fn build_scc_region_reduction_issue(
     let evidence = vec![
         format!(
             "branch_score={branch_score:.2}, switchint_count={}, has_back_edges={}",
-            summary.switchint_count,
-            summary.has_back_edges
+            summary.switchint_count, summary.has_back_edges
         ),
-        format!(
-            "back_edge_count={back_edge_count}, redundant_path_count={redundant_path_count}"
-        ),
+        format!("back_edge_count={back_edge_count}, redundant_path_count={redundant_path_count}"),
     ];
 
     Issue {
@@ -2627,7 +2647,11 @@ fn build_dominator_region_reduction_issue(
 }
 
 fn shorten_symbol_location(summary: &crate::semantic::SymbolSummary) -> String {
-    format!("{}:{}", crate::semantic::shorten_display_path(&summary.file), summary.line)
+    format!(
+        "{}:{}",
+        crate::semantic::shorten_display_path(&summary.file),
+        summary.line
+    )
 }
 
 fn module_partition_key(summary: &crate::semantic::SymbolSummary) -> String {
@@ -2819,7 +2843,10 @@ fn build_logging_dispersion_issue(
                 .map(|s| format!("`{s}`"))
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("`{module}` has {} direct logging site(s): {sample}", syms.len())
+            format!(
+                "`{module}` has {} direct logging site(s): {sample}",
+                syms.len()
+            )
         })
         .collect::<Vec<_>>();
 
@@ -2910,7 +2937,10 @@ fn build_process_spawn_dispersion_issue(
         .map(|(module, syms)| {
             format!(
                 "`{module}` spawns processes outside canonical boundary: {}",
-                syms.iter().map(|s| format!("`{s}`")).collect::<Vec<_>>().join(", ")
+                syms.iter()
+                    .map(|s| format!("`{s}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             )
         })
         .collect::<Vec<_>>();
@@ -3012,7 +3042,10 @@ fn build_network_usage_dispersion_issue(
         .map(|(module, syms)| {
             format!(
                 "`{module}` uses network I/O: {}",
-                syms.iter().map(|s| format!("`{s}`")).collect::<Vec<_>>().join(", ")
+                syms.iter()
+                    .map(|s| format!("`{s}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             )
         })
         .collect::<Vec<_>>();
@@ -3385,7 +3418,10 @@ mod tests {
         write_graph_with_edges(
             &workspace,
             "canon_mini_agent",
-            &["logging::persist_prompt_overflow_report", "tools::save_violations"],
+            &[
+                "logging::persist_prompt_overflow_report",
+                "tools::save_violations",
+            ],
             vec![
                 json!({
                     "relation": "WritesArtifact",
@@ -3408,7 +3444,10 @@ mod tests {
             .expect("artifact writer issue");
         assert_eq!(issue.status, "open");
         assert_eq!(issue.metrics["writer_count"].as_u64(), Some(2));
-        assert_eq!(issue.metrics["display_artifact"].as_str(), Some("VIOLATIONS_FILE"));
+        assert_eq!(
+            issue.metrics["display_artifact"].as_str(),
+            Some("VIOLATIONS_FILE")
+        );
     }
 
     #[test]
@@ -3492,7 +3531,10 @@ mod tests {
             .expect("state transition issue");
         assert_eq!(issue.status, "open");
         assert_eq!(issue.metrics["transition_count"].as_u64(), Some(2));
-        assert_eq!(issue.metrics["display_state"].as_str(), Some("VIOLATIONS_FILE"));
+        assert_eq!(
+            issue.metrics["display_state"].as_str(),
+            Some("VIOLATIONS_FILE")
+        );
     }
 
     #[test]
@@ -3784,10 +3826,7 @@ mod tests {
             .expect("effect boundary leak issue");
         assert_eq!(issue.status, "open");
         assert_eq!(issue.metrics["proof_tier"].as_str(), Some("hypothesis"));
-        assert_eq!(
-            issue.metrics["module"].as_str(),
-            Some("plan_preflight")
-        );
+        assert_eq!(issue.metrics["module"].as_str(), Some("plan_preflight"));
     }
 
     #[test]
@@ -4069,7 +4108,10 @@ mod tests {
             .expect("dominator region issue");
         assert_eq!(issue.status, "open");
         assert_eq!(issue.metrics["proof_tier"].as_str(), Some("hypothesis"));
-        assert_eq!(issue.metrics["region_kind"].as_str(), Some("loop-free dispatch funnel"));
+        assert_eq!(
+            issue.metrics["region_kind"].as_str(),
+            Some("loop-free dispatch funnel")
+        );
         assert_eq!(issue.metrics["back_edge_count"].as_u64(), Some(0));
         assert_eq!(issue.metrics["redundant_path_count"].as_u64(), Some(1));
         assert!(issue.metrics.get("non_cleanup_fraction").is_some());
