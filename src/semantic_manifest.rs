@@ -327,6 +327,14 @@ fn is_missing_contract_value(value: &str) -> bool {
         || trimmed.eq_ignore_ascii_case("missing")
 }
 
+fn doc_scalar_forces_error(value: Option<&str>) -> bool {
+    value.is_some_and(is_missing_contract_value)
+}
+
+fn doc_list_forces_error(values: &[String]) -> bool {
+    !values.is_empty() && values.iter().any(|value| is_missing_contract_value(value))
+}
+
 fn choose_list(cands: &[Vec<String>]) -> Vec<String> {
     for cand in cands {
         let normalized = normalize_list(cand.clone());
@@ -767,6 +775,15 @@ pub fn run_with_options(
         let old = node.semantic_manifest.clone().unwrap_or_default();
         let doc_lines = resolve_doc_lines(node, &workspace, &mut src_cache);
         let doc = parse_doc_contract(&doc_lines);
+        let doc_forces_intent_error = doc_scalar_forces_error(doc.intent.as_deref());
+        let doc_forces_resource_error = doc_scalar_forces_error(doc.resource.as_deref());
+        let doc_forces_inputs_error = doc_list_forces_error(&doc.inputs);
+        let doc_forces_outputs_error = doc_list_forces_error(&doc.outputs);
+        let doc_forces_effects_error = doc_list_forces_error(&doc.effects);
+        let doc_forces_forbidden_error = doc_list_forces_error(&doc.forbidden);
+        let doc_forces_invariants_error = doc_list_forces_error(&doc.invariants);
+        let doc_forces_failure_error = doc_scalar_forces_error(doc.failure.as_deref());
+        let doc_forces_provenance_error = doc_list_forces_error(&doc.provenance);
         let (sig_inputs, sig_outputs) = parse_signature(node.signature.as_deref());
         let source_decl = resolve_source_decl(node, &workspace, &mut src_cache);
         let (src_inputs, src_outputs) = parse_source_decl_signature(source_decl.as_deref());
@@ -823,7 +840,7 @@ pub fn run_with_options(
             Some(old.failure_mode.clone()),
             Some(infer_failure(&outputs, &symbol)),
         ]);
-        let manifest = SemanticManifest {
+        let mut manifest = SemanticManifest {
             symbol: choose_scalar(&[Some(symbol), Some(old.symbol.clone())]),
             kind: choose_scalar(&[Some(node.kind.clone()), Some(old.kind.clone())]),
             file: choose_scalar(&[
@@ -869,8 +886,34 @@ pub fn run_with_options(
             ),
             manifest_status: String::new(),
         };
+        if doc_forces_intent_error {
+            manifest.intent_class = MISSING.to_string();
+        }
+        if doc_forces_resource_error {
+            manifest.resource = MISSING.to_string();
+        }
+        if doc_forces_inputs_error {
+            manifest.inputs = vec![MISSING.to_string()];
+        }
+        if doc_forces_outputs_error {
+            manifest.outputs = vec![MISSING.to_string()];
+        }
+        if doc_forces_effects_error {
+            manifest.effects = vec![MISSING.to_string()];
+        }
+        if doc_forces_forbidden_error {
+            manifest.forbidden_effects = vec![MISSING.to_string()];
+        }
+        if doc_forces_invariants_error {
+            manifest.invariants = vec![MISSING.to_string()];
+        }
+        if doc_forces_failure_error {
+            manifest.failure_mode = MISSING.to_string();
+        }
+        if doc_forces_provenance_error {
+            manifest.provenance = vec![MISSING.to_string()];
+        }
         let has_error = manifest_has_error(&manifest);
-        let mut manifest = manifest;
         manifest.manifest_status = if has_error {
             "partial_error".to_string()
         } else {
