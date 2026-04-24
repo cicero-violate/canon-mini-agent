@@ -258,20 +258,24 @@ fn scan_attr_ranges(source: &str) -> Vec<(usize, usize)> {
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
 fn scan_attr_range_step(b: &[u8], i: usize, n: usize) -> (usize, Option<(usize, usize)>) {
-    if i + 1 < n && b[i] == b'/' && b[i + 1] == b'/' {
-        return (skip_line_comment(b, i, n), None);
-    }
-    if i + 1 < n && b[i] == b'/' && b[i + 1] == b'*' {
-        return (skip_block_comment(b, i, n), None);
-    }
-    if b[i] == b'"' {
-        return (skip_quoted_string(b, i, n), None);
+    if let Some(next_i) = skip_attr_scan_trivia(b, i, n) {
+        return (next_i, None);
     }
     let (next_i, range) = consume_attr_range(b, i, n);
     match range {
         Some(range) => (next_i, Some(range)),
         None => (i + 1, None),
     }
+}
+
+fn skip_attr_scan_trivia(b: &[u8], i: usize, n: usize) -> Option<usize> {
+    if i + 1 < n && b[i] == b'/' && b[i + 1] == b'/' {
+        return Some(skip_line_comment(b, i, n));
+    }
+    if i + 1 < n && b[i] == b'/' && b[i + 1] == b'*' {
+        return Some(skip_block_comment(b, i, n));
+    }
+    (b[i] == b'"').then(|| skip_quoted_string(b, i, n))
 }
 
 /// Return byte positions `(lo, hi)` of every `"<old_ident>"` string literal
