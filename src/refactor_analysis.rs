@@ -1944,17 +1944,7 @@ impl FunctionCfg {
     /// Provenance: rustc:facts + rustc:docstring
     fn reaching_definition_analysis(&self) -> ReachingDefAnalysis {
         let stmt_keys = self.all_stmt_keys();
-        let mut defs_by_local: HashMap<String, HashSet<StmtKey>> = HashMap::new();
-        for key in &stmt_keys {
-            if let Some(stmt) = self.stmt(*key) {
-                if !stmt.written_local.is_empty() {
-                    defs_by_local
-                        .entry(stmt.written_local.clone())
-                        .or_default()
-                        .insert(*key);
-                }
-            }
-        }
+        let defs_by_local = self.defs_by_local(&stmt_keys);
 
         let mut in_defs: HashMap<StmtKey, HashSet<StmtKey>> =
             stmt_keys.iter().copied().map(|k| (k, HashSet::new())).collect();
@@ -2012,6 +2002,21 @@ impl FunctionCfg {
         }
 
         ReachingDefAnalysis { used_defs, in_defs }
+    }
+
+    fn defs_by_local(&self, stmt_keys: &[StmtKey]) -> HashMap<String, HashSet<StmtKey>> {
+        let mut defs_by_local: HashMap<String, HashSet<StmtKey>> = HashMap::new();
+        for key in stmt_keys {
+            if let Some(stmt) = self.stmt(*key) {
+                if !stmt.written_local.is_empty() {
+                    defs_by_local
+                        .entry(stmt.written_local.clone())
+                        .or_default()
+                        .insert(*key);
+                }
+            }
+        }
+        defs_by_local
     }
 }
 
