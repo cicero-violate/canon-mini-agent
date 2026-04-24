@@ -1655,38 +1655,12 @@ fn first_missing_field_for_action(action: &Value, action_name: &str) -> Option<S
     if action.get("predicted_next_actions").is_none() {
         return Some("missing field: predicted_next_actions".to_string());
     }
-    fn require_fields<'a>(
-        missing_field: &impl Fn(&str) -> Option<String>,
-        fields: &[&'a str],
-    ) -> Option<String> {
-        for field in fields {
-            if let Some(m) = missing_field(field) {
-                return Some(m);
-            }
-        }
-        None
-    }
-
-    fn require_one_of(
-        action: &Value,
-        missing_field: &impl Fn(&str) -> Option<String>,
-    ) -> Option<String> {
-        let has_bulk = action
-            .get("renames")
-            .and_then(|v| v.as_array())
-            .is_some_and(|arr| !arr.is_empty());
-        if has_bulk {
-            None
-        } else {
-            missing_field("old_symbol").or_else(|| missing_field("new_symbol"))
-        }
-    }
 
     match action_name {
-        "message" => require_fields(&missing_field, &["from", "to", "type", "status", "payload"]),
+        "message" => first_missing_required_field(action, &["from", "to", "type", "status", "payload"]),
         "list_dir" | "read_file" => missing_field("path"),
         "symbols_index" | "symbols_rename_candidates" | "symbols_prepare_rename" => None,
-        "rename_symbol" => require_one_of(action, &missing_field),
+        "rename_symbol" => missing_field_for_rename_symbol_action(action),
         "objectives" => missing_field_for_objectives_action(action),
         "issue" => missing_field_for_issue_action(action),
         "apply_patch" => missing_field("patch"),
@@ -1706,6 +1680,25 @@ fn first_missing_field_for_action(action: &Value, action_name: &str) -> Option<S
         | "execution_path"
         | "symbol_neighborhood" => missing_field("crate"),
         _ => None,
+    }
+}
+
+fn first_missing_required_field(action: &Value, fields: &[&str]) -> Option<String> {
+    fields
+        .iter()
+        .find_map(|field| missing_field_in_action(action, field))
+}
+
+fn missing_field_for_rename_symbol_action(action: &Value) -> Option<String> {
+    let has_bulk = action
+        .get("renames")
+        .and_then(|v| v.as_array())
+        .is_some_and(|arr| !arr.is_empty());
+    if has_bulk {
+        None
+    } else {
+        missing_field_in_action(action, "old_symbol")
+            .or_else(|| missing_field_in_action(action, "new_symbol"))
     }
 }
 
