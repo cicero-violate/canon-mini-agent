@@ -12,6 +12,7 @@ pub struct EvaluationVector {
     pub safety: f64,
     pub task_velocity: f64,
     pub issue_health: f64,
+    pub semantic_contract: f64,
 }
 
 impl EvaluationVector {
@@ -21,9 +22,10 @@ impl EvaluationVector {
             self.safety.clamp(0.001, 1.0),
             self.task_velocity.clamp(0.001, 1.0),
             self.issue_health.clamp(0.001, 1.0),
+            self.semantic_contract.clamp(0.001, 1.0),
         ];
         let product = values.iter().product::<f64>();
-        product.powf(0.25)
+        product.powf(0.20)
     }
 }
 
@@ -36,6 +38,9 @@ pub struct EvaluationWorkspaceSnapshot {
     pub open_issues: usize,
     pub repeated_open_issues: usize,
     pub diagnostics_repair_pressure: f64,
+    pub semantic_fn_total: usize,
+    pub semantic_fn_with_any_error: usize,
+    pub semantic_fn_error_rate: f64,
     pub vector: EvaluationVector,
 }
 
@@ -93,12 +98,14 @@ pub fn evaluate_repo_state(
     total_tasks: usize,
     open_issues: usize,
     repeated_open_issues: usize,
+    semantic_contract_score: f64,
 ) -> EvaluationVector {
     EvaluationVector {
         objective_progress: reward_alignment_score(objectives_completed, objectives_total),
         safety: safety_score(violations),
         task_velocity: task_velocity_score(completed_tasks, total_tasks),
         issue_health: issue_health_score(open_issues, repeated_open_issues),
+        semantic_contract: semantic_contract_score.clamp(0.0, 1.0),
     }
 }
 
@@ -127,6 +134,7 @@ pub fn evaluate_workspace(workspace: &Path) -> EvaluationWorkspaceSnapshot {
 
     let (completed_tasks, total_tasks) = load_task_counts(workspace);
     let (open_issues, repeated_open_issues) = load_issue_counts(workspace);
+    let semantic_metrics = crate::semantic_contract::load_semantic_manifest_metrics(workspace);
 
     let vector = evaluate_repo_state(
         objectives_completed,
@@ -136,6 +144,7 @@ pub fn evaluate_workspace(workspace: &Path) -> EvaluationWorkspaceSnapshot {
         total_tasks,
         open_issues,
         repeated_open_issues,
+        semantic_metrics.score(),
     );
 
     EvaluationWorkspaceSnapshot {
@@ -146,6 +155,9 @@ pub fn evaluate_workspace(workspace: &Path) -> EvaluationWorkspaceSnapshot {
         open_issues,
         repeated_open_issues,
         diagnostics_repair_pressure: diagnostics_repair_pressure(&diagnostics),
+        semantic_fn_total: semantic_metrics.fn_total,
+        semantic_fn_with_any_error: semantic_metrics.fn_with_any_error,
+        semantic_fn_error_rate: semantic_metrics.fn_error_rate,
         vector,
     }
 }
@@ -303,6 +315,7 @@ mod tests {
             safety: 1.0,
             task_velocity: 0.0,
             issue_health: 1.0,
+            semantic_contract: 1.0,
         };
 
         assert!(vector.geometric_mean_like_score() > 0.0);

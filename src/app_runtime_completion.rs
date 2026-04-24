@@ -1451,12 +1451,14 @@ pub async fn run() -> Result<()> {
         const EXECUTOR_STALL_STALE_MS: u64 = 45_000;
         const EXECUTOR_STALL_RECOVERY_COOLDOWN_MS: u64 = 30_000;
         const IDLE_PULSE_COOLDOWN_MS: u64 = 5_000;
+        const SEMANTIC_SYNC_INTERVAL_MS: u64 = 120_000;
         const INLINE_UNIFIED_AGENT: bool = true;
         let mut stall_count: u32 = 0;
         let mut last_executor_stall_probe_ms: u64 = 0;
         let mut last_executor_stall_recovery_ms: u64 = 0;
         let mut last_idle_pulse_ts_ms: u64 = 0;
         let mut last_idle_boundary_hash: Option<u64> = None;
+        let mut last_semantic_sync_ms: u64 = 0;
         loop {
             let _ = std::fs::remove_file(cycle_idle_marker_path());
             let mut cycle_progress = false;
@@ -1487,6 +1489,35 @@ pub async fn run() -> Result<()> {
             }
 
             apply_wake_signals(&mut writer);
+
+            let semantic_now = now_ms();
+            if semantic_now.saturating_sub(last_semantic_sync_ms) >= SEMANTIC_SYNC_INTERVAL_MS {
+                last_semantic_sync_ms = semantic_now;
+                match crate::semantic_contract::run_semantic_sync(workspace.as_path()) {
+                    Ok(report) => {
+                        append_orchestration_trace(
+                            "semantic_contract_sync",
+                            json!({
+                                "fn_total": report.metrics.fn_total,
+                                "fn_with_any_error": report.metrics.fn_with_any_error,
+                                "fn_error_rate": report.metrics.fn_error_rate,
+                                "semantic_score": report.metrics.score(),
+                                "rewrites_applied": report.rewrites_applied,
+                            }),
+                        );
+                        if report.rewrites_applied {
+                            cycle_progress = true;
+                        }
+                    }
+                    Err(err) => {
+                        eprintln!("[orchestrate] semantic sync failed: {err:#}");
+                        append_orchestration_trace(
+                            "semantic_contract_sync_error",
+                            json!({ "error": format!("{err:#}") }),
+                        );
+                    }
+                }
+            }
 
             if writer.state().scheduled_phase.is_none() && writer.state().phase == "bootstrap" {
                 if let Some(phase) = decide_bootstrap_phase(start_role) {

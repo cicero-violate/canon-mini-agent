@@ -9,7 +9,7 @@
 //!              contract shape (replace block if present, insert if missing).
 //!
 //! Usage:
-//!   canon-syn-writer [graph.json] [--write] [--augment|--rewrite-existing]
+//!   canon-mini-agent syn-writer [graph.json] [--write] [--augment|--rewrite-existing]
 //!
 //! Generated docstring format:
 //!   /// Intent: <class>
@@ -38,6 +38,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 struct CrateGraph {
     #[serde(default)] nodes: HashMap<String, GraphNode>,
     #[serde(default)] edges: Vec<GraphEdge>,
+}
+
+#[derive(Deserialize, Default)]
+struct ManifestProposalFile {
+    #[serde(default)] proposals: HashMap<String, SemanticManifest>,
 }
 
 #[derive(Deserialize)]
@@ -89,6 +94,29 @@ struct WriterLog {
     mode: String,
     summary: LogSummary,
     actions: Vec<LogAction>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SynWriterRunOptions {
+    pub workspace_root: PathBuf,
+    pub graph_path: PathBuf,
+    pub manifest_path: PathBuf,
+    pub log_path: PathBuf,
+    pub write_mode: bool,
+    pub augment: bool,
+    pub rewrite_existing: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SynWriterRunReport {
+    pub candidates: usize,
+    pub generated: usize,
+    pub dry_run_pending: usize,
+    pub skip_existing_doc: usize,
+    pub skip_complex_attr: usize,
+    pub skip_bad_span: usize,
+    pub skip_no_change: usize,
+    pub skip_write_error: usize,
 }
 
 #[derive(Serialize)]
@@ -223,8 +251,13 @@ fn normalize_scalar(s: Option<&str>) -> String {
         .to_string()
 }
 
-fn build_doc(node: &GraphNode, effects: Option<&EffectSet>, indent: &str) -> String {
-    let manifest = node.semantic_manifest.as_ref();
+fn build_doc(
+    node: &GraphNode,
+    proposal_manifest: Option<&SemanticManifest>,
+    effects: Option<&EffectSet>,
+    indent: &str,
+) -> String {
+    let manifest = proposal_manifest.or(node.semantic_manifest.as_ref());
     let intent = normalize_scalar(
         manifest
             .and_then(|m| if m.intent_class == "error" { None } else { Some(m.intent_class.as_str()) })
@@ -382,15 +415,15 @@ fn find_doc_block_before_fn(lines: &[&str], fn_line_0: usize) -> Option<(usize, 
     Some((start, end))
 }
 
-fn node_has_contract_intent(node: &GraphNode) -> bool {
+fn node_has_contract_intent(node: &GraphNode, proposal_manifest: Option<&SemanticManifest>) -> bool {
     node.intent_class
         .as_deref()
         .map(str::trim)
         .filter(|v| !v.is_empty() && *v != "error")
         .is_some()
         || node
-            .semantic_manifest
-            .as_ref()
+            .semantic_manifest.as_ref()
+            .or(proposal_manifest)
             .map(|m| m.intent_class.trim())
             .filter(|v| !v.is_empty() && *v != "error")
             .is_some()
@@ -410,6 +443,14 @@ fn path_under_workspace_src(file: &str, workspace_root: &Path, workspace_src: &P
         raw.starts_with(workspace_src)
     } else {
         raw.starts_with("src")
+    }
+}
+
+fn resolve_path(root: &Path, p: &Path) -> PathBuf {
+    if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        root.join(p)
     }
 }
 
@@ -508,43 +549,40 @@ fn apply_replacements(source: &str, reps: &[Replacement]) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
-fn main() -> anyhow::Result<()> {
-    let args: Vec<String> = std::env::args().collect();
-    let write_mode = args.iter().any(|a| a == "--write");
-    let augment    = args.iter().any(|a| a == "--augment");
-    let rewrite_existing = args.iter().any(|a| a == "--rewrite-existing");
+pub fn run_with_options(options: SynWriterRunOptions) -> anyhow::Result<SynWriterRunReport> {
+    let write_mode = options.write_mode;
+    let augment = options.augment;
+    let rewrite_existing = options.rewrite_existing;
     if augment && rewrite_existing {
         anyhow::bail!("--augment and --rewrite-existing are mutually exclusive");
     }
 
-    let graph_path = args.iter()
-        .find(|a| a.ends_with(".json") && !a.ends_with("log.json"))
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("state/rustc/canon_mini_agent/graph.json"));
-
-    let log_path = PathBuf::from("agent_state/syn_writer_log.json");
+    let workspace_root = options.workspace_root;
+    let graph_path = resolve_path(&workspace_root, &options.graph_path);
+    let manifest_path = resolve_path(&workspace_root, &options.manifest_path);
+    let log_path = resolve_path(&workspace_root, &options.log_path);
 
     eprintln!("reading {}", graph_path.display());
     let bytes = std::fs::read(&graph_path)
         .map_err(|e| anyhow::anyhow!("cannot read {}: {e}", graph_path.display()))?;
     let graph: CrateGraph = serde_json::from_slice(&bytes)?;
+    let proposal_map = std::fs::read(&manifest_path)
+        .ok()
+        .and_then(|b| serde_json::from_slice::<ManifestProposalFile>(&b).ok())
+        .map(|f| f.proposals)
+        .unwrap_or_default();
 
     let effect_map = build_effect_map(&graph.edges);
-    let workspace_root = std::env::current_dir()
-        .map_err(|e| anyhow::anyhow!("cannot resolve cwd: {e}"))?;
     let workspace_src = workspace_root.join("src").canonicalize()
         .map_err(|e| anyhow::anyhow!("cannot resolve workspace src: {e}"))?;
 
-    // Build node_id → node lookup (pointer identity for each &GraphNode).
-    let id_map: HashMap<*const GraphNode, &str> = graph.nodes
-        .iter().map(|(id, n)| (n as *const _, id.as_str())).collect();
-
     // Collect candidates.
-    let candidates: Vec<(&GraphNode, &SourceSpan)> = graph.nodes.values()
-        .filter(|n| n.kind == "fn" && node_has_contract_intent(n))
-        .filter_map(|n| n.def.as_ref().map(|d| (n, d)))
-        .filter(|(_, d)| d.file.ends_with(".rs") && path_under_workspace_src(&d.file, &workspace_root, &workspace_src))
-        .filter(|(n, _)| {
+    let candidates: Vec<(&str, &GraphNode, &SourceSpan)> = graph.nodes.iter()
+        .filter(|(_, n)| n.kind == "fn")
+        .filter(|(id, n)| node_has_contract_intent(n, proposal_map.get(*id)))
+        .filter_map(|(id, n)| n.def.as_ref().map(|d| (id.as_str(), n, d)))
+        .filter(|(_, _, d)| d.file.ends_with(".rs") && path_under_workspace_src(&d.file, &workspace_root, &workspace_src))
+        .filter(|(_, n, _)| {
             if rewrite_existing {
                 true
             } else if augment {
@@ -570,9 +608,9 @@ fn main() -> anyhow::Result<()> {
         if write_mode { "" } else { " (dry-run)" });
 
     // Group by file, highest line first within each file.
-    let mut by_file: HashMap<&str, Vec<(&GraphNode, &SourceSpan)>> = HashMap::new();
-    for (n, d) in &candidates {
-        by_file.entry(d.file.as_str()).or_default().push((n, d));
+    let mut by_file: HashMap<&str, Vec<(&str, &GraphNode, &SourceSpan)>> = HashMap::new();
+    for (id, n, d) in &candidates {
+        by_file.entry(d.file.as_str()).or_default().push((id, n, d));
     }
 
     let mut log_actions: Vec<LogAction> = Vec::new();
@@ -582,9 +620,10 @@ fn main() -> anyhow::Result<()> {
     let mut n_write_err = 0usize;
 
     for (file, mut nodes_in_file) in by_file {
-        nodes_in_file.sort_by(|a, b| b.1.line.cmp(&a.1.line));
+        nodes_in_file.sort_by(|a, b| b.2.line.cmp(&a.2.line));
+        let file_path = resolve_path(&workspace_root, Path::new(file));
 
-        let source = match std::fs::read_to_string(file) {
+        let source = match std::fs::read_to_string(&file_path) {
             Ok(s) => s,
             Err(e) => { eprintln!("  cannot read {file}: {e}"); n_span += nodes_in_file.len(); continue; }
         };
@@ -593,10 +632,9 @@ fn main() -> anyhow::Result<()> {
         let mut replacements: Vec<Replacement> = Vec::new();
         let mut pending_action_indices: Vec<usize> = Vec::new();
 
-        for (node, span) in &nodes_in_file {
+        for (node_id, node, span) in &nodes_in_file {
             let intent  = node.intent_class.as_deref().unwrap_or("unknown");
-            let node_id = id_map.get(&(*node as *const _)).copied().unwrap_or("");
-            let effects = if node_id.is_empty() { None } else { effect_map.get(node_id) };
+            let effects = effect_map.get(*node_id);
             let raw_fn_0 = (span.line as usize).saturating_sub(1);
 
             if raw_fn_0 >= lv.len() {
@@ -612,7 +650,8 @@ fn main() -> anyhow::Result<()> {
             };
 
             let indent = leading_ws(lv[fn_0]).to_string();
-            let doc = build_doc(node, effects, &indent);
+            let proposal_manifest = proposal_map.get(*node_id);
+            let doc = build_doc(node, proposal_manifest, effects, &indent);
 
             if rewrite_existing {
                 if let Some((start_idx, end_idx)) = find_doc_block_before_fn(&lv, fn_0) {
@@ -696,7 +735,7 @@ fn main() -> anyhow::Result<()> {
                 new_source = apply_insertions(&new_source, &insertions);
             }
             let total = replacements.len() + insertions.len();
-            match std::fs::write(file, &new_source) {
+            match std::fs::write(&file_path, &new_source) {
                 Ok(()) => {
                     let success_status = if rewrite_existing {
                         "rewritten"
@@ -755,13 +794,50 @@ fn main() -> anyhow::Result<()> {
         },
         actions: log_actions,
     };
+    if let Some(parent) = log_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
     if let Ok(json) = serde_json::to_vec_pretty(&log) { let _ = std::fs::write(&log_path, json); }
 
     eprintln!("\n{}  mode={}  generated={}  dry_run={}  skip_doc={}  skip_attr={}  skip_nochange={}  skip_write_error={}",
         if write_mode { "WRITE" } else { "DRY-RUN" },
         mode_str, n_gen, n_dry, n_doc, n_attr, n_nc, n_write_err);
     if !write_mode { eprintln!("re-run with --write to apply"); }
-    Ok(())
+    Ok(SynWriterRunReport {
+        candidates: candidates.len(),
+        generated: n_gen,
+        dry_run_pending: n_dry,
+        skip_existing_doc: n_doc,
+        skip_complex_attr: n_attr,
+        skip_bad_span: n_span,
+        skip_no_change: n_nc,
+        skip_write_error: n_write_err,
+    })
+}
+
+pub fn run_from_cli_args(args: &[String], workspace_root: PathBuf) -> anyhow::Result<SynWriterRunReport> {
+    let write_mode = args.iter().any(|a| a == "--write");
+    let augment = args.iter().any(|a| a == "--augment");
+    let rewrite_existing = args.iter().any(|a| a == "--rewrite-existing");
+    let graph_path = args
+        .iter()
+        .find(|a| a.ends_with(".json") && !a.ends_with("log.json"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("state/rustc/canon_mini_agent/graph.json"));
+    let manifest_path = args
+        .windows(2)
+        .find(|w| w[0] == "--manifest")
+        .map(|w| PathBuf::from(&w[1]))
+        .unwrap_or_else(|| PathBuf::from("agent_state/semantic_manifest_proposals.json"));
+    run_with_options(SynWriterRunOptions {
+        workspace_root,
+        graph_path,
+        manifest_path,
+        log_path: PathBuf::from("agent_state/syn_writer_log.json"),
+        write_mode,
+        augment,
+        rewrite_existing,
+    })
 }
 
 #[cfg(test)]

@@ -9,8 +9,27 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const MISSING: &str = "error";
+
+#[derive(Debug, Clone)]
+pub struct SemanticManifestRunOptions {
+    pub workspace: PathBuf,
+    pub graph_path: PathBuf,
+    pub out_path: PathBuf,
+    pub write_mode: bool,
+    pub max_error_rate: Option<f64>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SemanticManifestRunReport {
+    pub updated: usize,
+    pub fn_total: usize,
+    pub fn_with_any_error: usize,
+    pub fn_error_rate: f64,
+    pub target: PathBuf,
+}
 
 #[derive(Deserialize, Serialize)]
 struct CrateGraph {
@@ -22,6 +41,16 @@ struct CrateGraph {
     edges: Vec<GraphEdge>,
     #[serde(flatten)]
     rest: HashMap<String, serde_json::Value>,
+}
+
+#[derive(Serialize)]
+struct ProposalFile {
+    generated_at_ms: u64,
+    graph_path: String,
+    fn_total: usize,
+    fn_with_any_error: usize,
+    fn_error_rate: f64,
+    proposals: HashMap<String, SemanticManifest>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Default)]
@@ -511,26 +540,15 @@ fn infer_invariants(intent: &str, effects: &[String], resource: &str) -> Vec<Str
     }
 }
 
-fn main() -> anyhow::Result<()> {
-    let args: Vec<String> = std::env::args().collect();
-    let write_mode = args.iter().any(|a| a == "--write");
-    let max_error_rate = args
-        .windows(2)
-        .find(|w| w[0] == "--max-error-rate")
-        .and_then(|w| w[1].parse::<f64>().ok());
-    let out_path = args
-        .windows(2)
-        .find(|w| w[0] == "--out")
-        .map(|w| PathBuf::from(&w[1]));
-    let graph_path = args
-        .iter()
-        .find(|a| a.ends_with(".json"))
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("state/rustc/canon_mini_agent/graph.json"));
+pub fn run_with_options(options: SemanticManifestRunOptions) -> anyhow::Result<SemanticManifestRunReport> {
+    let write_mode = options.write_mode;
+    let max_error_rate = options.max_error_rate;
+    let out_path = Some(options.out_path.clone());
+    let graph_path = options.graph_path.clone();
 
-    let workspace = std::env::current_dir()?;
+    let workspace = options.workspace;
     let bytes = std::fs::read(&graph_path)?;
-    let mut graph: CrateGraph = serde_json::from_slice(&bytes)?;
+    let graph: CrateGraph = serde_json::from_slice(&bytes)?;
 
     let node_path: HashMap<String, String> = graph
         .nodes
@@ -556,10 +574,11 @@ fn main() -> anyhow::Result<()> {
     }
 
     let mut src_cache: HashMap<PathBuf, Vec<String>> = HashMap::new();
+    let mut proposals: HashMap<String, SemanticManifest> = HashMap::new();
     let mut updated = 0usize;
     let mut fn_total = 0usize;
     let mut fn_with_any_error = 0usize;
-    for (node_id, node) in graph.nodes.iter_mut() {
+    for (node_id, node) in &graph.nodes {
         let old = node.semantic_manifest.clone().unwrap_or_default();
         let doc_lines = resolve_doc_lines(node, &workspace, &mut src_cache);
         let doc = parse_doc_contract(&doc_lines);
@@ -675,7 +694,7 @@ fn main() -> anyhow::Result<()> {
         } else {
             "complete".to_string()
         };
-        node.semantic_manifest = Some(manifest);
+        proposals.insert(node_id.clone(), manifest);
         if node.kind == "fn" {
             fn_total += 1;
             if has_error {
@@ -691,12 +710,31 @@ fn main() -> anyhow::Result<()> {
         fn_with_any_error as f64 / fn_total as f64
     };
 
-    let target = out_path.unwrap_or_else(|| graph_path.clone());
+    let target = out_path
+        .unwrap_or_else(|| PathBuf::from("agent_state/semantic_manifest_proposals.json"));
+    let proposal_file = ProposalFile {
+        generated_at_ms: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0),
+        graph_path: graph_path.display().to_string(),
+        fn_total,
+        fn_with_any_error,
+        fn_error_rate: error_rate,
+        proposals,
+    };
     if write_mode {
-        std::fs::write(&target, serde_json::to_vec_pretty(&graph)?)?;
-        eprintln!("semantic_manifest: updated {updated} nodes -> {}", target.display());
+        if let Some(parent) = target.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        std::fs::write(&target, serde_json::to_vec_pretty(&proposal_file)?)?;
+        eprintln!(
+            "semantic_manifest: wrote {} proposals -> {}",
+            updated,
+            target.display()
+        );
     } else {
-        eprintln!("semantic_manifest: would update {updated} nodes (dry-run)");
+        eprintln!("semantic_manifest: would write {updated} proposals (dry-run)");
     }
     eprintln!(
         "semantic_manifest: fn_error_rate={:.3} ({}/{})",
@@ -711,5 +749,44 @@ fn main() -> anyhow::Result<()> {
             );
         }
     }
-    Ok(())
+    Ok(SemanticManifestRunReport {
+        updated,
+        fn_total,
+        fn_with_any_error,
+        fn_error_rate: error_rate,
+        target,
+    })
+}
+
+pub fn run_from_cli_args(args: &[String], workspace: PathBuf) -> anyhow::Result<SemanticManifestRunReport> {
+    let write_mode = args.iter().any(|a| a == "--write");
+    let max_error_rate = args
+        .windows(2)
+        .find(|w| w[0] == "--max-error-rate")
+        .and_then(|w| w[1].parse::<f64>().ok());
+    let out_path = args
+        .windows(2)
+        .find(|w| w[0] == "--out")
+        .map(|w| PathBuf::from(&w[1]));
+    let mut graph_path: Option<PathBuf> = None;
+    let mut i = 0usize;
+    while i < args.len() {
+        let arg = &args[i];
+        if arg == "--out" || arg == "--max-error-rate" {
+            i += 2;
+            continue;
+        }
+        if arg.ends_with(".json") {
+            graph_path = Some(PathBuf::from(arg));
+            break;
+        }
+        i += 1;
+    }
+    run_with_options(SemanticManifestRunOptions {
+        workspace,
+        graph_path: graph_path.unwrap_or_else(|| PathBuf::from("state/rustc/canon_mini_agent/graph.json")),
+        out_path: out_path.unwrap_or_else(|| PathBuf::from("agent_state/semantic_manifest_proposals.json")),
+        write_mode,
+        max_error_rate,
+    })
 }
