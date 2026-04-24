@@ -197,22 +197,42 @@ fn append_inbound_boundary_event(
     submit_only: bool,
 ) {
     state.frame_counter += 1;
-    append_jsonl(
-        "inbound.jsonl",
-        &json!({
-            "frame_counter": state.frame_counter,
-            "tab_id": tab_id,
-            "inbound_turn_id": turn_id,
-            "expected_turn_id": turn_id,
-            "endpoint_id": endpoint_id,
-            "transport_signal": boundary_kind,
-            "chunk": reason,
-            "payload_raw_len": reason.len(),
-            "boundary": true,
-            "stateful": stateful,
-            "submit_only": submit_only,
-        }),
+    let payload = inbound_boundary_event_payload(
+        state.frame_counter,
+        tab_id,
+        turn_id,
+        endpoint_id,
+        boundary_kind,
+        reason,
+        stateful,
+        submit_only,
     );
+    append_jsonl("inbound.jsonl", &payload);
+}
+
+fn inbound_boundary_event_payload(
+    frame_counter: u64,
+    tab_id: u32,
+    turn_id: u64,
+    endpoint_id: &str,
+    boundary_kind: &str,
+    reason: &str,
+    stateful: bool,
+    submit_only: bool,
+) -> Value {
+    json!({
+        "frame_counter": frame_counter,
+        "tab_id": tab_id,
+        "inbound_turn_id": turn_id,
+        "expected_turn_id": turn_id,
+        "endpoint_id": endpoint_id,
+        "transport_signal": boundary_kind,
+        "chunk": reason,
+        "payload_raw_len": reason.len(),
+        "boundary": true,
+        "stateful": stateful,
+        "submit_only": submit_only,
+    })
 }
 
 fn endpoint_role(endpoint_id: &str) -> &str {
