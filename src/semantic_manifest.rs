@@ -963,15 +963,19 @@ pub fn run_with_options(
 }
 
 fn manifest_has_error(manifest: &SemanticManifest) -> bool {
-    manifest.intent_class == MISSING
-        || manifest.resource == MISSING
+    manifest_scalar_has_error(manifest)
         || contains_missing(&manifest.inputs)
         || contains_missing(&manifest.outputs)
         || contains_missing(&manifest.effects)
         || contains_missing(&manifest.forbidden_effects)
-        || manifest.failure_mode == MISSING
         || contains_missing(&manifest.invariants)
         || contains_missing(&manifest.provenance)
+}
+
+fn manifest_scalar_has_error(manifest: &SemanticManifest) -> bool {
+    manifest.intent_class == MISSING
+        || manifest.resource == MISSING
+        || manifest.failure_mode == MISSING
 }
 
 fn contains_missing(values: &[String]) -> bool {
