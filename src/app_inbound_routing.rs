@@ -588,6 +588,34 @@ impl<'a> LlmResponseContext<'a> {
         );
     }
 
+    fn response_action_kind(raw: &str) -> Option<String> {
+        let json_body = raw
+            .trim()
+            .trim_start_matches("```json")
+            .trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim();
+        serde_json::from_str::<serde_json::Value>(json_body)
+            .ok()
+            .and_then(|v| v.get("action").and_then(|a| a.as_str()).map(str::to_string))
+    }
+
+    fn log_response_message_event(&self, step: usize, exchange_id: &str, raw: &str) {
+        log_message_event(
+            self.role,
+            self.endpoint,
+            self.prompt_kind,
+            step,
+            exchange_id,
+            "llm_response",
+            json!({
+                "submit_only": self.submit_only,
+                "response_bytes": raw.len(),
+                "raw": truncate(raw, MAX_SNIPPET),
+            }),
+        );
+    }
+
     fn log_response(
         &mut self,
         step: usize,
@@ -605,32 +633,8 @@ impl<'a> LlmResponseContext<'a> {
             self.submit_only,
             raw.len(),
         );
-        log_message_event(
-            self.role,
-            self.endpoint,
-            self.prompt_kind,
-            step,
-            exchange_id,
-            "llm_response",
-            json!({
-                "submit_only": self.submit_only,
-                "response_bytes": raw.len(),
-                "raw": truncate(raw, MAX_SNIPPET),
-            }),
-        );
-        let json_body = raw
-            .trim()
-            .trim_start_matches("```json")
-            .trim_start_matches("```")
-            .trim_end_matches("```")
-            .trim();
-        let action_kind = serde_json::from_str::<serde_json::Value>(json_body)
-            .ok()
-            .and_then(|v| {
-                v.get("action")
-                    .and_then(|a| a.as_str())
-                    .map(str::to_string)
-            });
+        self.log_response_message_event(step, exchange_id, raw);
+        let action_kind = Self::response_action_kind(raw);
         self.record_effect(crate::events::EffectEvent::LlmTurnOutput {
             tab_id,
             turn_id,
