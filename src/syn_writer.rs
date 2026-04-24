@@ -275,11 +275,7 @@ fn parse_signature(signature: Option<&str>) -> (Vec<String>, Vec<String>) {
     let inputs = if input_src.is_empty() {
         vec!["()".to_string()]
     } else {
-        input_src
-            .split(',')
-            .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty())
-            .collect::<Vec<_>>()
+        split_top_level_csv(input_src)
     };
     let tail = rest[close_idx + 1..].trim();
     let outputs = if let Some(out) = tail.strip_prefix("->") {
@@ -293,6 +289,39 @@ fn parse_signature(signature: Option<&str>) -> (Vec<String>, Vec<String>) {
         vec!["()".to_string()]
     };
     (inputs, outputs)
+}
+
+fn split_top_level_csv(v: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut start = 0usize;
+    let mut angle_depth = 0i32;
+    let mut paren_depth = 0i32;
+    let mut bracket_depth = 0i32;
+
+    for (idx, ch) in v.char_indices() {
+        match ch {
+            '<' => angle_depth += 1,
+            '>' => angle_depth = angle_depth.saturating_sub(1),
+            '(' => paren_depth += 1,
+            ')' => paren_depth = paren_depth.saturating_sub(1),
+            '[' => bracket_depth += 1,
+            ']' => bracket_depth = bracket_depth.saturating_sub(1),
+            ',' if angle_depth == 0 && paren_depth == 0 && bracket_depth == 0 => {
+                let part = v[start..idx].trim();
+                if !part.is_empty() {
+                    out.push(part.to_string());
+                }
+                start = idx + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+
+    let part = v[start..].trim();
+    if !part.is_empty() {
+        out.push(part.to_string());
+    }
+    out
 }
 
 fn normalize_list(items: &[String]) -> Vec<String> {

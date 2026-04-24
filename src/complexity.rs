@@ -1151,11 +1151,12 @@ fn complexity_entry_json(
     proxy: f64,
 ) -> serde_json::Value {
     let file = complexity_entry_file(s);
+    let identity = complexity_entry_identity(s, file);
     json!({
-        "symbol": s.symbol,
-        "file": file,
-        "line": s.line,
-        "mir_fingerprint": s.mir_fingerprint,
+        "symbol": identity.symbol,
+        "file": identity.file,
+        "line": identity.line,
+        "mir_fingerprint": identity.mir_fingerprint,
         "mir_blocks": blocks,
         "mir_stmts": stmts,
         "branch_score": branch_score,
@@ -1166,6 +1167,25 @@ fn complexity_entry_json(
 
 fn complexity_entry_file(s: &crate::semantic::SymbolSummary) -> String {
     shorten_display_path(&s.file)
+}
+
+struct ComplexityEntryIdentity<'a> {
+    symbol: &'a str,
+    file: String,
+    line: u32,
+    mir_fingerprint: &'a Option<String>,
+}
+
+fn complexity_entry_identity<'a>(
+    s: &'a crate::semantic::SymbolSummary,
+    file: String,
+) -> ComplexityEntryIdentity<'a> {
+    ComplexityEntryIdentity {
+        symbol: &s.symbol,
+        file,
+        line: s.line,
+        mir_fingerprint: &s.mir_fingerprint,
+    }
 }
 
 fn complexity_proxy(branch_score: Option<f64>, blocks: usize) -> f64 {
