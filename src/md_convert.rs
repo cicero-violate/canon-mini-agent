@@ -443,15 +443,20 @@ enum ObjectiveSection {
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
 fn parse_objective_level(title: &str) -> ObjectiveLevel {
-    if title.contains("🔴") || title.to_lowercase().contains("critical") {
+    let title_lower = title.to_lowercase();
+    if title_contains_level(title, &title_lower, "🔴", "critical") {
         ObjectiveLevel::Critical
-    } else if title.contains("🟠") || title.to_lowercase().contains("high") {
+    } else if title_contains_level(title, &title_lower, "🟠", "high") {
         ObjectiveLevel::High
-    } else if title.contains("🟡") || title.to_lowercase().contains("medium") {
+    } else if title_contains_level(title, &title_lower, "🟡", "medium") {
         ObjectiveLevel::Medium
     } else {
         ObjectiveLevel::Low
     }
+}
+
+fn title_contains_level(title: &str, title_lower: &str, marker: &str, word: &str) -> bool {
+    title.contains(marker) || title_lower.contains(word)
 }
 
 fn contains_any(text: &str, needles: &[&str]) -> bool {
