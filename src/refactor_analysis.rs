@@ -932,12 +932,7 @@ pub fn dead_impl_issues(
         return Vec::new();
     };
     let triples = idx.semantic_triples(None);
-    let mut impl_edges: Vec<(String, String)> = Vec::new();
-    for triple in &triples {
-        if triple.relation.eq_ignore_ascii_case("implements") {
-            impl_edges.push((triple.from.clone(), triple.to.clone()));
-        }
-    }
+    let impl_edges = implementation_edges(&triples);
     if impl_edges.is_empty() {
         return Vec::new();
     }
@@ -946,34 +941,46 @@ pub fn dead_impl_issues(
         if trait_has_dispatch_usage(&triples, &trait_symbol) {
             continue;
         }
-        out.push(Issue {
-            id: format!(
-                "auto_dead_impl_{crate_name}_{:x}",
-                stable_hash(&format!("{implementer}->{trait_symbol}"))
-            ),
-            title: format!(
-                "Unreferenced trait implementation: `{}` implements `{}`",
-                short_name(&implementer),
-                short_name(&trait_symbol)
-            ),
-            status: "open".to_string(),
-            priority: "low".to_string(),
-            kind: "redundancy".to_string(),
-            description: format!(
-                "Trait implementation edge `{implementer}` -> `{trait_symbol}` has no observed downstream trait usage in the semantic graph.\n\
-                 Remove or justify the impl to reduce maintenance overhead."
-            ),
-            scope: format!("crate:{crate_name}"),
-            metrics: json!({
-                "implementer": implementer,
-                "trait": trait_symbol,
-                "trait_dispatch_usage": 0
-            }),
-            discovered_by: "refactor_analyzer".to_string(),
-            ..Issue::default()
-        });
+        out.push(dead_impl_issue(crate_name, &implementer, &trait_symbol));
     }
     sorted_limited_issues(out, limit)
+}
+
+fn implementation_edges(triples: &[crate::semantic::SemanticTriple]) -> Vec<(String, String)> {
+    triples
+        .iter()
+        .filter(|triple| triple.relation.eq_ignore_ascii_case("implements"))
+        .map(|triple| (triple.from.clone(), triple.to.clone()))
+        .collect()
+}
+
+fn dead_impl_issue(crate_name: &str, implementer: &str, trait_symbol: &str) -> Issue {
+    Issue {
+        id: format!(
+            "auto_dead_impl_{crate_name}_{:x}",
+            stable_hash(&format!("{implementer}->{trait_symbol}"))
+        ),
+        title: format!(
+            "Unreferenced trait implementation: `{}` implements `{}`",
+            short_name(implementer),
+            short_name(trait_symbol)
+        ),
+        status: "open".to_string(),
+        priority: "low".to_string(),
+        kind: "redundancy".to_string(),
+        description: format!(
+            "Trait implementation edge `{implementer}` -> `{trait_symbol}` has no observed downstream trait usage in the semantic graph.\n\
+             Remove or justify the impl to reduce maintenance overhead."
+        ),
+        scope: format!("crate:{crate_name}"),
+        metrics: json!({
+            "implementer": implementer,
+            "trait": trait_symbol,
+            "trait_dispatch_usage": 0
+        }),
+        discovered_by: "refactor_analyzer".to_string(),
+        ..Issue::default()
+    }
 }
 
 fn trait_has_dispatch_usage(triples: &[crate::semantic::SemanticTriple], trait_symbol: &str) -> bool {
