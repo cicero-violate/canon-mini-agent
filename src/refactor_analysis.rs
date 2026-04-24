@@ -486,17 +486,9 @@ pub fn panic_surface_issues(
 ) -> Vec<Issue> {
     let mut out = Vec::new();
     for s in summaries {
-        if s.kind != "fn" {
+        let Some((blocks, panic_surface)) = panic_surface_candidate(s) else {
             continue;
-        }
-        let blocks = s.mir_blocks.unwrap_or(0);
-        if blocks == 0 || s.call_in <= 2 {
-            continue;
-        }
-        let panic_surface = s.assert_count as f64 / blocks.max(1) as f64;
-        if panic_surface <= 0.4 {
-            continue;
-        }
+        };
         let location = shorten_location(&s.file, s.line);
         out.push(Issue {
             id: format!("auto_panic_surface_{crate_name}_{:x}", stable_hash(&s.symbol)),
@@ -531,6 +523,18 @@ pub fn panic_surface_issues(
         });
     }
     sorted_limited_issues(out, limit)
+}
+
+fn panic_surface_candidate(s: &SymbolSummary) -> Option<(usize, f64)> {
+    if s.kind != "fn" {
+        return None;
+    }
+    let blocks = s.mir_blocks.unwrap_or(0);
+    if blocks == 0 || s.call_in <= 2 {
+        return None;
+    }
+    let panic_surface = s.assert_count as f64 / blocks.max(1) as f64;
+    (panic_surface > 0.4).then_some((blocks, panic_surface))
 }
 
 /// Intent: diagnostic_scan
