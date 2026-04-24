@@ -1617,72 +1617,20 @@ pub fn alpha_pathway_issues(
             .map(|s| shorten_location(&s.file, s.line))
             .unwrap_or_default();
 
-        out.push(Issue {
-            id: format!(
-                "auto_alpha_pathway_{crate_name}_{:x}",
-                stable_hash(&id_seed)
-            ),
-            title: format!(
-                "Alpha-equivalent pathway: {} ({} confirmed wrapper{})",
-                chain_display,
-                wrappers.len(),
-                if wrappers.len() == 1 { "" } else { "s" }
-            ),
-            status: "open".to_string(),
-            priority: if chain_depth >= 3 {
-                "medium".to_string()
-            } else {
-                "low".to_string()
-            },
-            kind: "pathway_elimination".to_string(),
-            description: format!(
-                "Functions [{chain_display}] form a confirmed alpha-equivalent wrapper \
-                 chain in crate `{crate_name}`. Every function carries the same canonical \
-                 type signature (verified by the compiler using De Bruijn index \
-                 normalization), and every caller is a compiler-proven pure delegate \
-                 with a linear MIR return path and no retained branching/drop/assert \
-                 behavior around the delegated call.\n\n\
-                 The canonical implementation is `{canonical_head}`. \
-                 The wrapper(s) {wrapper_list} are safe to delete.\n\n\
-                 **Execution model:** Redirect call sites → Delete wrappers → Verify\n\n\
-                 **Step 1 — Redirect call sites.**\n\
-                 For each wrapper in {wrapper_list}: find every call site (including \
-                 re-exports, trait impls, and test helpers) and replace it with a direct \
-                 call to `{canonical_head}`. Update any `use` imports. \
-                 If a wrapper is `pub`, confirm no external crate depends on it \
-                 before deletion (search workspace `Cargo.toml`).\n\n\
-                 **Step 2 — Delete the wrapper definitions.**\n\
-                 Remove the `fn` definitions for {wrapper_list}.\n\n\
-                 **Step 3 — Verify.**\n\
-                 Run `cargo build` and `cargo test --workspace`. \
-                 Fix any unresolved-symbol errors before closing.",
-            ),
+        out.push(alpha_pathway_issue(
+            crate_name,
+            pathway.canonical_sig_hash,
+            chain,
+            canonical_head,
+            canonical_head_short,
+            &wrappers,
+            chain_depth,
+            chain_display,
+            wrapper_list,
             location,
-            scope: format!("crate:{crate_name}"),
-            metrics: json!({
-                "task": "EliminateAlphaPathway",
-                "canonical_sig_hash": format!("{:016x}", pathway.canonical_sig_hash),
-                "chain_depth": chain_depth,
-                "chain": chain,
-                "canonical_head": canonical_head,
-                "wrapper_symbols": wrappers.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
-            }),
-            acceptance_criteria: vec![
-                format!(
-                    "canonical implementation `{}` retained and unmodified",
-                    canonical_head_short
-                ),
-                format!(
-                    "all call sites of {} redirected to `{}`",
-                    wrapper_list, canonical_head_short
-                ),
-                format!("{} deleted from codebase", wrapper_list),
-                "cargo build and cargo test --workspace pass".to_string(),
-            ],
-            evidence: chain_locs,
-            discovered_by: "refactor_analyzer".to_string(),
-            ..Issue::default()
-        });
+            chain_locs,
+            id_seed,
+        ));
     }
 
     // Prefer longer chains before truncating.
@@ -1702,6 +1650,105 @@ pub fn alpha_pathway_issues(
     out.truncate(limit);
     out.sort_by(|a, b| a.id.cmp(&b.id));
     out
+}
+
+fn alpha_pathway_issue(
+    crate_name: &str,
+    canonical_sig_hash: u64,
+    chain: &[String],
+    canonical_head: &str,
+    canonical_head_short: &str,
+    wrappers: &[&str],
+    chain_depth: usize,
+    chain_display: String,
+    wrapper_list: String,
+    location: String,
+    chain_locs: Vec<String>,
+    id_seed: String,
+) -> Issue {
+    Issue {
+        id: format!("auto_alpha_pathway_{crate_name}_{:x}", stable_hash(&id_seed)),
+        title: format!(
+            "Alpha-equivalent pathway: {} ({} confirmed wrapper{})",
+            chain_display,
+            wrappers.len(),
+            if wrappers.len() == 1 { "" } else { "s" }
+        ),
+        status: "open".to_string(),
+        priority: if chain_depth >= 3 { "medium" } else { "low" }.to_string(),
+        kind: "pathway_elimination".to_string(),
+        description: alpha_pathway_description(
+            crate_name,
+            canonical_head,
+            &chain_display,
+            &wrapper_list,
+        ),
+        location,
+        scope: format!("crate:{crate_name}"),
+        metrics: json!({
+            "task": "EliminateAlphaPathway",
+            "canonical_sig_hash": format!("{:016x}", canonical_sig_hash),
+            "chain_depth": chain_depth,
+            "chain": chain,
+            "canonical_head": canonical_head,
+            "wrapper_symbols": wrappers.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+        }),
+        acceptance_criteria: alpha_pathway_acceptance_criteria(
+            canonical_head_short,
+            &wrapper_list,
+        ),
+        evidence: chain_locs,
+        discovered_by: "refactor_analyzer".to_string(),
+        ..Issue::default()
+    }
+}
+
+fn alpha_pathway_description(
+    crate_name: &str,
+    canonical_head: &str,
+    chain_display: &str,
+    wrapper_list: &str,
+) -> String {
+    format!(
+        "Functions [{chain_display}] form a confirmed alpha-equivalent wrapper \
+         chain in crate `{crate_name}`. Every function carries the same canonical \
+         type signature (verified by the compiler using De Bruijn index \
+         normalization), and every caller is a compiler-proven pure delegate \
+         with a linear MIR return path and no retained branching/drop/assert \
+         behavior around the delegated call.\n\n\
+         The canonical implementation is `{canonical_head}`. \
+         The wrapper(s) {wrapper_list} are safe to delete.\n\n\
+         **Execution model:** Redirect call sites → Delete wrappers → Verify\n\n\
+         **Step 1 — Redirect call sites.**\n\
+         For each wrapper in {wrapper_list}: find every call site (including \
+         re-exports, trait impls, and test helpers) and replace it with a direct \
+         call to `{canonical_head}`. Update any `use` imports. \
+         If a wrapper is `pub`, confirm no external crate depends on it \
+         before deletion (search workspace `Cargo.toml`).\n\n\
+         **Step 2 — Delete the wrapper definitions.**\n\
+         Remove the `fn` definitions for {wrapper_list}.\n\n\
+         **Step 3 — Verify.**\n\
+         Run `cargo build` and `cargo test --workspace`. \
+         Fix any unresolved-symbol errors before closing."
+    )
+}
+
+fn alpha_pathway_acceptance_criteria(
+    canonical_head_short: &str,
+    wrapper_list: &str,
+) -> Vec<String> {
+    vec![
+        format!(
+            "canonical implementation `{}` retained and unmodified",
+            canonical_head_short
+        ),
+        format!(
+            "all call sites of {} redirected to `{}`",
+            wrapper_list, canonical_head_short
+        ),
+        format!("{} deleted from codebase", wrapper_list),
+        "cargo build and cargo test --workspace pass".to_string(),
+    ]
 }
 
 fn alpha_pathway_chain_locs(
