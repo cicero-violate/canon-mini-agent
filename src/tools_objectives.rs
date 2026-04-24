@@ -65,14 +65,22 @@ fn objective_operation_context_payload(
     requested: Option<&str>,
     objectives: &[crate::objectives::Objective],
 ) -> serde_json::Value {
+    let (requested_raw, requested_id) = objective_requested_context(requested);
     json!({
         "operation": op,
         "outcome": outcome,
-        "requested_raw": requested.map(str::to_string),
-        "requested_id": requested.map(normalize_objective_id_for_match),
+        "requested_raw": requested_raw,
+        "requested_id": requested_id,
         "compared_ids": objective_compared_ids(objectives),
         "compared_normalized_ids": objective_compared_normalized_ids(objectives),
     })
+}
+
+fn objective_requested_context(requested: Option<&str>) -> (Option<String>, Option<String>) {
+    (
+        requested.map(str::to_string),
+        requested.map(normalize_objective_id_for_match),
+    )
 }
 
 fn sort_objectives_for_view(file: &mut crate::objectives::ObjectivesFile, include_done: bool) {
