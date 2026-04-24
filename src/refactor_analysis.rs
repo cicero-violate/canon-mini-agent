@@ -1956,7 +1956,9 @@ fn issue_already_tracked(
     id: &str,
     location: &str,
 ) -> bool {
-    existing_ids.contains(id) || open_locations.iter().any(|l| l.contains(location))
+    existing_ids.contains(id)
+        || open_locations.contains(location)
+        || open_locations.iter().any(|l| l.contains(location))
 }
 
 /// Intent: diagnostic_scan
