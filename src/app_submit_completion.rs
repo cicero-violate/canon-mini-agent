@@ -1,11 +1,11 @@
 /// Intent: validation_gate
-/// Resource: error
+/// Resource: PLAN.json
 /// Inputs: &prompt_inputs::OrchestratorContext<'_>, &mut canonical_writer::CanonicalWriter, &app::RuntimeState
 /// Outputs: std::option::Option<bool>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: fs_read, state_write
+/// Forbidden: default_overwrite
+/// Invariants: plan_is_authoritative, side_effects_are_intentional
+/// Failure: fail_closed
 /// Provenance: rustc:facts + rustc:docstring
 fn preflight_executor_dispatch(
     ctx: &OrchestratorContext<'_>,
