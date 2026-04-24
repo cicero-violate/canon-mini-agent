@@ -569,14 +569,14 @@ pub fn generate_state_transition_dispersion_issues(workspace: &Path) -> Result<u
     Ok(mutated)
 }
 
-/// Intent: diagnostic_scan
-/// Resource: error
+/// Intent: canonical_write
+/// Resource: ISSUES.json
 /// Inputs: &std::path::Path
 /// Outputs: std::result::Result<usize, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: fs_read + fs_write
+/// Forbidden: uses_network + spawns_process + default_overwrite
+/// Invariants: plan_is_authoritative
+/// Failure: fail_closed
 /// Provenance: rustc:facts + rustc:docstring
 pub fn generate_planner_loop_fragmentation_issues(workspace: &Path) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
