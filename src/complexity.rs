@@ -1103,22 +1103,11 @@ fn process_crate(
     global: &mut Vec<serde_json::Value>,
     all_summaries: &mut Vec<crate::semantic::SymbolSummary>,
 ) -> serde_json::Value {
-    let idx = match SemanticIndex::load(workspace, crate_name) {
+    let idx = match load_complexity_index(workspace, crate_name) {
         Ok(idx) => idx,
-        Err(err) => {
-            return json!({
-                "crate": crate_name,
-                "status": "error",
-                "error": err.to_string(),
-            });
-        }
+        Err(error) => return graph_complexity_crate_error(crate_name, error),
     };
-
-    let mut items = collect_complexity_items(&idx, crate_name, global, all_summaries);
-
-    apply_objective_scores(&mut items);
-    items.sort_by(sort_by_objective_desc);
-    let top = items.into_iter().take(50).collect::<Vec<_>>();
+    let top = top_complexity_items(&idx, crate_name, global, all_summaries);
 
     json!({
         "crate": crate_name,
@@ -1126,6 +1115,30 @@ fn process_crate(
         "metric": "objective_score(B*0.6+R*0.4)",
         "top": top,
     })
+}
+
+fn load_complexity_index(workspace: &Path, crate_name: &str) -> Result<SemanticIndex> {
+    SemanticIndex::load(workspace, crate_name)
+}
+
+fn graph_complexity_crate_error(crate_name: &str, error: anyhow::Error) -> serde_json::Value {
+    json!({
+        "crate": crate_name,
+        "status": "error",
+        "error": error.to_string(),
+    })
+}
+
+fn top_complexity_items(
+    idx: &SemanticIndex,
+    crate_name: &str,
+    global: &mut Vec<serde_json::Value>,
+    all_summaries: &mut Vec<crate::semantic::SymbolSummary>,
+) -> Vec<serde_json::Value> {
+    let mut items = collect_complexity_items(idx, crate_name, global, all_summaries);
+    apply_objective_scores(&mut items);
+    items.sort_by(sort_by_objective_desc);
+    items.into_iter().take(50).collect()
 }
 
 fn collect_complexity_items(
