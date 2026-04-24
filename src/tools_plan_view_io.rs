@@ -142,19 +142,34 @@ fn render_plan_sorted_view_output(
     edges: &[Value],
 ) -> Result<String> {
     let mut output = serde_json::Map::new();
-    if let Some(version) = obj.get("version") {
-        output.insert("version".to_string(), version.clone());
+    copy_plan_view_metadata(obj, &mut output);
+    insert_plan_view_collections(&mut output, order, ordered_tasks, edges);
+    Ok(serde_json::to_string_pretty(&Value::Object(output))?)
+}
+
+fn copy_plan_view_metadata(
+    obj: &serde_json::Map<String, Value>,
+    output: &mut serde_json::Map<String, Value>,
+) {
+    for key in ["version", "status"] {
+        if let Some(value) = obj.get(key) {
+            output.insert(key.to_string(), value.clone());
+        }
     }
-    if let Some(status) = obj.get("status") {
-        output.insert("status".to_string(), status.clone());
-    }
+}
+
+fn insert_plan_view_collections(
+    output: &mut serde_json::Map<String, Value>,
+    order: Vec<String>,
+    ordered_tasks: Vec<Value>,
+    edges: &[Value],
+) {
     output.insert(
         "order".to_string(),
         Value::Array(order.into_iter().map(Value::String).collect()),
     );
     output.insert("tasks".to_string(), Value::Array(ordered_tasks));
     output.insert("edges".to_string(), Value::Array(edges.to_vec()));
-    Ok(serde_json::to_string_pretty(&Value::Object(output))?)
 }
 
 fn insert_plan_edge_adjacency(
