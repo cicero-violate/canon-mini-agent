@@ -31,71 +31,63 @@ fn pass_unit_result(result: Result<()>) -> Result<()> {
     result
 }
 
-fn run_graph_report_mode(args: &[String], workspace: &PathBuf) -> Option<Result<()>> {
-    const GRAPH_REPORT_MODES: &[(&str, fn(&Path) -> Result<PathBuf>)] = &[
-        (
-            "--graph-complexity-only",
-            canon_mini_agent::complexity::write_graph_only_complexity_report,
-        ),
-        (
-            "--graph-verify-snapshot",
-            canon_mini_agent::complexity::write_graph_verification_snapshot,
-        ),
-        (
-            "--graph-verify-delta",
-            canon_mini_agent::complexity::write_graph_delta_report,
-        ),
-    ];
+const GRAPH_REPORT_MODES: &[(&str, fn(&Path) -> Result<PathBuf>)] = &[
+    (
+        "--graph-complexity-only",
+        canon_mini_agent::complexity::write_graph_only_complexity_report,
+    ),
+    (
+        "--graph-verify-snapshot",
+        canon_mini_agent::complexity::write_graph_verification_snapshot,
+    ),
+    (
+        "--graph-verify-delta",
+        canon_mini_agent::complexity::write_graph_delta_report,
+    ),
+];
 
-    run_flagged_mode(args, workspace, GRAPH_REPORT_MODES, print_generated_path)
-}
-
-fn run_graph_issue_mode(args: &[String], workspace: &PathBuf) -> Option<Result<()>> {
-    const GRAPH_ISSUE_MODES: &[(&str, fn(&Path) -> Result<usize>)] = &[
-        (
-            "--artifact-writer-only",
-            canon_mini_agent::graph_metrics::generate_artifact_writer_dispersion_issues,
-        ),
-        (
-            "--error-shaping-only",
-            canon_mini_agent::graph_metrics::generate_error_shaping_dispersion_issues,
-        ),
-        (
-            "--state-transition-only",
-            canon_mini_agent::graph_metrics::generate_state_transition_dispersion_issues,
-        ),
-        (
-            "--planner-loop-only",
-            canon_mini_agent::graph_metrics::generate_planner_loop_fragmentation_issues,
-        ),
-        (
-            "--implicit-state-machine-only",
-            canon_mini_agent::graph_metrics::generate_implicit_state_machine_issues,
-        ),
-        (
-            "--effect-boundary-only",
-            canon_mini_agent::graph_metrics::generate_effect_boundary_leak_issues,
-        ),
-        (
-            "--logging-dispersion-only",
-            canon_mini_agent::graph_metrics::generate_logging_dispersion_issues,
-        ),
-        (
-            "--process-spawn-only",
-            canon_mini_agent::graph_metrics::generate_process_spawn_dispersion_issues,
-        ),
-        (
-            "--network-usage-only",
-            canon_mini_agent::graph_metrics::generate_network_usage_dispersion_issues,
-        ),
-        (
-            "--representation-fanout-only",
-            canon_mini_agent::graph_metrics::generate_representation_fanout_issues,
-        ),
-    ];
-
-    run_flagged_mode(args, workspace, GRAPH_ISSUE_MODES, discard_generated_count)
-}
+const GRAPH_ISSUE_MODES: &[(&str, fn(&Path) -> Result<usize>)] = &[
+    (
+        "--artifact-writer-only",
+        canon_mini_agent::graph_metrics::generate_artifact_writer_dispersion_issues,
+    ),
+    (
+        "--error-shaping-only",
+        canon_mini_agent::graph_metrics::generate_error_shaping_dispersion_issues,
+    ),
+    (
+        "--state-transition-only",
+        canon_mini_agent::graph_metrics::generate_state_transition_dispersion_issues,
+    ),
+    (
+        "--planner-loop-only",
+        canon_mini_agent::graph_metrics::generate_planner_loop_fragmentation_issues,
+    ),
+    (
+        "--implicit-state-machine-only",
+        canon_mini_agent::graph_metrics::generate_implicit_state_machine_issues,
+    ),
+    (
+        "--effect-boundary-only",
+        canon_mini_agent::graph_metrics::generate_effect_boundary_leak_issues,
+    ),
+    (
+        "--logging-dispersion-only",
+        canon_mini_agent::graph_metrics::generate_logging_dispersion_issues,
+    ),
+    (
+        "--process-spawn-only",
+        canon_mini_agent::graph_metrics::generate_process_spawn_dispersion_issues,
+    ),
+    (
+        "--network-usage-only",
+        canon_mini_agent::graph_metrics::generate_network_usage_dispersion_issues,
+    ),
+    (
+        "--representation-fanout-only",
+        canon_mini_agent::graph_metrics::generate_representation_fanout_issues,
+    ),
+];
 
 fn run_cfg_region_mode(workspace: &Path) -> Result<()> {
     canon_mini_agent::graph_metrics::generate_scc_region_reduction_issues(workspace)
@@ -109,30 +101,24 @@ fn run_cfg_region_mode_if_selected(args: &[String], workspace: &Path) -> Option<
     canon_mini_agent::has_flag(args, "--cfg-region-only").then(|| run_cfg_region_mode(workspace))
 }
 
-fn run_simple_issue_mode(args: &[String], workspace: &PathBuf) -> Option<Result<()>> {
-    const SIMPLE_ISSUE_MODES: &[(&str, fn(&Path) -> Result<()>)] = &[
-        ("--scc-region-only", |workspace| {
-            canon_mini_agent::graph_metrics::generate_scc_region_reduction_issues(workspace)
-                .map(|_| ())
-        }),
-        ("--dominator-region-only", |workspace| {
-            canon_mini_agent::graph_metrics::generate_dominator_region_reduction_issues(workspace)
-                .map(|_| ())
-        }),
-        ("--alpha-only", |workspace| {
-            canon_mini_agent::refactor_analysis::generate_alpha_pathway_issues(workspace)
-                .map(|_| ())
-        }),
-    ];
-
-    run_flagged_mode(args, workspace, SIMPLE_ISSUE_MODES, pass_unit_result)
-}
+const SIMPLE_ISSUE_MODES: &[(&str, fn(&Path) -> Result<()>)] = &[
+    ("--scc-region-only", |workspace| {
+        canon_mini_agent::graph_metrics::generate_scc_region_reduction_issues(workspace).map(|_| ())
+    }),
+    ("--dominator-region-only", |workspace| {
+        canon_mini_agent::graph_metrics::generate_dominator_region_reduction_issues(workspace)
+            .map(|_| ())
+    }),
+    ("--alpha-only", |workspace| {
+        canon_mini_agent::refactor_analysis::generate_alpha_pathway_issues(workspace).map(|_| ())
+    }),
+];
 
 fn run_selected_mode(args: &[String], workspace: &PathBuf) -> Option<Result<()>> {
-    run_graph_report_mode(args, workspace)
-        .or_else(|| run_graph_issue_mode(args, workspace))
+    run_flagged_mode(args, workspace, GRAPH_REPORT_MODES, print_generated_path)
+        .or_else(|| run_flagged_mode(args, workspace, GRAPH_ISSUE_MODES, discard_generated_count))
         .or_else(|| run_cfg_region_mode_if_selected(args, workspace))
-        .or_else(|| run_simple_issue_mode(args, workspace))
+        .or_else(|| run_flagged_mode(args, workspace, SIMPLE_ISSUE_MODES, pass_unit_result))
 }
 
 fn workspace_from_args(args: &[String]) -> Result<PathBuf> {
