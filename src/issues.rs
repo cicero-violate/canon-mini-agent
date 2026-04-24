@@ -50,8 +50,12 @@ fn issue_status_counts(file: &IssuesFile) -> BTreeMap<String, usize> {
     let mut out = BTreeMap::new();
     for issue in &file.issues {
         let status = issue.status.trim();
-        let status = if status.is_empty() { "unknown" } else { status };
-        *out.entry(status.to_string()).or_insert(0) += 1;
+        let status = if status.is_empty() {
+            "unknown".to_string()
+        } else {
+            status.to_ascii_lowercase()
+        };
+        *out.entry(status).or_insert(0) += 1;
     }
     out
 }

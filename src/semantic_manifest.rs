@@ -5,6 +5,8 @@
 //!
 //! Usage:
 //!   semantic_manifest [graph.json] [--write] [--out path]
+//!   semantic_manifest [graph.json] --write
+//!     writes semantic_manifest fields back into graph.json in place.
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
@@ -1012,10 +1014,19 @@ pub fn run_from_cli_args(args: &[String], workspace: PathBuf) -> anyhow::Result<
         }
         i += 1;
     }
+    let resolved_graph_path =
+        graph_path.unwrap_or_else(|| PathBuf::from("state/rustc/canon_mini_agent/graph.json"));
+    let resolved_out_path = out_path.unwrap_or_else(|| {
+        if write_mode {
+            resolved_graph_path.clone()
+        } else {
+            PathBuf::from("agent_state/semantic_manifest_proposals.json")
+        }
+    });
     run_with_options(SemanticManifestRunOptions {
         workspace,
-        graph_path: graph_path.unwrap_or_else(|| PathBuf::from("state/rustc/canon_mini_agent/graph.json")),
-        out_path: out_path.unwrap_or_else(|| PathBuf::from("agent_state/semantic_manifest_proposals.json")),
+        graph_path: resolved_graph_path,
+        out_path: resolved_out_path,
         write_mode,
         max_error_rate,
     })

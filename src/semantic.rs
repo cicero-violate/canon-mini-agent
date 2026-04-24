@@ -2074,6 +2074,9 @@ fn include_bridge_edge_in_unified_adjacency(edge: &BridgeEdge) -> bool {
     if edge.relation != "Call" {
         return true;
     }
+    if edge.to.starts_with("path::") {
+        return false;
+    }
     !is_low_signal_bridge_call_target(&edge.to)
 }
 
