@@ -943,15 +943,7 @@ pub fn dead_impl_issues(
     }
     let mut out = Vec::new();
     for (implementer, trait_symbol) in impl_edges {
-        let trait_used = triples.iter().any(|triple| {
-            if triple.relation.eq_ignore_ascii_case("implements") {
-                return false;
-            }
-            triple.from == trait_symbol
-                || triple.to == trait_symbol
-                || triple.to.contains(&format!("dyn {trait_symbol}"))
-        });
-        if trait_used {
+        if trait_has_dispatch_usage(&triples, &trait_symbol) {
             continue;
         }
         out.push(Issue {
@@ -982,6 +974,14 @@ pub fn dead_impl_issues(
         });
     }
     sorted_limited_issues(out, limit)
+}
+
+fn trait_has_dispatch_usage(triples: &[crate::semantic::SemanticTriple], trait_symbol: &str) -> bool {
+    let dyn_trait = format!("dyn {trait_symbol}");
+    triples.iter().any(|triple| {
+        !triple.relation.eq_ignore_ascii_case("implements")
+            && (triple.from == trait_symbol || triple.to == trait_symbol || triple.to.contains(&dyn_trait))
+    })
 }
 
 /// Intent: diagnostic_scan
