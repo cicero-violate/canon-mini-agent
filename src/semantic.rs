@@ -2124,15 +2124,25 @@ fn compact_bridge_edges(graph: &mut CrateGraph) {
 
 fn is_low_signal_bridge_call_target(target: &str) -> bool {
     let target = target.strip_prefix("path::").unwrap_or(target);
+    is_low_signal_bridge_call_prefix(target) || is_low_signal_bridge_call_exact(target)
+}
+
+fn is_low_signal_bridge_call_prefix(target: &str) -> bool {
     target.starts_with("std::ops::Deref::deref")
         || target.starts_with("core::fmt::rt::Argument::")
-        || target == "std::string::ToString::to_string"
         || target.starts_with("std::fmt::Arguments::")
-        || target == "std::convert::Into::into"
-        || target == "std::ops::Try::branch"
-        || target == "std::ops::FromResidual::from_residual"
-        || target == "std::cmp::PartialEq::eq"
-        || target == "std::hint::must_use"
+}
+
+fn is_low_signal_bridge_call_exact(target: &str) -> bool {
+    matches!(
+        target,
+        "std::string::ToString::to_string"
+            | "std::convert::Into::into"
+            | "std::ops::Try::branch"
+            | "std::ops::FromResidual::from_residual"
+            | "std::cmp::PartialEq::eq"
+            | "std::hint::must_use"
+    )
 }
 
 fn edge_is_call(edge: &GraphEdge) -> bool {
