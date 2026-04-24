@@ -440,6 +440,20 @@ fn sweep_timed_out_submitted_turns(
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
+fn apply_route_gate_signal(
+    state: &mut std::collections::HashMap<String, String>,
+    count: usize,
+    threshold: usize,
+    actor_kind: &str,
+    error_key: &str,
+    error_value: &str,
+) {
+    if count >= threshold {
+        state.insert("actor_kind".to_string(), actor_kind.to_string());
+        state.insert(error_key.to_string(), error_value.to_string());
+    }
+}
+
 fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str) -> bool {
     let ws = std::path::PathBuf::from(workspace());
     let blockers = crate::blockers::load_blockers(&ws);
@@ -455,10 +469,7 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
         now_ms,
         5 * 60 * 1000,
     );
-    if solo_invalid_schema_count >= 3 {
-        state.insert("actor_kind".to_string(), "solo".to_string());
-        state.insert("error_class".to_string(), "invalid_schema".to_string());
-    }
+    apply_route_gate_signal(&mut state, solo_invalid_schema_count, 3, "solo", "error_class", "invalid_schema");
 
     let solo_verification_failed_count = crate::blockers::count_class_recent(
         &blockers,
@@ -467,10 +478,7 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
         now_ms,
         5 * 60 * 1000,
     );
-    if solo_verification_failed_count >= 1 {
-        state.insert("actor_kind".to_string(), "solo".to_string());
-        state.insert("error_class".to_string(), "verification_failed".to_string());
-    }
+    apply_route_gate_signal(&mut state, solo_verification_failed_count, 1, "solo", "error_class", "verification_failed");
 
     let executor_invalid_schema_count = crate::blockers::count_class_recent(
         &blockers,
@@ -479,10 +487,7 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
         now_ms,
         5 * 60 * 1000,
     );
-    if executor_invalid_schema_count >= 3 {
-        state.insert("actor_kind".to_string(), "executor".to_string());
-        state.insert("error_class".to_string(), "invalid_schema".to_string());
-    }
+    apply_route_gate_signal(&mut state, executor_invalid_schema_count, 3, "executor", "error_class", "invalid_schema");
 
     let unauthorized_plan_op_count = crate::blockers::count_class_recent(
         &blockers,
