@@ -65,6 +65,12 @@ fn graph_only_entry_json(entry: &GraphOnlyEntry) -> serde_json::Value {
         "symbol": entry.symbol,
         "file": shorten_display_path(&entry.file),
         "line": entry.line,
+        "metrics": graph_only_entry_metrics_json(entry),
+    })
+}
+
+fn graph_only_entry_metrics_json(entry: &GraphOnlyEntry) -> serde_json::Value {
+    json!({
         "mir_blocks": graph_only_mir_blocks(entry),
         "mir_stmts": graph_only_mir_stmts(entry),
         "branch_score": graph_only_branch_score(entry),
