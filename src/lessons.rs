@@ -1,7 +1,8 @@
 /// Lessons pipeline: two-stage pattern learning system.
 ///
 /// Stage 1 — Synthesis (automatic, runs after each planner cycle):
-///   Reads the action log, detects failure patterns AND successful action sequences,
+///   Reads canonical `ActionResultRecorded` events from `agent_state/tlog.ndjson`,
+///   detects failure patterns AND successful action sequences,
 ///   and writes/merges results into `agent_state/lessons_candidates.json`.
 ///   Candidates are born with `status: "pending"`.
 ///
@@ -12,12 +13,11 @@
 ///   Rejected candidates persist with `status: "rejected"` so they are not re-surfaced.
 use std::collections::{BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
-use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::prompt_inputs::{LessonEntry, LessonEntryStatus, LessonsArtifact};
 
@@ -25,11 +25,11 @@ use crate::prompt_inputs::{LessonEntry, LessonEntryStatus, LessonsArtifact};
 
 const LESSONS_FILE: &str = "agent_state/lessons.json";
 const CANDIDATES_FILE: &str = "agent_state/lessons_candidates.json";
-const ACTION_LOG_SUBPATH: &str = "default/actions.jsonl";
+const TLOG_SUBPATH: &str = "tlog.ndjson";
 
 // ── Tuning knobs ──────────────────────────────────────────────────────────────
 
-/// Lines to read from the tail of the action log each synthesis run.
+/// Recent canonical tlog records to scan each synthesis run.
 const MAX_LINES_TO_SCAN: usize = 4000;
 /// Minimum times a failure pattern must recur before it becomes a candidate.
 const MIN_FAILURE_OCCURRENCES: usize = 2;
@@ -324,12 +324,12 @@ fn op_write_lessons(
 
 fn synthesize_candidates(workspace: &Path) -> Result<()> {
     let agent_state = crate::constants::agent_state_dir();
-    let log_path = Path::new(agent_state).join(ACTION_LOG_SUBPATH);
-    if !log_path.exists() {
+    let tlog_path = Path::new(agent_state).join(TLOG_SUBPATH);
+    if !tlog_path.exists() {
         return Ok(());
     }
 
-    let entries = read_tail_entries(&log_path, MAX_LINES_TO_SCAN);
+    let entries = read_recent_action_result_entries(&tlog_path, MAX_LINES_TO_SCAN);
     if entries.is_empty() {
         return Ok(());
     }
@@ -1135,18 +1135,47 @@ fn stable_id(prefix: &str, key: &str) -> String {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn read_tail_entries(path: &Path, max_lines: usize) -> Vec<Value> {
-    let file = match std::fs::File::open(path) {
-        Ok(f) => f,
-        Err(_) => return vec![],
-    };
-    let reader = BufReader::new(file);
-    let lines: Vec<String> = reader.lines().flatten().collect();
-    let start = lines.len().saturating_sub(max_lines);
-    lines[start..]
-        .iter()
-        .filter_map(|l| serde_json::from_str(l).ok())
+fn read_recent_action_result_entries(path: &Path, max_records: usize) -> Vec<Value> {
+    crate::tlog::Tlog::read_recent_records(path, max_records)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(action_result_record_to_lesson_entry)
         .collect()
+}
+
+fn action_result_record_to_lesson_entry(record: crate::tlog::TlogRecord) -> Option<Value> {
+    let crate::events::Event::Effect {
+        event:
+            crate::events::EffectEvent::ActionResultRecorded {
+                role,
+                step,
+                command_id,
+                action_kind,
+                task_id,
+                objective_id,
+                ok,
+                result,
+                ..
+            },
+    } = record.event
+    else {
+        return None;
+    };
+
+    Some(json!({
+        "kind": "tool",
+        "phase": "result",
+        "actor": role,
+        "step": step,
+        "command_id": command_id,
+        "action": action_kind,
+        "task_id": task_id.unwrap_or_default(),
+        "objective_id": objective_id.unwrap_or_default(),
+        "ok": ok,
+        "text": result,
+        "seq": record.seq,
+        "ts_ms": record.ts_ms,
+    }))
 }
 
 /// Intent: pure_transform
