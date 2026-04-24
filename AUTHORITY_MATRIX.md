@@ -18,6 +18,9 @@ This file defines the intended authority class for runtime artifacts.
 | `agent_state/blockers.json`                        | projection | Rebuildable blocker projection with tlog-backed recovery.                             |
 | `agent_state/lessons.json`                         | projection | Synthesized lessons projection backed by snapshot effects.                            |
 | `agent_state/enforced_invariants.json`             | projection | Synthesized enforced-invariants projection backed by snapshot effects.                |
+| `state/rustc/canon_mini_agent/graph.json`          | projection | Rebuildable rustc-derived semantic graph; projection-driving reads should go through semantic graph helpers. |
+| `agent_state/semantic_manifest_proposals.json`     | projection | Rebuildable semantic manifest sidecar derived from `graph.json` and docstrings.       |
+| `agent_state/safe_patch_candidates.json`           | projection | Rebuildable semantic ranking output derived from `graph.json` and manifest proposals. |
 | `agent_state/last_message_to_<role>.json`          | ephemeral  | Delivery cache only; no-writer readers must prefer canonical tlog entries.            |
 | `agent_state/external_user_message_to_<role>.json` | ephemeral  | Delivery cache only; no-writer readers must prefer canonical tlog entries.            |
 | `agent_state/wakeup_<role>.flag`                   | ephemeral  | Legacy wake scratch file (deprecated); canonical wake routing uses `WakeSignalQueued` in tlog/SystemState. |
@@ -31,6 +34,7 @@ This file defines the intended authority class for runtime artifacts.
 3. Runtime mutation of protected projections (`OBJECTIVES`, `ISSUES`, `lessons`, `enforced_invariants`) must go through writer-aware projector functions.
 4. On boot/replay, projection files are reconciled from canonical snapshots when missing/stale/divergent.
 5. Wake routing authority is canonical control state (`WakeSignalQueued` / `WakeSignalConsumed` via `SystemState.wake_signals_pending`), not physical `wakeup_*.flag` files.
+6. Projection-driving graph reads must stay behind semantic loader/helper modules so guardrails do not mix protected artifact path construction with ad hoc raw file reads.
 
 ## Gate + Authority Function Map (Code-Derived)
 
@@ -68,6 +72,7 @@ Derived from source/tests only (no `SPEC.md` read).
 - `src/blockers.rs`: `load_blockers(...)` (+ `load_blockers_from_tlog(...)`) — reads blockers projection, falls back to tlog records.
 - `src/prompt_inputs.rs`: `read_lessons_or_empty(...)` — prompt-safe lessons loader path (structured parse + fallback behavior).
 - `src/prompt_inputs.rs`: `load_planner_inputs(...)`, `load_executor_diff_inputs(...)`, `load_single_role_inputs(...)` — centralized prompt input loaders.
+- `src/semantic_contract.rs`: `graph_path(...)`, `load_semantic_manifest_metrics(...)`, `run_semantic_sync(...)` — semantic graph/sidecar authority surface for projection refresh after successful `apply_patch` + `cargo check`.
 
 ### Objective authority file helpers
 - `src/objectives.rs`: `runtime_objectives_path(...)`, `resolve_objectives_path(...)`, `ensure_runtime_objectives_file(...)` — objective authority path resolution/bootstrap.
