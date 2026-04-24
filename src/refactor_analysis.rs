@@ -1207,92 +1207,125 @@ pub fn dark_assignment_issues(
             continue;
         };
 
-        let arg_count = parse_fn_arg_count(s.signature.as_deref());
-        let analysis = cfg.reaching_definition_analysis();
-        let liveness = cfg.live_out_per_stmt();
-        let mut dark_writes: Vec<StmtKey> = Vec::new();
-        for key in cfg.write_nodes() {
-            let Some(stmt) = cfg.stmt(key) else { continue };
-            if !is_proof_safe_assignment(stmt, cfg.block_terminator(key.block).unwrap_or("")) {
-                continue;
-            }
-            if is_return_or_arg_local(&stmt.written_local, arg_count) {
-                continue;
-            }
-            let live_out = liveness.get(&key).cloned().unwrap_or_default();
-            if live_out.contains(&stmt.written_local) {
-                continue;
-            }
-            if analysis.used_defs.contains(&key) {
-                continue;
-            }
-            dark_writes.push(key);
-        }
+        let dark_writes = dark_writes_for_cfg(&cfg, parse_fn_arg_count(s.signature.as_deref()));
         if dark_writes.is_empty() {
             continue;
         }
 
-        let dark_local_count = dark_writes
-            .iter()
-            .filter_map(|k| cfg.stmt(*k).map(|s| s.written_local.clone()))
-            .collect::<HashSet<_>>()
-            .len();
+        let dark_local_count = dark_local_count(&cfg, &dark_writes);
         let mir_stmts = s.mir_stmts.unwrap_or(0);
         let dark_ratio = dark_writes.len() as f64 / mir_stmts.max(1) as f64;
         if dark_ratio <= 0.0 {
             continue;
         }
 
-        let location = shorten_location(&s.file, s.line);
-        let mut dark_locals = dark_writes
-            .iter()
-            .filter_map(|k| cfg.stmt(*k).map(|s| s.written_local.clone()))
-            .collect::<Vec<_>>();
-        dark_locals.sort();
-        dark_locals.dedup();
-        dark_locals.truncate(8);
-        let has_exit_postdom = dark_writes
-            .iter()
-            .all(|k| cfg.has_exit_postdominator(k.block));
-        let confidence_tier = if has_exit_postdom { "high" } else { "medium" };
-        out.push(Issue {
-            id: format!("auto_dark_assign_{crate_name}_{:x}", stable_hash(&s.symbol)),
-            title: format!(
-                "Dark assignments in `{}` ({} dead write(s))",
-                short_name(&s.symbol),
-                dark_writes.len()
-            ),
-            status: "open".to_string(),
-            priority: "low".to_string(),
-            kind: "redundancy".to_string(),
-            description: format!(
-                "Function `{}` has writes proven dead by reaching-definitions + liveness: \
-                 no reachable read before overwrite/exit for these writes.",
-                s.symbol
-            ),
-            location: location.clone(),
-            scope: format!("crate:{crate_name}"),
-            metrics: json!({
-                "task": "RemoveDarkComputation",
-                "dark_local_count": dark_local_count,
-                "dark_write_count": dark_writes.len(),
-                "mir_stmts": mir_stmts,
-                "dark_ratio": dark_ratio,
-                "sample_dark_locals": dark_locals,
-                "confidence_tier": confidence_tier,
-                "correctness_level": confidence_tier == "high",
-            }),
-            acceptance_criteria: vec![
-                "dead writes removed or justified".to_string(),
-                "build and tests pass".to_string(),
-            ],
-            evidence: vec![format!("location: {location}")],
-            discovered_by: "refactor_analyzer".to_string(),
-            ..Issue::default()
-        });
+        out.push(dark_assignment_issue(
+            crate_name,
+            s,
+            &cfg,
+            &dark_writes,
+            dark_local_count,
+            mir_stmts,
+            dark_ratio,
+        ));
     }
     out.sort_by(|a, b| a.id.cmp(&b.id));
     out
+}
+
+fn dark_writes_for_cfg(cfg: &FunctionCfg, arg_count: usize) -> Vec<StmtKey> {
+    let analysis = cfg.reaching_definition_analysis();
+    let liveness = cfg.live_out_per_stmt();
+    let mut dark_writes = Vec::new();
+    for key in cfg.write_nodes() {
+        let Some(stmt) = cfg.stmt(key) else { continue };
+        if !is_proof_safe_assignment(stmt, cfg.block_terminator(key.block).unwrap_or("")) {
+            continue;
+        }
+        if is_return_or_arg_local(&stmt.written_local, arg_count) {
+            continue;
+        }
+        let live_out = liveness.get(&key).cloned().unwrap_or_default();
+        if live_out.contains(&stmt.written_local) || analysis.used_defs.contains(&key) {
+            continue;
+        }
+        dark_writes.push(key);
+    }
+    dark_writes
+}
+
+fn dark_local_count(cfg: &FunctionCfg, dark_writes: &[StmtKey]) -> usize {
+    dark_writes
+        .iter()
+        .filter_map(|k| cfg.stmt(*k).map(|s| s.written_local.clone()))
+        .collect::<HashSet<_>>()
+        .len()
+}
+
+fn sample_dark_locals(cfg: &FunctionCfg, dark_writes: &[StmtKey]) -> Vec<String> {
+    let mut dark_locals = dark_writes
+        .iter()
+        .filter_map(|k| cfg.stmt(*k).map(|s| s.written_local.clone()))
+        .collect::<Vec<_>>();
+    dark_locals.sort();
+    dark_locals.dedup();
+    dark_locals.truncate(8);
+    dark_locals
+}
+
+fn dark_assignment_issue(
+    crate_name: &str,
+    summary: &SymbolSummary,
+    cfg: &FunctionCfg,
+    dark_writes: &[StmtKey],
+    dark_local_count: usize,
+    mir_stmts: usize,
+    dark_ratio: f64,
+) -> Issue {
+    let location = shorten_location(&summary.file, summary.line);
+    let confidence_tier = if dark_writes
+        .iter()
+        .all(|k| cfg.has_exit_postdominator(k.block))
+    {
+        "high"
+    } else {
+        "medium"
+    };
+    Issue {
+        id: format!("auto_dark_assign_{crate_name}_{:x}", stable_hash(&summary.symbol)),
+        title: format!(
+            "Dark assignments in `{}` ({} dead write(s))",
+            short_name(&summary.symbol),
+            dark_writes.len()
+        ),
+        status: "open".to_string(),
+        priority: "low".to_string(),
+        kind: "redundancy".to_string(),
+        description: format!(
+            "Function `{}` has writes proven dead by reaching-definitions + liveness: \
+             no reachable read before overwrite/exit for these writes.",
+            summary.symbol
+        ),
+        location: location.clone(),
+        scope: format!("crate:{crate_name}"),
+        metrics: json!({
+            "task": "RemoveDarkComputation",
+            "dark_local_count": dark_local_count,
+            "dark_write_count": dark_writes.len(),
+            "mir_stmts": mir_stmts,
+            "dark_ratio": dark_ratio,
+            "sample_dark_locals": sample_dark_locals(cfg, dark_writes),
+            "confidence_tier": confidence_tier,
+            "correctness_level": confidence_tier == "high",
+        }),
+        acceptance_criteria: vec![
+            "dead writes removed or justified".to_string(),
+            "build and tests pass".to_string(),
+        ],
+        evidence: vec![format!("location: {location}")],
+        discovered_by: "refactor_analyzer".to_string(),
+        ..Issue::default()
+    }
 }
 
 fn dark_assignment_candidates(
