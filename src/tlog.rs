@@ -174,10 +174,23 @@ fn observed_seq_from_tail(path: &Path) -> Option<u64> {
     file.read_to_end(&mut tail).ok()?;
     let tail = String::from_utf8_lossy(&tail);
 
-    tail.lines()
-        .rev()
-        .find(|line| !line.trim().is_empty())
-        .and_then(seq_from_record_fragment)
+    let mut line_count = 0_u64;
+    let mut max_seq = 0_u64;
+
+    for line in tail.lines().filter(|line| !line.trim().is_empty()) {
+        line_count += 1;
+        if let Some(seq) = seq_from_record_fragment(line) {
+            max_seq = max_seq.max(seq);
+        }
+    }
+
+    if start == 0 {
+        Some(line_count.max(max_seq))
+    } else if max_seq > 0 {
+        Some(max_seq)
+    } else {
+        None
+    }
 }
 
 fn seq_from_record_fragment(fragment: &str) -> Option<u64> {

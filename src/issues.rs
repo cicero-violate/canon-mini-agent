@@ -20,10 +20,23 @@ use crate::constants::ISSUES_FILE;
 pub fn persist_issues_projection_with_writer(
     workspace: &Path,
     file: &IssuesFile,
-    writer: Option<&mut crate::canonical_writer::CanonicalWriter>,
+    mut writer: Option<&mut crate::canonical_writer::CanonicalWriter>,
     subject: &str,
 ) -> Result<()> {
     let canonical = serde_json::to_string_pretty(file)?;
+    let legacy_result = crate::logging::record_json_projection_with_optional_writer(
+        workspace,
+        &workspace.join(ISSUES_FILE),
+        ISSUES_FILE,
+        "write",
+        subject,
+        file,
+        writer.as_mut().map(|writer| &mut **writer),
+        Some(crate::events::EffectEvent::IssuesFileRecorded { file: file.clone() }),
+    );
+    if legacy_result.is_err() {
+        return legacy_result;
+    }
     crate::logging::record_json_projection_with_optional_writer(
         workspace,
         &workspace.join(ISSUES_FILE),
@@ -31,7 +44,7 @@ pub fn persist_issues_projection_with_writer(
         "write",
         subject,
         file,
-        writer,
+        writer.as_mut().map(|writer| &mut **writer),
         Some(crate::events::EffectEvent::IssuesProjectionRecorded {
             path: ISSUES_FILE.to_string(),
             hash: crate::logging::stable_hash_hex(&canonical),
