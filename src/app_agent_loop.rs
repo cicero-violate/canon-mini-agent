@@ -1073,6 +1073,33 @@ fn append_executor_completion_log(
     tab_id: u32,
     text: &str,
 ) -> Result<()> {
+    let parsed_completion = parsed_executor_completion(text);
+    let record = compact_log_record(
+        "llm",
+        "completion",
+        Some(&submitted.actor),
+        Some(submitted.lane_label.as_str()),
+        Some(&submitted.endpoint_id),
+        Some(step),
+        Some(turn_id),
+        Some(&submitted.command_id),
+        parsed_completion.action_summary,
+        None,
+        parsed_completion.observation,
+        parsed_completion.rationale,
+        Some(text.to_string()),
+        Some(json!({ "tab_id": tab_id })),
+    );
+    append_action_log_record(&record)
+}
+
+struct ParsedExecutorCompletion {
+    observation: Option<String>,
+    rationale: Option<String>,
+    action_summary: Option<Value>,
+}
+
+fn parsed_executor_completion(text: &str) -> ParsedExecutorCompletion {
     let parsed = parse_actions(text)
         .ok()
         .and_then(|actions| actions.into_iter().next());
@@ -1092,27 +1119,16 @@ fn append_executor_completion_log(
         .as_ref()
         .map(parsed_completion_command_summary)
         .filter(|s| !s.is_empty());
-    let record = compact_log_record(
-        "llm",
-        "completion",
-        Some(&submitted.actor),
-        Some(submitted.lane_label.as_str()),
-        Some(&submitted.endpoint_id),
-        Some(step),
-        Some(turn_id),
-        Some(&submitted.command_id),
-        parsed_action.map(|name| {
+    let action_summary = parsed_action.map(|name| {
             let summary = parsed_command.clone().unwrap_or_else(|| name.clone());
             json!({
                 "name": name,
                 "summary": summary,
             })
-        }),
-        None,
+        });
+    ParsedExecutorCompletion {
         observation,
         rationale,
-        Some(text.to_string()),
-        Some(json!({ "tab_id": tab_id })),
-    );
-    append_action_log_record(&record)
+        action_summary,
+    }
 }
