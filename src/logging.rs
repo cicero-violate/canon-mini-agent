@@ -13,22 +13,23 @@ use crate::prompts::{action_observation, action_rationale, parse_actions, trunca
 
 struct LogPaths {
     action_log: PathBuf,
-    secondary_log: PathBuf,
 }
 static LOG_PATHS: OnceLock<LogPaths> = OnceLock::new();
 
 pub fn init_log_paths(prefix: &str) {
-    let base = std::path::Path::new(crate::constants::agent_state_dir()).join(prefix);
-    let _ = std::fs::create_dir_all(&base);
     // Ensure canonical event log directory exists (state/event_log/event.tlog.d)
     let event_log_dir = std::path::Path::new(crate::constants::workspace())
         .join("state")
         .join("event_log")
         .join("event.tlog.d");
     let _ = std::fs::create_dir_all(&event_log_dir);
+    if prefix == "supervisor" {
+        return;
+    }
+    let base = std::path::Path::new(crate::constants::agent_state_dir()).join(prefix);
+    let _ = std::fs::create_dir_all(&base);
     let _ = LOG_PATHS.set(LogPaths {
         action_log: base.join("actions.jsonl"),
-        secondary_log: base.join("log.jsonl"),
     });
 }
 
@@ -37,6 +38,7 @@ pub(crate) fn current_action_log_path_for_tests() -> Option<PathBuf> {
     LOG_PATHS.get().map(|paths| paths.action_log.clone())
 }
 
+#[cfg(test)]
 fn log_paths() -> Result<&'static LogPaths> {
     LOG_PATHS
         .get()
@@ -159,7 +161,10 @@ pub(crate) fn append_action_log_record(record: &Value) -> Result<()> {
     let lock = LOG_MUTEX.get_or_init(|| Mutex::new(()));
     let _guard = lock.lock().expect("action log mutex poisoned");
 
-    let primary = log_paths()?.action_log.clone();
+    let Some(paths) = LOG_PATHS.get() else {
+        return Ok(());
+    };
+    let primary = paths.action_log.clone();
     append_record_to_path(&primary, record)?;
     Ok(())
 }
@@ -386,101 +391,6 @@ fn inject_action_fields(record: &mut Value, action: &Value) {
 
 /// Intent: event_append
 /// Resource: error
-/// Inputs: &str, &serde_json::Value
-/// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
-/// Provenance: rustc:facts + rustc:docstring
-fn append_secondary_action_log(role: &str, action: &Value) -> Result<()> {
-    static SECONDARY_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
-    let lock = SECONDARY_MUTEX.get_or_init(|| Mutex::new(()));
-    let _guard = lock.lock().expect("secondary action log mutex poisoned");
-
-    let mut record = serde_json::Map::new();
-    append_secondary_action_field(&mut record, action, "action");
-    append_secondary_action_field(&mut record, action, "path");
-    append_secondary_action_field(&mut record, action, "line");
-    append_secondary_action_field(&mut record, action, "from");
-    append_secondary_action_field(&mut record, action, "to");
-    append_secondary_action_field(&mut record, action, "type");
-    append_secondary_action_field(&mut record, action, "status");
-    append_secondary_action_field(&mut record, action, "payload");
-    append_secondary_action_field(&mut record, action, "task_id");
-    append_secondary_action_field(&mut record, action, "objective_id");
-    append_secondary_action_field(&mut record, action, "intent");
-    append_secondary_action_field(&mut record, action, "observation");
-    append_secondary_action_field(&mut record, action, "rationale");
-    append_secondary_action_field(&mut record, action, "question");
-    append_secondary_action_field(&mut record, action, "predicted_next_actions");
-    if let Some(value) = secondary_llm_response(action) {
-        record.insert("llm_response".to_string(), value);
-    }
-    record.insert("agent_role".to_string(), Value::String(role.to_string()));
-    record.insert(
-        "timestamp".to_string(),
-        json!(crate::llm_runtime::tab_management::tab_manager_now_ms()),
-    );
-    if record.is_empty() {
-        return Ok(());
-    }
-    let path = log_paths()?.secondary_log.clone();
-    append_record_to_path(&path, &Value::Object(record))
-}
-
-/// Intent: event_append
-/// Resource: error
-/// Inputs: &mut serde_json::Map<std::string::String, serde_json::Value>, &serde_json::Value, &str
-/// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
-/// Provenance: rustc:facts + rustc:docstring
-fn append_secondary_action_field(
-    record: &mut serde_json::Map<String, Value>,
-    action: &Value,
-    field: &str,
-) {
-    if let Some(value) = action.get(field).cloned().and_then(compact_json) {
-        record.insert(field.to_string(), value);
-    }
-}
-
-fn secondary_llm_response(action: &Value) -> Option<Value> {
-    let obj = action.as_object()?;
-    let mut out = serde_json::Map::new();
-    for (key, value) in obj {
-        // Keep only non-hoisted fields in the nested llm_response payload.
-        if matches!(
-            key.as_str(),
-            "action"
-                | "path"
-                | "line"
-                | "task_id"
-                | "objective_id"
-                | "intent"
-                | "observation"
-                | "rationale"
-                | "question"
-                | "predicted_next_actions"
-        ) {
-            continue;
-        }
-        if let Some(value) = compact_json(value.clone()) {
-            out.insert(key.clone(), value);
-        }
-    }
-    if out.is_empty() {
-        None
-    } else {
-        Some(Value::Object(out))
-    }
-}
-
-/// Intent: event_append
-/// Resource: error
 /// Inputs: &str, &llm_runtime::config::LlmEndpoint, &str, usize, &str, &str, serde_json::Value
 /// Outputs: std::result::Result<(), anyhow::Error>
 /// Effects: error
@@ -600,8 +510,7 @@ pub(crate) fn append_action_log(
         None,
     );
     inject_action_fields(&mut record, action);
-    append_action_log_record(&record)?;
-    append_secondary_action_log(role, action)
+    append_action_log_record(&record)
 }
 
 pub(crate) fn log_action_event(
@@ -1378,8 +1287,8 @@ pub(crate) fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        append_orchestration_trace, append_secondary_action_log, log_error_event, log_paths,
-        now_ms, record_prompt_overflow, secondary_llm_response, LogPaths, LOG_PATHS,
+        append_orchestration_trace, log_error_event, log_paths, now_ms, record_prompt_overflow,
+        LogPaths, LOG_PATHS,
     };
     use serde_json::{json, Value};
     use std::fs;
@@ -1402,16 +1311,6 @@ mod tests {
         }
         fs::create_dir_all(&root).expect("create temp workspace");
         root
-    }
-
-    fn read_last_json_record(path: &std::path::Path) -> Value {
-        let log_text = fs::read_to_string(path).expect("read log");
-        for line in log_text.lines().rev() {
-            if let Ok(record) = serde_json::from_str::<Value>(line) {
-                return record;
-            }
-        }
-        panic!("expected at least one JSON record in log");
     }
 
     fn read_record_with_text(action_log: &std::path::Path, expected_text: &str) -> Value {
@@ -1448,10 +1347,8 @@ mod tests {
 
         let root = std::env::temp_dir().join(format!("canon-mini-agent-logging-test-{}", now_ms()));
         let action_log = root.join("actions.jsonl");
-        let secondary_log = root.join("log.jsonl");
         let _ = LOG_PATHS.set(LogPaths {
             action_log: action_log.clone(),
-            secondary_log,
         });
         log_paths()
             .expect("test log paths should initialize")
@@ -1562,70 +1459,6 @@ mod tests {
             !action_log.exists(),
             "pre-init orchestration trace should not create an action log before init_log_paths"
         );
-    }
-
-    #[test]
-    fn secondary_llm_response_excludes_hoisted_fields() {
-        let action = json!({
-            "action": "cargo_test",
-            "crate": "canon-mini-agent",
-            "test": "objectives_create_update_read_lifecycle_succeeds",
-            "command_id": "solo:solo:0013:1775830600616",
-            "observation": "obs",
-            "rationale": "why",
-            "question": "q",
-            "predicted_next_actions": [
-                { "action": "run_command", "intent": "verify" }
-            ],
-            "path": "tests/invalid_action_harness.rs",
-            "line": 501
-        });
-        let nested = secondary_llm_response(&action).expect("llm_response should exist");
-        let obj = nested.as_object().expect("llm_response object");
-
-        assert_eq!(
-            obj.get("crate").and_then(|v| v.as_str()),
-            Some("canon-mini-agent")
-        );
-        assert_eq!(
-            obj.get("test").and_then(|v| v.as_str()),
-            Some("objectives_create_update_read_lifecycle_succeeds")
-        );
-        assert_eq!(
-            obj.get("command_id").and_then(|v| v.as_str()),
-            Some("solo:solo:0013:1775830600616")
-        );
-        assert!(!obj.contains_key("action"));
-        assert!(!obj.contains_key("observation"));
-        assert!(!obj.contains_key("rationale"));
-        assert!(!obj.contains_key("question"));
-        assert!(!obj.contains_key("predicted_next_actions"));
-        assert!(!obj.contains_key("predicated_next_actions"));
-        assert!(!obj.contains_key("path"));
-        assert!(!obj.contains_key("line"));
-    }
-
-    #[test]
-    fn secondary_log_uses_predicted_next_actions_key() {
-        let _ = ensure_test_action_log_path();
-        let secondary_log = log_paths().expect("log paths").secondary_log.clone();
-        if let Some(parent) = secondary_log.parent() {
-            fs::create_dir_all(parent).expect("create secondary log parent");
-        }
-        let action = json!({
-            "action": "read_file",
-            "path": "SPEC.md",
-            "rationale": "read",
-            "predicted_next_actions": [
-                { "action": "run_command", "intent": "next" },
-                { "action": "message", "intent": "handoff" }
-            ]
-        });
-
-        append_secondary_action_log("solo", &action).expect("append secondary action log");
-        let record = read_last_json_record(&secondary_log);
-        assert!(record.get("predicted_next_actions").is_some());
-        assert!(record.get("predicated_next_actions").is_none());
     }
 
     #[test]
