@@ -149,6 +149,43 @@ mod tests {
     }
 
     #[test]
+    fn planner_ready_handoff_schedules_executor_only_when_ready_tasks_exist() {
+        let source = include_str!("app_planner_executor.rs");
+        let ready_tasks_exist = source
+            .find("let ready_tasks_exist =")
+            .expect("missing planner ready task probe");
+        let handoff_flag = source[ready_tasks_exist..]
+            .find("let mut executor_handoff_queued = false;")
+            .map(|offset| ready_tasks_exist + offset)
+            .expect("missing executor handoff queue flag");
+        let lane_gate = source[handoff_flag..]
+            .find("if !in_progress && ready_tasks_exist {")
+            .map(|offset| handoff_flag + offset)
+            .expect("planner must not queue executor lanes without ready plan tasks");
+        let queue_flag_set = source[lane_gate..]
+            .find("executor_handoff_queued = true;")
+            .map(|offset| lane_gate + offset)
+            .expect("missing handoff queue flag set after lane pending");
+        let planner_clear = source[queue_flag_set..]
+            .find("writer.apply(ControlEvent::PlannerPendingSet { pending: false });")
+            .map(|offset| queue_flag_set + offset)
+            .expect("missing planner clear after ready lane queue");
+        let executor_schedule = source[planner_clear..]
+            .find("apply_scheduled_phase_if_changed(writer, Some(\"executor\"));")
+            .map(|offset| planner_clear + offset)
+            .expect("planner ready handoff must schedule executor");
+
+        assert!(
+            ready_tasks_exist < handoff_flag
+                && handoff_flag < lane_gate
+                && lane_gate < queue_flag_set
+                && queue_flag_set < planner_clear
+                && planner_clear < executor_schedule,
+            "planner handoff must gate on ready tasks, seed a lane, clear planner, then schedule executor"
+        );
+    }
+
+    #[test]
     fn invariant_id_is_extracted_from_gate_reason() {
         let reason = "invariant gate blocked role `executor`: Action targeted a path that does not exist — plan is referencing a target that has not been created yet [id=INV-47232c36]";
         assert_eq!(invariant_id_from_reason(reason), Some("INV-47232c36"));

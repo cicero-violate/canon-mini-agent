@@ -621,6 +621,7 @@ fn semantic_action_fingerprint(action: &Value) -> String {
     serde_json::to_string(&action).unwrap_or_default()
 }
 
+#[cfg(test)]
 fn verifier_confirmed_with_plan_text(reason: &str, plan_text: &str) -> bool {
     if crate::orchestrator_seam::plan_has_incomplete_tasks(plan_text) {
         return false;
@@ -631,12 +632,6 @@ fn verifier_confirmed_with_plan_text(reason: &str, plan_text: &str) -> bool {
         }
     }
     false
-}
-
-fn verifier_confirmed(reason: &str) -> bool {
-    let plan_text =
-        crate::prompt_inputs::read_text_or_empty(Path::new(workspace()).join(MASTER_PLAN_FILE));
-    verifier_confirmed_with_plan_text(reason, &plan_text)
 }
 
 fn claim_next_lane(writer: &mut CanonicalWriter, lane: &LaneConfig) -> Option<(usize, String)> {

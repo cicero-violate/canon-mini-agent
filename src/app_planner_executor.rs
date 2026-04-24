@@ -143,28 +143,29 @@ async fn run_planner_phase(
             let lane_ids: Vec<usize> = ctx.lanes.iter().map(|l| l.index).collect();
             let ready_tasks_exist =
                 crate::prompt_inputs::read_ready_tasks(ctx.workspace, 1) != "(no ready tasks)";
+            let mut executor_handoff_queued = false;
             for lane_id in lane_ids {
                 writer.apply(ControlEvent::LanePlanTextSet {
                     lane_id,
                     text: String::new(),
                 });
-                let (in_progress, verified) = {
+                let in_progress = {
                     let s = writer.state();
                     let ls = s.lanes.get(&lane_id);
-                    let in_progress = ls.map(|l| l.in_progress_by.is_some()).unwrap_or(false);
-                    let verified = ls
-                        .map(|l| verifier_confirmed(&l.latest_verifier_result))
-                        .unwrap_or(false);
-                    (in_progress, verified)
+                    ls.map(|l| l.in_progress_by.is_some()).unwrap_or(false)
                 };
-                if !in_progress && (!verified || ready_tasks_exist) {
+                if !in_progress && ready_tasks_exist {
                     writer.apply(ControlEvent::LanePendingSet {
                         lane_id,
                         pending: true,
                     });
+                    executor_handoff_queued = true;
                 }
             }
             writer.apply(ControlEvent::PlannerPendingSet { pending: false });
+            if executor_handoff_queued {
+                apply_scheduled_phase_if_changed(writer, Some("executor"));
+            }
             true
         }
         Err(err) => {
