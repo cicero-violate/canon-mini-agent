@@ -66,14 +66,22 @@ fn objective_operation_context_payload(
     objectives: &[crate::objectives::Objective],
 ) -> serde_json::Value {
     let (requested_raw, requested_id) = objective_requested_context(requested);
+    let (compared_ids, compared_normalized_ids) = objective_compared_context(objectives);
     json!({
         "operation": op,
         "outcome": outcome,
         "requested_raw": requested_raw,
         "requested_id": requested_id,
-        "compared_ids": objective_compared_ids(objectives),
-        "compared_normalized_ids": objective_compared_normalized_ids(objectives),
+        "compared_ids": compared_ids,
+        "compared_normalized_ids": compared_normalized_ids,
     })
+}
+
+fn objective_compared_context(objectives: &[crate::objectives::Objective]) -> (Vec<String>, Vec<String>) {
+    (
+        objective_compared_ids(objectives),
+        objective_compared_normalized_ids(objectives),
+    )
 }
 
 fn objective_requested_context(requested: Option<&str>) -> (Option<String>, Option<String>) {
