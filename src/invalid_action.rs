@@ -945,14 +945,23 @@ fn collect_message_route_fields(
             if val != val.to_lowercase() {
                 add_unique_schema_diff(schema_diff, format!("role casing invalid: {field}={val}"));
             }
-            if field == "type" {
-                msg_type = Some(val.to_string());
-            } else if field == "status" {
-                msg_status = Some(val.to_string());
-            }
+            collect_route_field_value(field, val, &mut msg_type, &mut msg_status);
         }
     }
     (msg_type, msg_status)
+}
+
+fn collect_route_field_value(
+    field: &str,
+    val: &str,
+    msg_type: &mut Option<String>,
+    msg_status: &mut Option<String>,
+) {
+    match field {
+        "type" => *msg_type = Some(val.to_string()),
+        "status" => *msg_status = Some(val.to_string()),
+        _ => {}
+    }
 }
 
 /// Intent: validation_gate
