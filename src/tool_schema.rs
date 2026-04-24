@@ -1413,27 +1413,39 @@ fn map_schema_error_kind(
     instance: &Cow<'_, Value>,
     action: &Value,
 ) -> String {
+    if let Some(message) = direct_schema_error_message(path, kind, instance, action) {
+        return message;
+    }
+    format!("schema violation: {kind:?}")
+}
+
+fn direct_schema_error_message(
+    path: &str,
+    kind: &ValidationErrorKind,
+    instance: &Cow<'_, Value>,
+    action: &Value,
+) -> Option<String> {
     match kind {
         ValidationErrorKind::Required { property } => {
-            missing_required_field_message(path, property.as_str().unwrap_or("unknown"))
+            Some(missing_required_field_message(path, property.as_str().unwrap_or("unknown")))
         }
-        ValidationErrorKind::Type { kind } => schema_type_mismatch_message(path, kind),
-        ValidationErrorKind::MinLength { .. } => schema_missing_field_message(path),
+        ValidationErrorKind::Type { kind } => Some(schema_type_mismatch_message(path, kind)),
+        ValidationErrorKind::MinLength { .. } => Some(schema_missing_field_message(path)),
         ValidationErrorKind::MaxLength { limit } => {
             let field = schema_error_field(path);
-            format!("field too long: {field} (max {limit} chars)")
+            Some(format!("field too long: {field} (max {limit} chars)"))
         }
         ValidationErrorKind::MinItems { .. } | ValidationErrorKind::MaxItems { .. } => {
-            "predicted_next_actions must contain 2-3 entries".to_string()
+            Some("predicted_next_actions must contain 2-3 entries".to_string())
         }
-        ValidationErrorKind::Enum { .. } => enum_schema_error_message(path, instance, action),
+        ValidationErrorKind::Enum { .. } => Some(enum_schema_error_message(path, instance, action)),
         ValidationErrorKind::OneOfNotValid | ValidationErrorKind::AnyOf => {
-            action_schema_mismatch_message(action)
+            Some(action_schema_mismatch_message(action))
         }
         ValidationErrorKind::AdditionalProperties { unexpected } => {
-            unexpected_fields_message(unexpected)
+            Some(unexpected_fields_message(unexpected))
         }
-        other => format!("schema violation: {other:?}"),
+        _ => None,
     }
 }
 
