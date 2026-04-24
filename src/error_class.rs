@@ -324,25 +324,10 @@ fn is_plan_preflight_blocker_text(text: &str) -> bool {
 }
 
 fn classify_action_kind_failure(action_kind: &str, text: &str) -> Option<ErrorClass> {
+    if let Some(class) = classify_static_action_kind_failure(action_kind) {
+        return Some(class);
+    }
     match action_kind {
-        "canonical_state_bypass" => Some(ErrorClass::SecondMutationPath),
-        "runtime_control_bypass" => Some(ErrorClass::RuntimeControlBypass),
-        "uncanonicalized_recovery" => Some(ErrorClass::UncanonicalizedRecoveryPath),
-        "checkpoint_runtime_divergence" => Some(ErrorClass::CheckpointRuntimeDivergence),
-        "effectful_state_advance" => Some(ErrorClass::EffectfulStateAdvanceWithoutControlEvent),
-        "ambiguous_control_event" => Some(ErrorClass::AmbiguousControlEvent),
-        "plan_preflight" => Some(ErrorClass::PlanPreflightFailed),
-        "route_dispatch" => Some(ErrorClass::InvalidRoute),
-        "step_limit" => Some(ErrorClass::StepLimitExceeded),
-        "livelock" => Some(ErrorClass::LivelockDetected),
-        "build_gate" => Some(ErrorClass::CompileError),
-        "solo_completion_gate" | "diagnostics_evidence_gate" => {
-            Some(ErrorClass::VerificationFailed)
-        }
-        "handoff_delivery" => Some(ErrorClass::InvalidRoute),
-        "reaction_only" => Some(ErrorClass::ReactionOnly),
-        "executor_submit_timeout" | "submit_ack_timeout" => Some(ErrorClass::LlmTimeout),
-        "repeated_failed_action" | "idle_streak" => Some(ErrorClass::InvalidSchema),
         "cargo_test" | "cargo_clippy" | "run_command" if is_compile_failure_text(text) => {
             Some(ErrorClass::CompileError)
         }
@@ -353,6 +338,27 @@ fn classify_action_kind_failure(action_kind: &str, text: &str) -> Option<ErrorCl
             Some(ErrorClass::MissingTarget)
         }
         "plan" if is_unauthorized_plan_text(text) => Some(ErrorClass::UnauthorizedPlanOp),
+        _ => None,
+    }
+}
+
+fn classify_static_action_kind_failure(action_kind: &str) -> Option<ErrorClass> {
+    match action_kind {
+        "canonical_state_bypass" => Some(ErrorClass::SecondMutationPath),
+        "runtime_control_bypass" => Some(ErrorClass::RuntimeControlBypass),
+        "uncanonicalized_recovery" => Some(ErrorClass::UncanonicalizedRecoveryPath),
+        "checkpoint_runtime_divergence" => Some(ErrorClass::CheckpointRuntimeDivergence),
+        "effectful_state_advance" => Some(ErrorClass::EffectfulStateAdvanceWithoutControlEvent),
+        "ambiguous_control_event" => Some(ErrorClass::AmbiguousControlEvent),
+        "plan_preflight" => Some(ErrorClass::PlanPreflightFailed),
+        "route_dispatch" | "handoff_delivery" => Some(ErrorClass::InvalidRoute),
+        "step_limit" => Some(ErrorClass::StepLimitExceeded),
+        "livelock" => Some(ErrorClass::LivelockDetected),
+        "build_gate" => Some(ErrorClass::CompileError),
+        "solo_completion_gate" | "diagnostics_evidence_gate" => Some(ErrorClass::VerificationFailed),
+        "reaction_only" => Some(ErrorClass::ReactionOnly),
+        "executor_submit_timeout" | "submit_ack_timeout" => Some(ErrorClass::LlmTimeout),
+        "repeated_failed_action" | "idle_streak" => Some(ErrorClass::InvalidSchema),
         _ => None,
     }
 }

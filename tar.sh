@@ -9,10 +9,8 @@ canon-mini-agent/SPEC.md \
 canon-mini-agent/agent_state \
 canon-mini-agent/frames \
 canon-mini-agent/AUTHORITY_MATRIX.md \
-canon-mini-agent/state
-# && ripdrag canon-mini-agent.tar.gz -nxa 2>/dev/null &
-
-
-# canon-mini-agent/target/debug/deps \
-# canon-mini-agent/target/debug/.fingerprint \
-# canon-mini-agent/target/debug/build \
+canon-mini-agent/state \
+canon-rustc-v2/Cargo.toml \
+canon-rustc-v2/Cargo.lock \
+canon-rustc-v2/rust-toolchain.toml \
+canon-rustc-v2/src
