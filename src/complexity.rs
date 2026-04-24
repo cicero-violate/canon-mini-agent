@@ -1057,22 +1057,42 @@ fn global_complexity_entry_value(
     crate_name: &str,
     entry: &serde_json::Value,
 ) -> serde_json::Value {
+    let fields = global_complexity_entry_fields(entry);
+    json!({
+        "crate": crate_name,
+        "symbol": fields.symbol,
+        "file": fields.file,
+        "line": fields.line,
+        "complexity_proxy": fields.complexity_proxy,
+        "mir_blocks": fields.mir_blocks,
+        "mir_stmts": fields.mir_stmts,
+    })
+}
+
+struct GlobalComplexityEntryFields<'a> {
+    symbol: Option<&'a serde_json::Value>,
+    file: Option<&'a serde_json::Value>,
+    line: Option<&'a serde_json::Value>,
+    complexity_proxy: Option<&'a serde_json::Value>,
+    mir_blocks: Option<&'a serde_json::Value>,
+    mir_stmts: Option<&'a serde_json::Value>,
+}
+
+fn global_complexity_entry_fields(entry: &serde_json::Value) -> GlobalComplexityEntryFields<'_> {
     let symbol = entry.get("symbol");
     let file = entry.get("file");
     let line = entry.get("line");
     let complexity_proxy = entry.get("complexity_proxy");
     let mir_blocks = entry.get("mir_blocks");
     let mir_stmts = entry.get("mir_stmts");
-
-    json!({
-        "crate": crate_name,
-        "symbol": symbol,
-        "file": file,
-        "line": line,
-        "complexity_proxy": complexity_proxy,
-        "mir_blocks": mir_blocks,
-        "mir_stmts": mir_stmts,
-    })
+    GlobalComplexityEntryFields {
+        symbol,
+        file,
+        line,
+        complexity_proxy,
+        mir_blocks,
+        mir_stmts,
+    }
 }
 
 /// Intent: pure_transform
