@@ -1503,6 +1503,15 @@ pub async fn run() -> Result<()> {
                                 "fn_error_rate": report.metrics.fn_error_rate,
                                 "semantic_score": report.metrics.score(),
                                 "rewrites_applied": report.rewrites_applied,
+                                "rank_candidates_total": report.rank_candidates_total,
+                                "rank_safe_merge": report.rank_safe_merge,
+                                "rank_investigate": report.rank_investigate,
+                                "rank_skip": report.rank_skip,
+                                "rank_unmatched_owners": report.rank_unmatched_owners,
+                                "projected_issue_candidates": report.projected_issue_candidates,
+                                "projected_issue_upserts": report.projected_issue_upserts,
+                                "projected_issue_resolved": report.projected_issue_resolved,
+                                "projected_issue_rewrote": report.projected_issue_rewrote,
                             }),
                         );
                         if report.rewrites_applied {

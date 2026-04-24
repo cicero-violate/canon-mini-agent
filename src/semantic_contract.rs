@@ -17,6 +17,15 @@ impl SemanticManifestMetrics {
 pub struct SemanticSyncReport {
     pub metrics: SemanticManifestMetrics,
     pub rewrites_applied: bool,
+    pub rank_candidates_total: usize,
+    pub rank_safe_merge: usize,
+    pub rank_investigate: usize,
+    pub rank_skip: usize,
+    pub rank_unmatched_owners: usize,
+    pub projected_issue_candidates: usize,
+    pub projected_issue_upserts: usize,
+    pub projected_issue_resolved: usize,
+    pub projected_issue_rewrote: bool,
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -43,6 +52,12 @@ pub fn graph_path(workspace: &Path) -> PathBuf {
         .join("graph.json")
 }
 
+pub fn rank_out_path(workspace: &Path) -> PathBuf {
+    workspace
+        .join("agent_state")
+        .join("safe_patch_candidates.json")
+}
+
 pub fn load_semantic_manifest_metrics(workspace: &Path) -> SemanticManifestMetrics {
     let path = sidecar_path(workspace);
     let Ok(raw) = std::fs::read(&path) else {
@@ -61,12 +76,16 @@ pub fn load_semantic_manifest_metrics(workspace: &Path) -> SemanticManifestMetri
 pub fn run_semantic_sync(workspace: &Path) -> Result<SemanticSyncReport, anyhow::Error> {
     let graph = graph_path(workspace);
     let sidecar = sidecar_path(workspace);
+    let rank_out = rank_out_path(workspace);
     let max_error_rate = std::env::var("SEM_MAX_ERROR_RATE").ok();
     let apply_rewrites = std::env::var("CANON_SEMANTIC_REWRITE")
         .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
         .unwrap_or(false);
 
     if let Some(parent) = sidecar.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Some(parent) = rank_out.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
 
@@ -104,8 +123,30 @@ pub fn run_semantic_sync(workspace: &Path) -> Result<SemanticSyncReport, anyhow:
         })?;
     }
 
+    let rank_report = crate::semantic_rank_candidates::run_with_options(
+        crate::semantic_rank_candidates::SemanticRankCandidatesOptions {
+            workspace_root: workspace.to_path_buf(),
+            graph_path: graph.clone(),
+            out_path: Some(rank_out),
+        },
+    )?;
+    let issue_projection =
+        crate::semantic_issue_projection::project_semantic_rank_issues(
+            workspace,
+            rank_report.out_path.as_path(),
+        )?;
+
     Ok(SemanticSyncReport {
         metrics: load_semantic_manifest_metrics(workspace),
         rewrites_applied: apply_rewrites,
+        rank_candidates_total: rank_report.candidates,
+        rank_safe_merge: rank_report.safe_merge,
+        rank_investigate: rank_report.investigate,
+        rank_skip: rank_report.skip,
+        rank_unmatched_owners: rank_report.unmatched_owners,
+        projected_issue_candidates: issue_projection.selected_candidates,
+        projected_issue_upserts: issue_projection.opened_or_updated,
+        projected_issue_resolved: issue_projection.resolved_stale,
+        projected_issue_rewrote: issue_projection.rewrote_issues,
     })
 }

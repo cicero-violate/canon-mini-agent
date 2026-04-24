@@ -37,6 +37,8 @@ pub mod rename_semantic;
 mod reports;
 mod semantic;
 pub mod semantic_manifest;
+pub mod semantic_issue_projection;
+pub mod semantic_rank_candidates;
 pub mod semantic_contract;
 pub mod syn_writer;
 pub mod state_space;

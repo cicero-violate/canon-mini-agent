@@ -12,7 +12,7 @@
 //!   - MIR structural complexity
 //!
 //! Usage:
-//!   canon-rank-candidates [graph.json] [out.json]
+//!   canon-mini-agent semantic-rank-candidates [graph.json] [out.json]
 //!
 //! Defaults:
 //!   graph.json  →  state/rustc/canon_mini_agent/graph.json (relative to cwd)
@@ -20,7 +20,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 // ---------------------------------------------------------------------------
@@ -158,6 +158,23 @@ struct PairSummary {
     only_in_a: Vec<usize>,
     /// Blocks that appear in path_b but not path_a.
     only_in_b: Vec<usize>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SemanticRankCandidatesOptions {
+    pub workspace_root: PathBuf,
+    pub graph_path: PathBuf,
+    pub out_path: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SemanticRankCandidatesReport {
+    pub candidates: usize,
+    pub safe_merge: usize,
+    pub investigate: usize,
+    pub skip: usize,
+    pub unmatched_owners: usize,
+    pub out_path: PathBuf,
 }
 
 // ---------------------------------------------------------------------------
@@ -302,19 +319,28 @@ fn action(confidence: f64) -> &'static str {
     else { "skip" }
 }
 
-// ---------------------------------------------------------------------------
-// Main
-// ---------------------------------------------------------------------------
+fn resolve_path(root: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        root.join(path)
+    }
+}
 
-fn main() -> anyhow::Result<()> {
-    let args: Vec<String> = std::env::args().collect();
-
-    let graph_path = args.get(1).map(PathBuf::from).unwrap_or_else(|| {
-        PathBuf::from("state/rustc/canon_mini_agent/graph.json")
-    });
-    let out_path = args.get(2).map(PathBuf::from).unwrap_or_else(|| {
-        graph_path.parent().unwrap_or(&graph_path).join("safe_patch_candidates.json")
-    });
+pub fn run_with_options(
+    options: SemanticRankCandidatesOptions,
+) -> anyhow::Result<SemanticRankCandidatesReport> {
+    let graph_path = resolve_path(&options.workspace_root, &options.graph_path);
+    let out_path = options
+        .out_path
+        .as_ref()
+        .map(|p| resolve_path(&options.workspace_root, p))
+        .unwrap_or_else(|| {
+            graph_path
+                .parent()
+                .unwrap_or(&graph_path)
+                .join("safe_patch_candidates.json")
+        });
 
     eprintln!("reading {}", graph_path.display());
     let bytes = std::fs::read(&graph_path)
@@ -443,5 +469,28 @@ fn main() -> anyhow::Result<()> {
     eprintln!("  safe_merge={}  investigate={}  skip={}  unmatched={}",
         safe_merge, investigate, skip, unmatched);
 
-    Ok(())
+    Ok(SemanticRankCandidatesReport {
+        candidates: out.candidates.len(),
+        safe_merge,
+        investigate,
+        skip,
+        unmatched_owners: unmatched,
+        out_path,
+    })
+}
+
+pub fn run_from_cli_args(
+    args: &[String],
+    workspace_root: PathBuf,
+) -> anyhow::Result<SemanticRankCandidatesReport> {
+    let graph_path = args
+        .first()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("state/rustc/canon_mini_agent/graph.json"));
+    let out_path = args.get(1).map(PathBuf::from);
+    run_with_options(SemanticRankCandidatesOptions {
+        workspace_root,
+        graph_path,
+        out_path,
+    })
 }

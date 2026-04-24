@@ -21,7 +21,7 @@ echo "[semantic_pipeline] wrapper: $WRAPPER_BIN"
 pushd "$ROOT" >/dev/null
 
 echo "[semantic_pipeline] build local bins"
-cargo build --bin canon-mini-agent --bin canon-rank-candidates
+cargo build --bin canon-mini-agent
 
 if [[ -x "$WRAPPER_BIN" ]]; then
   echo "[semantic_pipeline] capture graph via rustc wrapper"
@@ -54,7 +54,10 @@ else
 fi
 
 echo "[semantic_pipeline] rank redundant path pairs"
-./target/debug/canon-rank-candidates "$GRAPH" "$ROOT/agent_state/safe_patch_candidates.json"
+cargo run --bin canon-mini-agent -- semantic-rank-candidates "$GRAPH" "$ROOT/agent_state/safe_patch_candidates.json"
+
+echo "[semantic_pipeline] project semantic candidates into ISSUES.json"
+cargo run --bin canon-mini-agent -- semantic-project-issues "$ROOT/agent_state/safe_patch_candidates.json"
 
 echo "[semantic_pipeline] done"
 popd >/dev/null
