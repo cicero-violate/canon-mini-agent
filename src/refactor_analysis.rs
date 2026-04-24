@@ -1494,12 +1494,7 @@ pub fn redundant_path_issues(
     let Ok(idx) = SemanticIndex::load(workspace, crate_name) else {
         return Vec::new();
     };
-    let mut summary_by_key: HashMap<String, &SymbolSummary> = HashMap::new();
-    for summary in summaries {
-        if let Ok(key) = idx.canonical_symbol_key(&summary.symbol) {
-            summary_by_key.insert(key, summary);
-        }
-    }
+    let summary_by_key = redundant_path_summary_by_key(&idx, summaries);
 
     let mut out = Vec::new();
     let mut seen_owner_sig: HashSet<(String, u64)> = HashSet::new();
@@ -1583,6 +1578,19 @@ pub fn redundant_path_issues(
     out.truncate(limit);
     out.sort_by(|a, b| a.id.cmp(&b.id));
     out
+}
+
+fn redundant_path_summary_by_key<'a>(
+    idx: &SemanticIndex,
+    summaries: &'a [SymbolSummary],
+) -> HashMap<String, &'a SymbolSummary> {
+    let mut summary_by_key = HashMap::new();
+    for summary in summaries {
+        if let Ok(key) = idx.canonical_symbol_key(&summary.symbol) {
+            summary_by_key.insert(key, summary);
+        }
+    }
+    summary_by_key
 }
 
 // ---------------------------------------------------------------------------
