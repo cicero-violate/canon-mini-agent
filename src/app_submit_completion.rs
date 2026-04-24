@@ -415,7 +415,7 @@ fn log_submit_ack_tab_mismatch(
     let lane_label = &ctx.lanes[lane_id].label;
     log_submit_ack_event(
         format!(
-            "submit ack tab mismatch: lane={} active_tab={} ack_tab={} (ignoring stale ack)",
+            "submit ack tab mismatch: lane={} active_tab={} ack_tab={} (rebinding active tab)",
             lane_label, active_tab, tab_id
         ),
         json!({
@@ -470,18 +470,12 @@ fn submit_ack_matches_active_tab(
     }
 
     log_submit_ack_tab_mismatch(ctx, lane_id, active_tab, tab_id);
-    crate::blockers::record_action_failure_with_writer(
-        ctx.workspace.as_path(),
-        None,
-        "executor",
-        "runtime_control_bypass",
-        &format!(
-            "runtime-only control influence: stale submit ack ignored for lane={} active tab stays {} while ack arrived from {}",
-            ctx.lanes[lane_id].label, active_tab, tab_id
-        ),
-        None,
-    );
-    false
+    writer.apply(ControlEvent::ExecutorSubmitAckTabRebound {
+        lane_id,
+        from_tab_id: active_tab,
+        to_tab_id: tab_id,
+    });
+    true
 }
 
 fn handle_executor_submit_ack_result(

@@ -99,13 +99,11 @@ pub fn decide_wake_signals(
     }
 
     let mut newest: Option<&WakeSignalInput> = None;
-    let mut planner_suppressed_by_blocker = false;
     for flag in flags {
         if suppress_wake_under_blocker(flag.role, active_blocker_to_verifier) {
             // Legacy diagnostics wake signals are planner follow-up now, so an
             // active blocker must suppress them the same way it suppresses a
             // direct planner wake.
-            planner_suppressed_by_blocker = true;
             continue;
         }
         let replace = match newest {
@@ -122,9 +120,6 @@ pub fn decide_wake_signals(
         diagnostics_pending: false,
         executor_wake: false,
     };
-    if newest.is_none() && planner_suppressed_by_blocker {
-        return decision;
-    }
     if let Some(flag) = newest {
         apply_wake_role(flag.role, &mut decision);
     }

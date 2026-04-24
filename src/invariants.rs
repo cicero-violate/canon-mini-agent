@@ -163,7 +163,7 @@ pub fn evaluate_invariant_gate(
     current_state: &HashMap<String, String>,
     workspace: &Path,
 ) -> Result<(), String> {
-    let file = load_invariants(workspace);
+    let file = load_enforced_invariants_file(workspace);
     let enforced: Vec<&DiscoveredInvariant> = file
         .invariants
         .iter()
@@ -244,7 +244,7 @@ pub fn handle_invariants_action_with_writer(
 }
 
 fn op_read(workspace: &Path) -> anyhow::Result<(bool, String)> {
-    let file = load_invariants(workspace);
+    let file = load_enforced_invariants_file(workspace);
     if file.invariants.is_empty() {
         return Ok((
             false,
@@ -278,7 +278,7 @@ fn op_promote(
     let id = action.get("id").and_then(|v| v.as_str()).ok_or_else(|| {
         anyhow::anyhow!("invariants promote requires 'id' field (invariant id or \"all\")")
     })?;
-    let mut file = load_invariants(workspace);
+    let mut file = load_enforced_invariants_file(workspace);
     let promote_all = id == "all";
     let mut count = 0usize;
     for inv in file.invariants.iter_mut() {
@@ -316,7 +316,7 @@ fn op_enforce(
         .get("id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("invariants enforce requires 'id' field"))?;
-    let mut file = load_invariants(workspace);
+    let mut file = load_enforced_invariants_file(workspace);
     let mut count = 0usize;
     for inv in file.invariants.iter_mut() {
         if inv.id != id {
@@ -369,7 +369,7 @@ fn op_collapse(
         .get("rationale")
         .and_then(|v| v.as_str())
         .unwrap_or("root cause structurally eliminated");
-    let mut file = load_invariants(workspace);
+    let mut file = load_enforced_invariants_file(workspace);
     let mut count = 0usize;
     for inv in file.invariants.iter_mut() {
         if inv.id != id {
@@ -433,7 +433,7 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
     let existing_ids: HashSet<String> = file.issues.iter().map(|i| i.id.clone()).collect();
     let mut mutated = false;
 
-    let inv_file = load_invariants(workspace);
+    let inv_file = load_enforced_invariants_file(workspace);
     let mut created = 0usize;
 
     // ── Meta-issue 1: action surface ────────────────────────────────────────
@@ -678,7 +678,7 @@ fn try_synthesize_invariants(workspace: &Path) -> Result<()> {
         return Ok(());
     }
 
-    let mut file = load_invariants(workspace);
+    let mut file = load_enforced_invariants_file(workspace);
     merge_fingerprints(&mut file, all_prints);
     promote_by_threshold(&mut file);
     // Enforce gate for any invariant that was explicitly set to Enforced.
@@ -1282,6 +1282,12 @@ fn promote_by_threshold(file: &mut EnforcedInvariantsFile) {
     }
 }
 
+fn push_gate_once(gates: &mut Vec<String>, gate: &str) {
+    if !gates.iter().any(|existing| existing == gate) {
+        gates.push(gate.to_string());
+    }
+}
+
 fn default_gates_for_conditions(conditions: &[StateCondition]) -> Vec<String> {
     let mut gates = Vec::new();
     let error_class = conditions
@@ -1292,11 +1298,11 @@ fn default_gates_for_conditions(conditions: &[StateCondition]) -> Vec<String> {
     match error_class {
         Some("runtime_control_bypass")
         | Some("checkpoint_runtime_divergence")
-        | Some("ambiguous_control_event") => gates.push("route".to_string()),
-        Some("uncanonicalized_recovery_path") => gates.push("executor".to_string()),
+        | Some("ambiguous_control_event") => push_gate_once(&mut gates, "route"),
+        Some("uncanonicalized_recovery_path") => push_gate_once(&mut gates, "executor"),
         Some("effectful_state_advance_without_control_event") => {
-            gates.push("route".to_string());
-            gates.push("planner".to_string());
+            push_gate_once(&mut gates, "route");
+            push_gate_once(&mut gates, "planner");
         }
         _ => {}
     }
@@ -1304,26 +1310,14 @@ fn default_gates_for_conditions(conditions: &[StateCondition]) -> Vec<String> {
     for cond in conditions {
         if cond.key == "actor_kind" {
             match cond.value.as_str() {
-                "executor" => {
-                    if !gates.contains(&"executor".to_string()) {
-                        gates.push("executor".to_string());
-                    }
-                }
-                "planner" => {
-                    if !gates.contains(&"planner".to_string()) {
-                        gates.push("planner".to_string());
-                    }
-                }
-                _ => {
-                    if !gates.contains(&"route".to_string()) {
-                        gates.push("route".to_string());
-                    }
-                }
+                "executor" => push_gate_once(&mut gates, "executor"),
+                "planner" => push_gate_once(&mut gates, "planner"),
+                _ => push_gate_once(&mut gates, "route"),
             }
         }
     }
     if gates.is_empty() {
-        gates.push("route".to_string());
+        push_gate_once(&mut gates, "route");
     }
     gates
 }
@@ -1377,10 +1371,6 @@ pub fn load_enforced_invariants_file(workspace: &Path) -> EnforcedInvariantsFile
         version: 1,
         ..Default::default()
     }
-}
-
-fn load_invariants(workspace: &Path) -> EnforcedInvariantsFile {
-    load_enforced_invariants_file(workspace)
 }
 
 pub fn persist_enforced_invariants_projection(
@@ -1786,7 +1776,7 @@ mod tests {
         );
 
         maybe_synthesize_invariants(&tmp);
-        let file = load_invariants(&tmp);
+        let file = load_enforced_invariants_file(&tmp);
         let inv = file
             .invariants
             .iter()
@@ -1832,7 +1822,7 @@ mod tests {
         }
 
         maybe_synthesize_invariants(&tmp);
-        let file = load_invariants(&tmp);
+        let file = load_enforced_invariants_file(&tmp);
         let inv = file
             .invariants
             .iter()
@@ -1878,7 +1868,7 @@ mod tests {
         }
 
         maybe_synthesize_invariants(&tmp);
-        let file = load_invariants(&tmp);
+        let file = load_enforced_invariants_file(&tmp);
         let inv = file
             .invariants
             .iter()
@@ -1924,7 +1914,7 @@ mod tests {
         }
 
         maybe_synthesize_invariants(&tmp);
-        let file = load_invariants(&tmp);
+        let file = load_enforced_invariants_file(&tmp);
         let inv = file
             .invariants
             .iter()

@@ -81,16 +81,6 @@ pub fn append_blocker(workspace: &Path, record: BlockerRecord) {
     }
 }
 
-/// Append a blocker record to `agent_state/blockers.json` using the canonical
-/// writer when available.
-pub fn append_blocker_with_writer(
-    workspace: &Path,
-    writer: Option<&mut CanonicalWriter>,
-    record: BlockerRecord,
-) -> Result<()> {
-    try_append_blocker_with_writer(workspace, writer, record)
-}
-
 /// Convenience: build and append from a `message{type=blocker}` action.
 pub fn record_blocker_message_with_writer(
     workspace: &Path,
@@ -116,7 +106,7 @@ pub fn record_blocker_message_with_writer(
         source: "blocker_message".to_string(),
         ts_ms: ts,
     };
-    if let Err(err) = append_blocker_with_writer(workspace, writer, record) {
+    if let Err(err) = try_append_blocker_with_writer(workspace, writer, record) {
         eprintln!("[blockers] append blocker message error: {err:#}");
     }
 }
@@ -151,7 +141,7 @@ pub fn record_action_failure_with_writer(
         source: "action_result".to_string(),
         ts_ms: ts,
     };
-    if let Err(err) = append_blocker_with_writer(workspace, writer, record) {
+    if let Err(err) = try_append_blocker_with_writer(workspace, writer, record) {
         eprintln!("[blockers] append action failure error: {err:#}");
     }
 }

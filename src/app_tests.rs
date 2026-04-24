@@ -77,11 +77,14 @@ mod tests {
             .find("register_submitted_executor_turn(")
             .map(|offset| mismatch + offset)
             .expect("missing turn registration after submit ack handling");
+        let rebound = source[mismatch..]
+            .find("ControlEvent::ExecutorSubmitAckTabRebound {")
+            .map(|offset| mismatch + offset)
+            .expect("missing submit ack tab rebound before turn registration");
 
         assert!(
-            !source.contains("ControlEvent::ExecutorSubmitAckTabRebound {")
-                && mismatch < register,
-            "submit ack mismatch must be rejected before turn registration instead of rebinding the active tab"
+            mismatch < rebound && rebound < register,
+            "submit ack mismatch must rebind the active tab before turn registration"
         );
     }
 
@@ -576,7 +579,7 @@ mod tests {
             restart_kind: "process_restart".to_string(),
             signature: "test-signature".to_string(),
         };
-        let prompt = super::build_restart_resume_prompt("planner", &resume);
+        let prompt = super::restart_resume_banner("planner", &resume);
         assert!(prompt.contains("SYSTEM RESTART RESUME"));
         assert!(prompt.contains("Resume role: planner"));
         assert!(prompt.contains("Restart kind: process_restart"));

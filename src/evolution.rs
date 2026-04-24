@@ -96,13 +96,6 @@ pub fn advance_for_successful_build(
     })
 }
 
-pub fn append_build_event_to_tlog(
-    writer: &mut CanonicalWriter,
-    advance: &EvolutionAdvance,
-) -> Result<()> {
-    writer.try_record_evolution_advance(advance)
-}
-
 pub fn record_successful_build(
     workspace: &Path,
     state_dir: &Path,
@@ -110,7 +103,7 @@ pub fn record_successful_build(
     writer: &mut CanonicalWriter,
 ) -> Result<EvolutionAdvance> {
     let advance = advance_for_successful_build(workspace, state_dir, command)?;
-    append_build_event_to_tlog(writer, &advance)?;
+    writer.try_record_evolution_advance(&advance)?;
     Ok(advance)
 }
 

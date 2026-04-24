@@ -1624,7 +1624,7 @@ fn apply_learning_bias_to_plan(
     plan.apply_patch_template = plan
         .top_target
         .as_ref()
-        .and_then(crate::semantic::build_apply_patch_template_public);
+        .and_then(crate::semantic::build_apply_patch_template);
 }
 
 fn append_execution_learning_record(workspace: &Path, record: &Value) -> Result<()> {

@@ -194,7 +194,7 @@ fn op_promote(
     let promote_all = candidate_id == "all";
 
     let mut promoted_count = 0usize;
-    let mut artifact = load_lessons(workspace);
+    let mut artifact = load_lessons_artifact(workspace);
 
     for c in cfile.candidates.iter_mut() {
         if c.status != CandidateStatus::Pending {
@@ -265,7 +265,7 @@ fn op_encode(
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("lessons encode requires 'entry_text' — the exact text of the entry to mark encoded"))?;
 
-    let mut artifact = load_lessons(workspace);
+    let mut artifact = load_lessons_artifact(workspace);
     let mut found = false;
 
     for list in [
@@ -963,10 +963,6 @@ pub fn load_lessons_artifact(workspace: &Path) -> LessonsArtifact {
         }
     }
     LessonsArtifact::default()
-}
-
-fn load_lessons(workspace: &Path) -> LessonsArtifact {
-    load_lessons_artifact(workspace)
 }
 
 pub fn persist_lessons_projection(
@@ -1771,7 +1767,7 @@ mod tests {
         let (_, msg) = handle_lessons_action(&workspace, &action).unwrap();
         assert!(msg.contains("promoted"), "promote should report success");
 
-        let artifact = load_lessons(&workspace);
+        let artifact = load_lessons_artifact(&workspace);
         assert!(artifact
             .failures
             .iter()

@@ -4,41 +4,6 @@ fn is_chromium_transport_error(err_text: &str) -> bool {
         || err_text.contains("chromium: timeout waiting for response")
 }
 
-fn local_transport_blocker_message(role: &str, err_text: &str, task_context: &str) -> Value {
-    let from = canonical_role_label(role);
-    let to = blocker_target_role(role);
-    json!({
-        "action": "message",
-        "from": from,
-        "to": to,
-        "type": "blocker",
-        "status": "blocked",
-        "observation": "Chromium transport failed before an authoritative assistant completion was assembled.",
-        "rationale": "Once the transport/backend has already failed, asking the model to restate the same failure only creates duplicate turns and extra room traffic.",
-        "predicted_next_actions": [
-            {
-                "action": "read_file",
-                "intent": "Inspect the latest Chromium backend, inbound frames, and tlog evidence for the failed turn."
-            },
-            {
-                "action": "message",
-                "intent": "Report a repaired handoff or a narrower blocker after the transport/runtime path is stable."
-            }
-        ],
-        "payload": build_blocker_payload(
-            &format!("{from} transport/runtime failure"),
-            "Chromium transport/runtime failure prevented a usable assistant completion",
-            &format!(
-                "error: {}\n\ncontext: {}",
-                truncate(err_text, MAX_SNIPPET),
-                truncate(task_context, MAX_SNIPPET),
-            ),
-            "Repair the Chromium/backend session and rerun once assistant completion assembly is stable.",
-            "error",
-        ),
-    })
-}
-
 #[derive(Clone)]
 struct ShutdownSignal {
     flag: Arc<AtomicBool>,

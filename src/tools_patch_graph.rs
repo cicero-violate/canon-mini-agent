@@ -50,7 +50,7 @@ fn reject_unvalidated_diagnostics_persistence(
     }
     let diagnostics_path = workspace.join(diagnostics_target_path.unwrap_or(diagnostics_file()));
     let new_diagnostics_text = fs::read_to_string(&diagnostics_path).unwrap_or_default();
-    let derived = crate::prompt_inputs::reconcile_diagnostics_report(workspace);
+    let derived = crate::prompt_inputs::render_diagnostics_report_from_issues(workspace);
     if new_diagnostics_text == derived {
         return Ok(None);
     }

@@ -219,10 +219,6 @@ pub fn load_runtime_master_plan_json(workspace: &Path) -> Option<String> {
     }
 }
 
-pub fn objectives_hash(raw: &str) -> String {
-    crate::logging::stable_hash_hex(raw)
-}
-
 pub fn persist_objectives_projection(workspace: &Path, raw: &str, subject: &str) -> anyhow::Result<()> {
     crate::logging::write_projection_with_artifact_effects(
         workspace,
@@ -237,7 +233,7 @@ pub fn persist_objectives_projection(workspace: &Path, raw: &str, subject: &str)
 pub fn reconcile_objectives_projection(workspace: &Path, canonical_raw: &str, subject: &str) -> anyhow::Result<bool> {
     let path = workspace.join(crate::constants::OBJECTIVES_FILE);
     let current = std::fs::read_to_string(&path).unwrap_or_default();
-    if objectives_hash(&current) == objectives_hash(canonical_raw) {
+    if crate::logging::stable_hash_hex(&current) == crate::logging::stable_hash_hex(canonical_raw) {
         return Ok(false);
     }
     persist_objectives_projection(workspace, canonical_raw, subject)?;

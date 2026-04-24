@@ -268,64 +268,34 @@ fn strip_leading_length_line(input: &str) -> &str {
     input
 }
 fn collect_gemini_fragments(v: &Value, out: &mut String, depth: usize) {
-    enum GeminiNode<'a> {
-        Borrowed(&'a Value),
-        Owned(Value),
-    }
-    let mut stack: Vec<(GeminiNode<'_>, usize)> = vec![(GeminiNode::Borrowed(v), depth)];
-    while let Some((node, depth)) = stack.pop() {
+    let mut stack: Vec<(Value, usize)> = vec![(v.clone(), depth)];
+    while let Some((current, depth)) = stack.pop() {
         if depth > 12 {
             continue;
         }
-        match node {
-            GeminiNode::Borrowed(current) => match current {
-                Value::String(s) => {
-                    if s.starts_with('{') || s.starts_with('[') {
-                        if let Ok(inner) = serde_json::from_str::<Value>(s) {
-                            stack.push((GeminiNode::Owned(inner), depth + 1));
-                            continue;
-                        }
-                    }
-                    if s.contains("```json") {
-                        out.push_str(s);
+        match current {
+            Value::String(s) => {
+                if s.starts_with('{') || s.starts_with('[') {
+                    if let Ok(inner) = serde_json::from_str::<Value>(&s) {
+                        stack.push((inner, depth + 1));
+                        continue;
                     }
                 }
-                Value::Array(arr) => {
-                    for item in arr.iter().rev() {
-                        stack.push((GeminiNode::Borrowed(item), depth + 1));
-                    }
+                if s.contains("```json") {
+                    out.push_str(&s);
                 }
-                Value::Object(map) => {
-                    for val in map.values() {
-                        stack.push((GeminiNode::Borrowed(val), depth + 1));
-                    }
+            }
+            Value::Array(arr) => {
+                for item in arr.into_iter().rev() {
+                    stack.push((item, depth + 1));
                 }
-                _ => {}
-            },
-            GeminiNode::Owned(current) => match &current {
-                Value::String(s) => {
-                    if s.starts_with('{') || s.starts_with('[') {
-                        if let Ok(inner) = serde_json::from_str::<Value>(s) {
-                            stack.push((GeminiNode::Owned(inner), depth + 1));
-                            continue;
-                        }
-                    }
-                    if s.contains("```json") {
-                        out.push_str(s);
-                    }
+            }
+            Value::Object(map) => {
+                for (_, val) in map {
+                    stack.push((val, depth + 1));
                 }
-                Value::Array(arr) => {
-                    for item in arr.iter().rev() {
-                        stack.push((GeminiNode::Owned(item.clone()), depth + 1));
-                    }
-                }
-                Value::Object(map) => {
-                    for val in map.values() {
-                        stack.push((GeminiNode::Owned(val.clone()), depth + 1));
-                    }
-                }
-                _ => {}
-            },
+            }
+            _ => {}
         }
     }
 }

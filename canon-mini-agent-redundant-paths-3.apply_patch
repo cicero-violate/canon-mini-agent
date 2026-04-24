@@ -1,0 +1,165 @@
+*** Begin Patch
+*** Update File: src/refactor_analysis.rs
+@@
+-use crate::semantic::{SemanticIndex, SymbolSummary};
++use crate::semantic::{SemanticIndex, SymbolOccurrence, SymbolSummary};
+@@
+ fn generate_detector_issues(
+     workspace: &Path,
+     subject: &str,
+     family_prefix: &str,
+     limit: usize,
+@@
+     }
+     Ok(created + removed)
+ }
+
++fn sorted_limited_issues(mut out: Vec<Issue>, limit: usize) -> Vec<Issue> {
++    out.sort_by(|a, b| a.id.cmp(&b.id));
++    out.truncate(limit);
++    out
++}
++
++fn parent_dir(path: &str) -> std::path::PathBuf {
++    StdPath::new(path)
++        .parent()
++        .map(|p| p.to_path_buf())
++        .unwrap_or_default()
++}
++
++fn occurrences_are_local_to_def(def_file: &str, occurrences: &[SymbolOccurrence]) -> bool {
++    let def_dir = parent_dir(def_file);
++    occurrences
++        .iter()
++        .all(|occ| parent_dir(&occ.file) == def_dir)
++}
++
+ pub fn panic_surface_issues(
+     _workspace: &Path,
+     crate_name: &str,
+     summaries: &[SymbolSummary],
+     limit: usize,
+@@
+-    out.sort_by(|a, b| a.id.cmp(&b.id));
+-    out.truncate(limit);
+-    out
++    sorted_limited_issues(out, limit)
+ }
+@@
+-    out.sort_by(|a, b| a.id.cmp(&b.id));
+-    out.truncate(limit);
+-    out
++    sorted_limited_issues(out, limit)
+ }
+@@
+-    out.sort_by(|a, b| a.id.cmp(&b.id));
+-    out.truncate(limit);
+-    out
++    sorted_limited_issues(out, limit)
+ }
+@@
+-    out.sort_by(|a, b| a.id.cmp(&b.id));
+-    out.truncate(limit);
+-    out
++    sorted_limited_issues(out, limit)
+ }
+@@
+-        let def_dir = StdPath::new(&s.file)
+-            .parent()
+-            .map(|p| p.to_path_buf())
+-            .unwrap_or_default();
+         let Ok(occurrences) = idx.symbol_occurrences(&s.symbol) else {
+             continue;
+         };
+         if occurrences.is_empty() {
+             continue;
+         }
+-        let mut all_local = true;
+-        for occ in &occurrences {
+-            let ref_dir = StdPath::new(&occ.file)
+-                .parent()
+-                .map(|p| p.to_path_buf())
+-                .unwrap_or_default();
+-            if ref_dir != def_dir {
+-                all_local = false;
+-                break;
+-            }
+-        }
+-        if !all_local {
++        if !occurrences_are_local_to_def(&s.file, &occurrences) {
+             continue;
+         }
+@@
+-    out.sort_by(|a, b| a.id.cmp(&b.id));
+-    out.truncate(limit);
+-    out
++    sorted_limited_issues(out, limit)
+ }
+@@
+-    out.sort_by(|a, b| a.id.cmp(&b.id));
+-    out.truncate(limit);
+-    out
++    sorted_limited_issues(out, limit)
+ }
+@@
+-    out.sort_by(|a, b| a.id.cmp(&b.id));
+-    out.truncate(limit);
+-    out
++    sorted_limited_issues(out, limit)
+ }
+@@
+-    out.sort_by(|a, b| a.id.cmp(&b.id));
+-    out.truncate(limit);
+-    out
++    sorted_limited_issues(out, limit)
+ }
+@@
+ // ---------------------------------------------------------------------------
+ // 1. Dead code  —  U(D) = 0
+ // ---------------------------------------------------------------------------
+
++fn issue_already_tracked(
++    existing_ids: &HashSet<String>,
++    open_locations: &HashSet<String>,
++    id: &str,
++    location: &str,
++) -> bool {
++    existing_ids.contains(id) || open_locations.iter().any(|l| l.contains(location))
++}
++
+ fn dead_code_issues(
+@@
+         }
+         let location = shorten_location(&s.file, s.line);
+-        if open_locations.iter().any(|l| l.contains(&location)) {
+-            continue;
+-        }
+         let id = dead_code_id(crate_name, &s.symbol);
+-        if existing_ids.contains(&id) {
++        if issue_already_tracked(existing_ids, open_locations, &id, &location) {
+             continue;
+         }
+@@
+         }
+         let location = shorten_location(&s.file, s.line);
+-        if open_locations.iter().any(|l| l.contains(&location)) {
+-            continue;
+-        }
+         let id = branch_reduce_id(crate_name, &s.symbol);
+-        if existing_ids.contains(&id) {
++        if issue_already_tracked(existing_ids, open_locations, &id, &location) {
+             continue;
+         }
+@@
+     let mut created = 0;
+     for (s, blocks) in summaries.iter().filter_map(call_chain_candidate) {
+         let location = shorten_location(&s.file, s.line);
+-        if open_locations.iter().any(|l| l.contains(&location)) {
+-            continue;
+-        }
+         let id = call_chain_id(crate_name, &s.symbol);
+-        if existing_ids.contains(&id) {
++        if issue_already_tracked(existing_ids, open_locations, &id, &location) {
+             continue;
+         }
+*** End Patch

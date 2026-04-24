@@ -192,6 +192,40 @@ impl SystemState {
 /// state.  This function has no side effects: it never writes to disk, never
 /// logs, and never inspects the environment.  The `CanonicalWriter` calls it
 /// after appending the event to the tlog.
+fn set_planner_pending_flag(s: &mut SystemState, pending: bool) {
+    s.planner_pending = pending;
+    if !pending {
+        s.planner_pending_reason = None;
+    }
+}
+
+fn queue_planner_reason(s: &mut SystemState, reason: &str) {
+    s.planner_pending = true;
+    s.planner_pending_reason = Some(reason.to_string());
+}
+
+fn clear_diagnostics_pending(s: &mut SystemState) {
+    s.diagnostics_pending = false;
+    s.diagnostics_pending_reason = None;
+}
+
+fn set_lane_tab_mapping(s: &mut SystemState, lane_id: usize, tab_id: u32) {
+    s.lane_active_tab.insert(lane_id, tab_id);
+    s.tab_id_to_lane.insert(tab_id, lane_id);
+}
+
+fn rebind_lane_tab(s: &mut SystemState, lane_id: usize, from_tab_id: u32, to_tab_id: u32) {
+    s.lane_active_tab.insert(lane_id, to_tab_id);
+    s.tab_id_to_lane.remove(&from_tab_id);
+    s.tab_id_to_lane.insert(to_tab_id, lane_id);
+}
+
+fn reset_lane_submit_state(s: &mut SystemState, lane_id: usize) {
+    s.lane_next_submit_at_ms
+        .insert(lane_id, crate::logging::now_ms());
+    s.lane_submit_in_flight.insert(lane_id, false);
+}
+
 pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState {
     match e {
         ControlEvent::PhaseSet { phase, lane } => {
@@ -202,24 +236,18 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
             s.scheduled_phase = phase.clone();
         }
         ControlEvent::PlannerPendingSet { pending } => {
-            s.planner_pending = *pending;
-            if !pending {
-                s.planner_pending_reason = None;
-            }
+            set_planner_pending_flag(&mut s, *pending);
         }
         ControlEvent::PlannerObjectiveReviewQueued => {
-            s.planner_pending = true;
-            s.planner_pending_reason = Some("objective_review".to_string());
+            queue_planner_reason(&mut s, "objective_review");
         }
         ControlEvent::PlannerObjectivePlanGapQueued => {
-            s.planner_pending = true;
-            s.planner_pending_reason = Some("objective_plan_gap".to_string());
+            queue_planner_reason(&mut s, "objective_plan_gap");
         }
         ControlEvent::DiagnosticsPendingSet { pending } => {
             // Compatibility shim: diagnostics control is deprecated; map to planner pending.
-            s.planner_pending = *pending;
-            s.diagnostics_pending = false;
-            s.diagnostics_pending_reason = None;
+            set_planner_pending_flag(&mut s, *pending);
+            clear_diagnostics_pending(&mut s);
         }
         ControlEvent::DiagnosticsReconciliationQueued => {
             // Compatibility no-op for tlogs that recorded reconciliation queue
@@ -233,10 +261,8 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
         }
         ControlEvent::DiagnosticsVerifierFollowupQueued => {
             // Compatibility shim: diagnostics follow-up is planner follow-up now.
-            s.planner_pending = true;
-            s.planner_pending_reason = Some("verifier_followup".to_string());
-            s.diagnostics_pending = false;
-            s.diagnostics_pending_reason = None;
+            queue_planner_reason(&mut s, "verifier_followup");
+            clear_diagnostics_pending(&mut s);
         }
         ControlEvent::DiagnosticsTextSet { text } => {
             // Keep field for replay compatibility only.
@@ -364,11 +390,8 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
             );
             // Mirror the four companion field updates that `register_submitted_executor_turn`
             // used to perform directly on `DispatchState`.
-            s.lane_active_tab.insert(*lane_id, *tab_id);
-            s.tab_id_to_lane.insert(*tab_id, *lane_id);
-            s.lane_next_submit_at_ms
-                .insert(*lane_id, crate::logging::now_ms());
-            s.lane_submit_in_flight.insert(*lane_id, false);
+            set_lane_tab_mapping(&mut s, *lane_id, *tab_id);
+            reset_lane_submit_state(&mut s, *lane_id);
         }
         ControlEvent::ExecutorTurnDeregistered { tab_id, turn_id } => {
             let key = format!("{}:{}", tab_id, turn_id);
@@ -383,27 +406,21 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
                 }
             }
             s.tab_id_to_lane.insert(*tab_id, *lane_id);
-            s.lane_next_submit_at_ms
-                .insert(*lane_id, crate::logging::now_ms());
-            s.lane_submit_in_flight.insert(*lane_id, false);
+            reset_lane_submit_state(&mut s, *lane_id);
         }
         ControlEvent::ExecutorCompletionTabRebound {
             lane_id,
             from_tab_id,
             to_tab_id,
         } => {
-            s.lane_active_tab.insert(*lane_id, *to_tab_id);
-            s.tab_id_to_lane.remove(from_tab_id);
-            s.tab_id_to_lane.insert(*to_tab_id, *lane_id);
+            rebind_lane_tab(&mut s, *lane_id, *from_tab_id, *to_tab_id);
         }
         ControlEvent::ExecutorSubmitAckTabRebound {
             lane_id,
             from_tab_id,
             to_tab_id,
         } => {
-            s.lane_active_tab.insert(*lane_id, *to_tab_id);
-            s.tab_id_to_lane.remove(from_tab_id);
-            s.tab_id_to_lane.insert(*to_tab_id, *lane_id);
+            rebind_lane_tab(&mut s, *lane_id, *from_tab_id, *to_tab_id);
         }
     }
     s

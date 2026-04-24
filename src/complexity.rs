@@ -924,12 +924,8 @@ fn collect_complexity_item(
     }
     all_summaries.push(s.clone());
     let entry = build_complexity_entry(&s, blocks, stmts);
-    global.push(build_global_complexity_entry(crate_name, &entry));
+    global.push(global_complexity_entry_value(crate_name, &entry));
     Some(entry)
-}
-
-fn build_global_complexity_entry(crate_name: &str, entry: &serde_json::Value) -> serde_json::Value {
-    global_complexity_entry_value(crate_name, entry)
 }
 
 fn global_complexity_entry_value(

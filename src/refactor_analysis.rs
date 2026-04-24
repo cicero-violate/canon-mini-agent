@@ -28,7 +28,7 @@ use crate::issues::{
     is_closed, load_issues_file, persist_issues_projection_with_writer, rescore_all, Issue,
     IssuesFile,
 };
-use crate::semantic::{SemanticIndex, SymbolSummary};
+use crate::semantic::{SemanticIndex, SymbolOccurrence, SymbolSummary};
 
 // ---------------------------------------------------------------------------
 // Public entry point
@@ -296,6 +296,26 @@ fn generate_detector_issues(
     Ok(created + removed)
 }
 
+fn sorted_limited_issues(mut out: Vec<Issue>, limit: usize) -> Vec<Issue> {
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out.truncate(limit);
+    out
+}
+
+fn parent_dir(path: &str) -> std::path::PathBuf {
+    StdPath::new(path)
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_default()
+}
+
+fn occurrences_are_local_to_def(def_file: &str, occurrences: &[SymbolOccurrence]) -> bool {
+    let def_dir = parent_dir(def_file);
+    occurrences
+        .iter()
+        .all(|occ| parent_dir(&occ.file) == def_dir)
+}
+
 pub fn panic_surface_issues(
     _workspace: &Path,
     crate_name: &str,
@@ -348,9 +368,7 @@ pub fn panic_surface_issues(
             ..Issue::default()
         });
     }
-    out.sort_by(|a, b| a.id.cmp(&b.id));
-    out.truncate(limit);
-    out
+    sorted_limited_issues(out, limit)
 }
 
 pub fn state_machine_issues(
@@ -359,14 +377,12 @@ pub fn state_machine_issues(
     summaries: &[SymbolSummary],
     limit: usize,
 ) -> Vec<Issue> {
-    let mut out: Vec<Issue> = summaries
+    let out: Vec<Issue> = summaries
         .iter()
         .filter(|s| s.switchint_count > 3 && s.has_back_edges)
         .map(|s| build_state_machine_issue(crate_name, s))
         .collect();
-    out.sort_by(|a, b| a.id.cmp(&b.id));
-    out.truncate(limit);
-    out
+    sorted_limited_issues(out, limit)
 }
 
 fn build_state_machine_issue(crate_name: &str, summary: &SymbolSummary) -> Issue {
@@ -448,9 +464,7 @@ pub fn drop_complexity_issues(
             ..Issue::default()
         });
     }
-    out.sort_by(|a, b| a.id.cmp(&b.id));
-    out.truncate(limit);
-    out
+    sorted_limited_issues(out, limit)
 }
 
 pub fn clone_pressure_issues(
@@ -498,9 +512,7 @@ pub fn clone_pressure_issues(
             ..Issue::default()
         });
     }
-    out.sort_by(|a, b| a.id.cmp(&b.id));
-    out.truncate(limit);
-    out
+    sorted_limited_issues(out, limit)
 }
 
 pub fn visibility_leak_issues(
@@ -517,28 +529,13 @@ pub fn visibility_leak_issues(
         if s.ref_count == 0 || !symbol_is_pub(s) {
             continue;
         }
-        let def_dir = StdPath::new(&s.file)
-            .parent()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_default();
         let Ok(occurrences) = idx.symbol_occurrences(&s.symbol) else {
             continue;
         };
         if occurrences.is_empty() {
             continue;
         }
-        let mut all_local = true;
-        for occ in &occurrences {
-            let ref_dir = StdPath::new(&occ.file)
-                .parent()
-                .map(|p| p.to_path_buf())
-                .unwrap_or_default();
-            if ref_dir != def_dir {
-                all_local = false;
-                break;
-            }
-        }
-        if !all_local {
+        if !occurrences_are_local_to_def(&s.file, &occurrences) {
             continue;
         }
         let location = shorten_location(&s.file, s.line);
@@ -571,9 +568,7 @@ pub fn visibility_leak_issues(
             ..Issue::default()
         });
     }
-    out.sort_by(|a, b| a.id.cmp(&b.id));
-    out.truncate(limit);
-    out
+    sorted_limited_issues(out, limit)
 }
 
 pub fn mono_explosion_issues(
@@ -634,9 +629,7 @@ pub fn mono_explosion_issues(
             ..Issue::default()
         });
     }
-    out.sort_by(|a, b| a.id.cmp(&b.id));
-    out.truncate(limit);
-    out
+    sorted_limited_issues(out, limit)
 }
 
 pub fn generic_overreach_issues(
@@ -685,9 +678,7 @@ pub fn generic_overreach_issues(
             ..Issue::default()
         });
     }
-    out.sort_by(|a, b| a.id.cmp(&b.id));
-    out.truncate(limit);
-    out
+    sorted_limited_issues(out, limit)
 }
 
 pub fn dead_impl_issues(
@@ -749,9 +740,7 @@ pub fn dead_impl_issues(
             ..Issue::default()
         });
     }
-    out.sort_by(|a, b| a.id.cmp(&b.id));
-    out.truncate(limit);
-    out
+    sorted_limited_issues(out, limit)
 }
 
 pub fn rename_symbol_issues(
@@ -1891,6 +1880,15 @@ fn local_is_loop_invariant(
 // 1. Dead code  —  U(D) = 0
 // ---------------------------------------------------------------------------
 
+fn issue_already_tracked(
+    existing_ids: &HashSet<String>,
+    open_locations: &HashSet<String>,
+    id: &str,
+    location: &str,
+) -> bool {
+    existing_ids.contains(id) || open_locations.iter().any(|l| l.contains(location))
+}
+
 fn dead_code_issues(
     file: &mut IssuesFile,
     _idx: &SemanticIndex,
@@ -1916,11 +1914,8 @@ fn dead_code_issues(
             continue;
         }
         let location = shorten_location(&s.file, s.line);
-        if open_locations.iter().any(|l| l.contains(&location)) {
-            continue;
-        }
         let id = dead_code_id(crate_name, &s.symbol);
-        if existing_ids.contains(&id) {
+        if issue_already_tracked(existing_ids, open_locations, &id, &location) {
             continue;
         }
         let short = short_name(&s.symbol);
@@ -2008,11 +2003,8 @@ fn branch_reduction_issues(
             continue;
         }
         let location = shorten_location(&s.file, s.line);
-        if open_locations.iter().any(|l| l.contains(&location)) {
-            continue;
-        }
         let id = branch_reduce_id(crate_name, &s.symbol);
-        if existing_ids.contains(&id) {
+        if issue_already_tracked(existing_ids, open_locations, &id, &location) {
             continue;
         }
         let short = short_name(&s.symbol);
@@ -2179,30 +2171,10 @@ fn call_chain_issues(
     open_locations: &HashSet<String>,
 ) -> usize {
     let mut created = 0;
-    for s in summaries {
-        if s.kind != "fn" {
-            continue;
-        }
-        // Pass-through: single callee, few or one caller, tiny body.
-        if s.call_out != 1 {
-            continue;
-        }
-        if s.call_in == 0 {
-            continue; // already caught by dead-code analysis
-        }
-        let blocks = s.mir_blocks.unwrap_or(0);
-        if blocks > 3 || blocks == 0 {
-            continue;
-        }
-        if is_exempt_from_dead_code(&s.symbol) {
-            continue;
-        }
+    for (s, blocks) in summaries.iter().filter_map(call_chain_candidate) {
         let location = shorten_location(&s.file, s.line);
-        if open_locations.iter().any(|l| l.contains(&location)) {
-            continue;
-        }
         let id = call_chain_id(crate_name, &s.symbol);
-        if existing_ids.contains(&id) {
+        if issue_already_tracked(existing_ids, open_locations, &id, &location) {
             continue;
         }
         let short = short_name(&s.symbol);
@@ -2238,6 +2210,17 @@ fn call_chain_issues(
         created += 1;
     }
     created
+}
+
+fn call_chain_candidate(s: &crate::semantic::SymbolSummary) -> Option<(&crate::semantic::SymbolSummary, usize)> {
+    let blocks = s.mir_blocks.unwrap_or(0);
+    // Pass-through: single callee, at least one caller, tiny body.
+    (s.kind == "fn"
+        && s.call_out == 1
+        && s.call_in > 0
+        && (1..=3).contains(&blocks)
+        && !is_exempt_from_dead_code(&s.symbol))
+    .then_some((s, blocks))
 }
 
 // ---------------------------------------------------------------------------

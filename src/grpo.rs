@@ -71,6 +71,45 @@ fn partial_turn_slot<'a>(
     by_command.entry(command_id).or_default()
 }
 
+fn assign_role_if_missing(slot: &mut PartialTurn, role: String) {
+    if slot.role.is_none() {
+        slot.role = Some(role);
+    }
+}
+
+fn mark_task_blocked_unless_complete(
+    outcomes: &mut HashMap<String, TaskOutcome>,
+    task_id: String,
+) {
+    let entry = outcomes.entry(task_id).or_default();
+    if entry.status != "complete" {
+        entry.status = "blocked".to_string();
+    }
+}
+
+fn record_failed_task_result(
+    ok: bool,
+    task_id: &Option<String>,
+    outcomes: &mut HashMap<String, TaskOutcome>,
+) {
+    if ok {
+        return;
+    }
+    let Some(task_id) = task_id else {
+        return;
+    };
+    mark_task_blocked_unless_complete(outcomes, task_id.clone());
+}
+
+fn increment_task_blocker(
+    blocker_count_by_task: &mut HashMap<String, usize>,
+    task_id: Option<String>,
+) {
+    if let Some(task_id) = task_id {
+        *blocker_count_by_task.entry(task_id).or_insert(0) += 1;
+    }
+}
+
 fn apply_effect_event(
     record_seq: u64,
     event: crate::events::EffectEvent,
@@ -101,9 +140,7 @@ fn apply_effect_event(
             let slot = partial_turn_slot(by_command, command_id);
             slot.completion = Some(raw);
             slot.output_action_kind = action_kind;
-            if slot.role.is_none() {
-                slot.role = Some(role);
-            }
+            assign_role_if_missing(slot, role);
         }
         crate::events::EffectEvent::ActionResultRecorded {
             command_id,
@@ -118,22 +155,13 @@ fn apply_effect_event(
             slot.result_action_kind = Some(action_kind);
             slot.result_task_id = task_id.clone();
             slot.result_ok = Some(ok);
-            if !ok {
-                if let Some(task) = task_id {
-                    let entry = outcomes.entry(task).or_default();
-                    if entry.status != "complete" {
-                        entry.status = "blocked".to_string();
-                    }
-                }
-            }
+            record_failed_task_result(ok, &task_id, outcomes);
         }
         crate::events::EffectEvent::InboundMessageRecorded { message, .. } => {
             update_outcome_from_message(&message, outcomes);
         }
         crate::events::EffectEvent::BlockerRecorded { record } => {
-            if let Some(task_id) = record.task_id {
-                *blocker_count_by_task.entry(task_id).or_insert(0) += 1;
-            }
+            increment_task_blocker(blocker_count_by_task, record.task_id);
         }
         crate::events::EffectEvent::FingerprintDriftRecorded { drift } => {
             *latest_drift = Some(drift);
@@ -336,6 +364,15 @@ fn update_outcome_from_message(message: &str, outcomes: &mut HashMap<String, Tas
         .and_then(Value::as_u64)
         .unwrap_or(0) as usize;
 
+    update_task_outcome(outcomes, task_id, status, blocker_count);
+}
+
+fn update_task_outcome(
+    outcomes: &mut HashMap<String, TaskOutcome>,
+    task_id: String,
+    status: String,
+    blocker_count: usize,
+) {
     let entry = outcomes.entry(task_id).or_default();
     entry.status = status;
     if blocker_count > 0 {

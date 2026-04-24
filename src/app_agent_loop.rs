@@ -178,46 +178,24 @@ async fn run_agent(
                     None,
                 );
                 if is_chromium_transport_error(&err_text) {
-                    if role.starts_with("executor") {
-                        apply_error_result(
-                            role,
-                            &task_context,
-                            &mut error_streak,
-                            &mut last_error,
-                            &mut last_result,
-                            &err_text,
-                            format!(
-                                "Executor transport failure recovered locally. Retry on the same executor endpoint/lane.\n\
-                                 Do not emit a blocker handoff for this transport error unless retries are exhausted.\n\
-                                 {}\n{}\n\nTask context:\n{}",
-                                crate::prompt_contract::ACTION_EMIT_LINE,
-                                crate::prompt_contract::OUTPUT_FORMAT_LINE,
-                                truncate(&task_context, MAX_SNIPPET)
-                            ),
-                        );
-                        step += 1;
-                        continue;
-                    }
-                    let action = local_transport_blocker_message(role, &err_text, &task_context);
-                    let (done, reason) = process_action_and_execute(
+                    apply_error_result(
                         role,
-                        prompt_kind,
-                        endpoint,
-                        workspace,
-                        step + 1,
-                        &exchange_id,
-                        &action,
-                        false,
-                        ctx.writer.as_deref_mut(),
-                    )?;
-                    return Ok(if done {
-                        AgentCompletion::MessageAction {
-                            action,
-                            summary: reason,
-                        }
-                    } else {
-                        AgentCompletion::Summary(reason)
-                    });
+                        &task_context,
+                        &mut error_streak,
+                        &mut last_error,
+                        &mut last_result,
+                        &err_text,
+                        format!(
+                            "Chromium transport failure recovered locally. Retry on the same endpoint.\n\
+                             Do not emit a blocker handoff for this transport error unless retries are exhausted.\n\
+                             {}\n{}\n\nTask context:\n{}",
+                            crate::prompt_contract::ACTION_EMIT_LINE,
+                            crate::prompt_contract::OUTPUT_FORMAT_LINE,
+                            truncate(&task_context, MAX_SNIPPET)
+                        ),
+                    );
+                    step += 1;
+                    continue;
                 }
                 apply_error_result(
                     role,
@@ -891,11 +869,6 @@ fn restart_resume_banner(role: &str, resume: &PostRestartResult) -> String {
     );
     let suffix = "\n\nReturn to the same conversation and continue from this result.";
     render_action_result_sections(&prefix, &resume.result, suffix)
-}
-
-/// Build a continuation prompt for a resumed session instead of the full bootstrap prompt.
-fn build_restart_resume_prompt(role: &str, resume: &PostRestartResult) -> String {
-    restart_resume_banner(role, resume)
 }
 
 fn find_endpoint<'a>(endpoints: &'a [LlmEndpoint], role: &str) -> Result<&'a LlmEndpoint> {

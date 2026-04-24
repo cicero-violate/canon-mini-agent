@@ -677,7 +677,7 @@ async fn submit_executor_turn(
         crate::prompt_inputs::read_ready_tasks(&std::path::PathBuf::from(workspace()), 10);
     let restart_resume = peek_post_restart_result(&job.executor_role);
     let mut exec_prompt = if let Some(resume) = restart_resume.as_ref() {
-        let prompt = build_restart_resume_prompt(&job.executor_role, resume);
+        let prompt = restart_resume_banner(&job.executor_role, resume);
         let _ = take_post_restart_result(&job.executor_role);
         prompt
     } else {
@@ -1047,7 +1047,7 @@ pub async fn run() -> Result<()> {
             let (seed_path, seed_contents) = crate::objectives::load_bootstrap_objectives_seed(&workspace);
             writer.apply(ControlEvent::ObjectivesInitialized {
                 source_path: seed_path.to_string_lossy().to_string(),
-                hash: crate::objectives::objectives_hash(&seed_contents),
+                hash: crate::logging::stable_hash_hex(&seed_contents),
                 contents: seed_contents.clone(),
             });
             let _ = crate::objectives::reconcile_objectives_projection(

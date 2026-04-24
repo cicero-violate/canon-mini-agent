@@ -846,7 +846,7 @@ impl SemanticIndex {
             format!("expanded symbol span is not on UTF-8 boundaries (lo={slice_lo} hi={slice_hi})")
         })?;
 
-        let display = shorten_path(&def.file);
+        let display = shorten_display_path(&def.file);
         let mut out = format!(
             "// {} — {}:{}\n",
             self.node_path(key, node),
@@ -883,7 +883,7 @@ impl SemanticIndex {
         for s in &unique {
             out.push_str(&format!(
                 "  {}:{}:{}\n",
-                shorten_path(&s.file),
+                shorten_display_path(&s.file),
                 s.line,
                 s.col
             ));
@@ -901,7 +901,7 @@ impl SemanticIndex {
         for span in &unique {
             out.push_str(&format!(
                 "── {}:{}:{} ──\n",
-                shorten_path(&span.file),
+                shorten_display_path(&span.file),
                 span.line,
                 span.col
             ));
@@ -1258,7 +1258,7 @@ impl SemanticIndex {
                 out.push_str(&format!(
                     "  {} ({}:{})\n",
                     self.node_path(sym, node),
-                    shorten_path(&def.file),
+                    shorten_display_path(&def.file),
                     def.line
                 ));
                 if expand_bodies {
@@ -1363,7 +1363,7 @@ impl SemanticIndex {
                     self.node_path(sym, node),
                     class,
                     node.kind,
-                    shorten_path(&def.file),
+                    shorten_display_path(&def.file),
                     def.line
                 ));
                 if expand_bodies {
@@ -1406,14 +1406,14 @@ impl SemanticIndex {
                 target.reasons.join(", ")
             ));
             if let (Some(file), Some(line)) = (&target.file, target.line) {
-                out.push_str(&format!("    source={}:{}\n", shorten_path(file), line));
+                out.push_str(&format!("    source={}:{}\n", shorten_display_path(file), line));
             }
         }
         if let Some(top) = top_target {
             out.push_str("  apply_patch target:\n");
             out.push_str(&format!("    symbol={}\n", top.symbol));
             if let (Some(file), Some(line)) = (&top.file, top.line) {
-                out.push_str(&format!("    file={} line={}\n", shorten_path(file), line));
+                out.push_str(&format!("    file={} line={}\n", shorten_display_path(file), line));
             }
             if let (Some(start), Some(end)) = (top.context_start, top.context_end) {
                 out.push_str(&format!("    context_window_lines={}..={}\n", start, end));
@@ -2135,10 +2135,6 @@ pub fn shorten_display_path(path: &str) -> String {
     path.to_string()
 }
 
-fn shorten_path(path: &str) -> String {
-    shorten_display_path(path)
-}
-
 fn stable_hash(input: &str) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     input.hash(&mut hasher);
@@ -2177,7 +2173,7 @@ fn patch_kind_hints(kind: Option<&PatchKind>) -> (&'static str, &'static str) {
     }
 }
 
-fn build_apply_patch_template(target: &ExecutionPatchTarget) -> Option<String> {
+pub(crate) fn build_apply_patch_template(target: &ExecutionPatchTarget) -> Option<String> {
     let file = target.file.as_ref()?;
     let context = target.context_window.as_ref()?;
     if context.trim().is_empty() {
@@ -2185,7 +2181,7 @@ fn build_apply_patch_template(target: &ExecutionPatchTarget) -> Option<String> {
     }
     let mut template = String::new();
     template.push_str("*** Begin Patch\n");
-    template.push_str(&format!("*** Update File: {}\n", shorten_path(file)));
+    template.push_str(&format!("*** Update File: {}\n", shorten_display_path(file)));
     template.push_str("@@\n");
     for line in context.lines() {
         if let Some((_line_no, text)) = line.split_once(": ") {
@@ -2199,10 +2195,6 @@ fn build_apply_patch_template(target: &ExecutionPatchTarget) -> Option<String> {
     template.push_str(&format!("+{}\n", add_hint));
     template.push_str("*** End Patch");
     Some(template)
-}
-
-pub fn build_apply_patch_template_public(target: &ExecutionPatchTarget) -> Option<String> {
-    build_apply_patch_template(target)
 }
 
 fn read_context_window(file: &str, line: u32, before: usize, after: usize) -> (u32, u32, String) {
@@ -2292,8 +2284,8 @@ mod tests {
                 cfg_nodes: HashMap::new(),
                 cfg_edges: Vec::new(),
                 bridge_edges: Vec::new(),
-                redundant_paths: Vec::new(),
                 alpha_pathways: Vec::new(),
+                redundant_paths: Vec::new(),
             },
         };
         let out = idx
@@ -2372,8 +2364,8 @@ mod tests {
                 cfg_nodes: HashMap::new(),
                 cfg_edges: Vec::new(),
                 bridge_edges: Vec::new(),
-                redundant_paths: Vec::new(),
                 alpha_pathways: Vec::new(),
+                redundant_paths: Vec::new(),
             },
         };
 
@@ -2437,8 +2429,8 @@ mod tests {
                 cfg_nodes: HashMap::new(),
                 cfg_edges: Vec::new(),
                 bridge_edges: Vec::new(),
-                redundant_paths: Vec::new(),
                 alpha_pathways: Vec::new(),
+                redundant_paths: Vec::new(),
             },
         };
 
@@ -2510,8 +2502,8 @@ mod tests {
                         to: "dep::callee".to_string(),
                     },
                 ],
-                redundant_paths: Vec::new(),
                 alpha_pathways: Vec::new(),
+                redundant_paths: Vec::new(),
             },
         };
 
@@ -2564,8 +2556,8 @@ mod tests {
                     from: "app::run".to_string(),
                     to: "cfg::app::run::bb0".to_string(),
                 }],
-                redundant_paths: Vec::new(),
                 alpha_pathways: Vec::new(),
+                redundant_paths: Vec::new(),
             },
         };
 
@@ -2608,8 +2600,8 @@ mod tests {
                 cfg_nodes: HashMap::new(),
                 cfg_edges: Vec::new(),
                 bridge_edges: Vec::new(),
-                redundant_paths: Vec::new(),
                 alpha_pathways: Vec::new(),
+                redundant_paths: Vec::new(),
             },
         };
 
@@ -2681,8 +2673,8 @@ mod tests {
                 cfg_nodes: HashMap::new(),
                 cfg_edges: Vec::new(),
                 bridge_edges: Vec::new(),
-                redundant_paths: Vec::new(),
                 alpha_pathways: Vec::new(),
+                redundant_paths: Vec::new(),
             },
         };
         let out = idx

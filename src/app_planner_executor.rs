@@ -65,7 +65,7 @@ async fn run_planner_phase(
     });
     let restart_resume = peek_post_restart_result("planner");
     let mut planner_prompt = if let Some(resume) = restart_resume.as_ref() {
-        let prompt = build_restart_resume_prompt("planner", resume);
+        let prompt = restart_resume_banner("planner", resume);
         let _ = take_post_restart_result("planner");
         prompt
     } else {

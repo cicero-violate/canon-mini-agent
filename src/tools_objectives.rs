@@ -122,7 +122,7 @@ fn write_objectives_file(
     let contents = serde_json::to_string_pretty(file)?;
     if let Some(writer_ref) = writer.as_deref_mut() {
         writer_ref.apply(crate::events::ControlEvent::ObjectivesReplaced {
-            hash: crate::objectives::objectives_hash(&contents),
+            hash: crate::logging::stable_hash_hex(&contents),
             contents: contents.clone(),
         });
         crate::objectives::persist_objectives_projection(

@@ -72,81 +72,100 @@ pub enum ErrorClass {
 }
 
 impl ErrorClass {
+    fn metadata(&self) -> (&'static str, &'static str) {
+        match self {
+            ErrorClass::SecondMutationPath => (
+                "second_mutation_path",
+                "canonical state changed through a path other than CanonicalWriter::apply",
+            ),
+            ErrorClass::RuntimeControlBypass => (
+                "runtime_control_bypass",
+                "runtime-only state influenced control flow without canonical representation",
+            ),
+            ErrorClass::UncanonicalizedRecoveryPath => (
+                "uncanonicalized_recovery_path",
+                "a recovery path changed behavior without an explicit canonical event",
+            ),
+            ErrorClass::CheckpointRuntimeDivergence => (
+                "checkpoint_runtime_divergence",
+                "runtime state diverged from checkpoint or canonical state beyond the allowed recovery window",
+            ),
+            ErrorClass::EffectfulStateAdvanceWithoutControlEvent => (
+                "effectful_state_advance_without_control_event",
+                "an effect changed canonical behavior without a corresponding control event",
+            ),
+            ErrorClass::AmbiguousControlEvent => (
+                "ambiguous_control_event",
+                "a control event encoded multiple logically distinct transitions",
+            ),
+            ErrorClass::MissingTarget => (
+                "missing_target",
+                "action referenced a target (file/symbol) that does not exist",
+            ),
+            ErrorClass::InvalidSchema => (
+                "invalid_schema",
+                "role emitted a structurally invalid action that failed schema validation",
+            ),
+            ErrorClass::StepLimitExceeded => (
+                "step_limit_exceeded",
+                "executor reached step budget without completing the task",
+            ),
+            ErrorClass::PlanPreflightFailed => (
+                "plan_preflight_failed",
+                "planner task referenced a symbol not found in the workspace semantic graph",
+            ),
+            ErrorClass::CompileError => (
+                "compile_error",
+                "cargo build or test returned a non-zero exit code",
+            ),
+            ErrorClass::PermissionDenied => (
+                "permission_denied",
+                "path access was outside the permitted workspace boundary",
+            ),
+            ErrorClass::ReadFileStall => (
+                "read_file_stall",
+                "same file read multiple times by the same role without any mutation",
+            ),
+            ErrorClass::InvalidRoute => (
+                "invalid_route",
+                "role was dispatched when its required preconditions were not satisfied",
+            ),
+            ErrorClass::BlockerEscalated => (
+                "blocker_escalated",
+                "LLM role explicitly declared itself blocked and cannot proceed",
+            ),
+            ErrorClass::UnauthorizedPlanOp => (
+                "unauthorized_plan_op",
+                "role attempted a plan operation it is not permitted to perform",
+            ),
+            ErrorClass::VerificationFailed => (
+                "verification_failed",
+                "verification produced a result that contradicts the expected system state",
+            ),
+            ErrorClass::LlmTimeout => (
+                "llm_timeout",
+                "LLM endpoint call timed out or returned a connection error",
+            ),
+            ErrorClass::LivelockDetected => (
+                "livelock_detected",
+                "orchestrator detected livelock: no watched-file state change after consecutive cycles",
+            ),
+            ErrorClass::ReactionOnly => (
+                "reaction_only",
+                "LLM returned a prose-only response with no extractable JSON action block",
+            ),
+            ErrorClass::Unknown => ("unknown", "unclassified bad outcome"),
+        }
+    }
+
     /// Stable string key used in state conditions for invariant fingerprinting.
     pub fn as_key(&self) -> &'static str {
-        match self {
-            ErrorClass::SecondMutationPath => "second_mutation_path",
-            ErrorClass::RuntimeControlBypass => "runtime_control_bypass",
-            ErrorClass::UncanonicalizedRecoveryPath => "uncanonicalized_recovery_path",
-            ErrorClass::CheckpointRuntimeDivergence => "checkpoint_runtime_divergence",
-            ErrorClass::EffectfulStateAdvanceWithoutControlEvent => {
-                "effectful_state_advance_without_control_event"
-            }
-            ErrorClass::AmbiguousControlEvent => "ambiguous_control_event",
-            ErrorClass::MissingTarget => "missing_target",
-            ErrorClass::InvalidSchema => "invalid_schema",
-            ErrorClass::StepLimitExceeded => "step_limit_exceeded",
-            ErrorClass::PlanPreflightFailed => "plan_preflight_failed",
-            ErrorClass::CompileError => "compile_error",
-            ErrorClass::PermissionDenied => "permission_denied",
-            ErrorClass::ReadFileStall => "read_file_stall",
-            ErrorClass::InvalidRoute => "invalid_route",
-            ErrorClass::BlockerEscalated => "blocker_escalated",
-            ErrorClass::UnauthorizedPlanOp => "unauthorized_plan_op",
-            ErrorClass::VerificationFailed => "verification_failed",
-            ErrorClass::LlmTimeout => "llm_timeout",
-            ErrorClass::LivelockDetected => "livelock_detected",
-            ErrorClass::ReactionOnly => "reaction_only",
-            ErrorClass::Unknown => "unknown",
-        }
+        self.metadata().0
     }
 
     /// Human-readable description used in invariant `predicate_text`.
     pub fn description(&self) -> &'static str {
-        match self {
-            ErrorClass::SecondMutationPath =>
-                "canonical state changed through a path other than CanonicalWriter::apply",
-            ErrorClass::RuntimeControlBypass =>
-                "runtime-only state influenced control flow without canonical representation",
-            ErrorClass::UncanonicalizedRecoveryPath =>
-                "a recovery path changed behavior without an explicit canonical event",
-            ErrorClass::CheckpointRuntimeDivergence =>
-                "runtime state diverged from checkpoint or canonical state beyond the allowed recovery window",
-            ErrorClass::EffectfulStateAdvanceWithoutControlEvent =>
-                "an effect changed canonical behavior without a corresponding control event",
-            ErrorClass::AmbiguousControlEvent =>
-                "a control event encoded multiple logically distinct transitions",
-            ErrorClass::MissingTarget =>
-                "action referenced a target (file/symbol) that does not exist",
-            ErrorClass::InvalidSchema =>
-                "role emitted a structurally invalid action that failed schema validation",
-            ErrorClass::StepLimitExceeded =>
-                "executor reached step budget without completing the task",
-            ErrorClass::PlanPreflightFailed =>
-                "planner task referenced a symbol not found in the workspace semantic graph",
-            ErrorClass::CompileError =>
-                "cargo build or test returned a non-zero exit code",
-            ErrorClass::PermissionDenied =>
-                "path access was outside the permitted workspace boundary",
-            ErrorClass::ReadFileStall =>
-                "same file read multiple times by the same role without any mutation",
-            ErrorClass::InvalidRoute =>
-                "role was dispatched when its required preconditions were not satisfied",
-            ErrorClass::BlockerEscalated =>
-                "LLM role explicitly declared itself blocked and cannot proceed",
-            ErrorClass::UnauthorizedPlanOp =>
-                "role attempted a plan operation it is not permitted to perform",
-            ErrorClass::VerificationFailed =>
-                "verification produced a result that contradicts the expected system state",
-            ErrorClass::LlmTimeout =>
-                "LLM endpoint call timed out or returned a connection error",
-            ErrorClass::LivelockDetected =>
-                "orchestrator detected livelock: no watched-file state change after consecutive cycles",
-            ErrorClass::ReactionOnly =>
-                "LLM returned a prose-only response with no extractable JSON action block",
-            ErrorClass::Unknown =>
-                "unclassified bad outcome",
-        }
+        self.metadata().1
     }
 }
 

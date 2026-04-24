@@ -78,10 +78,6 @@ pub struct SemanticControlPromptState {
     pub control_summary: String,
 }
 
-pub fn read_combined_invariants_context(workspace: &Path) -> String {
-    semantic_state_snapshot_from_tlog(workspace)
-}
-
 fn truncate_prompt_value(value: &str, max_chars: usize) -> String {
     let trimmed = value.trim();
     let mut out = String::new();
@@ -94,117 +90,16 @@ fn truncate_prompt_value(value: &str, max_chars: usize) -> String {
     out
 }
 
-fn control_event_kind_name(event: &crate::events::ControlEvent) -> &'static str {
-    match event {
-        crate::events::ControlEvent::PhaseSet { .. } => "phase_set",
-        crate::events::ControlEvent::ScheduledPhaseSet { .. } => "scheduled_phase_set",
-        crate::events::ControlEvent::PlannerPendingSet { .. } => "planner_pending_set",
-        crate::events::ControlEvent::PlannerObjectiveReviewQueued => {
-            "planner_objective_review_queued"
-        }
-        crate::events::ControlEvent::PlannerObjectivePlanGapQueued => {
-            "planner_objective_plan_gap_queued"
-        }
-        crate::events::ControlEvent::DiagnosticsPendingSet { .. } => "diagnostics_pending_set",
-        crate::events::ControlEvent::DiagnosticsReconciliationQueued => {
-            "diagnostics_reconciliation_queued"
-        }
-        crate::events::ControlEvent::VerifierBlockerSet { .. } => "verifier_blocker_set",
-        crate::events::ControlEvent::DiagnosticsVerifierFollowupQueued => {
-            "diagnostics_verifier_followup_queued"
-        }
-        crate::events::ControlEvent::DiagnosticsTextSet { .. } => "diagnostics_text_set",
-        crate::events::ControlEvent::ExternalUserMessageConsumed { .. } => {
-            "external_user_message_consumed"
-        }
-        crate::events::ControlEvent::InboundMessageConsumed { .. } => "inbound_message_consumed",
-        crate::events::ControlEvent::WakeSignalConsumed { .. } => "wake_signal_consumed",
-        crate::events::ControlEvent::WakeSignalQueued { .. } => "wake_signal_queued",
-        crate::events::ControlEvent::InboundMessageQueued { .. } => "inbound_message_queued",
-        crate::events::ControlEvent::RustPatchVerificationRequested { .. } => {
-            "rust_patch_verification_requested"
-        }
-        crate::events::ControlEvent::OrchestratorModeSet { .. } => "orchestrator_mode_set",
-        crate::events::ControlEvent::OrchestratorIdlePulse { .. } => "orchestrator_idle_pulse",
-        crate::events::ControlEvent::CheckpointSnapshotSet { .. } => "checkpoint_snapshot_set",
-        crate::events::ControlEvent::PlannerBlockerEvidenceSet { .. } => {
-            "planner_blocker_evidence_set"
-        }
-        crate::events::ControlEvent::PostRestartResultConsumed { .. } => {
-            "post_restart_result_consumed"
-        }
-        crate::events::ControlEvent::LastPlanTextSet { .. } => "last_plan_text_set",
-        crate::events::ControlEvent::LastExecutorDiffSet { .. } => "last_executor_diff_set",
-        crate::events::ControlEvent::LastSoloPlanTextSet { .. } => "last_solo_plan_text_set",
-        crate::events::ControlEvent::LastSoloExecutorDiffSet { .. } => {
-            "last_solo_executor_diff_set"
-        }
-        crate::events::ControlEvent::ObjectivesInitialized { .. } => "objectives_initialized",
-        crate::events::ControlEvent::ObjectivesReplaced { .. } => "objectives_replaced",
-        crate::events::ControlEvent::LanePendingSet { .. } => "lane_pending_set",
-        crate::events::ControlEvent::LaneInProgressSet { .. } => "lane_in_progress_set",
-        crate::events::ControlEvent::LaneVerifierResultSet { .. } => "lane_verifier_result_set",
-        crate::events::ControlEvent::LanePlanTextSet { .. } => "lane_plan_text_set",
-        crate::events::ControlEvent::VerifierSummarySet { .. } => "verifier_summary_set",
-        crate::events::ControlEvent::LaneSubmitInFlightSet { .. } => "lane_submit_in_flight_set",
-        crate::events::ControlEvent::LanePromptInFlightSet { .. } => "lane_prompt_in_flight_set",
-        crate::events::ControlEvent::LaneActiveTabSet { .. } => "lane_active_tab_set",
-        crate::events::ControlEvent::TabIdToLaneSet { .. } => "tab_id_to_lane_set",
-        crate::events::ControlEvent::LaneNextSubmitAtSet { .. } => "lane_next_submit_at_set",
-        crate::events::ControlEvent::LaneStepsUsedSet { .. } => "lane_steps_used_set",
-        crate::events::ControlEvent::ExecutorTurnRegistered { .. } => "executor_turn_registered",
-        crate::events::ControlEvent::ExecutorTurnDeregistered { .. } => {
-            "executor_turn_deregistered"
-        }
-        crate::events::ControlEvent::ExecutorCompletionRecovered { .. } => {
-            "executor_completion_recovered"
-        }
-        crate::events::ControlEvent::ExecutorCompletionTabRebound { .. } => {
-            "executor_completion_tab_rebound"
-        }
-        crate::events::ControlEvent::ExecutorSubmitAckTabRebound { .. } => {
-            "executor_submit_ack_tab_rebound"
-        }
-    }
-}
-
-fn effect_event_kind_name(event: &crate::events::EffectEvent) -> &'static str {
-    match event {
-        crate::events::EffectEvent::InvariantViolation { .. } => "invariant_violation",
-        crate::events::EffectEvent::LlmErrorBoundary { .. } => "llm_error_boundary",
-        crate::events::EffectEvent::CheckpointSaved { .. } => "checkpoint_saved",
-        crate::events::EffectEvent::CheckpointLoaded { .. } => "checkpoint_loaded",
-        crate::events::EffectEvent::BuildEvolutionAdvanced { .. } => "build_evolution_advanced",
-        crate::events::EffectEvent::WorkspaceArtifactWriteRequested { .. } => {
-            "workspace_artifact_write_requested"
-        }
-        crate::events::EffectEvent::WorkspaceArtifactWriteApplied { .. } => {
-            "workspace_artifact_write_applied"
-        }
-        crate::events::EffectEvent::InboundMessageRecorded { .. } => "inbound_message_recorded",
-        crate::events::EffectEvent::ExternalUserMessageRecorded { .. } => {
-            "external_user_message_recorded"
-        }
-        crate::events::EffectEvent::BlockerRecorded { .. } => "blocker_recorded",
-        crate::events::EffectEvent::LessonsArtifactRecorded { .. } => "lessons_artifact_recorded",
-        crate::events::EffectEvent::IssuesFileRecorded { .. } => "issues_file_recorded",
-        crate::events::EffectEvent::DiagnosticsReportRecorded { .. } => {
-            "diagnostics_report_recorded"
-        }
-        crate::events::EffectEvent::EnforcedInvariantsRecorded { .. } => {
-            "enforced_invariants_recorded"
-        }
-        crate::events::EffectEvent::ViolationsReportRecorded { .. } => "violations_report_recorded",
-        crate::events::EffectEvent::FramesAllDebugSnapshot { .. } => "frames_all_debug_snapshot",
-        crate::events::EffectEvent::LlmTurnInput { .. } => "llm_turn_input",
-        crate::events::EffectEvent::LlmTurnOutput { .. } => "llm_turn_output",
-        crate::events::EffectEvent::ActionResultRecorded { .. } => "action_result_recorded",
-        crate::events::EffectEvent::FingerprintDriftRecorded { .. } => "fingerprint_drift_recorded",
-        crate::events::EffectEvent::GrpoDatasetRecorded { .. } => "grpo_dataset_recorded",
-        crate::events::EffectEvent::PostRestartResultRecorded { .. } => {
-            "post_restart_result_recorded"
-        }
-    }
+fn serialized_event_kind_name<T: Serialize>(event: &T) -> String {
+    serde_json::to_value(event)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("kind")
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+        })
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 pub fn semantic_state_snapshot_from_tlog(workspace: &Path) -> String {
@@ -231,13 +126,13 @@ pub fn semantic_state_snapshot_from_tlog(workspace: &Path) -> String {
             crate::events::Event::Control { event } => {
                 control_count += 1;
                 if recent_controls.len() < 6 {
-                    recent_controls.push(control_event_kind_name(event));
+                    recent_controls.push(serialized_event_kind_name(event));
                 }
             }
             crate::events::Event::Effect { event } => {
                 effect_count += 1;
                 if recent_effects.len() < 6 {
-                    recent_effects.push(effect_event_kind_name(event));
+                    recent_effects.push(serialized_event_kind_name(event));
                 }
             }
         }
@@ -731,7 +626,7 @@ pub fn derive_semantic_control_prompt_state(
     issue_limit: usize,
 ) -> SemanticControlPromptState {
     let artifacts = derive_semantic_prompt_artifacts(workspace, issue_limit);
-    let runtime_state = read_combined_invariants_context(workspace);
+    let runtime_state = semantic_state_snapshot_from_tlog(workspace);
     let mut sections = Vec::new();
 
     if !runtime_state.trim().is_empty() {
@@ -1126,10 +1021,6 @@ mod tests {
     }
 }
 
-fn is_done_like_status(status: &str) -> bool {
-    crate::issues::is_done_like_status(status)
-}
-
 fn is_ready_status(status: &str) -> bool {
     status.trim().to_ascii_lowercase() == "ready"
 }
@@ -1203,7 +1094,7 @@ pub fn filter_pending_plan_json(raw: &str) -> String {
             !task
                 .get("status")
                 .and_then(Value::as_str)
-                .map(is_done_like_status)
+                .map(crate::issues::is_done_like_status)
                 .unwrap_or(false)
         })
         .cloned()
@@ -1548,10 +1439,6 @@ fn violations_are_verified_and_empty(raw_violations_text: &str) -> bool {
             .and_then(Value::as_array)
             .map(|violations| violations.is_empty())
             .unwrap_or(false)
-}
-
-pub(crate) fn reconcile_diagnostics_report(workspace: &Path) -> String {
-    render_diagnostics_report_from_issues(workspace)
 }
 
 #[cfg(test)]

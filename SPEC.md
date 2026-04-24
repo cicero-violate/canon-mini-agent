@@ -442,7 +442,7 @@ The stall counter is **not** incremented when executor turns are in flight (`rt.
 
 Implementation: `cycle_state_hash`, `write_livelock_report` in `src/app.rs`; constant `STALL_CYCLE_THRESHOLD = 5`. Livelock detection reads inflight state from `RuntimeState` (`rt`) and serializable state from `writer.state()`.
 
-**Diagnostics report schema note:** The canonical `DiagnosticsReport` shape (defined in `src/reports.rs`) contains `status`, `inputs_scanned`, `ranked_failures`, and `planner_handoff`. The runtime reconciliation function (`reconcile_diagnostics_report` in `src/prompt_inputs.rs`) uses a typed round-trip through `DiagnosticsReport` so no unrecognised fields can be introduced — extra fields cannot survive re-serialisation of the struct.
+**Diagnostics report schema note:** The canonical `DiagnosticsReport` shape (defined in `src/reports.rs`) contains `status`, `inputs_scanned`, `ranked_failures`, and `planner_handoff`. The runtime reconciliation function (`render_diagnostics_report_from_issues` in `src/prompt_inputs.rs`) uses a typed round-trip through `DiagnosticsReport` so no unrecognised fields can be introduced — extra fields cannot survive re-serialisation of the struct.
 
 ### 5.6 Schema-Guarded File Writes
 
