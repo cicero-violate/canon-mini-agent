@@ -1753,20 +1753,39 @@ fn log_graph_reports_failure(
     out_dir_str: &str,
     tlog: Option<&str>,
 ) {
+    let payload = graph_reports_failure_payload(
+        action_kind,
+        crate_name,
+        artifact_crate,
+        cmd,
+        out_dir_str,
+        tlog,
+    );
     log_error_event(
         role,
         action_kind,
         Some(step),
         &format!("{action_kind} failed for crate {crate_name}"),
-        Some(json!({
-            "stage": action_kind,
-            "crate": crate_name,
-            "artifact_crate": artifact_crate,
-            "cmd": cmd,
-            "out_dir": out_dir_str.to_string(),
-            "tlog": tlog,
-        })),
+        Some(payload),
     );
+}
+
+fn graph_reports_failure_payload(
+    action_kind: &str,
+    crate_name: &str,
+    artifact_crate: &str,
+    cmd: &str,
+    out_dir_str: &str,
+    tlog: Option<&str>,
+) -> serde_json::Value {
+    json!({
+        "stage": action_kind,
+        "crate": crate_name,
+        "artifact_crate": artifact_crate,
+        "cmd": cmd,
+        "out_dir": out_dir_str.to_string(),
+        "tlog": tlog,
+    })
 }
 
 fn graph_report_path(crate_dir: &Path, action_kind: &str) -> (PathBuf, &'static str) {
