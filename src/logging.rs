@@ -98,6 +98,15 @@ fn action_command_summary(action: &Value) -> String {
     }
 }
 
+fn action_log_text(observation: &str, rationale: &str) -> Option<String> {
+    match (observation.is_empty(), rationale.is_empty()) {
+        (false, false) => Some(format!("{} | {}", observation, rationale)),
+        (false, true) => Some(observation.to_string()),
+        (true, false) => Some(rationale.to_string()),
+        (true, true) => None,
+    }
+}
+
 /// Intent: pure_transform
 /// Resource: error
 /// Inputs: &str
@@ -487,12 +496,7 @@ pub(crate) fn append_action_log(
 ) -> Result<()> {
     let observation = action_observation(action).unwrap_or("");
     let rationale = action_rationale(action).unwrap_or("");
-    let text = match (observation.is_empty(), rationale.is_empty()) {
-        (false, false) => Some(format!("{} | {}", observation, rationale)),
-        (false, true) => Some(observation.to_string()),
-        (true, false) => Some(rationale.to_string()),
-        (true, true) => None,
-    };
+    let text = action_log_text(observation, rationale);
     let mut record = compact_log_record(
         "tool",
         "request",
