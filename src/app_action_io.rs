@@ -203,23 +203,31 @@ fn extract_single_action(
     trace: &impl Fn(&str),
 ) -> Result<Value, InvalidActionFeedback> {
     if actions.len() != 1 {
-        let msg = format!(
-            "Got {} actions — emit exactly one action per turn.",
-            actions.len()
-        );
-        eprintln!("[{role}] step={} {msg}", step);
-        log(
-            "llm_invalid_action_count",
-            json!({ "action_count": actions.len(), "raw": truncate(raw, MAX_SNIPPET) }),
-        );
-        trace("invalid_action_count");
-        return Err(InvalidActionFeedback {
-            err_text: msg.clone(),
-            feedback: build_invalid_action_feedback(None, &msg, role),
-        });
+        return Err(single_action_count_feedback(role, step, raw, actions.len(), log, trace));
     }
 
     Ok(actions.into_iter().next().expect("validated single action"))
+}
+
+fn single_action_count_feedback(
+    role: &str,
+    step: usize,
+    raw: &str,
+    action_count: usize,
+    log: &impl Fn(&str, Value),
+    trace: &impl Fn(&str),
+) -> InvalidActionFeedback {
+    let msg = format!("Got {action_count} actions — emit exactly one action per turn.");
+    eprintln!("[{role}] step={} {msg}", step);
+    log(
+        "llm_invalid_action_count",
+        json!({ "action_count": action_count, "raw": truncate(raw, MAX_SNIPPET) }),
+    );
+    trace("invalid_action_count");
+    InvalidActionFeedback {
+        err_text: msg.clone(),
+        feedback: build_invalid_action_feedback(None, &msg, role),
+    }
 }
 
 /// Intent: pure_transform
