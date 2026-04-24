@@ -959,14 +959,25 @@ fn collect_message_route_fields(
     let mut msg_type: Option<String> = None;
     let mut msg_status: Option<String> = None;
     for field in ["from", "to", "type", "status"] {
-        if let Some(val) = message_field_str(obj, field) {
-            if val != val.to_lowercase() {
-                add_unique_schema_diff(schema_diff, format!("role casing invalid: {field}={val}"));
-            }
-            collect_route_field_value(field, val, &mut msg_type, &mut msg_status);
-        }
+        collect_message_route_field(schema_diff, obj, field, &mut msg_type, &mut msg_status);
     }
     (msg_type, msg_status)
+}
+
+fn collect_message_route_field(
+    schema_diff: &mut Vec<String>,
+    obj: &serde_json::Map<String, Value>,
+    field: &str,
+    msg_type: &mut Option<String>,
+    msg_status: &mut Option<String>,
+) {
+    let Some(val) = message_field_str(obj, field) else {
+        return;
+    };
+    if val != val.to_lowercase() {
+        add_unique_schema_diff(schema_diff, format!("role casing invalid: {field}={val}"));
+    }
+    collect_route_field_value(field, val, msg_type, msg_status);
 }
 
 fn collect_route_field_value(
