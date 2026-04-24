@@ -1,0 +1,189 @@
+TAB_ID: pending
+TURN_ID: pending
+AGENT_TYPE: PLANNER
+
+WORKSPACE: /workspace/ai_sandbox/canon-mini-agent
+All relative paths resolve against WORKSPACE.
+
+PLAN.json EDIT RULE: always use the `plan` action — NEVER apply_patch on agent_state/PLAN.json.
+
+Current plan state (from agent_state/PLAN.json) — read-only context, edit via `plan` action:
+(no changes)
+
+Executor diff (workspace changes excluding plans/diagnostics/violations)
+diff --git a/src/semantic_manifest.rs b/src/semantic_manifest.rs
+index 5280279..4ec1afa 100644
+--- a/src/semantic_manifest.rs
++++ b/src/semantic_manifest.rs
+@@ -985,113 +985,14 @@ fn build_semantic_manifest_proposals(
+     let mut fn_total = 0usize;
+     let mut fn_with_any_error = 0usize;
+     for (node_id, node) in &graph.nodes {
+-        let old = node.semantic_manifest.clone().unwrap_or_default();
+-        let doc_lines = resolve_doc_lines(node, &workspace, &mut src_cache);
+-        let doc = parse_doc_contract(&doc_lines);
+-        let doc_error_flags = doc_forced_error_flags(&doc);
+-        let (sig_inputs, sig_outputs) = parse_signature(node.signature.as_deref());
+-        let source_decl = resolve_source_decl(node, &workspace, &mut src_cache);
+-        let (src_inputs, src_outputs) = parse_source_decl_signature(source_decl.as_deref());
+-        let symbol = if node.path.is_empty() {
+-            node_id.clone()
+-        } else {
+-            node.path.clone()
+-        };
+-        let calls = calls_by_owner
+-            .get(node_id)
+-            .map(|s| s.iter().cloned().collect::<Vec<_>>())
+-            .unwrap_or_default();
+-        let inferred_effects = infer_effects_from_calls(&calls);
+-        let effects = choose_list(&[
+-            doc.effects.clone(),
+-            effects_by_owner
+-                .get(node_id)
+-                .map(|s| s.iter().cloned().collect::<Vec<_>>())
+-                .unwrap_or_default(),
+-            inferred_effects,
+-            infer_effects_from_symbol(&symbol),
+-            old.effects.clone(),
+-        ]);
+-        let normalized_effects = normalize_list(
+-            effects
+-                .into_iter()
+-                .map(|e| normalize_effect_label(&e))
+-                .collect::<Vec<_>>(),
+-        );
+-        let intent = infer_intent(
+-            Some(choose_scalar(&[
+-                doc.intent.clone(),
+-                node.intent_class.clone(),
+-                Some(old.intent_class.clone()),
+-            ])),
+-            &normalized_effects,
+-            &symbol,
++        let mut manifest = build_node_semantic_manifest_proposal(
++            node_id,
++            node,
++            workspace,
++            &mut src_cache,
++            effects_by_owner,
++            calls_by_owner,
+         );
+-        let resource = choose_scalar(&[
+-            doc.resource.clone(),
+-            node.resource.clone(),
+-            Some(old.resource.clone()),
+-            Some(infer_resource(&calls, &normalized_effects, &symbol)),
+-        ]);
+-        let outputs = choose_list(&[
+-            doc.outputs.clone(),
+-            sig_outputs,
+-            src_outputs,
+-            old.outputs.clone(),
+-        ]);
+-        let failure_mode = choose_scalar(&[
+-            doc.failure.clone(),
+-            node.failure_mode.clone(),
+-            Some(old.failure_mode.clone()),
+-            Some(infer_failure(&outputs, &symbol)),
+-        ]);
+-        let mut manifest = SemanticManifest {
+-            symbol: choose_scalar(&[Some(symbol), Some(old.symbol.clone())]),
+-            kind: choose_scalar(&[Some(node.kind.clone()), Some(old.kind.clone())]),
+-            file: choose_scalar(&[
+-                node.def.as_ref().map(|d| d.file.clone()),
+-                Some(old.file.clone()),
+-            ]),
+-            line: choose_scalar(&[
+-                node.def.as_ref().map(|d| d.line.to_string()),
+-                Some(old.line.clone()),
+-            ]),
+-            intent_class: intent.clone(),
+-            resource: resource.clone(),
+-            inputs: choose_list(&[doc.inputs, sig_inputs, src_inputs, old.inputs.clone()]),
+-            outputs,
+-            effects: normalized_effects.clone(),
+-            forbidden_effects: choose_list(&[
+-                doc.forbidden,
+-                node.forbidden_effects.clone(),
+-                old.forbidden_effects.clone(),
+-                infer_forbidden(&intent, &normalized_effects),
+-            ]),
+-            call
+... [truncated]
+
+Latest cargo test failures (from cargo_test_failures.json)
+{"error_locations":[]}
+
+Objectives (from agent_state/OBJECTIVES.json)
+[in_progress]  O94  —  Reduce build_semantic_manifest_proposals SCC-region complexity
+Full detail: {"action":"objectives","op":"read"}
+
+Dynamic enforced invariants (from agent_state/enforced_invariants.json)
+(enforced_invariants.json not yet created — runs after first failure synthesis)
+
+Semantic control state (tlog-derived authority + projected views)
+Derived authority: prefer this semantic control snapshot over raw artifact caches when they disagree.
+
+Runtime semantic state:
+events=35461 source=/workspace/ai_sandbox/canon-mini-agent/agent_state/tlog.ndjson bytes=44215301 replay=skipped_large_tlog
+
+Authority rule: recent tlog events are sampled; full replay is skipped to avoid prompt-path lag.
+recent control events: phase_set -> scheduled_phase_set -> wake_signal_consumed -> scheduled_phase_set -> scheduled_phase_set -> planner_pending_set
+recent effect events: workspace_artifact_write_applied -> workspace_artifact_write_requested -> inbound_message_recorded -> post_restart_result_recorded -> llm_turn_output -> llm_turn_input
+
+Projected issues view (derived from semantic prompt state):
+EVAL score=0.913  weakest=issue_health(0.888)  objectives=92/93  tasks=83/84
+→ To raise score: close or fix the repeated open issues below
+
+Top open issues:
+- [score:0.60] auto_dominator_region_reduction_canon_mini_agent_3203950587648572937: Dominator region reduction candidate in `tools::reject_legacy_rename_fields` (src/tools_symbols.rs:814)
+- [score:0.60] auto_dominator_region_reduction_canon_mini_agent_4123552345320226939: Dominator region reduction candidate in `tool_schema::map_schema_error_kind` (src/tool_schema.rs:1410)
+- [score:0.60] auto_dominator_region_reduction_canon_mini_agent_414477374726033599: Dominator region reduction candidate in `app::evaluate_executor_route_gates` (src/app_planner_executor.rs:477)
+- [score:0.60] auto_scc_region_reduction_canon_mini_agent_17063087691422983867: SCC region reduction candidate in `semantic_manifest::build_semantic_manifest_proposals` (src/semantic_manifest.rs:975)
+- [score:0.60] auto_scc_region_reduction_canon_mini_agent_17801188990750074837: SCC region reduction candidate in `refactor_analysis::dark_assignment_issues` (src/refactor_analysis.rs:1190)
+- [score:0.60] auto_scc_region_reduction_canon_mini_agent_17925736288863334550: SCC region reduction candidate in `refactor_analysis::redundant_path_issues` (src/refactor_analysis.rs:1455)
+- [score:0.47] auto_mir_dup_2c7bd1494b9dace4: MIR-identical functions: 2 candidates for deduplication
+- [score:0.45] auto_semantic_manifest_error_00c0c216b5cd83ee: Repair semantic manifest contract errors: prompt_inputs::render_lessons_list (/workspace/ai_sandbox/canon-mini-agent/src/prompt_inputs.rs:1116)
+- [score:0.45] auto_semantic_manifest_error_02224ae83f7c9e18: Repair semantic manifest contract errors: prompt_inputs::build_executor_role_prompt (/workspace/ai_sandbox/canon-mini-agent/src/prompt_inputs.rs:1993)
+- [score:0.45] auto_semantic_manifest_error_02498e9e0a864a4e: Repair semantic manifest contract errors: invalid_action::build_symbol_workflow_example_action (/workspace/ai_sandbox/canon-mini-agent/src/invalid_action.rs:671)
+
+⟹ IMMEDIATE ACTION: The projected issues in the semantic control section above are pre-validated by semantic control and directly actionable. Do not stall on re-verifying them before planning. Create `plan` tasks for the top open issues now and mark them `ready` for the immediate execute phase.
+
+Graph prioritization rule: use `agent_state/safe_patch_candidates.json` to seed the ready window with top-ranked semantic merge candidates, and use `agent_state/semantic_manifest_proposals.json` to preserve contract fields in task wording. If graph-ranked merge candidates and generic detector issues compete at similar score, schedule at least one top graph-ranked candidate in READY NOW.
+
+Before completing this cycle, review agent_state/OBJECTIVES.json and add or update objectives for anything discovered this cycle. Use the `objectives` action (op: create_objective / update_objective) to write them. NEVER use apply_patch for agent_state/PLAN.json — it is always rejected; use the `plan` action.
+
+Cycle termination: when the plan has ready tasks and your analysis is complete, end this cycle with a `message` action to the executor:
+{"action":"message","from":"planner","to":"executor","type":"handoff","status":"ready","observation":"Ready tasks queued.","rationale":"Planner cycle complete.","predicted_next_actions":[]}
+Do not loop on read_file/objectives/plan.sorted_view when the plan is already consistent — emit the handoff message.
+
+## Inbound handoff message summary:
+from=executor to=planner type=handoff status=complete
+observation: executor completed turn 2 on lane executor_pool in two-role mode; verifier phase is inlined into planner
+summary: Executor completion (lane=executor_pool turn=2): apply_patch ok  Chained action transcript:  1. action: apply_patch    status: ok    intent: Apply the requested source mutation.    result:      Patch applied successfully.  2. action: run_command    status: ok    intent: Auto-veri
+
+## executor_result_highlights:
+- apply_patch ok
+- 1. action: apply_patch
+- status: ok
+
+- 2. action: run_command
+- command: cargo check -p canon-mini-agent
+- Auto post-patch `cargo test` is disabled; run `cargo_test` explicitly when needed.
+
+## predicted_next_actions:
+- plan: update the task graph based on executor completion evidence
+- objectives: N/A
+- issue: N/A
+- read_file: N/A
+- symbols_rename_candidates: N/A
+- symbols_prepare_rename: N/A
+- rename_symbol: N/A
+- python: N/A
+- run_command: N/A
+- message: handoff the next bounded task to executor
+- semantic_map: N/A
+- symbol_window: N/A
+- symbol_refs: N/A
+- execution_path: N/A
+- batch: N/A

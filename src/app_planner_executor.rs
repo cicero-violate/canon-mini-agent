@@ -486,104 +486,15 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
     apply_executor_route_gate_signal(&mut state, &blockers, now_ms, "solo", &crate::error_class::ErrorClass::VerificationFailed, 1, "error_class", "verification_failed");
     apply_executor_route_gate_signal(&mut state, &blockers, now_ms, "executor", &crate::error_class::ErrorClass::InvalidSchema, 3, "error_class", "invalid_schema");
 
-    let unauthorized_plan_op_count = crate::blockers::count_class_recent(
-        &blockers,
-        "executor",
-        &crate::error_class::ErrorClass::UnauthorizedPlanOp,
-        now_ms,
-        5 * 60 * 1000,
-    );
-    if unauthorized_plan_op_count >= 1 {
-        state.insert("actor_kind".to_string(), "executor".to_string());
-        state.insert(
-            "error_class".to_string(),
-            "unauthorized_plan_op".to_string(),
-        );
-    }
-
-    let executor_llm_timeout_count = crate::blockers::count_class_recent(
-        &blockers,
-        "executor",
-        &crate::error_class::ErrorClass::LlmTimeout,
-        now_ms,
-        5 * 60 * 1000,
-    );
-    if executor_llm_timeout_count >= 1 {
-        state.insert("actor_kind".to_string(), "executor".to_string());
-        state.insert("error_class".to_string(), "llm_timeout".to_string());
-    }
-
-    let executor_step_limit_exceeded_count = crate::blockers::count_class_recent(
-        &blockers,
-        "executor",
-        &crate::error_class::ErrorClass::StepLimitExceeded,
-        now_ms,
-        5 * 60 * 1000,
-    );
-    if executor_step_limit_exceeded_count >= 1 {
-        state.insert("actor_kind".to_string(), "executor".to_string());
-        state.insert("error".to_string(), "step_limit_exceeded".to_string());
-    }
-
-    let executor_verification_failed_count = crate::blockers::count_class_recent(
-        &blockers,
-        "executor",
-        &crate::error_class::ErrorClass::VerificationFailed,
-        now_ms,
-        5 * 60 * 1000,
-    );
-    if executor_verification_failed_count >= 1 {
-        state.insert("actor_kind".to_string(), "executor".to_string());
-        state.insert("error_class".to_string(), "verification_failed".to_string());
-    }
-
-    let orchestrator_invalid_route_count = crate::blockers::count_class_recent(
-        &blockers,
-        "orchestrator",
-        &crate::error_class::ErrorClass::InvalidRoute,
-        now_ms,
-        60 * 1000,
-    );
-    if orchestrator_invalid_route_count >= 3 {
-        state.insert("actor_kind".to_string(), "orchestrator".to_string());
-        state.insert("error_class".to_string(), "invalid_route".to_string());
-    }
-
-    let diagnostics_blocker_escalated_count = crate::blockers::count_class_recent(
-        &blockers,
-        "diagnostics",
-        &crate::error_class::ErrorClass::BlockerEscalated,
-        now_ms,
-        5 * 60 * 1000,
-    );
-    if diagnostics_blocker_escalated_count >= 3 {
-        state.insert("actor_kind".to_string(), "diagnostics".to_string());
-        state.insert("error_class".to_string(), "blocker_escalated".to_string());
-    }
-
-    let diagnostics_invalid_schema_count = crate::blockers::count_class_recent(
-        &blockers,
-        "diagnostics",
-        &crate::error_class::ErrorClass::InvalidSchema,
-        now_ms,
-        5 * 60 * 1000,
-    );
-    if diagnostics_invalid_schema_count >= 3 {
-        state.insert("actor_kind".to_string(), "diagnostics".to_string());
-        state.insert("error_class".to_string(), "invalid_schema".to_string());
-    }
-
-    let verifier_verification_failed_count = crate::blockers::count_class_recent(
-        &blockers,
-        "verifier",
-        &crate::error_class::ErrorClass::VerificationFailed,
-        now_ms,
-        5 * 60 * 1000,
-    );
-    if verifier_verification_failed_count >= 1 {
-        state.insert("actor_kind".to_string(), "solo".to_string());
-        state.insert("error_class".to_string(), "verification_failed".to_string());
-    }
+    apply_executor_route_gate_signal(&mut state, &blockers, now_ms, "executor", &crate::error_class::ErrorClass::UnauthorizedPlanOp, 1, "error_class", "unauthorized_plan_op");
+    apply_executor_route_gate_signal(&mut state, &blockers, now_ms, "executor", &crate::error_class::ErrorClass::LlmTimeout, 1, "error_class", "llm_timeout");
+    apply_executor_route_gate_signal(&mut state, &blockers, now_ms, "executor", &crate::error_class::ErrorClass::StepLimitExceeded, 1, "error", "step_limit_exceeded");
+    apply_executor_route_gate_signal(&mut state, &blockers, now_ms, "executor", &crate::error_class::ErrorClass::VerificationFailed, 1, "error_class", "verification_failed");
+    apply_executor_route_gate_signal(&mut state, &blockers, now_ms, "orchestrator", &crate::error_class::ErrorClass::InvalidRoute, 3, "error_class", "invalid_route");
+    apply_executor_route_gate_signal(&mut state, &blockers, now_ms, "diagnostics", &crate::error_class::ErrorClass::BlockerEscalated, 3, "error_class", "blocker_escalated");
+    apply_executor_route_gate_signal(&mut state, &blockers, now_ms, "diagnostics", &crate::error_class::ErrorClass::InvalidSchema, 3, "error_class", "invalid_schema");
+    apply_executor_route_gate_signal(&mut state, &blockers, now_ms, "verifier", &crate::error_class::ErrorClass::VerificationFailed, 1, "actor_kind", "solo");
+    apply_executor_route_gate_signal(&mut state, &blockers, now_ms, "verifier", &crate::error_class::ErrorClass::VerificationFailed, 1, "error_class", "verification_failed");
 
     if let Err(reason) = crate::invariants::evaluate_invariant_gate("route", &state, &ws) {
         apply_route_gate_block(writer, &ws, &reason);
