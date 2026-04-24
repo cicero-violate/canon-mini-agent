@@ -2390,7 +2390,7 @@ fn read_context_window(file: &str, line: u32, before: usize, after: usize) -> (u
 mod tests {
     use super::{
         expand_symbol_window_span, BridgeEdge, CfgNode, CrateGraph, GraphEdge, GraphNode, MirInfo,
-        SemanticIndex, SourceSpan,
+        PathRecord, RedundantPathPair, SemanticIndex, SourceSpan,
     };
     use std::collections::HashMap;
     use std::fs;
