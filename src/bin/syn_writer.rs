@@ -4,16 +4,21 @@
 //!   (default)  Generate full docstrings for fn nodes with a seeded intent_class
 //!              but no structured docstring yet (provenance lacks "rustc:docstring").
 //!   --augment  Extend existing single-line `/// Intent: X` docstrings with the
-//!              remaining fields (Effects, Resource, Provenance: generated).
+//!              remaining canonical contract fields.
 //!
 //! Usage:
 //!   canon-syn-writer [graph.json] [--write] [--augment]
 //!
 //! Generated docstring format:
 //!   /// Intent: <class>
-//!   /// Effects: reads_state, writes_artifact   (if any)
-//!   /// Resource: <X>                           (if known)
-//!   /// Provenance: generated
+//!   /// Resource: <target>
+//!   /// Inputs: <typed inputs>
+//!   /// Outputs: <typed outputs>
+//!   /// Effects: <state changes / IO>
+//!   /// Forbidden: <disallowed effects>
+//!   /// Invariants: <must always hold>
+//!   /// Failure: <failure modes>
+//!   /// Provenance: <origin chain>
 //!
 //! After --write, rebuild with the canon-rustc-v2 RUSTC_WRAPPER to upgrade
 //! provenance to "rustc:docstring" in the next graph.json capture.
@@ -37,11 +42,26 @@ struct CrateGraph {
 struct GraphNode {
     #[serde(default)] path: String,
     #[serde(default)] kind: String,
+    #[serde(default)] signature: Option<String>,
     #[serde(default)] intent_class: Option<String>,
     #[serde(default)] resource: Option<String>,
     #[serde(default)] provenance: Vec<String>,
     #[serde(default)] docstring: Option<String>,
+    #[serde(default)] semantic_manifest: Option<SemanticManifest>,
     #[serde(default)] def: Option<SourceSpan>,
+}
+
+#[derive(Deserialize, Default)]
+struct SemanticManifest {
+    #[serde(default)] intent_class: String,
+    #[serde(default)] resource: String,
+    #[serde(default)] inputs: Vec<String>,
+    #[serde(default)] outputs: Vec<String>,
+    #[serde(default)] effects: Vec<String>,
+    #[serde(default)] forbidden_effects: Vec<String>,
+    #[serde(default)] invariants: Vec<String>,
+    #[serde(default)] failure_mode: String,
+    #[serde(default)] provenance: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -146,20 +166,139 @@ fn build_effect_map(edges: &[GraphEdge]) -> HashMap<String, EffectSet> {
 // Docstring builder
 // ---------------------------------------------------------------------------
 
-fn build_doc(intent: &str, resource: Option<&str>, effects: Option<&EffectSet>, indent: &str) -> String {
+fn parse_signature(signature: Option<&str>) -> (Vec<String>, Vec<String>) {
+    let Some(sig) = signature.map(str::trim) else {
+        return (vec!["error".to_string()], vec!["error".to_string()]);
+    };
+    let Some(rest) = sig.strip_prefix("fn(") else {
+        return (vec!["error".to_string()], vec!["error".to_string()]);
+    };
+    let Some(close_idx) = rest.find(')') else {
+        return (vec!["error".to_string()], vec!["error".to_string()]);
+    };
+    let input_src = rest[..close_idx].trim();
+    let inputs = if input_src.is_empty() {
+        vec!["()".to_string()]
+    } else {
+        input_src
+            .split(',')
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .collect::<Vec<_>>()
+    };
+    let tail = rest[close_idx + 1..].trim();
+    let outputs = if let Some(out) = tail.strip_prefix("->") {
+        let out = out.trim();
+        if out.is_empty() {
+            vec!["error".to_string()]
+        } else {
+            vec![out.to_string()]
+        }
+    } else {
+        vec!["()".to_string()]
+    };
+    (inputs, outputs)
+}
+
+fn normalize_list(items: &[String]) -> Vec<String> {
+    let filtered: Vec<String> = items
+        .iter()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+    if filtered.is_empty() {
+        vec!["error".to_string()]
+    } else {
+        filtered
+    }
+}
+
+fn normalize_scalar(s: Option<&str>) -> String {
+    s.map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("error")
+        .to_string()
+}
+
+fn build_doc(node: &GraphNode, effects: Option<&EffectSet>, indent: &str) -> String {
+    let manifest = node.semantic_manifest.as_ref();
+    let intent = normalize_scalar(
+        manifest
+            .and_then(|m| if m.intent_class == "error" { None } else { Some(m.intent_class.as_str()) })
+            .or(node.intent_class.as_deref()),
+    );
+
+    let (sig_inputs, sig_outputs) = parse_signature(node.signature.as_deref());
+    let inputs = normalize_list(
+        manifest
+            .map(|m| m.inputs.as_slice())
+            .filter(|v| !v.is_empty())
+            .map(|v| v.to_vec())
+            .unwrap_or(sig_inputs)
+            .as_slice(),
+    );
+    let outputs = normalize_list(
+        manifest
+            .map(|m| m.outputs.as_slice())
+            .filter(|v| !v.is_empty())
+            .map(|v| v.to_vec())
+            .unwrap_or(sig_outputs)
+            .as_slice(),
+    );
+
+    let effects_from_manifest = manifest
+        .map(|m| normalize_list(&m.effects))
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|v| v != "error")
+        .collect::<Vec<_>>();
+    let effects_labels = if !effects_from_manifest.is_empty() {
+        effects_from_manifest
+    } else if let Some(eff) = effects {
+        let lbs = eff.labels().into_iter().map(str::to_string).collect::<Vec<_>>();
+        if lbs.is_empty() { vec!["error".to_string()] } else { lbs }
+    } else {
+        vec!["error".to_string()]
+    };
+
+    let invariants = normalize_list(
+        manifest
+            .map(|m| m.invariants.clone())
+            .unwrap_or_else(|| vec!["error".to_string()])
+            .as_slice(),
+    );
+    let forbidden = normalize_list(
+        manifest
+            .map(|m| m.forbidden_effects.clone())
+            .unwrap_or_else(|| vec!["error".to_string()])
+            .as_slice(),
+    );
+    let failure = normalize_scalar(
+        manifest
+            .and_then(|m| if m.failure_mode == "error" { None } else { Some(m.failure_mode.as_str()) }),
+    );
+    let resource = normalize_scalar(
+        manifest
+            .and_then(|m| if m.resource == "error" { None } else { Some(m.resource.as_str()) })
+            .or(node.resource.as_deref()),
+    );
+    let provenance = normalize_list(
+        manifest
+            .map(|m| m.provenance.clone())
+            .unwrap_or_else(|| vec!["error".to_string()])
+            .as_slice(),
+    );
+
     let mut lines = vec![format!("{indent}/// Intent: {intent}")];
-    if let Some(eff) = effects {
-        let lbs = eff.labels();
-        if !lbs.is_empty() {
-            lines.push(format!("{indent}/// Effects: {}", lbs.join(", ")));
-        }
-    }
-    if let Some(r) = resource {
-        if !r.is_empty() {
-            lines.push(format!("{indent}/// Resource: {r}"));
-        }
-    }
-    lines.push(format!("{indent}/// Provenance: generated"));
+    lines.push(format!("{indent}/// Resource: {resource}"));
+    lines.push(format!("{indent}/// Inputs: {}", inputs.join(", ")));
+    lines.push(format!("{indent}/// Outputs: {}", outputs.join(", ")));
+    lines.push(format!("{indent}/// Effects: {}", effects_labels.join(", ")));
+    lines.push(format!("{indent}/// Forbidden: {}", forbidden.join(", ")));
+    lines.push(format!("{indent}/// Invariants: {}", invariants.join(", ")));
+    lines.push(format!("{indent}/// Failure: {failure}"));
+    lines.push(format!("{indent}/// Provenance: {}", provenance.join(" + ")));
     let mut s = lines.join("\n");
     s.push('\n');
     s
@@ -358,7 +497,6 @@ fn main() -> anyhow::Result<()> {
 
         for (node, span) in &nodes_in_file {
             let intent  = node.intent_class.as_deref().unwrap_or("unknown");
-            let resource = node.resource.as_deref();
             let node_id = id_map.get(&(*node as *const _)).copied().unwrap_or("");
             let effects = if node_id.is_empty() { None } else { effect_map.get(node_id) };
             let fn_0 = (span.line as usize).saturating_sub(1);
@@ -370,7 +508,7 @@ fn main() -> anyhow::Result<()> {
             }
 
             let indent = leading_ws(lv[fn_0]).to_string();
-            let doc = build_doc(intent, resource, effects, &indent);
+            let doc = build_doc(node, effects, &indent);
 
             if augment {
                 match find_intent_line(&lv, fn_0) {
@@ -559,5 +697,50 @@ mod tests {
         let root = PathBuf::from("/workspace/ai_sandbox/canon-mini-agent");
         let src = root.join("src");
         assert!(path_under_workspace_src("src/lib.rs", &root, &src));
+    }
+
+    #[test]
+    fn build_doc_matches_plan_schema_shape() {
+        let node = GraphNode {
+            path: "plans::load_plan".to_string(),
+            kind: "fn".to_string(),
+            signature: Some("fn(path: &Path) -> Result<Plan>".to_string()),
+            intent_class: Some("canonical_read".to_string()),
+            resource: Some("PLAN.json".to_string()),
+            provenance: vec!["rustc:docstring".to_string()],
+            docstring: None,
+            semantic_manifest: Some(SemanticManifest {
+                intent_class: "canonical_read".to_string(),
+                resource: "PLAN.json".to_string(),
+                inputs: vec!["path: &Path".to_string()],
+                outputs: vec!["Result<Plan>".to_string()],
+                effects: vec!["fs_read".to_string()],
+                forbidden_effects: vec!["fs_write".to_string(), "default_overwrite".to_string()],
+                invariants: vec![
+                    "plan_is_authoritative".to_string(),
+                    "no_direct_plan_patch".to_string(),
+                ],
+                failure_mode: "fail_closed".to_string(),
+                provenance: vec![
+                    "rustc:facts".to_string(),
+                    "syn:docstring".to_string(),
+                    "tests:verified".to_string(),
+                ],
+            }),
+            def: None,
+        };
+        let doc = build_doc(&node, None, "");
+        let expected = "\
+/// Intent: canonical_read
+/// Resource: PLAN.json
+/// Inputs: path: &Path
+/// Outputs: Result<Plan>
+/// Effects: fs_read
+/// Forbidden: fs_write, default_overwrite
+/// Invariants: plan_is_authoritative, no_direct_plan_patch
+/// Failure: fail_closed
+/// Provenance: rustc:facts + syn:docstring + tests:verified
+";
+        assert_eq!(doc, expected);
     }
 }
