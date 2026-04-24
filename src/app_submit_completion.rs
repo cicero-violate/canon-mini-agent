@@ -111,13 +111,13 @@ fn executor_dispatch_gate_result(
 }
 
 /// Intent: transport_effect
-/// Resource: error
+/// Resource: executor_submit
 /// Inputs: &prompt_inputs::OrchestratorContext<'_>, &mut canonical_writer::CanonicalWriter, &mut app::RuntimeState, u64, &mut tokio::task::JoinSet<(usize, app::PendingExecutorSubmit, std::result::Result<std::string::String, anyhow::Error>
-/// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Outputs: bool
+/// Effects: state_write, uses_network
+/// Forbidden: default_overwrite
+/// Invariants: side_effects_are_intentional
+/// Failure: fail_closed
 /// Provenance: rustc:facts + rustc:docstring
 fn dispatch_ready_executor_lanes(
     ctx: &OrchestratorContext<'_>,
