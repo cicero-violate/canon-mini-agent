@@ -211,6 +211,24 @@ fn invariant_status_label(status: &crate::invariants::InvariantStatus) -> &'stat
     }
 }
 
+fn invariant_status_rank(status: &crate::invariants::InvariantStatus) -> u8 {
+    match status {
+        crate::invariants::InvariantStatus::Enforced => 0,
+        crate::invariants::InvariantStatus::Promoted => 1,
+        crate::invariants::InvariantStatus::Discovered => 2,
+        crate::invariants::InvariantStatus::Collapsed => 3,
+    }
+}
+
+fn truncate_with_ellipsis(text: &str, max_chars: usize) -> String {
+    if text.chars().count() > max_chars {
+        let shortened: String = text.chars().take(max_chars).collect();
+        format!("{shortened}…")
+    } else {
+        text.to_string()
+    }
+}
+
 /// Intent: pure_transform
 /// Provenance: generated
 fn summarize_enforced_invariants_for_prompt(raw: &str) -> String {
@@ -243,14 +261,8 @@ fn summarize_enforced_invariants_for_prompt(raw: &str) -> String {
         .filter(|inv| inv.status != crate::invariants::InvariantStatus::Collapsed)
         .collect();
     ranked.sort_by(|a, b| {
-        let status_rank = |status: &crate::invariants::InvariantStatus| match status {
-            crate::invariants::InvariantStatus::Enforced => 0u8,
-            crate::invariants::InvariantStatus::Promoted => 1,
-            crate::invariants::InvariantStatus::Discovered => 2,
-            crate::invariants::InvariantStatus::Collapsed => 3,
-        };
-        status_rank(&a.status)
-            .cmp(&status_rank(&b.status))
+        invariant_status_rank(&a.status)
+            .cmp(&invariant_status_rank(&b.status))
             .then_with(|| b.support_count.cmp(&a.support_count))
             .then_with(|| a.id.cmp(&b.id))
     });
@@ -266,13 +278,7 @@ fn summarize_enforced_invariants_for_prompt(raw: &str) -> String {
         file.last_synthesized_ms
     ));
     for inv in ranked.into_iter().take(8) {
-        let predicate = inv.predicate_text.trim();
-        let predicate = if predicate.chars().count() > 160 {
-            let shortened: String = predicate.chars().take(160).collect();
-            format!("{shortened}…")
-        } else {
-            predicate.to_string()
-        };
+        let predicate = truncate_with_ellipsis(inv.predicate_text.trim(), 160);
         let gates = if inv.gates.is_empty() {
             "(no gates)".to_string()
         } else {

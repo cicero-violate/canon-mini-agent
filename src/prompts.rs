@@ -761,16 +761,17 @@ fn extract_json_fence(text: &str) -> Option<&str> {
 /// Intent: pure_transform
 /// Provenance: generated
 fn parse_json_from_text(text: &str) -> Result<Value> {
-    for (idx, ch) in text.char_indices() {
-        if ch != '{' && ch != '[' {
-            continue;
-        }
-        let slice = &text[idx..];
-        let de = serde_json::Deserializer::from_str(slice);
-        let mut iter = de.into_iter::<Value>();
-        if let Some(Ok(value)) = iter.next() {
-            return Ok(value);
-        }
+    if let Some(value) = text
+        .char_indices()
+        .filter_map(|(idx, ch)| matches!(ch, '{' | '[').then_some(idx))
+        .find_map(|idx| {
+            let slice = &text[idx..];
+            let de = serde_json::Deserializer::from_str(slice);
+            let mut iter = de.into_iter::<Value>();
+            iter.next().and_then(Result::ok)
+        })
+    {
+        return Ok(value);
     }
     bail!("no JSON object found in response")
 }
@@ -1494,6 +1495,41 @@ mod tests {
     use super::*;
     use crate::prompt_contract::ACTION_EMIT_LINE;
     use serde_json::json;
+
+    #[test]
+    fn extract_json_candidate_prefers_fenced_json_block() {
+        let raw = "noise\n```json\n{\"action\":\"message\"}\n```\ntrailer";
+        let extracted = extract_json_candidate(raw).expect("expected json candidate");
+        assert_eq!(extracted, "{\"action\":\"message\"}");
+    }
+
+    #[test]
+    fn extract_json_candidate_handles_braces_inside_strings() {
+        let raw = r#"prefix {"text":"value with } brace", "ok": true} suffix"#;
+        let extracted = extract_json_candidate(raw).expect("expected json candidate");
+        assert_eq!(extracted, r#"{"text":"value with } brace", "ok": true}"#);
+    }
+
+    #[test]
+    fn extract_json_candidate_returns_trimmed_suffix_when_unbalanced() {
+        let raw = "prefix {\"action\":\"read_file\"";
+        let extracted = extract_json_candidate(raw).expect("expected json candidate");
+        assert_eq!(extracted, "{\"action\":\"read_file\"");
+    }
+
+    #[test]
+    fn parse_json_from_text_extracts_first_json_value() {
+        let raw = "leading text {\"action\":\"message\",\"payload\":{}} trailing";
+        let value = parse_json_from_text(raw).expect("expected parseable json");
+        assert_eq!(value.get("action").and_then(|v| v.as_str()), Some("message"));
+    }
+
+    #[test]
+    fn parse_json_from_text_rejects_non_json_text() {
+        let err = parse_json_from_text("no structured response here")
+            .expect_err("expected no-json parse failure");
+        assert!(err.to_string().contains("no JSON object found in response"));
+    }
 
     #[test]
     fn normalize_inserts_rationale_when_missing() {

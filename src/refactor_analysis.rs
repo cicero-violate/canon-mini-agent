@@ -1971,20 +1971,16 @@ fn dead_code_issues(
 ) -> usize {
     let mut created = 0;
     for s in summaries {
-        if s.kind != "fn" {
-            continue;
-        }
-        if s.mir_blocks.unwrap_or(0) == 0 {
+        let mir_blocks = s.mir_blocks.unwrap_or(0);
+        if s.kind != "fn"
+            || mir_blocks == 0
+            || s.call_in > 0
+            || s.ref_count > 0
+            || is_exempt_from_dead_code(&s.symbol)
+        {
             continue;
         }
         // Both call-graph in-degree AND HIR reference count must be zero.
-        if s.call_in > 0 || s.ref_count > 0 {
-            continue;
-        }
-        // Skip well-known unreferenced-by-design names.
-        if is_exempt_from_dead_code(&s.symbol) {
-            continue;
-        }
         let location = shorten_location(&s.file, s.line);
         let id = dead_code_id(crate_name, &s.symbol);
         if issue_already_tracked(existing_ids, open_locations, &id, &location) {
@@ -2003,14 +1999,14 @@ fn dead_code_issues(
                  - ref_count = 0  (not referenced in source)\n\
                  - mir_blocks = {b}  (has a real body)\n\n\
                  Execution model: Detect(this issue) → Propose(LLM delete/verify) → Apply(patch) → Verify(build+test)\n\n\
-                 Verify that this is truly unreachable (no dynamic dispatch, no #[no_mangle], \
+                Verify that this is truly unreachable (no dynamic dispatch, no #[no_mangle], \
                  not re-exported), then delete it to reduce U and simplify the execution graph.",
                 sym = s.symbol,
-                b = s.mir_blocks.unwrap_or(0),
+                b = mir_blocks,
             ),
             location: location.clone(),
             evidence: vec![
-                format!("call_in=0 ref_count=0 mir_blocks={}", s.mir_blocks.unwrap_or(0)),
+                format!("call_in=0 ref_count=0 mir_blocks={mir_blocks}"),
                 format!("location: {location}"),
             ],
             discovered_by: "refactor_analyzer".to_string(),

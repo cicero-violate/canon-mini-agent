@@ -559,21 +559,17 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
         if inv.status != InvariantStatus::Promoted {
             continue;
         }
-        let issue_id = format!(
-            "inv_gate_unenforced_{}",
-            inv.id.to_lowercase().replace('-', "_")
-        );
-        // Skip if already present as any status (don't re-open a wontfix).
-        if existing_ids.contains(&issue_id) {
-            continue;
-        }
-        // Also skip if there's already an open issue at the same location/id prefix.
-        let already_tracked = file.issues.iter().filter(|i| !is_closed(i)).any(|i| {
-            i.id.starts_with(&format!(
-                "inv_gate_unenforced_{}",
-                inv.id.to_lowercase().replace('-', "_")
-            ))
-        });
+        let inv_key = inv.id.to_lowercase().replace('-', "_");
+        let issue_prefix = format!("inv_gate_unenforced_{inv_key}");
+        let issue_id = issue_prefix.clone();
+        // Skip if already present as any status (don't re-open a wontfix), or if
+        // there's already an open issue under the same id prefix.
+        let already_tracked = existing_ids.contains(&issue_id)
+            || file
+                .issues
+                .iter()
+                .filter(|i| !is_closed(i))
+                .any(|i| i.id.starts_with(&issue_prefix));
         if already_tracked {
             continue;
         }
