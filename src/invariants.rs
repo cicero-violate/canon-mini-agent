@@ -984,13 +984,13 @@ fn extract_forced_handoff_fingerprint(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: memory
 /// Inputs: &serde_json::Value, &str, &str, bool, u64
 /// Outputs: std::option::Option<invariants::Fingerprint>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: fs_write, uses_network, spawns_process
+/// Invariants: deterministic_for_same_inputs
+/// Failure: infallible
 /// Provenance: rustc:facts + rustc:docstring
 fn extract_read_file_failure_fingerprint(
     entry: &Value,
