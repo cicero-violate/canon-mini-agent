@@ -24,19 +24,6 @@ pub fn persist_issues_projection_with_writer(
     subject: &str,
 ) -> Result<()> {
     let canonical = serde_json::to_string_pretty(file)?;
-    let legacy_result = crate::logging::record_json_projection_with_optional_writer(
-        workspace,
-        &workspace.join(ISSUES_FILE),
-        ISSUES_FILE,
-        "write",
-        subject,
-        file,
-        writer.as_mut().map(|writer| &mut **writer),
-        Some(crate::events::EffectEvent::IssuesFileRecorded { file: file.clone() }),
-    );
-    if legacy_result.is_err() {
-        return legacy_result;
-    }
     crate::logging::record_json_projection_with_optional_writer(
         workspace,
         &workspace.join(ISSUES_FILE),
@@ -769,7 +756,7 @@ mod tests {
         persist_issues_projection_with_writer, read_ranked_open_issues, sweep_stale_issues, Issue,
         IssuesFile,
     };
-    use crate::{set_agent_state_dir, set_workspace};
+    use crate::{set_agent_state_dir, set_workspace, tlog::Tlog};
     use std::path::Path;
 
     fn write_test_issue_file(path: &Path, raw: &str) {
@@ -994,7 +981,7 @@ mod tests {
     }
 
     #[test]
-    fn load_issues_file_falls_back_to_latest_tlog_snapshot_when_projection_missing() {
+    fn persist_issues_records_compact_tlog_metadata_without_snapshot() {
         static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
         let _guard = LOCK
             .get_or_init(|| std::sync::Mutex::new(()))
@@ -1014,28 +1001,66 @@ mod tests {
             version: 3,
             issues: vec![Issue {
                 id: "ISS-TLOG-1".to_string(),
-                title: "recover issues from tlog".to_string(),
+                title: "compact issues projection metadata".to_string(),
                 status: "open".to_string(),
                 priority: "high".to_string(),
-                description: "projection deleted; tlog snapshot should still drive reads"
-                    .to_string(),
+                description: "full issue snapshots must not be cloned into tlog".to_string(),
                 ..Issue::default()
             }],
         };
-        persist_issues_projection_with_writer(&root, &file, None, "issues_tlog_fallback_test")
+        persist_issues_projection_with_writer(&root, &file, None, "issues_tlog_compact_metadata_test")
             .expect("persist issues projection");
 
         let issues_path = root.join(crate::constants::ISSUES_FILE);
-        std::fs::remove_file(&issues_path).expect("delete issues projection");
+        assert!(issues_path.exists(), "projection file should still be written");
 
         let recovered = load_issues_file(&root);
         assert_eq!(recovered.version, 3);
         assert_eq!(recovered.issues.len(), 1);
         assert_eq!(recovered.issues[0].id, "ISS-TLOG-1");
+
+        let tlog_path = state_dir.join("tlog.ndjson");
+        let raw_tlog = std::fs::read_to_string(&tlog_path).expect("read tlog");
         assert!(
-            render_open_issues(&root).contains("ISS-TLOG-1"),
-            "read surface should recover from the tlog snapshot"
+            !raw_tlog.contains("ISS-TLOG-1"),
+            "tlog should not contain full issue payloads"
         );
+        assert!(
+            !raw_tlog.contains("full issue snapshots must not be cloned into tlog"),
+            "tlog should not contain full issue descriptions"
+        );
+
+        let expected_hash = crate::logging::stable_hash_hex(
+            &serde_json::to_string_pretty(&file).expect("canonical issues json"),
+        );
+        let records = Tlog::read_records(&tlog_path).expect("read tlog records");
+        let mut projection_records = 0usize;
+        let mut snapshot_records = 0usize;
+        for record in records {
+            match record.event {
+                crate::events::Event::Effect {
+                    event:
+                        crate::events::EffectEvent::IssuesProjectionRecorded {
+                            path,
+                            hash,
+                            issue_count,
+                            bytes,
+                        },
+                } => {
+                    projection_records += 1;
+                    assert_eq!(path, crate::constants::ISSUES_FILE);
+                    assert_eq!(hash, expected_hash);
+                    assert_eq!(issue_count, 1);
+                    assert!(bytes > 0);
+                }
+                crate::events::Event::Effect {
+                    event: crate::events::EffectEvent::IssuesFileRecorded { .. },
+                } => snapshot_records += 1,
+                _ => {}
+            }
+        }
+        assert_eq!(projection_records, 1);
+        assert_eq!(snapshot_records, 0);
     }
 
     #[test]

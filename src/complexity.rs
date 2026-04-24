@@ -1091,6 +1091,16 @@ fn build_complexity_entry(
 ) -> serde_json::Value {
     let branch_score = s.branch_score;
     let proxy = complexity_proxy(branch_score, blocks);
+    complexity_entry_json(s, blocks, stmts, branch_score, proxy)
+}
+
+fn complexity_entry_json(
+    s: &crate::semantic::SymbolSummary,
+    blocks: usize,
+    stmts: usize,
+    branch_score: Option<f64>,
+    proxy: f64,
+) -> serde_json::Value {
     json!({
         "symbol": s.symbol,
         "file": shorten_display_path(&s.file),
