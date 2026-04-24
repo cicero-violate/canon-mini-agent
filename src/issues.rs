@@ -188,7 +188,7 @@ fn load_issues_from_tlog(workspace: &Path) -> Option<IssuesFile> {
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
 
-pub fn reconcile_issues_projection(workspace: &Path, subject: &str) -> Result<bool> {
+pub fn reconcile_issues_projection(workspace: &Path, _subject: &str) -> Result<bool> {
     let path = workspace.join(ISSUES_FILE);
     let current = std::fs::read_to_string(&path).unwrap_or_default();
     if parse_issues_file_from_raw(&current).is_some() {
@@ -203,13 +203,6 @@ pub fn reconcile_issues_projection(workspace: &Path, subject: &str) -> Result<bo
         return Ok(false);
     }
     std::fs::write(&path, canonical)?;
-    crate::logging::record_effect(
-        workspace,
-        crate::events::EffectEvent::ProjectionReconciled {
-            path: ISSUES_FILE.to_string(),
-            subject: subject.to_string(),
-        },
-    )?;
     Ok(true)
 }
 
