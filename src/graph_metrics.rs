@@ -2450,12 +2450,16 @@ fn resolve_legacy_cfg_region_issues(file: &mut IssuesFile, crate_name: &str) -> 
     let prefix = format!("auto_cfg_region_reduction_{crate_name}_");
     let mut mutated = 0usize;
     for issue in &mut file.issues {
-        if issue.id.starts_with(&prefix) && issue.status != "resolved" {
+        if is_unresolved_legacy_cfg_region_issue(issue, &prefix) {
             issue.status = "resolved".to_string();
             mutated += 1;
         }
     }
     mutated
+}
+
+fn is_unresolved_legacy_cfg_region_issue(issue: &Issue, prefix: &str) -> bool {
+    issue.id.starts_with(prefix) && issue.status != "resolved"
 }
 
 fn scc_region_reduction_issue_id(crate_name: &str, symbol: &str) -> String {

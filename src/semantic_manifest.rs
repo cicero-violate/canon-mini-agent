@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const MISSING: &str = "error";
+const NO_EFFECT: &str = "none";
 
 #[derive(Debug, Clone)]
 pub struct SemanticManifestRunOptions {
@@ -278,6 +279,7 @@ fn normalize_effect_label(effect: &str) -> String {
         "writes_artifact" | "WritesArtifact" => "fs_write".to_string(),
         "reads_state" | "ReadsState" => "state_read".to_string(),
         "writes_state" | "WritesState" => "state_write".to_string(),
+        "no_effect" | "NoEffect" | "none" => NO_EFFECT.to_string(),
         other if !other.is_empty() => other.to_string(),
         _ => MISSING.to_string(),
     }
@@ -323,6 +325,59 @@ fn infer_effects_from_calls(calls: &[String]) -> Vec<String> {
         }
     }
     out.into_iter().collect()
+}
+
+fn infer_effects_from_symbol(symbol: &str) -> Vec<String> {
+    let sym = symbol.to_ascii_lowercase();
+    let mut out = BTreeSet::new();
+
+    if sym.contains("read")
+        || sym.contains("load")
+        || sym.contains("scan")
+        || sym.contains("parse_")
+        || sym.contains("from_file")
+        || sym.contains("from_path")
+    {
+        out.insert("fs_read".to_string());
+    }
+    if sym.contains("write")
+        || sym.contains("save")
+        || sym.contains("persist")
+        || sym.contains("flush")
+        || sym.contains("append")
+        || sym.contains("record")
+    {
+        out.insert("fs_write".to_string());
+    }
+    if sym.contains("update")
+        || sym.contains("transition")
+        || sym.contains("set_status")
+        || sym.contains("apply_")
+        || sym.contains("consume")
+    {
+        out.insert("state_write".to_string());
+    }
+    if sym.contains("command")
+        || sym.contains("spawn")
+        || sym.contains("process")
+        || sym.contains("subprocess")
+    {
+        out.insert("spawns_process".to_string());
+    }
+    if sym.contains("http")
+        || sym.contains("chromium")
+        || sym.contains("transport")
+        || sym.contains("websocket")
+        || sym.contains("ws_")
+    {
+        out.insert("uses_network".to_string());
+    }
+
+    if out.is_empty() {
+        vec![NO_EFFECT.to_string()]
+    } else {
+        out.into_iter().collect()
+    }
 }
 
 fn resolve_doc_lines(
@@ -383,6 +438,9 @@ fn resolve_doc_lines(
 fn infer_resource(calls: &[String], effects: &[String], symbol: &str) -> String {
     let joined = calls.join(" ").to_ascii_lowercase();
     let sym = symbol.to_ascii_lowercase();
+    if joined.contains("graph") || sym.contains("graph") {
+        return "graph.json".to_string();
+    }
     if joined.contains("plan") {
         return "PLAN.json".to_string();
     }
@@ -410,6 +468,18 @@ fn infer_resource(calls: &[String], effects: &[String], symbol: &str) -> String 
     if sym.contains("objective") {
         return "OBJECTIVES.json".to_string();
     }
+    if sym.contains("diagnostic") {
+        return "diagnostics".to_string();
+    }
+    if sym.contains("message") || sym.contains("inbound") || sym.contains("outbound") {
+        return "message_frame".to_string();
+    }
+    if sym.contains("prompt") {
+        return "prompt_context".to_string();
+    }
+    if sym.contains("action") {
+        return "action_payload".to_string();
+    }
     if effects.iter().any(|e| e == "fs_read" || e == "fs_write") {
         return "filesystem".to_string();
     }
@@ -422,7 +492,7 @@ fn infer_resource(calls: &[String], effects: &[String], symbol: &str) -> String 
     if effects.iter().any(|e| e == "spawns_process") {
         return "process".to_string();
     }
-    MISSING.to_string()
+    "memory".to_string()
 }
 
 fn infer_intent(intent: Option<String>, effects: &[String], symbol: &str) -> String {
@@ -470,9 +540,9 @@ fn infer_intent(intent: Option<String>, effects: &[String], symbol: &str) -> Str
 fn infer_failure(outputs: &[String], symbol: &str) -> String {
     let joined = outputs.join(", ");
     let sym = symbol.to_ascii_lowercase();
-    if joined.contains("Result<") {
+    if joined.contains("Result<") || joined.contains("std::result::Result<") {
         "fail_closed".to_string()
-    } else if joined.contains("Option<") {
+    } else if joined.contains("Option<") || joined.contains("std::option::Option<") {
         "propagates".to_string()
     } else if sym.contains("try_") || sym.contains("load_") {
         "fail_closed".to_string()
@@ -488,6 +558,7 @@ fn infer_forbidden(intent: &str, effects: &[String]) -> Vec<String> {
     match intent {
         "canonical_read" => vec!["fs_write".to_string(), "default_overwrite".to_string()],
         "canonical_write" => vec!["default_overwrite".to_string()],
+        "event_append" => vec!["default_overwrite".to_string()],
         "validation_gate" => vec!["fs_write".to_string(), "state_write".to_string()],
         "diagnostic_scan" => vec!["fs_write".to_string()],
         "pure_transform" => vec![
@@ -522,6 +593,7 @@ fn infer_invariants(intent: &str, effects: &[String], resource: &str) -> Vec<Str
         ("canonical_read", "PLAN.json") => vec!["plan_is_authoritative".to_string()],
         ("canonical_write", "PLAN.json") => vec!["no_direct_plan_patch".to_string()],
         ("event_append", "tlog.ndjson") => vec!["append_only_log".to_string()],
+        (_, "graph.json") => vec!["graph_is_derived_projection".to_string()],
         ("pure_transform", _) => vec!["no_external_effects".to_string()],
         ("validation_gate", _) => vec!["checks_must_gate_state_transition".to_string()],
         ("route_gate", _) => vec!["route_decision_is_explicit".to_string()],
@@ -560,6 +632,11 @@ pub fn run_with_options(options: SemanticManifestRunOptions) -> anyhow::Result<S
         let doc_lines = resolve_doc_lines(node, &workspace, &mut src_cache);
         let doc = parse_doc_contract(&doc_lines);
         let (sig_inputs, sig_outputs) = parse_signature(node.signature.as_deref());
+        let symbol = if node.path.is_empty() {
+            node_id.clone()
+        } else {
+            node.path.clone()
+        };
         let calls = calls_by_owner
             .get(node_id)
             .map(|s| s.iter().cloned().collect::<Vec<_>>())
@@ -572,13 +649,9 @@ pub fn run_with_options(options: SemanticManifestRunOptions) -> anyhow::Result<S
                 .map(|s| s.iter().cloned().collect::<Vec<_>>())
                 .unwrap_or_default(),
             inferred_effects,
+            infer_effects_from_symbol(&symbol),
             old.effects.clone(),
         ]);
-        let symbol = if node.path.is_empty() {
-            node_id.clone()
-        } else {
-            node.path.clone()
-        };
         let normalized_effects = normalize_list(
             effects
                 .into_iter()

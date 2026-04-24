@@ -145,10 +145,15 @@ fn run_selected_mode(args: &[String], workspace: &PathBuf) -> Option<Result<()>>
 fn workspace_from_args(args: &[String]) -> Result<PathBuf> {
     let workspace = take_flag_value(args, "--workspace").context("missing --workspace")?;
     let workspace = PathBuf::from(workspace);
+    ensure_absolute_workspace(&workspace)?;
+    Ok(workspace)
+}
+
+fn ensure_absolute_workspace(workspace: &Path) -> Result<()> {
     if !workspace.is_absolute() {
         bail!("--workspace must be an absolute path, got: {}", workspace.display());
     }
-    Ok(workspace)
+    Ok(())
 }
 
 fn main() -> Result<()> {
