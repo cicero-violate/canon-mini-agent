@@ -828,6 +828,15 @@ async fn continue_executor_completion(
         true,
         None,
     )?;
+    record_continuation_action_result_effect(
+        effect_tx.as_ref(),
+        role,
+        step,
+        command_id,
+        &action,
+        true,
+        &out,
+    );
     if done {
         return Ok(
             if action.get("action").and_then(|v| v.as_str()) == Some("message") {
@@ -882,4 +891,43 @@ async fn continue_executor_completion(
         submitted.steps_used,
     )
     .await
+}
+
+fn record_continuation_action_result_effect(
+    effect_tx: Option<&UnboundedSender<EffectEvent>>,
+    role: &str,
+    step: usize,
+    command_id: &str,
+    action: &Value,
+    ok: bool,
+    result: &str,
+) {
+    let Some(tx) = effect_tx else {
+        return;
+    };
+    let action_kind = action
+        .get("action")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+    let task_id = action
+        .get("task_id")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let objective_id = action
+        .get("objective_id")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let _ = tx.send(EffectEvent::ActionResultRecorded {
+        role: role.to_string(),
+        step,
+        command_id: command_id.to_string(),
+        action_kind,
+        task_id,
+        objective_id,
+        ok,
+        result_bytes: result.len(),
+        result_hash: crate::logging::stable_hash_hex(result),
+        result: result.to_string(),
+    });
 }
