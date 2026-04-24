@@ -1178,121 +1178,141 @@ pub(crate) fn normalize_action(action: &mut Value) -> Result<()> {
     let obj = action
         .as_object_mut()
         .ok_or_else(|| anyhow!("action payload must be a JSON object"))?;
-    let kind = obj
-        .get("action")
+    let kind = normalize_action_kind(obj)?;
+    normalize_action_rationale(obj, &kind);
+    if kind == "message" {
+        normalize_message_action_fields(obj);
+        validate_message_action(action, MessageValidationMode::Basic)?;
+    } else if kind == "issue" {
+        normalize_issue_op(obj);
+    } else if kind == "plan" {
+        normalize_plan_op(obj);
+    }
+    Ok(())
+}
+
+fn normalize_action_kind(obj: &serde_json::Map<String, Value>) -> Result<String> {
+    obj.get("action")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow!("action missing 'action'"))?
-        .to_string();
-    if obj
+        .ok_or_else(|| anyhow!("action missing 'action'"))
+        .map(str::to_string)
+}
+
+fn normalize_action_rationale(obj: &mut serde_json::Map<String, Value>, kind: &str) {
+    let has_rationale = obj
         .get("rationale")
         .and_then(|v| v.as_str())
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .is_none()
-    {
+        .is_some();
+    if !has_rationale {
         obj.insert(
             "rationale".to_string(),
-            Value::String(default_rationale(&kind).to_string()),
+            Value::String(default_rationale(kind).to_string()),
         );
     }
-    if kind == "message" {
-        if obj.get("from").is_none() {
-            if let Some(val) = obj.get("from_role").cloned() {
-                obj.insert("from".to_string(), val);
-            }
-        }
-        if obj.get("to").is_none() {
-            if let Some(val) = obj.get("to_role").cloned() {
-                obj.insert("to".to_string(), val);
-            }
-        }
-        for field in ["from", "to", "type", "status"] {
-            if let Some(val) = obj
-                .get_mut(field)
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-            {
-                let mut normalized = val.to_lowercase();
-                if field == "status" && normalized == "completed" {
-                    normalized = "complete".to_string();
-                }
-                obj.insert(field.to_string(), Value::String(normalized));
-            }
-        }
-        for field in ["severity"] {
-            if let Some(val) = obj
-                .get_mut(field)
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-            {
-                obj.insert(field.to_string(), Value::String(val.to_lowercase()));
-            }
-        }
-        if let Some(payload) = obj.get_mut("payload").and_then(|v| v.as_object_mut()) {
-            if let Some(val) = payload
-                .get_mut("severity")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-            {
-                payload.insert("severity".to_string(), Value::String(val.to_lowercase()));
-            }
-        }
-        validate_message_action(action, MessageValidationMode::Basic)?;
-    } else if kind == "issue" {
-        if let Some(op) = obj
-            .get("op")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_ascii_lowercase())
-        {
-            let normalized = match op.as_str() {
-                "close" | "closed" | "resolve_issue" => Some("resolve"),
-                "create_issue" => Some("create"),
-                "update_issue" => Some("update"),
-                "delete_issue" => Some("delete"),
-                _ => None,
-            };
-            if let Some(normalized) = normalized {
-                obj.insert("op".to_string(), Value::String(normalized.to_string()));
-            }
-        }
-    } else if kind == "plan" {
-        if let Some(op) = obj
-            .get("op")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_ascii_lowercase())
-        {
-            let normalized = match op.as_str() {
-                "create_edge" => Some("add_edge"),
-                "delete_edge" => Some("remove_edge"),
-                "add_task" => Some("create_task"),
-                "replace" if obj.get("plan").is_some() => Some("replace_plan"),
-                "set_status" if obj.get("task_id").is_some() => Some("set_task_status"),
-                "set_status" => Some("set_plan_status"),
-                "add_tasks" if obj.get("plan").is_some() => Some("replace_plan"),
-                "add_tasks" => {
-                    let single_task = obj
-                        .get("tasks")
-                        .and_then(|v| v.as_array())
-                        .and_then(|tasks| (tasks.len() == 1).then(|| tasks[0].clone()));
-                    if obj.get("task").is_none() {
-                        if let Some(task) = single_task {
-                            obj.insert("task".to_string(), task);
-                        }
-                    }
-                    if obj.get("task").is_some() {
-                        Some("create_task")
-                    } else {
-                        None
-                    }
-                }
-                _ => None,
-            };
-            if let Some(normalized) = normalized {
-                obj.insert("op".to_string(), Value::String(normalized.to_string()));
-            }
+}
+
+fn normalize_message_action_fields(obj: &mut serde_json::Map<String, Value>) {
+    copy_missing_alias_field(obj, "from", "from_role");
+    copy_missing_alias_field(obj, "to", "to_role");
+    for field in ["from", "to", "type", "status"] {
+        lowercase_message_field(obj, field);
+    }
+    lowercase_message_field(obj, "severity");
+    lowercase_payload_severity(obj);
+}
+
+fn copy_missing_alias_field(obj: &mut serde_json::Map<String, Value>, field: &str, alias: &str) {
+    if obj.get(field).is_none() {
+        if let Some(val) = obj.get(alias).cloned() {
+            obj.insert(field.to_string(), val);
         }
     }
-    Ok(())
+}
+
+fn lowercase_message_field(obj: &mut serde_json::Map<String, Value>, field: &str) {
+    if let Some(val) = obj
+        .get_mut(field)
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+    {
+        let mut normalized = val.to_lowercase();
+        if field == "status" && normalized == "completed" {
+            normalized = "complete".to_string();
+        }
+        obj.insert(field.to_string(), Value::String(normalized));
+    }
+}
+
+fn lowercase_payload_severity(obj: &mut serde_json::Map<String, Value>) {
+    if let Some(payload) = obj.get_mut("payload").and_then(|v| v.as_object_mut()) {
+        if let Some(val) = payload
+            .get_mut("severity")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+        {
+            payload.insert("severity".to_string(), Value::String(val.to_lowercase()));
+        }
+    }
+}
+
+fn normalize_issue_op(obj: &mut serde_json::Map<String, Value>) {
+    if let Some(op) = obj
+        .get("op")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_ascii_lowercase())
+    {
+        let normalized = match op.as_str() {
+            "close" | "closed" | "resolve_issue" => Some("resolve"),
+            "create_issue" => Some("create"),
+            "update_issue" => Some("update"),
+            "delete_issue" => Some("delete"),
+            _ => None,
+        };
+        if let Some(normalized) = normalized {
+            obj.insert("op".to_string(), Value::String(normalized.to_string()));
+        }
+    }
+}
+
+fn normalize_plan_op(obj: &mut serde_json::Map<String, Value>) {
+    if let Some(op) = obj
+        .get("op")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_ascii_lowercase())
+    {
+        if let Some(normalized) = normalized_plan_op(obj, &op) {
+            obj.insert("op".to_string(), Value::String(normalized.to_string()));
+        }
+    }
+}
+
+fn normalized_plan_op(obj: &mut serde_json::Map<String, Value>, op: &str) -> Option<&'static str> {
+    match op {
+        "create_edge" => Some("add_edge"),
+        "delete_edge" => Some("remove_edge"),
+        "add_task" => Some("create_task"),
+        "replace" if obj.get("plan").is_some() => Some("replace_plan"),
+        "set_status" if obj.get("task_id").is_some() => Some("set_task_status"),
+        "set_status" => Some("set_plan_status"),
+        "add_tasks" if obj.get("plan").is_some() => Some("replace_plan"),
+        "add_tasks" => normalize_add_tasks_op(obj),
+        _ => None,
+    }
+}
+
+fn normalize_add_tasks_op(obj: &mut serde_json::Map<String, Value>) -> Option<&'static str> {
+    let single_task = obj
+        .get("tasks")
+        .and_then(|v| v.as_array())
+        .and_then(|tasks| (tasks.len() == 1).then(|| tasks[0].clone()));
+    if obj.get("task").is_none() {
+        if let Some(task) = single_task {
+            obj.insert("task".to_string(), task);
+        }
+    }
+    obj.get("task").is_some().then_some("create_task")
 }
 
 /// Intent: validation_gate
