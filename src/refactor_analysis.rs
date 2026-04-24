@@ -1608,40 +1608,7 @@ pub fn alpha_pathway_issues(
             .collect::<Vec<_>>()
             .join(", ");
 
-        // Evidence: each link with MIR block count where available.
-        let chain_locs: Vec<String> = chain
-            .windows(2)
-            .enumerate()
-            .map(|(idx, pair)| {
-                let caller_s = summary_by_symbol.get(pair[0].as_str());
-                let reason = pathway
-                    .link_proofs
-                    .get(idx)
-                    .cloned()
-                    .unwrap_or_else(|| "compiler-proven pure delegate".to_string());
-                let loc = caller_s
-                    .map(|s| format!("{} at {}", s.symbol, shorten_location(&s.file, s.line)))
-                    .unwrap_or_else(|| pair[0].clone());
-                format!(
-                    "`{}` → `{}` confirmed pure delegate ({}); {}",
-                    short_name(&pair[0]),
-                    short_name(&pair[1]),
-                    reason,
-                    loc
-                )
-            })
-            .chain(std::iter::once({
-                let s = summary_by_symbol.get(canonical_head.as_str());
-                match s {
-                    Some(s) => format!(
-                        "canonical: `{}` at {}",
-                        canonical_head,
-                        shorten_location(&s.file, s.line)
-                    ),
-                    None => format!("canonical: `{canonical_head}`"),
-                }
-            }))
-            .collect();
+        let chain_locs = alpha_pathway_chain_locs(chain, canonical_head, &summary_by_symbol, pathway);
 
         let chain_depth = chain.len();
         let id_seed = format!("{crate_name}:{}", chain.join(":"));
@@ -1735,6 +1702,52 @@ pub fn alpha_pathway_issues(
     out.truncate(limit);
     out.sort_by(|a, b| a.id.cmp(&b.id));
     out
+}
+
+fn alpha_pathway_chain_locs(
+    chain: &[String],
+    canonical_head: &str,
+    summary_by_symbol: &HashMap<&str, &SymbolSummary>,
+    pathway: &crate::semantic::AlphaPathwayChain,
+) -> Vec<String> {
+    let link_locs = chain.windows(2).enumerate().map(|(idx, pair)| {
+        let caller_s = summary_by_symbol.get(pair[0].as_str());
+        let reason = pathway
+            .link_proofs
+            .get(idx)
+            .cloned()
+            .unwrap_or_else(|| "compiler-proven pure delegate".to_string());
+        let loc = caller_s
+            .map(|s| format!("{} at {}", s.symbol, shorten_location(&s.file, s.line)))
+            .unwrap_or_else(|| pair[0].clone());
+        format!(
+            "`{}` → `{}` confirmed pure delegate ({}); {}",
+            short_name(&pair[0]),
+            short_name(&pair[1]),
+            reason,
+            loc
+        )
+    });
+    link_locs
+        .chain(std::iter::once(alpha_pathway_canonical_loc(
+            canonical_head,
+            summary_by_symbol,
+        )))
+        .collect()
+}
+
+fn alpha_pathway_canonical_loc(
+    canonical_head: &str,
+    summary_by_symbol: &HashMap<&str, &SymbolSummary>,
+) -> String {
+    match summary_by_symbol.get(canonical_head) {
+        Some(s) => format!(
+            "canonical: `{}` at {}",
+            canonical_head,
+            shorten_location(&s.file, s.line)
+        ),
+        None => format!("canonical: `{canonical_head}`"),
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
