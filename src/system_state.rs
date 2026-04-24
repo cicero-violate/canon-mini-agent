@@ -247,24 +247,44 @@ fn reset_lane_submit_state(s: &mut SystemState, lane_id: usize) {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState {
+fn apply_core_control_event(s: &mut SystemState, e: &ControlEvent) -> bool {
     match e {
         ControlEvent::PhaseSet { phase, lane } => {
             s.phase = phase.clone();
             s.phase_lane = *lane;
+            true
         }
         ControlEvent::ScheduledPhaseSet { phase } => {
             s.scheduled_phase = phase.clone();
+            true
         }
         ControlEvent::PlannerPendingSet { pending } => {
-            set_planner_pending_flag(&mut s, *pending);
+            set_planner_pending_flag(s, *pending);
+            true
         }
         ControlEvent::PlannerObjectiveReviewQueued => {
-            queue_planner_reason(&mut s, "objective_review");
+            queue_planner_reason(s, "objective_review");
+            true
         }
         ControlEvent::PlannerObjectivePlanGapQueued => {
-            queue_planner_reason(&mut s, "objective_plan_gap");
+            queue_planner_reason(s, "objective_plan_gap");
+            true
         }
+        _ => false,
+    }
+}
+
+pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState {
+    if apply_core_control_event(&mut s, e) {
+        return s;
+    }
+
+    match e {
+        ControlEvent::PhaseSet { .. }
+        | ControlEvent::ScheduledPhaseSet { .. }
+        | ControlEvent::PlannerPendingSet { .. }
+        | ControlEvent::PlannerObjectiveReviewQueued
+        | ControlEvent::PlannerObjectivePlanGapQueued => {}
         ControlEvent::DiagnosticsPendingSet { pending } => {
             // Compatibility shim: diagnostics control is deprecated; map to planner pending.
             set_planner_pending_flag(&mut s, *pending);
