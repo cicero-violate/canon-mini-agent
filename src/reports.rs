@@ -111,8 +111,14 @@ pub struct DiagnosticsReport {
 }
 
 /// Intent: diagnostic_scan
-/// Effects: reads_artifact, reads_state
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: reports::ViolationsReport
+/// Effects: fs_read, state_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn load_violations_report(workspace: &Path) -> ViolationsReport {
     let path = workspace.join(crate::constants::VIOLATIONS_FILE);
     let raw = std::fs::read_to_string(&path).unwrap_or_default();
@@ -129,8 +135,14 @@ pub fn load_violations_report(workspace: &Path) -> ViolationsReport {
 }
 
 /// Intent: canonical_read
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::option::Option<reports::ViolationsReport>
 /// Effects: logging
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_violations_from_tlog(workspace: &Path) -> Option<ViolationsReport> {
     let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
     crate::tlog::Tlog::latest_record_by_seq(&tlog_path, |event| match event {
@@ -143,8 +155,14 @@ fn load_violations_from_tlog(workspace: &Path) -> Option<ViolationsReport> {
 }
 
 /// Intent: canonical_write
+/// Resource: error
+/// Inputs: &std::path::Path, &reports::DiagnosticsReport, &str, std::option::Option<&mut canonical_writer::CanonicalWriter>, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
 /// Effects: logging
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn persist_diagnostics_projection_with_writer_to_path(
     workspace: &Path,
     report: &DiagnosticsReport,
@@ -167,7 +185,14 @@ pub fn persist_diagnostics_projection_with_writer_to_path(
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::option::Option<reports::DiagnosticsReport>
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn load_diagnostics_report(workspace: &Path) -> Option<DiagnosticsReport> {
     let path = workspace.join(diagnostics_file());
     let raw = std::fs::read_to_string(&path).unwrap_or_default();
@@ -180,8 +205,14 @@ pub fn load_diagnostics_report(workspace: &Path) -> Option<DiagnosticsReport> {
 }
 
 /// Intent: canonical_read
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::option::Option<reports::DiagnosticsReport>
 /// Effects: logging
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_diagnostics_from_tlog(workspace: &Path) -> Option<DiagnosticsReport> {
     let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
     crate::tlog::Tlog::latest_record_by_seq(&tlog_path, |event| match event {

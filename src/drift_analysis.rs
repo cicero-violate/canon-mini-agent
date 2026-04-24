@@ -14,7 +14,14 @@ pub struct FingerprintDrift {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &[semantic::SymbolSummary], &[semantic::SymbolSummary]
+/// Outputs: drift_analysis::FingerprintDrift
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn compute_fingerprint_drift(
     _workspace: &Path,
     prev_summaries: &[SymbolSummary],

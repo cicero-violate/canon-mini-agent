@@ -342,7 +342,14 @@ pub fn plan_action_examples_block() -> &'static str {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &schemars::schema::SchemaObject
+/// Outputs: std::option::Option<std::vec::Vec<std::string::String>>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_enum_strings(schema: &SchemaObject) -> Option<Vec<String>> {
     let enums = schema.enum_values.as_ref()?;
     let mut out = Vec::with_capacity(enums.len());
@@ -854,7 +861,14 @@ pub enum ToolAction {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: ()
+/// Outputs: std::vec::Vec<(&str, &str, std::option::Option<&str>)>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_tool_actions_list() -> Vec<(&'static str, &'static str, Option<&'static str>)> {
     vec![
         (
@@ -1092,8 +1106,15 @@ pub fn selected_tool_protocol_schema_text(actions: &[&str]) -> String {
     out
 }
 
-/// Write per-action syntax examples to `agent_state/tool_examples.md`.
-/// Called once at agent-loop startup so the file is always fresh.
+/// Intent: canonical_write
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn write_tool_examples(workspace: &std::path::Path) {
     if let Err(e) = write_tool_examples_inner(workspace) {
         eprintln!("[tool_examples] failed to write: {e}");
@@ -1101,8 +1122,14 @@ pub fn write_tool_examples(workspace: &std::path::Path) {
 }
 
 /// Intent: canonical_write
-/// Effects: writes_artifact, writes_state
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: fs_write, state_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn write_tool_examples_inner(workspace: &std::path::Path) -> anyhow::Result<()> {
     let schema = schema_for!(ToolAction);
     let value = serde_json::to_value(&schema).unwrap_or_else(|_| Value::Object(Default::default()));
@@ -1128,7 +1155,14 @@ fn write_tool_examples_inner(workspace: &std::path::Path) -> anyhow::Result<()> 
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub(crate) fn validate_tool_action(action: &Value) -> Result<()> {
     static SCHEMA: OnceLock<JSONSchema> = OnceLock::new();
     let compiled = SCHEMA.get_or_init(|| {
@@ -1217,7 +1251,14 @@ pub(crate) fn validate_tool_action(action: &Value) -> Result<()> {
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_manual_length_guards(action: &Value) -> Result<()> {
     if let Some(rationale) = action.get("rationale").and_then(|v| v.as_str()) {
         if rationale.trim().is_empty() {
@@ -1283,7 +1324,14 @@ fn action_requires_question(action: &Value) -> bool {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value
+/// Outputs: serde_json::Value
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn normalize_action_aliases_for_validation(action: &Value) -> Value {
     let mut normalized = action.clone();
     let Some(obj) = normalized.as_object_mut() else {
@@ -1312,7 +1360,14 @@ fn normalize_action_aliases_for_validation(action: &Value) -> Value {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::option::Option<&str>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn normalize_plan_op_alias(op: &str) -> Option<&'static str> {
     match op {
         "create_edge" => Some("add_edge"),
@@ -1444,7 +1499,14 @@ fn action_schema_mismatch_message(action: &Value) -> String {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value, &str
+/// Outputs: std::option::Option<&serde_json::Value>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn find_action_schema<'a>(value: &'a Value, action: &str) -> Option<&'a Value> {
     fn matches_action(value: &Value, action: &str) -> bool {
         let action_prop = value.get("properties").and_then(|p| p.get("action"));

@@ -77,7 +77,14 @@ pub fn task_velocity_score(completed_tasks: usize, total_tasks: usize) -> f64 {
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: usize, usize, &reports::ViolationsReport, usize, usize, usize, usize
+/// Outputs: evaluation::EvaluationVector
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn evaluate_repo_state(
     objectives_completed: usize,
     objectives_total: usize,
@@ -96,7 +103,14 @@ pub fn evaluate_repo_state(
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: evaluation::EvaluationWorkspaceSnapshot
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn evaluate_workspace(workspace: &Path) -> EvaluationWorkspaceSnapshot {
     let objectives = load_objectives_file(workspace);
     let objectives_total = objectives.objectives.len();
@@ -137,7 +151,14 @@ pub fn evaluate_workspace(workspace: &Path) -> EvaluationWorkspaceSnapshot {
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: (usize, usize)
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn load_issue_counts(workspace: &Path) -> (usize, usize) {
     let issues = crate::issues::load_issues_file(workspace);
     let mut counts: HashMap<&str, usize> = HashMap::new();
@@ -170,7 +191,14 @@ pub fn diagnostics_repair_pressure(report: &DiagnosticsReport) -> f64 {
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: objectives::ObjectivesFile
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_objectives_file(workspace: &Path) -> crate::objectives::ObjectivesFile {
     let path = crate::objectives::resolve_objectives_path(workspace);
     let raw = std::fs::read_to_string(path).unwrap_or_default();
@@ -178,8 +206,14 @@ fn load_objectives_file(workspace: &Path) -> crate::objectives::ObjectivesFile {
 }
 
 /// Intent: canonical_read
-/// Effects: reads_artifact, reads_state
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: (usize, usize)
+/// Effects: fs_read, state_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_task_counts(workspace: &Path) -> (usize, usize) {
     let path = workspace.join(crate::constants::MASTER_PLAN_FILE);
     let raw = std::fs::read_to_string(path).unwrap_or_default();
@@ -204,8 +238,14 @@ fn load_task_counts(workspace: &Path) -> (usize, usize) {
 }
 
 /// Intent: canonical_read
-/// Effects: reads_artifact, reads_state
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: usize
+/// Effects: fs_read, state_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_canonical_event_count(workspace: &Path) -> usize {
     let path = workspace.join("agent_state").join("tlog.ndjson");
     std::fs::read_to_string(path)
@@ -219,7 +259,14 @@ fn load_canonical_event_count(workspace: &Path) -> usize {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: ()
+/// Outputs: reports::DiagnosticsReport
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn empty_diagnostics_report() -> DiagnosticsReport {
     DiagnosticsReport {
         status: "unknown".to_string(),

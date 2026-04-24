@@ -577,8 +577,15 @@ async fn run_agent(
     }
 }
 
-/// Write the last completed action result to a state file so it survives a
-/// supervisor-triggered restart.  Only the most recent action is kept (overwrites).
+/// Intent: canonical_write
+/// Resource: error
+/// Inputs: &str, &str, &str, usize, std::option::Option<u32>, std::option::Option<u64>, &str, &str
+/// Outputs: app::PostRestartResult
+/// Effects: fs_write, state_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn write_post_restart_result(
     role: &str,
     action: &str,
@@ -627,7 +634,14 @@ fn write_post_restart_result(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &str, &str, usize, std::option::Option<u32>, std::option::Option<u64>, &str, &str, &str
+/// Outputs: serde_json::Value
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_post_restart_result_payload(
     role: &str,
     action: &str,
@@ -687,7 +701,15 @@ impl AgentCompletion {
     }
 }
 
-/// Read the post-restart result file without consuming it.
+/// Intent: canonical_read
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::option::Option<app::PostRestartResult>
+/// Effects: fs_read, logging, state_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring + rustc:effects
 fn peek_post_restart_result(role: &str) -> Option<PostRestartResult> {
     let tlog_path = std::path::Path::new(crate::constants::agent_state_dir()).join("tlog.ndjson");
     if tlog_path.exists() {
@@ -874,7 +896,14 @@ fn restart_resume_banner(role: &str, resume: &PostRestartResult) -> String {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &[llm_runtime::config::LlmEndpoint], &str
+/// Outputs: std::result::Result<&llm_runtime::config::LlmEndpoint, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn find_endpoint<'a>(endpoints: &'a [LlmEndpoint], role: &str) -> Result<&'a LlmEndpoint> {
     endpoints
         .iter()
@@ -883,7 +912,14 @@ fn find_endpoint<'a>(endpoints: &'a [LlmEndpoint], role: &str) -> Result<&'a Llm
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: ()
+/// Outputs: std::vec::Vec<llm_runtime::config::LlmEndpoint>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_endpoints() -> Vec<LlmEndpoint> {
     ENDPOINT_SPECS
         .iter()
@@ -969,7 +1005,14 @@ struct PendingExecutorSubmit {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::option::Option<(u32, u64, std::option::Option<std::string::String>)>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_submit_ack(raw: &str) -> Option<(u32, u64, Option<String>)> {
     let v: Value = serde_json::from_str(raw).ok()?;
     if v.get("submit_ack").and_then(|x| x.as_bool()) != Some(true) {
@@ -985,7 +1028,14 @@ fn parse_submit_ack(raw: &str) -> Option<(u32, u64, Option<String>)> {
 }
 
 /// Intent: event_append
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &app::SubmittedExecutorTurn, usize, u64, u32, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn append_executor_completion_log(
     submitted: &SubmittedExecutorTurn,
     step: usize,

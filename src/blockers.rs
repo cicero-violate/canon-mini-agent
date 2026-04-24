@@ -71,10 +71,15 @@ pub struct BlockersFile {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/// Append a blocker record to `agent_state/blockers.json`.
-///
-/// Uses a file-level mutex to be safe under concurrent executor lanes.
-/// Silently drops I/O errors to keep the hot path clean.
+/// Intent: event_append
+/// Resource: error
+/// Inputs: &std::path::Path, blockers::BlockerRecord
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn append_blocker(workspace: &Path, record: BlockerRecord) {
     if let Err(e) = try_append_blocker_with_writer(workspace, None, record) {
         eprintln!("[blockers] append error: {e:#}");
@@ -146,7 +151,15 @@ pub fn record_action_failure_with_writer(
     }
 }
 
-/// Load the blockers file. Returns empty default if absent or unreadable.
+/// Intent: canonical_read
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: blockers::BlockersFile
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn load_blockers(workspace: &Path) -> BlockersFile {
     let path = blockers_path(workspace);
     if path.exists() {
@@ -196,8 +209,14 @@ fn blockers_path(workspace: &Path) -> std::path::PathBuf {
 }
 
 /// Intent: canonical_read
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::option::Option<blockers::BlockersFile>
 /// Effects: logging
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_blockers_from_tlog(workspace: &Path) -> Option<BlockersFile> {
     let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
     let records = Tlog::read_records(&tlog_path).ok()?;

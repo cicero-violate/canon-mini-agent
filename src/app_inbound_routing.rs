@@ -226,7 +226,14 @@ fn record_canonical_inbound_message(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: &str
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn normalize_executor_completion_target<'a>(to_role: &'a str) -> &'a str {
     if to_role.eq_ignore_ascii_case("executor") {
         eprintln!(
@@ -246,7 +253,14 @@ fn normalize_executor_completion_target<'a>(to_role: &'a str) -> &'a str {
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut canonical_writer::CanonicalWriter, &str, &str, &str
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn persist_non_planner_inbound_message(
     writer: &mut CanonicalWriter,
     from_role: &str,
@@ -294,7 +308,14 @@ fn persist_non_planner_inbound_message(
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut canonical_writer::CanonicalWriter, &serde_json::Value
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn persist_planner_message(writer: &mut CanonicalWriter, action: &Value) {
     let workspace = Path::new(crate::constants::workspace());
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
@@ -340,8 +361,14 @@ fn persist_planner_message(writer: &mut CanonicalWriter, action: &Value) {
 }
 
 /// Intent: canonical_write
-/// Effects: writes_artifact, writes_state, transitions_state
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut canonical_writer::CanonicalWriter, &serde_json::Value
+/// Outputs: bool
+/// Effects: fs_write, state_write, transitions_state
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn persist_planner_blocker_message(writer: &mut CanonicalWriter, action: &Value) -> bool {
     let evidence = action
         .get("payload")
@@ -377,7 +404,14 @@ fn invariant_id_from_reason(reason: &str) -> Option<&str> {
 }
 
 /// Intent: route_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: serde_json::Value
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn route_gate_blocker_message(reason: &str) -> Value {
     let summary = match invariant_id_from_reason(reason) {
         Some(id) => format!("Executor dispatch blocked by enforced invariant {id}"),
@@ -437,7 +471,14 @@ fn full_exchange_path(kind: &str, ts_ms: u64, who: &str, step: usize) -> PathBuf
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, u64, &str, usize, &str
+/// Outputs: ()
+/// Effects: fs_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn write_full_exchange(kind: &str, ts_ms: u64, who: &str, step: usize, raw: &str) {
     let path = full_exchange_path(kind, ts_ms, who, step);
     if let Some(parent) = path.parent() {
@@ -519,7 +560,14 @@ impl<'a> LlmResponseContext<'a> {
     }
 
     /// Intent: transport_effect
-    /// Provenance: generated
+    /// Resource: error
+    /// Inputs: &mut app::LlmResponseContext<'_>, usize, &str, &str, &str
+    /// Outputs: ()
+    /// Effects: error
+    /// Forbidden: error
+    /// Invariants: error
+    /// Failure: error
+    /// Provenance: rustc:facts + rustc:docstring
     fn log_request(&mut self, step: usize, exchange_id: &str, prompt: &str, role_schema: &str) {
         let ts_ms = crate::logging::now_ms();
         let trimmed_role_schema = role_schema.trim_end();

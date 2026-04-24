@@ -186,12 +186,15 @@ impl SystemState {
     }
 }
 
-/// Pure state-transition function — `W(s_t, e) → s_{t+1}`.
-///
-/// Given the current `SystemState` and a `ControlEvent`, returns the next
-/// state.  This function has no side effects: it never writes to disk, never
-/// logs, and never inspects the environment.  The `CanonicalWriter` calls it
-/// after appending the event to the tlog.
+/// Intent: canonical_write
+/// Resource: error
+/// Inputs: &mut system_state::SystemState, bool
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn set_planner_pending_flag(s: &mut SystemState, pending: bool) {
     s.planner_pending = pending;
     if !pending {
@@ -210,7 +213,14 @@ fn clear_diagnostics_pending(s: &mut SystemState) {
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut system_state::SystemState, usize, u32
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn set_lane_tab_mapping(s: &mut SystemState, lane_id: usize, tab_id: u32) {
     s.lane_active_tab.insert(lane_id, tab_id);
     s.tab_id_to_lane.insert(tab_id, lane_id);
@@ -229,7 +239,14 @@ fn reset_lane_submit_state(s: &mut SystemState, lane_id: usize) {
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: system_state::SystemState, &events::ControlEvent
+/// Outputs: system_state::SystemState
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState {
     match e {
         ControlEvent::PhaseSet { phase, lane } => {
@@ -431,7 +448,14 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &system_state::SystemState
+/// Outputs: std::result::Result<(), std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn validate_system_state(s: &SystemState) -> Result<(), String> {
     if s.phase.trim().is_empty() {
         return Err("system state invariant failed: phase must be non-empty".to_string());

@@ -457,7 +457,14 @@ impl CargoTestGate {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::option::Option<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn extract_progress_path_from_result(result: &str) -> Option<String> {
     for line in result.lines() {
         let trimmed = line.trim();

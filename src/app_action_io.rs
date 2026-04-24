@@ -64,7 +64,14 @@ struct InvalidActionFeedback {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &llm_runtime::config::LlmEndpoint, &str, usize, &str, &str, bool, bool, std::option::Option<(&str, u32
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_action_from_raw(
     role: &str,
     endpoint: &LlmEndpoint,
@@ -179,7 +186,14 @@ fn maybe_guardrail_parse_action(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, usize, &str, std::vec::Vec<serde_json::Value>, &impl Fn(&str, Value
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_single_action(
     role: &str,
     step: usize,
@@ -209,7 +223,14 @@ fn extract_single_action(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &str, &serde_json::Value, &mut serde_json::Value, &impl Fn(&str, Value
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn normalize_action_or_feedback(
     role: &str,
     raw: &str,
@@ -240,7 +261,14 @@ fn normalize_action_or_feedback(
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &str, &serde_json::Value, &impl Fn(&str, Value
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_action_or_feedback(
     role: &str,
     raw: &str,
@@ -335,7 +363,14 @@ impl ActionProvenance {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, bool, usize, &str, &str, std::option::Option<&str>, std::option::Option<u32>, std::option::Option<u64>, std::option::Option<&str>, &app::ActionProvenance, usize, std::option::Option<&str>
+/// Outputs: (std::string::String, std::string::String)
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_agent_prompt(
     role: &str,
     send_system_prompt: bool,
@@ -706,7 +741,14 @@ fn take_external_user_message_without_writer(role: &str) -> Option<String> {
 }
 
 /// Intent: event_append
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut std::string::String, &str
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn append_external_user_message_to_prompt(prompt: &mut String, inbound: &str) {
     let parsed = serde_json::from_str::<Value>(inbound).ok();
     let message = parsed
@@ -726,7 +768,14 @@ fn append_external_user_message_to_prompt(prompt: &mut String, inbound: &str) {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &str
+/// Outputs: std::string::String
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn summarize_inbound_message(inbound: &str, role: &str) -> String {
     let Ok(value) = serde_json::from_str::<Value>(inbound) else {
         return truncate(inbound.trim(), 1600).to_string();
@@ -812,7 +861,14 @@ fn summarize_inbound_message(inbound: &str, role: &str) -> String {
 }
 
 /// Intent: event_append
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut std::string::String, &str, &str
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn append_inbound_to_prompt(prompt: &mut String, inbound: &str, role: &str) {
     prompt.push_str("\n\nInbound handoff message summary:\n");
     prompt.push_str(&summarize_inbound_message(inbound, role));
@@ -847,7 +903,14 @@ fn inject_inbound_message(prompt: &mut String, writer: &mut CanonicalWriter, rol
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::option::Option<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_message_action(raw: &str) -> Option<String> {
     let marker = "message_action:";
     let idx = raw.find(marker)?;

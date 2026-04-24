@@ -1,5 +1,12 @@
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value
+/// Outputs: std::option::Option<(u32, u64, std::string::String, std::option::Option<std::string::String>)>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_completed_turn(value: &Value) -> Option<(u32, u64, String, Option<String>)> {
     let tab_id = value.get("tab_id").and_then(|x| x.as_u64())? as u32;
     let turn_id = value.get("turn_id").and_then(|x| x.as_u64())?;
@@ -484,7 +491,14 @@ fn apply_control_from_executor_action_result(
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut canonical_writer::CanonicalWriter, &serde_json::Value
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Value) {
     let to_role = action.get("to").and_then(|v| v.as_str()).unwrap_or("");
     let action_text = serde_json::to_string_pretty(action).unwrap_or_default();
@@ -669,8 +683,14 @@ fn claim_executor_submit(
 }
 
 /// Intent: transport_effect
+/// Resource: error
+/// Inputs: &app::PendingExecutorSubmit, &llm_runtime::config::LlmEndpoint, &llm_runtime::ws_server::WsBridge, &std::sync::Arc<tokio::sync::Mutex<llm_runtime::tab_management::TabSlotTable>>, bool, &str, u64
+/// Outputs: {async fn body of app::submit_executor_turn()}
 /// Effects: logging
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 async fn submit_executor_turn(
     job: &PendingExecutorSubmit,
     endpoint: &LlmEndpoint,

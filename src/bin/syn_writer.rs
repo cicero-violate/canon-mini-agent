@@ -5,9 +5,11 @@
 //!              but no structured docstring yet (provenance lacks "rustc:docstring").
 //!   --augment  Extend existing single-line `/// Intent: X` docstrings with the
 //!              remaining canonical contract fields.
+//!   --rewrite-existing  Force-normalize existing `///` doc blocks to canonical
+//!              contract shape (replace block if present, insert if missing).
 //!
 //! Usage:
-//!   canon-syn-writer [graph.json] [--write] [--augment]
+//!   canon-syn-writer [graph.json] [--write] [--augment|--rewrite-existing]
 //!
 //! Generated docstring format:
 //!   /// Intent: <class>
@@ -354,6 +356,46 @@ fn find_doc_block_range(lines: &[&str], intent_line_idx: usize) -> (usize, usize
     (start, end)
 }
 
+/// Finds a contiguous `///` block immediately before a fn declaration,
+/// optionally separated from `fn` by simple `#[...]` attributes.
+fn find_doc_block_before_fn(lines: &[&str], fn_line_0: usize) -> Option<(usize, usize)> {
+    let mut scan = fn_line_0;
+    while scan > 0 {
+        let prev = lines[scan - 1].trim();
+        if prev.starts_with("#[") {
+            if !prev.contains(']') {
+                return None;
+            }
+            scan -= 1;
+            continue;
+        }
+        break;
+    }
+    if scan == 0 || !lines[scan - 1].trim_start().starts_with("///") {
+        return None;
+    }
+    let end = scan;
+    let mut start = scan - 1;
+    while start > 0 && lines[start - 1].trim_start().starts_with("///") {
+        start -= 1;
+    }
+    Some((start, end))
+}
+
+fn node_has_contract_intent(node: &GraphNode) -> bool {
+    node.intent_class
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty() && *v != "error")
+        .is_some()
+        || node
+            .semantic_manifest
+            .as_ref()
+            .map(|m| m.intent_class.trim())
+            .filter(|v| !v.is_empty() && *v != "error")
+            .is_some()
+}
+
 fn path_under_workspace_src(file: &str, workspace_root: &Path, workspace_src: &Path) -> bool {
     let raw = PathBuf::from(file);
     let joined = if raw.is_absolute() {
@@ -369,6 +411,50 @@ fn path_under_workspace_src(file: &str, workspace_root: &Path, workspace_src: &P
     } else {
         raw.starts_with("src")
     }
+}
+
+fn is_fn_decl_line(line: &str) -> bool {
+    let t = line.trim_start();
+    if t.starts_with("//") || !t.contains('(') {
+        return false;
+    }
+    let prefixes = [
+        "fn ",
+        "pub fn ",
+        "pub(crate) fn ",
+        "pub(super) fn ",
+        "async fn ",
+        "pub async fn ",
+        "pub(crate) async fn ",
+        "pub(super) async fn ",
+        "unsafe fn ",
+        "pub unsafe fn ",
+        "const fn ",
+        "pub const fn ",
+        "pub(crate) const fn ",
+        "pub(super) const fn ",
+    ];
+    prefixes.iter().any(|p| t.starts_with(p))
+}
+
+fn resolve_fn_decl_line(lines: &[&str], hint_line_0: usize) -> Option<usize> {
+    if lines.is_empty() {
+        return None;
+    }
+    let hint = hint_line_0.min(lines.len() - 1);
+    let lo = hint.saturating_sub(8);
+    for idx in (lo..=hint).rev() {
+        if is_fn_decl_line(lines[idx]) {
+            return Some(idx);
+        }
+    }
+    let hi = (hint + 8).min(lines.len() - 1);
+    for (idx, line) in lines.iter().enumerate().take(hi + 1).skip(hint + 1) {
+        if is_fn_decl_line(line) {
+            return Some(idx);
+        }
+    }
+    None
 }
 
 fn mark_actions_after_write(
@@ -426,6 +512,10 @@ fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let write_mode = args.iter().any(|a| a == "--write");
     let augment    = args.iter().any(|a| a == "--augment");
+    let rewrite_existing = args.iter().any(|a| a == "--rewrite-existing");
+    if augment && rewrite_existing {
+        anyhow::bail!("--augment and --rewrite-existing are mutually exclusive");
+    }
 
     let graph_path = args.iter()
         .find(|a| a.ends_with(".json") && !a.ends_with("log.json"))
@@ -451,11 +541,13 @@ fn main() -> anyhow::Result<()> {
 
     // Collect candidates.
     let candidates: Vec<(&GraphNode, &SourceSpan)> = graph.nodes.values()
-        .filter(|n| n.kind == "fn" && n.intent_class.is_some())
+        .filter(|n| n.kind == "fn" && node_has_contract_intent(n))
         .filter_map(|n| n.def.as_ref().map(|d| (n, d)))
         .filter(|(_, d)| d.file.ends_with(".rs") && path_under_workspace_src(&d.file, &workspace_root, &workspace_src))
         .filter(|(n, _)| {
-            if augment {
+            if rewrite_existing {
+                true
+            } else if augment {
                 n.provenance.iter().any(|p| p == "rustc:docstring")
                     && n.docstring.as_deref()
                         .map(|d| d.trim().starts_with("Intent:") && !d.contains('\n'))
@@ -466,7 +558,13 @@ fn main() -> anyhow::Result<()> {
         })
         .collect();
 
-    let mode_str = if augment { "augment" } else { "generate" };
+    let mode_str = if rewrite_existing {
+        "rewrite"
+    } else if augment {
+        "augment"
+    } else {
+        "generate"
+    };
     eprintln!("  {} candidates  mode={}{}",
         candidates.len(), mode_str,
         if write_mode { "" } else { " (dry-run)" });
@@ -499,18 +597,50 @@ fn main() -> anyhow::Result<()> {
             let intent  = node.intent_class.as_deref().unwrap_or("unknown");
             let node_id = id_map.get(&(*node as *const _)).copied().unwrap_or("");
             let effects = if node_id.is_empty() { None } else { effect_map.get(node_id) };
-            let fn_0 = (span.line as usize).saturating_sub(1);
+            let raw_fn_0 = (span.line as usize).saturating_sub(1);
 
-            if fn_0 >= lv.len() {
+            if raw_fn_0 >= lv.len() {
                 n_span += 1;
                 log_actions.push(LogAction { status: "skip:bad_span".into(), fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: None });
                 continue;
             }
 
+            let Some(fn_0) = resolve_fn_decl_line(&lv, raw_fn_0) else {
+                n_span += 1;
+                log_actions.push(LogAction { status: "skip:no_fn_decl".into(), fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: None });
+                continue;
+            };
+
             let indent = leading_ws(lv[fn_0]).to_string();
             let doc = build_doc(node, effects, &indent);
 
-            if augment {
+            if rewrite_existing {
+                if let Some((start_idx, end_idx)) = find_doc_block_before_fn(&lv, fn_0) {
+                    if write_mode {
+                        log_actions.push(LogAction { status: "pending_write".into(), fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: Some(doc.clone()) });
+                        pending_action_indices.push(log_actions.len() - 1);
+                    } else {
+                        n_dry += 1;
+                        log_actions.push(LogAction { status: "dry_run".into(), fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: Some(doc.clone()) });
+                    }
+                    replacements.push(Replacement { start_idx, end_idx, new_text: doc, fn_line: span.line });
+                } else {
+                    match find_insert_point(&lv, fn_0) {
+                        Err("complex_attr")  => { n_attr += 1; log_actions.push(LogAction { status: "skip:complex_attr".into(),  fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: None }); }
+                        Err(o)               => { n_span += 1; log_actions.push(LogAction { status: format!("skip:{o}"),         fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: None }); }
+                        Ok(at) => {
+                            if write_mode {
+                                log_actions.push(LogAction { status: "pending_write".into(), fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: Some(doc.clone()) });
+                                pending_action_indices.push(log_actions.len() - 1);
+                            } else {
+                                n_dry += 1;
+                                log_actions.push(LogAction { status: "dry_run".into(), fn_path: node.path.clone(), file: file.to_string(), fn_line: span.line, intent_class: intent.to_string(), generated_text: Some(doc.clone()) });
+                            }
+                            insertions.push(Insertion { insert_at: at, text: doc, fn_line: span.line });
+                        }
+                    }
+                }
+            } else if augment {
                 match find_intent_line(&lv, fn_0) {
                     None => {
                         n_nc += 1;
@@ -568,7 +698,13 @@ fn main() -> anyhow::Result<()> {
             let total = replacements.len() + insertions.len();
             match std::fs::write(file, &new_source) {
                 Ok(()) => {
-                    let success_status = if augment { "augmented" } else { "generated" };
+                    let success_status = if rewrite_existing {
+                        "rewritten"
+                    } else if augment {
+                        "augmented"
+                    } else {
+                        "generated"
+                    };
                     mark_actions_after_write(
                         &mut log_actions,
                         &pending_action_indices,
@@ -599,7 +735,8 @@ fn main() -> anyhow::Result<()> {
                     eprintln!("    line {:4}  {}", i.fn_line, i.text.trim_end().replace('\n', " | "));
                 }
                 for r in &replacements {
-                    eprintln!("    line {:4}  {} [augment]", r.fn_line, r.new_text.trim_end().replace('\n', " | "));
+                    let tag = if rewrite_existing { "rewrite" } else if augment { "augment" } else { "replace" };
+                    eprintln!("    line {:4}  {} [{}]", r.fn_line, r.new_text.trim_end().replace('\n', " | "), tag);
                 }
             }
         }
@@ -697,6 +834,17 @@ mod tests {
         let root = PathBuf::from("/workspace/ai_sandbox/canon-mini-agent");
         let src = root.join("src");
         assert!(path_under_workspace_src("src/lib.rs", &root, &src));
+    }
+
+    #[test]
+    fn find_doc_block_before_fn_across_attributes() {
+        let lines = vec![
+            "/// Intent: old",
+            "/// Effects: stale",
+            "#[inline]",
+            "fn run() {}",
+        ];
+        assert_eq!(find_doc_block_before_fn(&lines, 3), Some((0, 2)));
     }
 
     #[test]

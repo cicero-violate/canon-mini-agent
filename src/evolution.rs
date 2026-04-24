@@ -40,7 +40,14 @@ pub fn current_evolution_for_tlog(tlog_path: &Path) -> u64 {
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: evolution::EvolutionSnapshot
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn load_snapshot_for_state_dir(state_dir: &Path) -> EvolutionSnapshot {
     let path = snapshot_path_for_state_dir(state_dir);
     fs::read_to_string(path)
@@ -50,7 +57,14 @@ pub fn load_snapshot_for_state_dir(state_dir: &Path) -> EvolutionSnapshot {
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &evolution::EvolutionSnapshot
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: fs_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn save_snapshot_for_state_dir(state_dir: &Path, snapshot: &EvolutionSnapshot) -> Result<()> {
     fs::create_dir_all(state_dir)
         .with_context(|| format!("create evolution state dir: {}", state_dir.display()))?;
@@ -60,8 +74,14 @@ fn save_snapshot_for_state_dir(state_dir: &Path, snapshot: &EvolutionSnapshot) -
 }
 
 /// Intent: canonical_read
+/// Resource: error
+/// Inputs: &std::path::Path, &[&str]
+/// Outputs: std::option::Option<std::string::String>
 /// Effects: spawns_process
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn read_git_output(workspace: &Path, args: &[&str]) -> Option<String> {
     if !workspace.join(".git").exists() {
         return None;

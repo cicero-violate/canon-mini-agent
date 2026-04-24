@@ -8,7 +8,14 @@ fn handle_plan_sorted_view_action(workspace: &Path) -> Result<(bool, String)> {
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<(serde_json::Map<std::string::String, serde_json::Value>, std::vec::Vec<serde_json::Value>, std::vec::Vec<serde_json::Value>), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_plan_components(
     workspace: &Path,
 ) -> Result<(serde_json::Map<String, Value>, Vec<Value>, Vec<Value>)> {
@@ -32,7 +39,14 @@ fn load_plan_components(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &[serde_json::Value]
+/// Outputs: std::collections::HashMap<std::string::String, serde_json::Value>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_task_map(tasks: &[Value]) -> std::collections::HashMap<String, Value> {
     let mut task_map = std::collections::HashMap::new();
     for task in tasks {
@@ -75,7 +89,14 @@ fn collect_ordered_tasks(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::collections::HashMap<std::string::String, serde_json::Value>, &[serde_json::Value]
+/// Outputs: std::result::Result<(std::collections::HashMap<std::string::String, usize>, std::collections::HashMap<std::string::String, std::collections::BTreeSet<std::string::String>>), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_plan_sorted_graph_state(
     task_map: &std::collections::HashMap<String, Value>,
     edges: &[Value],
@@ -106,7 +127,14 @@ fn build_plan_sorted_graph_state(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Map<std::string::String, serde_json::Value>, std::vec::Vec<std::string::String>, std::vec::Vec<serde_json::Value>, &[serde_json::Value]
+/// Outputs: std::result::Result<std::string::String, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn render_plan_sorted_view_output(
     obj: &serde_json::Map<String, Value>,
     order: Vec<String>,
@@ -165,7 +193,14 @@ fn drain_plan_sorted_successors(
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut std::collections::HashMap<std::string::String, usize>, &mut std::collections::BTreeSet<std::string::String>, &str
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn update_plan_sorted_successor_indegree(
     indegree: &mut std::collections::HashMap<String, usize>,
     ready: &mut BTreeSet<String>,
@@ -180,7 +215,14 @@ fn update_plan_sorted_successor_indegree(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::option::Option<std::path::PathBuf>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_output_log_path(out: &str) -> Option<PathBuf> {
     for line in out.lines() {
         let trimmed = line.trim();
@@ -202,7 +244,14 @@ fn extract_output_log_path(out: &str) -> Option<PathBuf> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: serde_json::Value
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_cargo_test_failures(out: &str) -> Value {
     let mut locations = BTreeSet::new();
     let mut failed_tests = BTreeSet::new();
@@ -267,7 +316,14 @@ fn parse_cargo_test_failures(out: &str) -> Value {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &mut std::collections::BTreeSet<std::string::String>, &mut std::collections::BTreeSet<std::string::String>, &mut std::collections::BTreeSet<std::string::String>, &mut std::vec::Vec<std::string::String>, &mut std::option::Option<std::string::String>
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_cargo_test_failure_line(
     trimmed: &str,
     locations: &mut BTreeSet<String>,
@@ -325,7 +381,14 @@ fn is_cargo_test_failure_block_line(trimmed: &str) -> bool {
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: (std::option::Option<std::path::PathBuf>, std::string::String)
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_cargo_test_failure_scan(out: &str) -> (Option<PathBuf>, String) {
     let log_path = extract_output_log_path(out);
     let mut scan = out.to_string();
@@ -351,7 +414,14 @@ fn collect_stalled_test_name(stalled_tests: &mut BTreeSet<String>, stripped: &st
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<std::collections::HashMap<u32, (std::string::String, std::string::String)>, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_graph_symbols(
     graph_json: &Path,
 ) -> Result<std::collections::HashMap<u32, (String, String)>> {
@@ -384,7 +454,14 @@ fn load_graph_symbols(
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<std::collections::HashMap<u32, (std::string::String, std::string::String)>, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_nodes_symbols(
     nodes_csv: &Path,
 ) -> Result<std::collections::HashMap<u32, (String, String)>> {
@@ -449,7 +526,14 @@ pub(crate) fn patch_scope_error_with_mode(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::string::String
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn normalize_patch_target_for_scope(target: &str) -> String {
     let trimmed = target.trim();
     let target_path = Path::new(trimmed);
@@ -655,8 +739,15 @@ fn infer_crate_for_patch(workspace: &Path, file_path: &str) -> Option<String> {
 const AUTO_READ_CONTEXT_BEFORE: usize = 20;
 const AUTO_READ_CONTEXT_AFTER: usize = 40;
 
-/// Extract the file path from an apply_patch anchor-miss error.
-/// Matches: "Failed to find expected lines in PATH:\n..."
+/// Intent: pure_transform
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::option::Option<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_anchor_fail_path(err_msg: &str) -> Option<String> {
     let prefix = "Failed to find expected lines in ";
     err_msg.lines().find_map(|line| {
@@ -667,7 +758,15 @@ fn extract_anchor_fail_path(err_msg: &str) -> Option<String> {
     })
 }
 
-/// Parse the indented anchor lines out of the patch error message.
+/// Intent: pure_transform
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::vec::Vec<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_expected_anchor_lines(err_msg: &str) -> Vec<String> {
     let mut lines = Vec::new();
     let mut capture = false;
@@ -716,7 +815,15 @@ fn patch_failure_guidance(path: Option<&str>, err_msg: &str) -> String {
     hints.join("\n")
 }
 
-/// Find the file region closest to the failed anchor and return a numbered excerpt.
+/// Intent: pure_transform
+/// Resource: error
+/// Inputs: &str, &str
+/// Outputs: std::option::Option<(usize, usize, std::string::String)>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_anchor_context_excerpt(full: &str, err_msg: &str) -> Option<(usize, usize, String)> {
     let anchor_lines = extract_expected_anchor_lines(err_msg);
     if anchor_lines.is_empty() {
@@ -917,8 +1024,14 @@ fn handle_message_action(
 }
 
 /// Intent: canonical_write
-/// Effects: reads_artifact, reads_state, writes_artifact, writes_state, transitions_state
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &str, &serde_json::Value, &std::path::Path, std::option::Option<&mut canonical_writer::CanonicalWriter>
+/// Outputs: std::option::Option<(bool, std::string::String)>
+/// Effects: fs_read, fs_write, state_read, state_write, transitions_state
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn suppress_redundant_planner_blocker(
     role: &str,
     msg_type: &str,
@@ -984,8 +1097,14 @@ fn is_allowed_self_addressed_message(action: &Value, from_role: &str, to_role: &
 }
 
 /// Intent: canonical_write
-/// Effects: writes_artifact, writes_state, transitions_state
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &str, &str, &str, &str, &serde_json::Value, &std::path::Path, std::option::Option<&mut canonical_writer::CanonicalWriter>
+/// Outputs: ()
+/// Effects: fs_write, state_write, transitions_state
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn sync_verifier_blocker_state(
     role: &str,
     to_role: &str,

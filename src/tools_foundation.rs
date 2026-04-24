@@ -153,8 +153,14 @@ fn record_effect_for_workspace(workspace: &Path, effect: crate::events::EffectEv
 }
 
 /// Intent: canonical_write
-/// Effects: logging
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &std::path::Path, &str, &str, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: fs_write, logging
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn write_projection_with_workspace_effects(
     workspace: &Path,
     path: &Path,
@@ -281,7 +287,14 @@ fn resolve_graph_crate_name(workspace: &Path, crate_name: &str) -> Option<String
 }
 
 /// Intent: repair_or_initialize
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &str, usize
+/// Outputs: std::result::Result<std::string::String, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn ensure_graph_artifact(
     workspace: &Path,
     crate_name: &str,
@@ -316,7 +329,14 @@ fn ensure_graph_artifact(
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, usize, usize
+/// Outputs: std::result::Result<std::string::String, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn read_first_lines(path: &Path, max_lines: usize, max_bytes: usize) -> Result<String> {
     let content = ctx_read(path)?;
     let mut out = String::new();
@@ -331,7 +351,14 @@ fn read_first_lines(path: &Path, max_lines: usize, max_bytes: usize) -> Result<S
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, usize
+/// Outputs: std::result::Result<std::string::String, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn read_json_report(path: &Path, max_bytes: usize) -> Result<String> {
     let content = ctx_read(path)?;
     let trimmed = truncate(&content, max_bytes);
@@ -339,7 +366,14 @@ fn read_json_report(path: &Path, max_bytes: usize) -> Result<String> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::string::String
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn normalize_objective_id_for_match(value: &str) -> String {
     value
         .trim()

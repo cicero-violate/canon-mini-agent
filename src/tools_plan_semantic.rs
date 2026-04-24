@@ -61,7 +61,14 @@ fn reopened_task_needs_regression_linkage(
 }
 
 /// Intent: repair_or_initialize
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Map<std::string::String, serde_json::Value>, &serde_json::Map<std::string::String, serde_json::Value>, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn ensure_reopened_task_has_regression_linkage(
     existing: &serde_json::Map<String, Value>,
     updated: &serde_json::Map<String, Value>,
@@ -76,7 +83,14 @@ fn ensure_reopened_task_has_regression_linkage(
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_plan_action_shape(action: &Value, normalized_op: &str) -> Result<()> {
     match normalized_op {
         "create_task" => validate_plan_create_task_shape(action, normalized_op),
@@ -136,7 +150,14 @@ fn reject_plan_action_fields(
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_plan_create_task_shape(action: &Value, normalized_op: &str) -> Result<()> {
     require_plan_action_field(action, normalized_op, "task")?;
     reject_plan_action_fields(
@@ -152,7 +173,14 @@ fn validate_plan_create_task_shape(action: &Value, normalized_op: &str) -> Resul
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_plan_update_task_shape(action: &Value, normalized_op: &str) -> Result<()> {
     require_plan_action_field(action, normalized_op, "task")?;
     reject_plan_action_fields(
@@ -171,7 +199,14 @@ fn validate_plan_update_task_shape(action: &Value, normalized_op: &str) -> Resul
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_plan_delete_task_shape(action: &Value, normalized_op: &str) -> Result<()> {
     require_plan_action_field(action, normalized_op, "task_id")?;
     reject_plan_action_fields(
@@ -188,7 +223,14 @@ fn validate_plan_delete_task_shape(action: &Value, normalized_op: &str) -> Resul
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_plan_edge_shape(action: &Value, normalized_op: &str) -> Result<()> {
     require_plan_action_fields(action, normalized_op, &["from", "to"])?;
     reject_plan_action_fields(
@@ -203,7 +245,14 @@ fn validate_plan_edge_shape(action: &Value, normalized_op: &str) -> Result<()> {
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_plan_set_plan_status_shape(action: &Value, normalized_op: &str) -> Result<()> {
     require_plan_action_field(action, normalized_op, "status")?;
     reject_plan_action_fields(
@@ -219,7 +268,14 @@ fn validate_plan_set_plan_status_shape(action: &Value, normalized_op: &str) -> R
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_plan_set_task_status_shape(action: &Value, normalized_op: &str) -> Result<()> {
     require_plan_action_fields(action, normalized_op, &["task_id", "status"])?;
     reject_plan_action_fields(
@@ -235,7 +291,14 @@ fn validate_plan_set_task_status_shape(action: &Value, normalized_op: &str) -> R
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_plan_replace_plan_shape(action: &Value, normalized_op: &str) -> Result<()> {
     require_plan_action_field(action, normalized_op, "plan")?;
     reject_plan_action_fields(
@@ -375,7 +438,14 @@ fn sync_plan_ready_window(plan: &mut Value) -> Result<()> {
 }
 
 /// Intent: transport_effect
-/// Provenance: generated
+/// Resource: error
+/// Inputs: tools::PlanOp, &mut serde_json::Map<std::string::String, serde_json::Value>, &serde_json::Value
+/// Outputs: std::result::Result<std::option::Option<(bool, std::string::String)>, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn dispatch_plan_op(
     op: PlanOp,
     obj: &mut serde_json::Map<String, Value>,
@@ -413,7 +483,14 @@ fn dispatch_plan_op(
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &serde_json::Value, &str, &std::path::Path, &serde_json::Value
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn persist_plan_action_update(
     role: &str,
     action: &Value,
@@ -455,7 +532,14 @@ fn persist_plan_action_update(
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &serde_json::Value, &str, &std::path::Path, &serde_json::Value, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn persist_plan_bundle_projection(
     workspace: &Path,
     action: &Value,
@@ -544,7 +628,14 @@ fn plan_op_is_terminal_ready(op_raw: &str, action: &Value) -> bool {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value
+/// Outputs: std::result::Result<serde_json::Value, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_replacement_plan(action: &Value) -> Result<Value> {
     let mut next_plan = action
         .get("plan")
@@ -605,7 +696,14 @@ fn handle_plan_add_edge(
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Map<std::string::String, serde_json::Value>
+/// Outputs: std::result::Result<&std::vec::Vec<serde_json::Value>, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn get_tasks_array(obj: &serde_json::Map<String, Value>) -> Result<&Vec<Value>> {
     obj.get("tasks")
         .and_then(|v| v.as_array())
@@ -613,7 +711,14 @@ fn get_tasks_array(obj: &serde_json::Map<String, Value>) -> Result<&Vec<Value>> 
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value
+/// Outputs: std::result::Result<(&str, &str), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_edge_endpoints(action: &Value) -> Result<(&str, &str)> {
     let from = action
         .get("from")
@@ -627,7 +732,14 @@ fn extract_edge_endpoints(action: &Value) -> Result<(&str, &str)> {
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::collections::BTreeSet<std::string::String>, &str, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_edge_ids(ids: &std::collections::BTreeSet<String>, from: &str, to: &str) -> Result<()> {
     if !ids.contains(from) || !ids.contains(to) {
         bail!("plan edge refers to unknown task id");
@@ -711,7 +823,14 @@ fn handle_plan_set_plan_status(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value
+/// Outputs: &str
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_plan_op(action: &Value) -> &str {
     let op = action
         .get("op")
@@ -726,7 +845,14 @@ fn extract_plan_op(action: &Value) -> &str {
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &serde_json::Value, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn preflight_plan_action(role: &str, action: &Value, op_raw: &str) -> Result<()> {
     // Executors may only use `set_task_status → done/complete` to close the task
     // they just finished.  Every other plan mutation remains planner-only.
@@ -757,7 +883,14 @@ fn preflight_plan_action(role: &str, action: &Value, op_raw: &str) -> Result<()>
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &serde_json::Value
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_planner_diagnostics(role: &str, action: &Value) -> Result<()> {
     if !matches!(role, "planner" | "mini_planner") {
         return Ok(());
@@ -1128,7 +1261,14 @@ fn handle_plan_replace_bundle(workspace: &Path, action: &Value) -> Result<(bool,
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<serde_json::Value, anyhow::Error>
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_or_init_plan(path: &Path) -> Result<Value> {
     let raw = std::fs::read_to_string(path).unwrap_or_default();
     let mut plan = if raw.trim().is_empty() {
@@ -1146,7 +1286,14 @@ fn load_or_init_plan(path: &Path) -> Result<Value> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut serde_json::Value
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn normalize_plan_object(plan: &mut Value) -> Result<()> {
     let obj = plan
         .as_object_mut()
@@ -1184,7 +1331,14 @@ fn collect_task_ids(tasks: &[Value]) -> BTreeSet<String> {
 }
 
 /// Intent: repair_or_initialize
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &[serde_json::Value], &[serde_json::Value]
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn ensure_dag(tasks: &[Value], edges: &[Value]) -> Result<()> {
     let ids = collect_task_ids(tasks);
     let mut adj: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
@@ -1306,8 +1460,14 @@ fn exec_run_command(workspace: &Path, cmd: &str, cwd: &str) -> Result<(bool, Str
 }
 
 /// Intent: transport_effect
+/// Resource: error
+/// Inputs: &str, &std::path::Path
+/// Outputs: std::result::Result<(bool, std::string::String), anyhow::Error>
 /// Effects: spawns_process
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn exec_run_command_spawn(cmd: &str, cwd_path: &Path) -> Result<(bool, String)> {
     let child = Command::new("/bin/bash")
         .arg("-c")
@@ -1323,8 +1483,14 @@ fn exec_run_command_spawn(cmd: &str, cwd_path: &Path) -> Result<(bool, String)> 
 }
 
 /// Intent: transport_effect
+/// Resource: error
+/// Inputs: &str, &std::path::Path
+/// Outputs: std::result::Result<(bool, std::string::String), anyhow::Error>
 /// Effects: spawns_process
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn exec_run_command_capture(cmd: &str, cwd_path: &Path) -> Result<(bool, String)> {
     let output = Command::new("/bin/bash")
         .arg("-c")
@@ -1362,7 +1528,14 @@ fn combine_command_output(output: &std::process::Output, cmd: &str) -> String {
 }
 
 /// Intent: event_append
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut std::string::String, &str
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn append_trace_probe_info(combined: &mut String, cmd: &str) {
     if cmd.contains("/tmp/runtime.trace") && (cmd.contains("rg ") || cmd.contains("grep ")) {
         let trace = PathBuf::from("/tmp/runtime.trace");
@@ -1381,8 +1554,14 @@ fn append_trace_probe_info(combined: &mut String, cmd: &str) {
 }
 
 /// Intent: transport_effect
-/// Effects: spawns_process
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &std::path::Path
+/// Outputs: std::result::Result<(bool, std::string::String), anyhow::Error>
+/// Effects: fs_write, spawns_process
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn exec_run_command_cargo_test(cmd: &str, cwd_path: &Path) -> Result<(bool, String)> {
     let timeout_secs = env::var("CANON_CARGO_TEST_TIMEOUT_SECS")
         .ok()
@@ -1427,8 +1606,14 @@ fn exec_run_command_cargo_test(cmd: &str, cwd_path: &Path) -> Result<(bool, Stri
 }
 
 /// Intent: transport_effect
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &str, u64
+/// Outputs: std::result::Result<(bool, std::string::String), anyhow::Error>
 /// Effects: spawns_process
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn exec_run_command_blocking_with_timeout(
     workspace: &Path,
     cmd: &str,
@@ -1482,8 +1667,14 @@ fn exec_graph_command(workspace: &Path, cmd: &str) -> Result<(bool, String)> {
 }
 
 /// Intent: transport_effect
-/// Effects: spawns_process
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &str
+/// Outputs: std::result::Result<(bool, std::string::String), anyhow::Error>
+/// Effects: fs_write, spawns_process
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn exec_python(workspace: &Path, code: &str, cwd: &str) -> Result<(bool, String)> {
     let cwd_path = PathBuf::from(cwd);
     if !cwd_path.is_absolute() {
@@ -1519,7 +1710,14 @@ fn exec_python(workspace: &Path, code: &str, cwd: &str) -> Result<(bool, String)
 }
 
 /// Intent: repair_or_initialize
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn ensure_safe_command(cmd: &str) -> Result<()> {
     const BLOCKED: &[&str] = &[
         "rm -rf",
@@ -1577,7 +1775,14 @@ fn execution_learning_path(workspace: &Path) -> PathBuf {
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &semantic::ExecutionPathPlan
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: fs_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn persist_execution_path_plan(
     workspace: &Path,
     crate_name: &str,
@@ -1608,7 +1813,14 @@ fn execution_plan_rebound_path(workspace: &Path, crate_name: &str) -> PathBuf {
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &semantic::ExecutionPathPlan
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: fs_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn persist_rebound_execution_plan(
     workspace: &Path,
     crate_name: &str,
@@ -1620,7 +1832,14 @@ fn persist_rebound_execution_plan(
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str
+/// Outputs: std::option::Option<semantic::ExecutionPathPlan>
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_execution_plan(
     workspace: &Path,
     crate_name: &str,
@@ -1637,7 +1856,14 @@ struct LearningBiasStats {
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str
+/// Outputs: tools::LearningBiasStats
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_learning_bias_stats(workspace: &Path, crate_name: &str) -> LearningBiasStats {
     let raw = match fs::read_to_string(execution_learning_path(workspace)) {
         Ok(raw) => raw,
@@ -1699,7 +1925,14 @@ fn apply_learning_bias_to_plan(
 }
 
 /// Intent: event_append
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &serde_json::Value
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: fs_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn append_execution_learning_record(workspace: &Path, record: &Value) -> Result<()> {
     let path = execution_learning_path(workspace);
     if let Some(parent) = path.parent() {
@@ -1718,7 +1951,14 @@ fn append_execution_learning_record(workspace: &Path, record: &Value) -> Result<
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::option::Option<(std::string::String, u32, u32)>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_failure_location(out: &str) -> Option<(String, u32, u32)> {
     for line in out.lines() {
         let trimmed = line.trim();
@@ -1774,7 +2014,14 @@ fn verification_rebind(
 // ---------------------------------------------------------------------------
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &serde_json::Value
+/// Outputs: std::result::Result<semantic::SemanticIndex, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_semantic(
     workspace: &Path,
     action: &Value,

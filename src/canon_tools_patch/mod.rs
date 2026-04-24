@@ -35,7 +35,15 @@ pub struct AffectedPaths {
 
 const APPLY_PATCH_BIN: &str = "/usr/local/bin/apply_patch";
 
-/// Apply a patch string to the filesystem. Relative paths are resolved against `cwd`.
+/// Intent: canonical_write
+/// Resource: error
+/// Inputs: &str, &std::path::Path
+/// Outputs: std::result::Result<canon_tools_patch::AffectedPaths, canon_tools_patch::ApplyPatchError>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn apply_patch(patch: &str, cwd: &Path) -> Result<AffectedPaths, ApplyPatchError> {
     let mut args = parse_patch(patch)?;
 
@@ -103,8 +111,14 @@ fn affected_paths_from_hunks(hunks: &[Hunk]) -> Result<AffectedPaths, ApplyPatch
 }
 
 /// Intent: transport_effect
-/// Effects: spawns_process
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &std::path::Path
+/// Outputs: std::result::Result<(), canon_tools_patch::ApplyPatchError>
+/// Effects: fs_write, spawns_process
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn run_external_apply_patch(patch: &str, cwd: &Path) -> Result<(), ApplyPatchError> {
     let mut child = Command::new(APPLY_PATCH_BIN)
         .current_dir(cwd)

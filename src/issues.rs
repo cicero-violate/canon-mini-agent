@@ -8,8 +8,14 @@ use std::path::Path;
 use crate::constants::ISSUES_FILE;
 
 /// Intent: canonical_write
+/// Resource: error
+/// Inputs: &std::path::Path, &issues::IssuesFile, std::option::Option<&mut canonical_writer::CanonicalWriter>, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
 /// Effects: logging
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn persist_issues_projection_with_writer(
     workspace: &Path,
     file: &IssuesFile,
@@ -112,8 +118,14 @@ pub struct IssueSweepSummary {
 }
 
 /// Intent: canonical_read
-/// Effects: reads_artifact, reads_state
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: issues::IssuesFile
+/// Effects: fs_read, state_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn load_issues_file(workspace: &Path) -> IssuesFile {
     if let Some(file) = load_issues_from_tlog(workspace) {
         return file;
@@ -127,7 +139,14 @@ pub fn load_issues_file(workspace: &Path) -> IssuesFile {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::option::Option<issues::IssuesFile>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_issues_file_from_raw(raw: &str) -> Option<IssuesFile> {
     if raw.trim().is_empty() {
         return None;
@@ -136,8 +155,14 @@ fn parse_issues_file_from_raw(raw: &str) -> Option<IssuesFile> {
 }
 
 /// Intent: canonical_read
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::option::Option<issues::IssuesFile>
 /// Effects: logging
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_issues_from_tlog(workspace: &Path) -> Option<IssuesFile> {
     crate::tlog::Tlog::latest_effect_from_workspace(workspace, |event| match event {
         crate::events::EffectEvent::IssuesFileRecorded { file } => Some(file),
@@ -146,8 +171,14 @@ fn load_issues_from_tlog(workspace: &Path) -> Option<IssuesFile> {
 }
 
 /// Intent: canonical_read
-/// Effects: reads_artifact, reads_state
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str
+/// Outputs: std::result::Result<bool, anyhow::Error>
+/// Effects: fs_read, state_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn reconcile_issues_projection(workspace: &Path, subject: &str) -> Result<bool> {
     let Some(file) = load_issues_from_tlog(workspace) else {
         return Ok(false);
@@ -163,8 +194,14 @@ pub fn reconcile_issues_projection(workspace: &Path, subject: &str) -> Result<bo
 }
 
 /// Intent: canonical_read
-/// Effects: reads_artifact, reads_state
-/// Provenance: generated
+/// Resource: error
+/// Inputs: ()
+/// Outputs: std::collections::HashMap<std::string::String, u64>
+/// Effects: fs_read, state_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn evidence_receipt_timestamps() -> HashMap<String, u64> {
     let path = Path::new(crate::constants::agent_state_dir()).join("evidence_receipts.jsonl");
     let raw = std::fs::read_to_string(path).unwrap_or_default();
@@ -219,7 +256,14 @@ fn issue_target_looks_like_path(candidate: &str) -> bool {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::option::Option<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn normalize_issue_target_path(raw: &str) -> Option<String> {
     let candidate = trim_issue_target_candidate(raw)?;
     if let Some(path) = strip_issue_target_line_suffix(candidate) {
@@ -251,7 +295,14 @@ fn has_issue_freshness_metadata(issue: &Issue) -> bool {
 }
 
 /// Intent: event_append
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &issues::Issue, &std::collections::HashMap<std::string::String, u64>, u64, &mut std::vec::Vec<std::string::String>
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn append_receipt_stale_reasons(
     issue: &Issue,
     receipt_ts: &HashMap<String, u64>,
@@ -327,7 +378,14 @@ fn collect_stale_reasons(
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<issues::IssueSweepSummary, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn sweep_stale_issues(workspace: &Path) -> Result<IssueSweepSummary> {
     let mut file = load_issues_file(workspace);
     if file.issues.is_empty() {
@@ -413,24 +471,15 @@ pub fn is_closed(issue: &Issue) -> bool {
     is_done_like_status(&issue.status)
 }
 
-/// Compute a normalized [0.0, 1.0] priority score for an issue.
-///
-/// Weights:
-///   severity      0.20 — priority string mapped to float
-///   recurrence    0.15 — sibling issues with the same ID prefix (saturates at 3)
-///   hot_path      0.25 — location/title mentions a per-turn code path
-///   loop_velocity 0.30 — how much fixing this unblocks the agent's self-improvement loop
-///   scale         0.10 — candidate/instance count for auto-detected clusters (log2, saturates at ~128)
-///   detector_boost up to +0.12 — detector-native confidence signal
-///
-/// Velocity by kind (what gets prioritized first):
-///   bug / invariant_violation  1.00 — correctness, must fix
-///   dead_code                  0.70 — confirmed zero-ref deletions, direct noise reduction
-///   stale_state / branch_reduction / logic  0.65 — structural clarity, unreachable-block removal
-///   pathway_elimination        0.65 — confirmed thin-wrapper chain deletions (compiler-validated)
-///   dead_branch                0.60 — intra-function CFG paths with identical structural hash
-///   performance                0.50 — runtime cost
-///   everything else            0.35 — housekeeping (redundancy, helper extraction, etc.)
+/// Intent: pure_transform
+/// Resource: error
+/// Inputs: &issues::Issue, &[issues::Issue]
+/// Outputs: f32
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn compute_issue_score(issue: &Issue, all_issues: &[Issue]) -> f32 {
     // Severity from priority string
     let severity: f32 = match issue.priority.trim().to_lowercase().as_str() {
@@ -535,8 +584,15 @@ pub fn rescore_all(file: &mut IssuesFile) {
     }
 }
 
-/// Read ISSUES.json and return the sorted, open/in-progress issues as structured data.
-/// Returns an empty vector when the file is absent, invalid, or all issues are closed.
+/// Intent: diagnostic_scan
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::vec::Vec<issues::Issue>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn read_ranked_open_issues(workspace: &Path) -> Vec<Issue> {
     let _ = sweep_stale_issues(workspace);
     let mut file = load_issues_file(workspace);

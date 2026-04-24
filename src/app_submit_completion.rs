@@ -1,5 +1,12 @@
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &prompt_inputs::OrchestratorContext<'_>, &mut canonical_writer::CanonicalWriter, &app::RuntimeState
+/// Outputs: std::option::Option<bool>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn preflight_executor_dispatch(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
@@ -49,7 +56,14 @@ fn preflight_executor_dispatch(
 }
 
 /// Intent: transport_effect
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &prompt_inputs::OrchestratorContext<'_>, &mut canonical_writer::CanonicalWriter, &mut app::RuntimeState, u64, &mut tokio::task::JoinSet<(usize, app::PendingExecutorSubmit, std::result::Result<std::string::String, anyhow::Error>
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn dispatch_executor_submits(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
@@ -97,7 +111,14 @@ fn executor_dispatch_gate_result(
 }
 
 /// Intent: transport_effect
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &prompt_inputs::OrchestratorContext<'_>, &mut canonical_writer::CanonicalWriter, &mut app::RuntimeState, u64, &mut tokio::task::JoinSet<(usize, app::PendingExecutorSubmit, std::result::Result<std::string::String, anyhow::Error>
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn dispatch_ready_executor_lanes(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
@@ -443,7 +464,14 @@ fn submitted_executor_steps_used(writer: &CanonicalWriter, lane_id: usize) -> us
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &canonical_writer::CanonicalWriter, &app::PendingExecutorSubmit, &app::PendingSubmitState, u32, std::option::Option<std::string::String>
+/// Outputs: app::SubmittedExecutorTurn
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_submitted_executor_turn(
     writer: &CanonicalWriter,
     job: &PendingExecutorSubmit,
@@ -465,7 +493,14 @@ fn build_submitted_executor_turn(
 }
 
 /// Intent: transport_effect
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &prompt_inputs::OrchestratorContext<'_>, &mut canonical_writer::CanonicalWriter, usize, u32
+/// Outputs: bool
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn submit_ack_matches_active_tab(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
@@ -629,7 +664,14 @@ fn resolve_completed_turn_submission(
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut canonical_writer::CanonicalWriter, u32, u64, app::SubmittedExecutorTurn, std::option::Option<&str>
+/// Outputs: std::option::Option<app::SubmittedExecutorTurn>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_registered_submitted_turn(
     writer: &mut CanonicalWriter,
     tab_id: u32,
@@ -723,7 +765,14 @@ fn trace_unmatched_executor_completion(tab_id: u32, turn_id: u64, exec_result: &
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &prompt_inputs::OrchestratorContext<'_>, &mut canonical_writer::CanonicalWriter, u32, u64, usize, app::PendingSubmitState
+/// Outputs: app::SubmittedExecutorTurn
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_recovered_submitted_turn(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,

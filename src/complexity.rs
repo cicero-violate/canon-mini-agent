@@ -84,13 +84,27 @@ fn graph_only_entry_json(entry: &GraphOnlyEntry) -> serde_json::Value {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: f64
+/// Outputs: std::string::String
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn format_graph_score_2(value: f64) -> String {
     format!("{value:.2}")
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: f64
+/// Outputs: std::string::String
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn format_graph_score_3(value: f64) -> String {
     format!("{value:.3}")
 }
@@ -104,7 +118,14 @@ fn graph_only_sort_desc(a: &GraphOnlyEntry, b: &GraphOnlyEntry) -> std::cmp::Ord
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: f64, f64
+/// Outputs: f64
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn normalize_by_max(value: f64, max_value: f64) -> f64 {
     if max_value <= 0.0 {
         0.0
@@ -114,7 +135,14 @@ fn normalize_by_max(value: f64, max_value: f64) -> f64 {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &semantic::SemanticIndex, &str
+/// Outputs: std::vec::Vec<complexity::GraphOnlyEntry>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_graph_only_entries(
     idx: &SemanticIndex,
     crate_name: &str,
@@ -287,7 +315,14 @@ fn build_graph_only_entries(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &[semantic::SymbolSummary], &std::collections::HashMap<std::string::String, std::vec::Vec<std::string::String>>
+/// Outputs: std::collections::HashMap<std::string::String, usize>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn compute_call_scc_sizes(
     summaries: &[crate::semantic::SymbolSummary],
     outgoing: &HashMap<String, Vec<String>>,
@@ -370,7 +405,14 @@ fn dfs_collect(
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<serde_json::Value, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn build_graph_only_complexity_report(workspace: &Path) -> Result<serde_json::Value> {
     let crates = SemanticIndex::available_crates(workspace);
     if crates.is_empty() {
@@ -450,7 +492,14 @@ pub fn build_graph_only_complexity_report(workspace: &Path) -> Result<serde_json
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<std::path::PathBuf, anyhow::Error>
+/// Effects: fs_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn write_graph_only_complexity_report(workspace: &Path) -> Result<PathBuf> {
     let report = build_graph_only_complexity_report(workspace)?;
     let dir = reports_dir(workspace);
@@ -552,7 +601,14 @@ fn count_representation_fanout(idx: &SemanticIndex) -> usize {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<serde_json::Value, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn build_graph_verification_snapshot(workspace: &Path) -> Result<serde_json::Value> {
     let crates = SemanticIndex::available_crates(workspace);
     let mut per_crate = Vec::new();
@@ -664,7 +720,14 @@ pub fn build_graph_verification_snapshot(workspace: &Path) -> Result<serde_json:
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &serde_json::Value
+/// Outputs: std::result::Result<std::path::PathBuf, anyhow::Error>
+/// Effects: fs_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn persist_graph_verification_snapshot(
     workspace: &Path,
     snapshot: &serde_json::Value,
@@ -681,7 +744,14 @@ fn persist_graph_verification_snapshot(
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<std::path::PathBuf, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn write_graph_verification_snapshot(workspace: &Path) -> Result<PathBuf> {
     let snapshot = build_graph_verification_snapshot(workspace)?;
     persist_graph_verification_snapshot(workspace, &snapshot)
@@ -700,7 +770,14 @@ fn metric_delta(before: &serde_json::Value, after: &serde_json::Value, key: &str
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value, &serde_json::Value
+/// Outputs: serde_json::Value
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn build_graph_delta_report(
     before: &serde_json::Value,
     after: &serde_json::Value,
@@ -787,7 +864,14 @@ pub fn build_graph_delta_report(
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<std::path::PathBuf, anyhow::Error>
+/// Effects: fs_read, fs_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn write_graph_delta_report(workspace: &Path) -> Result<PathBuf> {
     let latest_snapshot_path = graph_verification_snapshot_latest_path(workspace);
     let previous = fs::read_to_string(&latest_snapshot_path)
@@ -979,7 +1063,14 @@ fn global_complexity_entry_value(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &semantic::SymbolSummary, usize, usize
+/// Outputs: serde_json::Value
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_complexity_entry(
     s: &crate::semantic::SymbolSummary,
     blocks: usize,
@@ -1003,14 +1094,15 @@ fn complexity_proxy(branch_score: Option<f64>, blocks: usize) -> f64 {
     branch_score.unwrap_or(blocks as f64)
 }
 
-/// Emit a cyclomatic-complexity-style report on startup/restart.
-///
-/// Current implementation is a proxy based on MIR metadata already captured in
-/// `state/rustc/<crate>/graph.json`:
-/// - `complexity_proxy = mir_blocks` (higher tends to correlate with more branching).
-///
-/// This is intentionally cheap and deterministic; it can be upgraded later to true cyclomatic
-/// complexity when canon-rustc-v2 records per-item CFG nodes/edges.
+/// Intent: diagnostic_scan
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<std::option::Option<std::path::PathBuf>, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn write_complexity_report(workspace: &Path) -> Result<Option<PathBuf>> {
     let crates = SemanticIndex::available_crates(workspace);
     if crates.is_empty() {
@@ -1098,7 +1190,14 @@ fn enqueue_grpo_extraction(workspace: &Path) {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn generate_graph_and_hotspot_issues(workspace: &Path) {
     // Bridge-connectivity analysis: emit deterministic graph-overconnectivity issues.
     let _ = crate::graph_metrics::generate_bridge_connectivity_issues(workspace);
@@ -1139,14 +1238,28 @@ fn generate_refactor_issue_batch(workspace: &Path) {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn generate_invariant_lifecycle_issues(workspace: &Path) {
     // Auto-generate invariant lifecycle issues (action surface gap, prompt injection gap, per-promoted gates)
     let _ = crate::invariants::generate_invariant_issues(workspace);
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: std::vec::Vec<serde_json::Value>, std::vec::Vec<serde_json::Value>, serde_json::Value, &evaluation::EvaluationWorkspaceSnapshot, &drift_analysis::FingerprintDrift
+/// Outputs: serde_json::Value
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_complexity_report(
     per_crate: Vec<serde_json::Value>,
     global_top: Vec<serde_json::Value>,
@@ -1181,8 +1294,14 @@ fn build_complexity_report(
 }
 
 /// Intent: pure_transform
-/// Effects: reads_artifact, reads_state, writes_artifact, writes_state, transitions_state, logging
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &[semantic::SymbolSummary]
+/// Outputs: std::result::Result<drift_analysis::FingerprintDrift, anyhow::Error>
+/// Effects: fs_read, fs_write, logging, state_read, state_write, transitions_state
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn compute_and_persist_fingerprint_drift(
     workspace: &Path,
     current_summaries: &[crate::semantic::SymbolSummary],
@@ -1231,8 +1350,14 @@ fn complexity_inter_scoring() -> serde_json::Value {
 }
 
 /// Intent: diagnostic_scan
-/// Effects: writes_artifact, writes_state
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &serde_json::Value
+/// Outputs: std::result::Result<std::path::PathBuf, anyhow::Error>
+/// Effects: fs_write, state_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn persist_complexity_report(dir: &Path, report: &serde_json::Value) -> Result<PathBuf> {
     std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
     let body = serde_json::to_string_pretty(report)?;

@@ -276,11 +276,15 @@ pub fn analyze(workspace: &Path, crate_name: &str) -> Result<InterAnalysis> {
 // Task generator
 // ---------------------------------------------------------------------------
 
-/// Auto-create ISSUES.json entries for the top-`top_n` inter-function hotspots
-/// not already tracked as open issues.  Returns the number of new issues created.
-///
-/// This closes the Detect → Propose gap: the analysis is the Detect step;
-/// creating the issue is the Propose step that routes work to the LLM/planner.
+/// Intent: diagnostic_scan
+/// Resource: error
+/// Inputs: &std::path::Path, usize
+/// Outputs: std::result::Result<usize, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn generate_hotspot_issues(workspace: &Path, top_n: usize) -> Result<usize> {
     let (mut file, existing_ids, open_locations) = load_issue_file_with_indexes(workspace);
 
@@ -304,7 +308,14 @@ pub fn generate_hotspot_issues(workspace: &Path, top_n: usize) -> Result<usize> 
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: (issues::IssuesFile, std::collections::HashSet<std::string::String>, std::collections::HashSet<std::string::String>)
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_issue_file_with_indexes(
     workspace: &Path,
 ) -> (IssuesFile, HashSet<String>, HashSet<String>) {
@@ -331,7 +342,14 @@ fn collect_crate_analyses(workspace: &Path) -> Vec<(String, InterAnalysis)> {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut issues::IssuesFile, &inter_complexity::InterAnalysis, &str, &std::collections::HashSet<std::string::String>, &std::collections::HashSet<std::string::String>, usize
+/// Outputs: usize
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn append_hotspot_issues(
     file: &mut IssuesFile,
     analysis: &InterAnalysis,
@@ -361,7 +379,14 @@ fn append_hotspot_issues(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &inter_complexity::InterEntry, &str, &std::collections::HashSet<std::string::String>, &std::collections::HashSet<std::string::String>
+/// Outputs: std::option::Option<issues::Issue>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_hotspot_issue(
     entry: &InterEntry,
     crate_name: &str,
@@ -405,7 +430,14 @@ fn hotspot_location(entry: &InterEntry) -> String {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut issues::IssuesFile, &inter_complexity::InterAnalysis, &std::collections::HashSet<std::string::String>
+/// Outputs: usize
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn append_duplicate_issues(
     file: &mut IssuesFile,
     analysis: &InterAnalysis,
@@ -423,7 +455,14 @@ fn append_duplicate_issues(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &inter_complexity::InterEntry, &str, &std::collections::HashSet<std::string::String>
+/// Outputs: std::option::Option<issues::Issue>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_recursive_issue(
     entry: &InterEntry,
     crate_name: &str,
@@ -464,7 +503,14 @@ fn build_recursive_issue(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &[std::string::String], &std::collections::HashSet<std::string::String>
+/// Outputs: std::option::Option<issues::Issue>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_duplicate_issue(group: &[String], existing_ids: &HashSet<String>) -> Option<Issue> {
     if group.len() < 2 {
         return None;
@@ -501,7 +547,14 @@ fn build_duplicate_issue(group: &[String], existing_ids: &HashSet<String>) -> Op
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &mut issues::IssuesFile, usize
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn persist_if_created(workspace: &Path, file: &mut IssuesFile, created: usize) -> Result<()> {
     if created > 0 {
         rescore_all(file);
@@ -576,7 +629,14 @@ fn mir_dup_issue_id(group: &[String]) -> String {
 const MAX_DUPLICATE_SYMBOLS_IN_ISSUE: usize = 24;
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &[std::string::String]
+/// Outputs: std::string::String
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn summarize_duplicate_symbols(group: &[String]) -> String {
     if group.len() <= MAX_DUPLICATE_SYMBOLS_IN_ISSUE {
         return group.join(", ");
@@ -626,7 +686,14 @@ fn priority_from_score(score: f64) -> &'static str {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &inter_complexity::InterEntry, &str
+/// Outputs: (std::string::String, std::string::String, std::string::String, std::vec::Vec<std::string::String>)
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_issue_fields(
     entry: &InterEntry,
     crate_name: &str,
@@ -712,7 +779,14 @@ fn duplicate_note(entry: &InterEntry) -> String {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &inter_complexity::InterEntry, &str
+/// Outputs: std::vec::Vec<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_issue_evidence(entry: &InterEntry, file: &str) -> Vec<String> {
     let mut evidence = vec![
         format!("inter_objective={:.3}", entry.inter_objective),

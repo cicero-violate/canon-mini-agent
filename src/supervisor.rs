@@ -50,7 +50,14 @@ struct BinaryCandidate {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::option::Option<std::path::PathBuf>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn find_workspace_root(start: &Path) -> Option<PathBuf> {
     let mut cur = Some(start);
     while let Some(dir) = cur {
@@ -108,8 +115,14 @@ fn newest_candidate(root: &Path, prefer_release: bool) -> Result<BinaryCandidate
 }
 
 /// Intent: transport_effect
-/// Effects: spawns_process
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &supervisor::BinaryCandidate, &[std::string::String]
+/// Outputs: std::result::Result<std::process::Child, anyhow::Error>
+/// Effects: fs_write, spawns_process
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn spawn_child(bin: &BinaryCandidate, args: &[String]) -> Result<Child> {
     let mut cmd = Command::new(&bin.path);
     cmd.args(args)
@@ -157,8 +170,14 @@ fn spawn_child(bin: &BinaryCandidate, args: &[String]) -> Result<Child> {
 }
 
 /// Intent: transport_effect
+/// Resource: error
+/// Inputs: &std::process::Child
+/// Outputs: ()
 /// Effects: spawns_process
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn send_sigint(child: &Child) {
     let pid = child.id();
     let _ = Command::new("kill")
@@ -313,7 +332,14 @@ fn rust_patch_verification_requested(state_dir: &Path) -> bool {
 }
 
 /// Intent: transport_effect
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn clear_rust_patch_verification_request(state_dir: &Path) {
     try_apply_canonical_control_event(
         state_dir,
@@ -342,7 +368,14 @@ fn orchestrator_mode_flag_path(args: &[String]) -> PathBuf {
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::option::Option<std::string::String>
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn read_orchestrator_mode_file(path: &Path) -> Option<String> {
     std::fs::read_to_string(path)
         .ok()
@@ -350,7 +383,14 @@ fn read_orchestrator_mode_file(path: &Path) -> Option<String> {
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &std::path::Path
+/// Outputs: std::option::Option<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn read_orchestrator_mode(state_dir: &Path, path: &Path) -> Option<String> {
     replay_canonical_control_snapshot(state_dir)
         .and_then(|s| s.orchestrator_mode)
@@ -387,8 +427,14 @@ fn system_time_ms(ts: SystemTime) -> Option<u64> {
 }
 
 /// Intent: transport_effect
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &[&str]
+/// Outputs: std::result::Result<bool, anyhow::Error>
 /// Effects: spawns_process
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn run_cmd(root: &Path, program: &str, args: &[&str]) -> Result<bool> {
     let status = Command::new(program)
         .args(args)
@@ -403,8 +449,14 @@ fn log_ticket_refresh(message: impl std::fmt::Display) {
 }
 
 /// Intent: transport_effect
+/// Resource: error
+/// Inputs: &std::path::Path, supervisor::BuildKind
+/// Outputs: ()
 /// Effects: spawns_process
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn run_ticket_refresh(root: &Path, kind: BuildKind) {
     let bin = tickets_binary_path(root, kind);
     if !bin.exists() {
@@ -829,7 +881,14 @@ fn run_supervisor_loop(
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &std::path::Path, &supervisor::BinaryCandidate, &[std::string::String]
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn emit_iteration_status_and_report(
     exe: &str,
     root: &Path,
@@ -952,7 +1011,14 @@ fn supervise_current_child_iteration(
 }
 
 /// Intent: transport_effect
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::sync::atomic::Atomic<bool>, &mut std::process::Child
+/// Outputs: bool
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn handle_shutdown_request(shutdown: &AtomicBool, child: &mut Child) -> bool {
     if !shutdown.load(Ordering::SeqCst) {
         return false;
@@ -996,7 +1062,14 @@ fn handle_child_exit_status(
 }
 
 /// Intent: repair_or_initialize
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &[std::string::String], &std::sync::Arc<std::sync::atomic::Atomic<bool>>, &std::sync::Arc<std::sync::atomic::Atomic<u32>>
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn initialize_supervisor_runtime(
     filtered_args: &[String],
     shutdown: &Arc<AtomicBool>,
@@ -1017,8 +1090,14 @@ fn initialize_supervisor_runtime(
 }
 
 /// Intent: transport_effect
+/// Resource: error
+/// Inputs: &std::sync::Arc<std::sync::atomic::Atomic<bool>>, &std::sync::Arc<std::sync::atomic::Atomic<u32>>
+/// Outputs: std::result::Result<(), anyhow::Error>
 /// Effects: spawns_process
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn install_supervisor_ctrlc_handler(
     shutdown: &Arc<AtomicBool>,
     child_pid: &Arc<AtomicU32>,
@@ -1266,7 +1345,14 @@ fn sanitize_role(role: &str) -> String {
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &supervisor::SupervisorArgs
+/// Outputs: std::result::Result<std::option::Option<std::string::String>, anyhow::Error>
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn read_user_message_cli(args: &SupervisorArgs) -> Result<Option<String>> {
     if let Some(message) = &args.user_message {
         let trimmed = message.trim().to_string();
@@ -1288,8 +1374,14 @@ fn read_user_message_cli(args: &SupervisorArgs) -> Result<Option<String>> {
 }
 
 /// Intent: canonical_write
+/// Resource: error
+/// Inputs: &std::path::Path, &std::path::Path, &str, &str
+/// Outputs: std::result::Result<std::path::PathBuf, anyhow::Error>
 /// Effects: logging
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn write_external_user_message(
     workspace: &Path,
     state_dir: &Path,
@@ -1341,8 +1433,14 @@ fn external_user_message_payload(to_key: &str, message: &str) -> serde_json::Val
 }
 
 /// Intent: canonical_read
-/// Effects: reads_artifact, reads_state
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<std::option::Option<std::string::String>, anyhow::Error>
+/// Effects: fs_read, state_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn read_external_user_reply(state_dir: &Path) -> Result<Option<String>> {
     let reply_path = state_dir.join("last_message_to_user.json");
     match fs::read_to_string(&reply_path) {
@@ -1387,7 +1485,14 @@ fn maybe_handle_user_chat_mode(args: &SupervisorArgs) -> Result<bool> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: ()
+/// Outputs: supervisor::SupervisorArgs
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_supervisor_args() -> SupervisorArgs {
     let mut args: Vec<String> = std::env::args().collect();
     let exe = args.remove(0);
@@ -1453,8 +1558,15 @@ fn parse_supervisor_args() -> SupervisorArgs {
 // Gap 3: Bounded iterative repair loop
 // ---------------------------------------------------------------------------
 
-/// Write `agent_state/loop_context.json` so the agent's solo prompt knows which
-/// symbol to focus on in this iteration.
+/// Intent: canonical_write
+/// Resource: error
+/// Inputs: &std::path::Path, &semantic::SemanticIndex, &std::path::Path, &[std::string::String], u32, u32, bool
+/// Outputs: ()
+/// Effects: fs_write, state_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn write_loop_context(
     state_dir: &Path,
     target: &crate::SemanticIndex,
@@ -1497,7 +1609,15 @@ fn write_loop_context(
     let _ = workspace; // workspace available for future multi-crate expansion
 }
 
-/// Run `cargo test --workspace` only when a Rust apply_patch requested verification.
+/// Intent: validation_gate
+/// Resource: error
+/// Inputs: &std::path::Path, &std::path::Path, bool
+/// Outputs: bool
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn check_test_gate(root: &Path, state_dir: &Path, prior_value: bool) -> bool {
     if !rust_patch_verification_requested(state_dir) {
         eprintln!(
@@ -1524,7 +1644,15 @@ fn check_test_gate(root: &Path, state_dir: &Path, prior_value: bool) -> bool {
     result
 }
 
-/// Extract `symbol::path` tokens from a free-form string.
+/// Intent: pure_transform
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::vec::Vec<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_symbol_tokens(text: &str) -> Vec<String> {
     text.split_whitespace()
         .filter_map(|word| {
@@ -1538,7 +1666,15 @@ fn extract_symbol_tokens(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// Read VIOLATIONS.json and extract symbol paths from violation evidence/location fields.
+/// Intent: canonical_read
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::vec::Vec<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_violation_symbols(workspace: &Path) -> Vec<String> {
     let mut symbols = Vec::new();
     let report = load_violations_report(workspace);
@@ -1563,11 +1699,15 @@ struct FileLocation {
     line: u32,
 }
 
-/// Read ISSUES.json and return:
-/// - symbol paths extracted directly from evidence strings (`::` tokens)
-/// - file locations from `location` fields for semantic resolution
-///
-/// Only open issues are considered; resolved issues are skipped.
+/// Intent: canonical_read
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: (std::vec::Vec<std::string::String>, std::vec::Vec<supervisor::FileLocation>)
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_issue_failure_signals(workspace: &Path) -> (Vec<String>, Vec<FileLocation>) {
     let file = load_issues_file(workspace);
     let mut symbols: Vec<String> = Vec::new();
@@ -1636,8 +1776,15 @@ fn resolve_file_locations(
     resolved
 }
 
-/// Load the SemanticIndex for the primary crate in the workspace.
-/// Returns the first available crate's index, preferring the one with most nodes.
+/// Intent: canonical_read
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::option::Option<semantic::SemanticIndex>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_primary_semantic_index(workspace: &Path) -> Option<crate::SemanticIndex> {
     let mut crates = crate::SemanticIndex::available_crates(workspace);
     if crates.is_empty() {
@@ -1705,17 +1852,15 @@ fn run_child_until_exit(
     }
 }
 
-/// Bounded repair loop: run the agent for up to `max_iterations` cycles, stopping
-/// early when `cargo test --workspace` passes cleanly.
-///
-/// Each iteration:
-///  1. Load the semantic graph and score targets (Gap 2).
-///  2. Classify the top target's required patch kind (Gap 1).
-///  3. Write `agent_state/loop_context.json` with the target — the agent's solo
-///     prompt will pick this up and focus the repair.
-///  4. Spawn the agent child and wait for it to exit.
-///  5. Check the cargo test gate.  If passing, return Ok.
-///  6. Otherwise commit a checkpoint and continue to the next iteration.
+/// Intent: transport_effect
+/// Resource: error
+/// Inputs: &std::path::Path, &std::path::Path, u32, &[std::string::String], bool, &std::sync::atomic::Atomic<bool>, &std::sync::atomic::Atomic<u32>
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: spawns_process
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring + rustc:effects
 fn run_repair_loop(
     root: &Path,
     workspace: &Path,

@@ -68,7 +68,14 @@ fn remove_nested_spans(replacements: &mut Vec<SpanReplacement>) {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: usize, &mut std::vec::Vec<rename_semantic::SpanReplacement>
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn normalize_replacements(file_len: usize, replacements: &mut Vec<SpanReplacement>) -> Result<()> {
     for r in replacements.iter() {
         if r.span.lo > r.span.hi {
@@ -217,7 +224,14 @@ fn consume_attr_range(bytes: &[u8], mut i: usize, n: usize) -> (usize, Option<(u
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::vec::Vec<(usize, usize)>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn scan_attr_ranges(source: &str) -> Vec<(usize, usize)> {
     let b = source.as_bytes();
     let n = b.len();
@@ -235,7 +249,14 @@ fn scan_attr_ranges(source: &str) -> Vec<(usize, usize)> {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &[u8], usize, usize
+/// Outputs: (usize, std::option::Option<(usize, usize)>)
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn scan_attr_range_step(b: &[u8], i: usize, n: usize) -> (usize, Option<(usize, usize)>) {
     if i + 1 < n && b[i] == b'/' && b[i + 1] == b'/' {
         return (skip_line_comment(b, i, n), None);
@@ -293,7 +314,14 @@ fn rewrite_attr_string_literals(source: &str, old_ident: &str, new_ident: &str) 
 // ---------------------------------------------------------------------------
 
 /// Intent: repair_or_initialize
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &std::path::Path
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn ensure_under_workspace(workspace: &Path, file: &Path) -> Result<()> {
     if !file.is_absolute() {
         bail!(
@@ -383,7 +411,14 @@ fn collect_checked_replacements_for_rename(
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &std::path::Path, &[rename_semantic::CheckedReplacement]
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn verify_expected_spans(
     original: &str,
     file: &Path,

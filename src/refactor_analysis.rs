@@ -34,8 +34,15 @@ use crate::semantic::{SemanticIndex, SymbolOccurrence, SymbolSummary};
 // Public entry point
 // ---------------------------------------------------------------------------
 
-/// Run all four refactor analyses for every available crate and append new issues
-/// to ISSUES.json.  Returns the total number of new issues created.
+/// Intent: diagnostic_scan
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<usize, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn generate_all_refactor_issues(workspace: &Path) -> Result<usize> {
     let crates = SemanticIndex::available_crates(workspace);
     if crates.is_empty() {
@@ -97,7 +104,14 @@ fn issue_scan_context(file: &IssuesFile) -> (HashSet<String>, HashSet<String>) {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &mut issues::IssuesFile, usize
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn persist_generated_refactor_issues(
     workspace: &Path,
     file: &mut IssuesFile,
@@ -116,7 +130,14 @@ fn persist_generated_refactor_issues(
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<usize, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn generate_panic_surface_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -128,7 +149,14 @@ pub fn generate_panic_surface_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<usize, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn generate_state_machine_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -140,7 +168,14 @@ pub fn generate_state_machine_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<usize, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn generate_drop_complexity_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -152,7 +187,14 @@ pub fn generate_drop_complexity_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<usize, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn generate_clone_pressure_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -164,7 +206,14 @@ pub fn generate_clone_pressure_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<usize, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn generate_visibility_leak_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -176,7 +225,14 @@ pub fn generate_visibility_leak_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<usize, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn generate_mono_explosion_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -188,7 +244,14 @@ pub fn generate_mono_explosion_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<usize, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn generate_generic_overreach_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -200,7 +263,14 @@ pub fn generate_generic_overreach_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<usize, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn generate_dead_impl_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -212,7 +282,14 @@ pub fn generate_dead_impl_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<usize, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn generate_rename_symbol_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -224,7 +301,14 @@ pub fn generate_rename_symbol_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<usize, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn generate_dark_assignment_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -236,7 +320,14 @@ pub fn generate_dark_assignment_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<usize, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn generate_loop_invariant_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -248,7 +339,14 @@ pub fn generate_loop_invariant_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<usize, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn generate_redundant_path_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -260,7 +358,14 @@ pub fn generate_redundant_path_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<usize, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn generate_alpha_pathway_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
         workspace,
@@ -274,7 +379,14 @@ pub fn generate_alpha_pathway_issues(workspace: &Path) -> Result<usize> {
 type DetectorFn = fn(&Path, &str, &[SymbolSummary], usize) -> Vec<Issue>;
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &str, usize, for<'a, 'b, 'c> fn(&'a std::path::Path, &'b str, &'c [semantic::SymbolSummary], usize
+/// Outputs: std::vec::Vec<issues::Issue>) -> std::result::Result<usize, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn generate_detector_issues(
     workspace: &Path,
     subject: &str,
@@ -327,7 +439,14 @@ fn generate_detector_issues(
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: std::vec::Vec<issues::Issue>, usize
+/// Outputs: std::vec::Vec<issues::Issue>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn sorted_limited_issues(mut out: Vec<Issue>, limit: usize) -> Vec<Issue> {
     out.sort_by(|a, b| a.id.cmp(&b.id));
     out.truncate(limit);
@@ -349,7 +468,14 @@ fn occurrences_are_local_to_def(def_file: &str, occurrences: &[SymbolOccurrence]
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &[semantic::SymbolSummary], usize
+/// Outputs: std::vec::Vec<issues::Issue>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn panic_surface_issues(
     _workspace: &Path,
     crate_name: &str,
@@ -406,7 +532,14 @@ pub fn panic_surface_issues(
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &[semantic::SymbolSummary], usize
+/// Outputs: std::vec::Vec<issues::Issue>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn state_machine_issues(
     _workspace: &Path,
     crate_name: &str,
@@ -422,7 +555,14 @@ pub fn state_machine_issues(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &semantic::SymbolSummary
+/// Outputs: issues::Issue
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_state_machine_issue(crate_name: &str, summary: &SymbolSummary) -> Issue {
     let blocks = summary.mir_blocks.unwrap_or(0);
     let location = shorten_location(&summary.file, summary.line);
@@ -459,7 +599,14 @@ fn build_state_machine_issue(crate_name: &str, summary: &SymbolSummary) -> Issue
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &[semantic::SymbolSummary], usize
+/// Outputs: std::vec::Vec<issues::Issue>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn drop_complexity_issues(
     _workspace: &Path,
     crate_name: &str,
@@ -508,7 +655,14 @@ pub fn drop_complexity_issues(
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &[semantic::SymbolSummary], usize
+/// Outputs: std::vec::Vec<issues::Issue>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn clone_pressure_issues(
     _workspace: &Path,
     crate_name: &str,
@@ -558,7 +712,14 @@ pub fn clone_pressure_issues(
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &[semantic::SymbolSummary], usize
+/// Outputs: std::vec::Vec<issues::Issue>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn visibility_leak_issues(
     workspace: &Path,
     crate_name: &str,
@@ -616,7 +777,14 @@ pub fn visibility_leak_issues(
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &[semantic::SymbolSummary], usize
+/// Outputs: std::vec::Vec<issues::Issue>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn mono_explosion_issues(
     _workspace: &Path,
     crate_name: &str,
@@ -679,7 +847,14 @@ pub fn mono_explosion_issues(
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &[semantic::SymbolSummary], usize
+/// Outputs: std::vec::Vec<issues::Issue>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn generic_overreach_issues(
     _workspace: &Path,
     crate_name: &str,
@@ -730,7 +905,14 @@ pub fn generic_overreach_issues(
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &[semantic::SymbolSummary], usize
+/// Outputs: std::vec::Vec<issues::Issue>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn dead_impl_issues(
     workspace: &Path,
     crate_name: &str,
@@ -794,7 +976,14 @@ pub fn dead_impl_issues(
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &[semantic::SymbolSummary], usize
+/// Outputs: std::vec::Vec<issues::Issue>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn rename_symbol_issues(
     _workspace: &Path,
     crate_name: &str,
@@ -972,7 +1161,14 @@ fn rename_reason_score(reasons: &[String]) -> u32 {
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &[semantic::SymbolSummary], usize
+/// Outputs: std::vec::Vec<issues::Issue>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn dark_assignment_issues(
     workspace: &Path,
     crate_name: &str,
@@ -1086,7 +1282,14 @@ pub fn dark_assignment_issues(
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &[semantic::SymbolSummary], usize
+/// Outputs: std::vec::Vec<issues::Issue>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn loop_invariant_issues(
     workspace: &Path,
     crate_name: &str,
@@ -1205,7 +1408,14 @@ pub fn loop_invariant_issues(
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &[semantic::SymbolSummary], usize
+/// Outputs: std::vec::Vec<issues::Issue>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn redundant_path_issues(
     workspace: &Path,
     crate_name: &str,
@@ -1322,7 +1532,14 @@ pub fn redundant_path_issues(
 //   6. Emit one ticket per confirmed chain with exact agent instructions.
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &[semantic::SymbolSummary], usize
+/// Outputs: std::vec::Vec<issues::Issue>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn alpha_pathway_issues(
     workspace: &Path,
     crate_name: &str,
@@ -1548,7 +1765,14 @@ impl FunctionCfg {
     }
 
     /// Intent: canonical_write
-    /// Provenance: generated
+    /// Resource: error
+    /// Inputs: &refactor_analysis::FunctionCfg
+    /// Outputs: std::vec::Vec<refactor_analysis::StmtKey>
+    /// Effects: error
+    /// Forbidden: error
+    /// Invariants: error
+    /// Failure: error
+    /// Provenance: rustc:facts + rustc:docstring
     fn write_nodes(&self) -> Vec<StmtKey> {
         let mut out = Vec::new();
         for (block, data) in &self.blocks {
@@ -1710,7 +1934,14 @@ impl FunctionCfg {
     }
 
     /// Intent: diagnostic_scan
-    /// Provenance: generated
+    /// Resource: error
+    /// Inputs: &refactor_analysis::FunctionCfg
+    /// Outputs: refactor_analysis::ReachingDefAnalysis
+    /// Effects: error
+    /// Forbidden: error
+    /// Invariants: error
+    /// Failure: error
+    /// Provenance: rustc:facts + rustc:docstring
     fn reaching_definition_analysis(&self) -> ReachingDefAnalysis {
         let stmt_keys = self.all_stmt_keys();
         let mut defs_by_local: HashMap<String, HashSet<StmtKey>> = HashMap::new();
@@ -1785,7 +2016,14 @@ impl FunctionCfg {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: usize, &std::collections::HashMap<usize, semantic::SymbolCfgBlock>, &std::collections::HashMap<usize, std::collections::HashSet<usize>>
+/// Outputs: std::collections::HashMap<usize, std::collections::HashSet<usize>>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn compute_dominators(
     entry: usize,
     blocks: &HashMap<usize, crate::semantic::SymbolCfgBlock>,
@@ -1832,7 +2070,14 @@ fn compute_dominators(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::collections::HashMap<usize, semantic::SymbolCfgBlock>, &std::collections::HashMap<usize, std::collections::HashSet<usize>>, &std::collections::HashSet<usize>
+/// Outputs: std::collections::HashMap<usize, std::collections::HashSet<usize>>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn compute_post_dominators(
     blocks: &HashMap<usize, crate::semantic::SymbolCfgBlock>,
     succ: &HashMap<usize, HashSet<usize>>,
@@ -1879,7 +2124,14 @@ fn compute_post_dominators(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: std::option::Option<&str>
+/// Outputs: usize
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_fn_arg_count(signature: Option<&str>) -> usize {
     let Some(sig) = signature else { return 0 };
     let open = sig.find('(');
@@ -1962,7 +2214,14 @@ fn issue_already_tracked(
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut issues::IssuesFile, &semantic::SemanticIndex, &[semantic::SymbolSummary], &str, &std::collections::HashSet<std::string::String>, &std::collections::HashSet<std::string::String>
+/// Outputs: usize
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn dead_code_issues(
     file: &mut IssuesFile,
     _idx: &SemanticIndex,
@@ -2051,7 +2310,14 @@ fn is_exempt_from_dead_code(symbol: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut issues::IssuesFile, &semantic::SemanticIndex, &[semantic::SymbolSummary], &str, &std::collections::HashSet<std::string::String>, &std::collections::HashSet<std::string::String>
+/// Outputs: usize
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn branch_reduction_issues(
     file: &mut IssuesFile,
     idx: &SemanticIndex,
@@ -2128,7 +2394,14 @@ fn priority_from_unreachable(pct: usize) -> String {
 // ---------------------------------------------------------------------------
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut issues::IssuesFile, &semantic::SemanticIndex, &[semantic::SymbolSummary], &str, &std::collections::HashSet<std::string::String>
+/// Outputs: usize
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn helper_extraction_issues(
     file: &mut IssuesFile,
     idx: &SemanticIndex,
@@ -2238,7 +2511,14 @@ fn helper_extraction_issues(
 // ---------------------------------------------------------------------------
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut issues::IssuesFile, &[semantic::SymbolSummary], &str, &std::collections::HashSet<std::string::String>, &std::collections::HashSet<std::string::String>
+/// Outputs: usize
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn call_chain_issues(
     file: &mut IssuesFile,
     summaries: &[crate::semantic::SymbolSummary],

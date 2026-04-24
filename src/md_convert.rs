@@ -8,8 +8,14 @@ use crate::reports::{
 };
 
 /// Intent: repair_or_initialize
-/// Effects: reads_artifact, reads_state
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: fs_read, state_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn ensure_objectives_and_invariants_json(workspace: &Path) -> Result<()> {
     let invariants_md = workspace.join(INVARIANTS_MD_FILE);
     let objectives_md = workspace.join(OBJECTIVES_MD_FILE);
@@ -32,7 +38,14 @@ pub fn ensure_objectives_and_invariants_json(workspace: &Path) -> Result<()> {
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::PathBuf, &impl serde::Serialize
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: fs_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn write_json(path: &PathBuf, value: &impl serde::Serialize) -> Result<()> {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -43,7 +56,14 @@ fn write_json(path: &PathBuf, value: &impl serde::Serialize) -> Result<()> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: reports::InvariantsReport
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_invariants_md(text: &str) -> InvariantsReport {
     let mut invariants: Vec<Invariant> = Vec::new();
     let mut principles: Vec<String> = Vec::new();
@@ -199,7 +219,14 @@ enum InvariantSection {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: reports::ObjectivesReport
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_objectives_md(text: &str) -> ObjectivesReport {
     let mut objectives: Vec<Objective> = Vec::new();
     let mut goal: Vec<String> = Vec::new();
@@ -407,7 +434,14 @@ enum ObjectiveSection {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: reports::ObjectiveLevel
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_objective_level(title: &str) -> ObjectiveLevel {
     if title.contains("🔴") || title.to_lowercase().contains("critical") {
         ObjectiveLevel::Critical

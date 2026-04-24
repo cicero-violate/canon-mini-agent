@@ -53,13 +53,27 @@ pub mod transition_policy;
 // Keep the `constants` module private, but expose the few setters used by auxiliary binaries
 // (e.g. `canon-mini-supervisor`) to configure the workspace and state-dir.
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: std::string::String
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn set_workspace(path: String) {
     constants::set_workspace(path);
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: std::string::String
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn set_agent_state_dir(path: String) {
     constants::set_agent_state_dir(path);
 }

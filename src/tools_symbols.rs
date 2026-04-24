@@ -151,7 +151,14 @@ fn is_ignored_dir(name: &str) -> bool {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &std::path::Path, &str
+/// Outputs: std::vec::Vec<tools::SymbolEntry>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_decl_symbols(workspace: &Path, file_path: &Path, text: &str) -> Vec<SymbolEntry> {
     let parse = SourceFile::parse(text, Edition::CURRENT);
     if !parse.errors().is_empty() {
@@ -240,7 +247,14 @@ fn handle_symbols_index_action(workspace: &Path, action: &Value) -> Result<(bool
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &std::path::Path
+/// Outputs: std::result::Result<tools::SymbolsIndexFile, anyhow::Error>
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_symbols_index_payload(workspace: &Path, scan_root: &Path) -> Result<SymbolsIndexFile> {
     let mut files = Vec::new();
     collect_rust_files(scan_root, &mut files)?;
@@ -344,7 +358,14 @@ fn handle_symbols_rename_candidates_action(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &serde_json::Value
+/// Outputs: std::result::Result<(std::string::String, std::string::String, std::path::PathBuf, std::path::PathBuf), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_symbols_rename_candidates_paths(
     workspace: &Path,
     action: &Value,
@@ -365,7 +386,14 @@ fn parse_symbols_rename_candidates_paths(
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<tools::SymbolsIndexFile, anyhow::Error>
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_symbols_index_file(symbols_path: &Path) -> Result<SymbolsIndexFile> {
     let symbols_text = fs::read_to_string(symbols_path)
         .with_context(|| format!("read {}", symbols_path.display()))?;
@@ -373,7 +401,14 @@ fn load_symbols_index_file(symbols_path: &Path) -> Result<SymbolsIndexFile> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &tools::SymbolsIndexFile
+/// Outputs: std::collections::BTreeMap<std::string::String, std::collections::BTreeSet<std::string::String>>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_function_prefixes_by_stem(
     symbols_file: &SymbolsIndexFile,
 ) -> std::collections::BTreeMap<String, std::collections::BTreeSet<String>> {
@@ -430,7 +465,14 @@ fn collect_rename_candidates(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &tools::SymbolEntry, &std::collections::BTreeMap<std::string::String, std::collections::BTreeSet<std::string::String>>, &std::collections::BTreeSet<&str>, &std::collections::BTreeSet<&str>
+/// Outputs: std::option::Option<tools::RenameCandidate>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_rename_candidate(
     sym: &SymbolEntry,
     prefixes_by_stem: &std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
@@ -590,7 +632,14 @@ fn sort_and_dedup_rename_candidates(candidates: &mut Vec<RenameCandidate>) {
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &tools::RenameCandidatesFile
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: fs_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn write_rename_candidates_payload(out_path: &Path, payload: &RenameCandidatesFile) -> Result<()> {
     if let Some(parent) = out_path.parent() {
         fs::create_dir_all(parent)
@@ -651,7 +700,14 @@ fn handle_symbols_prepare_rename_action(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &tools::RenameCandidate
+/// Outputs: serde_json::Value
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_prepared_rename_action(selected: &RenameCandidate) -> Value {
     json!({
         "action": "rename_symbol",
@@ -737,7 +793,14 @@ struct RenameSymbolEnvironment {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value, &str
+/// Outputs: std::result::Result<std::vec::Vec<(std::string::String, std::string::String)>, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_rename_symbol_pairs(action: &Value, crate_name: &str) -> Result<Vec<(String, String)>> {
     reject_legacy_rename_fields(action)?;
 
@@ -761,7 +824,14 @@ fn reject_legacy_rename_fields(action: &Value) -> Result<()> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &[serde_json::Value], &str
+/// Outputs: std::result::Result<std::vec::Vec<(std::string::String, std::string::String)>, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_bulk_renames(arr: &[Value], crate_name: &str) -> Result<Vec<(String, String)>> {
     if arr.is_empty() {
         bail!("rename_symbol: `renames` must not be empty");
@@ -785,7 +855,14 @@ fn parse_bulk_renames(arr: &[Value], crate_name: &str) -> Result<Vec<(String, St
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value, &str
+/// Outputs: std::result::Result<std::vec::Vec<(std::string::String, std::string::String)>, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_single_rename(action: &Value, crate_name: &str) -> Result<Vec<(String, String)>> {
     let old = action
         .get("old_symbol")
@@ -810,7 +887,14 @@ fn parse_single_rename(action: &Value, crate_name: &str) -> Result<Vec<(String, 
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &str, &str
+/// Outputs: std::result::Result<(std::string::String, std::string::String), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn normalize_pair(crate_name: &str, old: &str, new: &str) -> Result<(String, String)> {
     let old = strip_semantic_crate_prefix(crate_name, old);
     let new = strip_semantic_crate_prefix(crate_name, new);
@@ -832,8 +916,14 @@ fn capture_rename_symbol_environment(workspace: &Path) -> Result<RenameSymbolEnv
 }
 
 /// Intent: canonical_read
+/// Resource: error
+/// Inputs: &std::path::Path, bool
+/// Outputs: std::result::Result<std::string::String, anyhow::Error>
 /// Effects: spawns_process
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_git_head(workspace: &Path, in_git: bool) -> Result<String> {
     if !in_git {
         return Ok(String::new());
@@ -848,8 +938,14 @@ fn load_git_head(workspace: &Path, in_git: bool) -> Result<String> {
 }
 
 /// Intent: validation_gate
+/// Resource: error
+/// Inputs: &std::path::Path, &tools::RenameSymbolEnvironment, &rename_semantic::RenameReport
+/// Outputs: std::result::Result<(), anyhow::Error>
 /// Effects: spawns_process
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn run_post_rename_cargo_check(
     workspace: &Path,
     rename_env: &RenameSymbolEnvironment,
@@ -899,14 +995,28 @@ fn run_post_rename_cargo_check(
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn persist_rename_symbol_errors(workspace: &Path, compiler_output: &str) {
     let errors_path = workspace.join("state/rename_errors.txt");
     persist_text_file(&errors_path, compiler_output);
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str
+/// Outputs: ()
+/// Effects: fs_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn persist_text_file(path: &Path, content: &str) {
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
@@ -914,10 +1024,15 @@ fn persist_text_file(path: &Path, content: &str) {
     let _ = fs::write(path, content);
 }
 
-/// Validate that a just-written JSON state file conforms to its canonical schema.
-/// Returns `Some(rejection_message)` if the file violates the schema, `None` if valid
-/// or if the file is not a schema-guarded type.
-/// Uses `additionalProperties: false` so any extra field is caught and reported to the LLM.
+/// Intent: validation_gate
+/// Resource: error
+/// Inputs: &str, &str
+/// Outputs: std::option::Option<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_state_file_schema(file_path: &str, content: &str) -> Option<String> {
     use crate::reports::{DiagnosticsReport, ViolationsReport};
     use jsonschema::JSONSchema;

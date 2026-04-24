@@ -51,7 +51,14 @@ impl FrameAssembler {
         }
     }
     /// Intent: canonical_write
-    /// Provenance: generated
+    /// Resource: error
+    /// Inputs: &mut llm_runtime::parsers::FrameAssembler, llm_runtime::parsers::SiteType
+    /// Outputs: ()
+    /// Effects: error
+    /// Forbidden: error
+    /// Invariants: error
+    /// Failure: error
+    /// Provenance: rustc:facts + rustc:docstring
     pub fn set_site(&mut self, site: SiteType) {
         self.site = site;
     }
@@ -487,7 +494,14 @@ fn classify_calpico_message(msg: &Value) -> FrameResult {
     FrameResult::Ignore
 }
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value
+/// Outputs: std::option::Option<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn find_fenced_json_in_value(v: &Value) -> Option<String> {
     match v {
         Value::String(s) => extract_fenced_json(s),
@@ -497,7 +511,14 @@ fn find_fenced_json_in_value(v: &Value) -> Option<String> {
     }
 }
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::option::Option<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_fenced_json(text: &str) -> Option<String> {
     let start = text.find("```json")?;
     let rest = &text[start..];

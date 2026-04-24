@@ -4,7 +4,14 @@ use crate::prompts::{validate_message_action, MessageValidationMode};
 use crate::tool_schema::{action_schema_json, schema_diff_messages};
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &str
+/// Outputs: &str
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn normalize_message_target(role: &str, target: &str) -> &'static str {
     if target == "planner" || target == "executor" {
         return if target == "planner" {
@@ -109,7 +116,14 @@ pub fn expected_message_format(from: &str, to_role: &str, msg_type: &str, status
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &str, &str, &str, &[(&str, &str
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn format_message_schema(
     from: &str,
     to_role: &str,
@@ -628,7 +642,14 @@ fn example_symbol_workflow_action(kind: &str) -> Option<Value> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &[(&str, serde_json::Value
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_symbol_workflow_example_action(
     action: &str,
     fields: &[(&str, Value)],
@@ -695,7 +716,14 @@ fn normalized_message_example_route(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: std::option::Option<&serde_json::Value>, &str, &str
+/// Outputs: std::string::String
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn build_invalid_action_feedback(
     raw_action: Option<&Value>,
     err_text: &str,
@@ -898,7 +926,14 @@ fn message_field_str<'a>(obj: &'a serde_json::Map<String, Value>, field: &str) -
 }
 
 /// Intent: route_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut std::vec::Vec<std::string::String>, &serde_json::Map<std::string::String, serde_json::Value>
+/// Outputs: (std::option::Option<std::string::String>, std::option::Option<std::string::String>)
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn collect_message_route_fields(
     schema_diff: &mut Vec<String>,
     obj: &serde_json::Map<String, Value>,
@@ -921,7 +956,14 @@ fn collect_message_route_fields(
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut std::vec::Vec<std::string::String>, std::option::Option<&serde_json::Map<std::string::String, serde_json::Value>>
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_message_payload_summary(
     schema_diff: &mut Vec<String>,
     payload: Option<&serde_json::Map<String, Value>>,
@@ -938,7 +980,14 @@ fn validate_message_payload_summary(
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut std::vec::Vec<std::string::String>, &serde_json::Map<std::string::String, serde_json::Value>
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_blocker_payload_placement(
     schema_diff: &mut Vec<String>,
     obj: &serde_json::Map<String, Value>,
@@ -955,7 +1004,14 @@ fn validate_blocker_payload_placement(
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut std::vec::Vec<std::string::String>, std::option::Option<&serde_json::Map<std::string::String, serde_json::Value>>, std::option::Option<&str>, std::option::Option<&str>
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_blocker_payload_fields(
     schema_diff: &mut Vec<String>,
     payload: Option<&serde_json::Map<String, Value>>,
@@ -1115,7 +1171,14 @@ fn object_string_present(obj: &serde_json::Map<String, Value>, field: &str) -> b
 }
 
 /// Intent: repair_or_initialize
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut serde_json::Map<std::string::String, serde_json::Value>, &str, &str
+/// Outputs: bool
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn ensure_object_string_field(
     obj: &mut serde_json::Map<String, Value>,
     field: &str,
@@ -1136,7 +1199,14 @@ fn missing_predicted_next_actions(obj: &serde_json::Map<String, Value>) -> bool 
 }
 
 /// Intent: repair_or_initialize
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut serde_json::Map<std::string::String, serde_json::Value>
+/// Outputs: bool
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn ensure_blocker_payload_fields(payload: &mut serde_json::Map<String, Value>) -> bool {
     let mut changed = false;
     for (field, value) in [
@@ -1149,11 +1219,15 @@ fn ensure_blocker_payload_fields(payload: &mut serde_json::Map<String, Value>) -
     changed
 }
 
-/// Autofill missing provenance fields on **any** action to stop the schema-rejection loop.
-///
-/// Called after `auto_fill_message_fields` so message-specific logic runs first.
-/// Only fills fields that are absent or empty; never overwrites present values.
-/// Returns `true` if any field was added.
+/// Intent: repair_or_initialize
+/// Resource: error
+/// Inputs: &mut serde_json::Value
+/// Outputs: bool
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn ensure_action_base_schema(action: &mut Value) -> bool {
     let Some(obj) = action.as_object_mut() else {
         return false;

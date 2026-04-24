@@ -97,7 +97,14 @@ fn action_command_summary(action: &Value) -> String {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::option::Option<serde_json::Value>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_action_from_text(text: &str) -> Option<Value> {
     parse_actions(text)
         .ok()
@@ -115,7 +122,14 @@ fn observation_and_rationale_from_text(text: &str) -> (Option<String>, Option<St
 }
 
 /// Intent: event_append
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::PathBuf, &serde_json::Value
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: fs_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn append_record_to_path(path: &PathBuf, record: &Value) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
@@ -132,7 +146,14 @@ fn append_record_to_path(path: &PathBuf, record: &Value) -> Result<()> {
 }
 
 /// Intent: event_append
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub(crate) fn append_action_log_record(record: &Value) -> Result<()> {
     static LOG_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
     let lock = LOG_MUTEX.get_or_init(|| Mutex::new(()));
@@ -282,7 +303,14 @@ fn action_op(action: &Value) -> Option<Value> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, std::string::String
+/// Outputs: serde_json::Value
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_action_op(name: &str, summary: String) -> Value {
     json!({
         "name": name,
@@ -354,7 +382,14 @@ fn inject_action_fields(record: &mut Value, action: &Value) {
 }
 
 /// Intent: event_append
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &serde_json::Value
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn append_secondary_action_log(role: &str, action: &Value) -> Result<()> {
     static SECONDARY_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
     let lock = SECONDARY_MUTEX.get_or_init(|| Mutex::new(()));
@@ -392,7 +427,14 @@ fn append_secondary_action_log(role: &str, action: &Value) -> Result<()> {
 }
 
 /// Intent: event_append
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut serde_json::Map<std::string::String, serde_json::Value>, &serde_json::Value, &str
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn append_secondary_action_field(
     record: &mut serde_json::Map<String, Value>,
     action: &Value,
@@ -435,7 +477,14 @@ fn secondary_llm_response(action: &Value) -> Option<Value> {
 }
 
 /// Intent: event_append
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &llm_runtime::config::LlmEndpoint, &str, usize, &str, &str, serde_json::Value
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub(crate) fn append_message_log(
     role: &str,
     endpoint: &LlmEndpoint,
@@ -507,7 +556,14 @@ pub(crate) fn log_message_event(
 }
 
 /// Intent: event_append
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &llm_runtime::config::LlmEndpoint, &str, usize, &str, &serde_json::Value
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub(crate) fn append_action_log(
     role: &str,
     endpoint: &LlmEndpoint,
@@ -559,7 +615,14 @@ pub(crate) fn log_action_event(
 }
 
 /// Intent: event_append
-/// Provenance: generated
+/// Resource: error
+/// Inputs: std::option::Option<&mut canonical_writer::CanonicalWriter>, &str, &llm_runtime::config::LlmEndpoint, &str, usize, &str, &serde_json::Value, bool, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub(crate) fn append_action_result_log(
     mut writer: Option<&mut CanonicalWriter>,
     role: &str,
@@ -674,7 +737,14 @@ pub fn log_error_event(
 }
 
 /// Intent: event_append
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &llm_runtime::config::LlmEndpoint, usize, &str, &serde_json::Value
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub(crate) fn append_llm_completion_log(
     role: &str,
     endpoint: &LlmEndpoint,
@@ -704,7 +774,14 @@ pub(crate) fn append_llm_completion_log(
 }
 
 /// Intent: event_append
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, serde_json::Value
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub(crate) fn append_orchestration_trace(event: &str, payload: Value) {
     if LOG_PATHS.get().is_none() {
         return;
@@ -789,7 +866,14 @@ pub(crate) fn stable_hash_hex(value: &str) -> String {
 }
 
 /// Intent: event_append
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &str, std::option::Option<&str>, std::option::Option<std::path::PathBuf>, serde_json::Value, &str
+/// Outputs: std::result::Result<std::string::String, anyhow::Error>
+/// Effects: fs_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn append_evidence_receipt(
     role: &str,
     action: &str,
@@ -930,8 +1014,14 @@ fn restore_file_snapshot(path: &std::path::Path, snapshot: &Option<Vec<u8>>) -> 
 }
 
 /// Intent: canonical_write
-/// Effects: logging
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &std::path::Path, &str, &str, &str, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: fs_read, fs_write, logging
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn write_projection_with_artifact_effects(
     workspace: &std::path::Path,
     path: &std::path::Path,
@@ -993,7 +1083,14 @@ pub fn record_json_projection_with_optional_writer<T: Serialize>(
 }
 
 /// Intent: repair_or_initialize
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &str, &str, &str
+/// Outputs: std::result::Result<bool, anyhow::Error>
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn migrate_projection_if_present(
     workspace: &std::path::Path,
     legacy_rel: &str,
@@ -1027,7 +1124,14 @@ pub fn migrate_projection_if_present(
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: serde_json::Map<std::string::String, serde_json::Value>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_prompt_overflow_report(raw: &str) -> serde_json::Map<String, Value> {
     if raw.trim().is_empty() {
         serde_json::Map::new()
@@ -1047,8 +1151,14 @@ fn prompt_overflow_violation_id(role: &str) -> String {
 }
 
 /// Intent: diagnostic_scan
-/// Effects: writes_artifact, writes_state
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &std::path::Path, &str, &serde_json::Map<std::string::String, serde_json::Value>
+/// Outputs: ()
+/// Effects: fs_write, state_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn persist_prompt_overflow_report(
     workspace: &std::path::Path,
     violations_path: &std::path::Path,
@@ -1075,7 +1185,14 @@ fn mark_prompt_overflow_failed(report: &mut serde_json::Map<String, Value>) {
 }
 
 /// Intent: event_append
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, usize, usize, &std::path::Path, bool
+/// Outputs: std::option::Option<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn append_prompt_overflow_receipt(
     role: &str,
     prompt_bytes: usize,
@@ -1168,8 +1285,14 @@ fn refresh_existing_prompt_overflow_violation(
 }
 
 /// Intent: canonical_read
-/// Effects: reads_artifact, reads_state
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str, usize
+/// Outputs: ()
+/// Effects: fs_read, state_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub(crate) fn record_prompt_overflow(workspace: &std::path::Path, role: &str, prompt_bytes: usize) {
     use crate::constants::PROMPT_OVERFLOW_BYTES;
     if prompt_bytes <= PROMPT_OVERFLOW_BYTES {

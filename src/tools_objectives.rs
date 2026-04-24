@@ -12,7 +12,14 @@ fn objective_not_found_message(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &str, &[std::string::String], &[std::string::String]
+/// Outputs: std::string::String
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn format_objective_already_exists_message(
     requested_raw: &str,
     requested_id: &str,
@@ -85,7 +92,14 @@ fn sort_objectives_for_view(file: &mut crate::objectives::ObjectivesFile, includ
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::result::Result<objectives::ObjectivesFile, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_objectives_file_strict(raw: &str) -> Result<crate::objectives::ObjectivesFile> {
     let file: crate::objectives::ObjectivesFile =
         serde_json::from_str(raw).map_err(|e| anyhow!("failed to parse OBJECTIVES.json: {e}"))?;
@@ -94,13 +108,27 @@ fn parse_objectives_file_strict(raw: &str) -> Result<crate::objectives::Objectiv
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: objectives::ObjectivesFile
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_objectives_file_or_default(raw: &str) -> crate::objectives::ObjectivesFile {
     serde_json::from_str(raw).unwrap_or_default()
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &objectives::ObjectivesFile
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_unique_objective_ids(file: &crate::objectives::ObjectivesFile) -> Result<()> {
     let mut seen: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
     for objective in &file.objectives {
@@ -121,7 +149,14 @@ fn validate_unique_objective_ids(file: &crate::objectives::ObjectivesFile) -> Re
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &std::path::Path, &objectives::ObjectivesFile, std::option::Option<&mut canonical_writer::CanonicalWriter>
+/// Outputs: std::result::Result<(bool, std::string::String), anyhow::Error>
+/// Effects: fs_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn write_objectives_file(
     workspace: &Path,
     path: &Path,

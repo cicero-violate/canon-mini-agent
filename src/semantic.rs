@@ -130,7 +130,14 @@ pub struct PathRecord {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &[&semantic::CfgNode]
+/// Outputs: (usize, usize, usize)
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn summarize_cfg_terminators(blocks: &[&CfgNode]) -> (usize, usize, usize) {
     blocks.iter().fold((0usize, 0usize, 0usize), |mut acc, b| {
         if b.terminator.starts_with("Assert") {
@@ -319,7 +326,15 @@ pub struct ExecutionPathPlan {
 }
 
 impl SemanticIndex {
-    /// Load the graph for `crate_name` from the standard artifact location.
+    /// Intent: canonical_read
+    /// Resource: error
+    /// Inputs: &std::path::Path, &str
+    /// Outputs: std::result::Result<semantic::SemanticIndex, anyhow::Error>
+    /// Effects: fs_read, state_read
+    /// Forbidden: error
+    /// Invariants: error
+    /// Failure: error
+    /// Provenance: rustc:facts + rustc:docstring + rustc:effects
     pub fn load(workspace: &Path, crate_name: &str) -> Result<Self> {
         // Normalize: hyphens → underscores (cargo convention).
         let name = crate_name.replace('-', "_");
@@ -334,7 +349,15 @@ impl SemanticIndex {
         Ok(Self { graph })
     }
 
-    /// Discover available crates from state/rustc/index.json.
+    /// Intent: canonical_read
+    /// Resource: error
+    /// Inputs: &std::path::Path
+    /// Outputs: std::vec::Vec<std::string::String>
+    /// Effects: fs_read, state_read
+    /// Forbidden: error
+    /// Invariants: error
+    /// Failure: error
+    /// Provenance: rustc:facts + rustc:docstring + rustc:effects
     pub fn available_crates(workspace: &Path) -> Vec<String> {
         let index_path = workspace.join("state/rustc/index.json");
         let Ok(bytes) = fs::read(&index_path) else {
@@ -623,7 +646,14 @@ impl SemanticIndex {
     }
 
     /// Intent: pure_transform
-    /// Provenance: generated
+    /// Resource: error
+    /// Inputs: &semantic::SemanticIndex, &semantic::ExecutionPathPlan, bool
+    /// Outputs: std::string::String
+    /// Effects: error
+    /// Forbidden: error
+    /// Invariants: error
+    /// Failure: error
+    /// Provenance: rustc:facts + rustc:docstring
     pub fn render_execution_path_plan(
         &self,
         plan: &ExecutionPathPlan,
@@ -941,7 +971,15 @@ impl SemanticIndex {
         Ok(unique)
     }
 
-    /// Find the tightest graph node whose def span contains `ref_span` by byte offset.
+    /// Intent: diagnostic_scan
+    /// Resource: error
+    /// Inputs: &semantic::SemanticIndex, &semantic::SourceSpan
+    /// Outputs: std::option::Option<&str>
+    /// Effects: error
+    /// Forbidden: error
+    /// Invariants: error
+    /// Failure: error
+    /// Provenance: rustc:facts + rustc:docstring
     fn find_enclosing_symbol(&self, ref_span: &SourceSpan) -> Option<&str> {
         let mut best: Option<(&str, u32)> = None; // (key, span_width)
         for (key, node) in &self.graph.nodes {
@@ -1105,7 +1143,14 @@ impl SemanticIndex {
     // -----------------------------------------------------------------------
 
     /// Intent: diagnostic_scan
-    /// Provenance: generated
+    /// Resource: error
+    /// Inputs: &semantic::SemanticIndex, &str
+    /// Outputs: std::result::Result<&semantic::GraphNode, anyhow::Error>
+    /// Effects: error
+    /// Forbidden: error
+    /// Invariants: error
+    /// Failure: error
+    /// Provenance: rustc:facts + rustc:docstring
     fn find_node(&self, symbol: &str) -> Result<&GraphNode> {
         let key = self.resolve_node_key(symbol)?;
         Ok(self.graph.nodes.get(key).unwrap())
@@ -2180,7 +2225,14 @@ fn patch_kind_hints(kind: Option<&PatchKind>) -> (&'static str, &'static str) {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &semantic::ExecutionPatchTarget
+/// Outputs: std::option::Option<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub(crate) fn build_apply_patch_template(target: &ExecutionPatchTarget) -> Option<String> {
     let file = target.file.as_ref()?;
     let context = target.context_window.as_ref()?;
@@ -2206,7 +2258,14 @@ pub(crate) fn build_apply_patch_template(target: &ExecutionPatchTarget) -> Optio
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, u32, usize, usize
+/// Outputs: (u32, u32, std::string::String)
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn read_context_window(file: &str, line: u32, before: usize, after: usize) -> (u32, u32, String) {
     let Ok(source) = fs::read_to_string(file) else {
         return (line, line, String::new());

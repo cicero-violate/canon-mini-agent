@@ -96,7 +96,14 @@ impl TlogAppendLock {
     }
 
     /// Intent: canonical_write
-    /// Provenance: generated
+    /// Resource: error
+    /// Inputs: &mut std::fs::File
+    /// Outputs: std::result::Result<(), anyhow::Error>
+    /// Effects: error
+    /// Forbidden: error
+    /// Invariants: error
+    /// Failure: error
+    /// Provenance: rustc:facts + rustc:docstring
     fn write_owner_metadata(file: &mut std::fs::File) -> Result<()> {
         writeln!(file, "{}", std::process::id())?;
         file.flush()?;
@@ -206,8 +213,14 @@ impl Tlog {
     }
 
     /// Intent: canonical_read
+    /// Resource: error
+    /// Inputs: &std::path::Path
+    /// Outputs: std::result::Result<std::vec::Vec<events::Event>, anyhow::Error>
     /// Effects: logging
-    /// Provenance: generated
+    /// Forbidden: error
+    /// Invariants: error
+    /// Failure: error
+    /// Provenance: rustc:facts + rustc:docstring
     pub fn read_events(path: &Path) -> Result<Vec<Event>> {
         Ok(Self::read_records(path)?
             .into_iter()
@@ -216,7 +229,14 @@ impl Tlog {
     }
 
     /// Intent: canonical_read
-    /// Provenance: generated
+    /// Resource: error
+    /// Inputs: &std::path::Path
+    /// Outputs: std::result::Result<std::vec::Vec<tlog::TlogRecord>, anyhow::Error>
+    /// Effects: fs_read
+    /// Forbidden: error
+    /// Invariants: error
+    /// Failure: error
+    /// Provenance: rustc:facts + rustc:docstring
     pub fn read_records(path: &Path) -> Result<Vec<TlogRecord>> {
         if !path.exists() {
             return Ok(Vec::new());
@@ -291,7 +311,14 @@ impl Tlog {
     }
 
     /// Intent: canonical_write
-    /// Provenance: generated
+    /// Resource: error
+    /// Inputs: &mut tlog::Tlog, u64
+    /// Outputs: ()
+    /// Effects: error
+    /// Forbidden: error
+    /// Invariants: error
+    /// Failure: error
+    /// Provenance: rustc:facts + rustc:docstring
     pub fn set_evolution(&mut self, evolution: u64) {
         self.evolution = evolution;
     }

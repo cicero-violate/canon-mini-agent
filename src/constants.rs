@@ -35,7 +35,15 @@ static WORKSPACE_PATH: OnceLock<RwLock<&'static str>> = OnceLock::new();
 
 static ACTIVE_TASK_ID: OnceLock<std::sync::RwLock<String>> = OnceLock::new();
 
-/// Record the plan task id that is now in progress (or clear it with "").
+/// Intent: canonical_write
+/// Resource: error
+/// Inputs: &str
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn set_active_task_id(id: &str) {
     let lock = ACTIVE_TASK_ID.get_or_init(|| std::sync::RwLock::new(String::new()));
     if let Ok(mut guard) = lock.write() {
@@ -52,8 +60,15 @@ pub fn active_task_id() -> String {
         .unwrap_or_default()
 }
 
-/// Set the target workspace path from the --workspace CLI argument.
-/// Must be called once before any call to `workspace()`.
+/// Intent: canonical_write
+/// Resource: error
+/// Inputs: std::string::String
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn set_workspace(path: String) {
     let leaked = Box::leak(path.into_boxed_str());
     let lock = WORKSPACE_PATH.get_or_init(|| RwLock::new(DEFAULT_WORKSPACE));
@@ -80,7 +95,15 @@ pub const DEFAULT_AGENT_STATE_DIR: &str = "/workspace/ai_sandbox/canon-mini-agen
 
 static AGENT_STATE_DIR_PATH: OnceLock<RwLock<&'static str>> = OnceLock::new();
 
-/// Set the agent state directory from the --state-dir CLI argument.
+/// Intent: canonical_write
+/// Resource: error
+/// Inputs: std::string::String
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn set_agent_state_dir(path: String) {
     let leaked = Box::leak(path.into_boxed_str());
     let lock = AGENT_STATE_DIR_PATH.get_or_init(|| RwLock::new(DEFAULT_AGENT_STATE_DIR));

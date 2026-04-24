@@ -11,8 +11,14 @@ pub struct HttpBackend {
 
 impl HttpBackend {
     /// Intent: transport_effect
+    /// Resource: error
+    /// Inputs: ()
+    /// Outputs: llm_runtime::http_backend::HttpBackend
     /// Effects: uses_network
-    /// Provenance: generated
+    /// Forbidden: error
+    /// Invariants: error
+    /// Failure: error
+    /// Provenance: rustc:facts + rustc:docstring
     pub fn from_env() -> Self {
         let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
         let model =

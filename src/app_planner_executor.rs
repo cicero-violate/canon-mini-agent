@@ -431,7 +431,14 @@ fn sweep_timed_out_submitted_turns(
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut canonical_writer::CanonicalWriter, &str
+/// Outputs: bool
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str) -> bool {
     let ws = std::path::PathBuf::from(workspace());
     let blockers = crate::blockers::load_blockers(&ws);
@@ -635,7 +642,14 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
 }
 
 /// Intent: route_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: serde_json::Value
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn route_gate_block_record(reason: &str) -> serde_json::Value {
     serde_json::json!({
         "kind": "invariant_gate",
@@ -649,7 +663,14 @@ fn route_gate_block_record(reason: &str) -> serde_json::Value {
 }
 
 /// Intent: route_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut canonical_writer::CanonicalWriter, &std::path::Path, &str
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn apply_route_gate_block(writer: &mut CanonicalWriter, ws: &std::path::Path, reason: &str) {
     eprintln!("[invariant_gate] route G_r (BLOCKED): {reason}");
     let blocker_message = route_gate_blocker_message(reason);

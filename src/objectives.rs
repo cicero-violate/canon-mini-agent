@@ -75,7 +75,14 @@ pub fn resolve_objectives_path(workspace: &Path) -> PathBuf {
 }
 
 /// Intent: repair_or_initialize
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<std::path::PathBuf, std::io::Error>
+/// Effects: fs_read, fs_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn ensure_runtime_objectives_file(workspace: &Path) -> std::io::Result<PathBuf> {
     let runtime = runtime_objectives_path(workspace);
     if runtime.exists() {
@@ -107,7 +114,14 @@ pub fn ensure_runtime_objectives_file(workspace: &Path) -> std::io::Result<PathB
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: serde_json::Value
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn load_master_plan_snapshot(workspace: &Path) -> Value {
     let path = workspace_join_path(workspace, crate::constants::MASTER_PLAN_FILE);
     let raw = std::fs::read_to_string(&path).unwrap_or_default();
@@ -126,7 +140,14 @@ pub fn load_master_plan_snapshot(workspace: &Path) -> Value {
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::string::String
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn read_objectives_compact_for_workspace(workspace: &Path) -> String {
     if let Some(canonical) = load_canonical_objectives_json(workspace) {
         return read_objectives_compact_from_raw(&canonical);
@@ -135,16 +156,29 @@ pub fn read_objectives_compact_for_workspace(workspace: &Path) -> String {
     read_objectives_compact(&path)
 }
 
-/// Compact one-liner-per-objective for prompt injection.
-/// Strips description/requirement/verification/success_criteria to keep token cost low.
-/// Only non-done objectives are included.
+/// Intent: canonical_read
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::string::String
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn read_objectives_compact(path: &Path) -> String {
     let raw = std::fs::read_to_string(path).unwrap_or_default();
     read_objectives_compact_from_raw(&raw)
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::string::String
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn read_objectives_compact_from_raw(raw: &str) -> String {
     if raw.trim().is_empty() {
         return String::new();
@@ -192,7 +226,14 @@ pub fn read_objectives_compact_from_raw(raw: &str) -> String {
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: (std::path::PathBuf, std::string::String)
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn load_bootstrap_objectives_seed(workspace: &Path) -> (PathBuf, String) {
     let path = ensure_runtime_objectives_file(workspace)
         .unwrap_or_else(|_| resolve_objectives_path(workspace));
@@ -210,7 +251,14 @@ pub fn load_bootstrap_objectives_seed(workspace: &Path) -> (PathBuf, String) {
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::string::String
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn load_runtime_objectives_json(workspace: &Path) -> String {
     let (path, raw) = load_bootstrap_objectives_seed(workspace);
     if path == runtime_objectives_path(workspace) && !raw.trim().is_empty() {
@@ -223,7 +271,14 @@ pub fn load_runtime_objectives_json(workspace: &Path) -> String {
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::option::Option<std::string::String>
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn load_runtime_master_plan_json(workspace: &Path) -> Option<String> {
     let raw = std::fs::read_to_string(runtime_master_plan_path(workspace)).ok()?;
     if raw.trim().is_empty() {
@@ -234,8 +289,14 @@ pub fn load_runtime_master_plan_json(workspace: &Path) -> Option<String> {
 }
 
 /// Intent: canonical_write
-/// Effects: writes_artifact, writes_state
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: fs_write, state_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn persist_objectives_projection(workspace: &Path, raw: &str, subject: &str) -> anyhow::Result<()> {
     crate::logging::write_projection_with_artifact_effects(
         workspace,
@@ -248,8 +309,14 @@ pub fn persist_objectives_projection(workspace: &Path, raw: &str, subject: &str)
 }
 
 /// Intent: canonical_read
-/// Effects: reads_artifact, reads_state
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &str, &str
+/// Outputs: std::result::Result<bool, anyhow::Error>
+/// Effects: fs_read, state_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn reconcile_objectives_projection(workspace: &Path, canonical_raw: &str, subject: &str) -> anyhow::Result<bool> {
     let path = workspace.join(crate::constants::OBJECTIVES_FILE);
     let current = std::fs::read_to_string(&path).unwrap_or_default();
@@ -261,8 +328,14 @@ pub fn reconcile_objectives_projection(workspace: &Path, canonical_raw: &str, su
 }
 
 /// Intent: canonical_read
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::option::Option<std::string::String>
 /// Effects: logging
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn load_canonical_objectives_json(workspace: &Path) -> Option<String> {
     let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
     let replayed = crate::tlog::Tlog::replay_canonical_state(&tlog_path).ok()?;
@@ -293,7 +366,14 @@ pub fn is_completed(obj: &Objective) -> bool {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::option::Option<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn extract_status(description: &str) -> Option<String> {
     let lower = description.to_lowercase();
     let marker = "status:";

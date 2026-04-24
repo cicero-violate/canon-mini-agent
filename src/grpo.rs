@@ -111,7 +111,14 @@ fn increment_task_blocker(
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: u64, events::EffectEvent, &mut std::collections::HashMap<std::string::String, grpo::PartialTurn>, &mut std::collections::HashMap<std::string::String, grpo::TaskOutcome>, &mut std::collections::HashMap<std::string::String, usize>, &mut std::option::Option<drift_analysis::FingerprintDrift>
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn apply_effect_event(
     record_seq: u64,
     event: crate::events::EffectEvent,
@@ -173,8 +180,14 @@ fn apply_effect_event(
 }
 
 /// Intent: pure_transform
-/// Effects: writes_artifact, writes_state, transitions_state, logging
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &std::path::Path
+/// Outputs: std::result::Result<grpo::GrpoDataset, anyhow::Error>
+/// Effects: fs_write, logging, state_write, transitions_state
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn extract_grpo_dataset(workspace: &Path, tlog_path: &Path) -> Result<GrpoDataset> {
     let records = crate::tlog::Tlog::read_records(tlog_path)
         .with_context(|| format!("read tlog records from {}", tlog_path.display()))?;
@@ -356,7 +369,14 @@ fn normalized_drift_reward(drift: &crate::drift_analysis::FingerprintDrift) -> f
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &mut std::collections::HashMap<std::string::String, grpo::TaskOutcome>
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn update_outcome_from_message(message: &str, outcomes: &mut HashMap<String, TaskOutcome>) {
     let Some(json) = parse_json_payload(message) else {
         return;
@@ -375,7 +395,14 @@ fn update_outcome_from_message(message: &str, outcomes: &mut HashMap<String, Tas
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut std::collections::HashMap<std::string::String, grpo::TaskOutcome>, std::string::String, std::string::String, usize
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn update_task_outcome(
     outcomes: &mut HashMap<String, TaskOutcome>,
     task_id: String,
@@ -390,14 +417,28 @@ fn update_task_outcome(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::option::Option<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_task_id_from_json(raw: &str) -> Option<String> {
     let value = parse_json_payload(raw)?;
     extract_task_id(&value)
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value
+/// Outputs: std::option::Option<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_task_id(value: &Value) -> Option<String> {
     value
         .get("task_id")
@@ -413,7 +454,14 @@ fn extract_task_id(value: &Value) -> Option<String> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value
+/// Outputs: std::option::Option<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_status(value: &Value) -> Option<String> {
     let status = value
         .get("status")
@@ -427,7 +475,14 @@ fn extract_status(value: &Value) -> Option<String> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::option::Option<serde_json::Value>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_json_payload(raw: &str) -> Option<Value> {
     let trimmed = raw.trim();
     if let Ok(v) = serde_json::from_str::<Value>(trimmed) {

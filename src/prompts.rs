@@ -28,7 +28,14 @@ fn truncate_bytes(s: &str, max_bytes: usize) -> &str {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &prompts::PromptBudgetItem<'_>
+/// Outputs: std::string::String
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn render_budgeted_item_body(item: &PromptBudgetItem<'_>) -> String {
     const TRUNCATED_MARKER: &str = "\n... [truncated]";
 
@@ -79,7 +86,14 @@ struct PromptBudget<'a> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: usize, usize, &[prompts::PromptItem<'_>]
+/// Outputs: prompts::PromptBudget<'_>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn compute_prompt_budget<'a>(
     limit: usize,
     framing: usize,
@@ -171,7 +185,14 @@ fn compute_prompt_budget<'a>(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &[prompts::PromptItem<'_>], &str
+/// Outputs: std::string::String
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn render_budgeted_prompt<'a>(prefix: &str, items: &[PromptItem<'a>], suffix: &str) -> String {
     let active_items = items
         .iter()
@@ -286,7 +307,14 @@ pub(crate) fn role_default_schema_actions_for_role(role: &str) -> &'static [&'st
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: std::option::Option<&str>
+/// Outputs: std::vec::Vec<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_predicted_action_names(predicted_next_actions: Option<&str>) -> Vec<String> {
     let Some(raw) = predicted_next_actions else {
         return Vec::new();
@@ -395,7 +423,14 @@ const SOLO_EXECUTION_DISCIPLINE_BULLETS: &[&str] = &[
 ];
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &[&str], std::option::Option<&str>
+/// Outputs: std::string::String
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn format_bullets(header: &str, bullets: &[&str], suffix: Option<&str>) -> String {
     let mut out = String::from(header);
     for bullet in bullets {
@@ -677,7 +712,14 @@ pub(crate) fn single_role_executor_prompt(
 // ── Action parsing ─────────────────────────────────────────────────────────────
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::result::Result<std::vec::Vec<serde_json::Value>, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub(crate) fn parse_actions(raw: &str) -> Result<Vec<Value>> {
     if let Some(json_text) = extract_json_candidate(raw) {
         if let Ok(actions) = parse_json_action(&json_text) {
@@ -697,7 +739,14 @@ pub(crate) fn parse_actions(raw: &str) -> Result<Vec<Value>> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::option::Option<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_json_candidate(text: &str) -> Option<String> {
     if let Some(fenced) = extract_json_fence(text) {
         return Some(fenced.to_string());
@@ -735,7 +784,14 @@ fn extract_json_candidate(text: &str) -> Option<String> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::option::Option<&str>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_json_fence(text: &str) -> Option<&str> {
     let mut search_start = 0;
     while let Some(rel) = text[search_start..].find("```") {
@@ -759,7 +815,14 @@ fn extract_json_fence(text: &str) -> Option<&str> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::result::Result<serde_json::Value, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_json_from_text(text: &str) -> Result<Value> {
     if let Some(value) = text
         .char_indices()
@@ -777,7 +840,14 @@ fn parse_json_from_text(text: &str) -> Result<Value> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::result::Result<std::vec::Vec<serde_json::Value>, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_json_action(text: &str) -> Result<Vec<Value>> {
     let value = serde_json::from_str::<Value>(text)?;
     parse_json_action_value(value).with_context(|| {
@@ -789,7 +859,14 @@ fn parse_json_action(text: &str) -> Result<Vec<Value>> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: serde_json::Value
+/// Outputs: std::result::Result<std::vec::Vec<serde_json::Value>, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_json_action_value(value: Value) -> Result<Vec<Value>> {
     if value.is_object() && value.get("action").is_some() {
         return Ok(vec![value]);
@@ -903,7 +980,14 @@ fn plan_task_objective_id(task_id: &str) -> Option<String> {
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_action_provenance(action: &Value) -> Result<()> {
     if !action_requires_provenance(action) {
         return Ok(());
@@ -967,7 +1051,14 @@ fn require_non_empty_message_field(
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Map<std::string::String, serde_json::Value>
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_message_required_fields(obj: &serde_json::Map<String, Value>) -> Result<()> {
     for field in ["from", "to", "type", "status"] {
         require_non_empty_message_field(obj, field)?;
@@ -985,7 +1076,14 @@ fn blocker_payload_fields_present(payload: &BlockerPayload) -> bool {
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &protocol::ProtocolMessage
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_blocker_message_payload(msg: &ProtocolMessage) -> Result<()> {
     if !(matches!(msg.msg_type, MessageType::Blocker)
         || matches!(msg.status, MessageStatus::Blocked))
@@ -1006,7 +1104,14 @@ fn validate_blocker_message_payload(msg: &ProtocolMessage) -> Result<()> {
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Map<std::string::String, serde_json::Value>
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_optional_message_severity(obj: &serde_json::Map<String, Value>) -> Result<()> {
     let Some(severity) = obj.get("severity").and_then(|v| v.as_str()) else {
         return Ok(());
@@ -1018,7 +1123,14 @@ fn validate_optional_message_severity(obj: &serde_json::Map<String, Value>) -> R
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Map<std::string::String, serde_json::Value>, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_optional_message_role(obj: &serde_json::Map<String, Value>, field: &str) -> Result<()> {
     let Some(role) = obj.get(field).and_then(|v| v.as_str()) else {
         return Ok(());
@@ -1030,7 +1142,14 @@ fn validate_optional_message_role(obj: &serde_json::Map<String, Value>, field: &
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &protocol::ProtocolMessage
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_message_route(msg: &ProtocolMessage) -> Result<()> {
     let self_routed = std::mem::discriminant(&msg.from) == std::mem::discriminant(&msg.to);
     if self_routed {
@@ -1040,7 +1159,14 @@ fn validate_message_route(msg: &ProtocolMessage) -> Result<()> {
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &protocol::ProtocolMessage
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_active_message_roles(msg: &ProtocolMessage) -> Result<()> {
     let from_ok = matches!(msg.from, Role::Planner | Role::Executor | Role::User);
     let to_ok = matches!(msg.to, Role::Planner | Role::Executor | Role::User);
@@ -1051,7 +1177,14 @@ fn validate_active_message_roles(msg: &ProtocolMessage) -> Result<()> {
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value, prompts::MessageValidationMode
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub(crate) fn validate_message_action(action: &Value, mode: MessageValidationMode) -> Result<()> {
     let obj = action
         .as_object()
@@ -1072,7 +1205,14 @@ pub(crate) fn validate_message_action(action: &Value, mode: MessageValidationMod
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut serde_json::Value
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub(crate) fn normalize_action(action: &mut Value) -> Result<()> {
     let obj = action
         .as_object_mut()
@@ -1195,7 +1335,14 @@ pub(crate) fn normalize_action(action: &mut Value) -> Result<()> {
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub(crate) fn validate_action(action: &Value) -> Result<()> {
     validate_tool_action(action)?;
     validate_action_provenance(action)?;
@@ -1408,7 +1555,14 @@ fn action_result_sections(result: &str) -> Vec<(String, String, usize, usize, us
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &str, &str
+/// Outputs: std::string::String
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub(crate) fn render_action_result_sections(prefix: &str, result: &str, suffix: &str) -> String {
     let owned = action_result_sections(result);
     let items = owned

@@ -1,5 +1,12 @@
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<reports::ViolationsReport, anyhow::Error>
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_violations(path: &Path) -> Result<crate::reports::ViolationsReport> {
     let raw = fs::read_to_string(path).unwrap_or_default();
     if raw.trim().is_empty() {
@@ -16,8 +23,14 @@ fn load_violations(path: &Path) -> Result<crate::reports::ViolationsReport> {
 }
 
 /// Intent: canonical_write
-/// Effects: writes_artifact, writes_state, logging
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &reports::ViolationsReport, std::option::Option<&mut canonical_writer::CanonicalWriter>, &str, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: fs_write, logging, state_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn save_violations(
     path: &Path,
     report: &crate::reports::ViolationsReport,
@@ -49,7 +62,14 @@ fn save_violations(
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<(bool, std::string::String), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn read_violation_report(path: &Path) -> Result<(bool, String)> {
     let report = load_violations(path)?;
     Ok((false, serde_json::to_string_pretty(&report)?))
@@ -113,7 +133,14 @@ fn resolve_violation(
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: std::option::Option<&mut canonical_writer::CanonicalWriter>, &std::path::Path, &serde_json::Value
+/// Outputs: std::result::Result<(bool, std::string::String), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn set_violation_status(
     mut writer: Option<&mut CanonicalWriter>,
     path: &Path,
@@ -240,7 +267,14 @@ fn stable_hash_hex(value: &str) -> String {
 }
 
 /// Intent: event_append
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, usize, &str, std::option::Option<&str>, std::option::Option<std::path::PathBuf>, serde_json::Value, &str
+/// Outputs: std::result::Result<std::string::String, anyhow::Error>
+/// Effects: fs_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn append_evidence_receipt(
     role: &str,
     step: usize,
@@ -276,7 +310,14 @@ fn append_evidence_receipt(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, u64, &str, usize, &str, std::option::Option<&str>, std::option::Option<std::path::PathBuf>, serde_json::Value, &str
+/// Outputs: tools::EvidenceReceipt
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_evidence_receipt(
     id: &str,
     ts_ms: u64,
@@ -302,7 +343,14 @@ fn build_evidence_receipt(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &str, std::option::Option<&str>
+/// Outputs: std::string::String
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn format_output_with_evidence_receipt(
     prefix: &str,
     out: &str,
@@ -315,7 +363,14 @@ fn format_output_with_evidence_receipt(
 }
 
 /// Intent: validation_gate
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value
+/// Outputs: std::result::Result<tools::EvidenceLease, anyhow::Error>
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn validate_evidence_lease(action: &Value) -> Result<EvidenceLease> {
     let receipt_ids = action
         .get("evidence_receipts")
@@ -392,7 +447,14 @@ fn apply_violation_freshness(violation: &mut crate::reports::Violation, lease: &
 }
 
 /// Intent: diagnostic_scan
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::result::Result<(bool, std::string::String), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn read_open_issues(raw: &str) -> Result<(bool, String)> {
     if raw.trim().is_empty() {
         return Ok((false, "(no open issues)".to_string()));
@@ -434,7 +496,14 @@ fn create_issue(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value
+/// Outputs: std::result::Result<issues::Issue, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_issue_payload(issue_val: &Value) -> Result<Issue> {
     // Pre-check: collect all missing required string fields before serde attempts deserialization.
     // serde only reports the first missing field; this lists them all so the LLM can fix in one shot.
@@ -556,7 +625,14 @@ fn resolve_issue(
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value, &std::path::Path, &str, std::option::Option<&mut canonical_writer::CanonicalWriter>
+/// Outputs: std::result::Result<(bool, std::string::String), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn update_issue(
     action: &Value,
     path: &Path,
@@ -618,7 +694,14 @@ fn delete_issue(
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value, &std::path::Path, &str, std::option::Option<&mut canonical_writer::CanonicalWriter>
+/// Outputs: std::result::Result<(bool, std::string::String), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn set_issue_status(
     action: &Value,
     path: &Path,
@@ -654,7 +737,14 @@ fn queue_diagnostics_reconciliation() {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::result::Result<issues::IssuesFile, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_issues_file_allow_empty(raw: &str) -> Result<IssuesFile> {
     if raw.trim().is_empty() {
         Ok(IssuesFile::default())
@@ -664,7 +754,14 @@ fn parse_issues_file_allow_empty(raw: &str) -> Result<IssuesFile> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::result::Result<issues::IssuesFile, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn parse_issues_file_required(raw: &str) -> Result<IssuesFile> {
     serde_json::from_str(raw).map_err(|e| anyhow!("failed to parse ISSUES.json: {e}"))
 }
@@ -696,7 +793,14 @@ fn synthesize_issue_stub(issue_id: &str, status: Option<&str>) -> Issue {
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &mut issues::IssuesFile, std::option::Option<&mut canonical_writer::CanonicalWriter>, &str, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn write_issues_file(
     path: &Path,
     file: &mut IssuesFile,

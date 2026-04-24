@@ -151,13 +151,15 @@ pub fn maybe_synthesize_invariants(workspace: &Path) {
     }
 }
 
-/// Gate check: returns `Err(reason)` when the proposed role transition would
-/// violate an enforced invariant given the current system state.
-///
-/// `current_state` is a map of `{key → value}` describing the current system
-/// snapshot (e.g. `{"ready_tasks": "0", "phase": "executor"}`).
-///
-/// Returns `Ok(())` when no enforced invariant is violated.
+/// Intent: validation_gate
+/// Resource: error
+/// Inputs: &str, &std::collections::HashMap<std::string::String, std::string::String>, &std::path::Path
+/// Outputs: std::result::Result<(), std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn evaluate_invariant_gate(
     proposed_role: &str,
     current_state: &HashMap<String, String>,
@@ -402,7 +404,15 @@ fn op_collapse(
     ))
 }
 
-/// Read `enforced_invariants.json` for display or further processing.
+/// Intent: canonical_read
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::string::String
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn read_enforced_invariants(workspace: &Path) -> String {
     let file = load_enforced_invariants_file(workspace);
     if file.invariants.is_empty() {
@@ -413,20 +423,15 @@ pub fn read_enforced_invariants(workspace: &Path) -> String {
         .unwrap_or_else(|e| format!("(error reading enforced_invariants.json: {e})"))
 }
 
-/// Auto-populate ISSUES.json with invariant lifecycle issues.
-///
-/// Called from the same checkpoint hook as `generate_hotspot_issues` and
-/// `generate_all_refactor_issues`.  Generates three classes of issues:
-///
-/// 1. **Structural meta-issues** — permanent until the feature is implemented:
-///    - `inv_action_surface_missing`: no `invariants` action in tools.rs
-///    - `inv_prompt_injection_missing`: enforced_invariants.json not in prompts
-///
-/// 2. **Per-promoted-invariant issues** — one per `Promoted` or `Enforced`
-///    invariant whose gate is still observational (`blocked=false`).
-///    These drive planner tasks to flip specific gates to hard-blocking.
-///
-/// Returns the number of new issues created.
+/// Intent: diagnostic_scan
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<usize, anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
     let mut file: IssuesFile = crate::issues::load_issues_file(workspace);
 
@@ -754,8 +759,15 @@ fn actor_kind_from_role(role: &str) -> &'static str {
     }
 }
 
-/// Called after op_enforce: ensures the in-memory Enforced status is stable.
-/// (Gate hardening happens in app.rs based on status == Enforced.)
+/// Intent: canonical_write
+/// Resource: error
+/// Inputs: &mut invariants::EnforcedInvariantsFile
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn update_gate_enforcement(file: &mut EnforcedInvariantsFile) {
     for inv in file
         .invariants
@@ -778,7 +790,14 @@ struct Fingerprint {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &[serde_json::Value]
+/// Outputs: std::vec::Vec<invariants::Fingerprint>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
     let mut prints = Vec::new();
 
@@ -818,7 +837,14 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value, &str, bool, &str, &str, &str, u64
+/// Outputs: std::option::Option<invariants::Fingerprint>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_tool_failure_fingerprint(
     entry: &Value,
     phase: &str,
@@ -835,7 +861,14 @@ fn extract_tool_failure_fingerprint(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value, &str, bool, u64
+/// Outputs: std::option::Option<invariants::Fingerprint>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_plan_preflight_fingerprint(
     entry: &Value,
     action: &str,
@@ -858,7 +891,14 @@ fn extract_plan_preflight_fingerprint(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value, &str, &str, &str, u64
+/// Outputs: std::option::Option<invariants::Fingerprint>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_forced_handoff_fingerprint(
     entry: &Value,
     actor: &str,
@@ -889,7 +929,14 @@ fn extract_forced_handoff_fingerprint(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value, &str, &str, bool, u64
+/// Outputs: std::option::Option<invariants::Fingerprint>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_read_file_failure_fingerprint(
     entry: &Value,
     actor: &str,
@@ -932,7 +979,14 @@ fn extract_read_file_failure_fingerprint(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value, &str, &str, bool, &str, u64
+/// Outputs: std::option::Option<invariants::Fingerprint>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_invalid_action_fingerprint(
     entry: &Value,
     actor: &str,
@@ -968,7 +1022,14 @@ fn extract_invalid_action_fingerprint(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &serde_json::Value, &str, &str, bool, &str, u64
+/// Outputs: std::option::Option<invariants::Fingerprint>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_missing_target_fingerprint(
     entry: &Value,
     actor: &str,
@@ -1367,7 +1428,14 @@ fn invariants_path(workspace: &Path) -> std::path::PathBuf {
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: invariants::EnforcedInvariantsFile
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn load_enforced_invariants_file(workspace: &Path) -> EnforcedInvariantsFile {
     if let Some(file) = load_invariants_from_tlog(workspace) {
         return normalize_loaded_invariants(file);
@@ -1386,7 +1454,14 @@ pub fn load_enforced_invariants_file(workspace: &Path) -> EnforcedInvariantsFile
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &invariants::EnforcedInvariantsFile, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn persist_enforced_invariants_projection(
     workspace: &Path,
     file: &EnforcedInvariantsFile,
@@ -1396,8 +1471,14 @@ pub fn persist_enforced_invariants_projection(
 }
 
 /// Intent: canonical_write
+/// Resource: error
+/// Inputs: &std::path::Path, &invariants::EnforcedInvariantsFile, std::option::Option<&mut canonical_writer::CanonicalWriter>, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
 /// Effects: logging
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn persist_enforced_invariants_projection_with_writer(
     workspace: &Path,
     file: &EnforcedInvariantsFile,
@@ -1436,7 +1517,14 @@ pub fn reconcile_enforced_invariants_projection(workspace: &Path, subject: &str)
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: invariants::EnforcedInvariantsFile
+/// Outputs: invariants::EnforcedInvariantsFile
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn normalize_loaded_invariants(mut file: EnforcedInvariantsFile) -> EnforcedInvariantsFile {
     if file.version == 0 {
         file.version = 1;
@@ -1465,7 +1553,14 @@ fn normalize_loaded_invariants(mut file: EnforcedInvariantsFile) -> EnforcedInva
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut invariants::DiscoveredInvariant
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn normalize_single_invariant(inv: &mut DiscoveredInvariant) {
     inv.state_conditions = canonicalize_conditions(std::mem::take(&mut inv.state_conditions));
     inv.gates = canonicalize_gates(std::mem::take(&mut inv.gates));
@@ -1555,8 +1650,14 @@ fn status_rank(status: &InvariantStatus) -> u8 {
 }
 
 /// Intent: canonical_read
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::option::Option<invariants::EnforcedInvariantsFile>
 /// Effects: logging
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_invariants_from_tlog(workspace: &Path) -> Option<EnforcedInvariantsFile> {
     crate::tlog::Tlog::latest_effect_from_workspace(workspace, |event| match event {
         crate::events::EffectEvent::EnforcedInvariantsRecorded { file } => Some(file),
@@ -1565,7 +1666,14 @@ fn load_invariants_from_tlog(workspace: &Path) -> Option<EnforcedInvariantsFile>
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, usize
+/// Outputs: std::vec::Vec<serde_json::Value>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn read_tail_entries(log_path: &Path, max_lines: usize) -> Vec<Value> {
     let reader = match open_tail_reader(log_path) {
         Some(reader) => reader,

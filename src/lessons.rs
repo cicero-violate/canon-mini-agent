@@ -630,7 +630,14 @@ fn count_success_sequences(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: std::collections::HashMap<(std::string::String, std::string::String, std::string::String
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_success_sequence_candidates(
     bigrams: HashMap<(String, String, String), CandidateAggregate>,
     trigrams: HashMap<(String, String, String, String), CandidateAggregate>,
@@ -669,7 +676,14 @@ fn build_success_sequence_candidates(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: std::string::String, std::string::String, std::string::String, lessons::CandidateAggregate, &std::collections::HashMap<std::string::String, usize>
+/// Outputs: lessons::LessonsCandidate
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_bigram_candidate(
     role: String,
     a: String,
@@ -724,7 +738,14 @@ fn build_bigram_candidate(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: std::string::String, std::string::String, std::string::String, std::string::String, lessons::CandidateAggregate, &std::collections::HashMap<std::string::String, usize>
+/// Outputs: lessons::LessonsCandidate
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_trigram_candidate(
     role: String,
     a: String,
@@ -911,7 +932,14 @@ fn mark_candidate_status(
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &prompt_inputs::LessonsArtifact
+/// Outputs: std::string::String
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_artifact_summary(artifact: &LessonsArtifact) -> String {
     let f = artifact.failures.len();
     let fix = artifact.fixes.len();
@@ -930,7 +958,14 @@ fn lessons_path(workspace: &Path) -> std::path::PathBuf {
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, F
+/// Outputs: T
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_json_file_or_else<T, F>(path: &Path, default: F) -> T
 where
     T: serde::de::DeserializeOwned,
@@ -943,15 +978,28 @@ where
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: lessons::LessonsCandidatesFile
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_candidates(workspace: &Path) -> LessonsCandidatesFile {
     let path = candidates_path(workspace);
     load_json_file_or_else(&path, LessonsCandidatesFile::default)
 }
 
 /// Intent: canonical_write
+/// Resource: error
+/// Inputs: &std::path::Path, &lessons::LessonsCandidatesFile
+/// Outputs: std::result::Result<(), anyhow::Error>
 /// Effects: logging
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn save_candidates(workspace: &Path, cfile: &LessonsCandidatesFile) -> Result<()> {
     let path = candidates_path(workspace);
     crate::logging::record_json_projection_with_optional_writer(
@@ -967,7 +1015,14 @@ fn save_candidates(workspace: &Path, cfile: &LessonsCandidatesFile) -> Result<()
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: prompt_inputs::LessonsArtifact
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn load_lessons_artifact(workspace: &Path) -> LessonsArtifact {
     if let Some(artifact) = load_lessons_from_tlog(workspace) {
         return artifact;
@@ -983,7 +1038,14 @@ pub fn load_lessons_artifact(workspace: &Path) -> LessonsArtifact {
 }
 
 /// Intent: canonical_write
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, &prompt_inputs::LessonsArtifact, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn persist_lessons_projection(
     workspace: &Path,
     artifact: &LessonsArtifact,
@@ -993,8 +1055,14 @@ pub fn persist_lessons_projection(
 }
 
 /// Intent: canonical_write
+/// Resource: error
+/// Inputs: &std::path::Path, &prompt_inputs::LessonsArtifact, std::option::Option<&mut canonical_writer::CanonicalWriter>, &str
+/// Outputs: std::result::Result<(), anyhow::Error>
 /// Effects: logging
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn persist_lessons_projection_with_writer(
     workspace: &Path,
     artifact: &LessonsArtifact,
@@ -1017,8 +1085,14 @@ pub fn persist_lessons_projection_with_writer(
 }
 
 /// Intent: canonical_read
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::option::Option<prompt_inputs::LessonsArtifact>
 /// Effects: logging
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_lessons_from_tlog(workspace: &Path) -> Option<LessonsArtifact> {
     crate::tlog::Tlog::latest_effect_from_workspace(workspace, |event| match event {
         crate::events::EffectEvent::LessonsArtifactRecorded { artifact } => Some(artifact),
@@ -1054,7 +1128,14 @@ fn stable_id(prefix: &str, key: &str) -> String {
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path, usize
+/// Outputs: std::vec::Vec<serde_json::Value>
+/// Effects: fs_read
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn read_tail_entries(path: &Path, max_lines: usize) -> Vec<Value> {
     let file = match std::fs::File::open(path) {
         Ok(f) => f,
@@ -1070,7 +1151,14 @@ fn read_tail_entries(path: &Path, max_lines: usize) -> Vec<Value> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::string::String
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn normalize_error(text: &str) -> String {
     let first_line = text
         .trim_start_matches("Error executing action: ")
@@ -1224,7 +1312,14 @@ fn prevention_system_lever(action: &str, pattern: &str) -> &'static str {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::collections::HashMap<(std::string::String, std::string::String, std::string::String
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn build_success_cluster_counts(
     bigrams: &HashMap<(String, String, String), CandidateAggregate>,
     trigrams: &HashMap<(String, String, String, String), CandidateAggregate>,
@@ -1508,15 +1603,28 @@ fn roles_json_path(workspace: &Path) -> std::path::PathBuf {
 }
 
 /// Intent: canonical_read
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: serde_json::Value
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn load_roles_json(workspace: &Path) -> serde_json::Value {
     let path = roles_json_path(workspace);
     load_json_file_or_else(&path, || serde_json::json!({"roles": {}}))
 }
 
 /// Intent: canonical_write
+/// Resource: error
+/// Inputs: &std::path::Path, &serde_json::Value
+/// Outputs: std::result::Result<(), anyhow::Error>
 /// Effects: logging
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn save_roles_json(workspace: &Path, val: &serde_json::Value) -> Result<()> {
     let path = roles_json_path(workspace);
     crate::logging::record_json_projection_with_optional_writer(

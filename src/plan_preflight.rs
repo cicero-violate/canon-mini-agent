@@ -32,10 +32,15 @@ pub struct PreflightBounce {
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
-/// Validate all `ready` tasks in `PLAN.json` against the workspace
-/// `SemanticIndex`.  Demotes tasks with unresolvable symbol references and
-/// returns the list of bounces.  No-op when PLAN.json is absent or has no
-/// ready tasks.
+/// Intent: validation_gate
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::vec::Vec<plan_preflight::PreflightBounce>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn preflight_ready_tasks(workspace: &Path) -> Vec<PreflightBounce> {
     match try_preflight_ready_tasks(workspace) {
         Ok(bounces) => {
@@ -79,8 +84,14 @@ pub fn preflight_ready_tasks(workspace: &Path) -> Vec<PreflightBounce> {
 // ── Implementation ────────────────────────────────────────────────────────────
 
 /// Intent: canonical_write
-/// Effects: reads_artifact, reads_state, writes_artifact, writes_state, transitions_state
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &std::path::Path
+/// Outputs: std::result::Result<std::vec::Vec<plan_preflight::PreflightBounce>, anyhow::Error>
+/// Effects: fs_read, fs_write, state_read, state_write, transitions_state
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn try_preflight_ready_tasks(workspace: &Path) -> Result<Vec<PreflightBounce>> {
     let plan_path = workspace.join(crate::constants::MASTER_PLAN_FILE);
     let raw = match std::fs::read_to_string(&plan_path) {
@@ -197,13 +208,15 @@ fn collect_task_text(task: &Value) -> String {
     parts.join(" ")
 }
 
-/// Extract tokens that look like workspace Rust symbol paths.
-///
-/// A valid candidate must:
-/// - Contain `::`
-/// - Consist only of `[a-zA-Z0-9_:]`
-/// - Have its first segment match a known crate name (normalising `-` → `_`)
-/// - Not be a pure language keyword path (`use`, `pub`, `mod`, etc.)
+/// Intent: pure_transform
+/// Resource: error
+/// Inputs: &str, &[std::string::String]
+/// Outputs: std::vec::Vec<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 pub fn extract_workspace_symbol_refs(text: &str, crate_names: &[String]) -> Vec<String> {
     let normalized_crates: Vec<String> = crate_names.iter().map(|n| n.replace('-', "_")).collect();
 

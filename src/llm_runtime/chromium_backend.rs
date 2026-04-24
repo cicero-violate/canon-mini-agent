@@ -76,8 +76,14 @@ fn chromium_autolaunch_enabled() -> bool {
 }
 
 /// Intent: transport_effect
-/// Effects: spawns_process
-/// Provenance: generated
+/// Resource: error
+/// Inputs: ()
+/// Outputs: ()
+/// Effects: fs_write, spawns_process
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn maybe_autolaunch_chromium() {
     if !chromium_autolaunch_enabled() {
         return;
@@ -130,7 +136,14 @@ fn maybe_autolaunch_chromium() {
 }
 
 /// Intent: event_append
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, &serde_json::Value
+/// Outputs: ()
+/// Effects: fs_write
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn append_jsonl(filename: &str, value: &Value) {
     let path = format!("{FRAMES_DIR}/{filename}");
     if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -145,7 +158,14 @@ fn append_jsonl(filename: &str, value: &Value) {
 }
 
 /// Intent: event_append
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str, serde_json::Value
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn append_outbound_event(event_type: &str, payload: Value) {
     let mut event = serde_json::Map::new();
     event.insert("type".to_string(), Value::String(event_type.to_string()));
@@ -158,7 +178,14 @@ fn append_outbound_event(event_type: &str, payload: Value) {
 }
 
 /// Intent: event_append
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &mut llm_runtime::chromium_backend::State, u32, u64, &str, &str, &str, bool, bool
+/// Outputs: ()
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn append_inbound_boundary_event(
     state: &mut State,
     tab_id: u32,
@@ -219,7 +246,14 @@ fn init_frames_dir() {
 }
 
 /// Intent: transport_effect
-/// Provenance: generated
+/// Resource: error
+/// Inputs: u32, u64, &str, &str
+/// Outputs: std::string::String
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn submit_ack_payload(tab_id: u32, turn_id: u64, lease_token: &str, source: &str) -> String {
     json!({
         "submit_ack": true,
@@ -284,7 +318,14 @@ fn classify_transport_signal(raw: &str) -> Option<&'static str> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::option::Option<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_calpico_user_message_trigger_id(raw: &str) -> Option<String> {
     let data = raw.strip_prefix("data: ").unwrap_or(raw).trim();
     let value: Value = serde_json::from_str(data).ok()?;
@@ -314,7 +355,14 @@ fn extract_calpico_user_message_trigger_id(raw: &str) -> Option<String> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::option::Option<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_calpico_heartbeat_trigger_message_id(raw: &str) -> Option<String> {
     let data = raw.strip_prefix("data: ").unwrap_or(raw).trim();
     let value: Value = serde_json::from_str(data).ok()?;
@@ -338,7 +386,14 @@ fn extract_calpico_heartbeat_trigger_message_id(raw: &str) -> Option<String> {
 }
 
 /// Intent: pure_transform
-/// Provenance: generated
+/// Resource: error
+/// Inputs: &str
+/// Outputs: std::option::Option<std::string::String>
+/// Effects: error
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 fn extract_calpico_heartbeat_progress_signature(raw: &str) -> Option<String> {
     let data = raw.strip_prefix("data: ").unwrap_or(raw).trim();
     let value: Value = serde_json::from_str(data).ok()?;
@@ -520,8 +575,14 @@ impl State {
     }
 
     /// Intent: transport_effect
+    /// Resource: error
+    /// Inputs: &llm_runtime::chromium_backend::State, serde_json::Value
+    /// Outputs: bool
     /// Effects: uses_network
-    /// Provenance: generated
+    /// Forbidden: error
+    /// Invariants: error
+    /// Failure: error
+    /// Provenance: rustc:facts + rustc:docstring
     fn send_msg(&self, msg: Value) -> bool {
         if let Some(tx) = &self.out_tx {
             tx.try_send(Message::Text(msg.to_string().into())).is_ok()
@@ -1309,8 +1370,14 @@ async fn accept_loop(addr: SocketAddr, state: Arc<Mutex<State>>) {
 }
 
 /// Intent: transport_effect
+/// Resource: error
+/// Inputs: tokio::net::TcpStream, std::sync::Arc<tokio::sync::Mutex<llm_runtime::chromium_backend::State>>
+/// Outputs: {async fn body of llm_runtime::chromium_backend::handle_connection()}
 /// Effects: uses_network
-/// Provenance: generated
+/// Forbidden: error
+/// Invariants: error
+/// Failure: error
+/// Provenance: rustc:facts + rustc:docstring
 async fn handle_connection(stream: tokio::net::TcpStream, state: Arc<Mutex<State>>) {
     let ws = match accept_async(stream).await {
         Ok(ws) => ws,
