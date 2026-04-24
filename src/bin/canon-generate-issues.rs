@@ -12,6 +12,25 @@ fn print_generated_path(result: Result<PathBuf>) -> Result<()> {
     result.map(|path| println!("{}", path.display()))
 }
 
+fn run_flagged_mode<T>(
+    args: &[String],
+    workspace: &Path,
+    modes: &[(&str, fn(&Path) -> Result<T>)],
+    finish: fn(Result<T>) -> Result<()>,
+) -> Option<Result<()>> {
+    modes
+        .iter()
+        .find_map(|(flag, action)| canon_mini_agent::has_flag(args, flag).then(|| finish(action(workspace))))
+}
+
+fn discard_generated_count(result: Result<usize>) -> Result<()> {
+    result.map(|_| ())
+}
+
+fn pass_unit_result(result: Result<()>) -> Result<()> {
+    result
+}
+
 fn run_graph_report_mode(args: &[String], workspace: &PathBuf) -> Option<Result<()>> {
     const GRAPH_REPORT_MODES: &[(&str, fn(&Path) -> Result<PathBuf>)] = &[
         (
@@ -28,9 +47,7 @@ fn run_graph_report_mode(args: &[String], workspace: &PathBuf) -> Option<Result<
         ),
     ];
 
-    GRAPH_REPORT_MODES.iter().find_map(|(flag, action)| {
-        canon_mini_agent::has_flag(args, flag).then(|| print_generated_path(action(workspace)))
-    })
+    run_flagged_mode(args, workspace, GRAPH_REPORT_MODES, print_generated_path)
 }
 
 fn run_graph_issue_mode(args: &[String], workspace: &PathBuf) -> Option<Result<()>> {
@@ -77,9 +94,7 @@ fn run_graph_issue_mode(args: &[String], workspace: &PathBuf) -> Option<Result<(
         ),
     ];
 
-    GRAPH_ISSUE_MODES.iter().find_map(|(flag, action)| {
-        canon_mini_agent::has_flag(args, flag).then(|| action(workspace).map(|_| ()))
-    })
+    run_flagged_mode(args, workspace, GRAPH_ISSUE_MODES, discard_generated_count)
 }
 
 fn run_cfg_region_mode(workspace: &Path) -> Result<()> {
@@ -117,9 +132,7 @@ fn run_simple_issue_mode(args: &[String], workspace: &PathBuf) -> Option<Result<
         ),
     ];
 
-    SIMPLE_ISSUE_MODES.iter().find_map(|(flag, action)| {
-        canon_mini_agent::has_flag(args, flag).then(|| action(workspace))
-    })
+    run_flagged_mode(args, workspace, SIMPLE_ISSUE_MODES, pass_unit_result)
 }
 
 fn run_selected_mode(args: &[String], workspace: &PathBuf) -> Option<Result<()>> {

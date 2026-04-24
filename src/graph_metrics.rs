@@ -2819,12 +2819,7 @@ fn build_logging_dispersion_issue(
         })
         .collect::<Vec<_>>();
 
-    let module_metrics: Vec<Value> = non_canonical
-        .iter()
-        .map(|(module, syms)| {
-            json!({ "module": module, "direct_logging_count": syms.len(), "symbols": syms })
-        })
-        .collect();
+    let module_metrics = logging_module_metrics(&non_canonical);
 
     Issue {
         id: format!("auto_logging_dispersion_{}", sanitize_fragment(crate_name)),
@@ -2864,6 +2859,15 @@ fn build_logging_dispersion_issue(
         discovered_by: "graph_metrics_detector".to_string(),
         ..Issue::default()
     }
+}
+
+fn logging_module_metrics(modules: &[(String, Vec<String>)]) -> Vec<Value> {
+    modules
+        .iter()
+        .map(|(module, syms)| {
+            json!({ "module": module, "direct_logging_count": syms.len(), "symbols": syms })
+        })
+        .collect()
 }
 
 /// Intent: pure_transform
@@ -3009,12 +3013,7 @@ fn build_network_usage_dispersion_issue(
         })
         .collect::<Vec<_>>();
 
-    let module_metrics: Vec<Value> = modules
-        .iter()
-        .map(|(module, syms)| {
-            json!({ "module": module, "network_site_count": syms.len(), "symbols": syms })
-        })
-        .collect();
+    let module_metrics = network_usage_module_metrics(&modules);
 
     Issue {
         id: format!(
@@ -3053,6 +3052,15 @@ fn build_network_usage_dispersion_issue(
         discovered_by: "graph_metrics_detector".to_string(),
         ..Issue::default()
     }
+}
+
+fn network_usage_module_metrics(modules: &[(String, Vec<String>)]) -> Vec<Value> {
+    modules
+        .iter()
+        .map(|(module, syms)| {
+            json!({ "module": module, "network_site_count": syms.len(), "symbols": syms })
+        })
+        .collect()
 }
 
 fn upsert_bridge_issue(file: &mut IssuesFile, desired: Issue, active: bool) -> usize {
