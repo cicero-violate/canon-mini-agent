@@ -341,8 +341,9 @@ impl SemanticIndex {
         let graph_path = workspace.join("state/rustc").join(&name).join("graph.json");
         let bytes = fs::read(&graph_path)
             .with_context(|| format!("graph not found at {}", graph_path.display()))?;
-        let graph: CrateGraph = serde_json::from_slice(&bytes)
+        let mut graph: CrateGraph = serde_json::from_slice(&bytes)
             .with_context(|| format!("failed to parse graph at {}", graph_path.display()))?;
+        compact_bridge_edges(&mut graph);
         for node in graph.nodes.values() {
             let _ = (&node.def_id, &node.fields);
         }
@@ -489,17 +490,10 @@ impl SemanticIndex {
 
     fn non_cleanup_owned_cfg_blocks<'a>(&'a self, symbol_key: &str) -> HashSet<&'a str> {
         self.graph
-            .bridge_edges
+            .cfg_nodes
             .iter()
-            .filter(|e| e.relation == "BelongsTo" && e.to == symbol_key)
-            .filter(|e| {
-                self.graph
-                    .cfg_nodes
-                    .get(e.from.as_str())
-                    .map(|n| !n.is_cleanup)
-                    .unwrap_or(false)
-            })
-            .map(|e| e.from.as_str())
+            .filter(|(_, node)| node.owner == symbol_key && !node.is_cleanup)
+            .map(|(id, _)| id.as_str())
             .collect()
     }
 
@@ -1730,11 +1724,10 @@ impl SemanticIndex {
         let resolved_key = self.resolve_node_key(symbol_key).unwrap_or(symbol_key);
         let mut total = 0usize;
         let mut non_cleanup = 0usize;
-        let owned_blocks = self.non_cleanup_owned_cfg_blocks(resolved_key);
-        for edge in &self.graph.bridge_edges {
-            if edge.relation == "BelongsTo" && edge.to == resolved_key {
+        for node in self.graph.cfg_nodes.values() {
+            if node.owner == resolved_key {
                 total += 1;
-                if owned_blocks.contains(edge.from.as_str()) {
+                if !node.is_cleanup {
                     non_cleanup += 1;
                 }
             }
@@ -1947,6 +1940,14 @@ impl SemanticIndex {
                 .or_default()
                 .push((edge.to.clone(), edge.relation.clone()));
         }
+        for (cfg_id, node) in &self.graph.cfg_nodes {
+            if node.owner.is_empty() {
+                continue;
+            }
+            adj.entry(cfg_id.clone())
+                .or_default()
+                .push((node.owner.clone(), "BelongsTo".to_string()));
+        }
         adj
     }
 
@@ -2086,6 +2087,28 @@ fn include_bridge_edge_in_unified_adjacency(edge: &BridgeEdge) -> bool {
         return false;
     }
     !is_low_signal_bridge_call_target(&edge.to)
+}
+
+fn compact_bridge_edges(graph: &mut CrateGraph) {
+    let derivable_belongs_to: HashSet<(String, String)> = graph
+        .cfg_nodes
+        .iter()
+        .filter(|(_, node)| !node.owner.is_empty())
+        .map(|(cfg_id, node)| (cfg_id.clone(), node.owner.clone()))
+        .collect();
+    let mut seen: HashSet<(String, String, String)> = HashSet::new();
+
+    graph.bridge_edges.retain(|edge| {
+        if edge.relation == "Call" && !include_bridge_edge_in_unified_adjacency(edge) {
+            return false;
+        }
+        if edge.relation == "BelongsTo"
+            && derivable_belongs_to.contains(&(edge.from.clone(), edge.to.clone()))
+        {
+            return false;
+        }
+        seen.insert((edge.from.clone(), edge.relation.clone(), edge.to.clone()))
+    });
 }
 
 fn is_low_signal_bridge_call_target(target: &str) -> bool {
