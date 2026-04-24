@@ -2,10 +2,96 @@ use anyhow::Result;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::path::Path;
 
 use crate::constants::ISSUES_FILE;
+
+const MAX_CHANGED_ISSUE_IDS_IN_TLOG: usize = 64;
+
+fn load_issues_projection_from_path(path: &Path) -> Option<IssuesFile> {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|raw| parse_issues_file_from_raw(&raw))
+}
+
+fn stable_issue_key(index: usize, issue: &Issue) -> String {
+    let id = issue.id.trim();
+    if id.is_empty() {
+        format!("_missing_issue_id_{index}")
+    } else {
+        id.to_string()
+    }
+}
+
+fn stable_issue_fingerprint(issue: &Issue) -> String {
+    let canonical = serde_json::to_string(issue).unwrap_or_default();
+    crate::logging::stable_hash_hex(&canonical)
+}
+
+fn issue_fingerprint_map(file: &IssuesFile) -> BTreeMap<String, String> {
+    file.issues
+        .iter()
+        .enumerate()
+        .map(|(index, issue)| (stable_issue_key(index, issue), stable_issue_fingerprint(issue)))
+        .collect()
+}
+
+fn issue_projection_fingerprints_hash(file: &IssuesFile) -> String {
+    let joined = issue_fingerprint_map(file)
+        .into_iter()
+        .map(|(id, hash)| format!("{id}:{hash}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    crate::logging::stable_hash_hex(&joined)
+}
+
+fn issue_status_counts(file: &IssuesFile) -> BTreeMap<String, usize> {
+    let mut out = BTreeMap::new();
+    for issue in &file.issues {
+        let status = issue.status.trim();
+        let status = if status.is_empty() { "unknown" } else { status };
+        *out.entry(status.to_string()).or_insert(0) += 1;
+    }
+    out
+}
+
+fn changed_issue_ids(previous: Option<&IssuesFile>, current: &IssuesFile) -> (usize, Vec<String>) {
+    let Some(previous) = previous else {
+        let ids = current
+            .issues
+            .iter()
+            .enumerate()
+            .map(|(index, issue)| stable_issue_key(index, issue))
+            .collect::<Vec<_>>();
+        return (
+            ids.len(),
+            ids.into_iter().take(MAX_CHANGED_ISSUE_IDS_IN_TLOG).collect(),
+        );
+    };
+
+    let before = issue_fingerprint_map(previous);
+    let after = issue_fingerprint_map(current);
+    let mut changed = BTreeSet::new();
+
+    for (id, hash) in &after {
+        if before.get(id) != Some(hash) {
+            changed.insert(id.clone());
+        }
+    }
+    for id in before.keys() {
+        if !after.contains_key(id) {
+            changed.insert(id.clone());
+        }
+    }
+
+    let changed_issue_count = changed.len();
+    let changed_issue_ids = changed
+        .into_iter()
+        .take(MAX_CHANGED_ISSUE_IDS_IN_TLOG)
+        .collect();
+    (changed_issue_count, changed_issue_ids)
+}
 
 /// Intent: canonical_write
 /// Resource: error
@@ -23,6 +109,11 @@ pub fn persist_issues_projection_with_writer(
     mut writer: Option<&mut crate::canonical_writer::CanonicalWriter>,
     subject: &str,
 ) -> Result<()> {
+    let previous = load_issues_projection_from_path(&workspace.join(ISSUES_FILE));
+    let status_counts = issue_status_counts(file);
+    let open_count = status_counts.get("open").copied().unwrap_or(0);
+    let issue_fingerprints_hash = issue_projection_fingerprints_hash(file);
+    let (changed_issue_count, changed_issue_ids) = changed_issue_ids(previous.as_ref(), file);
     let canonical = serde_json::to_string_pretty(file)?;
     crate::logging::record_json_projection_with_optional_writer(
         workspace,
@@ -36,7 +127,12 @@ pub fn persist_issues_projection_with_writer(
             path: ISSUES_FILE.to_string(),
             hash: crate::logging::stable_hash_hex(&canonical),
             issue_count: file.issues.len(),
+            open_count,
             bytes: canonical.len() as u64,
+            issue_fingerprints_hash,
+            changed_issue_count,
+            changed_issue_ids,
+            status_counts,
         }),
     )
 }
@@ -1044,14 +1140,24 @@ mod tests {
                             path,
                             hash,
                             issue_count,
+                            open_count,
                             bytes,
+                            issue_fingerprints_hash,
+                            changed_issue_count,
+                            changed_issue_ids,
+                            status_counts,
                         },
                 } => {
                     projection_records += 1;
                     assert_eq!(path, crate::constants::ISSUES_FILE);
                     assert_eq!(hash, expected_hash);
                     assert_eq!(issue_count, 1);
+                    assert_eq!(open_count, 1);
                     assert!(bytes > 0);
+                    assert!(!issue_fingerprints_hash.is_empty());
+                    assert_eq!(changed_issue_count, 1);
+                    assert_eq!(changed_issue_ids, vec!["ISS-TLOG-1".to_string()]);
+                    assert_eq!(status_counts.get("open").copied(), Some(1));
                 }
                 crate::events::Event::Effect {
                     event: crate::events::EffectEvent::IssuesFileRecorded { .. },

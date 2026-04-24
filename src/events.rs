@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// All events that advance the system state machine.
 /// Every mutation of `SystemState` is described by exactly one `ControlEvent`.
@@ -299,7 +299,17 @@ pub enum EffectEvent {
         path: String,
         hash: String,
         issue_count: usize,
+        #[serde(default)]
+        open_count: usize,
         bytes: u64,
+        #[serde(default)]
+        issue_fingerprints_hash: String,
+        #[serde(default)]
+        changed_issue_count: usize,
+        #[serde(default)]
+        changed_issue_ids: Vec<String>,
+        #[serde(default)]
+        status_counts: BTreeMap<String, usize>,
     },
     DiagnosticsReportRecorded {
         report: crate::reports::DiagnosticsReport,

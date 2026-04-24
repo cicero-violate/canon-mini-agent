@@ -1932,6 +1932,9 @@ impl SemanticIndex {
                 .push((edge.to.clone(), edge.relation.clone()));
         }
         for edge in &self.graph.bridge_edges {
+            if !include_bridge_edge_in_unified_adjacency(edge) {
+                continue;
+            }
             adj.entry(edge.from.clone())
                 .or_default()
                 .push((edge.to.clone(), edge.relation.clone()));
@@ -2065,6 +2068,26 @@ impl SemanticIndex {
             .map(|node| self.node_path(key, node).to_string())
             .unwrap_or_else(|| key.to_string())
     }
+}
+
+fn include_bridge_edge_in_unified_adjacency(edge: &BridgeEdge) -> bool {
+    if edge.relation != "Call" {
+        return true;
+    }
+    !is_low_signal_bridge_call_target(&edge.to)
+}
+
+fn is_low_signal_bridge_call_target(target: &str) -> bool {
+    let target = target.strip_prefix("path::").unwrap_or(target);
+    target.starts_with("std::ops::Deref::deref")
+        || target.starts_with("core::fmt::rt::Argument::")
+        || target == "std::string::ToString::to_string"
+        || target.starts_with("std::fmt::Arguments::")
+        || target == "std::convert::Into::into"
+        || target == "std::ops::Try::branch"
+        || target == "std::ops::FromResidual::from_residual"
+        || target == "std::cmp::PartialEq::eq"
+        || target == "std::hint::must_use"
 }
 
 fn edge_is_call(edge: &GraphEdge) -> bool {

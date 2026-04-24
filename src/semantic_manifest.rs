@@ -290,7 +290,7 @@ fn normalize_list(xs: Vec<String>) -> Vec<String> {
     let out = xs
         .into_iter()
         .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty() && s != "TODO")
+        .filter(|s| !is_missing_contract_value(s))
         .collect::<Vec<_>>();
     if out.is_empty() {
         vec![MISSING.to_string()]
@@ -304,9 +304,18 @@ fn choose_scalar(cands: &[Option<String>]) -> String {
         .iter()
         .flatten()
         .map(|v| v.trim())
-        .find(|s| !s.is_empty() && *s != "TODO" && *s != MISSING)
+        .find(|s| !is_missing_contract_value(s))
         .map(str::to_string)
         .unwrap_or_else(|| MISSING.to_string())
+}
+
+fn is_missing_contract_value(value: &str) -> bool {
+    let trimmed = value.trim();
+    trimmed.is_empty()
+        || trimmed == "TODO"
+        || trimmed == MISSING
+        || trimmed.eq_ignore_ascii_case("unknown")
+        || trimmed.eq_ignore_ascii_case("missing")
 }
 
 fn choose_list(cands: &[Vec<String>]) -> Vec<String> {
@@ -317,6 +326,16 @@ fn choose_list(cands: &[Vec<String>]) -> Vec<String> {
         }
     }
     vec![MISSING.to_string()]
+}
+
+fn choose_optional_list(cands: &[Vec<String>]) -> Vec<String> {
+    for cand in cands {
+        let normalized = normalize_list(cand.clone());
+        if !(normalized.len() == 1 && normalized[0] == MISSING) {
+            return normalized;
+        }
+    }
+    Vec::new()
 }
 
 fn map_effect_relation(rel: &str) -> Option<&'static str> {
@@ -806,7 +825,7 @@ pub fn run_with_options(options: SemanticManifestRunOptions) -> anyhow::Result<S
                 old.forbidden_effects.clone(),
                 infer_forbidden(&intent, &normalized_effects),
             ]),
-            calls: choose_list(&[calls, old.calls.clone()]),
+            calls: choose_optional_list(&[calls, old.calls.clone()]),
             failure_mode,
             invariants: choose_list(&[
                 doc.invariants,
@@ -814,9 +833,9 @@ pub fn run_with_options(options: SemanticManifestRunOptions) -> anyhow::Result<S
                 old.invariants.clone(),
                 infer_invariants(&intent, &normalized_effects, &resource),
             ]),
-            branches: choose_list(&[old.branches.clone()]),
-            mutations: choose_list(&[old.mutations.clone()]),
-            tests: choose_list(&[old.tests.clone()]),
+            branches: choose_optional_list(&[old.branches.clone()]),
+            mutations: choose_optional_list(&[old.mutations.clone()]),
+            tests: choose_optional_list(&[old.tests.clone()]),
             provenance: normalize_list(
                 choose_list(&[
                     doc.provenance,
@@ -830,15 +849,7 @@ pub fn run_with_options(options: SemanticManifestRunOptions) -> anyhow::Result<S
             ),
             manifest_status: String::new(),
         };
-        let has_error = manifest.intent_class == MISSING
-            || manifest.resource == MISSING
-            || manifest.inputs.iter().any(|v| v == MISSING)
-            || manifest.outputs.iter().any(|v| v == MISSING)
-            || manifest.effects.iter().any(|v| v == MISSING)
-            || manifest.forbidden_effects.iter().any(|v| v == MISSING)
-            || manifest.failure_mode == MISSING
-            || manifest.invariants.iter().any(|v| v == MISSING)
-            || manifest.provenance.iter().any(|v| v == MISSING);
+        let has_error = manifest_has_error(&manifest);
         let mut manifest = manifest;
         manifest.manifest_status = if has_error {
             "partial_error".to_string()
@@ -875,6 +886,34 @@ pub fn run_with_options(options: SemanticManifestRunOptions) -> anyhow::Result<S
         proposals,
     };
     if write_mode {
+        if target == graph_path {
+            let mut raw_graph: serde_json::Value = serde_json::from_slice(&bytes)?;
+            for (node_id, manifest) in &proposal_file.proposals {
+                if let Some(node) = raw_graph
+                    .get_mut("nodes")
+                    .and_then(|nodes| nodes.get_mut(node_id))
+                    .and_then(|node| node.as_object_mut())
+                {
+                    node.insert(
+                        "semantic_manifest".to_string(),
+                        serde_json::to_value(manifest)?,
+                    );
+                }
+            }
+            std::fs::write(&target, serde_json::to_vec_pretty(&raw_graph)?)?;
+            eprintln!(
+                "semantic_manifest: wrote {} semantic manifests into {}",
+                updated,
+                target.display()
+            );
+            return Ok(SemanticManifestRunReport {
+                updated,
+                fn_total,
+                fn_with_any_error,
+                fn_error_rate: error_rate,
+                target,
+            });
+        }
         if let Some(parent) = target.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -907,6 +946,18 @@ pub fn run_with_options(options: SemanticManifestRunOptions) -> anyhow::Result<S
         fn_error_rate: error_rate,
         target,
     })
+}
+
+fn manifest_has_error(manifest: &SemanticManifest) -> bool {
+    manifest.intent_class == MISSING
+        || manifest.resource == MISSING
+        || manifest.inputs.iter().any(|v| v == MISSING)
+        || manifest.outputs.iter().any(|v| v == MISSING)
+        || manifest.effects.iter().any(|v| v == MISSING)
+        || manifest.forbidden_effects.iter().any(|v| v == MISSING)
+        || manifest.failure_mode == MISSING
+        || manifest.invariants.iter().any(|v| v == MISSING)
+        || manifest.provenance.iter().any(|v| v == MISSING)
 }
 
 fn index_manifest_edges(
