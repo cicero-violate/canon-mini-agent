@@ -1122,8 +1122,8 @@ mod tests {
         let tlog_path = state_dir.join("tlog.ndjson");
         let raw_tlog = std::fs::read_to_string(&tlog_path).expect("read tlog");
         assert!(
-            !raw_tlog.contains("ISS-TLOG-1"),
-            "tlog should not contain full issue payloads"
+            !raw_tlog.contains("compact issues projection metadata"),
+            "tlog should not contain full issue titles"
         );
         assert!(
             !raw_tlog.contains("full issue snapshots must not be cloned into tlog"),

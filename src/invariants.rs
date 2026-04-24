@@ -512,15 +512,7 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
     // ── Meta-issue 2: prompt injection ──────────────────────────────────────
     // Only present when enforced invariants are actually absent from live prompt inputs.
     const PROMPT_INJECTION_ID: &str = "inv_enforced_not_in_prompts";
-    let has_prompt_injection = source_contains(
-        workspace,
-        "src/prompt_inputs.rs",
-        "read_enforced_invariants(workspace)",
-    ) && source_contains(
-        workspace,
-        "src/prompts.rs",
-        "agent_state/enforced_invariants.json",
-    );
+    let has_prompt_injection = has_enforced_invariants_prompt_injection(workspace);
     if !has_prompt_injection && !existing_ids.contains(PROMPT_INJECTION_ID) {
         file.issues.push(Issue {
             id: PROMPT_INJECTION_ID.to_string(),
@@ -621,6 +613,18 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
     }
 
     Ok(created)
+}
+
+fn has_enforced_invariants_prompt_injection(workspace: &Path) -> bool {
+    source_contains(
+        workspace,
+        "src/prompt_inputs.rs",
+        "read_enforced_invariants(workspace)",
+    ) && source_contains(
+        workspace,
+        "src/prompts.rs",
+        "agent_state/enforced_invariants.json",
+    )
 }
 
 fn source_contains(workspace: &Path, relative_path: &str, needle: &str) -> bool {
