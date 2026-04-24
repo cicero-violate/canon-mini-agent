@@ -985,113 +985,14 @@ fn build_semantic_manifest_proposals(
     let mut fn_total = 0usize;
     let mut fn_with_any_error = 0usize;
     for (node_id, node) in &graph.nodes {
-        let old = node.semantic_manifest.clone().unwrap_or_default();
-        let doc_lines = resolve_doc_lines(node, &workspace, &mut src_cache);
-        let doc = parse_doc_contract(&doc_lines);
-        let doc_error_flags = doc_forced_error_flags(&doc);
-        let (sig_inputs, sig_outputs) = parse_signature(node.signature.as_deref());
-        let source_decl = resolve_source_decl(node, &workspace, &mut src_cache);
-        let (src_inputs, src_outputs) = parse_source_decl_signature(source_decl.as_deref());
-        let symbol = if node.path.is_empty() {
-            node_id.clone()
-        } else {
-            node.path.clone()
-        };
-        let calls = calls_by_owner
-            .get(node_id)
-            .map(|s| s.iter().cloned().collect::<Vec<_>>())
-            .unwrap_or_default();
-        let inferred_effects = infer_effects_from_calls(&calls);
-        let effects = choose_list(&[
-            doc.effects.clone(),
-            effects_by_owner
-                .get(node_id)
-                .map(|s| s.iter().cloned().collect::<Vec<_>>())
-                .unwrap_or_default(),
-            inferred_effects,
-            infer_effects_from_symbol(&symbol),
-            old.effects.clone(),
-        ]);
-        let normalized_effects = normalize_list(
-            effects
-                .into_iter()
-                .map(|e| normalize_effect_label(&e))
-                .collect::<Vec<_>>(),
+        let mut manifest = build_node_semantic_manifest_proposal(
+            node_id,
+            node,
+            workspace,
+            &mut src_cache,
+            effects_by_owner,
+            calls_by_owner,
         );
-        let intent = infer_intent(
-            Some(choose_scalar(&[
-                doc.intent.clone(),
-                node.intent_class.clone(),
-                Some(old.intent_class.clone()),
-            ])),
-            &normalized_effects,
-            &symbol,
-        );
-        let resource = choose_scalar(&[
-            doc.resource.clone(),
-            node.resource.clone(),
-            Some(old.resource.clone()),
-            Some(infer_resource(&calls, &normalized_effects, &symbol)),
-        ]);
-        let outputs = choose_list(&[
-            doc.outputs.clone(),
-            sig_outputs,
-            src_outputs,
-            old.outputs.clone(),
-        ]);
-        let failure_mode = choose_scalar(&[
-            doc.failure.clone(),
-            node.failure_mode.clone(),
-            Some(old.failure_mode.clone()),
-            Some(infer_failure(&outputs, &symbol)),
-        ]);
-        let mut manifest = SemanticManifest {
-            symbol: choose_scalar(&[Some(symbol), Some(old.symbol.clone())]),
-            kind: choose_scalar(&[Some(node.kind.clone()), Some(old.kind.clone())]),
-            file: choose_scalar(&[
-                node.def.as_ref().map(|d| d.file.clone()),
-                Some(old.file.clone()),
-            ]),
-            line: choose_scalar(&[
-                node.def.as_ref().map(|d| d.line.to_string()),
-                Some(old.line.clone()),
-            ]),
-            intent_class: intent.clone(),
-            resource: resource.clone(),
-            inputs: choose_list(&[doc.inputs, sig_inputs, src_inputs, old.inputs.clone()]),
-            outputs,
-            effects: normalized_effects.clone(),
-            forbidden_effects: choose_list(&[
-                doc.forbidden,
-                node.forbidden_effects.clone(),
-                old.forbidden_effects.clone(),
-                infer_forbidden(&intent, &normalized_effects),
-            ]),
-            calls: choose_optional_list(&[calls, old.calls.clone()]),
-            failure_mode,
-            invariants: choose_list(&[
-                doc.invariants,
-                node.invariants.clone(),
-                old.invariants.clone(),
-                infer_invariants(&intent, &normalized_effects, &resource),
-            ]),
-            branches: choose_optional_list(&[old.branches.clone()]),
-            mutations: choose_optional_list(&[old.mutations.clone()]),
-            tests: choose_optional_list(&[old.tests.clone()]),
-            provenance: normalize_list(
-                choose_list(&[
-                    doc.provenance,
-                    node.provenance.clone(),
-                    old.provenance.clone(),
-                    vec!["rustc:facts".to_string()],
-                ])
-                .into_iter()
-                .map(|p| normalize_provenance_label(&p))
-                .collect::<Vec<_>>(),
-            ),
-            manifest_status: String::new(),
-        };
-        apply_doc_forced_error_flags(&mut manifest, &doc_error_flags);
         let has_error = manifest_has_error(&manifest);
         manifest.manifest_status = if has_error {
             "partial_error".to_string()
@@ -1109,6 +1010,124 @@ fn build_semantic_manifest_proposals(
     }
 
     (proposals, updated, fn_total, fn_with_any_error)
+}
+
+fn build_node_semantic_manifest_proposal(
+    node_id: &str,
+    node: &GraphNode,
+    workspace: &Path,
+    src_cache: &mut HashMap<PathBuf, Vec<String>>,
+    effects_by_owner: &HashMap<String, BTreeSet<String>>,
+    calls_by_owner: &HashMap<String, BTreeSet<String>>,
+) -> SemanticManifest {
+    let old = node.semantic_manifest.clone().unwrap_or_default();
+    let doc_lines = resolve_doc_lines(node, workspace, src_cache);
+    let doc = parse_doc_contract(&doc_lines);
+    let doc_error_flags = doc_forced_error_flags(&doc);
+    let (sig_inputs, sig_outputs) = parse_signature(node.signature.as_deref());
+    let source_decl = resolve_source_decl(node, workspace, src_cache);
+    let (src_inputs, src_outputs) = parse_source_decl_signature(source_decl.as_deref());
+    let symbol = if node.path.is_empty() {
+        node_id.to_string()
+    } else {
+        node.path.clone()
+    };
+    let calls = calls_by_owner
+        .get(node_id)
+        .map(|s| s.iter().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    let inferred_effects = infer_effects_from_calls(&calls);
+    let effects = choose_list(&[
+        doc.effects.clone(),
+        effects_by_owner
+            .get(node_id)
+            .map(|s| s.iter().cloned().collect::<Vec<_>>())
+            .unwrap_or_default(),
+        inferred_effects,
+        infer_effects_from_symbol(&symbol),
+        old.effects.clone(),
+    ]);
+    let normalized_effects = normalize_list(
+        effects
+            .into_iter()
+            .map(|e| normalize_effect_label(&e))
+            .collect::<Vec<_>>(),
+    );
+    let intent = infer_intent(
+        Some(choose_scalar(&[
+            doc.intent.clone(),
+            node.intent_class.clone(),
+            Some(old.intent_class.clone()),
+        ])),
+        &normalized_effects,
+        &symbol,
+    );
+    let resource = choose_scalar(&[
+        doc.resource.clone(),
+        node.resource.clone(),
+        Some(old.resource.clone()),
+        Some(infer_resource(&calls, &normalized_effects, &symbol)),
+    ]);
+    let outputs = choose_list(&[
+        doc.outputs.clone(),
+        sig_outputs,
+        src_outputs,
+        old.outputs.clone(),
+    ]);
+    let failure_mode = choose_scalar(&[
+        doc.failure.clone(),
+        node.failure_mode.clone(),
+        Some(old.failure_mode.clone()),
+        Some(infer_failure(&outputs, &symbol)),
+    ]);
+    let mut manifest = SemanticManifest {
+        symbol: choose_scalar(&[Some(symbol), Some(old.symbol.clone())]),
+        kind: choose_scalar(&[Some(node.kind.clone()), Some(old.kind.clone())]),
+        file: choose_scalar(&[
+            node.def.as_ref().map(|d| d.file.clone()),
+            Some(old.file.clone()),
+        ]),
+        line: choose_scalar(&[
+            node.def.as_ref().map(|d| d.line.to_string()),
+            Some(old.line.clone()),
+        ]),
+        intent_class: intent.clone(),
+        resource: resource.clone(),
+        inputs: choose_list(&[doc.inputs, sig_inputs, src_inputs, old.inputs.clone()]),
+        outputs,
+        effects: normalized_effects.clone(),
+        forbidden_effects: choose_list(&[
+            doc.forbidden,
+            node.forbidden_effects.clone(),
+            old.forbidden_effects.clone(),
+            infer_forbidden(&intent, &normalized_effects),
+        ]),
+        calls: choose_optional_list(&[calls, old.calls.clone()]),
+        failure_mode,
+        invariants: choose_list(&[
+            doc.invariants,
+            node.invariants.clone(),
+            old.invariants.clone(),
+            infer_invariants(&intent, &normalized_effects, &resource),
+        ]),
+        branches: choose_optional_list(&[old.branches.clone()]),
+        mutations: choose_optional_list(&[old.mutations.clone()]),
+        tests: choose_optional_list(&[old.tests.clone()]),
+        provenance: normalize_list(
+            choose_list(&[
+                doc.provenance,
+                node.provenance.clone(),
+                old.provenance.clone(),
+                vec!["rustc:facts".to_string()],
+            ])
+            .into_iter()
+            .map(|p| normalize_provenance_label(&p))
+            .collect::<Vec<_>>(),
+        ),
+        manifest_status: String::new(),
+    };
+    apply_doc_forced_error_flags(&mut manifest, &doc_error_flags);
+    manifest
 }
 
 fn manifest_has_error(manifest: &SemanticManifest) -> bool {
