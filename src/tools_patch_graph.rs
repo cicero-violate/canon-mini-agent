@@ -366,8 +366,8 @@ fn command_is_cargo_check(cmd: &str) -> bool {
     let normalized = cmd.split_whitespace().collect::<Vec<_>>().join(" ");
     normalized == "cargo check"
         || normalized.starts_with("cargo check ")
-        || normalized.contains(" && cargo check")
-        || normalized.contains("; cargo check")
+        || normalized.contains(" cargo check ")
+        || normalized.ends_with(" cargo check")
 }
 
 fn verification_rebind_note(
@@ -853,16 +853,6 @@ fn handle_run_command_action(
         .unwrap_or(crate::constants::workspace());
     eprintln!("[{role}] step={} run_command cmd={cmd}", step);
     let (success, mut out) = exec_run_command(workspace, cmd, cwd)?;
-    let receipt_id = append_evidence_receipt(
-        role,
-        step,
-        "run_command",
-        None,
-        Some(PathBuf::from(cwd)),
-        json!({"cmd": cmd, "success": success}),
-        &out,
-    )
-    .ok();
     let label = if success {
         "run_command ok"
     } else {
@@ -894,6 +884,16 @@ fn handle_run_command_action(
         out.push('\n');
         out.push_str(&refresh_out);
     }
+    let receipt_id = append_evidence_receipt(
+        role,
+        step,
+        "run_command",
+        None,
+        Some(PathBuf::from(cwd)),
+        json!({"cmd": cmd, "success": success}),
+        &out,
+    )
+    .ok();
     Ok((
         false,
         format_output_with_evidence_receipt(
