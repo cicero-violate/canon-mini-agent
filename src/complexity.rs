@@ -92,15 +92,54 @@ fn insert_graph_only_topology_metrics(
     entry: &GraphOnlyEntry,
     metrics: &mut serde_json::Map<String, serde_json::Value>,
 ) {
+    insert_graph_only_call_metrics(entry, metrics);
+    insert_graph_only_path_metrics(entry, metrics);
+    insert_graph_only_scc_metrics(entry, metrics);
+}
+
+fn insert_graph_only_call_metrics(
+    entry: &GraphOnlyEntry,
+    metrics: &mut serde_json::Map<String, serde_json::Value>,
+) {
     metrics.insert("call_in".to_string(), json!(graph_only_call_in(entry)));
     metrics.insert("call_out".to_string(), json!(graph_only_call_out(entry)));
-    metrics.insert("duplicate_body_count".to_string(), json!(graph_only_duplicate_body_count(entry)));
-    metrics.insert("redundant_path_count".to_string(), json!(graph_only_redundant_path_count(entry)));
-    metrics.insert("pathway_membership_count".to_string(), json!(graph_only_pathway_membership_count(entry)));
-    metrics.insert("pathway_wrapper_count".to_string(), json!(graph_only_pathway_wrapper_count(entry)));
+    metrics.insert(
+        "duplicate_body_count".to_string(),
+        json!(graph_only_duplicate_body_count(entry)),
+    );
+}
+
+fn insert_graph_only_path_metrics(
+    entry: &GraphOnlyEntry,
+    metrics: &mut serde_json::Map<String, serde_json::Value>,
+) {
+    metrics.insert(
+        "redundant_path_count".to_string(),
+        json!(graph_only_redundant_path_count(entry)),
+    );
+    metrics.insert(
+        "pathway_membership_count".to_string(),
+        json!(graph_only_pathway_membership_count(entry)),
+    );
+    metrics.insert(
+        "pathway_wrapper_count".to_string(),
+        json!(graph_only_pathway_wrapper_count(entry)),
+    );
+}
+
+fn insert_graph_only_scc_metrics(
+    entry: &GraphOnlyEntry,
+    metrics: &mut serde_json::Map<String, serde_json::Value>,
+) {
     metrics.insert("scc_size".to_string(), json!(graph_only_scc_size(entry)));
-    metrics.insert("is_directly_recursive".to_string(), json!(graph_only_is_directly_recursive(entry)));
-    metrics.insert("graph_complexity_score".to_string(), json!(graph_only_complexity_score(entry)));
+    metrics.insert(
+        "is_directly_recursive".to_string(),
+        json!(graph_only_is_directly_recursive(entry)),
+    );
+    metrics.insert(
+        "graph_complexity_score".to_string(),
+        json!(graph_only_complexity_score(entry)),
+    );
 }
 
 fn graph_only_mir_blocks(entry: &GraphOnlyEntry) -> usize { entry.mir_blocks }
