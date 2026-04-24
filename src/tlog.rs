@@ -2,7 +2,7 @@ use crate::events::{EffectEvent, Event};
 use crate::system_state::{replay_event_log, SystemState};
 use anyhow::Result;
 use std::fs::OpenOptions;
-use std::io::{ErrorKind, Write};
+use std::io::{BufRead, BufReader, ErrorKind, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -156,13 +156,58 @@ fn observed_seq_floor(path: &Path) -> u64 {
         return 0;
     }
 
-    let raw = std::fs::read_to_string(path).unwrap_or_default();
+    observed_seq_from_tail(path).unwrap_or_else(|| observed_seq_floor_slow(path))
+}
+
+fn observed_seq_from_tail(path: &Path) -> Option<u64> {
+    const TAIL_BYTES: u64 = 8 * 1024;
+
+    let mut file = std::fs::File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    if len == 0 {
+        return Some(0);
+    }
+
+    let start = len.saturating_sub(TAIL_BYTES);
+    file.seek(SeekFrom::Start(start)).ok()?;
+    let mut tail = Vec::with_capacity((len - start) as usize);
+    file.read_to_end(&mut tail).ok()?;
+    let tail = String::from_utf8_lossy(&tail);
+
+    tail.lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .and_then(seq_from_record_fragment)
+}
+
+fn seq_from_record_fragment(fragment: &str) -> Option<u64> {
+    let marker = "\"seq\":";
+    let start = fragment.rfind(marker)? + marker.len();
+    let digits = fragment[start..]
+        .chars()
+        .skip_while(|ch| ch.is_ascii_whitespace())
+        .take_while(|ch| ch.is_ascii_digit())
+        .collect::<String>();
+    digits.parse::<u64>().ok()
+}
+
+fn observed_seq_floor_slow(path: &Path) -> u64 {
+    let Ok(file) = std::fs::File::open(path) else {
+        return 0;
+    };
     let mut line_count = 0_u64;
     let mut max_seq = 0_u64;
 
-    for line in raw.lines().filter(|line| !line.trim().is_empty()) {
+    for line in BufReader::new(file).lines().map_while(Result::ok) {
+        if line.trim().is_empty() {
+            continue;
+        }
         line_count += 1;
-        if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {
+        if let Some(seq) = seq_from_record_fragment(&line) {
+            max_seq = max_seq.max(seq);
+            continue;
+        }
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) {
             if let Some(seq) = value.get("seq").and_then(|seq| seq.as_u64()) {
                 max_seq = max_seq.max(seq);
             }
@@ -241,11 +286,59 @@ impl Tlog {
         if !path.exists() {
             return Ok(Vec::new());
         }
-        let raw = std::fs::read_to_string(path)?;
         let mut records = Vec::new();
-        for line in raw.lines().filter(|line| !line.trim().is_empty()) {
-            let record: TlogRecord = serde_json::from_str(line)?;
+        let file = std::fs::File::open(path)?;
+        for line in BufReader::new(file).lines() {
+            let line = line?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            let record: TlogRecord = serde_json::from_str(&line)?;
             records.push(record);
+        }
+        Ok(records)
+    }
+
+    pub fn read_recent_records(path: &Path, max_records: usize) -> Result<Vec<TlogRecord>> {
+        if max_records == 0 || !path.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut file = std::fs::File::open(path)?;
+        let len = file.metadata()?.len();
+        if len == 0 {
+            return Ok(Vec::new());
+        }
+
+        let mut window = 64 * 1024_u64;
+        let mut records = Vec::new();
+        loop {
+            let start = len.saturating_sub(window);
+            file.seek(SeekFrom::Start(start))?;
+            let mut bytes = Vec::with_capacity((len - start) as usize);
+            file.read_to_end(&mut bytes)?;
+            let raw = String::from_utf8_lossy(&bytes);
+            let mut lines = raw.lines().collect::<Vec<_>>();
+            if start > 0 && !lines.is_empty() {
+                lines.remove(0);
+            }
+
+            records.clear();
+            for line in lines.into_iter().filter(|line| !line.trim().is_empty()) {
+                if let Ok(record) = serde_json::from_str::<TlogRecord>(line) {
+                    records.push(record);
+                }
+            }
+
+            if records.len() >= max_records || start == 0 || window >= 4 * 1024 * 1024 {
+                break;
+            }
+            window = (window * 2).min(len);
+        }
+
+        if records.len() > max_records {
+            let keep_from = records.len() - max_records;
+            records.drain(0..keep_from);
         }
         Ok(records)
     }

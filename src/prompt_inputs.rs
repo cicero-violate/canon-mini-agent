@@ -104,6 +104,13 @@ fn serialized_event_kind_name<T: Serialize>(event: &T) -> String {
 
 pub fn semantic_state_snapshot_from_tlog(workspace: &Path) -> String {
     let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
+    const FULL_REPLAY_MAX_BYTES: u64 = 8 * 1024 * 1024;
+    if let Ok(meta) = std::fs::metadata(&tlog_path) {
+        if meta.len() > FULL_REPLAY_MAX_BYTES {
+            return semantic_state_snapshot_from_recent_tlog_records(workspace, &tlog_path, meta.len());
+        }
+    }
+
     let events = match crate::tlog::Tlog::read_events(&tlog_path) {
         Ok(events) => events,
         Err(err) => {
@@ -199,6 +206,67 @@ pub fn semantic_state_snapshot_from_tlog(workspace: &Path) -> String {
         ));
     }
 
+    out.trim().to_string()
+}
+
+fn semantic_state_snapshot_from_recent_tlog_records(
+    _workspace: &Path,
+    tlog_path: &Path,
+    tlog_bytes: u64,
+) -> String {
+    let records = match crate::tlog::Tlog::read_recent_records(tlog_path, 64) {
+        Ok(records) => records,
+        Err(err) => {
+            return format!(
+                "(semantic state unavailable: failed to read recent records from {}: {err})",
+                tlog_path.display()
+            )
+        }
+    };
+
+    let total_events = records.last().map(|record| record.seq).unwrap_or(0);
+    let mut recent_controls = Vec::new();
+    let mut recent_effects = Vec::new();
+    for record in records.iter().rev() {
+        match &record.event {
+            crate::events::Event::Control { event } => {
+                if recent_controls.len() < 6 {
+                    recent_controls.push(serialized_event_kind_name(event));
+                }
+            }
+            crate::events::Event::Effect { event } => {
+                if recent_effects.len() < 6 {
+                    recent_effects.push(serialized_event_kind_name(event));
+                }
+            }
+        }
+        if recent_controls.len() >= 6 && recent_effects.len() >= 6 {
+            break;
+        }
+    }
+
+    let mut out = String::new();
+    out.push_str(&format!(
+        "events={} source={} bytes={} replay=skipped_large_tlog\n",
+        total_events,
+        tlog_path.display(),
+        tlog_bytes
+    ));
+    out.push_str(
+        "Authority rule: recent tlog events are sampled; full replay is skipped to avoid prompt-path lag.\n",
+    );
+    if !recent_controls.is_empty() {
+        out.push_str(&format!(
+            "recent control events: {}\n",
+            recent_controls.join(" -> ")
+        ));
+    }
+    if !recent_effects.is_empty() {
+        out.push_str(&format!(
+            "recent effect events: {}\n",
+            recent_effects.join(" -> ")
+        ));
+    }
     out.trim().to_string()
 }
 

@@ -295,6 +295,12 @@ pub enum EffectEvent {
     IssuesFileRecorded {
         file: crate::issues::IssuesFile,
     },
+    IssuesProjectionRecorded {
+        path: String,
+        hash: String,
+        issue_count: usize,
+        bytes: u64,
+    },
     DiagnosticsReportRecorded {
         report: crate::reports::DiagnosticsReport,
     },

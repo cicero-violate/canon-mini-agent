@@ -16,12 +16,14 @@ use crate::constants::ISSUES_FILE;
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
+
 pub fn persist_issues_projection_with_writer(
     workspace: &Path,
     file: &IssuesFile,
     writer: Option<&mut crate::canonical_writer::CanonicalWriter>,
     subject: &str,
 ) -> Result<()> {
+    let canonical = serde_json::to_string_pretty(file)?;
     crate::logging::record_json_projection_with_optional_writer(
         workspace,
         &workspace.join(ISSUES_FILE),
@@ -30,7 +32,12 @@ pub fn persist_issues_projection_with_writer(
         subject,
         file,
         writer,
-        Some(crate::events::EffectEvent::IssuesFileRecorded { file: file.clone() }),
+        Some(crate::events::EffectEvent::IssuesProjectionRecorded {
+            path: ISSUES_FILE.to_string(),
+            hash: crate::logging::stable_hash_hex(&canonical),
+            issue_count: file.issues.len(),
+            bytes: canonical.len() as u64,
+        }),
     )
 }
 
@@ -126,13 +133,14 @@ pub struct IssueSweepSummary {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
+
 pub fn load_issues_file(workspace: &Path) -> IssuesFile {
-    if let Some(file) = load_issues_from_tlog(workspace) {
-        return file;
-    }
     let path = workspace.join(ISSUES_FILE);
     let raw = std::fs::read_to_string(&path).unwrap_or_default();
     if let Some(file) = parse_issues_file_from_raw(&raw) {
+        return file;
+    }
+    if let Some(file) = load_issues_from_tlog(workspace) {
         return file;
     }
     IssuesFile::default()
@@ -179,17 +187,29 @@ fn load_issues_from_tlog(workspace: &Path) -> Option<IssuesFile> {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
+
 pub fn reconcile_issues_projection(workspace: &Path, subject: &str) -> Result<bool> {
+    let path = workspace.join(ISSUES_FILE);
+    let current = std::fs::read_to_string(&path).unwrap_or_default();
+    if parse_issues_file_from_raw(&current).is_some() {
+        return Ok(false);
+    }
+
     let Some(file) = load_issues_from_tlog(workspace) else {
         return Ok(false);
     };
     let canonical = serde_json::to_string_pretty(&file)?;
-    let path = workspace.join(ISSUES_FILE);
-    let current = std::fs::read_to_string(&path).unwrap_or_default();
     if crate::logging::stable_hash_hex(&current) == crate::logging::stable_hash_hex(&canonical) {
         return Ok(false);
     }
-    persist_issues_projection_with_writer(workspace, &file, None, subject)?;
+    std::fs::write(&path, canonical)?;
+    crate::logging::record_effect(
+        workspace,
+        crate::events::EffectEvent::ProjectionReconciled {
+            path: ISSUES_FILE.to_string(),
+            subject: subject.to_string(),
+        },
+    )?;
     Ok(true)
 }
 

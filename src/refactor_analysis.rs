@@ -2233,12 +2233,7 @@ fn dead_code_issues(
     let mut created = 0;
     for s in summaries {
         let mir_blocks = s.mir_blocks.unwrap_or(0);
-        if s.kind != "fn"
-            || mir_blocks == 0
-            || s.call_in > 0
-            || s.ref_count > 0
-            || is_exempt_from_dead_code(&s.symbol)
-        {
+        if !is_dead_code_candidate(s, mir_blocks) {
             continue;
         }
         // Both call-graph in-degree AND HIR reference count must be zero.
@@ -2247,36 +2242,54 @@ fn dead_code_issues(
         if issue_already_tracked(existing_ids, open_locations, &id, &location) {
             continue;
         }
-        let short = short_name(&s.symbol);
-        file.issues.push(Issue {
-            id,
-            title: format!("Dead code: `{short}` — zero callers and zero references"),
-            status: "open".to_string(),
-            priority: "medium".to_string(),
-            kind: "dead_code".to_string(),
-            description: format!(
-                "Function `{sym}` in crate `{crate_name}` has:\n\
-                 - call_in = 0  (no call-graph edges point to it)\n\
-                 - ref_count = 0  (not referenced in source)\n\
-                 - mir_blocks = {b}  (has a real body)\n\n\
-                 Execution model: Detect(this issue) → Propose(LLM delete/verify) → Apply(patch) → Verify(build+test)\n\n\
-                Verify that this is truly unreachable (no dynamic dispatch, no #[no_mangle], \
-                 not re-exported), then delete it to reduce U and simplify the execution graph.",
-                sym = s.symbol,
-                b = mir_blocks,
-            ),
-            location: location.clone(),
-            evidence: vec![
-                format!("call_in=0 ref_count=0 mir_blocks={mir_blocks}"),
-                format!("location: {location}"),
-            ],
-            discovered_by: "refactor_analyzer".to_string(),
-            score: 0.0,
-            ..Issue::default()
-        });
+        file.issues.push(build_dead_code_issue(crate_name, s, mir_blocks, id, location));
         created += 1;
     }
     created
+}
+
+fn is_dead_code_candidate(s: &crate::semantic::SymbolSummary, mir_blocks: usize) -> bool {
+    s.kind == "fn"
+        && mir_blocks > 0
+        && s.call_in == 0
+        && s.ref_count == 0
+        && !is_exempt_from_dead_code(&s.symbol)
+}
+
+fn build_dead_code_issue(
+    crate_name: &str,
+    s: &crate::semantic::SymbolSummary,
+    mir_blocks: usize,
+    id: String,
+    location: String,
+) -> Issue {
+    let short = short_name(&s.symbol);
+    Issue {
+        id,
+        title: format!("Dead code: `{short}` — zero callers and zero references"),
+        status: "open".to_string(),
+        priority: "medium".to_string(),
+        kind: "dead_code".to_string(),
+        description: format!(
+            "Function `{sym}` in crate `{crate_name}` has:\n\
+             - call_in = 0  (no call-graph edges point to it)\n\
+             - ref_count = 0  (not referenced in source)\n\
+             - mir_blocks = {b}  (has a real body)\n\n\
+             Execution model: Detect(this issue) → Propose(LLM delete/verify) → Apply(patch) → Verify(build+test)\n\n\
+            Verify that this is truly unreachable (no dynamic dispatch, no #[no_mangle], \
+             not re-exported), then delete it to reduce U and simplify the execution graph.",
+            sym = s.symbol,
+            b = mir_blocks,
+        ),
+        location: location.clone(),
+        evidence: vec![
+            format!("call_in=0 ref_count=0 mir_blocks={mir_blocks}"),
+            format!("location: {location}"),
+        ],
+        discovered_by: "refactor_analyzer".to_string(),
+        score: 0.0,
+        ..Issue::default()
+    }
 }
 
 /// Functions that are legitimately zero-referenced by design.

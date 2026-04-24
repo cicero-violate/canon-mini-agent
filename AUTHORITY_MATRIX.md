@@ -56,13 +56,13 @@ Derived from source/tests only (no `SPEC.md` read).
 - `src/lessons.rs`: `persist_lessons_projection_with_writer(...)` — writer-aware authoritative writer for `agent_state/lessons.json`.
 - `src/objectives.rs`: `persist_objectives_projection(...)` — projection materialization for canonical objectives state.
 - `src/objectives.rs`: `reconcile_objectives_projection(...)` — startup/replay projection reconciliation from canonical objectives.
-- `src/issues.rs`: `reconcile_issues_projection(...)` — startup/replay projection reconciliation from latest `IssuesFileRecorded`.
+- `src/issues.rs`: `reconcile_issues_projection(...)` — projection reconciliation from `ISSUES.json`; legacy full `IssuesFileRecorded` tlog recovery is fallback-only to avoid prompt-path replay lag.
 - `src/lessons.rs`: `reconcile_lessons_projection(...)` — startup/replay projection reconciliation from latest `LessonsArtifactRecorded`.
 - `src/invariants.rs`: `reconcile_enforced_invariants_projection(...)` — startup/replay projection reconciliation from latest `EnforcedInvariantsRecorded`.
 - `src/logging.rs`: `migrate_projection_if_present(...)` — controlled projection migration helper.
 
 ### Authoritative read/load functions (tlog first)
-- `src/issues.rs`: `load_issues_file(...)` (+ `load_issues_from_tlog(...)`) — resolves authority from latest `IssuesFileRecorded`, uses file only as compatibility fallback.
+- `src/issues.rs`: `load_issues_file(...)` (+ `load_issues_from_tlog(...)`) — resolves operational state from `ISSUES.json`; new tlog writes record lightweight `IssuesProjectionRecorded` receipts instead of cloning the full issues payload.
 - `src/invariants.rs`: `load_enforced_invariants_file(...)` (+ `load_invariants_from_tlog(...)`) — resolves authority from latest `EnforcedInvariantsRecorded`, uses file only as compatibility fallback.
 - `src/lessons.rs`: `load_lessons_artifact(...)` (+ `load_lessons_from_tlog(...)`) — resolves authority from latest `LessonsArtifactRecorded`, uses file only as compatibility fallback.
 - `src/blockers.rs`: `load_blockers(...)` (+ `load_blockers_from_tlog(...)`) — reads blockers projection, falls back to tlog records.
