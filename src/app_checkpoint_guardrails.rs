@@ -88,11 +88,15 @@ fn artifact_signature(parts: &[&str]) -> String {
     format!("{:016x}", hasher.finish())
 }
 
-fn checkpoint_ref_json(path: &Path, checkpoint_json: &str, tlog_seq: u64) -> String {
+fn checkpoint_artifact_path(path: &Path) -> String {
     let workspace = Path::new(crate::constants::workspace());
-    let artifact = path.strip_prefix(workspace).ok()
+    path.strip_prefix(workspace).ok()
         .map(|rel| rel.to_string_lossy().replace('\\', "/"))
-        .unwrap_or_else(|| path.to_string_lossy().replace('\\', "/"));
+        .unwrap_or_else(|| path.to_string_lossy().replace('\\', "/"))
+}
+
+fn checkpoint_ref_json(path: &Path, checkpoint_json: &str, tlog_seq: u64) -> String {
+    let artifact = checkpoint_artifact_path(path);
     let hash = artifact_signature(&[artifact.as_str(), checkpoint_json, &tlog_seq.to_string()]);
     serde_json::json!({"checkpoint_ref":true,"path":artifact,"bytes":checkpoint_json.len(),"hash":hash,"tlog_seq":tlog_seq}).to_string()
 }
