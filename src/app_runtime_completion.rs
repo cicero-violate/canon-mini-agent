@@ -247,15 +247,42 @@ fn record_executor_completion_tab_rebind(
         "[orchestrate] completed turn tab rebound: turn_id={} expected_tab={} actual_tab={}",
         turn_id, submitted.tab_id, tab_id
     );
+    trace_executor_completion_tab_rebind(lane_name, turn_id, submitted.tab_id, tab_id);
+    record_executor_completion_tab_rebind_blocker(
+        workspace,
+        lane_name,
+        turn_id,
+        submitted.tab_id,
+        tab_id,
+    );
+    apply_executor_completion_tab_rebind(writer, submitted.lane, submitted.tab_id, tab_id);
+    submitted.tab_id = tab_id;
+}
+
+fn trace_executor_completion_tab_rebind(
+    lane_name: &str,
+    turn_id: u64,
+    expected_tab: u32,
+    actual_tab: u32,
+) {
     append_orchestration_trace(
         "executor_completion_tab_rebound",
         json!({
             "lane_name": lane_name,
             "turn_id": turn_id,
-            "expected_tab": submitted.tab_id,
-            "actual_tab": tab_id,
+            "expected_tab": expected_tab,
+            "actual_tab": actual_tab,
         }),
     );
+}
+
+fn record_executor_completion_tab_rebind_blocker(
+    workspace: &Path,
+    lane_name: &str,
+    turn_id: u64,
+    from_tab_id: u32,
+    to_tab_id: u32,
+) {
     crate::blockers::record_action_failure_with_writer(
         workspace,
         None,
@@ -263,17 +290,23 @@ fn record_executor_completion_tab_rebind(
         "runtime_control_bypass",
         &format!(
             "runtime-only control influence: executor completion rebound changed lane={} turn_id={} tab from {} to {}",
-            lane_name, turn_id, submitted.tab_id, tab_id
+            lane_name, turn_id, from_tab_id, to_tab_id
         ),
         None,
     );
-    let lane_id = submitted.lane;
+}
+
+fn apply_executor_completion_tab_rebind(
+    writer: &mut CanonicalWriter,
+    lane_id: usize,
+    from_tab_id: u32,
+    to_tab_id: u32,
+) {
     writer.apply(ControlEvent::ExecutorCompletionTabRebound {
         lane_id,
-        from_tab_id: submitted.tab_id,
-        to_tab_id: tab_id,
+        from_tab_id,
+        to_tab_id,
     });
-    submitted.tab_id = tab_id;
 }
 
 fn spawn_executor_completion_continuation(
