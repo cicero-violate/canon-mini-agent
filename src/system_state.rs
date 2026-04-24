@@ -275,10 +275,13 @@ fn apply_core_control_event(s: &mut SystemState, e: &ControlEvent) -> bool {
 }
 
 pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState {
-    if apply_core_control_event(&mut s, e) {
-        return s;
+    if !apply_core_control_event(&mut s, e) {
+        apply_extended_control_event(&mut s, e);
     }
+    s
+}
 
+fn apply_extended_control_event(s: &mut SystemState, e: &ControlEvent) {
     match e {
         ControlEvent::PhaseSet { .. }
         | ControlEvent::ScheduledPhaseSet { .. }
@@ -287,8 +290,8 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
         | ControlEvent::PlannerObjectivePlanGapQueued => {}
         ControlEvent::DiagnosticsPendingSet { pending } => {
             // Compatibility shim: diagnostics control is deprecated; map to planner pending.
-            set_planner_pending_flag(&mut s, *pending);
-            clear_diagnostics_pending(&mut s);
+            set_planner_pending_flag(s, *pending);
+            clear_diagnostics_pending(s);
         }
         ControlEvent::DiagnosticsReconciliationQueued => {
             // Compatibility no-op for tlogs that recorded reconciliation queue
@@ -302,8 +305,8 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
         }
         ControlEvent::DiagnosticsVerifierFollowupQueued => {
             // Compatibility shim: diagnostics follow-up is planner follow-up now.
-            queue_planner_reason(&mut s, "verifier_followup");
-            clear_diagnostics_pending(&mut s);
+            queue_planner_reason(s, "verifier_followup");
+            clear_diagnostics_pending(s);
         }
         ControlEvent::DiagnosticsTextSet { text } => {
             // Keep field for replay compatibility only.
@@ -431,8 +434,8 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
             );
             // Mirror the four companion field updates that `register_submitted_executor_turn`
             // used to perform directly on `DispatchState`.
-            set_lane_tab_mapping(&mut s, *lane_id, *tab_id);
-            reset_lane_submit_state(&mut s, *lane_id);
+            set_lane_tab_mapping(s, *lane_id, *tab_id);
+            reset_lane_submit_state(s, *lane_id);
         }
         ControlEvent::ExecutorTurnDeregistered { tab_id, turn_id } => {
             let key = format!("{}:{}", tab_id, turn_id);
@@ -447,24 +450,23 @@ pub fn apply_control_event(mut s: SystemState, e: &ControlEvent) -> SystemState 
                 }
             }
             s.tab_id_to_lane.insert(*tab_id, *lane_id);
-            reset_lane_submit_state(&mut s, *lane_id);
+            reset_lane_submit_state(s, *lane_id);
         }
         ControlEvent::ExecutorCompletionTabRebound {
             lane_id,
             from_tab_id,
             to_tab_id,
         } => {
-            rebind_lane_tab(&mut s, *lane_id, *from_tab_id, *to_tab_id);
+            rebind_lane_tab(s, *lane_id, *from_tab_id, *to_tab_id);
         }
         ControlEvent::ExecutorSubmitAckTabRebound {
             lane_id,
             from_tab_id,
             to_tab_id,
         } => {
-            rebind_lane_tab(&mut s, *lane_id, *from_tab_id, *to_tab_id);
+            rebind_lane_tab(s, *lane_id, *from_tab_id, *to_tab_id);
         }
     }
-    s
 }
 
 /// Intent: validation_gate
