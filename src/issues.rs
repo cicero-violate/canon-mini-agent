@@ -705,24 +705,35 @@ pub fn rescore_all(file: &mut IssuesFile) {
 
 fn issue_family_key(issue: &Issue) -> String {
     let id = issue.id.as_str();
+    if let Some(family) = auto_issue_family_key(id) {
+        return family;
+    }
+    manual_issue_family_key(issue)
+}
+
+fn auto_issue_family_key(id: &str) -> Option<String> {
     if id.starts_with("auto_dominator_region_reduction_") {
-        return "auto_dominator_region_reduction".to_string();
+        return Some("auto_dominator_region_reduction".to_string());
     }
     if id.starts_with("auto_semantic_rank_candidate_") {
-        return "auto_semantic_rank_candidate".to_string();
+        return Some("auto_semantic_rank_candidate".to_string());
     }
     if id.starts_with("auto_inter_complexity_") {
-        return "auto_inter_complexity".to_string();
+        return Some("auto_inter_complexity".to_string());
     }
     if id.starts_with("auto_mir_dup_") {
-        return "auto_mir_dup".to_string();
+        return Some("auto_mir_dup".to_string());
     }
     if id.starts_with("auto_") {
         let parts: Vec<&str> = id.split('_').collect();
         if parts.len() >= 3 {
-            return parts[..3].join("_");
+            return Some(parts[..3].join("_"));
         }
     }
+    None
+}
+
+fn manual_issue_family_key(issue: &Issue) -> String {
     let who = if issue.discovered_by.trim().is_empty() {
         "unknown"
     } else {
