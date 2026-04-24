@@ -417,7 +417,12 @@ impl SemanticIndex {
     }
 
     pub fn redundant_path_pairs(&self) -> Vec<RedundantPathPair> {
-        self.graph.redundant_paths.clone()
+        self.graph
+            .redundant_paths
+            .iter()
+            .filter(|pair| is_actionable_redundant_path_pair(*pair))
+            .cloned()
+            .collect()
     }
 
     pub fn alpha_pathways(&self) -> &[AlphaPathwayChain] {
@@ -2168,6 +2173,21 @@ fn classify_semantic_node(node: &GraphNode) -> &'static str {
     }
 }
 
+fn is_actionable_redundant_path_pair(pair: &RedundantPathPair) -> bool {
+    if pair.path_a.owner != pair.path_b.owner {
+        return false;
+    }
+    if pair.path_a.blocks == pair.path_b.blocks {
+        return false;
+    }
+
+    let blocks_a: HashSet<usize> = pair.path_a.blocks.iter().copied().collect();
+    let blocks_b: HashSet<usize> = pair.path_b.blocks.iter().copied().collect();
+    let only_a = blocks_a.iter().any(|block| !blocks_b.contains(block));
+    let only_b = blocks_b.iter().any(|block| !blocks_a.contains(block));
+    only_a && only_b
+}
+
 fn classify_cfg_block(terminator: &str) -> &'static str {
     if is_branch_terminator(terminator) {
         "branch"
@@ -2833,5 +2853,64 @@ mod tests {
         assert!(out.contains("Callers (0):"));
         assert!(out.contains("Inferred callers from refs (1):"));
         assert!(out.contains("app::drive"));
+    }
+
+    #[test]
+    fn redundant_path_pairs_drop_order_and_one_sided_loop_noise() {
+        let idx = SemanticIndex {
+            graph: CrateGraph {
+                nodes: HashMap::new(),
+                edges: Vec::new(),
+                cfg_nodes: HashMap::new(),
+                cfg_edges: Vec::new(),
+                bridge_edges: Vec::new(),
+                alpha_pathways: Vec::new(),
+                redundant_paths: vec![
+                    RedundantPathPair {
+                        path_a: PathRecord {
+                            owner: "app::scan".to_string(),
+                            blocks: vec![0, 1, 2],
+                            signature: 1,
+                        },
+                        path_b: PathRecord {
+                            owner: "app::scan".to_string(),
+                            blocks: vec![0, 2, 1],
+                            signature: 1,
+                        },
+                        shared_signature: 1,
+                    },
+                    RedundantPathPair {
+                        path_a: PathRecord {
+                            owner: "app::scan".to_string(),
+                            blocks: vec![0, 1, 2],
+                            signature: 2,
+                        },
+                        path_b: PathRecord {
+                            owner: "app::scan".to_string(),
+                            blocks: vec![0, 1],
+                            signature: 2,
+                        },
+                        shared_signature: 2,
+                    },
+                    RedundantPathPair {
+                        path_a: PathRecord {
+                            owner: "app::scan".to_string(),
+                            blocks: vec![0, 1, 2],
+                            signature: 3,
+                        },
+                        path_b: PathRecord {
+                            owner: "app::scan".to_string(),
+                            blocks: vec![0, 1, 3],
+                            signature: 3,
+                        },
+                        shared_signature: 3,
+                    },
+                ],
+            },
+        };
+
+        let pairs = idx.redundant_path_pairs();
+        assert_eq!(pairs.len(), 1);
+        assert_eq!(pairs[0].shared_signature, 3);
     }
 }

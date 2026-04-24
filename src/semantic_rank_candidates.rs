@@ -19,7 +19,7 @@
 //!   out.json    →  <graph_dir>/safe_patch_candidates.json
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -359,6 +359,21 @@ fn resolve_path(root: &Path, path: &Path) -> PathBuf {
     }
 }
 
+fn is_actionable_redundant_path_pair(pair: &RedundantPathPair) -> bool {
+    if pair.path_a.owner != pair.path_b.owner {
+        return false;
+    }
+    if pair.path_a.blocks == pair.path_b.blocks {
+        return false;
+    }
+
+    let blocks_a: HashSet<usize> = pair.path_a.blocks.iter().copied().collect();
+    let blocks_b: HashSet<usize> = pair.path_b.blocks.iter().copied().collect();
+    let only_a = blocks_a.iter().any(|block| !blocks_b.contains(block));
+    let only_b = blocks_b.iter().any(|block| !blocks_a.contains(block));
+    only_a && only_b
+}
+
 pub fn run_with_options(
     options: SemanticRankCandidatesOptions,
 ) -> anyhow::Result<SemanticRankCandidatesReport> {
@@ -421,6 +436,9 @@ pub fn run_with_options(
     // ── group pairs by owner path ─────────────────────────────────────────────
     let mut by_owner: HashMap<&str, Vec<&RedundantPathPair>> = HashMap::new();
     for pair in &graph.redundant_paths {
+        if !is_actionable_redundant_path_pair(pair) {
+            continue;
+        }
         by_owner
             .entry(pair.path_a.owner.as_str())
             .or_default()
