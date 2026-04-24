@@ -56,7 +56,7 @@ fn preflight_executor_dispatch(
 }
 
 /// Intent: transport_effect
-/// Resource: error
+/// Resource: state
 /// Inputs: &prompt_inputs::OrchestratorContext<'_>, &mut canonical_writer::CanonicalWriter, &mut app::RuntimeState, u64, &mut tokio::task::JoinSet<(usize, app::PendingExecutorSubmit, std::result::Result<std::string::String, anyhow::Error>
 /// Outputs: bool
 /// Effects: state_write, transport_effect
@@ -467,10 +467,10 @@ fn submitted_executor_steps_used(writer: &CanonicalWriter, lane_id: usize) -> us
 /// Resource: error
 /// Inputs: &canonical_writer::CanonicalWriter, &app::PendingExecutorSubmit, &app::PendingSubmitState, u32, std::option::Option<std::string::String>
 /// Outputs: app::SubmittedExecutorTurn
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: state_read
+/// Forbidden: fs_write, default_overwrite
+/// Invariants: deterministic_for_same_inputs
+/// Failure: infallible
 /// Provenance: rustc:facts + rustc:docstring
 fn build_submitted_executor_turn(
     writer: &CanonicalWriter,
