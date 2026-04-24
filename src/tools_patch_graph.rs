@@ -1765,9 +1765,13 @@ fn log_graph_reports_failure(
         role,
         action_kind,
         Some(step),
-        &format!("{action_kind} failed for crate {crate_name}"),
+        &graph_reports_failure_message(action_kind, crate_name),
         Some(payload),
     );
+}
+
+fn graph_reports_failure_message(action_kind: &str, crate_name: &str) -> String {
+    format!("{action_kind} failed for crate {crate_name}")
 }
 
 fn graph_reports_failure_payload(
