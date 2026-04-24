@@ -217,7 +217,7 @@ fn is_batch_item_mutating(kind: &str, item: &Value) -> bool {
     }
 }
 
-fn execute_batch_item(
+fn execute_batch_graph_item(
     role: &str,
     step: usize,
     workspace: &Path,
@@ -225,13 +225,6 @@ fn execute_batch_item(
     item: &Value,
 ) -> Result<(bool, String)> {
     match kind {
-        "list_dir" | "read_file" => execute_batch_file_item(role, step, workspace, kind, item),
-        "symbols_index" | "symbols_rename_candidates" | "symbols_prepare_rename" => {
-            execute_batch_symbols_item(workspace, kind, item)
-        }
-        "objectives" | "invariants" | "issue" | "violation" | "plan" => {
-            execute_batch_state_item(role, workspace, kind, item)
-        }
         k @ ("rustc_hir" | "rustc_mir") => handle_rustc_action(role, step, k, workspace, item),
         k @ ("graph_call" | "graph_cfg") => {
             handle_graph_call_cfg_action(role, step, k, workspace, item)
@@ -247,6 +240,25 @@ fn execute_batch_item(
         "execution_path" => handle_execution_path_action(workspace, item),
         "symbol_neighborhood" => handle_symbol_neighborhood_action(workspace, item),
         other => Ok((false, format!("unknown batchable action '{other}'"))),
+    }
+}
+
+fn execute_batch_item(
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    kind: &str,
+    item: &Value,
+) -> Result<(bool, String)> {
+    match kind {
+        "list_dir" | "read_file" => execute_batch_file_item(role, step, workspace, kind, item),
+        "symbols_index" | "symbols_rename_candidates" | "symbols_prepare_rename" => {
+            execute_batch_symbols_item(workspace, kind, item)
+        }
+        "objectives" | "invariants" | "issue" | "violation" | "plan" => {
+            execute_batch_state_item(role, workspace, kind, item)
+        }
+        other => execute_batch_graph_item(role, step, workspace, other, item),
     }
 }
 
