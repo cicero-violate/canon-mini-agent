@@ -216,6 +216,8 @@ fn format_apply_patch_action_chain(
     test_label: Option<&str>,
     test_cmd: Option<&str>,
     test_out: Option<&str>,
+    refresh_label: Option<&str>,
+    refresh_out: Option<&str>,
     extra_note: Option<&str>,
 ) -> String {
     let mut sections = vec![
@@ -258,12 +260,114 @@ fn format_apply_patch_action_chain(
         ));
     }
 
+    if let (Some(refresh_label), Some(refresh_out)) = (refresh_label, refresh_out) {
+        let refresh_index = if test_label.is_some() { 4 } else { 3 };
+        sections.push(format_chained_action_entry(
+            refresh_index,
+            "run_command",
+            if refresh_label.ends_with("ok") {
+                "ok"
+            } else {
+                "failed"
+            },
+            "Regenerate graph-derived semantic artifacts and issue projections after cargo check.",
+            None,
+            truncate(refresh_out, MAX_SNIPPET),
+        ));
+    }
+
     if let Some(note) = extra_note.filter(|n| !n.trim().is_empty()) {
         sections.push("Notes:".to_string());
         sections.push(note.trim().to_string());
     }
 
     sections.join("\n\n")
+}
+
+/// Intent: projection_refresh
+/// Resource: graph.json, safe_patch_candidates.json, semantic_manifest_proposals.json, ISSUES.json
+/// Inputs: &std::path::Path
+/// Outputs: (bool, std::string::String)
+/// Effects: fs_read, fs_write
+/// Forbidden: stale_issue_projection
+/// Invariants: apply_patch_ok_and_cargo_check_ok_refreshes_derived_artifacts
+/// Failure: fail_closed_note
+/// Provenance: rustc:facts + rustc:docstring
+fn refresh_derived_artifacts_after_cargo_check(workspace: &Path) -> (bool, String) {
+    let mut lines = Vec::new();
+    let graph_path = crate::semantic_contract::graph_path(workspace);
+    lines.push(format!(
+        "projection_refresh: cargo check passed; treating {} as the current graph snapshot",
+        crate::semantic::shorten_display_path(&graph_path.display().to_string())
+    ));
+
+    match fs::metadata(&graph_path) {
+        Ok(meta) => lines.push(format!(
+            "graph.json present: bytes={}",
+            meta.len()
+        )),
+        Err(err) => {
+            lines.push(format!(
+                "graph.json missing/unreadable after cargo check: {err}; ensure canon-rustc-v2/RUSTC_WRAPPER is active"
+            ));
+            return (false, lines.join("\n"));
+        }
+    }
+
+    match crate::semantic_contract::run_semantic_sync(workspace) {
+        Ok(report) => {
+            lines.push(format!(
+                "semantic_sync ok: candidates={} safe_merge={} investigate={} skip={} unmatched_owners={} manifest_error_rate={:.3}",
+                report.rank_candidates_total,
+                report.rank_safe_merge,
+                report.rank_investigate,
+                report.rank_skip,
+                report.rank_unmatched_owners,
+                report.metrics.fn_error_rate,
+            ));
+            lines.push(format!(
+                "semantic_issue_projection ok: selected={} rank_selected={} manifest_selected={} upserts={} resolved={} rewrote={}",
+                report.projected_issue_candidates,
+                report.projected_rank_issue_candidates,
+                report.projected_manifest_issue_candidates,
+                report.projected_issue_upserts,
+                report.projected_issue_resolved,
+                report.projected_issue_rewrote,
+            ));
+        }
+        Err(err) => {
+            lines.push(format!("semantic_sync failed: {err:#}"));
+            return (false, lines.join("\n"));
+        }
+    }
+
+    if let Err(err) = crate::complexity::refresh_issue_artifacts(workspace) {
+        lines.push(format!("issue refresh failed: {err:#}"));
+        return (false, lines.join("\n"));
+    }
+
+    let issues_path = workspace.join(ISSUES_FILE);
+    match fs::metadata(&issues_path) {
+        Ok(meta) => lines.push(format!(
+            "ISSUES.json refreshed: bytes={}",
+            meta.len()
+        )),
+        Err(err) => {
+            lines.push(format!("ISSUES.json missing/unreadable after refresh: {err}"));
+            return (false, lines.join("\n"));
+        }
+    }
+
+    lines.push("derived artifact refresh ok".to_string());
+    (true, lines.join("\n"))
+}
+
+fn command_is_cargo_check(cmd: &str) -> bool {
+    let normalized = cmd.split_whitespace().collect::<Vec<_>>().join(" ");
+    normalized == "cargo check"
+        || normalized.starts_with("cargo check ")
+        || normalized.contains(" && cargo check")
+        || normalized.contains("; cargo check")
 }
 
 fn verification_rebind_note(
@@ -355,6 +459,8 @@ fn verify_apply_patch_crate(
             None,
             None,
             None,
+            None,
+            None,
             Some(&rebind_note),
         );
         return Some((false, out));
@@ -371,6 +477,13 @@ fn verify_apply_patch_crate(
         "",
     );
 
+    let (refresh_ok, refresh_out) = refresh_derived_artifacts_after_cargo_check(workspace);
+    let refresh_label = if refresh_ok {
+        "derived artifact refresh ok"
+    } else {
+        "derived artifact refresh failed"
+    };
+
     Some((
         false,
         format_apply_patch_action_chain(
@@ -380,6 +493,8 @@ fn verify_apply_patch_crate(
             None,
             None,
             None,
+            Some(refresh_label),
+            Some(&refresh_out),
             Some("Auto post-patch `cargo test` is disabled; run `cargo_test` explicitly when needed."),
         ),
     ))
@@ -737,7 +852,7 @@ fn handle_run_command_action(
         .and_then(|v| v.as_str())
         .unwrap_or(crate::constants::workspace());
     eprintln!("[{role}] step={} run_command cmd={cmd}", step);
-    let (success, out) = exec_run_command(workspace, cmd, cwd)?;
+    let (success, mut out) = exec_run_command(workspace, cmd, cwd)?;
     let receipt_id = append_evidence_receipt(
         role,
         step,
@@ -766,6 +881,18 @@ fn handle_run_command_action(
                 "cwd": cwd,
             })),
         );
+    }
+    if success && command_is_cargo_check(cmd) {
+        let (refresh_ok, refresh_out) = refresh_derived_artifacts_after_cargo_check(workspace);
+        let refresh_label = if refresh_ok {
+            "derived artifact refresh ok"
+        } else {
+            "derived artifact refresh failed"
+        };
+        out.push_str("\n\n");
+        out.push_str(refresh_label);
+        out.push('\n');
+        out.push_str(&refresh_out);
     }
     Ok((
         false,
