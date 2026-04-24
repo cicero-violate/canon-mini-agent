@@ -80,12 +80,20 @@ fn insert_graph_only_size_metrics(
     entry: &GraphOnlyEntry,
     metrics: &mut serde_json::Map<String, serde_json::Value>,
 ) {
-    metrics.insert("mir_blocks".to_string(), json!(graph_only_mir_blocks(entry)));
-    metrics.insert("mir_stmts".to_string(), json!(graph_only_mir_stmts(entry)));
-    metrics.insert("branch_score".to_string(), json!(graph_only_branch_score(entry)));
-    metrics.insert("stmt_density".to_string(), json!(graph_only_stmt_density(entry)));
-    metrics.insert("b_transitive".to_string(), json!(graph_only_b_transitive(entry)));
-    metrics.insert("heat_score".to_string(), json!(graph_only_heat_score(entry)));
+    insert_graph_only_metric(metrics, "mir_blocks", graph_only_mir_blocks(entry));
+    insert_graph_only_metric(metrics, "mir_stmts", graph_only_mir_stmts(entry));
+    insert_graph_only_metric(metrics, "branch_score", graph_only_branch_score(entry));
+    insert_graph_only_metric(metrics, "stmt_density", graph_only_stmt_density(entry));
+    insert_graph_only_metric(metrics, "b_transitive", graph_only_b_transitive(entry));
+    insert_graph_only_metric(metrics, "heat_score", graph_only_heat_score(entry));
+}
+
+fn insert_graph_only_metric(
+    metrics: &mut serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    value: impl serde::Serialize,
+) {
+    metrics.insert(key.to_string(), json!(value));
 }
 
 fn insert_graph_only_topology_metrics(
