@@ -303,6 +303,22 @@ fn handle_invalid_action_error(
     log: &impl Fn(&str, Value),
     err_text: &str,
 ) -> InvalidActionFeedback {
+    log_invalid_action_validation(raw, action, log, err_text);
+    if let Some(prompt) = corrective_invalid_action_prompt(action, err_text, role) {
+        return invalid_action_feedback_with_prompt(action, err_text, role, &prompt);
+    }
+    if err_text.contains("cargo_test missing 'crate'") {
+        return cargo_test_missing_crate_feedback(err_text);
+    }
+    invalid_action_feedback(action, err_text, role)
+}
+
+fn log_invalid_action_validation(
+    raw: &str,
+    action: &Value,
+    log: &impl Fn(&str, Value),
+    err_text: &str,
+) {
     log(
         "llm_invalid_action",
         json!({
@@ -312,13 +328,6 @@ fn handle_invalid_action_error(
             "action": action.clone(),
         }),
     );
-    if let Some(prompt) = corrective_invalid_action_prompt(action, err_text, role) {
-        return invalid_action_feedback_with_prompt(action, err_text, role, &prompt);
-    }
-    if err_text.contains("cargo_test missing 'crate'") {
-        return cargo_test_missing_crate_feedback(err_text);
-    }
-    invalid_action_feedback(action, err_text, role)
 }
 
 fn invalid_action_feedback(action: &Value, err_text: &str, role: &str) -> InvalidActionFeedback {
