@@ -1628,10 +1628,14 @@ fn normalize_loaded_invariants(mut file: EnforcedInvariantsFile) -> EnforcedInva
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn normalize_single_invariant(inv: &mut DiscoveredInvariant) {
+fn normalize_invariant_collections(inv: &mut DiscoveredInvariant) {
     inv.state_conditions = canonicalize_conditions(std::mem::take(&mut inv.state_conditions));
     inv.gates = canonicalize_gates(std::mem::take(&mut inv.gates));
     inv.evidence = canonicalize_evidence(std::mem::take(&mut inv.evidence));
+}
+
+fn normalize_single_invariant(inv: &mut DiscoveredInvariant) {
+    normalize_invariant_collections(inv);
     if inv.last_seen_ms < inv.first_seen_ms {
         std::mem::swap(&mut inv.first_seen_ms, &mut inv.last_seen_ms);
     }
