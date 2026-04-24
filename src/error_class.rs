@@ -425,6 +425,10 @@ fn classify_permission_or_authorization_text(text: &str) -> Option<ErrorClass> {
 /// This is a best-effort heuristic; the LLM's free-text summary is the input.
 pub fn classify_blocker_summary(summary: &str) -> ErrorClass {
     let text = summary.to_lowercase();
+    classify_blocker_summary_text(&text)
+}
+
+fn classify_blocker_summary_text(text: &str) -> ErrorClass {
     if is_blocker_tool_unavailable_text(&text) {
         return ErrorClass::PermissionDenied;
     }
