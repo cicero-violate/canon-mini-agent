@@ -325,10 +325,12 @@ fn manifest_error_priority(error_fields: usize) -> &'static str {
 }
 
 fn manifest_error_location(manifest: &ManifestProposal) -> String {
-    if !manifest.file.trim().is_empty() && !manifest.line.trim().is_empty() {
-        format!("{}:{}", manifest.file.trim(), manifest.line.trim())
-    } else if !manifest.file.trim().is_empty() {
-        manifest.file.trim().to_string()
+    let file = manifest.file.trim();
+    let line = manifest.line.trim();
+    if !file.is_empty() && !line.is_empty() {
+        format!("{file}:{line}")
+    } else if !file.is_empty() {
+        file.to_string()
     } else {
         "state/rustc/canon_mini_agent/graph.json".to_string()
     }
