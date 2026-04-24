@@ -431,6 +431,17 @@ fn example_message_metadata() -> Value {
 fn example_message_action(from: &str, to_role: &str, msg_type: &str, status: &str) -> Value {
     let payload = example_message_payload(msg_type, status);
     let metadata = example_message_metadata();
+    example_message_action_json(from, to_role, msg_type, status, payload, metadata)
+}
+
+fn example_message_action_json(
+    from: &str,
+    to_role: &str,
+    msg_type: &str,
+    status: &str,
+    payload: Value,
+    metadata: Value,
+) -> Value {
     json!({
         "action": metadata["action"],
         "from": from,
