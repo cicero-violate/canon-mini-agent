@@ -454,6 +454,26 @@ fn apply_route_gate_signal(
     }
 }
 
+fn apply_executor_route_gate_signal(
+    state: &mut std::collections::HashMap<String, String>,
+    blockers: &crate::blockers::BlockersFile,
+    now_ms: u64,
+    actor_kind: &str,
+    error_class: &crate::error_class::ErrorClass,
+    threshold: usize,
+    error_key: &str,
+    error_value: &str,
+) {
+    let count = crate::blockers::count_class_recent(
+        blockers,
+        actor_kind,
+        error_class,
+        now_ms,
+        5 * 60 * 1000,
+    );
+    apply_route_gate_signal(state, count, threshold, actor_kind, error_key, error_value);
+}
+
 fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str) -> bool {
     let ws = std::path::PathBuf::from(workspace());
     let blockers = crate::blockers::load_blockers(&ws);
@@ -462,32 +482,9 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
     let mut state = std::collections::HashMap::new();
     state.insert("ready_tasks".to_string(), ready_count.to_string());
 
-    let solo_invalid_schema_count = crate::blockers::count_class_recent(
-        &blockers,
-        "solo",
-        &crate::error_class::ErrorClass::InvalidSchema,
-        now_ms,
-        5 * 60 * 1000,
-    );
-    apply_route_gate_signal(&mut state, solo_invalid_schema_count, 3, "solo", "error_class", "invalid_schema");
-
-    let solo_verification_failed_count = crate::blockers::count_class_recent(
-        &blockers,
-        "solo",
-        &crate::error_class::ErrorClass::VerificationFailed,
-        now_ms,
-        5 * 60 * 1000,
-    );
-    apply_route_gate_signal(&mut state, solo_verification_failed_count, 1, "solo", "error_class", "verification_failed");
-
-    let executor_invalid_schema_count = crate::blockers::count_class_recent(
-        &blockers,
-        "executor",
-        &crate::error_class::ErrorClass::InvalidSchema,
-        now_ms,
-        5 * 60 * 1000,
-    );
-    apply_route_gate_signal(&mut state, executor_invalid_schema_count, 3, "executor", "error_class", "invalid_schema");
+    apply_executor_route_gate_signal(&mut state, &blockers, now_ms, "solo", &crate::error_class::ErrorClass::InvalidSchema, 3, "error_class", "invalid_schema");
+    apply_executor_route_gate_signal(&mut state, &blockers, now_ms, "solo", &crate::error_class::ErrorClass::VerificationFailed, 1, "error_class", "verification_failed");
+    apply_executor_route_gate_signal(&mut state, &blockers, now_ms, "executor", &crate::error_class::ErrorClass::InvalidSchema, 3, "error_class", "invalid_schema");
 
     let unauthorized_plan_op_count = crate::blockers::count_class_recent(
         &blockers,
