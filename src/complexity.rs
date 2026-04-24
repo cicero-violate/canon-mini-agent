@@ -267,36 +267,20 @@ fn build_graph_only_entries(
         });
     }
 
-    let max_branch = entries.iter().map(|e| e.branch_score).fold(0.0_f64, f64::max);
-    let max_density = entries.iter().map(|e| e.stmt_density).fold(0.0_f64, f64::max);
-    let max_transitive = entries.iter().map(|e| e.b_transitive).fold(0.0_f64, f64::max);
-    let max_heat = entries.iter().map(|e| e.heat_score).fold(0.0_f64, f64::max);
-    let max_dup = entries
-        .iter()
-        .map(|e| e.duplicate_body_count as f64)
-        .fold(0.0_f64, f64::max);
-    let max_redundant = entries
-        .iter()
-        .map(|e| e.redundant_path_count as f64)
-        .fold(0.0_f64, f64::max);
-    let max_pathway = entries
-        .iter()
-        .map(|e| (e.pathway_membership_count + e.pathway_wrapper_count) as f64)
-        .fold(0.0_f64, f64::max);
-    let max_scc = entries.iter().map(|e| e.scc_size as f64).fold(0.0_f64, f64::max);
+    let max = graph_only_normalization_maxima(&entries);
 
     for entry in &mut entries {
-        let branch_norm = normalize_by_max(entry.branch_score, max_branch);
-        let density_norm = normalize_by_max(entry.stmt_density, max_density);
-        let transitive_norm = normalize_by_max(entry.b_transitive, max_transitive);
-        let heat_norm = normalize_by_max(entry.heat_score, max_heat);
-        let duplicate_norm = normalize_by_max(entry.duplicate_body_count as f64, max_dup);
-        let redundant_norm = normalize_by_max(entry.redundant_path_count as f64, max_redundant);
+        let branch_norm = normalize_by_max(entry.branch_score, max.branch);
+        let density_norm = normalize_by_max(entry.stmt_density, max.density);
+        let transitive_norm = normalize_by_max(entry.b_transitive, max.transitive);
+        let heat_norm = normalize_by_max(entry.heat_score, max.heat);
+        let duplicate_norm = normalize_by_max(entry.duplicate_body_count as f64, max.duplicate);
+        let redundant_norm = normalize_by_max(entry.redundant_path_count as f64, max.redundant);
         let pathway_norm = normalize_by_max(
             (entry.pathway_membership_count + entry.pathway_wrapper_count) as f64,
-            max_pathway,
+            max.pathway,
         );
-        let loop_norm = normalize_by_max(entry.scc_size as f64, max_scc);
+        let loop_norm = normalize_by_max(entry.scc_size as f64, max.scc);
         entry.graph_complexity_score = (
             0.25 * branch_norm
                 + 0.15 * density_norm
@@ -312,6 +296,39 @@ fn build_graph_only_entries(
 
     entries.sort_by(graph_only_sort_desc);
     entries
+}
+
+struct GraphOnlyNormalizationMaxima {
+    branch: f64,
+    density: f64,
+    transitive: f64,
+    heat: f64,
+    duplicate: f64,
+    redundant: f64,
+    pathway: f64,
+    scc: f64,
+}
+
+fn graph_only_normalization_maxima(entries: &[GraphOnlyEntry]) -> GraphOnlyNormalizationMaxima {
+    GraphOnlyNormalizationMaxima {
+        branch: entries.iter().map(|e| e.branch_score).fold(0.0_f64, f64::max),
+        density: entries.iter().map(|e| e.stmt_density).fold(0.0_f64, f64::max),
+        transitive: entries.iter().map(|e| e.b_transitive).fold(0.0_f64, f64::max),
+        heat: entries.iter().map(|e| e.heat_score).fold(0.0_f64, f64::max),
+        duplicate: entries
+            .iter()
+            .map(|e| e.duplicate_body_count as f64)
+            .fold(0.0_f64, f64::max),
+        redundant: entries
+            .iter()
+            .map(|e| e.redundant_path_count as f64)
+            .fold(0.0_f64, f64::max),
+        pathway: entries
+            .iter()
+            .map(|e| (e.pathway_membership_count + e.pathway_wrapper_count) as f64)
+            .fold(0.0_f64, f64::max),
+        scc: entries.iter().map(|e| e.scc_size as f64).fold(0.0_f64, f64::max),
+    }
 }
 
 /// Intent: pure_transform
@@ -1040,16 +1057,12 @@ fn global_complexity_entry_value(
     crate_name: &str,
     entry: &serde_json::Value,
 ) -> serde_json::Value {
-    fn entry_field<'a>(entry: &'a serde_json::Value, key: &str) -> Option<&'a serde_json::Value> {
-        entry.get(key)
-    }
-
-    let symbol = entry_field(entry, "symbol");
-    let file = entry_field(entry, "file");
-    let line = entry_field(entry, "line");
-    let complexity_proxy = entry_field(entry, "complexity_proxy");
-    let mir_blocks = entry_field(entry, "mir_blocks");
-    let mir_stmts = entry_field(entry, "mir_stmts");
+    let symbol = entry.get("symbol");
+    let file = entry.get("file");
+    let line = entry.get("line");
+    let complexity_proxy = entry.get("complexity_proxy");
+    let mir_blocks = entry.get("mir_blocks");
+    let mir_stmts = entry.get("mir_stmts");
 
     json!({
         "crate": crate_name,
@@ -1077,6 +1090,7 @@ fn build_complexity_entry(
     stmts: usize,
 ) -> serde_json::Value {
     let branch_score = s.branch_score;
+    let proxy = complexity_proxy(branch_score, blocks);
     json!({
         "symbol": s.symbol,
         "file": shorten_display_path(&s.file),
@@ -1086,7 +1100,7 @@ fn build_complexity_entry(
         "mir_stmts": stmts,
         "branch_score": branch_score,
         "is_directly_recursive": s.is_directly_recursive,
-        "complexity_proxy": complexity_proxy(branch_score, blocks),
+        "complexity_proxy": proxy,
     })
 }
 

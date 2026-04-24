@@ -239,15 +239,13 @@ fn normalize_list(xs: Vec<String>) -> Vec<String> {
 }
 
 fn choose_scalar(cands: &[Option<String>]) -> String {
-    for cand in cands {
-        if let Some(v) = cand {
-            let s = v.trim();
-            if !s.is_empty() && s != "TODO" && s != MISSING {
-                return s.to_string();
-            }
-        }
-    }
-    MISSING.to_string()
+    cands
+        .iter()
+        .flatten()
+        .map(|v| v.trim())
+        .find(|s| !s.is_empty() && *s != "TODO" && *s != MISSING)
+        .map(str::to_string)
+        .unwrap_or_else(|| MISSING.to_string())
 }
 
 fn choose_list(cands: &[Vec<String>]) -> Vec<String> {
@@ -550,28 +548,7 @@ pub fn run_with_options(options: SemanticManifestRunOptions) -> anyhow::Result<S
     let bytes = std::fs::read(&graph_path)?;
     let graph: CrateGraph = serde_json::from_slice(&bytes)?;
 
-    let node_path: HashMap<String, String> = graph
-        .nodes
-        .iter()
-        .map(|(id, n)| (id.clone(), if n.path.is_empty() { id.clone() } else { n.path.clone() }))
-        .collect();
-
-    let mut effects_by_owner: HashMap<String, BTreeSet<String>> = HashMap::new();
-    let mut calls_by_owner: HashMap<String, BTreeSet<String>> = HashMap::new();
-    for e in &graph.edges {
-        if let Some(lbl) = map_effect_relation(&e.relation) {
-            effects_by_owner
-                .entry(e.from.clone())
-                .or_default()
-                .insert(lbl.to_string());
-        }
-        if e.relation == "Calls" {
-            calls_by_owner
-                .entry(e.from.clone())
-                .or_default()
-                .insert(node_path.get(&e.to).cloned().unwrap_or_else(|| e.to.clone()));
-        }
-    }
+    let (effects_by_owner, calls_by_owner) = index_manifest_edges(&graph);
 
     let mut src_cache: HashMap<PathBuf, Vec<String>> = HashMap::new();
     let mut proposals: HashMap<String, SemanticManifest> = HashMap::new();
@@ -756,6 +733,34 @@ pub fn run_with_options(options: SemanticManifestRunOptions) -> anyhow::Result<S
         fn_error_rate: error_rate,
         target,
     })
+}
+
+fn index_manifest_edges(
+    graph: &CrateGraph,
+) -> (HashMap<String, BTreeSet<String>>, HashMap<String, BTreeSet<String>>) {
+    let node_path: HashMap<String, String> = graph
+        .nodes
+        .iter()
+        .map(|(id, n)| (id.clone(), if n.path.is_empty() { id.clone() } else { n.path.clone() }))
+        .collect();
+
+    let mut effects_by_owner: HashMap<String, BTreeSet<String>> = HashMap::new();
+    let mut calls_by_owner: HashMap<String, BTreeSet<String>> = HashMap::new();
+    for e in &graph.edges {
+        if let Some(lbl) = map_effect_relation(&e.relation) {
+            effects_by_owner
+                .entry(e.from.clone())
+                .or_default()
+                .insert(lbl.to_string());
+        }
+        if e.relation == "Calls" {
+            calls_by_owner
+                .entry(e.from.clone())
+                .or_default()
+                .insert(node_path.get(&e.to).cloned().unwrap_or_else(|| e.to.clone()));
+        }
+    }
+    (effects_by_owner, calls_by_owner)
 }
 
 pub fn run_from_cli_args(args: &[String], workspace: PathBuf) -> anyhow::Result<SemanticManifestRunReport> {

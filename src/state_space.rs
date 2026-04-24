@@ -136,13 +136,25 @@ pub fn scheduled_phase_resume_done(
     executor_in_progress: bool,
 ) -> bool {
     match phase {
-        "planner" => !planner_pending,
-        "verifier" => verifier_pending_results == 0 && verifier_joinset_empty,
-        "diagnostics" => !diagnostics_pending,
-        "executor" => !executor_lane_pending && !executor_in_progress,
+        "planner" => no_pending(planner_pending),
+        "verifier" => verifier_resume_done(verifier_pending_results, verifier_joinset_empty),
+        "diagnostics" => no_pending(diagnostics_pending),
+        "executor" => executor_resume_done(executor_lane_pending, executor_in_progress),
         "solo" => true,
         _ => true,
     }
+}
+
+fn no_pending(pending: bool) -> bool {
+    !pending
+}
+
+fn verifier_resume_done(pending_results: usize, joinset_empty: bool) -> bool {
+    pending_results == 0 && joinset_empty
+}
+
+fn executor_resume_done(lane_pending: bool, in_progress: bool) -> bool {
+    !lane_pending && !in_progress
 }
 
 pub fn executor_step_limit_exceeded(total_steps: usize, limit: usize) -> bool {
@@ -469,15 +481,13 @@ pub fn extract_progress_path_from_result(result: &str) -> Option<String> {
     for line in result.lines() {
         let trimmed = line.trim();
         if let Some(rest) = trimmed.strip_prefix("progress_path:") {
-            let path = rest.trim();
-            if !path.is_empty() {
-                return Some(path.to_string());
+            if let Some(path) = non_empty_path(rest) {
+                return Some(path);
             }
         }
         if let Some(rest) = trimmed.strip_prefix("output_log:") {
-            let path = rest.trim();
-            if !path.is_empty() {
-                return Some(path.to_string());
+            if let Some(path) = non_empty_path(rest) {
+                return Some(path);
             }
         }
         if let Some(idx) = trimmed.find("output_log=") {
@@ -485,10 +495,15 @@ pub fn extract_progress_path_from_result(result: &str) -> Option<String> {
             if let Some(end) = path.find(' ') {
                 path = &path[..end];
             }
-            if !path.is_empty() {
-                return Some(path.to_string());
+            if let Some(path) = non_empty_path(path) {
+                return Some(path);
             }
         }
     }
     None
+}
+
+fn non_empty_path(path: &str) -> Option<String> {
+    let path = path.trim();
+    (!path.is_empty()).then(|| path.to_string())
 }

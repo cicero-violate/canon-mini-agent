@@ -268,10 +268,9 @@ fn scan_attr_range_step(b: &[u8], i: usize, n: usize) -> (usize, Option<(usize, 
         return (skip_quoted_string(b, i, n), None);
     }
     let (next_i, range) = consume_attr_range(b, i, n);
-    if range.is_some() {
-        (next_i, range)
-    } else {
-        (i + 1, None)
+    match range {
+        Some(range) => (next_i, Some(range)),
+        None => (i + 1, None),
     }
 }
 

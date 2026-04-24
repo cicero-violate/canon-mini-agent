@@ -962,18 +962,23 @@ fn generate_effect_dispersion_issues(
         mutated += sync_effect_dispersion_issue_for_crate(&mut file, &crate_name, &idx, mode);
     }
 
-    rescore_all(&mut file);
-    let after = serde_json::to_value(&file)?;
-    if before != after {
-        persist_issues_projection_with_writer(
-            workspace,
-            &file,
-            None,
-            mode.persist_label(),
-        )?;
-    }
+    finalize_issue_file(workspace, &mut file, before, mode.persist_label())?;
 
     Ok(mutated)
+}
+
+fn finalize_issue_file(
+    workspace: &Path,
+    file: &mut IssuesFile,
+    before: Value,
+    label: &str,
+) -> Result<()> {
+    rescore_all(file);
+    let after = serde_json::to_value(&mut *file)?;
+    if before != after {
+        persist_issues_projection_with_writer(workspace, file, None, label)?;
+    }
+    Ok(())
 }
 
 fn sync_effect_dispersion_issue_for_crate(
@@ -2902,27 +2907,7 @@ fn build_process_spawn_dispersion_issue(
         })
         .collect::<Vec<_>>();
 
-    let module_metrics: Vec<Value> = {
-        let mut all: Vec<(String, Vec<String>)> = by_module
-            .iter()
-            .map(|(m, s)| {
-                let mut syms = s.clone();
-                syms.sort();
-                (m.clone(), syms)
-            })
-            .collect();
-        all.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.0.cmp(&b.0)));
-        all.iter()
-            .map(|(module, syms)| {
-                json!({
-                    "module": module,
-                    "canonical": is_canonical_process_boundary(module),
-                    "spawn_count": syms.len(),
-                    "symbols": syms,
-                })
-            })
-            .collect()
-    };
+    let module_metrics = process_spawn_module_metrics(by_module);
 
     Issue {
         id: format!(
@@ -2964,6 +2949,28 @@ fn build_process_spawn_dispersion_issue(
         discovered_by: "graph_metrics_detector".to_string(),
         ..Issue::default()
     }
+}
+
+fn process_spawn_module_metrics(by_module: &HashMap<String, Vec<String>>) -> Vec<Value> {
+    let mut all: Vec<(String, Vec<String>)> = by_module
+        .iter()
+        .map(|(m, s)| {
+            let mut syms = s.clone();
+            syms.sort();
+            (m.clone(), syms)
+        })
+        .collect();
+    all.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.0.cmp(&b.0)));
+    all.iter()
+        .map(|(module, syms)| {
+            json!({
+                "module": module,
+                "canonical": is_canonical_process_boundary(module),
+                "spawn_count": syms.len(),
+                "symbols": syms,
+            })
+        })
+        .collect()
 }
 
 /// Intent: pure_transform

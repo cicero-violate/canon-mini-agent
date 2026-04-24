@@ -129,14 +129,18 @@ fn run_selected_mode(args: &[String], workspace: &PathBuf) -> Option<Result<()>>
         .or_else(|| run_simple_issue_mode(args, workspace))
 }
 
-fn main() -> Result<()> {
-    let args: Vec<String> = std::env::args().collect();
-    let workspace = take_flag_value(&args, "--workspace").context("missing --workspace")?;
+fn workspace_from_args(args: &[String]) -> Result<PathBuf> {
+    let workspace = take_flag_value(args, "--workspace").context("missing --workspace")?;
     let workspace = PathBuf::from(workspace);
     if !workspace.is_absolute() {
         bail!("--workspace must be an absolute path, got: {}", workspace.display());
     }
+    Ok(workspace)
+}
 
+fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+    let workspace = workspace_from_args(&args)?;
     canon_mini_agent::set_workspace(workspace.display().to_string());
     if let Some(result) = run_selected_mode(&args, &workspace) {
         result
