@@ -429,49 +429,65 @@ pub fn classify_blocker_summary(summary: &str) -> ErrorClass {
 }
 
 fn classify_blocker_summary_text(text: &str) -> ErrorClass {
-    if is_blocker_tool_unavailable_text(&text) {
-        return ErrorClass::PermissionDenied;
+    classify_blocker_summary_match(text).unwrap_or(ErrorClass::BlockerEscalated)
+}
+
+fn classify_blocker_summary_match(text: &str) -> Option<ErrorClass> {
+    if is_blocker_tool_unavailable_text(text) {
+        return Some(ErrorClass::PermissionDenied);
     }
-    if contains_any(&text, &["step limit", "budget", "too many steps"]) {
-        return ErrorClass::StepLimitExceeded;
+    if contains_any(text, &["step limit", "budget", "too many steps"]) {
+        return Some(ErrorClass::StepLimitExceeded);
     }
-    if is_compile_blocker_text(&text) {
-        return ErrorClass::CompileError;
+    if is_compile_blocker_text(text) {
+        return Some(ErrorClass::CompileError);
     }
-    if contains_any(&text, &["not found", "does not exist", "missing"]) {
-        return ErrorClass::MissingTarget;
+    if contains_any(text, &["not found", "does not exist", "missing"]) {
+        return Some(ErrorClass::MissingTarget);
     }
-    if is_invalid_schema_text(&text) {
-        return ErrorClass::InvalidSchema;
+    classify_blocker_summary_manifest_match(text)
+}
+
+fn classify_blocker_summary_manifest_match(text: &str) -> Option<ErrorClass> {
+    if is_invalid_schema_text(text) {
+        return Some(ErrorClass::InvalidSchema);
     }
-    if is_second_mutation_text(&text) {
-        return ErrorClass::SecondMutationPath;
+    if is_second_mutation_text(text) {
+        return Some(ErrorClass::SecondMutationPath);
     }
-    if is_runtime_control_bypass_text(&text) {
-        return ErrorClass::RuntimeControlBypass;
+    if is_runtime_control_bypass_text(text) {
+        return Some(ErrorClass::RuntimeControlBypass);
     }
-    if is_uncanonicalized_recovery_text(&text) {
-        return ErrorClass::UncanonicalizedRecoveryPath;
+    if is_uncanonicalized_recovery_text(text) {
+        return Some(ErrorClass::UncanonicalizedRecoveryPath);
     }
-    if is_checkpoint_runtime_divergence_text(&text) {
-        return ErrorClass::CheckpointRuntimeDivergence;
+    classify_blocker_summary_control_match(text)
+}
+
+fn classify_blocker_summary_control_match(text: &str) -> Option<ErrorClass> {
+    if is_checkpoint_runtime_divergence_text(text) {
+        return Some(ErrorClass::CheckpointRuntimeDivergence);
     }
-    if is_effectful_state_advance_text(&text) {
-        return ErrorClass::EffectfulStateAdvanceWithoutControlEvent;
+    if is_effectful_state_advance_text(text) {
+        return Some(ErrorClass::EffectfulStateAdvanceWithoutControlEvent);
     }
-    if is_ambiguous_control_event_text(&text) {
-        return ErrorClass::AmbiguousControlEvent;
+    if is_ambiguous_control_event_text(text) {
+        return Some(ErrorClass::AmbiguousControlEvent);
     }
     if text.contains("outside workspace") || text.contains("permission") {
-        return ErrorClass::PermissionDenied;
+        return Some(ErrorClass::PermissionDenied);
     }
-    if is_verification_blocker_text(&text) {
-        return ErrorClass::VerificationFailed;
+    classify_blocker_summary_verification_match(text)
+}
+
+fn classify_blocker_summary_verification_match(text: &str) -> Option<ErrorClass> {
+    if is_verification_blocker_text(text) {
+        return Some(ErrorClass::VerificationFailed);
     }
-    if is_plan_preflight_blocker_text(&text) {
-        return ErrorClass::PlanPreflightFailed;
+    if is_plan_preflight_blocker_text(text) {
+        return Some(ErrorClass::PlanPreflightFailed);
     }
-    ErrorClass::BlockerEscalated
+    None
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
