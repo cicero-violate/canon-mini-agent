@@ -653,16 +653,42 @@ fn build_post_restart_result_payload(
     restart_kind: &str,
     signature: &str,
 ) -> serde_json::Value {
+    post_restart_result_payload_json(PostRestartResultPayload {
+        role,
+        action,
+        result,
+        step,
+        tab_id,
+        turn_id,
+        endpoint_id,
+        restart_kind,
+        signature,
+    })
+}
+
+struct PostRestartResultPayload<'a> {
+    role: &'a str,
+    action: &'a str,
+    result: &'a str,
+    step: usize,
+    tab_id: Option<u32>,
+    turn_id: Option<u64>,
+    endpoint_id: &'a str,
+    restart_kind: &'a str,
+    signature: &'a str,
+}
+
+fn post_restart_result_payload_json(payload: PostRestartResultPayload<'_>) -> serde_json::Value {
     serde_json::json!({
-        "role": role,
-        "action": action,
-        "result": result,
-        "step": step,
-        "tab_id": tab_id,
-        "turn_id": turn_id,
-        "endpoint_id": endpoint_id,
-        "restart_kind": restart_kind,
-        "signature": signature,
+        "role": payload.role,
+        "action": payload.action,
+        "result": payload.result,
+        "step": payload.step,
+        "tab_id": payload.tab_id,
+        "turn_id": payload.turn_id,
+        "endpoint_id": payload.endpoint_id,
+        "restart_kind": payload.restart_kind,
+        "signature": payload.signature,
     })
 }
 
