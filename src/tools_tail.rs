@@ -225,16 +225,13 @@ fn execute_batch_item(
     item: &Value,
 ) -> Result<(bool, String)> {
     match kind {
-        "list_dir" => handle_list_dir_action(workspace, item),
-        "read_file" => handle_read_file_action(role, step, workspace, item),
-        "symbols_index" => handle_symbols_index_action(workspace, item),
-        "symbols_rename_candidates" => handle_symbols_rename_candidates_action(workspace, item),
-        "symbols_prepare_rename" => handle_symbols_prepare_rename_action(workspace, item),
-        "objectives" => handle_objectives_action(workspace, item),
-        "invariants" => crate::invariants::handle_invariants_action(workspace, item),
-        "issue" => handle_issue_action(None, workspace, item),
-        "violation" => handle_violation_action(None, workspace, item),
-        "plan" => handle_plan_action(role, workspace, item),
+        "list_dir" | "read_file" => execute_batch_file_item(role, step, workspace, kind, item),
+        "symbols_index" | "symbols_rename_candidates" | "symbols_prepare_rename" => {
+            execute_batch_symbols_item(workspace, kind, item)
+        }
+        "objectives" | "invariants" | "issue" | "violation" | "plan" => {
+            execute_batch_state_item(role, workspace, kind, item)
+        }
         k @ ("rustc_hir" | "rustc_mir") => handle_rustc_action(role, step, k, workspace, item),
         k @ ("graph_call" | "graph_cfg") => {
             handle_graph_call_cfg_action(role, step, k, workspace, item)
@@ -249,6 +246,49 @@ fn execute_batch_item(
         "symbol_path" => handle_symbol_path_action(workspace, item),
         "execution_path" => handle_execution_path_action(workspace, item),
         "symbol_neighborhood" => handle_symbol_neighborhood_action(workspace, item),
+        other => Ok((false, format!("unknown batchable action '{other}'"))),
+    }
+}
+
+fn execute_batch_file_item(
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    kind: &str,
+    item: &Value,
+) -> Result<(bool, String)> {
+    match kind {
+        "list_dir" => handle_list_dir_action(workspace, item),
+        "read_file" => handle_read_file_action(role, step, workspace, item),
+        other => Ok((false, format!("unknown batchable action '{other}'"))),
+    }
+}
+
+fn execute_batch_symbols_item(
+    workspace: &Path,
+    kind: &str,
+    item: &Value,
+) -> Result<(bool, String)> {
+    match kind {
+        "symbols_index" => handle_symbols_index_action(workspace, item),
+        "symbols_rename_candidates" => handle_symbols_rename_candidates_action(workspace, item),
+        "symbols_prepare_rename" => handle_symbols_prepare_rename_action(workspace, item),
+        other => Ok((false, format!("unknown batchable action '{other}'"))),
+    }
+}
+
+fn execute_batch_state_item(
+    role: &str,
+    workspace: &Path,
+    kind: &str,
+    item: &Value,
+) -> Result<(bool, String)> {
+    match kind {
+        "objectives" => handle_objectives_action(workspace, item),
+        "invariants" => crate::invariants::handle_invariants_action(workspace, item),
+        "issue" => handle_issue_action(None, workspace, item),
+        "violation" => handle_violation_action(None, workspace, item),
+        "plan" => handle_plan_action(role, workspace, item),
         other => Ok((false, format!("unknown batchable action '{other}'"))),
     }
 }
