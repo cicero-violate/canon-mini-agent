@@ -1087,48 +1087,7 @@ pub fn auto_fill_message_fields(action: &mut Value, role: &str) -> bool {
         obj.insert("from".to_string(), Value::String(actual_from.to_string()));
         changed = true;
     }
-    if let Some(current_to) = obj.get("to").and_then(|v| v.as_str()).map(str::to_string) {
-        let self_routed = current_to.eq_ignore_ascii_case(actual_from);
-        let allow_solo_self_complete = actual_from.eq_ignore_ascii_case("solo")
-            && current_to.eq_ignore_ascii_case("solo")
-            && obj
-                .get("type")
-                .and_then(|v| v.as_str())
-                .is_some_and(|kind| kind.eq_ignore_ascii_case("result"))
-            && obj
-                .get("status")
-                .and_then(|v| v.as_str())
-                .is_some_and(|status| status.eq_ignore_ascii_case("complete"));
-        if self_routed && !allow_solo_self_complete {
-            let reroute_to = reroute_invalid_self_message_target(role, actual_from, obj);
-            if !current_to.eq_ignore_ascii_case(reroute_to) {
-                eprintln!(
-                    "[{role}] auto_fill_message_fields: correcting invalid self-target `{current_to}` → `{reroute_to}`"
-                );
-                obj.insert("to".to_string(), Value::String(reroute_to.to_string()));
-                changed = true;
-            }
-        }
-
-        // Two-role runtime guard: planner/executor messages must stay in-loop.
-        // Prevent planner->user (or other drift) from bypassing orchestration.
-        let expected_peer = if actual_from.eq_ignore_ascii_case("planner") {
-            Some("executor")
-        } else if actual_from.eq_ignore_ascii_case("executor") {
-            Some("planner")
-        } else {
-            None
-        };
-        if let Some(peer) = expected_peer {
-            if !current_to.eq_ignore_ascii_case(peer) {
-                eprintln!(
-                    "[{role}] auto_fill_message_fields: correcting out-of-band target `{current_to}` → `{peer}`"
-                );
-                obj.insert("to".to_string(), Value::String(peer.to_string()));
-                changed = true;
-            }
-        }
-    }
+    changed |= correct_message_target(role, actual_from, obj);
     changed |= ensure_object_string_field(obj, "to", default_to);
     changed |= ensure_object_string_field(obj, "type", default_type);
     changed |= ensure_object_string_field(obj, "status", default_status);
@@ -1187,6 +1146,86 @@ pub fn auto_fill_message_fields(action: &mut Value, role: &str) -> bool {
         "Repair invalid message schema to continue execution.",
     );
     changed
+}
+
+fn correct_message_target(
+    role: &str,
+    actual_from: &str,
+    obj: &mut serde_json::Map<String, Value>,
+) -> bool {
+    let Some(current_to) = obj.get("to").and_then(|v| v.as_str()).map(str::to_string) else {
+        return false;
+    };
+    correct_self_message_target(role, actual_from, obj, &current_to)
+        | correct_out_of_band_message_target(role, actual_from, obj, &current_to)
+}
+
+fn correct_self_message_target(
+    role: &str,
+    actual_from: &str,
+    obj: &mut serde_json::Map<String, Value>,
+    current_to: &str,
+) -> bool {
+    if !current_to.eq_ignore_ascii_case(actual_from)
+        || allow_solo_self_complete_message(actual_from, current_to, obj)
+    {
+        return false;
+    }
+    let reroute_to = reroute_invalid_self_message_target(role, actual_from, obj);
+    if current_to.eq_ignore_ascii_case(reroute_to) {
+        return false;
+    }
+    eprintln!(
+        "[{role}] auto_fill_message_fields: correcting invalid self-target `{current_to}` → `{reroute_to}`"
+    );
+    obj.insert("to".to_string(), Value::String(reroute_to.to_string()));
+    true
+}
+
+fn allow_solo_self_complete_message(
+    actual_from: &str,
+    current_to: &str,
+    obj: &serde_json::Map<String, Value>,
+) -> bool {
+    actual_from.eq_ignore_ascii_case("solo")
+        && current_to.eq_ignore_ascii_case("solo")
+        && obj
+            .get("type")
+            .and_then(|v| v.as_str())
+            .is_some_and(|kind| kind.eq_ignore_ascii_case("result"))
+        && obj
+            .get("status")
+            .and_then(|v| v.as_str())
+            .is_some_and(|status| status.eq_ignore_ascii_case("complete"))
+}
+
+fn correct_out_of_band_message_target(
+    role: &str,
+    actual_from: &str,
+    obj: &mut serde_json::Map<String, Value>,
+    current_to: &str,
+) -> bool {
+    let Some(peer) = expected_message_peer(actual_from) else {
+        return false;
+    };
+    if current_to.eq_ignore_ascii_case(peer) {
+        return false;
+    }
+    eprintln!(
+        "[{role}] auto_fill_message_fields: correcting out-of-band target `{current_to}` → `{peer}`"
+    );
+    obj.insert("to".to_string(), Value::String(peer.to_string()));
+    true
+}
+
+fn expected_message_peer(actual_from: &str) -> Option<&'static str> {
+    if actual_from.eq_ignore_ascii_case("planner") {
+        Some("executor")
+    } else if actual_from.eq_ignore_ascii_case("executor") {
+        Some("planner")
+    } else {
+        None
+    }
 }
 
 fn object_string_present(obj: &serde_json::Map<String, Value>, field: &str) -> bool {
