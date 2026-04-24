@@ -2425,18 +2425,9 @@ fn branch_reduction_issues(
 ) -> usize {
     let mut created = 0;
     for s in summaries {
-        if s.kind != "fn" || s.mir_blocks.unwrap_or(0) < 2 {
+        let Some((_total, unreachable)) = branch_reduction_candidate(idx, s) else {
             continue;
-        }
-        // Resolve the canonical symbol key in the graph for CFG queries.
-        let sym_key = match idx.canonical_symbol_key(&s.symbol) {
-            Ok(k) => k,
-            Err(_) => continue,
         };
-        let unreachable = idx.unreachable_block_count(&sym_key);
-        if unreachable == 0 {
-            continue;
-        }
         let location = shorten_location(&s.file, s.line);
         let id = branch_reduce_id(crate_name, &s.symbol);
         if issue_already_tracked(existing_ids, open_locations, &id, &location) {
@@ -2474,6 +2465,22 @@ fn branch_reduction_issues(
         created += 1;
     }
     created
+}
+
+fn branch_reduction_candidate(
+    idx: &SemanticIndex,
+    s: &crate::semantic::SymbolSummary,
+) -> Option<(usize, usize)> {
+    if s.kind != "fn" {
+        return None;
+    }
+    let total = s.mir_blocks.unwrap_or(0);
+    if total < 2 {
+        return None;
+    }
+    let sym_key = idx.canonical_symbol_key(&s.symbol).ok()?;
+    let unreachable = idx.unreachable_block_count(&sym_key);
+    (unreachable > 0).then_some((total, unreachable))
 }
 
 fn priority_from_unreachable(pct: usize) -> String {
