@@ -167,15 +167,7 @@ fn build_graph_only_entries(
         }
     }
 
-    let mut duplicate_body_count: HashMap<String, usize> = HashMap::new();
-    for group in fingerprint_groups.values() {
-        if group.len() < 2 {
-            continue;
-        }
-        for symbol in group {
-            duplicate_body_count.insert(symbol.clone(), group.len() - 1);
-        }
-    }
+    let duplicate_body_count = duplicate_body_counts(&fingerprint_groups);
 
     let mut redundant_path_count: HashMap<String, usize> = HashMap::new();
     for pair in &redundant_pairs {
@@ -296,6 +288,16 @@ fn build_graph_only_entries(
 
     entries.sort_by(graph_only_sort_desc);
     entries
+}
+
+fn duplicate_body_counts(fingerprint_groups: &HashMap<String, Vec<String>>) -> HashMap<String, usize> {
+    let mut duplicate_body_count = HashMap::new();
+    for group in fingerprint_groups.values().filter(|group| group.len() >= 2) {
+        for symbol in group {
+            duplicate_body_count.insert(symbol.clone(), group.len() - 1);
+        }
+    }
+    duplicate_body_count
 }
 
 struct GraphOnlyNormalizationMaxima {
