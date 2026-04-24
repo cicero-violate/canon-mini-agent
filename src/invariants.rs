@@ -423,6 +423,53 @@ pub fn read_enforced_invariants(workspace: &Path) -> String {
         .unwrap_or_else(|e| format!("(error reading enforced_invariants.json: {e})"))
 }
 
+struct InvariantMetaIssueSpec<'a> {
+    id: &'a str,
+    title: &'a str,
+    priority: &'a str,
+    description: String,
+    location: &'a str,
+    evidence: &'a [&'a str],
+    resolved_note: &'a str,
+}
+
+fn sync_invariant_meta_issue(
+    file: &mut IssuesFile,
+    existing_ids: &HashSet<String>,
+    source_is_fixed: bool,
+    spec: InvariantMetaIssueSpec<'_>,
+) -> (usize, bool) {
+    if !source_is_fixed && !existing_ids.contains(spec.id) {
+        file.issues.push(Issue {
+            id: spec.id.to_string(),
+            title: spec.title.to_string(),
+            status: "open".to_string(),
+            priority: spec.priority.to_string(),
+            kind: "invariant_violation".to_string(),
+            description: spec.description,
+            location: spec.location.to_string(),
+            evidence: spec
+                .evidence
+                .iter()
+                .map(|entry| (*entry).to_string())
+                .collect(),
+            discovered_by: "invariants_analyzer".to_string(),
+            score: 0.0,
+            ..Issue::default()
+        });
+        return (1, true);
+    }
+
+    if source_is_fixed {
+        return (
+            0,
+            resolve_stale_meta_issue(file, spec.id, spec.resolved_note),
+        );
+    }
+
+    (0, false)
+}
+
 /// Intent: diagnostic_scan
 /// Resource: error
 /// Inputs: &std::path::Path
@@ -469,13 +516,14 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
             "src/tool_schema.rs",
             "\"invariants\" => missing_field_for_invariants_action",
         );
-    if !has_action_surface && !existing_ids.contains(ACTION_SURFACE_ID) {
-        file.issues.push(Issue {
-            id: ACTION_SURFACE_ID.to_string(),
-            title: "Invariant lifecycle has no action surface — planner cannot review, enforce, or collapse invariants".to_string(),
-            status: "open".to_string(),
-            priority: "critical".to_string(),
-            kind: "invariant_violation".to_string(),
+    let (created_delta, mutated_delta) = sync_invariant_meta_issue(
+        &mut file,
+        &existing_ids,
+        has_action_surface,
+        InvariantMetaIssueSpec {
+            id: ACTION_SURFACE_ID,
+            title: "Invariant lifecycle has no action surface — planner cannot review, enforce, or collapse invariants",
+            priority: "critical",
             description: concat!(
                 "src/invariants.rs populates agent_state/enforced_invariants.json and auto-promotes ",
                 "patterns at support_count >= MIN_INVARIANT_SUPPORT, but planner has no ",
@@ -488,38 +536,31 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
                 "Wire enforced_invariants.json into planner prompts via src/prompt_inputs.rs. ",
                 "Impact: without this the invariant collapse pipeline (TO-DO.txt Phase 4-5) cannot complete."
             ).to_string(),
-            location: "src/tools.rs; src/invariants.rs; src/app.rs:1011-1050; src/prompt_inputs.rs".to_string(),
-            evidence: vec![
-                "src/invariants.rs:evaluate_invariant_gate returns Err but app.rs route gate has blocked=false — never hard-blocks".to_string(),
-                "src/tools.rs dispatch table is missing the 'invariants' branch required to call handle_invariants_action".to_string(),
-                "src/tool_schema.rs is missing the invariants action schema, so invalid-action repair cannot guide the model toward legal invariants ops".to_string(),
-                "Without both dispatch + schema, planner cannot review, enforce, or collapse discovered invariants from enforced_invariants.json".to_string(),
+            location: "src/tools.rs; src/invariants.rs; src/app.rs:1011-1050; src/prompt_inputs.rs",
+            evidence: &[
+                "src/invariants.rs:evaluate_invariant_gate returns Err but app.rs route gate has blocked=false — never hard-blocks",
+                "src/tools.rs dispatch table is missing the 'invariants' branch required to call handle_invariants_action",
+                "src/tool_schema.rs is missing the invariants action schema, so invalid-action repair cannot guide the model toward legal invariants ops",
+                "Without both dispatch + schema, planner cannot review, enforce, or collapse discovered invariants from enforced_invariants.json",
             ],
-            discovered_by: "invariants_analyzer".to_string(),
-            score: 0.0,
-            ..Issue::default()
-        });
-        created += 1;
-        mutated = true;
-    } else if has_action_surface {
-        mutated |= resolve_stale_meta_issue(
-            &mut file,
-            ACTION_SURFACE_ID,
-            "Resolved automatically after current-source validation: invariants action surface exists in src/tools.rs and src/tool_schema.rs.",
-        );
-    }
+            resolved_note: "Resolved automatically after current-source validation: invariants action surface exists in src/tools.rs and src/tool_schema.rs.",
+        },
+    );
+    created += created_delta;
+    mutated |= mutated_delta;
 
     // ── Meta-issue 2: prompt injection ──────────────────────────────────────
     // Only present when enforced invariants are actually absent from live prompt inputs.
     const PROMPT_INJECTION_ID: &str = "inv_enforced_not_in_prompts";
     let has_prompt_injection = has_enforced_invariants_prompt_injection(workspace);
-    if !has_prompt_injection && !existing_ids.contains(PROMPT_INJECTION_ID) {
-        file.issues.push(Issue {
-            id: PROMPT_INJECTION_ID.to_string(),
-            title: "enforced_invariants.json not injected into planner prompts".to_string(),
-            status: "open".to_string(),
-            priority: "high".to_string(),
-            kind: "invariant_violation".to_string(),
+    let (created_delta, mutated_delta) = sync_invariant_meta_issue(
+        &mut file,
+        &existing_ids,
+        has_prompt_injection,
+        InvariantMetaIssueSpec {
+            id: PROMPT_INJECTION_ID,
+            title: "enforced_invariants.json not injected into planner prompts",
+            priority: "high",
             description: concat!(
                 "agent_state/enforced_invariants.json is written by maybe_synthesize_invariants on every ",
                 "checkpoint cycle but is invisible to all roles. Planner cannot see which invariants are ",
@@ -529,25 +570,17 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
                 "Ensure SingleRoleContext::read(Invariants) returns the combined static + enforced view. ",
                 "Impact: invariant system is silent — no feedback loop to the decision-making agent."
             ).to_string(),
-            location: "src/prompt_inputs.rs; src/prompts.rs; src/invariants.rs:read_enforced_invariants".to_string(),
-            evidence: vec![
-                "src/prompt_inputs.rs does not call read_enforced_invariants(workspace) when building prompt inputs".to_string(),
-                "src/prompts.rs does not mention agent_state/enforced_invariants.json in the relevant role instructions".to_string(),
-                "Without the dynamic enforced view, planner can only see static INVARIANTS.json".to_string(),
+            location: "src/prompt_inputs.rs; src/prompts.rs; src/invariants.rs:read_enforced_invariants",
+            evidence: &[
+                "src/prompt_inputs.rs does not call read_enforced_invariants(workspace) when building prompt inputs",
+                "src/prompts.rs does not mention agent_state/enforced_invariants.json in the relevant role instructions",
+                "Without the dynamic enforced view, planner can only see static INVARIANTS.json",
             ],
-            discovered_by: "invariants_analyzer".to_string(),
-            score: 0.0,
-            ..Issue::default()
-        });
-        created += 1;
-        mutated = true;
-    } else if has_prompt_injection {
-        mutated |= resolve_stale_meta_issue(
-            &mut file,
-            PROMPT_INJECTION_ID,
-            "Resolved automatically after current-source validation: enforced_invariants.json is injected through prompt_inputs.rs and referenced in prompts.rs.",
-        );
-    }
+            resolved_note: "Resolved automatically after current-source validation: enforced_invariants.json is injected through prompt_inputs.rs and referenced in prompts.rs.",
+        },
+    );
+    created += created_delta;
+    mutated |= mutated_delta;
 
     // ── Per-promoted-invariant issues ────────────────────────────────────────
     // One issue per Promoted invariant whose gate is not yet enforced.
