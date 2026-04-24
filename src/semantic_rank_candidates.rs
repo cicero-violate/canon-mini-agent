@@ -231,100 +231,114 @@ fn score(
     reasoning: &mut Vec<String>,
 ) -> f64 {
     let mut s = 0.5_f64;
-
-    // ── intent_class ──────────────────────────────────────────────────────────
-    match intent_class {
-        Some(ic) => {
-            s += 0.10;
-            reasoning.push(format!("intent:{ic}"));
-            match ic {
-                "pure_transform" => {
-                    s += 0.25;
-                    reasoning.push("pure_transform:+0.25".into());
-                }
-                "diagnostic_scan" => {
-                    s += 0.20;
-                    reasoning.push("diagnostic_scan:+0.20".into());
-                }
-                "canonical_read" | "projection_read" => {
-                    s += 0.20;
-                    reasoning.push("read_intent:+0.20".into());
-                }
-                "validation_gate" | "route_gate" => {
-                    s += 0.15;
-                    reasoning.push("gate_intent:+0.15".into());
-                }
-                "test_assertion" => {
-                    s += 0.10;
-                    reasoning.push("test_assertion:+0.10".into());
-                }
-                "canonical_write" | "projection_write" => {
-                    s -= 0.15;
-                    reasoning.push("write_intent:-0.15".into());
-                }
-                "repair_or_initialize" => {
-                    s -= 0.20;
-                    reasoning.push("repair_intent:-0.20".into());
-                }
-                "event_append" => {
-                    s -= 0.15;
-                    reasoning.push("event_append:-0.15".into());
-                }
-                "transport_effect" => {
-                    s -= 0.30;
-                    reasoning.push("transport_intent:-0.30".into());
-                }
-                _ => {}
-            }
-        }
-        None => {
-            reasoning.push("intent_class:unknown".into());
-        }
-    }
-
-    // ── docstring provenance ──────────────────────────────────────────────────
-    if provenance.contains(&"rustc:docstring".to_string()) {
-        s += 0.10;
-        reasoning.push("doc_confirmed:+0.10".into());
-    }
-
-    // ── side-effect profile ───────────────────────────────────────────────────
-    if effects.is_heavy() {
-        s -= 0.30;
-        reasoning.push("heavy_effects:-0.30".into());
-    } else if effects.has_side_effects() {
-        s -= 0.20;
-        reasoning.push("write_effects:-0.20".into());
-    } else {
-        s += 0.20;
-        reasoning.push("no_side_effects:+0.20".into());
-    }
-
-    // ── pair-count signal ─────────────────────────────────────────────────────
-    // Many pairs from the same function usually indicates a systematic
-    // exhaustive-match pattern where each arm is structurally equivalent.
-    if pair_count >= 20 {
-        s += 0.10;
-        reasoning.push(format!("systematic_pairs({pair_count}):+0.10"));
-    } else if pair_count >= 5 {
-        s += 0.05;
-        reasoning.push(format!("multi_pairs({pair_count}):+0.05"));
-    }
-
-    // ── MIR structural complexity ─────────────────────────────────────────────
-    if let Some(blocks) = mir_blocks {
-        if blocks <= 5 {
-            s += 0.10;
-            reasoning.push("simple_mir:+0.10".into());
-        } else if blocks >= 200 {
-            // Large functions may have intentional exhaustive matching —
-            // redundant paths here could be load-bearing match arms.
-            s -= 0.05;
-            reasoning.push("large_mir:-0.05".into());
-        }
-    }
+    s += score_intent_class(intent_class, reasoning);
+    s += score_docstring_provenance(provenance, reasoning);
+    s += score_effect_profile(effects, reasoning);
+    s += score_pair_count(pair_count, reasoning);
+    s += score_mir_complexity(mir_blocks, reasoning);
 
     s.clamp(0.0, 1.0)
+}
+
+fn score_intent_class(intent_class: Option<&str>, reasoning: &mut Vec<String>) -> f64 {
+    let Some(ic) = intent_class else {
+        reasoning.push("intent_class:unknown".into());
+        return 0.0;
+    };
+    reasoning.push(format!("intent:{ic}"));
+    0.10 + match ic {
+        "pure_transform" => score_reason(reasoning, 0.25, "pure_transform:+0.25"),
+        "diagnostic_scan" => score_reason(reasoning, 0.20, "diagnostic_scan:+0.20"),
+        "canonical_read" | "projection_read" => score_reason(reasoning, 0.20, "read_intent:+0.20"),
+        "validation_gate" | "route_gate" => score_reason(reasoning, 0.15, "gate_intent:+0.15"),
+        "test_assertion" => score_reason(reasoning, 0.10, "test_assertion:+0.10"),
+        "canonical_write" | "projection_write" => score_reason(reasoning, -0.15, "write_intent:-0.15"),
+        "repair_or_initialize" => score_reason(reasoning, -0.20, "repair_intent:-0.20"),
+        "event_append" => score_reason(reasoning, -0.15, "event_append:-0.15"),
+        "transport_effect" => score_reason(reasoning, -0.30, "transport_intent:-0.30"),
+        _ => 0.0,
+    }
+}
+
+fn score_docstring_provenance(provenance: &[String], reasoning: &mut Vec<String>) -> f64 {
+    if provenance.is_empty() {
+        reasoning.push("provenance:none".into());
+        return -0.05;
+    }
+    let has_rustc = provenance.iter().any(|p| p == "rustc:facts");
+    let has_syn = provenance.iter().any(|p| p == "syn:docstring");
+    let has_tests = provenance.iter().any(|p| p == "tests:verified");
+    reasoning.push(format!(
+        "provenance:rustc={} syn={} tests={}",
+        has_rustc, has_syn, has_tests
+    ));
+    let mut delta = 0.0;
+    if has_rustc {
+        delta += 0.05;
+    }
+    if has_syn {
+        delta += 0.08;
+    }
+    if has_tests {
+        delta += 0.05;
+    }
+    delta
+}
+
+fn score_effect_profile(effects: &EffectFlags, reasoning: &mut Vec<String>) -> f64 {
+    if !effects.has_side_effects() && effects.reads {
+        return score_reason(reasoning, 0.10, "effects:read_only:+0.10");
+    }
+    if !effects.has_side_effects() {
+        return score_reason(reasoning, 0.12, "effects:pure:+0.12");
+    }
+    let mut delta = 0.0;
+    if effects.writes {
+        delta += score_reason(reasoning, -0.08, "effects:writes:-0.08");
+    }
+    if effects.transitions {
+        delta += score_reason(reasoning, -0.06, "effects:transitions:-0.06");
+    }
+    if effects.process {
+        delta += score_reason(reasoning, -0.12, "effects:process:-0.12");
+    }
+    if effects.network {
+        delta += score_reason(reasoning, -0.12, "effects:network:-0.12");
+    }
+    delta
+}
+
+fn score_pair_count(pair_count: usize, reasoning: &mut Vec<String>) -> f64 {
+    if pair_count == 0 {
+        reasoning.push("pair_count:0".into());
+        return -0.10;
+    }
+    let scaled = ((pair_count as f64 + 1.0).log2() / 6.0).clamp(0.0, 1.0);
+    let delta = 0.02 + 0.12 * scaled;
+    reasoning.push(format!("pair_count:{pair_count}:+{delta:.3}"));
+    delta
+}
+
+fn score_mir_complexity(mir_blocks: Option<usize>, reasoning: &mut Vec<String>) -> f64 {
+    let Some(blocks) = mir_blocks else {
+        reasoning.push("mir_blocks:unknown".into());
+        return -0.02;
+    };
+    reasoning.push(format!("mir_blocks:{blocks}"));
+    if blocks <= 20 {
+        0.05
+    } else if blocks <= 60 {
+        0.02
+    } else if blocks <= 120 {
+        -0.03
+    } else {
+        -0.08
+    }
+}
+
+fn score_reason(reasoning: &mut Vec<String>, delta: f64, reason: &str) -> f64 {
+    reasoning.push(reason.into());
+    delta
 }
 
 fn action(confidence: f64) -> &'static str {

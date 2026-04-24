@@ -1493,6 +1493,8 @@ pub async fn run() -> Result<()> {
                                 "rank_skip": report.rank_skip,
                                 "rank_unmatched_owners": report.rank_unmatched_owners,
                                 "projected_issue_candidates": report.projected_issue_candidates,
+                                "projected_rank_issue_candidates": report.projected_rank_issue_candidates,
+                                "projected_manifest_issue_candidates": report.projected_manifest_issue_candidates,
                                 "projected_issue_upserts": report.projected_issue_upserts,
                                 "projected_issue_resolved": report.projected_issue_resolved,
                                 "projected_issue_rewrote": report.projected_issue_rewrote,

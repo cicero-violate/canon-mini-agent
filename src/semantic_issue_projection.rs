@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde::Deserialize;
 use serde_json::json;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use crate::issues::{
@@ -10,9 +10,13 @@ use crate::issues::{
 
 const ISSUE_ID_PREFIX: &str = "auto_semantic_rank_candidate_";
 const DISCOVERED_BY: &str = "semantic_rank_projection";
+const MANIFEST_ISSUE_ID_PREFIX: &str = "auto_semantic_manifest_error_";
+const MANIFEST_DISCOVERED_BY: &str = "semantic_manifest_projection";
 
 #[derive(Debug, Clone, Default)]
 pub struct SemanticIssueProjectionReport {
+    pub rank_selected_candidates: usize,
+    pub manifest_selected_candidates: usize,
     pub selected_candidates: usize,
     pub opened_or_updated: usize,
     pub resolved_stale: usize,
@@ -23,6 +27,44 @@ pub struct SemanticIssueProjectionReport {
 struct RankFile {
     #[serde(default)]
     candidates: Vec<RankCandidate>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ManifestProposalFile {
+    #[serde(default)]
+    proposals: HashMap<String, ManifestProposal>,
+}
+
+#[derive(Debug, Deserialize, Clone, Default)]
+struct ManifestProposal {
+    #[serde(default)]
+    kind: String,
+    #[serde(default)]
+    symbol: String,
+    #[serde(default)]
+    file: String,
+    #[serde(default)]
+    line: String,
+    #[serde(default)]
+    intent_class: String,
+    #[serde(default)]
+    resource: String,
+    #[serde(default)]
+    inputs: Vec<String>,
+    #[serde(default)]
+    outputs: Vec<String>,
+    #[serde(default)]
+    effects: Vec<String>,
+    #[serde(default)]
+    forbidden_effects: Vec<String>,
+    #[serde(default)]
+    failure_mode: String,
+    #[serde(default)]
+    invariants: Vec<String>,
+    #[serde(default)]
+    provenance: Vec<String>,
+    #[serde(default)]
+    manifest_status: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -71,6 +113,11 @@ fn issue_id(candidate: &RankCandidate) -> String {
     );
     let hash = crate::logging::stable_hash_hex(&key);
     format!("{ISSUE_ID_PREFIX}{}", sanitize_fragment(&hash))
+}
+
+fn manifest_issue_id(node_id: &str) -> String {
+    let hash = crate::logging::stable_hash_hex(node_id);
+    format!("{MANIFEST_ISSUE_ID_PREFIX}{}", sanitize_fragment(&hash))
 }
 
 fn action_tier(action: &str) -> u8 {
@@ -226,10 +273,149 @@ fn upsert_issue(file: &mut IssuesFile, desired: Issue) -> bool {
     }
 }
 
-fn resolve_missing_semantic_issues(file: &mut IssuesFile, active_ids: &HashSet<String>) -> usize {
+fn contains_error_scalar(value: &str) -> bool {
+    let trimmed = value.trim();
+    trimmed.is_empty() || trimmed == "error" || trimmed.eq_ignore_ascii_case("todo")
+}
+
+fn contains_error_list(values: &[String]) -> bool {
+    values.iter().any(|v| contains_error_scalar(v))
+}
+
+fn manifest_error_fields(manifest: &ManifestProposal) -> Vec<&'static str> {
+    let mut fields = Vec::new();
+    if contains_error_scalar(&manifest.intent_class) {
+        fields.push("intent_class");
+    }
+    if contains_error_scalar(&manifest.resource) {
+        fields.push("resource");
+    }
+    if contains_error_list(&manifest.inputs) {
+        fields.push("inputs");
+    }
+    if contains_error_list(&manifest.outputs) {
+        fields.push("outputs");
+    }
+    if contains_error_list(&manifest.effects) {
+        fields.push("effects");
+    }
+    if contains_error_list(&manifest.forbidden_effects) {
+        fields.push("forbidden_effects");
+    }
+    if contains_error_scalar(&manifest.failure_mode) {
+        fields.push("failure_mode");
+    }
+    if contains_error_list(&manifest.invariants) {
+        fields.push("invariants");
+    }
+    if contains_error_list(&manifest.provenance) {
+        fields.push("provenance");
+    }
+    fields
+}
+
+fn manifest_error_priority(error_fields: usize) -> &'static str {
+    if error_fields >= 4 {
+        "high"
+    } else if error_fields >= 2 {
+        "medium"
+    } else {
+        "low"
+    }
+}
+
+fn manifest_error_location(manifest: &ManifestProposal) -> String {
+    if !manifest.file.trim().is_empty() && !manifest.line.trim().is_empty() {
+        format!("{}:{}", manifest.file.trim(), manifest.line.trim())
+    } else if !manifest.file.trim().is_empty() {
+        manifest.file.trim().to_string()
+    } else {
+        "state/rustc/canon_mini_agent/graph.json".to_string()
+    }
+}
+
+fn build_manifest_error_issue(
+    node_id: &str,
+    manifest: &ManifestProposal,
+    error_fields: &[&str],
+) -> Issue {
+    let symbol = if manifest.symbol.trim().is_empty() {
+        node_id
+    } else {
+        manifest.symbol.trim()
+    };
+    Issue {
+        id: manifest_issue_id(node_id),
+        title: format!("Repair semantic manifest contract errors: {symbol}"),
+        status: "open".to_string(),
+        priority: manifest_error_priority(error_fields.len()).to_string(),
+        kind: "invariant_violation".to_string(),
+        description: format!(
+            "Semantic manifest contains unresolved contract placeholders for `{symbol}`.\n\
+             error fields: {}\n\
+             Fix the function docstring contract fields and regenerate semantic artifacts.",
+            error_fields.join(", ")
+        ),
+        location: manifest_error_location(manifest),
+        scope: "crate:canon_mini_agent".to_string(),
+        metrics: json!({
+            "task": "RepairSemanticManifestContract",
+            "proof_tier": "deterministic",
+            "source": "semantic_manifest_proposals.json",
+            "node_id": node_id,
+            "symbol": symbol,
+            "manifest_status": manifest.manifest_status,
+            "error_fields": error_fields,
+            "error_field_count": error_fields.len(),
+        }),
+        acceptance_criteria: vec![
+            "Function semantic_manifest has no `error` placeholders".to_string(),
+            "semantic_manifest_proposals.json marks the function as `complete`".to_string(),
+            "cargo check -p canon-mini-agent passes".to_string(),
+        ],
+        evidence: vec![
+            format!("node_id={node_id}"),
+            format!("symbol={symbol}"),
+            format!("manifest_status={}", manifest.manifest_status),
+            format!("error_fields={}", error_fields.join(",")),
+        ],
+        discovered_by: MANIFEST_DISCOVERED_BY.to_string(),
+        ..Issue::default()
+    }
+}
+
+fn selected_manifest_errors(
+    proposals: HashMap<String, ManifestProposal>,
+) -> Vec<(String, ManifestProposal, Vec<&'static str>)> {
+    let mut out = Vec::new();
+    for (node_id, manifest) in proposals {
+        if manifest.kind != "fn" {
+            continue;
+        }
+        let error_fields = manifest_error_fields(&manifest);
+        if error_fields.is_empty() {
+            continue;
+        }
+        out.push((node_id, manifest, error_fields));
+    }
+    out.sort_by(|a, b| {
+        b.2.len()
+            .cmp(&a.2.len())
+            .then(a.1.symbol.cmp(&b.1.symbol))
+            .then(a.0.cmp(&b.0))
+    });
+    out.truncate(manifest_selection_limit());
+    out
+}
+
+fn resolve_missing_projected_issues(
+    file: &mut IssuesFile,
+    active_ids: &HashSet<String>,
+    id_prefix: &str,
+) -> usize {
     let mut resolved = 0usize;
     for issue in &mut file.issues {
-        if !issue.id.starts_with(ISSUE_ID_PREFIX) {
+        if !issue.id.starts_with(id_prefix) {
             continue;
         }
         if active_ids.contains(&issue.id) {
@@ -250,6 +436,12 @@ fn load_rank_file(path: &Path) -> Result<RankFile> {
     Ok(parsed)
 }
 
+fn load_manifest_file(path: &Path) -> Result<ManifestProposalFile> {
+    let bytes = std::fs::read(path)?;
+    let parsed: ManifestProposalFile = serde_json::from_slice(&bytes)?;
+    Ok(parsed)
+}
+
 fn selection_limits() -> (usize, usize) {
     let max_safe = std::env::var("SEM_ISSUE_MAX_SAFE")
         .ok()
@@ -260,6 +452,14 @@ fn selection_limits() -> (usize, usize) {
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(64);
     (max_safe.max(1), max_investigate.max(1))
+}
+
+fn manifest_selection_limit() -> usize {
+    std::env::var("SEM_ISSUE_MAX_MANIFEST_ERRORS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(256)
+        .max(1)
 }
 
 fn selected_candidates(mut all: Vec<RankCandidate>) -> Vec<RankCandidate> {
@@ -302,18 +502,41 @@ pub fn project_semantic_rank_issues(
     rank_path: &Path,
 ) -> Result<SemanticIssueProjectionReport> {
     let rank = load_rank_file(rank_path)?;
-    let selected = selected_candidates(rank.candidates);
+    let selected_rank = selected_candidates(rank.candidates);
+    let manifest_path = workspace
+        .join("agent_state")
+        .join("semantic_manifest_proposals.json");
+    let selected_manifest = if manifest_path.exists() {
+        let file = load_manifest_file(manifest_path.as_path())?;
+        selected_manifest_errors(file.proposals)
+    } else {
+        Vec::new()
+    };
     let mut file = load_issues_file(workspace);
     let mut opened_or_updated = 0usize;
-    let mut active_ids: HashSet<String> = HashSet::new();
-    for candidate in &selected {
+    let mut active_rank_ids: HashSet<String> = HashSet::new();
+    for candidate in &selected_rank {
         let issue = build_issue(candidate);
-        active_ids.insert(issue.id.clone());
+        active_rank_ids.insert(issue.id.clone());
         if upsert_issue(&mut file, issue) {
             opened_or_updated += 1;
         }
     }
-    let resolved_stale = resolve_missing_semantic_issues(&mut file, &active_ids);
+    let mut active_manifest_ids: HashSet<String> = HashSet::new();
+    for (node_id, manifest, error_fields) in &selected_manifest {
+        let issue = build_manifest_error_issue(node_id, manifest, error_fields);
+        active_manifest_ids.insert(issue.id.clone());
+        if upsert_issue(&mut file, issue) {
+            opened_or_updated += 1;
+        }
+    }
+    let resolved_stale = resolve_missing_projected_issues(&mut file, &active_rank_ids, ISSUE_ID_PREFIX)
+        + resolve_missing_projected_issues(
+            &mut file,
+            &active_manifest_ids,
+            MANIFEST_ISSUE_ID_PREFIX,
+        );
+    let selected_candidates = active_rank_ids.len() + active_manifest_ids.len();
     let rewrote_issues = opened_or_updated > 0 || resolved_stale > 0;
     if rewrote_issues {
         rescore_all(&mut file);
@@ -325,7 +548,9 @@ pub fn project_semantic_rank_issues(
         )?;
     }
     Ok(SemanticIssueProjectionReport {
-        selected_candidates: active_ids.len(),
+        rank_selected_candidates: active_rank_ids.len(),
+        manifest_selected_candidates: active_manifest_ids.len(),
+        selected_candidates,
         opened_or_updated,
         resolved_stale,
         rewrote_issues,
