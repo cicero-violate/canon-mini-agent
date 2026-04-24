@@ -232,7 +232,6 @@ fn render_budgeted_prompt<'a>(prefix: &str, items: &[PromptItem<'a>], suffix: &s
 pub(crate) enum AgentPromptKind {
     Executor,
     Planner,
-    Solo,
 }
 
 fn role_default_schema_actions(kind: AgentPromptKind) -> &'static [&'static str] {
@@ -270,26 +269,6 @@ fn role_default_schema_actions(kind: AgentPromptKind) -> &'static [&'static str]
             "execution_path",
             "batch",
         ],
-        AgentPromptKind::Solo => &[
-            "plan",
-            "objectives",
-            "issue",
-            "violation",
-            "read_file",
-            "apply_patch",
-            "symbols_rename_candidates",
-            "symbols_prepare_rename",
-            "rename_symbol",
-            "run_command",
-            "cargo_test",
-            "python",
-            "message",
-            "semantic_map",
-            "symbol_window",
-            "symbol_refs",
-            "execution_path",
-            "batch",
-        ],
     }
 }
 
@@ -299,8 +278,6 @@ pub(crate) fn role_default_schema_actions_for_role(role: &str) -> &'static [&'st
         role_default_schema_actions(AgentPromptKind::Executor)
     } else if role.starts_with("verifier") || role.starts_with("diagnostics") {
         role_default_schema_actions(AgentPromptKind::Planner)
-    } else if role.starts_with("solo") {
-        role_default_schema_actions(AgentPromptKind::Solo)
     } else {
         role_default_schema_actions(AgentPromptKind::Planner)
     }
@@ -349,7 +326,6 @@ fn prompt_intro(kind: AgentPromptKind) -> &'static str {
     match kind {
         AgentPromptKind::Executor => "You are the canon executor agent.",
         AgentPromptKind::Planner => "You are the canon planner agent.",
-        AgentPromptKind::Solo => "You are the canon solo agent (startup compatibility mode only; inactive in runtime two-role orchestration).",
     }
 }
 
@@ -357,7 +333,6 @@ fn prompt_mission(kind: AgentPromptKind) -> &'static str {
     match kind {
         AgentPromptKind::Executor => "All actions (`read_file`, `apply_patch`, `run_command`, `plan`, `message`, etc.) are JSON you emit in your response text — they are not function calls or external tools.\nMake source changes, run checks, and report evidence in `message.payload`.",
         AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `agent_state/OBJECTIVES.json`, and the semantic-control snapshot in this prompt, then derive the master plan plus executable next-step guidance for the same operational loop.\nThe semantic-control snapshot is the tlog-derived authority for routing/control and projects issues, violations, and invariants into one view.\nOn every cycle, re-evaluate the workspace and update `PLAN.json` via the `plan` action (emit it as JSON in your response).\nAt the end of every planner cycle, review `agent_state/OBJECTIVES.json` and add or update objectives using the `objectives` action (emit it as JSON in your response).\nAct on projected open issues from semantic control and convert the top open items into ready executor tasks.\nWhen the plan has ready tasks and your analysis is complete, terminate this cycle with a `message` action: `{\"action\":\"message\",\"from\":\"planner\",\"to\":\"executor\",\"type\":\"handoff\",\"status\":\"ready\",\"observation\":\"Ready tasks queued.\",\"rationale\":\"Planner cycle complete.\",\"predicted_next_actions\":[]}`.\nDo not use `message` for intermediate progress tracking — only as the terminal handoff signal or a blocker escalation.\nAll actions (`plan`, `objectives`, `issue`, `message`, `read_file`, etc.) are JSON you emit in your response text — they are not function calls or external tools.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
-        AgentPromptKind::Solo => "Your job is to coordinate planning, execution, and verification in a single role while participating in orchestration.\nUse the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.\nYou may read, patch, and verify any in-workspace files when justified by evidence.\nKeep evidence tight and run checks before claiming completion.\nAt the end of every cycle — before emitting a completion message — review `agent_state/OBJECTIVES.json` and add or update objectives based on what you discovered. New objectives must include id, title, status, scope, authority_files, category, level, description, requirement, verification, and success_criteria. Use `apply_patch` to write them directly.",
     }
 }
 
@@ -366,7 +341,6 @@ fn prompt_workspace(kind: AgentPromptKind) -> String {
     match kind {
         AgentPromptKind::Executor => format!("You work inside the canon workspace at {ws}. All relative file paths resolve against this workspace root."),
         AgentPromptKind::Planner => format!("You work inside the canon workspace at {ws}. Use read_file, semantic_map/symbol_window/symbol_refs (prefer over read_file for Rust source), python, and run_command to review the current project state before reorganizing the plan. Planner role cannot use apply_patch."),
-        AgentPromptKind::Solo => format!("You work inside the canon workspace at {ws}. Use the full tool suite to plan, execute, and verify changes."),
     }
 }
 
@@ -413,15 +387,6 @@ const EXECUTION_DISCIPLINE_BULLETS: &[&str] = &[
     "Use MIR and HIR analysis to derive call graph, CFG, reachability, and dataflow when diagnosing bugs or proving fixes.",
 ];
 
-const SOLO_EXECUTION_DISCIPLINE_BULLETS: &[&str] = &[
-    "Prefer tasks explicitly marked ready / highest priority by the planner.",
-    "Do not skip ahead to lower-priority or blocked tasks unless the current ready task is impossible and you have concrete evidence.",
-    "Use the `plan` action for `PLAN.json` edits; do not apply_patch the master plan.",
-    "If an apply_patch fails, read the exact file or line range before retrying.",
-    "Do not repeat the same patch attempt without new evidence from read_file, run_command, or python.",
-    "Use MIR and HIR analysis to derive call graph, CFG, reachability, and dataflow when diagnosing bugs or proving fixes.",
-];
-
 /// Intent: pure_transform
 /// Resource: error
 /// Inputs: &str, &[&str], std::option::Option<&str>
@@ -453,14 +418,6 @@ fn execution_discipline() -> String {
     )
 }
 
-fn solo_execution_discipline() -> String {
-    format_bullets(
-        "Execution discipline:\n",
-        SOLO_EXECUTION_DISCIPLINE_BULLETS,
-        None,
-    )
-}
-
 fn executor_handoff() -> String {
     EXECUTOR_PREFIX.to_string()
 }
@@ -471,7 +428,6 @@ fn prompt_tail(kind: AgentPromptKind) -> String {
             format!("{}\n\n{}", executor_handoff(), execution_discipline())
         }
         AgentPromptKind::Planner => PLANNER_PROCESS.to_string(),
-        AgentPromptKind::Solo => solo_execution_discipline(),
     }
 }
 
@@ -1477,8 +1433,6 @@ fn agent_prompt_kind_from_agent_type(agent_type: &str) -> AgentPromptKind {
         AgentPromptKind::Executor
     } else if normalized.starts_with("VERIFIER") || normalized.starts_with("DIAGNOSTICS") {
         AgentPromptKind::Planner
-    } else if normalized.starts_with("SOLO") {
-        AgentPromptKind::Solo
     } else {
         AgentPromptKind::Planner
     }
@@ -2089,15 +2043,6 @@ mod tests {
     }
 
     #[test]
-    fn solo_rules_require_plan_action_for_master_plan_edits() {
-        let rules = SOLO_EXECUTION_DISCIPLINE_BULLETS.join("\n");
-        assert!(
-            rules.contains("Use the `plan` action for `PLAN.json` edits"),
-            "solo rules must require plan tool for PLAN.json edits"
-        );
-    }
-
-    #[test]
     fn diagnostics_python_reads_event_logs_accepts_generic_state_and_log_discovery() {
         let state_action = json!({
             "action": "python",
@@ -2190,7 +2135,6 @@ mod tests {
         let kinds = [
             AgentPromptKind::Planner,
             AgentPromptKind::Executor,
-            AgentPromptKind::Solo,
         ];
         for kind in kinds {
             let rendered = system_instructions(kind);

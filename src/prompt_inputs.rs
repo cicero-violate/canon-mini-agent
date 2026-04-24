@@ -1851,9 +1851,6 @@ pub fn build_single_role_prompt(
     let prompt = match inputs.prompt_kind {
         AgentPromptKind::Planner => build_planner_role_prompt(ctx, inputs, cargo_test_failures)?,
         AgentPromptKind::Executor => build_executor_role_prompt(ctx)?,
-        AgentPromptKind::Solo => {
-            bail!("solo role is only supported in orchestration mode")
-        }
     };
     Ok(prompt)
 }
