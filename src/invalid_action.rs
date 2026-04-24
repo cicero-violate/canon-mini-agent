@@ -463,27 +463,29 @@ fn push_missing_string_payload_field(
     let value = payload.and_then(|p| p.get(field));
     if let Some(val) = value {
         if !val.is_string() {
-            if !schema_diff
-                .iter()
-                .any(|s| s == &format!("field type mismatch: payload.{field} (expected string)"))
-            {
-                schema_diff.push(format!(
-                    "field type mismatch: payload.{field} (expected string)"
-                ));
-            }
+            push_schema_diff_once(
+                schema_diff,
+                format!("field type mismatch: payload.{field} (expected string)"),
+            );
             return;
         }
     }
-    if value
+    if missing_non_empty_string(value) {
+        push_schema_diff_once(schema_diff, format!("payload.{field} missing"));
+    }
+}
+
+fn missing_non_empty_string(value: Option<&Value>) -> bool {
+    value
         .and_then(|v| v.as_str())
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .is_none()
-        && !schema_diff
-            .iter()
-            .any(|s| s == &format!("payload.{field} missing"))
-    {
-        schema_diff.push(format!("payload.{field} missing"));
+}
+
+fn push_schema_diff_once(schema_diff: &mut Vec<String>, message: String) {
+    if !schema_diff.iter().any(|s| s == &message) {
+        schema_diff.push(message);
     }
 }
 
