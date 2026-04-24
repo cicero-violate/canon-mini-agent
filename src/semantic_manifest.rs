@@ -236,18 +236,24 @@ fn clean_decl_tail(tail: &str) -> &str {
 fn find_matching_paren(src: &str, open_idx: usize) -> Option<usize> {
     let mut depth = 0i32;
     for (idx, ch) in src[open_idx..].char_indices() {
-        match ch {
-            '(' => depth += 1,
-            ')' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(open_idx + idx);
-                }
-            }
-            _ => {}
+        let delta = paren_depth_delta(ch);
+        if delta == 0 {
+            continue;
+        }
+        depth += delta;
+        if depth == 0 {
+            return Some(open_idx + idx);
         }
     }
     None
+}
+
+fn paren_depth_delta(ch: char) -> i32 {
+    match ch {
+        '(' => 1,
+        ')' => -1,
+        _ => 0,
+    }
 }
 
 fn parse_doc_contract(lines: &[String]) -> DocContract {
