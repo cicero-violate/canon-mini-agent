@@ -490,7 +490,17 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
     apply_executor_route_gate_signal(&mut state, &blockers, now_ms, "executor", &crate::error_class::ErrorClass::LlmTimeout, 1, "error_class", "llm_timeout");
     apply_executor_route_gate_signal(&mut state, &blockers, now_ms, "executor", &crate::error_class::ErrorClass::StepLimitExceeded, 1, "error", "step_limit_exceeded");
     apply_executor_route_gate_signal(&mut state, &blockers, now_ms, "executor", &crate::error_class::ErrorClass::VerificationFailed, 1, "error_class", "verification_failed");
-    apply_executor_route_gate_signal(&mut state, &blockers, now_ms, "orchestrator", &crate::error_class::ErrorClass::InvalidRoute, 3, "error_class", "invalid_route");
+    let orchestrator_invalid_route_count = crate::blockers::count_class_recent(
+        &blockers,
+        "orchestrator",
+        &crate::error_class::ErrorClass::InvalidRoute,
+        now_ms,
+        60 * 1000,
+    );
+    if orchestrator_invalid_route_count >= 3 {
+        state.insert("actor_kind".to_string(), "orchestrator".to_string());
+        state.insert("error_class".to_string(), "invalid_route".to_string());
+    }
     apply_executor_route_gate_signal(&mut state, &blockers, now_ms, "diagnostics", &crate::error_class::ErrorClass::BlockerEscalated, 3, "error_class", "blocker_escalated");
     apply_executor_route_gate_signal(&mut state, &blockers, now_ms, "diagnostics", &crate::error_class::ErrorClass::InvalidSchema, 3, "error_class", "invalid_schema");
     apply_executor_route_gate_signal(&mut state, &blockers, now_ms, "verifier", &crate::error_class::ErrorClass::VerificationFailed, 1, "actor_kind", "solo");
