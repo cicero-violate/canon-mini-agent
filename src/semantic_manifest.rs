@@ -187,6 +187,66 @@ fn parse_signature(signature: Option<&str>) -> (Vec<String>, Vec<String>) {
     (inputs, outputs)
 }
 
+fn parse_source_decl_signature(decl: Option<&str>) -> (Vec<String>, Vec<String>) {
+    let Some(decl) = decl.map(str::trim) else {
+        return (vec![MISSING.to_string()], vec![MISSING.to_string()]);
+    };
+    let Some(fn_idx) = decl.find("fn ") else {
+        return (vec![MISSING.to_string()], vec![MISSING.to_string()]);
+    };
+    let Some(open_rel) = decl[fn_idx..].find('(') else {
+        return (vec![MISSING.to_string()], vec![MISSING.to_string()]);
+    };
+    let open_idx = fn_idx + open_rel;
+    let mut depth = 0i32;
+    let mut close_idx = None;
+    for (idx, ch) in decl[open_idx..].char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    close_idx = Some(open_idx + idx);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let Some(close_idx) = close_idx else {
+        return (vec![MISSING.to_string()], vec![MISSING.to_string()]);
+    };
+    let input_src = decl[open_idx + 1..close_idx].trim();
+    let inputs = if input_src.is_empty() {
+        vec!["()".to_string()]
+    } else {
+        input_src
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+    };
+    let tail = decl[close_idx + 1..].trim();
+    let outputs = if let Some(out) = tail.strip_prefix("->") {
+        let out = out
+            .split(['{', ';'])
+            .next()
+            .unwrap_or("")
+            .split(" where ")
+            .next()
+            .unwrap_or("")
+            .trim();
+        if out.is_empty() {
+            vec![MISSING.to_string()]
+        } else {
+            vec![out.to_string()]
+        }
+    } else {
+        vec!["()".to_string()]
+    };
+    (inputs, outputs)
+}
+
 fn parse_doc_contract(lines: &[String]) -> DocContract {
     let mut out = DocContract::default();
     for raw in lines {
@@ -267,7 +327,8 @@ fn map_effect_relation(rel: &str) -> Option<&'static str> {
         "WritesState" => Some("state_write"),
         "SpawnsProcess" => Some("spawns_process"),
         "UsesNetwork" => Some("uses_network"),
-        "TransitionsState" => Some("transitions_state"),
+        "TransitionsState" | "CoordinatesTransition" => Some("state_write"),
+        "TouchesWorkflowDomain" => Some("state_read"),
         "PerformsLogging" => Some("logging"),
         _ => None,
     }
@@ -279,6 +340,7 @@ fn normalize_effect_label(effect: &str) -> String {
         "writes_artifact" | "WritesArtifact" => "fs_write".to_string(),
         "reads_state" | "ReadsState" => "state_read".to_string(),
         "writes_state" | "WritesState" => "state_write".to_string(),
+        "transitions_state" | "TransitionsState" | "CoordinatesTransition" => "state_write".to_string(),
         "no_effect" | "NoEffect" | "none" => NO_EFFECT.to_string(),
         other if !other.is_empty() => other.to_string(),
         _ => MISSING.to_string(),
@@ -433,6 +495,43 @@ fn resolve_doc_lines(
     }
     out.reverse();
     out
+}
+
+fn resolve_source_decl(
+    node: &GraphNode,
+    workspace: &Path,
+    src_cache: &mut HashMap<PathBuf, Vec<String>>,
+) -> Option<String> {
+    let def = node.def.as_ref()?;
+    if def.file.is_empty() || def.line == 0 {
+        return None;
+    }
+    let p = {
+        let raw = PathBuf::from(&def.file);
+        if raw.is_absolute() { raw } else { workspace.join(raw) }
+    };
+    let lines = src_cache.entry(p.clone()).or_insert_with(|| {
+        std::fs::read_to_string(&p)
+            .ok()
+            .map(|s| s.lines().map(|l| l.to_string()).collect::<Vec<_>>())
+            .unwrap_or_default()
+    });
+    let start = (def.line as usize).saturating_sub(1);
+    if start >= lines.len() {
+        return None;
+    }
+    let mut decl = String::new();
+    for line in lines.iter().skip(start).take(32) {
+        let trimmed = line.trim();
+        if !decl.is_empty() {
+            decl.push(' ');
+        }
+        decl.push_str(trimmed);
+        if trimmed.ends_with(";") || trimmed.ends_with("{") {
+            break;
+        }
+    }
+    if decl.is_empty() { None } else { Some(decl) }
 }
 
 fn infer_resource(calls: &[String], effects: &[String], symbol: &str) -> String {
@@ -632,6 +731,8 @@ pub fn run_with_options(options: SemanticManifestRunOptions) -> anyhow::Result<S
         let doc_lines = resolve_doc_lines(node, &workspace, &mut src_cache);
         let doc = parse_doc_contract(&doc_lines);
         let (sig_inputs, sig_outputs) = parse_signature(node.signature.as_deref());
+        let source_decl = resolve_source_decl(node, &workspace, &mut src_cache);
+        let (src_inputs, src_outputs) = parse_source_decl_signature(source_decl.as_deref());
         let symbol = if node.path.is_empty() {
             node_id.clone()
         } else {
@@ -673,7 +774,7 @@ pub fn run_with_options(options: SemanticManifestRunOptions) -> anyhow::Result<S
             Some(old.resource.clone()),
             Some(infer_resource(&calls, &normalized_effects, &symbol)),
         ]);
-        let outputs = choose_list(&[doc.outputs.clone(), sig_outputs, old.outputs.clone()]);
+        let outputs = choose_list(&[doc.outputs.clone(), sig_outputs, src_outputs, old.outputs.clone()]);
         let failure_mode = choose_scalar(&[
             doc.failure.clone(),
             node.failure_mode.clone(),
@@ -696,7 +797,7 @@ pub fn run_with_options(options: SemanticManifestRunOptions) -> anyhow::Result<S
             ]),
             intent_class: intent.clone(),
             resource: resource.clone(),
-            inputs: choose_list(&[doc.inputs, sig_inputs, old.inputs.clone()]),
+            inputs: choose_list(&[doc.inputs, sig_inputs, src_inputs, old.inputs.clone()]),
             outputs,
             effects: normalized_effects.clone(),
             forbidden_effects: choose_list(&[
