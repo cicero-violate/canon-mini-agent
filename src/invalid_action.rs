@@ -1326,6 +1326,13 @@ pub fn ensure_action_base_schema(action: &mut Value) -> bool {
     // intent — optional but must be non-empty when present; autofill if missing
     changed |= ensure_object_string_field(obj, "intent", "Auto-filled intent.");
 
+    changed |= ensure_action_provenance_fields(obj);
+
+    changed
+}
+
+fn ensure_action_provenance_fields(obj: &mut serde_json::Map<String, Value>) -> bool {
+    let mut changed = false;
     // task_id / objective_id — optional provenance; only inject when completely absent
     // (empty string is already a schema violation so we leave those for corrective feedback)
     if !obj.contains_key("task_id") {
@@ -1339,7 +1346,6 @@ pub fn ensure_action_base_schema(action: &mut Value) -> bool {
         );
         changed = true;
     }
-
     changed
 }
 
