@@ -1,21 +1,12 @@
-cd /workspace/ai_sandbox/canon-mini-agent
-
-export APPLY_PATCH_BIN="${APPLY_PATCH_BIN:-/opt/apply_patch/apply_patch_v3}"
-[ -x "$APPLY_PATCH_BIN" ] || export APPLY_PATCH_BIN="/opt/apply_patch/bin/apply_patch"
-
-python - <<'PY'
-import os, subprocess
-
-patch = r'''*** Begin Patch
+*** Begin Patch
 *** Update File: src/events.rs
 @@
-     GitCheckpointBlocked {
+     GitCheckpointPrepared {
          reason: String,
-         risk: String,
-         verification_requested: bool,
-         rust_sensitive_changes: bool,
-         changed_paths: Vec<String>,
-         required_gate: String,
+         subject: String,
+         body: String,
+@@
+         recent_actions: BTreeMap<String, usize>,
          signature: String,
      },
 +    SupervisorRestartRequested {
@@ -42,6 +33,9 @@ patch = r'''*** Begin Patch
 +        binary_mtime_ms: u64,
 +        signature: String,
 +    },
+*** End Patch
+
+*** Begin Patch
 *** Update File: src/supervisor.rs
 @@
  fn preferred_build_kind(prefer_release: bool) -> BuildKind {
@@ -76,28 +70,28 @@ patch = r'''*** Begin Patch
 +) {
 +    let next = next.unwrap_or(current);
 +    let verification_requested = rust_patch_verification_requested(state_dir);
-+    let current_binary_path = current.path.display().to_string();
-+    let next_binary_path = next.path.display().to_string();
-+    let current_binary_mtime_ms = system_time_ms(current.mtime);
-+    let next_binary_mtime_ms = system_time_ms(next.mtime);
++    let current_path = current.path.display().to_string();
++    let next_path = next.path.display().to_string();
++    let current_mtime_ms = system_time_ms(current.mtime);
++    let next_mtime_ms = system_time_ms(next.mtime);
 +    let signature = artifact_write_signature(&[
 +        "supervisor_restart_requested",
 +        reason,
 +        mode,
-+        &current_binary_path,
-+        &current_binary_mtime_ms.to_string(),
-+        &next_binary_path,
-+        &next_binary_mtime_ms.to_string(),
++        &current_path,
++        &current_mtime_ms.to_string(),
++        &next_path,
++        &next_mtime_ms.to_string(),
 +        &verification_requested.to_string(),
 +        &pending_defer_checks.to_string(),
 +    ]);
 +    let effect = EffectEvent::SupervisorRestartRequested {
 +        reason: reason.to_string(),
 +        mode: mode.to_string(),
-+        current_binary_path,
-+        current_binary_mtime_ms,
-+        next_binary_path,
-+        next_binary_mtime_ms,
++        current_binary_path: current_path,
++        current_binary_mtime_ms: current_mtime_ms,
++        next_binary_path: next_path,
++        next_binary_mtime_ms: next_mtime_ms,
 +        verification_requested,
 +        pending_defer_checks,
 +        signature,
@@ -129,15 +123,20 @@ patch = r'''*** Begin Patch
 +        eprintln!("[canon-mini-supervisor] supervisor child-start tlog effect failed: {err:#}");
 +    }
 +}
- 
+
  fn checkpoint_build_succeeded(root: &Path, state_dir: &Path, reason: &str) -> bool {
+*** End Patch
+
+*** Begin Patch
+*** Update File: src/supervisor.rs
 @@
 -        let (mut child, mut pending_update, child_started_at) =
 -            start_supervisor_child(&current, filtered_args, child_pid)?;
 +        let (mut child, mut pending_update, child_started_at) =
 +            start_supervisor_child(root, &current, filtered_args, child_pid)?;
 @@
-         child.try_wait().context("wait child")?,
+-        child.try_wait().context("wait child")?,
++        child.try_wait().context("wait child")?,
          root,
          state_dir,
 +        current,
@@ -176,25 +175,16 @@ patch = r'''*** Begin Patch
 +    record_supervisor_child_started(root, current, child.id());
      eprintln!(
          "[canon-mini-supervisor] started pid={} ({:?})",
-@@
-     maybe_restart_for_pending_update(
-         root,
-         state_dir,
-+        current,
-         pending_update.as_ref(),
-         pending_update_defer_checks,
-@@
- fn maybe_restart_for_pending_update(
-     root: &Path,
-     state_dir: &Path,
-+    current: &BinaryCandidate,
-     pending_update: Option<&BinaryCandidate>,
-     pending_update_defer_checks: &mut u32,
+*** End Patch
+
+*** Begin Patch
+*** Update File: src/supervisor.rs
 @@
          log_error_event(
              "supervisor",
              "supervisor_main",
              None,
+             &format!(
 @@
              ),
              None,
@@ -215,6 +205,7 @@ patch = r'''*** Begin Patch
              "supervisor",
              "supervisor_main",
              None,
+             &format!(
 @@
              ),
              None,
@@ -236,6 +227,7 @@ patch = r'''*** Begin Patch
              "supervisor",
              "supervisor_main",
              None,
+             &format!(
 @@
              ),
              None,
@@ -252,28 +244,31 @@ patch = r'''*** Begin Patch
          stage_commit_push_before_restart(
              root,
              state_dir,
+*** End Patch
+
+*** Begin Patch
 *** Update File: src/evaluation.rs
 @@
+     pub artifact_write_requests: usize,
      pub artifact_write_applies: usize,
      pub unapplied_artifact_writes: usize,
-     pub git_checkpoint_blocked: usize,
-     pub unsafe_checkpoint_attempts: usize,
 +    pub supervisor_restart_requests: usize,
 +    pub supervisor_child_starts: usize,
 +    pub restart_requests_without_child_start: usize,
      pub score: f64,
  }
 @@
+     let mut requested_artifact_signatures = BTreeSet::new();
+     let mut applied_artifact_signatures = BTreeSet::new();
      let mut actionable_lag_by_next_kind: HashMap<String, u64> = HashMap::new();
      let mut payload_bytes_by_kind: HashMap<String, u64> = HashMap::new();
 +    let mut unmatched_restart_requests = 0usize;
 @@
              Event::Effect {
-                 event:
-                     EffectEvent::GitCheckpointBlocked {
-@@
-                     signals.unsafe_checkpoint_attempts += 1;
-                 }
+                 event: EffectEvent::WorkspaceArtifactWriteApplied { signature, .. },
+             } => {
+                 signals.artifact_write_applies += 1;
+                 applied_artifact_signatures.insert(signature.clone());
              }
 +            Event::Effect {
 +                event: EffectEvent::SupervisorRestartRequested { .. },
@@ -296,8 +291,9 @@ patch = r'''*** Begin Patch
          .count();
 +    signals.restart_requests_without_child_start = unmatched_restart_requests;
 @@
-     let checkpoint_score =
-         1.0 - safe_ratio(signals.unsafe_checkpoint_attempts as f64, 4.0).min(0.75);
+     let lag_score = 1.0
+         - safe_ratio(signals.actionable_lag_total_ms as f64, lag_budget_ms)
+             .min(0.75);
 +    let restart_score = if signals.supervisor_restart_requests == 0 {
 +        1.0
 +    } else {
@@ -305,9 +301,8 @@ patch = r'''*** Begin Patch
 +            signals.restart_requests_without_child_start as f64,
 +            signals.supervisor_restart_requests as f64,
 +        )
-+        .min(0.75)
 +    };
- 
+
      geometric_score(&[
          seq_score,
          turn_score,
@@ -315,18 +310,23 @@ patch = r'''*** Begin Patch
          artifact_score,
          error_score,
          lag_score,
-         checkpoint_score,
 +        restart_score,
      ])
  }
+*** End Patch
+
+*** Begin Patch
+*** Update File: src/evaluation.rs
 @@
-     fn tlog_delta_invariants_penalize_unsafe_checkpoint_attempts() {
-         let records = vec![crate::tlog::TlogRecord {
+     fn tlog_delta_invariants_reward_closed_action_delta() {
+         let records = vec![
+             crate::tlog::TlogRecord {
+                 seq: 1,
 @@
-         assert_eq!(signals.unsafe_checkpoint_attempts, 1);
-         assert!(signals.score < 1.0);
+         assert_eq!(signals.missing_action_results, 0);
+         assert_eq!(signals.score, 1.0);
      }
-+
+
 +    #[test]
 +    fn tlog_delta_invariants_penalize_restart_request_without_child_start() {
 +        let records = vec![crate::tlog::TlogRecord {
@@ -389,13 +389,20 @@ patch = r'''*** Begin Patch
 +        assert_eq!(signals.supervisor_restart_requests, 1);
 +        assert_eq!(signals.supervisor_child_starts, 1);
 +        assert_eq!(signals.restart_requests_without_child_start, 0);
++        assert_eq!(signals.score, 1.0);
 +    }
- }
++
+     #[test]
+     fn tlog_delta_invariants_identifies_projection_as_actionable_lag() {
+         let records = vec![
+*** End Patch
+
+*** Begin Patch
 *** Update File: src/complexity.rs
 @@
      eval_report.insert(
-         "tlog_unsafe_checkpoint_attempts".into(),
-         json!(eval.tlog_delta_signals.unsafe_checkpoint_attempts),
+         "last_executor_diff_payload_bytes".into(),
+         json!(eval.tlog_delta_signals.last_executor_diff_payload_bytes),
      );
 +    eval_report.insert(
 +        "supervisor_restart_requests".into(),
@@ -410,8 +417,39 @@ patch = r'''*** Begin Patch
 +        json!(eval.tlog_delta_signals.restart_requests_without_child_start),
 +    );
      eval_report.insert("objectives".into(), json!(objectives_progress));
+     eval_report.insert("tasks".into(), json!(tasks_progress));
+*** End Patch
+
+*** Begin Patch
+*** Update File: CANONICAL_PIPELINE.md
+@@
+ L = learn(failure_event) only when it changes invariant/eval/test/prompt behavior
+ C_allowed = no_rust_change ∨ (cargo_check_ok ∧ cargo_test_ok ∧ cargo_build_ok)
++reload_proven = SupervisorRestartRequested ∧ SupervisorChildStarted(binary_path, mtime)
+ ```
+@@
+ A failure is not learned if it is only written as prose. It is learned only when
+ future execution is measurably redirected or blocked.
++
++## Supervisor Restart / Reload Contract
++
++```text
++restart_requested = SupervisorRestartRequested(reason, current_binary, next_binary)
++child_started = SupervisorChildStarted(binary_path, build_kind, pid, binary_mtime)
++reload_proven = restart_requested ∧ child_started
++reload_unproven = restart_requested ∧ ¬child_started
++```
++
++Every supervisor restart or binary reload boundary must append canonical tlog
++effects. Plain stderr text such as “restarting...” or “started pid” is not
++authority. Eval penalizes `reload_unproven` so the learning loop can detect a
++restart request that never proves the new child binary started.
+*** End Patch
+
+*** Begin Patch
 *** Update File: src/prompts.rs
 @@
+ L = learn(failure_event) only when it changes invariant/eval/test/prompt behavior\n\
  C_allowed = no_rust_change ∨ (cargo_check_ok ∧ cargo_test_ok ∧ cargo_build_ok)\n\
 +reload_proven = SupervisorRestartRequested ∧ SupervisorChildStarted(binary_path, mtime)\n\
  Order: observe truth → eval → plan ready work → execute bounded patch → verify gates → regenerate projections → append tlog effects → learn → gated commit.";
@@ -423,86 +461,43 @@ patch = r'''*** Begin Patch
 +                    && prompt.contains("reload_proven = SupervisorRestartRequested"),
                  "{kind:?} system prompt must include the canonical pipeline contract"
              );
+         }
 @@
-         let planner = planner_cycle_prompt("", "{}", "", "", "", "", "", "");
          let executor = executor_cycle_prompt("executor", "executor_pool", "", "[]");
          assert!(planner.contains("CANONICAL_PIPELINE.md"));
          assert!(executor.contains("CANONICAL_PIPELINE.md"));
 +        assert!(planner.contains("reload_proven = SupervisorRestartRequested"));
 +        assert!(executor.contains("reload_proven = SupervisorRestartRequested"));
      }
-*** Update File: CANONICAL_PIPELINE.md
-@@
- L = learn(failure_event) only when it changes invariant/eval/test/prompt behavior
- C_allowed = no_rust_change ∨ (cargo_check_ok ∧ cargo_test_ok ∧ cargo_build_ok)
-+reload_proven = SupervisorRestartRequested ∧ SupervisorChildStarted(binary_path, mtime)
-```
-
-@@
-A failure is not learned if it is only written as prose. It is learned only when
-future execution is measurably redirected or blocked.
-+
-+## Supervisor Restart / Reload Contract
-+
-+`text
-+restart_requested = SupervisorRestartRequested(reason, current_binary, next_binary)
-+child_started = SupervisorChildStarted(binary_path, build_kind, pid, binary_mtime)
-+reload_proven = restart_requested ∧ child_started
-+reload_unproven = restart_requested ∧ ¬child_started
-+`
-+
-+Every supervisor restart or binary reload boundary must append canonical tlog
-+effects. Plain stderr text such as “restarting...” or “started pid” is not
-+authority. Eval penalizes `reload_unproven` so the learning loop can detect a
-+restart request that never proves the new child binary started.
 *** End Patch
-'''
 
-subprocess.run(
-[os.environ["APPLY_PATCH_BIN"]],
-input=patch,
-text=True,
-check=True,
-cwd=".",
-env={
-"PYTHONPATH": "/opt/pyvenv/lib/python3.13/site-packages",
-"PATH": "/usr/bin",
-"APPLY_PATCH_BIN": os.environ["APPLY_PATCH_BIN"],
-},
-)
-PY
-
-python - <<'PY'
-import json
-from pathlib import Path
-
-p = Path("INVARIANTS.json")
-data = json.loads(p.read_text())
-items = data["invariants"] if isinstance(data, dict) and "invariants" in data else data
-
-new = {
-"id": "I21-supervisor-reload-proof",
-"title": "Supervisor Restart/Reload Proof",
-"category": "observability",
-"level": "critical",
-"error_class": "VerificationFailed",
-"violation_action_kind": "supervisor_reload_proof",
-"description": "Every supervisor restart or binary reload boundary must be represented in tlog by SupervisorRestartRequested followed by SupervisorChildStarted for the child binary that actually started.",
-"clauses": [
-"SupervisorRestartRequested records reason, mode, current binary identity, next binary identity, verification request state, and defer count",
-"SupervisorChildStarted records binary path, build kind, pid, and binary mtime",
-"Eval treats restart_requested without later child_started as reload_unproven and lowers canonical_delta_health",
-"Plain stderr text such as restarting or started pid is not authoritative evidence"
-],
-}
-
-if not any(isinstance(x, dict) and x.get("id") == new["id"] for x in items):
-items.append(new)
-
-p.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
-PY
-
-cargo check
-cargo test tlog_delta_invariants_penalize_restart_request_without_child_start --lib
-cargo test tlog_delta_invariants_reward_restart_request_with_child_start --lib
-
+*** Begin Patch
+*** Update File: INVARIANTS.json
+@@
+     {
+       "id": "I11-self-modification-build-gate",
+       "title": "Self-Modification Build Gate",
+       "category": "correctness",
+       "level": "critical",
+@@
+         "Violation emits CompileError to blockers \u2014 same path as I7"
+       ]
++    },
++    {
++      "id": "I21-supervisor-reload-proof",
++      "title": "Supervisor Restart/Reload Proof",
++      "category": "observability",
++      "level": "critical",
++      "error_class": "VerificationFailed",
++      "violation_action_kind": "supervisor_reload_proof",
++      "description": "Every supervisor restart or binary reload boundary must be represented in tlog by a SupervisorRestartRequested effect followed by a SupervisorChildStarted effect for the child binary that actually started.",
++      "clauses": [
++        "SupervisorRestartRequested records reason, mode, current binary identity, next binary identity, verification request state, and defer count",
++        "SupervisorChildStarted records binary path, build kind, pid, and binary mtime",
++        "Eval treats restart_requested without later child_started as reload_unproven and lowers canonical_delta_health",
++        "Plain stderr text such as restarting or started pid is not authoritative evidence"
++      ]
+     }
+   ]
+ }
+*** End Patch
