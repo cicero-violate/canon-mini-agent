@@ -5,7 +5,7 @@ rank = leverage × correctness × compounding ÷ complexity
 ```
 
 | Move                                                                              |     Rating |
-| --------------------------------------------------------------------------------- | ---------: |
+x| --------------------------------------------------------------------------------- | ---------: |
 | Make `tlog.ndjson` the canonical event truth for actions/results                  |  **10/10** |
 | Add centralized `eval.rs` scoring over tlog + graph + invariants                  |  **10/10** |
 | Convert invariants into pure functions: `I(ΔT) → signal`                          | **9.5/10** |
