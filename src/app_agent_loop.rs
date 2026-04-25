@@ -742,11 +742,7 @@ fn peek_post_restart_result(role: &str) -> Option<PostRestartResult> {
         if let Ok(state) = Tlog::replay(&tlog_path, SystemState::new(&[], 0)) {
             let consumed = state
                 .post_restart_consumed_signatures
-                .get(if role.starts_with("executor") {
-                    "executor"
-                } else {
-                    role
-                })
+                .get(post_restart_role_key(role))
                 .cloned();
             if let Ok(records) = Tlog::read_records(&tlog_path) {
                 for record in records.iter().rev() {
@@ -767,16 +763,8 @@ fn peek_post_restart_result(role: &str) -> Option<PostRestartResult> {
                     else {
                         continue;
                     };
-                    let role_key = if role.starts_with("executor") {
-                        "executor"
-                    } else {
-                        role
-                    };
-                    let saved_key = if saved_role.starts_with("executor") {
-                        "executor"
-                    } else {
-                        saved_role.as_str()
-                    };
+                    let role_key = post_restart_role_key(role);
+                    let saved_key = post_restart_role_key(saved_role.as_str());
                     if role_key != saved_key {
                         continue;
                     }
@@ -804,16 +792,8 @@ fn peek_post_restart_result(role: &str) -> Option<PostRestartResult> {
     let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
     let saved_role = v.get("role").and_then(|r| r.as_str()).unwrap_or("");
     // Normalise: executor[executor_pool] → executor
-    let role_key = if role.starts_with("executor") {
-        "executor"
-    } else {
-        role
-    };
-    let saved_key = if saved_role.starts_with("executor") {
-        "executor"
-    } else {
-        saved_role
-    };
+    let role_key = post_restart_role_key(role);
+    let saved_key = post_restart_role_key(saved_role);
     if role_key != saved_key {
         return None;
     }
@@ -860,6 +840,14 @@ fn peek_post_restart_result(role: &str) -> Option<PostRestartResult> {
                 ])
             }),
     })
+}
+
+fn post_restart_role_key(role: &str) -> &str {
+    if role.starts_with("executor") {
+        "executor"
+    } else {
+        role
+    }
 }
 
 /// Read and consume the post-restart result file.  Returns `Some(result)` if the
