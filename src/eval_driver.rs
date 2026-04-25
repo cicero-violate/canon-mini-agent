@@ -59,6 +59,17 @@ pub fn run(
         issue_health: snapshot.vector.issue_health,
         semantic_contract: snapshot.vector.semantic_contract,
         structural_invariant_coverage: snapshot.vector.structural_invariant_coverage,
+        canonical_delta_health: snapshot.vector.canonical_delta_health,
+        tlog_lag_total_ms: snapshot.tlog_delta_signals.lag_total_ms,
+        tlog_actionable_lag_total_ms: snapshot.tlog_delta_signals.actionable_lag_total_ms,
+        tlog_dominant_actionable_lag_kind: snapshot
+            .tlog_delta_signals
+            .dominant_actionable_lag_kind
+            .clone(),
+        tlog_dominant_actionable_lag_kind_ms: snapshot
+            .tlog_delta_signals
+            .dominant_actionable_lag_kind_ms,
+        issues_projection_lag_ms: snapshot.tlog_delta_signals.issues_projection_lag_ms,
         diagnostics_repair_pressure: snapshot.diagnostics_repair_pressure,
         semantic_fn_error_rate: snapshot.semantic_fn_error_rate,
         semantic_fn_total: snapshot.semantic_fn_total,

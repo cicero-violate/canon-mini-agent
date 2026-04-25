@@ -413,6 +413,18 @@ pub enum EffectEvent {
         semantic_contract: f64,
         #[serde(default)]
         structural_invariant_coverage: f64,
+        #[serde(default)]
+        canonical_delta_health: f64,
+        #[serde(default)]
+        tlog_lag_total_ms: u64,
+        #[serde(default)]
+        tlog_actionable_lag_total_ms: u64,
+        #[serde(default)]
+        tlog_dominant_actionable_lag_kind: String,
+        #[serde(default)]
+        tlog_dominant_actionable_lag_kind_ms: u64,
+        #[serde(default)]
+        issues_projection_lag_ms: u64,
         diagnostics_repair_pressure: f64,
         semantic_fn_error_rate: f64,
         semantic_fn_total: usize,

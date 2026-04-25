@@ -1310,6 +1310,14 @@ fn update_gate_enforcement(file: &mut EnforcedInvariantsFile) {
     for inv in file
         .invariants
         .iter_mut()
+        .filter(|inv| inv.status == InvariantStatus::Promoted && !inv.gates.is_empty())
+    {
+        inv.status = InvariantStatus::Enforced;
+    }
+
+    for inv in file
+        .invariants
+        .iter_mut()
         .filter(|inv| inv.status == InvariantStatus::Enforced && inv.gates.is_empty())
     {
         inv.gates = default_gates_for_conditions(&inv.state_conditions);

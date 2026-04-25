@@ -1,6 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 
+use crate::events::{EffectEvent, Event};
 use crate::issues::Issue;
 #[cfg(test)]
 use crate::issues::IssuesFile;
@@ -23,6 +24,7 @@ pub struct EvalInput {
     pub semantic_fn_with_any_error: usize,
     pub semantic_fn_error_rate: f64,
     pub structural_invariant_coverage: StructuralInvariantCoverage,
+    pub tlog_delta_signals: TlogDeltaSignals,
 }
 
 /// Direction and magnitude of change between two consecutive eval snapshots.
@@ -44,6 +46,7 @@ pub struct EvaluationVector {
     pub issue_health: f64,
     pub semantic_contract: f64,
     pub structural_invariant_coverage: f64,
+    pub canonical_delta_health: f64,
 }
 
 impl EvaluationVector {
@@ -55,6 +58,7 @@ impl EvaluationVector {
             self.issue_health.clamp(0.001, 1.0),
             self.semantic_contract.clamp(0.001, 1.0),
             self.structural_invariant_coverage.clamp(0.001, 1.0),
+            self.canonical_delta_health.clamp(0.001, 1.0),
         ];
         let product = values.iter().product::<f64>();
         product.powf(1.0 / values.len() as f64)
@@ -83,6 +87,7 @@ pub struct EvaluationWorkspaceSnapshot {
     pub semantic_fn_with_any_error: usize,
     pub semantic_fn_error_rate: f64,
     pub structural_invariant_coverage: StructuralInvariantCoverage,
+    pub tlog_delta_signals: TlogDeltaSignals,
     pub vector: EvaluationVector,
 }
 
@@ -106,6 +111,7 @@ pub fn compute_eval(input: &EvalInput) -> EvaluationWorkspaceSnapshot {
         input.repeated_open_issues,
         (1.0 - input.semantic_fn_error_rate).clamp(0.0, 1.0),
         input.structural_invariant_coverage.score,
+        input.tlog_delta_signals.score,
     );
     // Fold semantic error rate into safety so a clean build alone cannot produce safety = 1.0.
     vector.safety = clamp_unit(vector.safety * (1.0 - 0.3 * input.semantic_fn_error_rate));
@@ -124,6 +130,7 @@ pub fn compute_eval(input: &EvalInput) -> EvaluationWorkspaceSnapshot {
         semantic_fn_with_any_error: input.semantic_fn_with_any_error,
         semantic_fn_error_rate: input.semantic_fn_error_rate,
         structural_invariant_coverage: input.structural_invariant_coverage.clone(),
+        tlog_delta_signals: input.tlog_delta_signals.clone(),
         vector,
     }
 }
@@ -209,6 +216,7 @@ pub fn evaluate_repo_state(
     repeated_open_issues: usize,
     semantic_contract_score: f64,
     structural_invariant_coverage_score: f64,
+    canonical_delta_health_score: f64,
 ) -> EvaluationVector {
     EvaluationVector {
         objective_progress: reward_alignment_score(objectives_completed, objectives_total),
@@ -217,6 +225,7 @@ pub fn evaluate_repo_state(
         issue_health: issue_health_score(open_issues, repeated_open_issues),
         semantic_contract: semantic_contract_score.clamp(0.0, 1.0),
         structural_invariant_coverage: structural_invariant_coverage_score.clamp(0.0, 1.0),
+        canonical_delta_health: canonical_delta_health_score.clamp(0.0, 1.0),
     }
 }
 
@@ -241,7 +250,7 @@ pub fn evaluate_workspace(workspace: &Path) -> EvaluationWorkspaceSnapshot {
     let violations = crate::reports::load_violations_report(workspace);
     let diagnostics =
         crate::reports::load_diagnostics_report(workspace).unwrap_or_else(empty_diagnostics_report);
-    let _canonical_events = load_canonical_event_count(workspace);
+    let tlog_delta_signals = load_tlog_delta_signals(workspace);
 
     let (completed_tasks, total_tasks) = load_task_counts(workspace);
     let (open_issues, repeated_open_issues, high_priority_open_issues) =
@@ -263,7 +272,227 @@ pub fn evaluate_workspace(workspace: &Path) -> EvaluationWorkspaceSnapshot {
         semantic_fn_with_any_error: semantic_metrics.fn_with_any_error,
         semantic_fn_error_rate: semantic_metrics.fn_error_rate,
         structural_invariant_coverage,
+        tlog_delta_signals,
     })
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct TlogDeltaSignals {
+    pub event_count: usize,
+    pub contiguous_seq: bool,
+    pub missing_seq_count: usize,
+    pub lag_gap_count: usize,
+    pub lag_total_ms: u64,
+    pub max_event_gap_ms: u64,
+    pub actionable_lag_gap_count: usize,
+    pub actionable_lag_total_ms: u64,
+    pub dominant_actionable_lag_kind: String,
+    pub dominant_actionable_lag_kind_ms: u64,
+    pub issues_projection_lag_ms: u64,
+    pub issues_projection_lag_count: usize,
+    pub llm_turn_inputs: usize,
+    pub llm_turn_outputs: usize,
+    pub llm_action_outputs: usize,
+    pub action_results: usize,
+    pub missing_action_results: usize,
+    pub llm_error_boundaries: usize,
+    pub artifact_write_requests: usize,
+    pub artifact_write_applies: usize,
+    pub unapplied_artifact_writes: usize,
+    pub score: f64,
+}
+
+const TLOG_LAG_GAP_MIN_MS: u64 = 1_000;
+const TLOG_LAG_GAP_MAX_MS: u64 = 120_000;
+
+/// Pure invariant signal over a tlog delta window.
+///
+/// Model: `I(ΔT) -> signal`, where ΔT is the recent canonical event window.
+pub fn evaluate_tlog_delta_invariants(
+    records: &[crate::tlog::TlogRecord],
+) -> TlogDeltaSignals {
+    let mut signals = TlogDeltaSignals {
+        event_count: records.len(),
+        contiguous_seq: true,
+        ..TlogDeltaSignals::default()
+    };
+    if records.is_empty() {
+        return signals;
+    }
+
+    let mut prev_seq = records.first().map(|record| record.seq).unwrap_or_default();
+    let mut llm_action_command_ids = BTreeSet::new();
+    let mut action_result_command_ids = BTreeSet::new();
+    let mut requested_artifact_signatures = BTreeSet::new();
+    let mut applied_artifact_signatures = BTreeSet::new();
+    let mut actionable_lag_by_next_kind: HashMap<String, u64> = HashMap::new();
+
+    for (idx, record) in records.iter().enumerate() {
+        if idx > 0 && record.seq != prev_seq.saturating_add(1) {
+            signals.contiguous_seq = false;
+            signals.missing_seq_count +=
+                record.seq.saturating_sub(prev_seq.saturating_add(1)) as usize;
+        }
+        if idx > 0 {
+            let prev = &records[idx - 1];
+            let gap_ms = record.ts_ms.saturating_sub(prev.ts_ms);
+            if (TLOG_LAG_GAP_MIN_MS..=TLOG_LAG_GAP_MAX_MS).contains(&gap_ms) {
+                signals.lag_gap_count += 1;
+                signals.lag_total_ms = signals.lag_total_ms.saturating_add(gap_ms);
+                signals.max_event_gap_ms = signals.max_event_gap_ms.max(gap_ms);
+
+                let next_kind = tlog_event_kind(&record.event);
+                if next_kind == "issues_projection_recorded" {
+                    signals.issues_projection_lag_count += 1;
+                    signals.issues_projection_lag_ms =
+                        signals.issues_projection_lag_ms.saturating_add(gap_ms);
+                }
+                if is_actionable_lag_kind(&next_kind) {
+                    signals.actionable_lag_gap_count += 1;
+                    signals.actionable_lag_total_ms =
+                        signals.actionable_lag_total_ms.saturating_add(gap_ms);
+                    *actionable_lag_by_next_kind.entry(next_kind).or_default() += gap_ms;
+                }
+            }
+        }
+        prev_seq = record.seq;
+
+        match &record.event {
+            Event::Effect {
+                event: EffectEvent::LlmTurnInput { .. },
+            } => signals.llm_turn_inputs += 1,
+            Event::Effect {
+                event:
+                    EffectEvent::LlmTurnOutput {
+                        command_id,
+                        action_kind,
+                        ..
+                    },
+            } => {
+                signals.llm_turn_outputs += 1;
+                if action_kind.is_some() {
+                    signals.llm_action_outputs += 1;
+                    llm_action_command_ids.insert(command_id.clone());
+                }
+            }
+            Event::Effect {
+                event: EffectEvent::ActionResultRecorded { command_id, .. },
+            } => {
+                signals.action_results += 1;
+                action_result_command_ids.insert(command_id.clone());
+            }
+            Event::Effect {
+                event: EffectEvent::LlmErrorBoundary { .. },
+            } => signals.llm_error_boundaries += 1,
+            Event::Effect {
+                event: EffectEvent::WorkspaceArtifactWriteRequested { signature, .. },
+            } => {
+                signals.artifact_write_requests += 1;
+                requested_artifact_signatures.insert(signature.clone());
+            }
+            Event::Effect {
+                event: EffectEvent::WorkspaceArtifactWriteApplied { signature, .. },
+            } => {
+                signals.artifact_write_applies += 1;
+                applied_artifact_signatures.insert(signature.clone());
+            }
+            _ => {}
+        }
+    }
+
+    signals.missing_action_results = llm_action_command_ids
+        .difference(&action_result_command_ids)
+        .count();
+    signals.unapplied_artifact_writes = requested_artifact_signatures
+        .difference(&applied_artifact_signatures)
+        .count();
+    if let Some((kind, lag_ms)) = actionable_lag_by_next_kind
+        .into_iter()
+        .max_by_key(|(_, lag_ms)| *lag_ms)
+    {
+        signals.dominant_actionable_lag_kind = kind;
+        signals.dominant_actionable_lag_kind_ms = lag_ms;
+    }
+    signals.score = canonical_delta_health_score(&signals);
+    signals
+}
+
+fn load_tlog_delta_signals(workspace: &Path) -> TlogDeltaSignals {
+    let path = workspace.join("agent_state").join("tlog.ndjson");
+    crate::tlog::Tlog::read_recent_records(&path, 2_000)
+        .map(|records| evaluate_tlog_delta_invariants(&records))
+        .unwrap_or_default()
+}
+
+fn canonical_delta_health_score(signals: &TlogDeltaSignals) -> f64 {
+    if signals.event_count == 0 {
+        return 0.0;
+    }
+    let seq_score = if signals.contiguous_seq {
+        1.0
+    } else {
+        1.0 - safe_ratio(signals.missing_seq_count as f64, signals.event_count as f64)
+    };
+    let turn_score = if signals.llm_turn_inputs == 0 {
+        1.0
+    } else {
+        safe_ratio(signals.llm_turn_outputs as f64, signals.llm_turn_inputs as f64).min(1.0)
+    };
+    let action_score = if signals.llm_action_outputs == 0 {
+        1.0
+    } else {
+        1.0 - safe_ratio(
+            signals.missing_action_results as f64,
+            signals.llm_action_outputs as f64,
+        )
+    };
+    let artifact_score = if signals.artifact_write_requests == 0 {
+        1.0
+    } else {
+        1.0 - safe_ratio(
+            signals.unapplied_artifact_writes as f64,
+            signals.artifact_write_requests as f64,
+        )
+    };
+    let error_score = 1.0
+        - safe_ratio(
+            signals.llm_error_boundaries as f64,
+            (signals.llm_turn_inputs + signals.llm_turn_outputs).max(1) as f64,
+        )
+        .min(1.0);
+    let lag_budget_ms = (signals.event_count.max(1) as f64) * 5_000.0;
+    let lag_score = 1.0
+        - safe_ratio(signals.actionable_lag_total_ms as f64, lag_budget_ms)
+            .min(0.75);
+
+    geometric_score(&[
+        seq_score,
+        turn_score,
+        action_score,
+        artifact_score,
+        error_score,
+        lag_score,
+    ])
+}
+
+fn tlog_event_kind(event: &Event) -> String {
+    serde_json::to_value(event)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("event")
+                .and_then(|inner| inner.get("kind"))
+                .and_then(|kind| kind.as_str())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn is_actionable_lag_kind(kind: &str) -> bool {
+    !matches!(
+        kind,
+        "llm_turn_output" | "llm_error_boundary" | "orchestrator_idle_pulse" | "orchestrator_mode_set"
+    )
 }
 
 fn load_structural_invariant_coverage(workspace: &Path) -> StructuralInvariantCoverage {
@@ -463,27 +692,6 @@ fn load_task_counts(workspace: &Path) -> (usize, usize) {
     (completed, tasks.len())
 }
 
-/// Intent: canonical_read
-/// Resource: error
-/// Inputs: &std::path::Path
-/// Outputs: usize
-/// Effects: fs_read, state_read
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
-/// Provenance: rustc:facts + rustc:docstring
-fn load_canonical_event_count(workspace: &Path) -> usize {
-    let path = workspace.join("agent_state").join("tlog.ndjson");
-    std::fs::read_to_string(path)
-        .map(|content| {
-            content
-                .lines()
-                .filter(|line| !line.trim().is_empty())
-                .count()
-        })
-        .unwrap_or(0)
-}
-
 /// Intent: diagnostic_scan
 /// Resource: error
 /// Inputs: ()
@@ -518,6 +726,17 @@ fn clamp_unit(value: f64) -> f64 {
     value.clamp(0.0, 1.0)
 }
 
+fn geometric_score(values: &[f64]) -> f64 {
+    if values.is_empty() {
+        return 0.0;
+    }
+    values
+        .iter()
+        .map(|value| value.clamp(0.001, 1.0))
+        .product::<f64>()
+        .powf(1.0 / values.len() as f64)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -531,6 +750,7 @@ mod tests {
             issue_health: 1.0,
             semantic_contract: 1.0,
             structural_invariant_coverage: 1.0,
+            canonical_delta_health: 1.0,
         };
 
         assert!(vector.geometric_mean_like_score() > 0.0);
@@ -644,5 +864,144 @@ mod tests {
         assert_eq!(coverage.invariant_covered_count, 1);
         assert_eq!(coverage.missing_invariant_count, 0);
         assert_eq!(coverage.score, 1.0);
+    }
+
+    #[test]
+    fn tlog_delta_invariants_detect_missing_action_result() {
+        let records = vec![crate::tlog::TlogRecord {
+            seq: 1,
+            ts_ms: 1,
+            event: Event::effect(EffectEvent::LlmTurnOutput {
+                tab_id: None,
+                turn_id: None,
+                role: "planner".to_string(),
+                step: 1,
+                command_id: "cmd-1".to_string(),
+                endpoint_id: "ep".to_string(),
+                response_bytes: 10,
+                response_hash: "h".to_string(),
+                action_kind: Some("plan".to_string()),
+                raw: "{}".to_string(),
+            }),
+        }];
+
+        let signals = evaluate_tlog_delta_invariants(&records);
+
+        assert_eq!(signals.llm_action_outputs, 1);
+        assert_eq!(signals.missing_action_results, 1);
+        assert!(signals.score < 1.0);
+    }
+
+    #[test]
+    fn tlog_delta_invariants_reward_closed_action_delta() {
+        let records = vec![
+            crate::tlog::TlogRecord {
+                seq: 1,
+                ts_ms: 1,
+                event: Event::effect(EffectEvent::LlmTurnOutput {
+                    tab_id: None,
+                    turn_id: None,
+                    role: "planner".to_string(),
+                    step: 1,
+                    command_id: "cmd-1".to_string(),
+                    endpoint_id: "ep".to_string(),
+                    response_bytes: 10,
+                    response_hash: "h".to_string(),
+                    action_kind: Some("plan".to_string()),
+                    raw: "{}".to_string(),
+                }),
+            },
+            crate::tlog::TlogRecord {
+                seq: 2,
+                ts_ms: 2,
+                event: Event::effect(EffectEvent::ActionResultRecorded {
+                    role: "planner".to_string(),
+                    step: 1,
+                    command_id: "cmd-1".to_string(),
+                    action_kind: "plan".to_string(),
+                    task_id: None,
+                    objective_id: None,
+                    ok: true,
+                    result_bytes: 2,
+                    result_hash: "r".to_string(),
+                    result: "ok".to_string(),
+                }),
+            },
+        ];
+
+        let signals = evaluate_tlog_delta_invariants(&records);
+
+        assert_eq!(signals.missing_action_results, 0);
+        assert_eq!(signals.score, 1.0);
+    }
+
+    #[test]
+    fn tlog_delta_invariants_identifies_projection_as_actionable_lag() {
+        let records = vec![
+            crate::tlog::TlogRecord {
+                seq: 1,
+                ts_ms: 1_000,
+                event: Event::effect(EffectEvent::LlmTurnInput {
+                    tab_id: None,
+                    turn_id: None,
+                    role: "planner".to_string(),
+                    agent_type: "planner".to_string(),
+                    step: 1,
+                    command_id: "cmd-1".to_string(),
+                    endpoint_id: "ep".to_string(),
+                    prompt_hash: "p".to_string(),
+                    prompt_bytes: 10,
+                    role_schema_bytes: 2,
+                    submit_only: false,
+                }),
+            },
+            crate::tlog::TlogRecord {
+                seq: 2,
+                ts_ms: 3_500,
+                event: Event::effect(EffectEvent::IssuesProjectionRecorded {
+                    path: "agent_state/ISSUES.json".to_string(),
+                    hash: "h".to_string(),
+                    issue_count: 10,
+                    open_count: 10,
+                    bytes: 1_000_000,
+                    issue_fingerprints_hash: "f".to_string(),
+                    changed_issue_count: 5,
+                    changed_issue_ids: Vec::new(),
+                    status_counts: std::collections::BTreeMap::new(),
+                }),
+            },
+            crate::tlog::TlogRecord {
+                seq: 3,
+                ts_ms: 10_000,
+                event: Event::effect(EffectEvent::LlmTurnOutput {
+                    tab_id: None,
+                    turn_id: None,
+                    role: "planner".to_string(),
+                    step: 1,
+                    command_id: "cmd-1".to_string(),
+                    endpoint_id: "ep".to_string(),
+                    response_bytes: 10,
+                    response_hash: "r".to_string(),
+                    action_kind: None,
+                    raw: "{}".to_string(),
+                }),
+            },
+        ];
+
+        let signals = evaluate_tlog_delta_invariants(&records);
+
+        assert_eq!(signals.lag_gap_count, 2);
+        assert_eq!(signals.lag_total_ms, 9_000);
+        assert_eq!(signals.max_event_gap_ms, 6_500);
+        assert_eq!(signals.issues_projection_lag_count, 1);
+        assert_eq!(signals.issues_projection_lag_ms, 2_500);
+        assert_eq!(signals.actionable_lag_gap_count, 1);
+        assert_eq!(signals.actionable_lag_total_ms, 2_500);
+        assert_eq!(
+            signals.dominant_actionable_lag_kind,
+            "issues_projection_recorded"
+        );
+        assert_eq!(signals.dominant_actionable_lag_kind_ms, 2_500);
+        assert!(signals.score < 1.0);
     }
 }

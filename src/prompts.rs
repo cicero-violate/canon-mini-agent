@@ -1055,8 +1055,8 @@ fn blocker_payload_fields_present(payload: &BlockerPayload) -> bool {
 /// Inputs: &protocol::ProtocolMessage
 /// Outputs: std::result::Result<(), anyhow::Error>
 /// Effects: error
-/// Forbidden: error
-/// Invariants: error
+/// Forbidden: fs_write, uses_network, spawns_process
+/// Invariants: blocker_payload_requires_blocker_evidence_required_action
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
 fn validate_blocker_message_payload(msg: &ProtocolMessage) -> Result<()> {

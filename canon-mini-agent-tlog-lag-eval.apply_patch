@@ -1,0 +1,252 @@
+*** Begin Patch
+*** Update File: src/evaluation.rs
+@@
+ pub struct TlogDeltaSignals {
+     pub event_count: usize,
+     pub contiguous_seq: bool,
+     pub missing_seq_count: usize,
++    pub lag_gap_count: usize,
++    pub lag_total_ms: u64,
++    pub max_event_gap_ms: u64,
++    pub actionable_lag_gap_count: usize,
++    pub actionable_lag_total_ms: u64,
++    pub dominant_actionable_lag_kind: String,
++    pub dominant_actionable_lag_kind_ms: u64,
++    pub issues_projection_lag_ms: u64,
++    pub issues_projection_lag_count: usize,
+     pub llm_turn_inputs: usize,
+     pub llm_turn_outputs: usize,
+     pub llm_action_outputs: usize,
+@@
+     pub score: f64,
+ }
+
++const TLOG_LAG_GAP_MIN_MS: u64 = 1_000;
++const TLOG_LAG_GAP_MAX_MS: u64 = 120_000;
++
+ /// Pure invariant signal over a tlog delta window.
+ ///
+ /// Model: `I(ΔT) -> signal`, where ΔT is the recent canonical event window.
+@@
+     let mut action_result_command_ids = BTreeSet::new();
+     let mut requested_artifact_signatures = BTreeSet::new();
+     let mut applied_artifact_signatures = BTreeSet::new();
++    let mut actionable_lag_by_next_kind: HashMap<String, u64> = HashMap::new();
+
+     for (idx, record) in records.iter().enumerate() {
+         if idx > 0 && record.seq != prev_seq.saturating_add(1) {
+             signals.contiguous_seq = false;
+             signals.missing_seq_count +=
+                 record.seq.saturating_sub(prev_seq.saturating_add(1)) as usize;
+         }
++        if idx > 0 {
++            let prev = &records[idx - 1];
++            let gap_ms = record.ts_ms.saturating_sub(prev.ts_ms);
++            if (TLOG_LAG_GAP_MIN_MS..=TLOG_LAG_GAP_MAX_MS).contains(&gap_ms) {
++                signals.lag_gap_count += 1;
++                signals.lag_total_ms = signals.lag_total_ms.saturating_add(gap_ms);
++                signals.max_event_gap_ms = signals.max_event_gap_ms.max(gap_ms);
++
++                let next_kind = tlog_event_kind(&record.event);
++                if next_kind == "issues_projection_recorded" {
++                    signals.issues_projection_lag_count += 1;
++                    signals.issues_projection_lag_ms =
++                        signals.issues_projection_lag_ms.saturating_add(gap_ms);
++                }
++                if is_actionable_lag_kind(&next_kind) {
++                    signals.actionable_lag_gap_count += 1;
++                    signals.actionable_lag_total_ms =
++                        signals.actionable_lag_total_ms.saturating_add(gap_ms);
++                    *actionable_lag_by_next_kind.entry(next_kind).or_default() += gap_ms;
++                }
++            }
++        }
+         prev_seq = record.seq;
+
+         match &record.event {
+@@
+     signals.unapplied_artifact_writes = requested_artifact_signatures
+         .difference(&applied_artifact_signatures)
+         .count();
++    if let Some((kind, lag_ms)) = actionable_lag_by_next_kind
++        .into_iter()
++        .max_by_key(|(_, lag_ms)| *lag_ms)
++    {
++        signals.dominant_actionable_lag_kind = kind;
++        signals.dominant_actionable_lag_kind_ms = lag_ms;
++    }
+     signals.score = canonical_delta_health_score(&signals);
+     signals
+ }
+@@
+     let error_score = 1.0
+         - safe_ratio(
+             signals.llm_error_boundaries as f64,
+@@
+         )
+         .min(1.0);
++    let lag_budget_ms = (signals.event_count.max(1) as f64) * 5_000.0;
++    let lag_score = 1.0
++        - safe_ratio(signals.actionable_lag_total_ms as f64, lag_budget_ms)
++            .min(0.75);
+
+     geometric_score(&[
+         seq_score,
+         turn_score,
+         action_score,
+         artifact_score,
+         error_score,
++        lag_score,
+     ])
+ }
++
++fn tlog_event_kind(event: &Event) -> String {
++    serde_json::to_value(event)
++        .ok()
++        .and_then(|value| {
++            value
++                .get("event")
++                .and_then(|inner| inner.get("kind"))
++                .and_then(|kind| kind.as_str())
++                .map(str::to_string)
++        })
++        .unwrap_or_else(|| "unknown".to_string())
++}
++
++fn is_actionable_lag_kind(kind: &str) -> bool {
++    !matches!(
++        kind,
++        "llm_turn_output" | "llm_error_boundary" | "orchestrator_idle_pulse" | "orchestrator_mode_set"
++    )
++}
+@@
+     fn tlog_delta_invariants_reward_closed_action_delta() {
+         let records = vec![
+             crate::tlog::TlogRecord {
+@@
+         assert_eq!(signals.missing_action_results, 0);
+         assert_eq!(signals.score, 1.0);
+     }
++
++    #[test]
++    fn tlog_delta_invariants_identifies_projection_as_actionable_lag() {
++        let records = vec![
++            crate::tlog::TlogRecord {
++                seq: 1,
++                ts_ms: 1_000,
++                event: Event::effect(EffectEvent::LlmTurnInput {
++                    tab_id: None,
++                    turn_id: None,
++                    role: "planner".to_string(),
++                    agent_type: "planner".to_string(),
++                    step: 1,
++                    command_id: "cmd-1".to_string(),
++                    endpoint_id: "ep".to_string(),
++                    prompt_hash: "p".to_string(),
++                    prompt_bytes: 10,
++                    role_schema_bytes: 2,
++                    submit_only: false,
++                }),
++            },
++            crate::tlog::TlogRecord {
++                seq: 2,
++                ts_ms: 3_500,
++                event: Event::effect(EffectEvent::IssuesProjectionRecorded {
++                    path: "agent_state/ISSUES.json".to_string(),
++                    hash: "h".to_string(),
++                    issue_count: 10,
++                    open_count: 10,
++                    bytes: 1_000_000,
++                    issue_fingerprints_hash: "f".to_string(),
++                    changed_issue_count: 5,
++                    changed_issue_ids: Vec::new(),
++                    status_counts: std::collections::BTreeMap::new(),
++                }),
++            },
++            crate::tlog::TlogRecord {
++                seq: 3,
++                ts_ms: 10_000,
++                event: Event::effect(EffectEvent::LlmTurnOutput {
++                    tab_id: None,
++                    turn_id: None,
++                    role: "planner".to_string(),
++                    step: 1,
++                    command_id: "cmd-1".to_string(),
++                    endpoint_id: "ep".to_string(),
++                    response_bytes: 10,
++                    response_hash: "r".to_string(),
++                    action_kind: None,
++                    raw: "{}".to_string(),
++                }),
++            },
++        ];
++
++        let signals = evaluate_tlog_delta_invariants(&records);
++
++        assert_eq!(signals.lag_gap_count, 2);
++        assert_eq!(signals.lag_total_ms, 9_000);
++        assert_eq!(signals.max_event_gap_ms, 6_500);
++        assert_eq!(signals.issues_projection_lag_count, 1);
++        assert_eq!(signals.issues_projection_lag_ms, 2_500);
++        assert_eq!(signals.actionable_lag_gap_count, 1);
++        assert_eq!(signals.actionable_lag_total_ms, 2_500);
++        assert_eq!(
++            signals.dominant_actionable_lag_kind,
++            "issues_projection_recorded"
++        );
++        assert_eq!(signals.dominant_actionable_lag_kind_ms, 2_500);
++        assert!(signals.score < 1.0);
++    }
+ }
+*** Update File: src/events.rs
+@@
+         #[serde(default)]
+         canonical_delta_health: f64,
++        #[serde(default)]
++        tlog_lag_total_ms: u64,
++        #[serde(default)]
++        tlog_actionable_lag_total_ms: u64,
++        #[serde(default)]
++        tlog_dominant_actionable_lag_kind: String,
++        #[serde(default)]
++        tlog_dominant_actionable_lag_kind_ms: u64,
++        #[serde(default)]
++        issues_projection_lag_ms: u64,
+         diagnostics_repair_pressure: f64,
+         semantic_fn_error_rate: f64,
+         semantic_fn_total: usize,
+*** Update File: src/eval_driver.rs
+@@
+         semantic_contract: snapshot.vector.semantic_contract,
+         structural_invariant_coverage: snapshot.vector.structural_invariant_coverage,
+         canonical_delta_health: snapshot.vector.canonical_delta_health,
++        tlog_lag_total_ms: snapshot.tlog_delta_signals.lag_total_ms,
++        tlog_actionable_lag_total_ms: snapshot.tlog_delta_signals.actionable_lag_total_ms,
++        tlog_dominant_actionable_lag_kind: snapshot
++            .tlog_delta_signals
++            .dominant_actionable_lag_kind
++            .clone(),
++        tlog_dominant_actionable_lag_kind_ms: snapshot
++            .tlog_delta_signals
++            .dominant_actionable_lag_kind_ms,
++        issues_projection_lag_ms: snapshot.tlog_delta_signals.issues_projection_lag_ms,
+         diagnostics_repair_pressure: snapshot.diagnostics_repair_pressure,
+         semantic_fn_error_rate: snapshot.semantic_fn_error_rate,
+         semantic_fn_total: snapshot.semantic_fn_total,
+*** Update File: src/complexity.rs
+@@
+             "semantic_fn_error_rate": eval.semantic_fn_error_rate,
+             "diagnostics_repair_pressure": eval.diagnostics_repair_pressure,
++            "tlog_lag_gap_count": eval.tlog_delta_signals.lag_gap_count,
++            "tlog_lag_total_ms": eval.tlog_delta_signals.lag_total_ms,
++            "tlog_max_event_gap_ms": eval.tlog_delta_signals.max_event_gap_ms,
++            "tlog_actionable_lag_gap_count": eval.tlog_delta_signals.actionable_lag_gap_count,
++            "tlog_actionable_lag_total_ms": eval.tlog_delta_signals.actionable_lag_total_ms,
++            "tlog_dominant_actionable_lag_kind": eval.tlog_delta_signals.dominant_actionable_lag_kind,
++            "tlog_dominant_actionable_lag_kind_ms": eval.tlog_delta_signals.dominant_actionable_lag_kind_ms,
++            "issues_projection_lag_ms": eval.tlog_delta_signals.issues_projection_lag_ms,
++            "issues_projection_lag_count": eval.tlog_delta_signals.issues_projection_lag_count,
+             "objectives": format!("{}/{}", eval.objectives_completed, eval.objectives_total),
+             "tasks": format!("{}/{}", eval.completed_tasks, eval.total_tasks),
+         },
+*** End Patch

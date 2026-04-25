@@ -64,7 +64,7 @@ struct InvalidActionFeedback {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: action_payload
 /// Inputs: &str, &llm_runtime::config::LlmEndpoint, &str, usize, &str, &str, bool, bool, std::option::Option<(&str, u32
 /// Outputs: ()
 /// Effects: error
@@ -383,10 +383,10 @@ impl ActionProvenance {
 /// Resource: error
 /// Inputs: &str, bool, usize, &str, &str, std::option::Option<&str>, std::option::Option<u32>, std::option::Option<u64>, std::option::Option<&str>, &app::ActionProvenance, usize, std::option::Option<&str>
 /// Outputs: (std::string::String, std::string::String)
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: fs_write, uses_network, spawns_process
+/// Invariants: no_external_effects
+/// Failure: infallible
 /// Provenance: rustc:facts + rustc:docstring
 fn build_agent_prompt(
     role: &str,
