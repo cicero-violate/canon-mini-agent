@@ -1038,43 +1038,7 @@ pub fn rename_symbol_issues(
             continue;
         }
 
-        let score = rename_reason_score(&reasons);
-        let priority = if score >= 40 { "medium" } else { "low" };
-        let location = shorten_location(&s.file, s.line);
-        out.push(Issue {
-            id: format!(
-                "auto_rename_symbol_{crate_name}_{:x}",
-                stable_hash(&s.symbol)
-            ),
-            title: format!(
-                "Rename candidate: `{}` (score={})",
-                symbol_name, score
-            ),
-            status: "open".to_string(),
-            priority: priority.to_string(),
-            kind: "logic".to_string(),
-            description: format!(
-                "Symbol `{}` is a deterministic rename candidate based on naming heuristics.\n\
-                 Use `symbols_rename_candidates` → `symbols_prepare_rename` → `rename_symbol` and verify with cargo check/test.",
-                s.symbol
-            ),
-            location: location.clone(),
-            scope: format!("crate:{crate_name}"),
-            metrics: json!({
-                "task": "RenameSymbol",
-                "rename_candidate_score": score,
-                "reasons": reasons,
-                "symbol": s.symbol,
-                "kind": s.kind
-            }),
-            acceptance_criteria: vec![
-                "symbol renamed with semantic spans".to_string(),
-                "build and tests pass".to_string(),
-            ],
-            evidence: vec![format!("location: {location}")],
-            discovered_by: "refactor_analyzer".to_string(),
-            ..Issue::default()
-        });
+        out.push(build_rename_symbol_issue(crate_name, s, symbol_name, reasons));
     }
     out.sort_by(|a, b| {
         let sa = a
@@ -1091,6 +1055,48 @@ pub fn rename_symbol_issues(
     });
     out.truncate(limit);
     out
+}
+
+fn build_rename_symbol_issue(
+    crate_name: &str,
+    summary: &SymbolSummary,
+    symbol_name: &str,
+    reasons: Vec<String>,
+) -> Issue {
+    let score = rename_reason_score(&reasons);
+    let priority = if score >= 40 { "medium" } else { "low" };
+    let location = shorten_location(&summary.file, summary.line);
+    Issue {
+        id: format!(
+            "auto_rename_symbol_{crate_name}_{:x}",
+            stable_hash(&summary.symbol)
+        ),
+        title: format!("Rename candidate: `{}` (score={})", symbol_name, score),
+        status: "open".to_string(),
+        priority: priority.to_string(),
+        kind: "logic".to_string(),
+        description: format!(
+            "Symbol `{}` is a deterministic rename candidate based on naming heuristics.\n\
+             Use `symbols_rename_candidates` → `symbols_prepare_rename` → `rename_symbol` and verify with cargo check/test.",
+            summary.symbol
+        ),
+        location: location.clone(),
+        scope: format!("crate:{crate_name}"),
+        metrics: json!({
+            "task": "RenameSymbol",
+            "rename_candidate_score": score,
+            "reasons": reasons,
+            "symbol": summary.symbol,
+            "kind": summary.kind
+        }),
+        acceptance_criteria: vec![
+            "symbol renamed with semantic spans".to_string(),
+            "build and tests pass".to_string(),
+        ],
+        evidence: vec![format!("location: {location}")],
+        discovered_by: "refactor_analyzer".to_string(),
+        ..Issue::default()
+    }
 }
 
 fn rename_ambiguity_reasons(name: &str) -> Vec<String> {
