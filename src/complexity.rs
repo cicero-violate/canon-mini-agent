@@ -266,54 +266,12 @@ fn build_graph_only_entries(idx: &SemanticIndex, crate_name: &str) -> Vec<GraphO
     let redundant_pairs = idx.redundant_path_pairs();
     let alpha_pathways = idx.alpha_pathways();
 
-    let mut outgoing: HashMap<String, Vec<String>> = HashMap::new();
-    for (from, to) in &call_edges {
-        outgoing.entry(from.clone()).or_default().push(to.clone());
-    }
-
-    let mut fingerprint_groups: HashMap<String, Vec<String>> = HashMap::new();
-    for summary in &summaries {
-        if let Some(fp) = &summary.mir_fingerprint {
-            fingerprint_groups
-                .entry(fp.clone())
-                .or_default()
-                .push(summary.symbol.clone());
-        }
-    }
-
+    let outgoing = graph_only_outgoing_calls(&call_edges);
+    let fingerprint_groups = graph_only_fingerprint_groups(&summaries);
     let duplicate_body_count = duplicate_body_counts(&fingerprint_groups);
-
-    let mut redundant_path_count: HashMap<String, usize> = HashMap::new();
-    for pair in &redundant_pairs {
-        *redundant_path_count
-            .entry(pair.path_a.owner.clone())
-            .or_insert(0) += 1;
-    }
-
-    let mut pathway_membership_count: HashMap<String, usize> = HashMap::new();
-    let mut pathway_wrapper_count: HashMap<String, usize> = HashMap::new();
-    for pathway in alpha_pathways {
-        for symbol in &pathway.chain {
-            *pathway_membership_count.entry(symbol.clone()).or_insert(0) += 1;
-        }
-        for symbol in pathway
-            .chain
-            .iter()
-            .take(pathway.chain.len().saturating_sub(1))
-        {
-            *pathway_wrapper_count.entry(symbol.clone()).or_insert(0) += 1;
-        }
-    }
-
-    let branch_by_symbol: HashMap<String, f64> = summaries
-        .iter()
-        .map(|s| {
-            (
-                s.symbol.clone(),
-                s.branch_score.unwrap_or(s.mir_blocks.unwrap_or(0) as f64),
-            )
-        })
-        .collect();
+    let redundant_path_count = graph_only_redundant_path_counts(&redundant_pairs);
+    let (pathway_membership_count, pathway_wrapper_count) = graph_only_pathway_counts(alpha_pathways);
+    let branch_by_symbol = graph_only_branch_scores(&summaries);
 
     let scc_size = compute_call_scc_sizes(&summaries, &outgoing);
 
@@ -381,6 +339,69 @@ fn build_graph_only_entries(idx: &SemanticIndex, crate_name: &str) -> Vec<GraphO
 
     entries.sort_by(graph_only_sort_desc);
     entries
+}
+
+fn graph_only_outgoing_calls(call_edges: &[(String, String)]) -> HashMap<String, Vec<String>> {
+    let mut outgoing: HashMap<String, Vec<String>> = HashMap::new();
+    for (from, to) in call_edges {
+        outgoing.entry(from.clone()).or_default().push(to.clone());
+    }
+    outgoing
+}
+
+fn graph_only_fingerprint_groups(
+    summaries: &[crate::semantic::SymbolSummary],
+) -> HashMap<String, Vec<String>> {
+    let mut fingerprint_groups: HashMap<String, Vec<String>> = HashMap::new();
+    for summary in summaries {
+        if let Some(fp) = &summary.mir_fingerprint {
+            fingerprint_groups
+                .entry(fp.clone())
+                .or_default()
+                .push(summary.symbol.clone());
+        }
+    }
+    fingerprint_groups
+}
+
+fn graph_only_redundant_path_counts(
+    redundant_pairs: &[crate::semantic::RedundantPathPair],
+) -> HashMap<String, usize> {
+    let mut redundant_path_count: HashMap<String, usize> = HashMap::new();
+    for pair in redundant_pairs {
+        *redundant_path_count
+            .entry(pair.path_a.owner.clone())
+            .or_insert(0) += 1;
+    }
+    redundant_path_count
+}
+
+fn graph_only_pathway_counts(
+    alpha_pathways: &[crate::semantic::AlphaPathway],
+) -> (HashMap<String, usize>, HashMap<String, usize>) {
+    let mut pathway_membership_count: HashMap<String, usize> = HashMap::new();
+    let mut pathway_wrapper_count: HashMap<String, usize> = HashMap::new();
+    for pathway in alpha_pathways {
+        for symbol in &pathway.chain {
+            *pathway_membership_count.entry(symbol.clone()).or_insert(0) += 1;
+        }
+        for symbol in pathway.chain.iter().take(pathway.chain.len().saturating_sub(1)) {
+            *pathway_wrapper_count.entry(symbol.clone()).or_insert(0) += 1;
+        }
+    }
+    (pathway_membership_count, pathway_wrapper_count)
+}
+
+fn graph_only_branch_scores(summaries: &[crate::semantic::SymbolSummary]) -> HashMap<String, f64> {
+    summaries
+        .iter()
+        .map(|s| {
+            (
+                s.symbol.clone(),
+                s.branch_score.unwrap_or(s.mir_blocks.unwrap_or(0) as f64),
+            )
+        })
+        .collect()
 }
 
 fn apply_graph_only_complexity_scores(entries: &mut [GraphOnlyEntry]) {

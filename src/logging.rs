@@ -261,6 +261,16 @@ fn compact_json(value: Value) -> Option<Value> {
     results.pop().flatten()
 }
 
+fn insert_compact_log_field(
+    record: &mut serde_json::Map<String, Value>,
+    key: &str,
+    value: Option<Value>,
+) {
+    if let Some(v) = value.and_then(compact_json) {
+        record.insert(key.to_string(), v);
+    }
+}
+
 pub(crate) fn compact_log_record(
     kind: &str,
     phase: &str,
@@ -285,31 +295,26 @@ pub(crate) fn compact_log_record(
     record.insert("kind".to_string(), json!(kind));
     record.insert("phase".to_string(), json!(phase));
 
-    // helper to reduce repeated Option->compact_json->insert pattern
-    let mut insert_opt = |key: &str, value: Option<Value>| {
-        if let Some(v) = value.and_then(compact_json) {
-            record.insert(key.to_string(), v);
-        }
-    };
-
-    insert_opt("actor", actor.map(|v| json!(v)));
-    insert_opt("lane", lane.map(|v| json!(v)));
-    insert_opt("endpoint_id", endpoint_id.map(|v| json!(v)));
-    insert_opt("step", step.map(|v| json!(v)));
-    insert_opt("turn_id", turn_id.map(|v| json!(v)));
-    insert_opt("command_id", command_id.map(|v| json!(v)));
-    insert_opt("op", op);
-    insert_opt("ok", ok.map(|v| json!(v)));
-    insert_opt(
+    insert_compact_log_field(&mut record, "actor", actor.map(|v| json!(v)));
+    insert_compact_log_field(&mut record, "lane", lane.map(|v| json!(v)));
+    insert_compact_log_field(&mut record, "endpoint_id", endpoint_id.map(|v| json!(v)));
+    insert_compact_log_field(&mut record, "step", step.map(|v| json!(v)));
+    insert_compact_log_field(&mut record, "turn_id", turn_id.map(|v| json!(v)));
+    insert_compact_log_field(&mut record, "command_id", command_id.map(|v| json!(v)));
+    insert_compact_log_field(&mut record, "op", op);
+    insert_compact_log_field(&mut record, "ok", ok.map(|v| json!(v)));
+    insert_compact_log_field(
+        &mut record,
         "observation",
         observation.map(|v| json!(truncate(&v, MAX_SNIPPET))),
     );
-    insert_opt(
+    insert_compact_log_field(
+        &mut record,
         "rationale",
         rationale.map(|v| json!(truncate(&v, MAX_SNIPPET))),
     );
-    insert_opt("text", text.map(|v| json!(truncate(&v, MAX_SNIPPET))));
-    insert_opt("meta", meta);
+    insert_compact_log_field(&mut record, "text", text.map(|v| json!(truncate(&v, MAX_SNIPPET))));
+    insert_compact_log_field(&mut record, "meta", meta);
 
     Value::Object(record)
 }

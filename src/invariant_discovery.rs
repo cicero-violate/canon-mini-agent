@@ -946,6 +946,50 @@ fn seed_deterministic_invariants(workspace: &Path, file: &mut EnforcedInvariants
         ],
         vec!["route".to_string()],
     );
+
+    seed_graph_risk_structural_invariants(workspace, file, now_ms);
+}
+
+fn seed_graph_risk_structural_invariants(
+    workspace: &Path,
+    file: &mut EnforcedInvariantsFile,
+    now_ms: u64,
+) {
+    let graph_text = std::fs::read_to_string(
+        workspace
+            .join("state")
+            .join("rustc")
+            .join("canon_mini_agent")
+            .join("graph.json"),
+    )
+    .unwrap_or_default()
+    .to_ascii_lowercase();
+
+    upsert_deterministic_invariant(
+        file,
+        "inv_structural_tlog_single_authority",
+        graph_text.contains("tlog::tlog::append") && graph_text.contains("canonicalwriter"),
+        now_ms,
+        "Canonical writer single authority: tlog writes must go through the canonical writer single authority path.",
+        vec![StateCondition {
+            key: "structural_invariant".to_string(),
+            value: "canonical_writer_single_tlog_authority".to_string(),
+        }],
+        vec!["route".to_string()],
+    );
+
+    upsert_deterministic_invariant(
+        file,
+        "inv_structural_patch_verification_gate",
+        graph_text.contains("apply_patch") && graph_text.contains("cargo_test"),
+        now_ms,
+        "Patch actions must be followed by cargo test or cargo check verification before completion.",
+        vec![StateCondition {
+            key: "structural_invariant".to_string(),
+            value: "patch_requires_verification_gate".to_string(),
+        }],
+        vec!["executor".to_string()],
+    );
 }
 
 /// Convert classified blocker records directly into fingerprints — no text heuristics.
