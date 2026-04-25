@@ -275,6 +275,15 @@ pub enum EffectEvent {
         recent_actions: BTreeMap<String, usize>,
         signature: String,
     },
+    GitCheckpointBlocked {
+        reason: String,
+        risk: String,
+        verification_requested: bool,
+        rust_sensitive_changes: bool,
+        changed_paths: Vec<String>,
+        required_gate: String,
+        signature: String,
+    },
     CheckpointSaved {
         phase: String,
     },
@@ -433,6 +442,10 @@ pub enum EffectEvent {
         last_plan_text_payload_bytes: u64,
         #[serde(default)]
         last_executor_diff_payload_bytes: u64,
+        #[serde(default)]
+        tlog_git_checkpoint_blocked: usize,
+        #[serde(default)]
+        tlog_unsafe_checkpoint_attempts: usize,
         diagnostics_repair_pressure: f64,
         semantic_fn_error_rate: f64,
         semantic_fn_total: usize,

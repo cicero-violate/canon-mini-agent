@@ -602,41 +602,6 @@ fn sync_handoff_causality_meta_issue(
     )
 }
 
-fn sync_supervisor_cargo_test_projection_meta_issue(
-    file: &mut IssuesFile,
-    existing_ids: &HashSet<String>,
-    workspace: &Path,
-) -> (usize, bool) {
-    sync_invariant_meta_issue(
-        file,
-        existing_ids,
-        has_supervisor_cargo_test_failure_projection(workspace),
-        InvariantMetaIssueSpec {
-            id: "inv_supervisor_cargo_test_failure_projection",
-            title: "Supervisor cargo test failures must be prompt-visible before planner handoff",
-            priority: "critical",
-            description: concat!(
-                "The supervisor build gate must not leave cargo test failures as terminal-only output. ",
-                "Whenever the supervisor runs `cargo test --workspace` and it fails or errors, it must ",
-                "capture stdout/stderr, persist agent_state/latest_supervisor_cargo_test.log, write ",
-                "cargo_test_failures.json with failed_tests/error context, and allow planner prompt assembly ",
-                "to read that projection before any next planner handoff. Otherwise the supervisor correctly ",
-                "blocks git commit, but the planner receives stale or empty failure evidence and cannot repair ",
-                "the true test failure."
-            )
-            .to_string(),
-            location: "src/supervisor.rs; src/tools_plan_view_io.rs; src/app_bootstrap.rs; src/prompt_inputs.rs; src/prompts.rs",
-            evidence: &[
-                "src/supervisor.rs must use run_cmd_capture for cargo test --workspace gates and call write_cargo_test_failures_projection on failed/errored tests",
-                "src/tools_plan_view_io.rs must parse Cargo's final failures: list into failed_tests",
-                "cargo_test_failures.json must be loaded into planner prompts before planner handoff",
-                "agent_state/latest_supervisor_cargo_test.log must preserve the complete captured supervisor cargo test output",
-            ],
-            resolved_note: "Resolved automatically after source validation: supervisor cargo test failures are captured, projected, parsed, and loaded into planner prompts.",
-        },
-    )
-}
-
 /// Intent: diagnostic_scan
 /// Resource: error
 /// Inputs: &std::path::Path
@@ -670,12 +635,6 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
     // ── Meta-issue 3: planner handoff causality gap ──────────────────────────
     let (created_delta, mutated_delta) =
         sync_handoff_causality_meta_issue(&mut file, &existing_ids, workspace);
-    created += created_delta;
-    mutated |= mutated_delta;
-
-    // ── Meta-issue 4: supervisor cargo test failure visibility ───────────────
-    let (created_delta, mutated_delta) =
-        sync_supervisor_cargo_test_projection_meta_issue(&mut file, &existing_ids, workspace);
     created += created_delta;
     mutated |= mutated_delta;
 
@@ -1438,14 +1397,6 @@ fn actor_kind_from_role(role: &str) -> &'static str {
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
 fn update_gate_enforcement(file: &mut EnforcedInvariantsFile) {
-    for inv in file
-        .invariants
-        .iter_mut()
-        .filter(|inv| inv.status == InvariantStatus::Promoted && !inv.gates.is_empty())
-    {
-        inv.status = InvariantStatus::Enforced;
-    }
-
     for inv in file
         .invariants
         .iter_mut()

@@ -372,6 +372,47 @@ fn clear_rust_patch_verification_request(state_dir: &Path) {
     let _ = fs::remove_file(rust_patch_verification_flag_path(state_dir));
 }
 
+fn rust_patch_sensitive_path(path: &str) -> bool {
+    let path = path.trim();
+    path.ends_with(".rs")
+        || path == "Cargo.toml"
+        || path == "Cargo.lock"
+        || path.starts_with("src/")
+        || path.starts_with("tests/")
+        || path.starts_with("crates/")
+}
+
+fn rust_patch_sensitive_changed_paths(root: &Path) -> Option<Vec<String>> {
+    let output = Command::new("git")
+        .args(["status", "--porcelain", "--untracked-files=all"])
+        .current_dir(root)
+        .output();
+    match output {
+        Ok(out) if out.status.success() => Some(
+            String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .filter_map(|line| line.get(3..))
+                .map(str::trim)
+                .filter(|path| rust_patch_sensitive_path(path))
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+        ),
+        Ok(out) => {
+            eprintln!(
+                "[canon-mini-supervisor] git status failed while checking Rust-sensitive changes (status={}); treating checkpoint as unsafe",
+                out.status
+            );
+            None
+        }
+        Err(err) => {
+            eprintln!(
+                "[canon-mini-supervisor] git status errored while checking Rust-sensitive changes: {err:#}; treating checkpoint as unsafe"
+            );
+            None
+        }
+    }
+}
+
 fn workspace_from_args(args: &[String]) -> Option<String> {
     let mut i = 0usize;
     while i + 1 < args.len() {
@@ -622,8 +663,24 @@ fn preferred_build_kind(prefer_release: bool) -> BuildKind {
 
 fn checkpoint_build_succeeded(root: &Path, state_dir: &Path, reason: &str) -> bool {
     if !rust_patch_verification_requested(state_dir) {
+        let rust_sensitive_changes = rust_patch_sensitive_changed_paths(root)
+            .unwrap_or_else(|| vec!["<git-status-unavailable>".to_string()]);
+        if !rust_sensitive_changes.is_empty() {
+            eprintln!(
+                "[canon-mini-supervisor] pre-restart: refusing git checkpoint ({reason}); Rust-sensitive changes exist without cargo check/test/build verification"
+            );
+            record_git_checkpoint_blocked(
+                root,
+                reason,
+                "commit_push_requires_verified_gate_if_rust_changed",
+                false,
+                rust_sensitive_changes,
+                "cargo check --workspace && cargo test --workspace && cargo build --workspace",
+            );
+            return false;
+        }
         eprintln!(
-            "[canon-mini-supervisor] pre-restart: skipping cargo check/test/build gates ({reason}); no Rust apply_patch verification requested"
+            "[canon-mini-supervisor] pre-restart: skipping cargo check/test/build gates ({reason}); no Rust-sensitive changes detected"
         );
         return true;
     }
@@ -642,20 +699,35 @@ fn checkpoint_build_succeeded(root: &Path, state_dir: &Path, reason: &str) -> bo
                     "[canon-mini-supervisor] semantic_map jsonl export failed ({reason}): {err:#}"
                 );
             }
+            clear_rust_patch_verification_request(state_dir);
             true
         }
         Ok(false) => {
             eprintln!(
                 "[canon-mini-supervisor] pre-restart cargo build failed; skipping git add/commit/push ({reason})"
             );
-            clear_rust_patch_verification_request(state_dir);
+            record_git_checkpoint_blocked(
+                root,
+                reason,
+                "cargo_build_gate_failed",
+                true,
+                rust_patch_sensitive_changed_paths(root).unwrap_or_default(),
+                "cargo build --workspace",
+            );
             false
         }
         Err(err) => {
             eprintln!(
                 "[canon-mini-supervisor] pre-restart cargo build errored; skipping git add/commit/push ({reason}): {err:#}"
             );
-            clear_rust_patch_verification_request(state_dir);
+            record_git_checkpoint_blocked(
+                root,
+                reason,
+                "cargo_build_gate_failed",
+                true,
+                rust_patch_sensitive_changed_paths(root).unwrap_or_default(),
+                "cargo build --workspace",
+            );
             false
         }
     }
@@ -663,7 +735,7 @@ fn checkpoint_build_succeeded(root: &Path, state_dir: &Path, reason: &str) -> bo
 
 fn checkpoint_command_succeeded(
     root: &Path,
-    state_dir: &Path,
+    _state_dir: &Path,
     reason: &str,
     label: &str,
     args: &[&str],
@@ -682,7 +754,14 @@ fn checkpoint_command_succeeded(
                 eprintln!(
                     "[canon-mini-supervisor] pre-restart {label} failed; skipping git add/commit/push ({reason})"
                 );
-                clear_rust_patch_verification_request(state_dir);
+                record_git_checkpoint_blocked(
+                    root,
+                    reason,
+                    "cargo_test_gate_failed",
+                    true,
+                    rust_patch_sensitive_changed_paths(root).unwrap_or_default(),
+                    "cargo test --workspace",
+                );
                 false
             }
             Err(err) => {
@@ -695,7 +774,14 @@ fn checkpoint_command_succeeded(
                 eprintln!(
                     "[canon-mini-supervisor] pre-restart {label} errored; skipping git add/commit/push ({reason}): {err:#}"
                 );
-                clear_rust_patch_verification_request(state_dir);
+                record_git_checkpoint_blocked(
+                    root,
+                    reason,
+                    "cargo_test_gate_failed",
+                    true,
+                    rust_patch_sensitive_changed_paths(root).unwrap_or_default(),
+                    "cargo test --workspace",
+                );
                 false
             }
         };
@@ -709,14 +795,28 @@ fn checkpoint_command_succeeded(
             eprintln!(
                 "[canon-mini-supervisor] pre-restart {label} failed; skipping git add/commit/push ({reason})"
             );
-            clear_rust_patch_verification_request(state_dir);
+            record_git_checkpoint_blocked(
+                root,
+                reason,
+                "cargo_check_gate_failed",
+                true,
+                rust_patch_sensitive_changed_paths(root).unwrap_or_default(),
+                "cargo check --workspace",
+            );
             false
         }
         Err(err) => {
             eprintln!(
                 "[canon-mini-supervisor] pre-restart {label} errored; skipping git add/commit/push ({reason}): {err:#}"
             );
-            clear_rust_patch_verification_request(state_dir);
+            record_git_checkpoint_blocked(
+                root,
+                reason,
+                "cargo_check_gate_failed",
+                true,
+                rust_patch_sensitive_changed_paths(root).unwrap_or_default(),
+                "cargo check --workspace",
+            );
             false
         }
     }
@@ -1203,6 +1303,36 @@ fn record_git_checkpoint_prepared(root: &Path, evidence: &GitCheckpointEvidence)
     }
 }
 
+fn record_git_checkpoint_blocked(
+    root: &Path,
+    reason: &str,
+    risk: &str,
+    verification_requested: bool,
+    changed_paths: Vec<String>,
+    required_gate: &str,
+) {
+    let rust_sensitive_changes = !changed_paths.is_empty();
+    let signature = artifact_write_signature(&[
+        reason,
+        risk,
+        if verification_requested { "verified" } else { "unverified" },
+        required_gate,
+        &changed_paths.join("\n"),
+    ]);
+    let effect = EffectEvent::GitCheckpointBlocked {
+        reason: reason.to_string(),
+        risk: risk.to_string(),
+        verification_requested,
+        rust_sensitive_changes,
+        changed_paths,
+        required_gate: required_gate.to_string(),
+        signature,
+    };
+    if let Err(err) = record_effect_for_workspace(root, effect) {
+        eprintln!("[canon-mini-supervisor] git checkpoint blocked tlog effect failed: {err:#}");
+    }
+}
+
 fn commit_and_push_checkpoint(root: &Path, evidence: &GitCheckpointEvidence) {
     let commit_msg = evidence.subject.clone();
     eprintln!(
@@ -1268,6 +1398,52 @@ fn commit_and_push_checkpoint(root: &Path, evidence: &GitCheckpointEvidence) {
                 evidence.reason
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn unique_test_root(name: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        std::env::temp_dir().join(format!("canon-mini-agent-{name}-{nonce}"))
+    }
+
+    fn git_available() -> bool {
+        Command::new("git")
+            .arg("--version")
+            .output()
+            .map(|out| out.status.success())
+            .unwrap_or(false)
+    }
+
+    #[test]
+    fn checkpoint_blocks_rust_sensitive_changes_without_verification_and_records_learning_event() {
+        if !git_available() {
+            return;
+        }
+        let root = unique_test_root("checkpoint-blocks-rust-sensitive");
+        fs::create_dir_all(root.join("src")).expect("create test src");
+        fs::write(root.join("src/lib.rs"), "pub fn touched() {}\n").expect("write rust source");
+        Command::new("git")
+            .arg("init")
+            .current_dir(&root)
+            .status()
+            .expect("git init");
+
+        let allowed = checkpoint_build_succeeded(&root, &root.join("agent_state"), "unit-test");
+
+        assert!(!allowed);
+        let tlog = fs::read_to_string(root.join("agent_state").join("tlog.ndjson"))
+            .expect("blocked checkpoint tlog");
+        assert!(tlog.contains("git_checkpoint_blocked"));
+        assert!(tlog.contains("commit_push_requires_verified_gate_if_rust_changed"));
+
+        let _ = fs::remove_dir_all(root);
     }
 }
 
@@ -2132,7 +2308,13 @@ fn check_test_gate(root: &Path, state_dir: &Path, prior_value: bool) -> bool {
             false
         }
     };
-    clear_rust_patch_verification_request(state_dir);
+    if result {
+        clear_rust_patch_verification_request(state_dir);
+    } else {
+        eprintln!(
+            "[canon-mini-supervisor] loop: retaining Rust patch verification request until cargo test passes"
+        );
+    }
     result
 }
 

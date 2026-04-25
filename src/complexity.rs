@@ -1632,52 +1632,138 @@ fn build_complexity_report(
         eval.objectives_completed, eval.objectives_total
     );
     let tasks_progress = format!("{}/{}", eval.completed_tasks, eval.total_tasks);
-    json!({
-        "version": 2,
-        "objective": "min(B) + min(R)  s.t. correctness invariant",
-        "intra_scoring": intra_scoring,
-        "inter_scoring": inter_scoring,
-        "execution_model": "Detect(this_report) → Propose(LLM/issues) → Apply(patch/rename) → Verify(build+test)",
-        "generated_at_ms": crate::logging::now_ms(),
-        "global_top": global_top,
-        "inter": inter,
-        "eval": {
-            "overall_score": eval.overall_score(),
-            "delta_g": eval_delta.map(|d| d.delta_g),
-            "promotion_eligible": eval_delta.map(|d| d.promotion_eligible),
-            "objective_progress": eval.vector.objective_progress,
-            "safety": eval.vector.safety,
-            "task_velocity": eval.vector.task_velocity,
-            "issue_health": eval.vector.issue_health,
-            "semantic_contract": eval.vector.semantic_contract,
-            "structural_invariant_coverage": eval.vector.structural_invariant_coverage,
-            "graph_risk_count": eval.structural_invariant_coverage.graph_risk_count,
-            "invariant_covered_count": eval.structural_invariant_coverage.invariant_covered_count,
-            "missing_structural_invariants": eval.structural_invariant_coverage.missing_invariant_count,
-            "missing_structural_invariant_kinds": eval.structural_invariant_coverage.missing,
-            "semantic_fn_total": eval.semantic_fn_total,
-            "semantic_fn_with_any_error": eval.semantic_fn_with_any_error,
-            "semantic_fn_error_rate": eval.semantic_fn_error_rate,
-            "diagnostics_repair_pressure": eval.diagnostics_repair_pressure,
-            "tlog_lag_gap_count": eval.tlog_delta_signals.lag_gap_count,
-            "tlog_lag_total_ms": eval.tlog_delta_signals.lag_total_ms,
-            "tlog_max_event_gap_ms": eval.tlog_delta_signals.max_event_gap_ms,
-            "tlog_actionable_lag_gap_count": eval.tlog_delta_signals.actionable_lag_gap_count,
-            "tlog_actionable_lag_total_ms": eval.tlog_delta_signals.actionable_lag_total_ms,
-            "tlog_dominant_actionable_lag_kind": eval.tlog_delta_signals.dominant_actionable_lag_kind,
-            "tlog_dominant_actionable_lag_kind_ms": eval.tlog_delta_signals.dominant_actionable_lag_kind_ms,
-            "issues_projection_lag_ms": eval.tlog_delta_signals.issues_projection_lag_ms,
-            "issues_projection_lag_count": eval.tlog_delta_signals.issues_projection_lag_count,
-            "tlog_dominant_payload_kind": eval.tlog_delta_signals.dominant_payload_kind,
-            "tlog_dominant_payload_kind_bytes": eval.tlog_delta_signals.dominant_payload_kind_bytes,
-            "last_plan_text_payload_bytes": eval.tlog_delta_signals.last_plan_text_payload_bytes,
-            "last_executor_diff_payload_bytes": eval.tlog_delta_signals.last_executor_diff_payload_bytes,
-            "objectives": objectives_progress,
-            "tasks": tasks_progress,
-        },
-        "fingerprint_drift": drift,
-        "per_crate": per_crate,
-    })
+    let mut eval_report = serde_json::Map::new();
+    eval_report.insert("overall_score".into(), json!(eval.overall_score()));
+    eval_report.insert(
+        "delta_g".into(),
+        eval_delta
+            .map(|d| json!(d.delta_g))
+            .unwrap_or(serde_json::Value::Null),
+    );
+    eval_report.insert(
+        "promotion_eligible".into(),
+        eval_delta
+            .map(|d| json!(d.promotion_eligible))
+            .unwrap_or(serde_json::Value::Null),
+    );
+    eval_report.insert(
+        "objective_progress".into(),
+        json!(eval.vector.objective_progress),
+    );
+    eval_report.insert("safety".into(), json!(eval.vector.safety));
+    eval_report.insert("task_velocity".into(), json!(eval.vector.task_velocity));
+    eval_report.insert("issue_health".into(), json!(eval.vector.issue_health));
+    eval_report.insert(
+        "semantic_contract".into(),
+        json!(eval.vector.semantic_contract),
+    );
+    eval_report.insert(
+        "structural_invariant_coverage".into(),
+        json!(eval.vector.structural_invariant_coverage),
+    );
+    eval_report.insert(
+        "graph_risk_count".into(),
+        json!(eval.structural_invariant_coverage.graph_risk_count),
+    );
+    eval_report.insert(
+        "invariant_covered_count".into(),
+        json!(eval.structural_invariant_coverage.invariant_covered_count),
+    );
+    eval_report.insert(
+        "missing_structural_invariants".into(),
+        json!(eval.structural_invariant_coverage.missing_invariant_count),
+    );
+    eval_report.insert(
+        "missing_structural_invariant_kinds".into(),
+        json!(&eval.structural_invariant_coverage.missing),
+    );
+    eval_report.insert("semantic_fn_total".into(), json!(eval.semantic_fn_total));
+    eval_report.insert(
+        "semantic_fn_with_any_error".into(),
+        json!(eval.semantic_fn_with_any_error),
+    );
+    eval_report.insert(
+        "semantic_fn_error_rate".into(),
+        json!(eval.semantic_fn_error_rate),
+    );
+    eval_report.insert(
+        "diagnostics_repair_pressure".into(),
+        json!(eval.diagnostics_repair_pressure),
+    );
+    eval_report.insert(
+        "tlog_lag_gap_count".into(),
+        json!(eval.tlog_delta_signals.lag_gap_count),
+    );
+    eval_report.insert(
+        "tlog_lag_total_ms".into(),
+        json!(eval.tlog_delta_signals.lag_total_ms),
+    );
+    eval_report.insert(
+        "tlog_max_event_gap_ms".into(),
+        json!(eval.tlog_delta_signals.max_event_gap_ms),
+    );
+    eval_report.insert(
+        "tlog_actionable_lag_gap_count".into(),
+        json!(eval.tlog_delta_signals.actionable_lag_gap_count),
+    );
+    eval_report.insert(
+        "tlog_actionable_lag_total_ms".into(),
+        json!(eval.tlog_delta_signals.actionable_lag_total_ms),
+    );
+    eval_report.insert(
+        "tlog_dominant_actionable_lag_kind".into(),
+        json!(eval.tlog_delta_signals.dominant_actionable_lag_kind),
+    );
+    eval_report.insert(
+        "tlog_dominant_actionable_lag_kind_ms".into(),
+        json!(eval.tlog_delta_signals.dominant_actionable_lag_kind_ms),
+    );
+    eval_report.insert(
+        "issues_projection_lag_ms".into(),
+        json!(eval.tlog_delta_signals.issues_projection_lag_ms),
+    );
+    eval_report.insert(
+        "issues_projection_lag_count".into(),
+        json!(eval.tlog_delta_signals.issues_projection_lag_count),
+    );
+    eval_report.insert(
+        "tlog_dominant_payload_kind".into(),
+        json!(eval.tlog_delta_signals.dominant_payload_kind),
+    );
+    eval_report.insert(
+        "tlog_dominant_payload_kind_bytes".into(),
+        json!(eval.tlog_delta_signals.dominant_payload_kind_bytes),
+    );
+    eval_report.insert(
+        "last_plan_text_payload_bytes".into(),
+        json!(eval.tlog_delta_signals.last_plan_text_payload_bytes),
+    );
+    eval_report.insert(
+        "last_executor_diff_payload_bytes".into(),
+        json!(eval.tlog_delta_signals.last_executor_diff_payload_bytes),
+    );
+    eval_report.insert("objectives".into(), json!(objectives_progress));
+    eval_report.insert("tasks".into(), json!(tasks_progress));
+
+    let mut report = serde_json::Map::new();
+    report.insert("version".into(), json!(2));
+    report.insert(
+        "objective".into(),
+        json!("min(B) + min(R)  s.t. correctness invariant"),
+    );
+    report.insert("intra_scoring".into(), intra_scoring);
+    report.insert("inter_scoring".into(), inter_scoring);
+    report.insert(
+        "execution_model".into(),
+        json!("Detect(this_report) → Propose(LLM/issues) → Apply(patch/rename) → Verify(build+test)"),
+    );
+    report.insert("generated_at_ms".into(), json!(crate::logging::now_ms()));
+    report.insert("global_top".into(), serde_json::Value::Array(global_top));
+    report.insert("inter".into(), inter);
+    report.insert("eval".into(), serde_json::Value::Object(eval_report));
+    report.insert("fingerprint_drift".into(), json!(drift));
+    report.insert("per_crate".into(), serde_json::Value::Array(per_crate));
+    serde_json::Value::Object(report)
 }
 
 /// Intent: pure_transform

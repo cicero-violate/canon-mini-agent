@@ -78,6 +78,8 @@ pub fn run(
         last_executor_diff_payload_bytes: snapshot
             .tlog_delta_signals
             .last_executor_diff_payload_bytes,
+        tlog_git_checkpoint_blocked: snapshot.tlog_delta_signals.git_checkpoint_blocked,
+        tlog_unsafe_checkpoint_attempts: snapshot.tlog_delta_signals.unsafe_checkpoint_attempts,
         diagnostics_repair_pressure: snapshot.diagnostics_repair_pressure,
         semantic_fn_error_rate: snapshot.semantic_fn_error_rate,
         semantic_fn_total: snapshot.semantic_fn_total,

@@ -1,0 +1,138 @@
+*** Begin Patch
+*** Update File: src/supervisor.rs
+@@
+ fn clear_rust_patch_verification_request(state_dir: &Path) {
+     try_apply_canonical_control_event(
+         state_dir,
+         ControlEvent::RustPatchVerificationRequested { requested: false },
+     );
+     let _ = fs::remove_file(rust_patch_verification_flag_path(state_dir));
+ }
+
++fn rust_patch_sensitive_path(path: &str) -> bool {
++    let path = path.trim();
++    path.ends_with(".rs")
++        || path == "Cargo.toml"
++        || path == "Cargo.lock"
++        || path.starts_with("src/")
++        || path.starts_with("tests/")
++        || path.starts_with("crates/")
++}
++
++fn pending_rust_patch_sensitive_changes(root: &Path) -> bool {
++    let output = Command::new("git")
++        .args(["status", "--porcelain", "--untracked-files=all"])
++        .current_dir(root)
++        .output();
++    match output {
++        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout)
++            .lines()
++            .filter_map(|line| line.get(3..))
++            .any(rust_patch_sensitive_path),
++        Ok(out) => {
++            eprintln!(
++                "[canon-mini-supervisor] git status failed while checking Rust-sensitive changes (status={}); treating checkpoint as unsafe",
++                out.status
++            );
++            true
++        }
++        Err(err) => {
++            eprintln!(
++                "[canon-mini-supervisor] git status errored while checking Rust-sensitive changes: {err:#}; treating checkpoint as unsafe"
++            );
++            true
++        }
++    }
++}
++
+ fn workspace_from_args(args: &[String]) -> Option<String> {
+     let mut i = 0usize;
+     while i + 1 < args.len() {
+         if args[i] == "--workspace" {
+             return Some(args[i + 1].clone());
+@@
+ fn checkpoint_build_succeeded(root: &Path, state_dir: &Path, reason: &str) -> bool {
+     if !rust_patch_verification_requested(state_dir) {
++        if pending_rust_patch_sensitive_changes(root) {
++            eprintln!(
++                "[canon-mini-supervisor] pre-restart: refusing git checkpoint ({reason}); Rust-sensitive changes exist without cargo check/test/build verification"
++            );
++            return false;
++        }
+         eprintln!(
+-            "[canon-mini-supervisor] pre-restart: skipping cargo check/test/build gates ({reason}); no Rust apply_patch verification requested"
++            "[canon-mini-supervisor] pre-restart: skipping cargo check/test/build gates ({reason}); no Rust-sensitive changes detected"
+         );
+         return true;
+     }
+@@
+             if let Err(err) = export_semantic_maps_jsonl(root) {
+                 eprintln!(
+                     "[canon-mini-supervisor] semantic_map jsonl export failed ({reason}): {err:#}"
+                 );
+             }
++            clear_rust_patch_verification_request(state_dir);
+             true
+         }
+         Ok(false) => {
+             eprintln!(
+                 "[canon-mini-supervisor] pre-restart cargo build failed; skipping git add/commit/push ({reason})"
+             );
+-            clear_rust_patch_verification_request(state_dir);
+             false
+         }
+         Err(err) => {
+             eprintln!(
+                 "[canon-mini-supervisor] pre-restart cargo build errored; skipping git add/commit/push ({reason}): {err:#}"
+             );
+-            clear_rust_patch_verification_request(state_dir);
+             false
+         }
+     }
+ }
+@@
+                 eprintln!(
+                     "[canon-mini-supervisor] pre-restart {label} failed; skipping git add/commit/push ({reason})"
+                 );
+-                clear_rust_patch_verification_request(state_dir);
+                 false
+             }
+             Err(err) => {
+                 write_cargo_test_failures_projection(
+@@
+                 eprintln!(
+                     "[canon-mini-supervisor] pre-restart {label} errored; skipping git add/commit/push ({reason}): {err:#}"
+                 );
+-                clear_rust_patch_verification_request(state_dir);
+                 false
+             }
+         };
+@@
+         Ok(false) => {
+             eprintln!(
+                 "[canon-mini-supervisor] pre-restart {label} failed; skipping git add/commit/push ({reason})"
+             );
+-            clear_rust_patch_verification_request(state_dir);
+             false
+         }
+         Err(err) => {
+             eprintln!(
+                 "[canon-mini-supervisor] pre-restart {label} errored; skipping git add/commit/push ({reason}): {err:#}"
+             );
+-            clear_rust_patch_verification_request(state_dir);
+             false
+         }
+     }
+ }
+@@
+-    clear_rust_patch_verification_request(state_dir);
++    if result {
++        clear_rust_patch_verification_request(state_dir);
++    } else {
++        eprintln!(
++            "[canon-mini-supervisor] loop: retaining Rust patch verification request until cargo test passes"
++        );
++    }
+     result
+ }
+*** End Patch

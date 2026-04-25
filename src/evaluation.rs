@@ -303,6 +303,8 @@ pub struct TlogDeltaSignals {
     pub artifact_write_requests: usize,
     pub artifact_write_applies: usize,
     pub unapplied_artifact_writes: usize,
+    pub git_checkpoint_blocked: usize,
+    pub unsafe_checkpoint_attempts: usize,
     pub score: f64,
 }
 
@@ -429,6 +431,19 @@ pub fn evaluate_tlog_delta_invariants(
                 signals.artifact_write_applies += 1;
                 applied_artifact_signatures.insert(signature.clone());
             }
+            Event::Effect {
+                event:
+                    EffectEvent::GitCheckpointBlocked {
+                        verification_requested,
+                        rust_sensitive_changes,
+                        ..
+                    },
+            } => {
+                signals.git_checkpoint_blocked += 1;
+                if *rust_sensitive_changes && !*verification_requested {
+                    signals.unsafe_checkpoint_attempts += 1;
+                }
+            }
             _ => {}
         }
     }
@@ -504,6 +519,8 @@ fn canonical_delta_health_score(signals: &TlogDeltaSignals) -> f64 {
     let lag_score = 1.0
         - safe_ratio(signals.actionable_lag_total_ms as f64, lag_budget_ms)
             .min(0.75);
+    let checkpoint_score =
+        1.0 - safe_ratio(signals.unsafe_checkpoint_attempts as f64, 4.0).min(0.75);
 
     geometric_score(&[
         seq_score,
@@ -512,6 +529,7 @@ fn canonical_delta_health_score(signals: &TlogDeltaSignals) -> f64 {
         artifact_score,
         error_score,
         lag_score,
+        checkpoint_score,
     ])
 }
 
@@ -602,6 +620,11 @@ fn structural_risk_catalog() -> Vec<StructuralRisk> {
             name: "patch_requires_verification_gate",
             graph_needles: &["apply_patch", "cargo_test"],
             invariant_needles: &["patch", "cargo", "test", "verification"],
+        },
+        StructuralRisk {
+            name: "checkpoint_commit_requires_verified_gate_if_rust_changed",
+            graph_needles: &["checkpoint_build_succeeded", "git commit", "rust_patch_verification"],
+            invariant_needles: &["checkpoint", "commit", "rust", "cargo", "verification"],
         },
         StructuralRisk {
             name: "issues_projection_only",
@@ -907,6 +930,26 @@ mod tests {
     }
 
     #[test]
+    fn structural_invariant_coverage_requires_checkpoint_commit_gate() {
+        let graph = r#"
+            {"nodes":{
+              "a":{"path":"supervisor::checkpoint_build_succeeded"},
+              "b":{"path":"supervisor::commit_and_push_checkpoint"}
+            },
+             "edges":[{"label":"git commit"},{"label":"rust_patch_verification_requested"}]}
+        "#;
+        let invariants = r#"{"invariants":[]}"#;
+
+        let coverage = structural_invariant_coverage_from_text(graph, invariants);
+
+        assert_eq!(
+            coverage.missing,
+            vec!["checkpoint_commit_requires_verified_gate_if_rust_changed".to_string()]
+        );
+        assert_eq!(coverage.score, 0.0);
+    }
+
+    #[test]
     fn tlog_delta_invariants_detect_missing_action_result() {
         let records = vec![crate::tlog::TlogRecord {
             seq: 1,
@@ -1042,6 +1085,29 @@ mod tests {
             "issues_projection_recorded"
         );
         assert_eq!(signals.dominant_actionable_lag_kind_ms, 2_500);
+        assert!(signals.score < 1.0);
+    }
+
+    #[test]
+    fn tlog_delta_invariants_penalize_unsafe_checkpoint_attempts() {
+        let records = vec![crate::tlog::TlogRecord {
+            seq: 1,
+            ts_ms: 1,
+            event: Event::effect(EffectEvent::GitCheckpointBlocked {
+                reason: "orchestrate-deferred-update-timeout".to_string(),
+                risk: "commit_push_requires_verified_gate_if_rust_changed".to_string(),
+                verification_requested: false,
+                rust_sensitive_changes: true,
+                changed_paths: vec!["src/supervisor.rs".to_string()],
+                required_gate: "cargo check --workspace && cargo test --workspace && cargo build --workspace".to_string(),
+                signature: "sig".to_string(),
+            }),
+        }];
+
+        let signals = evaluate_tlog_delta_invariants(&records);
+
+        assert_eq!(signals.git_checkpoint_blocked, 1);
+        assert_eq!(signals.unsafe_checkpoint_attempts, 1);
         assert!(signals.score < 1.0);
     }
 }
