@@ -443,6 +443,30 @@ pub enum EffectEvent {
         #[serde(default)]
         canonical_delta_health: f64,
         #[serde(default)]
+        improvement_measurement: f64,
+        #[serde(default)]
+        improvement_validation: f64,
+        #[serde(default)]
+        improvement_effectiveness: f64,
+        #[serde(default)]
+        improvement_attempts: usize,
+        #[serde(default)]
+        measured_improvement_attempts: usize,
+        #[serde(default)]
+        unmeasured_improvement_attempts: usize,
+        #[serde(default)]
+        validated_improvement_attempts: usize,
+        #[serde(default)]
+        unvalidated_improvement_attempts: usize,
+        #[serde(default)]
+        non_regressed_improvement_attempts: usize,
+        #[serde(default)]
+        regressed_improvement_attempts: usize,
+        #[serde(default)]
+        eval_measurement_points: usize,
+        #[serde(default)]
+        measurement_regressions: usize,
+        #[serde(default)]
         tlog_lag_total_ms: u64,
         #[serde(default)]
         tlog_actionable_lag_total_ms: u64,

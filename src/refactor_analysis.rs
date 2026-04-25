@@ -1378,14 +1378,7 @@ pub fn loop_invariant_issues(
         return Vec::new();
     };
     let mut out = Vec::new();
-    let mut candidates: Vec<&SymbolSummary> = summaries
-        .iter()
-        .filter(|s| s.kind == "fn")
-        .filter(|s| s.has_back_edges)
-        .filter(|s| s.mir_stmts.unwrap_or(0) >= 6)
-        .collect();
-    candidates.sort_by_key(|s| std::cmp::Reverse(s.mir_stmts.unwrap_or(0)));
-    candidates.truncate(LOOP_INVARIANT_SYMBOL_BUDGET);
+    let candidates = loop_invariant_candidates(summaries, LOOP_INVARIANT_SYMBOL_BUDGET);
     for s in candidates {
         if out.len() >= limit {
             break;
@@ -1397,67 +1390,86 @@ pub fn loop_invariant_issues(
         if loop_blocks.is_empty() {
             continue;
         }
-
         let invariant_set = collect_loop_invariant_assignments(&cfg, &loop_blocks);
         if invariant_set.is_empty() {
             continue;
         }
-
-        let total_loop_stmts = cfg
-            .stmt_keys_in_blocks(&loop_blocks)
-            .iter()
-            .filter(|k| cfg.stmt(**k).is_some())
-            .count();
-        let invariant_count = invariant_set.len();
-        let confidence_tier = if invariant_set
-            .iter()
-            .all(|k| cfg.has_exit_postdominator(k.block))
-        {
-            "high"
-        } else {
-            "medium"
-        };
-
-        let location = shorten_location(&s.file, s.line);
-        out.push(Issue {
-            id: format!(
-                "auto_loop_invariant_{crate_name}_{:x}",
-                stable_hash(&s.symbol)
-            ),
-            title: format!(
-                "Loop invariant waste in `{}` ({} candidate statement(s))",
-                short_name(&s.symbol),
-                invariant_count
-            ),
-            status: "open".to_string(),
-            priority: "medium".to_string(),
-            kind: "performance".to_string(),
-            description: format!(
-                "Function `{}` has assignments proven loop-invariant by dominance + reaching-definitions.\n\
-                 Hoist invariant computations to loop preheader/setup.",
-                s.symbol
-            ),
-            location: location.clone(),
-            scope: format!("crate:{crate_name}"),
-            metrics: json!({
-                "task": "HoistLoopInvariant",
-                "loop_invariant_count": invariant_count,
-                "loop_block_count": loop_blocks.len(),
-                "total_loop_stmts": total_loop_stmts,
-                "confidence_tier": confidence_tier,
-                "correctness_level": confidence_tier == "high",
-            }),
-            acceptance_criteria: vec![
-                "invariant computations moved before loop entry".to_string(),
-                "build and tests pass".to_string(),
-            ],
-            evidence: vec![format!("location: {location}")],
-            discovered_by: "refactor_analyzer".to_string(),
-            ..Issue::default()
-        });
+        out.push(loop_invariant_issue(crate_name, s, &cfg, &loop_blocks, &invariant_set));
     }
     out.sort_by(|a, b| a.id.cmp(&b.id));
     out
+}
+
+fn loop_invariant_candidates(
+    summaries: &[SymbolSummary],
+    budget: usize,
+) -> Vec<&SymbolSummary> {
+    let mut candidates: Vec<&SymbolSummary> = summaries
+        .iter()
+        .filter(|s| s.kind == "fn")
+        .filter(|s| s.has_back_edges)
+        .filter(|s| s.mir_stmts.unwrap_or(0) >= 6)
+        .collect();
+    candidates.sort_by_key(|s| std::cmp::Reverse(s.mir_stmts.unwrap_or(0)));
+    candidates.truncate(budget);
+    candidates
+}
+
+fn loop_invariant_issue(
+    crate_name: &str,
+    s: &SymbolSummary,
+    cfg: &FunctionCfg,
+    loop_blocks: &HashSet<usize>,
+    invariant_set: &HashSet<StmtKey>,
+) -> Issue {
+    let total_loop_stmts = cfg
+        .stmt_keys_in_blocks(loop_blocks)
+        .iter()
+        .filter(|k| cfg.stmt(**k).is_some())
+        .count();
+    let invariant_count = invariant_set.len();
+    let confidence_tier = if invariant_set
+        .iter()
+        .all(|k| cfg.has_exit_postdominator(k.block))
+    {
+        "high"
+    } else {
+        "medium"
+    };
+    let location = shorten_location(&s.file, s.line);
+    Issue {
+        id: format!("auto_loop_invariant_{crate_name}_{:x}", stable_hash(&s.symbol)),
+        title: format!(
+            "Loop invariant waste in `{}` ({} candidate statement(s))",
+            short_name(&s.symbol),
+            invariant_count
+        ),
+        status: "open".to_string(),
+        priority: "medium".to_string(),
+        kind: "performance".to_string(),
+        description: format!(
+            "Function `{}` has assignments proven loop-invariant by dominance + reaching-definitions.\n\
+             Hoist invariant computations to loop preheader/setup.",
+            s.symbol
+        ),
+        location: location.clone(),
+        scope: format!("crate:{crate_name}"),
+        metrics: json!({
+            "task": "HoistLoopInvariant",
+            "loop_invariant_count": invariant_count,
+            "loop_block_count": loop_blocks.len(),
+            "total_loop_stmts": total_loop_stmts,
+            "confidence_tier": confidence_tier,
+            "correctness_level": confidence_tier == "high",
+        }),
+        acceptance_criteria: vec![
+            "invariant computations moved before loop entry".to_string(),
+            "build and tests pass".to_string(),
+        ],
+        evidence: vec![format!("location: {location}")],
+        discovered_by: "refactor_analyzer".to_string(),
+        ..Issue::default()
+    }
 }
 
 fn collect_loop_invariant_assignments(

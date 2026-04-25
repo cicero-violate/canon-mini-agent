@@ -47,6 +47,9 @@ pub struct EvaluationVector {
     pub semantic_contract: f64,
     pub structural_invariant_coverage: f64,
     pub canonical_delta_health: f64,
+    pub improvement_measurement: f64,
+    pub improvement_validation: f64,
+    pub improvement_effectiveness: f64,
 }
 
 impl EvaluationVector {
@@ -59,6 +62,9 @@ impl EvaluationVector {
             self.semantic_contract.clamp(0.001, 1.0),
             self.structural_invariant_coverage.clamp(0.001, 1.0),
             self.canonical_delta_health.clamp(0.001, 1.0),
+            self.improvement_measurement.clamp(0.001, 1.0),
+            self.improvement_validation.clamp(0.001, 1.0),
+            self.improvement_effectiveness.clamp(0.001, 1.0),
         ];
         let product = values.iter().product::<f64>();
         product.powf(1.0 / values.len() as f64)
@@ -112,6 +118,9 @@ pub fn compute_eval(input: &EvalInput) -> EvaluationWorkspaceSnapshot {
         (1.0 - input.semantic_fn_error_rate).clamp(0.0, 1.0),
         input.structural_invariant_coverage.score,
         input.tlog_delta_signals.score,
+        input.tlog_delta_signals.improvement_measurement_score,
+        input.tlog_delta_signals.improvement_validation_score,
+        input.tlog_delta_signals.improvement_effectiveness_score,
     );
     // Fold semantic error rate into safety so a clean build alone cannot produce safety = 1.0.
     vector.safety = clamp_unit(vector.safety * (1.0 - 0.3 * input.semantic_fn_error_rate));
@@ -217,6 +226,9 @@ pub fn evaluate_repo_state(
     semantic_contract_score: f64,
     structural_invariant_coverage_score: f64,
     canonical_delta_health_score: f64,
+    improvement_measurement_score: f64,
+    improvement_validation_score: f64,
+    improvement_effectiveness_score: f64,
 ) -> EvaluationVector {
     EvaluationVector {
         objective_progress: reward_alignment_score(objectives_completed, objectives_total),
@@ -226,6 +238,9 @@ pub fn evaluate_repo_state(
         semantic_contract: semantic_contract_score.clamp(0.0, 1.0),
         structural_invariant_coverage: structural_invariant_coverage_score.clamp(0.0, 1.0),
         canonical_delta_health: canonical_delta_health_score.clamp(0.0, 1.0),
+        improvement_measurement: improvement_measurement_score.clamp(0.0, 1.0),
+        improvement_validation: improvement_validation_score.clamp(0.0, 1.0),
+        improvement_effectiveness: improvement_effectiveness_score.clamp(0.0, 1.0),
     }
 }
 
@@ -308,6 +323,18 @@ pub struct TlogDeltaSignals {
     pub supervisor_restart_requests: usize,
     pub supervisor_child_starts: usize,
     pub restart_requests_without_child_start: usize,
+    pub improvement_attempts: usize,
+    pub measured_improvement_attempts: usize,
+    pub unmeasured_improvement_attempts: usize,
+    pub validated_improvement_attempts: usize,
+    pub unvalidated_improvement_attempts: usize,
+    pub non_regressed_improvement_attempts: usize,
+    pub regressed_improvement_attempts: usize,
+    pub eval_measurement_points: usize,
+    pub measurement_regressions: usize,
+    pub improvement_measurement_score: f64,
+    pub improvement_validation_score: f64,
+    pub improvement_effectiveness_score: f64,
     pub score: f64,
 }
 
@@ -335,6 +362,8 @@ pub fn evaluate_tlog_delta_invariants(records: &[crate::tlog::TlogRecord]) -> Tl
     let mut actionable_lag_by_next_kind: HashMap<String, u64> = HashMap::new();
     let mut payload_bytes_by_kind: HashMap<String, u64> = HashMap::new();
     let mut unmatched_restart_requests = 0usize;
+    let mut open_improvement_attempts = 0usize;
+    let mut open_unvalidated_improvement_attempts = 0usize;
 
     for (idx, record) in records.iter().enumerate() {
         let record_kind = tlog_event_kind(&record.event);
@@ -458,6 +487,63 @@ pub fn evaluate_tlog_delta_invariants(records: &[crate::tlog::TlogRecord]) -> Tl
                 signals.supervisor_child_starts += 1;
                 unmatched_restart_requests = unmatched_restart_requests.saturating_sub(1);
             }
+            Event::Effect {
+                event:
+                    EffectEvent::PostRestartResultRecorded {
+                        action,
+                        result,
+                        ..
+                    },
+            } => {
+                if is_successful_improvement_action(action, result) {
+                    signals.improvement_attempts += 1;
+                    open_improvement_attempts = open_improvement_attempts.saturating_add(1);
+                    if is_improvement_validation_result(action, result) {
+                        signals.validated_improvement_attempts =
+                            signals.validated_improvement_attempts.saturating_add(1);
+                    } else {
+                        open_unvalidated_improvement_attempts =
+                            open_unvalidated_improvement_attempts.saturating_add(1);
+                    }
+                } else if open_unvalidated_improvement_attempts > 0
+                    && is_improvement_validation_result(action, result)
+                {
+                    signals.validated_improvement_attempts = signals
+                        .validated_improvement_attempts
+                        .saturating_add(open_unvalidated_improvement_attempts);
+                    open_unvalidated_improvement_attempts = 0;
+                }
+            }
+            Event::Effect {
+                event:
+                    EffectEvent::EvalScoreRecorded {
+                        delta_g,
+                        promotion_eligible,
+                        ..
+                    },
+            } => {
+                let pending_improvement_attempts = open_improvement_attempts;
+                let regressed = eval_measurement_regressed(*delta_g, *promotion_eligible);
+                signals.eval_measurement_points += 1;
+                if pending_improvement_attempts > 0 {
+                    signals.measured_improvement_attempts = signals
+                        .measured_improvement_attempts
+                        .saturating_add(pending_improvement_attempts);
+                    if regressed {
+                        signals.regressed_improvement_attempts = signals
+                            .regressed_improvement_attempts
+                            .saturating_add(pending_improvement_attempts);
+                    } else {
+                        signals.non_regressed_improvement_attempts = signals
+                            .non_regressed_improvement_attempts
+                            .saturating_add(pending_improvement_attempts);
+                    }
+                    open_improvement_attempts = 0;
+                }
+                if regressed {
+                    signals.measurement_regressions += 1;
+                }
+            }
             _ => {}
         }
     }
@@ -469,6 +555,8 @@ pub fn evaluate_tlog_delta_invariants(records: &[crate::tlog::TlogRecord]) -> Tl
         .difference(&applied_artifact_signatures)
         .count();
     signals.restart_requests_without_child_start = unmatched_restart_requests;
+    signals.unmeasured_improvement_attempts = open_improvement_attempts;
+    signals.unvalidated_improvement_attempts = open_unvalidated_improvement_attempts;
     if let Some((kind, lag_ms)) = actionable_lag_by_next_kind
         .into_iter()
         .max_by_key(|(_, lag_ms)| *lag_ms)
@@ -483,6 +571,9 @@ pub fn evaluate_tlog_delta_invariants(records: &[crate::tlog::TlogRecord]) -> Tl
         signals.dominant_payload_kind = kind;
         signals.dominant_payload_kind_bytes = bytes;
     }
+    signals.improvement_measurement_score = improvement_measurement_score(&signals);
+    signals.improvement_validation_score = improvement_validation_score(&signals);
+    signals.improvement_effectiveness_score = improvement_effectiveness_score(&signals);
     signals.score = canonical_delta_health_score(&signals);
     signals
 }
@@ -498,6 +589,11 @@ fn canonical_delta_health_score(signals: &TlogDeltaSignals) -> f64 {
     if signals.event_count == 0 {
         return 0.0;
     }
+    let scores = canonical_delta_health_scores(signals);
+    geometric_score(&scores)
+}
+
+fn canonical_delta_health_scores(signals: &TlogDeltaSignals) -> [f64; 10] {
     let seq_score = if signals.contiguous_seq {
         1.0
     } else {
@@ -548,8 +644,7 @@ fn canonical_delta_health_score(signals: &TlogDeltaSignals) -> f64 {
         )
         .min(0.75)
     };
-
-    geometric_score(&[
+    [
         seq_score,
         turn_score,
         action_score,
@@ -558,7 +653,78 @@ fn canonical_delta_health_score(signals: &TlogDeltaSignals) -> f64 {
         lag_score,
         checkpoint_score,
         restart_score,
-    ])
+        improvement_validation_score(signals),
+        improvement_effectiveness_score(signals),
+    ]
+}
+
+pub fn improvement_measurement_score(signals: &TlogDeltaSignals) -> f64 {
+    if signals.improvement_attempts == 0 {
+        return 1.0;
+    }
+    1.0 - safe_ratio(
+        signals.unmeasured_improvement_attempts as f64,
+        signals.improvement_attempts as f64,
+    )
+    .min(1.0)
+}
+
+pub fn improvement_validation_score(signals: &TlogDeltaSignals) -> f64 {
+    if signals.improvement_attempts == 0 {
+        return 1.0;
+    }
+    1.0 - safe_ratio(
+        signals.unvalidated_improvement_attempts as f64,
+        signals.improvement_attempts as f64,
+    )
+    .min(1.0)
+}
+
+pub fn improvement_effectiveness_score(signals: &TlogDeltaSignals) -> f64 {
+    if signals.measured_improvement_attempts == 0 {
+        return 1.0;
+    }
+    1.0 - safe_ratio(
+        signals.regressed_improvement_attempts as f64,
+        signals.measured_improvement_attempts as f64,
+    )
+    .min(1.0)
+}
+
+fn is_successful_improvement_action(action: &str, result: &str) -> bool {
+    let action = action.trim();
+    if action != "apply_patch" {
+        return false;
+    }
+    let result_lower = result.to_ascii_lowercase();
+    result_lower.contains("apply_patch ok") || result_lower.contains("patch applied successfully")
+}
+
+fn is_improvement_validation_result(action: &str, result: &str) -> bool {
+    let action = action.trim();
+    if !matches!(action, "apply_patch" | "run_command" | "cargo_test" | "batch") {
+        return false;
+    }
+
+    let result_lower = result.to_ascii_lowercase();
+    let mentions_validation_command = result_lower.contains("cargo check")
+        || result_lower.contains("cargo test")
+        || result_lower.contains("cargo build");
+    let validation_succeeded = result_lower.contains("run_command ok")
+        || result_lower.contains("status: ok")
+        || result_lower.contains("cargo check ok")
+        || result_lower.contains("cargo build ok")
+        || result_lower.contains("cargo test ok")
+        || result_lower.contains("test result: ok");
+
+    mentions_validation_command && validation_succeeded
+}
+
+fn eval_measurement_regressed(delta_g: Option<f64>, promotion_eligible: bool) -> bool {
+    match delta_g {
+        Some(delta) => delta < -0.001 || !promotion_eligible,
+        None => false,
+    }
 }
 
 fn tlog_event_kind(event: &Event) -> String {
@@ -579,6 +745,7 @@ fn is_actionable_lag_kind(kind: &str) -> bool {
         kind,
         "llm_turn_output"
             | "llm_error_boundary"
+            | "eval_score_recorded"
             | "orchestrator_idle_pulse"
             | "orchestrator_mode_set"
     )
@@ -849,6 +1016,9 @@ mod tests {
             semantic_contract: 1.0,
             structural_invariant_coverage: 1.0,
             canonical_delta_health: 1.0,
+            improvement_measurement: 1.0,
+            improvement_validation: 1.0,
+            improvement_effectiveness: 1.0,
         };
 
         assert!(vector.geometric_mean_like_score() > 0.0);
@@ -1145,6 +1315,201 @@ mod tests {
 
         assert_eq!(signals.git_checkpoint_blocked, 1);
         assert_eq!(signals.unsafe_checkpoint_attempts, 1);
+        assert!(signals.score < 1.0);
+    }
+
+    #[test]
+    fn tlog_delta_invariants_require_eval_after_improvement_action() {
+        let mut records = vec![crate::tlog::TlogRecord {
+            seq: 1,
+            ts_ms: 1,
+            event: Event::effect(EffectEvent::PostRestartResultRecorded {
+                role: "executor".to_string(),
+                action: "apply_patch".to_string(),
+                result: "apply_patch ok\nPatch applied successfully.".to_string(),
+                step: 1,
+                tab_id: None,
+                turn_id: None,
+                endpoint_id: "ep".to_string(),
+                restart_kind: "normal".to_string(),
+                signature: "sig".to_string(),
+            }),
+        }];
+
+        let signals = evaluate_tlog_delta_invariants(&records);
+        assert_eq!(signals.improvement_attempts, 1);
+        assert_eq!(signals.unmeasured_improvement_attempts, 1);
+        assert_eq!(signals.improvement_measurement_score, 0.0);
+
+        records.push(crate::tlog::TlogRecord {
+            seq: 2,
+            ts_ms: 2,
+            event: Event::effect(EffectEvent::EvalScoreRecorded {
+                generated_at_ms: 2,
+                overall_score: 0.9,
+                delta_g: Some(0.1),
+                promotion_eligible: true,
+                objective_progress: 1.0,
+                safety: 1.0,
+                task_velocity: 1.0,
+                issue_health: 1.0,
+                semantic_contract: 1.0,
+                structural_invariant_coverage: 1.0,
+                canonical_delta_health: 1.0,
+                improvement_measurement: 1.0,
+                improvement_validation: 1.0,
+                improvement_effectiveness: 1.0,
+                improvement_attempts: 1,
+                measured_improvement_attempts: 1,
+                unmeasured_improvement_attempts: 0,
+                validated_improvement_attempts: 1,
+                unvalidated_improvement_attempts: 0,
+                non_regressed_improvement_attempts: 1,
+                regressed_improvement_attempts: 0,
+                eval_measurement_points: 1,
+                measurement_regressions: 0,
+                tlog_lag_total_ms: 0,
+                tlog_actionable_lag_total_ms: 0,
+                tlog_dominant_actionable_lag_kind: String::new(),
+                tlog_dominant_actionable_lag_kind_ms: 0,
+                issues_projection_lag_ms: 0,
+                tlog_dominant_payload_kind: String::new(),
+                tlog_dominant_payload_kind_bytes: 0,
+                last_plan_text_payload_bytes: 0,
+                last_executor_diff_payload_bytes: 0,
+                tlog_git_checkpoint_blocked: 0,
+                tlog_unsafe_checkpoint_attempts: 0,
+                diagnostics_repair_pressure: 0.0,
+                semantic_fn_error_rate: 0.0,
+                semantic_fn_total: 0,
+                semantic_fn_with_any_error: 0,
+            }),
+        });
+
+        let signals = evaluate_tlog_delta_invariants(&records);
+        assert_eq!(signals.measured_improvement_attempts, 1);
+        assert_eq!(signals.unmeasured_improvement_attempts, 0);
+        assert_eq!(signals.non_regressed_improvement_attempts, 1);
+        assert_eq!(signals.regressed_improvement_attempts, 0);
+        assert_eq!(signals.improvement_measurement_score, 1.0);
+        assert_eq!(signals.improvement_effectiveness_score, 1.0);
+    }
+
+    #[test]
+    fn tlog_delta_invariants_require_validation_after_improvement_action() {
+        let mut records = vec![crate::tlog::TlogRecord {
+            seq: 1,
+            ts_ms: 1,
+            event: Event::effect(EffectEvent::PostRestartResultRecorded {
+                role: "executor".to_string(),
+                action: "apply_patch".to_string(),
+                result: "apply_patch ok\nPatch applied successfully.".to_string(),
+                step: 1,
+                tab_id: None,
+                turn_id: None,
+                endpoint_id: "ep".to_string(),
+                restart_kind: "normal".to_string(),
+                signature: "sig".to_string(),
+            }),
+        }];
+
+        let signals = evaluate_tlog_delta_invariants(&records);
+        assert_eq!(signals.improvement_attempts, 1);
+        assert_eq!(signals.validated_improvement_attempts, 0);
+        assert_eq!(signals.unvalidated_improvement_attempts, 1);
+        assert_eq!(signals.improvement_validation_score, 0.0);
+
+        records.push(crate::tlog::TlogRecord {
+            seq: 2,
+            ts_ms: 2,
+            event: Event::effect(EffectEvent::PostRestartResultRecorded {
+                role: "executor".to_string(),
+                action: "run_command".to_string(),
+                result: "run_command ok\ncommand: cargo check\nFinished dev profile".to_string(),
+                step: 2,
+                tab_id: None,
+                turn_id: None,
+                endpoint_id: "ep".to_string(),
+                restart_kind: "normal".to_string(),
+                signature: "sig2".to_string(),
+            }),
+        });
+
+        let signals = evaluate_tlog_delta_invariants(&records);
+        assert_eq!(signals.validated_improvement_attempts, 1);
+        assert_eq!(signals.unvalidated_improvement_attempts, 0);
+        assert_eq!(signals.improvement_validation_score, 1.0);
+    }
+
+    #[test]
+    fn tlog_delta_invariants_penalize_regressed_measured_improvement() {
+        let records = vec![
+            crate::tlog::TlogRecord {
+                seq: 1,
+                ts_ms: 1,
+                event: Event::effect(EffectEvent::PostRestartResultRecorded {
+                    role: "executor".to_string(),
+                    action: "apply_patch".to_string(),
+                    result: "apply_patch ok\nPatch applied successfully.".to_string(),
+                    step: 1,
+                    tab_id: None,
+                    turn_id: None,
+                    endpoint_id: "ep".to_string(),
+                    restart_kind: "normal".to_string(),
+                    signature: "sig".to_string(),
+                }),
+            },
+            crate::tlog::TlogRecord {
+                seq: 2,
+                ts_ms: 2,
+                event: Event::effect(EffectEvent::EvalScoreRecorded {
+                    generated_at_ms: 2,
+                    overall_score: 0.8,
+                    delta_g: Some(-0.1),
+                    promotion_eligible: false,
+                    objective_progress: 1.0,
+                    safety: 1.0,
+                    task_velocity: 1.0,
+                    issue_health: 1.0,
+                    semantic_contract: 1.0,
+                    structural_invariant_coverage: 1.0,
+                    canonical_delta_health: 1.0,
+                    improvement_measurement: 1.0,
+                    improvement_validation: 1.0,
+                    improvement_effectiveness: 0.0,
+                    improvement_attempts: 1,
+                    measured_improvement_attempts: 1,
+                    unmeasured_improvement_attempts: 0,
+                    validated_improvement_attempts: 1,
+                    unvalidated_improvement_attempts: 0,
+                    non_regressed_improvement_attempts: 0,
+                    regressed_improvement_attempts: 1,
+                    eval_measurement_points: 1,
+                    measurement_regressions: 1,
+                    tlog_lag_total_ms: 0,
+                    tlog_actionable_lag_total_ms: 0,
+                    tlog_dominant_actionable_lag_kind: String::new(),
+                    tlog_dominant_actionable_lag_kind_ms: 0,
+                    issues_projection_lag_ms: 0,
+                    tlog_dominant_payload_kind: String::new(),
+                    tlog_dominant_payload_kind_bytes: 0,
+                    last_plan_text_payload_bytes: 0,
+                    last_executor_diff_payload_bytes: 0,
+                    tlog_git_checkpoint_blocked: 0,
+                    tlog_unsafe_checkpoint_attempts: 0,
+                    diagnostics_repair_pressure: 0.0,
+                    semantic_fn_error_rate: 0.0,
+                    semantic_fn_total: 0,
+                    semantic_fn_with_any_error: 0,
+                }),
+            },
+        ];
+
+        let signals = evaluate_tlog_delta_invariants(&records);
+        assert_eq!(signals.measured_improvement_attempts, 1);
+        assert_eq!(signals.non_regressed_improvement_attempts, 0);
+        assert_eq!(signals.regressed_improvement_attempts, 1);
+        assert_eq!(signals.improvement_effectiveness_score, 0.0);
         assert!(signals.score < 1.0);
     }
 }

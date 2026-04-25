@@ -444,6 +444,9 @@ fn build_eval_header(workspace: &Path) -> String {
     };
 
     let get_f64 = |key: &str| eval.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let get_f64_or = |key: &str, default: f64| {
+        eval.get(key).and_then(|v| v.as_f64()).unwrap_or(default)
+    };
     let get_u64 = |key: &str| eval.get(key).and_then(|v| v.as_u64()).unwrap_or(0);
     let get_str = |key: &str| eval.get(key).and_then(|v| v.as_str()).unwrap_or("");
     let overall = get_f64("overall_score");
@@ -461,6 +464,18 @@ fn build_eval_header(workspace: &Path) -> String {
         ("task_velocity", task_velocity),
         ("issue_health", get_f64("issue_health")),
         (
+            "improvement_measurement",
+            get_f64_or("improvement_measurement", 1.0),
+        ),
+        (
+            "improvement_validation",
+            get_f64_or("improvement_validation", 1.0),
+        ),
+        (
+            "improvement_effectiveness",
+            get_f64_or("improvement_effectiveness", 1.0),
+        ),
+        (
             "structural_invariant_coverage",
             get_f64("structural_invariant_coverage"),
         ),
@@ -477,6 +492,15 @@ fn build_eval_header(workspace: &Path) -> String {
         "task_velocity" => "complete or close stale PLAN.json tasks",
         "issue_health" => "close or fix the repeated open issues below",
         "safety" => "resolve violations listed in the violations view",
+        "improvement_measurement" => {
+            "after every apply_patch improvement, run eval so tlog records the delta evidence"
+        }
+        "improvement_validation" => {
+            "after every apply_patch improvement, run cargo check/test/build and record the result in tlog"
+        }
+        "improvement_effectiveness" => {
+            "reduce or revert patches whose measured eval delta regresses after validation"
+        }
         "structural_invariant_coverage" => {
             "implement source-code synthesis for missing graph-risk invariant candidates; do not patch enforced_invariants.json directly"
         }
@@ -504,13 +528,23 @@ fn build_eval_header(workspace: &Path) -> String {
         "EVAL score={overall:.3}  weakest={weakest_name}({weakest_val:.3})  \
 objectives={objectives}  tasks={tasks}\n\
 lag_action={lag_kind}({lag_ms}ms)  payload={payload_kind}({payload_bytes}B)  \
-plan_payload={plan_payload_bytes}B\n\
+plan_payload={plan_payload_bytes}B  measured_improvements={measured}/{attempts}  \
+unmeasured={unmeasured}  validated_improvements={validated}/{attempts}  \
+unvalidated={unvalidated}  non_regressed_improvements={non_regressed}/{measured}  \
+regressed={regressed}\n\
 → To raise score: {directive}\n",
         lag_kind = get_str("tlog_dominant_actionable_lag_kind"),
         lag_ms = get_u64("tlog_dominant_actionable_lag_kind_ms"),
         payload_kind = get_str("tlog_dominant_payload_kind"),
         payload_bytes = get_u64("tlog_dominant_payload_kind_bytes"),
         plan_payload_bytes = get_u64("last_plan_text_payload_bytes"),
+        measured = get_u64("measured_improvement_attempts"),
+        attempts = get_u64("improvement_attempts"),
+        unmeasured = get_u64("unmeasured_improvement_attempts"),
+        validated = get_u64("validated_improvement_attempts"),
+        unvalidated = get_u64("unvalidated_improvement_attempts"),
+        non_regressed = get_u64("non_regressed_improvement_attempts"),
+        regressed = get_u64("regressed_improvement_attempts"),
     )
 }
 

@@ -1271,14 +1271,60 @@ fn global_complexity_entry_fields_json(
     crate_name: &str,
     fields: GlobalComplexityEntryFields,
 ) -> serde_json::Value {
-    let GlobalComplexityEntryFields {
+    fields.into_json(crate_name)
+}
+
+impl<'a> GlobalComplexityEntryFields<'a> {
+    fn into_json(self, crate_name: &str) -> serde_json::Value {
+        global_complexity_entry_parts_json(crate_name, self.parts())
+    }
+
+    fn parts(self) -> GlobalComplexityEntryParts<'a> {
+        let GlobalComplexityEntryFields {
+            symbol,
+            file,
+            line,
+            complexity_proxy,
+            mir_blocks,
+            mir_stmts,
+        } = self;
+        (symbol, file, line, complexity_proxy, mir_blocks, mir_stmts)
+    }
+}
+
+type GlobalComplexityEntryParts<'a> = (
+    Option<&'a serde_json::Value>,
+    Option<&'a serde_json::Value>,
+    Option<&'a serde_json::Value>,
+    Option<&'a serde_json::Value>,
+    Option<&'a serde_json::Value>,
+    Option<&'a serde_json::Value>,
+);
+
+fn global_complexity_entry_parts_json(
+    crate_name: &str,
+    (symbol, file, line, complexity_proxy, mir_blocks, mir_stmts): GlobalComplexityEntryParts<'_>,
+) -> serde_json::Value {
+    global_complexity_entry_json_object(
+        crate_name,
         symbol,
         file,
         line,
         complexity_proxy,
         mir_blocks,
         mir_stmts,
-    } = fields;
+    )
+}
+
+fn global_complexity_entry_json_object(
+    crate_name: &str,
+    symbol: Option<&serde_json::Value>,
+    file: Option<&serde_json::Value>,
+    line: Option<&serde_json::Value>,
+    complexity_proxy: Option<&serde_json::Value>,
+    mir_blocks: Option<&serde_json::Value>,
+    mir_stmts: Option<&serde_json::Value>,
+) -> serde_json::Value {
     json!({
         "crate": crate_name,
         "symbol": symbol,
@@ -1659,6 +1705,54 @@ fn build_complexity_report(
         json!(eval.vector.structural_invariant_coverage),
     );
     eval_report.insert(
+        "improvement_measurement".into(),
+        json!(eval.vector.improvement_measurement),
+    );
+    eval_report.insert(
+        "improvement_validation".into(),
+        json!(eval.vector.improvement_validation),
+    );
+    eval_report.insert(
+        "improvement_effectiveness".into(),
+        json!(eval.vector.improvement_effectiveness),
+    );
+    eval_report.insert(
+        "improvement_attempts".into(),
+        json!(eval.tlog_delta_signals.improvement_attempts),
+    );
+    eval_report.insert(
+        "measured_improvement_attempts".into(),
+        json!(eval.tlog_delta_signals.measured_improvement_attempts),
+    );
+    eval_report.insert(
+        "unmeasured_improvement_attempts".into(),
+        json!(eval.tlog_delta_signals.unmeasured_improvement_attempts),
+    );
+    eval_report.insert(
+        "validated_improvement_attempts".into(),
+        json!(eval.tlog_delta_signals.validated_improvement_attempts),
+    );
+    eval_report.insert(
+        "unvalidated_improvement_attempts".into(),
+        json!(eval.tlog_delta_signals.unvalidated_improvement_attempts),
+    );
+    eval_report.insert(
+        "non_regressed_improvement_attempts".into(),
+        json!(eval.tlog_delta_signals.non_regressed_improvement_attempts),
+    );
+    eval_report.insert(
+        "regressed_improvement_attempts".into(),
+        json!(eval.tlog_delta_signals.regressed_improvement_attempts),
+    );
+    eval_report.insert(
+        "eval_measurement_points".into(),
+        json!(eval.tlog_delta_signals.eval_measurement_points),
+    );
+    eval_report.insert(
+        "measurement_regressions".into(),
+        json!(eval.tlog_delta_signals.measurement_regressions),
+    );
+    eval_report.insert(
         "graph_risk_count".into(),
         json!(eval.structural_invariant_coverage.graph_risk_count),
     );
@@ -1754,7 +1848,41 @@ fn build_complexity_report(
     eval_report.insert("objectives".into(), json!(objectives_progress));
     eval_report.insert("tasks".into(), json!(tasks_progress));
 
+    build_complexity_report_value(
+        per_crate,
+        global_top,
+        inter,
+        intra_scoring,
+        inter_scoring,
+        eval_report,
+        drift,
+    )
+}
+
+fn build_complexity_report_value(
+    per_crate: Vec<serde_json::Value>,
+    global_top: Vec<serde_json::Value>,
+    inter: serde_json::Value,
+    intra_scoring: serde_json::Value,
+    inter_scoring: serde_json::Value,
+    eval_report: serde_json::Map<String, serde_json::Value>,
+    drift: &crate::drift_analysis::FingerprintDrift,
+) -> serde_json::Value {
     let mut report = serde_json::Map::new();
+    insert_complexity_report_metadata(&mut report, intra_scoring, inter_scoring);
+    report.insert("global_top".into(), serde_json::Value::Array(global_top));
+    report.insert("inter".into(), inter);
+    report.insert("eval".into(), serde_json::Value::Object(eval_report));
+    report.insert("fingerprint_drift".into(), json!(drift));
+    report.insert("per_crate".into(), serde_json::Value::Array(per_crate));
+    serde_json::Value::Object(report)
+}
+
+fn insert_complexity_report_metadata(
+    report: &mut serde_json::Map<String, serde_json::Value>,
+    intra_scoring: serde_json::Value,
+    inter_scoring: serde_json::Value,
+) {
     report.insert("version".into(), json!(2));
     report.insert(
         "objective".into(),
@@ -1769,12 +1897,6 @@ fn build_complexity_report(
         ),
     );
     report.insert("generated_at_ms".into(), json!(crate::logging::now_ms()));
-    report.insert("global_top".into(), serde_json::Value::Array(global_top));
-    report.insert("inter".into(), inter);
-    report.insert("eval".into(), serde_json::Value::Object(eval_report));
-    report.insert("fingerprint_drift".into(), json!(drift));
-    report.insert("per_crate".into(), serde_json::Value::Array(per_crate));
-    serde_json::Value::Object(report)
 }
 
 /// Intent: pure_transform

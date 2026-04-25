@@ -230,13 +230,13 @@ fn update_plan_sorted_successor_indegree(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: output_log_path
 /// Inputs: &str
 /// Outputs: std::option::Option<std::path::PathBuf>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: fs_write, uses_network, spawns_process
+/// Invariants: no_external_effects, deterministic_for_same_inputs
+/// Failure: infallible
 /// Provenance: rustc:facts + rustc:docstring
 fn extract_output_log_path(out: &str) -> Option<PathBuf> {
     for line in out.lines() {

@@ -482,6 +482,10 @@ fn synthesize_executor_blocker_handoff(action: &Value, exec_result: &str) -> Val
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
     let payload = synthesize_executor_blocker_payload(action_kind, exec_result);
+    executor_blocker_handoff_message(payload)
+}
+
+fn executor_blocker_handoff_message(payload: Value) -> Value {
     json!({
         "action": "message",
         "from": "executor",
@@ -598,6 +602,341 @@ fn has_actionable_objectives(objectives_text: &str) -> bool {
         return false;
     };
     file.objectives.iter().any(objective_requires_plan_work)
+}
+
+type ExecutorSubmitJoinOutput = (usize, PendingExecutorSubmit, Result<String>);
+
+#[derive(Debug, Clone, Copy, Default)]
+struct ExecutorActivitySnapshot {
+    runtime_busy: bool,
+    canonical_work: bool,
+    flagged_busy: bool,
+    inflight: bool,
+    lane_pending: bool,
+    in_progress: bool,
+}
+
+fn executor_activity_snapshot(
+    state: &SystemState,
+    rt: &RuntimeState,
+    submit_joinset: &tokio::task::JoinSet<ExecutorSubmitJoinOutput>,
+    continuation_joinset: &tokio::task::JoinSet<ContinuationJoinOutput>,
+) -> ExecutorActivitySnapshot {
+    let lane_pending = state.lanes.values().any(|lane| lane.pending);
+    let lane_in_progress = state
+        .lanes
+        .values()
+        .any(|lane| lane.in_progress_by.is_some());
+    let lane_submit_flagged = state.lane_submit_in_flight.values().any(|&v| v);
+    let lane_prompt_flagged = state.lane_prompt_in_flight.values().any(|&v| v);
+    let runtime_busy = !rt.submitted_turns.is_empty()
+        || !rt.executor_submit_inflight.is_empty()
+        || !submit_joinset.is_empty()
+        || !continuation_joinset.is_empty();
+    let canonical_work = state.scheduled_phase.as_deref() == Some("executor")
+        || state.wake_signals_pending.contains_key("executor")
+        || lane_pending
+        || lane_in_progress
+        || lane_submit_flagged
+        || lane_prompt_flagged;
+    let flagged_busy = state.phase == "executor"
+        && (lane_submit_flagged || lane_prompt_flagged || lane_in_progress);
+    let inflight = !rt.submitted_turns.is_empty()
+        || !rt.executor_submit_inflight.is_empty()
+        || lane_submit_flagged;
+    let in_progress = lane_in_progress
+        || lane_submit_flagged
+        || lane_prompt_flagged
+        || runtime_busy;
+
+    ExecutorActivitySnapshot {
+        runtime_busy,
+        canonical_work,
+        flagged_busy,
+        inflight,
+        lane_pending,
+        in_progress,
+    }
+}
+
+fn executor_lane_active(writer: &CanonicalWriter) -> bool {
+    writer
+        .state()
+        .lanes
+        .values()
+        .any(|lane| lane.pending || lane.in_progress_by.is_some())
+}
+
+fn queue_objective_plan_gap_if_needed(
+    writer: &mut CanonicalWriter,
+    objectives_text: &str,
+    plan_text: &str,
+) -> bool {
+    // Do not fire the gap when an executor lane is already pending/in-progress.
+    // The wake-signal router may have just seeded the lane in this same iteration;
+    // overriding it with a planner wake creates a planner↔executor mutual block.
+    let executor_lane_active = executor_lane_active(writer);
+    let plan_gap_requires_planner = has_actionable_objectives(objectives_text)
+        && !plan_has_incomplete_tasks(plan_text)
+        && !executor_lane_active;
+    if !plan_gap_requires_planner {
+        return false;
+    }
+
+    // PlannerObjectivePlanGapQueued sets planner_pending + planner_pending_reason.
+    // scheduled_phase may still be None until the scheduler consumes the pending
+    // reason, so idempotence must key off the queued reason itself.
+    let already_queued = writer.state().planner_pending
+        && writer.state().planner_pending_reason.as_deref() == Some("objective_plan_gap");
+    if already_queued {
+        return false;
+    }
+
+    append_orchestration_trace(
+        "objective_plan_enforcement_signal",
+        json!({
+            "required_action": "plan_task_required_for_actionable_objective",
+            "reason": "objectives_require_work_but_plan_has_no_pending_tasks",
+            "objectives_path": OBJECTIVES_FILE,
+            "plan_path": MASTER_PLAN_FILE,
+        }),
+    );
+    writer.apply(ControlEvent::PlannerObjectivePlanGapQueued);
+    true
+}
+
+fn recover_stale_executor_lanes_after_replay(
+    writer: &mut CanonicalWriter,
+    rt: &RuntimeState,
+    lanes: &[LaneConfig],
+    workspace: &Path,
+    checkpoint_loaded: bool,
+) {
+    requeue_orphaned_in_progress_lanes(writer, lanes, workspace);
+    seed_planner_after_discarded_checkpoint(writer, checkpoint_loaded);
+    clear_stale_lane_inflight_flags(writer, rt);
+    purge_discarded_checkpoint_submitted_turns(writer, checkpoint_loaded);
+    requeue_phantom_executor_lanes(writer, rt);
+}
+
+fn requeue_orphaned_in_progress_lanes(
+    writer: &mut CanonicalWriter,
+    lanes: &[LaneConfig],
+    workspace: &Path,
+) {
+    // Reset lanes that lost ownership (no active tab) — runs whether or not a checkpoint
+    // loaded. Tlog replay can produce the same orphaned in_progress state when the process
+    // was killed between tab release and turn registration (prompt_in_flight=false), which
+    // the stale-lane cleanup below does not cover.
+    let lane_ids: Vec<usize> = writer.state().lanes.keys().copied().collect();
+    for lane_id in lane_ids {
+        let (in_progress, has_active_tab) = {
+            let s = writer.state();
+            let in_prog = s
+                .lanes
+                .get(&lane_id)
+                .and_then(|l| l.in_progress_by.as_ref())
+                .is_some();
+            let has_tab = s.lane_active_tab.contains_key(&lane_id);
+            (in_prog, has_tab)
+        };
+        if in_progress && !has_active_tab {
+            crate::blockers::record_action_failure_with_writer(
+                workspace,
+                None,
+                "orchestrate",
+                "checkpoint_runtime_divergence",
+                &format!(
+                    "checkpoint/runtime divergence: lane {} resumed in progress without an active tab and was requeued",
+                    lanes[lane_id].label
+                ),
+                None,
+            );
+            writer.apply(ControlEvent::LaneInProgressSet {
+                lane_id,
+                actor: None,
+            });
+            writer.apply(ControlEvent::LanePendingSet {
+                lane_id,
+                pending: true,
+            });
+        }
+    }
+}
+
+fn seed_planner_after_discarded_checkpoint(
+    writer: &mut CanonicalWriter,
+    checkpoint_loaded: bool,
+) {
+    // When the checkpoint was discarded (seq mismatch) with an existing tlog, the normal
+    // resume path (decide_resume_phase) was skipped. If planner_pending is still false from
+    // tlog replay the agent has no trigger to start working and will idle-poll forever.
+    // Force the planner so work is always re-seeded after a discarded checkpoint.
+    if !checkpoint_loaded && writer.tlog_seq() > 0 && !writer.state().planner_pending {
+        eprintln!("[orchestrate] checkpoint discarded — seeding planner to avoid idle livelock");
+        writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+    }
+}
+
+fn clear_stale_lane_inflight_flags(writer: &mut CanonicalWriter, rt: &RuntimeState) {
+    // Runtime/state reconciliation: after replay (especially when checkpoint resume is
+    // discarded), canonical in-flight flags may survive without matching runtime objects.
+    // Clear those stale flags so executor dispatch can progress instead of livelocking on
+    // "all lanes busy".
+    let lane_ids: Vec<usize> = writer.state().lanes.keys().copied().collect();
+    for lane_id in lane_ids {
+        let submit_flag = writer.state().lane_submit_active(lane_id);
+        let prompt_flag = writer.state().lane_in_flight(lane_id);
+        let has_runtime_submit = rt.executor_submit_inflight.contains_key(&lane_id);
+        let has_runtime_turn = rt.submitted_turns.values().any(|t| t.lane == lane_id);
+        let has_state_turn = writer
+            .state()
+            .submitted_turn_ids
+            .values()
+            .any(|record| record.lane_id == lane_id);
+
+        if submit_flag && !has_runtime_submit {
+            eprintln!(
+                "[orchestrate] stale-flag recovery: lane {} submit_in_flight had no runtime submit; clearing",
+                lane_id
+            );
+            writer.apply(ControlEvent::LaneSubmitInFlightSet {
+                lane_id,
+                in_flight: false,
+            });
+        }
+        if prompt_flag && !has_runtime_turn && !has_state_turn {
+            eprintln!(
+                "[orchestrate] stale-flag recovery: lane {} prompt_in_flight had no submitted turn; clearing",
+                lane_id
+            );
+            writer.apply(ControlEvent::LanePromptInFlightSet {
+                lane_id,
+                in_flight: false,
+            });
+        }
+    }
+}
+
+fn purge_discarded_checkpoint_submitted_turns(
+    writer: &mut CanonicalWriter,
+    checkpoint_loaded: bool,
+) {
+    // When checkpoint resume is discarded (seq mismatch), runtime joinsets are empty and we
+    // cannot safely continue replayed submitted_turn_ids from a prior process. Purge them so
+    // stale-lane recovery can requeue lanes instead of staying phantom-busy forever.
+    if checkpoint_loaded || writer.state().submitted_turn_ids.is_empty() {
+        return;
+    }
+
+    let stale_keys: Vec<String> = writer.state().submitted_turn_ids.keys().cloned().collect();
+    eprintln!(
+        "[orchestrate] checkpoint discarded — dropping {} stale submitted turn ids",
+        stale_keys.len()
+    );
+    for key in stale_keys {
+        let Some((tab_str, turn_str)) = key.split_once(':') else {
+            continue;
+        };
+        let Ok(tab_id) = tab_str.parse::<u32>() else {
+            continue;
+        };
+        let Ok(turn_id) = turn_str.parse::<u64>() else {
+            continue;
+        };
+        writer.apply(ControlEvent::ExecutorTurnDeregistered { tab_id, turn_id });
+    }
+}
+
+fn requeue_in_progress_lane(
+    writer: &mut CanonicalWriter,
+    lane_id: usize,
+    clear_prompt_in_flight: bool,
+    reason: &str,
+) {
+    eprintln!(
+        "[orchestrate] stale-lane recovery: lane {} {}; requeuing",
+        lane_id, reason
+    );
+    if clear_prompt_in_flight {
+        writer.apply(ControlEvent::LanePromptInFlightSet {
+            lane_id,
+            in_flight: false,
+        });
+    }
+    writer.apply(ControlEvent::LaneInProgressSet {
+        lane_id,
+        actor: None,
+    });
+    writer.apply(ControlEvent::LanePendingSet {
+        lane_id,
+        pending: true,
+    });
+}
+
+fn requeue_phantom_executor_lanes(writer: &mut CanonicalWriter, rt: &RuntimeState) {
+    let lane_ids: Vec<usize> = writer.state().lanes.keys().copied().collect();
+    for lane_id in lane_ids {
+        let (pending, in_progress, prompt_in_flight, submit_in_flight, has_submitted_turn) = {
+            let state = writer.state();
+            (
+                state
+                    .lanes
+                    .get(&lane_id)
+                    .map(|lane| lane.pending)
+                    .unwrap_or(false),
+                state
+                    .lanes
+                    .get(&lane_id)
+                    .and_then(|lane| lane.in_progress_by.as_ref())
+                    .is_some(),
+                state.lane_in_flight(lane_id),
+                state.lane_submit_active(lane_id),
+                state
+                    .submitted_turn_ids
+                    .values()
+                    .any(|record| record.lane_id == lane_id),
+            )
+        };
+
+        if in_progress && prompt_in_flight && !has_submitted_turn {
+            requeue_in_progress_lane(
+                writer,
+                lane_id,
+                true,
+                "was in_progress+prompt_in_flight with no submitted turn",
+            );
+        }
+
+        if in_progress && !prompt_in_flight && !submit_in_flight && !has_submitted_turn {
+            requeue_in_progress_lane(
+                writer,
+                lane_id,
+                false,
+                "was in_progress with no inflight work",
+            );
+        }
+
+        if pending
+            && !in_progress
+            && !prompt_in_flight
+            && !submit_in_flight
+            && !has_submitted_turn
+        {
+            let has_runtime_submit = rt.executor_submit_inflight.contains_key(&lane_id);
+            let has_runtime_turn = rt.submitted_turns.values().any(|turn| turn.lane == lane_id);
+            if !has_runtime_submit && !has_runtime_turn {
+                eprintln!(
+                    "[orchestrate] stale-lane recovery: lane {} was pending with no claimed work; clearing to unblock planner dispatch",
+                    lane_id
+                );
+                writer.apply(ControlEvent::LanePendingSet {
+                    lane_id,
+                    pending: false,
+                });
+            }
+        }
+    }
 }
 
 fn should_reject_solo_self_complete(
@@ -1219,206 +1558,13 @@ pub async fn run() -> Result<()> {
                 }
             }
         }
-        // Reset lanes that lost ownership (no active tab) — runs whether or not a checkpoint
-        // loaded. Tlog replay can produce the same orphaned in_progress state when the process
-        // was killed between tab release and turn registration (prompt_in_flight=false), which
-        // the stale-lane cleanup below does not cover.
-        {
-            let lane_ids: Vec<usize> = writer.state().lanes.keys().copied().collect();
-            for lane_id in lane_ids {
-                let (in_progress, has_active_tab) = {
-                    let s = writer.state();
-                    let in_prog = s
-                        .lanes
-                        .get(&lane_id)
-                        .and_then(|l| l.in_progress_by.as_ref())
-                        .is_some();
-                    let has_tab = s.lane_active_tab.contains_key(&lane_id);
-                    (in_prog, has_tab)
-                };
-                if in_progress && !has_active_tab {
-                    crate::blockers::record_action_failure_with_writer(
-                        workspace.as_path(),
-                        None,
-                        "orchestrate",
-                        "checkpoint_runtime_divergence",
-                        &format!(
-                            "checkpoint/runtime divergence: lane {} resumed in progress without an active tab and was requeued",
-                            lanes[lane_id].label
-                        ),
-                        None,
-                    );
-                    writer.apply(ControlEvent::LaneInProgressSet {
-                        lane_id,
-                        actor: None,
-                    });
-                    writer.apply(ControlEvent::LanePendingSet {
-                        lane_id,
-                        pending: true,
-                    });
-                }
-            }
-        }
-        // When the checkpoint was discarded (seq mismatch) with an existing tlog, the normal
-        // resume path (decide_resume_phase) was skipped. If planner_pending is still false from
-        // tlog replay the agent has no trigger to start working and will idle-poll forever.
-        // Force the planner so work is always re-seeded after a discarded checkpoint.
-        if !checkpoint_loaded && writer.tlog_seq() > 0 && !writer.state().planner_pending {
-            eprintln!("[orchestrate] checkpoint discarded — seeding planner to avoid idle livelock");
-            writer.apply(ControlEvent::PlannerPendingSet { pending: true });
-        }
-        // Runtime/state reconciliation: after replay (especially when checkpoint resume is
-        // discarded), canonical in-flight flags may survive without matching runtime objects.
-        // Clear those stale flags so executor dispatch can progress instead of livelocking on
-        // "all lanes busy".
-        {
-            let lane_ids: Vec<usize> = writer.state().lanes.keys().copied().collect();
-            for lane_id in lane_ids {
-                let submit_flag = writer.state().lane_submit_active(lane_id);
-                let prompt_flag = writer.state().lane_in_flight(lane_id);
-                let has_runtime_submit = rt.executor_submit_inflight.contains_key(&lane_id);
-                let has_runtime_turn = rt.submitted_turns.values().any(|t| t.lane == lane_id);
-                let has_state_turn = writer
-                    .state()
-                    .submitted_turn_ids
-                    .values()
-                    .any(|record| record.lane_id == lane_id);
-
-                if submit_flag && !has_runtime_submit {
-                    eprintln!(
-                        "[orchestrate] stale-flag recovery: lane {} submit_in_flight had no runtime submit; clearing",
-                        lane_id
-                    );
-                    writer.apply(ControlEvent::LaneSubmitInFlightSet {
-                        lane_id,
-                        in_flight: false,
-                    });
-                }
-                if prompt_flag && !has_runtime_turn && !has_state_turn {
-                    eprintln!(
-                        "[orchestrate] stale-flag recovery: lane {} prompt_in_flight had no submitted turn; clearing",
-                        lane_id
-                    );
-                    writer.apply(ControlEvent::LanePromptInFlightSet {
-                        lane_id,
-                        in_flight: false,
-                    });
-                }
-            }
-        }
-        // When checkpoint resume is discarded (seq mismatch), runtime joinsets are empty and we
-        // cannot safely continue replayed submitted_turn_ids from a prior process. Purge them so
-        // stale-lane recovery can requeue lanes instead of staying phantom-busy forever.
-        if !checkpoint_loaded && !writer.state().submitted_turn_ids.is_empty() {
-            let stale_keys: Vec<String> = writer.state().submitted_turn_ids.keys().cloned().collect();
-            eprintln!(
-                "[orchestrate] checkpoint discarded — dropping {} stale submitted turn ids",
-                stale_keys.len()
-            );
-            for key in stale_keys {
-                let Some((tab_str, turn_str)) = key.split_once(':') else {
-                    continue;
-                };
-                let Ok(tab_id) = tab_str.parse::<u32>() else {
-                    continue;
-                };
-                let Ok(turn_id) = turn_str.parse::<u64>() else {
-                    continue;
-                };
-                writer.apply(ControlEvent::ExecutorTurnDeregistered { tab_id, turn_id });
-            }
-        }
-        // Stale-lane cleanup: runs regardless of whether a checkpoint loaded.
-        // After tlog replay, a lane may be marked in_progress + prompt_in_flight
-        // but have no corresponding submitted_turn_ids — this happens when the
-        // process was killed mid-step before the turn was registered or completed.
-        // Those lanes are phantom-busy and must be reset so the wake signal can
-        // route work to them.
-        {
-            let lane_ids: Vec<usize> = writer.state().lanes.keys().copied().collect();
-            for lane_id in &lane_ids {
-                let (in_progress, prompt_in_flight, submit_in_flight) = {
-                    let s = writer.state();
-                    let in_prog = s
-                        .lanes
-                        .get(lane_id)
-                        .and_then(|l| l.in_progress_by.as_ref())
-                        .is_some();
-                    let in_flight = s.lane_in_flight(*lane_id);
-                    let submit_flight = s.lane_submit_active(*lane_id);
-                    (in_prog, in_flight, submit_flight)
-                };
-                let has_submitted_turn = writer
-                    .state()
-                    .submitted_turn_ids
-                    .values()
-                    .any(|r| r.lane_id == *lane_id);
-                if in_progress && prompt_in_flight && !has_submitted_turn {
-                    eprintln!(
-                        "[orchestrate] stale-lane recovery: lane {} was in_progress+prompt_in_flight with no submitted turn; requeuing",
-                        lane_id
-                    );
-                    writer.apply(ControlEvent::LanePromptInFlightSet {
-                        lane_id: *lane_id,
-                        in_flight: false,
-                    });
-                    writer.apply(ControlEvent::LaneInProgressSet {
-                        lane_id: *lane_id,
-                        actor: None,
-                    });
-                    writer.apply(ControlEvent::LanePendingSet {
-                        lane_id: *lane_id,
-                        pending: true,
-                    });
-                }
-                // Additional stale-lane recovery: lane is marked in_progress but
-                // has neither prompt-submit inflight flags nor submitted turns.
-                // This state is not claimable by claim_next_lane() and can lock
-                // executor phase forever after checkpoint resume.
-                if in_progress && !prompt_in_flight && !submit_in_flight && !has_submitted_turn {
-                    eprintln!(
-                        "[orchestrate] stale-lane recovery: lane {} was in_progress with no inflight work; requeuing",
-                        lane_id
-                    );
-                    writer.apply(ControlEvent::LaneInProgressSet {
-                        lane_id: *lane_id,
-                        actor: None,
-                    });
-                    writer.apply(ControlEvent::LanePendingSet {
-                        lane_id: *lane_id,
-                        pending: true,
-                    });
-                }
-                // Third stale-lane case: lane is pending but was never claimed
-                // (in_progress_by=None) and has no runtime activity at all. This
-                // happens when the previous process seeded a lane then was killed
-                // before the executor claimed it. After restart the phantom-pending
-                // flag makes canonical_executor_work=true, which blocks planner
-                // dispatch; simultaneously, scheduled_phase="planner" blocks
-                // executor dispatch — mutual deadlock → idle livelock.
-                // Clearing the pending flag lets the planner run and re-seed work.
-                let pending = writer
-                    .state()
-                    .lanes
-                    .get(lane_id)
-                    .map(|l| l.pending)
-                    .unwrap_or(false);
-                if pending && !in_progress && !prompt_in_flight && !submit_in_flight && !has_submitted_turn {
-                    let has_runtime_submit = rt.executor_submit_inflight.contains_key(lane_id);
-                    let has_runtime_turn = rt.submitted_turns.values().any(|t| t.lane == *lane_id);
-                    if !has_runtime_submit && !has_runtime_turn {
-                        eprintln!(
-                            "[orchestrate] stale-lane recovery: lane {} was pending with no claimed work; clearing to unblock planner dispatch",
-                            lane_id
-                        );
-                        writer.apply(ControlEvent::LanePendingSet {
-                            lane_id: *lane_id,
-                            pending: false,
-                        });
-                    }
-                }
-            }
-        }
+        recover_stale_executor_lanes_after_replay(
+            &mut writer,
+            &rt,
+            &lanes,
+            workspace.as_path(),
+            checkpoint_loaded,
+        );
         // Resume hardening: if we loaded a checkpoint into executor phase but no
         // executor work is runnable after cleanup, force planner reseed.
         if checkpoint_loaded {
@@ -1447,11 +1593,8 @@ pub async fn run() -> Result<()> {
         let mut planner_bootstrapped = false;
         let _diagnostics_bootstrapped = false;
         let _verifier_bootstrapped = false;
-        let mut submit_joinset: tokio::task::JoinSet<(
-            usize,
-            PendingExecutorSubmit,
-            Result<String>,
-        )> = tokio::task::JoinSet::new();
+        let mut submit_joinset: tokio::task::JoinSet<ExecutorSubmitJoinOutput> =
+            tokio::task::JoinSet::new();
         let mut continuation_joinset: tokio::task::JoinSet<ContinuationJoinOutput> =
             tokio::task::JoinSet::new();
         let mut verifier_joinset: tokio::task::JoinSet<(usize, String)> =
@@ -1722,19 +1865,16 @@ pub async fn run() -> Result<()> {
             };
             let cargo_test_failures = load_cargo_test_failures(&workspace);
 
-            let runtime_executor_busy = !rt.submitted_turns.is_empty()
-                || !rt.executor_submit_inflight.is_empty()
-                || !submit_joinset.is_empty()
-                || !continuation_joinset.is_empty();
-            let canonical_executor_work = writer.state().scheduled_phase.as_deref() == Some("executor")
-                || writer.state().wake_signals_pending.contains_key("executor")
-                || writer.state().lanes.values().any(|lane| {
-                    lane.pending || lane.in_progress_by.is_some()
-                })
-                || writer.state().lane_submit_in_flight.values().any(|&v| v)
-                || writer.state().lane_prompt_in_flight.values().any(|&v| v);
+            let executor_activity = executor_activity_snapshot(
+                writer.state(),
+                &rt,
+                &submit_joinset,
+                &continuation_joinset,
+            );
             let run_planner_inline = if INLINE_UNIFIED_AGENT {
-                writer.state().planner_pending && !runtime_executor_busy && !canonical_executor_work
+                writer.state().planner_pending
+                    && !executor_activity.runtime_busy
+                    && !executor_activity.canonical_work
             } else {
                 phase_gates.planner
             };
@@ -1757,7 +1897,7 @@ pub async fn run() -> Result<()> {
 
             let now = now_ms();
             let run_executor_inline = if INLINE_UNIFIED_AGENT {
-                !active_blocker && canonical_executor_work
+                !active_blocker && executor_activity.canonical_work
             } else {
                 phase_gates.executor
             };
@@ -1827,15 +1967,12 @@ pub async fn run() -> Result<()> {
                 // not only `phase_lane` (which can legitimately be None between submits).
                 // Using phase_lane-only creates None<->executor schedule thrash while
                 // wake signals are pending and lanes are still busy.
-                let executor_lane_pending = writer.state().lanes.values().any(|lane| lane.pending);
-                let executor_in_progress = writer.state().lanes.values().any(|lane| {
-                    lane.in_progress_by.is_some()
-                }) || writer.state().lane_submit_in_flight.values().any(|&v| v)
-                    || writer.state().lane_prompt_in_flight.values().any(|&v| v)
-                    || !rt.executor_submit_inflight.is_empty()
-                    || !rt.submitted_turns.is_empty()
-                    || !submit_joinset.is_empty()
-                    || !continuation_joinset.is_empty();
+                let executor_activity = executor_activity_snapshot(
+                    writer.state(),
+                    &rt,
+                    &submit_joinset,
+                    &continuation_joinset,
+                );
                 let semantic_control = SemanticControlState::new(
                     writer.state().scheduled_phase.clone(),
                     writer.state().planner_pending,
@@ -1847,7 +1984,10 @@ pub async fn run() -> Result<()> {
                     !verifier_joinset.is_empty(),
                 );
                 if semantic_control
-                    .scheduled_phase_done(executor_lane_pending, executor_in_progress)
+                    .scheduled_phase_done(
+                        executor_activity.lane_pending,
+                        executor_activity.in_progress,
+                    )
                 {
                     apply_scheduled_phase_if_changed(&mut writer, None);
                 }
@@ -1858,20 +1998,14 @@ pub async fn run() -> Result<()> {
             // in-flight submit/turn objects, confirm via tlog progress signals and
             // force a planner handoff after a cooldown.
             let now = now_ms();
-            let executor_flagged_busy = writer.state().phase == "executor"
-                && (writer.state().lane_submit_in_flight.values().any(|&v| v)
-                    || writer.state().lane_prompt_in_flight.values().any(|&v| v)
-                    || writer
-                        .state()
-                        .lanes
-                        .values()
-                        .any(|lane| lane.in_progress_by.is_some()));
-            let runtime_executor_busy = !rt.submitted_turns.is_empty()
-                || !rt.executor_submit_inflight.is_empty()
-                || !submit_joinset.is_empty()
-                || !continuation_joinset.is_empty();
-            if executor_flagged_busy
-                && !runtime_executor_busy
+            let executor_activity = executor_activity_snapshot(
+                writer.state(),
+                &rt,
+                &submit_joinset,
+                &continuation_joinset,
+            );
+            if executor_activity.flagged_busy
+                && !executor_activity.runtime_busy
                 && now.saturating_sub(last_executor_stall_probe_ms) >= EXECUTOR_STALL_PROBE_MS
             {
                 last_executor_stall_probe_ms = now;
@@ -1963,36 +2097,8 @@ pub async fn run() -> Result<()> {
                 /* trace-only: semantic control state owns planner follow-up */
             }
 
-            let has_objective_work = has_actionable_objectives(&objectives_text);
-            let has_plan_work = plan_has_incomplete_tasks(&plan_text);
-            // Do not fire the gap when an executor lane is already pending/in-progress.
-            // The wake-signal router may have just seeded the lane in this same iteration;
-            // overriding it with a planner wake creates the planner⟷executor mutual-block
-            // deadlock where canonical_executor_work blocks planner dispatch and
-            // scheduled_phase="planner" blocks executor dispatch simultaneously.
-            let executor_lane_active = writer
-                .state()
-                .lanes
-                .values()
-                .any(|l| l.pending || l.in_progress_by.is_some());
-            if has_objective_work && !has_plan_work && !executor_lane_active {
-                let already_queued = writer.state().planner_pending
-                    && writer.state().planner_pending_reason.as_deref()
-                        == Some("objective_plan_gap")
-                    && writer.state().scheduled_phase.as_deref() == Some("planner");
-                if !already_queued {
-                    append_orchestration_trace(
-                        "objective_plan_enforcement_signal",
-                        json!({
-                            "required_action": "plan_task_required_for_actionable_objective",
-                            "reason": "objectives_require_work_but_plan_has_no_pending_tasks",
-                            "objectives_path": OBJECTIVES_FILE,
-                            "plan_path": MASTER_PLAN_FILE,
-                        }),
-                    );
-                    writer.apply(ControlEvent::PlannerObjectivePlanGapQueued);
-                    cycle_progress = true;
-                }
+            if queue_objective_plan_gap_if_needed(&mut writer, &objectives_text, &plan_text) {
+                cycle_progress = true;
             }
 
             // Convergence guard: detect cycles where work was dispatched but the
@@ -2004,9 +2110,12 @@ pub async fn run() -> Result<()> {
             // being negotiated (executor_submit_inflight / lane_submit_in_flight).
             // In those cases the semantic control state may remain stable until the
             // result arrives; counting the cycle as a stall would be a false positive.
-            let executor_inflight = !rt.submitted_turns.is_empty()
-                || !rt.executor_submit_inflight.is_empty()
-                || writer.state().lane_submit_in_flight.values().any(|&v| v);
+            let executor_activity = executor_activity_snapshot(
+                writer.state(),
+                &rt,
+                &submit_joinset,
+                &continuation_joinset,
+            );
             let active_blocker_after = writer.state().active_blocker_to_verifier;
             let state_hash_after = cycle_control_hash(&ControlConvergenceSnapshot {
                 state: writer.state(),
@@ -2014,7 +2123,7 @@ pub async fn run() -> Result<()> {
                 verifier_pending: !verifier_pending_results.is_empty(),
                 verifier_running: !verifier_joinset.is_empty(),
             });
-            if cycle_progress && state_hash_before == state_hash_after && !executor_inflight {
+            if cycle_progress && state_hash_before == state_hash_after && !executor_activity.inflight {
                 stall_count += 1;
                 eprintln!(
                     "[orchestrate] convergence: no net state change (stall {}/{})",
@@ -2039,16 +2148,23 @@ pub async fn run() -> Result<()> {
             }
 
             if !cycle_progress {
-                let idle_boundary_hash = state_hash_after;
-                let idle_now = now_ms();
-                let boundary_changed = last_idle_boundary_hash != Some(idle_boundary_hash);
-                let cooldown_elapsed =
-                    idle_now.saturating_sub(last_idle_pulse_ts_ms) >= IDLE_PULSE_COOLDOWN_MS;
-                if boundary_changed || cooldown_elapsed {
-                    writer.apply(ControlEvent::OrchestratorIdlePulse { ts_ms: idle_now });
-                    let _ = std::fs::write(cycle_idle_marker_path(), "idle\n");
-                    last_idle_pulse_ts_ms = idle_now;
-                    last_idle_boundary_hash = Some(idle_boundary_hash);
+                // IdlePulse is a semantic no-work heartbeat.  Do not emit it while
+                // runtime work is still alive (submitted turn, submit task, or
+                // continuation task), otherwise tlog reports "idle" while the LLM is
+                // actively exchanging messages and tools.
+                let runtime_waiting = executor_activity.runtime_busy || executor_activity.inflight;
+                if !runtime_waiting {
+                    let idle_boundary_hash = state_hash_after;
+                    let idle_now = now_ms();
+                    let boundary_changed = last_idle_boundary_hash != Some(idle_boundary_hash);
+                    let cooldown_elapsed =
+                        idle_now.saturating_sub(last_idle_pulse_ts_ms) >= IDLE_PULSE_COOLDOWN_MS;
+                    if boundary_changed || cooldown_elapsed {
+                        writer.apply(ControlEvent::OrchestratorIdlePulse { ts_ms: idle_now });
+                        let _ = std::fs::write(cycle_idle_marker_path(), "idle\n");
+                        last_idle_pulse_ts_ms = idle_now;
+                        last_idle_boundary_hash = Some(idle_boundary_hash);
+                    }
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(SERVICE_POLL_MS)).await;
             }

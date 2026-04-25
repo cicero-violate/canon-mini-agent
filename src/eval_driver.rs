@@ -60,6 +60,30 @@ pub fn run(
         semantic_contract: snapshot.vector.semantic_contract,
         structural_invariant_coverage: snapshot.vector.structural_invariant_coverage,
         canonical_delta_health: snapshot.vector.canonical_delta_health,
+        improvement_measurement: snapshot.vector.improvement_measurement,
+        improvement_validation: snapshot.vector.improvement_validation,
+        improvement_effectiveness: snapshot.vector.improvement_effectiveness,
+        improvement_attempts: snapshot.tlog_delta_signals.improvement_attempts,
+        measured_improvement_attempts: snapshot
+            .tlog_delta_signals
+            .measured_improvement_attempts,
+        unmeasured_improvement_attempts: snapshot
+            .tlog_delta_signals
+            .unmeasured_improvement_attempts,
+        validated_improvement_attempts: snapshot
+            .tlog_delta_signals
+            .validated_improvement_attempts,
+        unvalidated_improvement_attempts: snapshot
+            .tlog_delta_signals
+            .unvalidated_improvement_attempts,
+        non_regressed_improvement_attempts: snapshot
+            .tlog_delta_signals
+            .non_regressed_improvement_attempts,
+        regressed_improvement_attempts: snapshot
+            .tlog_delta_signals
+            .regressed_improvement_attempts,
+        eval_measurement_points: snapshot.tlog_delta_signals.eval_measurement_points,
+        measurement_regressions: snapshot.tlog_delta_signals.measurement_regressions,
         tlog_lag_total_ms: snapshot.tlog_delta_signals.lag_total_ms,
         tlog_actionable_lag_total_ms: snapshot.tlog_delta_signals.actionable_lag_total_ms,
         tlog_dominant_actionable_lag_kind: snapshot

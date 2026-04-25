@@ -223,42 +223,47 @@ fn compact_json(value: Value) -> Option<Value> {
             }
             Frame::Visit(other) => results.push(Some(other)),
             Frame::FinishArray(len) => {
-                let mut items = Vec::with_capacity(len);
-                for _ in 0..len {
-                    items.push(results.pop().expect("array child result"));
-                }
-                items.reverse();
-                let items = items.into_iter().flatten().collect::<Vec<_>>();
-                if items.is_empty() {
-                    results.push(None);
-                } else {
-                    results.push(Some(Value::Array(items)));
-                }
+                let compacted = compact_json_finish_array(&mut results, len);
+                results.push(compacted);
             }
             Frame::FinishObject(keys) => {
-                let mut values = Vec::with_capacity(keys.len());
-                for _ in 0..keys.len() {
-                    values.push(results.pop().expect("object child result"));
-                }
-                values.reverse();
-
-                let mut out = serde_json::Map::new();
-                for (key, value) in keys.into_iter().zip(values.into_iter()) {
-                    if let Some(value) = value {
-                        out.insert(key, value);
-                    }
-                }
-
-                if out.is_empty() {
-                    results.push(None);
-                } else {
-                    results.push(Some(Value::Object(out)));
-                }
+                let compacted = compact_json_finish_object(&mut results, keys);
+                results.push(compacted);
             }
         }
     }
 
     results.pop().flatten()
+}
+
+fn compact_json_finish_array(results: &mut Vec<Option<Value>>, len: usize) -> Option<Value> {
+    let mut items = Vec::with_capacity(len);
+    for _ in 0..len {
+        items.push(results.pop().expect("array child result"));
+    }
+    items.reverse();
+    let items = items.into_iter().flatten().collect::<Vec<_>>();
+    (!items.is_empty()).then_some(Value::Array(items))
+}
+
+fn compact_json_finish_object(
+    results: &mut Vec<Option<Value>>,
+    keys: Vec<String>,
+) -> Option<Value> {
+    let mut values = Vec::with_capacity(keys.len());
+    for _ in 0..keys.len() {
+        values.push(results.pop().expect("object child result"));
+    }
+    values.reverse();
+
+    let mut out = serde_json::Map::new();
+    for (key, value) in keys.into_iter().zip(values.into_iter()) {
+        if let Some(value) = value {
+            out.insert(key, value);
+        }
+    }
+
+    (!out.is_empty()).then_some(Value::Object(out))
 }
 
 fn insert_compact_log_field(

@@ -931,4 +931,21 @@ mod tests {
             "plan gap condition must include !executor_lane_active"
         );
     }
+
+    #[test]
+    fn no_ready_executor_preflight_clears_stale_pending_lane_before_planner_wake() {
+        // Regression: a planner ready-handoff with PLAN.ready_window=[] seeded
+        // lane.pending=true, then executor preflight routed back to planner without
+        // clearing the lane. That produced planner_pending=true + scheduled_phase=planner
+        // + lane.pending=true, blocking both planner and executor.
+        let source = include_str!("app_submit_completion.rs");
+        assert!(
+            source.contains("clear_stale_pending_executor_lanes_without_runtime"),
+            "executor preflight must clear stale pending lanes when no ready tasks exist"
+        );
+        assert!(
+            source.contains("no ready tasks; clearing stale pending lane"),
+            "stale-lane cleanup must be observable in orchestrator logs"
+        );
+    }
 }

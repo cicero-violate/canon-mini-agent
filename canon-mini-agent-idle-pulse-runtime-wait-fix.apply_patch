@@ -1,0 +1,35 @@
+*** Begin Patch
+*** Update File: src/app_runtime_completion.rs
+@@
+             if !cycle_progress {
+-                let idle_boundary_hash = state_hash_after;
+-                let idle_now = now_ms();
+-                let boundary_changed = last_idle_boundary_hash != Some(idle_boundary_hash);
+-                let cooldown_elapsed =
+-                    idle_now.saturating_sub(last_idle_pulse_ts_ms) >= IDLE_PULSE_COOLDOWN_MS;
+-                if boundary_changed || cooldown_elapsed {
+-                    writer.apply(ControlEvent::OrchestratorIdlePulse { ts_ms: idle_now });
+-                    let _ = std::fs::write(cycle_idle_marker_path(), "idle\n");
+-                    last_idle_pulse_ts_ms = idle_now;
+-                    last_idle_boundary_hash = Some(idle_boundary_hash);
++                // IdlePulse is a semantic no-work heartbeat.  Do not emit it while
++                // runtime work is still alive (submitted turn, submit task, or
++                // continuation task), otherwise tlog reports "idle" while the LLM is
++                // actively exchanging messages and tools.
++                let runtime_waiting = executor_activity.runtime_busy || executor_activity.inflight;
++                if !runtime_waiting {
++                    let idle_boundary_hash = state_hash_after;
++                    let idle_now = now_ms();
++                    let boundary_changed = last_idle_boundary_hash != Some(idle_boundary_hash);
++                    let cooldown_elapsed =
++                        idle_now.saturating_sub(last_idle_pulse_ts_ms) >= IDLE_PULSE_COOLDOWN_MS;
++                    if boundary_changed || cooldown_elapsed {
++                        writer.apply(ControlEvent::OrchestratorIdlePulse { ts_ms: idle_now });
++                        let _ = std::fs::write(cycle_idle_marker_path(), "idle\n");
++                        last_idle_pulse_ts_ms = idle_now;
++                        last_idle_boundary_hash = Some(idle_boundary_hash);
++                    }
+                 }
+                 tokio::time::sleep(std::time::Duration::from_millis(SERVICE_POLL_MS)).await;
+             }
+*** End Patch

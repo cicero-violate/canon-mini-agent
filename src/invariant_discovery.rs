@@ -937,49 +937,74 @@ fn detect_planner_reactivated_before_executor_claim_gap(workspace: &Path) -> boo
     let mut executor_lane_pending = false;
 
     for record in records.iter().rev().take(800).rev() {
-        match &record.event {
-            crate::events::Event::Effect {
-                event:
-                    crate::events::EffectEvent::ActionResultRecorded {
-                        role,
-                        action_kind,
-                        ok,
-                        ..
-                    },
-            } if role == "planner" && action_kind == "message" && *ok => {
+        match planner_reactivated_gap_event(&record.event, after_handoff, executor_lane_pending) {
+            PlannerReactivatedGapEvent::PlannerHandoff => {
                 after_handoff = true;
                 executor_lane_pending = false;
             }
-            crate::events::Event::Control {
-                event: crate::events::ControlEvent::InboundMessageQueued { role, .. },
-            } if after_handoff && role == "executor" => {}
-            crate::events::Event::Control {
-                event: crate::events::ControlEvent::LanePendingSet { pending, .. },
-            } if after_handoff => {
-                executor_lane_pending = *pending;
-            }
-            crate::events::Event::Control {
-                event: crate::events::ControlEvent::PhaseSet { phase, lane },
-            } if after_handoff && phase == "executor" && lane.is_some() => {
+            PlannerReactivatedGapEvent::ExecutorQueued => {}
+            PlannerReactivatedGapEvent::LanePending(pending) => executor_lane_pending = pending,
+            PlannerReactivatedGapEvent::ExecutorClaimed => {
                 after_handoff = false;
                 executor_lane_pending = false;
             }
-            crate::events::Event::Effect {
-                event: crate::events::EffectEvent::ActionResultRecorded { role, .. },
-            } if after_handoff && role.starts_with("executor") => {
-                after_handoff = false;
-                executor_lane_pending = false;
-            }
-            crate::events::Event::Control {
-                event: crate::events::ControlEvent::PhaseSet { phase, lane: None },
-            } if after_handoff && executor_lane_pending && phase == "planner" => {
-                return true;
-            }
-            _ => {}
+            PlannerReactivatedGapEvent::PlannerReactivated => return true,
+            PlannerReactivatedGapEvent::Other => {}
         }
     }
 
     false
+}
+
+enum PlannerReactivatedGapEvent {
+    PlannerHandoff,
+    ExecutorQueued,
+    LanePending(bool),
+    ExecutorClaimed,
+    PlannerReactivated,
+    Other,
+}
+
+fn planner_reactivated_gap_event(
+    event: &crate::events::Event,
+    after_handoff: bool,
+    executor_lane_pending: bool,
+) -> PlannerReactivatedGapEvent {
+    match event {
+        crate::events::Event::Effect {
+            event:
+                crate::events::EffectEvent::ActionResultRecorded {
+                    role,
+                    action_kind,
+                    ok,
+                    ..
+                },
+        } if role == "planner" && action_kind == "message" && *ok => {
+            PlannerReactivatedGapEvent::PlannerHandoff
+        }
+        crate::events::Event::Control {
+            event: crate::events::ControlEvent::InboundMessageQueued { role, .. },
+        } if after_handoff && role == "executor" => PlannerReactivatedGapEvent::ExecutorQueued,
+        crate::events::Event::Control {
+            event: crate::events::ControlEvent::LanePendingSet { pending, .. },
+        } if after_handoff => PlannerReactivatedGapEvent::LanePending(*pending),
+        crate::events::Event::Control {
+            event: crate::events::ControlEvent::PhaseSet { phase, lane },
+        } if after_handoff && phase == "executor" && lane.is_some() => {
+            PlannerReactivatedGapEvent::ExecutorClaimed
+        }
+        crate::events::Event::Effect {
+            event: crate::events::EffectEvent::ActionResultRecorded { role, .. },
+        } if after_handoff && role.starts_with("executor") => {
+            PlannerReactivatedGapEvent::ExecutorClaimed
+        }
+        crate::events::Event::Control {
+            event: crate::events::ControlEvent::PhaseSet { phase, lane: None },
+        } if after_handoff && executor_lane_pending && phase == "planner" => {
+            PlannerReactivatedGapEvent::PlannerReactivated
+        }
+        _ => PlannerReactivatedGapEvent::Other,
+    }
 }
 
 fn detect_repeated_objective_plan_gap_queue(workspace: &Path) -> bool {
@@ -1026,27 +1051,7 @@ fn detect_planner_schedule_clear_thrash(workspace: &Path) -> bool {
     let mut last_ts_ms: Option<u64> = None;
 
     for record in records.iter().rev().take(300).rev() {
-        let matched_step = match (&record.event, pattern_step) {
-            (
-                crate::events::Event::Control {
-                    event: crate::events::ControlEvent::PlannerPendingSet { pending: true },
-                },
-                0,
-            ) => true,
-            (
-                crate::events::Event::Control {
-                    event: crate::events::ControlEvent::ScheduledPhaseSet { phase: Some(phase) },
-                },
-                1,
-            ) if phase == "planner" => true,
-            (
-                crate::events::Event::Control {
-                    event: crate::events::ControlEvent::ScheduledPhaseSet { phase: None },
-                },
-                2,
-            ) => true,
-            _ => false,
-        };
+        let matched_step = planner_schedule_clear_step_matches(&record.event, pattern_step);
 
         if matched_step {
             pattern_step += 1;
@@ -1064,32 +1069,68 @@ fn detect_planner_schedule_clear_thrash(workspace: &Path) -> bool {
             continue;
         }
 
-        if matches!(record.event, crate::events::Event::Effect { .. }) {
+        if planner_schedule_clear_resets_on_effect(&record.event) {
             pattern_step = 0;
             consecutive = 0;
             last_ts_ms = None;
             continue;
         }
 
-        if matches!(
-            record.event,
-            crate::events::Event::Control {
-                event: crate::events::ControlEvent::PlannerPendingSet { pending: true }
-            }
-        ) {
+        if planner_schedule_clear_starts_pattern(&record.event) {
             pattern_step = 1;
-        } else if !matches!(
-            record.event,
-            crate::events::Event::Control {
-                event: crate::events::ControlEvent::ScheduledPhaseSet { .. }
-                    | crate::events::ControlEvent::PlannerPendingSet { .. }
-            }
-        ) {
+        } else if !planner_schedule_clear_tolerates_event(&record.event) {
             pattern_step = 0;
         }
     }
 
     false
+}
+
+fn planner_schedule_clear_step_matches(event: &crate::events::Event, pattern_step: usize) -> bool {
+    match (event, pattern_step) {
+        (
+            crate::events::Event::Control {
+                event: crate::events::ControlEvent::PlannerPendingSet { pending: true },
+            },
+            0,
+        ) => true,
+        (
+            crate::events::Event::Control {
+                event: crate::events::ControlEvent::ScheduledPhaseSet { phase: Some(phase) },
+            },
+            1,
+        ) if phase == "planner" => true,
+        (
+            crate::events::Event::Control {
+                event: crate::events::ControlEvent::ScheduledPhaseSet { phase: None },
+            },
+            2,
+        ) => true,
+        _ => false,
+    }
+}
+
+fn planner_schedule_clear_resets_on_effect(event: &crate::events::Event) -> bool {
+    matches!(event, crate::events::Event::Effect { .. })
+}
+
+fn planner_schedule_clear_starts_pattern(event: &crate::events::Event) -> bool {
+    matches!(
+        event,
+        crate::events::Event::Control {
+            event: crate::events::ControlEvent::PlannerPendingSet { pending: true }
+        }
+    )
+}
+
+fn planner_schedule_clear_tolerates_event(event: &crate::events::Event) -> bool {
+    matches!(
+        event,
+        crate::events::Event::Control {
+            event: crate::events::ControlEvent::ScheduledPhaseSet { .. }
+                | crate::events::ControlEvent::PlannerPendingSet { .. }
+        }
+    )
 }
 
 fn upsert_deterministic_invariant(
@@ -2056,6 +2097,14 @@ fn fingerprint_tool_failure(
 fn derive_evidence_derivation(fp: &Fingerprint) -> EvidenceDerivation {
     let raw = &fp.evidence.raw;
     let source = fp.evidence.source.as_str();
+    EvidenceDerivation {
+        rule_type: evidence_rule_type(source).to_string(),
+        observed_facts: derive_observed_facts(raw, source),
+        matched_conditions: fp.conditions.clone(),
+    }
+}
+
+fn derive_observed_facts(raw: &serde_json::Value, source: &str) -> Vec<String> {
     let mut observed_facts = Vec::new();
 
     if source.ends_with("graph.json") {
@@ -2147,18 +2196,18 @@ fn derive_evidence_derivation(fp: &Fingerprint) -> EvidenceDerivation {
         }
     }
 
-    EvidenceDerivation {
-        rule_type: if source.ends_with("graph.json") {
-            "graph_risk".to_string()
-        } else if source.ends_with("tlog.ndjson") {
-            "tlog_invariant_lifecycle_gap".to_string()
-        } else if source.ends_with("blockers.json") {
-            "blocker_error_class".to_string()
-        } else {
-            "action_log_failure".to_string()
-        },
-        observed_facts,
-        matched_conditions: fp.conditions.clone(),
+    observed_facts
+}
+
+fn evidence_rule_type(source: &str) -> &'static str {
+    if source.ends_with("graph.json") {
+        "graph_risk"
+    } else if source.ends_with("tlog.ndjson") {
+        "tlog_invariant_lifecycle_gap"
+    } else if source.ends_with("blockers.json") {
+        "blocker_error_class"
+    } else {
+        "action_log_failure"
     }
 }
 

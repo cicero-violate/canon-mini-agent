@@ -19,7 +19,16 @@ fn preflight_executor_dispatch(
     } else {
         "1+"
     };
+    let runtime_busy = !rt.executor_submit_inflight.is_empty()
+        || !rt.submitted_turns.is_empty()
+        || rt
+            .deferred_completions
+            .values()
+            .any(|queue| !queue.is_empty());
     if ready_count == "0" {
+        if !runtime_busy {
+            clear_stale_pending_executor_lanes_without_runtime(ctx, writer);
+        }
         writer.apply(ControlEvent::PlannerPendingSet { pending: true });
         apply_scheduled_phase_if_changed(writer, Some("planner"));
         return Some(true);
@@ -37,12 +46,6 @@ fn preflight_executor_dispatch(
             || writer.state().lane_in_flight(lane.index)
             || writer.state().lane_submit_active(lane.index)
     });
-    let runtime_busy = !rt.executor_submit_inflight.is_empty()
-        || !rt.submitted_turns.is_empty()
-        || rt
-            .deferred_completions
-            .values()
-            .any(|queue| !queue.is_empty());
     if !lanes_seeded && !runtime_busy {
         eprintln!(
             "[orchestrate] executor bootstrap: ready tasks exist but no lane work is seeded; waking planner"
@@ -53,6 +56,35 @@ fn preflight_executor_dispatch(
     }
 
     None
+}
+
+fn clear_stale_pending_executor_lanes_without_runtime(
+    ctx: &OrchestratorContext<'_>,
+    writer: &mut CanonicalWriter,
+) {
+    let stale_lane_ids: Vec<usize> = ctx
+        .lanes
+        .iter()
+        .filter_map(|lane| {
+            let lane_state = writer.state().lanes.get(&lane.index)?;
+            let stale_pending = lane_state.pending
+                && lane_state.in_progress_by.is_none()
+                && !writer.state().lane_in_flight(lane.index)
+                && !writer.state().lane_submit_active(lane.index);
+            stale_pending.then_some(lane.index)
+        })
+        .collect();
+
+    for lane_id in stale_lane_ids {
+        eprintln!(
+            "[orchestrate] executor preflight: no ready tasks; clearing stale pending lane {} before planner wake",
+            lane_id
+        );
+        writer.apply(ControlEvent::LanePendingSet {
+            lane_id,
+            pending: false,
+        });
+    }
 }
 
 /// Intent: transport_effect

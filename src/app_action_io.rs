@@ -457,40 +457,47 @@ fn enforce_executor_step_limit(
     last_result: &mut Option<String>,
     workspace: &std::path::Path,
 ) -> bool {
-    if role.starts_with("planner")
-        && executor_step_limit_exceeded(total_steps, crate::constants::PLANNER_STEP_LIMIT)
-    {
+    let Some(limit) = step_limit_for_role(role) else {
+        return false;
+    };
+    if executor_step_limit_exceeded(total_steps, limit.limit) {
         *error_streak = error_streak.saturating_add(1);
-        *last_result = Some(planner_step_limit_feedback());
+        *last_result = Some((limit.feedback)());
         crate::blockers::record_action_failure_with_writer(
             workspace,
             None,
             role,
             "step_limit",
-            &format!(
-                "planner reached step limit ({})",
-                crate::constants::PLANNER_STEP_LIMIT
-            ),
-            None,
-        );
-        return true;
-    }
-    if role.starts_with("executor")
-        && executor_step_limit_exceeded(total_steps, EXECUTOR_STEP_LIMIT)
-    {
-        *error_streak = error_streak.saturating_add(1);
-        *last_result = Some(executor_step_limit_feedback());
-        crate::blockers::record_action_failure_with_writer(
-            workspace,
-            None,
-            role,
-            "step_limit",
-            &format!("executor reached step limit ({EXECUTOR_STEP_LIMIT})"),
+            &format!("{} reached step limit ({})", limit.role_label, limit.limit),
             None,
         );
         return true;
     }
     false
+}
+
+struct RoleStepLimit {
+    role_label: &'static str,
+    limit: usize,
+    feedback: fn() -> String,
+}
+
+fn step_limit_for_role(role: &str) -> Option<RoleStepLimit> {
+    if role.starts_with("planner") {
+        Some(RoleStepLimit {
+            role_label: "planner",
+            limit: crate::constants::PLANNER_STEP_LIMIT,
+            feedback: planner_step_limit_feedback,
+        })
+    } else if role.starts_with("executor") {
+        Some(RoleStepLimit {
+            role_label: "executor",
+            limit: EXECUTOR_STEP_LIMIT,
+            feedback: executor_step_limit_feedback,
+        })
+    } else {
+        None
+    }
 }
 
 fn executor_step_limit_feedback() -> String {
@@ -758,13 +765,13 @@ fn take_external_user_message_without_writer(role: &str) -> Option<String> {
 }
 
 /// Intent: event_append
-/// Resource: error
+/// Resource: prompt_context
 /// Inputs: &mut std::string::String, &str
 /// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: mutation
+/// Forbidden: fs_write, uses_network, spawns_process
+/// Invariants: no_external_effects, deterministic_for_same_inputs
+/// Failure: infallible
 /// Provenance: rustc:facts + rustc:docstring
 fn append_external_user_message_to_prompt(prompt: &mut String, inbound: &str) {
     let parsed = serde_json::from_str::<Value>(inbound).ok();

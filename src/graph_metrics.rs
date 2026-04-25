@@ -27,6 +27,15 @@ enum RegionReductionMode {
     Dominator,
 }
 
+impl RegionReductionMode {
+    fn persist_label(self) -> &'static str {
+        match self {
+            RegionReductionMode::Scc => "generate_scc_region_reduction_issues",
+            RegionReductionMode::Dominator => "generate_dominator_region_reduction_issues",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct BridgeConnectivityStats {
     pub crate_name: String,
@@ -68,16 +77,7 @@ pub fn generate_bridge_connectivity_issues(workspace: &Path) -> Result<usize> {
         );
     }
 
-    rescore_all(&mut file);
-    let after = serde_json::to_value(&file)?;
-    if before != after {
-        persist_issues_projection_with_writer(
-            workspace,
-            &file,
-            None,
-            "generate_bridge_connectivity_issues",
-        )?;
-    }
+    finalize_issue_file(workspace, &mut file, before, "generate_bridge_connectivity_issues")?;
 
     Ok(mutated)
 }
@@ -290,16 +290,12 @@ pub fn generate_artifact_writer_dispersion_issues(workspace: &Path) -> Result<us
         mutated += sync_artifact_writer_dispersion_issues_for_crate(&mut file, &crate_name, &idx);
     }
 
-    rescore_all(&mut file);
-    let after = serde_json::to_value(&file)?;
-    if before != after {
-        persist_issues_projection_with_writer(
-            workspace,
-            &file,
-            None,
-            "generate_artifact_writer_dispersion_issues",
-        )?;
-    }
+    finalize_issue_file(
+        workspace,
+        &mut file,
+        before,
+        "generate_artifact_writer_dispersion_issues",
+    )?;
 
     Ok(mutated)
 }
@@ -409,16 +405,12 @@ pub fn generate_error_shaping_dispersion_issues(workspace: &Path) -> Result<usiz
         mutated += sync_error_shaping_dispersion_issue_for_crate(&mut file, &crate_name, &idx);
     }
 
-    rescore_all(&mut file);
-    let after = serde_json::to_value(&file)?;
-    if before != after {
-        persist_issues_projection_with_writer(
-            workspace,
-            &file,
-            None,
-            "generate_error_shaping_dispersion_issues",
-        )?;
-    }
+    finalize_issue_file(
+        workspace,
+        &mut file,
+        before,
+        "generate_error_shaping_dispersion_issues",
+    )?;
 
     Ok(mutated)
 }
@@ -555,16 +547,12 @@ pub fn generate_state_transition_dispersion_issues(workspace: &Path) -> Result<u
         mutated += sync_state_transition_dispersion_issues_for_crate(&mut file, &crate_name, &idx);
     }
 
-    rescore_all(&mut file);
-    let after = serde_json::to_value(&file)?;
-    if before != after {
-        persist_issues_projection_with_writer(
-            workspace,
-            &file,
-            None,
-            "generate_state_transition_dispersion_issues",
-        )?;
-    }
+    finalize_issue_file(
+        workspace,
+        &mut file,
+        before,
+        "generate_state_transition_dispersion_issues",
+    )?;
 
     Ok(mutated)
 }
@@ -590,16 +578,12 @@ pub fn generate_planner_loop_fragmentation_issues(workspace: &Path) -> Result<us
         mutated += sync_planner_loop_fragmentation_issue_for_crate(&mut file, &crate_name, &idx);
     }
 
-    rescore_all(&mut file);
-    let after = serde_json::to_value(&file)?;
-    if before != after {
-        persist_issues_projection_with_writer(
-            workspace,
-            &file,
-            None,
-            "generate_planner_loop_fragmentation_issues",
-        )?;
-    }
+    finalize_issue_file(
+        workspace,
+        &mut file,
+        before,
+        "generate_planner_loop_fragmentation_issues",
+    )?;
 
     Ok(mutated)
 }
@@ -641,16 +625,12 @@ pub fn generate_implicit_state_machine_issues(workspace: &Path) -> Result<usize>
         mutated += sync_implicit_state_machine_issues_for_crate(&mut file, &crate_name, &idx);
     }
 
-    rescore_all(&mut file);
-    let after = serde_json::to_value(&file)?;
-    if before != after {
-        persist_issues_projection_with_writer(
-            workspace,
-            &file,
-            None,
-            "generate_implicit_state_machine_issues",
-        )?;
-    }
+    finalize_issue_file(
+        workspace,
+        &mut file,
+        before,
+        "generate_implicit_state_machine_issues",
+    )?;
 
     Ok(mutated)
 }
@@ -762,16 +742,7 @@ pub fn generate_effect_boundary_leak_issues(workspace: &Path) -> Result<usize> {
         mutated += sync_effect_boundary_leak_issues_for_crate(workspace, &mut file, &crate_name)?;
     }
 
-    rescore_all(&mut file);
-    let after = serde_json::to_value(&file)?;
-    if before != after {
-        persist_issues_projection_with_writer(
-            workspace,
-            &file,
-            None,
-            "generate_effect_boundary_leak_issues",
-        )?;
-    }
+    finalize_issue_file(workspace, &mut file, before, "generate_effect_boundary_leak_issues")?;
 
     Ok(mutated)
 }
@@ -1104,16 +1075,12 @@ pub fn generate_representation_fanout_issues(workspace: &Path) -> Result<usize> 
         );
     }
 
-    rescore_all(&mut file);
-    let after = serde_json::to_value(&file)?;
-    if before != after {
-        persist_issues_projection_with_writer(
-            workspace,
-            &file,
-            None,
-            "generate_representation_fanout_issues",
-        )?;
-    }
+    finalize_issue_file(
+        workspace,
+        &mut file,
+        before,
+        "generate_representation_fanout_issues",
+    )?;
 
     Ok(mutated)
 }
@@ -1333,19 +1300,7 @@ fn generate_region_reduction_issues(workspace: &Path, mode: RegionReductionMode)
         mutated += resolve_legacy_cfg_region_issues(&mut file, &crate_name);
     }
 
-    rescore_all(&mut file);
-    let after = serde_json::to_value(&file)?;
-    if before != after {
-        persist_issues_projection_with_writer(
-            workspace,
-            &file,
-            None,
-            match mode {
-                RegionReductionMode::Scc => "generate_scc_region_reduction_issues",
-                RegionReductionMode::Dominator => "generate_dominator_region_reduction_issues",
-            },
-        )?;
-    }
+    finalize_issue_file(workspace, &mut file, before, mode.persist_label())?;
 
     Ok(mutated)
 }
