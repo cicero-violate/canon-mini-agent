@@ -965,8 +965,6 @@ mod handoff_causality_tests {
     #[test]
     fn logged_planner_to_executor_handoff_queues_after_action_result() {
         let ws = make_workspace();
-        crate::constants::set_workspace(ws.to_string_lossy().to_string());
-        crate::constants::set_agent_state_dir(ws.join("agent_state").to_string_lossy().to_string());
         let tlog_path = ws.join("agent_state").join("tlog.ndjson");
         let state = crate::system_state::SystemState::new(&[], 0);
         let mut writer =
