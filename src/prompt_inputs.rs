@@ -361,6 +361,12 @@ fn summarize_enforced_invariants_for_prompt(raw: &str) -> String {
             predicate
         ));
     }
+    out.push_str(
+        "Update path: do not apply_patch agent_state/enforced_invariants.json directly; it is a projection. \
+New discovered invariants must be synthesized by source code through \
+src/invariant_discovery.rs::maybe_synthesize_invariants and persisted through the enforced-invariants projector. \
+The invariants action only supports lifecycle ops on existing entries: read, promote, enforce, collapse.\n",
+    );
     out.push_str("Full detail: {\"action\":\"invariants\",\"op\":\"read\"}");
     out
 }
@@ -457,7 +463,7 @@ fn build_eval_header(workspace: &Path) -> String {
         "issue_health" => "close or fix the repeated open issues below",
         "safety" => "resolve violations listed in the violations view",
         "structural_invariant_coverage" => {
-            "add enforced invariants for graph-risk categories reported as missing"
+            "implement source-code synthesis for missing graph-risk invariant candidates; do not patch enforced_invariants.json directly"
         }
         _ => "address the highest-scored issues below",
     };
