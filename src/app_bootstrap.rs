@@ -364,6 +364,9 @@ fn summarize_cargo_test_failures(raw: &str) -> String {
     };
     let mut out = serde_json::Map::new();
     for key in [
+        "source",
+        "command",
+        "output_log",
         "error_locations",
         "failed_tests",
         "stalled_tests",

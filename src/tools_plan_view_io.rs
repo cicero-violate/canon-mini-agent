@@ -267,7 +267,7 @@ fn extract_output_log_path(out: &str) -> Option<PathBuf> {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn parse_cargo_test_failures(out: &str) -> Value {
+pub(crate) fn parse_cargo_test_failures(out: &str) -> Value {
     let mut locations = BTreeSet::new();
     let mut failed_tests = BTreeSet::new();
     let mut stalled_tests = BTreeSet::new();
@@ -276,8 +276,28 @@ fn parse_cargo_test_failures(out: &str) -> Value {
 
     let (log_path, scan) = load_cargo_test_failure_scan(out);
 
+    let mut in_failures_list = false;
     for line in scan.lines() {
         let trimmed = line.trim();
+        if trimmed == "failures:" {
+            in_failures_list = true;
+            failure_block.push(trimmed.to_string());
+            continue;
+        }
+        if in_failures_list {
+            if trimmed.is_empty() {
+                continue;
+            }
+            if trimmed.starts_with("test result:") || trimmed.starts_with("error: test failed") {
+                in_failures_list = false;
+            } else if is_cargo_test_failure_name(trimmed) {
+                failed_tests.insert(trimmed.to_string());
+                failure_block.push(trimmed.to_string());
+                continue;
+            } else {
+                in_failures_list = false;
+            }
+        }
         parse_cargo_test_failure_line(
             trimmed,
             &mut locations,
@@ -377,6 +397,14 @@ fn cargo_test_error_location(trimmed: &str) -> Option<String> {
 
 fn cargo_test_test_line(trimmed: &str) -> Option<&str> {
     trimmed.strip_prefix("test ")
+}
+
+fn is_cargo_test_failure_name(trimmed: &str) -> bool {
+    trimmed.contains("::")
+        && !trimmed.contains(char::is_whitespace)
+        && trimmed
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == ':')
 }
 
 fn insert_failed_test_name(failed_tests: &mut BTreeSet<String>, stripped: &str) {

@@ -794,13 +794,13 @@ fn duplicate_note(entry: &InterEntry) -> String {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: ISSUES.json
 /// Inputs: &inter_complexity::InterEntry, &str
 /// Outputs: std::vec::Vec<std::string::String>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: fs_write, uses_network, spawns_process
+/// Invariants: no_external_effects
+/// Failure: infallible
 /// Provenance: rustc:facts + rustc:docstring
 fn build_issue_evidence(entry: &InterEntry, file: &str) -> Vec<String> {
     let mut evidence = vec![

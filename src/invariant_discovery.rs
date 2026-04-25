@@ -602,6 +602,41 @@ fn sync_handoff_causality_meta_issue(
     )
 }
 
+fn sync_supervisor_cargo_test_projection_meta_issue(
+    file: &mut IssuesFile,
+    existing_ids: &HashSet<String>,
+    workspace: &Path,
+) -> (usize, bool) {
+    sync_invariant_meta_issue(
+        file,
+        existing_ids,
+        has_supervisor_cargo_test_failure_projection(workspace),
+        InvariantMetaIssueSpec {
+            id: "inv_supervisor_cargo_test_failure_projection",
+            title: "Supervisor cargo test failures must be prompt-visible before planner handoff",
+            priority: "critical",
+            description: concat!(
+                "The supervisor build gate must not leave cargo test failures as terminal-only output. ",
+                "Whenever the supervisor runs `cargo test --workspace` and it fails or errors, it must ",
+                "capture stdout/stderr, persist agent_state/latest_supervisor_cargo_test.log, write ",
+                "cargo_test_failures.json with failed_tests/error context, and allow planner prompt assembly ",
+                "to read that projection before any next planner handoff. Otherwise the supervisor correctly ",
+                "blocks git commit, but the planner receives stale or empty failure evidence and cannot repair ",
+                "the true test failure."
+            )
+            .to_string(),
+            location: "src/supervisor.rs; src/tools_plan_view_io.rs; src/app_bootstrap.rs; src/prompt_inputs.rs; src/prompts.rs",
+            evidence: &[
+                "src/supervisor.rs must use run_cmd_capture for cargo test --workspace gates and call write_cargo_test_failures_projection on failed/errored tests",
+                "src/tools_plan_view_io.rs must parse Cargo's final failures: list into failed_tests",
+                "cargo_test_failures.json must be loaded into planner prompts before planner handoff",
+                "agent_state/latest_supervisor_cargo_test.log must preserve the complete captured supervisor cargo test output",
+            ],
+            resolved_note: "Resolved automatically after source validation: supervisor cargo test failures are captured, projected, parsed, and loaded into planner prompts.",
+        },
+    )
+}
+
 /// Intent: diagnostic_scan
 /// Resource: error
 /// Inputs: &std::path::Path
@@ -635,6 +670,12 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
     // ── Meta-issue 3: planner handoff causality gap ──────────────────────────
     let (created_delta, mutated_delta) =
         sync_handoff_causality_meta_issue(&mut file, &existing_ids, workspace);
+    created += created_delta;
+    mutated |= mutated_delta;
+
+    // ── Meta-issue 4: supervisor cargo test failure visibility ───────────────
+    let (created_delta, mutated_delta) =
+        sync_supervisor_cargo_test_projection_meta_issue(&mut file, &existing_ids, workspace);
     created += created_delta;
     mutated |= mutated_delta;
 
@@ -714,6 +755,72 @@ fn has_enforced_invariants_prompt_injection(workspace: &Path) -> bool {
         "src/prompts.rs",
         "agent_state/enforced_invariants.json",
     )
+}
+
+fn has_supervisor_cargo_test_failure_projection(workspace: &Path) -> bool {
+    let supervisor_captures_loop_gate = source_contains(
+        workspace,
+        "src/supervisor.rs",
+        "match run_cmd_capture(root, \"cargo\", &[\"test\", \"--workspace\"])",
+    ) && source_contains(
+        workspace,
+        "src/supervisor.rs",
+        "write_cargo_test_failures_projection(root, \"supervisor_loop_gate\", command, &output)",
+    );
+
+    let supervisor_captures_pre_restart_gate = source_contains(
+        workspace,
+        "src/supervisor.rs",
+        "return match run_cmd_capture(root, \"cargo\", args)",
+    ) && source_contains(
+        workspace,
+        "src/supervisor.rs",
+        "write_cargo_test_failures_projection(root, \"supervisor_pre_restart\", &command, &output)",
+    );
+
+    let supervisor_persists_projection = source_contains(
+        workspace,
+        "src/supervisor.rs",
+        "latest_supervisor_cargo_test.log",
+    ) && source_contains(
+        workspace,
+        "src/supervisor.rs",
+        "fs::write(root.join(\"cargo_test_failures.json\"), serialized)",
+    );
+
+    let parser_reads_cargo_failure_list = source_contains(
+        workspace,
+        "src/tools_plan_view_io.rs",
+        "trimmed == \"failures:\"",
+    ) && source_contains(
+        workspace,
+        "src/tools_plan_view_io.rs",
+        "failed_tests.insert(trimmed.to_string())",
+    );
+
+    let prompt_reads_projection = (source_contains(
+        workspace,
+        "src/app_bootstrap.rs",
+        "load_cargo_test_failures(&workspace)",
+    ) || source_contains(
+        workspace,
+        "src/app_runtime_completion.rs",
+        "load_cargo_test_failures(&workspace)",
+    )) && source_contains(
+        workspace,
+        "src/prompt_inputs.rs",
+        "cargo_test_failures",
+    ) && source_contains(
+        workspace,
+        "src/prompts.rs",
+        "Latest cargo test failures (from cargo_test_failures.json)",
+    );
+
+    supervisor_captures_loop_gate
+        && supervisor_captures_pre_restart_gate
+        && supervisor_persists_projection
+        && parser_reads_cargo_failure_list
+        && prompt_reads_projection
 }
 
 fn source_contains(workspace: &Path, relative_path: &str, needle: &str) -> bool {
@@ -947,6 +1054,30 @@ fn seed_deterministic_invariants(workspace: &Path, file: &mut EnforcedInvariants
             },
         ],
         vec!["route".to_string()],
+    );
+
+    upsert_deterministic_invariant(
+        file,
+        "inv_supervisor_cargo_test_failure_projection",
+        has_supervisor_cargo_test_failure_projection(workspace),
+        now_ms,
+        concat!(
+            "Supervisor cargo test failures must be projected into cargo_test_failures.json ",
+            "and agent_state/latest_supervisor_cargo_test.log before the next planner prompt. ",
+            "The planner must never receive an empty/stale cargo_test_failures projection when ",
+            "the supervisor has just blocked git commit because cargo test failed."
+        ),
+        vec![
+            StateCondition {
+                key: "supervisor_gate".to_string(),
+                value: "cargo_test_failed".to_string(),
+            },
+            StateCondition {
+                key: "prompt_visible_failure_projection".to_string(),
+                value: "required".to_string(),
+            },
+        ],
+        vec!["planner".to_string(), "route".to_string()],
     );
 
     seed_graph_risk_structural_invariants(workspace, file, now_ms);

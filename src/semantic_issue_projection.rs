@@ -70,8 +70,6 @@ struct ManifestProposal {
 #[derive(Debug, Deserialize, Clone)]
 struct RankCandidate {
     #[serde(default)]
-    rank: usize,
-    #[serde(default)]
     owner: String,
     #[serde(default)]
     owner_node_id: String,
@@ -87,8 +85,6 @@ struct RankCandidate {
     resource: Option<String>,
     #[serde(default)]
     effects: Vec<String>,
-    #[serde(default)]
-    reasoning: Vec<String>,
 }
 
 fn sanitize_fragment(raw: &str) -> String {
@@ -109,7 +105,7 @@ fn sanitize_fragment(raw: &str) -> String {
 fn issue_id(candidate: &RankCandidate) -> String {
     let key = format!(
         "{}|{}|{}",
-        candidate.owner, candidate.owner_node_id, candidate.rank
+        candidate.owner, candidate.owner_node_id, candidate.recommended_action
     );
     let hash = crate::logging::stable_hash_hex(&key);
     format!("{ISSUE_ID_PREFIX}{}", sanitize_fragment(&hash))
@@ -128,23 +124,21 @@ fn action_tier(action: &str) -> u8 {
     }
 }
 
-fn rank_signal(candidate: &RankCandidate) -> f64 {
-    let pair_bonus = ((candidate.pair_count as f64).log2() / 6.0).clamp(0.0, 1.0);
-    (0.7 * candidate.confidence + 0.3 * pair_bonus).clamp(0.0, 1.0)
-}
-
 fn priority_for(candidate: &RankCandidate) -> &'static str {
-    let signal = rank_signal(candidate);
     if candidate.recommended_action == "safe_merge" {
-        if signal >= 0.85 {
-            "high"
-        } else {
-            "medium"
-        }
-    } else if signal >= 0.65 {
+        "high"
+    } else if candidate.recommended_action == "investigate" {
         "medium"
     } else {
         "low"
+    }
+}
+
+fn action_signal(action: &str) -> f64 {
+    match action {
+        "safe_merge" => 1.0,
+        "investigate" => 0.5,
+        _ => 0.25,
     }
 }
 
@@ -161,33 +155,20 @@ fn build_issue(candidate: &RankCandidate) -> Issue {
     };
     let intent = candidate.intent_class.as_deref().unwrap_or("unknown");
     let resource = candidate.resource.as_deref().unwrap_or("unknown");
-    let effects = if candidate.effects.is_empty() {
+    let mut effect_values = candidate.effects.clone();
+    effect_values.sort();
+    effect_values.dedup();
+    let effects = if effect_values.is_empty() {
         "unknown".to_string()
     } else {
-        candidate.effects.join(", ")
-    };
-    let reasoning_preview = if candidate.reasoning.is_empty() {
-        "none".to_string()
-    } else {
-        candidate
-            .reasoning
-            .iter()
-            .take(5)
-            .cloned()
-            .collect::<Vec<_>>()
-            .join("; ")
+        effect_values.join(", ")
     };
     let mut evidence = vec![
         format!("owner={}", candidate.owner),
         format!("owner_node_id={}", candidate.owner_node_id),
-        format!("rank={}", candidate.rank),
-        format!("confidence={:.2}", candidate.confidence),
-        format!("pair_count={}", candidate.pair_count),
         format!("recommended_action={}", candidate.recommended_action),
     ];
-    if !candidate.reasoning.is_empty() {
-        evidence.push(format!("reasoning={reasoning_preview}"));
-    }
+    evidence.sort();
     Issue {
         id: issue_id(candidate),
         title,
@@ -197,15 +178,11 @@ fn build_issue(candidate: &RankCandidate) -> Issue {
         description: format!(
             "Semantic rank projected this redundant-path candidate as `{}`.\n\
              owner: `{}`\n\
-             confidence: {:.2}\n\
-             pair_count: {}\n\
              intent: `{}` resource: `{}` effects: {}\n\n\
              This issue is auto-generated from `safe_patch_candidates.json` and should map to a \
              concrete merge/delete refactor task with verification.",
             candidate.recommended_action,
             candidate.owner,
-            candidate.confidence,
-            candidate.pair_count,
             intent,
             resource,
             effects
@@ -218,15 +195,15 @@ fn build_issue(candidate: &RankCandidate) -> Issue {
             "source": "safe_patch_candidates.json",
             "owner": candidate.owner,
             "owner_node_id": candidate.owner_node_id,
-            "rank": candidate.rank,
-            "confidence": candidate.confidence,
-            "pair_count": candidate.pair_count,
             "recommended_action": candidate.recommended_action,
             "intent_class": candidate.intent_class,
             "resource": candidate.resource,
-            "effects": candidate.effects,
+            "effects": effect_values,
             // Integrates with global issue scoring detector_signal path.
-            "redundancy_ratio": rank_signal(candidate),
+            // This intentionally uses the stable action tier, not rank/confidence/pair_count.
+            // Rank-derived values churn every graph rebuild and previously caused repeated
+            // 25-37MB ISSUES.json projection rewrites.
+            "redundancy_ratio": action_signal(&candidate.recommended_action),
         }),
         acceptance_criteria: vec![
             "Chosen candidate is refactored into a single canonical implementation path"
@@ -410,26 +387,15 @@ fn selected_manifest_errors(
     out
 }
 
-fn resolve_missing_projected_issues(
+fn prune_missing_projected_issues(
     file: &mut IssuesFile,
     active_ids: &HashSet<String>,
     id_prefix: &str,
 ) -> usize {
-    let mut resolved = 0usize;
-    for issue in &mut file.issues {
-        if !issue.id.starts_with(id_prefix) {
-            continue;
-        }
-        if active_ids.contains(&issue.id) {
-            continue;
-        }
-        if crate::issues::is_closed(issue) {
-            continue;
-        }
-        issue.status = "resolved".to_string();
-        resolved += 1;
-    }
-    resolved
+    let before = file.issues.len();
+    file.issues
+        .retain(|issue| !issue.id.starts_with(id_prefix) || active_ids.contains(&issue.id));
+    before.saturating_sub(file.issues.len())
 }
 
 fn load_rank_file(path: &Path) -> Result<RankFile> {
@@ -533,8 +499,8 @@ pub fn project_semantic_rank_issues(
         }
     }
     let resolved_stale =
-        resolve_missing_projected_issues(&mut file, &active_rank_ids, ISSUE_ID_PREFIX)
-            + resolve_missing_projected_issues(
+        prune_missing_projected_issues(&mut file, &active_rank_ids, ISSUE_ID_PREFIX)
+            + prune_missing_projected_issues(
                 &mut file,
                 &active_manifest_ids,
                 MANIFEST_ISSUE_ID_PREFIX,
@@ -570,4 +536,77 @@ pub fn project_from_cli_args(
             .join("safe_patch_candidates.json")
     });
     project_semantic_rank_issues(workspace, rank_path.as_path())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn candidate(_rank: usize, confidence: f64, pair_count: usize) -> RankCandidate {
+        RankCandidate {
+            owner: "canon_mini_agent::runtime::drive".to_string(),
+            owner_node_id: "fn:drive".to_string(),
+            pair_count,
+            confidence,
+            recommended_action: "safe_merge".to_string(),
+            intent_class: Some("canonical_write".to_string()),
+            resource: Some("state".to_string()),
+            effects: vec!["logging".to_string()],
+        }
+    }
+
+    #[test]
+    fn semantic_rank_issue_identity_ignores_rank_noise() {
+        let first = candidate(1, 0.98, 144);
+        let second = candidate(99, 0.41, 3);
+
+        let first_issue = build_issue(&first);
+        let second_issue = build_issue(&second);
+
+        assert_eq!(first_issue.id, second_issue.id);
+        assert_eq!(first_issue.priority, second_issue.priority);
+        assert_eq!(first_issue.description, second_issue.description);
+        assert_eq!(first_issue.evidence, second_issue.evidence);
+        assert_eq!(first_issue.metrics, second_issue.metrics);
+    }
+
+    #[test]
+    fn missing_projected_issues_are_pruned_not_retained_as_closed_noise() {
+        let active_id = format!("{ISSUE_ID_PREFIX}active");
+        let stale_id = format!("{ISSUE_ID_PREFIX}stale");
+        let manual_id = "ISS-MANUAL-1".to_string();
+        let mut active_ids = HashSet::new();
+        active_ids.insert(active_id.clone());
+        let mut file = IssuesFile {
+            version: 1,
+            issues: vec![
+                Issue {
+                    id: active_id.clone(),
+                    status: "open".to_string(),
+                    ..Issue::default()
+                },
+                Issue {
+                    id: stale_id.clone(),
+                    status: "open".to_string(),
+                    ..Issue::default()
+                },
+                Issue {
+                    id: manual_id.clone(),
+                    status: "open".to_string(),
+                    ..Issue::default()
+                },
+            ],
+        };
+
+        let pruned = prune_missing_projected_issues(&mut file, &active_ids, ISSUE_ID_PREFIX);
+        let remaining = file
+            .issues
+            .iter()
+            .map(|issue| issue.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(pruned, 1);
+        assert_eq!(remaining, vec![active_id.as_str(), manual_id.as_str()]);
+        assert!(!remaining.contains(&stale_id.as_str()));
+    }
 }

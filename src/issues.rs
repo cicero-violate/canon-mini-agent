@@ -13,6 +13,8 @@ const ISSUES_PROJECTION_META_FILE: &str = "agent_state/ISSUES.projection.meta.js
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct IssuesProjectionMeta {
     #[serde(default)]
+    version: u64,
+    #[serde(default)]
     projection_hash: String,
     #[serde(default)]
     issue_fingerprints: BTreeMap<String, String>,
@@ -160,29 +162,40 @@ pub fn persist_issues_projection_with_writer(
     subject: &str,
 ) -> Result<()> {
     let projection_path = workspace.join(ISSUES_FILE);
-    let canonical = serde_json::to_string_pretty(file)?;
-    let projection_hash = crate::logging::stable_hash_hex(&canonical);
-    if let Ok(existing) = std::fs::read_to_string(&projection_path) {
-        if crate::logging::stable_hash_hex(&existing) == projection_hash {
-            return Ok(());
-        }
-    }
-
     let status_counts = issue_status_counts(file);
     let open_count = status_counts.get("open").copied().unwrap_or(0);
     let issue_fingerprints = issue_fingerprint_map(file);
     let issue_fingerprints_hash = issue_projection_fingerprints_hash(&issue_fingerprints);
-    let previous_issue_fingerprints = load_issues_projection_meta(workspace)
+    let previous_meta = load_issues_projection_meta(workspace);
+    if let Some(meta) = previous_meta.as_ref() {
+        if meta.version == file.version
+            && !meta.projection_hash.trim().is_empty()
+            && meta.issue_fingerprints == issue_fingerprints
+        {
+            return Ok(());
+        }
+    }
+    let previous_issue_fingerprints = previous_meta
+        .clone()
         .and_then(cached_issue_fingerprints)
         .or_else(|| {
             load_issues_projection_from_path(&projection_path).map(|file| issue_fingerprint_map(&file))
         });
     let (changed_issue_count, changed_issue_ids) =
         changed_issue_ids_from_maps(previous_issue_fingerprints.as_ref(), &issue_fingerprints);
+    let canonical = serde_json::to_string_pretty(file)?;
+    let projection_hash = crate::logging::stable_hash_hex(&canonical);
     let meta = IssuesProjectionMeta {
+        version: file.version,
         projection_hash: projection_hash.clone(),
         issue_fingerprints,
     };
+    if let Ok(existing) = std::fs::read_to_string(&projection_path) {
+        if crate::logging::stable_hash_hex(&existing) == projection_hash {
+            write_issues_projection_meta(workspace, &meta)?;
+            return Ok(());
+        }
+    }
     crate::logging::record_serialized_json_projection_with_optional_writer(
         workspace,
         &projection_path,

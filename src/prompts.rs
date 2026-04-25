@@ -959,8 +959,8 @@ fn plan_task_objective_id(task_id: &str) -> Option<String> {
 /// Inputs: &serde_json::Value
 /// Outputs: std::result::Result<(), anyhow::Error>
 /// Effects: error
-/// Forbidden: error
-/// Invariants: error
+/// Forbidden: fs_write, uses_network, spawns_process
+/// Invariants: checks_must_gate_state_transition
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
 fn validate_action_provenance(action: &Value) -> Result<()> {

@@ -1,0 +1,143 @@
+*** Begin Patch
+*** Update File: src/tools_plan_view_io.rs
+@@
+-fn parse_cargo_test_failures(out: &str) -> Value {
++pub(crate) fn parse_cargo_test_failures(out: &str) -> Value {
+*** Update File: src/app_bootstrap.rs
+@@
+     for key in [
++        "source",
++        "command",
++        "output_log",
+         "error_locations",
+         "failed_tests",
+         "stalled_tests",
+*** Update File: src/supervisor.rs
+@@
+-use serde_json::json;
++use serde_json::{json, Value};
+@@
+ fn run_cmd(root: &Path, program: &str, args: &[&str]) -> Result<bool> {
+     let status = Command::new(program)
+         .args(args)
+         .current_dir(root)
+         .status()
+@@
+     Ok(status.success())
+ }
++
++fn run_cmd_capture(root: &Path, program: &str, args: &[&str]) -> Result<(bool, String)> {
++    let output = Command::new(program)
++        .args(args)
++        .current_dir(root)
++        .output()
++        .with_context(|| format!("run {} {}", program, args.join(" ")))?;
++    let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
++    if !output.stderr.is_empty() {
++        if !text.is_empty() {
++            text.push('\n');
++        }
++        text.push_str(&String::from_utf8_lossy(&output.stderr));
++    }
++    Ok((output.status.success(), text))
++}
++
++fn clear_cargo_test_failures_projection(root: &Path) {
++    let _ = fs::remove_file(root.join("cargo_test_failures.json"));
++}
++
++fn write_cargo_test_failures_projection(root: &Path, source: &str, command: &str, output: &str) {
++    let log_dir = root.join("agent_state");
++    let log_path = log_dir.join("latest_supervisor_cargo_test.log");
++    let _ = fs::create_dir_all(&log_dir);
++    let _ = fs::write(&log_path, output);
++
++    let mut failures = crate::tools::parse_cargo_test_failures(output);
++    if let Value::Object(map) = &mut failures {
++        map.insert("source".to_string(), Value::String(source.to_string()));
++        map.insert("command".to_string(), Value::String(command.to_string()));
++        map.insert(
++            "output_log".to_string(),
++            Value::String(log_path.display().to_string()),
++        );
++    }
++    let serialized =
++        serde_json::to_string_pretty(&failures).unwrap_or_else(|_| failures.to_string());
++    let _ = fs::write(root.join("cargo_test_failures.json"), serialized);
++}
+
+ fn run_cmd_output(root: &Path, program: &str, args: &[&str]) -> Result<Option<String>> {
+     let output = Command::new(program)
+         .args(args)
+         .current_dir(root)
+@@
+     label: &str,
+     args: &[&str],
+ ) -> bool {
+     eprintln!("[canon-mini-supervisor] pre-restart: running `{label} --workspace` ({reason})");
++    if label == "cargo test" {
++        let command = format!("cargo {}", args.join(" "));
++        return match run_cmd_capture(root, "cargo", args) {
++            Ok((true, _)) => {
++                eprintln!("[canon-mini-supervisor] pre-restart: {label} passed ({reason})");
++                clear_cargo_test_failures_projection(root);
++                true
++            }
++            Ok((false, output)) => {
++                write_cargo_test_failures_projection(root, "supervisor_pre_restart", &command, &output);
++                eprintln!(
++                    "[canon-mini-supervisor] pre-restart {label} failed; skipping git add/commit/push ({reason})"
++                );
++                clear_rust_patch_verification_request(state_dir);
++                false
++            }
++            Err(err) => {
++                write_cargo_test_failures_projection(
++                    root,
++                    "supervisor_pre_restart",
++                    &command,
++                    &format!("{err:#}"),
++                );
++                eprintln!(
++                    "[canon-mini-supervisor] pre-restart {label} errored; skipping git add/commit/push ({reason}): {err:#}"
++                );
++                clear_rust_patch_verification_request(state_dir);
++                false
++            }
++        };
++    }
+     match run_cmd(root, "cargo", args) {
+         Ok(true) => {
+             eprintln!("[canon-mini-supervisor] pre-restart: {label} passed ({reason})");
+             true
+         }
+@@
+     }
+     eprintln!("[canon-mini-supervisor] loop: running cargo test --workspace");
+-    let result = match run_cmd(root, "cargo", &["test", "--workspace"]) {
+-        Ok(true) => {
++    let command = "cargo test --workspace";
++    let result = match run_cmd_capture(root, "cargo", &["test", "--workspace"]) {
++        Ok((true, _)) => {
+             eprintln!("[canon-mini-supervisor] loop: tests PASSING");
++            clear_cargo_test_failures_projection(root);
+             true
+         }
+-        Ok(false) => {
++        Ok((false, output)) => {
++            write_cargo_test_failures_projection(root, "supervisor_loop_gate", command, &output);
+             eprintln!("[canon-mini-supervisor] loop: tests FAILING");
+             false
+         }
+         Err(err) => {
++            write_cargo_test_failures_projection(
++                root,
++                "supervisor_loop_gate",
++                command,
++                &format!("{err:#}"),
++            );
+             eprintln!("[canon-mini-supervisor] loop: cargo test errored: {err:#}");
+             false
+         }
+     };
+*** End Patch

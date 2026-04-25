@@ -1301,13 +1301,13 @@ fn ensure_blocker_payload_fields(payload: &mut serde_json::Map<String, Value>) -
 }
 
 /// Intent: repair_or_initialize
-/// Resource: error
+/// Resource: action_payload
 /// Inputs: &mut serde_json::Value
 /// Outputs: bool
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: state_write
+/// Forbidden: fs_write, uses_network, spawns_process
+/// Invariants: deterministic_for_same_inputs
+/// Failure: infallible
 /// Provenance: rustc:facts + rustc:docstring
 pub fn ensure_action_base_schema(action: &mut Value) -> bool {
     let Some(obj) = action.as_object_mut() else {
