@@ -170,13 +170,13 @@ fn run_patch_crate_verification_command(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: chained_action_entry
 /// Inputs: usize, &str, &str, &str, std::option::Option<&str>, &str
 /// Outputs: std::string::String
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: formats action metadata and optional command before indented result lines; trims trailing newline
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn format_chained_action_entry(
     index: usize,
@@ -1116,13 +1116,13 @@ fn fallback_rustc_failure_metadata(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: fallback_rustc_output
 /// Inputs: &str, &str, &str
 /// Outputs: std::string::String
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: output is labeled, truncated, and includes graph-unavailable guidance with normalized crate name
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn format_fallback_rustc_output(label: &str, out: &str, crate_name: &str) -> String {
     format!(
@@ -1208,13 +1208,13 @@ fn rustc_action_symbol(action: &Value, crate_norm: &str) -> Option<String> {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: graph_backed_hir_output
 /// Inputs: &semantic::SemanticIndex, &std::path::Path, &str, std::option::Option<&str>, std::option::Option<&str>
 /// Outputs: std::string::String
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: output includes graph source, mode, symbol/filter fields, and either symbol window or semantic map content
+/// Failure: embeds symbol_window errors in formatted output
 /// Provenance: rustc:facts + rustc:docstring
 fn format_graph_backed_hir_output(
     idx: &crate::semantic::SemanticIndex,
@@ -1367,13 +1367,13 @@ fn format_graph_backed_mir_listing_output(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: rustc_graph_filter
 /// Inputs: &str
 /// Outputs: std::option::Option<std::string::String>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: trims input, returns none for empty input, accepts --symbol/--filter/--path prefixes, otherwise returns full trimmed filter
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn parse_rustc_graph_filter(extra: &str) -> Option<String> {
     let s = extra.trim();
@@ -1655,13 +1655,13 @@ fn collect_graph_call_cfg_preview_data(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: graph_call_cfg_output
 /// Inputs: &str, &str, &str
 /// Outputs: std::string::String
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: combines summary with labeled truncated full output section
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn format_graph_call_cfg_output(summary: &str, bin_label: &str, bin_out: &str) -> String {
     let full_out = format!("{bin_label}:\n{}\n", truncate(bin_out, MAX_SNIPPET));
@@ -2020,13 +2020,13 @@ fn graph_report_path(crate_dir: &Path, action_kind: &str) -> (PathBuf, &'static 
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: graph_reports_summary
 /// Inputs: &str, &str, &std::path::Path, &str
 /// Outputs: std::result::Result<std::string::String, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: reads graph report preview when present
+/// Forbidden: mutation
+/// Invariants: summary always includes label, output directory, and report path; missing report emits a report_note
+/// Failure: returns report preview read/parse errors
 /// Provenance: rustc:facts + rustc:docstring
 fn build_graph_reports_summary(
     label: &str,
@@ -2150,13 +2150,13 @@ fn maybe_log_graph_reports_failure(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: cargo_test_command
 /// Inputs: &str, std::option::Option<&str>
 /// Outputs: std::string::String
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: explicit tests use --exact; default command targets lib, bins, and tests while skipping doc tests
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn build_cargo_test_command(crate_name: &str, test_name: Option<&str>) -> String {
     if let Some(test_name) = test_name {
@@ -2269,13 +2269,13 @@ fn cargo_test_label(summary_line: Option<&str>, spawn_ok: bool) -> &'static str 
 }
 
 /// Intent: event_append
-/// Resource: error
+/// Resource: cargo_test_summary
 /// Inputs: &mut std::string::String, &serde_json::Value, &str, &str, bool
 /// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: appends cargo test failure details to the provided summary string
+/// Forbidden: mutation outside the provided summary string
+/// Invariants: appends the header only when the selected JSON array exists and is non-empty; string entries preserve input order
+/// Failure: missing, non-array, empty, or non-string entries are skipped without error
 /// Provenance: rustc:facts + rustc:docstring
 fn append_cargo_test_failure_section(
     summary: &mut String,

@@ -2480,13 +2480,13 @@ fn check_test_gate(root: &Path, state_dir: &Path, prior_value: bool) -> bool {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: symbol_text
 /// Inputs: &str
 /// Outputs: std::vec::Vec<std::string::String>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: returns whitespace-delimited tokens containing :: after trimming surrounding punctuation, excluding path-like tokens containing /
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn extract_symbol_tokens(text: &str) -> Vec<String> {
     text.split_whitespace()
@@ -2502,13 +2502,13 @@ fn extract_symbol_tokens(text: &str) -> Vec<String> {
 }
 
 /// Intent: canonical_read
-/// Resource: error
+/// Resource: violation_symbols
 /// Inputs: &std::path::Path
 /// Outputs: std::vec::Vec<std::string::String>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: reads violation report data from workspace
+/// Forbidden: mutation
+/// Invariants: returns sorted, deduplicated symbol-like entries from violation files and evidence text
+/// Failure: delegated to load_violations_report fallback behavior
 /// Provenance: rustc:facts + rustc:docstring
 fn load_violation_symbols(workspace: &Path) -> Vec<String> {
     let mut symbols = Vec::new();
@@ -2612,13 +2612,13 @@ fn resolve_file_locations(
 }
 
 /// Intent: canonical_read
-/// Resource: error
+/// Resource: semantic_index
 /// Inputs: &std::path::Path
 /// Outputs: std::option::Option<semantic::SemanticIndex>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: reads semantic index metadata and logs load attempts
+/// Forbidden: mutation
+/// Invariants: attempts available crates by descending name length and returns the first loadable SemanticIndex
+/// Failure: returns None when no crates are available or all semantic index loads fail
 /// Provenance: rustc:facts + rustc:docstring
 fn load_primary_semantic_index(workspace: &Path) -> Option<crate::SemanticIndex> {
     let mut crates = crate::SemanticIndex::available_crates(workspace);

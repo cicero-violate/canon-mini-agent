@@ -151,13 +151,13 @@ fn is_ignored_dir(name: &str) -> bool {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: declaration_symbols
 /// Inputs: &std::path::Path, &std::path::Path, &str
 /// Outputs: std::vec::Vec<tools::SymbolEntry>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: returns no symbols for parse errors; emitted file paths are workspace-relative when possible
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn extract_decl_symbols(workspace: &Path, file_path: &Path, text: &str) -> Vec<SymbolEntry> {
     let parse = SourceFile::parse(text, Edition::CURRENT);
@@ -401,13 +401,13 @@ fn load_symbols_index_file(symbols_path: &Path) -> Result<SymbolsIndexFile> {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: function_prefix_index
 /// Inputs: &tools::SymbolsIndexFile
 /// Outputs: std::collections::BTreeMap<std::string::String, std::collections::BTreeSet<std::string::String>>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: includes only function symbols with split prefix/stem names; output ordering is deterministic
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn build_function_prefixes_by_stem(
     symbols_file: &SymbolsIndexFile,
@@ -465,13 +465,13 @@ fn collect_rename_candidates(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: rename_candidate
 /// Inputs: &tools::SymbolEntry, &std::collections::BTreeMap<std::string::String, std::collections::BTreeSet<std::string::String>>, &std::collections::BTreeSet<&str>, &std::collections::BTreeSet<&str>
 /// Outputs: std::option::Option<tools::RenameCandidate>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: skipped symbols and symbols with no rename reasons produce None; candidates carry deterministic score from reasons
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn build_rename_candidate(
     sym: &SymbolEntry,
@@ -825,13 +825,13 @@ fn has_legacy_rename_field(action: &Value) -> bool {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: bulk_rename_pairs
 /// Inputs: &[serde_json::Value], &str
 /// Outputs: std::result::Result<std::vec::Vec<(std::string::String, std::string::String)>, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: requires non-empty rename array; each item must contain old/new strings normalized for the crate
+/// Failure: bails on empty renames, missing fields, or invalid normalized pairs
 /// Provenance: rustc:facts + rustc:docstring
 fn parse_bulk_renames(arr: &[Value], crate_name: &str) -> Result<Vec<(String, String)>> {
     if arr.is_empty() {
@@ -856,13 +856,13 @@ fn parse_bulk_renames(arr: &[Value], crate_name: &str) -> Result<Vec<(String, St
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: single_symbol_rename
 /// Inputs: &serde_json::Value, &str
 /// Outputs: std::result::Result<std::vec::Vec<(std::string::String, std::string::String)>, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: requires non-empty old_symbol and new_symbol fields and normalizes the pair for the target crate
+/// Failure: returns validation or normalization errors
 /// Provenance: rustc:facts + rustc:docstring
 fn parse_single_rename(action: &Value, crate_name: &str) -> Result<Vec<(String, String)>> {
     let old = action
@@ -888,13 +888,13 @@ fn parse_single_rename(action: &Value, crate_name: &str) -> Result<Vec<(String, 
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: rename_symbol_pair
 /// Inputs: &str, &str, &str
 /// Outputs: std::result::Result<(std::string::String, std::string::String), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: strips semantic crate prefixes and returns non-empty old/new symbol pair
+/// Failure: bails when either normalized symbol is empty
 /// Provenance: rustc:facts + rustc:docstring
 fn normalize_pair(crate_name: &str, old: &str, new: &str) -> Result<(String, String)> {
     let old = strip_semantic_crate_prefix(crate_name, old);

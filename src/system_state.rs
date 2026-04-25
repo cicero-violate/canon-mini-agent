@@ -187,13 +187,13 @@ impl SystemState {
 }
 
 /// Intent: canonical_write
-/// Resource: error
+/// Resource: planner_pending_flag
 /// Inputs: &mut system_state::SystemState, bool
 /// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: updates planner pending state in memory
+/// Forbidden: mutation outside provided SystemState
+/// Invariants: clearing planner_pending also clears planner_pending_reason
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn set_planner_pending_flag(s: &mut SystemState, pending: bool) {
     s.planner_pending = pending;
@@ -239,13 +239,13 @@ fn reset_lane_submit_state(s: &mut SystemState, lane_id: usize) {
 }
 
 /// Intent: canonical_write
-/// Resource: error
+/// Resource: core_control_event
 /// Inputs: system_state::SystemState, &events::ControlEvent
 /// Outputs: system_state::SystemState
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: mutates core system-state fields for handled control events
+/// Forbidden: mutation for unhandled control events
+/// Invariants: returns true only when the event was applied; planner queue events set canonical pending reasons
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn apply_core_control_event(s: &mut SystemState, e: &ControlEvent) -> bool {
     match e {
@@ -470,13 +470,13 @@ fn apply_extended_control_event(s: &mut SystemState, e: &ControlEvent) {
 }
 
 /// Intent: validation_gate
-/// Resource: error
+/// Resource: system_state
 /// Inputs: &system_state::SystemState
 /// Outputs: std::result::Result<(), std::string::String>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: phase is non-empty; pending reasons require pending flags; lane/tab/submit maps remain mutually consistent
+/// Failure: returns an invariant violation message for the first invalid system-state relation
 /// Provenance: rustc:facts + rustc:docstring
 pub fn validate_system_state(s: &SystemState) -> Result<(), String> {
     if s.phase.trim().is_empty() {

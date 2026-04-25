@@ -283,13 +283,13 @@ fn inter_call_maps(
 // ---------------------------------------------------------------------------
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: hotspot_issues
 /// Inputs: &std::path::Path, usize
 /// Outputs: std::result::Result<usize, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: appends and persists hotspot/duplicate issues when new issues are created
+/// Forbidden: mutation outside issues projection state
+/// Invariants: scans available crate analyses, respects existing issue ids/open locations, and persists only when created count is non-zero
+/// Failure: returns issue persistence errors
 /// Provenance: rustc:facts + rustc:docstring
 pub fn generate_hotspot_issues(workspace: &Path, top_n: usize) -> Result<usize> {
     let (mut file, existing_ids, open_locations) = load_issue_file_with_indexes(workspace);
@@ -314,13 +314,13 @@ pub fn generate_hotspot_issues(workspace: &Path, top_n: usize) -> Result<usize> 
 }
 
 /// Intent: canonical_read
-/// Resource: error
+/// Resource: issues_file_indexes
 /// Inputs: &std::path::Path
 /// Outputs: (issues::IssuesFile, std::collections::HashSet<std::string::String>, std::collections::HashSet<std::string::String>)
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: reads issues file from workspace
+/// Forbidden: mutation
+/// Invariants: returns loaded issues file plus all issue ids and open issue locations
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn load_issue_file_with_indexes(
     workspace: &Path,
@@ -348,13 +348,13 @@ fn collect_crate_analyses(workspace: &Path) -> Vec<(String, InterAnalysis)> {
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: inter_complexity_hotspot_issues
 /// Inputs: &mut issues::IssuesFile, &inter_complexity::InterAnalysis, &str, &std::collections::HashSet<std::string::String>, &std::collections::HashSet<std::string::String>, usize
 /// Outputs: usize
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: appends hotspot and recursive-function issues to the provided IssuesFile
+/// Forbidden: mutation outside the provided IssuesFile
+/// Invariants: created count equals appended issues; hotspot issues are limited by top_n; recursive issues are added only for directly recursive entries
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn append_hotspot_issues(
     file: &mut IssuesFile,

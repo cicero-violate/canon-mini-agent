@@ -370,13 +370,13 @@ fn normalized_drift_reward(drift: &crate::drift_analysis::FingerprintDrift) -> f
 }
 
 /// Intent: canonical_write
-/// Resource: error
+/// Resource: task_outcomes
 /// Inputs: &str, &mut std::collections::HashMap<std::string::String, grpo::TaskOutcome>
 /// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: updates task outcome state from parsed message payloads
+/// Forbidden: mutation outside the provided outcomes map
+/// Invariants: updates only when message contains parseable JSON with both task id and status
+/// Failure: malformed messages or missing task/status fields leave outcomes unchanged
 /// Provenance: rustc:facts + rustc:docstring
 fn update_outcome_from_message(message: &str, outcomes: &mut HashMap<String, TaskOutcome>) {
     let Some(json) = parse_json_payload(message) else {

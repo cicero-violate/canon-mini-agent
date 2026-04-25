@@ -4,13 +4,13 @@ use crate::prompts::{validate_message_action, MessageValidationMode};
 use crate::tool_schema::{action_schema_json, schema_diff_messages};
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: message_target
 /// Inputs: &str, &str
-/// Outputs: &str
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Outputs: &'static str
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: explicit planner/executor targets are preserved; otherwise planner roles target executor and all other roles target planner
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn normalize_message_target(role: &str, target: &str) -> &'static str {
     if target == "planner" || target == "executor" {
@@ -116,13 +116,13 @@ pub fn expected_message_format(from: &str, to_role: &str, msg_type: &str, status
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: message_schema
 /// Inputs: &str, &str, &str, &str, &[(&str, &str
 /// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: formats a message action JSON code block with required routing, status, payload, rationale, and next-action fields
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 pub fn format_message_schema(
     from: &str,
@@ -664,13 +664,13 @@ fn example_symbol_workflow_action(kind: &str) -> Option<Value> {
 }
 
 /// Intent: pure_transform
-/// Resource: error
-/// Inputs: &str, &[(&str, serde_json::Value
-/// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Resource: invalid_action_example_json
+/// Inputs: &str, &[(&str, serde_json::Value)], &str, &str
+/// Outputs: serde_json::Value
+/// Effects: none
+/// Forbidden: mutation outside local JSON object construction
+/// Invariants: output object always includes action, observation, rationale, and predicted_next_actions fields
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn build_symbol_workflow_example_action(
     action: &str,
@@ -948,13 +948,13 @@ fn message_field_str<'a>(obj: &'a serde_json::Map<String, Value>, field: &str) -
 }
 
 /// Intent: route_gate
-/// Resource: error
+/// Resource: message_route_fields
 /// Inputs: &mut std::vec::Vec<std::string::String>, &serde_json::Map<std::string::String, serde_json::Value>
 /// Outputs: (std::option::Option<std::string::String>, std::option::Option<std::string::String>)
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: appends message route schema differences to schema_diff
+/// Forbidden: mutation outside schema_diff
+/// Invariants: inspects from, to, type, and status route fields and returns collected message type/status values
+/// Failure: malformed or missing route fields are reported through schema_diff
 /// Provenance: rustc:facts + rustc:docstring
 fn collect_message_route_fields(
     schema_diff: &mut Vec<String>,
@@ -1046,13 +1046,13 @@ fn validate_blocker_payload_placement(
 }
 
 /// Intent: validation_gate
-/// Resource: error
+/// Resource: blocker_payload
 /// Inputs: &mut std::vec::Vec<std::string::String>, std::option::Option<&serde_json::Map<std::string::String, serde_json::Value>>, std::option::Option<&str>, std::option::Option<&str>
 /// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: appends schema diff entries for missing blocker payload fields
+/// Forbidden: mutation outside the provided schema_diff vector
+/// Invariants: blocker, evidence, and required_action are required only for blocker/blocked messages
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn validate_blocker_payload_fields(
     schema_diff: &mut Vec<String>,
@@ -1252,13 +1252,13 @@ fn object_string_present(obj: &serde_json::Map<String, Value>, field: &str) -> b
 }
 
 /// Intent: repair_or_initialize
-/// Resource: error
+/// Resource: invalid_action_object_field
 /// Inputs: &mut serde_json::Map<std::string::String, serde_json::Value>, &str, &str
 /// Outputs: bool
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: inserts a default string field when absent or non-string
+/// Forbidden: mutation outside the provided JSON object
+/// Invariants: returns false when a string field is already present; returns true only after inserting the provided string value
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn ensure_object_string_field(
     obj: &mut serde_json::Map<String, Value>,
@@ -1280,13 +1280,13 @@ fn missing_predicted_next_actions(obj: &serde_json::Map<String, Value>) -> bool 
 }
 
 /// Intent: repair_or_initialize
-/// Resource: error
+/// Resource: blocker_payload_fields
 /// Inputs: &mut serde_json::Map<std::string::String, serde_json::Value>
 /// Outputs: bool
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: fills missing blocker payload string fields in place
+/// Forbidden: mutation outside provided payload object
+/// Invariants: ensures blocker, evidence, and required_action string fields exist with fallback values
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn ensure_blocker_payload_fields(payload: &mut serde_json::Map<String, Value>) -> bool {
     let mut changed = false;

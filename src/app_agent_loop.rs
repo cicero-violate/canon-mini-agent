@@ -1025,13 +1025,13 @@ struct PendingExecutorSubmit {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: submit_ack_json
 /// Inputs: &str
 /// Outputs: std::option::Option<(u32, u64, std::option::Option<std::string::String>)>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: returns tab_id, turn_id, and optional command_id only when submit_ack is true and required ids are present
+/// Failure: malformed JSON, missing required ids, or non-ack payloads return None
 /// Provenance: rustc:facts + rustc:docstring
 fn parse_submit_ack(raw: &str) -> Option<(u32, u64, Option<String>)> {
     let v: Value = serde_json::from_str(raw).ok()?;

@@ -61,13 +61,13 @@ fn reopened_task_needs_regression_linkage(
 }
 
 /// Intent: repair_or_initialize
-/// Resource: error
+/// Resource: reopened_task_regression_linkage
 /// Inputs: &serde_json::Map<std::string::String, serde_json::Value>, &serde_json::Map<std::string::String, serde_json::Value>, &str
 /// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: accepting reopened done tasks without regression-test linkage
+/// Invariants: status changes from done to non-done must include regression-test linkage in steps
+/// Failure: bails when reopened task lacks required regression linkage
 /// Provenance: rustc:facts + rustc:docstring
 fn ensure_reopened_task_has_regression_linkage(
     existing: &serde_json::Map<String, Value>,
@@ -83,13 +83,13 @@ fn ensure_reopened_task_has_regression_linkage(
 }
 
 /// Intent: validation_gate
-/// Resource: error
+/// Resource: plan_action_shape
 /// Inputs: &serde_json::Value, &str
 /// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: dispatches known plan operations to their shape validators and accepts view/update/unknown operations without shape checks
+/// Failure: returns delegated validation errors
 /// Provenance: rustc:facts + rustc:docstring
 fn validate_plan_action_shape(action: &Value, normalized_op: &str) -> Result<()> {
     match normalized_op {
@@ -199,13 +199,13 @@ fn validate_plan_update_task_shape(action: &Value, normalized_op: &str) -> Resul
 }
 
 /// Intent: validation_gate
-/// Resource: error
+/// Resource: plan_delete_task_shape
 /// Inputs: &serde_json::Value, &str
 /// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: delete_task requires task_id and rejects task, status, edge, and full-plan fields
+/// Failure: returns missing-field or rejected-field validation errors
 /// Provenance: rustc:facts + rustc:docstring
 fn validate_plan_delete_task_shape(action: &Value, normalized_op: &str) -> Result<()> {
     require_plan_action_field(action, normalized_op, "task_id")?;
@@ -245,13 +245,13 @@ fn validate_plan_edge_shape(action: &Value, normalized_op: &str) -> Result<()> {
 }
 
 /// Intent: validation_gate
-/// Resource: error
+/// Resource: plan_status_shape
 /// Inputs: &serde_json::Value, &str
 /// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: set_plan_status requires status and rejects task, edge, and full-plan fields
+/// Failure: returns missing-field or rejected-field validation errors
 /// Provenance: rustc:facts + rustc:docstring
 fn validate_plan_set_plan_status_shape(action: &Value, normalized_op: &str) -> Result<()> {
     require_plan_action_field(action, normalized_op, "status")?;
@@ -438,13 +438,13 @@ fn sync_plan_ready_window(plan: &mut Value) -> Result<()> {
 }
 
 /// Intent: transport_effect
-/// Resource: error
+/// Resource: plan_dispatch
 /// Inputs: tools::PlanOp, &mut serde_json::Map<std::string::String, serde_json::Value>, &serde_json::Value
 /// Outputs: std::result::Result<std::option::Option<(bool, std::string::String)>, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: mutates plan object according to supported plan operation handlers
+/// Forbidden: replace_plan dispatch after object mutation path
+/// Invariants: replace_plan is handled before dispatch; add_edge may return early with handler result; all other operations return None on success
+/// Failure: returns handler validation or mutation errors
 /// Provenance: rustc:facts + rustc:docstring
 fn dispatch_plan_op(
     op: PlanOp,
@@ -483,13 +483,13 @@ fn dispatch_plan_op(
 }
 
 /// Intent: canonical_write
-/// Resource: error
+/// Resource: plan_action_update
 /// Inputs: &str, &serde_json::Value, &str, &std::path::Path, &serde_json::Value
 /// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: writes PLAN projection and appends control-plane plan update log
+/// Forbidden: mutation outside canonical plan projection/logging paths
+/// Invariants: persists pretty PLAN JSON with op-specific signature and evaluates ready-task side effect after write
+/// Failure: returns projection write or JSON serialization errors
 /// Provenance: rustc:facts + rustc:docstring
 fn persist_plan_action_update(
     role: &str,
@@ -628,13 +628,13 @@ fn plan_op_is_terminal_ready(op_raw: &str, action: &Value) -> bool {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: replacement_plan
 /// Inputs: &serde_json::Value
 /// Outputs: std::result::Result<serde_json::Value, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation of input action
+/// Invariants: replacement plan is normalized and must contain tasks plus dag.edges forming a valid DAG
+/// Failure: returns errors for missing plan fields, normalization failures, or invalid DAG structure
 /// Provenance: rustc:facts + rustc:docstring
 fn build_replacement_plan(action: &Value) -> Result<Value> {
     let mut next_plan = action
@@ -732,13 +732,13 @@ fn extract_edge_endpoints(action: &Value) -> Result<(&str, &str)> {
 }
 
 /// Intent: validation_gate
-/// Resource: error
+/// Resource: plan_edge_ids
 /// Inputs: &std::collections::BTreeSet<std::string::String>, &str, &str
 /// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: both edge endpoints must exist in known task id set
+/// Failure: returns unknown-task-id validation error
 /// Provenance: rustc:facts + rustc:docstring
 fn validate_edge_ids(ids: &std::collections::BTreeSet<String>, from: &str, to: &str) -> Result<()> {
     if !ids.contains(from) || !ids.contains(to) {
@@ -1286,13 +1286,13 @@ fn load_or_init_plan(path: &Path) -> Result<Value> {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: plan_object
 /// Inputs: &mut serde_json::Value
 /// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: normalizes PLAN.json object in place
+/// Forbidden: mutation outside provided plan value
+/// Invariants: ensures version >= 2, default status, tasks array, and dag.edges array
+/// Failure: returns error when plan or dag is not a JSON object
 /// Provenance: rustc:facts + rustc:docstring
 fn normalize_plan_object(plan: &mut Value) -> Result<()> {
     let obj = plan
@@ -1331,13 +1331,13 @@ fn collect_task_ids(tasks: &[Value]) -> BTreeSet<String> {
 }
 
 /// Intent: repair_or_initialize
-/// Resource: error
+/// Resource: plan_dag
 /// Inputs: &[serde_json::Value], &[serde_json::Value]
 /// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: edges must have non-empty from/to task ids, reference known tasks, and form an acyclic graph
+/// Failure: returns validation errors for malformed edges, unknown task ids, or detected cycles
 /// Provenance: rustc:facts + rustc:docstring
 fn ensure_dag(tasks: &[Value], edges: &[Value]) -> Result<()> {
     let ids = collect_task_ids(tasks);
@@ -2014,13 +2014,13 @@ fn verification_rebind(
 // ---------------------------------------------------------------------------
 
 /// Intent: canonical_read
-/// Resource: error
+/// Resource: semantic_index
 /// Inputs: &std::path::Path, &serde_json::Value
 /// Outputs: std::result::Result<semantic::SemanticIndex, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: reads semantic graph index from workspace state
+/// Forbidden: mutation
+/// Invariants: resolves crate name from action and loads matching SemanticIndex
+/// Failure: returns contextual error when semantic index is unavailable
 /// Provenance: rustc:facts + rustc:docstring
 fn load_semantic(
     workspace: &Path,

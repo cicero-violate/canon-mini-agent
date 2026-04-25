@@ -62,13 +62,13 @@ fn save_violations(
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: violations_report_view
 /// Inputs: &std::path::Path
 /// Outputs: std::result::Result<(bool, std::string::String), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: reads violations report from path
+/// Forbidden: mutation
+/// Invariants: returns pretty-printed loaded violations report with non-fatal flag false
+/// Failure: returns load or JSON serialization errors
 /// Provenance: rustc:facts + rustc:docstring
 fn read_violation_report(path: &Path) -> Result<(bool, String)> {
     let report = load_violations(path)?;
@@ -447,13 +447,13 @@ fn apply_violation_freshness(violation: &mut crate::reports::Violation, lease: &
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: open_issues_view
 /// Inputs: &str
 /// Outputs: std::result::Result<(bool, std::string::String), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: returns no-open marker for empty, closed-only, or stale-only issue input; otherwise returns pretty filtered open fresh issues
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn read_open_issues(raw: &str) -> Result<(bool, String)> {
     if raw.trim().is_empty() {
@@ -694,13 +694,13 @@ fn delete_issue(
 }
 
 /// Intent: canonical_write
-/// Resource: error
+/// Resource: issue_status
 /// Inputs: &serde_json::Value, &std::path::Path, &str, std::option::Option<&mut canonical_writer::CanonicalWriter>
 /// Outputs: std::result::Result<(bool, std::string::String), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: updates or creates issue status, applies freshness lease, writes issues file, and queues diagnostics reconciliation
+/// Forbidden: issue status mutation without evidence lease validation
+/// Invariants: existing issue receives requested status; missing issue is synthesized with requested status before persistence
+/// Failure: returns missing field, lease validation, parse, or write errors
 /// Provenance: rustc:facts + rustc:docstring
 fn set_issue_status(
     action: &Value,

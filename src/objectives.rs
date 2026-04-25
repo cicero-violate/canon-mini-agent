@@ -140,13 +140,13 @@ pub fn load_master_plan_snapshot(workspace: &Path) -> Value {
 }
 
 /// Intent: canonical_read
-/// Resource: error
+/// Resource: objectives_compact
 /// Inputs: &std::path::Path
 /// Outputs: std::string::String
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: reads canonical objectives projection or fallback objectives file
+/// Forbidden: mutation
+/// Invariants: prefers canonical objectives JSON when available; otherwise resolves workspace objectives path and returns compact objectives text
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 pub fn read_objectives_compact_for_workspace(workspace: &Path) -> String {
     if let Some(canonical) = load_canonical_objectives_json(workspace) {
@@ -171,13 +171,13 @@ pub fn read_objectives_compact(path: &Path) -> String {
 }
 
 /// Intent: canonical_read
-/// Resource: error
+/// Resource: objectives_json
 /// Inputs: &str
 /// Outputs: std::string::String
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: returns compact text for at most 20 active objectives; returns raw text when JSON parsing fails; returns empty for empty input or no active objectives
+/// Failure: malformed objectives JSON is preserved as raw text
 /// Provenance: rustc:facts + rustc:docstring
 pub fn read_objectives_compact_from_raw(raw: &str) -> String {
     if raw.trim().is_empty() {

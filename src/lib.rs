@@ -73,13 +73,13 @@ pub fn set_workspace(path: String) {
 }
 
 /// Intent: canonical_write
-/// Resource: error
+/// Resource: agent_state_dir
 /// Inputs: std::string::String
 /// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: updates process-wide agent state directory
+/// Forbidden: mutation outside agent state directory configuration
+/// Invariants: delegates canonical state-dir write to constants module
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 pub fn set_agent_state_dir(path: String) {
     constants::set_agent_state_dir(path);

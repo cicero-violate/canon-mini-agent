@@ -754,13 +754,13 @@ fn build_bigram_candidate(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: trigram_lesson_candidate
 /// Inputs: std::string::String, std::string::String, std::string::String, std::string::String, lessons::CandidateAggregate, &std::collections::HashMap<std::string::String, usize>
 /// Outputs: lessons::LessonsCandidate
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: builds stable pending success-sequence candidate from role/action trigram, filters empty aggregate metadata, and attaches runtime automation guidance
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn build_trigram_candidate(
     role: String,
@@ -994,13 +994,13 @@ where
 }
 
 /// Intent: canonical_read
-/// Resource: error
+/// Resource: lessons_candidates
 /// Inputs: &std::path::Path
 /// Outputs: lessons::LessonsCandidatesFile
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: reads lessons candidate JSON from workspace
+/// Forbidden: mutation
+/// Invariants: returns parsed LessonsCandidatesFile or default candidate file when absent/unreadable
+/// Failure: malformed or missing candidate JSON falls back to LessonsCandidatesFile::default
 /// Provenance: rustc:facts + rustc:docstring
 fn load_candidates(workspace: &Path) -> LessonsCandidatesFile {
     let path = candidates_path(workspace);
@@ -1199,10 +1199,10 @@ fn action_result_record_to_lesson_entry(record: crate::tlog::TlogRecord) -> Opti
 /// Resource: error
 /// Inputs: &str
 /// Outputs: std::string::String
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: strips volatile action-error prefixes, collapses known ids to <id>, removes requested_raw suffixes, and caps output length
+/// Failure: empty or unrecognized input normalizes to its trimmed first line
 /// Provenance: rustc:facts + rustc:docstring
 fn normalize_error(text: &str) -> String {
     let first_line = text
@@ -1648,13 +1648,13 @@ fn roles_json_path(workspace: &Path) -> std::path::PathBuf {
 }
 
 /// Intent: canonical_read
-/// Resource: error
+/// Resource: roles_json
 /// Inputs: &std::path::Path
 /// Outputs: serde_json::Value
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: reads roles JSON from workspace
+/// Forbidden: mutation
+/// Invariants: missing/unreadable roles JSON falls back to an object containing empty roles
+/// Failure: delegated to load_json_file_or_else fallback behavior
 /// Provenance: rustc:facts + rustc:docstring
 fn load_roles_json(workspace: &Path) -> serde_json::Value {
     let path = roles_json_path(workspace);

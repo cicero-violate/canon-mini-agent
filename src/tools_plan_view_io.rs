@@ -39,13 +39,13 @@ fn load_plan_components(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: task_map
 /// Inputs: &[serde_json::Value]
 /// Outputs: std::collections::HashMap<std::string::String, serde_json::Value>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation of input tasks
+/// Invariants: includes only tasks with string id fields; later duplicate ids replace earlier entries
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn build_task_map(tasks: &[Value]) -> std::collections::HashMap<String, Value> {
     let mut task_map = std::collections::HashMap::new();
@@ -351,13 +351,13 @@ pub(crate) fn parse_cargo_test_failures(out: &str) -> Value {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: cargo_test_failure_line
 /// Inputs: &str, &mut std::collections::BTreeSet<std::string::String>, &mut std::collections::BTreeSet<std::string::String>, &mut std::collections::BTreeSet<std::string::String>, &mut std::vec::Vec<std::string::String>, &mut std::option::Option<std::string::String>
 /// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: updates parsed cargo-test failure accumulators in place
+/// Forbidden: mutation outside provided accumulators
+/// Invariants: captures locations, failed/stalled test names, first rerun hint, and failure-block lines from trimmed input
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn parse_cargo_test_failure_line(
     trimmed: &str,
@@ -514,13 +514,13 @@ fn load_graph_symbols(
 }
 
 /// Intent: canonical_read
-/// Resource: error
+/// Resource: nodes_symbols_csv
 /// Inputs: &std::path::Path
 /// Outputs: std::result::Result<std::collections::HashMap<u32, (std::string::String, std::string::String)>, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: reads nodes CSV from disk
+/// Forbidden: mutation
+/// Invariants: skips header and node id 0; maps valid node ids to kind/symbol pairs
+/// Failure: returns file read errors
 /// Provenance: rustc:facts + rustc:docstring
 fn load_nodes_symbols(
     nodes_csv: &Path,
@@ -824,13 +824,13 @@ fn extract_anchor_fail_path(err_msg: &str) -> Option<String> {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: expected_anchor_lines
 /// Inputs: &str
 /// Outputs: std::vec::Vec<std::string::String>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: captures indented expected lines after the missing-lines marker and stops after captured block ends
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn extract_expected_anchor_lines(err_msg: &str) -> Vec<String> {
     let mut lines = Vec::new();
@@ -881,13 +881,13 @@ fn patch_failure_guidance(path: Option<&str>, err_msg: &str) -> String {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: anchor_context_excerpt
 /// Inputs: &str, &str
 /// Outputs: std::option::Option<(usize, usize, std::string::String)>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: returns a bounded, line-numbered excerpt around the last sufficiently long expected anchor found in file content
+/// Failure: returns None when no expected anchor exists or no anchor appears in file content
 /// Provenance: rustc:facts + rustc:docstring
 fn extract_anchor_context_excerpt(full: &str, err_msg: &str) -> Option<(usize, usize, String)> {
     let anchor_lines = extract_expected_anchor_lines(err_msg);

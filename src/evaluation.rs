@@ -198,13 +198,13 @@ pub fn task_velocity_score(completed_tasks: usize, total_tasks: usize) -> f64 {
 }
 
 /// Intent: validation_gate
-/// Resource: error
+/// Resource: evaluation_vector
 /// Inputs: usize, usize, &reports::ViolationsReport, usize, usize, usize, usize
 /// Outputs: evaluation::EvaluationVector
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: component scores are derived from repo state inputs; direct score inputs are clamped to [0.0, 1.0]
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 pub fn evaluate_repo_state(
     objectives_completed: usize,
@@ -692,13 +692,13 @@ fn invariant_text_covers_risk(invariant_lower: &str, risk: &StructuralRisk) -> b
 }
 
 /// Intent: canonical_read
-/// Resource: error
+/// Resource: issues_index
 /// Inputs: &std::path::Path
-/// Outputs: (usize, usize)
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Outputs: (usize, usize, usize)
+/// Effects: reads issue state from workspace
+/// Forbidden: mutation
+/// Invariants: returns counts for open issues, repeated open issue titles, and high/critical open issues
+/// Failure: missing issue data is handled by load_issues_file defaults
 /// Provenance: rustc:facts + rustc:docstring
 /// Returns `(open_issues, repeated_open_issues, high_priority_open_issues)`.
 pub fn load_issue_counts(workspace: &Path) -> (usize, usize, usize) {

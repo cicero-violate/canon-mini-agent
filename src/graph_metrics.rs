@@ -466,13 +466,13 @@ fn collect_state_transitions_by_domain(idx: &SemanticIndex) -> HashMap<String, H
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: state_transition_dispersion_issues
 /// Inputs: &mut issues::IssuesFile, &std::collections::HashSet<std::string::String>, &str
 /// Outputs: usize
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: marks stale state-transition dispersion issues resolved in the provided IssuesFile
+/// Forbidden: mutation outside the provided IssuesFile
+/// Invariants: only unresolved auto_state_transition_dispersion issues for the crate and absent from desired_ids are resolved
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn resolve_missing_state_transition_dispersion_issues(
     file: &mut IssuesFile,
@@ -914,26 +914,26 @@ fn resolve_stale_effect_boundary_leak_issues(
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: logging_dispersion_issues
 /// Inputs: &std::path::Path
 /// Outputs: std::result::Result<usize, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: generates/persists logging dispersion issues
+/// Forbidden: mutation outside effect-dispersion issue projection state
+/// Invariants: delegates to effect dispersion generation in Logging mode
+/// Failure: returns effect-dispersion generation or persistence errors
 /// Provenance: rustc:facts + rustc:docstring
 pub fn generate_logging_dispersion_issues(workspace: &Path) -> Result<usize> {
     generate_effect_dispersion_issues(workspace, EffectDispersionMode::Logging)
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: graph_metrics_process_spawn_dispersion
 /// Inputs: &std::path::Path
 /// Outputs: std::result::Result<usize, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: generates process-spawn dispersion issues for the workspace
+/// Forbidden: mutation outside issue projection updates
+/// Invariants: delegates to effect dispersion issue generation using ProcessSpawn mode
+/// Failure: propagates effect dispersion generation errors
 /// Provenance: rustc:facts + rustc:docstring
 pub fn generate_process_spawn_dispersion_issues(workspace: &Path) -> Result<usize> {
     generate_effect_dispersion_issues(workspace, EffectDispersionMode::ProcessSpawn)
@@ -1041,13 +1041,13 @@ impl EffectDispersionMode {
     }
 
     /// Intent: pure_transform
-    /// Resource: error
+    /// Resource: effect_dispersion_issue
     /// Inputs: graph_metrics::EffectDispersionMode, &str, &std::collections::HashMap<std::string::String, std::vec::Vec<std::string::String>>
     /// Outputs: issues::Issue
-    /// Effects: error
-    /// Forbidden: error
-    /// Invariants: error
-    /// Failure: error
+    /// Effects: none
+    /// Forbidden: mutation
+    /// Invariants: dispatches to the issue builder matching the selected effect dispersion mode
+    /// Failure: none
     /// Provenance: rustc:facts + rustc:docstring
     fn build_issue(self, crate_name: &str, by_module: &HashMap<String, Vec<String>>) -> Issue {
         match self {
@@ -1081,13 +1081,13 @@ impl EffectDispersionMode {
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: representation_fanout_issues
 /// Inputs: &std::path::Path
 /// Outputs: std::result::Result<usize, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: loads issue file, generates representation-fanout issues across available crates, rescores issues, and persists changed projection
+/// Forbidden: persistence when issue file is unchanged
+/// Invariants: tracks desired ids across crates and returns total mutation count
+/// Failure: returns serialization or projection persistence errors
 /// Provenance: rustc:facts + rustc:docstring
 pub fn generate_representation_fanout_issues(workspace: &Path) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
@@ -1243,13 +1243,13 @@ fn count_modules_outside_boundary(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: representation_symbols_by_pair
 /// Inputs: std::collections::HashMap<std::string::String, std::collections::HashSet<std::string::String>>, &std::collections::HashMap<std::string::String, std::collections::HashSet<std::string::String>>
 /// Outputs: std::collections::HashMap<(std::string::String, std::string::String), std::vec::Vec<std::string::String>>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: maps each distinct source-target pair to symbols represented in both indexes and skips self-pairs
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn build_representation_symbols_by_pair(
     sources_by_symbol: HashMap<String, HashSet<String>>,
@@ -1278,13 +1278,13 @@ fn build_representation_symbols_by_pair(
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: scc_region_reduction_issues
 /// Inputs: &std::path::Path
 /// Outputs: std::result::Result<usize, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: generates/persists SCC region-reduction issues
+/// Forbidden: mutation outside region-reduction issue projection state
+/// Invariants: delegates to region reduction generation in Scc mode
+/// Failure: returns region-reduction generation or persistence errors
 /// Provenance: rustc:facts + rustc:docstring
 pub fn generate_scc_region_reduction_issues(workspace: &Path) -> Result<usize> {
     generate_region_reduction_issues(workspace, RegionReductionMode::Scc)
@@ -1304,13 +1304,13 @@ pub fn generate_dominator_region_reduction_issues(workspace: &Path) -> Result<us
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: region_reduction_issues
 /// Inputs: &std::path::Path, graph_metrics::RegionReductionMode
 /// Outputs: std::result::Result<usize, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: syncs, resolves, rescores, and persists region-reduction issue projections when changed
+/// Forbidden: mutation outside issues projection state
+/// Invariants: scans available semantic crates, tracks desired ids, and persists only when the projection differs
+/// Failure: returns serialization or persistence errors
 /// Provenance: rustc:facts + rustc:docstring
 fn generate_region_reduction_issues(workspace: &Path, mode: RegionReductionMode) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
@@ -1576,13 +1576,13 @@ fn writer_rank(writer: &str, artifact_hint: &str) -> (usize, usize, usize) {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: artifact_writer_dispersion_issue
 /// Inputs: &str, &str, &[std::string::String]
 /// Outputs: issues::Issue
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: builds deterministic artifact-writer dispersion issue with canonical writer candidate, metrics, evidence, and acceptance criteria
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn build_artifact_writer_dispersion_issue(
     crate_name: &str,
@@ -2383,13 +2383,13 @@ fn effect_boundary_leak_issue_id(crate_name: &str, module: &str) -> String {
 }
 
 /// Intent: pure_transform
-/// Resource: error
-/// Inputs: &str, &str, &[(std::string::String, std::vec::Vec<&str>
-/// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Resource: effect_boundary_issue
+/// Inputs: &str, &str, &[(std::string::String, std::vec::Vec<&str>)]
+/// Outputs: issues::Issue
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: issue status reflects whether rows is empty; priority is high for multiple effectful symbols and medium otherwise
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn build_effect_boundary_leak_issue(
     crate_name: &str,
@@ -2614,13 +2614,13 @@ fn dominator_region_reduction_issue_id(crate_name: &str, symbol: &str) -> String
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: dominator_region_issue
 /// Inputs: &str, &semantic::SymbolSummary, f32, usize
 /// Outputs: issues::Issue
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: priority is high when redundant paths or SwitchInt count exceed thresholds; metrics mirror summary and reduction evidence
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn build_dominator_region_reduction_issue(
     crate_name: &str,
@@ -2873,13 +2873,13 @@ fn is_canonical_process_boundary(module: &str) -> bool {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: logging_dispersion_issue
 /// Inputs: &str, &std::collections::HashMap<std::string::String, std::vec::Vec<std::string::String>>
 /// Outputs: issues::Issue
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: canonical logging sites are counted separately; non-canonical modules and symbols are sorted deterministically; status resolves when non-canonical sites are <= 10
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn build_logging_dispersion_issue(
     crate_name: &str,
@@ -2969,13 +2969,13 @@ fn logging_module_metrics(modules: &[(String, Vec<String>)]) -> Vec<Value> {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: process_spawn_dispersion_issue
 /// Inputs: &str, &std::collections::HashMap<std::string::String, std::vec::Vec<std::string::String>>
 /// Outputs: issues::Issue
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: classifies spawn sites by canonical process boundary, reports deterministic module metrics, and marks dispersion open when multiple non-canonical modules remain
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn build_process_spawn_dispersion_issue(
     crate_name: &str,

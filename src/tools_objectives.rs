@@ -12,13 +12,13 @@ fn objective_not_found_message(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: objective_duplicate_message
 /// Inputs: &str, &str, &[std::string::String], &[std::string::String]
 /// Outputs: std::string::String
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: includes requested raw/id plus compared raw and normalized ids for duplicate diagnostics
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn format_objective_already_exists_message(
     requested_raw: &str,

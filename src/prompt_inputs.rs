@@ -422,13 +422,13 @@ fn summarize_invariant_status_counts(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: eval_header
 /// Inputs: &std::path::Path
 /// Outputs: std::string::String
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: reads latest complexity report and live objective/task ratios
+/// Forbidden: mutation
+/// Invariants: returns empty string when eval report is unavailable; otherwise summarizes score, weakest dimension, progress, lag/payload metrics, and directive
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn build_eval_header(workspace: &Path) -> String {
     let path = workspace
@@ -671,13 +671,13 @@ fn parse_diagnostics_report(raw: &str) -> Option<DiagnosticsReport> {
 }
 
 /// Intent: canonical_read
-/// Resource: error
+/// Resource: diagnostics_projection
 /// Inputs: &std::path::Path
 /// Outputs: std::option::Option<std::string::String>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: reads diagnostics projection/report data from workspace
+/// Forbidden: mutation
+/// Invariants: prefers non-empty parseable diagnostics projection text, otherwise falls back to serialized diagnostics report
+/// Failure: returns None when no parseable projection or loadable diagnostics report exists
 /// Provenance: rustc:facts + rustc:docstring
 fn load_diagnostics_projection_text(workspace: &Path) -> Option<String> {
     let raw_diagnostics_text =
@@ -972,13 +972,13 @@ pub fn derive_semantic_control_prompt_state_with_delta(
 }
 
 /// Intent: canonical_read
-/// Resource: error
+/// Resource: semantic_control_prompt
 /// Inputs: &std::path::Path, usize
 /// Outputs: std::string::String
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: reads semantic control prompt state from workspace
+/// Forbidden: mutation
+/// Invariants: returns the derived control_summary for the requested issue_limit
+/// Failure: fallback behavior is delegated to derive_semantic_control_prompt_state
 /// Provenance: rustc:facts + rustc:docstring
 pub fn read_semantic_control_prompt_context(workspace: &Path, issue_limit: usize) -> String {
     derive_semantic_control_prompt_state(workspace, issue_limit).control_summary
@@ -1170,13 +1170,13 @@ fn render_lessons_list(title: &str, items: &[LessonEntry]) -> Option<String> {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: lessons_artifact
 /// Inputs: &prompt_inputs::LessonsArtifact
 /// Outputs: std::string::String
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: renders non-empty summary and lesson sections in stable Summary, Failures, Fixes, Required actions order
+/// Failure: empty artifact fields render as an empty string
 /// Provenance: rustc:facts + rustc:docstring
 fn render_lessons_artifact(artifact: &LessonsArtifact) -> String {
     let mut sections = Vec::new();
@@ -1197,13 +1197,13 @@ fn render_lessons_artifact(artifact: &LessonsArtifact) -> String {
 }
 
 /// Intent: canonical_read
-/// Resource: error
+/// Resource: lessons_artifact
 /// Inputs: &std::path::Path
 /// Outputs: std::string::String
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: reads lessons artifact text from workspace
+/// Forbidden: mutation
+/// Invariants: returns rendered lessons when JSON parses; returns raw non-empty text on parse failure; returns empty string for default/missing lessons
+/// Failure: read/load failures degrade to empty/default lessons
 /// Provenance: rustc:facts + rustc:docstring
 pub fn read_lessons_or_empty(workspace: &Path) -> String {
     let raw = read_text_or_empty(workspace.join(LESSONS_FILE));
@@ -1493,13 +1493,13 @@ pub fn filter_active_diagnostics_json(raw: &str) -> String {
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: violations_report
 /// Inputs: &str
 /// Outputs: std::option::Option<reports::ViolationsReport>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: returns none for empty or invalid JSON input; retains only fresh violations in parsed report
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn parse_violations_report(raw: &str) -> Option<ViolationsReport> {
     if raw.trim().is_empty() {

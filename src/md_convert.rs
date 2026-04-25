@@ -219,13 +219,13 @@ enum InvariantSection {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: objectives_markdown
 /// Inputs: &str
 /// Outputs: reports::ObjectivesReport
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: parses objective headings and recognized sections into versioned ObjectivesReport, finalizing the current objective at EOF
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn parse_objectives_md(text: &str) -> ObjectivesReport {
     let mut objectives: Vec<Objective> = Vec::new();

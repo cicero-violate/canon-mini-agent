@@ -1106,13 +1106,13 @@ pub fn migrate_projection_if_present(
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: prompt_overflow_report_json
 /// Inputs: &str
 /// Outputs: serde_json::Map<std::string::String, serde_json::Value>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: returns an object map only; empty, invalid, or non-object JSON returns an empty map
+/// Failure: malformed JSON is ignored and treated as an empty report
 /// Provenance: rustc:facts + rustc:docstring
 fn parse_prompt_overflow_report(raw: &str) -> serde_json::Map<String, Value> {
     if raw.trim().is_empty() {

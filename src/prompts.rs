@@ -88,13 +88,13 @@ struct PromptBudget<'a> {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: prompt_budget
 /// Inputs: usize, usize, &[prompts::PromptItem<'_>]
 /// Outputs: prompts::PromptBudget<'_>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: item budgets never exceed caps; used is recomputed from assigned item budgets; allocation respects available bytes after framing
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn compute_prompt_budget<'a>(
     limit: usize,
@@ -287,13 +287,13 @@ pub(crate) fn role_default_schema_actions_for_role(role: &str) -> &'static [&'st
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: predicted_action_names
 /// Inputs: std::option::Option<&str>
 /// Outputs: std::vec::Vec<std::string::String>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: returns empty list for missing or invalid JSON input; otherwise extracts action string fields from predicted-next-action array items
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn parse_predicted_action_names(predicted_next_actions: Option<&str>) -> Vec<String> {
     let Some(raw) = predicted_next_actions else {
@@ -788,13 +788,13 @@ pub(crate) fn parse_actions(raw: &str) -> Result<Vec<Value>> {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: json_candidate
 /// Inputs: &str
 /// Outputs: std::option::Option<std::string::String>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: prefers fenced JSON, otherwise returns the first parseable JSON value or trimmed JSON-like suffix
+/// Failure: returns None when no JSON object or array start exists
 /// Provenance: rustc:facts + rustc:docstring
 fn extract_json_candidate(text: &str) -> Option<String> {
     if let Some(fenced) = extract_json_fence(text) {
@@ -843,13 +843,13 @@ fn extract_json_fence(text: &str) -> Option<&str> {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: embedded_json
 /// Inputs: &str
 /// Outputs: std::result::Result<serde_json::Value, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: scans candidate JSON object/array starts in text order and returns the first successfully parsed JSON value
+/// Failure: returns an error when no JSON object or array can be parsed from the response text
 /// Provenance: rustc:facts + rustc:docstring
 fn parse_json_from_text(text: &str) -> Result<Value> {
     if let Some(value) = text
@@ -1079,13 +1079,13 @@ fn require_non_empty_message_field(
 }
 
 /// Intent: validation_gate
-/// Resource: error
+/// Resource: message_required_fields
 /// Inputs: &serde_json::Map<std::string::String, serde_json::Value>
 /// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: accepting messages missing required routing/status fields or object payload
+/// Invariants: from, to, type, and status must be non-empty; payload must be a JSON object
+/// Failure: returns validation error for missing or invalid required fields
 /// Provenance: rustc:facts + rustc:docstring
 fn validate_message_required_fields(obj: &serde_json::Map<String, Value>) -> Result<()> {
     for field in ["from", "to", "type", "status"] {
@@ -1383,13 +1383,13 @@ fn normalize_add_tasks_op(obj: &mut serde_json::Map<String, Value>) -> Option<&'
 }
 
 /// Intent: validation_gate
-/// Resource: error
+/// Resource: action_validation
 /// Inputs: &serde_json::Value
 /// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: validates tool action schema, provenance, diagnostics evidence, and strict message payload rules
+/// Forbidden: mutation of input action
+/// Invariants: diagnostic plan actions must cite same-cycle source evidence; message actions must pass strict message validation
+/// Failure: returns validation errors when schema, provenance, evidence, or message constraints fail
 /// Provenance: rustc:facts + rustc:docstring
 pub(crate) fn validate_action(action: &Value) -> Result<()> {
     validate_tool_action(action)?;

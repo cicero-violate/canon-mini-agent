@@ -146,13 +146,13 @@ fn build_stage_graph_edges() -> Vec<serde_json::Value> {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: stage_graph
 /// Inputs: ()
 /// Outputs: serde_json::Value
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: graph JSON contains nodes and edges from canonical stage graph builders
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn build_stage_graph() -> serde_json::Value {
     serde_json::json!({
@@ -364,13 +364,13 @@ fn batch_item_op_note(item: &Value) -> String {
 }
 
 /// Intent: event_append
-/// Resource: error
+/// Resource: rejected_batch_item_output
 /// Inputs: &mut std::string::String, usize, usize, &str, &serde_json::Value
 /// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: appends formatted rejected batch item text to output buffer
+/// Forbidden: mutation outside provided output buffer
+/// Invariants: includes item ordinal, total, kind, and derived operation note
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn append_rejected_batch_item(out: &mut String, n: usize, total: usize, kind: &str, item: &Value) {
     let op_note = batch_item_op_note(item);
@@ -378,13 +378,13 @@ fn append_rejected_batch_item(out: &mut String, n: usize, total: usize, kind: &s
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: rejected_batch_item_message
 /// Inputs: usize, usize, &str, &str
 /// Outputs: std::string::String
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: formats batch position, rejected action kind/note, and mutating-action rejection reason
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn format_rejected_batch_item(n: usize, total: usize, kind: &str, op_note: &str) -> String {
     format!(
@@ -602,13 +602,13 @@ fn resolve_inbound_message_target(role: &str, step: usize, action: &Value) -> Op
 }
 
 /// Intent: canonical_write
-/// Resource: error
+/// Resource: inbound_message_delivery
 /// Inputs: &str, usize, &std::path::Path, &serde_json::Value, &str, std::option::Option<&mut canonical_writer::CanonicalWriter>
 /// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: records inbound message effect, queues inbound/wake control events, and writes last-message projection
+/// Forbidden: persisting when no inbound target resolves
+/// Invariants: message and wake signatures are derived from role, target, content, and timestamp context
+/// Failure: logs record/write failures and records handoff delivery blocker on projection write failure
 /// Provenance: rustc:facts + rustc:docstring
 fn persist_inbound_message(
     role: &str,

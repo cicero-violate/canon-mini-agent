@@ -225,13 +225,13 @@ fn build_checkpoint_lane_snapshots(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: resume_verifier_items
 /// Inputs: &[prompt_inputs::LaneConfig], &std::collections::VecDeque<(app::SubmittedExecutorTurn, u64, std::string::String
 /// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: preserves pending verifier order and maps each submitted lane to label, optional plan file, and final executor result
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn build_resume_verifier_items(
     lanes: &[LaneConfig],

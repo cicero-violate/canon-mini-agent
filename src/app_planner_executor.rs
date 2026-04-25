@@ -459,13 +459,13 @@ fn sweep_timed_out_submitted_turns(
 }
 
 /// Intent: validation_gate
-/// Resource: error
-/// Inputs: &mut canonical_writer::CanonicalWriter, &str
-/// Outputs: bool
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Resource: route_gate_state
+/// Inputs: &mut std::collections::HashMap<std::string::String, std::string::String>, usize, usize, &str, &str, &str
+/// Outputs: ()
+/// Effects: inserts route-gate state markers when count reaches threshold
+/// Forbidden: mutation outside the provided state map
+/// Invariants: actor_kind and error marker are inserted only when count >= threshold
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn apply_route_gate_signal(
     state: &mut std::collections::HashMap<String, String>,

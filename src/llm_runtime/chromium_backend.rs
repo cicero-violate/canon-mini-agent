@@ -406,13 +406,13 @@ fn extract_calpico_heartbeat_trigger_message_id(raw: &str) -> Option<String> {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: calpico_heartbeat_progress_signature
 /// Inputs: &str
 /// Outputs: std::option::Option<std::string::String>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: extracts only calpico-is-responding-heartbeat message envelopes and formats trigger/task/message signature fields
+/// Failure: returns None for non-JSON, non-array, missing payload, or non-heartbeat inputs
 /// Provenance: rustc:facts + rustc:docstring
 fn extract_calpico_heartbeat_progress_signature(raw: &str) -> Option<String> {
     let data = raw.strip_prefix("data: ").unwrap_or(raw).trim();

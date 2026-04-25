@@ -57,13 +57,13 @@ fn push_created_path(created: &mut Vec<String>, tracked_path: &str, was_created:
 }
 
 /// Intent: repair_or_initialize
-/// Resource: error
+/// Resource: projection_migration
 /// Inputs: &mut std::vec::Vec<std::string::String>, &std::path::Path, &str, &str, &str, &str
 /// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: migrates legacy projection when present and records created tracked path
+/// Forbidden: mutation outside projection migration target and created path list
+/// Invariants: created path is recorded only through push_created_path using migration result
+/// Failure: returns projection migration errors
 /// Provenance: rustc:facts + rustc:docstring
 fn migrate_projection_and_track(
     created: &mut Vec<String>,
@@ -272,13 +272,13 @@ fn jstr<'a>(v: &'a Value, key: &str) -> &'a str {
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: flag_argument_lookup
 /// Inputs: &[std::string::String], &str
 /// Outputs: std::option::Option<&str>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: returns the argument immediately following the first matching flag pair
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn find_flag_arg<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     args.windows(2)
@@ -350,13 +350,13 @@ fn response_timeout_for_role(role: &str) -> u64 {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: cargo_test_failure_summary
 /// Inputs: &str
 /// Outputs: std::string::String
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: returns raw input for invalid JSON; otherwise emits only known cargo-test failure summary fields
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn summarize_cargo_test_failures(raw: &str) -> String {
     let Ok(value) = serde_json::from_str::<Value>(raw) else {

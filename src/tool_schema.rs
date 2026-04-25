@@ -861,13 +861,13 @@ pub enum ToolAction {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: tool_action_schema
 /// Inputs: ()
 /// Outputs: std::vec::Vec<(&str, &str, std::option::Option<&str>)>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: returns the static tool action definitions in deterministic order with descriptions and optional usage guidance
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn build_tool_actions_list() -> Vec<(&'static str, &'static str, Option<&'static str>)> {
     vec![
@@ -1107,13 +1107,13 @@ pub fn selected_tool_protocol_schema_text(actions: &[&str]) -> String {
 }
 
 /// Intent: canonical_write
-/// Resource: error
+/// Resource: tool_examples
 /// Inputs: &std::path::Path
 /// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: writes tool examples projection on a best-effort basis; logs write failures to stderr
+/// Forbidden: propagating write errors
+/// Invariants: delegates canonical write behavior to write_tool_examples_inner
+/// Failure: suppressed; write errors are reported via stderr
 /// Provenance: rustc:facts + rustc:docstring
 pub fn write_tool_examples(workspace: &std::path::Path) {
     if let Err(e) = write_tool_examples_inner(workspace) {
@@ -1155,13 +1155,13 @@ fn write_tool_examples_inner(workspace: &std::path::Path) -> anyhow::Result<()> 
 }
 
 /// Intent: validation_gate
-/// Resource: error
+/// Resource: tool_action_schema
 /// Inputs: &serde_json::Value
 /// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: lazily compiles and reads the tool action JSON schema
+/// Forbidden: mutation of input action
+/// Invariants: normalized action aliases must satisfy manual guards, JSON schema, mutating-action question requirements, and predicted-next-action validation
+/// Failure: returns validation errors with mapped schema/manual guard details
 /// Provenance: rustc:facts + rustc:docstring
 pub(crate) fn validate_tool_action(action: &Value) -> Result<()> {
     static SCHEMA: OnceLock<JSONSchema> = OnceLock::new();
@@ -1338,13 +1338,13 @@ fn normalize_plan_alias_fields(obj: &mut serde_json::Map<String, Value>, normali
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: action_validation_json
 /// Inputs: &serde_json::Value
 /// Outputs: serde_json::Value
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation of input value
+/// Invariants: only plan actions with recognized op/operation aliases have normalized plan alias fields
+/// Failure: non-object, non-plan, or unrecognized operation payloads are returned unchanged
 /// Provenance: rustc:facts + rustc:docstring
 fn normalize_action_aliases_for_validation(action: &Value) -> Value {
     let mut normalized = action.clone();
@@ -1518,13 +1518,13 @@ fn action_schema_mismatch_message(action: &Value) -> String {
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: action_schema
 /// Inputs: &serde_json::Value, &str
 /// Outputs: std::option::Option<&serde_json::Value>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: searches nested schema values, including anyOf/oneOf branches, and matches action const or enum entries
+/// Failure: returns None when no matching action schema exists
 /// Provenance: rustc:facts + rustc:docstring
 fn find_action_schema<'a>(value: &'a Value, action: &str) -> Option<&'a Value> {
     fn matches_action(value: &Value, action: &str) -> bool {

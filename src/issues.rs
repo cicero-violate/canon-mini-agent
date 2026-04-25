@@ -330,13 +330,13 @@ pub fn load_issues_file(workspace: &Path) -> IssuesFile {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: issues_json
 /// Inputs: &str
 /// Outputs: std::option::Option<issues::IssuesFile>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: returns None for empty input; returns Some only when raw JSON parses as IssuesFile
+/// Failure: malformed JSON returns None
 /// Provenance: rustc:facts + rustc:docstring
 fn parse_issues_file_from_raw(raw: &str) -> Option<IssuesFile> {
     if raw.trim().is_empty() {
@@ -573,13 +573,13 @@ fn collect_stale_reasons(
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: issues_index
 /// Inputs: &std::path::Path
 /// Outputs: std::result::Result<issues::IssueSweepSummary, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: may update issue freshness fields, rescore issues, and persist the issues projection
+/// Forbidden: mutation outside issues projection state
+/// Invariants: open issues with stale evidence are marked stale; live validated issues are refreshed; unchanged state is not rewritten
+/// Failure: returns persistence errors when a mutated issues projection cannot be written
 /// Provenance: rustc:facts + rustc:docstring
 pub fn sweep_stale_issues(workspace: &Path) -> Result<IssueSweepSummary> {
     let mut file = load_issues_file(workspace);
@@ -911,13 +911,13 @@ fn diversify_ranked_issues(ranked_issues: Vec<Issue>) -> Vec<Issue> {
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: issues_index
 /// Inputs: &std::path::Path
 /// Outputs: std::vec::Vec<issues::Issue>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: sweeps stale issues and reads issue state from workspace
+/// Forbidden: mutation outside stale issue sweep side effects
+/// Invariants: returns only open fresh issues, rescored and sorted by score descending then id before diversification
+/// Failure: missing or empty issue data yields an empty issue list
 /// Provenance: rustc:facts + rustc:docstring
 pub fn read_ranked_open_issues(workspace: &Path) -> Vec<Issue> {
     let _ = sweep_stale_issues(workspace);

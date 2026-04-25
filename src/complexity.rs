@@ -197,26 +197,26 @@ fn graph_only_complexity_score(entry: &GraphOnlyEntry) -> String {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: graph_score
 /// Inputs: f64
 /// Outputs: std::string::String
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: formats graph score values with exactly two decimal places
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn format_graph_score_2(value: f64) -> String {
     format!("{value:.2}")
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: graph_score
 /// Inputs: f64
 /// Outputs: std::string::String
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: always formats the score with exactly three fractional digits
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn format_graph_score_3(value: f64) -> String {
     format!("{value:.3}")
@@ -235,13 +235,13 @@ fn graph_only_sort_desc(a: &GraphOnlyEntry, b: &GraphOnlyEntry) -> std::cmp::Ord
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: max_normalized_score
 /// Inputs: f64, f64
 /// Outputs: f64
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: returns 0.0 when max_value is non-positive; otherwise clamps value/max_value into [0.0, 1.0]
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn normalize_by_max(value: f64, max_value: f64) -> f64 {
     if max_value <= 0.0 {
@@ -252,13 +252,13 @@ fn normalize_by_max(value: f64, max_value: f64) -> f64 {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: graph_only_complexity_entries
 /// Inputs: &semantic::SemanticIndex, &str
 /// Outputs: std::vec::Vec<complexity::GraphOnlyEntry>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation outside local entry scoring
+/// Invariants: skips empty MIR summaries, derives graph-only complexity metrics, applies scores, and sorts entries descending
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn build_graph_only_entries(idx: &SemanticIndex, crate_name: &str) -> Vec<GraphOnlyEntry> {
     let summaries = idx.symbol_summaries();
@@ -786,13 +786,13 @@ fn count_representation_fanout(idx: &SemanticIndex) -> usize {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: graph_verification_snapshot
 /// Inputs: &std::path::Path
 /// Outputs: std::result::Result<serde_json::Value, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: reads semantic graph indexes and timestamps snapshot
+/// Forbidden: mutation
+/// Invariants: reports per-crate status, aggregates graph metrics totals, and sorts global entropy hotspots descending
+/// Failure: records per-crate load errors in snapshot and returns successfully formed JSON
 /// Provenance: rustc:facts + rustc:docstring
 pub fn build_graph_verification_snapshot(workspace: &Path) -> Result<serde_json::Value> {
     let crates = SemanticIndex::available_crates(workspace);
@@ -932,13 +932,13 @@ fn persist_graph_verification_snapshot(
 }
 
 /// Intent: canonical_write
-/// Resource: error
+/// Resource: graph_verification_snapshot
 /// Inputs: &std::path::Path
 /// Outputs: std::result::Result<std::path::PathBuf, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: builds and persists graph verification snapshot
+/// Forbidden: mutation outside canonical snapshot output path
+/// Invariants: persists the snapshot produced by build_graph_verification_snapshot
+/// Failure: returns snapshot build or persist errors
 /// Provenance: rustc:facts + rustc:docstring
 pub fn write_graph_verification_snapshot(workspace: &Path) -> Result<PathBuf> {
     let snapshot = build_graph_verification_snapshot(workspace)?;
@@ -1544,13 +1544,13 @@ fn enqueue_grpo_extraction(workspace: &Path) {
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: graph_and_hotspot_issues
 /// Inputs: &std::path::Path
 /// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: generates bridge-connectivity and hotspot issue projections on a best-effort basis
+/// Forbidden: propagating generation errors
+/// Invariants: graph connectivity issues are generated before hotspot issues; hotspot generation uses top_n=5
+/// Failure: suppressed; generation errors are intentionally ignored
 /// Provenance: rustc:facts + rustc:docstring
 fn generate_graph_and_hotspot_issues(workspace: &Path) {
     // Bridge-connectivity analysis: emit deterministic graph-overconnectivity issues.
@@ -1609,13 +1609,13 @@ fn generate_invariant_lifecycle_issues(workspace: &Path) {
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: complexity_report
 /// Inputs: std::vec::Vec<serde_json::Value>, std::vec::Vec<serde_json::Value>, serde_json::Value, &evaluation::EvaluationWorkspaceSnapshot, &drift_analysis::FingerprintDrift
 /// Outputs: serde_json::Value
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: timestamps generated complexity report
+/// Forbidden: mutation
+/// Invariants: report includes versioned scoring metadata, execution model, global/inter/per-crate sections, eval metrics, and fingerprint drift
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn build_complexity_report(
     per_crate: Vec<serde_json::Value>,

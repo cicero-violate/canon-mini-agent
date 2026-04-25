@@ -224,13 +224,13 @@ fn consume_attr_range(bytes: &[u8], mut i: usize, n: usize) -> (usize, Option<(u
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: rust_attributes
 /// Inputs: &str
 /// Outputs: std::vec::Vec<(usize, usize)>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: advances monotonically through source bytes and returns discovered attribute byte ranges in scan order
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn scan_attr_ranges(source: &str) -> Vec<(usize, usize)> {
     let b = source.as_bytes();
@@ -249,13 +249,13 @@ fn scan_attr_ranges(source: &str) -> Vec<(usize, usize)> {
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: attr_range_scan
 /// Inputs: &[u8], usize, usize
 /// Outputs: (usize, std::option::Option<(usize, usize)>)
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: advances past trivia, consumes attribute ranges when present, otherwise advances by one byte
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn scan_attr_range_step(b: &[u8], i: usize, n: usize) -> (usize, Option<(usize, usize)>) {
     if let Some(next_i) = skip_attr_scan_trivia(b, i, n) {
@@ -414,13 +414,13 @@ fn collect_checked_replacements_for_rename(
 }
 
 /// Intent: validation_gate
-/// Resource: error
+/// Resource: rename_span_replacements
 /// Inputs: &str, &std::path::Path, &[rename_semantic::CheckedReplacement]
 /// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: every checked replacement span must be in bounds and match its expected source snippet
+/// Failure: returns an error when a span is out of bounds or stale against the original file text
 /// Provenance: rustc:facts + rustc:docstring
 fn verify_expected_spans(
     original: &str,

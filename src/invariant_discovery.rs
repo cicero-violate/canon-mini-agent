@@ -1646,13 +1646,13 @@ fn actor_kind_from_role(role: &str) -> &'static str {
 }
 
 /// Intent: canonical_write
-/// Resource: error
+/// Resource: enforced_invariants
 /// Inputs: &mut invariants::EnforcedInvariantsFile
 /// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: normalizes invariant gate enforcement in the provided file
+/// Forbidden: mutation outside the provided EnforcedInvariantsFile
+/// Invariants: enforced invariants with empty gates receive default gates derived from their state conditions
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn update_gate_enforcement(file: &mut EnforcedInvariantsFile) {
     normalize_non_blocking_health_invariants(file);
@@ -1743,13 +1743,13 @@ fn extract_failure_fingerprints(entries: &[Value]) -> Vec<Fingerprint> {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: invariant_failure_fingerprint
 /// Inputs: &serde_json::Value, &str, bool, &str, &str, &str, u64
 /// Outputs: std::option::Option<invariants::Fingerprint>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: returns a tool-failure fingerprint only for failed result-phase events
+/// Failure: returns None for non-result phases or successful results
 /// Provenance: rustc:facts + rustc:docstring
 fn extract_tool_failure_fingerprint(
     entry: &Value,
@@ -1767,13 +1767,13 @@ fn extract_tool_failure_fingerprint(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: plan_preflight_fingerprint
 /// Inputs: &serde_json::Value, &str, bool, u64
 /// Outputs: std::option::Option<invariants::Fingerprint>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: emits a fingerprint only for failed plan_preflight actions
+/// Failure: non-plan_preflight or successful entries return None
 /// Provenance: rustc:facts + rustc:docstring
 fn extract_plan_preflight_fingerprint(
     entry: &Value,
@@ -1797,13 +1797,13 @@ fn extract_plan_preflight_fingerprint(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: forced_handoff_fingerprint
 /// Inputs: &serde_json::Value, &str, &str, &str, u64
 /// Outputs: std::option::Option<invariants::Fingerprint>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: emits step-limit fingerprint only when handoff is mentioned and forced executor stall evidence is present
+/// Failure: returns None when forced handoff conditions are not met
 /// Provenance: rustc:facts + rustc:docstring
 fn extract_forced_handoff_fingerprint(
     entry: &Value,
@@ -1935,13 +1935,13 @@ fn extract_invalid_action_fingerprint(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: invariant_failure_fingerprint
 /// Inputs: &serde_json::Value, &str, &str, bool, &str, u64
 /// Outputs: std::option::Option<invariants::Fingerprint>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: returns a missing-target fingerprint only when failure text indicates a missing target or nonexistent result target
+/// Failure: returns None when missing-target evidence is absent
 /// Provenance: rustc:facts + rustc:docstring
 fn extract_missing_target_fingerprint(
     entry: &Value,
@@ -2500,13 +2500,13 @@ fn normalize_loaded_invariants(mut file: EnforcedInvariantsFile) -> EnforcedInva
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: invariant_collections
 /// Inputs: &mut invariants::DiscoveredInvariant
 /// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: normalizes invariant condition, gate, and evidence collections in place
+/// Forbidden: mutation outside the provided invariant collections
+/// Invariants: canonicalizes collections by taking existing values and replacing them with canonicalized equivalents
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn normalize_invariant_collections(inv: &mut DiscoveredInvariant) {
     inv.state_conditions = canonicalize_conditions(std::mem::take(&mut inv.state_conditions));
@@ -2617,13 +2617,13 @@ fn load_invariants_from_tlog(workspace: &Path) -> Option<EnforcedInvariantsFile>
 }
 
 /// Intent: canonical_read
-/// Resource: error
+/// Resource: tlog_tail
 /// Inputs: &std::path::Path, usize
 /// Outputs: std::vec::Vec<serde_json::Value>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: reads tail log entries from the provided path
+/// Forbidden: mutation
+/// Invariants: returns at most max_lines non-empty tail lines parsed as JSON values in original order
+/// Failure: missing/unreadable log or malformed lines yield an empty/partial result without error
 /// Provenance: rustc:facts + rustc:docstring
 fn read_tail_entries(log_path: &Path, max_lines: usize) -> Vec<Value> {
     let reader = match open_tail_reader(log_path) {

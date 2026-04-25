@@ -35,13 +35,13 @@ use crate::semantic::{SemanticIndex, SymbolOccurrence, SymbolSummary};
 // ---------------------------------------------------------------------------
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: refactor_issues
 /// Inputs: &std::path::Path
 /// Outputs: std::result::Result<usize, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: loads semantic indexes, appends generated refactor issues, and persists issue file updates
+/// Forbidden: duplicate issue creation for tracked ids or open locations
+/// Invariants: scans available crates with dead-code, branch-reduction, helper-extraction, and call-chain detectors and returns created count
+/// Failure: returns persistence errors
 /// Provenance: rustc:facts + rustc:docstring
 pub fn generate_all_refactor_issues(workspace: &Path) -> Result<usize> {
     let crates = SemanticIndex::available_crates(workspace);
@@ -149,13 +149,13 @@ pub fn generate_panic_surface_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: semantic_state_machine_analysis
 /// Inputs: &std::path::Path
 /// Outputs: std::result::Result<usize, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: generates state-machine refactor issues for the workspace
+/// Forbidden: mutation outside issue projection updates
+/// Invariants: delegates to generate_detector_issues with state_machine_issues and auto_state_machine_ prefix
+/// Failure: propagates detector issue generation errors
 /// Provenance: rustc:facts + rustc:docstring
 pub fn generate_state_machine_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
@@ -244,13 +244,13 @@ pub fn generate_mono_explosion_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: generic_overreach_issues
 /// Inputs: &std::path::Path
 /// Outputs: std::result::Result<usize, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: generates/persists generic-overreach detector issues
+/// Forbidden: mutation outside detector issue projection state
+/// Invariants: emits issues with auto_generic_overreach_ prefix using generic_overreach_issues detector and limit 24
+/// Failure: returns detector generation or persistence errors
 /// Provenance: rustc:facts + rustc:docstring
 pub fn generate_generic_overreach_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
@@ -263,13 +263,13 @@ pub fn generate_generic_overreach_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: semantic_dead_impl_analysis
 /// Inputs: &std::path::Path
 /// Outputs: std::result::Result<usize, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: generates dead-impl refactor issues for the workspace
+/// Forbidden: mutation outside issue projection updates
+/// Invariants: delegates to generate_detector_issues with dead_impl_issues and auto_dead_impl_ prefix
+/// Failure: propagates detector issue generation errors
 /// Provenance: rustc:facts + rustc:docstring
 pub fn generate_dead_impl_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
@@ -320,13 +320,13 @@ pub fn generate_dark_assignment_issues(workspace: &Path) -> Result<usize> {
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: loop_invariant_issues
 /// Inputs: &std::path::Path
 /// Outputs: std::result::Result<usize, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: generates loop-invariant detector issues in workspace issue store
+/// Forbidden: mutation outside detector issue generation path
+/// Invariants: uses generate_detector_issues with auto_loop_invariant_ prefix, limit 24, and loop_invariant_issues detector
+/// Failure: returns detector generation errors
 /// Provenance: rustc:facts + rustc:docstring
 pub fn generate_loop_invariant_issues(workspace: &Path) -> Result<usize> {
     generate_detector_issues(
@@ -470,13 +470,13 @@ fn occurrences_are_local_to_def(def_file: &str, occurrences: &[SymbolOccurrence]
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: panic_surface_issues
 /// Inputs: &std::path::Path, &str, &[semantic::SymbolSummary], usize
 /// Outputs: std::vec::Vec<issues::Issue>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: emits panic-surface issues only for candidate symbols and returns sorted limited results
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 pub fn panic_surface_issues(
     _workspace: &Path,
@@ -538,13 +538,13 @@ fn panic_surface_candidate(s: &SymbolSummary) -> Option<(usize, f64)> {
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: semantic_state_machine_analysis
 /// Inputs: &std::path::Path, &str, &[semantic::SymbolSummary], usize
 /// Outputs: std::vec::Vec<issues::Issue>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: emits bounded state-machine issues only for symbols with more than three switch branches and back edges
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 pub fn state_machine_issues(
     _workspace: &Path,
@@ -718,13 +718,13 @@ pub fn clone_pressure_issues(
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: semantic_visibility_analysis
 /// Inputs: &std::path::Path, &str, &[semantic::SymbolSummary], usize
 /// Outputs: std::vec::Vec<issues::Issue>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: reads semantic index data for the requested crate
+/// Forbidden: mutation
+/// Invariants: emits only open low-priority visibility-leak issues for public symbols whose references are local to their defining module directory
+/// Failure: missing or unreadable semantic index/occurrence data yields skipped symbols or an empty issue list
 /// Provenance: rustc:facts + rustc:docstring
 pub fn visibility_leak_issues(
     workspace: &Path,
@@ -997,13 +997,13 @@ fn trait_has_dispatch_usage(
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: semantic_rename_analysis
 /// Inputs: &std::path::Path, &str, &[semantic::SymbolSummary], usize
 /// Outputs: std::vec::Vec<issues::Issue>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: emits bounded rename issues only for symbols with ambiguity or inconsistent prefix evidence, sorted by rename candidate score then id
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 pub fn rename_symbol_issues(
     _workspace: &Path,
@@ -1359,13 +1359,13 @@ fn dark_assignment_candidates(summaries: &[SymbolSummary], budget: usize) -> Vec
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: loop_invariant_issues
 /// Inputs: &std::path::Path, &str, &[semantic::SymbolSummary], usize
 /// Outputs: std::vec::Vec<issues::Issue>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: reads semantic index and CFG data to derive loop-invariant issue candidates
+/// Forbidden: mutation
+/// Invariants: scans bounded loop-backed function candidates, respects limit, and returns issues sorted by id
+/// Failure: missing semantic index returns an empty issue list
 /// Provenance: rustc:facts + rustc:docstring
 pub fn loop_invariant_issues(
     workspace: &Path,
@@ -1646,13 +1646,13 @@ fn redundant_path_summary_by_key<'a>(
 //   6. Emit one ticket per confirmed chain with exact agent instructions.
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: alpha_pathway_issues
 /// Inputs: &std::path::Path, &str, &[semantic::SymbolSummary], usize
 /// Outputs: std::vec::Vec<issues::Issue>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: reads semantic index alpha-pathway analysis
+/// Forbidden: mutation
+/// Invariants: emits issues for alpha pathways with chain depth >= 2, prefers longer chains before truncation, and returns deterministic id order
+/// Failure: returns empty issue list when semantic index is unavailable
 /// Provenance: rustc:facts + rustc:docstring
 pub fn alpha_pathway_issues(
     workspace: &Path,
@@ -1974,13 +1974,13 @@ impl FunctionCfg {
     }
 
     /// Intent: canonical_write
-    /// Resource: error
+    /// Resource: function_cfg_write_nodes
     /// Inputs: &refactor_analysis::FunctionCfg
     /// Outputs: std::vec::Vec<refactor_analysis::StmtKey>
-    /// Effects: error
-    /// Forbidden: error
-    /// Invariants: error
-    /// Failure: error
+    /// Effects: none
+    /// Forbidden: mutation
+    /// Invariants: returns statement keys for writes only, sorted by block then statement index
+    /// Failure: none
     /// Provenance: rustc:facts + rustc:docstring
     fn write_nodes(&self) -> Vec<StmtKey> {
         let mut out = Vec::new();
@@ -2358,13 +2358,13 @@ fn compute_post_dominators(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: function_signature_arg_count
 /// Inputs: std::option::Option<&str>
 /// Outputs: usize
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: returns zero for missing or malformed signatures; otherwise counts comma-separated arguments inside the first parenthesized parameter list
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn parse_fn_arg_count(signature: Option<&str>) -> usize {
     let Some(sig) = signature else { return 0 };
@@ -2562,13 +2562,13 @@ fn is_exempt_from_dead_code(symbol: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: branch_reduction_issues
 /// Inputs: &mut issues::IssuesFile, &semantic::SemanticIndex, &[semantic::SymbolSummary], &str, &std::collections::HashSet<std::string::String>, &std::collections::HashSet<std::string::String>
 /// Outputs: usize
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: appends new branch-reduction issues to provided issues file
+/// Forbidden: duplicate issue creation for tracked ids or open locations
+/// Invariants: emits issues only for branch-reduction candidates and returns created count
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn branch_reduction_issues(
     file: &mut IssuesFile,

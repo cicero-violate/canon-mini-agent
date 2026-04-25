@@ -476,13 +476,13 @@ impl CargoTestGate {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: progress_path_text
 /// Inputs: &str
 /// Outputs: std::option::Option<std::string::String>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: returns the first non-empty path found from progress_path, output_log, or output_log= markers
+/// Failure: returns None when no supported marker contains a non-empty path
 /// Provenance: rustc:facts + rustc:docstring
 pub fn extract_progress_path_from_result(result: &str) -> Option<String> {
     for line in result.lines() {

@@ -931,13 +931,13 @@ fn summarize_inbound_message(inbound: &str, role: &str) -> String {
 }
 
 /// Intent: event_append
-/// Resource: error
+/// Resource: inbound_prompt_summary
 /// Inputs: &mut std::string::String, &str, &str
 /// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: appends inbound handoff summary to prompt
+/// Forbidden: mutation outside provided prompt buffer
+/// Invariants: user-origin inbound messages append external-user policy reminder
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn append_inbound_to_prompt(prompt: &mut String, inbound: &str, role: &str) {
     prompt.push_str("\n\nInbound handoff message summary:\n");

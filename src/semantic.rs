@@ -1157,13 +1157,13 @@ impl SemanticIndex {
     // -----------------------------------------------------------------------
 
     /// Intent: diagnostic_scan
-    /// Resource: error
+    /// Resource: graph_node
     /// Inputs: &semantic::SemanticIndex, &str
     /// Outputs: std::result::Result<&semantic::GraphNode, anyhow::Error>
-    /// Effects: error
-    /// Forbidden: error
-    /// Invariants: error
-    /// Failure: error
+    /// Effects: none
+    /// Forbidden: mutation
+    /// Invariants: resolved node key must exist in graph nodes
+    /// Failure: returns symbol resolution errors
     /// Provenance: rustc:facts + rustc:docstring
     fn find_node(&self, symbol: &str) -> Result<&GraphNode> {
         let key = self.resolve_node_key(symbol)?;
