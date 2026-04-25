@@ -508,17 +508,7 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
     state.insert("ready_tasks".to_string(), ready_count.to_string());
 
     apply_executor_route_gate_error_class_signals(&mut state, &blockers, now_ms);
-    let orchestrator_invalid_route_count = crate::blockers::count_class_recent(
-        &blockers,
-        "orchestrator",
-        &crate::error_class::ErrorClass::InvalidRoute,
-        now_ms,
-        60 * 1000,
-    );
-    if orchestrator_invalid_route_count >= 3 {
-        state.insert("actor_kind".to_string(), "orchestrator".to_string());
-        state.insert("error_class".to_string(), "invalid_route".to_string());
-    }
+    apply_orchestrator_invalid_route_signal(&mut state, &blockers, now_ms);
     apply_executor_route_gate_role_signals(&mut state, &blockers, now_ms);
 
     if let Err(reason) = crate::invariants::evaluate_invariant_gate("route", &state, &ws) {
@@ -560,17 +550,7 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
         state.insert("error".to_string(), "missing_target".to_string());
     }
 
-    let livelock_count = crate::blockers::count_class_recent(
-        &blockers,
-        "orchestrator",
-        &crate::error_class::ErrorClass::LivelockDetected,
-        now_ms,
-        5 * 60 * 1000,
-    );
-    if livelock_count >= 1 {
-        state.insert("actor_kind".to_string(), "orchestrator".to_string());
-        state.insert("error_class".to_string(), "livelock_detected".to_string());
-    }
+    apply_orchestrator_livelock_signal(&mut state, &blockers, now_ms);
 
     if let Err(reason) = crate::invariants::evaluate_invariant_gate("executor", &state, &ws) {
         apply_route_gate_block(writer, &ws, &reason);
@@ -578,6 +558,42 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
     }
 
     true
+}
+
+fn apply_orchestrator_invalid_route_signal(
+    state: &mut std::collections::HashMap<String, String>,
+    blockers: &crate::blockers::BlockersFile,
+    now_ms: u64,
+) {
+    let count = crate::blockers::count_class_recent(
+        blockers,
+        "orchestrator",
+        &crate::error_class::ErrorClass::InvalidRoute,
+        now_ms,
+        60 * 1000,
+    );
+    if count >= 3 {
+        state.insert("actor_kind".to_string(), "orchestrator".to_string());
+        state.insert("error_class".to_string(), "invalid_route".to_string());
+    }
+}
+
+fn apply_orchestrator_livelock_signal(
+    state: &mut std::collections::HashMap<String, String>,
+    blockers: &crate::blockers::BlockersFile,
+    now_ms: u64,
+) {
+    let count = crate::blockers::count_class_recent(
+        blockers,
+        "orchestrator",
+        &crate::error_class::ErrorClass::LivelockDetected,
+        now_ms,
+        5 * 60 * 1000,
+    );
+    if count >= 1 {
+        state.insert("actor_kind".to_string(), "orchestrator".to_string());
+        state.insert("error_class".to_string(), "livelock_detected".to_string());
+    }
 }
 
 /// Intent: route_gate
