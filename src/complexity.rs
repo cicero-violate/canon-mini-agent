@@ -270,7 +270,8 @@ fn build_graph_only_entries(idx: &SemanticIndex, crate_name: &str) -> Vec<GraphO
     let fingerprint_groups = graph_only_fingerprint_groups(&summaries);
     let duplicate_body_count = duplicate_body_counts(&fingerprint_groups);
     let redundant_path_count = graph_only_redundant_path_counts(&redundant_pairs);
-    let (pathway_membership_count, pathway_wrapper_count) = graph_only_pathway_counts(alpha_pathways);
+    let (pathway_membership_count, pathway_wrapper_count) =
+        graph_only_pathway_counts(alpha_pathways);
     let branch_by_symbol = graph_only_branch_scores(&summaries);
 
     let scc_size = compute_call_scc_sizes(&summaries, &outgoing);
@@ -377,7 +378,7 @@ fn graph_only_redundant_path_counts(
 }
 
 fn graph_only_pathway_counts(
-    alpha_pathways: &[crate::semantic::AlphaPathway],
+    alpha_pathways: &[crate::semantic::AlphaPathwayChain],
 ) -> (HashMap<String, usize>, HashMap<String, usize>) {
     let mut pathway_membership_count: HashMap<String, usize> = HashMap::new();
     let mut pathway_wrapper_count: HashMap<String, usize> = HashMap::new();
@@ -385,7 +386,11 @@ fn graph_only_pathway_counts(
         for symbol in &pathway.chain {
             *pathway_membership_count.entry(symbol.clone()).or_insert(0) += 1;
         }
-        for symbol in pathway.chain.iter().take(pathway.chain.len().saturating_sub(1)) {
+        for symbol in pathway
+            .chain
+            .iter()
+            .take(pathway.chain.len().saturating_sub(1))
+        {
             *pathway_wrapper_count.entry(symbol.clone()).or_insert(0) += 1;
         }
     }

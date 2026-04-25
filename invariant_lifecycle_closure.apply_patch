@@ -1,0 +1,357 @@
+*** Begin Patch
+*** Update File: src/prompts.rs
+@@ -258,6 +258,7 @@
+             "plan",
+             "objectives",
+             "issue",
++            "invariants",
+             "read_file",
+             "symbols_rename_candidates",
+             "symbols_prepare_rename",
+@@ -513,6 +514,10 @@
+          `agent_state/semantic_manifest_proposals.json` to preserve contract fields in task wording. \
+          If graph-ranked merge candidates and generic detector issues compete at similar score, \
+          schedule at least one top graph-ranked candidate in READY NOW.\n\n\
++         Invariant lifecycle rule: if the dynamic invariants section shows Promoted invariants, \
++         use the `invariants` action to enforce or collapse them before generic plan churn. \
++         If graph/tlog risk implies a missing invariant, create a ready executor task that patches \
++         `src/invariant_discovery.rs` rather than editing `agent_state/enforced_invariants.json`.\n\n\
+          Before completing this cycle, review {OBJECTIVES_FILE} and add or update objectives \
+          for anything discovered this cycle. Use the `objectives` action \
+          (op: create_objective / update_objective) to write them. \
+@@ -621,7 +626,7 @@
+     let cargo_failures_heading =
+         "Latest cargo test failures (from cargo_test_failures.json)".to_string();
+     let suffix = format!(
+-        "\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nOpen issues in `{issues_file}` are directly actionable when they include current-source evidence — create plan tasks that reference `issue_refs`. `{diagnostics_path}` entries with no matching {issues_file} entry are hints only.\nGraph-first rule: prioritize top-ranked items from `agent_state/safe_patch_candidates.json`, and use `agent_state/semantic_manifest_proposals.json` to keep task instructions aligned with contract metadata.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nWhen a `plan` action is derived from projected diagnostics state, include same-cycle source validation in `observation` and `rationale` before mutating {MASTER_PLAN_FILE}.\n\nTreat stale or already-resolved projected diagnostics as non-actionable until current source evidence reconfirms them.\nIf projected diagnostics repeatedly report stale issues, create follow-up work to repair projection generation rather than reopening resolved implementation tasks."
++        "\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nOpen issues in `{issues_file}` are directly actionable when they include current-source evidence — create plan tasks that reference `issue_refs`. `{diagnostics_path}` entries with no matching {issues_file} entry are hints only.\nGraph-first rule: prioritize top-ranked items from `agent_state/safe_patch_candidates.json`, and use `agent_state/semantic_manifest_proposals.json` to keep task instructions aligned with contract metadata.\nInvariant lifecycle rule: Promoted dynamic invariants require an `invariants` action decision: enforce if the predicate is structurally valid, collapse if the root cause is gone, or create a source patch task against `src/invariant_discovery.rs` if graph/tlog evidence shows a missing synthesis rule.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nWhen a `plan` action is derived from projected diagnostics state, include same-cycle source validation in `observation` and `rationale` before mutating {MASTER_PLAN_FILE}.\n\nTreat stale or already-resolved projected diagnostics as non-actionable until current source evidence reconfirms them.\nIf projected diagnostics repeatedly report stale issues, create follow-up work to repair projection generation rather than reopening resolved implementation tasks."
+     );
+     let items = [
+         PromptItem {
+*** Update File: src/prompt_inputs.rs
+@@ -361,6 +361,19 @@
+             predicate
+         ));
+     }
++    if counts.promoted > 0 {
++        out.push_str(
++            "Required lifecycle decision: promoted invariants must be handled with \
++{\"action\":\"invariants\",\"op\":\"enforce\",\"id\":\"...\"} when the predicate is valid, \
++or {\"action\":\"invariants\",\"op\":\"collapse\",\"id\":\"...\"} when the root cause is gone.\n",
++        );
++    } else if counts.discovered > 0 {
++        out.push_str(
++            "Required lifecycle decision: discovered invariants should be promoted with \
++{\"action\":\"invariants\",\"op\":\"promote\",\"id\":\"...\"} after source/tlog review, \
++or converted into a source patch task against src/invariant_discovery.rs when synthesis is incomplete.\n",
++        );
++    }
+     out.push_str(
+         "Update path: do not apply_patch agent_state/enforced_invariants.json directly; it is a projection. \
+ New discovered invariants must be synthesized by source code through \
+*** Update File: src/invariant_discovery.rs
+@@ -767,6 +767,8 @@
+ 
+     let mut all_prints = blocker_prints;
+     all_prints.extend(log_prints);
++    all_prints.extend(fingerprints_from_tlog_invariant_lifecycle_gap(workspace));
++    all_prints.extend(fingerprints_from_graph_risk(workspace));
+ 
+     let mut file = load_enforced_invariants_file(workspace);
+ 
+@@ -948,6 +950,251 @@
+     );
+ }
+ 
++fn repeated_support_fingerprints(fp: Fingerprint) -> Vec<Fingerprint> {
++    vec![fp; MIN_INVARIANT_SUPPORT]
++}
++
++fn graph_manifest_status(value: &Value) -> Option<&str> {
++    value
++        .get("semantic_manifest")
++        .and_then(|manifest| manifest.get("manifest_status"))
++        .and_then(|status| status.as_str())
++}
++
++fn graph_manifest_field_has_error(value: &Value, field: &str) -> bool {
++    value
++        .get("semantic_manifest")
++        .and_then(|manifest| manifest.get(field))
++        .map(|field_value| match field_value {
++            Value::String(s) => s == "error",
++            Value::Array(items) => items.iter().any(|item| item.as_str() == Some("error")),
++            _ => false,
++        })
++        .unwrap_or(false)
++}
++
++fn graph_count_from_meta_or_array(root: &Value, meta_key: &str, array_key: &str) -> usize {
++    root.get("meta")
++        .and_then(|meta| meta.get(meta_key))
++        .and_then(|value| value.as_u64())
++        .map(|value| value as usize)
++        .or_else(|| {
++            root.get(array_key)
++                .and_then(|value| value.as_array())
++                .map(|items| items.len())
++        })
++        .unwrap_or(0)
++}
++
++fn graph_risk_fingerprint(
++    error: &str,
++    predicate_text: String,
++    raw: Value,
++    now_ms: u64,
++) -> Fingerprint {
++    Fingerprint {
++        conditions: vec![
++            StateCondition {
++                key: "artifact".to_string(),
++                value: "graph.json".to_string(),
++            },
++            StateCondition {
++                key: "error".to_string(),
++                value: error.to_string(),
++            },
++        ],
++        predicate_text,
++        ts_ms: now_ms,
++        evidence: InvariantEvidenceSample {
++            source: "state/rustc/canon_mini_agent/graph.json".to_string(),
++            ts_ms: now_ms,
++            derivation: EvidenceDerivation {
++                rule_type: "graph_risk".to_string(),
++                observed_facts: Vec::new(),
++                matched_conditions: Vec::new(),
++            },
++            raw,
++        },
++    }
++}
++
++fn fingerprints_from_graph_risk(workspace: &Path) -> Vec<Fingerprint> {
++    let graph_path = workspace
++        .join("state")
++        .join("rustc")
++        .join("canon_mini_agent")
++        .join("graph.json");
++    let Ok(raw_text) = std::fs::read_to_string(&graph_path) else {
++        return Vec::new();
++    };
++    let Ok(root) = serde_json::from_str::<Value>(&raw_text) else {
++        return Vec::new();
++    };
++
++    let mut partial_error_count = 0usize;
++    let mut invariant_error_count = 0usize;
++    if let Some(nodes) = root.get("nodes").and_then(|value| value.as_object()) {
++        for node in nodes.values() {
++            if graph_manifest_status(node) == Some("partial_error") {
++                partial_error_count += 1;
++            }
++            if graph_manifest_field_has_error(node, "invariants") {
++                invariant_error_count += 1;
++            }
++        }
++    }
++
++    let redundant_path_count =
++        graph_count_from_meta_or_array(&root, "redundant_path_pair_count", "redundant_paths");
++    let now_ms = crate::logging::now_ms();
++    let mut prints = Vec::new();
++
++    if partial_error_count >= MIN_INVARIANT_SUPPORT {
++        let raw = serde_json::json!({
++            "partial_error_count": partial_error_count,
++            "source": "state/rustc/canon_mini_agent/graph.json",
++            "threshold": MIN_INVARIANT_SUPPORT,
++        });
++        prints.extend(repeated_support_fingerprints(graph_risk_fingerprint(
++            "semantic_manifest_partial_error",
++            format!(
++                "graph.json contains {partial_error_count} semantic_manifest partial_error entries; invariant discovery must synthesize source-code repair candidates instead of leaving graph risk passive"
++            ),
++            raw,
++            now_ms,
++        )));
++    }
++
++    if invariant_error_count >= MIN_INVARIANT_SUPPORT {
++        let raw = serde_json::json!({
++            "invariant_error_count": invariant_error_count,
++            "source": "state/rustc/canon_mini_agent/graph.json",
++            "threshold": MIN_INVARIANT_SUPPORT,
++        });
++        prints.extend(repeated_support_fingerprints(graph_risk_fingerprint(
++            "semantic_manifest_invariants_error",
++            format!(
++                "graph.json contains {invariant_error_count} manifest entries with invariants=[error]; structural invariant coverage is missing and must be repaired in source"
++            ),
++            raw,
++            now_ms,
++        )));
++    }
++
++    if redundant_path_count >= MIN_INVARIANT_SUPPORT {
++        let raw = serde_json::json!({
++            "redundant_path_count": redundant_path_count,
++            "source": "state/rustc/canon_mini_agent/graph.json",
++            "threshold": MIN_INVARIANT_SUPPORT,
++        });
++        prints.extend(repeated_support_fingerprints(graph_risk_fingerprint(
++            "unconsumed_redundant_paths",
++            format!(
++                "graph.json contains {redundant_path_count} redundant path pairs; graph risk must feed ready refactor/invariant tasks rather than remain an inert projection"
++            ),
++            raw,
++            now_ms,
++        )));
++    }
++
++    prints
++}
++
++fn fingerprints_from_tlog_invariant_lifecycle_gap(workspace: &Path) -> Vec<Fingerprint> {
++    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
++    let Ok(file) = std::fs::File::open(&tlog_path) else {
++        return Vec::new();
++    };
++
++    let mut planner_action_results = 0usize;
++    let mut invariant_action_results = 0usize;
++    let mut enforced_invariant_records = 0usize;
++    let mut planner_prompts_with_invariants = 0usize;
++
++    for line in std::io::BufReader::new(file).lines().flatten() {
++        let Ok(record) = serde_json::from_str::<Value>(&line) else {
++            continue;
++        };
++        let Some(event) = record.get("event").and_then(|value| value.get("event")) else {
++            continue;
++        };
++        let kind = event.get("kind").and_then(|value| value.as_str()).unwrap_or("");
++        match kind {
++            "action_result_recorded" => {
++                let role = event.get("role").and_then(|value| value.as_str()).unwrap_or("");
++                let action_kind = event
++                    .get("action_kind")
++                    .and_then(|value| value.as_str())
++                    .unwrap_or("");
++                if role.starts_with("planner") {
++                    planner_action_results += 1;
++                }
++                if action_kind == "invariants" {
++                    invariant_action_results += 1;
++                }
++            }
++            "enforced_invariants_recorded" => enforced_invariant_records += 1,
++            "llm_turn_input" => {
++                if event
++                    .get("prompt")
++                    .or_else(|| event.get("raw"))
++                    .and_then(|value| value.as_str())
++                    .map(|text| text.contains("Dynamic enforced invariants"))
++                    .unwrap_or(false)
++                {
++                    planner_prompts_with_invariants += 1;
++                }
++            }
++            _ => {}
++        }
++    }
++
++    if enforced_invariant_records < MIN_INVARIANT_SUPPORT
++        || planner_action_results < MIN_INVARIANT_SUPPORT
++        || invariant_action_results > 0
++    {
++        return Vec::new();
++    }
++
++    let now_ms = crate::logging::now_ms();
++    let raw = serde_json::json!({
++        "planner_action_results": planner_action_results,
++        "invariant_action_results": invariant_action_results,
++        "enforced_invariant_records": enforced_invariant_records,
++        "planner_prompts_with_invariants": planner_prompts_with_invariants,
++        "source": "agent_state/tlog.ndjson",
++        "threshold": MIN_INVARIANT_SUPPORT,
++    });
++    repeated_support_fingerprints(Fingerprint {
++        conditions: vec![
++            StateCondition {
++                key: "artifact".to_string(),
++                value: "tlog.ndjson".to_string(),
++            },
++            StateCondition {
++                key: "action".to_string(),
++                value: "invariants".to_string(),
++            },
++            StateCondition {
++                key: "selected".to_string(),
++                value: "false".to_string(),
++            },
++        ],
++        predicate_text: "Dynamic invariants are projected into prompts and tlog, but the planner never selects the invariants lifecycle action; prompt/action routing is not closing the invariant loop".to_string(),
++        ts_ms: now_ms,
++        evidence: InvariantEvidenceSample {
++            source: "agent_state/tlog.ndjson".to_string(),
++            ts_ms: now_ms,
++            derivation: EvidenceDerivation {
++                rule_type: "tlog_invariant_lifecycle_gap".to_string(),
++                observed_facts: Vec::new(),
++                matched_conditions: Vec::new(),
++            },
++            raw,
++        },
++    })
++}
++
+ /// Convert classified blocker records directly into fingerprints — no text heuristics.
+ fn fingerprints_from_blockers(workspace: &Path) -> Vec<Fingerprint> {
+     let file = crate::blockers::load_blockers(workspace);
+@@ -1411,7 +1658,28 @@
+     let source = fp.evidence.source.as_str();
+     let mut observed_facts = Vec::new();
+ 
+-    if source.ends_with("blockers.json") {
++    if source.ends_with("graph.json") {
++        if let Some(partial_error_count) = raw.get("partial_error_count").and_then(|v| v.as_u64()) {
++            observed_facts.push(format!("partial_error_count={partial_error_count}"));
++        }
++        if let Some(invariant_error_count) = raw.get("invariant_error_count").and_then(|v| v.as_u64()) {
++            observed_facts.push(format!("invariant_error_count={invariant_error_count}"));
++        }
++        if let Some(redundant_path_count) = raw.get("redundant_path_count").and_then(|v| v.as_u64()) {
++            observed_facts.push(format!("redundant_path_count={redundant_path_count}"));
++        }
++    } else if source.ends_with("tlog.ndjson") {
++        for key in [
++            "planner_action_results",
++            "invariant_action_results",
++            "enforced_invariant_records",
++            "planner_prompts_with_invariants",
++        ] {
++            if let Some(value) = raw.get(key).and_then(|v| v.as_u64()) {
++                observed_facts.push(format!("{key}={value}"));
++            }
++        }
++    } else if source.ends_with("blockers.json") {
+         let actor = raw
+             .get("actor")
+             .and_then(|v| v.as_str())
+@@ -1477,7 +1745,11 @@
+     }
+ 
+     EvidenceDerivation {
+-        rule_type: if source.ends_with("blockers.json") {
++        rule_type: if source.ends_with("graph.json") {
++            "graph_risk".to_string()
++        } else if source.ends_with("tlog.ndjson") {
++            "tlog_invariant_lifecycle_gap".to_string()
++        } else if source.ends_with("blockers.json") {
+             "blocker_error_class".to_string()
+         } else {
+             "action_log_failure".to_string()
+*** End Patch

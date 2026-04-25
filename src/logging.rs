@@ -313,7 +313,11 @@ pub(crate) fn compact_log_record(
         "rationale",
         rationale.map(|v| json!(truncate(&v, MAX_SNIPPET))),
     );
-    insert_compact_log_field(&mut record, "text", text.map(|v| json!(truncate(&v, MAX_SNIPPET))));
+    insert_compact_log_field(
+        &mut record,
+        "text",
+        text.map(|v| json!(truncate(&v, MAX_SNIPPET))),
+    );
     insert_compact_log_field(&mut record, "meta", meta);
 
     Value::Object(record)

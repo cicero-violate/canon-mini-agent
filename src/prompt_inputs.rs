@@ -361,6 +361,19 @@ fn summarize_enforced_invariants_for_prompt(raw: &str) -> String {
             predicate
         ));
     }
+    if counts.promoted > 0 {
+        out.push_str(
+            "Required lifecycle decision: promoted invariants must be handled with \
+{\"action\":\"invariants\",\"op\":\"enforce\",\"id\":\"...\"} when the predicate is valid, \
+or {\"action\":\"invariants\",\"op\":\"collapse\",\"id\":\"...\"} when the root cause is gone.\n",
+        );
+    } else if counts.discovered > 0 {
+        out.push_str(
+            "Required lifecycle decision: discovered invariants should be promoted with \
+{\"action\":\"invariants\",\"op\":\"promote\",\"id\":\"...\"} after source/tlog review, \
+or converted into a source patch task against src/invariant_discovery.rs when synthesis is incomplete.\n",
+        );
+    }
     out.push_str(
         "Update path: do not apply_patch agent_state/enforced_invariants.json directly; it is a projection. \
 New discovered invariants must be synthesized by source code through \

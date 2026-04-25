@@ -258,6 +258,7 @@ fn role_default_schema_actions(kind: AgentPromptKind) -> &'static [&'static str]
             "plan",
             "objectives",
             "issue",
+            "invariants",
             "read_file",
             "symbols_rename_candidates",
             "symbols_prepare_rename",
@@ -487,6 +488,7 @@ pub(crate) fn planner_cycle_prompt(
     cargo_test_failures: &str,
 ) -> String {
     let workspace = workspace();
+    let guided_review = crate::structured_questions::guided_review_block("planner cycle boundary");
     let prefix = format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\n\
          PLAN.json EDIT RULE: always use the `plan` action — NEVER apply_patch on {MASTER_PLAN_FILE}.\n\n\
@@ -504,6 +506,7 @@ pub(crate) fn planner_cycle_prompt(
         "Executor diff (workspace changes excluding plans/diagnostics/violations)".to_string();
     let suffix = format!(
         "\n\n\
+         {guided_review}\n\n\
          ⟹ IMMEDIATE ACTION: The projected issues in the semantic control section above are \
          pre-validated by semantic control and directly actionable. Do not stall on re-verifying \
          them before planning. Create `plan` tasks for the top open issues now and \
@@ -513,6 +516,10 @@ pub(crate) fn planner_cycle_prompt(
          `agent_state/semantic_manifest_proposals.json` to preserve contract fields in task wording. \
          If graph-ranked merge candidates and generic detector issues compete at similar score, \
          schedule at least one top graph-ranked candidate in READY NOW.\n\n\
+         Invariant lifecycle rule: if the dynamic invariants section shows Promoted invariants, \
+         use the `invariants` action to enforce or collapse them before generic plan churn. \
+         If graph/tlog risk implies a missing invariant, create a ready executor task that patches \
+         `src/invariant_discovery.rs` rather than editing `agent_state/enforced_invariants.json`.\n\n\
          Before completing this cycle, review {OBJECTIVES_FILE} and add or update objectives \
          for anything discovered this cycle. Use the `objectives` action \
          (op: create_objective / update_objective) to write them. \
@@ -584,6 +591,7 @@ pub(crate) fn executor_cycle_prompt(
     ready_tasks: &str,
 ) -> String {
     let workspace = workspace();
+    let guided_review = crate::structured_questions::guided_review_block("executor cycle boundary");
     let verify_result = if latest_verify_result.trim().is_empty()
         || latest_verify_result
             .trim()
@@ -594,7 +602,7 @@ pub(crate) fn executor_cycle_prompt(
         latest_verify_result.to_string()
     };
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nREADY TASKS (from {MASTER_PLAN_FILE}, top-10 by plan order):\n{ready_tasks}\n\nLane plans are deprecated. Use {MASTER_PLAN_FILE} and current planner-phase outputs for task selection.\nGraph-first execution: consult `state/rustc/canon_mini_agent/graph.json`, `agent_state/safe_patch_candidates.json`, and `agent_state/semantic_manifest_proposals.json` before patching so edits align with ranked semantic candidates and manifest contracts.\nLatest verifier result for lane {lane_label}:\n{verify_result}\n\nUse `message` primarily for blocker escalation or unresolved partial completion evidence."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nREADY TASKS (from {MASTER_PLAN_FILE}, top-10 by plan order):\n{ready_tasks}\n\n{guided_review}\n\nLane plans are deprecated. Use {MASTER_PLAN_FILE} and current planner-phase outputs for task selection.\nGraph-first execution: consult `state/rustc/canon_mini_agent/graph.json`, `agent_state/safe_patch_candidates.json`, and `agent_state/semantic_manifest_proposals.json` before patching so edits align with ranked semantic candidates and manifest contracts.\nLatest verifier result for lane {lane_label}:\n{verify_result}\n\nUse `message` primarily for blocker escalation or unresolved partial completion evidence."
     )
 }
 
@@ -609,6 +617,8 @@ pub(crate) fn single_role_planner_prompt(
     let workspace = workspace();
     let diagnostics_path = diagnostics_file();
     let issues_file = ISSUES_FILE;
+    let guided_review =
+        crate::structured_questions::guided_review_block("single-role planner boundary");
     let prefix = format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed."
     );
@@ -621,7 +631,7 @@ pub(crate) fn single_role_planner_prompt(
     let cargo_failures_heading =
         "Latest cargo test failures (from cargo_test_failures.json)".to_string();
     let suffix = format!(
-        "\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nOpen issues in `{issues_file}` are directly actionable when they include current-source evidence — create plan tasks that reference `issue_refs`. `{diagnostics_path}` entries with no matching {issues_file} entry are hints only.\nGraph-first rule: prioritize top-ranked items from `agent_state/safe_patch_candidates.json`, and use `agent_state/semantic_manifest_proposals.json` to keep task instructions aligned with contract metadata.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nWhen a `plan` action is derived from projected diagnostics state, include same-cycle source validation in `observation` and `rationale` before mutating {MASTER_PLAN_FILE}.\n\nTreat stale or already-resolved projected diagnostics as non-actionable until current source evidence reconfirms them.\nIf projected diagnostics repeatedly report stale issues, create follow-up work to repair projection generation rather than reopening resolved implementation tasks."
+        "\n\n{guided_review}\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nOpen issues in `{issues_file}` are directly actionable when they include current-source evidence — create plan tasks that reference `issue_refs`. `{diagnostics_path}` entries with no matching {issues_file} entry are hints only.\nGraph-first rule: prioritize top-ranked items from `agent_state/safe_patch_candidates.json`, and use `agent_state/semantic_manifest_proposals.json` to keep task instructions aligned with contract metadata.\nInvariant lifecycle rule: Promoted dynamic invariants require an `invariants` action decision: enforce if the predicate is structurally valid, collapse if the root cause is gone, or create a source patch task against `src/invariant_discovery.rs` if graph/tlog evidence shows a missing synthesis rule.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nWhen a `plan` action is derived from projected diagnostics state, include same-cycle source validation in `observation` and `rationale` before mutating {MASTER_PLAN_FILE}.\n\nTreat stale or already-resolved projected diagnostics as non-actionable until current source evidence reconfirms them.\nIf projected diagnostics repeatedly report stale issues, create follow-up work to repair projection generation rather than reopening resolved implementation tasks."
     );
     let items = [
         PromptItem {
@@ -674,13 +684,15 @@ pub(crate) fn single_role_executor_prompt(
     semantic_control: &str,
 ) -> String {
     let workspace = workspace();
+    let guided_review =
+        crate::structured_questions::guided_review_block("single-role executor boundary");
     let prefix = format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed.\n\nMaster plan (from {MASTER_PLAN_FILE}):\n{master_plan}"
     );
     let semantic_control_heading =
         "Semantic control state (tlog-derived authority + projected views)".to_string();
     let suffix = format!(
-        "\n\nLane plans are deprecated. Use {MASTER_PLAN_FILE} and current planner-phase outputs for task selection.\nGraph-first execution: prefer edits that close top entries in `agent_state/safe_patch_candidates.json`, and preserve semantic contracts from `agent_state/semantic_manifest_proposals.json` while patching.\n\nDo not modify spec, plan, violations, or diagnostics.\nDo not use internal tools.\nDo not hand off work; continue execution directly in the current role flow.\nUse `message.payload` to report blocker escalation or unresolved partial-completion evidence. {ACTION_EMIT_LINE}"
+        "\n\n{guided_review}\n\nLane plans are deprecated. Use {MASTER_PLAN_FILE} and current planner-phase outputs for task selection.\nGraph-first execution: prefer edits that close top entries in `agent_state/safe_patch_candidates.json`, and preserve semantic contracts from `agent_state/semantic_manifest_proposals.json` while patching.\n\nDo not modify spec, plan, violations, or diagnostics.\nDo not use internal tools.\nDo not hand off work; continue execution directly in the current role flow.\nUse `message.payload` to report blocker escalation or unresolved partial-completion evidence. {ACTION_EMIT_LINE}"
     );
     let items = vec![PromptItem {
         heading: &semantic_control_heading,
@@ -1594,15 +1606,13 @@ pub(crate) fn action_result_prompt(
         }
         _ => String::new(),
     };
-    // Re-inject a single fresh question after each mutating step so the agent
-    // is prompted to re-examine its premise mid-turn, not only at turn start.
+    // Re-inject the fixed lifecycle review after each mutating step so the
+    // agent re-examines truth, misalignment, priority, next change, and the
+    // revealed delta mid-turn, not only at turn start.
     // last_action is the action type string (e.g. "apply_patch"), not full JSON.
-    let mutating_question = last_action
+    let mutating_review = last_action
         .filter(|kind| matches!(*kind, "apply_patch" | "plan" | "objectives" | "issue"))
-        .map(|_| {
-            let q = crate::structured_questions::select_questions()[0];
-            format!("\nBefore your next action, answer this internally: {q}\n")
-        })
+        .map(crate::structured_questions::guided_review_after_mutation)
         .unwrap_or_default();
     let provenance_block = {
         let task = task_id.unwrap_or("(none)");
@@ -1620,7 +1630,7 @@ pub(crate) fn action_result_prompt(
         "\n\n{predicted_line}{}\n{}{}\n{ACTION_EMIT_LINE}",
         next_action_hint_text(result, last_action),
         available_actions_hint_text(agent_type),
-        mutating_question,
+        mutating_review,
     );
     render_action_result_sections(&prefix, result, &suffix)
 }

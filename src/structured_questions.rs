@@ -1,12 +1,54 @@
 //! Structured questions surfaced to the LLM at each turn to encourage
 //! deliberate reasoning before acting.
 //!
-//! The bank holds 20 questions. Each prompt receives 3 distinct ones selected
-//! via a rotating counter, so over many turns every question is surfaced.
+//! The fixed guided-review loop is injected at role/action boundaries.  The
+//! rotating bank remains available as a secondary check, but it must not replace
+//! the deterministic lifecycle questions.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static QUESTION_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Deterministic lifecycle review used at role boundaries and after mutating
+/// actions. Keep this list stable: prompt consumers rely on the order to force
+/// truth → misalignment → priority → next change → observed delta.
+pub(crate) const GUIDED_REVIEW_QUESTIONS: [&str; 5] = [
+    "What is true right now?",
+    "What is not working or misaligned?",
+    "What matters most?",
+    "What must change next?",
+    "What will you do now, and what did it reveal?",
+];
+
+/// Render the fixed lifecycle block. This is intentionally deterministic so the
+/// agent cannot satisfy the prompt by answering unrelated rotating questions.
+pub(crate) fn guided_review_block(boundary: &str) -> String {
+    format!(
+        "━━━ GUIDED REVIEW: {boundary} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\
+         Before the next action, answer these internally in order:\n\
+         1. {q0}\n\
+         2. {q1}\n\
+         3. {q2}\n\
+         4. {q3}\n\
+         5. {q4}\n\
+         Use the answer to choose the next JSON action and keep `observation`/`rationale` grounded in what changed.",
+        q0 = GUIDED_REVIEW_QUESTIONS[0],
+        q1 = GUIDED_REVIEW_QUESTIONS[1],
+        q2 = GUIDED_REVIEW_QUESTIONS[2],
+        q3 = GUIDED_REVIEW_QUESTIONS[3],
+        q4 = GUIDED_REVIEW_QUESTIONS[4],
+    )
+}
+
+/// Render guided review for a completed mutating action and keep one rotating
+/// question as a secondary guardrail against stale assumptions.
+pub(crate) fn guided_review_after_mutation(action: &str) -> String {
+    let rotating = select_questions()[0];
+    format!(
+        "\n{}\nSecondary rotating check: {rotating}\n",
+        guided_review_block(&format!("after `{action}`")),
+    )
+}
 
 /// All 20 candidate questions. Each targets a different failure mode:
 /// stale assumptions, redundant writes, role confusion, cascade effects, etc.
@@ -76,6 +118,9 @@ mod tests {
         for q in QUESTIONS {
             assert!(!q.is_empty());
         }
+        for q in GUIDED_REVIEW_QUESTIONS {
+            assert!(!q.is_empty());
+        }
     }
 
     #[test]
@@ -88,5 +133,18 @@ mod tests {
             seen.insert((start + i * 3) % QUESTIONS.len());
         }
         assert_eq!(seen.len(), QUESTIONS.len());
+    }
+
+    #[test]
+    fn guided_review_block_contains_fixed_lifecycle_order() {
+        let block = guided_review_block("test boundary");
+        let mut last = 0usize;
+        for q in GUIDED_REVIEW_QUESTIONS {
+            let pos = block
+                .find(q)
+                .expect("guided review block must contain each lifecycle question");
+            assert!(pos >= last, "guided questions must remain ordered");
+            last = pos;
+        }
     }
 }

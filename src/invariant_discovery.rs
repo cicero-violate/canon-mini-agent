@@ -767,6 +767,8 @@ fn try_synthesize_invariants(workspace: &Path) -> Result<()> {
 
     let mut all_prints = blocker_prints;
     all_prints.extend(log_prints);
+    all_prints.extend(fingerprints_from_tlog_invariant_lifecycle_gap(workspace));
+    all_prints.extend(fingerprints_from_graph_risk(workspace));
 
     let mut file = load_enforced_invariants_file(workspace);
 
@@ -990,6 +992,241 @@ fn seed_graph_risk_structural_invariants(
         }],
         vec!["executor".to_string()],
     );
+}
+
+fn repeated_support_fingerprints(fp: Fingerprint) -> Vec<Fingerprint> {
+    vec![fp; MIN_INVARIANT_SUPPORT]
+}
+
+fn graph_manifest_status(value: &Value) -> Option<&str> {
+    value
+        .get("semantic_manifest")
+        .and_then(|manifest| manifest.get("manifest_status"))
+        .and_then(|status| status.as_str())
+}
+
+fn graph_manifest_field_has_error(value: &Value, field: &str) -> bool {
+    value
+        .get("semantic_manifest")
+        .and_then(|manifest| manifest.get(field))
+        .map(|field_value| match field_value {
+            Value::String(s) => s == "error",
+            Value::Array(items) => items.iter().any(|item| item.as_str() == Some("error")),
+            _ => false,
+        })
+        .unwrap_or(false)
+}
+
+fn graph_count_from_meta_or_array(root: &Value, meta_key: &str, array_key: &str) -> usize {
+    root.get("meta")
+        .and_then(|meta| meta.get(meta_key))
+        .and_then(|value| value.as_u64())
+        .map(|value| value as usize)
+        .or_else(|| {
+            root.get(array_key)
+                .and_then(|value| value.as_array())
+                .map(|items| items.len())
+        })
+        .unwrap_or(0)
+}
+
+fn graph_risk_fingerprint(
+    error: &str,
+    predicate_text: String,
+    raw: Value,
+    now_ms: u64,
+) -> Fingerprint {
+    Fingerprint {
+        conditions: vec![
+            StateCondition {
+                key: "artifact".to_string(),
+                value: "graph.json".to_string(),
+            },
+            StateCondition {
+                key: "error".to_string(),
+                value: error.to_string(),
+            },
+        ],
+        predicate_text,
+        ts_ms: now_ms,
+        evidence: InvariantEvidenceSample {
+            source: "state/rustc/canon_mini_agent/graph.json".to_string(),
+            ts_ms: now_ms,
+            derivation: EvidenceDerivation {
+                rule_type: "graph_risk".to_string(),
+                observed_facts: Vec::new(),
+                matched_conditions: Vec::new(),
+            },
+            raw,
+        },
+    }
+}
+
+fn fingerprints_from_graph_risk(workspace: &Path) -> Vec<Fingerprint> {
+    let graph_path = workspace
+        .join("state")
+        .join("rustc")
+        .join("canon_mini_agent")
+        .join("graph.json");
+    let Ok(raw_text) = std::fs::read_to_string(&graph_path) else {
+        return Vec::new();
+    };
+    let Ok(root) = serde_json::from_str::<Value>(&raw_text) else {
+        return Vec::new();
+    };
+
+    let (partial_error_count, invariant_error_count) = graph_risk_manifest_error_counts(&root);
+    let redundant_path_count =
+        graph_count_from_meta_or_array(&root, "redundant_path_pair_count", "redundant_paths");
+    let now_ms = crate::logging::now_ms();
+    let mut prints = Vec::new();
+
+    append_graph_risk_fingerprint(&mut prints, "semantic_manifest_partial_error", "partial_error_count", partial_error_count, format!("graph.json contains {partial_error_count} semantic_manifest partial_error entries; invariant discovery must synthesize source-code repair candidates instead of leaving graph risk passive"), now_ms);
+    append_graph_risk_fingerprint(&mut prints, "semantic_manifest_invariants_error", "invariant_error_count", invariant_error_count, format!("graph.json contains {invariant_error_count} manifest entries with invariants=[error]; structural invariant coverage is missing and must be repaired in source"), now_ms);
+    append_graph_risk_fingerprint(&mut prints, "unconsumed_redundant_paths", "redundant_path_count", redundant_path_count, format!("graph.json contains {redundant_path_count} redundant path pairs; graph risk must feed ready refactor/invariant tasks rather than remain an inert projection"), now_ms);
+
+    prints
+}
+
+fn graph_risk_manifest_error_counts(root: &Value) -> (usize, usize) {
+    let mut partial_error_count = 0usize;
+    let mut invariant_error_count = 0usize;
+    if let Some(nodes) = root.get("nodes").and_then(|value| value.as_object()) {
+        for node in nodes.values() {
+            if graph_manifest_status(node) == Some("partial_error") {
+                partial_error_count += 1;
+            }
+            if graph_manifest_field_has_error(node, "invariants") {
+                invariant_error_count += 1;
+            }
+        }
+    }
+    (partial_error_count, invariant_error_count)
+}
+
+fn append_graph_risk_fingerprint(
+    prints: &mut Vec<Fingerprint>,
+    kind: &str,
+    count_key: &str,
+    count: usize,
+    predicate_text: String,
+    now_ms: u64,
+) {
+    if count < MIN_INVARIANT_SUPPORT {
+        return;
+    }
+    let raw = serde_json::json!({
+        count_key: count,
+        "source": "state/rustc/canon_mini_agent/graph.json",
+        "threshold": MIN_INVARIANT_SUPPORT,
+    });
+    prints.extend(repeated_support_fingerprints(graph_risk_fingerprint(
+        kind,
+        predicate_text,
+        raw,
+        now_ms,
+    )));
+}
+
+fn fingerprints_from_tlog_invariant_lifecycle_gap(workspace: &Path) -> Vec<Fingerprint> {
+    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
+    let Ok(file) = std::fs::File::open(&tlog_path) else {
+        return Vec::new();
+    };
+
+    let mut planner_action_results = 0usize;
+    let mut invariant_action_results = 0usize;
+    let mut enforced_invariant_records = 0usize;
+    let mut planner_prompts_with_invariants = 0usize;
+
+    for line in std::io::BufReader::new(file).lines().flatten() {
+        let Ok(record) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        let Some(event) = record.get("event").and_then(|value| value.get("event")) else {
+            continue;
+        };
+        let kind = event
+            .get("kind")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
+        match kind {
+            "action_result_recorded" => {
+                let role = event
+                    .get("role")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("");
+                let action_kind = event
+                    .get("action_kind")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("");
+                if role.starts_with("planner") {
+                    planner_action_results += 1;
+                }
+                if action_kind == "invariants" {
+                    invariant_action_results += 1;
+                }
+            }
+            "enforced_invariants_recorded" => enforced_invariant_records += 1,
+            "llm_turn_input" => {
+                if event
+                    .get("prompt")
+                    .or_else(|| event.get("raw"))
+                    .and_then(|value| value.as_str())
+                    .map(|text| text.contains("Dynamic enforced invariants"))
+                    .unwrap_or(false)
+                {
+                    planner_prompts_with_invariants += 1;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if enforced_invariant_records < MIN_INVARIANT_SUPPORT
+        || planner_action_results < MIN_INVARIANT_SUPPORT
+        || invariant_action_results > 0
+    {
+        return Vec::new();
+    }
+
+    let now_ms = crate::logging::now_ms();
+    let raw = serde_json::json!({
+        "planner_action_results": planner_action_results,
+        "invariant_action_results": invariant_action_results,
+        "enforced_invariant_records": enforced_invariant_records,
+        "planner_prompts_with_invariants": planner_prompts_with_invariants,
+        "source": "agent_state/tlog.ndjson",
+        "threshold": MIN_INVARIANT_SUPPORT,
+    });
+    repeated_support_fingerprints(Fingerprint {
+        conditions: vec![
+            StateCondition {
+                key: "artifact".to_string(),
+                value: "tlog.ndjson".to_string(),
+            },
+            StateCondition {
+                key: "action".to_string(),
+                value: "invariants".to_string(),
+            },
+            StateCondition {
+                key: "selected".to_string(),
+                value: "false".to_string(),
+            },
+        ],
+        predicate_text: "Dynamic invariants are projected into prompts and tlog, but the planner never selects the invariants lifecycle action; prompt/action routing is not closing the invariant loop".to_string(),
+        ts_ms: now_ms,
+        evidence: InvariantEvidenceSample {
+            source: "agent_state/tlog.ndjson".to_string(),
+            ts_ms: now_ms,
+            derivation: EvidenceDerivation {
+                rule_type: "tlog_invariant_lifecycle_gap".to_string(),
+                observed_facts: Vec::new(),
+                matched_conditions: Vec::new(),
+            },
+            raw,
+        },
+    })
 }
 
 /// Convert classified blocker records directly into fingerprints — no text heuristics.
@@ -1455,7 +1692,31 @@ fn derive_evidence_derivation(fp: &Fingerprint) -> EvidenceDerivation {
     let source = fp.evidence.source.as_str();
     let mut observed_facts = Vec::new();
 
-    if source.ends_with("blockers.json") {
+    if source.ends_with("graph.json") {
+        if let Some(partial_error_count) = raw.get("partial_error_count").and_then(|v| v.as_u64()) {
+            observed_facts.push(format!("partial_error_count={partial_error_count}"));
+        }
+        if let Some(invariant_error_count) =
+            raw.get("invariant_error_count").and_then(|v| v.as_u64())
+        {
+            observed_facts.push(format!("invariant_error_count={invariant_error_count}"));
+        }
+        if let Some(redundant_path_count) = raw.get("redundant_path_count").and_then(|v| v.as_u64())
+        {
+            observed_facts.push(format!("redundant_path_count={redundant_path_count}"));
+        }
+    } else if source.ends_with("tlog.ndjson") {
+        for key in [
+            "planner_action_results",
+            "invariant_action_results",
+            "enforced_invariant_records",
+            "planner_prompts_with_invariants",
+        ] {
+            if let Some(value) = raw.get(key).and_then(|v| v.as_u64()) {
+                observed_facts.push(format!("{key}={value}"));
+            }
+        }
+    } else if source.ends_with("blockers.json") {
         let actor = raw
             .get("actor")
             .and_then(|v| v.as_str())
@@ -1521,7 +1782,11 @@ fn derive_evidence_derivation(fp: &Fingerprint) -> EvidenceDerivation {
     }
 
     EvidenceDerivation {
-        rule_type: if source.ends_with("blockers.json") {
+        rule_type: if source.ends_with("graph.json") {
+            "graph_risk".to_string()
+        } else if source.ends_with("tlog.ndjson") {
+            "tlog_invariant_lifecycle_gap".to_string()
+        } else if source.ends_with("blockers.json") {
             "blocker_error_class".to_string()
         } else {
             "action_log_failure".to_string()
