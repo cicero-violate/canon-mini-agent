@@ -515,14 +515,10 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
         now_ms,
         60 * 1000,
     );
-    apply_route_gate_signal(
-        &mut state,
-        orchestrator_invalid_route_count,
-        3,
-        "orchestrator",
-        "error_class",
-        "invalid_route",
-    );
+    if orchestrator_invalid_route_count >= 3 {
+        state.insert("actor_kind".to_string(), "orchestrator".to_string());
+        state.insert("error_class".to_string(), "invalid_route".to_string());
+    }
     apply_executor_route_gate_role_signals(&mut state, &blockers, now_ms);
 
     if let Err(reason) = crate::invariants::evaluate_invariant_gate("route", &state, &ws) {

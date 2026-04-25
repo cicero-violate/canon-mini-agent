@@ -811,3 +811,138 @@ pub(crate) fn execute_logged_action(
         }
     }
 }
+
+#[cfg(test)]
+mod handoff_causality_tests {
+    use super::*;
+    use crate::events::{ControlEvent, Event};
+    use serde_json::json;
+
+    fn make_workspace() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "tools_handoff_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .subsec_nanos()
+        ));
+        std::fs::create_dir_all(dir.join("agent_state")).unwrap();
+        dir
+    }
+
+    fn tlog_has_control<F: Fn(&ControlEvent) -> bool>(ws: &std::path::Path, pred: F) -> bool {
+        let tlog_path = ws.join("agent_state").join("tlog.ndjson");
+        crate::tlog::Tlog::read_records(&tlog_path)
+            .unwrap_or_default()
+            .into_iter()
+            .any(|r| matches!(&r.event, Event::Control { event } if pred(event)))
+    }
+
+    /// Bug A regression: planner→executor ready handoff must emit InboundMessageQueued +
+    /// WakeSignalQueued to tlog even when writer=None (offline/recovery mode).
+    /// Before the fix, persist_handoff_message was false for non-blocked planner→executor
+    /// messages, so persist_inbound_message was never called.
+    #[test]
+    fn planner_to_executor_ready_handoff_emits_canonical_queue_events() {
+        let ws = make_workspace();
+        let action = json!({
+            "action": "message",
+            "from": "planner",
+            "to": "executor",
+            "type": "handoff",
+            "status": "ready",
+            "observation": "Ready tasks queued.",
+            "rationale": "Planner cycle complete.",
+            "predicted_next_actions": []
+        });
+
+        persist_inbound_message("planner", 1, &ws, &action, &action.to_string(), None);
+
+        assert!(
+            tlog_has_control(&ws, |e| matches!(
+                e,
+                ControlEvent::InboundMessageQueued { role, .. } if role == "executor"
+            )),
+            "InboundMessageQueued for executor must be in tlog after planner ready handoff"
+        );
+        assert!(
+            tlog_has_control(&ws, |e| matches!(
+                e,
+                ControlEvent::WakeSignalQueued { role, .. } if role == "executor"
+            )),
+            "WakeSignalQueued for executor must be in tlog after planner ready handoff"
+        );
+    }
+
+    /// Bug B regression: InboundMessageQueued + WakeSignalQueued must reach tlog via the
+    /// fallback one-shot writer when no live CanonicalWriter is passed (writer=None).
+    /// Before the fix, the control event block was gated on `if let Some(w) = writer`,
+    /// so offline planner turns silently dropped the executor wake signal.
+    #[test]
+    fn persist_inbound_message_uses_fallback_writer_when_none() {
+        let ws = make_workspace();
+        let action = json!({
+            "action": "message",
+            "from": "planner",
+            "to": "executor",
+            "type": "handoff",
+            "status": "ready"
+        });
+
+        persist_inbound_message("planner", 1, &ws, &action, &action.to_string(), None);
+
+        assert!(
+            tlog_has_control(&ws, |e| matches!(
+                e,
+                ControlEvent::InboundMessageQueued { role, .. } if role == "executor"
+            )),
+            "InboundMessageQueued must be emitted via fallback writer when writer=None"
+        );
+        assert!(
+            tlog_has_control(&ws, |e| matches!(
+                e,
+                ControlEvent::WakeSignalQueued { role, .. } if role == "executor"
+            )),
+            "WakeSignalQueued must be emitted via fallback writer when writer=None"
+        );
+    }
+
+    /// Bug A source-level regression guard: the persist_handoff_message condition must
+    /// include planner_to_executor so normal ready handoffs are never suppressed.
+    #[test]
+    fn handoff_source_planner_to_executor_not_suppressed() {
+        let source = include_str!("tools_plan_view_io.rs");
+        let pair_def = source
+            .find("let planner_to_executor =")
+            .expect("planner_to_executor variable must be defined");
+        let persist_cond = source[pair_def..]
+            .find("let persist_handoff_message =")
+            .map(|o| pair_def + o)
+            .expect("persist_handoff_message condition must follow planner_to_executor");
+        let uses_planner_to_executor = source[persist_cond..]
+            .split(';')
+            .next()
+            .unwrap_or("")
+            .contains("planner_to_executor");
+        assert!(
+            uses_planner_to_executor,
+            "persist_handoff_message must reference planner_to_executor so ready handoffs are not suppressed"
+        );
+    }
+
+    /// Bug C regression guard: synthesis always writes enforced_invariants.json even when
+    /// the action log is empty (early-return on empty fingerprints was removed).
+    #[test]
+    fn synthesis_creates_file_even_with_empty_action_log() {
+        let ws = make_workspace();
+        // No blockers, no action log — synthesis must still run and persist the file.
+        crate::invariants::maybe_synthesize_invariants(&ws);
+        // File exists — synthesis ran and persisted (even if no invariants were seeded).
+        let path = ws.join("agent_state").join("enforced_invariants.json");
+        assert!(
+            path.exists(),
+            "enforced_invariants.json must be created by synthesis even with no action log or blockers"
+        );
+    }
+}
