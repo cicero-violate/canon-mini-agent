@@ -675,13 +675,13 @@ fn build_success_sequence_candidates(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: lesson_candidate
 /// Inputs: std::string::String, std::string::String, std::string::String, lessons::CandidateAggregate, &std::collections::HashMap<std::string::String, usize>
 /// Outputs: lessons::LessonsCandidate
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: fs_write, uses_network, spawns_process
+/// Invariants: deterministic_candidate_id, empty_metadata_filtered
+/// Failure: infallible
 /// Provenance: rustc:facts + rustc:docstring
 fn build_bigram_candidate(
     role: String,
