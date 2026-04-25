@@ -154,6 +154,9 @@ fn verifier_resume_done(pending_results: usize, joinset_empty: bool) -> bool {
 }
 
 fn executor_resume_done(lane_pending: bool, in_progress: bool) -> bool {
+    // MIR-identical shape with `decide_post_diagnostics`, but not a safe merge:
+    // this predicate is negative-polarity completion (`!pending && !in_progress`),
+    // while diagnostics follow-up is positive-polarity triggering (`ran || changed`).
     !lane_pending && !in_progress
 }
 
