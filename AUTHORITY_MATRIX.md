@@ -18,7 +18,7 @@ This file defines the intended authority class for runtime artifacts.
 | `agent_state/blockers.json`                        | projection | Rebuildable blocker projection with tlog-backed recovery.                             |
 | `agent_state/lessons.json`                         | projection | Synthesized lessons projection backed by snapshot effects.                            |
 | `agent_state/enforced_invariants.json`             | projection | Synthesized enforced-invariants projection backed by snapshot effects.                |
-| `state/rustc/canon_mini_agent/graph.json`          | projection | Rebuildable rustc-derived semantic graph; projection-driving reads should go through semantic graph helpers. |
+| `state/rustc/canon_mini_agent/graph.json`          | projection | Rebuildable rustc-derived semantic graph; inspect through graph describe/semantic helpers before raw JSON reads. |
 | `agent_state/semantic_manifest_proposals.json`     | projection | Rebuildable semantic manifest sidecar derived from `graph.json` and docstrings.       |
 | `agent_state/safe_patch_candidates.json`           | projection | Rebuildable semantic ranking output derived from `graph.json` and manifest proposals. |
 | `agent_state/last_message_to_<role>.json`          | ephemeral  | Delivery cache only; no-writer readers must prefer canonical tlog entries.            |
@@ -35,14 +35,30 @@ This file defines the intended authority class for runtime artifacts.
 4. On boot/replay, projection files are reconciled from canonical snapshots when missing/stale/divergent.
 5. Wake routing authority is canonical control state (`WakeSignalQueued` / `WakeSignalConsumed` via `SystemState.wake_signals_pending`), not physical `wakeup_*.flag` files.
 6. Projection-driving graph reads must stay behind semantic loader/helper modules so guardrails do not mix protected artifact path construction with ad hoc raw file reads.
+7. Agents should use graph-backed describe/navigation surfaces (`semantic_map`, `symbol_window`, `symbol_neighborhood`, `symbol_path`, `execution_path`, `rustc_hir`, `rustc_mir`) to understand `graph.json`; raw `graph.json` parsing is reserved for dedicated analyzers that document the schema fields they consume.
+
+## Graph Description Policy
+
+`state/rustc/canon_mini_agent/graph.json` is large, rebuildable, and schema-rich. It is not a hand-authored authority file.
+
+Use describe/navigation tools first:
+
+- `semantic_map` — summarize graph triples and module-level relationships.
+- `symbol_window` — inspect the source/body context for one graph-backed symbol.
+- `symbol_neighborhood` — inspect callers/callees and adjacent semantic edges for one symbol.
+- `symbol_path` — trace the shortest semantic path between two symbols.
+- `execution_path` — trace a unified semantic + CFG path between symbols or CFG blocks.
+- `rustc_hir` / `rustc_mir` — inspect graph-backed HIR/MIR summaries without reading raw `graph.json`.
+
+Raw structured parsing of `graph.json` is allowed for dedicated graph analyzers such as invariant-gap detection, semantic ranking, issue projection, and manifest synchronization. Those analyzers must treat `graph.json` as a projection and should load it through the semantic graph authority surface where practical.
 
 ## Gate + Authority Function Map (Code-Derived)
 
 Derived from source/tests only (no `SPEC.md` read).
 
 ### Runtime gate functions
-- `src/invariants.rs`: `evaluate_invariant_gate(...)` — hard gate predicate check for `route|planner|executor` role proposals.
-- `src/invariants.rs`: `default_gates_for_conditions(...)` — maps invariant conditions/error classes to default enforcing gates.
+- `src/invariant_discovery.rs`: `evaluate_invariant_gate(...)` — hard gate predicate check for `route|planner|executor` role proposals.
+- `src/invariant_discovery.rs`: `default_gates_for_conditions(...)` — maps invariant conditions/error classes to default enforcing gates.
 - `src/state_space.rs`: `decide_phase_gates(...)` — computes planner/executor/verifier runnable gates from canonical state. Legacy diagnostics inputs are remapped to planner for replay compatibility.
 - `src/state_space.rs`: `allow_named_phase_run(...)`, `block_executor_dispatch(...)`, `allow_diagnostics_run(...)` (compat no-op), `decide_resume_phase(...)`, `decide_post_diagnostics(...)` — gate helpers used by orchestrator transitions.
 - `src/app.rs`: `collect_wake_signal_inputs(...)` / `apply_wake_signals(...)` — canonical wake-signal application from `SystemState` (file-flag fallback retired).
@@ -56,18 +72,18 @@ Derived from source/tests only (no `SPEC.md` read).
 ### Projection-authority write functions
 - `src/logging.rs`: `write_projection_with_artifact_effects(...)` — standard projection write path with effect + artifact metadata.
 - `src/issues.rs`: `persist_issues_projection_with_writer(...)` — authoritative writer for `agent_state/ISSUES.json`.
-- `src/invariants.rs`: `persist_enforced_invariants_projection_with_writer(...)` — writer-aware authoritative writer for `agent_state/enforced_invariants.json`.
+- `src/invariant_discovery.rs`: `persist_enforced_invariants_projection_with_writer(...)` — writer-aware authoritative writer for `agent_state/enforced_invariants.json`.
 - `src/lessons.rs`: `persist_lessons_projection_with_writer(...)` — writer-aware authoritative writer for `agent_state/lessons.json`.
 - `src/objectives.rs`: `persist_objectives_projection(...)` — projection materialization for canonical objectives state.
 - `src/objectives.rs`: `reconcile_objectives_projection(...)` — startup/replay projection reconciliation from canonical objectives.
 - `src/issues.rs`: `reconcile_issues_projection(...)` — projection reconciliation from `ISSUES.json`; legacy full `IssuesFileRecorded` tlog recovery is fallback-only to avoid prompt-path replay lag.
 - `src/lessons.rs`: `reconcile_lessons_projection(...)` — startup/replay projection reconciliation from latest `LessonsArtifactRecorded`.
-- `src/invariants.rs`: `reconcile_enforced_invariants_projection(...)` — startup/replay projection reconciliation from latest `EnforcedInvariantsRecorded`.
+- `src/invariant_discovery.rs`: `reconcile_enforced_invariants_projection(...)` — startup/replay projection reconciliation from latest `EnforcedInvariantsRecorded`.
 - `src/logging.rs`: `migrate_projection_if_present(...)` — controlled projection migration helper.
 
 ### Authoritative read/load functions (tlog first)
 - `src/issues.rs`: `load_issues_file(...)` (+ `load_issues_from_tlog(...)`) — resolves operational state from `ISSUES.json`; new tlog writes record lightweight `IssuesProjectionRecorded` receipts instead of cloning the full issues payload.
-- `src/invariants.rs`: `load_enforced_invariants_file(...)` (+ `load_invariants_from_tlog(...)`) — resolves authority from latest `EnforcedInvariantsRecorded`, uses file only as compatibility fallback.
+- `src/invariant_discovery.rs`: `load_enforced_invariants_file(...)` (+ `load_invariants_from_tlog(...)`) — resolves authority from latest `EnforcedInvariantsRecorded`, uses file only as compatibility fallback.
 - `src/lessons.rs`: `load_lessons_artifact(...)` (+ `load_lessons_from_tlog(...)`) — resolves authority from latest `LessonsArtifactRecorded`, uses file only as compatibility fallback.
 - `src/blockers.rs`: `load_blockers(...)` (+ `load_blockers_from_tlog(...)`) — reads blockers projection, falls back to tlog records.
 - `src/prompt_inputs.rs`: `read_lessons_or_empty(...)` — prompt-safe lessons loader path (structured parse + fallback behavior).
