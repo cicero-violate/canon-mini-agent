@@ -92,13 +92,7 @@ pub fn analyze(workspace: &Path, crate_name: &str) -> Result<InterAnalysis> {
     let call_edges = idx.call_edges();
     let call_edge_count = call_edges.len();
 
-    // callee map: caller → [callee, ...]
-    let mut callee_map: HashMap<String, Vec<String>> = HashMap::new();
-    let mut caller_map: HashMap<String, usize> = HashMap::new();
-    for (from, to) in &call_edges {
-        callee_map.entry(from.clone()).or_default().push(to.clone());
-        *caller_map.entry(to.clone()).or_insert(0) += 1;
-    }
+    let (callee_map, caller_map) = inter_call_maps(&call_edges);
 
     // Complexity map: symbol → terminator-weighted branch score.
     // Falls back to mir_blocks when cfg_nodes are absent (e.g. stub crates).
@@ -270,6 +264,18 @@ pub fn analyze(workspace: &Path, crate_name: &str) -> Result<InterAnalysis> {
         duplicate_groups,
         call_edge_count,
     })
+}
+
+fn inter_call_maps(
+    call_edges: &[(String, String)],
+) -> (HashMap<String, Vec<String>>, HashMap<String, usize>) {
+    let mut callee_map: HashMap<String, Vec<String>> = HashMap::new();
+    let mut caller_map: HashMap<String, usize> = HashMap::new();
+    for (from, to) in call_edges {
+        callee_map.entry(from.clone()).or_default().push(to.clone());
+        *caller_map.entry(to.clone()).or_insert(0) += 1;
+    }
+    (callee_map, caller_map)
 }
 
 // ---------------------------------------------------------------------------
