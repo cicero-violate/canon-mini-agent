@@ -532,12 +532,13 @@ pub fn project_semantic_rank_issues(
             opened_or_updated += 1;
         }
     }
-    let resolved_stale = resolve_missing_projected_issues(&mut file, &active_rank_ids, ISSUE_ID_PREFIX)
-        + resolve_missing_projected_issues(
-            &mut file,
-            &active_manifest_ids,
-            MANIFEST_ISSUE_ID_PREFIX,
-        );
+    let resolved_stale =
+        resolve_missing_projected_issues(&mut file, &active_rank_ids, ISSUE_ID_PREFIX)
+            + resolve_missing_projected_issues(
+                &mut file,
+                &active_manifest_ids,
+                MANIFEST_ISSUE_ID_PREFIX,
+            );
     let selected_candidates = active_rank_ids.len() + active_manifest_ids.len();
     let rewrote_issues = opened_or_updated > 0 || resolved_stale > 0;
     if rewrote_issues {

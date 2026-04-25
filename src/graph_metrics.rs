@@ -1137,7 +1137,8 @@ fn generate_representation_fanout_issues_for_crate(
             .cloned()
             .collect(),
     );
-    let symbols_by_pair = build_representation_symbols_by_pair(sources_by_symbol, &targets_by_symbol);
+    let symbols_by_pair =
+        build_representation_symbols_by_pair(sources_by_symbol, &targets_by_symbol);
     let mut mutated = 0usize;
     for ((source, target), mut symbols) in symbols_by_pair {
         symbols.sort();
@@ -1154,7 +1155,10 @@ fn generate_representation_fanout_issues_for_crate(
     }
     let prefix = format!("auto_representation_fanout_{crate_name}_");
     for issue in &mut file.issues {
-        if issue.id.starts_with(&prefix) && !desired_ids.contains(&issue.id) && issue.status != "resolved" {
+        if issue.id.starts_with(&prefix)
+            && !desired_ids.contains(&issue.id)
+            && issue.status != "resolved"
+        {
             issue.status = "resolved".to_string();
             mutated += 1;
         }
@@ -1770,11 +1774,8 @@ fn build_state_transition_dispersion_issue(
         .collect::<Vec<_>>()
         .join(", ");
     let proof = state_transition_dispersion_proof(transitions, coordinated_by_symbol);
-    let evidence = state_transition_dispersion_evidence(
-        transitions,
-        coordinated_by_symbol,
-        &display_state,
-    );
+    let evidence =
+        state_transition_dispersion_evidence(transitions, coordinated_by_symbol, &display_state);
 
     Issue {
         id: format!(
@@ -1858,7 +1859,11 @@ fn state_transition_dispersion_proof(
         workflow_coordinated_count,
         read_write_cycle_count,
         all_coordinated,
-        tier: if all_coordinated { "proof" } else { "hypothesis" },
+        tier: if all_coordinated {
+            "proof"
+        } else {
+            "hypothesis"
+        },
     }
 }
 
@@ -1869,7 +1874,9 @@ fn state_transition_dispersion_evidence(
 ) -> Vec<String> {
     transitions
         .iter()
-        .map(|symbol| state_transition_dispersion_evidence_line(symbol, coordinated_by_symbol, display_state))
+        .map(|symbol| {
+            state_transition_dispersion_evidence_line(symbol, coordinated_by_symbol, display_state)
+        })
         .collect()
 }
 

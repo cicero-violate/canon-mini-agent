@@ -1329,10 +1329,7 @@ fn action_requires_question(action: &Value) -> bool {
     }
 }
 
-fn normalize_plan_alias_fields(
-    obj: &mut serde_json::Map<String, Value>,
-    normalized_op: &str,
-) {
+fn normalize_plan_alias_fields(obj: &mut serde_json::Map<String, Value>, normalized_op: &str) {
     for field in ["op", "operation"] {
         if obj.get(field).is_some() {
             obj.insert(field.to_string(), Value::String(normalized_op.to_string()));
@@ -1432,9 +1429,10 @@ fn direct_schema_error_message(
     action: &Value,
 ) -> Option<String> {
     match kind {
-        ValidationErrorKind::Required { property } => {
-            Some(missing_required_field_message(path, property.as_str().unwrap_or("unknown")))
-        }
+        ValidationErrorKind::Required { property } => Some(missing_required_field_message(
+            path,
+            property.as_str().unwrap_or("unknown"),
+        )),
         ValidationErrorKind::Type { kind } => Some(schema_type_mismatch_message(path, kind)),
         ValidationErrorKind::MinLength { .. } => Some(schema_missing_field_message(path)),
         ValidationErrorKind::MaxLength { limit } => {
@@ -1667,7 +1665,9 @@ fn first_missing_action_specific_field(action: &Value, action_name: &str) -> Opt
     let missing_field = |field: &str| missing_field_in_action(action, field);
 
     match action_name {
-        "message" => first_missing_required_field(action, &["from", "to", "type", "status", "payload"]),
+        "message" => {
+            first_missing_required_field(action, &["from", "to", "type", "status", "payload"])
+        }
         "list_dir" | "read_file" => missing_field("path"),
         "symbols_index" | "symbols_rename_candidates" | "symbols_prepare_rename" => None,
         "rename_symbol" => missing_field_for_rename_symbol_action(action),

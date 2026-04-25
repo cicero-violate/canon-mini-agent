@@ -556,7 +556,9 @@ mod tests {
     #[test]
     fn command_is_cargo_check_detects_manual_validation_commands() {
         assert!(super::command_is_cargo_check("cargo check"));
-        assert!(super::command_is_cargo_check("cargo check -p canon-mini-agent"));
+        assert!(super::command_is_cargo_check(
+            "cargo check -p canon-mini-agent"
+        ));
         assert!(super::command_is_cargo_check(
             "CARGO_HOME=/tmp/cargo cargo check --workspace"
         ));

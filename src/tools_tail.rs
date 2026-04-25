@@ -442,6 +442,7 @@ fn execute_action(
     action: &Value,
     workspace: &Path,
     _check_on_done: bool,
+    defer_planner_to_executor_handoff: bool,
     mut writer: Option<&mut CanonicalWriter>,
 ) -> Result<(bool, String)> {
     let kind = action
@@ -450,7 +451,13 @@ fn execute_action(
         .unwrap_or("unknown")
         .to_string();
     tokio::task::block_in_place(|| match kind.as_str() {
-        "message" => handle_message_action(role, step, action, writer.as_deref_mut()),
+        "message" => handle_message_action(
+            role,
+            step,
+            action,
+            defer_planner_to_executor_handoff,
+            writer.as_deref_mut(),
+        ),
         "list_dir" => handle_list_dir_action(workspace, action),
         "read_file" => handle_read_file_action(role, step, workspace, action),
         "symbols_index" => handle_symbols_index_action(workspace, action),
@@ -525,7 +532,36 @@ pub fn execute_action_capability(
     workspace: &Path,
     check_on_done: bool,
 ) -> Result<(bool, String)> {
-    execute_action(role, step, action, workspace, check_on_done, None)
+    execute_action(role, step, action, workspace, check_on_done, false, None)
+}
+
+fn is_planner_to_executor_message(role: &str, action: &Value) -> bool {
+    let normalized_role = role
+        .trim()
+        .to_lowercase()
+        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+    let normalized_to = action
+        .get("to")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_lowercase()
+        .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+    normalized_role == "planner" && normalized_to.starts_with("executor")
+}
+
+fn persist_planner_to_executor_handoff_after_result(
+    role: &str,
+    step: usize,
+    workspace: &Path,
+    action: &Value,
+    writer: Option<&mut CanonicalWriter>,
+) {
+    if !is_planner_to_executor_message(role, action) {
+        return;
+    }
+    let full_message = serde_json::to_string_pretty(action).unwrap_or_else(|_| "{}".to_string());
+    persist_inbound_message(role, step, workspace, action, &full_message, writer);
 }
 
 fn sanitize_inbound_target(role: &str, to: &str) -> String {
@@ -778,6 +814,7 @@ pub(crate) fn execute_logged_action(
         action,
         workspace,
         check_on_done,
+        true,
         writer.as_deref_mut(),
     ) {
         Ok((done, out)) => {
@@ -791,6 +828,13 @@ pub(crate) fn execute_logged_action(
                 action,
                 true,
                 &out,
+            );
+            persist_planner_to_executor_handoff_after_result(
+                role,
+                step,
+                workspace,
+                action,
+                writer.as_deref_mut(),
             );
             Ok((done, out))
         }
@@ -837,6 +881,16 @@ mod handoff_causality_tests {
             .unwrap_or_default()
             .into_iter()
             .any(|r| matches!(&r.event, Event::Control { event } if pred(event)))
+    }
+
+    fn tlog_last_seq<F: Fn(&Event) -> bool>(ws: &std::path::Path, pred: F) -> Option<u64> {
+        let tlog_path = ws.join("agent_state").join("tlog.ndjson");
+        crate::tlog::Tlog::read_records(&tlog_path)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|r| pred(&r.event))
+            .map(|r| r.seq)
+            .last()
     }
 
     /// Bug A regression: planner→executor ready handoff must emit InboundMessageQueued +
@@ -905,6 +959,76 @@ mod handoff_causality_tests {
                 ControlEvent::WakeSignalQueued { role, .. } if role == "executor"
             )),
             "WakeSignalQueued must be emitted via fallback writer when writer=None"
+        );
+    }
+
+    #[test]
+    fn logged_planner_to_executor_handoff_queues_after_action_result() {
+        let ws = make_workspace();
+        crate::constants::set_workspace(ws.to_string_lossy().to_string());
+        crate::constants::set_agent_state_dir(ws.join("agent_state").to_string_lossy().to_string());
+        let tlog_path = ws.join("agent_state").join("tlog.ndjson");
+        let state = crate::system_state::SystemState::new(&[], 0);
+        let mut writer =
+            CanonicalWriter::try_new(state, crate::tlog::Tlog::open(&tlog_path), ws.clone())
+            .expect("writer must open tlog");
+        let endpoint = LlmEndpoint {
+            id: "test".to_string(),
+            url: vec![],
+            role_markdown: String::new(),
+            role: Some("planner".to_string()),
+            stateful: false,
+            max_tabs: 1,
+        };
+        let action = json!({
+            "action": "message",
+            "from": "planner",
+            "to": "executor",
+            "type": "handoff",
+            "status": "ready",
+            "payload": { "summary": "Ready tasks queued." }
+        });
+
+        let (_done, _out) = execute_logged_action(
+            "planner",
+            "planner",
+            &endpoint,
+            &ws,
+            1,
+            "cmd-1",
+            &action,
+            false,
+            Some(&mut writer),
+        )
+        .expect("logged handoff should execute");
+
+        let action_result_seq = tlog_last_seq(&ws, |event| {
+            matches!(
+                event,
+                Event::Effect {
+                    event: crate::events::EffectEvent::ActionResultRecorded {
+                        role,
+                        action_kind,
+                        ok,
+                        ..
+                    }
+                } if role == "planner" && action_kind == "message" && *ok
+            )
+        })
+        .expect("planner message action result must be recorded");
+        let inbound_seq = tlog_last_seq(&ws, |event| {
+            matches!(
+                event,
+                Event::Control {
+                    event: ControlEvent::InboundMessageQueued { role, .. }
+                } if role == "executor"
+            )
+        })
+        .expect("executor inbound message must be queued");
+
+        assert!(
+            inbound_seq > action_result_seq,
+            "executor inbound queue seq must be greater than planner action result seq"
         );
     }
 

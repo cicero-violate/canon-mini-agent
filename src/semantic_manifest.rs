@@ -768,12 +768,8 @@ pub fn run_with_options(
 
     let (effects_by_owner, calls_by_owner) = index_manifest_edges(&graph);
 
-    let (proposals, updated, fn_total, fn_with_any_error) = build_semantic_manifest_proposals(
-        &graph,
-        &workspace,
-        &effects_by_owner,
-        &calls_by_owner,
-    );
+    let (proposals, updated, fn_total, fn_with_any_error) =
+        build_semantic_manifest_proposals(&graph, &workspace, &effects_by_owner, &calls_by_owner);
 
     let error_rate = if fn_total == 0 {
         0.0
@@ -978,7 +974,6 @@ fn build_semantic_manifest_proposals(
     effects_by_owner: &HashMap<String, BTreeSet<String>>,
     calls_by_owner: &HashMap<String, BTreeSet<String>>,
 ) -> (HashMap<String, SemanticManifest>, usize, usize, usize) {
-
     let mut src_cache: HashMap<PathBuf, Vec<String>> = HashMap::new();
     let mut proposals: HashMap<String, SemanticManifest> = HashMap::new();
     let mut updated = 0usize;

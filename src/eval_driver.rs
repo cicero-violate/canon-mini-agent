@@ -49,7 +49,10 @@ pub fn run(
         generated_at_ms: crate::logging::now_ms(),
         overall_score: snapshot.overall_score(),
         delta_g: delta.as_ref().map(|d| d.delta_g),
-        promotion_eligible: delta.as_ref().map(|d| d.promotion_eligible).unwrap_or(false),
+        promotion_eligible: delta
+            .as_ref()
+            .map(|d| d.promotion_eligible)
+            .unwrap_or(false),
         objective_progress: snapshot.vector.objective_progress,
         safety: snapshot.vector.safety,
         task_velocity: snapshot.vector.task_velocity,

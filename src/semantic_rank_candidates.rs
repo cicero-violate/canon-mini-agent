@@ -252,7 +252,9 @@ fn score_intent_class(intent_class: Option<&str>, reasoning: &mut Vec<String>) -
         "canonical_read" | "projection_read" => score_reason(reasoning, 0.20, "read_intent:+0.20"),
         "validation_gate" | "route_gate" => score_reason(reasoning, 0.15, "gate_intent:+0.15"),
         "test_assertion" => score_reason(reasoning, 0.10, "test_assertion:+0.10"),
-        "canonical_write" | "projection_write" => score_reason(reasoning, -0.15, "write_intent:-0.15"),
+        "canonical_write" | "projection_write" => {
+            score_reason(reasoning, -0.15, "write_intent:-0.15")
+        }
         "repair_or_initialize" => score_reason(reasoning, -0.20, "repair_intent:-0.20"),
         "event_append" => score_reason(reasoning, -0.15, "event_append:-0.15"),
         "transport_effect" => score_reason(reasoning, -0.30, "transport_intent:-0.30"),

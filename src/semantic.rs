@@ -155,7 +155,11 @@ fn summarize_cfg_terminators(blocks: &[&CfgNode]) -> (usize, usize, usize) {
 
 fn summarize_call_edges<'a>(
     edges: &'a [GraphEdge],
-) -> (HashMap<&'a str, usize>, HashMap<&'a str, usize>, HashSet<&'a str>) {
+) -> (
+    HashMap<&'a str, usize>,
+    HashMap<&'a str, usize>,
+    HashSet<&'a str>,
+) {
     let mut call_in: HashMap<&str, usize> = HashMap::new();
     let mut call_out: HashMap<&str, usize> = HashMap::new();
     let mut self_recursive: HashSet<&str> = HashSet::new();

@@ -983,11 +983,16 @@ fn dead_impl_issue(crate_name: &str, implementer: &str, trait_symbol: &str) -> I
     }
 }
 
-fn trait_has_dispatch_usage(triples: &[crate::semantic::SemanticTriple], trait_symbol: &str) -> bool {
+fn trait_has_dispatch_usage(
+    triples: &[crate::semantic::SemanticTriple],
+    trait_symbol: &str,
+) -> bool {
     let dyn_trait = format!("dyn {trait_symbol}");
     triples.iter().any(|triple| {
         !triple.relation.eq_ignore_ascii_case("implements")
-            && (triple.from == trait_symbol || triple.to == trait_symbol || triple.to.contains(&dyn_trait))
+            && (triple.from == trait_symbol
+                || triple.to == trait_symbol
+                || triple.to.contains(&dyn_trait))
     })
 }
 
@@ -1038,7 +1043,12 @@ pub fn rename_symbol_issues(
             continue;
         }
 
-        out.push(build_rename_symbol_issue(crate_name, s, symbol_name, reasons));
+        out.push(build_rename_symbol_issue(
+            crate_name,
+            s,
+            symbol_name,
+            reasons,
+        ));
     }
     out.sort_by(|a, b| {
         let sa = a
@@ -1298,7 +1308,10 @@ fn dark_assignment_issue(
         "medium"
     };
     Issue {
-        id: format!("auto_dark_assign_{crate_name}_{:x}", stable_hash(&summary.symbol)),
+        id: format!(
+            "auto_dark_assign_{crate_name}_{:x}",
+            stable_hash(&summary.symbol)
+        ),
         title: format!(
             "Dark assignments in `{}` ({} dead write(s))",
             short_name(&summary.symbol),
@@ -1334,10 +1347,7 @@ fn dark_assignment_issue(
     }
 }
 
-fn dark_assignment_candidates(
-    summaries: &[SymbolSummary],
-    budget: usize,
-) -> Vec<&SymbolSummary> {
+fn dark_assignment_candidates(summaries: &[SymbolSummary], budget: usize) -> Vec<&SymbolSummary> {
     let mut candidates: Vec<&SymbolSummary> = summaries
         .iter()
         .filter(|s| s.kind == "fn")
@@ -1683,7 +1693,8 @@ pub fn alpha_pathway_issues(
             .collect::<Vec<_>>()
             .join(", ");
 
-        let chain_locs = alpha_pathway_chain_locs(chain, canonical_head, &summary_by_symbol, pathway);
+        let chain_locs =
+            alpha_pathway_chain_locs(chain, canonical_head, &summary_by_symbol, pathway);
 
         let chain_depth = chain.len();
         let id_seed = format!("{crate_name}:{}", chain.join(":"));
@@ -1742,7 +1753,10 @@ fn alpha_pathway_issue(
     id_seed: String,
 ) -> Issue {
     Issue {
-        id: format!("auto_alpha_pathway_{crate_name}_{:x}", stable_hash(&id_seed)),
+        id: format!(
+            "auto_alpha_pathway_{crate_name}_{:x}",
+            stable_hash(&id_seed)
+        ),
         title: format!(
             "Alpha-equivalent pathway: {} ({} confirmed wrapper{})",
             chain_display,
@@ -1768,10 +1782,7 @@ fn alpha_pathway_issue(
             "canonical_head": canonical_head,
             "wrapper_symbols": wrappers.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
         }),
-        acceptance_criteria: alpha_pathway_acceptance_criteria(
-            canonical_head_short,
-            &wrapper_list,
-        ),
+        acceptance_criteria: alpha_pathway_acceptance_criteria(canonical_head_short, &wrapper_list),
         evidence: chain_locs,
         discovered_by: "refactor_analyzer".to_string(),
         ..Issue::default()

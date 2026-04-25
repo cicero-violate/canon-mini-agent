@@ -150,21 +150,51 @@ fn insert_graph_only_scc_metrics(
     );
 }
 
-fn graph_only_mir_blocks(entry: &GraphOnlyEntry) -> usize { entry.mir_blocks }
-fn graph_only_mir_stmts(entry: &GraphOnlyEntry) -> usize { entry.mir_stmts }
-fn graph_only_branch_score(entry: &GraphOnlyEntry) -> String { format_graph_score_2(entry.branch_score) }
-fn graph_only_stmt_density(entry: &GraphOnlyEntry) -> String { format_graph_score_2(entry.stmt_density) }
-fn graph_only_b_transitive(entry: &GraphOnlyEntry) -> String { format_graph_score_2(entry.b_transitive) }
-fn graph_only_heat_score(entry: &GraphOnlyEntry) -> String { format_graph_score_2(entry.heat_score) }
-fn graph_only_call_in(entry: &GraphOnlyEntry) -> usize { entry.call_in }
-fn graph_only_call_out(entry: &GraphOnlyEntry) -> usize { entry.call_out }
-fn graph_only_duplicate_body_count(entry: &GraphOnlyEntry) -> usize { entry.duplicate_body_count }
-fn graph_only_redundant_path_count(entry: &GraphOnlyEntry) -> usize { entry.redundant_path_count }
-fn graph_only_pathway_membership_count(entry: &GraphOnlyEntry) -> usize { entry.pathway_membership_count }
-fn graph_only_pathway_wrapper_count(entry: &GraphOnlyEntry) -> usize { entry.pathway_wrapper_count }
-fn graph_only_scc_size(entry: &GraphOnlyEntry) -> usize { entry.scc_size }
-fn graph_only_is_directly_recursive(entry: &GraphOnlyEntry) -> bool { entry.is_directly_recursive }
-fn graph_only_complexity_score(entry: &GraphOnlyEntry) -> String { format_graph_score_3(entry.graph_complexity_score) }
+fn graph_only_mir_blocks(entry: &GraphOnlyEntry) -> usize {
+    entry.mir_blocks
+}
+fn graph_only_mir_stmts(entry: &GraphOnlyEntry) -> usize {
+    entry.mir_stmts
+}
+fn graph_only_branch_score(entry: &GraphOnlyEntry) -> String {
+    format_graph_score_2(entry.branch_score)
+}
+fn graph_only_stmt_density(entry: &GraphOnlyEntry) -> String {
+    format_graph_score_2(entry.stmt_density)
+}
+fn graph_only_b_transitive(entry: &GraphOnlyEntry) -> String {
+    format_graph_score_2(entry.b_transitive)
+}
+fn graph_only_heat_score(entry: &GraphOnlyEntry) -> String {
+    format_graph_score_2(entry.heat_score)
+}
+fn graph_only_call_in(entry: &GraphOnlyEntry) -> usize {
+    entry.call_in
+}
+fn graph_only_call_out(entry: &GraphOnlyEntry) -> usize {
+    entry.call_out
+}
+fn graph_only_duplicate_body_count(entry: &GraphOnlyEntry) -> usize {
+    entry.duplicate_body_count
+}
+fn graph_only_redundant_path_count(entry: &GraphOnlyEntry) -> usize {
+    entry.redundant_path_count
+}
+fn graph_only_pathway_membership_count(entry: &GraphOnlyEntry) -> usize {
+    entry.pathway_membership_count
+}
+fn graph_only_pathway_wrapper_count(entry: &GraphOnlyEntry) -> usize {
+    entry.pathway_wrapper_count
+}
+fn graph_only_scc_size(entry: &GraphOnlyEntry) -> usize {
+    entry.scc_size
+}
+fn graph_only_is_directly_recursive(entry: &GraphOnlyEntry) -> bool {
+    entry.is_directly_recursive
+}
+fn graph_only_complexity_score(entry: &GraphOnlyEntry) -> String {
+    format_graph_score_3(entry.graph_complexity_score)
+}
 
 /// Intent: pure_transform
 /// Resource: error
@@ -1288,7 +1318,14 @@ fn complexity_entry_json(
 ) -> serde_json::Value {
     let file = complexity_entry_file(s);
     let identity = complexity_entry_identity(s, file);
-    complexity_entry_value(identity, s.is_directly_recursive, blocks, stmts, branch_score, proxy)
+    complexity_entry_value(
+        identity,
+        s.is_directly_recursive,
+        blocks,
+        stmts,
+        branch_score,
+        proxy,
+    )
 }
 
 fn complexity_entry_value(
@@ -1415,8 +1452,14 @@ pub fn write_complexity_report(workspace: &Path) -> Result<Option<PathBuf>> {
     let (eval, eval_delta) = crate::eval_driver::run(workspace, None)
         .unwrap_or_else(|_| (crate::evaluation::evaluate_workspace(workspace), None));
     let drift = compute_and_persist_fingerprint_drift(workspace, &current_summaries)?;
-    let report =
-        build_complexity_report(per_crate, global_top, inter_sections, &eval, &drift, eval_delta.as_ref());
+    let report = build_complexity_report(
+        per_crate,
+        global_top,
+        inter_sections,
+        &eval,
+        &drift,
+        eval_delta.as_ref(),
+    );
 
     enqueue_grpo_extraction(workspace);
 

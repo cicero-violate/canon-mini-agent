@@ -355,7 +355,9 @@ fn classify_static_action_kind_failure(action_kind: &str) -> Option<ErrorClass> 
         "step_limit" => Some(ErrorClass::StepLimitExceeded),
         "livelock" => Some(ErrorClass::LivelockDetected),
         "build_gate" => Some(ErrorClass::CompileError),
-        "solo_completion_gate" | "diagnostics_evidence_gate" => Some(ErrorClass::VerificationFailed),
+        "solo_completion_gate" | "diagnostics_evidence_gate" => {
+            Some(ErrorClass::VerificationFailed)
+        }
         "reaction_only" => Some(ErrorClass::ReactionOnly),
         "executor_submit_timeout" | "submit_ack_timeout" => Some(ErrorClass::LlmTimeout),
         "repeated_failed_action" | "idle_streak" => Some(ErrorClass::InvalidSchema),

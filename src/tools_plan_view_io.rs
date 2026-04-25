@@ -941,6 +941,7 @@ fn handle_message_action(
     role: &str,
     step: usize,
     action: &Value,
+    defer_planner_to_executor_handoff: bool,
     mut writer: Option<&mut CanonicalWriter>,
 ) -> Result<(bool, String)> {
     let status = action.get("status").and_then(|v| v.as_str()).unwrap_or("");
@@ -975,10 +976,14 @@ fn handle_message_action(
     // lane is activated regardless of transport state.
     // executor→planner completion messages go through app::persist_executor_completion_message
     // and are suppressed here to avoid double-routing.
-    let persist_handoff_message = planner_to_executor
-        || !executor_to_planner
-        || status.eq_ignore_ascii_case("blocked")
-        || msg_type.eq_ignore_ascii_case("blocker");
+    let persist_handoff_message = if planner_to_executor && defer_planner_to_executor_handoff {
+        false
+    } else {
+        planner_to_executor
+            || !executor_to_planner
+            || status.eq_ignore_ascii_case("blocked")
+            || msg_type.eq_ignore_ascii_case("blocker")
+    };
 
     if normalized_role == normalized_to
         && !is_allowed_self_addressed_message(action, &normalized_role, &normalized_to)
@@ -1224,4 +1229,3 @@ fn handle_read_file_action(
         ),
     ))
 }
-
