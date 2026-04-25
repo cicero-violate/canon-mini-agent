@@ -971,9 +971,9 @@ fn handle_message_action(
     let executor_to_planner =
         normalized_to == "planner" && normalized_role.starts_with("executor");
     let _planner_executor_pair = planner_to_executor || executor_to_planner;
-    // planner→executor handoffs must always call persist_inbound_message so that
-    // InboundMessageQueued + WakeSignalQueued are emitted to tlog and the executor
-    // lane is activated regardless of transport state.
+    // planner→executor handoffs must emit InboundMessageQueued + WakeSignalQueued.
+    // The logged action path defers emission until after ActionResultRecorded so
+    // the handoff causality invariant observes a strictly greater queue seq.
     // executor→planner completion messages go through app::persist_executor_completion_message
     // and are suppressed here to avoid double-routing.
     let persist_handoff_message = if planner_to_executor && defer_planner_to_executor_handoff {
