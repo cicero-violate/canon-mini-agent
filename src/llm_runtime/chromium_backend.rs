@@ -158,13 +158,13 @@ fn append_jsonl(filename: &str, value: &Value) {
 }
 
 /// Intent: event_append
-/// Resource: error
+/// Resource: chromium_outbound_event_log
 /// Inputs: &str, serde_json::Value
 /// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: appends a JSONL event to all.jsonl
+/// Forbidden: mutation outside outbound event log append
+/// Invariants: event type is always recorded under the type field; object payload fields are merged, non-object payloads are stored under payload
+/// Failure: append_jsonl handles write failures internally
 /// Provenance: rustc:facts + rustc:docstring
 fn append_outbound_event(event_type: &str, payload: Value) {
     let mut event = serde_json::Map::new();

@@ -3,7 +3,7 @@ use serde_json::Value;
 
 use crate::constants::{
     diagnostics_file, workspace, EXECUTOR_STEP_LIMIT, INVARIANTS_FILE, ISSUES_FILE,
-    MASTER_PLAN_FILE, OBJECTIVES_FILE, PIPELINE_FILE, SPEC_FILE,
+    MASTER_PLAN_FILE, OBJECTIVES_FILE, PIPELINE_FILE, SPEC_FILE, VIOLATIONS_FILE,
 };
 use crate::objectives::load_master_plan_snapshot;
 use crate::prompt_contract::ACTION_EMIT_LINE;
@@ -384,6 +384,27 @@ fn prompt_graph_artifact_guidance(kind: AgentPromptKind) -> &'static str {
     }
 }
 
+fn planner_artifact_review_protocol() -> String {
+    let diagnostics_path = diagnostics_file();
+    format!(
+        "Planner role contract:\n\
+         - You are the autonomous system-development planner: audit evidence, diagnose root cause, \
+         update objectives/plan, and hand off bounded executor tasks.\n\
+         - Do not act as a passive dispatcher. Before creating or changing ready tasks, reconcile \
+         {SPEC_FILE}, {PIPELINE_FILE}, {OBJECTIVES_FILE}, {MASTER_PLAN_FILE}, \
+         `agent_state/tlog.ndjson` or `agent_state/default/actions.jsonl` fallback, \
+         `agent_state/evidence_receipts.jsonl`, `state/rustc/canon_mini_agent/graph.json`, \
+         `agent_state/safe_patch_candidates.json`, `agent_state/semantic_manifest_proposals.json`, \
+         {ISSUES_FILE}, {VIOLATIONS_FILE}, `{diagnostics_path}`, \
+         `agent_state/enforced_invariants.json`, `agent_state/lessons.json`, latest cargo failures, \
+         executor diff, and latest `agent_state/llm_full/*planner*` / `*executor*` prompts when present.\n\
+         - Every `plan`, `objectives`, and terminal `message` rationale must name the artifact evidence \
+         and the delta it revealed.\n\
+         - If required artifacts are missing, stale, or contradictory, create repair work for \
+         projection/logging/prompt generation before generic implementation work."
+    )
+}
+
 fn status_snapshot_for(kind: AgentPromptKind) -> &'static str {
     let _ = kind;
     ""
@@ -479,17 +500,20 @@ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
     let pipeline_contract = canonical_pipeline_prompt_block();
     let status_snapshot = status_snapshot_for(kind).to_string();
     let tail = prompt_tail(kind);
-    let prefix = if status_snapshot.is_empty() {
-        format!(
-            "{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n",
-            intro, mission, workspace_text, graph_guidance, pipeline_contract
-        )
-    } else {
-        format!(
-            "{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n",
-            intro, mission, workspace_text, graph_guidance, pipeline_contract, status_snapshot
-        )
-    };
+    let mut sections = vec![
+        intro,
+        mission,
+        workspace_text,
+        graph_guidance,
+        pipeline_contract,
+    ];
+    if kind == AgentPromptKind::Planner {
+        sections.push(planner_artifact_review_protocol());
+    }
+    if !status_snapshot.is_empty() {
+        sections.push(status_snapshot);
+    }
+    let prefix = format!("{}\n\n", sections.join("\n\n"));
     let schema_block = default_schema_block(kind);
     let suffix = format!(
         "\nAction contract — respond with exactly one JSON code block using the role-local actions below:\n\n{schema_block}\n\n{}",
@@ -511,6 +535,7 @@ pub(crate) fn planner_cycle_prompt(
     let workspace = workspace();
     let guided_review = crate::structured_questions::guided_review_block("planner cycle boundary");
     let pipeline_contract = canonical_pipeline_prompt_block();
+    let artifact_review = planner_artifact_review_protocol();
     let prefix = format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\n\
          PLAN.json EDIT RULE: always use the `plan` action — NEVER apply_patch on {MASTER_PLAN_FILE}.\n\n\
@@ -529,6 +554,7 @@ pub(crate) fn planner_cycle_prompt(
     let suffix = format!(
         "\n\n\
          {pipeline_contract}\n\n\
+         {artifact_review}\n\n\
          {guided_review}\n\n\
          ⟹ IMMEDIATE ACTION: The projected issues in the semantic control section above are \
          pre-validated by semantic control and directly actionable. Do not stall on re-verifying \
@@ -644,6 +670,7 @@ pub(crate) fn single_role_planner_prompt(
     let pipeline_contract = canonical_pipeline_prompt_block();
     let guided_review =
         crate::structured_questions::guided_review_block("single-role planner boundary");
+    let artifact_review = planner_artifact_review_protocol();
     let prefix = format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed."
     );
@@ -656,7 +683,7 @@ pub(crate) fn single_role_planner_prompt(
     let cargo_failures_heading =
         "Latest cargo test failures (from cargo_test_failures.json)".to_string();
     let suffix = format!(
-        "\n\n{pipeline_contract}\n\n{guided_review}\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nOpen issues in `{issues_file}` are directly actionable when they include current-source evidence — create plan tasks that reference `issue_refs`. `{diagnostics_path}` entries with no matching {issues_file} entry are hints only.\nGraph-first rule: prioritize top-ranked items from `agent_state/safe_patch_candidates.json`, and use `agent_state/semantic_manifest_proposals.json` to keep task instructions aligned with contract metadata.\nInvariant lifecycle rule: Promoted dynamic invariants require an `invariants` action decision: enforce if the predicate is structurally valid, collapse if the root cause is gone, or create a source patch task against `src/invariant_discovery.rs` if graph/tlog evidence shows a missing synthesis rule.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nWhen a `plan` action is derived from projected diagnostics state, include same-cycle source validation in `observation` and `rationale` before mutating {MASTER_PLAN_FILE}.\n\nTreat stale or already-resolved projected diagnostics as non-actionable until current source evidence reconfirms them.\nIf projected diagnostics repeatedly report stale issues, create follow-up work to repair projection generation rather than reopening resolved implementation tasks."
+        "\n\n{pipeline_contract}\n\n{artifact_review}\n\n{guided_review}\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nOpen issues in `{issues_file}` are directly actionable when they include current-source evidence — create plan tasks that reference `issue_refs`. `{diagnostics_path}` entries with no matching {issues_file} entry are hints only.\nGraph-first rule: prioritize top-ranked items from `agent_state/safe_patch_candidates.json`, and use `agent_state/semantic_manifest_proposals.json` to keep task instructions aligned with contract metadata.\nInvariant lifecycle rule: Promoted dynamic invariants require an `invariants` action decision: enforce if the predicate is structurally valid, collapse if the root cause is gone, or create a source patch task against `src/invariant_discovery.rs` if graph/tlog evidence shows a missing synthesis rule.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nWhen a `plan` action is derived from projected diagnostics state, include same-cycle source validation in `observation` and `rationale` before mutating {MASTER_PLAN_FILE}.\n\nTreat stale or already-resolved projected diagnostics as non-actionable until current source evidence reconfirms them.\nIf projected diagnostics repeatedly report stale issues, create follow-up work to repair projection generation rather than reopening resolved implementation tasks."
     );
     let items = [
         PromptItem {
@@ -785,13 +812,13 @@ fn extract_json_candidate(text: &str) -> Option<String> {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: prompt_text
 /// Inputs: &str
 /// Outputs: std::option::Option<&str>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: mutation
+/// Invariants: returns trimmed JSON fence body only when a json fence marker is present
+/// Failure: returns None when no JSON fence is found or the fence header is unterminated
 /// Provenance: rustc:facts + rustc:docstring
 fn extract_json_fence(text: &str) -> Option<&str> {
     let mut search_start = 0;
@@ -2022,6 +2049,42 @@ mod tests {
                     && prompt.contains("agent_state/safe_patch_candidates.json")
                     && prompt.contains("agent_state/semantic_manifest_proposals.json"),
                 "{kind:?} prompt must name the structured artifacts that require python"
+            );
+        }
+    }
+
+    #[test]
+    fn planner_prompts_require_full_artifact_review_and_role_contract() {
+        let system = system_instructions(AgentPromptKind::Planner);
+        let cycle = planner_cycle_prompt("", "{}", "", "", "", "", "", "");
+        let single = single_role_planner_prompt(
+            "{spec}",
+            "{objectives}",
+            "{lessons}",
+            "{enforced_invariants}",
+            "{semantic_control}",
+            "{cargo_test_failures}",
+        );
+
+        for prompt in [&system, &cycle, &single] {
+            assert!(
+                prompt.contains("Planner role contract:"),
+                "planner prompts must state the planner role explicitly"
+            );
+            assert!(
+                prompt.contains("audit evidence, diagnose root cause"),
+                "planner must be told to analyze the problem, not just dispatch tasks"
+            );
+            assert!(
+                prompt.contains("agent_state/llm_full/*planner*")
+                    && prompt.contains("state/rustc/canon_mini_agent/graph.json")
+                    && prompt.contains("agent_state/evidence_receipts.jsonl")
+                    && prompt.contains("agent_state/default/actions.jsonl"),
+                "planner prompts must require review of runtime, graph, evidence, and llm_full artifacts"
+            );
+            assert!(
+                prompt.contains("Every `plan`, `objectives`, and terminal `message` rationale must name the artifact evidence"),
+                "planner outputs must cite artifact evidence and observed deltas"
             );
         }
     }

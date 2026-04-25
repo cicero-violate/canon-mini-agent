@@ -982,6 +982,116 @@ fn detect_planner_reactivated_before_executor_claim_gap(workspace: &Path) -> boo
     false
 }
 
+fn detect_repeated_objective_plan_gap_queue(workspace: &Path) -> bool {
+    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
+    let Ok(records) = crate::tlog::Tlog::read_records(&tlog_path) else {
+        return false;
+    };
+
+    let mut consecutive = 0usize;
+    let mut last_ts_ms: Option<u64> = None;
+    for record in records.iter().rev().take(200).rev() {
+        match &record.event {
+            crate::events::Event::Control {
+                event: crate::events::ControlEvent::PlannerObjectivePlanGapQueued,
+            } => {
+                let close = last_ts_ms
+                    .map(|ts| record.ts_ms.saturating_sub(ts) <= 1_000)
+                    .unwrap_or(true);
+                consecutive = if close { consecutive + 1 } else { 1 };
+                last_ts_ms = Some(record.ts_ms);
+                if consecutive >= 5 {
+                    return true;
+                }
+            }
+            crate::events::Event::Effect { .. } => {
+                consecutive = 0;
+                last_ts_ms = None;
+            }
+            _ => {}
+        }
+    }
+
+    false
+}
+
+fn detect_planner_schedule_clear_thrash(workspace: &Path) -> bool {
+    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
+    let Ok(records) = crate::tlog::Tlog::read_records(&tlog_path) else {
+        return false;
+    };
+
+    let mut pattern_step = 0usize;
+    let mut consecutive = 0usize;
+    let mut last_ts_ms: Option<u64> = None;
+
+    for record in records.iter().rev().take(300).rev() {
+        let matched_step = match (&record.event, pattern_step) {
+            (
+                crate::events::Event::Control {
+                    event: crate::events::ControlEvent::PlannerPendingSet { pending: true },
+                },
+                0,
+            ) => true,
+            (
+                crate::events::Event::Control {
+                    event: crate::events::ControlEvent::ScheduledPhaseSet { phase: Some(phase) },
+                },
+                1,
+            ) if phase == "planner" => true,
+            (
+                crate::events::Event::Control {
+                    event: crate::events::ControlEvent::ScheduledPhaseSet { phase: None },
+                },
+                2,
+            ) => true,
+            _ => false,
+        };
+
+        if matched_step {
+            pattern_step += 1;
+            if pattern_step == 3 {
+                let close = last_ts_ms
+                    .map(|ts| record.ts_ms.saturating_sub(ts) <= 1_000)
+                    .unwrap_or(true);
+                consecutive = if close { consecutive + 1 } else { 1 };
+                last_ts_ms = Some(record.ts_ms);
+                pattern_step = 0;
+                if consecutive >= 5 {
+                    return true;
+                }
+            }
+            continue;
+        }
+
+        if matches!(record.event, crate::events::Event::Effect { .. }) {
+            pattern_step = 0;
+            consecutive = 0;
+            last_ts_ms = None;
+            continue;
+        }
+
+        if matches!(
+            record.event,
+            crate::events::Event::Control {
+                event: crate::events::ControlEvent::PlannerPendingSet { pending: true }
+            }
+        ) {
+            pattern_step = 1;
+        } else if !matches!(
+            record.event,
+            crate::events::Event::Control {
+                event: crate::events::ControlEvent::ScheduledPhaseSet { .. }
+                    | crate::events::ControlEvent::PlannerPendingSet { .. }
+            }
+        ) {
+            pattern_step = 0;
+        }
+    }
+
+    false
+}
+
 fn upsert_deterministic_invariant(
     file: &mut EnforcedInvariantsFile,
     id: &str,
@@ -1089,6 +1199,53 @@ fn seed_deterministic_invariants(workspace: &Path, file: &mut EnforcedInvariants
             StateCondition {
                 key: "executor_lane_pending_after_handoff".to_string(),
                 value: "true".to_string(),
+            },
+        ],
+        vec!["route".to_string(), "planner".to_string()],
+    );
+
+    upsert_deterministic_invariant(
+        file,
+        "inv_objective_plan_gap_queue_idempotent",
+        detect_repeated_objective_plan_gap_queue(workspace),
+        now_ms,
+        concat!(
+            "Planner objective-plan-gap queuing must be idempotent while the same ",
+            "objective_plan_gap reason is already planner-pending and scheduled. ",
+            "Repair: do not append another PlannerObjectivePlanGapQueued event unless ",
+            "the gap was resolved or consumed."
+        ),
+        vec![
+            StateCondition {
+                key: "planner_objective_plan_gap_repeated".to_string(),
+                value: "true".to_string(),
+            },
+            StateCondition {
+                key: "planner_pending_reason".to_string(),
+                value: "objective_plan_gap".to_string(),
+            },
+        ],
+        vec!["route".to_string(), "planner".to_string()],
+    );
+
+    upsert_deterministic_invariant(
+        file,
+        "inv_planner_schedule_clear_thrash",
+        detect_planner_schedule_clear_thrash(workspace),
+        now_ms,
+        concat!(
+            "Planner scheduling must not repeatedly clear scheduled_phase immediately ",
+            "after planner_pending=true and scheduled_phase=planner. Repair: inline ",
+            "scheduler code must not erase a pending planner phase before planner consumes it."
+        ),
+        vec![
+            StateCondition {
+                key: "planner_schedule_clear_thrash".to_string(),
+                value: "true".to_string(),
+            },
+            StateCondition {
+                key: "scheduled_phase_erased_before_consumed".to_string(),
+                value: "planner".to_string(),
             },
         ],
         vec!["route".to_string(), "planner".to_string()],
@@ -2834,6 +2991,85 @@ mod tests {
                 })
             })
             .expect("planner reactivation invariant must be synthesized");
+        assert_eq!(inv.status, InvariantStatus::Enforced);
+        assert!(inv.gates.contains(&"route".to_string()));
+        assert!(inv.gates.contains(&"planner".to_string()));
+    }
+
+    #[test]
+    fn synthesize_repeated_objective_plan_gap_queue_invariant() {
+        let tmp = make_workspace();
+        let mut tlog = crate::tlog::Tlog::open(&tmp.join("agent_state").join("tlog.ndjson"));
+        for _ in 0..5 {
+            tlog.append(&crate::events::Event::control(
+                crate::events::ControlEvent::PlannerObjectivePlanGapQueued,
+            ))
+            .unwrap();
+            tlog.append(&crate::events::Event::control(
+                crate::events::ControlEvent::ScheduledPhaseSet { phase: None },
+            ))
+            .unwrap();
+            tlog.append(&crate::events::Event::control(
+                crate::events::ControlEvent::PlannerPendingSet { pending: true },
+            ))
+            .unwrap();
+            tlog.append(&crate::events::Event::control(
+                crate::events::ControlEvent::ScheduledPhaseSet {
+                    phase: Some("planner".to_string()),
+                },
+            ))
+            .unwrap();
+        }
+
+        maybe_synthesize_invariants(&tmp);
+        let file = load_enforced_invariants_file(&tmp);
+        let inv = file
+            .invariants
+            .iter()
+            .find(|inv| {
+                inv.state_conditions.iter().any(|condition| {
+                    condition.key == "planner_objective_plan_gap_repeated"
+                        && condition.value == "true"
+                })
+            })
+            .expect("repeated objective plan gap invariant must be synthesized");
+        assert_eq!(inv.status, InvariantStatus::Enforced);
+        assert!(inv.gates.contains(&"route".to_string()));
+        assert!(inv.gates.contains(&"planner".to_string()));
+    }
+
+    #[test]
+    fn synthesize_planner_schedule_clear_thrash_invariant() {
+        let tmp = make_workspace();
+        let mut tlog = crate::tlog::Tlog::open(&tmp.join("agent_state").join("tlog.ndjson"));
+        for _ in 0..5 {
+            tlog.append(&crate::events::Event::control(
+                crate::events::ControlEvent::PlannerPendingSet { pending: true },
+            ))
+            .unwrap();
+            tlog.append(&crate::events::Event::control(
+                crate::events::ControlEvent::ScheduledPhaseSet {
+                    phase: Some("planner".to_string()),
+                },
+            ))
+            .unwrap();
+            tlog.append(&crate::events::Event::control(
+                crate::events::ControlEvent::ScheduledPhaseSet { phase: None },
+            ))
+            .unwrap();
+        }
+
+        maybe_synthesize_invariants(&tmp);
+        let file = load_enforced_invariants_file(&tmp);
+        let inv = file
+            .invariants
+            .iter()
+            .find(|inv| {
+                inv.state_conditions.iter().any(|condition| {
+                    condition.key == "planner_schedule_clear_thrash" && condition.value == "true"
+                })
+            })
+            .expect("planner schedule-clear thrash invariant must be synthesized");
         assert_eq!(inv.status, InvariantStatus::Enforced);
         assert!(inv.gates.contains(&"route".to_string()));
         assert!(inv.gates.contains(&"planner".to_string()));

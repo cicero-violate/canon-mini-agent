@@ -1389,6 +1389,34 @@ pub async fn run() -> Result<()> {
                         pending: true,
                     });
                 }
+                // Third stale-lane case: lane is pending but was never claimed
+                // (in_progress_by=None) and has no runtime activity at all. This
+                // happens when the previous process seeded a lane then was killed
+                // before the executor claimed it. After restart the phantom-pending
+                // flag makes canonical_executor_work=true, which blocks planner
+                // dispatch; simultaneously, scheduled_phase="planner" blocks
+                // executor dispatch — mutual deadlock → idle livelock.
+                // Clearing the pending flag lets the planner run and re-seed work.
+                let pending = writer
+                    .state()
+                    .lanes
+                    .get(lane_id)
+                    .map(|l| l.pending)
+                    .unwrap_or(false);
+                if pending && !in_progress && !prompt_in_flight && !submit_in_flight && !has_submitted_turn {
+                    let has_runtime_submit = rt.executor_submit_inflight.contains_key(lane_id);
+                    let has_runtime_turn = rt.submitted_turns.values().any(|t| t.lane == *lane_id);
+                    if !has_runtime_submit && !has_runtime_turn {
+                        eprintln!(
+                            "[orchestrate] stale-lane recovery: lane {} was pending with no claimed work; clearing to unblock planner dispatch",
+                            lane_id
+                        );
+                        writer.apply(ControlEvent::LanePendingSet {
+                            lane_id: *lane_id,
+                            pending: false,
+                        });
+                    }
+                }
             }
         }
         // Resume hardening: if we loaded a checkpoint into executor phase but no
@@ -1520,7 +1548,9 @@ pub async fn run() -> Result<()> {
             apply_wake_signals(&mut writer);
 
             let semantic_now = now_ms();
-            if semantic_now.saturating_sub(last_semantic_sync_ms) >= SEMANTIC_SYNC_INTERVAL_MS {
+            if semantic_now.saturating_sub(last_semantic_sync_ms) >= SEMANTIC_SYNC_INTERVAL_MS
+                && crate::semantic_contract::semantic_sync_outputs_stale(workspace.as_path())
+            {
                 last_semantic_sync_ms = semantic_now;
                 match crate::semantic_contract::run_semantic_sync(workspace.as_path()) {
                     Ok(report) => {
@@ -1621,9 +1651,12 @@ pub async fn run() -> Result<()> {
 
             let active_blocker = writer.state().active_blocker_to_verifier;
             if INLINE_UNIFIED_AGENT {
-                // Single operational loop with internal plan->execute phases.
-                apply_planner_pending_if_changed(&mut writer, true);
-                apply_scheduled_phase_if_changed(&mut writer, None);
+                // Single operational loop with internal plan->execute phases. Do not clear
+                // scheduled_phase here; doing so races the phase selector and can erase a
+                // pending planner wake before it is consumed.
+                if writer.state().scheduled_phase.is_none() && !writer.state().planner_pending {
+                    apply_planner_pending_if_changed(&mut writer, true);
+                }
             } else {
                 let blocker_decision = crate::state_space::ActiveBlockerDecision {
                     planner_pending: writer.state().planner_pending,
@@ -1701,7 +1734,7 @@ pub async fn run() -> Result<()> {
                 || writer.state().lane_submit_in_flight.values().any(|&v| v)
                 || writer.state().lane_prompt_in_flight.values().any(|&v| v);
             let run_planner_inline = if INLINE_UNIFIED_AGENT {
-                !runtime_executor_busy && !canonical_executor_work
+                writer.state().planner_pending && !runtime_executor_busy && !canonical_executor_work
             } else {
                 phase_gates.planner
             };
@@ -1932,18 +1965,34 @@ pub async fn run() -> Result<()> {
 
             let has_objective_work = has_actionable_objectives(&objectives_text);
             let has_plan_work = plan_has_incomplete_tasks(&plan_text);
-            if has_objective_work && !has_plan_work {
-                append_orchestration_trace(
-                    "objective_plan_enforcement_signal",
-                    json!({
-                        "required_action": "plan_task_required_for_actionable_objective",
-                        "reason": "objectives_require_work_but_plan_has_no_pending_tasks",
-                        "objectives_path": OBJECTIVES_FILE,
-                        "plan_path": MASTER_PLAN_FILE,
-                    }),
-                );
-                writer.apply(ControlEvent::PlannerObjectivePlanGapQueued);
-                cycle_progress = true;
+            // Do not fire the gap when an executor lane is already pending/in-progress.
+            // The wake-signal router may have just seeded the lane in this same iteration;
+            // overriding it with a planner wake creates the planner⟷executor mutual-block
+            // deadlock where canonical_executor_work blocks planner dispatch and
+            // scheduled_phase="planner" blocks executor dispatch simultaneously.
+            let executor_lane_active = writer
+                .state()
+                .lanes
+                .values()
+                .any(|l| l.pending || l.in_progress_by.is_some());
+            if has_objective_work && !has_plan_work && !executor_lane_active {
+                let already_queued = writer.state().planner_pending
+                    && writer.state().planner_pending_reason.as_deref()
+                        == Some("objective_plan_gap")
+                    && writer.state().scheduled_phase.as_deref() == Some("planner");
+                if !already_queued {
+                    append_orchestration_trace(
+                        "objective_plan_enforcement_signal",
+                        json!({
+                            "required_action": "plan_task_required_for_actionable_objective",
+                            "reason": "objectives_require_work_but_plan_has_no_pending_tasks",
+                            "objectives_path": OBJECTIVES_FILE,
+                            "plan_path": MASTER_PLAN_FILE,
+                        }),
+                    );
+                    writer.apply(ControlEvent::PlannerObjectivePlanGapQueued);
+                    cycle_progress = true;
+                }
             }
 
             // Convergence guard: detect cycles where work was dispatched but the

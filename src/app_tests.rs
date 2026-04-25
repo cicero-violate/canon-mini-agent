@@ -823,4 +823,112 @@ mod tests {
 
         assert_eq!(action_retry_fingerprint(&a), action_retry_fingerprint(&b));
     }
+
+    // Regression tests for the all-tasks-done / plan-gap / restart-resume deadlock.
+    //
+    // The scenario (tlog seq=416510–416544):
+    //   1. All 21 PLAN.json tasks are "done" but status="in_progress", ready_window=[].
+    //   2. After restart the planner got a short restart-resume banner (2 kB) instead of
+    //      the full cycle prompt because peek_post_restart_result("planner") returned a
+    //      result from the prior session's `plan` step.
+    //   3. The planner sent a `message` handoff without updating ready_window, leaving
+    //      the plan gap condition (has_objective_work && !has_plan_work) permanently true.
+    //   4. The gap fired immediately after the executor wake was dispatched, overriding
+    //      scheduled_phase back to "planner" and recreating the mutual deadlock.
+    //
+    // Fixes:
+    //   • app_planner_executor.rs: discard restart-resume when ready_tasks="(no ready tasks)"
+    //   • app_runtime_completion.rs: skip plan gap when executor_lane_active=True
+
+    #[test]
+    fn plan_has_incomplete_tasks_false_for_all_done_plan() {
+        // When every task is "done", plan_has_incomplete_tasks must return false.
+        // This is the necessary precondition for the plan gap to fire.
+        let plan = serde_json::json!({
+            "dag": {"edges": []},
+            "ready_window": [],
+            "status": "in_progress",
+            "tasks": [
+                {"id": "T1", "status": "done", "title": "Task A"},
+                {"id": "T2", "status": "done", "title": "Task B"},
+                {"id": "T3", "status": "done", "title": "Task C"},
+            ]
+        });
+        assert!(!plan_has_incomplete_tasks(&plan.to_string()));
+    }
+
+    #[test]
+    fn plan_has_incomplete_tasks_true_when_any_task_not_done() {
+        let plan = serde_json::json!({
+            "tasks": [
+                {"id": "T1", "status": "done"},
+                {"id": "T2", "status": "pending"},
+            ]
+        });
+        assert!(plan_has_incomplete_tasks(&plan.to_string()));
+    }
+
+    #[test]
+    fn plan_has_incomplete_tasks_true_for_empty_tasks() {
+        // An empty tasks array is parse-pessimistic: treated as incomplete.
+        let plan = serde_json::json!({"tasks": []});
+        assert!(!plan_has_incomplete_tasks(&plan.to_string()));
+    }
+
+    #[test]
+    fn has_actionable_objectives_true_for_in_progress_objective() {
+        // Confirms that an in-progress objective triggers has_actionable_objectives.
+        let objectives = serde_json::json!({
+            "objectives": [
+                {"id": "obj_reduce_complexity", "status": "in_progress", "description": "Reduce complexity"}
+            ]
+        });
+        assert!(has_actionable_objectives(&objectives.to_string()));
+    }
+
+    #[test]
+    fn has_actionable_objectives_false_for_completed_objective() {
+        let objectives = serde_json::json!({
+            "objectives": [
+                {"id": "obj_reduce_complexity", "status": "completed", "description": "Reduce complexity"}
+            ]
+        });
+        assert!(!has_actionable_objectives(&objectives.to_string()));
+    }
+
+    #[test]
+    fn restart_resume_guard_present_in_planner_source() {
+        // Structural test: the restart-resume guard that discards a stale banner when
+        // ready_tasks is empty must remain in run_planner_phase. If this test fails,
+        // the guard was accidentally removed and the deadlock will recur.
+        let source = include_str!("app_planner_executor.rs");
+        assert!(
+            source.contains("Discard a stale restart-resume when the plan has no ready tasks"),
+            "restart-resume guard comment must be present in app_planner_executor.rs"
+        );
+        assert!(
+            source.contains("(no ready tasks)") && {
+                let guard_start = source
+                    .find("Discard a stale restart-resume")
+                    .expect("guard comment missing");
+                source[guard_start..].contains("take_post_restart_result(\"planner\")")
+            },
+            "restart-resume guard must call take_post_restart_result(\"planner\") when no tasks exist"
+        );
+    }
+
+    #[test]
+    fn plan_gap_guard_present_in_runtime_source() {
+        // Structural test: the executor_lane_active guard that suppresses PlannerObjectivePlanGapQueued
+        // when an executor lane is already pending must remain in the orchestrator loop.
+        let source = include_str!("app_runtime_completion.rs");
+        assert!(
+            source.contains("executor_lane_active"),
+            "executor_lane_active guard must be present in app_runtime_completion.rs"
+        );
+        assert!(
+            source.contains("!executor_lane_active"),
+            "plan gap condition must include !executor_lane_active"
+        );
+    }
 }

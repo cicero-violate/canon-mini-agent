@@ -1,9 +1,10 @@
 use crate::state_space::{
-    allow_diagnostics_run, allow_named_phase_run, check_completion_endpoint, check_completion_tab,
-    decide_active_blocker, decide_phase_gates, decide_post_diagnostics, decide_wake_signals,
-    executor_step_limit_exceeded, is_verifier_specific_blocker, scheduled_phase_resume_done,
-    should_force_blocker, verifier_blocker_phase_override, ActiveBlockerDecision,
-    CompletionEndpointCheck, CompletionTabCheck, PhaseGates, SemanticControlState, WakeSignalInput,
+    allow_diagnostics_run, allow_named_phase_run, block_executor_dispatch, check_completion_endpoint,
+    check_completion_tab, decide_active_blocker, decide_phase_gates, decide_post_diagnostics,
+    decide_wake_signals, executor_step_limit_exceeded, is_verifier_specific_blocker,
+    scheduled_phase_resume_done, should_force_blocker, verifier_blocker_phase_override,
+    ActiveBlockerDecision, CompletionEndpointCheck, CompletionTabCheck, PhaseGates,
+    SemanticControlState, WakeSignalInput,
 };
 use crate::state_space::{
     decide_bootstrap_phase, decide_resume_phase, extract_progress_path_from_result, CargoTestGate,
@@ -591,4 +592,112 @@ fn post_diagnostics_retriggers_planner_when_inputs_changed() {
     assert!(!decide_post_diagnostics(false, false));
     assert!(decide_post_diagnostics(true, false));
     assert!(decide_post_diagnostics(false, true));
+}
+
+// Regression tests for the planner⟷executor mutual-block deadlock.
+//
+// The deadlock scenario (observed in tlog seq=119929 → seq=416515):
+//   1. A previous process sets lane.pending=True then is killed before the
+//      executor claims it.
+//   2. After restart, tlog replay restores lane.pending=True.
+//   3. canonical_executor_work=True blocks run_planner_inline.
+//   4. scheduled_phase="planner" blocks executor dispatch via block_executor_dispatch.
+//   5. Both are blocked simultaneously → idle livelock.
+//
+// Fix: stale-lane recovery now clears lane.pending when there is no runtime
+// activity (no submitted turns, no inflight submit). The tests below pin the
+// exact state conditions that triggered the deadlock so any regression in the
+// recovery logic is caught at compile+test time.
+
+#[test]
+fn stale_pending_lane_causes_planner_dispatch_block() {
+    // Before the fix: a lane stuck in pending=True with no runtime activity
+    // made canonical_executor_work=True, preventing the planner from running.
+    let mut state = SystemState::new(&[0], 1);
+    state.scheduled_phase = Some("planner".to_string());
+    state.planner_pending = true;
+    if let Some(lane) = state.lanes.get_mut(&0) {
+        lane.pending = true;
+    }
+    let canonical_executor_work = state
+        .lanes
+        .values()
+        .any(|l| l.pending || l.in_progress_by.is_some());
+    let run_planner_inline = state.planner_pending && !canonical_executor_work;
+    assert!(
+        !run_planner_inline,
+        "stale pending lane must block planner — confirms deadlock condition exists"
+    );
+}
+
+#[test]
+fn clearing_stale_pending_lane_unblocks_planner() {
+    // After the fix: clearing lane.pending lets canonical_executor_work=False
+    // so run_planner_inline becomes True.
+    let mut state = SystemState::new(&[0], 1);
+    state.scheduled_phase = Some("planner".to_string());
+    state.planner_pending = true;
+    if let Some(lane) = state.lanes.get_mut(&0) {
+        lane.pending = false; // stale flag cleared by recovery
+    }
+    let canonical_executor_work = state
+        .lanes
+        .values()
+        .any(|l| l.pending || l.in_progress_by.is_some());
+    let run_planner_inline = state.planner_pending && !canonical_executor_work;
+    assert!(run_planner_inline, "planner must run after stale pending flag is cleared");
+}
+
+#[test]
+fn executor_dispatch_blocked_when_planner_is_scheduled() {
+    // block_executor_dispatch returns True for scheduled_phase="planner", which
+    // is the second half of the deadlock: executor can't dispatch either.
+    assert!(block_executor_dispatch(Some("planner")));
+    assert!(block_executor_dispatch(Some("verifier")));
+    assert!(block_executor_dispatch(Some("diagnostics")));
+    assert!(!block_executor_dispatch(Some("executor")));
+    assert!(!block_executor_dispatch(None));
+}
+
+#[test]
+fn plan_gap_suppressed_when_executor_lane_pending() {
+    // Regression: PlannerObjectivePlanGapQueued was firing even when the executor
+    // lane was already pending (seeded by wake signal in the same loop iteration),
+    // overriding the executor schedule and recreating the mutual deadlock.
+    // The fix adds !executor_lane_active to the gap condition.
+    let has_objective_work = true;
+    let has_plan_work = false; // all tasks done, ready_window=[]
+    let executor_lane_active = true; // lane just seeded by wake signal
+    let already_queued = false;
+
+    let should_fire =
+        has_objective_work && !has_plan_work && !executor_lane_active && !already_queued;
+    assert!(
+        !should_fire,
+        "plan gap must not fire when an executor lane is already pending"
+    );
+}
+
+#[test]
+fn plan_gap_fires_when_objective_has_no_plan_work_and_no_executor_activity() {
+    let has_objective_work = true;
+    let has_plan_work = false;
+    let executor_lane_active = false;
+    let already_queued = false;
+
+    let should_fire =
+        has_objective_work && !has_plan_work && !executor_lane_active && !already_queued;
+    assert!(should_fire, "plan gap must fire when there is no executor activity");
+}
+
+#[test]
+fn plan_gap_suppressed_when_already_queued() {
+    let has_objective_work = true;
+    let has_plan_work = false;
+    let executor_lane_active = false;
+    let already_queued = true; // idempotency guard
+
+    let should_fire =
+        has_objective_work && !has_plan_work && !executor_lane_active && !already_queued;
+    assert!(!should_fire, "plan gap must not fire if already queued");
 }

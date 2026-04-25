@@ -1668,6 +1668,24 @@ fn emit_iteration_status_and_report(
 }
 
 fn trigger_complexity_report_status_async(report_workspace: PathBuf) {
+    let latest = report_workspace
+        .join("agent_state")
+        .join("reports")
+        .join("complexity")
+        .join("latest.json");
+    let graph = crate::semantic_contract::graph_path(&report_workspace);
+    if let (Some(latest_mtime), Some(graph_mtime)) =
+        (file_mtime_if_exists(&latest), file_mtime_if_exists(&graph))
+    {
+        if latest_mtime >= graph_mtime {
+            eprintln!(
+                "[canon-mini-supervisor] complexity_report: {} (cached)",
+                latest.display()
+            );
+            return;
+        }
+    }
+
     let running = complexity_report_running_flag();
     if running
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)

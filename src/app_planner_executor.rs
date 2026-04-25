@@ -64,6 +64,23 @@ async fn run_planner_phase(
         text: last_executor_diff,
     });
     let restart_resume = peek_post_restart_result("planner");
+    // Discard a stale restart-resume when the plan has no ready tasks.
+    // The resume banner only covers the previous turn's action; if the executor
+    // already consumed those tasks, the planner needs the full cycle prompt so
+    // it can add new tasks or close the objective. Using the short banner would
+    // cause the planner to send a `message` handoff to an executor that has
+    // nothing to do, re-entering the plan-gap/executor-lane mutual-block deadlock.
+    let restart_resume = if restart_resume.is_some() {
+        let ready = crate::prompt_inputs::read_ready_tasks(ctx.workspace, 1);
+        if ready == "(no ready tasks)" {
+            let _ = take_post_restart_result("planner");
+            None
+        } else {
+            restart_resume
+        }
+    } else {
+        restart_resume
+    };
     let mut planner_prompt = if let Some(resume) = restart_resume.as_ref() {
         let prompt = restart_resume_banner("planner", resume);
         let _ = take_post_restart_result("planner");

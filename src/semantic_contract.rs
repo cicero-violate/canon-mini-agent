@@ -86,6 +86,28 @@ pub fn load_semantic_manifest_metrics(workspace: &Path) -> SemanticManifestMetri
     }
 }
 
+fn file_modified(path: &Path) -> Option<std::time::SystemTime> {
+    std::fs::metadata(path).ok()?.modified().ok()
+}
+
+pub fn semantic_sync_outputs_stale(workspace: &Path) -> bool {
+    let graph = graph_path(workspace);
+    let sidecar = sidecar_path(workspace);
+    let rank_out = rank_out_path(workspace);
+    let Some(graph_mtime) = file_modified(&graph) else {
+        return false;
+    };
+    for artifact in [&sidecar, &rank_out] {
+        let Some(artifact_mtime) = file_modified(artifact) else {
+            return true;
+        };
+        if artifact_mtime < graph_mtime {
+            return true;
+        }
+    }
+    false
+}
+
 pub fn run_semantic_sync(workspace: &Path) -> Result<SemanticSyncReport, anyhow::Error> {
     let graph = graph_path(workspace);
     let sidecar = sidecar_path(workspace);
