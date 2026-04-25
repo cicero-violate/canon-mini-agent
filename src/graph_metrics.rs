@@ -2742,11 +2742,7 @@ fn build_bridge_issue(stats: &BridgeConnectivityStats) -> Issue {
         "state/rustc/{}/graph.json",
         stats.crate_name.replace('-', "_")
     );
-    let candidate_functions = stats
-        .candidate_functions
-        .iter()
-        .map(|(symbol, count)| json!({ "symbol": symbol, "bridge_calls": count }))
-        .collect::<Vec<Value>>();
+    let candidate_functions = bridge_candidate_functions_json(stats);
 
     Issue {
         id: issue_id,
@@ -2780,16 +2776,7 @@ fn build_bridge_issue(stats: &BridgeConnectivityStats) -> Issue {
             semantic_edge_count = stats.semantic_edge_count,
             cfg_node_count = stats.cfg_node_count,
             cfg_edge_count = stats.cfg_edge_count,
-            candidates = if stats.candidate_functions.is_empty() {
-                "(none found)".to_string()
-            } else {
-                stats
-                    .candidate_functions
-                    .iter()
-                    .map(|(symbol, count)| format!("- {symbol} ({count} bridge call edge(s))"))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            }
+            candidates = bridge_candidate_functions_text(stats)
         ),
         location: scope.clone(),
         metrics: json!({
@@ -2822,6 +2809,26 @@ fn build_bridge_issue(stats: &BridgeConnectivityStats) -> Issue {
         discovered_by: "graph_metrics_detector".to_string(),
         ..Issue::default()
     }
+}
+
+fn bridge_candidate_functions_json(stats: &BridgeConnectivityStats) -> Vec<Value> {
+    stats
+        .candidate_functions
+        .iter()
+        .map(|(symbol, count)| json!({ "symbol": symbol, "bridge_calls": count }))
+        .collect()
+}
+
+fn bridge_candidate_functions_text(stats: &BridgeConnectivityStats) -> String {
+    if stats.candidate_functions.is_empty() {
+        return "(none found)".to_string();
+    }
+    stats
+        .candidate_functions
+        .iter()
+        .map(|(symbol, count)| format!("- {symbol} ({count} bridge call edge(s))"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn is_canonical_logging_module(module: &str) -> bool {

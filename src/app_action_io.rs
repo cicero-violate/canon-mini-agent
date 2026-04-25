@@ -403,7 +403,7 @@ fn build_agent_prompt(
     last_predicted_next_actions: Option<&str>,
 ) -> (String, String) {
     let agent_type = role_key(role).to_uppercase();
-    let header = format!("TAB_ID: pending\nTURN_ID: pending\nAGENT_TYPE: {agent_type}\n\n");
+    let header = format!("TAB_ID: pending\nTURN_ID: pending\nAGENT_TYPE: {agent_type}\n\n\n");
     if step == 0 {
         (
             if send_system_prompt {
