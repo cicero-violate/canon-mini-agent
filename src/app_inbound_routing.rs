@@ -75,16 +75,8 @@ fn apply_wake_signals(writer: &mut CanonicalWriter) {
             }
             if in_progress {
                 if lane_has_stale_executor_claim(writer.state(), lane_id) {
-                    eprintln!(
-                        "[orchestrate] wake_signal_recovered_stale_lane: role=executor lane={} reason=stale_in_progress_without_live_work",
-                        lane_id
-                    );
-                    writer.apply(ControlEvent::LaneInProgressSet {
-                        lane_id,
-                        actor: None,
-                    });
-                    writer.apply(ControlEvent::LaneNextSubmitAtSet { lane_id, ms: 0 });
-                    clear_wake_signal |= apply_lane_pending_if_changed(writer, lane_id, true);
+                    recover_stale_executor_lane_claim(writer, lane_id);
+                    clear_wake_signal = true;
                 }
                 continue;
             }
@@ -139,10 +131,35 @@ fn lane_has_stale_executor_claim(state: &SystemState, lane_id: usize) -> bool {
     if state.lane_submit_active(lane_id) || state.lane_in_flight(lane_id) {
         return false;
     }
-    !state
+    true
+}
+
+fn recover_stale_executor_lane_claim(writer: &mut CanonicalWriter, lane_id: usize) {
+    eprintln!(
+        "[orchestrate] wake_signal_recovered_stale_lane: role=executor lane={} reason=stale_in_progress_without_live_work",
+        lane_id
+    );
+    let stale_turn_ids: Vec<(u32, u64)> = writer
+        .state()
         .submitted_turn_ids
-        .values()
-        .any(|submitted| submitted.lane_id == lane_id)
+        .iter()
+        .filter_map(|(key, submitted)| {
+            if submitted.lane_id != lane_id {
+                return None;
+            }
+            let (tab_id, turn_id) = key.split_once(':')?;
+            Some((tab_id.parse().ok()?, turn_id.parse().ok()?))
+        })
+        .collect();
+    for (tab_id, turn_id) in stale_turn_ids {
+        writer.apply(ControlEvent::ExecutorTurnDeregistered { tab_id, turn_id });
+    }
+    writer.apply(ControlEvent::LaneInProgressSet {
+        lane_id,
+        actor: None,
+    });
+    writer.apply(ControlEvent::LaneNextSubmitAtSet { lane_id, ms: 0 });
+    apply_lane_pending_if_changed(writer, lane_id, true);
 }
 
 fn should_suppress_repeated_executor_deferred_log(modified_ms: u64) -> bool {

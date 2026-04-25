@@ -830,39 +830,87 @@ fn detect_handoff_causality_gap(workspace: &Path) -> bool {
     }
 }
 
+/// Detect an executor wake that cannot route because a lane is marked in-progress
+/// even though no submit/prompt in-flight flags remain. This phantom-busy lane
+/// causes repeated `wake_signal_deferred: all_executor_lanes_busy` loops.
+fn detect_stale_executor_lane_busy_gap(workspace: &Path) -> bool {
+    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
+    let Ok(records) = crate::tlog::Tlog::read_records(&tlog_path) else {
+        return false;
+    };
+
+    let mut state = crate::system_state::SystemState::default();
+    for record in &records {
+        if let crate::events::Event::Control { event } = &record.event {
+            state = crate::system_state::apply_control_event(state, event);
+        }
+    }
+
+    if !state.wake_signals_pending.contains_key("executor") {
+        return false;
+    }
+
+    state.lanes.iter().any(|(lane_id, lane)| {
+        lane.in_progress_by.is_some()
+            && !lane.pending
+            && !state.lane_submit_active(*lane_id)
+            && !state.lane_in_flight(*lane_id)
+    })
+}
+
+fn upsert_deterministic_invariant(
+    file: &mut EnforcedInvariantsFile,
+    id: &str,
+    active: bool,
+    now_ms: u64,
+    predicate_text: &str,
+    state_conditions: Vec<StateCondition>,
+    gates: Vec<String>,
+) {
+    if let Some(inv) = file.invariants.iter_mut().find(|inv| inv.id == id) {
+        if active {
+            inv.last_seen_ms = now_ms;
+            inv.support_count = inv.support_count.saturating_add(1);
+        }
+        return;
+    }
+
+    if !active {
+        return;
+    }
+
+    file.invariants.push(DiscoveredInvariant {
+        id: id.to_string(),
+        predicate_text: predicate_text.to_string(),
+        state_conditions,
+        support_count: 1,
+        status: InvariantStatus::Enforced,
+        gates,
+        evidence: vec![],
+        first_seen_ms: now_ms,
+        last_seen_ms: now_ms,
+    });
+}
+
 /// Seed deterministic invariants that are always enforced regardless of fingerprint counts.
 ///
 /// These are derived from direct tlog analysis and require no `support_count` threshold.
 /// They are inserted with `status: Enforced` so gates block immediately.
 fn seed_deterministic_invariants(workspace: &Path, file: &mut EnforcedInvariantsFile) {
     let now_ms = crate::logging::now_ms();
-    let gap_active = detect_handoff_causality_gap(workspace);
-    const ID: &str = "inv_planner_handoff_causality";
-
-    if let Some(inv) = file.invariants.iter_mut().find(|inv| inv.id == ID) {
-        if gap_active {
-            inv.last_seen_ms = now_ms;
-            inv.support_count = inv.support_count.saturating_add(1);
-        }
-        // Never downgrade a manually collapsed invariant.
-        return;
-    }
-
-    if !gap_active {
-        return;
-    }
-
-    file.invariants.push(DiscoveredInvariant {
-        id: ID.to_string(),
-        predicate_text: concat!(
+    upsert_deterministic_invariant(
+        file,
+        "inv_planner_handoff_causality",
+        detect_handoff_causality_gap(workspace),
+        now_ms,
+        concat!(
             "A planner handoff (action=message ok=true) must be followed by ",
             "inbound_message_queued for executor at a strictly greater tlog seq ",
             "before the planner is re-activated. ",
             "Repair: emit inbound_message_queued + wake_signal_queued + ",
             "lane_pending_set(pending=true) for the executor lane."
-        )
-        .to_string(),
-        state_conditions: vec![
+        ),
+        vec![
             StateCondition {
                 key: "last_planner_action".to_string(),
                 value: "message".to_string(),
@@ -872,13 +920,32 @@ fn seed_deterministic_invariants(workspace: &Path, file: &mut EnforcedInvariants
                 value: "false".to_string(),
             },
         ],
-        support_count: 1,
-        status: InvariantStatus::Enforced,
-        gates: vec!["route".to_string()],
-        evidence: vec![],
-        first_seen_ms: now_ms,
-        last_seen_ms: now_ms,
-    });
+        vec!["route".to_string()],
+    );
+
+    upsert_deterministic_invariant(
+        file,
+        "inv_executor_stale_lane_busy",
+        detect_stale_executor_lane_busy_gap(workspace),
+        now_ms,
+        concat!(
+            "An executor wake must not be deferred as all lanes busy when a lane has ",
+            "in_progress_by set but lane_pending=false, lane_submit_in_flight=false, ",
+            "and lane_prompt_in_flight=false. Repair: clear the stale lane claim, ",
+            "deregister stale submitted_turn_ids for that lane, and set lane_pending=true."
+        ),
+        vec![
+            StateCondition {
+                key: "executor_wake_pending".to_string(),
+                value: "true".to_string(),
+            },
+            StateCondition {
+                key: "lane_in_progress_without_inflight".to_string(),
+                value: "true".to_string(),
+            },
+        ],
+        vec!["route".to_string()],
+    );
 }
 
 /// Convert classified blocker records directly into fingerprints — no text heuristics.
