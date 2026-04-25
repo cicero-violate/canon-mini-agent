@@ -1671,16 +1671,27 @@ fn first_missing_field_for_action(action: &Value, action_name: &str) -> Option<S
         "plan" => missing_field_for_plan_action(action),
         "invariants" => missing_field_for_invariants_action(action),
         "violation" => missing_field_for_violation_action(action),
-        "rustc_hir" | "rustc_mir" | "graph_call" | "graph_cfg" | "graph_dataflow"
-        | "graph_reachability" => missing_field("crate"),
-        "semantic_map"
-        | "symbol_window"
-        | "symbol_refs"
-        | "symbol_path"
-        | "execution_path"
-        | "symbol_neighborhood" => missing_field("crate"),
+        name if action_requires_crate_field(name) => missing_field("crate"),
         _ => None,
     }
+}
+
+fn action_requires_crate_field(action_name: &str) -> bool {
+    matches!(
+        action_name,
+        "rustc_hir"
+            | "rustc_mir"
+            | "graph_call"
+            | "graph_cfg"
+            | "graph_dataflow"
+            | "graph_reachability"
+            | "semantic_map"
+            | "symbol_window"
+            | "symbol_refs"
+            | "symbol_path"
+            | "execution_path"
+            | "symbol_neighborhood"
+    )
 }
 
 fn first_missing_required_field(action: &Value, fields: &[&str]) -> Option<String> {
