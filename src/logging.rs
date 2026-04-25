@@ -990,6 +990,29 @@ pub fn record_json_projection_with_optional_writer<T: Serialize>(
     writer: Option<&mut CanonicalWriter>,
     effect: Option<crate::events::EffectEvent>,
 ) -> Result<()> {
+    let serialized_payload = serde_json::to_string_pretty(payload)?;
+    record_serialized_json_projection_with_optional_writer(
+        workspace,
+        path,
+        artifact,
+        op,
+        subject,
+        &serialized_payload,
+        writer,
+        effect,
+    )
+}
+
+pub fn record_serialized_json_projection_with_optional_writer(
+    workspace: &std::path::Path,
+    path: &std::path::Path,
+    artifact: &str,
+    op: &str,
+    subject: &str,
+    serialized_payload: &str,
+    writer: Option<&mut CanonicalWriter>,
+    effect: Option<crate::events::EffectEvent>,
+) -> Result<()> {
     if let Some(effect) = effect {
         if let Some(writer_ref) = writer {
             writer_ref.try_record_effect(effect)?;
@@ -1003,7 +1026,7 @@ pub fn record_json_projection_with_optional_writer<T: Serialize>(
         artifact,
         op,
         subject,
-        &serde_json::to_string_pretty(payload)?,
+        serialized_payload,
     )
 }
 

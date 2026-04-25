@@ -8,6 +8,15 @@ use std::path::Path;
 use crate::constants::ISSUES_FILE;
 
 const MAX_CHANGED_ISSUE_IDS_IN_TLOG: usize = 64;
+const ISSUES_PROJECTION_META_FILE: &str = "agent_state/ISSUES.projection.meta.json";
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct IssuesProjectionMeta {
+    #[serde(default)]
+    projection_hash: String,
+    #[serde(default)]
+    issue_fingerprints: BTreeMap<String, String>,
+}
 
 fn load_issues_projection_from_path(path: &Path) -> Option<IssuesFile> {
     std::fs::read_to_string(path)
@@ -42,8 +51,8 @@ fn issue_fingerprint_map(file: &IssuesFile) -> BTreeMap<String, String> {
         .collect()
 }
 
-fn issue_projection_fingerprints_hash(file: &IssuesFile) -> String {
-    let joined = issue_fingerprint_map(file)
+fn issue_projection_fingerprints_hash(issue_fingerprints: &BTreeMap<String, String>) -> String {
+    let joined = issue_fingerprints
         .into_iter()
         .map(|(id, hash)| format!("{id}:{hash}"))
         .collect::<Vec<_>>()
@@ -65,33 +74,30 @@ fn issue_status_counts(file: &IssuesFile) -> BTreeMap<String, usize> {
     out
 }
 
-fn changed_issue_ids(previous: Option<&IssuesFile>, current: &IssuesFile) -> (usize, Vec<String>) {
+fn changed_issue_ids_from_maps(
+    previous: Option<&BTreeMap<String, String>>,
+    current: &BTreeMap<String, String>,
+) -> (usize, Vec<String>) {
     let Some(previous) = previous else {
-        let ids = current
-            .issues
-            .iter()
-            .enumerate()
-            .map(|(index, issue)| stable_issue_key(index, issue))
-            .collect::<Vec<_>>();
         return (
-            ids.len(),
-            ids.into_iter()
+            current.len(),
+            current
+                .keys()
+                .cloned()
                 .take(MAX_CHANGED_ISSUE_IDS_IN_TLOG)
                 .collect(),
         );
     };
 
-    let before = issue_fingerprint_map(previous);
-    let after = issue_fingerprint_map(current);
     let mut changed = BTreeSet::new();
 
-    for (id, hash) in &after {
-        if before.get(id) != Some(hash) {
+    for (id, hash) in current {
+        if previous.get(id) != Some(hash) {
             changed.insert(id.clone());
         }
     }
-    for id in before.keys() {
-        if !after.contains_key(id) {
+    for id in previous.keys() {
+        if !current.contains_key(id) {
             changed.insert(id.clone());
         }
     }
@@ -102,6 +108,39 @@ fn changed_issue_ids(previous: Option<&IssuesFile>, current: &IssuesFile) -> (us
         .take(MAX_CHANGED_ISSUE_IDS_IN_TLOG)
         .collect();
     (changed_issue_count, changed_issue_ids)
+}
+
+fn issues_projection_meta_path(workspace: &Path) -> std::path::PathBuf {
+    workspace.join(ISSUES_PROJECTION_META_FILE)
+}
+
+fn load_issues_projection_meta(workspace: &Path) -> Option<IssuesProjectionMeta> {
+    std::fs::read_to_string(issues_projection_meta_path(workspace))
+        .ok()
+        .and_then(|raw| serde_json::from_str::<IssuesProjectionMeta>(&raw).ok())
+}
+
+fn cached_issue_fingerprints(meta: IssuesProjectionMeta) -> Option<BTreeMap<String, String>> {
+    if meta.projection_hash.trim().is_empty() || meta.issue_fingerprints.is_empty() {
+        None
+    } else {
+        Some(meta.issue_fingerprints)
+    }
+}
+
+fn write_issues_projection_meta(workspace: &Path, meta: &IssuesProjectionMeta) -> Result<()> {
+    let path = issues_projection_meta_path(workspace);
+    let raw = serde_json::to_string_pretty(meta)?;
+    if let Ok(existing) = std::fs::read_to_string(&path) {
+        if crate::logging::stable_hash_hex(&existing) == crate::logging::stable_hash_hex(&raw) {
+            return Ok(());
+        }
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, raw)?;
+    Ok(())
 }
 
 /// Intent: canonical_write
@@ -120,23 +159,41 @@ pub fn persist_issues_projection_with_writer(
     mut writer: Option<&mut crate::canonical_writer::CanonicalWriter>,
     subject: &str,
 ) -> Result<()> {
-    let previous = load_issues_projection_from_path(&workspace.join(ISSUES_FILE));
+    let projection_path = workspace.join(ISSUES_FILE);
+    let canonical = serde_json::to_string_pretty(file)?;
+    let projection_hash = crate::logging::stable_hash_hex(&canonical);
+    if let Ok(existing) = std::fs::read_to_string(&projection_path) {
+        if crate::logging::stable_hash_hex(&existing) == projection_hash {
+            return Ok(());
+        }
+    }
+
     let status_counts = issue_status_counts(file);
     let open_count = status_counts.get("open").copied().unwrap_or(0);
-    let issue_fingerprints_hash = issue_projection_fingerprints_hash(file);
-    let (changed_issue_count, changed_issue_ids) = changed_issue_ids(previous.as_ref(), file);
-    let canonical = serde_json::to_string_pretty(file)?;
-    crate::logging::record_json_projection_with_optional_writer(
+    let issue_fingerprints = issue_fingerprint_map(file);
+    let issue_fingerprints_hash = issue_projection_fingerprints_hash(&issue_fingerprints);
+    let previous_issue_fingerprints = load_issues_projection_meta(workspace)
+        .and_then(cached_issue_fingerprints)
+        .or_else(|| {
+            load_issues_projection_from_path(&projection_path).map(|file| issue_fingerprint_map(&file))
+        });
+    let (changed_issue_count, changed_issue_ids) =
+        changed_issue_ids_from_maps(previous_issue_fingerprints.as_ref(), &issue_fingerprints);
+    let meta = IssuesProjectionMeta {
+        projection_hash: projection_hash.clone(),
+        issue_fingerprints,
+    };
+    crate::logging::record_serialized_json_projection_with_optional_writer(
         workspace,
-        &workspace.join(ISSUES_FILE),
+        &projection_path,
         ISSUES_FILE,
         "write",
         subject,
-        file,
+        &canonical,
         writer.as_mut().map(|writer| &mut **writer),
         Some(crate::events::EffectEvent::IssuesProjectionRecorded {
             path: ISSUES_FILE.to_string(),
-            hash: crate::logging::stable_hash_hex(&canonical),
+            hash: projection_hash,
             issue_count: file.issues.len(),
             open_count,
             bytes: canonical.len() as u64,
@@ -145,7 +202,8 @@ pub fn persist_issues_projection_with_writer(
             changed_issue_ids,
             status_counts,
         }),
-    )
+    )?;
+    write_issues_projection_meta(workspace, &meta)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
@@ -1220,6 +1278,61 @@ mod tests {
         }
         assert_eq!(projection_records, 1);
         assert_eq!(snapshot_records, 0);
+    }
+
+    #[test]
+    fn duplicate_issues_projection_is_noop() {
+        static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+        let _guard = LOCK
+            .get_or_init(|| std::sync::Mutex::new(()))
+            .lock()
+            .expect("lock");
+
+        let root = std::env::temp_dir().join(format!(
+            "canon-mini-agent-issues-noop-{}-{}",
+            std::process::id(),
+            crate::logging::now_ms()
+        ));
+        let state_dir = root.join("agent_state");
+        std::fs::create_dir_all(&state_dir).expect("create state dir");
+        set_workspace(root.to_string_lossy().to_string());
+        set_agent_state_dir(state_dir.to_string_lossy().to_string());
+
+        let file = IssuesFile {
+            version: 1,
+            issues: vec![Issue {
+                id: "ISS-NOOP-1".to_string(),
+                title: "unchanged projection".to_string(),
+                status: "open".to_string(),
+                priority: "medium".to_string(),
+                ..Issue::default()
+            }],
+        };
+
+        persist_issues_projection_with_writer(&root, &file, None, "first_projection")
+            .expect("first projection");
+        persist_issues_projection_with_writer(&root, &file, None, "duplicate_projection")
+            .expect("duplicate projection");
+
+        assert!(
+            root.join(super::ISSUES_PROJECTION_META_FILE).exists(),
+            "projection metadata sidecar should be written after the first projection"
+        );
+
+        let tlog_path = state_dir.join("tlog.ndjson");
+        let records = Tlog::read_records(&tlog_path).expect("read tlog records");
+        let projection_records = records
+            .into_iter()
+            .filter(|record| {
+                matches!(
+                    record.event,
+                    crate::events::Event::Effect {
+                        event: crate::events::EffectEvent::IssuesProjectionRecorded { .. }
+                    }
+                )
+            })
+            .count();
+        assert_eq!(projection_records, 1);
     }
 
     #[test]
