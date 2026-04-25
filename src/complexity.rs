@@ -1194,6 +1194,13 @@ fn global_complexity_fields_value(
     crate_name: &str,
     fields: GlobalComplexityEntryFields,
 ) -> serde_json::Value {
+    global_complexity_fields_json(crate_name, fields)
+}
+
+fn global_complexity_fields_json(
+    crate_name: &str,
+    fields: GlobalComplexityEntryFields,
+) -> serde_json::Value {
     json!({
         "crate": crate_name,
         "symbol": fields.symbol,
