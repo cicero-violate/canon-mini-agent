@@ -2185,8 +2185,18 @@ impl FunctionCfg {
             }
         }
 
+        let used_defs = self.used_reaching_defs(&stmt_keys, &in_defs);
+
+        ReachingDefAnalysis { used_defs, in_defs }
+    }
+
+    fn used_reaching_defs(
+        &self,
+        stmt_keys: &[StmtKey],
+        in_defs: &HashMap<StmtKey, HashSet<StmtKey>>,
+    ) -> HashSet<StmtKey> {
         let mut used_defs: HashSet<StmtKey> = HashSet::new();
-        for key in &stmt_keys {
+        for key in stmt_keys {
             let Some(stmt) = self.stmt(*key) else {
                 continue;
             };
@@ -2206,8 +2216,7 @@ impl FunctionCfg {
                 }
             }
         }
-
-        ReachingDefAnalysis { used_defs, in_defs }
+        used_defs
     }
 
     fn defs_by_local(&self, stmt_keys: &[StmtKey]) -> HashMap<String, HashSet<StmtKey>> {
