@@ -2739,6 +2739,60 @@ fn priority_from_ratio(ratio: f64) -> &'static str {
     }
 }
 
+fn bridge_graph_scope(crate_name: &str) -> String {
+    format!("state/rustc/{}/graph.json", crate_name.replace('-', "_"))
+}
+
+fn bridge_issue_description(
+    stats: &BridgeConnectivityStats,
+    ratio_text: &str,
+    threshold_text: &str,
+) -> String {
+    format!(
+        "Bridge connectivity is measured as bridge_edge_count / node_count.\n\
+         For crate `{crate_name}`:\n\
+         - bridge_edge_count = {bridge_edge_count}\n\
+         - node_count = {node_count}\n\
+         - bridge_ratio = {ratio_text}\n\
+         - threshold = {threshold_text}\n\
+         - semantic_edge_count = {semantic_edge_count}\n\
+         - cfg_node_count = {cfg_node_count}\n\
+         - cfg_edge_count = {cfg_edge_count}\n\n\
+         This exceeds the detector threshold and indicates the graph is too bridge-dense.\n\
+         High bridge density increases coupling, slows traversal, and makes the execution graph\n\
+         harder to reason about deterministically.\n\n\
+         Candidate functions most frequently touched by bridge-connected call edges:\n\
+         {candidates}\n",
+        crate_name = stats.crate_name,
+        bridge_edge_count = stats.bridge_edge_count,
+        node_count = stats.node_count,
+        ratio_text = ratio_text,
+        threshold_text = threshold_text,
+        semantic_edge_count = stats.semantic_edge_count,
+        cfg_node_count = stats.cfg_node_count,
+        cfg_edge_count = stats.cfg_edge_count,
+        candidates = bridge_candidate_functions_text(stats)
+    )
+}
+
+fn bridge_issue_metrics(stats: &BridgeConnectivityStats, candidate_functions: Vec<Value>) -> Value {
+    json!({
+        "measured": {
+            "bridge_edge_count": stats.bridge_edge_count,
+            "node_count": stats.node_count,
+            "bridge_ratio": stats.bridge_ratio,
+            "semantic_edge_count": stats.semantic_edge_count,
+            "cfg_node_count": stats.cfg_node_count,
+            "cfg_edge_count": stats.cfg_edge_count,
+        },
+        "target": {
+            "bridge_ratio_max": stats.threshold,
+            "bridge_edge_count_per_node_max": stats.threshold,
+        },
+        "candidate_functions": candidate_functions,
+    })
+}
+
 /// Intent: pure_transform
 /// Resource: error
 /// Inputs: &graph_metrics::BridgeConnectivityStats
@@ -2755,10 +2809,7 @@ fn build_bridge_issue(stats: &BridgeConnectivityStats) -> Issue {
     let priority = priority_from_ratio(stats.bridge_ratio);
     let ratio_text = format!("{:.2}", stats.bridge_ratio);
     let threshold_text = format!("{:.2}", stats.threshold);
-    let scope = format!(
-        "state/rustc/{}/graph.json",
-        stats.crate_name.replace('-', "_")
-    );
+    let scope = bridge_graph_scope(&stats.crate_name);
     let candidate_functions = bridge_candidate_functions_json(stats);
 
     Issue {
@@ -2770,47 +2821,9 @@ fn build_bridge_issue(stats: &BridgeConnectivityStats) -> Issue {
         status: status.to_string(),
         priority: priority.to_string(),
         kind: "performance".to_string(),
-        description: format!(
-            "Bridge connectivity is measured as bridge_edge_count / node_count.\n\
-             For crate `{crate_name}`:\n\
-             - bridge_edge_count = {bridge_edge_count}\n\
-             - node_count = {node_count}\n\
-             - bridge_ratio = {ratio_text}\n\
-             - threshold = {threshold_text}\n\
-             - semantic_edge_count = {semantic_edge_count}\n\
-             - cfg_node_count = {cfg_node_count}\n\
-             - cfg_edge_count = {cfg_edge_count}\n\n\
-             This exceeds the detector threshold and indicates the graph is too bridge-dense.\n\
-             High bridge density increases coupling, slows traversal, and makes the execution graph\n\
-             harder to reason about deterministically.\n\n\
-             Candidate functions most frequently touched by bridge-connected call edges:\n\
-             {candidates}\n",
-            crate_name = stats.crate_name,
-            bridge_edge_count = stats.bridge_edge_count,
-            node_count = stats.node_count,
-            ratio_text = ratio_text,
-            threshold_text = threshold_text,
-            semantic_edge_count = stats.semantic_edge_count,
-            cfg_node_count = stats.cfg_node_count,
-            cfg_edge_count = stats.cfg_edge_count,
-            candidates = bridge_candidate_functions_text(stats)
-        ),
+        description: bridge_issue_description(stats, &ratio_text, &threshold_text),
         location: scope.clone(),
-        metrics: json!({
-            "measured": {
-                "bridge_edge_count": stats.bridge_edge_count,
-                "node_count": stats.node_count,
-                "bridge_ratio": stats.bridge_ratio,
-                "semantic_edge_count": stats.semantic_edge_count,
-                "cfg_node_count": stats.cfg_node_count,
-                "cfg_edge_count": stats.cfg_edge_count,
-            },
-            "target": {
-                "bridge_ratio_max": stats.threshold,
-                "bridge_edge_count_per_node_max": stats.threshold,
-            },
-            "candidate_functions": candidate_functions,
-        }),
+        metrics: bridge_issue_metrics(stats, candidate_functions),
         scope,
         acceptance_criteria: vec![
             format!("bridge_ratio <= {threshold_text}"),

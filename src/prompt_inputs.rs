@@ -439,6 +439,10 @@ fn build_eval_header(workspace: &Path) -> String {
         ("safety", get_f64("safety")),
         ("task_velocity", task_velocity),
         ("issue_health", get_f64("issue_health")),
+        (
+            "structural_invariant_coverage",
+            get_f64("structural_invariant_coverage"),
+        ),
     ];
 
     let (weakest_name, weakest_val) = dims
@@ -452,6 +456,9 @@ fn build_eval_header(workspace: &Path) -> String {
         "task_velocity" => "complete or close stale PLAN.json tasks",
         "issue_health" => "close or fix the repeated open issues below",
         "safety" => "resolve violations listed in the violations view",
+        "structural_invariant_coverage" => {
+            "add enforced invariants for graph-risk categories reported as missing"
+        }
         _ => "address the highest-scored issues below",
     };
 

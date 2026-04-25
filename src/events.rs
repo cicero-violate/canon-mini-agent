@@ -392,6 +392,8 @@ pub enum EffectEvent {
         task_velocity: f64,
         issue_health: f64,
         semantic_contract: f64,
+        #[serde(default)]
+        structural_invariant_coverage: f64,
         diagnostics_repair_pressure: f64,
         semantic_fn_error_rate: f64,
         semantic_fn_total: usize,

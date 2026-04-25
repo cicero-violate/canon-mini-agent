@@ -22,6 +22,7 @@ pub struct EvalInput {
     pub semantic_fn_total: usize,
     pub semantic_fn_with_any_error: usize,
     pub semantic_fn_error_rate: f64,
+    pub structural_invariant_coverage: StructuralInvariantCoverage,
 }
 
 /// Direction and magnitude of change between two consecutive eval snapshots.
@@ -42,6 +43,7 @@ pub struct EvaluationVector {
     pub task_velocity: f64,
     pub issue_health: f64,
     pub semantic_contract: f64,
+    pub structural_invariant_coverage: f64,
 }
 
 impl EvaluationVector {
@@ -52,10 +54,20 @@ impl EvaluationVector {
             self.task_velocity.clamp(0.001, 1.0),
             self.issue_health.clamp(0.001, 1.0),
             self.semantic_contract.clamp(0.001, 1.0),
+            self.structural_invariant_coverage.clamp(0.001, 1.0),
         ];
         let product = values.iter().product::<f64>();
-        product.powf(0.20)
+        product.powf(1.0 / values.len() as f64)
     }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct StructuralInvariantCoverage {
+    pub graph_risk_count: usize,
+    pub invariant_covered_count: usize,
+    pub missing_invariant_count: usize,
+    pub score: f64,
+    pub missing: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -70,6 +82,7 @@ pub struct EvaluationWorkspaceSnapshot {
     pub semantic_fn_total: usize,
     pub semantic_fn_with_any_error: usize,
     pub semantic_fn_error_rate: f64,
+    pub structural_invariant_coverage: StructuralInvariantCoverage,
     pub vector: EvaluationVector,
 }
 
@@ -92,6 +105,7 @@ pub fn compute_eval(input: &EvalInput) -> EvaluationWorkspaceSnapshot {
         input.open_issues,
         input.repeated_open_issues,
         (1.0 - input.semantic_fn_error_rate).clamp(0.0, 1.0),
+        input.structural_invariant_coverage.score,
     );
     // Fold semantic error rate into safety so a clean build alone cannot produce safety = 1.0.
     vector.safety = clamp_unit(vector.safety * (1.0 - 0.3 * input.semantic_fn_error_rate));
@@ -109,6 +123,7 @@ pub fn compute_eval(input: &EvalInput) -> EvaluationWorkspaceSnapshot {
         semantic_fn_total: input.semantic_fn_total,
         semantic_fn_with_any_error: input.semantic_fn_with_any_error,
         semantic_fn_error_rate: input.semantic_fn_error_rate,
+        structural_invariant_coverage: input.structural_invariant_coverage.clone(),
         vector,
     }
 }
@@ -193,6 +208,7 @@ pub fn evaluate_repo_state(
     open_issues: usize,
     repeated_open_issues: usize,
     semantic_contract_score: f64,
+    structural_invariant_coverage_score: f64,
 ) -> EvaluationVector {
     EvaluationVector {
         objective_progress: reward_alignment_score(objectives_completed, objectives_total),
@@ -200,6 +216,7 @@ pub fn evaluate_repo_state(
         task_velocity: task_velocity_score(completed_tasks, total_tasks),
         issue_health: issue_health_score(open_issues, repeated_open_issues),
         semantic_contract: semantic_contract_score.clamp(0.0, 1.0),
+        structural_invariant_coverage: structural_invariant_coverage_score.clamp(0.0, 1.0),
     }
 }
 
@@ -230,6 +247,7 @@ pub fn evaluate_workspace(workspace: &Path) -> EvaluationWorkspaceSnapshot {
     let (open_issues, repeated_open_issues, high_priority_open_issues) =
         load_issue_counts(workspace);
     let semantic_metrics = crate::semantic_contract::load_semantic_manifest_metrics(workspace);
+    let structural_invariant_coverage = load_structural_invariant_coverage(workspace);
 
     compute_eval(&EvalInput {
         objectives_completed,
@@ -244,7 +262,106 @@ pub fn evaluate_workspace(workspace: &Path) -> EvaluationWorkspaceSnapshot {
         semantic_fn_total: semantic_metrics.fn_total,
         semantic_fn_with_any_error: semantic_metrics.fn_with_any_error,
         semantic_fn_error_rate: semantic_metrics.fn_error_rate,
+        structural_invariant_coverage,
     })
+}
+
+fn load_structural_invariant_coverage(workspace: &Path) -> StructuralInvariantCoverage {
+    let graph_path = crate::semantic_contract::graph_path(workspace);
+    let graph_text = std::fs::read_to_string(graph_path).unwrap_or_default();
+    let invariant_text = std::fs::read_to_string(
+        workspace
+            .join("agent_state")
+            .join("enforced_invariants.json"),
+    )
+    .unwrap_or_default();
+    structural_invariant_coverage_from_text(&graph_text, &invariant_text)
+}
+
+fn structural_invariant_coverage_from_text(
+    graph_text: &str,
+    invariant_text: &str,
+) -> StructuralInvariantCoverage {
+    let graph_lower = graph_text.to_ascii_lowercase();
+    let invariant_lower = invariant_text.to_ascii_lowercase();
+    let risks = structural_risks_from_graph_text(&graph_lower);
+    let mut covered = 0usize;
+    let mut missing = Vec::new();
+
+    for risk in &risks {
+        if invariant_text_covers_risk(&invariant_lower, risk) {
+            covered += 1;
+        } else {
+            missing.push(risk.name.to_string());
+        }
+    }
+
+    let score = if risks.is_empty() {
+        1.0
+    } else {
+        covered as f64 / risks.len() as f64
+    };
+
+    StructuralInvariantCoverage {
+        graph_risk_count: risks.len(),
+        invariant_covered_count: covered,
+        missing_invariant_count: missing.len(),
+        score,
+        missing,
+    }
+}
+
+struct StructuralRisk {
+    name: &'static str,
+    graph_needles: &'static [&'static str],
+    invariant_needles: &'static [&'static str],
+}
+
+fn structural_risk_catalog() -> Vec<StructuralRisk> {
+    vec![
+        StructuralRisk {
+            name: "plan_mutation_goes_through_plan_tool",
+            graph_needles: &["plan.json", "master_plan_file"],
+            invariant_needles: &["plan", "plan tool"],
+        },
+        StructuralRisk {
+            name: "canonical_writer_single_tlog_authority",
+            graph_needles: &["tlog::tlog::append", "canonicalwriter"],
+            invariant_needles: &["canonical writer", "single authority", "tlog"],
+        },
+        StructuralRisk {
+            name: "patch_requires_verification_gate",
+            graph_needles: &["apply_patch", "cargo_test"],
+            invariant_needles: &["patch", "cargo", "test", "verification"],
+        },
+        StructuralRisk {
+            name: "issues_projection_only",
+            graph_needles: &["issues.json", "persist_issues_projection"],
+            invariant_needles: &["issues", "projection"],
+        },
+        StructuralRisk {
+            name: "executor_wake_requires_claimable_lane",
+            graph_needles: &["wake_signal", "lane_in_progress"],
+            invariant_needles: &["executor", "wake", "lane"],
+        },
+    ]
+}
+
+fn structural_risks_from_graph_text(graph_lower: &str) -> Vec<StructuralRisk> {
+    structural_risk_catalog()
+        .into_iter()
+        .filter(|risk| {
+            risk.graph_needles
+                .iter()
+                .all(|needle| graph_lower.contains(needle))
+        })
+        .collect()
+}
+
+fn invariant_text_covers_risk(invariant_lower: &str, risk: &StructuralRisk) -> bool {
+    risk.invariant_needles
+        .iter()
+        .all(|needle| invariant_lower.contains(needle))
 }
 
 /// Intent: canonical_read
@@ -413,6 +530,7 @@ mod tests {
             task_velocity: 0.0,
             issue_health: 1.0,
             semantic_contract: 1.0,
+            structural_invariant_coverage: 1.0,
         };
 
         assert!(vector.geometric_mean_like_score() > 0.0);
@@ -482,5 +600,49 @@ mod tests {
             last_validated_ms: 0,
         });
         assert!(safety_score(&violations) < no_violation_score);
+    }
+
+    #[test]
+    fn structural_invariant_coverage_reports_missing_graph_risk() {
+        let graph = r#"
+            {"nodes":{
+              "a":{"path":"tools::handle_apply_patch_action"},
+              "b":{"path":"tools::handle_cargo_test_action"}
+            }}
+        "#;
+        let invariants = r#"{"invariants":[]}"#;
+
+        let coverage = structural_invariant_coverage_from_text(graph, invariants);
+
+        assert_eq!(coverage.graph_risk_count, 1);
+        assert_eq!(coverage.invariant_covered_count, 0);
+        assert_eq!(coverage.missing_invariant_count, 1);
+        assert_eq!(
+            coverage.missing,
+            vec!["patch_requires_verification_gate".to_string()]
+        );
+        assert_eq!(coverage.score, 0.0);
+    }
+
+    #[test]
+    fn structural_invariant_coverage_counts_matching_invariant() {
+        let graph = r#"
+            {"nodes":{
+              "a":{"path":"tools::handle_apply_patch_action"},
+              "b":{"path":"tools::handle_cargo_test_action"}
+            }}
+        "#;
+        let invariants = r#"
+            {"invariants":[{"predicate_text":
+              "Every patch must be followed by cargo test verification before completion."
+            }]}
+        "#;
+
+        let coverage = structural_invariant_coverage_from_text(graph, invariants);
+
+        assert_eq!(coverage.graph_risk_count, 1);
+        assert_eq!(coverage.invariant_covered_count, 1);
+        assert_eq!(coverage.missing_invariant_count, 0);
+        assert_eq!(coverage.score, 1.0);
     }
 }

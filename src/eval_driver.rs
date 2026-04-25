@@ -58,6 +58,7 @@ pub fn run(
         task_velocity: snapshot.vector.task_velocity,
         issue_health: snapshot.vector.issue_health,
         semantic_contract: snapshot.vector.semantic_contract,
+        structural_invariant_coverage: snapshot.vector.structural_invariant_coverage,
         diagnostics_repair_pressure: snapshot.diagnostics_repair_pressure,
         semantic_fn_error_rate: snapshot.semantic_fn_error_rate,
         semantic_fn_total: snapshot.semantic_fn_total,
