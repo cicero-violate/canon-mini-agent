@@ -1514,51 +1514,13 @@ pub fn redundant_path_issues(
             continue;
         };
 
-        let location = shorten_location(&summary.file, summary.line);
-        let id_seed = format!("{owner}:{shared_signature:016x}");
-        let avg_path_len = (pair.path_a.blocks.len() + pair.path_b.blocks.len()) as f64 / 2.0;
-        let blocks = summary.mir_blocks.unwrap_or(0).max(1);
-        let redundancy_ratio = avg_path_len / blocks as f64;
-        out.push(Issue {
-            id: format!(
-                "auto_redundant_path_{crate_name}_{:x}",
-                stable_hash(&id_seed)
-            ),
-            title: format!(
-                "Redundant CFG paths in `{}` (signature {:016x})",
-                short_name(&summary.symbol),
-                shared_signature
-            ),
-            status: "open".to_string(),
-            priority: if redundancy_ratio >= 0.5 {
-                "medium".to_string()
-            } else {
-                "low".to_string()
-            },
-            kind: "dead_branch".to_string(),
-            description: format!(
-                "Function `{}` has at least two distinct MIR CFG paths with identical \
-                 structural path signature. This is a dead/duplicate branch candidate.",
-                summary.symbol
-            ),
-            location: location.clone(),
-            scope: format!("crate:{crate_name}"),
-            metrics: json!({
-                "task": "FoldRedundantPath",
-                "shared_signature": format!("{shared_signature:016x}"),
-                "owner_key": owner,
-                "path_a_blocks": pair.path_a.blocks,
-                "path_b_blocks": pair.path_b.blocks,
-                "redundancy_ratio": redundancy_ratio,
-            }),
-            acceptance_criteria: vec![
-                "duplicate path folded or justified".to_string(),
-                "build and tests pass".to_string(),
-            ],
-            evidence: vec![format!("location: {location}")],
-            discovered_by: "refactor_analyzer".to_string(),
-            ..Issue::default()
-        });
+        out.push(build_redundant_path_issue(
+            crate_name,
+            &owner,
+            shared_signature,
+            summary,
+            &pair,
+        ));
     }
     // Select the highest-signal pairs before applying the limit, so low-ratio
     // pairs that appear early in graph order don't displace high-ratio ones.
@@ -1578,6 +1540,60 @@ pub fn redundant_path_issues(
     out.truncate(limit);
     out.sort_by(|a, b| a.id.cmp(&b.id));
     out
+}
+
+fn build_redundant_path_issue(
+    crate_name: &str,
+    owner: &str,
+    shared_signature: u64,
+    summary: &SymbolSummary,
+    pair: &crate::semantic::RedundantPathPair,
+) -> Issue {
+    let location = shorten_location(&summary.file, summary.line);
+    let id_seed = format!("{owner}:{shared_signature:016x}");
+    let avg_path_len = (pair.path_a.blocks.len() + pair.path_b.blocks.len()) as f64 / 2.0;
+    let blocks = summary.mir_blocks.unwrap_or(0).max(1);
+    let redundancy_ratio = avg_path_len / blocks as f64;
+    Issue {
+        id: format!(
+            "auto_redundant_path_{crate_name}_{:x}",
+            stable_hash(&id_seed)
+        ),
+        title: format!(
+            "Redundant CFG paths in `{}` (signature {:016x})",
+            short_name(&summary.symbol),
+            shared_signature
+        ),
+        status: "open".to_string(),
+        priority: if redundancy_ratio >= 0.5 {
+            "medium".to_string()
+        } else {
+            "low".to_string()
+        },
+        kind: "dead_branch".to_string(),
+        description: format!(
+            "Function `{}` has at least two distinct MIR CFG paths with identical \
+             structural path signature. This is a dead/duplicate branch candidate.",
+            summary.symbol
+        ),
+        location: location.clone(),
+        scope: format!("crate:{crate_name}"),
+        metrics: json!({
+            "task": "FoldRedundantPath",
+            "shared_signature": format!("{shared_signature:016x}"),
+            "owner_key": owner,
+            "path_a_blocks": pair.path_a.blocks,
+            "path_b_blocks": pair.path_b.blocks,
+            "redundancy_ratio": redundancy_ratio,
+        }),
+        acceptance_criteria: vec![
+            "duplicate path folded or justified".to_string(),
+            "build and tests pass".to_string(),
+        ],
+        evidence: vec![format!("location: {location}")],
+        discovered_by: "refactor_analyzer".to_string(),
+        ..Issue::default()
+    }
 }
 
 fn redundant_path_summary_by_key<'a>(
