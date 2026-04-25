@@ -565,7 +565,31 @@ fn persist_if_created(workspace: &Path, file: &mut IssuesFile, created: usize) -
 
 /// Serialize the inter-analysis into a JSON value for embedding in the complexity report.
 pub fn to_report_value(analysis: &InterAnalysis, top_n: usize) -> serde_json::Value {
-    let top: Vec<serde_json::Value> = analysis
+    let top = inter_complexity_top_entries(analysis, top_n);
+
+    let dup_groups: Vec<serde_json::Value> = analysis
+        .duplicate_groups
+        .iter()
+        .map(|g| serde_json::json!(g))
+        .collect();
+
+    serde_json::json!({
+        "scoring": {
+            "inter_objective": "0.30·B_transitive_norm + 0.20·R_body + 0.20·(1−D_det) + 0.30·heat_norm",
+            "branch_score": "SwitchInt×2.0 + Call×1.0 + Assert×0.5 over non-cleanup MIR blocks",
+            "B_transitive": "branch_score(F) + mean(branch_score(callee)) — depth-1 propagation",
+            "R_body": "1.0 if MIR fingerprint+signature+callees match another function, else 0.0",
+            "D_det": "1.0 − branch_score_norm (higher = more deterministic)",
+            "heat_score": "branch_score × ln(call_in + 1) — complexity weighted by call frequency",
+        },
+        "call_edges_analyzed": analysis.call_edge_count,
+        "top": top,
+        "mir_duplicate_groups": dup_groups,
+    })
+}
+
+fn inter_complexity_top_entries(analysis: &InterAnalysis, top_n: usize) -> Vec<serde_json::Value> {
+    analysis
         .entries
         .iter()
         .take(top_n)
@@ -587,27 +611,7 @@ pub fn to_report_value(analysis: &InterAnalysis, top_n: usize) -> serde_json::Va
                 "duplicate_of": e.duplicate_of,
             })
         })
-        .collect();
-
-    let dup_groups: Vec<serde_json::Value> = analysis
-        .duplicate_groups
-        .iter()
-        .map(|g| serde_json::json!(g))
-        .collect();
-
-    serde_json::json!({
-        "scoring": {
-            "inter_objective": "0.30·B_transitive_norm + 0.20·R_body + 0.20·(1−D_det) + 0.30·heat_norm",
-            "branch_score": "SwitchInt×2.0 + Call×1.0 + Assert×0.5 over non-cleanup MIR blocks",
-            "B_transitive": "branch_score(F) + mean(branch_score(callee)) — depth-1 propagation",
-            "R_body": "1.0 if MIR fingerprint+signature+callees match another function, else 0.0",
-            "D_det": "1.0 − branch_score_norm (higher = more deterministic)",
-            "heat_score": "branch_score × ln(call_in + 1) — complexity weighted by call frequency",
-        },
-        "call_edges_analyzed": analysis.call_edge_count,
-        "top": top,
-        "mir_duplicate_groups": dup_groups,
-    })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
