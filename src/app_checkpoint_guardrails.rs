@@ -283,18 +283,8 @@ fn recover_verifier_item_from_executor_post_restart(
 /// Provenance: rustc:facts + rustc:docstring
 fn load_checkpoint(workspace: &Path) -> Option<OrchestratorCheckpoint> {
     let tlog_path = PathBuf::from(crate::constants::agent_state_dir()).join("tlog.ndjson");
-    if tlog_path.exists() {
-        if let Ok(state) = Tlog::replay(&tlog_path, SystemState::new(&[], 0)) {
-            let raw = state.checkpoint_snapshot_json.trim();
-            if !raw.is_empty() {
-                if let Ok(cp) = serde_json::from_str::<OrchestratorCheckpoint>(raw) {
-                    if cp.workspace.is_empty() || cp.workspace == workspace.to_string_lossy().as_ref()
-                    {
-                        return Some(cp);
-                    }
-                }
-            }
-        }
+    if let Some(cp) = load_checkpoint_from_tlog(workspace, &tlog_path) {
+        return Some(cp);
     }
     let path = checkpoint_path(workspace);
     let raw = std::fs::read_to_string(path).ok()?;
@@ -347,6 +337,26 @@ fn load_checkpoint(workspace: &Path) -> Option<OrchestratorCheckpoint> {
         }
     }
     Some(cp)
+}
+
+fn load_checkpoint_from_tlog(
+    workspace: &Path,
+    tlog_path: &Path,
+) -> Option<OrchestratorCheckpoint> {
+    if !tlog_path.exists() {
+        return None;
+    }
+    let state = Tlog::replay(tlog_path, SystemState::new(&[], 0)).ok()?;
+    let raw = state.checkpoint_snapshot_json.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let cp = serde_json::from_str::<OrchestratorCheckpoint>(raw).ok()?;
+    if cp.workspace.is_empty() || cp.workspace == workspace.to_string_lossy().as_ref() {
+        Some(cp)
+    } else {
+        None
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy)]

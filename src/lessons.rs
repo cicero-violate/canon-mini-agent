@@ -580,14 +580,7 @@ fn count_success_sequences(
         let aggregate = bigrams
             .entry((role, a.action.clone(), b.action.clone()))
             .or_default();
-        aggregate.occurrences += 1;
-        aggregate.roles.insert(a.role.clone());
-        aggregate.task_ids.insert(a.task_id.clone());
-        aggregate.task_ids.insert(b.task_id.clone());
-        aggregate.objective_ids.insert(a.objective_id.clone());
-        aggregate.objective_ids.insert(b.objective_id.clone());
-        aggregate.intents.insert(a.intent.clone());
-        aggregate.intents.insert(b.intent.clone());
+        record_bigram_candidate_aggregate(aggregate, a, b);
     }
 
     for window in successes.windows(3) {
@@ -610,32 +603,56 @@ fn count_success_sequences(
         let aggregate = trigrams
             .entry((role, a.action.clone(), b.action.clone(), c.action.clone()))
             .or_default();
-        aggregate.occurrences += 1;
-        aggregate.roles.insert(a.role.clone());
-        aggregate.roles.insert(b.role.clone());
-        aggregate.roles.insert(c.role.clone());
-        aggregate.task_ids.insert(a.task_id.clone());
-        aggregate.task_ids.insert(b.task_id.clone());
-        aggregate.task_ids.insert(c.task_id.clone());
-        aggregate.objective_ids.insert(a.objective_id.clone());
-        aggregate.objective_ids.insert(b.objective_id.clone());
-        aggregate.objective_ids.insert(c.objective_id.clone());
-        aggregate.intents.insert(a.intent.clone());
-        aggregate.intents.insert(b.intent.clone());
-        aggregate.intents.insert(c.intent.clone());
+        record_trigram_candidate_aggregate(aggregate, a, b, c);
     }
 
     (bigrams, trigrams)
 }
 
+fn record_bigram_candidate_aggregate(
+    aggregate: &mut CandidateAggregate,
+    a: &TaggedAction,
+    b: &TaggedAction,
+) {
+    aggregate.occurrences += 1;
+    aggregate.roles.insert(a.role.clone());
+    aggregate.task_ids.insert(a.task_id.clone());
+    aggregate.task_ids.insert(b.task_id.clone());
+    aggregate.objective_ids.insert(a.objective_id.clone());
+    aggregate.objective_ids.insert(b.objective_id.clone());
+    aggregate.intents.insert(a.intent.clone());
+    aggregate.intents.insert(b.intent.clone());
+}
+
+fn record_trigram_candidate_aggregate(
+    aggregate: &mut CandidateAggregate,
+    a: &TaggedAction,
+    b: &TaggedAction,
+    c: &TaggedAction,
+) {
+    aggregate.occurrences += 1;
+    aggregate.roles.insert(a.role.clone());
+    aggregate.roles.insert(b.role.clone());
+    aggregate.roles.insert(c.role.clone());
+    aggregate.task_ids.insert(a.task_id.clone());
+    aggregate.task_ids.insert(b.task_id.clone());
+    aggregate.task_ids.insert(c.task_id.clone());
+    aggregate.objective_ids.insert(a.objective_id.clone());
+    aggregate.objective_ids.insert(b.objective_id.clone());
+    aggregate.objective_ids.insert(c.objective_id.clone());
+    aggregate.intents.insert(a.intent.clone());
+    aggregate.intents.insert(b.intent.clone());
+    aggregate.intents.insert(c.intent.clone());
+}
+
 /// Intent: pure_transform
-/// Resource: error
-/// Inputs: std::collections::HashMap<(std::string::String, std::string::String, std::string::String
-/// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Resource: action_payload
+/// Inputs: std::collections::HashMap<(std::string::String, std::string::String, std::string::String), lessons::CandidateAggregate>, std::collections::HashMap<(std::string::String, std::string::String, std::string::String, std::string::String), lessons::CandidateAggregate>
+/// Outputs: std::vec::Vec<lessons::LessonsCandidate>
+/// Effects: none
+/// Forbidden: fs_write, uses_network, spawns_process
+/// Invariants: no_external_effects, occurrence_thresholds_preserved
+/// Failure: infallible
 /// Provenance: rustc:facts + rustc:docstring
 fn build_success_sequence_candidates(
     bigrams: HashMap<(String, String, String), CandidateAggregate>,

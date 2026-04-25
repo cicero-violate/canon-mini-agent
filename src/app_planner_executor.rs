@@ -508,7 +508,21 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
     state.insert("ready_tasks".to_string(), ready_count.to_string());
 
     apply_executor_route_gate_error_class_signals(&mut state, &blockers, now_ms);
-    apply_orchestrator_invalid_route_signal(&mut state, &blockers, now_ms);
+    let orchestrator_invalid_route_count = crate::blockers::count_class_recent(
+        &blockers,
+        "orchestrator",
+        &crate::error_class::ErrorClass::InvalidRoute,
+        now_ms,
+        60 * 1000,
+    );
+    apply_route_gate_signal(
+        &mut state,
+        orchestrator_invalid_route_count,
+        3,
+        "orchestrator",
+        "error_class",
+        "invalid_route",
+    );
     apply_executor_route_gate_role_signals(&mut state, &blockers, now_ms);
 
     if let Err(reason) = crate::invariants::evaluate_invariant_gate("route", &state, &ws) {
@@ -516,27 +530,27 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
         return false;
     }
 
-    let executor_missing_target_count = crate::blockers::count_class_recent(
-        &blockers,
-        "executor",
-        &crate::error_class::ErrorClass::MissingTarget,
-        now_ms,
-        5 * 60 * 1000,
-    );
-    if executor_missing_target_count >= 1 {
-        let mut executor_missing_target_state = state.clone();
-        executor_missing_target_state.insert("actor_kind".to_string(), "executor".to_string());
-        executor_missing_target_state.insert("error".to_string(), "missing_target".to_string());
-        if let Err(reason) = crate::invariants::evaluate_invariant_gate(
-            "executor",
-            &executor_missing_target_state,
-            &ws,
-        ) {
-            apply_route_gate_block(writer, &ws, &reason);
-            return false;
-        }
+    if !evaluate_executor_missing_target_gate(writer, &ws, &blockers, &state, now_ms) {
+        return false;
     }
 
+    apply_any_missing_target_route_signal(&mut state, &blockers, now_ms);
+
+    apply_orchestrator_livelock_signal(&mut state, &blockers, now_ms);
+
+    if let Err(reason) = crate::invariants::evaluate_invariant_gate("executor", &state, &ws) {
+        apply_route_gate_block(writer, &ws, &reason);
+        return false;
+    }
+
+    true
+}
+
+fn apply_any_missing_target_route_signal(
+    state: &mut std::collections::HashMap<String, String>,
+    blockers: &crate::blockers::BlockersFile,
+    now_ms: u64,
+) {
     let missing_target_count = blockers
         .blockers
         .iter()
@@ -549,33 +563,33 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
         state.insert("actor_kind".to_string(), "any".to_string());
         state.insert("error".to_string(), "missing_target".to_string());
     }
-
-    apply_orchestrator_livelock_signal(&mut state, &blockers, now_ms);
-
-    if let Err(reason) = crate::invariants::evaluate_invariant_gate("executor", &state, &ws) {
-        apply_route_gate_block(writer, &ws, &reason);
-        return false;
-    }
-
-    true
 }
 
-fn apply_orchestrator_invalid_route_signal(
-    state: &mut std::collections::HashMap<String, String>,
+fn evaluate_executor_missing_target_gate(
+    writer: &mut CanonicalWriter,
+    ws: &std::path::Path,
     blockers: &crate::blockers::BlockersFile,
+    state: &std::collections::HashMap<String, String>,
     now_ms: u64,
-) {
+) -> bool {
     let count = crate::blockers::count_class_recent(
         blockers,
-        "orchestrator",
-        &crate::error_class::ErrorClass::InvalidRoute,
+        "executor",
+        &crate::error_class::ErrorClass::MissingTarget,
         now_ms,
-        60 * 1000,
+        5 * 60 * 1000,
     );
-    if count >= 3 {
-        state.insert("actor_kind".to_string(), "orchestrator".to_string());
-        state.insert("error_class".to_string(), "invalid_route".to_string());
+    if count < 1 {
+        return true;
     }
+    let mut executor_state = state.clone();
+    executor_state.insert("actor_kind".to_string(), "executor".to_string());
+    executor_state.insert("error".to_string(), "missing_target".to_string());
+    if let Err(reason) = crate::invariants::evaluate_invariant_gate("executor", &executor_state, ws) {
+        apply_route_gate_block(writer, ws, &reason);
+        return false;
+    }
+    true
 }
 
 fn apply_orchestrator_livelock_signal(

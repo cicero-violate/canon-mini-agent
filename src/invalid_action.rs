@@ -249,13 +249,17 @@ const QUESTION_ACTION_FIELDS: &[&str] =
     &["action", "question", "rationale", "predicted_next_actions"];
 
 pub(crate) fn invalid_action_expected_fields(kind: &str) -> Vec<&'static str> {
+    expected_fields_for_action_kind(kind).to_vec()
+}
+
+fn expected_fields_for_action_kind(kind: &str) -> &'static [&'static str] {
     match kind {
-        "run_command" => vec!["action", "cmd", "rationale", "predicted_next_actions"],
-        "read_file" => vec!["action", "path", "rationale", "predicted_next_actions"],
+        "run_command" => &["action", "cmd", "rationale", "predicted_next_actions"],
+        "read_file" => &["action", "path", "rationale", "predicted_next_actions"],
         "symbols_index" | "symbols_rename_candidates" | "symbols_prepare_rename" | "list_dir" => {
-            BASIC_ACTION_FIELDS.to_vec()
+            BASIC_ACTION_FIELDS
         }
-        "rename_symbol" => vec![
+        "rename_symbol" => &[
             "action",
             "old_symbol",
             "new_symbol",
@@ -263,25 +267,25 @@ pub(crate) fn invalid_action_expected_fields(kind: &str) -> Vec<&'static str> {
             "rationale",
             "predicted_next_actions",
         ],
-        "apply_patch" => vec![
+        "apply_patch" => &[
             "action",
             "patch",
             "question",
             "rationale",
             "predicted_next_actions",
         ],
-        "cargo_test" => vec!["action", "crate", "rationale", "predicted_next_actions"],
-        "python" => vec!["action", "code", "rationale", "predicted_next_actions"],
-        "plan" => vec![
+        "cargo_test" => &["action", "crate", "rationale", "predicted_next_actions"],
+        "python" => &["action", "code", "rationale", "predicted_next_actions"],
+        "plan" => &[
             "action",
             "op",
             "question",
             "rationale",
             "predicted_next_actions",
         ],
-        "objectives" | "issue" => QUESTION_ACTION_FIELDS.to_vec(),
-        "invariants" => vec!["action", "op", "rationale", "predicted_next_actions"],
-        "message" => vec![
+        "objectives" | "issue" => QUESTION_ACTION_FIELDS,
+        "invariants" => &["action", "op", "rationale", "predicted_next_actions"],
+        "message" => &[
             "action",
             "from",
             "to",
@@ -291,7 +295,7 @@ pub(crate) fn invalid_action_expected_fields(kind: &str) -> Vec<&'static str> {
             "rationale",
             "predicted_next_actions",
         ],
-        _ => BASIC_ACTION_FIELDS.to_vec(),
+        _ => BASIC_ACTION_FIELDS,
     }
 }
 

@@ -1188,29 +1188,7 @@ pub(crate) fn validate_tool_action(action: &Value) -> Result<()> {
             details.join("; ")
         ));
     }
-    // Manual guards not expressible in schemars 0.8
-    if let Some(rationale) = normalized_action.get("rationale").and_then(|v| v.as_str()) {
-        if rationale.trim().is_empty() {
-            return Err(anyhow!("action missing non-empty 'rationale'"));
-        }
-        if rationale.chars().count() > ACTION_RATIONALE_MAX_LEN {
-            return Err(anyhow!(
-                "rationale exceeds max length ({ACTION_RATIONALE_MAX_LEN} chars)"
-            ));
-        }
-    } else {
-        return Err(anyhow!("action missing non-empty 'rationale'"));
-    }
-    if let Some(observation) = normalized_action
-        .get("observation")
-        .and_then(|v| v.as_str())
-    {
-        if observation.chars().count() > ACTION_OBSERVATION_MAX_LEN {
-            return Err(anyhow!(
-                "observation exceeds max length ({ACTION_OBSERVATION_MAX_LEN} chars)"
-            ));
-        }
-    }
+    validate_manual_text_guards(&normalized_action)?;
     if action_requires_question(&normalized_action) {
         let question = normalized_action
             .get("question")
@@ -1223,7 +1201,35 @@ pub(crate) fn validate_tool_action(action: &Value) -> Result<()> {
             ));
         }
     }
-    let predicted = normalized_action
+    validate_predicted_next_actions(&normalized_action)?;
+    Ok(())
+}
+
+fn validate_manual_text_guards(action: &Value) -> Result<()> {
+    let rationale = action
+        .get("rationale")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("action missing non-empty 'rationale'"))?;
+    if rationale.trim().is_empty() {
+        return Err(anyhow!("action missing non-empty 'rationale'"));
+    }
+    if rationale.chars().count() > ACTION_RATIONALE_MAX_LEN {
+        return Err(anyhow!(
+            "rationale exceeds max length ({ACTION_RATIONALE_MAX_LEN} chars)"
+        ));
+    }
+    if let Some(observation) = action.get("observation").and_then(|v| v.as_str()) {
+        if observation.chars().count() > ACTION_OBSERVATION_MAX_LEN {
+            return Err(anyhow!(
+                "observation exceeds max length ({ACTION_OBSERVATION_MAX_LEN} chars)"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_predicted_next_actions(action: &Value) -> Result<()> {
+    let predicted = action
         .get("predicted_next_actions")
         .and_then(|v| v.as_array())
         .ok_or_else(|| anyhow!("action missing 'predicted_next_actions'"))?;
@@ -1651,10 +1657,14 @@ fn is_known_action(action: &str) -> bool {
 }
 
 fn first_missing_field_for_action(action: &Value, action_name: &str) -> Option<String> {
-    let missing_field = |field: &str| missing_field_in_action(action, field);
     if action.get("predicted_next_actions").is_none() {
         return Some("missing field: predicted_next_actions".to_string());
     }
+    first_missing_action_specific_field(action, action_name)
+}
+
+fn first_missing_action_specific_field(action: &Value, action_name: &str) -> Option<String> {
+    let missing_field = |field: &str| missing_field_in_action(action, field);
 
     match action_name {
         "message" => first_missing_required_field(action, &["from", "to", "type", "status", "payload"]),

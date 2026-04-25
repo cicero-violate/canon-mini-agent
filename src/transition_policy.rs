@@ -338,21 +338,29 @@ fn validate_lane_submit_in_flight_event(
 ) -> Result<(), String> {
     require_lane(state, lane_id, "LaneSubmitInFlightSet")?;
     if in_flight {
-        if !lane_in_progress(state, lane_id) {
-            return Err(format!(
-                "illegal transition: lane {lane_id} cannot enter submit-in-flight without being in progress"
-            ));
-        }
-        if lane_submit_in_flight(state, lane_id) {
-            return Err(format!(
-                "illegal transition: lane {lane_id} is already submit-in-flight"
-            ));
-        }
-        if lane_prompt_in_flight(state, lane_id) {
-            return Err(format!(
-                "illegal transition: lane {lane_id} cannot submit while prompt continuation is in flight"
-            ));
-        }
+        validate_lane_can_enter_submit_in_flight(state, lane_id)?;
+    }
+    Ok(())
+}
+
+fn validate_lane_can_enter_submit_in_flight(
+    state: &SystemState,
+    lane_id: usize,
+) -> Result<(), String> {
+    if !lane_in_progress(state, lane_id) {
+        return Err(format!(
+            "illegal transition: lane {lane_id} cannot enter submit-in-flight without being in progress"
+        ));
+    }
+    if lane_submit_in_flight(state, lane_id) {
+        return Err(format!(
+            "illegal transition: lane {lane_id} is already submit-in-flight"
+        ));
+    }
+    if lane_prompt_in_flight(state, lane_id) {
+        return Err(format!(
+            "illegal transition: lane {lane_id} cannot submit while prompt continuation is in flight"
+        ));
     }
     Ok(())
 }

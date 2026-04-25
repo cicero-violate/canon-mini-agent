@@ -739,51 +739,8 @@ impl AgentCompletion {
 fn peek_post_restart_result(role: &str) -> Option<PostRestartResult> {
     let tlog_path = std::path::Path::new(crate::constants::agent_state_dir()).join("tlog.ndjson");
     if tlog_path.exists() {
-        if let Ok(state) = Tlog::replay(&tlog_path, SystemState::new(&[], 0)) {
-            let consumed = state
-                .post_restart_consumed_signatures
-                .get(post_restart_role_key(role))
-                .cloned();
-            if let Ok(records) = Tlog::read_records(&tlog_path) {
-                for record in records.iter().rev() {
-                    let Event::Effect { event } = &record.event else {
-                        continue;
-                    };
-                    let crate::events::EffectEvent::PostRestartResultRecorded {
-                        role: saved_role,
-                        action,
-                        result,
-                        step,
-                        tab_id,
-                        turn_id,
-                        endpoint_id,
-                        restart_kind,
-                        signature,
-                    } = event
-                    else {
-                        continue;
-                    };
-                    let role_key = post_restart_role_key(role);
-                    let saved_key = post_restart_role_key(saved_role.as_str());
-                    if role_key != saved_key {
-                        continue;
-                    }
-                    if consumed.as_deref() == Some(signature.as_str()) {
-                        break;
-                    }
-                    return Some(PostRestartResult {
-                        role: saved_role.clone(),
-                        action: action.clone(),
-                        result: result.clone(),
-                        step: *step,
-                        tab_id: *tab_id,
-                        turn_id: *turn_id,
-                        endpoint_id: endpoint_id.clone(),
-                        restart_kind: restart_kind.clone(),
-                        signature: signature.clone(),
-                    });
-                }
-            }
+        if let Some(result) = peek_post_restart_result_from_tlog(role, &tlog_path) {
+            return Some(result);
         }
     }
     let path =
@@ -840,6 +797,55 @@ fn peek_post_restart_result(role: &str) -> Option<PostRestartResult> {
                 ])
             }),
     })
+}
+
+fn peek_post_restart_result_from_tlog(
+    role: &str,
+    tlog_path: &std::path::Path,
+) -> Option<PostRestartResult> {
+    let state = Tlog::replay(tlog_path, SystemState::new(&[], 0)).ok()?;
+    let consumed = state
+        .post_restart_consumed_signatures
+        .get(post_restart_role_key(role))
+        .cloned();
+    let records = Tlog::read_records(tlog_path).ok()?;
+    for record in records.iter().rev() {
+        let Event::Effect { event } = &record.event else {
+            continue;
+        };
+        let crate::events::EffectEvent::PostRestartResultRecorded {
+            role: saved_role,
+            action,
+            result,
+            step,
+            tab_id,
+            turn_id,
+            endpoint_id,
+            restart_kind,
+            signature,
+        } = event
+        else {
+            continue;
+        };
+        if post_restart_role_key(role) != post_restart_role_key(saved_role.as_str()) {
+            continue;
+        }
+        if consumed.as_deref() == Some(signature.as_str()) {
+            break;
+        }
+        return Some(PostRestartResult {
+            role: saved_role.clone(),
+            action: action.clone(),
+            result: result.clone(),
+            step: *step,
+            tab_id: *tab_id,
+            turn_id: *turn_id,
+            endpoint_id: endpoint_id.clone(),
+            restart_kind: restart_kind.clone(),
+            signature: signature.clone(),
+        });
+    }
+    None
 }
 
 fn post_restart_role_key(role: &str) -> &str {

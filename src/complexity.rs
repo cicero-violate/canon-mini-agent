@@ -1201,14 +1201,36 @@ fn global_complexity_fields_json(
     crate_name: &str,
     fields: GlobalComplexityEntryFields,
 ) -> serde_json::Value {
+    global_complexity_entry_json(crate_name, fields)
+}
+
+fn global_complexity_entry_json(
+    crate_name: &str,
+    fields: GlobalComplexityEntryFields,
+) -> serde_json::Value {
+    global_complexity_entry_fields_json(crate_name, fields)
+}
+
+fn global_complexity_entry_fields_json(
+    crate_name: &str,
+    fields: GlobalComplexityEntryFields,
+) -> serde_json::Value {
+    let GlobalComplexityEntryFields {
+        symbol,
+        file,
+        line,
+        complexity_proxy,
+        mir_blocks,
+        mir_stmts,
+    } = fields;
     json!({
         "crate": crate_name,
-        "symbol": fields.symbol,
-        "file": fields.file,
-        "line": fields.line,
-        "complexity_proxy": fields.complexity_proxy,
-        "mir_blocks": fields.mir_blocks,
-        "mir_stmts": fields.mir_stmts,
+        "symbol": symbol,
+        "file": file,
+        "line": line,
+        "complexity_proxy": complexity_proxy,
+        "mir_blocks": mir_blocks,
+        "mir_stmts": mir_stmts,
     })
 }
 

@@ -560,13 +560,13 @@ impl<'a> LlmResponseContext<'a> {
     }
 
     /// Intent: transport_effect
-    /// Resource: error
+    /// Resource: llm_request_log
     /// Inputs: &mut app::LlmResponseContext<'_>, usize, &str, &str, &str
     /// Outputs: ()
-    /// Effects: error
-    /// Forbidden: error
-    /// Invariants: error
-    /// Failure: error
+    /// Effects: logging, tlog_write, fs_write
+    /// Forbidden: uses_network, spawns_process
+    /// Invariants: canonical_effect_precedes_snapshot, request_metadata_preserved
+    /// Failure: infallible
     /// Provenance: rustc:facts + rustc:docstring
     fn log_request(&mut self, step: usize, exchange_id: &str, prompt: &str, role_schema: &str) {
         let ts_ms = crate::logging::now_ms();

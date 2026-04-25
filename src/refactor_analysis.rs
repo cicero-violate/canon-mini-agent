@@ -1388,39 +1388,7 @@ pub fn loop_invariant_issues(
             continue;
         }
 
-        let headers = cfg.loop_headers(&loop_blocks);
-        let rd = cfg.reaching_definition_analysis();
-        let mut invariant_set: HashSet<StmtKey> = HashSet::new();
-        let mut changed = true;
-        while changed {
-            changed = false;
-            for key in cfg.stmt_keys_in_blocks(&loop_blocks) {
-                let Some(stmt) = cfg.stmt(key) else { continue };
-                if !is_proof_safe_assignment(stmt, cfg.block_terminator(key.block).unwrap_or("")) {
-                    continue;
-                }
-                if stmt.read_locals.is_empty() {
-                    continue;
-                }
-                if invariant_set.contains(&key) {
-                    continue;
-                }
-                if stmt.read_locals.iter().all(|local| {
-                    local_is_loop_invariant(
-                        local,
-                        key,
-                        &loop_blocks,
-                        &headers,
-                        &cfg,
-                        &rd,
-                        &invariant_set,
-                    )
-                }) {
-                    invariant_set.insert(key);
-                    changed = true;
-                }
-            }
-        }
+        let invariant_set = collect_loop_invariant_assignments(&cfg, &loop_blocks);
         if invariant_set.is_empty() {
             continue;
         }
@@ -1480,6 +1448,35 @@ pub fn loop_invariant_issues(
     }
     out.sort_by(|a, b| a.id.cmp(&b.id));
     out
+}
+
+fn collect_loop_invariant_assignments(
+    cfg: &FunctionCfg,
+    loop_blocks: &HashSet<usize>,
+) -> HashSet<StmtKey> {
+    let headers = cfg.loop_headers(loop_blocks);
+    let rd = cfg.reaching_definition_analysis();
+    let mut invariant_set: HashSet<StmtKey> = HashSet::new();
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for key in cfg.stmt_keys_in_blocks(loop_blocks) {
+            let Some(stmt) = cfg.stmt(key) else { continue };
+            if !is_proof_safe_assignment(stmt, cfg.block_terminator(key.block).unwrap_or("")) {
+                continue;
+            }
+            if stmt.read_locals.is_empty() || invariant_set.contains(&key) {
+                continue;
+            }
+            if stmt.read_locals.iter().all(|local| {
+                local_is_loop_invariant(local, key, loop_blocks, &headers, cfg, &rd, &invariant_set)
+            }) {
+                invariant_set.insert(key);
+                changed = true;
+            }
+        }
+    }
+    invariant_set
 }
 
 /// Intent: diagnostic_scan

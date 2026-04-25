@@ -1089,19 +1089,30 @@ fn log_fallback_rustc_failure(
     extra: &str,
     cmd: &str,
 ) {
+    let metadata = fallback_rustc_failure_metadata(action_kind, crate_name, mode, extra, cmd);
     log_error_event(
         role,
         action_kind,
         Some(step),
         &format!("{action_kind} failed for crate {crate_name}"),
-        Some(json!({
-            "stage": action_kind,
-            "crate": crate_name,
-            "mode": mode,
-            "extra": extra,
-            "cmd": cmd,
-        })),
+        Some(metadata),
     );
+}
+
+fn fallback_rustc_failure_metadata(
+    action_kind: &str,
+    crate_name: &str,
+    mode: &str,
+    extra: &str,
+    cmd: &str,
+) -> serde_json::Value {
+    json!({
+        "stage": action_kind,
+        "crate": crate_name,
+        "mode": mode,
+        "extra": extra,
+        "cmd": cmd,
+    })
 }
 
 /// Intent: pure_transform
@@ -1666,19 +1677,30 @@ fn log_graph_call_cfg_failure(
     bin_cmd: &str,
     out_dir_str: &str,
 ) {
+    let metadata = graph_call_cfg_failure_metadata(action_kind, crate_name, artifact_crate, bin_cmd, out_dir_str);
     log_error_event(
         role,
         action_kind,
         Some(step),
         &format!("graph_bin failed for crate {crate_name}"),
-        Some(json!({
-            "stage": action_kind,
-            "crate": crate_name,
-            "artifact_crate": artifact_crate,
-            "cmd": bin_cmd,
-            "out_dir": out_dir_str.to_string(),
-        })),
+        Some(metadata),
     );
+}
+
+fn graph_call_cfg_failure_metadata(
+    action_kind: &str,
+    crate_name: &str,
+    artifact_crate: &str,
+    bin_cmd: &str,
+    out_dir_str: &str,
+) -> serde_json::Value {
+    json!({
+        "stage": action_kind,
+        "crate": crate_name,
+        "artifact_crate": artifact_crate,
+        "cmd": bin_cmd,
+        "out_dir": out_dir_str.to_string(),
+    })
 }
 
 /// Intent: pure_transform

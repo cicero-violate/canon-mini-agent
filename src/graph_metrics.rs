@@ -1096,46 +1096,12 @@ pub fn generate_representation_fanout_issues(workspace: &Path) -> Result<usize> 
     let mut mutated = 0usize;
 
     for crate_name in SemanticIndex::available_crates(workspace) {
-        let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
-            continue;
-        };
-        let crate_name = crate_name.replace('-', "_");
-        let (sources_by_symbol, targets_by_symbol) = collect_representation_domains(&idx);
-        let canonical_modules = derive_canonical_effect_boundary_modules(
-            &idx,
-            &sources_by_symbol
-                .keys()
-                .chain(targets_by_symbol.keys())
-                .cloned()
-                .collect(),
+        mutated += generate_representation_fanout_issues_for_crate(
+            workspace,
+            &mut file,
+            &mut desired_ids,
+            &crate_name,
         );
-        let symbols_by_pair =
-            build_representation_symbols_by_pair(sources_by_symbol, &targets_by_symbol);
-
-        for ((source, target), mut symbols) in symbols_by_pair {
-            symbols.sort();
-            symbols.dedup();
-            let issue = build_representation_fanout_issue(
-                &crate_name,
-                &source,
-                &target,
-                &symbols,
-                &canonical_modules,
-            );
-            desired_ids.insert(issue.id.clone());
-            mutated += upsert_bridge_issue(&mut file, issue, symbols.len() > 1);
-        }
-
-        let prefix = format!("auto_representation_fanout_{crate_name}_");
-        for issue in &mut file.issues {
-            if issue.id.starts_with(&prefix)
-                && !desired_ids.contains(&issue.id)
-                && issue.status != "resolved"
-            {
-                issue.status = "resolved".to_string();
-                mutated += 1;
-            }
-        }
     }
 
     rescore_all(&mut file);
@@ -1150,6 +1116,50 @@ pub fn generate_representation_fanout_issues(workspace: &Path) -> Result<usize> 
     }
 
     Ok(mutated)
+}
+
+fn generate_representation_fanout_issues_for_crate(
+    workspace: &Path,
+    file: &mut IssuesFile,
+    desired_ids: &mut HashSet<String>,
+    crate_name: &str,
+) -> usize {
+    let Ok(idx) = SemanticIndex::load(workspace, crate_name) else {
+        return 0;
+    };
+    let crate_name = crate_name.replace('-', "_");
+    let (sources_by_symbol, targets_by_symbol) = collect_representation_domains(&idx);
+    let canonical_modules = derive_canonical_effect_boundary_modules(
+        &idx,
+        &sources_by_symbol
+            .keys()
+            .chain(targets_by_symbol.keys())
+            .cloned()
+            .collect(),
+    );
+    let symbols_by_pair = build_representation_symbols_by_pair(sources_by_symbol, &targets_by_symbol);
+    let mut mutated = 0usize;
+    for ((source, target), mut symbols) in symbols_by_pair {
+        symbols.sort();
+        symbols.dedup();
+        let issue = build_representation_fanout_issue(
+            &crate_name,
+            &source,
+            &target,
+            &symbols,
+            &canonical_modules,
+        );
+        desired_ids.insert(issue.id.clone());
+        mutated += upsert_bridge_issue(file, issue, symbols.len() > 1);
+    }
+    let prefix = format!("auto_representation_fanout_{crate_name}_");
+    for issue in &mut file.issues {
+        if issue.id.starts_with(&prefix) && !desired_ids.contains(&issue.id) && issue.status != "resolved" {
+            issue.status = "resolved".to_string();
+            mutated += 1;
+        }
+    }
+    mutated
 }
 
 fn collect_representation_domains(
@@ -2042,13 +2052,13 @@ fn planner_loop_row_metrics(rows: &[WorkflowOrchestratorRow]) -> Vec<Value> {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: ISSUES.json
 /// Inputs: &str, &semantic::SemanticIndex
 /// Outputs: issues::Issue
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: fs_write, uses_network, spawns_process
+/// Invariants: deterministic_for_same_graph, no_external_effects
+/// Failure: infallible
 /// Provenance: rustc:facts + rustc:docstring
 fn build_planner_loop_fragmentation_issue(crate_name: &str, idx: &SemanticIndex) -> Issue {
     let summary_by_symbol: HashMap<String, crate::semantic::SymbolSummary> = idx
