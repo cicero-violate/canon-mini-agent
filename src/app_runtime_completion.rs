@@ -440,16 +440,7 @@ fn classify_executor_action_result_class(
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
     if action_kind == "message" {
-        if exec_result_has_cargo_check_failure(exec_result) {
-            return ExecutorActionResultClass::ToolFailPlanning;
-        }
-        if status == "ready" {
-            return ExecutorActionResultClass::ReadyHandoff;
-        }
-        if status == "complete" {
-            return ExecutorActionResultClass::CompleteHandoff;
-        }
-        return ExecutorActionResultClass::ToolOk;
+        return classify_message_executor_action_result(&status, exec_result);
     }
 
     let class = crate::error_class::classify_result(action_kind, exec_result, false);
@@ -467,6 +458,22 @@ fn classify_executor_action_result_class(
         }
         _ => ExecutorActionResultClass::ToolOk,
     }
+}
+
+fn classify_message_executor_action_result(
+    status: &str,
+    exec_result: &str,
+) -> ExecutorActionResultClass {
+    if exec_result_has_cargo_check_failure(exec_result) {
+        return ExecutorActionResultClass::ToolFailPlanning;
+    }
+    if status == "ready" {
+        return ExecutorActionResultClass::ReadyHandoff;
+    }
+    if status == "complete" {
+        return ExecutorActionResultClass::CompleteHandoff;
+    }
+    ExecutorActionResultClass::ToolOk
 }
 
 fn synthesize_executor_blocker_handoff(action: &Value, exec_result: &str) -> Value {
