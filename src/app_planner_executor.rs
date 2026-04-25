@@ -493,7 +493,9 @@ fn apply_executor_route_gate_error_class_signals(
     apply_executor_route_gate_signal(state, blockers, now_ms, "solo", &crate::error_class::ErrorClass::VerificationFailed, 1, "error_class", "verification_failed");
     apply_executor_route_gate_signal(state, blockers, now_ms, "executor", &crate::error_class::ErrorClass::InvalidSchema, 3, "error_class", "invalid_schema");
     apply_executor_route_gate_signal(state, blockers, now_ms, "executor", &crate::error_class::ErrorClass::UnauthorizedPlanOp, 1, "error_class", "unauthorized_plan_op");
-    apply_executor_route_gate_signal(state, blockers, now_ms, "executor", &crate::error_class::ErrorClass::LlmTimeout, 1, "error_class", "llm_timeout");
+    // Transport timeouts are health signals, not semantic dispatch predicates.
+    // Blocking executor route on historical llm_timeout support deadlocks the
+    // system after transient endpoint failures; retry/backoff owns recovery.
     apply_executor_route_gate_signal(state, blockers, now_ms, "executor", &crate::error_class::ErrorClass::StepLimitExceeded, 1, "error", "step_limit_exceeded");
     apply_executor_route_gate_signal(state, blockers, now_ms, "executor", &crate::error_class::ErrorClass::VerificationFailed, 1, "error_class", "verification_failed");
 }
@@ -671,4 +673,3 @@ fn apply_route_gate_block(writer: &mut CanonicalWriter, ws: &std::path::Path, re
     }
     writer.apply(ControlEvent::PlannerPendingSet { pending: true });
 }
-

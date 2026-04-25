@@ -1498,6 +1498,7 @@ fn actor_kind_from_role(role: &str) -> &'static str {
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
 fn update_gate_enforcement(file: &mut EnforcedInvariantsFile) {
+    normalize_non_blocking_health_invariants(file);
     for inv in file
         .invariants
         .iter_mut()
@@ -1505,6 +1506,23 @@ fn update_gate_enforcement(file: &mut EnforcedInvariantsFile) {
     {
         inv.gates = default_gates_for_conditions(&inv.state_conditions);
     }
+}
+
+fn normalize_non_blocking_health_invariants(file: &mut EnforcedInvariantsFile) {
+    for inv in &mut file.invariants {
+        if invariant_has_condition(inv, "error_class", "llm_timeout") {
+            if inv.status == InvariantStatus::Enforced {
+                inv.status = InvariantStatus::Promoted;
+            }
+            inv.gates.clear();
+        }
+    }
+}
+
+fn invariant_has_condition(inv: &DiscoveredInvariant, key: &str, value: &str) -> bool {
+    inv.state_conditions
+        .iter()
+        .any(|condition| condition.key == key && condition.value == value)
 }
 
 // ── Fingerprint extraction ────────────────────────────────────────────────────
@@ -2112,7 +2130,9 @@ fn promote_by_threshold(file: &mut EnforcedInvariantsFile) {
         if inv.status == InvariantStatus::Discovered && inv.support_count >= MIN_INVARIANT_SUPPORT {
             inv.status = InvariantStatus::Promoted;
             // Assign default gates based on conditions.
-            if inv.gates.is_empty() {
+            if invariant_has_condition(inv, "error_class", "llm_timeout") {
+                inv.gates.clear();
+            } else if inv.gates.is_empty() {
                 inv.gates = default_gates_for_conditions(&inv.state_conditions);
             }
             eprintln!(
@@ -2597,6 +2617,44 @@ mod tests {
         };
         promote_by_threshold(&mut file);
         assert_eq!(file.invariants[0].status, InvariantStatus::Discovered);
+    }
+
+    #[test]
+    fn llm_timeout_invariants_are_promoted_health_signals_not_hard_gates() {
+        let mut file = EnforcedInvariantsFile {
+            version: 1,
+            last_synthesized_ms: 0,
+            invariants: vec![DiscoveredInvariant {
+                id: "INV-timeout".to_string(),
+                predicate_text: "executor timeout".to_string(),
+                state_conditions: vec![
+                    StateCondition {
+                        key: "actor_kind".to_string(),
+                        value: "executor".to_string(),
+                    },
+                    StateCondition {
+                        key: "error_class".to_string(),
+                        value: "llm_timeout".to_string(),
+                    },
+                ],
+                support_count: MIN_INVARIANT_SUPPORT,
+                status: InvariantStatus::Discovered,
+                gates: vec![],
+                evidence: vec![],
+                first_seen_ms: 0,
+                last_seen_ms: 0,
+            }],
+        };
+
+        promote_by_threshold(&mut file);
+        assert_eq!(file.invariants[0].status, InvariantStatus::Promoted);
+        assert!(file.invariants[0].gates.is_empty());
+
+        file.invariants[0].status = InvariantStatus::Enforced;
+        file.invariants[0].gates = vec!["executor".to_string()];
+        update_gate_enforcement(&mut file);
+        assert_eq!(file.invariants[0].status, InvariantStatus::Promoted);
+        assert!(file.invariants[0].gates.is_empty());
     }
 
     #[test]

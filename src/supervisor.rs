@@ -1222,22 +1222,32 @@ fn recent_tlog_action_counts(root: &Path) -> BTreeMap<String, usize> {
     let records = Tlog::read_recent_records(&tlog_path, 256).unwrap_or_default();
     let mut counts = BTreeMap::new();
     for record in records {
-        if let crate::events::Event::Effect {
-            event:
-                EffectEvent::ActionResultRecorded {
-                    action_kind, ok, ..
-                },
-        } = record.event
-        {
-            let key = if ok {
-                action_kind
-            } else {
-                format!("{action_kind}:failed")
-            };
-            *counts.entry(key).or_insert(0) += 1;
+        if let Some(key) = recent_tlog_action_count_key(record.event) {
+            increment_recent_tlog_action_count(&mut counts, key);
         }
     }
     counts
+}
+
+fn recent_tlog_action_count_key(event: crate::events::Event) -> Option<String> {
+    if let crate::events::Event::Effect {
+        event: EffectEvent::ActionResultRecorded {
+            action_kind, ok, ..
+        },
+    } = event
+    {
+        Some(if ok {
+            action_kind
+        } else {
+            format!("{action_kind}:failed")
+        })
+    } else {
+        None
+    }
+}
+
+fn increment_recent_tlog_action_count(counts: &mut BTreeMap<String, usize>, key: String) {
+    *counts.entry(key).or_insert(0) += 1;
 }
 
 fn git_checkpoint_subject(root: &Path, changed_paths: &[String], open_issues: usize) -> String {
