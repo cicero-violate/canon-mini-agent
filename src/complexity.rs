@@ -1627,10 +1627,7 @@ fn build_complexity_report(
 ) -> serde_json::Value {
     let intra_scoring = complexity_intra_scoring();
     let inter_scoring = complexity_inter_scoring();
-    let objectives_progress = format!(
-        "{}/{}",
-        eval.objectives_completed, eval.objectives_total
-    );
+    let objectives_progress = format!("{}/{}", eval.objectives_completed, eval.objectives_total);
     let tasks_progress = format!("{}/{}", eval.completed_tasks, eval.total_tasks);
     let mut eval_report = serde_json::Map::new();
     eval_report.insert("overall_score".into(), json!(eval.overall_score()));
@@ -1767,7 +1764,9 @@ fn build_complexity_report(
     report.insert("inter_scoring".into(), inter_scoring);
     report.insert(
         "execution_model".into(),
-        json!("Detect(this_report) → Propose(LLM/issues) → Apply(patch/rename) → Verify(build+test)"),
+        json!(
+            "Detect(this_report) → Propose(LLM/issues) → Apply(patch/rename) → Verify(build+test)"
+        ),
     );
     report.insert("generated_at_ms".into(), json!(crate::logging::now_ms()));
     report.insert("global_top".into(), serde_json::Value::Array(global_top));

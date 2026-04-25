@@ -317,9 +317,7 @@ const TLOG_LAG_GAP_MAX_MS: u64 = 120_000;
 /// Pure invariant signal over a tlog delta window.
 ///
 /// Model: `I(ΔT) -> signal`, where ΔT is the recent canonical event window.
-pub fn evaluate_tlog_delta_invariants(
-    records: &[crate::tlog::TlogRecord],
-) -> TlogDeltaSignals {
+pub fn evaluate_tlog_delta_invariants(records: &[crate::tlog::TlogRecord]) -> TlogDeltaSignals {
     let mut signals = TlogDeltaSignals {
         event_count: records.len(),
         contiguous_seq: true,
@@ -508,7 +506,11 @@ fn canonical_delta_health_score(signals: &TlogDeltaSignals) -> f64 {
     let turn_score = if signals.llm_turn_inputs == 0 {
         1.0
     } else {
-        safe_ratio(signals.llm_turn_outputs as f64, signals.llm_turn_inputs as f64).min(1.0)
+        safe_ratio(
+            signals.llm_turn_outputs as f64,
+            signals.llm_turn_inputs as f64,
+        )
+        .min(1.0)
     };
     let action_score = if signals.llm_action_outputs == 0 {
         1.0
@@ -533,9 +535,8 @@ fn canonical_delta_health_score(signals: &TlogDeltaSignals) -> f64 {
         )
         .min(1.0);
     let lag_budget_ms = (signals.event_count.max(1) as f64) * 5_000.0;
-    let lag_score = 1.0
-        - safe_ratio(signals.actionable_lag_total_ms as f64, lag_budget_ms)
-            .min(0.75);
+    let lag_score =
+        1.0 - safe_ratio(signals.actionable_lag_total_ms as f64, lag_budget_ms).min(0.75);
     let checkpoint_score =
         1.0 - safe_ratio(signals.unsafe_checkpoint_attempts as f64, 4.0).min(0.75);
     let restart_score = if signals.supervisor_restart_requests == 0 {
@@ -576,7 +577,10 @@ fn tlog_event_kind(event: &Event) -> String {
 fn is_actionable_lag_kind(kind: &str) -> bool {
     !matches!(
         kind,
-        "llm_turn_output" | "llm_error_boundary" | "orchestrator_idle_pulse" | "orchestrator_mode_set"
+        "llm_turn_output"
+            | "llm_error_boundary"
+            | "orchestrator_idle_pulse"
+            | "orchestrator_mode_set"
     )
 }
 
@@ -650,7 +654,11 @@ fn structural_risk_catalog() -> Vec<StructuralRisk> {
         },
         StructuralRisk {
             name: "checkpoint_commit_requires_verified_gate_if_rust_changed",
-            graph_needles: &["checkpoint_build_succeeded", "git commit", "rust_patch_verification"],
+            graph_needles: &[
+                "checkpoint_build_succeeded",
+                "git commit",
+                "rust_patch_verification",
+            ],
             invariant_needles: &["checkpoint", "commit", "rust", "cargo", "verification"],
         },
         StructuralRisk {
@@ -1126,7 +1134,9 @@ mod tests {
                 verification_requested: false,
                 rust_sensitive_changes: true,
                 changed_paths: vec!["src/supervisor.rs".to_string()],
-                required_gate: "cargo check --workspace && cargo test --workspace && cargo build --workspace".to_string(),
+                required_gate:
+                    "cargo check --workspace && cargo test --workspace && cargo build --workspace"
+                        .to_string(),
                 signature: "sig".to_string(),
             }),
         }];

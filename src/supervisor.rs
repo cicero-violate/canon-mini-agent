@@ -756,10 +756,22 @@ fn checkpoint_build_succeeded(root: &Path, state_dir: &Path, reason: &str) -> bo
         );
         return true;
     }
-    if !checkpoint_command_succeeded(root, state_dir, reason, "cargo check", &["check", "--workspace"]) {
+    if !checkpoint_command_succeeded(
+        root,
+        state_dir,
+        reason,
+        "cargo check",
+        &["check", "--workspace"],
+    ) {
         return false;
     }
-    if !checkpoint_command_succeeded(root, state_dir, reason, "cargo test", &["test", "--workspace"]) {
+    if !checkpoint_command_succeeded(
+        root,
+        state_dir,
+        reason,
+        "cargo test",
+        &["test", "--workspace"],
+    ) {
         return false;
     }
     eprintln!("[canon-mini-supervisor] pre-restart: running `cargo build --workspace` ({reason})");
@@ -822,7 +834,12 @@ fn checkpoint_command_succeeded(
                 true
             }
             Ok((false, output)) => {
-                write_cargo_test_failures_projection(root, "supervisor_pre_restart", &command, &output);
+                write_cargo_test_failures_projection(
+                    root,
+                    "supervisor_pre_restart",
+                    &command,
+                    &output,
+                );
                 eprintln!(
                     "[canon-mini-supervisor] pre-restart {label} failed; skipping git add/commit/push ({reason})"
                 );
@@ -1098,13 +1115,8 @@ fn collect_git_checkpoint_evidence(
         .ok()
         .flatten()
         .unwrap_or_else(|| "staged diff stat unavailable".to_string());
-    let (
-        graph_nodes,
-        graph_edges,
-        graph_bridge_edges,
-        graph_redundant_paths,
-        graph_alpha_pathways,
-    ) = graph_checkpoint_counts(root);
+    let (graph_nodes, graph_edges, graph_bridge_edges, graph_redundant_paths, graph_alpha_pathways) =
+        graph_checkpoint_counts(root);
     let (issue_total, issue_open, issue_resolved) = issue_checkpoint_counts(root);
     let recent_actions = recent_tlog_action_counts(root);
     let subject = git_checkpoint_subject(root, &changed_paths, issue_open);
@@ -1213,9 +1225,7 @@ fn recent_tlog_action_counts(root: &Path) -> BTreeMap<String, usize> {
         if let crate::events::Event::Effect {
             event:
                 EffectEvent::ActionResultRecorded {
-                    action_kind,
-                    ok,
-                    ..
+                    action_kind, ok, ..
                 },
         } = record.event
         {
@@ -1282,7 +1292,10 @@ fn truncate_commit_line(input: &str, max_chars: usize) -> Option<String> {
     if trimmed.chars().count() <= max_chars {
         return Some(trimmed.to_string());
     }
-    let mut out = trimmed.chars().take(max_chars.saturating_sub(1)).collect::<String>();
+    let mut out = trimmed
+        .chars()
+        .take(max_chars.saturating_sub(1))
+        .collect::<String>();
     out.push('…');
     Some(out)
 }
@@ -1302,7 +1315,9 @@ fn git_checkpoint_body(evidence: &GitCheckpointEvidence) -> String {
         lines.push("- cargo test --workspace: passed".to_string());
         lines.push("- cargo build --workspace: passed; graph capture refreshed".to_string());
     } else {
-        lines.push("- cargo check/test/build: skipped; no Rust patch verification request".to_string());
+        lines.push(
+            "- cargo check/test/build: skipped; no Rust patch verification request".to_string(),
+        );
     }
     lines.push("- graph/issues refresh: executed before staging".to_string());
     lines.push("- tlog effect: GitCheckpointPrepared".to_string());
@@ -1387,7 +1402,11 @@ fn record_git_checkpoint_blocked(
     let signature = artifact_write_signature(&[
         reason,
         risk,
-        if verification_requested { "verified" } else { "unverified" },
+        if verification_requested {
+            "verified"
+        } else {
+            "unverified"
+        },
         required_gate,
         &changed_paths.join("\n"),
     ]);
@@ -1983,7 +2002,15 @@ fn maybe_restart_for_pending_update(
             ),
             None,
         );
-        record_supervisor_restart_requested(root, state_dir, "single-role-update", "single-role", current, Some(updated), *pending_update_defer_checks);
+        record_supervisor_restart_requested(
+            root,
+            state_dir,
+            "single-role-update",
+            "single-role",
+            current,
+            Some(updated),
+            *pending_update_defer_checks,
+        );
         stage_commit_push_before_restart(root, state_dir, "single-role-update", prefer_release);
         return restart_child(child);
     }
@@ -2006,7 +2033,15 @@ fn maybe_restart_for_pending_update(
             ),
             None,
         );
-        record_supervisor_restart_requested(root, state_dir, "orchestrate-idle-update", "orchestrate", current, Some(updated), *pending_update_defer_checks);
+        record_supervisor_restart_requested(
+            root,
+            state_dir,
+            "orchestrate-idle-update",
+            "orchestrate",
+            current,
+            Some(updated),
+            *pending_update_defer_checks,
+        );
         stage_commit_push_before_restart(
             root,
             state_dir,
@@ -2034,7 +2069,15 @@ fn maybe_restart_for_pending_update(
             ),
             None,
         );
-        record_supervisor_restart_requested(root, state_dir, "orchestrate-deferred-update-timeout", "orchestrate", current, Some(updated), *pending_update_defer_checks);
+        record_supervisor_restart_requested(
+            root,
+            state_dir,
+            "orchestrate-deferred-update-timeout",
+            "orchestrate",
+            current,
+            Some(updated),
+            *pending_update_defer_checks,
+        );
         stage_commit_push_before_restart(
             root,
             state_dir,

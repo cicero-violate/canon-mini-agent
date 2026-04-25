@@ -181,11 +181,7 @@ fn build_issue(candidate: &RankCandidate) -> Issue {
              intent: `{}` resource: `{}` effects: {}\n\n\
              This issue is auto-generated from `safe_patch_candidates.json` and should map to a \
              concrete merge/delete refactor task with verification.",
-            candidate.recommended_action,
-            candidate.owner,
-            intent,
-            resource,
-            effects
+            candidate.recommended_action, candidate.owner, intent, resource, effects
         ),
         location: "state/rustc/canon_mini_agent/graph.json".to_string(),
         scope: "crate:canon_mini_agent".to_string(),

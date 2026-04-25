@@ -295,32 +295,66 @@ pub(crate) fn compact_log_record(
     record.insert("kind".to_string(), json!(kind));
     record.insert("phase".to_string(), json!(phase));
 
-    insert_compact_log_field(&mut record, "actor", actor.map(|v| json!(v)));
-    insert_compact_log_field(&mut record, "lane", lane.map(|v| json!(v)));
-    insert_compact_log_field(&mut record, "endpoint_id", endpoint_id.map(|v| json!(v)));
-    insert_compact_log_field(&mut record, "step", step.map(|v| json!(v)));
-    insert_compact_log_field(&mut record, "turn_id", turn_id.map(|v| json!(v)));
-    insert_compact_log_field(&mut record, "command_id", command_id.map(|v| json!(v)));
-    insert_compact_log_field(&mut record, "op", op);
-    insert_compact_log_field(&mut record, "ok", ok.map(|v| json!(v)));
-    insert_compact_log_field(
+    insert_compact_log_context_fields(
         &mut record,
+        actor,
+        lane,
+        endpoint_id,
+        step,
+        turn_id,
+        command_id,
+        op,
+        ok,
+    );
+    insert_compact_log_text_fields(&mut record, observation, rationale, text, meta);
+
+    Value::Object(record)
+}
+
+fn insert_compact_log_context_fields(
+    record: &mut serde_json::Map<String, Value>,
+    actor: Option<&str>,
+    lane: Option<&str>,
+    endpoint_id: Option<&str>,
+    step: Option<usize>,
+    turn_id: Option<u64>,
+    command_id: Option<&str>,
+    op: Option<Value>,
+    ok: Option<bool>,
+) {
+    insert_compact_log_field(record, "actor", actor.map(|v| json!(v)));
+    insert_compact_log_field(record, "lane", lane.map(|v| json!(v)));
+    insert_compact_log_field(record, "endpoint_id", endpoint_id.map(|v| json!(v)));
+    insert_compact_log_field(record, "step", step.map(|v| json!(v)));
+    insert_compact_log_field(record, "turn_id", turn_id.map(|v| json!(v)));
+    insert_compact_log_field(record, "command_id", command_id.map(|v| json!(v)));
+    insert_compact_log_field(record, "op", op);
+    insert_compact_log_field(record, "ok", ok.map(|v| json!(v)));
+}
+
+fn insert_compact_log_text_fields(
+    record: &mut serde_json::Map<String, Value>,
+    observation: Option<String>,
+    rationale: Option<String>,
+    text: Option<String>,
+    meta: Option<Value>,
+) {
+    insert_compact_log_field(
+        record,
         "observation",
         observation.map(|v| json!(truncate(&v, MAX_SNIPPET))),
     );
     insert_compact_log_field(
-        &mut record,
+        record,
         "rationale",
         rationale.map(|v| json!(truncate(&v, MAX_SNIPPET))),
     );
     insert_compact_log_field(
-        &mut record,
+        record,
         "text",
         text.map(|v| json!(truncate(&v, MAX_SNIPPET))),
     );
-    insert_compact_log_field(&mut record, "meta", meta);
-
-    Value::Object(record)
+    insert_compact_log_field(record, "meta", meta);
 }
 
 fn action_op(action: &Value) -> Option<Value> {

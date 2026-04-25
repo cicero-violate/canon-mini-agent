@@ -757,23 +757,21 @@ fn has_supervisor_cargo_test_failure_projection(workspace: &Path) -> bool {
         "failed_tests.insert(trimmed.to_string())",
     );
 
-    let prompt_reads_projection = (source_contains(
-        workspace,
-        "src/app_bootstrap.rs",
-        "load_cargo_test_failures(&workspace)",
-    ) || source_contains(
-        workspace,
-        "src/app_runtime_completion.rs",
-        "load_cargo_test_failures(&workspace)",
-    )) && source_contains(
-        workspace,
-        "src/prompt_inputs.rs",
-        "cargo_test_failures",
-    ) && source_contains(
-        workspace,
-        "src/prompts.rs",
-        "Latest cargo test failures (from cargo_test_failures.json)",
-    );
+    let prompt_reads_projection =
+        (source_contains(
+            workspace,
+            "src/app_bootstrap.rs",
+            "load_cargo_test_failures(&workspace)",
+        ) || source_contains(
+            workspace,
+            "src/app_runtime_completion.rs",
+            "load_cargo_test_failures(&workspace)",
+        )) && source_contains(workspace, "src/prompt_inputs.rs", "cargo_test_failures")
+            && source_contains(
+                workspace,
+                "src/prompts.rs",
+                "Latest cargo test failures (from cargo_test_failures.json)",
+            );
 
     supervisor_captures_loop_gate
         && supervisor_captures_pre_restart_gate
@@ -926,6 +924,64 @@ fn detect_stale_executor_lane_busy_gap(workspace: &Path) -> bool {
     })
 }
 
+/// Detect the inline scheduler loop where planner handoff correctly queues
+/// executor work, but the planner is reactivated while an executor lane is
+/// still pending and before any executor phase claims the lane.
+fn detect_planner_reactivated_before_executor_claim_gap(workspace: &Path) -> bool {
+    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
+    let Ok(records) = crate::tlog::Tlog::read_records(&tlog_path) else {
+        return false;
+    };
+
+    let mut after_handoff = false;
+    let mut executor_lane_pending = false;
+
+    for record in records.iter().rev().take(800).rev() {
+        match &record.event {
+            crate::events::Event::Effect {
+                event:
+                    crate::events::EffectEvent::ActionResultRecorded {
+                        role,
+                        action_kind,
+                        ok,
+                        ..
+                    },
+            } if role == "planner" && action_kind == "message" && *ok => {
+                after_handoff = true;
+                executor_lane_pending = false;
+            }
+            crate::events::Event::Control {
+                event: crate::events::ControlEvent::InboundMessageQueued { role, .. },
+            } if after_handoff && role == "executor" => {}
+            crate::events::Event::Control {
+                event: crate::events::ControlEvent::LanePendingSet { pending, .. },
+            } if after_handoff => {
+                executor_lane_pending = *pending;
+            }
+            crate::events::Event::Control {
+                event: crate::events::ControlEvent::PhaseSet { phase, lane },
+            } if after_handoff && phase == "executor" && lane.is_some() => {
+                after_handoff = false;
+                executor_lane_pending = false;
+            }
+            crate::events::Event::Effect {
+                event: crate::events::EffectEvent::ActionResultRecorded { role, .. },
+            } if after_handoff && role.starts_with("executor") => {
+                after_handoff = false;
+                executor_lane_pending = false;
+            }
+            crate::events::Event::Control {
+                event: crate::events::ControlEvent::PhaseSet { phase, lane: None },
+            } if after_handoff && executor_lane_pending && phase == "planner" => {
+                return true;
+            }
+            _ => {}
+        }
+    }
+
+    false
+}
+
 fn upsert_deterministic_invariant(
     file: &mut EnforcedInvariantsFile,
     id: &str,
@@ -1013,6 +1069,29 @@ fn seed_deterministic_invariants(workspace: &Path, file: &mut EnforcedInvariants
             },
         ],
         vec!["route".to_string()],
+    );
+
+    upsert_deterministic_invariant(
+        file,
+        "inv_planner_reactivated_before_executor_claim",
+        detect_planner_reactivated_before_executor_claim_gap(workspace),
+        now_ms,
+        concat!(
+            "After a planner handoff queues executor inbound work and sets an executor lane pending, ",
+            "the planner must not be reactivated before an executor phase claims that lane. ",
+            "Repair: inline scheduling must suppress planner while canonical executor work is pending."
+        ),
+        vec![
+            StateCondition {
+                key: "planner_reactivated_before_executor_claim".to_string(),
+                value: "true".to_string(),
+            },
+            StateCondition {
+                key: "executor_lane_pending_after_handoff".to_string(),
+                value: "true".to_string(),
+            },
+        ],
+        vec!["route".to_string(), "planner".to_string()],
     );
 
     upsert_deterministic_invariant(
@@ -1223,12 +1302,36 @@ fn fingerprints_from_tlog_invariant_lifecycle_gap(workspace: &Path) -> Vec<Finge
     let Ok(file) = std::fs::File::open(&tlog_path) else {
         return Vec::new();
     };
+    let counts = scan_tlog_invariant_lifecycle_gap(file);
+    if !counts.has_lifecycle_gap() {
+        return Vec::new();
+    }
 
-    let mut planner_action_results = 0usize;
-    let mut invariant_action_results = 0usize;
-    let mut enforced_invariant_records = 0usize;
-    let mut planner_prompts_with_invariants = 0usize;
+    repeated_support_fingerprints(build_tlog_invariant_lifecycle_gap_fingerprint(counts))
+}
 
+struct TlogInvariantLifecycleGapCounts {
+    planner_action_results: usize,
+    invariant_action_results: usize,
+    enforced_invariant_records: usize,
+    planner_prompts_with_invariants: usize,
+}
+
+impl TlogInvariantLifecycleGapCounts {
+    fn has_lifecycle_gap(&self) -> bool {
+        self.enforced_invariant_records >= MIN_INVARIANT_SUPPORT
+            && self.planner_action_results >= MIN_INVARIANT_SUPPORT
+            && self.invariant_action_results == 0
+    }
+}
+
+fn scan_tlog_invariant_lifecycle_gap(file: std::fs::File) -> TlogInvariantLifecycleGapCounts {
+    let mut counts = TlogInvariantLifecycleGapCounts {
+        planner_action_results: 0,
+        invariant_action_results: 0,
+        enforced_invariant_records: 0,
+        planner_prompts_with_invariants: 0,
+    };
     for line in std::io::BufReader::new(file).lines().flatten() {
         let Ok(record) = serde_json::from_str::<Value>(&line) else {
             continue;
@@ -1251,13 +1354,13 @@ fn fingerprints_from_tlog_invariant_lifecycle_gap(workspace: &Path) -> Vec<Finge
                     .and_then(|value| value.as_str())
                     .unwrap_or("");
                 if role.starts_with("planner") {
-                    planner_action_results += 1;
+                    counts.planner_action_results += 1;
                 }
                 if action_kind == "invariants" {
-                    invariant_action_results += 1;
+                    counts.invariant_action_results += 1;
                 }
             }
-            "enforced_invariants_recorded" => enforced_invariant_records += 1,
+            "enforced_invariants_recorded" => counts.enforced_invariant_records += 1,
             "llm_turn_input" => {
                 if event
                     .get("prompt")
@@ -1266,30 +1369,28 @@ fn fingerprints_from_tlog_invariant_lifecycle_gap(workspace: &Path) -> Vec<Finge
                     .map(|text| text.contains("Dynamic enforced invariants"))
                     .unwrap_or(false)
                 {
-                    planner_prompts_with_invariants += 1;
+                    counts.planner_prompts_with_invariants += 1;
                 }
             }
             _ => {}
         }
     }
+    counts
+}
 
-    if enforced_invariant_records < MIN_INVARIANT_SUPPORT
-        || planner_action_results < MIN_INVARIANT_SUPPORT
-        || invariant_action_results > 0
-    {
-        return Vec::new();
-    }
-
+fn build_tlog_invariant_lifecycle_gap_fingerprint(
+    counts: TlogInvariantLifecycleGapCounts,
+) -> Fingerprint {
     let now_ms = crate::logging::now_ms();
     let raw = serde_json::json!({
-        "planner_action_results": planner_action_results,
-        "invariant_action_results": invariant_action_results,
-        "enforced_invariant_records": enforced_invariant_records,
-        "planner_prompts_with_invariants": planner_prompts_with_invariants,
+        "planner_action_results": counts.planner_action_results,
+        "invariant_action_results": counts.invariant_action_results,
+        "enforced_invariant_records": counts.enforced_invariant_records,
+        "planner_prompts_with_invariants": counts.planner_prompts_with_invariants,
         "source": "agent_state/tlog.ndjson",
         "threshold": MIN_INVARIANT_SUPPORT,
     });
-    repeated_support_fingerprints(Fingerprint {
+    Fingerprint {
         conditions: vec![
             StateCondition {
                 key: "artifact".to_string(),
@@ -1316,7 +1417,7 @@ fn fingerprints_from_tlog_invariant_lifecycle_gap(workspace: &Path) -> Vec<Finge
             },
             raw,
         },
-    })
+    }
 }
 
 /// Convert classified blocker records directly into fingerprints — no text heuristics.
@@ -2611,6 +2712,73 @@ mod tests {
         assert!(inv
             .predicate_text
             .contains("in_progress_by set but lane_pending=false"));
+    }
+
+    #[test]
+    fn synthesize_planner_reactivated_before_executor_claim_invariant() {
+        let tmp = make_workspace();
+        let mut tlog = crate::tlog::Tlog::open(&tmp.join("agent_state").join("tlog.ndjson"));
+        tlog.append(&crate::events::Event::effect(
+            crate::events::EffectEvent::ActionResultRecorded {
+                role: "planner".to_string(),
+                step: 1,
+                command_id: "planner:1".to_string(),
+                action_kind: "message".to_string(),
+                task_id: None,
+                objective_id: None,
+                ok: true,
+                result_bytes: 2,
+                result_hash: "ok".to_string(),
+                result: "ok".to_string(),
+            },
+        ))
+        .unwrap();
+        tlog.append(&crate::events::Event::control(
+            crate::events::ControlEvent::InboundMessageQueued {
+                role: "executor".to_string(),
+                content: "{}".to_string(),
+                signature: "msg".to_string(),
+            },
+        ))
+        .unwrap();
+        tlog.append(&crate::events::Event::control(
+            crate::events::ControlEvent::WakeSignalQueued {
+                role: "executor".to_string(),
+                signature: "wake".to_string(),
+                ts_ms: 1,
+            },
+        ))
+        .unwrap();
+        tlog.append(&crate::events::Event::control(
+            crate::events::ControlEvent::LanePendingSet {
+                lane_id: 0,
+                pending: true,
+            },
+        ))
+        .unwrap();
+        tlog.append(&crate::events::Event::control(
+            crate::events::ControlEvent::PhaseSet {
+                phase: "planner".to_string(),
+                lane: None,
+            },
+        ))
+        .unwrap();
+
+        maybe_synthesize_invariants(&tmp);
+        let file = load_enforced_invariants_file(&tmp);
+        let inv = file
+            .invariants
+            .iter()
+            .find(|inv| {
+                inv.state_conditions.iter().any(|condition| {
+                    condition.key == "planner_reactivated_before_executor_claim"
+                        && condition.value == "true"
+                })
+            })
+            .expect("planner reactivation invariant must be synthesized");
+        assert_eq!(inv.status, InvariantStatus::Enforced);
+        assert!(inv.gates.contains(&"route".to_string()));
+        assert!(inv.gates.contains(&"planner".to_string()));
     }
 
     #[test]

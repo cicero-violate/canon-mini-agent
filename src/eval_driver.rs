@@ -71,9 +71,7 @@ pub fn run(
             .dominant_actionable_lag_kind_ms,
         issues_projection_lag_ms: snapshot.tlog_delta_signals.issues_projection_lag_ms,
         tlog_dominant_payload_kind: snapshot.tlog_delta_signals.dominant_payload_kind.clone(),
-        tlog_dominant_payload_kind_bytes: snapshot
-            .tlog_delta_signals
-            .dominant_payload_kind_bytes,
+        tlog_dominant_payload_kind_bytes: snapshot.tlog_delta_signals.dominant_payload_kind_bytes,
         last_plan_text_payload_bytes: snapshot.tlog_delta_signals.last_plan_text_payload_bytes,
         last_executor_diff_payload_bytes: snapshot
             .tlog_delta_signals

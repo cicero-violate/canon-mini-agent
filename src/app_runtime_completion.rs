@@ -481,6 +481,7 @@ fn synthesize_executor_blocker_handoff(action: &Value, exec_result: &str) -> Val
         .get("action")
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
+    let payload = synthesize_executor_blocker_payload(action_kind, exec_result);
     json!({
         "action": "message",
         "from": "executor",
@@ -489,12 +490,16 @@ fn synthesize_executor_blocker_handoff(action: &Value, exec_result: &str) -> Val
         "status": "blocked",
         "observation": "Executor produced a non-recoverable result class; planner repair is required before the next execute phase.",
         "rationale": "Control transitions must be derived from canonical result classes, and planning-class failures are routed to planner.",
-        "payload": {
-            "summary": format!("Executor {} failed and needs planner repair", action_kind),
-            "blocker": "Executor action result mapped to planning failure class",
-            "error_class": crate::error_class::classify_result(action_kind, exec_result, false).as_key(),
-            "evidence": truncate(exec_result, 2000)
-        }
+        "payload": payload
+    })
+}
+
+fn synthesize_executor_blocker_payload(action_kind: &str, exec_result: &str) -> Value {
+    json!({
+        "summary": format!("Executor {} failed and needs planner repair", action_kind),
+        "blocker": "Executor action result mapped to planning failure class",
+        "error_class": crate::error_class::classify_result(action_kind, exec_result, false).as_key(),
+        "evidence": truncate(exec_result, 2000)
     })
 }
 
@@ -1688,8 +1693,15 @@ pub async fn run() -> Result<()> {
                 || !rt.executor_submit_inflight.is_empty()
                 || !submit_joinset.is_empty()
                 || !continuation_joinset.is_empty();
+            let canonical_executor_work = writer.state().scheduled_phase.as_deref() == Some("executor")
+                || writer.state().wake_signals_pending.contains_key("executor")
+                || writer.state().lanes.values().any(|lane| {
+                    lane.pending || lane.in_progress_by.is_some()
+                })
+                || writer.state().lane_submit_in_flight.values().any(|&v| v)
+                || writer.state().lane_prompt_in_flight.values().any(|&v| v);
             let run_planner_inline = if INLINE_UNIFIED_AGENT {
-                !runtime_executor_busy
+                !runtime_executor_busy && !canonical_executor_work
             } else {
                 phase_gates.planner
             };
@@ -1712,7 +1724,7 @@ pub async fn run() -> Result<()> {
 
             let now = now_ms();
             let run_executor_inline = if INLINE_UNIFIED_AGENT {
-                !active_blocker
+                !active_blocker && canonical_executor_work
             } else {
                 phase_gates.executor
             };

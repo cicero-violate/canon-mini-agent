@@ -183,7 +183,8 @@ pub fn persist_issues_projection_with_writer(
         .clone()
         .and_then(cached_issue_fingerprints)
         .or_else(|| {
-            load_issues_projection_from_path(&projection_path).map(|file| issue_fingerprint_map(&file))
+            load_issues_projection_from_path(&projection_path)
+                .map(|file| issue_fingerprint_map(&file))
         });
     let (changed_issue_count, changed_issue_ids) =
         changed_issue_ids_from_maps(previous_issue_fingerprints.as_ref(), &issue_fingerprints);
