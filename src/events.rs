@@ -284,11 +284,29 @@ pub enum EffectEvent {
         required_gate: String,
         signature: String,
     },
+    SupervisorRestartRequested {
+        reason: String,
+        mode: String,
+        current_binary_path: String,
+        current_binary_mtime_ms: u64,
+        next_binary_path: String,
+        next_binary_mtime_ms: u64,
+        verification_requested: bool,
+        pending_defer_checks: u32,
+        signature: String,
+    },
     CheckpointSaved {
         phase: String,
     },
     CheckpointLoaded {
         phase: String,
+    },
+    SupervisorChildStarted {
+        binary_path: String,
+        build_kind: String,
+        pid: u32,
+        binary_mtime_ms: u64,
+        signature: String,
     },
     WorkspaceArtifactWriteRequested {
         artifact: String,

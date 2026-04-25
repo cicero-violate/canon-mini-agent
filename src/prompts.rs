@@ -342,6 +342,7 @@ G = regenerate(graph, issues) after apply_patch_ok ∧ cargo_check_ok\n\
 T' = append(T, effects(X, V, G))\n\
 L = learn(failure_event) only when it changes invariant/eval/test/prompt behavior\n\
 C_allowed = no_rust_change ∨ (cargo_check_ok ∧ cargo_test_ok ∧ cargo_build_ok)\n\
+reload_proven = SupervisorRestartRequested ∧ SupervisorChildStarted(binary_path, mtime)\n\
 Order: observe truth → eval → plan ready work → execute bounded patch → verify gates → regenerate projections → append tlog effects → learn → gated commit.";
 
 fn canonical_pipeline_prompt_block() -> String {

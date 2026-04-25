@@ -32,6 +32,7 @@ G = regenerate(graph, issues) after apply_patch_ok ∧ cargo_check_ok
 T' = append(T, effects(X, V, G))
 L = learn(failure_event) only when it changes invariant/eval/test/prompt behavior
 C_allowed = no_rust_change ∨ (cargo_check_ok ∧ cargo_test_ok ∧ cargo_build_ok)
+reload_proven = SupervisorRestartRequested ∧ SupervisorChildStarted(binary_path, mtime)
 ```
 
 One-line: **state comes from tlog; eval chooses pressure; planner creates ready work; executor patches; gates verify; graph/issues refresh; tlog records effects; learning becomes invariant/eval/test/prompt pressure.**

@@ -638,6 +638,7 @@ fn classify_patch_targets(targets: &[&str]) -> PatchTargetTouches {
             && *path != MASTER_PLAN_FILE
             && !is_src_path(path)
             && !is_tests_path(path)
+            && !is_patch_artifact_path(path)
             && !is_lane_plan(path)
             && *path != VIOLATIONS_FILE
             && *path != OBJECTIVES_FILE
@@ -657,6 +658,10 @@ fn classify_patch_targets(targets: &[&str]) -> PatchTargetTouches {
         touches_tests,
         touches_other,
     }
+}
+
+fn is_patch_artifact_path(path: &str) -> bool {
+    path.starts_with("patch/") && path.ends_with(".apply_patch")
 }
 
 fn executor_patch_scope_error(touches: &PatchTargetTouches, self_mod: bool) -> Option<String> {

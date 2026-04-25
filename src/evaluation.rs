@@ -305,6 +305,9 @@ pub struct TlogDeltaSignals {
     pub unapplied_artifact_writes: usize,
     pub git_checkpoint_blocked: usize,
     pub unsafe_checkpoint_attempts: usize,
+    pub supervisor_restart_requests: usize,
+    pub supervisor_child_starts: usize,
+    pub restart_requests_without_child_start: usize,
     pub score: f64,
 }
 
@@ -333,6 +336,7 @@ pub fn evaluate_tlog_delta_invariants(
     let mut applied_artifact_signatures = BTreeSet::new();
     let mut actionable_lag_by_next_kind: HashMap<String, u64> = HashMap::new();
     let mut payload_bytes_by_kind: HashMap<String, u64> = HashMap::new();
+    let mut unmatched_restart_requests = 0usize;
 
     for (idx, record) in records.iter().enumerate() {
         let record_kind = tlog_event_kind(&record.event);
@@ -444,6 +448,18 @@ pub fn evaluate_tlog_delta_invariants(
                     signals.unsafe_checkpoint_attempts += 1;
                 }
             }
+            Event::Effect {
+                event: EffectEvent::SupervisorRestartRequested { .. },
+            } => {
+                signals.supervisor_restart_requests += 1;
+                unmatched_restart_requests = unmatched_restart_requests.saturating_add(1);
+            }
+            Event::Effect {
+                event: EffectEvent::SupervisorChildStarted { .. },
+            } => {
+                signals.supervisor_child_starts += 1;
+                unmatched_restart_requests = unmatched_restart_requests.saturating_sub(1);
+            }
             _ => {}
         }
     }
@@ -454,6 +470,7 @@ pub fn evaluate_tlog_delta_invariants(
     signals.unapplied_artifact_writes = requested_artifact_signatures
         .difference(&applied_artifact_signatures)
         .count();
+    signals.restart_requests_without_child_start = unmatched_restart_requests;
     if let Some((kind, lag_ms)) = actionable_lag_by_next_kind
         .into_iter()
         .max_by_key(|(_, lag_ms)| *lag_ms)
@@ -521,6 +538,15 @@ fn canonical_delta_health_score(signals: &TlogDeltaSignals) -> f64 {
             .min(0.75);
     let checkpoint_score =
         1.0 - safe_ratio(signals.unsafe_checkpoint_attempts as f64, 4.0).min(0.75);
+    let restart_score = if signals.supervisor_restart_requests == 0 {
+        1.0
+    } else {
+        1.0 - safe_ratio(
+            signals.restart_requests_without_child_start as f64,
+            signals.supervisor_restart_requests as f64,
+        )
+        .min(0.75)
+    };
 
     geometric_score(&[
         seq_score,
@@ -530,6 +556,7 @@ fn canonical_delta_health_score(signals: &TlogDeltaSignals) -> f64 {
         error_score,
         lag_score,
         checkpoint_score,
+        restart_score,
     ])
 }
 

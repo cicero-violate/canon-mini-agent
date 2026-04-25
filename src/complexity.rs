@@ -1742,6 +1742,18 @@ fn build_complexity_report(
         "last_executor_diff_payload_bytes".into(),
         json!(eval.tlog_delta_signals.last_executor_diff_payload_bytes),
     );
+    eval_report.insert(
+        "supervisor_restart_requests".into(),
+        json!(eval.tlog_delta_signals.supervisor_restart_requests),
+    );
+    eval_report.insert(
+        "supervisor_child_starts".into(),
+        json!(eval.tlog_delta_signals.supervisor_child_starts),
+    );
+    eval_report.insert(
+        "restart_requests_without_child_start".into(),
+        json!(eval.tlog_delta_signals.restart_requests_without_child_start),
+    );
     eval_report.insert("objectives".into(), json!(objectives_progress));
     eval_report.insert("tasks".into(), json!(tasks_progress));
 

@@ -661,6 +661,78 @@ fn preferred_build_kind(prefer_release: bool) -> BuildKind {
     }
 }
 
+fn build_kind_label(kind: BuildKind) -> &'static str {
+    match kind {
+        BuildKind::Debug => "debug",
+        BuildKind::Release => "release",
+    }
+}
+
+fn record_supervisor_restart_requested(
+    root: &Path,
+    state_dir: &Path,
+    reason: &str,
+    mode: &str,
+    current: &BinaryCandidate,
+    next: Option<&BinaryCandidate>,
+    pending_defer_checks: u32,
+) {
+    let next = next.unwrap_or(current);
+    let verification_requested = rust_patch_verification_requested(state_dir);
+    let current_binary_path = current.path.display().to_string();
+    let next_binary_path = next.path.display().to_string();
+    let current_binary_mtime_ms = system_time_ms(current.mtime).unwrap_or_default();
+    let next_binary_mtime_ms = system_time_ms(next.mtime).unwrap_or_default();
+    let signature = artifact_write_signature(&[
+        "supervisor_restart_requested",
+        reason,
+        mode,
+        &current_binary_path,
+        &current_binary_mtime_ms.to_string(),
+        &next_binary_path,
+        &next_binary_mtime_ms.to_string(),
+        &verification_requested.to_string(),
+        &pending_defer_checks.to_string(),
+    ]);
+    let effect = EffectEvent::SupervisorRestartRequested {
+        reason: reason.to_string(),
+        mode: mode.to_string(),
+        current_binary_path,
+        current_binary_mtime_ms,
+        next_binary_path,
+        next_binary_mtime_ms,
+        verification_requested,
+        pending_defer_checks,
+        signature,
+    };
+    if let Err(err) = record_effect_for_workspace(root, effect) {
+        eprintln!("[canon-mini-supervisor] supervisor restart tlog effect failed: {err:#}");
+    }
+}
+
+fn record_supervisor_child_started(root: &Path, current: &BinaryCandidate, pid: u32) {
+    let binary_path = current.path.display().to_string();
+    let build_kind = build_kind_label(current.kind).to_string();
+    let binary_mtime_ms = system_time_ms(current.mtime).unwrap_or_default();
+    let signature = artifact_write_signature(&[
+        "supervisor_child_started",
+        &binary_path,
+        &build_kind,
+        &pid.to_string(),
+        &binary_mtime_ms.to_string(),
+    ]);
+    let effect = EffectEvent::SupervisorChildStarted {
+        binary_path,
+        build_kind,
+        pid,
+        binary_mtime_ms,
+        signature,
+    };
+    if let Err(err) = record_effect_for_workspace(root, effect) {
+        eprintln!("[canon-mini-supervisor] supervisor child-start tlog effect failed: {err:#}");
+    }
+}
+
 fn checkpoint_build_succeeded(root: &Path, state_dir: &Path, reason: &str) -> bool {
     if !rust_patch_verification_requested(state_dir) {
         let rust_sensitive_changes = rust_patch_sensitive_changed_paths(root)
@@ -1517,7 +1589,7 @@ fn run_supervisor_loop(
         let current = newest_candidate(root, prefer_release)?;
         emit_iteration_status_and_report(exe, root, &current, filtered_args);
         let (mut child, mut pending_update, child_started_at) =
-            start_supervisor_child(&current, filtered_args, child_pid)?;
+            start_supervisor_child(root, &current, filtered_args, child_pid)?;
 
         if supervise_current_child(
             shutdown,
@@ -1646,6 +1718,7 @@ fn supervise_current_child_iteration(
         child.try_wait().context("wait child")?,
         root,
         state_dir,
+        current,
         prefer_release,
     ) {
         return Ok(SuperviseCurrentChildFlow::BreakLoop);
@@ -1697,6 +1770,7 @@ fn handle_child_exit_status(
     status: Option<ExitStatus>,
     root: &Path,
     state_dir: &Path,
+    current: &BinaryCandidate,
     prefer_release: bool,
 ) -> bool {
     let Some(status) = status else {
@@ -1708,6 +1782,15 @@ fn handle_child_exit_status(
         std::process::exit(0);
     }
     eprintln!("[canon-mini-supervisor] restarting due to failure...");
+    record_supervisor_restart_requested(
+        root,
+        state_dir,
+        "failure-restart",
+        "failure",
+        current,
+        None,
+        0,
+    );
     stage_commit_push_before_restart(root, state_dir, "failure-restart", prefer_release);
     log_error_event(
         "supervisor",
@@ -1777,12 +1860,14 @@ fn install_supervisor_ctrlc_handler(
 }
 
 fn start_supervisor_child(
+    root: &Path,
     current: &BinaryCandidate,
     filtered_args: &[String],
     child_pid: &Arc<AtomicU32>,
 ) -> Result<(Child, Option<BinaryCandidate>, SystemTime)> {
     let child = spawn_child(current, filtered_args)?;
     child_pid.store(child.id(), Ordering::SeqCst);
+    record_supervisor_child_started(root, current, child.id());
     eprintln!(
         "[canon-mini-supervisor] started pid={} ({:?})",
         child.id(),
@@ -1811,6 +1896,7 @@ fn should_restart_for_pending_update(
     maybe_restart_for_pending_update(
         root,
         state_dir,
+        current,
         pending_update.as_ref(),
         pending_update_defer_checks,
         orchestrator_mode_flag,
@@ -1862,6 +1948,7 @@ fn record_pending_update(
 fn maybe_restart_for_pending_update(
     root: &Path,
     state_dir: &Path,
+    current: &BinaryCandidate,
     pending_update: Option<&BinaryCandidate>,
     pending_update_defer_checks: &mut u32,
     orchestrator_mode_flag: &Path,
@@ -1896,6 +1983,7 @@ fn maybe_restart_for_pending_update(
             ),
             None,
         );
+        record_supervisor_restart_requested(root, state_dir, "single-role-update", "single-role", current, Some(updated), *pending_update_defer_checks);
         stage_commit_push_before_restart(root, state_dir, "single-role-update", prefer_release);
         return restart_child(child);
     }
@@ -1918,6 +2006,7 @@ fn maybe_restart_for_pending_update(
             ),
             None,
         );
+        record_supervisor_restart_requested(root, state_dir, "orchestrate-idle-update", "orchestrate", current, Some(updated), *pending_update_defer_checks);
         stage_commit_push_before_restart(
             root,
             state_dir,
@@ -1945,6 +2034,7 @@ fn maybe_restart_for_pending_update(
             ),
             None,
         );
+        record_supervisor_restart_requested(root, state_dir, "orchestrate-deferred-update-timeout", "orchestrate", current, Some(updated), *pending_update_defer_checks);
         stage_commit_push_before_restart(
             root,
             state_dir,
