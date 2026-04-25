@@ -205,6 +205,7 @@ At the end of any loophole-closure pass, the system must list the remaining runt
 ### 1.3 Canonical Files
 Canonical file paths are absolute under `Workspace` (see `src/constants.rs:3-11`, `42-48`):
 - `Spec`: `SPEC.md`
+- `Pipeline`: `CANONICAL_PIPELINE.md` — canonical operating contract for observe → eval → plan → execute → verify → regenerate projections → append tlog → learn → gated commit.
 - `Objectives`: `agent_state/OBJECTIVES.json` (runtime path) and `PLANS/OBJECTIVES.md` (companion markdown source when present)
 - `Invariants`: `INVARIANTS.json` (runtime path) and `INVARIANT.md` (companion markdown source when present)
 - `MasterPlan`: `PLAN.json`

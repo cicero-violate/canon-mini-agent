@@ -9,6 +9,7 @@ pub const VIOLATIONS_FILE: &str = "agent_state/VIOLATIONS.json";
 pub const ISSUES_FILE: &str = "agent_state/ISSUES.json";
 pub const INVARIANTS_FILE: &str = "INVARIANTS.json";
 pub const INVARIANTS_MD_FILE: &str = "INVARIANT.md";
+pub const PIPELINE_FILE: &str = "CANONICAL_PIPELINE.md";
 pub const WS_PORT_CANDIDATES: &[u16] = &[9103, 9104, 9105, 9106, 9107, 9108];
 pub const MAX_STEPS: usize = 2000;
 pub const EXECUTOR_STEP_LIMIT: usize = 70;

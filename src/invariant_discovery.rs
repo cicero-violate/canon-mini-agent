@@ -638,6 +638,38 @@ pub fn generate_invariant_issues(workspace: &Path) -> Result<usize> {
     created += created_delta;
     mutated |= mutated_delta;
 
+    // Resolve stale per-invariant enforcement issues once an invariant is no
+    // longer merely Promoted. These issues mean "gate not yet enforced" and
+    // must not remain open after the invariant reaches Enforced or Collapsed.
+    for inv in &inv_file.invariants {
+        if inv.status == InvariantStatus::Promoted {
+            continue;
+        }
+        let inv_key = inv.id.to_lowercase().replace('-', "_");
+        let issue_id = format!("inv_gate_unenforced_{inv_key}");
+        let note = format!(
+            "Resolved automatically: invariant {} status is now {:?}, so the promoted gate issue is stale.",
+            inv.id, inv.status
+        );
+        mutated |= resolve_stale_meta_issue(&mut file, &issue_id, &note);
+    }
+
+    // Resolve stale per-invariant enforcement issues once an invariant is no
+    // longer merely Promoted. These issues mean "gate not yet enforced" and
+    // must not remain open after the invariant reaches Enforced or Collapsed.
+    for inv in &inv_file.invariants {
+        if inv.status == InvariantStatus::Promoted {
+            continue;
+        }
+        let inv_key = inv.id.to_lowercase().replace('-', "_");
+        let issue_id = format!("inv_gate_unenforced_{inv_key}");
+        let note = format!(
+            "Resolved automatically: invariant {} status is now {:?}, so the promoted gate issue is stale.",
+            inv.id, inv.status
+        );
+        mutated |= resolve_stale_meta_issue(&mut file, &issue_id, &note);
+    }
+
     // ── Per-promoted-invariant issues ────────────────────────────────────────
     // One issue per Promoted invariant whose gate is not yet enforced.
     // These give the planner concrete tasks: "evaluate INV-xxx for gate enforcement".

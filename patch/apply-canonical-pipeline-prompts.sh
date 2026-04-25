@@ -1,0 +1,277 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo="${1:-/workspace/ai_sandbox/canon-mini-agent}"
+cd "$repo"
+
+python - <<'PY'
+import subprocess
+
+ENV = {"PYTHONPATH": "/opt/pyvenv/lib/python3.13/site-packages", "PATH": "/usr/bin"}
+APPLY = ["/opt/apply_patch/apply_patch_v3"]
+
+patches = [
+r"""*** Begin Patch
+*** Add File: CANONICAL_PIPELINE.md
++# Canonical Pipeline
++
++## Purpose
++
++This file is the canonical operating contract for how the system turns current
++state into safe improvement. Runtime prompts include this contract so planner,
++executor, verifier-compatible planner flow, and diagnostics-compatible planner
++flow share the same model.
++
++## Variables
++
++- `T`: canonical tlog event stream
++- `S`: current system state projected from `T`
++- `I`: invariants and structural guards
++- `E`: eval/scoring layer over `T`, graph, issues, objectives, and deltas
++- `P`: planner decision and ready task window
++- `X`: executor action path
++- `V`: verification gates (`cargo check`, `cargo test`, `cargo build` when required)
++- `G`: graph and issue projections
++- `L`: learned lesson or promoted invariant
++- `C`: commit/push checkpoint
++
++## Equations
++
++```text
++S = project(T)
++E = score(S, I, graph, issues, objectives, deltas)
++P = plan(E)
++X = execute(P)
++V = verify(X)
++G = regenerate(graph, issues) after apply_patch_ok ∧ cargo_check_ok
++T' = append(T, effects(X, V, G))
++L = learn(failure_event) only when it changes invariant/eval/test/prompt behavior
++C_allowed = no_rust_change ∨ (cargo_check_ok ∧ cargo_test_ok ∧ cargo_build_ok)
++```
++
++One-line: **state comes from tlog; eval chooses pressure; planner creates ready work; executor patches; gates verify; graph/issues refresh; tlog records effects; learning becomes invariant/eval/test/prompt pressure.**
++
++## Required Order
++
++```text
++observe current truth
++→ evaluate state through invariants and metrics
++→ plan the highest-leverage ready task
++→ execute the task with bounded patch scope
++→ run required verification gates
++→ regenerate graph/issues only after a valid patch/check path
++→ append canonical tlog effects
++→ promote failures into lessons/invariants/tests when repeatable
++→ commit only when commit_allowed is true
++```
++
++## Role Contract
++
++- Planner owns objectives, task ordering, invariant interpretation, and ready windows.
++- Executor owns bounded source changes, command execution, and evidence capture for the assigned ready task.
++- Verifier/diagnostics-compatible flows are planner-owned judgments over evidence, not separate authorities that bypass the pipeline.
++- No role may treat a message handoff as more authoritative than canonical files and tlog-derived state.
++
++## Learning Contract
++
++```text
++failure → tlog_event → invariant/eval signal → regression test → prompt pressure
++```
++
++A failure is not learned if it is only written as prose. It is learned only when
++future execution is measurably redirected or blocked.
+*** Update File: src/constants.rs
+@@
+ pub const INVARIANTS_FILE: &str = "INVARIANTS.json";
+ pub const INVARIANTS_MD_FILE: &str = "INVARIANT.md";
++pub const PIPELINE_FILE: &str = "CANONICAL_PIPELINE.md";
+ pub const WS_PORT_CANDIDATES: &[u16] = &[9103, 9104, 9105, 9106, 9107, 9108];
+*** Update File: SPEC.md
+@@
+ ### 1.3 Canonical Files
+ Canonical file paths are absolute under `Workspace` (see `src/constants.rs:3-11`, `42-48`):
+ - `Spec`: `SPEC.md`
++- `Pipeline`: `CANONICAL_PIPELINE.md` — canonical operating contract for observe → eval → plan → execute → verify → regenerate projections → append tlog → learn → gated commit.
+ - `Objectives`: `agent_state/OBJECTIVES.json` (runtime path) and `PLANS/OBJECTIVES.md` (companion markdown source when present)
+*** End Patch
+""",
+r"""*** Begin Patch
+*** Update File: src/prompts.rs
+@@
+ use crate::constants::{
+     diagnostics_file, workspace, EXECUTOR_STEP_LIMIT, INVARIANTS_FILE, ISSUES_FILE,
+-    MASTER_PLAN_FILE, OBJECTIVES_FILE, SPEC_FILE,
++    MASTER_PLAN_FILE, OBJECTIVES_FILE, PIPELINE_FILE, SPEC_FILE,
+ };
+@@
+ fn prompt_intro(kind: AgentPromptKind) -> &'static str {
+     match kind {
+         AgentPromptKind::Executor => "You are the canon executor agent.",
+         AgentPromptKind::Planner => "You are the canon planner agent.",
+     }
+ }
++
++const CANONICAL_PIPELINE_CONTRACT: &str = "\
++S = project(T)\n\
++E = score(S, I, graph, issues, objectives, deltas)\n\
++P = plan(E)\n\
++X = execute(P)\n\
++V = verify(X)\n\
++G = regenerate(graph, issues) after apply_patch_ok ∧ cargo_check_ok\n\
++T' = append(T, effects(X, V, G))\n\
++L = learn(failure_event) only when it changes invariant/eval/test/prompt behavior\n\
++C_allowed = no_rust_change ∨ (cargo_check_ok ∧ cargo_test_ok ∧ cargo_build_ok)\n\
++Order: observe truth → eval → plan ready work → execute bounded patch → verify gates → regenerate projections → append tlog effects → learn → gated commit.";
++
++fn canonical_pipeline_prompt_block() -> String {
++    format!(
++        "Canonical pipeline contract (from {PIPELINE_FILE}; load that file for full details):\n{}",
++        CANONICAL_PIPELINE_CONTRACT
++    )
++}
+*** End Patch
+""",
+r"""*** Begin Patch
+*** Update File: src/prompts.rs
+@@
+ pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
+     let intro = prompt_intro(kind).to_string();
+     let mission = prompt_mission(kind).to_string();
+     let workspace_text = prompt_workspace(kind);
+     let graph_guidance = prompt_graph_artifact_guidance(kind).to_string();
++    let pipeline_contract = canonical_pipeline_prompt_block();
+     let status_snapshot = status_snapshot_for(kind).to_string();
+     let tail = prompt_tail(kind);
+     let prefix = if status_snapshot.is_empty() {
+         format!(
+-            "{}\n\n{}\n\n{}\n\n{}\n\n",
+-            intro, mission, workspace_text, graph_guidance
++            "{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n",
++            intro, mission, workspace_text, graph_guidance, pipeline_contract
+         )
+     } else {
+         format!(
+-            "{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n",
+-            intro, mission, workspace_text, graph_guidance, status_snapshot
++            "{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n",
++            intro, mission, workspace_text, graph_guidance, pipeline_contract, status_snapshot
+         )
+     };
+*** End Patch
+""",
+r"""*** Begin Patch
+*** Update File: src/prompts.rs
+@@
+ ) -> String {
+     let workspace = workspace();
+     let guided_review = crate::structured_questions::guided_review_block("planner cycle boundary");
++    let pipeline_contract = canonical_pipeline_prompt_block();
+     let prefix = format!(
+@@
+     let suffix = format!(
+         "\n\n\
++         {pipeline_contract}\n\n\
+          {guided_review}\n\n\
+          ⟹ IMMEDIATE ACTION: The projected issues in the semantic control section above are \
+*** End Patch
+""",
+r"""*** Begin Patch
+*** Update File: src/prompts.rs
+@@
+ ) -> String {
+     let workspace = workspace();
+     let guided_review = crate::structured_questions::guided_review_block("executor cycle boundary");
++    let pipeline_contract = canonical_pipeline_prompt_block();
+     let verify_result = if latest_verify_result.trim().is_empty()
+@@
+     };
+     format!(
+-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nREADY TASKS (from {MASTER_PLAN_FILE}, top-10 by plan order):\n{ready_tasks}\n\n{guided_review}\n\nLane plans are deprecated. Use {MASTER_PLAN_FILE} and current planner-phase outputs for task selection.\nGraph-first execution: consult `state/rustc/canon_mini_agent/graph.json`, `agent_state/safe_patch_candidates.json`, and `agent_state/semantic_manifest_proposals.json` before patching so edits align with ranked semantic candidates and manifest contracts.\nLatest verifier result for lane {lane_label}:\n{verify_result}\n\nUse `message` primarily for blocker escalation or unresolved partial completion evidence."
++        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nREADY TASKS (from {MASTER_PLAN_FILE}, top-10 by plan order):\n{ready_tasks}\n\n{pipeline_contract}\n\n{guided_review}\n\nLane plans are deprecated. Use {MASTER_PLAN_FILE} and current planner-phase outputs for task selection.\nGraph-first execution: consult `state/rustc/canon_mini_agent/graph.json`, `agent_state/safe_patch_candidates.json`, and `agent_state/semantic_manifest_proposals.json` before patching so edits align with ranked semantic candidates and manifest contracts.\nLatest verifier result for lane {lane_label}:\n{verify_result}\n\nUse `message` primarily for blocker escalation or unresolved partial completion evidence."
+     )
+ }
+*** End Patch
+""",
+r"""*** Begin Patch
+*** Update File: src/prompts.rs
+@@
+     let workspace = workspace();
+     let diagnostics_path = diagnostics_file();
+     let issues_file = ISSUES_FILE;
++    let pipeline_contract = canonical_pipeline_prompt_block();
+     let guided_review =
+         crate::structured_questions::guided_review_block("single-role planner boundary");
+@@
+     let cargo_failures_heading =
+         "Latest cargo test failures (from cargo_test_failures.json)".to_string();
+     let suffix = format!(
+-        "\n\n{guided_review}\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nOpen issues in `{issues_file}` are directly actionable when they include current-source evidence — create plan tasks that reference `issue_refs`. `{diagnostics_path}` entries with no matching {issues_file} entry are hints only.\nGraph-first rule: prioritize top-ranked items from `agent_state/safe_patch_candidates.json`, and use `agent_state/semantic_manifest_proposals.json` to keep task instructions aligned with contract metadata.\nInvariant lifecycle rule: Promoted dynamic invariants require an `invariants` action decision: enforce if the predicate is structurally valid, collapse if the root cause is gone, or create a source patch task against `src/invariant_discovery.rs` if graph/tlog evidence shows a missing synthesis rule.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nWhen a `plan` action is derived from projected diagnostics state, include same-cycle source validation in `observation` and `rationale` before mutating {MASTER_PLAN_FILE}.\n\nTreat stale or already-resolved projected diagnostics as non-actionable until current source evidence reconfirms them.\nIf projected diagnostics repeatedly report stale issues, create follow-up work to repair projection generation rather than reopening resolved implementation tasks."
++        "\n\n{pipeline_contract}\n\n{guided_review}\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nOpen issues in `{issues_file}` are directly actionable when they include current-source evidence — create plan tasks that reference `issue_refs`. `{diagnostics_path}` entries with no matching {issues_file} entry are hints only.\nGraph-first rule: prioritize top-ranked items from `agent_state/safe_patch_candidates.json`, and use `agent_state/semantic_manifest_proposals.json` to keep task instructions aligned with contract metadata.\nInvariant lifecycle rule: Promoted dynamic invariants require an `invariants` action decision: enforce if the predicate is structurally valid, collapse if the root cause is gone, or create a source patch task against `src/invariant_discovery.rs` if graph/tlog evidence shows a missing synthesis rule.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nWhen a `plan` action is derived from projected diagnostics state, include same-cycle source validation in `observation` and `rationale` before mutating {MASTER_PLAN_FILE}.\n\nTreat stale or already-resolved projected diagnostics as non-actionable until current source evidence reconfirms them.\nIf projected diagnostics repeatedly report stale issues, create follow-up work to repair projection generation rather than reopening resolved implementation tasks."
+     );
+*** End Patch
+""",
+r"""*** Begin Patch
+*** Update File: src/prompts.rs
+@@
+ ) -> String {
+     let workspace = workspace();
+     let guided_review =
+         crate::structured_questions::guided_review_block("single-role executor boundary");
++    let pipeline_contract = canonical_pipeline_prompt_block();
+     let prefix = format!(
+@@
+     let semantic_control_heading =
+         "Semantic control state (tlog-derived authority + projected views)".to_string();
+     let suffix = format!(
+-        "\n\n{guided_review}\n\nLane plans are deprecated. Use {MASTER_PLAN_FILE} and current planner-phase outputs for task selection.\nGraph-first execution: prefer edits that close top entries in `agent_state/safe_patch_candidates.json`, and preserve semantic contracts from `agent_state/semantic_manifest_proposals.json` while patching.\n\nDo not modify spec, plan, violations, or diagnostics.\nDo not use internal tools.\nDo not hand off work; continue execution directly in the current role flow.\nUse `message.payload` to report blocker escalation or unresolved partial-completion evidence. {ACTION_EMIT_LINE}"
++        "\n\n{pipeline_contract}\n\n{guided_review}\n\nLane plans are deprecated. Use {MASTER_PLAN_FILE} and current planner-phase outputs for task selection.\nGraph-first execution: prefer edits that close top entries in `agent_state/safe_patch_candidates.json`, and preserve semantic contracts from `agent_state/semantic_manifest_proposals.json` while patching.\n\nDo not modify spec, plan, violations, or diagnostics.\nDo not use internal tools.\nDo not hand off work; continue execution directly in the current role flow.\nUse `message.payload` to report blocker escalation or unresolved partial-completion evidence. {ACTION_EMIT_LINE}"
+     );
+*** End Patch
+""",
+r"""*** Begin Patch
+*** Update File: src/prompts.rs
+@@
+     fn planner_and_executor_require_python_for_structured_graph_artifacts() {
+         for kind in [AgentPromptKind::Planner, AgentPromptKind::Executor] {
+             let prompt = system_instructions(kind);
+@@
+             );
+         }
+     }
++
++    #[test]
++    fn planner_and_executor_prompts_include_canonical_pipeline_contract() {
++        for kind in [AgentPromptKind::Planner, AgentPromptKind::Executor] {
++            let prompt = system_instructions(kind);
++            assert!(
++                prompt.contains("Canonical pipeline contract")
++                    && prompt.contains("CANONICAL_PIPELINE.md")
++                    && prompt.contains("C_allowed = no_rust_change"),
++                "{kind:?} system prompt must include the canonical pipeline contract"
++            );
++        }
++    }
++
++    #[test]
++    fn cycle_prompts_include_canonical_pipeline_contract() {
++        let planner = planner_cycle_prompt("", "{}", "", "", "", "", "", "");
++        let executor = executor_cycle_prompt("executor", "executor_pool", "", "[]");
++        assert!(planner.contains("CANONICAL_PIPELINE.md"));
++        assert!(executor.contains("CANONICAL_PIPELINE.md"));
++    }
+
+     #[test]
+     fn planner_system_instructions_omit_duplicated_status_snapshot() {
+*** End Patch
+""",
+]
+
+for patch in patches:
+    subprocess.run(APPLY, input=patch, text=True, check=True, env=ENV)
+PY
+
+rg -n 'CANONICAL_PIPELINE|PIPELINE_FILE|Canonical pipeline contract|C_allowed = no_rust_change' \
+  CANONICAL_PIPELINE.md SPEC.md src/constants.rs src/prompts.rs
+
+cargo test -p canon-mini-agent canonical_pipeline_contract
+cargo check
