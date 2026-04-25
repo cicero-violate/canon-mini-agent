@@ -509,11 +509,11 @@ fn apply_executor_route_gate_role_signals(
     apply_executor_route_gate_signal(state, blockers, now_ms, "verifier", &crate::error_class::ErrorClass::VerificationFailed, 1, "error_class", "verification_failed");
 }
 
-fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str) -> bool {
-    let ws = std::path::PathBuf::from(workspace());
-    let blockers = crate::blockers::load_blockers(&ws);
-    let now_ms = crate::logging::now_ms();
-
+fn executor_route_gate_state(
+    ready_count: &str,
+    blockers: &crate::blockers::BlockersFile,
+    now_ms: u64,
+) -> std::collections::HashMap<String, String> {
     let mut state = std::collections::HashMap::new();
     state.insert("ready_tasks".to_string(), ready_count.to_string());
 
@@ -530,6 +530,14 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
         state.insert("error_class".to_string(), "invalid_route".to_string());
     }
     apply_executor_route_gate_role_signals(&mut state, &blockers, now_ms);
+    state
+}
+
+fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str) -> bool {
+    let ws = std::path::PathBuf::from(workspace());
+    let blockers = crate::blockers::load_blockers(&ws);
+    let now_ms = crate::logging::now_ms();
+    let mut state = executor_route_gate_state(ready_count, &blockers, now_ms);
 
     if let Err(reason) = crate::invariants::evaluate_invariant_gate("route", &state, &ws) {
         apply_route_gate_block(writer, &ws, &reason);
