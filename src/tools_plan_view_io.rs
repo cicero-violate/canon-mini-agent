@@ -437,10 +437,27 @@ fn load_cargo_test_failure_scan(out: &str) -> (Option<PathBuf>, String) {
     let mut scan = out.to_string();
     if let Some(path) = log_path.as_ref() {
         if let Ok(content) = fs::read_to_string(path) {
-            scan = truncate(&content, MAX_SNIPPET * 4).to_string();
+            scan = cargo_test_failure_scan_window(&content);
         }
     }
     (log_path, scan)
+}
+
+fn cargo_test_failure_scan_window(content: &str) -> String {
+    let limit = MAX_SNIPPET * 8;
+    if content.len() <= limit {
+        return content.to_string();
+    }
+
+    let tail_start = content
+        .rfind("\nfailures:")
+        .or_else(|| content.rfind("test result: FAILED"))
+        .unwrap_or_else(|| content.len().saturating_sub(limit));
+    let mut start = tail_start.saturating_sub(MAX_SNIPPET);
+    while start > 0 && !content.is_char_boundary(start) {
+        start -= 1;
+    }
+    content[start..].to_string()
 }
 
 fn collect_stalled_test_name(stalled_tests: &mut BTreeSet<String>, stripped: &str) {

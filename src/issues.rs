@@ -168,10 +168,14 @@ pub fn persist_issues_projection_with_writer(
     let issue_fingerprints_hash = issue_projection_fingerprints_hash(&issue_fingerprints);
     let previous_meta = load_issues_projection_meta(workspace);
     if let Some(meta) = previous_meta.as_ref() {
-        if meta.version == file.version
-            && !meta.projection_hash.trim().is_empty()
+        if !meta.projection_hash.trim().is_empty()
             && meta.issue_fingerprints == issue_fingerprints
+            && projection_path.exists()
         {
+            // Content is unchanged. Treat ISSUES.json as a projection keyed by
+            // issue fingerprints rather than by version-only churn so repeated
+            // generators do not rewrite a multi-megabyte file or append noisy
+            // issues_projection_recorded events.
             return Ok(());
         }
     }

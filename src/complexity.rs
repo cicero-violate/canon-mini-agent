@@ -1473,7 +1473,10 @@ pub fn write_complexity_report(workspace: &Path) -> Result<Option<PathBuf>> {
     // but that path is skipped when the thread is still in-flight.
     crate::invariants::maybe_synthesize_invariants(workspace);
 
-    enqueue_issue_task_generation(workspace);
+    // Broad ISSUES.json regeneration is intentionally not coupled to every
+    // complexity report. It is expensive and tlog shows it as a dominant lag
+    // source. Keep the refresh behind the apply_patch_ok ∧ cargo_check_ok gate
+    // in tools_patch_graph::refresh_derived_artifacts_after_cargo_check.
 
     let (eval, eval_delta) = crate::eval_driver::run(workspace, None)
         .unwrap_or_else(|_| (crate::evaluation::evaluate_workspace(workspace), None));
@@ -1624,6 +1627,11 @@ fn build_complexity_report(
 ) -> serde_json::Value {
     let intra_scoring = complexity_intra_scoring();
     let inter_scoring = complexity_inter_scoring();
+    let objectives_progress = format!(
+        "{}/{}",
+        eval.objectives_completed, eval.objectives_total
+    );
+    let tasks_progress = format!("{}/{}", eval.completed_tasks, eval.total_tasks);
     json!({
         "version": 2,
         "objective": "min(B) + min(R)  s.t. correctness invariant",
@@ -1660,8 +1668,12 @@ fn build_complexity_report(
             "tlog_dominant_actionable_lag_kind_ms": eval.tlog_delta_signals.dominant_actionable_lag_kind_ms,
             "issues_projection_lag_ms": eval.tlog_delta_signals.issues_projection_lag_ms,
             "issues_projection_lag_count": eval.tlog_delta_signals.issues_projection_lag_count,
-            "objectives": format!("{}/{}", eval.objectives_completed, eval.objectives_total),
-            "tasks": format!("{}/{}", eval.completed_tasks, eval.total_tasks),
+            "tlog_dominant_payload_kind": eval.tlog_delta_signals.dominant_payload_kind,
+            "tlog_dominant_payload_kind_bytes": eval.tlog_delta_signals.dominant_payload_kind_bytes,
+            "last_plan_text_payload_bytes": eval.tlog_delta_signals.last_plan_text_payload_bytes,
+            "last_executor_diff_payload_bytes": eval.tlog_delta_signals.last_executor_diff_payload_bytes,
+            "objectives": objectives_progress,
+            "tasks": tasks_progress,
         },
         "fingerprint_drift": drift,
         "per_crate": per_crate,

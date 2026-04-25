@@ -123,9 +123,11 @@ async fn run_planner_phase(
                     "plan_path": MASTER_PLAN_FILE,
                 }),
             );
-            writer.apply(ControlEvent::LastPlanTextSet {
-                text: inputs.plan_text,
-            });
+            if writer.state().last_plan_text != inputs.plan_text {
+                writer.apply(ControlEvent::LastPlanTextSet {
+                    text: inputs.plan_text,
+                });
+            }
 
             // Block executor dispatch only when the planner explicitly signals blocked.
             // All other completions (plan ok, read results, objectives results, ready handoff)
@@ -145,10 +147,18 @@ async fn run_planner_phase(
                 crate::prompt_inputs::read_ready_tasks(ctx.workspace, 1) != "(no ready tasks)";
             let mut executor_handoff_queued = false;
             for lane_id in lane_ids {
-                writer.apply(ControlEvent::LanePlanTextSet {
-                    lane_id,
-                    text: String::new(),
-                });
+                let lane_plan_already_empty = writer
+                    .state()
+                    .lanes
+                    .get(&lane_id)
+                    .map(|lane| lane.plan_text.is_empty())
+                    .unwrap_or(true);
+                if !lane_plan_already_empty {
+                    writer.apply(ControlEvent::LanePlanTextSet {
+                        lane_id,
+                        text: String::new(),
+                    });
+                }
                 let in_progress = {
                     let s = writer.state();
                     let ls = s.lanes.get(&lane_id);

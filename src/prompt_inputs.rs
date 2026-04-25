@@ -444,6 +444,8 @@ fn build_eval_header(workspace: &Path) -> String {
     };
 
     let get_f64 = |key: &str| eval.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let get_u64 = |key: &str| eval.get(key).and_then(|v| v.as_u64()).unwrap_or(0);
+    let get_str = |key: &str| eval.get(key).and_then(|v| v.as_str()).unwrap_or("");
     let overall = get_f64("overall_score");
     let objectives_ratio = live_done_total_ratio(workspace.join(OBJECTIVES_FILE), "objectives");
     let tasks_ratio = live_done_total_ratio(workspace.join(MASTER_PLAN_FILE), "tasks");
@@ -501,7 +503,14 @@ fn build_eval_header(workspace: &Path) -> String {
     format!(
         "EVAL score={overall:.3}  weakest={weakest_name}({weakest_val:.3})  \
 objectives={objectives}  tasks={tasks}\n\
-→ To raise score: {directive}\n"
+lag_action={lag_kind}({lag_ms}ms)  payload={payload_kind}({payload_bytes}B)  \
+plan_payload={plan_payload_bytes}B\n\
+→ To raise score: {directive}\n",
+        lag_kind = get_str("tlog_dominant_actionable_lag_kind"),
+        lag_ms = get_u64("tlog_dominant_actionable_lag_kind_ms"),
+        payload_kind = get_str("tlog_dominant_payload_kind"),
+        payload_bytes = get_u64("tlog_dominant_payload_kind_bytes"),
+        plan_payload_bytes = get_u64("last_plan_text_payload_bytes"),
     )
 }
 

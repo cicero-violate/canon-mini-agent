@@ -1,7 +1,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 
-use crate::events::{EffectEvent, Event};
+use crate::events::{ControlEvent, EffectEvent, Event};
 use crate::issues::Issue;
 #[cfg(test)]
 use crate::issues::IssuesFile;
@@ -290,6 +290,10 @@ pub struct TlogDeltaSignals {
     pub dominant_actionable_lag_kind_ms: u64,
     pub issues_projection_lag_ms: u64,
     pub issues_projection_lag_count: usize,
+    pub dominant_payload_kind: String,
+    pub dominant_payload_kind_bytes: u64,
+    pub last_plan_text_payload_bytes: u64,
+    pub last_executor_diff_payload_bytes: u64,
     pub llm_turn_inputs: usize,
     pub llm_turn_outputs: usize,
     pub llm_action_outputs: usize,
@@ -326,8 +330,17 @@ pub fn evaluate_tlog_delta_invariants(
     let mut requested_artifact_signatures = BTreeSet::new();
     let mut applied_artifact_signatures = BTreeSet::new();
     let mut actionable_lag_by_next_kind: HashMap<String, u64> = HashMap::new();
+    let mut payload_bytes_by_kind: HashMap<String, u64> = HashMap::new();
 
     for (idx, record) in records.iter().enumerate() {
+        let record_kind = tlog_event_kind(&record.event);
+        let payload_bytes = serde_json::to_string(&record.event)
+            .map(|raw| raw.len() as u64)
+            .unwrap_or_default();
+        *payload_bytes_by_kind
+            .entry(record_kind.clone())
+            .or_default() += payload_bytes;
+
         if idx > 0 && record.seq != prev_seq.saturating_add(1) {
             signals.contiguous_seq = false;
             signals.missing_seq_count +=
@@ -341,7 +354,7 @@ pub fn evaluate_tlog_delta_invariants(
                 signals.lag_total_ms = signals.lag_total_ms.saturating_add(gap_ms);
                 signals.max_event_gap_ms = signals.max_event_gap_ms.max(gap_ms);
 
-                let next_kind = tlog_event_kind(&record.event);
+                let next_kind = record_kind.clone();
                 if next_kind == "issues_projection_recorded" {
                     signals.issues_projection_lag_count += 1;
                     signals.issues_projection_lag_ms =
@@ -358,6 +371,26 @@ pub fn evaluate_tlog_delta_invariants(
         prev_seq = record.seq;
 
         match &record.event {
+            Event::Control {
+                event: ControlEvent::LastPlanTextSet { text },
+            }
+            | Event::Control {
+                event: ControlEvent::LastSoloPlanTextSet { text },
+            } => {
+                signals.last_plan_text_payload_bytes = signals
+                    .last_plan_text_payload_bytes
+                    .saturating_add(text.len() as u64);
+            }
+            Event::Control {
+                event: ControlEvent::LastExecutorDiffSet { text },
+            }
+            | Event::Control {
+                event: ControlEvent::LastSoloExecutorDiffSet { text },
+            } => {
+                signals.last_executor_diff_payload_bytes = signals
+                    .last_executor_diff_payload_bytes
+                    .saturating_add(text.len() as u64);
+            }
             Event::Effect {
                 event: EffectEvent::LlmTurnInput { .. },
             } => signals.llm_turn_inputs += 1,
@@ -412,6 +445,13 @@ pub fn evaluate_tlog_delta_invariants(
     {
         signals.dominant_actionable_lag_kind = kind;
         signals.dominant_actionable_lag_kind_ms = lag_ms;
+    }
+    if let Some((kind, bytes)) = payload_bytes_by_kind
+        .into_iter()
+        .max_by_key(|(_, bytes)| *bytes)
+    {
+        signals.dominant_payload_kind = kind;
+        signals.dominant_payload_kind_bytes = bytes;
     }
     signals.score = canonical_delta_health_score(&signals);
     signals
