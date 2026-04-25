@@ -1185,13 +1185,13 @@ fn rename_reason_score(reasons: &[String]) -> u32 {
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: semantic_graph
 /// Inputs: &std::path::Path, &str, &[semantic::SymbolSummary], usize
 /// Outputs: std::vec::Vec<issues::Issue>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: fs_read
+/// Forbidden: fs_write, uses_network, spawns_process
+/// Invariants: deterministic_issue_ids, limit_respected
+/// Failure: returns_empty_on_index_load_failure
 /// Provenance: rustc:facts + rustc:docstring
 pub fn dark_assignment_issues(
     workspace: &Path,
