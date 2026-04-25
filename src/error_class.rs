@@ -7,7 +7,7 @@
 ///    every `ok=false` action result is classified and written to
 ///    `agent_state/blockers.json`.
 ///
-/// 2. **Invariant promotion** (`invariants.rs`) — the synthesis step reads
+/// 2. **Invariant promotion** (`invariant_discovery.rs`) — the synthesis step reads
 ///    classified blockers instead of doing heuristic text matching.  Repeated
 ///    observations of the same class accumulate `support_count` and eventually
 ///    promote to a gate-enforced invariant.

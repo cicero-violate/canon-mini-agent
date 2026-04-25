@@ -484,21 +484,21 @@ fn sync_action_surface_meta_issue(
             title: "Invariant lifecycle has no action surface — planner cannot review, enforce, or collapse invariants",
             priority: "critical",
             description: concat!(
-                "src/invariants.rs populates agent_state/enforced_invariants.json and auto-promotes ",
+                "src/invariant_discovery.rs populates agent_state/enforced_invariants.json and auto-promotes ",
                 "patterns at support_count >= MIN_INVARIANT_SUPPORT, but planner has no ",
                 "action surface to review, promote, enforce, or collapse invariants. ",
                 "The route gate G_r is observational only (blocked=false) — it logs violations but never ",
                 "returns early. The lessons system is the model: `lessons` action with ops ",
                 "read_candidates|promote|reject|encode|read|write feeds into ROLES.json via apply_promoted_lessons. ",
                 "Invariants need the same closure: add `invariants` action (ops: read|promote|collapse|enforce) ",
-                "to src/tools.rs dispatch + implement handle_invariants_action in src/invariants.rs. ",
+                "to src/tools.rs dispatch + implement handle_invariants_action in src/invariant_discovery.rs. ",
                 "Wire enforced_invariants.json into planner prompts via src/prompt_inputs.rs. ",
                 "Impact: without this the invariant collapse pipeline (TO-DO.txt Phase 4-5) cannot complete."
             )
             .to_string(),
-            location: "src/tools.rs; src/invariants.rs; src/app.rs:1011-1050; src/prompt_inputs.rs",
+            location: "src/tools.rs; src/invariant_discovery.rs; src/app.rs:1011-1050; src/prompt_inputs.rs",
             evidence: &[
-                "src/invariants.rs:evaluate_invariant_gate returns Err but app.rs route gate has blocked=false — never hard-blocks",
+                "src/invariant_discovery.rs:evaluate_invariant_gate returns Err but app.rs route gate has blocked=false — never hard-blocks",
                 "src/tools.rs dispatch table is missing the 'invariants' branch required to call handle_invariants_action",
                 "src/tool_schema.rs is missing the invariants action schema, so invalid-action repair cannot guide the model toward legal invariants ops",
                 "Without both dispatch + schema, planner cannot review, enforce, or collapse discovered invariants from enforced_invariants.json",
@@ -558,7 +558,7 @@ fn sync_prompt_injection_meta_issue(
                 "Impact: invariant system is silent — no feedback loop to the decision-making agent."
             )
             .to_string(),
-            location: "src/prompt_inputs.rs; src/prompts.rs; src/invariants.rs:read_enforced_invariants",
+            location: "src/prompt_inputs.rs; src/prompts.rs; src/invariant_discovery.rs:read_enforced_invariants",
             evidence: &[
                 "src/prompt_inputs.rs does not call read_enforced_invariants(workspace) when building prompt inputs",
                 "src/prompts.rs does not mention agent_state/enforced_invariants.json in the relevant role instructions",

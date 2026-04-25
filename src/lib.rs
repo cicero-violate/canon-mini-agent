@@ -13,7 +13,8 @@ pub mod graph_metrics;
 pub mod grpo;
 pub mod inter_complexity;
 pub mod invalid_action;
-pub mod invariants;
+pub mod invariant_discovery;
+pub use invariant_discovery as invariants;
 mod issues;
 pub mod lessons;
 // Repair priority map:
