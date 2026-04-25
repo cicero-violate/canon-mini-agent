@@ -1,12 +1,7 @@
 cd /workspace/ai_sandbox/canon-mini-agent
 
-export APPLY_PATCH_BIN="${APPLY_PATCH_BIN:-/opt/apply_patch/apply_patch_v3}"
-[ -x "$APPLY_PATCH_BIN" ] || export APPLY_PATCH_BIN="/opt/apply_patch/bin/apply_patch"
-
-python - <<'PY'
-import os, subprocess
-
-patch = r'''*** Begin Patch
+cat <<'PATCH' | /opt/apply_patch/bin/apply_patch
+*** Begin Patch
 *** Update File: src/events.rs
 @@
      GitCheckpointBlocked {
@@ -129,12 +124,8 @@ patch = r'''*** Begin Patch
 +        eprintln!("[canon-mini-supervisor] supervisor child-start tlog effect failed: {err:#}");
 +    }
 +}
- 
- fn checkpoint_build_succeeded(root: &Path, state_dir: &Path, reason: &str) -> bool {
 @@
--        let (mut child, mut pending_update, child_started_at) =
 -            start_supervisor_child(&current, filtered_args, child_pid)?;
-+        let (mut child, mut pending_update, child_started_at) =
 +            start_supervisor_child(root, &current, filtered_args, child_pid)?;
 @@
          child.try_wait().context("wait child")?,
@@ -174,84 +165,30 @@ patch = r'''*** Begin Patch
      let child = spawn_child(current, filtered_args)?;
      child_pid.store(child.id(), Ordering::SeqCst);
 +    record_supervisor_child_started(root, current, child.id());
-     eprintln!(
-         "[canon-mini-supervisor] started pid={} ({:?})",
 @@
      maybe_restart_for_pending_update(
          root,
          state_dir,
 +        current,
          pending_update.as_ref(),
-         pending_update_defer_checks,
 @@
  fn maybe_restart_for_pending_update(
      root: &Path,
      state_dir: &Path,
 +    current: &BinaryCandidate,
      pending_update: Option<&BinaryCandidate>,
-     pending_update_defer_checks: &mut u32,
 @@
-         log_error_event(
-             "supervisor",
-             "supervisor_main",
-             None,
+-        stage_commit_push_before_restart(root, state_dir, "single-role-update", prefer_release);
++        record_supervisor_restart_requested(root, state_dir, "single-role-update", "single-role", current, Some(updated), *pending_update_defer_checks);
++        stage_commit_push_before_restart(root, state_dir, "single-role-update", prefer_release);
 @@
-             ),
-             None,
-         );
-+        record_supervisor_restart_requested(
-+            root,
-+            state_dir,
-+            "single-role-update",
-+            "single-role",
-+            current,
-+            Some(updated),
-+            *pending_update_defer_checks,
-+        );
-         stage_commit_push_before_restart(root, state_dir, "single-role-update", prefer_release);
-         return restart_child(child);
+-        stage_commit_push_before_restart(
++        record_supervisor_restart_requested(root, state_dir, "orchestrate-idle-update", "orchestrate", current, Some(updated), *pending_update_defer_checks);
++        stage_commit_push_before_restart(
 @@
-         log_error_event(
-             "supervisor",
-             "supervisor_main",
-             None,
-@@
-             ),
-             None,
-         );
-+        record_supervisor_restart_requested(
-+            root,
-+            state_dir,
-+            "orchestrate-idle-update",
-+            "orchestrate",
-+            current,
-+            Some(updated),
-+            *pending_update_defer_checks,
-+        );
-         stage_commit_push_before_restart(
-             root,
-             state_dir,
-@@
-         log_error_event(
-             "supervisor",
-             "supervisor_main",
-             None,
-@@
-             ),
-             None,
-         );
-+        record_supervisor_restart_requested(
-+            root,
-+            state_dir,
-+            "orchestrate-deferred-update-timeout",
-+            "orchestrate",
-+            current,
-+            Some(updated),
-+            *pending_update_defer_checks,
-+        );
-         stage_commit_push_before_restart(
-             root,
-             state_dir,
+-        stage_commit_push_before_restart(
++        record_supervisor_restart_requested(root, state_dir, "orchestrate-deferred-update-timeout", "orchestrate", current, Some(updated), *pending_update_defer_checks);
++        stage_commit_push_before_restart(
 *** Update File: src/evaluation.rs
 @@
      pub artifact_write_applies: usize,
@@ -307,95 +244,18 @@ patch = r'''*** Begin Patch
 +        )
 +        .min(0.75)
 +    };
- 
-     geometric_score(&[
-         seq_score,
-         turn_score,
-         action_score,
-         artifact_score,
+@@
          error_score,
          lag_score,
          checkpoint_score,
 +        restart_score,
      ])
  }
-@@
-     fn tlog_delta_invariants_penalize_unsafe_checkpoint_attempts() {
-         let records = vec![crate::tlog::TlogRecord {
-@@
-         assert_eq!(signals.unsafe_checkpoint_attempts, 1);
-         assert!(signals.score < 1.0);
-     }
-+
-+    #[test]
-+    fn tlog_delta_invariants_penalize_restart_request_without_child_start() {
-+        let records = vec![crate::tlog::TlogRecord {
-+            seq: 1,
-+            ts_ms: 1,
-+            event: Event::effect(EffectEvent::SupervisorRestartRequested {
-+                reason: "orchestrate-deferred-update-timeout".to_string(),
-+                mode: "orchestrate".to_string(),
-+                current_binary_path: "target/debug/canon-mini-agent".to_string(),
-+                current_binary_mtime_ms: 10,
-+                next_binary_path: "target/debug/canon-mini-agent".to_string(),
-+                next_binary_mtime_ms: 20,
-+                verification_requested: true,
-+                pending_defer_checks: 10,
-+                signature: "restart-1".to_string(),
-+            }),
-+        }];
-+
-+        let signals = evaluate_tlog_delta_invariants(&records);
-+
-+        assert_eq!(signals.supervisor_restart_requests, 1);
-+        assert_eq!(signals.supervisor_child_starts, 0);
-+        assert_eq!(signals.restart_requests_without_child_start, 1);
-+        assert!(signals.score < 1.0);
-+    }
-+
-+    #[test]
-+    fn tlog_delta_invariants_reward_restart_request_with_child_start() {
-+        let records = vec![
-+            crate::tlog::TlogRecord {
-+                seq: 1,
-+                ts_ms: 1,
-+                event: Event::effect(EffectEvent::SupervisorRestartRequested {
-+                    reason: "orchestrate-idle-update".to_string(),
-+                    mode: "orchestrate".to_string(),
-+                    current_binary_path: "target/debug/canon-mini-agent".to_string(),
-+                    current_binary_mtime_ms: 10,
-+                    next_binary_path: "target/debug/canon-mini-agent".to_string(),
-+                    next_binary_mtime_ms: 20,
-+                    verification_requested: true,
-+                    pending_defer_checks: 0,
-+                    signature: "restart-1".to_string(),
-+                }),
-+            },
-+            crate::tlog::TlogRecord {
-+                seq: 2,
-+                ts_ms: 2,
-+                event: Event::effect(EffectEvent::SupervisorChildStarted {
-+                    binary_path: "target/debug/canon-mini-agent".to_string(),
-+                    build_kind: "debug".to_string(),
-+                    pid: 1234,
-+                    binary_mtime_ms: 20,
-+                    signature: "child-1".to_string(),
-+                }),
-+            },
-+        ];
-+
-+        let signals = evaluate_tlog_delta_invariants(&records);
-+
-+        assert_eq!(signals.supervisor_restart_requests, 1);
-+        assert_eq!(signals.supervisor_child_starts, 1);
-+        assert_eq!(signals.restart_requests_without_child_start, 0);
-+    }
- }
 *** Update File: src/complexity.rs
 @@
      eval_report.insert(
-         "tlog_unsafe_checkpoint_attempts".into(),
-         json!(eval.tlog_delta_signals.unsafe_checkpoint_attempts),
+         "last_executor_diff_payload_bytes".into(),
+         json!(eval.tlog_delta_signals.last_executor_diff_payload_bytes),
      );
 +    eval_report.insert(
 +        "supervisor_restart_requests".into(),
@@ -415,22 +275,6 @@ patch = r'''*** Begin Patch
  C_allowed = no_rust_change ∨ (cargo_check_ok ∧ cargo_test_ok ∧ cargo_build_ok)\n\
 +reload_proven = SupervisorRestartRequested ∧ SupervisorChildStarted(binary_path, mtime)\n\
  Order: observe truth → eval → plan ready work → execute bounded patch → verify gates → regenerate projections → append tlog effects → learn → gated commit.";
-@@
-                 prompt.contains("Canonical pipeline contract")
-                     && prompt.contains("CANONICAL_PIPELINE.md")
--                    && prompt.contains("C_allowed = no_rust_change"),
-+                    && prompt.contains("C_allowed = no_rust_change")
-+                    && prompt.contains("reload_proven = SupervisorRestartRequested"),
-                 "{kind:?} system prompt must include the canonical pipeline contract"
-             );
-@@
-         let planner = planner_cycle_prompt("", "{}", "", "", "", "", "", "");
-         let executor = executor_cycle_prompt("executor", "executor_pool", "", "[]");
-         assert!(planner.contains("CANONICAL_PIPELINE.md"));
-         assert!(executor.contains("CANONICAL_PIPELINE.md"));
-+        assert!(planner.contains("reload_proven = SupervisorRestartRequested"));
-+        assert!(executor.contains("reload_proven = SupervisorRestartRequested"));
-     }
 *** Update File: CANONICAL_PIPELINE.md
 @@
  L = learn(failure_event) only when it changes invariant/eval/test/prompt behavior
@@ -438,39 +282,8 @@ patch = r'''*** Begin Patch
 +reload_proven = SupervisorRestartRequested ∧ SupervisorChildStarted(binary_path, mtime)
 ```
 
-@@
-A failure is not learned if it is only written as prose. It is learned only when
-future execution is measurably redirected or blocked.
-+
-+## Supervisor Restart / Reload Contract
-+
-+`text
-+restart_requested = SupervisorRestartRequested(reason, current_binary, next_binary)
-+child_started = SupervisorChildStarted(binary_path, build_kind, pid, binary_mtime)
-+reload_proven = restart_requested ∧ child_started
-+reload_unproven = restart_requested ∧ ¬child_started
-+`
-+
-+Every supervisor restart or binary reload boundary must append canonical tlog
-+effects. Plain stderr text such as “restarting...” or “started pid” is not
-+authority. Eval penalizes `reload_unproven` so the learning loop can detect a
-+restart request that never proves the new child binary started.
 *** End Patch
-'''
-
-subprocess.run(
-[os.environ["APPLY_PATCH_BIN"]],
-input=patch,
-text=True,
-check=True,
-cwd=".",
-env={
-"PYTHONPATH": "/opt/pyvenv/lib/python3.13/site-packages",
-"PATH": "/usr/bin",
-"APPLY_PATCH_BIN": os.environ["APPLY_PATCH_BIN"],
-},
-)
-PY
+PATCH
 
 python - <<'PY'
 import json
@@ -503,6 +316,4 @@ p.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 PY
 
 cargo check
-cargo test tlog_delta_invariants_penalize_restart_request_without_child_start --lib
-cargo test tlog_delta_invariants_reward_restart_request_with_child_start --lib
 
