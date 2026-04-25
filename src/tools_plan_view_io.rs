@@ -965,10 +965,18 @@ fn handle_message_action(
         .trim()
         .to_lowercase()
         .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
-    let planner_executor_pair =
-        (normalized_role == "planner" && normalized_to.starts_with("executor"))
-            || (normalized_to == "planner" && normalized_role.starts_with("executor"));
-    let persist_handoff_message = !planner_executor_pair
+    let planner_to_executor =
+        normalized_role == "planner" && normalized_to.starts_with("executor");
+    let executor_to_planner =
+        normalized_to == "planner" && normalized_role.starts_with("executor");
+    let _planner_executor_pair = planner_to_executor || executor_to_planner;
+    // planner→executor handoffs must always call persist_inbound_message so that
+    // InboundMessageQueued + WakeSignalQueued are emitted to tlog and the executor
+    // lane is activated regardless of transport state.
+    // executor→planner completion messages go through app::persist_executor_completion_message
+    // and are suppressed here to avoid double-routing.
+    let persist_handoff_message = planner_to_executor
+        || !executor_to_planner
         || status.eq_ignore_ascii_case("blocked")
         || msg_type.eq_ignore_ascii_case("blocker");
 

@@ -6,6 +6,7 @@ pub mod constants;
 pub mod drift_analysis;
 mod engine;
 pub mod error_class;
+pub mod eval_driver;
 pub mod evaluation;
 pub mod evolution;
 pub mod graph_metrics;

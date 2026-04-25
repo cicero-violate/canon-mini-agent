@@ -6,6 +6,35 @@ use crate::issues::Issue;
 use crate::issues::IssuesFile;
 use crate::reports::{DiagnosticsReport, ViolationsReport};
 
+/// All pre-loaded data required to compute an eval snapshot — no I/O.
+#[derive(Debug, Clone)]
+pub struct EvalInput {
+    pub objectives_completed: usize,
+    pub objectives_total: usize,
+    pub violations: ViolationsReport,
+    pub completed_tasks: usize,
+    pub total_tasks: usize,
+    pub open_issues: usize,
+    pub repeated_open_issues: usize,
+    /// Open issues with priority = "high" or "critical".
+    pub high_priority_open_issues: usize,
+    pub diagnostics: DiagnosticsReport,
+    pub semantic_fn_total: usize,
+    pub semantic_fn_with_any_error: usize,
+    pub semantic_fn_error_rate: f64,
+}
+
+/// Direction and magnitude of change between two consecutive eval snapshots.
+#[derive(Debug, Clone, Default)]
+pub struct EvalDelta {
+    /// current.overall_score() − previous.overall_score
+    pub delta_g: f64,
+    pub semantic_contract_delta: f64,
+    pub safety_delta: f64,
+    /// True when no dimension regressed beyond tolerance.
+    pub promotion_eligible: bool,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct EvaluationVector {
     pub objective_progress: f64,
@@ -50,6 +79,71 @@ impl EvaluationWorkspaceSnapshot {
         let repair_penalty = 0.25 * self.diagnostics_repair_pressure;
         clamp_unit(base * (1.0 - repair_penalty))
     }
+}
+
+/// Pure kernel entry point — no I/O.  All inputs are pre-loaded by the caller.
+pub fn compute_eval(input: &EvalInput) -> EvaluationWorkspaceSnapshot {
+    let mut vector = evaluate_repo_state(
+        input.objectives_completed,
+        input.objectives_total,
+        &input.violations,
+        input.completed_tasks,
+        input.total_tasks,
+        input.open_issues,
+        input.repeated_open_issues,
+        (1.0 - input.semantic_fn_error_rate).clamp(0.0, 1.0),
+    );
+    // Fold semantic error rate into safety so a clean build alone cannot produce safety = 1.0.
+    vector.safety = clamp_unit(vector.safety * (1.0 - 0.3 * input.semantic_fn_error_rate));
+    EvaluationWorkspaceSnapshot {
+        objectives_completed: input.objectives_completed,
+        objectives_total: input.objectives_total,
+        completed_tasks: input.completed_tasks,
+        total_tasks: input.total_tasks,
+        open_issues: input.open_issues,
+        repeated_open_issues: input.repeated_open_issues,
+        diagnostics_repair_pressure: diagnostics_repair_pressure_with_issues(
+            &input.diagnostics,
+            input.high_priority_open_issues,
+        ),
+        semantic_fn_total: input.semantic_fn_total,
+        semantic_fn_with_any_error: input.semantic_fn_with_any_error,
+        semantic_fn_error_rate: input.semantic_fn_error_rate,
+        vector,
+    }
+}
+
+/// Pure delta — no I/O.  Call after two consecutive `compute_eval` results.
+pub fn compute_delta(
+    current: &EvaluationWorkspaceSnapshot,
+    prev_overall: f64,
+    prev_semantic: f64,
+    prev_safety: f64,
+) -> EvalDelta {
+    let delta_g = current.overall_score() - prev_overall;
+    let semantic_contract_delta = current.vector.semantic_contract - prev_semantic;
+    let safety_delta = current.vector.safety - prev_safety;
+    EvalDelta {
+        delta_g,
+        semantic_contract_delta,
+        safety_delta,
+        promotion_eligible: delta_g >= -0.001
+            && semantic_contract_delta >= -0.001
+            && safety_delta >= -0.001,
+    }
+}
+
+/// `diagnostics_repair_pressure` floored by open high-priority issue pressure.
+///
+/// Prevents a clean cargo build from reporting zero pressure when hundreds of
+/// high-priority issues are open.
+pub fn diagnostics_repair_pressure_with_issues(
+    report: &DiagnosticsReport,
+    high_priority_open_issues: usize,
+) -> f64 {
+    let cargo_pressure = diagnostics_repair_pressure(report);
+    let issue_floor = (high_priority_open_issues as f64 / 100.0).min(0.10);
+    cargo_pressure.max(issue_floor)
 }
 
 pub fn reward_alignment_score(completed_objectives: usize, total_objectives: usize) -> f64 {
@@ -133,33 +227,24 @@ pub fn evaluate_workspace(workspace: &Path) -> EvaluationWorkspaceSnapshot {
     let _canonical_events = load_canonical_event_count(workspace);
 
     let (completed_tasks, total_tasks) = load_task_counts(workspace);
-    let (open_issues, repeated_open_issues) = load_issue_counts(workspace);
+    let (open_issues, repeated_open_issues, high_priority_open_issues) =
+        load_issue_counts(workspace);
     let semantic_metrics = crate::semantic_contract::load_semantic_manifest_metrics(workspace);
 
-    let vector = evaluate_repo_state(
+    compute_eval(&EvalInput {
         objectives_completed,
         objectives_total,
-        &violations,
+        violations,
         completed_tasks,
         total_tasks,
         open_issues,
         repeated_open_issues,
-        semantic_metrics.score(),
-    );
-
-    EvaluationWorkspaceSnapshot {
-        objectives_completed,
-        objectives_total,
-        completed_tasks,
-        total_tasks,
-        open_issues,
-        repeated_open_issues,
-        diagnostics_repair_pressure: diagnostics_repair_pressure(&diagnostics),
+        high_priority_open_issues,
+        diagnostics,
         semantic_fn_total: semantic_metrics.fn_total,
         semantic_fn_with_any_error: semantic_metrics.fn_with_any_error,
         semantic_fn_error_rate: semantic_metrics.fn_error_rate,
-        vector,
-    }
+    })
 }
 
 /// Intent: canonical_read
@@ -171,7 +256,8 @@ pub fn evaluate_workspace(workspace: &Path) -> EvaluationWorkspaceSnapshot {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-pub fn load_issue_counts(workspace: &Path) -> (usize, usize) {
+/// Returns `(open_issues, repeated_open_issues, high_priority_open_issues)`.
+pub fn load_issue_counts(workspace: &Path) -> (usize, usize, usize) {
     let issues = crate::issues::load_issues_file(workspace);
     let mut counts: HashMap<&str, usize> = HashMap::new();
     for issue in &issues.issues {
@@ -181,7 +267,18 @@ pub fn load_issue_counts(workspace: &Path) -> (usize, usize) {
     }
     let open_issues = issues.issues.iter().filter(|issue| is_open(issue)).count();
     let repeated_open_issues = counts.values().filter(|count| **count > 1).copied().sum();
-    (open_issues, repeated_open_issues)
+    let high_priority_open_issues = issues
+        .issues
+        .iter()
+        .filter(|issue| {
+            is_open(issue)
+                && matches!(
+                    issue.priority.trim().to_lowercase().as_str(),
+                    "high" | "critical"
+                )
+        })
+        .count();
+    (open_issues, repeated_open_issues, high_priority_open_issues)
 }
 
 pub fn diagnostics_repair_pressure(report: &DiagnosticsReport) -> f64 {

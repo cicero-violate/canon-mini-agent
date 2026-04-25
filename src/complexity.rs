@@ -1404,11 +1404,19 @@ pub fn write_complexity_report(workspace: &Path) -> Result<Option<PathBuf>> {
         }
     }
 
+    // Synthesize enforced_invariants.json synchronously on every report cycle so
+    // deterministic invariants (e.g. handoff causality) are always current.
+    // generate_invariant_lifecycle_issues also calls this inside the background thread,
+    // but that path is skipped when the thread is still in-flight.
+    crate::invariants::maybe_synthesize_invariants(workspace);
+
     enqueue_issue_task_generation(workspace);
 
-    let eval = crate::evaluation::evaluate_workspace(workspace);
+    let (eval, eval_delta) = crate::eval_driver::run(workspace, None)
+        .unwrap_or_else(|_| (crate::evaluation::evaluate_workspace(workspace), None));
     let drift = compute_and_persist_fingerprint_drift(workspace, &current_summaries)?;
-    let report = build_complexity_report(per_crate, global_top, inter_sections, &eval, &drift);
+    let report =
+        build_complexity_report(per_crate, global_top, inter_sections, &eval, &drift, eval_delta.as_ref());
 
     enqueue_grpo_extraction(workspace);
 
@@ -1521,6 +1529,9 @@ fn generate_refactor_issue_batch(workspace: &Path) {
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
 fn generate_invariant_lifecycle_issues(workspace: &Path) {
+    // Synthesize enforced_invariants.json from blockers + action log + tlog causal scans.
+    // Must run before generate_invariant_issues so that deterministic invariants are seeded.
+    crate::invariants::maybe_synthesize_invariants(workspace);
     // Auto-generate invariant lifecycle issues (action surface gap, prompt injection gap, per-promoted gates)
     let _ = crate::invariants::generate_invariant_issues(workspace);
 }
@@ -1540,6 +1551,7 @@ fn build_complexity_report(
     inter: serde_json::Value,
     eval: &crate::evaluation::EvaluationWorkspaceSnapshot,
     drift: &crate::drift_analysis::FingerprintDrift,
+    eval_delta: Option<&crate::evaluation::EvalDelta>,
 ) -> serde_json::Value {
     let intra_scoring = complexity_intra_scoring();
     let inter_scoring = complexity_inter_scoring();
@@ -1554,6 +1566,8 @@ fn build_complexity_report(
         "inter": inter,
         "eval": {
             "overall_score": eval.overall_score(),
+            "delta_g": eval_delta.map(|d| d.delta_g),
+            "promotion_eligible": eval_delta.map(|d| d.promotion_eligible),
             "objective_progress": eval.vector.objective_progress,
             "safety": eval.vector.safety,
             "task_velocity": eval.vector.task_velocity,

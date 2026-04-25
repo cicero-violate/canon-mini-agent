@@ -380,6 +380,23 @@ pub enum EffectEvent {
         group_count: usize,
         mean_reward: f64,
     },
+    /// Eval snapshot emitted each report cycle.  tlog is authority; latest.json is a projection.
+    EvalScoreRecorded {
+        generated_at_ms: u64,
+        overall_score: f64,
+        /// None on the first cycle; Some(current − previous) thereafter.
+        delta_g: Option<f64>,
+        promotion_eligible: bool,
+        objective_progress: f64,
+        safety: f64,
+        task_velocity: f64,
+        issue_health: f64,
+        semantic_contract: f64,
+        diagnostics_repair_pressure: f64,
+        semantic_fn_error_rate: f64,
+        semantic_fn_total: usize,
+        semantic_fn_with_any_error: usize,
+    },
     /// Last completed action snapshot used to resume after process restarts.
     PostRestartResultRecorded {
         role: String,

@@ -606,7 +606,10 @@ fn persist_inbound_message(
             step, to, err
         );
     }
-    if let Some(w) = writer.as_deref_mut() {
+    // Emit InboundMessageQueued + WakeSignalQueued via the live writer when available,
+    // or open a one-shot writer so the control events always reach tlog even in
+    // offline/recovery mode (TAB_ID=pending, writer=None).
+    let emit_queued = |w: &mut crate::canonical_writer::CanonicalWriter| {
         w.apply(ControlEvent::InboundMessageQueued {
             role: to.clone(),
             content: full_message.to_string(),
@@ -618,6 +621,19 @@ fn persist_inbound_message(
             signature: wake_signature,
             ts_ms: now_ms(),
         });
+    };
+    if let Some(w) = writer.as_deref_mut() {
+        emit_queued(w);
+    } else {
+        let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
+        let state = crate::system_state::SystemState::new(&[], 0);
+        if let Ok(mut w) = crate::canonical_writer::CanonicalWriter::try_new(
+            state,
+            crate::tlog::Tlog::open(&tlog_path),
+            workspace.to_path_buf(),
+        ) {
+            emit_queued(&mut w);
+        }
     }
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let path = agent_state_dir.join(format!("last_message_to_{to}.json"));
