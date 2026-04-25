@@ -2155,6 +2155,66 @@ mod tests {
     }
 
     #[test]
+    fn synthesize_stale_executor_lane_busy_invariant_when_wake_cannot_route() {
+        let tmp = make_workspace();
+        let mut tlog = crate::tlog::Tlog::open(&tmp.join("agent_state").join("tlog.ndjson"));
+        tlog.append(&crate::events::Event::control(
+            crate::events::ControlEvent::LaneInProgressSet {
+                lane_id: 0,
+                actor: Some("executor_pool".to_string()),
+            },
+        ))
+        .unwrap();
+        tlog.append(&crate::events::Event::control(
+            crate::events::ControlEvent::LanePendingSet {
+                lane_id: 0,
+                pending: false,
+            },
+        ))
+        .unwrap();
+        tlog.append(&crate::events::Event::control(
+            crate::events::ControlEvent::LaneSubmitInFlightSet {
+                lane_id: 0,
+                in_flight: false,
+            },
+        ))
+        .unwrap();
+        tlog.append(&crate::events::Event::control(
+            crate::events::ControlEvent::LanePromptInFlightSet {
+                lane_id: 0,
+                in_flight: false,
+            },
+        ))
+        .unwrap();
+        tlog.append(&crate::events::Event::control(
+            crate::events::ControlEvent::WakeSignalQueued {
+                role: "executor".to_string(),
+                signature: "wake-test".to_string(),
+                ts_ms: 1,
+            },
+        ))
+        .unwrap();
+
+        maybe_synthesize_invariants(&tmp);
+        let file = load_enforced_invariants_file(&tmp);
+        let inv = file
+            .invariants
+            .iter()
+            .find(|inv| {
+                inv.state_conditions.iter().any(|condition| {
+                    condition.key == "lane_in_progress_without_inflight"
+                        && condition.value == "true"
+                })
+            })
+            .expect("stale executor lane invariant must be synthesized");
+        assert_eq!(inv.status, InvariantStatus::Enforced);
+        assert!(inv.gates.contains(&"route".to_string()));
+        assert!(inv
+            .predicate_text
+            .contains("in_progress_by set but lane_pending=false"));
+    }
+
+    #[test]
     fn synthesize_runtime_control_bypass_from_blockers_and_block_route() {
         let tmp = make_workspace();
         std::fs::create_dir_all(tmp.join("agent_state")).unwrap();
