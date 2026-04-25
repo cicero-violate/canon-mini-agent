@@ -931,13 +931,13 @@ fn mark_candidate_status(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: prompt_context
 /// Inputs: &prompt_inputs::LessonsArtifact
 /// Outputs: std::string::String
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: fs_write, uses_network, spawns_process
+/// Invariants: no_external_effects
+/// Failure: infallible
 /// Provenance: rustc:facts + rustc:docstring
 fn build_artifact_summary(artifact: &LessonsArtifact) -> String {
     let f = artifact.failures.len();
