@@ -70,6 +70,9 @@ pub struct SemanticPromptArtifacts {
     /// Eval score header rendered as its own prompt block.
     /// Shows overall score, weakest dimension, and a direct improvement directive.
     pub eval_header: String,
+    /// Summary of recent plan verify outcomes: passed plans (→ close task),
+    /// repeatedly-failed plans (→ escalated to blocker), and objective hints.
+    pub plan_verify_summary: String,
     #[cfg(test)]
     pub diagnostics_report: String,
 }
@@ -679,6 +682,79 @@ fn eval_gate_fail_focus_line(weakest_name: &str, weakest_val: f64) -> String {
     )
 }
 
+/// Render a summary of recent plan verify outcomes for the planner prompt.
+///
+/// Shows:
+/// - Passed plans → planner should close the corresponding task
+/// - Plans failed N times (escalated to VerificationFailed blocker)
+/// - Objectives whose all repair_plan_ids have verified → mark done
+///
+/// Returns empty string when there is nothing notable to surface.
+fn build_plan_verify_summary(workspace: &Path) -> String {
+    let outcomes = crate::repair_plans::recent_plan_verify_outcomes(workspace);
+    if outcomes.is_empty() {
+        return String::new();
+    }
+
+    let mut lines: Vec<String> = Vec::new();
+
+    // Load objectives for repair_plan_ids binding check.
+    let objectives = crate::evaluation::load_objectives_file(workspace);
+
+    for (plan_id, passed, failures) in &outcomes {
+        if *passed {
+            // Objective plans are surfaced separately below.
+            if plan_id.starts_with("objective:") {
+                let obj_id = plan_id.trim_start_matches("objective:");
+                lines.push(format!(
+                    "→ OBJECTIVE VERIFIED: {obj_id} — all repair plans passed, mark done"
+                ));
+            } else {
+                lines.push(format!(
+                    "→ PLAN VERIFIED: {plan_id} — close the corresponding task in PLAN.json"
+                ));
+            }
+        } else if *failures >= 3 {
+            lines.push(format!(
+                "⚠ PLAN ESCALATED: {plan_id} failed verify {failures}× — \
+                VerificationFailed blocker recorded; add invariant for \
+                'verification_failed' error class"
+            ));
+        }
+    }
+
+    // Surface objectives that are bindable and still active.
+    for obj in &objectives.objectives {
+        if crate::objectives::is_completed(obj) || obj.repair_plan_ids.is_empty() {
+            continue;
+        }
+        let verified_ids: Vec<&str> = obj
+            .repair_plan_ids
+            .iter()
+            .filter(|pid| {
+                outcomes
+                    .iter()
+                    .any(|(id, passed, _)| id == *pid && *passed)
+            })
+            .map(|s| s.as_str())
+            .collect();
+        if !verified_ids.is_empty() {
+            lines.push(format!(
+                "○ OBJECTIVE {}: {}/{} repair plans verified ({})",
+                obj.id,
+                verified_ids.len(),
+                obj.repair_plan_ids.len(),
+                verified_ids.join(", ")
+            ));
+        }
+    }
+
+    if lines.is_empty() {
+        return String::new();
+    }
+    format!("Plan verify outcomes:\n{}", lines.join("\n"))
+}
+
 fn eval_score_directive(weakest_name: &str) -> &'static str {
     match weakest_name {
         "objective_progress" => "close completed objectives and create plan tasks for active ones",
@@ -1094,6 +1170,7 @@ pub fn derive_semantic_prompt_artifacts(
     SemanticPromptArtifacts {
         issues_summary: summarize_ranked_open_issues_for_prompt(&open_issues, issue_limit),
         eval_header: build_eval_header(workspace),
+        plan_verify_summary: build_plan_verify_summary(workspace),
         recovery_dashboard: build_recovery_dashboard(workspace),
         violations_summary: summarize_violations_report_for_prompt(
             violations_report.as_ref(),
@@ -1119,6 +1196,10 @@ pub fn derive_semantic_control_prompt_state(
 
     if !artifacts.eval_header.trim().is_empty() {
         sections.push(format!("EVAL HEADER:\n{}", artifacts.eval_header.trim()));
+    }
+
+    if !artifacts.plan_verify_summary.trim().is_empty() {
+        sections.push(artifacts.plan_verify_summary.trim().to_string());
     }
 
     if !runtime_state.trim().is_empty() {

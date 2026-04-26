@@ -44,6 +44,12 @@ pub struct Objective {
     pub verification: Vec<Value>,
     #[serde(default)]
     pub success_criteria: Vec<Value>,
+    /// Stable repair plan ids (e.g. "eval_metric:blocker_class_coverage") whose
+    /// machine_verify must all pass before this objective is considered done.
+    /// When all ids have PlanVerifyRecorded(passed=true) in recent tlog,
+    /// eval_driver emits a hint and the planner closes the objective.
+    #[serde(default)]
+    pub repair_plan_ids: Vec<String>,
 }
 
 pub fn runtime_objectives_path(workspace: &Path) -> PathBuf {

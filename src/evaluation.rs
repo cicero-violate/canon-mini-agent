@@ -1250,7 +1250,7 @@ fn recovery_reason_matches_class(reason: &str, class: &str) -> bool {
     match class {
         "missing_target" => text.contains("does not exist") || text.contains("missing_target"),
         "invalid_route" => recovery_reason_mentions_invalid_route(&text),
-        "llm_timeout" => text.contains("timeout"),
+        "llm_timeout" => recovery_reason_mentions_timeout(&text),
         "compile_error" => text.contains("cargo") || text.contains("compile"),
         "verification_failed" => text.contains("verification"),
         "projection_refresh_stalled" => recovery_reason_mentions_projection_stall(&text),
@@ -1260,6 +1260,10 @@ fn recovery_reason_matches_class(reason: &str, class: &str) -> bool {
         "reaction_only" => text.contains("reaction_only") || text.contains("prose-only"),
         _ => false,
     }
+}
+
+fn recovery_reason_mentions_timeout(text: &str) -> bool {
+    text.contains("timeout")
 }
 
 fn recovery_reason_mentions_invalid_route(text: &str) -> bool {
@@ -1563,7 +1567,7 @@ pub fn diagnostics_repair_pressure(report: &DiagnosticsReport) -> f64 {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn load_objectives_file(workspace: &Path) -> crate::objectives::ObjectivesFile {
+pub fn load_objectives_file(workspace: &Path) -> crate::objectives::ObjectivesFile {
     let path = crate::objectives::resolve_objectives_path(workspace);
     let raw = std::fs::read_to_string(path).unwrap_or_default();
     serde_json::from_str(&raw).unwrap_or_default()

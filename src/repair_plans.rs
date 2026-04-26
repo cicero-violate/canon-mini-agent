@@ -790,6 +790,80 @@ pub fn snapshot_to_eval_map(
     m
 }
 
+// ── Tlog scanning helpers ─────────────────────────────────────────────────────
+
+/// Count how many consecutive `PlanVerifyRecorded(passed=false)` events exist
+/// for `plan_id` at the tail of the tlog (most-recent-first scan, stops at
+/// first `passed=true`).  Returns 0 if no failures or if tlog is unreadable.
+pub fn count_consecutive_verify_failures(workspace: &Path, plan_id: &str) -> usize {
+    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
+    let records = match crate::tlog::Tlog::read_recent_records(&tlog_path, 300) {
+        Ok(r) => r,
+        Err(_) => return 0,
+    };
+    let mut count = 0usize;
+    for record in records.iter().rev() {
+        if let crate::events::Event::Effect {
+            event:
+                crate::events::EffectEvent::PlanVerifyRecorded {
+                    plan_id: pid,
+                    passed,
+                    ..
+                },
+        } = &record.event
+        {
+            if pid == plan_id {
+                if *passed {
+                    break;
+                }
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+/// Return (plan_id, passed, consecutive_failures) for the most recent verify
+/// result of every plan seen in recent tlog — used by prompt to surface status.
+pub fn recent_plan_verify_outcomes(
+    workspace: &Path,
+) -> Vec<(String, bool, usize)> {
+    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
+    let records = match crate::tlog::Tlog::read_recent_records(&tlog_path, 500) {
+        Ok(r) => r,
+        Err(_) => return Vec::new(),
+    };
+
+    // latest result per plan (walk forward so last write wins)
+    let mut latest: std::collections::HashMap<String, bool> =
+        std::collections::HashMap::new();
+    for record in &records {
+        if let crate::events::Event::Effect {
+            event:
+                crate::events::EffectEvent::PlanVerifyRecorded {
+                    plan_id, passed, ..
+                },
+        } = &record.event
+        {
+            latest.insert(plan_id.clone(), *passed);
+        }
+    }
+
+    let mut out: Vec<(String, bool, usize)> = latest
+        .into_iter()
+        .map(|(id, passed)| {
+            let failures = if passed {
+                0
+            } else {
+                count_consecutive_verify_failures(workspace, &id)
+            };
+            (id, passed, failures)
+        })
+        .collect();
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn truncate(s: &str, max_chars: usize) -> &str {

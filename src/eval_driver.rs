@@ -145,22 +145,92 @@ pub fn run(
         let _ = crate::logging::record_effect_for_workspace(workspace, effect);
     }
 
-    // Run machine_verify checks for all active repair plans and record outcomes.
+    // ── Plan verify loop ──────────────────────────────────────────────────────
+    // Run machine_verify for every active repair plan and record outcomes.
+    // Escalate repeated failures into blockers so they feed back into eval.
     let eval_map = crate::repair_plans::snapshot_to_eval_map(&snapshot);
     let invariant_text = std::fs::read_to_string(
         workspace.join("agent_state").join("enforced_invariants.json"),
     )
     .unwrap_or_default();
     let plans = crate::repair_plans::build_all_active_plans(&eval_map, workspace, usize::MAX);
+
+    const ESCALATION_THRESHOLD: usize = 3;
+
     for plan in &plans {
         let passed = plan.machine_verify.check(&eval_map, &invariant_text);
-        let verify_effect = EffectEvent::PlanVerifyRecorded {
-            plan_id: plan.id.clone(),
-            plan_kind: plan.kind.to_string(),
-            passed,
-            verify_description: plan.machine_verify.description(),
-        };
-        let _ = crate::logging::record_effect_for_workspace(workspace, verify_effect);
+
+        let _ = crate::logging::record_effect_for_workspace(
+            workspace,
+            EffectEvent::PlanVerifyRecorded {
+                plan_id: plan.id.clone(),
+                plan_kind: plan.kind.to_string(),
+                passed,
+                verify_description: plan.machine_verify.description(),
+            },
+        );
+
+        if !passed {
+            let consecutive =
+                crate::repair_plans::count_consecutive_verify_failures(workspace, &plan.id);
+            if consecutive >= ESCALATION_THRESHOLD {
+                // Escalate into blockers.json so the VerificationFailed error
+                // class feeds back into compute_blocker_class_coverage → eval.
+                crate::blockers::append_blocker(
+                    workspace,
+                    crate::blockers::BlockerRecord {
+                        id: format!(
+                            "blk-eval_driver-verification_failed-{}",
+                            crate::logging::now_ms()
+                        ),
+                        error_class: crate::error_class::ErrorClass::VerificationFailed,
+                        actor: "eval_driver".to_string(),
+                        task_id: None,
+                        objective_id: None,
+                        summary: format!(
+                            "repair plan '{}' machine_verify failed {consecutive} \
+                            consecutive times: {}",
+                            plan.id,
+                            plan.machine_verify.description()
+                        ),
+                        action_kind: "plan_verify".to_string(),
+                        source: "action_result".to_string(),
+                        ts_ms: crate::logging::now_ms(),
+                    },
+                );
+            }
+        }
+    }
+
+    // ── Objective auto-verify ─────────────────────────────────────────────────
+    // When all repair_plan_ids for an objective have just passed, emit a hint
+    // so the planner can mark the objective done on its next cycle.
+    let objectives = crate::evaluation::load_objectives_file(workspace);
+    for obj in &objectives.objectives {
+        if crate::objectives::is_completed(obj) || obj.repair_plan_ids.is_empty() {
+            continue;
+        }
+        let all_verified = obj.repair_plan_ids.iter().all(|pid| {
+            plans
+                .iter()
+                .find(|p| &p.id == pid)
+                .map(|p| p.machine_verify.check(&eval_map, &invariant_text))
+                .unwrap_or(false)
+        });
+        if all_verified {
+            let _ = crate::logging::record_effect_for_workspace(
+                workspace,
+                EffectEvent::PlanVerifyRecorded {
+                    plan_id: format!("objective:{}", obj.id),
+                    plan_kind: "objective".to_string(),
+                    passed: true,
+                    verify_description: format!(
+                        "all repair_plan_ids verified — mark objective '{}' done",
+                        obj.id
+                    ),
+                },
+            );
+        }
     }
 
     Ok((snapshot, delta))

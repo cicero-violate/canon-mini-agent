@@ -42,6 +42,26 @@ pub struct PreflightBounce {
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
 pub fn preflight_ready_tasks(workspace: &Path) -> Vec<PreflightBounce> {
+    // ── Plan-task gap check ────────────────────────────────────────────────────
+    // Record a PlanPreflightFailed blocker for every active repair plan that
+    // has no open task.  This feeds blocker_class_coverage → eval pressure →
+    // REPAIR_PLAN → planner creates the missing tasks.
+    let missing_tasks = plans_without_open_tasks(workspace);
+    for plan_id in &missing_tasks {
+        crate::blockers::record_action_failure_with_writer(
+            workspace,
+            None,
+            "orchestrator",
+            "plan_preflight",
+            &format!(
+                "active repair plan '{plan_id}' has no open task in PLAN.json — \
+                planner must create a task for this plan before executor dispatch"
+            ),
+            None,
+        );
+    }
+
+    // ── Symbol reference check ────────────────────────────────────────────────
     match try_preflight_ready_tasks(workspace) {
         Ok(bounces) => {
             if !bounces.is_empty() {

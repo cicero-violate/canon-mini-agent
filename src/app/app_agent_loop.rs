@@ -681,6 +681,10 @@ pub(super) struct PostRestartResultPayload<'a> {
 }
 
 pub(super) fn post_restart_result_payload_json(payload: PostRestartResultPayload<'_>) -> serde_json::Value {
+    post_restart_result_payload_fields(payload)
+}
+
+fn post_restart_result_payload_fields(payload: PostRestartResultPayload<'_>) -> serde_json::Value {
     serde_json::json!({
         "role": payload.role,
         "action": payload.action,
