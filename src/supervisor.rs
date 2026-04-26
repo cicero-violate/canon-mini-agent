@@ -1789,13 +1789,13 @@ fn supervise_current_child_iteration(
 }
 
 /// Intent: transport_effect
-/// Resource: error
+/// Resource: supervisor_shutdown
 /// Inputs: &std::sync::atomic::Atomic<bool>, &mut std::process::Child
 /// Outputs: bool
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: reads shutdown flag; logs shutdown event; waits for child exit when requested
+/// Forbidden: process spawning, network access
+/// Invariants: returns false without child interaction when shutdown flag is unset; returns true after bounded child wait when set
+/// Failure: none; shutdown wait/logging path is best-effort
 /// Provenance: rustc:facts + rustc:docstring
 fn handle_shutdown_request(shutdown: &AtomicBool, child: &mut Child) -> bool {
     if !shutdown.load(Ordering::SeqCst) {

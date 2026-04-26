@@ -125,13 +125,13 @@ fn build_stage_graph_nodes() -> Vec<serde_json::Value> {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: stage_graph_edges
 /// Inputs: ()
 /// Outputs: std::vec::Vec<serde_json::Value>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: builds canonical stage graph edge records without mutation
+/// Forbidden: filesystem writes, state mutation, process spawning, network access
+/// Invariants: preserves observe→orient→plan→act→verify→reward flow plus retry/refine edges
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn build_stage_graph_edges() -> Vec<serde_json::Value> {
     vec![

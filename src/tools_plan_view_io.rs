@@ -259,13 +259,13 @@ fn extract_output_log_path(out: &str) -> Option<PathBuf> {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: cargo_test_failure_output
 /// Inputs: &str
 /// Outputs: serde_json::Value
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: parses cargo test failure output into structured JSON without mutation
+/// Forbidden: filesystem writes, state mutation, process spawning, network access
+/// Invariants: reports sorted error locations, failed/stalled tests, rerun hint, output log, and failure block when present
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 pub(crate) fn parse_cargo_test_failures(out: &str) -> Value {
     let mut locations = BTreeSet::new();

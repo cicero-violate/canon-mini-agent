@@ -302,13 +302,13 @@ fn validate_verifier_summary_lane(state: &SystemState, lane_id: usize) -> Result
 }
 
 /// Intent: validation_gate
-/// Resource: error
+/// Resource: lane_registry
 /// Inputs: &system_state::SystemState, usize
 /// Outputs: std::result::Result<(), std::string::String>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: validates lane existence without mutation
+/// Forbidden: state mutation, filesystem writes, process spawning, network access
+/// Invariants: lane-scoped events must reference a known lane
+/// Failure: returns illegal-transition error for unknown lane
 /// Provenance: rustc:facts + rustc:docstring
 fn validate_lane_scoped_event(state: &SystemState, lane_id: usize) -> Result<(), String> {
     require_lane(state, lane_id, "lane-scoped event")
