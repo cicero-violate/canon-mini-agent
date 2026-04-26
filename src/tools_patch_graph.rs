@@ -1518,13 +1518,13 @@ fn execute_graph_call_cfg_action(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: graph_call_cfg_action_input
 /// Inputs: &str, &std::path::Path, &serde_json::Value
 /// Outputs: std::result::Result<(&str, std::path::PathBuf), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: parses graph call/CFG action input without mutation
+/// Forbidden: filesystem writes, state mutation, process spawning, network access
+/// Invariants: crate is required; blank out_dir falls back to default graph output directory
+/// Failure: returns missing crate error
 /// Provenance: rustc:facts + rustc:docstring
 fn parse_graph_call_cfg_action_input<'a>(
     action_kind: &'a str,

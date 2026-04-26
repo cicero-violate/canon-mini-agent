@@ -2103,13 +2103,13 @@ pub fn load_single_role_inputs(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: single_role_prompt
 /// Inputs: &prompt_inputs::SingleRoleContext<'_>, &prompt_inputs::SingleRoleInputs, &str
 /// Outputs: std::result::Result<std::string::String, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: dispatches to planner or executor prompt builder without mutation
+/// Forbidden: direct filesystem writes, state mutation, process spawning, network access
+/// Invariants: prompt_kind selects exactly one role prompt builder; planner path preserves cargo test failure input
+/// Failure: propagates selected role prompt builder read/render errors
 /// Provenance: rustc:facts + rustc:docstring
 pub fn build_single_role_prompt(
     ctx: &SingleRoleContext<'_>,

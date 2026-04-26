@@ -786,13 +786,13 @@ pub fn visibility_leak_issues(
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: monomorphization_issues
 /// Inputs: &std::path::Path, &str, &[semantic::SymbolSummary], usize
 /// Outputs: std::vec::Vec<issues::Issue>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: scans symbol summaries and constructs monomorphization issue records without mutation
+/// Forbidden: filesystem writes, state mutation, process spawning, network access
+/// Invariants: only reports groups with more than two variants sharing one MIR fingerprint; output is sorted and limited
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 pub fn mono_explosion_issues(
     _workspace: &Path,
