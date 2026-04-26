@@ -17,6 +17,10 @@
 # canon-rustc-v2/Cargo.lock \
 # canon-rustc-v2/rust-toolchain.toml \
 # canon-rustc-v2/src
+
+git add .
+git commit -m "uploading to chatgpt projects"
+git push origin main
 tar -czf canon-mini-agent.tar.gz -C /workspace/ai_sandbox \
 canon-mini-agent/.git canon-mini-agent/.gitignore canon-mini-agent/.cargo \
 canon-mini-agent/Cargo.toml canon-mini-agent/Cargo.lock \
