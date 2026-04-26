@@ -1,0 +1,102 @@
+*** Begin Patch
+*** Update File: src/prompt_inputs.rs
+@@
+     let tasks = tasks_ratio
+         .map(|(done, total)| format!("{done}/{total}"))
+         .unwrap_or_else(|| {
+             eval.get("tasks")
+                 .and_then(|v| v.as_str())
+                 .unwrap_or("?")
+                 .to_string()
+         });
++    let eval_focus =
++        eval_focus_line(weakest_name, weakest_val, &objectives, &tasks, eval_gate, directive);
+
+     format!(
+         "EVAL score={overall:.3}  weakest={weakest_name}({weakest_val:.3})  \
+ objectives={objectives}  tasks={tasks}\n\
++eval_focus={eval_focus}\n\
+ semantic_contract={semantic_contract:.3}  \
+ semantic_errors={semantic_fn_with_any_error}/{semantic_fn_total}({semantic_fn_error_rate:.4})  \
+ semantic_intent={semantic_fn_intent_classified}/{semantic_fn_total}({semantic_fn_intent_coverage:.4})  \
+@@
+     )
+ }
+
++fn eval_focus_line(
++    weakest_name: &str,
++    weakest_val: f64,
++    objectives: &str,
++    tasks: &str,
++    eval_gate: &str,
++    directive: &str,
++) -> String {
++    if eval_gate == "fail" {
++        return format!(
++            "gate_fail reason=eval_enforcement violations are active; next=clear violations before issue ranking; validation=eval_gate=pass; weakest={weakest_name}({weakest_val:.3})"
++        );
++    }
++    if weakest_name == "objective_progress" && objectives == "0/0" {
++        return "objective_gap reason=objectives=0/0 means eval has no mission-progress denominator; next=use objectives action to create/update active objectives before projected issue ranking; validation=OBJECTIVES.json objectives>0 and next eval objectives!=0/0".to_string();
++    }
++    if weakest_name == "task_velocity" && tasks == "0/0" {
++        return "plan_gap reason=tasks=0/0 means eval has no executable work denominator; next=use plan action to create ready tasks tied to active objectives; validation=PLAN.json tasks>0 and ready_window nonempty".to_string();
++    }
++    format!(
++        "{weakest_name} reason=lowest eval dimension at {weakest_val:.3}; next={directive}; validation=next eval raises {weakest_name} or removes it as weakest"
++    )
++}
++
+ fn eval_score_directive(weakest_name: &str) -> &'static str {
+@@
+     fn build_eval_header_uses_live_plan_and_objective_counts_over_stale_report_strings() {
+@@
+         assert!(!header.contains("tasks=0/0"));
+     }
+
++    #[test]
++    fn build_eval_header_explains_empty_objective_gap_as_next_action() {
++        use std::fs;
++        use std::time::{SystemTime, UNIX_EPOCH};
++
++        let unique = SystemTime::now()
++            .duration_since(UNIX_EPOCH)
++            .expect("system time before unix epoch")
++            .as_nanos();
++        let workspace = std::env::temp_dir().join(format!(
++            "canon-mini-agent-eval-header-objective-gap-{}-{}",
++            std::process::id(),
++            unique
++        ));
++        fs::create_dir_all(workspace.join("agent_state/reports/complexity")).unwrap();
++
++        fs::write(
++            workspace.join("agent_state/reports/complexity/latest.json"),
++            r#"{
++  "eval": {
++    "overall_score": 0.231,
++    "objective_progress": 0.0,
++    "task_velocity": 0.857,
++    "issue_health": 0.8,
++    "safety": 1.0,
++    "structural_invariant_coverage": 1.0,
++    "semantic_contract": 0.288,
++    "eval_enforcement_passed": true,
++    "objectives": "0/0",
++    "tasks": "6/7"
++  }
++}"#,
++        )
++        .unwrap();
++
++        let header = build_eval_header(workspace.as_path());
++        assert!(header.contains("eval_focus=objective_gap"));
++        assert!(header.contains("reason=objectives=0/0"));
++        assert!(header.contains("next=use objectives action"));
++        assert!(header.contains("before projected issue ranking"));
++        assert!(header.contains("validation=OBJECTIVES.json objectives>0"));
++    }
++
+     #[test]
+     fn build_eval_header_uses_live_semantic_manifest_over_stale_report_metrics() {
+*** End Patch

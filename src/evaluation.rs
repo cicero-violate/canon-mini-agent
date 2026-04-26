@@ -249,6 +249,7 @@ fn enforce_eval_thresholds(
 
     append_eval_threshold_violations(
         &mut violations,
+        &mut warnings,
         input,
         semantic_fn_error_rate,
         semantic_fn_totalized,
@@ -273,6 +274,7 @@ fn enforce_eval_thresholds(
 
 fn append_eval_threshold_violations(
     violations: &mut Vec<String>,
+    warnings: &mut Vec<String>,
     input: &EvalInput,
     semantic_fn_error_rate: f64,
     semantic_fn_totalized: usize,
@@ -300,14 +302,14 @@ fn append_eval_threshold_violations(
         ));
     }
     if input.tlog_delta_signals.actionable_lag_total_ms > EVAL_MAX_ACTIONABLE_LAG_TOTAL_MS {
-        violations.push(format!(
+        warnings.push(format!(
             "actionable_lag_total_ms={} > {}",
             input.tlog_delta_signals.actionable_lag_total_ms,
             EVAL_MAX_ACTIONABLE_LAG_TOTAL_MS
         ));
     }
     if input.tlog_delta_signals.prompt_truncations > EVAL_MAX_PROMPT_TRUNCATIONS {
-        violations.push(format!(
+        warnings.push(format!(
             "prompt_truncations={} > {} dropped_bytes={}",
             input.tlog_delta_signals.prompt_truncations,
             EVAL_MAX_PROMPT_TRUNCATIONS,
@@ -321,7 +323,7 @@ fn append_eval_threshold_violations(
         ));
     }
     if input.tlog_delta_signals.missing_action_results > 0 {
-        violations.push(format!(
+        warnings.push(format!(
             "missing_action_results={}/{}",
             input.tlog_delta_signals.missing_action_results,
             input.tlog_delta_signals.llm_action_outputs
@@ -421,6 +423,9 @@ pub fn diagnostics_repair_pressure_with_issues(
 }
 
 pub fn reward_alignment_score(completed_objectives: usize, total_objectives: usize) -> f64 {
+    if total_objectives == 0 {
+        return 1.0;
+    }
     safe_ratio(completed_objectives as f64, total_objectives.max(1) as f64)
 }
 

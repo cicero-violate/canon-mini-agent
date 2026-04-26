@@ -514,11 +514,14 @@ fn build_eval_header(workspace: &Path) -> String {
                 .unwrap_or("?")
                 .to_string()
         });
+    let eval_focus =
+        eval_focus_line(weakest_name, weakest_val, &objectives, &tasks, eval_gate, directive);
 
     format!(
         "EVAL score={overall:.3}  weakest={weakest_name}({weakest_val:.3})  \
 objectives={objectives}  tasks={tasks}\n\
-        semantic_contract={semantic_contract:.3}  \
+eval_focus={eval_focus}\n\
+semantic_contract={semantic_contract:.3}  \
 semantic_errors={semantic_fn_with_any_error}/{semantic_fn_total}({semantic_fn_error_rate:.4})  \
 semantic_intent={semantic_fn_intent_classified}/{semantic_fn_total}({semantic_fn_intent_coverage:.4})  \
 semantic_totalized={semantic_fn_totalized}/{semantic_fn_total}({semantic_fn_totalization_coverage:.4})  \
@@ -612,6 +615,31 @@ fn eval_header_semantic_summary(
         fn_totalized,
         fn_totalization_coverage: ratio(fn_totalized as usize, fn_total as usize),
     }
+}
+
+
+fn eval_focus_line(
+    weakest_name: &str,
+    weakest_val: f64,
+    objectives: &str,
+    tasks: &str,
+    eval_gate: &str,
+    directive: &str,
+) -> String {
+    if eval_gate == "fail" {
+        return format!(
+            "gate_fail reason=eval_enforcement violations are active; next=clear violations before issue ranking; validation=eval_gate=pass; weakest={weakest_name}({weakest_val:.3})"
+        );
+    }
+    if weakest_name == "objective_progress" && objectives == "0/0" {
+        return "objective_gap reason=objectives=0/0 means eval has no mission-progress denominator; next=use objectives action to create/update active objectives before projected issue ranking; validation=OBJECTIVES.json objectives>0 and next eval objectives!=0/0".to_string();
+    }
+    if weakest_name == "task_velocity" && tasks == "0/0" {
+        return "plan_gap reason=tasks=0/0 means eval has no executable work denominator; next=use plan action to create ready tasks tied to active objectives; validation=PLAN.json tasks>0 and ready_window nonempty".to_string();
+    }
+    format!(
+        "{weakest_name} reason=lowest eval dimension at {weakest_val:.3}; next={directive}; validation=next eval raises {weakest_name} or removes it as weakest"
+    )
 }
 
 fn eval_score_directive(weakest_name: &str) -> &'static str {
