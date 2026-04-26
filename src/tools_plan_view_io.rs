@@ -586,13 +586,13 @@ pub(crate) fn patch_scope_error_with_mode(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: patch_target_path
 /// Inputs: &str
 /// Outputs: std::string::String
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: normalizes patch target path text without mutation
+/// Forbidden: filesystem writes, state mutation, process spawning, network access
+/// Invariants: trims input; strips workspace prefix from absolute workspace paths; strips leading ./ from relative paths
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn normalize_patch_target_for_scope(target: &str) -> String {
     let trimmed = target.trim();

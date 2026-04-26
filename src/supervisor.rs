@@ -2305,13 +2305,13 @@ fn maybe_handle_user_chat_mode(args: &SupervisorArgs) -> Result<bool> {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: process_args
 /// Inputs: ()
 /// Outputs: supervisor::SupervisorArgs
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: reads process command-line arguments
+/// Forbidden: filesystem writes, network access, process spawning
+/// Invariants: supervisor-only flags are consumed; remaining args are preserved in order
+/// Failure: none; malformed loop value is ignored
 /// Provenance: rustc:facts + rustc:docstring
 fn parse_supervisor_args() -> SupervisorArgs {
     let mut args: Vec<String> = std::env::args().collect();

@@ -2124,13 +2124,13 @@ pub fn build_single_role_prompt(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: planner_prompt
 /// Inputs: &prompt_inputs::SingleRoleContext<'_>, &prompt_inputs::SingleRoleInputs, &str
 /// Outputs: std::result::Result<std::string::String, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: reads planner prompt inputs and renders planner role prompt
+/// Forbidden: mutation, filesystem writes, process spawning, network access
+/// Invariants: preserves primary input, objectives, lessons, enforced invariants, semantic control, and cargo test failure ordering
+/// Failure: returns read errors from required planner prompt inputs
 /// Provenance: rustc:facts + rustc:docstring
 fn build_planner_role_prompt(
     ctx: &SingleRoleContext<'_>,

@@ -388,13 +388,13 @@ fn append_hotspot_issues(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: inter_complexity_hotspot_issue
 /// Inputs: &inter_complexity::InterEntry, &str, &std::collections::HashSet<std::string::String>, &std::collections::HashSet<std::string::String>
 /// Outputs: std::option::Option<issues::Issue>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: constructs issue data without mutation
+/// Forbidden: filesystem writes, state mutation, process spawning, network access
+/// Invariants: skips entries below hotspot threshold, duplicate IDs, and already-open locations
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn build_hotspot_issue(
     entry: &InterEntry,

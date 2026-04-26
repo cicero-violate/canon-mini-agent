@@ -2327,13 +2327,13 @@ fn patch_kind_hints(kind: Option<&PatchKind>) -> (&'static str, &'static str) {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: apply_patch_template
 /// Inputs: &semantic::ExecutionPatchTarget
 /// Outputs: std::option::Option<std::string::String>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: builds apply_patch text without mutation
+/// Forbidden: filesystem writes, state mutation, process spawning, network access
+/// Invariants: requires target file and non-empty context; preserves context lines after line-number prefixes; appends patch-kind hints
+/// Failure: none; returns None when file or usable context is unavailable
 /// Provenance: rustc:facts + rustc:docstring
 pub(crate) fn build_apply_patch_template(target: &ExecutionPatchTarget) -> Option<String> {
     let file = target.file.as_ref()?;

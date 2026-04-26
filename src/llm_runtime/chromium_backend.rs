@@ -42,6 +42,7 @@ use tokio_tungstenite::tungstenite::Message;
 const FRAMES_DIR: &str = "./frames";
 const AGENT_STATE_DIR: &str = "./agent_state";
 const PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD: u32 = 8;
+const DEFAULT_RESPONSE_STALL_TIMEOUT_SECS: u64 = 45;
 /// Unclaimed preopened tabs older than this are closed to prevent accumulation across restarts.
 const PREOPENED_TAB_TTL: std::time::Duration = std::time::Duration::from_secs(60);
 const CHROMIUM_AUTOLAUNCH_DISABLE_ENV: &str = "CANON_CHROMIUM_AUTOLAUNCH";
@@ -258,6 +259,22 @@ fn endpoint_submit_ack_timeout_secs(endpoint_id: &str, total_timeout_secs: u64) 
 
     override_secs
         .unwrap_or(default_secs)
+        .min(total_timeout_secs.max(1))
+}
+
+fn endpoint_response_stall_timeout_secs(endpoint_id: &str, total_timeout_secs: u64) -> u64 {
+    let role = endpoint_role(endpoint_id)
+        .replace('-', "_")
+        .to_ascii_uppercase();
+    let scoped_env = format!("CANON_LLM_RESPONSE_STALL_TIMEOUT_SECS_{role}");
+    let override_secs = std::env::var(&scoped_env)
+        .ok()
+        .or_else(|| std::env::var("CANON_LLM_RESPONSE_STALL_TIMEOUT_SECS").ok())
+        .and_then(|raw| raw.trim().parse::<u64>().ok())
+        .filter(|secs| *secs > 0);
+
+    override_secs
+        .unwrap_or(DEFAULT_RESPONSE_STALL_TIMEOUT_SECS)
         .min(total_timeout_secs.max(1))
 }
 
@@ -546,6 +563,15 @@ struct State {
     /// (tabId, turnId) keys that have already consumed the one-time grace for
     /// the first responding heartbeat after a user echo.
     post_user_message_first_heartbeat_graced: HashSet<(u32, u64)>,
+
+    /// (tabId, turnId) -> last current-turn liveness signal observed after
+    /// SUBMIT_ACK.  This closes the blind spot where submit succeeds and then
+    /// no valid inbound/progress/heartbeat frames arrive until the full
+    /// response timeout.
+    turn_liveness_seen_at: HashMap<(u32, u64), std::time::Instant>,
+
+    /// (tabId, turnId) -> label for the liveness signal above.
+    turn_liveness_reason: HashMap<(u32, u64), String>,
 }
 
 /// Shared transport bootstrap for both submit-only and full-response flows.
@@ -591,6 +617,8 @@ impl State {
             post_user_message_heartbeat: HashMap::new(),
             post_user_message_heartbeat_signature: HashMap::new(),
             post_user_message_first_heartbeat_graced: HashSet::new(),
+            turn_liveness_seen_at: HashMap::new(),
+            turn_liveness_reason: HashMap::new(),
         }
     }
 
@@ -609,6 +637,106 @@ impl State {
         } else {
             false
         }
+    }
+}
+
+fn transport_signal_is_turn_liveness(signal: &str, chunk: &str) -> bool {
+    match signal {
+        "user_message_add" | "assistant_message_add" | "turn_complete" => true,
+        "heartbeat" => chunk.contains("\"calpico-is-responding-heartbeat\""),
+        _ => false,
+    }
+}
+
+fn record_turn_liveness_locked(
+    st: &mut State,
+    key: (u32, u64),
+    reason: &str,
+    observed_at: std::time::Instant,
+) {
+    st.turn_liveness_seen_at.insert(key, observed_at);
+    st.turn_liveness_reason.insert(key, reason.to_string());
+}
+
+fn turn_liveness_stall_reason_locked(
+    st: &State,
+    key: (u32, u64),
+    now: std::time::Instant,
+    stall_timeout: std::time::Duration,
+) -> Option<String> {
+    let last_seen = *st.turn_liveness_seen_at.get(&key)?;
+    if now.saturating_duration_since(last_seen) < stall_timeout {
+        return None;
+    }
+    let last_reason = st
+        .turn_liveness_reason
+        .get(&key)
+        .map(String::as_str)
+        .unwrap_or("unknown");
+    Some(format!(
+        "llm_stall_detected_timeout_no_inbound_liveness_after_submit_ack last_liveness={last_reason} stale_ms={} stall_timeout_ms={}",
+        now.saturating_duration_since(last_seen).as_millis(),
+        stall_timeout.as_millis()
+    ))
+}
+
+async fn monitor_submit_only_turn_stall(
+    state: Arc<Mutex<State>>,
+    endpoint_id: String,
+    tab_id: u32,
+    turn_id: u64,
+    url: String,
+    stateful: bool,
+    stall_timeout: std::time::Duration,
+) {
+    let key = (tab_id, turn_id);
+    loop {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let mut st = state.lock().await;
+        if st.pending_turn_id.get(&tab_id).copied() != Some(turn_id) {
+            return;
+        }
+        let Some(reason) =
+            turn_liveness_stall_reason_locked(&st, key, std::time::Instant::now(), stall_timeout)
+        else {
+            continue;
+        };
+
+        append_inbound_boundary_event(
+            &mut st,
+            tab_id,
+            turn_id,
+            &endpoint_id,
+            "submit_only_response_stall",
+            &reason,
+            stateful,
+            true,
+        );
+        st.pending_turn_id.remove(&tab_id);
+        st.pending_turn_lease.remove(&key);
+        st.turn_liveness_seen_at.remove(&key);
+        st.turn_liveness_reason.remove(&key);
+        retire_tab_locked(&mut st, &endpoint_id, tab_id, stateful);
+        append_outbound_event(
+            "OUTBOUND_SUBMIT_ONLY_RESPONSE_STALL",
+            json!({
+                "endpoint_id": &endpoint_id,
+                "tabId": tab_id,
+                "turnId": turn_id,
+                "url": &url,
+                "stateful": stateful,
+                "submit_only": true,
+                "reason": &reason,
+                "stall_timeout_ms": stall_timeout.as_millis(),
+            }),
+        );
+        st.completed_turns.push_back(json!({
+            "tab_id": tab_id,
+            "turn_id": turn_id,
+            "transport_error": &reason,
+            "endpoint_id": &endpoint_id,
+        }));
+        return;
     }
 }
 
@@ -654,6 +782,30 @@ impl ChromiumBackend {
             }
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
+    }
+
+    async fn mark_turn_liveness(&self, tab_id: u32, turn_id: u64, reason: &str) {
+        let mut st = self.state.lock().await;
+        let key = (tab_id, turn_id);
+        if st.pending_resp.contains_key(&key)
+            || st.pending_turn_id.get(&tab_id).copied() == Some(turn_id)
+        {
+            record_turn_liveness_locked(&mut st, key, reason, std::time::Instant::now());
+        }
+    }
+
+    async fn submitted_turn_stall_reason(
+        &self,
+        tab_id: u32,
+        turn_id: u64,
+        stall_timeout: std::time::Duration,
+    ) -> Option<String> {
+        let st = self.state.lock().await;
+        let key = (tab_id, turn_id);
+        if !st.pending_resp.contains_key(&key) {
+            return None;
+        }
+        turn_liveness_stall_reason_locked(&st, key, std::time::Instant::now(), stall_timeout)
     }
 
     /// ChatGPT transport currently behaves like a shared stream across stateful
@@ -955,6 +1107,7 @@ impl ChromiumBackend {
             ack_rx,
         )
         .await?;
+        self.mark_turn_liveness(tab_id, turn_id, "submit_ack").await;
 
         enum ResponseWaitOutcome {
             Response(String),
@@ -965,19 +1118,29 @@ impl ChromiumBackend {
 
         let mut resp_rx = resp_rx;
         let mut early_fail_rx = early_fail_rx;
+        let stall_timeout = std::time::Duration::from_secs(
+            endpoint_response_stall_timeout_secs(endpoint_id, timeout_secs),
+        );
 
         // Wait for the assembled response, but allow deterministic protocol
-        // evidence (non-responding heartbeat stall) to fail the turn before the
-        // wall-clock timeout expires.  Responding heartbeats are liveness
-        // evidence and never trigger early_fail; the wall-clock timeout covers
-        // the "ChatGPT is responding but too slow" case.
+        // evidence to fail the turn before the wall-clock timeout expires:
+        // inbound protocol stall signals fire via `early_fail_rx`, and the
+        // liveness poll below covers total silence after SUBMIT_ACK.
         let wait_outcome = loop {
             let now = std::time::Instant::now();
             if now >= deadline {
                 break ResponseWaitOutcome::Timeout;
             }
+            if let Some(reason) = self
+                .submitted_turn_stall_reason(tab_id, turn_id, stall_timeout)
+                .await
+            {
+                break ResponseWaitOutcome::EarlyFail(reason);
+            }
 
-            let wait_remaining = deadline.saturating_duration_since(now);
+            let wait_remaining = deadline
+                .saturating_duration_since(now)
+                .min(std::time::Duration::from_millis(500));
             let sleep = tokio::time::sleep(wait_remaining);
             tokio::pin!(sleep);
 
@@ -999,7 +1162,7 @@ impl ChromiumBackend {
                     }
                 }
                 _ = &mut sleep => {
-                    break ResponseWaitOutcome::Timeout;
+                    continue;
                 }
             }
         };
@@ -1010,6 +1173,8 @@ impl ChromiumBackend {
                 st.pending_early_fail.remove(&(tab_id, turn_id));
                 st.pending_turn_id.remove(&tab_id);
                 st.pending_turn_lease.remove(&(tab_id, turn_id));
+                st.turn_liveness_seen_at.remove(&(tab_id, turn_id));
+                st.turn_liveness_reason.remove(&(tab_id, turn_id));
                 release_tab_locked(&mut st, endpoint_id, tab_id, stateful);
                 Ok(LlmResponse {
                     raw,
@@ -1148,6 +1313,19 @@ impl ChromiumBackend {
                 ack_rx,
             )
             .await?;
+        self.mark_turn_liveness(tab_id, turn_id, "submit_ack").await;
+        tokio::spawn(monitor_submit_only_turn_stall(
+            self.state.clone(),
+            endpoint_id.to_string(),
+            tab_id,
+            turn_id,
+            url.to_string(),
+            stateful,
+            std::time::Duration::from_secs(endpoint_response_stall_timeout_secs(
+                endpoint_id,
+                timeout_secs,
+            )),
+        ));
         Ok(LlmResponse {
             raw: ack_raw,
             tab_id: Some(tab_id),
@@ -1799,6 +1977,11 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                 );
                 return;
             }
+            if let Some(signal) = transport_signal {
+                if transport_signal_is_turn_liveness(signal, &chunk) {
+                    record_turn_liveness_locked(&mut st, key, signal, std::time::Instant::now());
+                }
+            }
 
             match transport_signal {
                 Some("assistant_message_add") => {
@@ -2113,6 +2296,8 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                     st.post_user_message_heartbeat.remove(&key);
                     st.post_user_message_heartbeat_signature.remove(&key);
                     st.post_user_message_first_heartbeat_graced.remove(&key);
+                    st.turn_liveness_seen_at.remove(&key);
+                    st.turn_liveness_reason.remove(&key);
                     let endpoint_id = st.tab_owners.get(&tab_id).cloned();
                     if let Some(endpoint_id) = endpoint_id.as_deref() {
                         release_tab_locked(&mut st, endpoint_id, tab_id, true);
@@ -2133,6 +2318,8 @@ async fn handle_inbound(raw: &str, state: &Arc<Mutex<State>>) {
                     st.post_user_message_heartbeat.remove(&key);
                     st.post_user_message_heartbeat_signature.remove(&key);
                     st.post_user_message_first_heartbeat_graced.remove(&key);
+                    st.turn_liveness_seen_at.remove(&key);
+                    st.turn_liveness_reason.remove(&key);
                     if let Some(owner) = endpoint_id.as_deref() {
                         release_tab_locked(&mut st, owner, tab_id, true);
                     } else {
@@ -2184,6 +2371,10 @@ fn retire_tab_locked(st: &mut State, endpoint_id: &str, tab_id: u32, stateful: b
         .retain(|(tid, _), _| *tid != tab_id);
     st.post_user_message_first_heartbeat_graced
         .retain(|(tid, _)| *tid != tab_id);
+    st.turn_liveness_seen_at
+        .retain(|(tid, _), _| *tid != tab_id);
+    st.turn_liveness_reason
+        .retain(|(tid, _), _| *tid != tab_id);
     st.assemblers.remove(&tab_id);
 
     if stateful {
@@ -2315,8 +2506,9 @@ fn reconcile_tab_state_locked(
 #[cfg(test)]
 mod tests {
     use super::{
-        endpoint_submit_ack_timeout_secs, handle_inbound, retire_tab_locked, State,
-        PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD,
+        endpoint_response_stall_timeout_secs, endpoint_submit_ack_timeout_secs, handle_inbound,
+        record_turn_liveness_locked, retire_tab_locked, transport_signal_is_turn_liveness,
+        turn_liveness_stall_reason_locked, State, PRE_TURN_COMPLETE_HEARTBEAT_STALL_THRESHOLD,
     };
     use crate::llm_runtime::parsers::{FrameAssembler, SiteType};
     use serde_json::{json, Value};
@@ -2347,6 +2539,73 @@ mod tests {
     fn submit_ack_timeout_never_exceeds_total_timeout() {
         assert_eq!(endpoint_submit_ack_timeout_secs("solo_chatgpt", 10), 10);
         assert_eq!(endpoint_submit_ack_timeout_secs("executor_pool", 5), 5);
+    }
+
+    #[test]
+    fn response_stall_timeout_never_exceeds_total_timeout() {
+        let timeout = endpoint_response_stall_timeout_secs("executor_pool", 5);
+        assert!(timeout > 0);
+        assert!(timeout <= 5);
+    }
+
+    #[test]
+    fn response_liveness_classifier_accepts_only_current_turn_liveness() {
+        assert!(transport_signal_is_turn_liveness(
+            "heartbeat",
+            r#"{"type":"calpico-is-responding-heartbeat"}"#
+        ));
+        assert!(transport_signal_is_turn_liveness(
+            "user_message_add",
+            r#"{"type":"calpico-message-add","role":"user"}"#
+        ));
+        assert!(!transport_signal_is_turn_liveness(
+            "presence",
+            r#"{"type":"presence"}"#
+        ));
+        assert!(!transport_signal_is_turn_liveness("heartbeat", r#"{"type":"heartbeat"}"#));
+    }
+
+    #[test]
+    fn response_liveness_stall_detects_silent_turn_after_ack() {
+        let mut st = State::new();
+        let key = (7, 11);
+        let (resp_tx, _resp_rx) = oneshot::channel::<String>();
+        st.pending_resp.insert(key, resp_tx);
+        let now = std::time::Instant::now();
+        record_turn_liveness_locked(
+            &mut st,
+            key,
+            "submit_ack",
+            now - std::time::Duration::from_secs(46),
+        );
+
+        let reason =
+            turn_liveness_stall_reason_locked(&st, key, now, std::time::Duration::from_secs(45))
+                .expect("stale submit_ack liveness should detect response stall");
+
+        assert!(reason.contains("llm_stall_detected_timeout_no_inbound_liveness_after_submit_ack"));
+        assert!(reason.contains("last_liveness=submit_ack"));
+    }
+
+    #[test]
+    fn response_liveness_stall_waits_while_liveness_is_fresh() {
+        let mut st = State::new();
+        let key = (7, 11);
+        let now = std::time::Instant::now();
+        record_turn_liveness_locked(
+            &mut st,
+            key,
+            "heartbeat",
+            now - std::time::Duration::from_secs(10),
+        );
+
+        assert!(turn_liveness_stall_reason_locked(
+            &st,
+            key,
+            now,
+            std::time::Duration::from_secs(45)
+        )
+        .is_none());
     }
 
     #[tokio::test]

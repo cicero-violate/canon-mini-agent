@@ -133,13 +133,13 @@ fn resolve_violation(
 }
 
 /// Intent: canonical_write
-/// Resource: error
+/// Resource: violations_report
 /// Inputs: std::option::Option<&mut canonical_writer::CanonicalWriter>, &std::path::Path, &serde_json::Value
 /// Outputs: std::result::Result<(bool, std::string::String), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: validates evidence lease, updates violation status and optional summary, saves violations report
+/// Forbidden: writes outside canonical violations report path
+/// Invariants: status is required; summary changes only when provided
+/// Failure: returns lease validation, missing status, load, or save errors
 /// Provenance: rustc:facts + rustc:docstring
 fn set_violation_status(
     mut writer: Option<&mut CanonicalWriter>,

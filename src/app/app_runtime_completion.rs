@@ -20,6 +20,19 @@ pub(super) fn parse_completed_turn(value: &Value) -> Option<(u32, u64, String, O
     Some((tab_id, turn_id, text, endpoint_id))
 }
 
+pub(super) fn parse_transport_failed_turn(
+    value: &Value,
+) -> Option<(u32, u64, String, Option<String>)> {
+    let tab_id = value.get("tab_id").and_then(|x| x.as_u64())? as u32;
+    let turn_id = value.get("turn_id").and_then(|x| x.as_u64())?;
+    let reason = value.get("transport_error").and_then(|x| x.as_str())?.to_string();
+    let endpoint_id = value
+        .get("endpoint_id")
+        .and_then(|x| x.as_str())
+        .map(|s| s.to_string());
+    Some((tab_id, turn_id, reason, endpoint_id))
+}
+
 pub(super) fn handle_executor_completion(
     mut submitted: SubmittedExecutorTurn,
     tab_id: u32,

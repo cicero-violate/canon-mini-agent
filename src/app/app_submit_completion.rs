@@ -634,6 +634,31 @@ pub(super) fn process_completed_turn_item(
     item: Value,
 ) -> bool {
     append_orchestration_trace("llm_message_received", item.clone());
+    if let Some((tab_id, turn_id, reason, _completed_endpoint_id)) =
+        parse_transport_failed_turn(&item)
+    {
+        append_orchestration_trace(
+            "llm_transport_failure_received",
+            json!({
+                "tab_id": tab_id,
+                "turn_id": turn_id,
+                "reason": &reason,
+            }),
+        );
+        if let Some(lane_id) = rt
+            .submitted_turns
+            .get(&(tab_id, turn_id))
+            .map(|submitted| submitted.lane)
+        {
+            eprintln!(
+                "[orchestrate] submitted turn early transport stall: lane={} tab_id={} turn_id={} reason={}",
+                ctx.lanes[lane_id].label, tab_id, turn_id, reason
+            );
+            recover_timed_out_submitted_turn(ctx, writer, rt, tab_id, turn_id, lane_id);
+            return true;
+        }
+        return false;
+    }
     let Some((tab_id, turn_id, exec_result, completed_endpoint_id)) = parse_completed_turn(&item)
     else {
         return false;
